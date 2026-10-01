@@ -52,6 +52,8 @@ internal fun itemRawEditPath(index: Int): String = "plan.missionController.visua
 internal const val RAW_EDIT_NOTE = "Provides advanced access to all commands/parameters. Be very careful!"
 internal const val RAW_EDIT_STUCK = "You have made changes to the mission item which cannot be shown in Simple Mode"
 
+internal fun areaHelp(view: JSONObject?): String? = view?.optText("areaHelp")?.takeIf { it.isNotBlank() }
+
 internal data class RawEdit(val on: Boolean, val friendlyAllowed: Boolean)
 
 internal fun rawEdit(view: JSONObject?): RawEdit? =
@@ -128,7 +130,10 @@ fun ItemEditor(index: Int, at: TrackPoint?, onDismiss: () -> Unit) {
             refusal?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp))
             }
-            LazyColumn(Modifier.heightIn(max = 480.dp)) {
+            areaHelp(view)?.let { help ->
+                Text(help, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
+            }
+            if (areaHelp(view) == null) LazyColumn(Modifier.heightIn(max = 480.dp)) {
                 items(fields, key = { it.path }) { fact ->
                     FactRow(fact) { revision++ }
                 }

@@ -395,6 +395,8 @@ ACCEPTED = {
     "values": "InstrumentDisplay.kt reads its own SharedPreferences JSON (per-value Telemetry Display styling), not a bridge view",
     "chart": "view.inspectorCharts lists plots and charted fields only after a field is put on a chart, and the recording rig charts nothing, so plots and selectedCharted record empty; inspectorchart.rs serves field and chart per plot",
     "field": "view.inspectorCharts lists plots and charted fields only after a field is put on a chart, and the recording rig charts nothing, so plots and selectedCharted record empty; inspectorchart.rs serves field and chart per plot",
+    "singleStickDisplay": "view.joystick serves calibration only while a joystick calibration runs, and the recording rig has no joystick, so calibration records null; stickcal.rs and joystickhost.rs serve these during calibration",
+    "stickPositions": "view.joystick serves calibration only while a joystick calibration runs, and the recording rig has no joystick, so calibration records null; stickcal.rs and joystickhost.rs serve these during calibration",
     "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
     "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",

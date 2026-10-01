@@ -47,6 +47,22 @@ fn listed(backend: &dyn Backend, item: &str) -> Vec<Value> {
         .collect()
 }
 
+pub fn area_help(kind: &str, complete: bool) -> Option<&'static str> {
+    (!complete).then_some(match kind {
+        "CorridorScan" => "Use the Polyline Tools to create the polyline which defines the corridor.",
+        "StructureScan" => "Draw the structure outline with the Polygon Tools, at the top of the map.",
+        _ => "Use the Polygon Tools to create the polygon which outlines your survey area.",
+    })
+}
+
+fn qt_area_help(backend: &dyn Backend, item: &str, read: &Value) -> Option<&'static str> {
+    let (kind, shape) = [("SurveyComplexItem", "survey", "surveyAreaPolygon"), ("CorridorScanComplexItem", "CorridorScan", "corridorPolyline"), ("StructureScanComplexItem", "StructureScan", "structurePolygon")]
+        .into_iter()
+        .find(|(class, _, _)| read.get("class").and_then(Value::as_str) == Some(*class))
+        .map(|(_, kind, shape)| (kind, shape))?;
+    area_help(kind, flag(&object(&backend.get(&format!("{item}.{shape}"))), "isValid"))
+}
+
 fn owned(read: &Value, item: &str) -> Vec<Value> {
     read.get("facts")
         .and_then(Value::as_array)
@@ -131,6 +147,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         "index": index,
         "simple": simple,
         "fields": fields,
+        "areaHelp": (available && !simple).then(|| qt_area_help(backend, &item, &read)).flatten(),
         "camera": match available && !simple {
             true => camera(backend, &item),
             false => Value::Null,
@@ -150,6 +167,14 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unfinished_shape_names_the_tool_that_finishes_it() {
+        assert!(area_help("survey", false).unwrap().contains("Polygon Tools"));
+        assert!(area_help("CorridorScan", false).unwrap().contains("Polyline Tools"));
+        assert!(area_help("StructureScan", false).unwrap().starts_with("Draw the structure outline"));
+        assert_eq!(area_help("survey", true), None);
+    }
 
     fn fact(name: &str, property: &str, value: f64) -> Value {
         json!({ "kind": "fact", "name": name, "property": property, "value": value, "valueString": format!("{value}"), "units": "m", "readOnly": false, "shortDescription": "" })

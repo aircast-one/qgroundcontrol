@@ -18,4 +18,10 @@ class RawEditTest {
         assertNull(rawEditRefusal(RawEdit(on = true, friendlyAllowed = true)))
         assertNull(rawEditRefusal(RawEdit(on = false, friendlyAllowed = true)))
     }
+
+    @Test
+    fun `an unfinished pattern shape shows its help instead of its settings`() {
+        assertEquals("Use the Polygon Tools", areaHelp(JSONObject("""{"areaHelp":"Use the Polygon Tools"}""")))
+        assertNull(areaHelp(JSONObject("""{"areaHelp":null}""")))
+    }
 }
