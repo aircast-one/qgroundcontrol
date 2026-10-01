@@ -568,6 +568,25 @@ internal fun MapSpikeScreen(
                         .size(width = 32.dp, height = 4.dp)
                         .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), CircleShape),
                 )
+                (selected as? MapHit.Waypoint)
+                    ?.let { hit -> allItems.firstOrNull { it.index == hit.index } }
+                    ?.let { item ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    "${item.command.ifBlank { "Item" }} ${sequenceLabel(item)}",
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                                itemDetail(item, surveyStatsMap[item.index]).ifBlank { null }?.let {
+                                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Button(onClick = { selected = null }) { Text("Done") }
+                        }
+                    }
                 FlowRow(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
