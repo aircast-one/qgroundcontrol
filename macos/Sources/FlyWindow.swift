@@ -1025,6 +1025,7 @@ struct FlyView: View {
             video.useNativeRendering()
             video.startWatching()
             mapClick.start()
+            GamepadInput.shared.start()
         }
         .onDisappear {
             fly.stop()

@@ -1274,6 +1274,7 @@ checkAVertexHandleSaysWhichKindItIs()
 checkTheFlyViewReadsGpsAndTerrainFromTheCore()
 checkThePickerTakesEveryGroupFromTheCore()
 checkTheItemEditorReadsWhatTheCoreChose()
+checkAGamepadReadsAsTheAndroidHeadReportsIt()
 checkTheAppKnowsWhichOfItsTwoNamesItWasOpenedUnder()
 
 func checkAPlanWithNoVehicleChosenIsNotANamelessVehicle() {
@@ -10048,4 +10049,14 @@ func checkTheItemEditorReadsWhatTheCoreChose() {
     expect(camera.brand == "Sony" && camera.brands == ["Manual", "Sony"] && !camera.isCustom,
            "the camera block's shorter names map onto the same choice")
     expect(CameraChoice(served: [:]) == .empty, "a simple item's null camera is the empty choice")
+}
+
+func checkAGamepadReadsAsTheAndroidHeadReportsIt() {
+    expect(GamepadLayout.scaled(1) == 32767 && GamepadLayout.scaled(-2) == -32767 && GamepadLayout.scaled(0) == 0,
+           "axes scale to the same +-32767 the Android head and SDL report, clamped at full deflection")
+    expect(GamepadLayout.hatBits(x: 0, y: 1) == GamepadLayout.hatUp,
+           "a GameController d-pad reads up as positive y, which is the hat's up bit")
+    expect(GamepadLayout.hatBits(x: 1, y: -1) == (GamepadLayout.hatRight | GamepadLayout.hatDown),
+           "a diagonal sets both bits")
+    expect(GamepadLayout.hatBits(x: 0.2, y: -0.3) == 0, "inside the threshold is centred")
 }
