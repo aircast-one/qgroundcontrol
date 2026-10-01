@@ -279,6 +279,9 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
             Some(json!({ "latitude": at.get("latitude")?.as_f64()?, "longitude": at.get("longitude")?.as_f64()? }))
         }),
         "forwardFlight": state.forward_flight,
+        "vtol": state.vtol,
+        "vtolInFwdFlight": state.vtol_in_fwd_flight,
+        "flying": state.flying,
         "gotoLoiterRadius": state.goto_loiter_radius,
         "actions": offers,
     })

@@ -71,6 +71,7 @@ import one.aircast.android.ui.LogReplayBar
 import one.aircast.android.ui.StatusReadingsInline
 import one.aircast.android.ui.VehicleStateChip
 import one.aircast.android.ui.ControlRequestPrompt
+import one.aircast.android.ui.VtolStateCell
 import one.aircast.android.ui.ResumeFailedPrompt
 import one.aircast.android.ui.VirtualJoystick
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -358,6 +359,7 @@ fun AircastShell(hostView: android.view.View?) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     VehicleStateChip()
+                    VtolStateCell()
                     ControlRequestPrompt()
                     if (tab == Tab.Fly) {
                         StatusReadingsInline(Modifier.weight(1f))
