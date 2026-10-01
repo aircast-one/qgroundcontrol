@@ -1,0 +1,21 @@
+{
+    "fileType": "VehicleConfig",
+    "version": 1,
+    "sections": [
+        {
+            "title": "Ground Control Comm Loss Failsafe",
+            "controls": [
+                {
+                    "param": "NAV_DLL_ACT",
+                    "label": "Vehicle Action",
+                    "control": "combobox"
+                },
+                {
+                    "param": "COM_DL_LOSS_T",
+                    "label": "Loss Timeout",
+                    "control": "slider"
+                }
+            ]
+        }
+    ]
+}

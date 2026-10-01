@@ -77,6 +77,7 @@ internal fun mvActions(view: JSONObject?): List<MvAction> {
 internal fun mvReasonFor(action: MvAction): String? =
     action.reason.ifBlank { null }?.takeIf { !action.ready }
 
+internal const val STATUS_SETTINGS_PAGE = "Status Settings"
 internal const val CLOSE_VEHICLE = "vehicle.closeVehicle"
 private const val LOAD_POLL_MS = 500L
 
@@ -98,6 +99,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val subtitle = vehicleSubtitle(fly)
     var picking by remember { mutableStateOf(false) }
     var offline by remember { mutableStateOf(false) }
+    var statusSettings by remember { mutableStateOf(false) }
     val disconnected = fly?.connected != true
     val scope = rememberCoroutineScope()
     var refusal by remember { mutableStateOf<String?>(null) }
@@ -107,7 +109,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             when {
                 choices.ambiguous || taken -> it.clickable { picking = true }
                 disconnected -> it.clickable { offline = true }
-                else -> it
+                else -> it.clickable { statusSettings = true }
             }
         },
         verticalAlignment = Alignment.CenterVertically,
@@ -154,6 +156,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     androidx.compose.runtime.LaunchedEffect(disconnected) { if (!disconnected) offline = false }
     if (offline) {
         OfflineStatusSheet { offline = false }
+    }
+    if (statusSettings && !disconnected) {
+        ModalBottomSheet(onDismissRequest = { statusSettings = false }) {
+            ParameterForm(STATUS_SETTINGS_PAGE)
+        }
     }
 
     if (picking) {

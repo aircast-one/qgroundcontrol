@@ -24,6 +24,9 @@ pub const SIMPLE_MODES: &str = "Simple Modes";
 const APM_BATTERY_INDICATOR: &str = include_str!("vehicleconfig/APMBatteryIndicator.VehicleConfig.json");
 const PX4_BATTERY_INDICATOR: &str = include_str!("vehicleconfig/PX4BatteryIndicator.VehicleConfig.json");
 pub const BATTERY_SETTINGS: &str = "Battery Settings";
+const APM_MAIN_STATUS: &str = include_str!("vehicleconfig/APMMainStatusIndicator.VehicleConfig.json");
+const PX4_MAIN_STATUS: &str = include_str!("vehicleconfig/PX4MainStatusIndicator.VehicleConfig.json");
+pub const STATUS_SETTINGS: &str = "Status Settings";
 pub const FLIGHT_MODE_SETTINGS: &str = "Flight Mode Settings";
 
 const CONFIGS: &[(&str, bool, &str)] = &[
@@ -42,6 +45,8 @@ const CONFIGS: &[(&str, bool, &str)] = &[
     (SIMPLE_MODES, false, APM_SIMPLE_MODES),
     (BATTERY_SETTINGS, false, APM_BATTERY_INDICATOR),
     (BATTERY_SETTINGS, true, PX4_BATTERY_INDICATOR),
+    (STATUS_SETTINGS, false, APM_MAIN_STATUS),
+    (STATUS_SETTINGS, true, PX4_MAIN_STATUS),
 ];
 
 const ROW_PREFIX: &str = "vehicleConfig(";
@@ -1155,6 +1160,13 @@ mod tests {
         assert!(labels(&Fake::new(&[("BATT_MONITOR", 0.0), ("BATT_FS_LOW_ACT", 2.0)]), false).is_empty(), "APMBatteryIndicator hides the failsafes with no battery monitor");
         let px4 = Fake { px4: true, ..Fake::new(&[("COM_LOW_BAT_ACT", 3.0), ("BAT_LOW_THR", 0.15), ("BAT_CRIT_THR", 0.07), ("BAT_EMERGEN_THR", 0.05)]) };
         assert_eq!(labels(&px4, true), ["Vehicle Action", "Warning Level", "Critical Level", "Emergency Level"]);
+    }
+
+    #[test]
+    fn the_status_dropdown_edits_the_comm_loss_failsafe() {
+        let labels = |fake: &Fake, px4: bool| -> Vec<String> { page(fake, STATUS_SETTINGS, px4)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).filter_map(|c| c["label"].as_str().map(str::to_string)).collect() };
+        assert_eq!(labels(&Fake::new(&[("FS_GCS_ENABLE", 1.0), ("FS_GCS_TIMEOUT", 5.0)]), false), ["Vehicle Action", "Loss Timeout"], "APMMainStatusIndicator offers only what the build carries");
+        assert_eq!(labels(&Fake { px4: true, ..Fake::new(&[("NAV_DLL_ACT", 2.0), ("COM_DL_LOSS_T", 10.0)]) }, true), ["Vehicle Action", "Loss Timeout"]);
     }
 
     #[test]
