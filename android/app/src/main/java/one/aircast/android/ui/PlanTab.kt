@@ -1,6 +1,16 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.res.painterResource
+import one.aircast.android.R
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -55,7 +65,7 @@ internal fun applyAltitudePrompt(view: org.json.JSONObject?): AltitudePrompt? =
     view?.optJSONObject("applyAltitudePrompt")?.let { AltitudePrompt(it.optString("title"), it.optString("text")) }
 
 @Composable
-fun PlanTab(modifier: Modifier = Modifier) {
+fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
     var notice by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<PlanConfirm?>(null) }
@@ -167,119 +177,151 @@ fun PlanTab(modifier: Modifier = Modifier) {
         )
     }
 
-    Column(modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            TextButton(
-                enabled = history.canUndo,
-                onClick = { offMainDetached { Qgc.invoke("plan.undo") } },
-            ) { Text("Undo") }
-            TextButton(
-                enabled = history.canRedo,
-                onClick = { offMainDetached { Qgc.invoke("plan.redo") } },
-            ) { Text("Redo") }
-
-            Box {
-                TextButton(onClick = { menuOpen = true }) { Text("File") }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Open…") },
-                        enabled = can.open,
-                        onClick = {
-                            menuOpen = false
-                            if (discardNeedsConfirming(dirty, containsItems)) pending = PlanConfirm.Open else files.open()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Save") },
-                        enabled = can.save,
-                        onClick = { menuOpen = false; files.save() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Save As…") },
-                        enabled = can.save,
-                        onClick = { menuOpen = false; files.saveAs() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Export KML…") },
-                        enabled = can.exportKml,
-                        onClick = { menuOpen = false; files.exportKml() },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Import boundary…") },
-                        enabled = can.open,
-                        onClick = { menuOpen = false; files.importBoundary() },
-                    )
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text("Defaults…") },
-                        onClick = { menuOpen = false; showDefaults = true },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Transform…") },
-                        enabled = containsItems,
-                        onClick = { menuOpen = false; showTransform = true },
-                    )
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text("New Plan…") },
-                        enabled = can.newPlan,
-                        onClick = {
-                            menuOpen = false
-                            if (discardNeedsConfirming(dirty, containsItems)) pending = PlanConfirm.NewPlan else files.newPlan()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Download from Vehicle") },
-                        enabled = can.download,
-                        onClick = {
-                            menuOpen = false
-                            if (dirty) pending = PlanConfirm.Download else files.download()
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Clear Mission") },
-                        enabled = can.clearFromVehicle,
-                        colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error),
-                        onClick = { menuOpen = false; pending = PlanConfirm.ClearMission },
-                    )
+    Box(modifier.fillMaxSize()) {
+        PlanMapScreen(
+            Modifier.fillMaxSize(),
+            onCentre = { lat, lon -> centre = lat to lon },
+            itemEditor = { index, at, close -> ItemEditor(index, at, close) },
+            header = { upload ->
+                Column {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 4.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), "Back to Fly") }
+                        val title = files.documentName() ?: "New plan"
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                title,
+                                style = MaterialTheme.typography.titleLarge,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            (notice ?: planStatusText(planStatus)).takeIf { it.isNotBlank() && it != title }?.let { line ->
+                                Text(
+                                    line,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = if (notice == null) 1 else 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                        Surface(
+                            onClick = upload.onClick,
+                            enabled = upload.enabled,
+                            modifier = Modifier.alpha(if (upload.enabled) 1f else 0.38f),
+                            shape = CircleShape,
+                            color = if (upload.emphasised) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = if (upload.emphasised) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        ) {
+                            Row(
+                                Modifier.height(40.dp).padding(start = 16.dp, end = 20.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(painterResource(R.drawable.ic_upload), null, Modifier.size(20.dp))
+                                Text("Upload", style = MaterialTheme.typography.labelLarge)
+                            }
+                        }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) { Icon(painterResource(R.drawable.ic_more_vert), "Plan menu") }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Undo") },
+                                    enabled = history.canUndo,
+                                    onClick = { menuOpen = false; offMainDetached { Qgc.invoke("plan.undo") } },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Redo") },
+                                    enabled = history.canRedo,
+                                    onClick = { menuOpen = false; offMainDetached { Qgc.invoke("plan.redo") } },
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Open…") },
+                                    enabled = can.open,
+                                    onClick = {
+                                        menuOpen = false
+                                        if (discardNeedsConfirming(dirty, containsItems)) pending = PlanConfirm.Open else files.open()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Save") },
+                                    enabled = can.save,
+                                    onClick = { menuOpen = false; files.save() },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Save As…") },
+                                    enabled = can.save,
+                                    onClick = { menuOpen = false; files.saveAs() },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Export KML…") },
+                                    enabled = can.exportKml,
+                                    onClick = { menuOpen = false; files.exportKml() },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Import boundary…") },
+                                    enabled = can.open,
+                                    onClick = { menuOpen = false; files.importBoundary() },
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Defaults…") },
+                                    onClick = { menuOpen = false; showDefaults = true },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Transform…") },
+                                    enabled = containsItems,
+                                    onClick = { menuOpen = false; showTransform = true },
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("New Plan…") },
+                                    enabled = can.newPlan,
+                                    onClick = {
+                                        menuOpen = false
+                                        if (discardNeedsConfirming(dirty, containsItems)) pending = PlanConfirm.NewPlan else files.newPlan()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Download from Vehicle") },
+                                    enabled = can.download,
+                                    onClick = {
+                                        menuOpen = false
+                                        if (dirty) pending = PlanConfirm.Download else files.download()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Clear Mission") },
+                                    enabled = can.clearFromVehicle,
+                                    colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error),
+                                    onClick = { menuOpen = false; pending = PlanConfirm.ClearMission },
+                                )
+                            }
+                        }
+                    }
+                    undrawnItemsWarning(undrawn)?.let { warning ->
+                        Text(
+                            text = warning,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.errorContainer)
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
                 }
-            }
-            Text(
-                text = notice ?: planStatusText(planStatus),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = if (notice == null) 1 else 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
-        undrawnItemsWarning(undrawn)?.let { warning ->
-            Text(
-                text = warning,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.errorContainer)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
-        }
-        Box(Modifier.weight(1f)) {
-            PlanMapScreen(
-                Modifier.fillMaxSize(),
-                onCentre = { lat, lon -> centre = lat to lon },
-                itemEditor = { index, at, close -> ItemEditor(index, at, close) },
-            )
-            PlanTemplates(
-                planStatus = planStatus,
-                centre = centre,
-                onRefused = { notice = it },
-                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-            )
-        }
+            },
+        )
+        PlanTemplates(
+            planStatus = planStatus,
+            centre = centre,
+            onRefused = { notice = it },
+            modifier = Modifier.align(Alignment.TopStart).padding(top = 76.dp, start = 12.dp),
+        )
     }
 }

@@ -357,7 +357,7 @@ fun AircastShell(hostView: android.view.View?) {
             snackbarHost = { SnackbarHost(snackbars) },
             contentWindowInsets = if (flyPortrait) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
             topBar = {
-                if (!flyPortrait) Row(
+                if (!flyPortrait && tab != Tab.Plan) Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
@@ -507,7 +507,7 @@ fun AircastShell(hostView: android.view.View?) {
                     when (tab) {
                         Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
                         Tab.Setup -> Surface(Modifier.fillMaxSize()) { SetupScreen() }
-                        Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab() }
+                        Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab(onBack = { tab = Tab.Fly }) }
                         Tab.Analyze -> AnalyzeScreen(
                             page = analyzePage,
                             onSelect = { analyzePage = it },

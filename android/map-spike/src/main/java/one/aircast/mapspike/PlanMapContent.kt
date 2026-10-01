@@ -125,6 +125,8 @@ private fun GroupBreak() {
     )
 }
 
+class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val onClick: () -> Unit)
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun MapSpikeScreen(
@@ -132,6 +134,7 @@ internal fun MapSpikeScreen(
     onClear: (() -> Unit)? = null,
     onCentre: ((Double, Double) -> Unit)? = null,
     itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
+    header: (@Composable (PlanUpload) -> Unit)? = null,
 ) {
     var follow by remember { mutableStateOf(true) }
     var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
@@ -369,7 +372,28 @@ internal fun MapSpikeScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    val uploadBlocked = syncRefusal(vehicleSyncState(planOffline, planSyncing), "upload to") != null
+    val upload: () -> Unit = {
+        val refusal = syncRefusal(
+            vehicleSyncState(planOffline, planSyncing), "upload to",
+        )
+        if (refusal != null) {
+            say(refusal)
+        } else {
+            scope.launch {
+                val view = withContext(Dispatchers.Default) { freshPlanView() }
+                when (val step = uploadStep(uploadGate(view), notReadyToSend(view))) {
+                    is UploadStep.Refuse -> say(step.reason)
+                    is UploadStep.Confirm -> uploadAsk = step.gate
+                    UploadStep.Send -> sendPlan(scope, say = { busy = it }, done = { busy = null })
+                }
+            }
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+    header?.invoke(PlanUpload(enabled = planHasItems, emphasised = !uploadBlocked, onClick = upload))
+    Box(Modifier.fillMaxWidth().weight(1f)) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
             mapStyle = shownStyle,
@@ -538,26 +562,9 @@ internal fun MapSpikeScreen(
                         }
                     }) { Text(if (loadArmed) "Discard & download" else "Download") }
 
-                    val uploadBlocked = syncRefusal(
-                        vehicleSyncState(planOffline, planSyncing), "upload to",
-                    ) != null
-                    PlanUploadButton(emphasised = !uploadBlocked, enabled = planHasItems, onClick = {
-                        val refusal = syncRefusal(
-                            vehicleSyncState(planOffline, planSyncing), "upload to",
-                        )
-                        if (refusal != null) {
-                            say(refusal)
-                        } else {
-                            scope.launch {
-                                val view = withContext(Dispatchers.Default) { freshPlanView() }
-                                when (val step = uploadStep(uploadGate(view), notReadyToSend(view))) {
-                                    is UploadStep.Refuse -> say(step.reason)
-                                    is UploadStep.Confirm -> uploadAsk = step.gate
-                                    UploadStep.Send -> sendPlan(scope, say = { busy = it }, done = { busy = null })
-                                }
-                            }
-                        }
-                    }, contentPadding = PRIMARY_PADDING) { Text("Upload") }
+                    if (header == null) {
+                        PlanUploadButton(emphasised = !uploadBlocked, enabled = planHasItems, onClick = upload, contentPadding = PRIMARY_PADDING) { Text("Upload") }
+                    }
 
                     uploadAsk?.let { gate ->
                         AlertDialog(
@@ -1149,6 +1156,7 @@ internal fun MapSpikeScreen(
                 }
             }
         }
+    }
     }
     editingItem?.let { item ->
         itemEditor?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }) { editingItem = null }
