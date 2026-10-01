@@ -96,6 +96,7 @@ import one.aircast.android.ui.MissionCompleteDialog
 import one.aircast.android.ui.SetWaypointSheet
 import one.aircast.android.ui.ObstacleArc
 import one.aircast.android.ui.ObstacleReadout
+import one.aircast.android.ui.TerrainProgress
 import one.aircast.android.ui.OrbitReadout
 import one.aircast.android.ui.ParametersScreen
 import one.aircast.android.ui.PlanTab
@@ -379,6 +380,8 @@ fun AircastShell(hostView: android.view.View?) {
                         overlays = {
                             flyAttitude()
                             ObstacleReadout()
+                        TerrainProgress()
+                            TerrainProgress()
                             flyOrbitReadout()
                             flyFollowMeReadout()
                             flyTrafficReadout()
