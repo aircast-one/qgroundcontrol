@@ -111,8 +111,14 @@ pub fn sent(bytes: &[u8]) {
     write(&mut recording, bytes);
 }
 
+static VEHICLES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub fn last_vehicle_left(before: usize, count: usize) -> bool {
+    before > 0 && count == 0
+}
+
 pub fn vehicles(count: usize) {
-    if count == 0 {
+    if last_vehicle_left(VEHICLES.swap(count, std::sync::atomic::Ordering::Relaxed), count) {
         stop(&mut RECORDING.lock().unwrap_or_else(PoisonError::into_inner));
     }
 }
@@ -185,6 +191,13 @@ pub fn recover_lost() {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn the_log_stops_only_when_the_last_vehicle_goes_as_mavlink_protocol_does() {
+        assert!(last_vehicle_left(1, 0));
+        assert!(!last_vehicle_left(0, 0), "a gimbal or GCS heartbeat opens the log without making a vehicle, and that is no vehicle leaving");
+        assert!(!last_vehicle_left(1, 2));
+    }
 
     #[test]
     fn saved_logs_are_named_by_time_and_numbered_on_a_clash() {

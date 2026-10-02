@@ -3912,7 +3912,9 @@ impl Hub {
     }
 
     pub fn remove(&mut self, id: u8) {
-        self.vehicles.remove(&id);
+        if let Some(mut vehicle) = self.vehicles.remove(&id) {
+            vehicle.onboard_logs.cancel();
+        }
         self.arrival.retain(|known| *known != id);
         self.selected.retain(|known| *known != id);
         if self.active == Some(id) {

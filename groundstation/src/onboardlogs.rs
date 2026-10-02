@@ -304,7 +304,7 @@ impl OnboardLogs {
     }
 
     pub fn on_entry(&mut self, apm: bool, time_utc: u32, size: u32, id: u16, num_logs: u16, now_ms: u64) {
-        if !self.listing {
+        if !self.listing || self.use_ftp {
             return;
         }
         if self.entries.is_empty() && num_logs > 0 {

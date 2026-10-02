@@ -420,6 +420,7 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     let timestamps: Vec<i64> = images
         .iter()
         .enumerate()
+        .take_while(|_| alive())
         .map(|(i, path)| {
             update(run, |s| s.progress = stage_progress(LOAD_IMAGES_END, PARSE_EXIF_END, i + 1, images.len()));
             std::fs::read(path).ok().and_then(|bytes| capture_time(&bytes)).unwrap_or(0)
@@ -455,6 +456,7 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     let outcomes: Vec<bool> = pairs
         .iter()
         .enumerate()
+        .take_while(|_| alive())
         .map(|(done, (image, trigger))| {
             update(run, |s| s.progress = stage_progress(CALIBRATE_END, TAG_IMAGES_END, done + 1, pairs.len()));
             let path = &images[*image];
