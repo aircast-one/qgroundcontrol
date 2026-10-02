@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.qgcPath
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -103,6 +104,10 @@ internal fun glanceText(displays: List<String>): String = displays.filter { it.i
 
 @Composable
 private fun pageGlance(title: String): String {
+    if (title == GENERAL_PAGE) {
+        val system by qgcDouble(settingControl("settings.unitsSettings.unitSystem"), 0.0)
+        return unitSystemLabel(system.toInt())
+    }
     val paths = PAGE_GLANCES[title] ?: return ""
     val displays = paths.map { path ->
         val json by qgcPath(settingControl(path))
