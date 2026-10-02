@@ -42,4 +42,13 @@ class ModeSlotsTest {
         assertNull(modeSlotsView(unavailable))
         assertNull(liveSlotText(null))
     }
+
+    @Test
+    fun `live switches and channel options are named, like the highlighted rows in QGC's flight mode pages`() {
+        val px4 = modeSlotsView(org.json.JSONObject("""{"available":true,"channel":5,"slots":[],"activeSwitches":["Kill switch channel"],"channelOptions":[]}"""))
+        assertEquals("Switches on: Kill switch channel", liveSwitchesText(px4))
+        val apm = modeSlotsView(org.json.JSONObject("""{"available":true,"channel":5,"slots":[],"channelOptions":[{"channel":7,"enabled":true},{"channel":8,"enabled":false}]}"""))
+        assertEquals("Channel options on: channel 7", liveSwitchesText(apm))
+        assertEquals(null, liveSwitchesText(modeSlotsView(org.json.JSONObject("""{"available":true,"channel":5,"slots":[]}"""))))
+    }
 }

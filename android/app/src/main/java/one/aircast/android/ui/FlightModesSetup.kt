@@ -15,7 +15,8 @@ import one.aircast.android.bridge.qgcPath
 @Composable
 fun FlightModesSetup(modifier: Modifier = Modifier) {
     val view by qgcPath(MODE_SLOTS)
-    val live = liveSlotText(modeSlotsView(view))
+    val slots = modeSlotsView(view)
+    val live = listOfNotNull(liveSlotText(slots), liveSwitchesText(slots)).joinToString("\n").ifBlank { null }
 
     Column(modifier) {
         if (live != null) {

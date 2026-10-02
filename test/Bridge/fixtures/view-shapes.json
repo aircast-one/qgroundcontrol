@@ -9029,11 +9029,10 @@
         "view.missionSummary.rows[].label",
         "view.missionSummary.rows[].value",
         "view.missionSummary.timeSeconds",
+        "view.modeSlots.activeSwitches.#",
         "view.modeSlots.available",
         "view.modeSlots.channel",
         "view.modeSlots.channelOptions.#",
-        "view.modeSlots.channelOptions[].channel",
-        "view.modeSlots.channelOptions[].enabled",
         "view.modeSlots.channelPwm",
         "view.modeSlots.class",
         "view.modeSlots.kind",
@@ -13307,13 +13306,13 @@
         "timeSeconds": "number"
     },
     "view.modeSlots": {
+        "activeSwitches": [
+            "empty"
+        ],
         "available": "bool",
         "channel": "number",
         "channelOptions": [
-            {
-                "channel": "number",
-                "enabled": "bool"
-            }
+            "empty"
         ],
         "channelPwm": "null",
         "class": "string",

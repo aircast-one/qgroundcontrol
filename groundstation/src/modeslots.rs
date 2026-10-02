@@ -28,9 +28,34 @@ pub const DEPS: &[&str] = &[
     "vehicle.parameterManager.getParameter(-1,COM_FLTMODE4).rawValue",
     "vehicle.parameterManager.getParameter(-1,COM_FLTMODE5).rawValue",
     "vehicle.parameterManager.getParameter(-1,COM_FLTMODE6).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_MAP_ARM_SW).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_ARMSWITCH_TH).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_MAP_GEAR_SW).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_GEAR_TH).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_MAP_KILL_SW).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_KILLSWITCH_TH).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_MAP_LOITER_SW).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_LOITER_TH).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_MAP_OFFB_SW).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_OFFB_TH).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_MAP_RETURN_SW).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_RETURN_TH).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_MAP_TRANS_SW).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_TRANS_TH).rawValue",
+    "vehicle.parameterManager.getParameter(-1,RC_MAP_FLAPS).rawValue",
 ];
 
 pub const SLOTS: usize = 6;
+const PX4_SWITCHES: [(&str, &str); 8] = [("RC_MAP_ARM_SW", "RC_ARMSWITCH_TH"), ("RC_MAP_GEAR_SW", "RC_GEAR_TH"), ("RC_MAP_KILL_SW", "RC_KILLSWITCH_TH"), ("RC_MAP_LOITER_SW", "RC_LOITER_TH"), ("RC_MAP_OFFB_SW", "RC_OFFB_TH"), ("RC_MAP_RETURN_SW", "RC_RETURN_TH"), ("RC_MAP_TRANS_SW", "RC_TRANS_TH"), ("RC_MAP_FLAPS", "")];
+const DEFAULT_SWITCH_THRESHOLD: f64 = 0.5;
+
+pub fn switch_active(pwm: Option<i64>, threshold: f64) -> bool {
+    let at = 1000.0 + 1000.0 * threshold;
+    pwm.is_some_and(|value| match threshold >= 0.0 {
+        true => value as f64 > at,
+        false => value as f64 <= at,
+    })
+}
 pub const CHANNEL_OPTIONS: usize = 11;
 const THRESHOLDS: [i64; 5] = [1230, 1360, 1490, 1620, 1749];
 const OPTION_ON_ABOVE: i64 = 1800;
@@ -93,6 +118,14 @@ fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
     exists(backend, name).then(|| value_number(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name}).rawValue")))).flatten()
 }
 
+fn switch_label(backend: &dyn Backend, name: &str) -> String {
+    object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))
+        .get("shortDescription")
+        .and_then(Value::as_str)
+        .filter(|label| !label.is_empty())
+        .map_or_else(|| name.to_string(), str::to_string)
+}
+
 fn parameter_text(backend: &dyn Backend, name: &str) -> Option<String> {
     let fact = object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")));
     match fact.get("kind").and_then(Value::as_str) == Some("fact") {
@@ -131,14 +164,29 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .collect();
 
-    let options: Vec<Value> = (0..CHANNEL_OPTIONS)
-        .map(|index| json!({ "channel": index + 6, "enabled": option_enabled(pwm.get(index + 5).copied()) }))
-        .collect();
+    let options: Vec<Value> = match channel_name {
+        "RC_MAP_FLTMODE" => Vec::new(),
+        _ => (0..CHANNEL_OPTIONS).map(|index| json!({ "channel": index + 6, "enabled": option_enabled(pwm.get(index + 5).copied()) })).collect(),
+    };
 
+    let active_switches: Vec<String> = match channel_name {
+        "RC_MAP_FLTMODE" => PX4_SWITCHES
+            .iter()
+            .filter(|(switch, _)| exists(backend, switch))
+            .filter_map(|(switch, threshold)| {
+                let channel = parameter(backend, switch)? as i64 - 1;
+                let th = (!threshold.is_empty()).then(|| parameter(backend, threshold)).flatten().unwrap_or(DEFAULT_SWITCH_THRESHOLD);
+                let pwm_at = usize::try_from(channel).ok().and_then(|i| pwm.get(i).copied());
+                switch_active(pwm_at, th).then(|| switch_label(backend, switch))
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
     json!({
         "kind": "object",
         "class": "ModeSlots",
         "available": true,
+        "activeSwitches": active_switches,
         "channel": channel_index + 1,
         "channelPwm": pwm.get(channel_index as usize).copied(),
         "liveSlot": live,
@@ -155,6 +203,15 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_px4_switch_is_on_past_its_threshold_like_px4_flight_modes() {
+        assert!(switch_active(Some(1600), 0.5));
+        assert!(!switch_active(Some(1500), 0.5), "exactly at the threshold is off");
+        assert!(switch_active(Some(700), -0.25), "a negative threshold inverts, with the point taken as QGC computes it: 1000 + 1000 * -0.25 = 750");
+        assert!(!switch_active(Some(1200), -0.25));
+        assert!(!switch_active(None, 0.5), "no reading, no highlight");
+    }
 
     #[test]
     fn a_pwm_falls_into_the_slot_the_vehicle_would_pick() {
