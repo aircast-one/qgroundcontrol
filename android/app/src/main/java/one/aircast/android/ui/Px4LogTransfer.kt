@@ -159,7 +159,7 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
         val idle = !log.uploading
         val uploadedSelected = log.files.any { it.name in selected && it.uploaded }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(enabled = idle, onClick = { selected = log.files.map { it.name }.toSet() }) { Text("Select all") }
+            TextButton(enabled = idle, onClick = { selected = log.files.filter { !it.writing }.map { it.name }.toSet() }) { Text("Select all") }
             TextButton(enabled = idle, onClick = { selected = emptySet() }) { Text("Select none") }
             TextButton(enabled = selected.isNotEmpty() && idle, onClick = {
                 confirming = "Delete the selected log files?" to {

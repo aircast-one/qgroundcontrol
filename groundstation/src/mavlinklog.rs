@@ -175,7 +175,8 @@ fn upload(names: Vec<String>) -> Result<(), String> {
         return Err("Please enter an email address before uploading MAVLink log files.".to_string());
     }
     let folder = folder().ok_or("There is no log folder.")?;
-    let names: Vec<String> = names.iter().map(|name| file_of(name)).filter(|name| !uploaded_marker(&folder.join(name)).exists()).collect();
+    let writing = writing_file();
+    let names: Vec<String> = names.iter().map(|name| file_of(name)).filter(|name| !uploaded_marker(&folder.join(name)).exists() && writing.as_deref() != Some(name.as_str())).collect();
     let cancel = Arc::new(AtomicBool::new(false));
     let feedback = {
         let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -196,10 +197,11 @@ fn upload(names: Vec<String>) -> Result<(), String> {
             uploads.current = None;
             uploads.cancel = None;
             uploads.message = (!failures.is_empty()).then(|| failures.join("\n"));
-            std::mem::take(&mut uploads.pending)
+            let queued = std::mem::take(&mut uploads.pending);
+            if cancel.load(Ordering::Relaxed) { Vec::new() } else { queued }
         };
-        if !pending.is_empty() {
-            let _ = upload(pending);
+        if let Err(reason) = (!pending.is_empty()).then(|| upload(pending)).unwrap_or(Ok(())) {
+            UPLOADS.lock().unwrap_or_else(PoisonError::into_inner).message = Some(reason);
         }
     });
     Ok(())
@@ -299,14 +301,17 @@ pub fn run(path: &str, args: &str) -> Value {
         MAVLINK_LOG_UPLOAD => outcome(upload(names(&given))),
         MAVLINK_LOG_DELETE => {
             let folder = folder();
-            names(&given).iter().filter_map(|name| folder.as_ref().map(|f| f.join(file_of(name)))).for_each(|path| {
+            let writing = writing_file();
+            names(&given).iter().map(|name| file_of(name)).filter(|name| writing.as_deref() != Some(name.as_str())).filter_map(|name| folder.as_ref().map(|f| f.join(name))).for_each(|path| {
                 let _ = std::fs::remove_file(uploaded_marker(&path));
                 let _ = std::fs::remove_file(&path);
             });
             json!({ "ok": true })
         }
         MAVLINK_LOG_CANCEL => {
-            if let Some(cancel) = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner).cancel.as_ref() {
+            let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
+            uploads.pending.clear();
+            if let Some(cancel) = uploads.cancel.as_ref() {
                 cancel.store(true, Ordering::Relaxed);
             }
             json!({ "ok": true })

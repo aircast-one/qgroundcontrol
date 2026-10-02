@@ -25,6 +25,10 @@ internal const val JOYSTICK_DEVICES = "joystick.devices"
 internal const val JOYSTICK_INPUT = "joystick.input"
 private const val SAMPLE_MS = 2L
 private const val IDLE_MS = 250L
+private const val JOYSTICK_VIEW = "view.joystick"
+
+internal fun streams(view: JSONObject?): Boolean =
+    view != null && ((view.optBoolean("vehicle") && view.optBoolean("enabled")) || !view.isNull("calibration"))
 private const val AXIS_SCALE = 32767f
 private const val HAT_UP = 0x01
 private const val HAT_RIGHT = 0x02
@@ -100,10 +104,21 @@ object GamepadInput : InputManager.InputDeviceListener {
         rescan()
         sampler?.cancel()
         sampler = scope.launch(Dispatchers.Default) {
+            var sent = emptyList<Triple<String, List<Int>, Pair<List<Boolean>, Int>>>()
+            var streaming = false
+            var checkedAt = 0L
             while (isActive) {
                 val sampled = synchronized(pads) { pads.values.map { pad -> Triple(pad.device.name, pad.values.map(::scaled), pad.pressed.toList() to pad.hat) } }
-                sampled.forEach { (name, axes, rest) ->
-                    Qgc.invoke(JOYSTICK_INPUT, name, JSONArray(axes), JSONArray(rest.first), JSONArray(listOf(rest.second)))
+                val now = System.currentTimeMillis()
+                if (sampled.isNotEmpty() && now - checkedAt >= IDLE_MS) {
+                    streaming = streams(Qgc.get(JOYSTICK_VIEW))
+                    checkedAt = now
+                }
+                if (streaming || sampled != sent) {
+                    sampled.forEach { (name, axes, rest) ->
+                        Qgc.invoke(JOYSTICK_INPUT, name, JSONArray(axes), JSONArray(rest.first), JSONArray(listOf(rest.second)))
+                    }
+                    sent = sampled
                 }
                 delay(if (sampled.isEmpty()) IDLE_MS else SAMPLE_MS)
             }
