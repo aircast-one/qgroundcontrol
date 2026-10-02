@@ -98,7 +98,7 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
         logs.takeIf { it.isNotEmpty() && editable }?.let { downloaded ->
             Column(Modifier.padding(start = 40.dp)) {
                 downloaded.forEach { log ->
-                    TextButton(onClick = { GeoTagRun.set("logFile", log.absolutePath) }) { Text(log.name) }
+                    TextButton(onClick = { GeoTagRun.pickDownloadedLog(log.absolutePath) }) { Text(log.name) }
                 }
             }
         }

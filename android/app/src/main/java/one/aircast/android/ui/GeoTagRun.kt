@@ -28,6 +28,11 @@ internal object GeoTagRun {
         state.value = geoTagState(Qgc.get(GEOTAG_ROOT))
     }
 
+    fun pickDownloadedLog(path: String) {
+        note.value = null
+        set("logFile", path)
+    }
+
     fun set(path: String, value: Any?) {
         scope.launch {
             Qgc.set("$GEOTAG_ROOT.$path", value)
@@ -52,7 +57,8 @@ internal object GeoTagRun {
     fun pickLog(activity: Context, uri: Uri) = withFiles {
         val context = activity.applicationContext
         val staged = stageLog(context, uri, documentName(context, uri))
-        if (staged == null) note.value = "That file could not be read." else Qgc.set("$GEOTAG_ROOT.logFile", staged)
+        note.value = if (staged == null) "That file could not be read." else null
+        staged?.let { Qgc.set("$GEOTAG_ROOT.logFile", it) }
         refresh()
     }
 
@@ -110,7 +116,10 @@ internal fun publishedNote(published: Int, tagged: Int): String? =
 private const val GEOTAG_OFFSET_LIMIT = 3600.0
 
 internal fun parsedOffset(typed: String): Double? =
-    typed.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }?.coerceIn(-GEOTAG_OFFSET_LIMIT, GEOTAG_OFFSET_LIMIT)?.let { Math.round(it * 10) / 10.0 }
+    typed.trim().replace(',', '.').let { text ->
+        if (text.isEmpty()) 0.0
+        else text.toDoubleOrNull()?.takeIf { it in -GEOTAG_OFFSET_LIMIT..GEOTAG_OFFSET_LIMIT && text.substringAfter('.', "").length <= 1 }
+    }
 
 internal const val GEOTAG_ALREADY_TAGGED = "Images have already been tagged. Existing images will be removed."
 internal const val GEOTAG_SAVE_HAS_IMAGES = "The save folder already contains images."

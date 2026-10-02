@@ -441,9 +441,11 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     });
     let mark = |indices: &[usize], status: u8, error: &str| {
         update(run, |s| {
-            s.images.iter_mut().enumerate().filter(|(i, _)| indices.contains(i)).for_each(|(_, row)| {
-                row.status = status;
-                row.error = error.to_string();
+            indices.iter().for_each(|i| {
+                if let Some(row) = s.images.get_mut(*i) {
+                    row.status = status;
+                    row.error = error.to_string();
+                }
             });
         });
     };
@@ -459,10 +461,10 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     if !alive() {
         return Err(CANCELLED.to_string());
     }
+    mark(&timestamps.iter().enumerate().filter(|(_, t)| **t == 0).map(|(i, _)| i).collect::<Vec<_>>(), IMAGE_SKIPPED, "Could not read EXIF timestamp");
     if timestamps.iter().all(|t| *t == 0) {
         return Err("Could not read EXIF data from any images".to_string());
     }
-    mark(&timestamps.iter().enumerate().filter(|(_, t)| **t == 0).map(|(i, _)| i).collect::<Vec<_>>(), IMAGE_SKIPPED, "Could not read EXIF timestamp");
     update(run, |s| s.progress = PARSE_EXIF_END);
     let log = std::fs::read(&job.log_file).map_err(|_| "Geotagging failed. Couldn't open log file.".to_string())?;
     if log.is_empty() {
@@ -493,7 +495,7 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     }
     let pairs: Vec<(usize, usize)> = calibration.image_indices.iter().copied().zip(calibration.trigger_indices.iter().copied()).collect();
     mark(&pairs.iter().map(|(image, _)| *image).collect::<Vec<_>>(), IMAGE_PROCESSING, "");
-    let outcomes: Vec<bool> = pairs
+    let outcomes: Vec<Result<(), String>> = pairs
         .iter()
         .enumerate()
         .take_while(|_| alive())
@@ -511,21 +513,23 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
                 std::fs::write(&staged, geotagged).and_then(|()| std::fs::rename(&staged, &target)).map_err(|_| format!("Geotagging failed. Couldn't save image: {}", target.display()))
             };
             let outcome = written();
-            update(run, |s| {
-                s.progress = stage_progress(CALIBRATE_END, TAG_IMAGES_END, done + 1, pairs.len());
-                if let Some(row) = s.images.get_mut(*image) {
-                    row.status = if outcome.is_ok() { IMAGE_TAGGED } else { IMAGE_FAILED };
-                    row.error = outcome.as_ref().err().cloned().unwrap_or_default();
-                    row.coordinate = outcome.is_ok().then_some((triggers[*trigger].latitude, triggers[*trigger].longitude));
-                }
-            });
-            outcome.is_ok()
+            update(run, |s| s.progress = stage_progress(CALIBRATE_END, TAG_IMAGES_END, done + 1, pairs.len()));
+            outcome
         })
         .collect();
     if !alive() {
         return Err(CANCELLED.to_string());
     }
-    let failed = outcomes.iter().filter(|ok| !**ok).count() as i64;
+    update(run, |s| {
+        pairs.iter().zip(&outcomes).for_each(|((image, trigger), outcome)| {
+            if let Some(row) = s.images.get_mut(*image) {
+                row.status = if outcome.is_ok() { IMAGE_TAGGED } else { IMAGE_FAILED };
+                row.error = outcome.as_ref().err().cloned().unwrap_or_default();
+                row.coordinate = outcome.is_ok().then_some((triggers[*trigger].latitude, triggers[*trigger].longitude));
+            }
+        });
+    });
+    let failed = outcomes.iter().filter(|outcome| outcome.is_err()).count() as i64;
     if failed > 0 && failed == outcomes.len() as i64 {
         return Err("All images failed to tag".to_string());
     }
@@ -543,7 +547,6 @@ pub fn start() {
         state.tagged = 0;
         state.skipped = 0;
         state.failed = 0;
-        state.images.clear();
         let refusal = match () {
             _ if state.image_directory.is_empty() => Some("Please select an image directory."),
             _ if state.log_file.is_empty() => Some("Please select a log file."),
@@ -755,7 +758,11 @@ mod tests {
         };
         let job = Job { log_file: log.display().to_string(), image_directory: folder.display().to_string(), save_directory: String::new(), time_offset: 0, tolerance: 2, preview: true, recursive: false };
         let counts = tag_run(run, &job);
-        let rows = held().images.clone();
+        let rows = {
+            let mut state = held();
+            state.in_progress = false;
+            state.images.clone()
+        };
         std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(counts, Ok((2, 1, 0)));
         let shown: Vec<(&str, u8, &str, Option<(f64, f64)>)> = rows.iter().map(|r| (r.file_name.as_str(), r.status, r.error.as_str(), r.coordinate)).collect();

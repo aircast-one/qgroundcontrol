@@ -67,8 +67,9 @@ class GeoTagRunTest {
         assertEquals(-1.0, parsedOffset(" -1.0 ")!!, 0.0)
         assertNull(parsedOffset("abc"))
         assertEquals("-3.5", shownOffset(-3.5))
-        assertEquals(3600.0, parsedOffset("9000")!!, 0.0)
-        assertEquals(-3600.0, parsedOffset("-9000")!!, 0.0)
-        assertEquals(1.3, parsedOffset("1.26")!!, 0.0)
+        assertNull("DoubleValidator refuses out-of-range input", parsedOffset("9000"))
+        assertEquals(-3600.0, parsedOffset("-3600")!!, 0.0)
+        assertNull("and a second decimal", parsedOffset("1.26"))
+        assertEquals("parseFloat(text) || 0", 0.0, parsedOffset(" ")!!, 0.0)
     }
 }
