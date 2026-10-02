@@ -1,8 +1,15 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Button
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -72,6 +79,7 @@ internal fun parameterDefault(json: JSONObject?): Any? =
 
 internal fun manualEntryFact(fact: Fact): Fact = fact.copy(enumStrings = emptyList(), enumValues = emptyList(), bitmaskStrings = emptyList(), bitmaskValues = emptyList())
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
     var revision by remember { mutableIntStateOf(0) }
@@ -88,26 +96,22 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
     val default by produceState<Any?>(null, name, revision) {
         value = withContext(Dispatchers.Default) { parameterDefault(Qgc.get(parameterPath(name))) }
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Edit Parameter") },
-        text = {
-            Column {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(name, style = MaterialTheme.typography.titleLarge)
                 fact?.let { loaded ->
+                    if (loaded.description.isNotBlank()) {
+                        Text(loaded.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     val editable = !loaded.readOnly || forced
                     forceEditNote(loaded.readOnly, forced)?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = if (forced) MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurface)
                     }
                     val shown = loaded.copy(readOnly = !editable).let { if (manual) manualEntryFact(it) else it }
-                    FactRow(fact = shown, title = loaded.name, subtitle = parameterSubtitle(loaded.description, loaded.units), onWrite = { revision++ })
-                    if (editable && default != null) {
-                        TextButton(onClick = {
-                            scope.launch {
-                                withContext(Dispatchers.Default) { Qgc.writeRefusal(loaded.path, default) }
-                                onDismiss()
-                            }
-                        }) { Text("Reset To Default") }
-                    }
+                    FactRow(fact = shown, title = loaded.shortLabel.ifBlank { "Value" }, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = { revision++ })
                     if (loaded.qgcRebootRequired) Text("Application restart required after change", style = MaterialTheme.typography.bodySmall)
                     if (editable) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
                     val hasChoices = loaded.isEnum || loaded.isBitmask
@@ -135,8 +139,17 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                         }
                     }
                 } ?: Text("$name is not a parameter on this vehicle.", style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                    fact?.takeIf { (!it.readOnly || forced) && default != null }?.let { loaded ->
+                        TextButton(onClick = {
+                            scope.launch {
+                                withContext(Dispatchers.Default) { Qgc.writeRefusal(loaded.path, default) }
+                                onDismiss()
+                            }
+                        }) { Text("Reset to default") }
+                    }
+                    Button(onClick = onDismiss) { Text("Done") }
+                }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
+    }
 }
