@@ -1140,6 +1140,36 @@ internal fun MapSpikeScreen(
                         }
 
                         rallyHit?.let { hit ->
+                            rally.firstOrNull { it.index == hit.index }?.let { point ->
+                                listOf(
+                                    Triple("Latitude", point.latitude, LATITUDE_LIMIT),
+                                    Triple("Longitude", point.longitude, LONGITUDE_LIMIT),
+                                ).forEach { (label, value, limit) ->
+                                    var typed by remember(point.index, label, value) { mutableStateOf(value.toString()) }
+                                    OutlinedTextField(
+                                        value = typed,
+                                        onValueChange = { typed = it },
+                                        label = { Text(label) },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                                        keyboardActions = KeyboardActions(
+                                            onDone = {
+                                                val entered = parsedCoordinate(typed, limit)
+                                                if (entered == null) {
+                                                    say("Not a $label")
+                                                } else {
+                                                    val (latitude, longitude) = if (label == "Latitude") entered to point.longitude else point.latitude to entered
+                                                    onBridge("Moving rally point") {
+                                                        FenceBridge.moveRallyPoint(point.index, latitude, longitude, point.altitudeMetres)
+                                                    }
+                                                }
+                                            },
+                                        ),
+                                        modifier = Modifier.width(150.dp),
+                                        textStyle = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
+                            }
                             rally.firstOrNull { it.index == hit.index }
                                 ?.takeIf { rallyAltitudeIsEditable(it) }
                                 ?.let { point ->

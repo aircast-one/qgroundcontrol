@@ -29,4 +29,9 @@ class AltitudeEntryTest {
         assertEquals("75", altitudeFieldText(75.0))
         assertEquals("", altitudeFieldText(Double.NaN))
     }
+
+    @Test
+    fun `a rally coordinate is typed within the globe, like RallyPoint's textFieldFacts`() {
+        assertEquals(listOf(47.39, null, -180.0, null), listOf(parsedCoordinate("47.39", LATITUDE_LIMIT), parsedCoordinate("91", LATITUDE_LIMIT), parsedCoordinate("-180", LONGITUDE_LIMIT), parsedCoordinate("x", LONGITUDE_LIMIT)))
+    }
 }
