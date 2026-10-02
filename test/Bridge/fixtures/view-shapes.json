@@ -7066,6 +7066,7 @@
         "view.terrainDownload.text",
         "view.terrainDownload.total",
         "view.terrainProfile.class",
+        "view.terrainProfile.collisionLegs.#",
         "view.terrainProfile.hasCollision",
         "view.terrainProfile.kind",
         "view.terrainProfile.markers.0.complex",
@@ -10253,6 +10254,7 @@
         "view.terrainProfile.class",
         "view.terrainProfile.clearanceComplete",
         "view.terrainProfile.clearanceText",
+        "view.terrainProfile.collisionLegs.#",
         "view.terrainProfile.distanceText",
         "view.terrainProfile.groundKnown",
         "view.terrainProfile.hasCollision",
@@ -14915,6 +14917,9 @@
         "class": "string",
         "clearanceComplete": "bool",
         "clearanceText": "null|string",
+        "collisionLegs": [
+            "empty"
+        ],
         "distanceText": "string",
         "groundKnown": "bool",
         "hasCollision": "bool",

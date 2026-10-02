@@ -41,3 +41,14 @@ class ClickMarkerTest {
         assertEquals(0, clickMarkerFeatures(TrackPoint(Double.NaN, 8.0)).features()!!.size)
     }
 }
+
+class CollisionLegTest {
+
+    @Test
+    fun `legs the core says hit terrain are drawn red, and nothing else`() {
+        val view = org.json.JSONObject("""{"collisionLegs":[{"from":{"latitude":47.0,"longitude":8.0},"to":{"latitude":47.01,"longitude":8.0}},{"from":{"latitude":0,"longitude":0},"to":{"latitude":47.0,"longitude":8.0}}]}""")
+        assertEquals(listOf(TrackPoint(47.0, 8.0) to TrackPoint(47.01, 8.0)), collisionLegs(view))
+        assertEquals(1, collisionLegFeatures(collisionLegs(view)).features()!!.size)
+        assertEquals(emptyList<Pair<TrackPoint, TrackPoint>>(), collisionLegs(null))
+    }
+}

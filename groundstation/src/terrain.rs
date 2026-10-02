@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{Unit, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile",
+pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile", "plan.missionController.simpleFlightPathSegments.count",
     "settings.unitsSettings.verticalDistanceUnits", crate::coreplan::CHANGED, crate::terrainservice::TERRAIN_CHANGED,
 ];
 
@@ -350,6 +350,53 @@ fn core_model(backend: &dyn Backend) -> Value {
     json!({ "kind": "list", "elements": elements })
 }
 
+fn spot(value: Option<&Value>) -> Option<(f64, f64)> {
+    let v = value?;
+    let latitude = v.get("latitude").and_then(Value::as_f64).filter(|l| l.is_finite())?;
+    let longitude = v.get("longitude").and_then(Value::as_f64).filter(|l| l.is_finite())?;
+    (latitude != 0.0 || longitude != 0.0).then_some((latitude, longitude))
+}
+
+const SEGMENT_FIELDS: &str = "coordinate1,coordinate2,terrainCollision";
+
+fn leg_json(from: (f64, f64), to: (f64, f64)) -> Value {
+    json!({ "from": { "latitude": from.0, "longitude": from.1 }, "to": { "latitude": to.0, "longitude": to.1 } })
+}
+
+pub fn simple_legs(reads: &[Value], height: &dyn Fn(f64, f64) -> Option<f64>) -> Vec<Value> {
+    let flown: Vec<&Value> = reads
+        .iter()
+        .skip(1)
+        .filter(|r| r.get("specifiesCoordinate") == Some(&Value::Bool(true)) && r.get("isStandaloneCoordinate") != Some(&Value::Bool(true)))
+        .collect();
+    flown
+        .windows(2)
+        .filter(|pair| pair.iter().all(|r| r.get("isSimpleItem") == Some(&Value::Bool(true))))
+        .filter_map(|pair| {
+            let (from, to) = (spot(pair[0].get("coordinate"))?, spot(pair[1].get("coordinate"))?);
+            let (from_alt, to_alt) = (pair[0].get("amslEntryAlt")?.as_f64()?, pair[1].get("amslEntryAlt")?.as_f64()?);
+            (segment(from, from_alt, to, to_alt, height)["terrainCollision"] == true).then(|| leg_json(from, to))
+        })
+        .collect()
+}
+
+fn collision_legs(backend: &dyn Backend) -> Vec<Value> {
+    match crate::vehiclefacade::switched_on() && crate::coreplan::enabled() {
+        true => simple_legs(&crate::missionitems::document_reads(&crate::coreplan::current_document(), 0).unwrap_or_default(), &crate::terrainservice::height),
+        false => object(&backend.get_fields("plan.missionController.simpleFlightPathSegments", SEGMENT_FIELDS))
+            .get("elements")
+            .and_then(Value::as_array)
+            .map(|segments| {
+                segments
+                    .iter()
+                    .filter(|s| s.get("terrainCollision") == Some(&Value::Bool(true)))
+                    .filter_map(|s| Some(leg_json(spot(s.get("coordinate1"))?, spot(s.get("coordinate2"))?)))
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
 pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = match crate::vehiclefacade::switched_on() && crate::coreplan::enabled() {
         true => core_model(backend),
@@ -380,6 +427,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "highestText": crate::read::format_measure(vertical.show(profile.max_altitude), &vertical.name),
         "bandText": crate::read::range_text(profile.min_altitude, profile.max_altitude, &vertical),
         "markers": markers(&model),
+        "collisionLegs": collision_legs(backend),
         "points": profile.points.iter().map(|p| json!({
             "sequence": p.sequence,
             "distance": p.distance,
@@ -394,6 +442,17 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_leg_that_dips_into_the_ground_is_listed_like_a_red_missionlineview() {
+        let item = |lat: f64, alt: f64, simple: bool| json!({ "specifiesCoordinate": true, "isSimpleItem": simple, "coordinate": { "latitude": lat, "longitude": 8.0 }, "amslEntryAlt": alt });
+        let reads = vec![json!({ "homePosition": true }), item(47.0, 600.0, true), item(47.01, 600.0, true), item(47.02, 800.0, true), item(47.03, 800.0, false)];
+        let ridge = |lat: f64, _lon: f64| Some(if lat > 47.004 && lat < 47.006 { 700.0 } else { 500.0 });
+        let legs = simple_legs(&reads, &ridge);
+        assert_eq!(legs.len(), 1, "only the first leg crosses the ridge, and a leg into a complex item is left to its own segments");
+        assert_eq!(legs[0]["from"]["latitude"], 47.0);
+        assert!(simple_legs(&reads, &|_, _| None).is_empty(), "no terrain known, nothing is red");
+    }
 
     #[test]
     fn markers_follow_terrain_status_item_labels() {

@@ -278,6 +278,7 @@ internal fun MapSpikeScreen(
     val missionSummaryView by mapPath("view.missionSummary")
     val terrainView by mapPath(TERRAIN_VIEW)
     val profile = remember(terrainView) { terrainProfile(terrainView) }
+    val terrainHits = remember(terrainView) { collisionLegs(terrainView) }
     val elevationProviderJson by mapPath(ELEVATION_PROVIDER)
     val elevationNotice = elevationProviderJson?.optText("value").orEmpty()
     val missionStatusJson by mapPath("$SHOW_MISSION_ITEM_STATUS.rawValue")
@@ -448,6 +449,7 @@ internal fun MapSpikeScreen(
             landings = landingList,
             editable = true,
             circledShapes = circled,
+            collisionLegs = terrainHits,
             onAdd = { lat, lon ->
                 tracing?.let { (target, points) ->
                     tracing = target to points + TrackPoint(lat, lon)

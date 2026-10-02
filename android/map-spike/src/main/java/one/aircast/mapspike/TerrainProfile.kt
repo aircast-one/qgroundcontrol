@@ -140,3 +140,12 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
         bandText = view.optText("bandText"),
     )
 }
+
+fun collisionLegs(view: JSONObject?): List<Pair<TrackPoint, TrackPoint>> {
+    val legs = view?.optJSONArray("collisionLegs") ?: return emptyList()
+    fun spot(json: JSONObject?) = json?.let { TrackPoint(it.optDouble("latitude", Double.NaN), it.optDouble("longitude", Double.NaN)) }?.takeIf { isPlottable(it.latitude, it.longitude) }
+    return (0 until legs.length()).mapNotNull { index ->
+        val leg = legs.optJSONObject(index)
+        spot(leg?.optJSONObject("from"))?.let { from -> spot(leg?.optJSONObject("to"))?.let { to -> from to to } }
+    }
+}

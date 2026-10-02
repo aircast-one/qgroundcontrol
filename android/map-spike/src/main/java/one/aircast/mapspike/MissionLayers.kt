@@ -30,6 +30,18 @@ const val MISSION_LAYER = "aircast-mission-layer"
 const val MISSION_DOT_LAYER = "aircast-mission-dot-layer"
 const val MISSION_PATH_SOURCE = "aircast-mission-path"
 const val MISSION_PATH_LAYER = "aircast-mission-path-layer"
+private const val COLLISION_LEG_SOURCE = "aircast-collision-legs"
+private const val COLLISION_LEG_LAYER = "aircast-collision-leg-layer"
+private const val COLLISION_COLOUR = "#FF0000"
+
+fun collisionLegFeatures(legs: List<Pair<TrackPoint, TrackPoint>>): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        legs.map { (from, to) -> Feature.fromGeometry(LineString.fromLngLats(listOf(Point.fromLngLat(from.longitude, from.latitude), Point.fromLngLat(to.longitude, to.latitude)))) },
+    )
+
+fun renderCollisionLegs(style: Style, legs: List<Pair<TrackPoint, TrackPoint>>) {
+    (style.getSource(COLLISION_LEG_SOURCE) as? GeoJsonSource)?.setGeoJson(collisionLegFeatures(legs))
+}
 
 const val WAYPOINT_ID_PROPERTY = "waypointId"
 internal const val WAYPOINT_LABEL_PROPERTY = "label"
@@ -69,6 +81,15 @@ fun installMissionLayers(style: Style) {
                 PropertyFactory.lineColor("#FFB300"),
                 PropertyFactory.lineWidth(3f),
                 PropertyFactory.lineDasharray(arrayOf(2f, 1.5f)),
+            ),
+        )
+    }
+    if (style.getSource(COLLISION_LEG_SOURCE) == null) {
+        style.addSource(GeoJsonSource(COLLISION_LEG_SOURCE))
+        style.addLayer(
+            LineLayer(COLLISION_LEG_LAYER, COLLISION_LEG_SOURCE).withProperties(
+                PropertyFactory.lineColor(COLLISION_COLOUR),
+                PropertyFactory.lineWidth(3f),
             ),
         )
     }

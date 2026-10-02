@@ -189,6 +189,7 @@ fun VehicleMap(
     onRoiClick: ((TrackPoint) -> Unit)? = null,
     goto: GotoLocation? = null,
     clickMarker: TrackPoint? = null,
+    collisionLegs: List<Pair<TrackPoint, TrackPoint>> = emptyList(),
     orbit: OrbitCircle? = null,
     otherMissions: List<OtherMission> = emptyList(),
 ) {
@@ -361,6 +362,10 @@ fun VehicleMap(
     LaunchedEffect(style, orbit, goto) {
         val orbitStyle = style ?: return@LaunchedEffect
         renderOrbit(orbitStyle, orbit, gotoShown = goto != null)
+    }
+    LaunchedEffect(style, collisionLegs) {
+        val legStyle = style ?: return@LaunchedEffect
+        renderCollisionLegs(legStyle, collisionLegs)
     }
     LaunchedEffect(style, clickMarker) {
         val markerStyle = style ?: return@LaunchedEffect
