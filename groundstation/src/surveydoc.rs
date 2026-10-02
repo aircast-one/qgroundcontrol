@@ -17,14 +17,14 @@ pub fn polygon(survey: &Value) -> Vec<Point> {
     survey.get("polygon").and_then(Value::as_array).map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default()
 }
 
-fn camera_shots(transects: &[Vec<Coord>], trigger_distance: f64, in_turnaround: bool, complex_distance: f64) -> i64 {
+fn camera_shots(transects: &[Vec<Coord>], trigger_distance: f64, in_turnaround: bool, hover: bool, complex_distance: f64) -> i64 {
     match (trigger_distance == 0.0, in_turnaround) {
         (true, _) => 0,
         (false, true) => (complex_distance / trigger_distance).ceil() as i64,
         (false, false) => transects
             .iter()
             .filter_map(|transect| {
-                let cameras: Vec<&Coord> = transect.iter().filter(|c| c.kind != Kind::Turnaround).collect();
+                let cameras: Vec<&Coord> = transect.iter().filter(|c| hover || c.kind != Kind::Turnaround).collect();
                 Some((cameras.first()?.at, cameras.last()?.at))
             })
             .map(|(first, last)| (surveygrid::distance_between(first, last) / trigger_distance).ceil() as i64)
@@ -64,10 +64,11 @@ pub fn regenerate(survey: &Value) -> Value {
         entry: survey.get("entryLocation").and_then(Value::as_i64).unwrap_or(0),
     };
     let trigger_distance = f64::from(number(&calc, "AdjustedFootprintFrontal").unwrap_or(0.0) as f32);
-    let transects = with_hover_points(surveygrid::typed_transects(&polygon(survey), &params), trigger_distance, flag(&transect, "HoverAndCapture"));
+    let hover = flag(&transect, "HoverAndCapture");
+    let transects = with_hover_points(surveygrid::typed_transects(&polygon(survey), &params), trigger_distance, hover);
     let in_turnaround = flag(&transect, "CameraTriggerInTurnAround");
     let mut changed = survey.clone();
-    changed["TransectStyleComplexItem"] = rebuilt(&transect, &calc, &transects, trigger_distance, in_turnaround, |complex_distance| camera_shots(&transects, trigger_distance, in_turnaround, complex_distance));
+    changed["TransectStyleComplexItem"] = rebuilt(&transect, &calc, &transects, trigger_distance, in_turnaround, |complex_distance| camera_shots(&transects, trigger_distance, in_turnaround, hover, complex_distance));
     changed
 }
 

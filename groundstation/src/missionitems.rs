@@ -19,6 +19,7 @@ pub const DEPS: &[&str] = &[
 
 const LOITER_TIME: i64 = 19;
 const LOITER_TO_ALT: i64 = 31;
+const VTOL_TAKEOFF: i64 = 84;
 
 const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw";
 
@@ -338,10 +339,12 @@ fn additional_delay(item: &crate::plandoc::Item) -> f64 {
             16 | 112 | 93 => s.params[0].unwrap_or(0.0),
             _ => 0.0,
         },
-        crate::plandoc::Item::Complex { json, .. } => json
-            .pointer("/TransectStyleComplexItem/Items")
-            .and_then(Value::as_array)
-            .map_or(0.0, |items| items.iter().filter(|item| item["command"] == crate::surveyitems::CMD_NAV_WAYPOINT).filter_map(|item| item["params"][0].as_f64()).sum()),
+        crate::plandoc::Item::Complex { json, .. } => {
+            let survey = json.get("complexItemType").and_then(Value::as_str) == Some("survey");
+            let hover = json.pointer("/TransectStyleComplexItem/HoverAndCapture").and_then(Value::as_bool) == Some(true);
+            let points = json.pointer("/TransectStyleComplexItem/Items").and_then(Value::as_array).map_or(0, |items| items.iter().filter(|item| item["command"] == crate::surveyitems::CMD_NAV_WAYPOINT).count());
+            if survey && hover { crate::surveyitems::HOVER_AND_CAPTURE_DELAY_SECONDS * points as f64 } else { 0.0 }
+        }
     }
 }
 
@@ -838,7 +841,10 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "gimbalYaw": number(read, "missionGimbalYaw").filter(|yaw| yaw.is_finite()),
         "distance": number(read, "distance"),
         "distanceText": number(read, "distance").map(|metres| crate::missionsummary::distance_text(metres, imperial)),
-        "gradientText": gradient_text(number(read, "altDifference"), number(read, "distance")),
+        "gradientText": match integer(read, "command") == Some(VTOL_TAKEOFF) && number(read, "distance").is_some_and(|d| d > 0.0) {
+            true => Some("0 deg".to_string()),
+            false => gradient_text(number(read, "altDifference"), number(read, "distance")),
+        },
         "distanceFromStart": number(read, "distanceFromStart"),
         "edited": flag(read, "dirty"),
         "incomplete": flag(read, "isIncomplete"),
@@ -1217,6 +1223,15 @@ mod from_the_document {
         let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json")).unwrap();
         let home_altitude = qt["items"][0]["altitudeMetres"].as_f64().unwrap();
         agrees(include_str!("../tests/fixtures/ardupilot-takeoff-without-coordinate.plan"), home_altitude, include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json"));
+    }
+
+    #[test]
+    fn hover_and_capture_adds_four_seconds_per_transect_point_on_a_survey_only() {
+        let points = json!([{ "command": 16, "params": [0] }, { "command": 16, "params": [4] }, { "command": 206, "params": [0] }, { "command": 16, "params": [0] }]);
+        let complex = |kind: &str, hover: bool| crate::plandoc::Item::Complex { kind: kind.to_string(), item_count: 4, json: json!({ "complexItemType": kind, "TransectStyleComplexItem": { "HoverAndCapture": hover, "Items": points } }) };
+        assert_eq!(additional_delay(&complex("survey", true)), 12.0, "SurveyComplexItem counts every transect point, turnarounds included");
+        assert_eq!(additional_delay(&complex("survey", false)), 0.0);
+        assert_eq!(additional_delay(&complex("CorridorScan", true)), 0.0, "CorridorScanComplexItem adds no delay");
     }
 
     #[test]
@@ -1921,6 +1936,10 @@ mod reported {
         assert_eq!(short["distanceText"], "449 m");
         assert_eq!(short["distanceText"], crate::missionsummary::distance_text(449.36, false), "the strip and the row are one function, so they cannot disagree about a number they both draw");
         assert_eq!(short["azimuthText"], "47\u{b0}");
+        let mut vtol = leg(100.0);
+        vtol["command"] = json!(VTOL_TAKEOFF);
+        vtol["altDifference"] = json!(50.0);
+        assert_eq!(row(vtol, 1.0)["gradientText"], "0 deg", "PlanToolBarIndicators shows a VTOL takeoff's gradient as zero");
         assert_eq!(row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "azimuth": 359.7 }), 1.0)["azimuthText"], "0\u{b0}", "QGC rounds before it wraps, so a bearing a third of a degree short of north reads as north and never as 360");
         assert_eq!(short["altitudeChangeText"], "-12.0 m", "a descent reads as a descent; the bare magnitude leaves the operator to work out the direction from the two altitudes either side");
         assert_eq!(short["altitudeChange"], -12.0, "the signed number still travels, so a head drawing an arrow is not parsing its own string back");
