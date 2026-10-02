@@ -1,5 +1,6 @@
 package one.aircast.mapspike
 
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.semantics.semantics
 
@@ -1006,11 +1007,11 @@ internal fun MapSpikeScreen(
                                     textStyle = MaterialTheme.typography.bodySmall,
                                 )
 
-                                TextButton(onClick = {
+                                FilledTonalButton(onClick = {
                                     onBridge { PlanBridge.setAltitude(item.index, item.altitude + 10.0) }
                                 }) { Text("+10") }
 
-                                TextButton(
+                                FilledTonalButton(
                                     enabled = item.altitude >= 10.0,
                                     onClick = {
                                         onBridge { PlanBridge.setAltitude(item.index, item.altitude - 10.0) }
@@ -1044,7 +1045,7 @@ internal fun MapSpikeScreen(
                                             busy = null
                                         }
                                     }
-                                }) { Text("Delete #${item.sequence}") }
+                                }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Delete #${item.sequence}") }
                             }
                         }
 
