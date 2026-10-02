@@ -177,8 +177,21 @@ internal fun ParameterForm(
                     )
                 }
             }
-            items(section.facts.size, key = { section.facts[it].path }) { index ->
-                val fact = section.facts[index]
+            val runs = fieldRuns(section.facts) { fact ->
+                fact.slider == null && fact.controlKind != DIALOG_CONTROL && fact.controlKind != LABEL_CONTROL &&
+                    !fact.indent && fact.path !in section.calculators && fact.name !in highlighted
+            }
+            items(runs.size, key = { runs[it].first().path }) { index ->
+                val run = runs[index]
+                if (run.size > 1) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        run.forEach { fact ->
+                            FactRow(fact, subtitle = factSubtitle(fact), fieldModifier = Modifier.weight(1f).padding(vertical = 8.dp)) { reloads++ }
+                        }
+                    }
+                    return@items
+                }
+                val fact = run.first()
                 Column(Modifier.padding(start = if (fact.indent) INDENT else 0.dp)) {
                     if (fact.controlKind == DIALOG_CONTROL) {
                         OutlinedButton(enabled = fact.enabled, onClick = { calibratingEscs = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Text(fact.title) }

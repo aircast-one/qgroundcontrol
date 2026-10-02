@@ -643,10 +643,11 @@ internal fun pairsAsField(fact: Fact): Boolean =
         else -> !fact.isString && fact.enumStrings.isEmpty() && fact.units.length <= PAIRED_UNITS_BUDGET
     }
 
-internal fun fieldRuns(facts: List<Fact>): List<List<Fact>> =
+internal fun fieldRuns(facts: List<Fact>, pairable: (Fact) -> Boolean = { true }): List<List<Fact>> =
     facts.fold(emptyList()) { runs, fact ->
         val last = runs.lastOrNull()
-        if (last != null && last.size == 1 && pairsAsField(last.first()) && pairsAsField(fact)) runs.dropLast(1) + listOf(last + fact) else runs + listOf(listOf(fact))
+        val pairs = { candidate: Fact -> pairsAsField(candidate) && pairable(candidate) }
+        if (last != null && last.size == 1 && pairs(last.first()) && pairs(fact)) runs.dropLast(1) + listOf(last + fact) else runs + listOf(listOf(fact))
     }
 
 internal fun showsAsSegments(isEnum: Boolean, offList: Boolean, writable: Boolean, options: List<String>): Boolean =
