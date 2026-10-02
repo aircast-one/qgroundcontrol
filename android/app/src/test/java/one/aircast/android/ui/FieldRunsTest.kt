@@ -45,6 +45,14 @@ class FieldRunsTest {
     }
 
     @Test
+    fun aNoteThatOnlyRestatesTheLabelIsDropped() {
+        val multiplier = text("BATT_VOLT_MULT", isString = false).copy(shortLabel = "Voltage Multiplier", description = "Voltage multiplier")
+        assertEquals("", multiplier.detail)
+        assertEquals("", multiplier.copy(shortLabel = "Battery monitoring", description = "Battery monitor").detail)
+        assertEquals("Minimum arming voltage", multiplier.copy(shortLabel = "Required arming voltage", description = "Minimum arming voltage").detail)
+    }
+
+    @Test
     fun aRebootNoticeSharedByTheBlockIsSaidOnce() {
         val reboot = text("a").copy(vehicleRebootRequired = true)
         assertEquals("Reboot vehicle for changes to take effect.", sharedRebootNote(listOf(reboot, text("plain"), reboot.copy(name = "b"))))

@@ -55,7 +55,7 @@ data class Fact(
 ) {
     val title: String = description.ifBlank { name }.trimEnd(':', ' ')
     val heading: String = shortLabel.trimEnd(':', ' ').ifBlank { title }
-    val detail: String = description.takeIf { shortLabel.isNotBlank() && it != shortLabel && it !in enumStrings }.orEmpty()
+    val detail: String = description.takeIf { shortLabel.isNotBlank() && it !in enumStrings && !restates(it, heading) }.orEmpty()
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()
     val isBitmask: Boolean = bitmaskStrings.isNotEmpty() && bitmaskStrings.size == bitmaskValues.size
     val valueIsOffTheEnumList: Boolean =
@@ -66,6 +66,9 @@ data class Fact(
     val acceptsWrite: Boolean = !readOnly && enabled
     val optionalSet: Boolean = (value as? Number)?.toDouble()?.isNaN() == false
 }
+
+private fun restates(note: String, label: String): Boolean =
+    note.trimEnd('.').lowercase().let { it.isNotEmpty() && label.lowercase().startsWith(it) }
 
 object Qgc {
     private const val TAG = "QgcBridge"
