@@ -378,10 +378,6 @@ bool qgc_video_start_recording(const char *file, int format)
         return false;
     }
     g_object_set(recording.file, "location", file, "async", FALSE, nullptr);
-    if (format == 1 || format == 2) {
-        const std::string scratch = std::string(file) + ".faststart";
-        g_object_set(recording.mux, "faststart", TRUE, "faststart-file", scratch.c_str(), "reserved-moov-update-period", G_GUINT64_CONSTANT(1000000000), nullptr);
-    }
     gst_bin_add_many(GST_BIN(pipeline), recording.queue, recording.parse, recording.mux, recording.file, nullptr);
     g_signal_connect(recording.parse, "pad-added", G_CALLBACK(onParsedPad), recording.mux);
     const bool linked = gst_element_link(recording.queue, recording.parse) && gst_element_link(recording.mux, recording.file);
