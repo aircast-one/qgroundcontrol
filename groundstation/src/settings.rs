@@ -24,7 +24,7 @@ const PAGES: &[Page] = &[
     Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("Battery Indicator", "batteryIndicatorSettings"), ("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
-    Page { title: "Maps", sections: &[("Maps", "mapsSettings"), ("Flight Map", "flightMapSettings"), ("Offline Maps", "offlineMapsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: "Maps", sections: &[("Maps", "mapsSettings"), ("Flight Map", "flightMapSettings"), ("Map Providers", MAP_PROVIDERS), ("Offline Maps", "offlineMapsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Connections", sections: &[("Auto Connect", "autoConnectSettings")], shows_links: true, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "MAVLink", sections: &[("MAVLink", "mavlinkSettings"), ("APM Stream Rates", "apmMavlinkStreamRateSettings"), ("Actions", "mavlinkActionsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Flight Modes", sections: &[("Flight Modes", "flightModeSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
@@ -185,6 +185,11 @@ const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
 ];
 
 const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
+    (MAP_PROVIDERS, &[
+        ("Tokens", &["mapboxToken", "esriToken", "vworldToken"]),
+        ("Mapbox Login", &["mapboxAccount", "mapboxStyle"]),
+        ("Custom Map URL", &["customURL"]),
+    ]),
     ("gimbalControllerSettings", &[
         ("On-Screen Control", &["enableOnScreenControl", "clickAndDrag", "cameraHFov", "cameraVFov", "cameraSlideSpeed"]),
         ("Zoom speed", &["zoomMaxSpeed", "zoomMinSpeed"]),
@@ -218,7 +223,6 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Preflight checklist", &["useChecklist", "enforceChecklist"]),
         ("Virtual Joystick", &["virtualJoystick", "virtualJoystickAutoCenterThrottle", "virtualJoystickLeftHandedMode"]),
         ("Planning defaults", &["defaultMissionItemAltitude", "offlineEditingFirmwareClass", "offlineEditingVehicleClass", "offlineEditingCruiseSpeed", "offlineEditingHoverSpeed", "offlineEditingAscentSpeed", "offlineEditingDescentSpeed"]),
-        ("Map providers", &["mapboxToken", "mapboxAccount", "mapboxStyle", "esriToken", "vworldToken", "customURL"]),
         ("AirLink", &["loginAirLink", "passAirLink"]),
         ("Files", &["savePath", "androidSaveToSDCard", "disableAllPersistence"]),
         ("Logging", &["showAppLogTimestampAsElapsedTime"]),
@@ -302,7 +306,19 @@ pub fn video_row_shown(name: &str, source: &str, stream_source: bool, auto_confi
     }
 }
 
-fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Value {
+const MAP_PROVIDERS: &str = "appSettings#mapProviders";
+const MAP_PROVIDER_ROWS: [&str; 6] = ["mapboxToken", "esriToken", "vworldToken", "mapboxAccount", "mapboxStyle", "customURL"];
+
+pub fn slice_shows(slice: &str, name: &str) -> bool {
+    match slice {
+        MAP_PROVIDERS => MAP_PROVIDER_ROWS.contains(&name),
+        "appSettings" => !MAP_PROVIDER_ROWS.contains(&name),
+        _ => true,
+    }
+}
+
+fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Value {
+    let group = slice.split_once('#').map_or(slice, |(group, _)| group);
     let path = format!("settings.{group}");
     let Some(backend) = backend else { return json!({ "title": title, "group": group, "path": path }) };
     let facts: Vec<Value> = object(&backend.get(&path)).get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -315,6 +331,7 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
     let shown: Vec<Value> = facts
         .iter()
         .filter(|f| f.get("visible").and_then(Value::as_bool) != Some(false))
+        .filter(|f| slice_shows(slice, f.get("name").and_then(Value::as_str).unwrap_or_default()))
         .filter(|f| !(persistence_off && f.get("name").and_then(Value::as_str).is_some_and(|n| LOGGING_ROWS.contains(&n))))
         .filter(|f| video.as_ref().is_none_or(|(source, stream, auto)| video_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), source, *stream, *auto)))
         .filter(|f| {
@@ -347,7 +364,7 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
         "group": group,
         "path": path,
         "note": note,
-        "subsections": subsections(group, &named_apart(shown)),
+        "subsections": subsections(slice, &named_apart(shown)),
     })
 }
 
@@ -424,6 +441,15 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn map_provider_rows_sit_on_the_maps_page_as_map_settings_qml_heads_them() {
+        assert!(slice_shows(MAP_PROVIDERS, "mapboxToken") && !slice_shows("appSettings", "mapboxToken"));
+        assert!(slice_shows("appSettings", "indoorPalette") && !slice_shows(MAP_PROVIDERS, "indoorPalette"));
+        let controls: Vec<Value> = ["customURL", "mapboxAccount", "esriToken"].iter().map(|n| json!({ "name": n })).collect();
+        let titles: Vec<String> = subsections(MAP_PROVIDERS, &controls).iter().map(|s| s["title"].as_str().unwrap().to_string()).collect();
+        assert_eq!(titles, ["Tokens", "Mapbox Login", "Custom Map URL"]);
+    }
+
     #[test]
     fn the_hidden_mode_lists_are_edited_from_the_mode_picker_not_the_settings_page() {
         assert!(["px4HiddenFlightModesMultiRotor", "apmHiddenFlightModesAirship"].iter().all(|name| HIDDEN.contains(name)), "QGC edits these from FlightModeIndicator, and the head's picker has the per-mode switches");
