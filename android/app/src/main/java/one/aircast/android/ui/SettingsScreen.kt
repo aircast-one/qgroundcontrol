@@ -481,7 +481,7 @@ private fun SettingsControls(
             return@forEach
         }
         section.blocks.forEach { block ->
-            blockHeading(page.title, section, block).takeIf { it.isNotBlank() }?.let { SectionHeader(it) }
+            blockHeading(page.title, section, block).takeIf { it.isNotBlank() }?.let { SectionHeader(sentenceCase(it)) }
             FactRuns(block.facts, onWrite)
             if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
         }

@@ -152,7 +152,7 @@
             "min": 0,
             "max": 18,
             "default": 0,
-            "label": "RC channel driving the camera light. 0 hides the light button."
+            "label": "Camera light channel"
         },
         {
             "name": "cameraRecordChannel",
@@ -161,7 +161,7 @@
             "min": 0,
             "max": 18,
             "default": 0,
-            "label": "RC channel driving the camera's own recording. 0 records only the ground station stream."
+            "label": "Camera record channel"
         },
         {
             "name": "cameraZoomChannel",
@@ -170,7 +170,7 @@
             "min": 0,
             "max": 18,
             "default": 0,
-            "label": "RC channel driving camera zoom. 0 hides the zoom slider."
+            "label": "Camera zoom channel"
         },
         {
             "name": "gimbalPanChannel",
@@ -179,7 +179,7 @@
             "min": 0,
             "max": 18,
             "default": 0,
-            "label": "RC channel driving gimbal pan. 0 disables panning."
+            "label": "Gimbal pan channel"
         },
         {
             "name": "gimbalTiltChannel",
@@ -188,7 +188,7 @@
             "min": 0,
             "max": 18,
             "default": 0,
-            "label": "RC channel driving gimbal tilt. 0 disables on-screen gimbal control."
+            "label": "Gimbal tilt channel"
         },
         {
             "name": "rcControls",
