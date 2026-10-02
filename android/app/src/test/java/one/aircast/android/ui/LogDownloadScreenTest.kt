@@ -45,7 +45,7 @@ class LogDownloadScreenTest {
         val logs = logsView(JSONObject(served))!!
 
         assertEquals(listOf("4.0KB", "10.0KB"), logs.entries.map { it.sizeStr })
-        assertTrue(logs.entries.all { it.time.isNotBlank() && it.time != "Date Unknown" })
+        assertTrue(logs.entries.all { it.time.isNotBlank() && it.time != "Date unknown" })
         assertEquals(listOf(1, 2), logs.entries.map { it.id })
         assertEquals(listOf("Downloaded", "Available"), logs.entries.map { it.status })
     }
@@ -96,7 +96,7 @@ class LogTimeTextTest {
 
     @Test
     fun `a vehicle with an unset clock says so rather than showing 1970`() {
-        assertEquals("Date Unknown", logTimeText("1970-01-01T00:00:00Z", TIME_UNKNOWN, fixed))
+        assertEquals("Date unknown", logTimeText("1970-01-01T00:00:00Z", TIME_UNKNOWN, fixed))
     }
 
     @Test
@@ -106,7 +106,7 @@ class LogTimeTextTest {
 
     @Test
     fun `an unparseable time does not crash the list`() {
-        assertEquals("Date Unknown", logTimeText("not a time", "known", fixed))
+        assertEquals("Date unknown", logTimeText("not a time", "known", fixed))
     }
 
     @Test

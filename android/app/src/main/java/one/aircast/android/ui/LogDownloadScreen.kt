@@ -70,7 +70,7 @@ internal const val TIME_UNRECEIVED = "unreceived"
 internal const val TIME_UNKNOWN = "unknown"
 
 private val LOCAL_TIME: DateTimeFormatter =
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
 
 internal fun logLocalTime(raw: String): LocalDateTime? =
     runCatching { OffsetDateTime.parse(raw).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime() }
@@ -79,8 +79,8 @@ internal fun logLocalTime(raw: String): LocalDateTime? =
 
 internal fun logTimeText(raw: String, state: String, format: (LocalDateTime) -> String): String = when (state) {
     TIME_UNRECEIVED -> ""
-    TIME_UNKNOWN -> "Date Unknown"
-    else -> logLocalTime(raw)?.let(format) ?: "Date Unknown"
+    TIME_UNKNOWN -> "Date unknown"
+    else -> logLocalTime(raw)?.let(format) ?: "Date unknown"
 }
 
 internal data class LogEntry(
