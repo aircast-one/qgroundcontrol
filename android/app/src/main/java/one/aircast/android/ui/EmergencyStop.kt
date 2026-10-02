@@ -35,6 +35,9 @@ private const val DISABLED_STOP_ALPHA = 0.38f
 internal fun emergencyStopOffer(offers: Map<String, GuidedOffer>): GuidedOffer? =
     offers[EMERGENCY_STOP]?.takeIf { it.shown }
 
+internal fun armedStopOffer(offers: Map<String, GuidedOffer>, armed: Boolean): GuidedOffer? =
+    emergencyStopOffer(offers)?.takeIf { armed && it.ready }
+
 internal fun emergencyStopAction(offer: GuidedOffer): GuidedAction = GuidedAction(
     name = offer.title,
     confirm = offer.prompt,

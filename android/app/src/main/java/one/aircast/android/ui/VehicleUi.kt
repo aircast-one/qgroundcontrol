@@ -505,6 +505,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             when (val asked = DeckRequest.action) {
                 null -> Unit
                 ARM_REQUEST -> entries.firstOrNull { it.id == ARM_REQUEST && it.enabled }?.onClick?.invoke()
+                    ?: armedStopOffer(offers, armed)?.let { pending = emergencyStopAction(it) }
                     ?: run { refusal = deckRequestRefusal(offers[if (armed) "disarm" else "arm"]) }
                 else -> offers[asked]?.takeIf { it.ready }?.let { offer ->
                     guidedCommand(offer.id, resumeFrom)?.let { command ->

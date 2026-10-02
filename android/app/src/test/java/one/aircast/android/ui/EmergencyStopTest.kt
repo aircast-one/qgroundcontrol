@@ -19,6 +19,14 @@ class EmergencyStopTest {
     }
 
     @Test
+    fun `slide to disarm while flying becomes the emergency stop`() {
+        val flying = offers(EMERGENCY_STOP to "ready", "disarm" to "hidden")
+        assertNotNull("GuidedActionsController routes a flying disarm to showEmergenyStop", armedStopOffer(flying, armed = true))
+        assertNull(armedStopOffer(flying, armed = false))
+        assertNull(armedStopOffer(offers(EMERGENCY_STOP to "hidden"), armed = true))
+    }
+
+    @Test
     fun `the emergency stop is never in the overflow sheet`() {
         assertFalse(
             "cutting the motors is the one action that must not be two taps behind a menu; " +
