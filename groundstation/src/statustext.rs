@@ -61,7 +61,7 @@ pub fn message_text(raw: &[u8]) -> (String, bool) {
 }
 
 impl Handler {
-    pub fn receive(&mut self, component: u8, severity: u8, id: u16, chunk_seq: u8, raw_text: &[u8]) -> Option<StatusText> {
+    pub fn receive(&mut self, component: u8, severity: u8, id: u16, chunk_seq: u8, raw_text: &[u8]) -> Vec<StatusText> {
         let (text, includes_terminator) = message_text(raw_text);
         let stale = self.pending.get(&component).map(|p| p.id != id).unwrap_or(false);
         let flushed = stale.then(|| self.complete(component, true)).flatten();
@@ -81,8 +81,7 @@ impl Handler {
             },
         }
         let completed = (id == 0 || includes_terminator).then(|| self.complete(component, false)).flatten();
-        debug_assert!(flushed.is_none() || completed.is_some() || id != 0);
-        completed.or(flushed)
+        flushed.into_iter().chain(completed).collect()
     }
 
     pub fn has_pending(&self) -> bool {
@@ -146,7 +145,7 @@ mod tests {
     #[test]
     fn plain_messages_count_by_severity_like_status_text_handler_test() {
         let mut handler = Handler::default();
-        assert!(handler.receive(1, 6, 0, 0, &padded("StatusTextHandlerTestInfo")).is_some());
+        assert!(!handler.receive(1, 6, 0, 0, &padded("StatusTextHandlerTestInfo")).is_empty());
         assert_eq!(handler.counts(), (1, 0, 0));
         handler.receive(1, 4, 0, 0, &padded("StatusTextHandlerTestWarning"));
         assert_eq!(handler.counts(), (1, 1, 0));
@@ -161,11 +160,11 @@ mod tests {
     fn chunks_reassemble_in_order_and_a_missing_chunk_is_marked() {
         let mut handler = Handler::default();
         let full: String = "x".repeat(TEXT_FIELD_LEN);
-        assert!(handler.receive(1, 6, 7, 0, full.as_bytes()).is_none());
-        let done = handler.receive(1, 6, 7, 1, &padded("tail")).unwrap();
+        assert!(handler.receive(1, 6, 7, 0, full.as_bytes()).is_empty());
+        let done = handler.receive(1, 6, 7, 1, &padded("tail")).pop().unwrap();
         assert_eq!(done.text, format!("{full}tail"));
-        assert!(handler.receive(1, 6, 8, 0, full.as_bytes()).is_none());
-        let gapped = handler.receive(1, 6, 8, 2, &padded("end")).unwrap();
+        assert!(handler.receive(1, 6, 8, 0, full.as_bytes()).is_empty());
+        let gapped = handler.receive(1, 6, 8, 2, &padded("end")).pop().unwrap();
         assert_eq!(gapped.text, format!("{full} ... end"));
     }
 
@@ -173,12 +172,12 @@ mod tests {
     fn a_new_id_flushes_a_stale_sequence_and_expiry_marks_the_missing_tail() {
         let mut handler = Handler::default();
         let full: String = "y".repeat(TEXT_FIELD_LEN);
-        assert!(handler.receive(1, 4, 3, 0, full.as_bytes()).is_none());
-        let flushed = handler.receive(1, 6, 0, 0, &padded("next")).unwrap();
+        assert!(handler.receive(1, 4, 3, 0, full.as_bytes()).is_empty());
+        let both = handler.receive(1, 6, 0, 0, &padded("next"));
         assert_eq!(handler.messages.len(), 2);
         assert_eq!(handler.messages[0].text, format!("{full} ... "));
-        assert_eq!(flushed.text, "next");
-        assert!(handler.receive(2, 6, 5, 0, full.as_bytes()).is_none());
+        assert_eq!(both.iter().map(|s| s.text.clone()).collect::<Vec<_>>(), [format!("{full} ... "), "next".to_string()], "StatusTextHandler emits the flushed text as well as the new one, so the unfinished one is still logged and spoken");
+        assert!(handler.receive(2, 6, 5, 0, full.as_bytes()).is_empty());
         let expired = handler.expire_pending();
         assert_eq!(expired.len(), 1);
         assert!(expired[0].text.ends_with(" ... "));

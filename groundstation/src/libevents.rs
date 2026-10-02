@@ -642,6 +642,10 @@ pub struct Session {
 }
 
 impl Session {
+    pub fn supports_checks(&self, component: u8) -> bool {
+        self.definitions.as_ref().is_some_and(|d| d.supports_checks(component))
+    }
+
     pub fn load(&mut self, definitions: Definitions, component: u8) -> Vec<Delivered> {
         self.definitions = Some(definitions);
         std::mem::take(&mut self.pending).into_iter().filter_map(|raw| self.deliver(raw, component)).collect()

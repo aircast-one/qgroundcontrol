@@ -210,7 +210,7 @@ fn spelled(value: &Value, decimals: i64, whole: bool) -> String {
 
 const TIE_DIGITS: usize = 30;
 
-fn fixed_as_qt(n: f64, decimals: usize) -> String {
+pub fn fixed_as_qt(n: f64, decimals: usize) -> String {
     let expanded = format!("{:.*}", decimals + TIE_DIGITS, n.abs());
     let beyond = &expanded[expanded.len() - TIE_DIGITS..];
     let tie = beyond.starts_with('5') && beyond[1..].bytes().all(|b| b == b'0');

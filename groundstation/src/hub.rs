@@ -242,7 +242,6 @@ pub struct Vehicle {
     pending_notices: Vec<(&'static str, String)>,
     pub rc_values: Vec<u16>,
     pub servo_outputs: Vec<i32>,
-    pub events_heard: bool,
     pub message_log: crate::messagelog::MessageLog,
     pub control: crate::operatorcontrol::ControlState,
     pub rccal: crate::rccal::RcCal,
@@ -429,7 +428,6 @@ impl Vehicle {
             pending_notices: Vec::new(),
             rc_values: Vec::new(),
             servo_outputs: Vec::new(),
-            events_heard: false,
             message_log: crate::messagelog::MessageLog::default(),
             control: crate::operatorcontrol::ControlState::default(),
             rccal: crate::rccal::RcCal::default(),
@@ -2036,7 +2034,7 @@ impl Vehicle {
             let expired = self.status_text.expire_pending();
             expired.iter().for_each(|status| {
                 self.log_status(status);
-                self.note_prearm(&status.text, status.severity, now_ms);
+                self.note_prearm(&status.text, status.severity, status.component, now_ms);
             });
             self.recent.extend(expired);
             let excess = self.recent.len().saturating_sub(MAX_MESSAGES);
@@ -2110,7 +2108,7 @@ impl Vehicle {
 
     fn spoken_status(&self, status: &StatusText, now_ms: u64) -> Option<String> {
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
-        let text = crate::messagelog::admitted(px4, self.events_heard, status.severity, &status.text)?;
+        let text = crate::messagelog::admitted(px4, self.events.supports_checks(status.component), status.severity, &status.text)?;
         let repeated = is_prearm(&text, status.severity) && self.prearm_spoken.get(&text).is_some_and(|at| now_ms.saturating_sub(*at) < PREARM_REPEAT_MS);
         let asked = status.text.starts_with('#') || status.severity <= SEVERITY_NOTICE;
         (asked && !repeated).then_some(text)
@@ -2172,8 +2170,25 @@ impl Vehicle {
         self.announced = (if mode.is_empty() { last_mode } else { Some(mode) }, armed, lost);
     }
 
-    fn note_prearm(&mut self, text: &str, severity: u8, now_ms: u64) {
-        if !is_prearm(text, severity) || self.events_heard {
+    fn take_status(&mut self, status: StatusText, now_ms: u64) -> Vec<Vec<u8>> {
+        if let Some(spoken) = self.spoken_status(&status, now_ms) {
+            crate::speech::say(&spoken.to_lowercase());
+        }
+        self.log_status(&status);
+        crate::escal::on_text(self.id, &status.text);
+        crate::apmsubmotors::on_text(&self.flight_mode(), &status.text);
+        let actions = self.calibrate.on_text(&status.text, now_ms);
+        let bytes = self.follow_calibration(actions, now_ms);
+        self.note_prearm(&status.text, status.severity, status.component, now_ms);
+        self.recent.push(status);
+        if self.recent.len() > MAX_MESSAGES {
+            self.recent.remove(0);
+        }
+        bytes
+    }
+
+    fn note_prearm(&mut self, text: &str, severity: u8, component: u8, now_ms: u64) {
+        if !is_prearm(text, severity) || self.events.supports_checks(component) {
             return;
         }
         let recently = self.prearm_spoken.get(text).is_some_and(|at| now_ms.saturating_sub(*at) < PREARM_REPEAT_MS);
@@ -2381,7 +2396,7 @@ impl Vehicle {
 
     fn log_status(&mut self, status: &StatusText) {
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
-        if let Some(text) = crate::messagelog::admitted(px4, self.events_heard, status.severity, &status.text) {
+        if let Some(text) = crate::messagelog::admitted(px4, self.events.supports_checks(status.component), status.severity, &status.text) {
             if status.severity <= SEVERITY_ERROR {
                 self.pending_notices.push((crate::noticeboard::VEHICLE_ERROR, text.clone()));
             }
@@ -2972,21 +2987,9 @@ impl Vehicle {
                 let end = t.text.iter().position(|b| *b == 0).unwrap_or(t.text.len());
                 let received = self.status_text.receive(header.component_id, t.severity as u8, t.id, t.chunk_seq, &t.text[..end]);
                 self.chunk_due = self.status_text.has_pending().then_some(now_ms + CHUNKED_TEXT_TIMEOUT_MS);
-                if let Some(status) = received.map(|status| calibration_as_info(status, self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT)) {
-                    if let Some(spoken) = self.spoken_status(&status, now_ms) {
-                        crate::speech::say(&spoken.to_lowercase());
-                    }
-                    self.log_status(&status);
-                    crate::escal::on_text(self.id, &status.text);
-                    crate::apmsubmotors::on_text(&self.flight_mode(), &status.text);
-                    let actions = self.calibrate.on_text(&status.text, now_ms);
-                    let bytes = self.follow_calibration(actions, now_ms);
-                    self.note_prearm(&status.text, status.severity, now_ms);
-                    self.recent.push(status);
-                    if self.recent.len() > MAX_MESSAGES {
-                        self.recent.remove(0);
-                    }
-                    return bytes;
+                if !received.is_empty() {
+                    let ardupilot = self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
+                    return received.into_iter().map(|status| calibration_as_info(status, ardupilot)).flat_map(|status| self.take_status(status, now_ms)).collect();
                 }
             }
             _ => {}
@@ -3049,9 +3052,6 @@ impl Vehicle {
         self.local.apply(message);
         self.local_setpoint.apply_target(message);
         self.estimator.apply(message);
-        if matches!(message, MavMessage::EVENT(_) | MavMessage::CURRENT_EVENT_SEQUENCE(_)) {
-            self.events_heard = true;
-        }
         let event_requests = self.apply_events(from, message, now_ms);
         if let MavMessage::RC_CHANNELS(c) = message {
             let raw = [c.chan1_raw, c.chan2_raw, c.chan3_raw, c.chan4_raw, c.chan5_raw, c.chan6_raw, c.chan7_raw, c.chan8_raw, c.chan9_raw, c.chan10_raw, c.chan11_raw, c.chan12_raw, c.chan13_raw, c.chan14_raw, c.chan15_raw, c.chan16_raw, c.chan17_raw, c.chan18_raw];
@@ -4429,14 +4429,15 @@ mod tests {
     }
 
     #[test]
-    fn a_vehicle_speaks_the_events_protocol_once_it_sends_an_event_sequence() {
+    fn a_prearm_text_is_kept_while_the_events_metadata_does_not_declare_arming_checks() {
         use mavlink::dialects::ardupilotmega::CURRENT_EVENT_SEQUENCE_DATA;
         let mut hub = Hub::default();
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
-        assert_eq!(hub.active().map(|v| v.events_heard), Some(false));
         hub.on_frame(origin(0), &header, &MavMessage::CURRENT_EVENT_SEQUENCE(CURRENT_EVENT_SEQUENCE_DATA::default()), 1, 1);
-        assert_eq!(hub.active().map(|v| v.events_heard), Some(true));
+        let vehicle = hub.active().unwrap();
+        assert!(!vehicle.events.supports_checks(1), "an event sequence alone is not the health_and_arming_check protocol");
+        assert!(crate::messagelog::admitted(true, vehicle.events.supports_checks(1), 2, "Preflight Fail: Accel uncalibrated").is_some(), "Vehicle::_handleStatusText drops it only when _healthAndArmingChecksSupported(component)");
     }
 
     #[test]
@@ -5395,10 +5396,10 @@ mod tests {
         assert_eq!(vehicle.spoken_status(&status(4, "Low battery"), 0).as_deref(), Some("Low battery"), "warning is at or above notice");
         assert_eq!(vehicle.spoken_status(&status(6, "Waypoint 3 reached"), 0), None, "info is not read aloud");
         assert_eq!(vehicle.spoken_status(&status(6, "#Payload released"), 0).as_deref(), Some("Payload released"), "a leading hash asks for speech");
-        vehicle.note_prearm("PreArm: RC not calibrated", 4, 1_000);
+        vehicle.note_prearm("PreArm: RC not calibrated", 4, 1, 1_000);
         assert_eq!(vehicle.spoken_status(&status(2, "PreArm: RC not calibrated"), 5_000), None, "the same PreArm within ten seconds is not repeated");
         assert!(vehicle.spoken_status(&status(2, "PreArm: RC not calibrated"), 12_000).is_some());
-        vehicle.note_prearm("Preflight Fail: Accel uncalibrated", 2, 20_000);
+        vehicle.note_prearm("Preflight Fail: Accel uncalibrated", 2, 1, 20_000);
         assert_eq!(vehicle.spoken_status(&status(2, "Preflight Fail: Accel uncalibrated"), 25_000), None, "Vehicle::_handleStatusText limits PX4 preflight repeats the same way");
     }
 

@@ -18,9 +18,9 @@ pub struct MessageLog {
     read_through: usize,
 }
 
-pub fn admitted(px4: bool, events_heard: bool, severity: u8, text: &str) -> Option<String> {
+pub fn admitted(px4: bool, checks_supported: bool, severity: u8, text: &str) -> Option<String> {
     let prearm = text.starts_with("PreArm") || (text.get(..9).is_some_and(|head| head.eq_ignore_ascii_case("preflight")) && severity >= SEVERITY_CRITICAL);
-    match (px4 && text.ends_with('\t'), prearm && events_heard) {
+    match (px4 && text.ends_with('\t'), prearm && checks_supported) {
         (false, false) => Some(text.strip_prefix('#').unwrap_or(text).to_string()),
         _ => None,
     }

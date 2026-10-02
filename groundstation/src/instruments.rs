@@ -82,7 +82,7 @@ fn converted(backend: &dyn Backend, fact: &Value) -> Option<(String, String)> {
     let unit = dimensioned(backend, raw_units)?;
     let raw = fact.get("rawValue").and_then(Value::as_f64).filter(|value| value.is_finite())?;
     let places = fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(1).clamp(0, 6) as usize;
-    Some((crate::read::settled(format!("{:.places$}", unit.show(raw))), unit.name.clone()))
+    Some((crate::read::settled(crate::settingsstore::fixed_as_qt(unit.show(raw), places)), unit.name.clone()))
 }
 
 pub fn vehicle_class_key(class: &Value) -> &'static str {
@@ -277,7 +277,7 @@ mod tests {
             fn get(&self, path: &str) -> String {
                 match path {
                     "vehicle.altitudeRelative" => json!({ "kind": "fact", "name": "altitudeRelative", "shortDescription": "Alt (Rel)", "valueString": "25.0", "units": "m", "rawUnits": "vertical m", "rawValue": 25.0, "decimalPlaces": 1 }),
-                    "vehicle.groundSpeed" => json!({ "kind": "fact", "name": "groundSpeed", "shortDescription": "Speed", "valueString": "8.0", "units": "m/s", "rawUnits": "m/s", "rawValue": 8.0, "decimalPlaces": 1 }),
+                    "vehicle.groundSpeed" => json!({ "kind": "fact", "name": "groundSpeed", "shortDescription": "Speed", "valueString": "8.3", "units": "m/s", "rawUnits": "m/s", "rawValue": 8.25, "decimalPlaces": 1 }),
                     "vehicle.heading" => json!({ "kind": "fact", "name": "heading", "shortDescription": "Heading", "valueString": "270", "units": "deg", "rawUnits": "deg", "rawValue": 270.0, "decimalPlaces": 0 }),
                     _ => json!({ "kind": "null" }),
                 }
@@ -309,7 +309,7 @@ mod tests {
         assert_eq!(altitude["units"], "ft");
 
         let speed = read("groundSpeed");
-        assert_eq!(speed["value"], "8.0", "a speed is converted by the speed preference, which this operator left metric - applying the distance choice to every reading would have turned it into feet per second");
+        assert_eq!(speed["value"], "8.3", "a tie rounds away from zero, as QString::number does, where Rust's formatter would round 8.25 to the even 8.2; a speed is converted by the speed preference, which this operator left metric - applying the distance choice to every reading would have turned it into feet per second");
         assert_eq!(speed["units"], "m/s");
 
         let heading = read("heading");
