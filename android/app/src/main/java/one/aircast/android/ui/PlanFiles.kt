@@ -7,6 +7,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,6 +51,7 @@ class PlanFileActions(
     val clearMission: () -> Unit,
     val download: () -> Unit,
     val documentName: () -> String?,
+    val opened: () -> Int = { 0 },
 )
 
 internal fun planLoad(path: String): Boolean? =
@@ -127,6 +129,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     val scope = rememberCoroutineScope()
     val document = remember { mutableStateOf<Uri?>(null) }
     val name = remember { mutableStateOf<String?>(null) }
+    val opened = remember { mutableIntStateOf(0) }
 
     fun adopt(uri: Uri) {
         document.value = uri
@@ -227,6 +230,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 return@launch
             }
             if (withContext(Dispatchers.IO) { isWaypointsFile(staged) }) forget() else adopt(chosen)
+            opened.intValue += 1
             onResult("Plan opened.")
         }
     }
@@ -309,6 +313,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
             },
             download = { discard("loadFromVehicle", "Loading the plan from the vehicle.", "The plan could not be loaded from the vehicle.") },
             documentName = { name.value },
+            opened = { opened.intValue },
         )
     }
 }

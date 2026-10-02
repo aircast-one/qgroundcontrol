@@ -30,6 +30,7 @@ fun PlanMapScreen(
     onCentre: ((Double, Double) -> Unit)? = null,
     itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
     header: (@Composable (PlanUpload) -> Unit)? = null,
+    fitKey: Int = 0,
 ) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
@@ -39,6 +40,6 @@ fun PlanMapScreen(
     }
 
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
-        MapSpikeScreen(style, onClear, onCentre, itemEditor, header)
+        MapSpikeScreen(style, onClear, onCentre, itemEditor, header, fitKey)
     }
 }

@@ -151,6 +151,7 @@ internal fun MapSpikeScreen(
     onCentre: ((Double, Double) -> Unit)? = null,
     itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
     header: (@Composable (PlanUpload) -> Unit)? = null,
+    fitKey: Int = 0,
 ) {
     var follow by remember { mutableStateOf(true) }
     var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
@@ -305,6 +306,10 @@ internal fun MapSpikeScreen(
     var listOpen by remember { mutableStateOf(false) }
     var centreRequest by remember { mutableIntStateOf(0) }
     var centreOn by remember { mutableStateOf<TrackPoint?>(null) }
+
+    LaunchedEffect(fitKey) {
+        if (fitKey != 0) firstRead = true
+    }
 
     val selectedSequence = selectionSequence(selected, allItems)
 
