@@ -130,6 +130,16 @@ private fun sendPlan(
 }
 
 @Composable
+private fun PaletteNote(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
+    )
+}
+
+@Composable
 private fun GroupBreak() {
     Spacer(Modifier.width(8.dp))
 }
@@ -699,7 +709,7 @@ internal fun MapSpikeScreen(
                     }) { Text("Fence") }
 
                     addingAfterText(selected, allItems)?.let {
-                        Text(it, style = MaterialTheme.typography.labelSmall)
+                        PaletteNote(it)
                         GroupBreak()
                     }
 
@@ -808,7 +818,7 @@ internal fun MapSpikeScreen(
 
                     blockedReason(insertable)?.let {
                         GroupBreak()
-                        Text(it, style = MaterialTheme.typography.labelSmall)
+                        PaletteNote(it)
                     }
                     GroupBreak()
 
@@ -886,7 +896,7 @@ internal fun MapSpikeScreen(
                         }
 
                         fenceDetail(selected, fences, circles)?.let {
-                            Text(it, style = MaterialTheme.typography.labelSmall)
+                            PaletteNote(it)
                             GroupBreak()
                         }
 
@@ -903,7 +913,7 @@ internal fun MapSpikeScreen(
                             val cameraPicker = cameraChoices(camera)
                                 ?.let { it.labels.getOrNull(it.chosen) }
                             itemCameraTextBeside(camera, cameraPicker)?.let {
-                                Text(it, style = MaterialTheme.typography.labelSmall)
+                                PaletteNote(it)
                             }
                             cameraChoices(camera)?.let { choices ->
                                 TextButton(onClick = { cameraMenuFor = item.index }) {
@@ -932,23 +942,23 @@ internal fun MapSpikeScreen(
                                         cameraRevision += 1
                                     }
                                 }
-                                itemCameraNote(camera)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+                                itemCameraNote(camera)?.let { PaletteNote(it) }
                                 GroupBreak()
                             }
                         }
 
                         landingText(selectedLanding(selected, landingList))?.let {
-                            Text(it, style = MaterialTheme.typography.labelSmall)
+                            PaletteNote(it)
                             GroupBreak()
                         }
 
                         survey?.let { cameraText(surveyStatsMap[it.index]) }?.let {
-                            Text(it, style = MaterialTheme.typography.labelSmall)
+                            PaletteNote(it)
                             GroupBreak()
                         }
 
                         layersText(survey)?.let {
-                            Text(it, style = MaterialTheme.typography.labelSmall)
+                            PaletteNote(it)
                             GroupBreak()
                         }
 
@@ -979,7 +989,7 @@ internal fun MapSpikeScreen(
                         }
 
                         waypoint?.let { legText(it) }?.let {
-                            Text(it, style = MaterialTheme.typography.labelSmall)
+                            PaletteNote(it)
                         }
 
                         waypoint?.let { item ->
