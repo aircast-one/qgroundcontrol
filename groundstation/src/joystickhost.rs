@@ -69,14 +69,19 @@ pub struct Meta {
     pub max: Option<f64>,
 }
 
-const PAGE_LABELS: [(&str, &str); 3] = [("throttleModeCenterZero", "Center stick is zero throttle"), ("throttleSmoothing", "Spring loaded throttle smoothing"), ("negativeThrust", "Negative Thrust")];
+const PAGE_LABELS: [(&str, &str); 7] = [
+    ("throttleModeCenterZero", "Center stick is zero throttle"),
+    ("throttleSmoothing", "Spring loaded throttle smoothing"),
+    ("negativeThrust", "Negative Thrust"),
+    ("circleCorrection", "Circle Correction"),
+    ("useDeadband", "Deadband"),
+    ("enableManualControlPitchExtension", "Pitch"),
+    ("enableManualControlRollExtension", "Roll"),
+];
 
 fn page_label(fact: &Value) -> &str {
     let name = fact["name"].as_str().unwrap_or_default();
-    PAGE_LABELS.iter().find(|(setting, _)| *setting == name).map(|(_, label)| *label).unwrap_or_else(|| match name {
-        "exponentialPct" => fact["shortDesc"].as_str().unwrap_or_default(),
-        _ => fact["label"].as_str().or(fact["shortDesc"].as_str()).unwrap_or_default(),
-    })
+    PAGE_LABELS.iter().find(|(setting, _)| *setting == name).map(|(_, label)| *label).unwrap_or_else(|| fact["label"].as_str().or(fact["shortDesc"].as_str()).unwrap_or_default())
 }
 
 pub static METADATA: LazyLock<Vec<Meta>> = LazyLock::new(|| {
@@ -626,8 +631,9 @@ fn set_setting(text: &str) -> Value {
     let Some(meta) = METADATA.iter().find(|m| m.name == name) else { return json!({ "ok": false, "reason": format!("{name} is not a joystick setting") }) };
     match args.get(1).and_then(|v| coerce(meta, v)) {
         Some(text) => {
+            let changed = coerce(meta, &setting_value(&active, name)).as_deref() != Some(text.as_str());
             crate::settingsstore::written(&setting_key(&active, name), &text);
-            if OPTIONAL_SETTINGS.contains(&name) {
+            if changed && OPTIONAL_SETTINGS.contains(&name) {
                 crate::settingsstore::written(&setting_key(&active, "calibrated"), "false");
             }
             if name == "transmitterMode"

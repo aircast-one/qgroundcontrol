@@ -23,7 +23,8 @@ import kotlin.math.roundToInt
 
 internal const val JOYSTICK_DEVICES = "joystick.devices"
 internal const val JOYSTICK_INPUT = "joystick.input"
-private const val SAMPLE_MS = 20L
+private const val SAMPLE_MS = 2L
+private const val IDLE_MS = 250L
 private const val AXIS_SCALE = 32767f
 private const val HAT_UP = 0x01
 private const val HAT_RIGHT = 0x02
@@ -100,11 +101,11 @@ object GamepadInput : InputManager.InputDeviceListener {
         sampler?.cancel()
         sampler = scope.launch(Dispatchers.Default) {
             while (isActive) {
-                synchronized(pads) { pads.values.map { pad -> Triple(pad.device.name, pad.values.map(::scaled), pad.pressed.toList() to pad.hat) } }
-                    .forEach { (name, axes, rest) ->
-                        Qgc.invoke(JOYSTICK_INPUT, name, JSONArray(axes), JSONArray(rest.first), JSONArray(listOf(rest.second)))
-                    }
-                delay(SAMPLE_MS)
+                val sampled = synchronized(pads) { pads.values.map { pad -> Triple(pad.device.name, pad.values.map(::scaled), pad.pressed.toList() to pad.hat) } }
+                sampled.forEach { (name, axes, rest) ->
+                    Qgc.invoke(JOYSTICK_INPUT, name, JSONArray(axes), JSONArray(rest.first), JSONArray(listOf(rest.second)))
+                }
+                delay(if (sampled.isEmpty()) IDLE_MS else SAMPLE_MS)
             }
         }
     }
