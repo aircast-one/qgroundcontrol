@@ -519,7 +519,7 @@ pub fn set_launch(doc: &Document, visual_index: usize, latitude: f64, longitude:
         return Some(moved);
     }
     let distance = match vehicle_class(doc.vehicle_type) {
-        VehicleClass::FixedWing => climb_out_distance(takeoff.params[6].unwrap_or(0.0), doc.global_altitude_mode != crate::altitudemodes::ABSOLUTE, transition_distance),
+        VehicleClass::FixedWing => climb_out_distance(takeoff.params[6].unwrap_or(0.0), takeoff.frame == FRAME_GLOBAL_RELATIVE_ALT, transition_distance),
         _ => transition_distance,
     };
     let point = match same_location {
@@ -1229,6 +1229,10 @@ mod tests {
         assert_eq!((together.params[4], together.params[5]), (Some(47.5), Some(8.5)));
         let Item::Simple(apart) = &set_launch(&unplaced, 1, 47.5, 8.5, false, 300.0).unwrap().items[0] else { panic!("takeoff") };
         assert!((crate::surveygrid::distance_between((47.5, 8.5), (apart.params[4].unwrap(), apart.params[5].unwrap())) - 300.0).abs() < 0.5);
+        let plane = Document { vehicle_type: 1, ..unplaced.clone() };
+        let in_terrain = replaced(&plane, 0, Simple { frame: FRAME_GLOBAL_TERRAIN_ALT, params: [None, None, None, None, None, None, Some(100.0)], ..takeoff.clone() });
+        let Item::Simple(climb) = &set_launch(&in_terrain, 1, 47.5, 8.5, false, 300.0).unwrap().items[0] else { panic!("takeoff") };
+        assert!((crate::surveygrid::distance_between((47.5, 8.5), (climb.params[4].unwrap(), climb.params[5].unwrap())) - 150.0).abs() < 0.5, "only a relative-frame takeoff climbs out at 30 degrees");
     }
 
     #[test]
