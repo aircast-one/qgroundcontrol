@@ -239,7 +239,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Icon(painterResource(R.drawable.ic_upload), null, Modifier.size(20.dp))
+                                    Icon(painterResource(if (upload.done) R.drawable.ic_check_circle else R.drawable.ic_upload), null, Modifier.size(20.dp))
                                     Text(upload.label, style = MaterialTheme.typography.labelLarge)
                                 }
                             }

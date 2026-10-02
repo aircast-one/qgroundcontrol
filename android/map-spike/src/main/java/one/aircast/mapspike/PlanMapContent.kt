@@ -159,7 +159,9 @@ fun fenceWindow(visible: List<TrackPoint>, at: TrackPoint): Pair<TrackPoint, Tra
     visible.takeIf { it.size == 4 }?.let { it[0] to it[2] }
         ?: (TrackPoint(at.latitude + FALLBACK_FENCE_DEGREES, at.longitude - FALLBACK_FENCE_DEGREES) to TrackPoint(at.latitude - FALLBACK_FENCE_DEGREES, at.longitude + FALLBACK_FENCE_DEGREES))
 
-class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: String, val shown: Boolean, val onClick: () -> Unit)
+class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: String, val shown: Boolean, val onClick: () -> Unit) {
+    val done: Boolean get() = label == UPLOADED
+}
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable

@@ -82,8 +82,10 @@ fun planSupport(view: org.json.JSONObject?): PlanSupport {
 fun freshPlanView(): org.json.JSONObject? =
     runCatching { org.json.JSONObject(org.mavlink.qgroundcontrol.QGCBridge.get("view.plan")) }.getOrNull()
 
+const val UPLOADED = "Uploaded"
+
 fun uploadLabel(offline: Boolean, syncing: Boolean, dirty: Boolean, hasItems: Boolean): String = when {
     syncing -> "Uploading…"
-    !dirty && hasItems && !offline -> "✓ Uploaded"
+    !dirty && hasItems && !offline -> UPLOADED
     else -> "Upload"
 }
