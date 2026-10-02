@@ -101,6 +101,8 @@ const TELEMETRY_SAVE_OFF: &str = "Has no effect while saving telemetry logs is o
 const STORAGE_LIMIT_OFF: &str = "Has no effect while the storage limit is off.";
 const STREAMS_FROM_VEHICLE: &str = "Stream rates are controlled by the vehicle.";
 const ADSB_SERVER_OFF: &str = "Has no effect while the ADSB server connection is off.";
+const BASIC_ID_OFF: &str = "Has no effect while Basic ID broadcast is off.";
+const SELF_ID_OFF: &str = "Has no effect while Self ID broadcast is off.";
 
 const GATED: &[(&str, &str, bool, &str)] = &[
     ("diskLoggingMaxFileSizeMB", "diskLoggingEnabled", true, DISK_LOGGING_OFF),
@@ -125,6 +127,12 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("adsbServerHostAddress", "adsbServerConnectEnabled", true, ADSB_SERVER_OFF),
     ("adsbServerPort", "adsbServerConnectEnabled", true, ADSB_SERVER_OFF),
     ("maxVideoSize", "enableStorageLimit", true, STORAGE_LIMIT_OFF),
+    ("basicIDType", "sendBasicID", true, BASIC_ID_OFF),
+    ("basicIDUaType", "sendBasicID", true, BASIC_ID_OFF),
+    ("basicID", "sendBasicID", true, BASIC_ID_OFF),
+    ("selfIDType", "sendSelfID", true, SELF_ID_OFF),
+    ("selfIDFree", "sendSelfID", true, SELF_ID_OFF),
+    ("selfIDExtended", "sendSelfID", true, SELF_ID_OFF),
     ("streamRateRawSensors", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
     ("streamRateExtendedStatus", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
     ("streamRateRCChannels", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
@@ -393,6 +401,15 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn remote_id_fields_have_no_effect_while_their_broadcast_is_off_as_qgc_disables_them() {
+        let controls: Vec<Value> = ["basicID", "selfIDFree", "selfIDEmergency"].iter().map(|n| json!({ "name": n, "enabled": true })).collect();
+        let facts = |on: bool| ["sendBasicID", "sendSelfID"].iter().map(|n| json!({ "name": n, "value": on })).collect::<Vec<_>>();
+        let enabled = |on: bool| gated(&controls, &facts(on)).iter().map(|c| c["enabled"].as_bool().unwrap_or(true)).collect::<Vec<_>>();
+        assert_eq!(enabled(false), [false, false, true], "RemoteIDSettings.qml enables the ID fields on their switch, but never gates the emergency text");
+        assert_eq!(enabled(true), [true, true, true]);
+    }
+
+    #[test]
     fn remote_id_rows_follow_qgcs_groups_with_each_switch_ahead_of_its_fields() {
         let controls: Vec<Value> = ["operatorIDEU", "sendOperatorID", "region", "basicID", "sendBasicID"].iter().map(|n| json!({ "name": n })).collect();
         let order: Vec<String> = subsections("remoteIDSettings", &controls).iter().flat_map(|s| s["controls"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect::<Vec<_>>()).collect();
@@ -511,6 +528,7 @@ mod tests {
             ("AutoConnect", include_str!("../../src/Settings/AutoConnect.SettingsGroup.json")),
             ("LogManager", include_str!("../../src/Settings/LogManager.SettingsGroup.json")),
             ("PlanView", include_str!("../../src/Settings/PlanView.SettingsGroup.json")),
+            ("RemoteID", include_str!("../../src/Settings/RemoteID.SettingsGroup.json")),
         ];
         let declares = |name: &str| -> Vec<&str> {
             GROUPS.iter().filter(|(_, body)| body.contains(&format!("\"{name}\""))).map(|(group, _)| *group).collect()
