@@ -687,7 +687,7 @@ fn store_raw(at: &Addressed, raw_given: &Value) {
             });
         }
         persist();
-        if at.group == "App" && at.fact == "androidDontSaveToSDCard" && before != new {
+        if at.group == "App" && matches!(at.fact.as_str(), "androidDontSaveToSDCard" | "savePath") && before != new {
             create_save_directories();
         }
         if at.group == "App" && at.fact == "defaultMissionItemAltitude" && before != new {
