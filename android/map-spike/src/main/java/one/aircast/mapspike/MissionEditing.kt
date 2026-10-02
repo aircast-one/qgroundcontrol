@@ -143,7 +143,7 @@ fun attachMissionEditing(
 
     map.addOnMapLongClickListener { latLng ->
         addedInGesture = true
-        onAdd(latLng.latitude, latLng.longitude)
+        tapped?.let(onSelected) ?: onAdd(latLng.latitude, latLng.longitude)
         true
     }
 
@@ -203,7 +203,7 @@ fun attachMissionEditing(
                     if (moved) {
                         val target = map.projection.fromScreenLocation(PointF(event.x, event.y))
                         onMoved(hit, target.latitude, target.longitude)
-                    } else {
+                    } else if (hit !is MapHit.Midpoint || withinTap(event.x - downX, event.y - downY)) {
                         onSelected(hit)
                         view.performClick()
                     }

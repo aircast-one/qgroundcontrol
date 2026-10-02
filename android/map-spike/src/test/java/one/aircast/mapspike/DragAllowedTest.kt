@@ -14,5 +14,15 @@ class DragAllowedTest {
         assertTrue(dragAllowed(MapHit.Rally(0), MapHit.Rally(0), PlanLayer.Rally))
         assertFalse("nothing selected, nothing dragged", dragAllowed(MapHit.FenceVertex(0, 1), null, PlanLayer.Fence))
         assertTrue(dragAllowed(MapHit.FenceVertex(0, 1), MapHit.FenceVertex(0, 0), PlanLayer.Fence))
+        assertTrue("a selected polygon's radius handle is its own", dragAllowed(MapHit.ShapeRadius(fence = true, owner = 1), MapHit.FenceVertex(1, 0), PlanLayer.Fence))
+    }
+
+    @Test
+    fun `a midpoint splits only the selected shape`() {
+        assertTrue(dragAllowed(MapHit.Midpoint("$FENCE_POLYGONS.1", "split", 0), MapHit.FenceVertex(1, 0), PlanLayer.Fence))
+        assertFalse(dragAllowed(MapHit.Midpoint("$FENCE_POLYGONS.1", "split", 0), MapHit.FenceVertex(0, 0), PlanLayer.Fence))
+        assertTrue(dragAllowed(MapHit.Midpoint("$PLAN_ITEMS.2.surveyAreaPolygon", "split", 0), MapHit.Waypoint(2), PlanLayer.Mission))
+        assertFalse(dragAllowed(MapHit.Midpoint("$PLAN_ITEMS.2.surveyAreaPolygon", "split", 0), MapHit.Waypoint(3), PlanLayer.Mission))
+        assertTrue(dragAllowed(MapHit.Midpoint(MISSION_SPLIT_PATH, MISSION_SPLIT_INVOKABLE, 2), MapHit.Waypoint(2), PlanLayer.Mission))
     }
 }

@@ -348,8 +348,9 @@ internal fun MapSpikeScreen(
         }
     }
 
-    LaunchedEffect(selectedSequence) {
-        withContext(Dispatchers.Default) { PlanBridge.selectSequence(selectedSequence ?: 0) }
+    LaunchedEffect(selected, selectedSequence) {
+        val sequence = selectedSequence ?: 0.takeIf { selected == null } ?: return@LaunchedEffect
+        withContext(Dispatchers.Default) { PlanBridge.selectSequence(sequence) }
     }
 
     suspend fun refresh() {
@@ -1587,7 +1588,7 @@ internal fun ownerOf(hit: MapHit?): String? = when (hit) {
     is MapHit.LoiterRadius -> "m${hit.index}"
     is MapHit.LoiterRotation -> "m${hit.index}"
     is MapHit.ShapeCentre -> if (hit.fence) "p${hit.owner}" else "m${hit.owner}"
-    is MapHit.ShapeRadius -> if (hit.fence) "c${hit.owner}" else "m${hit.owner}"
+    is MapHit.ShapeRadius -> if (hit.fence) "p${hit.owner}" else "m${hit.owner}"
     is MapHit.FenceVertex -> "p${hit.polygon}"
     is MapHit.Circle -> "c${hit.index}"
     is MapHit.CircleCentre -> "c${hit.index}"
@@ -1597,9 +1598,15 @@ internal fun ownerOf(hit: MapHit?): String? = when (hit) {
 }
 
 internal fun dragAllowed(hit: MapHit, selected: MapHit?, layer: PlanLayer): Boolean = when (hit) {
-    is MapHit.Midpoint -> selected != null
+    is MapHit.Midpoint -> midpointOwner(hit.path)?.let { it == ownerOf(selected) } ?: (selected is MapHit.Waypoint)
     MapHit.BreachReturn -> layer == PlanLayer.Fence
     else -> layerOf(hit) == layer && ownerOf(hit) != null && ownerOf(hit) == ownerOf(selected)
+}
+
+internal fun midpointOwner(path: String): String? = when {
+    path.startsWith("$FENCE_POLYGONS.") -> "p${path.removePrefix("$FENCE_POLYGONS.").substringBefore('.')}"
+    path.startsWith("$PLAN_ITEMS.") -> "m${path.removePrefix("$PLAN_ITEMS.").substringBefore('.')}"
+    else -> null
 }
 
 internal fun layerOf(hit: MapHit?): PlanLayer? = when (hit) {
