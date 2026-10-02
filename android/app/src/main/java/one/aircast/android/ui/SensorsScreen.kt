@@ -30,7 +30,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -251,7 +250,7 @@ private fun RunningCalibration(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(runningTitle(name), style = MaterialTheme.typography.headlineSmall)
+        Text(runningTitle(name), style = MaterialTheme.typography.titleLarge)
 
         if (helpText.isNotBlank()) {
             Text(helpText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -277,23 +276,20 @@ private fun RunningCalibration(
         if (statusText.isNotBlank()) {
             Text(
                 text = statusText,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+            TextButton(
+                onClick = { offMainDetached { Qgc.invoke("$CAL.cancelCalibration") } },
+                enabled = state.cancelEnabled,
+            ) { Text("Cancel") }
             Button(
                 onClick = { offMainDetached { Qgc.invoke("$CAL.nextClicked") } },
                 enabled = state.nextEnabled,
-                modifier = Modifier.weight(1f),
             ) { Text("Next") }
-            OutlinedButton(
-                onClick = { offMainDetached { Qgc.invoke("$CAL.cancelCalibration") } },
-                enabled = state.cancelEnabled,
-                modifier = Modifier.weight(1f),
-            ) { Text("Cancel") }
         }
         if (state.waitingForCancel) {
             Text(CANCEL_WAIT_TITLE, style = MaterialTheme.typography.titleSmall)
