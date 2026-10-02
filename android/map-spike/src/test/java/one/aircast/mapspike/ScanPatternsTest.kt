@@ -111,4 +111,10 @@ class MissionKindGateTest {
         val kinds = listOf(MissionKind(id = "waypoint", label = "", title = "Waypoint", enabled = true, disabledReason = ""))
         assertEquals(listOf(true, false, true), listOf(kindOffered(kinds, "waypoint"), kindOffered(kinds, "takeoff"), kindOffered(emptyList(), "takeoff")))
     }
+
+    @Test
+    fun `an item's altitude reference follows the plan-wide frame, like SimpleItemEditor`() {
+        assertEquals(listOf(true, false, true, true), listOf(GLOBAL_FRAME_MIXED, GLOBAL_FRAME_RELATIVE, 2, null).map { itemReferenceShown(it) })
+        assertEquals(listOf(true, false, false, true), listOf(GLOBAL_FRAME_MIXED, GLOBAL_FRAME_RELATIVE, 2, null).map { itemReferenceSelectable(it) })
+    }
 }
