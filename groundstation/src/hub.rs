@@ -15,7 +15,7 @@ use crate::guidedcmd::{self, CMD_DO_REPOSITION, Plan, VehicleState};
 use crate::guidedexec::{Emit, Executor, Observed};
 use crate::mavcmd::{Command, Commands, Failure, Out, RESULT_ACCEPTED};
 use crate::mavout::{self, Outbound};
-use crate::params::{self, INITIAL_REQUEST_TIMEOUT_MS, ParamValue, Params, WAITING_TIMEOUT_MS};
+use crate::params::{self, INITIAL_REQUEST_TIMEOUT_MS, ParamValue, Params};
 use crate::plantransfer::{self, PLAN_FENCE, PLAN_MISSION, PLAN_RALLY, Transfer};
 use crate::remoteid::{self, GcsFix, RemoteId};
 use crate::sensorcal::{self, Calibration};
@@ -1460,7 +1460,7 @@ impl Vehicle {
                     Vec::new()
                 }
                 params::Action::StartWaitingTimer => {
-                    self.waiting_due = Some(now_ms + WAITING_TIMEOUT_MS);
+                    self.waiting_due = Some(now_ms + self.params.waiting_timeout_ms());
                     Vec::new()
                 }
                 params::Action::StopWaitingTimer => {

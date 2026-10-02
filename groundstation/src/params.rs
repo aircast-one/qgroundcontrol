@@ -6,7 +6,8 @@ pub const INITIAL_REQUEST_TIMEOUT_MS: u64 = 5000;
 pub const WAITING_TIMEOUT_MS: u64 = 3000;
 const MAX_INITIAL_REQUEST_LIST_RETRY: u32 = 4;
 const MAX_INITIAL_LOAD_RETRY_SINGLE_PARAM: u32 = 5;
-const MAX_READ_WRITE_RETRY: u32 = 5;
+const MAX_READ_WRITE_RETRY: u32 = 2;
+pub const VALUE_ACK_TIMEOUT_MS: u64 = 1000;
 const MAX_BATCH_SIZE: usize = 10;
 const HASH_CHECK: &str = "_HASH_CHECK";
 
@@ -481,6 +482,13 @@ impl Params {
         actions
     }
 
+    pub fn waiting_timeout_ms(&self) -> u64 {
+        match self.waiting_index.values().any(|waiting| !waiting.is_empty()) || !self.facts.contains_key(&self.default_component) {
+            true => WAITING_TIMEOUT_MS,
+            false => VALUE_ACK_TIMEOUT_MS,
+        }
+    }
+
     pub fn on_waiting_timeout(&mut self) -> Vec<Action> {
         self.batch_active = true;
         let mut actions = self.fill_batch_queue(true);
@@ -792,9 +800,10 @@ mod tests {
         let ack = params.on_param_value(1, "A", 1, 0, ParamValue::I32(9));
         assert!(!ack.contains(&Action::StartWaitingTimer));
         params.write(1, "A", ParamValue::I32(10));
-        let outcomes: Vec<Vec<Action>> = (0..6).map(|_| params.on_waiting_timeout()).collect();
-        assert!(outcomes[4].iter().any(|a| matches!(a, Action::Set { .. })));
-        assert!(outcomes[5].contains(&Action::WriteFailed { component: 1, name: "A".into() }));
+        assert_eq!(params.waiting_timeout_ms(), VALUE_ACK_TIMEOUT_MS, "kWaitForParamValueAckMs once the parameters are in");
+        let outcomes: Vec<Vec<Action>> = (0..3).map(|_| params.on_waiting_timeout()).collect();
+        assert!(outcomes[1].iter().any(|a| matches!(a, Action::Set { .. })), "PARAM_SET goes out three times in all, kParamSetRetryCount = 2");
+        assert!(outcomes[2].contains(&Action::WriteFailed { component: 1, name: "A".into() }));
     }
 
     #[test]
@@ -803,9 +812,9 @@ mod tests {
         params.start();
         deliver(&mut params, &["A"], &[]);
         assert!(params.refresh(1, "A").contains(&Action::ReadByName { component: 1, name: "A".into() }));
-        let retried: Vec<Vec<Action>> = (0..6).map(|_| params.on_waiting_timeout()).collect();
+        let retried: Vec<Vec<Action>> = (0..3).map(|_| params.on_waiting_timeout()).collect();
         assert!(retried[0].contains(&Action::ReadByName { component: 1, name: "A".into() }));
-        assert!(retried[5].contains(&Action::ReadFailed { component: 1, name: "A".into() }));
+        assert!(retried[2].contains(&Action::ReadFailed { component: 1, name: "A".into() }), "kParamRequestReadRetryCount = 2");
         let mut silent = Params::new(1, true);
         silent.start();
         let retries: Vec<Vec<Action>> = (0..5).map(|_| silent.on_initial_timeout()).collect();
