@@ -45,7 +45,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.settingControl
 import androidx.compose.runtime.remember
 
 private const val REFUSAL_MS = 4000L
@@ -53,12 +55,14 @@ private const val ZOOM_TICK = 10.0
 
 private const val MANAGER = "vehicle.cameraManager"
 
+internal const val SHOW_PHOTO_VIDEO_CONTROL = "settings.flyViewSettings.showPhotoVideoControl"
 private const val CAMERA_SCRIM_ALPHA = 0.55f
 private val SHUTTER_SIZE = 40.dp
 
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier) {
     val hasVehicle = hasVehicle()
+    val shown by qgcBool(settingControl(SHOW_PHOTO_VIDEO_CONTROL))
     val cameraJson by qgcPath(CAMERA_VIEW)
     val camera = remember(cameraJson) { cameraReading(cameraJson) }
     var refused by remember { mutableStateOf<String?>(null) }
@@ -71,7 +75,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
         }
     }
 
-    if (!hasVehicle) {
+    if (!hasVehicle || !shown) {
         return
     }
 
