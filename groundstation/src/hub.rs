@@ -97,6 +97,7 @@ const FENCE_BREACH_MINALT: u8 = 1;
 const FENCE_BREACH_MAXALT: u8 = 2;
 const FENCE_BREACH_BOUNDARY: u8 = 3;
 const FENCE_SPEECH_GAP_MS: u64 = 3000;
+const COMMAND_ACK_ID: u32 = 77;
 const COMMAND_LONG_ID: u32 = 76;
 const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
 const LINK_SILENT_MS: u64 = 3500;
@@ -1793,10 +1794,11 @@ impl Vehicle {
                 let (Some(timeout), Some(safe)) = (action.get("timeout").and_then(Value::as_i64), action.get("safeTimeout").and_then(Value::as_i64)) else {
                     return Err("A control request names how long to wait.".to_string());
                 };
-                let send = Outbound::RawCommandLong { target: (self.id, self.component), command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params: [0.0, 1.0, if allow { 1.0 } else { 0.0 }, safe as f64, 0.0, 0.0, 0.0] };
+                let params = [0.0, 1.0, if allow { 1.0 } else { 0.0 }, safe as f64, 0.0, 0.0, 0.0];
+                let outs = self.commands.send(Command { component: self.component, command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, command_int: false, frame: 0, params, show_error: false, tag: 0 }, now_ms);
                 self.control.requested(timeout, now_ms);
                 self.control.answered();
-                return Ok(self.encode(&send).into_iter().collect());
+                return Ok(self.handle(outs, now_ms));
             }
             Some("messageInterval") => {
                 let whole = |key: &str| action.get(key).and_then(Value::as_i64);
@@ -1870,11 +1872,20 @@ impl Vehicle {
         let target = (self.id, self.component);
         outs.into_iter()
             .flat_map(|out| match out {
+                Out::Send { command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params, .. } => self.encode(&Outbound::RawCommandLong { target, command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params }).into_iter().collect(),
                 Out::Send { command, command_int: false, params, .. } => self.encode(&Outbound::CommandLong { target, command, params }).into_iter().collect(),
                 Out::Send { command, command_int: true, frame, params, x, y, .. } => self.encode(&Outbound::CommandInt { target, command, frame, params, x, y }).into_iter().collect(),
                 Out::ShowError(text) => {
                     self.pending_notices.push((crate::noticeboard::MESSAGE, text.clone()));
                     self.note(text);
+                    Vec::new()
+                }
+                Out::Result { command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, failure: failure @ (Failure::NoResponse | Failure::Duplicate), .. } => {
+                    let text = match failure {
+                        Failure::Duplicate => "Waiting for previous operator control request",
+                        _ => "No response to operator control request",
+                    };
+                    self.pending_notices.push((crate::noticeboard::MESSAGE, text.to_string()));
                     Vec::new()
                 }
                 Out::Result { command: CMD_DO_REPOSITION, result, failure: Failure::ResultOnly, .. } => {
@@ -3610,6 +3621,14 @@ impl Hub {
                     vehicle.integrity_heard_ms = Some(now_ms());
                 }
             }
+            (COMMAND_ACK_ID, _, _) => {
+                let command = payload.get(0..2).and_then(|b| b.try_into().ok()).map_or(0, u16::from_le_bytes);
+                let result = payload.get(2).copied().unwrap_or(0);
+                if command == crate::operatorcontrol::REQUEST_OPERATOR_CONTROL {
+                    let outs = vehicle.commands.on_ack(header.component_id, command, result, now_ms());
+                    vehicle.handle(outs, now_ms());
+                }
+            }
             (COMMAND_LONG_ID, _, _) => {
                 let param = |i: usize| payload.get(i * 4..i * 4 + 4).and_then(|b| b.try_into().ok()).map_or(0.0, f32::from_le_bytes);
                 let command = payload.get(28..30).and_then(|b| b.try_into().ok()).map_or(0, u16::from_le_bytes);
@@ -4240,6 +4259,29 @@ mod tests {
     #[test]
     fn sensor_parameters_are_the_cal_and_sens_families() {
         assert!(sensor_parameter("CAL_MAG0_ROT") && sensor_parameter("SENS_DPRES_OFF") && !sensor_parameter("RTL_RETURN_ALT"));
+    }
+
+    #[test]
+    fn an_unanswered_control_request_says_so_and_a_second_one_waits() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let ask = json!({ "action": "requestControl", "allowTakeover": false, "timeout": 0, "safeTimeout": 10 });
+        let sent = hub.guided(None, &ask, 0).unwrap();
+        let command_long = |frame: &[u8]| frame.first() == Some(&0xFD) && frame.get(7..10) == Some(&[76, 0, 0][..]);
+        assert!(sent.len() == 1 && command_long(&sent[0].1), "sent raw at once: the mavlink crate has no MAV_CMD for 32100");
+        hub.guided(None, &ask, 10).unwrap();
+        let notices = |hub: &Hub| hub.active().unwrap().pending_notices.iter().map(|(_, t)| t.clone()).collect::<Vec<_>>();
+        assert_eq!(notices(&hub), ["Waiting for previous operator control request"], "Vehicle::_requestOperatorControlAckHandler on a duplicate");
+        let mut answered = Hub::default();
+        answered.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        answered.guided(None, &ask, 0).unwrap();
+        let ack: Vec<u8> = crate::operatorcontrol::REQUEST_OPERATOR_CONTROL.to_le_bytes().into_iter().chain([0]).collect();
+        answered.on_extra(&header, COMMAND_ACK_ID, &ack);
+        (1..=10u64).for_each(|step| { answered.tick(step * crate::mavcmd::ACK_TIMEOUT_MS + 1); });
+        assert!(notices(&answered).is_empty(), "an ack the mavlink crate cannot parse still settles the request");
+        (1..=10u64).for_each(|step| { hub.tick(step * crate::mavcmd::ACK_TIMEOUT_MS + 1); });
+        assert!(notices(&hub).contains(&"No response to operator control request".to_string()));
     }
 
     #[test]
