@@ -138,6 +138,13 @@ pub fn totals(cache: &Cache, set: &TileSet) -> rusqlite::Result<Totals> {
     let fallback = crate::tilecache::provider_named(set.kind).map_or(UNKNOWN_AVERAGE_TILE_SIZE, average_size) as i64;
     let average = if saved_count > AVERAGE_SAMPLE_FLOOR && saved_size > 0 { saved_size / saved_count } else { fallback };
     let total_size = if set.tiles <= saved_count { saved_size } else { average * set.tiles };
+    let (unique_count, unique_size) = match unique_count {
+        0 => {
+            let estimated = (set.tiles - saved_count).max(0);
+            (estimated, estimated * average)
+        }
+        known => (known, unique_size),
+    };
     Ok(Totals { saved_count, saved_size, unique_count, unique_size, total_size, errors: cache.errors(set.id)? })
 }
 
@@ -159,6 +166,7 @@ fn set_json(cache: &Cache, set: &TileSet) -> Option<Value> {
         "zoomText": format!("{} - {}", set.min_zoom, set.max_zoom),
         "totalText": format!("{} ({})", grouped(set.tiles.max(0) as u64), size_text(totals.total_size as u64)),
         "uniqueText": format!("{} ({})", grouped(totals.unique_count as u64), size_text(totals.unique_size as u64)),
+        "uniqueCount": totals.unique_count,
         "downloadedText": format!("{} ({})", grouped(totals.saved_count as u64), size_text(totals.saved_size as u64)),
         "sizeText": size_text(totals.saved_size as u64),
         "tileCountText": grouped(totals.saved_count as u64),

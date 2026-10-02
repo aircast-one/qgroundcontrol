@@ -82,6 +82,7 @@ internal data class OfflineSet(
     val zoomText: String,
     val totalText: String,
     val uniqueText: String,
+    val uniqueCount: Long = 0,
     val downloadedText: String,
     val sizeText: String,
     val tileCountText: String,
@@ -125,6 +126,7 @@ internal fun offlineMaps(view: JSONObject?): OfflineMaps? =
                         zoomText = set.optText("zoomText"),
                         totalText = set.optText("totalText"),
                         uniqueText = set.optText("uniqueText"),
+                        uniqueCount = set.optLong("uniqueCount"),
                         downloadedText = set.optText("downloadedText"),
                         sizeText = set.optText("sizeText"),
                         tileCountText = set.optText("tileCountText"),
@@ -298,7 +300,7 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (
                     Text(set.mapType, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     InfoLine("Zoom Levels:", set.zoomText)
                     InfoLine("Total:", set.totalText)
-                    InfoLine("Unique:", set.uniqueText)
+                    if (set.uniqueCount > 0) InfoLine("Unique:", set.uniqueText)
                     InfoLine("Downloaded:", set.downloadedText)
                     InfoLine("Error Count:", set.errorCountText)
                 }
