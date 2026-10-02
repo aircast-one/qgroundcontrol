@@ -47,13 +47,14 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import org.json.JSONObject
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.Composable
@@ -104,7 +105,7 @@ private fun PlanUploadButton(
     content: @Composable RowScope.() -> Unit,
 ) = when (emphasised) {
     true -> Button(onClick = onClick, enabled = enabled, contentPadding = contentPadding, content = content)
-    false -> TextButton(onClick = onClick, enabled = enabled, contentPadding = contentPadding, content = content)
+    false -> FilledTonalButton(onClick = onClick, enabled = enabled, contentPadding = contentPadding, content = content)
 }
 
 private fun sendPlan(
@@ -129,10 +130,7 @@ private fun sendPlan(
 
 @Composable
 private fun GroupBreak() {
-    VerticalDivider(
-        Modifier.height(24.dp).padding(horizontal = 6.dp),
-        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
-    )
+    Spacer(Modifier.width(8.dp))
 }
 
 private const val FALLBACK_FENCE_DEGREES = 0.002
@@ -605,9 +603,10 @@ internal fun MapSpikeScreen(
                     }
                 FlowRow(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    TextButton(onClick = {
+                    FilledTonalButton(onClick = {
                         val refusal = syncRefusal(
                             vehicleSyncState(planOffline, planSyncing), "download from",
                         )
@@ -659,7 +658,7 @@ internal fun MapSpikeScreen(
 
                     GroupBreak()
 
-                    TextButton(enabled = support.fence, onClick = {
+                    FilledTonalButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         onBridge("Adding fence", done = support.reason.ifBlank { null }) {
                             at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionPolygon(topLeft, bottomRight) } ?: false
@@ -671,7 +670,7 @@ internal fun MapSpikeScreen(
                         GroupBreak()
                     }
 
-                    TextButton(
+                    FilledTonalButton(
                         enabled = kindAllows(insertable, KIND_SURVEY),
                         onClick = { patternWanted = scanPatterns(insertable) },
                     ) { Text("Pattern") }
@@ -711,14 +710,14 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    TextButton(enabled = support.fence, onClick = {
+                    FilledTonalButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         onBridge("Adding circle", done = support.reason.ifBlank { null }) {
                             at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionCircle(topLeft, bottomRight) } ?: false
                         }
                     }) { Text("Circle") }
 
-                    TextButton(enabled = support.fence, onClick = {
+                    FilledTonalButton(enabled = support.fence, onClick = {
                         if (breach != null) {
                             editingBreach = true
                         } else {
@@ -744,13 +743,13 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    TextButton(enabled = support.rally, onClick = {
+                    FilledTonalButton(enabled = support.rally, onClick = {
                         val at = placeAt()
                         onBridge("Adding rally", done = support.reason.ifBlank { null }) {
                             at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
                         }
                     }) { Text("Rally") }
-                    if (kindOffered(insertable, KIND_TAKEOFF)) TextButton(
+                    if (kindOffered(insertable, KIND_TAKEOFF)) FilledTonalButton(
                         enabled = kindAllows(insertable, KIND_TAKEOFF),
                         onClick = {
                             val at = placeAt()
@@ -766,7 +765,7 @@ internal fun MapSpikeScreen(
                             )
                         },
                     ) { Text("Takeoff") }
-                    TextButton(
+                    FilledTonalButton(
                         enabled = kindAllows(insertable, KIND_LAND),
                         onClick = {
                             val at = placeAt()
@@ -1334,7 +1333,7 @@ private fun MapTypeMenu(onStyle: (String) -> Unit) {
     var listed by remember { mutableStateOf<MapTypes?>(null) }
     val scope = rememberCoroutineScope()
     Box {
-        TextButton(onClick = {
+        FilledTonalButton(onClick = {
             scope.launch {
                 listed = withContext(Dispatchers.Default) { mapTypes(runCatching { JSONObject(QGCBridge.get(MAP_TYPES_VIEW)) }.getOrNull()) }
                 open = true
@@ -1411,7 +1410,7 @@ private fun CenterMenu(
         ?.takeIf { isPlottable(it.latitude, it.longitude) }
         ?.let { TrackPoint(it.latitude, it.longitude) }
     Box {
-        TextButton(onClick = { open = true }) { Text("Center") }
+        FilledTonalButton(onClick = { open = true }) { Text("Center") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text("Mission") }, onClick = { open = false; onFit(missionPoints) })
             DropdownMenuItem(text = { Text("All Items") }, onClick = { open = false; onFit(null) })
