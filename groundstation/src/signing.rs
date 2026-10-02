@@ -26,6 +26,8 @@ pub fn signing_timestamp(now: SystemTime) -> u64 {
     since_epoch.as_millis() as u64 * 100
 }
 
+const PERSISTED_TIMESTAMP_SAFETY_BUMP_TICKS: u64 = 6_000_000;
+
 pub fn setup_signing(key: Option<Key>, target: (u8, u8), now: SystemTime, floor: u64) -> SETUP_SIGNING_DATA {
     SETUP_SIGNING_DATA {
         initial_timestamp: key.map_or(0, |_| signing_timestamp(now).max(floor)),
@@ -74,7 +76,7 @@ impl Channel {
     fn new(name: &str, key: Key, link: LinkId, sign_outgoing: bool, policy: Policy, op: Op, seed: u64) -> Channel {
         let link_id = (link & 0xFF) as u8;
         let data = SigningData::from_config(SigningConfig::new(key, link_id, true, false));
-        Channel { name: name.to_string(), key, data, sign_outgoing, policy, op, bad_signatures: 0, link_id, timestamp: seed, streams: BTreeSet::new() }
+        Channel { name: name.to_string(), key, data, sign_outgoing, policy, op, bad_signatures: 0, link_id, timestamp: seed.saturating_add(PERSISTED_TIMESTAMP_SAFETY_BUMP_TICKS), streams: BTreeSet::new() }
     }
 
     fn sign(&mut self, bytes: &[u8]) -> Option<Vec<u8>> {
@@ -190,11 +192,9 @@ impl Signing {
             return Inbound { accept: true, notices: Vec::new() };
         };
         let pending_enable = matches!(channel.op, Op::Enable { .. });
-        let valid = match signed {
-            true => raw_frame(bytes).filter(|raw| channel.data.verify_signature(raw)).map(|raw| channel.streams.insert((raw.system_id(), raw.component_id(), raw.signature_link_id()))).is_some(),
-            false => channel.policy.accepts_unsigned(id),
-        };
-        if signed && !valid {
+        let verified = signed && raw_frame(bytes).filter(|raw| channel.data.verify_signature(raw)).map(|raw| channel.streams.insert((raw.system_id(), raw.component_id(), raw.signature_link_id()))).is_some();
+        let valid = verified || channel.policy.accepts_unsigned(id);
+        if !valid {
             channel.bad_signatures = channel.bad_signatures.saturating_add(1);
             let notice = (channel.bad_signatures == BAD_SIGNATURE_ALERT).then(|| match pending_enable {
                 true => format!("Vehicle {system}: MAVLink signing: {BAD_SIGNATURE_ALERT} consecutive bad signatures while enabling — the chosen key likely does not match the vehicle's stored key. Verify the key on the vehicle, then retry."),
@@ -205,7 +205,7 @@ impl Signing {
         if valid {
             channel.bad_signatures = 0;
         }
-        let notices = self.advance(link, system, signed && valid, signed, message);
+        let notices = self.advance(link, system, verified, signed, message);
         Inbound { accept: valid, notices }
     }
 
@@ -375,14 +375,18 @@ mod tests {
         let out = signing.outbound(3, &frame(&heartbeat(), None));
         assert!(is_signed(&out) && verifies(KEY, &out));
         assert!(!signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, 30).accept, "once on, unsigned traffic is refused");
+        let alerts: Vec<String> = (31..33).flat_map(|t| signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, t).notices).collect();
+        assert_eq!(alerts.len(), 1, "an unsigned frame is a bad signature to the MAVLink parser, so three in a row raise the alert");
     }
 
     #[test]
     fn a_wrong_key_alerts_after_three_bad_signatures_and_the_timeout_gives_up() {
         let mut signing = Signing::default();
         signing.begin_enable(3, (1, 1), "field", KEY, 0, 0).unwrap();
-        let wrong = frame(&heartbeat(), Some([9; 32]));
-        let notices: Vec<String> = (0..3).flat_map(|i| signing.inbound(3, 1, &wrong, &heartbeat(), &no_keys, i).notices).collect();
+        let attitude = MavMessage::ATTITUDE(mavlink::dialects::ardupilotmega::ATTITUDE_DATA::default());
+        let wrong = frame(&attitude, Some([9; 32]));
+        assert!(signing.inbound(3, 1, &frame(&heartbeat(), Some([9; 32])), &heartbeat(), &no_keys, 0).accept, "a badly signed heartbeat passes while pending, as accept_unsigned_callback overrides a failed signature check");
+        let notices: Vec<String> = (0..3).flat_map(|i| signing.inbound(3, 1, &wrong, &attitude, &no_keys, i).notices).collect();
         assert_eq!(notices.len(), 1);
         assert!(notices[0].contains("while enabling"));
         let (resend, _) = signing.tick(1500);
@@ -443,11 +447,12 @@ mod tests {
         assert_eq!(setup.initial_timestamp, ahead, "a stored timestamp ahead of the clock seeds SETUP_SIGNING");
         signing.inbound(3, 1, &frame(&heartbeat(), Some(KEY)), &heartbeat(), &no_keys, 10);
         let out = signing.outbound(3, &frame(&heartbeat(), None));
-        assert_eq!(raw_frame(&out).unwrap().signature_timestamp(), ahead, "signing continues from the persisted counter rather than the wall clock");
+        let bumped = ahead + PERSISTED_TIMESTAMP_SAFETY_BUMP_TICKS;
+        assert_eq!(raw_frame(&out).unwrap().signature_timestamp(), bumped, "signing continues 60 s past the persisted counter rather than from the wall clock, as SigningChannel::init bumps it");
         assert!(verifies(KEY, &out));
-        assert_eq!(signing.take_timestamps(), [("field".to_string(), ahead + 1)]);
+        assert_eq!(signing.take_timestamps(), [("field".to_string(), bumped + 1)]);
         signing.closed(3);
-        assert_eq!(signing.take_timestamps(), [("field".to_string(), ahead + 1)], "a closed link hands its last timestamp over once");
+        assert_eq!(signing.take_timestamps(), [("field".to_string(), bumped + 1)], "a closed link hands its last timestamp over once");
         assert!(signing.take_timestamps().is_empty());
     }
 }
