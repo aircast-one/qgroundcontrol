@@ -1545,6 +1545,11 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             }
             None => refused("That field takes a number."),
         }),
+        "altitudeMode" | "altitudeFrame" => answer(
+            number
+                .ok_or_else(|| "An altitude mode is a number.".to_string())
+                .and_then(|mode| plandoc::set_altitude_mode(&current, index, mode as i64).ok_or_else(|| format!("Item {index} cannot take that altitude mode."))),
+        ),
         "loiterRadius" => answer(number.ok_or_else(|| "A radius is a number.".to_string()).and_then(|v| plandoc::set_loiter_radius(&current, index, v).ok_or_else(|| format!("Item {index} is not a loiter.")))),
         "speedSection.flightSpeed" => answer(
             number

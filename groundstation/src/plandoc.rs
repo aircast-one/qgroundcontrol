@@ -542,6 +542,22 @@ pub fn set_frame(doc: &Document, visual_index: usize, frame: i64) -> Option<Docu
     Some(replaced(doc, at, Simple { frame, ..current.clone() }))
 }
 
+pub fn set_altitude_mode(doc: &Document, visual_index: usize, mode: i64) -> Option<Document> {
+    let (at, current) = simple_at(doc, visual_index)?;
+    let held = current.altitude.as_ref()?;
+    let frame = match mode {
+        crate::altitudemodes::RELATIVE => FRAME_GLOBAL_RELATIVE_ALT,
+        crate::altitudemodes::ABSOLUTE | crate::altitudemodes::CALC_ABOVE_TERRAIN => FRAME_GLOBAL,
+        crate::altitudemodes::TERRAIN_FRAME => FRAME_GLOBAL_TERRAIN_ALT,
+        _ => return None,
+    };
+    let calculated = mode == crate::altitudemodes::CALC_ABOVE_TERRAIN;
+    let param7 = if calculated { f64::NAN } else { held.altitude };
+    let params: [Option<f64>; 7] = std::array::from_fn(|i| if i == 6 { Some(param7) } else { current.params[i] });
+    let amsl_above_terrain = if calculated { None } else { held.amsl_above_terrain };
+    Some(replaced(doc, at, Simple { frame, params, altitude: Some(Altitude { mode, amsl_above_terrain, ..held.clone() }), ..current.clone() }))
+}
+
 pub fn set_param(doc: &Document, visual_index: usize, param: usize, value: f64) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
     let slot = param.checked_sub(1).filter(|p| *p < 7)?;
@@ -1163,6 +1179,22 @@ mod tests {
         let placed = insert_roi(&apm, 47.63, -122.09, 2, &QT_DEFAULTS);
         let Some(Item::Simple(roi)) = placed.items.get(1) else { panic!("the region of interest goes where it was asked") };
         assert_eq!((roi.command, roi.params[0], roi.params[4], roi.params[5]), (CMD_DO_SET_ROI, Some(MAV_ROI_LOCATION), Some(47.63), Some(-122.09)));
+    }
+
+    #[test]
+    fn an_items_altitude_mode_sets_its_mavlink_frame_as_simple_mission_item_does() {
+        let doc = section();
+        let at = doc.items.iter().position(|item| matches!(item, Item::Simple(s) if s.altitude.is_some())).unwrap() + 1;
+        let simple = |d: &Document| match &d.items[at - 1] { Item::Simple(s) => s.clone(), _ => unreachable!() };
+        let shown = simple(&doc).altitude.unwrap().altitude;
+        let terrain = set_altitude_mode(&doc, at, crate::altitudemodes::TERRAIN_FRAME).unwrap();
+        assert_eq!((simple(&terrain).frame, simple(&terrain).altitude.unwrap().mode, simple(&terrain).params[6]), (FRAME_GLOBAL_TERRAIN_ALT, crate::altitudemodes::TERRAIN_FRAME, Some(shown)));
+        let calc = set_altitude_mode(&terrain, at, crate::altitudemodes::CALC_ABOVE_TERRAIN).unwrap();
+        assert_eq!(simple(&calc).frame, FRAME_GLOBAL);
+        assert!(simple(&calc).params[6].unwrap().is_nan(), "_altitudeFrameChanged clears param7 until terrain answers");
+        let relative = set_altitude_mode(&calc, at, crate::altitudemodes::RELATIVE).unwrap();
+        assert_eq!((simple(&relative).frame, simple(&relative).params[6]), (FRAME_GLOBAL_RELATIVE_ALT, Some(shown)));
+        assert_eq!(set_altitude_mode(&doc, at, crate::altitudemodes::MIXED), None);
     }
 
     #[test]
