@@ -23,12 +23,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -634,11 +636,15 @@ internal fun MapSpikeScreen(
                                     "${item.command.ifBlank { "Item" }} ${sequenceLabel(item)}",
                                     style = MaterialTheme.typography.titleLarge,
                                 )
-                                itemDetail(item, surveyStatsMap[item.index]).ifBlank { null }?.let {
+                                listOfNotNull(itemPlace(item, allItems), itemDetail(item, surveyStatsMap[item.index]).ifBlank { null }).joinToString(" \u00b7 ").ifBlank { null }?.let {
                                     Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
-                            Button(onClick = { selected = null }) { Text("Done") }
+                            Button(onClick = { selected = null }, contentPadding = ButtonDefaults.ButtonWithIconContentPadding) {
+                                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                                Text("Done")
+                            }
                         }
                     }
                 FlowRow(

@@ -42,6 +42,15 @@ internal fun sequenceLabel(item: MissionItem): String = when {
     else -> item.sequence.toString()
 }
 
+internal fun itemPlace(item: MissionItem, items: List<MissionItem>): String? {
+    val listed = items.filter { it.index != HOME_ITEM }
+    val at = listed.indexOfFirst { it.index == item.index }.takeIf { it >= 0 } ?: return null
+    val previous = items.lastOrNull { it.index < item.index }
+    val leg = item.distanceText.takeIf { previous != null && !item.distance.isNaN() && item.distance > 0.0 && it.isNotBlank() }
+        ?.let { "$it from item ${sequenceLabel(previous!!)}" }
+    return listOfNotNull("Item ${at + 1} of ${listed.size}", leg).joinToString(" \u00b7 ")
+}
+
 fun itemRows(
     items: List<MissionItem>,
     stats: Map<Int, SurveyStats> = emptyMap(),
