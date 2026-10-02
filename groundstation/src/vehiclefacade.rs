@@ -1486,6 +1486,16 @@ impl<B: Backend> Backend for Facade<B> {
                 return json!({ "ok": held }).to_string();
             }
         }
+        if path == "vehicle.armed" && switched_on() {
+            let arm = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            let vehicle = crate::hub::lock().active_id();
+            if let Some(armed) = arm.zip(vehicle).and_then(|(arm, vehicle)| self.0.core_guided(&json!({ "action": "arm", "arm": arm, "vehicle": vehicle }))) {
+                return match armed {
+                    Ok(_) => json!({ "ok": true }).to_string(),
+                    Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
+                };
+            }
+        }
         if path == "vehicle.cameraManager.currentCameraInstance.trackingEnabled" && switched_on() {
             let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
             if let Some(on) = on {
