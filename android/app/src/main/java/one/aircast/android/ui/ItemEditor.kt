@@ -54,6 +54,16 @@ internal fun itemCommandPath(index: Int): String = "plan.missionController.visua
 internal fun itemRawEditPath(index: Int): String = "plan.missionController.visualItems.$index.rawEdit"
 
 internal const val RAW_EDIT_NOTE = "Provides advanced access to all commands/parameters. Be very careful!"
+
+internal fun itemNote(view: JSONObject?, rawOn: Boolean): String? =
+    if (rawOn) RAW_EDIT_NOTE else view?.optText("commandDescription")?.ifBlank { null }
+
+internal fun commandEditable(view: JSONObject?): Boolean = view?.optBoolean("simple") == true && view.optBoolean("takeoff") != true
+
+internal fun startCategory(categories: List<String>, itemCategory: String?): String? =
+    itemCategory?.takeIf { it in categories } ?: categories.firstOrNull()
+
+internal fun mapCenterHintPath(index: Int): String = "plan.missionController.visualItems.$index.setMapCenterHintForCommandChange"
 internal const val RAW_EDIT_STUCK = "You have made changes to the mission item which cannot be shown in Simple Mode"
 
 internal data class EntryPoint(val label: String, val value: String, val path: String)
@@ -178,7 +188,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         }
                     }
                 }
-                if (view?.optBoolean("simple") == true) {
+                if (commandEditable(view)) {
                     TextButton(onClick = { choosing = true }) { Text("Change command") }
                 }
             }
@@ -225,9 +235,9 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         }
                     })
                 }
-                if (current.on) {
-                    Text(RAW_EDIT_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
-                }
+            }
+            itemNote(view, raw?.on == true)?.let { note ->
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
             }
             refusal?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp))
@@ -305,11 +315,15 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
 
     if (choosing) {
         CommandPicker(
+            itemCategory = view?.optText("category")?.ifBlank { null },
             onDismiss = { choosing = false },
             onChosen = { command ->
                 choosing = false
                 scope.launch {
-                    refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(itemCommandPath(index), command) }
+                    refusal = withContext(Dispatchers.Default) {
+                        mapCentre?.let { (latitude, longitude) -> Qgc.refusalOf(mapCenterHintPath(index), JSONObject().put("latitude", latitude).put("longitude", longitude)) }
+                        Qgc.writeRefusal(itemCommandPath(index), command)
+                    }
                     revision++
                 }
             },
@@ -318,14 +332,14 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
 }
 
 @Composable
-private fun CommandPicker(onDismiss: () -> Unit, onChosen: (Int) -> Unit) {
+private fun CommandPicker(itemCategory: String?, onDismiss: () -> Unit, onChosen: (Int) -> Unit) {
     var categories by remember { mutableStateOf<List<String>>(emptyList()) }
     var category by remember { mutableStateOf<String?>(null) }
     var commands by remember { mutableStateOf<List<CommandChoice>>(emptyList()) }
 
     LaunchedEffect(Unit) {
         categories = withContext(Dispatchers.Default) { categoryNames(Qgc.invokeResult("missionCommandTree.categoriesForVehicle")) }
-        category = categories.firstOrNull()
+        category = startCategory(categories, itemCategory)
     }
     LaunchedEffect(category) {
         val chosen = category ?: return@LaunchedEffect

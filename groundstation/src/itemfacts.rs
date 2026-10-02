@@ -151,6 +151,15 @@ pub fn altitude_hint(land: bool, mode: Option<i64>, amsl_sent: Option<String>) -
     }
 }
 
+pub fn command_info(read: &Value) -> [(String, Value); 3] {
+    let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|t| !t.is_empty()).map_or(Value::Null, |t| json!(t));
+    [
+        ("takeoff".to_string(), json!(flag(read, "isTakeoffItem"))),
+        ("category".to_string(), text("category")),
+        ("commandDescription".to_string(), text("commandDescription")),
+    ]
+}
+
 pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(index) = args.first().and_then(|a| a.parse::<usize>().ok()) else {
         return refused("view.itemFacts needs the index of the item in the plan, as view.itemFacts(3)");
@@ -170,7 +179,8 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         (true, true) => owned(&read, &item),
         _ => lists,
     };
-    json!({
+    let info = command_info(&read);
+    let built = json!({
         "kind": "object",
         "class": "ItemFacts",
         "available": available,
@@ -210,7 +220,11 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
             true => qt_previous_coordinate(backend, index).map_or(Value::Null, |(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
             false => Value::Null,
         },
-    })
+    });
+    match built {
+        Value::Object(map) => Value::Object(map.into_iter().chain(info).collect()),
+        other => other,
+    }
 }
 
 fn qt_previous_coordinate(backend: &dyn Backend, index: usize) -> Option<(f64, f64)> {
@@ -225,6 +239,13 @@ fn qt_previous_coordinate(backend: &dyn Backend, index: usize) -> Option<(f64, f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_info_carries_what_the_command_picker_and_editor_read() {
+        let info = command_info(&json!({ "isTakeoffItem": true, "category": "Basic", "commandDescription": "Take off from the ground" }));
+        assert_eq!(info.map(|(k, v)| (k, v)), [("takeoff".to_string(), json!(true)), ("category".to_string(), json!("Basic")), ("commandDescription".to_string(), json!("Take off from the ground"))]);
+        assert_eq!(command_info(&json!({}))[1].1, Value::Null);
+    }
 
     #[test]
     fn the_altitude_card_explains_land_and_calculated_terrain_altitudes() {
