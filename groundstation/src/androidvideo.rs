@@ -80,16 +80,14 @@ fn initialise(vm: &JavaVM, video: &Video) -> jni::errors::Result<bool> {
     let (files, cache) = (folder(&mut env, &application, "getFilesDir")?, folder(&mut env, &application, "getCacheDir")?);
     let globals = (env.new_global_ref(application)?, env.new_global_ref(loader)?);
     let (application, loader) = APPLICATION.get_or_init(|| globals);
-    let initialised = unsafe { (video.init)(vm.get_java_vm_pointer(), application.as_obj().as_raw(), loader.as_obj().as_raw(), files.as_ptr(), cache.as_ptr()) };
-    let forced = crate::settingsstore::raw_setting("settings.videoSettings.forceVideoDecoder").and_then(|v| v.as_i64()).unwrap_or(0);
-    unsafe { (video.force_decoder)(forced as c_int) };
-    Ok(initialised)
+    Ok(unsafe { (video.init)(vm.get_java_vm_pointer(), application.as_obj().as_raw(), loader.as_obj().as_raw(), files.as_ptr(), cache.as_ptr()) })
 }
 
 #[derive(Default)]
 struct Driver {
     driven: Option<String>,
     restarted: bool,
+    decoders_ranked: bool,
     error: String,
     recording: Option<serde_json::Value>,
     recording_reported: bool,
@@ -122,6 +120,10 @@ impl Driver {
         if wanted != self.driven {
             match &wanted {
                 Some(pipeline) => {
+                    if !std::mem::replace(&mut self.decoders_ranked, true) {
+                        let forced = crate::settingsstore::raw_setting("settings.videoSettings.forceVideoDecoder").and_then(|v| v.as_i64()).unwrap_or(0);
+                        unsafe { (video.force_decoder)(forced as c_int) };
+                    }
                     let text = CString::new(pipeline.as_str()).unwrap_or_default();
                     let started = unsafe { (video.start)(text.as_ptr()) };
                     self.restarted = true;
