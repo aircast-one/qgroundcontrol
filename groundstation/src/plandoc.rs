@@ -183,8 +183,12 @@ fn load_item(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::C
         Some("SimpleItem") => load_simple(item, commands).map(Item::Simple),
         Some("ComplexItem") => {
             let kind = item.get("complexItemType").and_then(Value::as_str).unwrap_or("").to_string();
-            let item_count = complex_count(&kind, item)?;
-            Ok(Item::Complex { kind, json: item.clone(), item_count })
+            let json = match crate::landingpattern::is_landing(&kind) {
+                true => crate::landingpattern::loaded(&kind, item)?,
+                false => item.clone(),
+            };
+            let item_count = complex_count(&kind, &json)?;
+            Ok(Item::Complex { kind, json, item_count })
         }
         other => Err(format!("Unknown item type: {}", other.unwrap_or("none"))),
     }

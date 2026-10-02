@@ -106,6 +106,52 @@ pub fn fresh(fresh: &Fresh) -> Value {
     pattern
 }
 
+const REQUIRED: [&str; 3] = ["loiterRadius", "loiterClockwise", "landCoordinate"];
+
+pub fn loaded(kind: &str, saved: &Value) -> Result<Value, String> {
+    let version = saved.get("version").and_then(Value::as_i64).ok_or("The following required keys are missing: version")?;
+    let supported = if kind == VTOL_PATTERN { version == 1 } else { matches!(version, 1 | 2) };
+    if !supported {
+        return Err(format!("{kind} complex item version {version} not supported"));
+    }
+    let deprecated = kind == FIXED_WING_PATTERN && version == 1;
+    let relative_keys: &[&str] = if deprecated { &["loiterAltitudeRelative", "landAltitudeRelative"] } else { &["altitudesAreRelative"] };
+    let missing: Vec<&str> = REQUIRED
+        .iter()
+        .chain(relative_keys)
+        .chain((kind == FIXED_WING_PATTERN && version == 2).then_some(&"valueSetIsDistance"))
+        .copied()
+        .filter(|key| saved.get(*key).is_none())
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!("The following required keys are missing: {}", missing.join(", ")));
+    }
+    let mut normalized = saved.clone();
+    if saved.get("useLoiterToAlt").is_none() {
+        normalized["useLoiterToAlt"] = json!(true);
+    }
+    if deprecated {
+        let loiter = flag(saved, "loiterAltitudeRelative");
+        let land = flag(saved, "landAltitudeRelative");
+        normalized["altitudesAreRelative"] = json!(loiter != land || loiter);
+        normalized["valueSetIsDistance"] = json!(true);
+        normalized["version"] = json!(2);
+        if let Some(fields) = normalized.as_object_mut() {
+            fields.remove("loiterAltitudeRelative");
+            fields.remove("landAltitudeRelative");
+        }
+    }
+    Ok(normalized)
+}
+
+pub fn wizard_text(pattern: &Value) -> Vec<&'static str> {
+    match (flag(pattern, WIZARD), is_vtol(pattern)) {
+        (false, _) => Vec::new(),
+        (true, false) => vec!["Drag the loiter point to adjust landing direction for wind and obstacles."],
+        (true, true) => vec!["Drag the loiter point to adjust landing direction for wind and obstacles as well as distance to land point."],
+    }
+}
+
 pub fn moved(pattern: &Value, member: &str, value: &Value) -> Option<Value> {
     let key = match member {
         "landingCoordinate" => "landCoordinate",
@@ -174,15 +220,16 @@ const FIELDS: [(&str, &str); 13] = [
 fn field_values(pattern: &Value) -> Vec<(&'static str, &'static str, Value)> {
     let Some(g) = geometry(pattern) else { return Vec::new() };
     let (high, low) = altitudes(pattern);
+    let loiter_to_alt = pattern.get("useLoiterToAlt").and_then(Value::as_bool).unwrap_or(true);
     let value = |name: &str| match name {
         "FinalApproachAltitude" => Some(json!(high)),
-        "UseDoChangeSpeed" => pattern.get("useDoChangeSpeed").cloned(),
-        "FinalApproachSpeed" => pattern.get("finalApproachSpeed").cloned(),
-        "LoiterRadius" => pattern.get("loiterRadius").cloned(),
+        "UseDoChangeSpeed" if !is_vtol(pattern) => pattern.get("useDoChangeSpeed").cloned(),
+        "FinalApproachSpeed" if !is_vtol(pattern) => pattern.get("finalApproachSpeed").cloned(),
+        "LoiterRadius" if loiter_to_alt => pattern.get("loiterRadius").cloned(),
         "LandingAltitude" => Some(json!(low)),
         "LandingHeading" => Some(json!(g.heading)),
         "LandingDistance" => Some(json!(g.distance)),
-        "LoiterClockwise" => pattern.get("loiterClockwise").cloned(),
+        "LoiterClockwise" if loiter_to_alt => pattern.get("loiterClockwise").cloned(),
         "UseLoiterToAlt" => pattern.get("useLoiterToAlt").cloned(),
         "StopTakingPhotos" => pattern.get("stopTakingPhotos").cloned(),
         "StopTakingVideo" => pattern.get("stopVideoPhotos").cloned(),
@@ -202,6 +249,7 @@ pub fn fields(pattern: &Value, item: &str, units: &crate::surveydoc::Units) -> V
         .map(|(suffix, control)| match (suffix, control) {
             ("landingDistance", Value::Object(map)) if !is_vtol(pattern) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(by_distance))]).collect()),
             ("glideSlope", Value::Object(map)) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(!by_distance))]).collect()),
+            ("finalApproachSpeed", Value::Object(map)) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(flag(pattern, "useDoChangeSpeed")))]).collect()),
             (_, control) => control,
         })
         .collect()
@@ -477,6 +525,17 @@ pub fn items(pattern: &Value, land_start_has_coordinate: bool) -> Result<Vec<Ite
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_saved_landing_pattern_loads_as_landing_complex_item_reads_it() {
+        let v1 = json!({ "version": 1, "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0], "loiterAltitudeRelative": false, "landAltitudeRelative": false });
+        let upgraded = loaded(FIXED_WING_PATTERN, &v1).unwrap();
+        assert_eq!((upgraded["altitudesAreRelative"].clone(), upgraded["valueSetIsDistance"].clone(), upgraded["version"].clone(), upgraded["useLoiterToAlt"].clone()), (json!(false), json!(true), json!(2), json!(true)), "an absolute version 1 file stays absolute, and a missing useLoiterToAlt reads as true");
+        let mixed = json!({ "version": 1, "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0], "loiterAltitudeRelative": false, "landAltitudeRelative": true });
+        assert_eq!(loaded(FIXED_WING_PATTERN, &mixed).unwrap()["altitudesAreRelative"], true, "mismatched old keys fall back to relative");
+        assert_eq!(loaded(VTOL_PATTERN, &json!({ "version": 2 })), Err(format!("{VTOL_PATTERN} complex item version 2 not supported")));
+        assert_eq!(loaded(FIXED_WING_PATTERN, &json!({ "version": 2, "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0] })), Err("The following required keys are missing: altitudesAreRelative, valueSetIsDistance".to_string()));
+    }
 
     #[test]
     fn landing_editors_carry_their_own_notes() {

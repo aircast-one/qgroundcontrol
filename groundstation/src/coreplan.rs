@@ -308,7 +308,7 @@ fn insert_landing(backend: &dyn Backend, args: &str) -> Value {
             vtol,
             land: (latitude, longitude),
             ardupilot: plandoc::firmware(doc.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
-            relative: doc.global_altitude_mode != crate::altitudemodes::ABSOLUTE,
+            relative: true,
             transition_distance: crate::read::value_number(&backend.get("settings.planViewSettings.vtolTransitionDistance.rawValue")),
         });
         let kind = if vtol { crate::landingpattern::VTOL_PATTERN } else { crate::landingpattern::FIXED_WING_PATTERN };
@@ -1469,7 +1469,8 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             });
         }
     }
-    if property == "wizardMode" {
+    let landing_at = index.checked_sub(1).and_then(|at| current.items.get(at)).is_some_and(|item| matches!(item, plandoc::Item::Complex { kind, .. } if crate::landingpattern::is_landing(kind)));
+    if property == "wizardMode" && !landing_at {
         return Some(match given.as_ref().and_then(Value::as_bool) {
             Some(false) => {
                 held().wizard = None;
@@ -2595,7 +2596,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
         }
         Some(Some(plandoc::Item::Complex { kind, json: pattern, .. })) if crate::landingpattern::is_landing(kind) => {
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
-            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::landingpattern::fields(pattern, &item, &units), "camera": Value::Null, "speedSection": Value::Null, "altitudeMode": Value::Null, "landing": true, "landingNotes": crate::landingpattern::notes(kind == crate::landingpattern::VTOL_PATTERN), "altitudesAreRelative": pattern.get("altitudesAreRelative").and_then(Value::as_bool).unwrap_or(true) })
+            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::landingpattern::fields(pattern, &item, &units), "camera": Value::Null, "speedSection": Value::Null, "altitudeMode": Value::Null, "landing": true, "landingNotes": crate::landingpattern::notes(kind == crate::landingpattern::VTOL_PATTERN), "wizardMode": pattern.get(crate::landingpattern::WIZARD).and_then(Value::as_bool).unwrap_or(false), "wizardText": crate::landingpattern::wizard_text(pattern), "altitudesAreRelative": pattern.get("altitudesAreRelative").and_then(Value::as_bool).unwrap_or(true) })
         }
         Some(Some(plandoc::Item::Complex { kind, .. })) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index, "reason": format!("The core cannot edit a {kind} item yet.") }),
         Some(None) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index }),
