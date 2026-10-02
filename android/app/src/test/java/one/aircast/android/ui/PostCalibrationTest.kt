@@ -13,5 +13,8 @@ class PostCalibrationTest {
         assertNull("a cancelled or failed run offers nothing", postCalibrationPrompt(COMPASS_ROUTINE, "Calibration cancelled", px4 = false))
         assertNull(postCalibrationPrompt("gyro", CALIBRATION_COMPLETE, px4 = false))
         assertNull(postCalibrationPrompt(ACCEL_ROUTINE, CALIBRATION_COMPLETE, px4 = true))
+        assertEquals("Reboot the vehicle prior to flight.", postCalibrationPrompt(COMPASS_ROUTINE, CALIBRATION_COMPLETE, px4 = true))
+        assertEquals("Compass Calibration Complete", postCalibrationTitle(COMPASS_ROUTINE, px4 = true))
+        assertEquals(CALIBRATION_COMPLETE, postCalibrationTitle(COMPASS_ROUTINE, px4 = false))
     }
 }

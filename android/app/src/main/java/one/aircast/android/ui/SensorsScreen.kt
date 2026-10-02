@@ -97,8 +97,16 @@ private const val COMPASS_QUALITY = "Shown in the indicator bars is the quality 
     "- Yellow indicates a questionable compass or calibration.\n" +
     "- Red indicates a compass which should not be used.\n\n"
 
+internal const val PX4_COMPASS_COMPLETE = "Compass Calibration Complete"
+internal const val PX4_REBOOT = "Reboot the vehicle prior to flight."
+
+internal fun postCalibrationTitle(routine: String?, px4: Boolean): String =
+    if (px4 && routine == COMPASS_ROUTINE) PX4_COMPASS_COMPLETE else CALIBRATION_COMPLETE
+
 internal fun postCalibrationPrompt(routine: String?, helpText: String, px4: Boolean): String? = when {
-    px4 || helpText != CALIBRATION_COMPLETE -> null
+    helpText != CALIBRATION_COMPLETE -> null
+    px4 && routine == COMPASS_ROUTINE -> PX4_REBOOT
+    px4 -> null
     routine == COMPASS_ROUTINE -> COMPASS_QUALITY + MUST_REBOOT
     routine == ACCEL_ROUTINE -> MUST_REBOOT
     else -> null
@@ -333,7 +341,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     rebootPrompt?.let { prompt ->
         AlertDialog(
             onDismissRequest = { rebootPrompt = null },
-            title = { Text(CALIBRATION_COMPLETE) },
+            title = { Text(postCalibrationTitle(ranRoutine, state.px4)) },
             text = { Text(prompt) },
             confirmButton = {
                 TextButton(onClick = {
