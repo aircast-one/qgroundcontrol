@@ -494,7 +494,9 @@ internal fun FactRow(
 
     if (asField) {
         Column(fieldModifier) {
-            if (fact.isEnum && !fact.valueIsOffTheEnumList) EnumField(fact, title, ::write) else FactTextField(fact, onWrite, title)
+            val inside = title.takeIf { it.length <= FIELD_LABEL_BUDGET }
+            if (inside == null) Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor, modifier = Modifier.padding(bottom = 8.dp))
+            if (fact.isEnum && !fact.valueIsOffTheEnumList) EnumField(fact, inside, ::write) else FactTextField(fact, onWrite, inside)
             val note = subtitle.split(" · ").filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
             if (note.isNotBlank()) {
                 Text(
@@ -616,15 +618,21 @@ internal fun FactRow(
 }
 
 internal const val SEGMENT_LABEL_BUDGET = 28
-internal const val PAIRED_LABEL_BUDGET = 16
+internal const val PAIRED_LABEL_BUDGET = 20
+internal const val FIELD_LABEL_BUDGET = 40
+internal const val PAIRED_OPTION_BUDGET = 16
+internal const val PAIRED_UNITS_BUDGET = 6
 
 internal fun showsAsField(fact: Fact): Boolean =
     fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact) && !fact.isBool && !fact.isBitmask
 
 internal fun pairsAsField(fact: Fact): Boolean =
-    fact.isEnum && !fact.valueIsOffTheEnumList && fact.shortLabel.isNotBlank() && showsAsField(fact) &&
-        !showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings) &&
-        (fact.enumStrings + fact.shortLabel).all { it.length <= PAIRED_LABEL_BUDGET }
+    fact.shortLabel.length in 1..PAIRED_LABEL_BUDGET && showsAsField(fact) && when {
+        fact.isEnum -> !fact.valueIsOffTheEnumList &&
+            !showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings) &&
+            fact.enumStrings.all { it.length <= PAIRED_OPTION_BUDGET }
+        else -> !fact.isString && fact.enumStrings.isEmpty() && fact.units.length <= PAIRED_UNITS_BUDGET
+    }
 
 internal fun fieldRuns(facts: List<Fact>): List<List<Fact>> =
     facts.fold(emptyList()) { runs, fact ->
@@ -708,7 +716,7 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
 }
 
 @Composable
-private fun EnumField(fact: Fact, label: String, write: (() -> Boolean) -> Unit) {
+private fun EnumField(fact: Fact, label: String?, write: (() -> Boolean) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
 
     Box {
@@ -717,7 +725,7 @@ private fun EnumField(fact: Fact, label: String, write: (() -> Boolean) -> Unit)
             onValueChange = {},
             readOnly = true,
             singleLine = true,
-            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             trailingIcon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -792,7 +800,7 @@ private suspend fun rejectionFor(fact: Fact, text: String): String? =
     }
 
 @Composable
-private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String) {
+private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
     var editing by remember(fact.path) { mutableStateOf<String?>(null) }
     var rejection by remember(fact.path) { mutableStateOf<String?>(null) }
     var revealed by remember(fact.path) { mutableStateOf(false) }
@@ -802,7 +810,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String) {
     Column {
         OutlinedTextField(
             value = editing ?: fact.valueString,
-            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             suffix = fact.units.takeIf { it.isNotBlank() }?.let { { Text(it) } },
             visualTransformation = if (secret && !revealed) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
             leadingIcon = if (secret) {

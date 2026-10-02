@@ -10,9 +10,9 @@ class FieldRunsTest {
         value = 0, enumStrings = options, enumIndex = 0, isBool = false, isString = false, readOnly = false, shortLabel = label,
     )
 
-    private fun text(name: String) = Fact(
-        path = "settings.$name", name = name, description = name, units = "", valueString = "", value = "",
-        enumStrings = emptyList(), enumIndex = -1, isBool = false, isString = true, readOnly = false, shortLabel = name,
+    private fun text(name: String, isString: Boolean = true, units: String = "") = Fact(
+        path = "settings.$name", name = name, description = name, units = units, valueString = "", value = "",
+        enumStrings = emptyList(), enumIndex = -1, isBool = false, isString = isString, readOnly = false, shortLabel = name,
     )
 
     @Test
@@ -26,4 +26,8 @@ class FieldRunsTest {
     @Test
     fun aChoiceWithoutAShortLabelStandsAlone() =
         assertEquals(2, fieldRuns(listOf(choice("a", label = ""), choice("b"))).size)
+
+    @Test
+    fun shortNumbersPairButWideUnitsDoNot() =
+        assertEquals(listOf(listOf("speed", "alt"), listOf("rate")), fieldRuns(listOf(text("speed", false, "m/s"), text("alt", false, "m"), text("rate", false, "degrees/second"))).map { run -> run.map { it.name } })
 }
