@@ -556,7 +556,10 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
     let host = crate::autoconnect::Host { android: cfg!(target_os = "android"), windows: cfg!(target_os = "windows") };
     let actions = SERIAL_AUTO.lock().unwrap_or_else(PoisonError::into_inner).serial(boards, &autoconnect_settings(), &host, serial_ports(), &connected, &nmea);
     actions.into_iter().for_each(|action| match action {
-        crate::autoconnect::Action::OpenSerial { name, port, baud, .. } => {
+        crate::autoconnect::Action::OpenSerial { name, port, baud, usb_direct } => {
+            let mut direct = USB_DIRECT_PORTS.lock().unwrap_or_else(PoisonError::into_inner);
+            if usb_direct { direct.insert(port.clone()) } else { direct.remove(&port) };
+            drop(direct);
             let entry = serial_entry(&name, &port, baud);
             add_dynamic(&entry);
             open_entry(&entry);
@@ -565,6 +568,12 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
         crate::autoconnect::Action::DisconnectRtk => crate::rtkbase::disconnect(),
         _ => {}
     });
+}
+
+static USB_DIRECT_PORTS: Mutex<std::collections::BTreeSet<String>> = Mutex::new(std::collections::BTreeSet::new());
+
+pub fn is_usb_direct(port: &str) -> bool {
+    USB_DIRECT_PORTS.lock().unwrap_or_else(PoisonError::into_inner).contains(port)
 }
 
 struct PendingClose {
