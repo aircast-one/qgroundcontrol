@@ -348,11 +348,13 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         (source, flag(&manager, "isStreamSource"), flag(&manager, "autoStreamConfigured"))
     });
     let persistence_off = group == "mavlinkSettings" && object(&backend.get(PERSISTENCE_OFF)).get("value").and_then(Value::as_bool) == Some(true);
+    let apm_streams = group != "mavlinkSettings" || section_applies("apmMavlinkStreamRateSettings", Some(backend));
     let shown: Vec<Value> = facts
         .iter()
         .filter(|f| f.get("visible").and_then(Value::as_bool) != Some(false))
         .filter(|f| slice_shows(slice, f.get("name").and_then(Value::as_str).unwrap_or_default()))
         .filter(|f| !(persistence_off && f.get("name").and_then(Value::as_str).is_some_and(|n| LOGGING_ROWS.contains(&n))))
+        .filter(|f| apm_streams || f.get("name").and_then(Value::as_str) != Some("apmStartMavlinkStreams"))
         .filter(|f| video.as_ref().is_none_or(|(source, stream, auto)| video_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), source, *stream, *auto)))
         .filter(|f| {
             let named = f.get("name").and_then(Value::as_str).unwrap_or_default();

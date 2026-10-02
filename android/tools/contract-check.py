@@ -403,6 +403,7 @@ ACCEPTED = {
     "paramLabel": "the PX4 SITL rig simulates its battery without an analog voltage divider or current sensor, so Power records no Calculate rows; powercalc.rs calculator serves these on BATn_V_DIV/A_PER_V and ArduPilot's VOLT_MULT/AMP_PERVLT",
     "readingLabel": "the PX4 SITL rig simulates its battery without an analog voltage divider or current sensor, so Power records no Calculate rows; powercalc.rs calculator serves these on BATn_V_DIV/A_PER_V and ArduPilot's VOLT_MULT/AMP_PERVLT",
     "uploaded": "view.mavlinkLog lists the saved .ulg logs, and the recording rig's log folder is empty, so the list records empty; mavlinklog.rs files serves uploaded per file",
+    "writing": "view.mavlinkLog lists the saved .ulg logs, and the recording rig's log folder is empty, so the list records empty; mavlinklog.rs files serves writing per file",
     "showUnits": "InstrumentDisplay.kt reads its own SharedPreferences JSON (per-value Telemetry Display styling), not a bridge view",
     "chart": "view.inspectorCharts lists plots and charted fields only after a field is put on a chart, and the recording rig charts nothing, so plots and selectedCharted record empty; inspectorchart.rs serves field and chart per plot",
     "field": "view.inspectorCharts lists plots and charted fields only after a field is put on a chart, and the recording rig charts nothing, so plots and selectedCharted record empty; inspectorchart.rs serves field and chart per plot",

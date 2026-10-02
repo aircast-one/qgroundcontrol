@@ -44,9 +44,10 @@ struct Uploads {
     cancel: Option<Arc<AtomicBool>>,
     feedback: String,
     was_running: Option<String>,
+    pending: Vec<String>,
 }
 
-static UPLOADS: Mutex<Uploads> = Mutex::new(Uploads { running: false, current: None, progress: 0.0, message: None, cancel: None, feedback: String::new(), was_running: None });
+static UPLOADS: Mutex<Uploads> = Mutex::new(Uploads { running: false, current: None, progress: 0.0, message: None, cancel: None, feedback: String::new(), was_running: None, pending: Vec::new() });
 
 fn key(name: &str) -> String {
     format!("{MAVLINK_LOG_GROUP}/{name}")
@@ -70,14 +71,33 @@ fn uploaded_marker(log: &Path) -> PathBuf {
     log.with_extension(SIDECAR.trim_start_matches('.'))
 }
 
+fn persistence() -> bool {
+    !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+fn stem(name: &str) -> String {
+    name.strip_suffix(MAVLINK_LOG_EXTENSION).unwrap_or(name).to_string()
+}
+
+fn file_of(name: &str) -> String {
+    format!("{}{MAVLINK_LOG_EXTENSION}", stem(name))
+}
+
+fn writing_file() -> Option<String> {
+    let state = crate::hub::lock().active().map(|vehicle| vehicle.log_snapshot())?;
+    state["running"].as_bool().filter(|running| *running)?;
+    state["file"].as_str().and_then(|f| Path::new(f).file_name().map(|n| n.to_string_lossy().into_owned()))
+}
+
 pub fn configure_hub() {
-    let request = json!({ "path": folder().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default(), "extension": MAVLINK_LOG_EXTENSION, "autoStart": flag("enableAutoStart") });
+    let request = json!({ "path": folder().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default(), "extension": MAVLINK_LOG_EXTENSION, "autoStart": flag("enableAutoStart") && persistence() });
     let _ = crate::hub::lock().log_request(None, &request, crate::hub::now_ms());
 }
 
 fn files() -> Vec<Value> {
     let Some(folder) = folder() else { return Vec::new() };
-    let listed: std::collections::BTreeMap<std::cmp::Reverse<String>, (u64, bool)> = std::fs::read_dir(&folder)
+    let writing = writing_file();
+    let listed: std::collections::BTreeMap<String, (u64, bool)> = std::fs::read_dir(&folder)
         .map(|entries| {
             entries
                 .filter_map(Result::ok)
@@ -85,12 +105,12 @@ fn files() -> Vec<Value> {
                 .filter(|path| path.to_string_lossy().ends_with(MAVLINK_LOG_EXTENSION))
                 .map(|path| {
                     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                    (std::cmp::Reverse(path.file_name().unwrap_or_default().to_string_lossy().into_owned()), (size, uploaded_marker(&path).exists()))
+                    (path.file_name().unwrap_or_default().to_string_lossy().into_owned(), (size, uploaded_marker(&path).exists()))
                 })
                 .collect()
         })
         .unwrap_or_default();
-    listed.into_iter().map(|(std::cmp::Reverse(name), (size, uploaded))| json!({ "name": name, "size": size, "uploaded": uploaded })).collect()
+    listed.into_iter().map(|(name, (size, uploaded))| json!({ "name": stem(&name), "size": size, "uploaded": uploaded, "writing": writing.as_deref() == Some(name.as_str()) })).collect()
 }
 
 pub fn multipart(fields: &[(&str, String)], file_name: &str, file: &[u8]) -> Vec<u8> {
@@ -131,16 +151,37 @@ fn send(path: &Path, feedback: &str) -> Result<(), String> {
     }
 }
 
+fn upload_one(folder: &Path, name: &str, feedback: &str) -> Result<(), String> {
+    {
+        let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
+        uploads.current = Some(stem(name));
+        uploads.progress = 0.0;
+    }
+    let path = folder.join(name);
+    send(&path, feedback)?;
+    match flag("deleteAfterUpload") {
+        true => {
+            let _ = std::fs::remove_file(&path);
+        }
+        false => {
+            let _ = std::fs::write(uploaded_marker(&path), b"");
+        }
+    }
+    Ok(())
+}
+
 fn upload(names: Vec<String>) -> Result<(), String> {
     if text("emailAddress").is_empty() {
         return Err("Please enter an email address before uploading MAVLink log files.".to_string());
     }
     let folder = folder().ok_or("There is no log folder.")?;
+    let names: Vec<String> = names.iter().map(|name| file_of(name)).filter(|name| !uploaded_marker(&folder.join(name)).exists()).collect();
     let cancel = Arc::new(AtomicBool::new(false));
     let feedback = {
         let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
         if uploads.running {
-            return Err("An upload is already running.".to_string());
+            uploads.pending.extend(names);
+            return Ok(());
         }
         uploads.running = true;
         uploads.message = None;
@@ -148,29 +189,18 @@ fn upload(names: Vec<String>) -> Result<(), String> {
         uploads.feedback.clone()
     };
     std::thread::spawn(move || {
-        let outcome = names.iter().take_while(|_| !cancel.load(Ordering::Relaxed)).try_for_each(|name| {
-            {
-                let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
-                uploads.current = Some(name.clone());
-                uploads.progress = 0.0;
-            }
-            let path = folder.join(name);
-            send(&path, &feedback)?;
-            match flag("deleteAfterUpload") {
-                true => {
-                    let _ = std::fs::remove_file(&path);
-                }
-                false => {
-                    let _ = std::fs::write(uploaded_marker(&path), b"");
-                }
-            }
-            Ok::<(), String>(())
-        });
-        let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
-        uploads.running = false;
-        uploads.current = None;
-        uploads.cancel = None;
-        uploads.message = outcome.err();
+        let failures: Vec<String> = names.iter().take_while(|_| !cancel.load(Ordering::Relaxed)).filter_map(|name| upload_one(&folder, name, &feedback).err()).collect();
+        let pending = {
+            let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
+            uploads.running = false;
+            uploads.current = None;
+            uploads.cancel = None;
+            uploads.message = (!failures.is_empty()).then(|| failures.join("\n"));
+            std::mem::take(&mut uploads.pending)
+        };
+        if !pending.is_empty() {
+            let _ = upload(pending);
+        }
     });
     Ok(())
 }
@@ -178,6 +208,7 @@ fn upload(names: Vec<String>) -> Result<(), String> {
 pub fn tick() {
     let state = crate::hub::lock().active().map(|vehicle| vehicle.log_snapshot());
     let running = state.as_ref().and_then(|s| s["running"].as_bool()).unwrap_or(false);
+    let failed = state.as_ref().is_some_and(|s| !s["error"].is_null());
     let file = state.as_ref().and_then(|s| s["file"].as_str().map(str::to_string));
     let finished = {
         let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -185,7 +216,7 @@ pub fn tick() {
         uploads.was_running = running.then(|| file.clone()).flatten();
         was.filter(|_| !running)
     };
-    if let Some(done) = finished.filter(|_| flag("enableAutoUpload")) {
+    if let Some(done) = finished.filter(|done| flag("enableAutoUpload") && !failed && Path::new(done).exists()) {
         let name = Path::new(&done).file_name().unwrap_or_default().to_string_lossy().into_owned();
         let _ = upload(vec![name]);
     }
@@ -208,7 +239,7 @@ pub fn mavlink_log_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         "vehiclePx4": px4,
         "logRunning": running,
         "canStartLog": px4 && !running && !denied,
-        "persistence": !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false),
+        "persistence": persistence(),
         "settings": Value::Object(texts.into_iter().chain(flags).chain([("feedback".to_string(), json!(uploads.feedback))]).collect()),
         "files": files(),
         "uploading": uploads.running,
@@ -242,6 +273,7 @@ fn set(field: &str, value: &Value) -> Result<(), String> {
         .or_else(|| FLAG_KEYS.iter().find(|(f, _, _)| *f == field).map(|(_, k, _)| (*k, value.as_bool().map(|b| b.to_string()))))
         .ok_or_else(|| format!("{field} is not a log transfer setting"))?;
     let (name, text) = (stored.0, stored.1.ok_or("That value does not fit the setting.")?);
+    let text = if field == "uploadURL" && text.trim().is_empty() { DEFAULT_URL.to_string() } else { text };
     crate::settingsstore::written(&key(name), &text);
     if field == "enableAutoStart" {
         configure_hub();
@@ -252,6 +284,7 @@ fn set(field: &str, value: &Value) -> Result<(), String> {
 pub fn run(path: &str, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     match path {
+        MAVLINK_LOG_START if !persistence() => json!({ "ok": false, "reason": "MAVLink logging is off while all persistence is disabled." }),
         MAVLINK_LOG_START | MAVLINK_LOG_STOP => {
             configure_hub();
             let request = json!({ "action": if path == MAVLINK_LOG_START { "start" } else { "stop" } });
@@ -266,7 +299,7 @@ pub fn run(path: &str, args: &str) -> Value {
         MAVLINK_LOG_UPLOAD => outcome(upload(names(&given))),
         MAVLINK_LOG_DELETE => {
             let folder = folder();
-            names(&given).iter().filter_map(|name| folder.as_ref().map(|f| f.join(name))).for_each(|path| {
+            names(&given).iter().filter_map(|name| folder.as_ref().map(|f| f.join(file_of(name)))).for_each(|path| {
                 let _ = std::fs::remove_file(uploaded_marker(&path));
                 let _ = std::fs::remove_file(&path);
             });

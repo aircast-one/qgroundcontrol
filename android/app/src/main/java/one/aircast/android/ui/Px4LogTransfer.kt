@@ -52,7 +52,7 @@ internal val FLIGHT_RATINGS = listOf(
     "Great" to "great",
 )
 
-internal data class LogFile(val name: String, val size: Long, val uploaded: Boolean)
+internal data class LogFile(val name: String, val size: Long, val uploaded: Boolean, val writing: Boolean = false)
 
 internal data class MavlinkLog(
     val px4: Boolean,
@@ -75,7 +75,7 @@ internal fun mavlinkLog(view: JSONObject?): MavlinkLog? = view?.let {
         persistence = it.optBoolean("persistence", true),
         settings = it.optJSONObject("settings") ?: JSONObject(),
         files = (0 until (listed?.length() ?: 0)).mapNotNull { index -> listed?.optJSONObject(index) }.map { file ->
-            LogFile(file.optText("name"), file.optLong("size"), file.optBoolean("uploaded"))
+            LogFile(file.optText("name"), file.optLong("size"), file.optBoolean("uploaded"), file.optBoolean("writing"))
         },
         uploading = it.optBoolean("uploading"),
         uploadingFile = it.optText("uploadingFile"),
@@ -142,7 +142,7 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(
                     checked = file.name in selected,
-                    enabled = !uploadingThis,
+                    enabled = !uploadingThis && !file.writing,
                     onCheckedChange = { selected = if (it) selected + file.name else selected - file.name },
                 )
                 Text(file.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
