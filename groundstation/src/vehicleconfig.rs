@@ -627,6 +627,18 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
     decoded
 }
 
+fn listed_values(mut row: Value, control: &Value, fact: &Value) -> Value {
+    let Some(entries) = control["enumValues"].as_array() else {
+        return row;
+    };
+    let raw = fact.get("rawValue").or(fact.get("value")).cloned().unwrap_or(Value::Null);
+    let chosen = entries.iter().find(|e| e["value"].as_f64().is_some_and(|v| raw.as_f64() == Some(v))).or(entries.first());
+    row["control"] = json!("choice");
+    row["options"] = entries.iter().map(|e| json!({ "label": e["label"], "raw": crate::control::raw_text(&e["value"]) })).collect();
+    row["display"] = chosen.map_or(Value::Null, |e| e["label"].clone());
+    row
+}
+
 fn rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Value> {
     let calculator = (control["control"] == "dialogButton")
         .then(|| {
@@ -729,7 +741,7 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
         }
         ("factslider", Some(fact)) if control.get("linkedParams").is_some() => vec![labelled(decode(&fact, &path), control, enabled)],
         (_, Some(fact)) => {
-            let row = labelled(decode(&fact, &fact_path), control, enabled);
+            let row = listed_values(labelled(decode(&fact, &fact_path), control, enabled), control, &fact);
             match control.get("enableCheckbox") {
                 None => vec![row],
                 Some(toggle) => {
@@ -982,6 +994,26 @@ mod tests {
         assert_eq!(labelled(json!({}), &json!({ "control": "bitmask" }), true)["firstEntryIsAll"], Value::Null);
     }
     use std::cell::RefCell;
+
+    #[test]
+    fn ekf3_logging_lists_the_four_choices_the_config_names() {
+        let fake = Fake::new(&[("EK3_LOG_LEVEL", 2.0)]);
+        let served = page(&fake, "Logging", false);
+        let row = served["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).find(|r| r["name"] == "EK3_LOG_LEVEL").unwrap();
+        assert_eq!(row["control"], "choice");
+        let labels: Vec<&str> = row["options"].as_array().unwrap().iter().filter_map(|o| o["label"].as_str()).collect();
+        assert_eq!(labels, ["Full logging", "XKF4 scaled innovations only", "XKF4 and GSF", "Disabled"]);
+        assert_eq!(row["options"][3]["raw"], "3");
+        assert_eq!(row["display"], "XKF4 and GSF");
+        assert_eq!(row["label"], "EKF3 logging verbosity");
+    }
+
+    #[test]
+    fn a_value_off_the_list_shows_the_first_entry_as_the_combo_does() {
+        let row = listed_values(json!({}), &json!({ "enumValues": [{ "value": 0, "label": "A" }, { "value": 1, "label": "B" }] }), &json!({ "rawValue": 9 }));
+        assert_eq!(row["display"], "A");
+        assert_eq!(listed_values(json!({ "control": "number" }), &json!({}), &json!({}))["control"], "number");
+    }
 
     struct Fake {
         params: RefCell<BTreeMap<String, f64>>,
