@@ -541,6 +541,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
         "commandDescription": SETTINGS_NAME,
         "isCurrentItem": selected == 0,
         "coordinate": { "latitude": home[0], "longitude": home[1], "altitude": home[2], "valid": doc.home.is_some() },
+        "specifiedGimbalYaw": sections_gimbal_yaw(&doc.settings_sections),
         "exitCoordinateSameAsEntry": true,
         "amslEntryAlt": home[2],
         "minAMSLAltitude": home[2],
@@ -639,7 +640,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                 "facts": altitude_fact("altitude", altitude.map_or(0.0, |a| a.altitude)),
                 "additionalTimeDelay": match s.command { 16 | 112 | 93 => s.params[0].unwrap_or(0.0), _ => 0.0 },
                 "specifiedVehicleYaw": if s.command == 16 { s.params[3] } else { None },
-                "specifiedGimbalYaw": s.sections.iter().find(|section| section.command == MOUNT_CONTROL).map_or(if s.command == MOUNT_CONTROL { s.params[2] } else { None }, |section| section.params[2]),
+                "specifiedGimbalYaw": sections_gimbal_yaw(&s.sections).or_else(|| mount_gimbal_yaw(s)),
                 "altDifference": leg.alt_difference,
                 "azimuth": leg.azimuth,
                 "distance": leg.distance,
@@ -658,7 +659,16 @@ fn spot(read: &Value, key: &str) -> Option<(f64, f64)> {
 }
 
 const MOUNT_CONTROL: i64 = 205;
-const GIMBAL_CLEARING: [i64; 4] = [201, 195, 196, 1000];
+const GIMBAL_CLEARING: [i64; 4] = [80, 195, 196, 1000];
+const MOUNT_MODE_MAVLINK_TARGETING: f64 = 2.0;
+
+fn mount_gimbal_yaw(item: &crate::plandoc::Simple) -> Option<f64> {
+    (item.command == MOUNT_CONTROL && item.params[6] == Some(MOUNT_MODE_MAVLINK_TARGETING)).then_some(item.params[2]).flatten()
+}
+
+fn sections_gimbal_yaw(sections: &[crate::plandoc::Simple]) -> Option<f64> {
+    sections.iter().find_map(mount_gimbal_yaw)
+}
 
 fn with_gimbal_yaws(reads: Vec<Value>, only_when_set: bool) -> Vec<Value> {
     reads
@@ -2074,9 +2084,17 @@ mod reported {
 
 
     #[test]
+    fn only_a_mavlink_targeting_mount_control_names_a_gimbal_yaw() {
+        let mount = |mode: f64| crate::plandoc::Simple { command: MOUNT_CONTROL, frame: 2, params: [Some(-45.0), Some(0.0), Some(30.0), Some(0.0), Some(0.0), Some(0.0), Some(mode)], auto_continue: true, altitude: None, sections: Vec::new() };
+        assert_eq!(mount_gimbal_yaw(&mount(2.0)), Some(30.0), "MissionItem::specifiedGimbalYaw");
+        assert_eq!(mount_gimbal_yaw(&mount(0.0)), None, "a retract is not aiming anywhere");
+        assert_eq!(sections_gimbal_yaw(&[mount(0.0), mount(2.0)]), Some(30.0));
+    }
+
+    #[test]
     fn gimbal_yaw_carries_from_item_to_item_until_an_roi_clears_it() {
         let item = |command: i64, gimbal: Option<f64>| json!({ "command": command, "specifiedGimbalYaw": gimbal });
-        let reads = vec![item(16, None), item(16, Some(30.0)), item(16, None), item(201, None), item(16, None)];
+        let reads = vec![item(16, None), item(16, Some(30.0)), item(16, None), item(80, None), item(16, None)];
         let carried: Vec<Value> = with_gimbal_yaws(reads.clone(), false).iter().map(|r| r["missionGimbalYaw"].clone()).collect();
         assert_eq!(carried, [Value::Null, json!(30.0), json!(30.0), Value::Null, Value::Null], "MissionFlightStatusCalculator: a set yaw carries on, an ROI clears it");
         let strict: Vec<Value> = with_gimbal_yaws(reads, true).iter().map(|r| r["missionGimbalYaw"].clone()).collect();
