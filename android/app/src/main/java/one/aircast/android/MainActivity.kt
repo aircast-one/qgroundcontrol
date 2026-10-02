@@ -74,7 +74,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import android.app.Activity
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
 import kotlinx.coroutines.Dispatchers
@@ -314,7 +313,7 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
 
-    val darkBars = isSystemInDarkTheme()
+    val darkBars = one.aircast.android.ui.appDarkTheme()
     val view = LocalView.current
     SideEffect {
         (view.context as? Activity)?.window?.let { window ->
@@ -330,7 +329,7 @@ fun AircastShell(hostView: android.view.View?) {
     LaunchedEffect(fullScreen) { if (!fullScreen) videoFullScreen = false }
     BackHandler(enabled = fullScreen) { videoFullScreen = false }
 
-    AircastTheme {
+    AircastTheme(dark = darkBars) {
         if (fullScreen) {
             Box(Modifier.fillMaxSize()) { flyVideo(Modifier.fillMaxSize(), true) }
             return@AircastTheme
