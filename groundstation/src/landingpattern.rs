@@ -21,7 +21,7 @@ pub fn land_start_has_coordinate(firmware_type: i64, vehicle_type: i64) -> bool 
 
 pub fn notes(vtol: bool) -> Vec<&'static str> {
     match vtol {
-        true => vec!["* Actual flight path will vary.", "* Avoid tailwind on approach to land."],
+        true => vec!["* Actual flight path will vary.", "* Avoid tailwind on approach to land.", "* Ensure landing distance is enough to complete transition."],
         false => vec!["* Approximate glide slope altitudes.", "* Actual flight path will vary.", "* Avoid tailwind on landing."],
     }
 }
@@ -481,7 +481,7 @@ mod tests {
     #[test]
     fn landing_editors_carry_their_own_notes() {
         assert_eq!(notes(false), ["* Approximate glide slope altitudes.", "* Actual flight path will vary.", "* Avoid tailwind on landing."], "FWLandingPatternEditor");
-        assert_eq!(notes(true), ["* Actual flight path will vary.", "* Avoid tailwind on approach to land."], "VTOLLandingPatternEditor");
+        assert_eq!(notes(true), ["* Actual flight path will vary.", "* Avoid tailwind on approach to land.", "* Ensure landing distance is enough to complete transition."], "VTOLLandingPatternEditor");
     }
 
     #[test]
