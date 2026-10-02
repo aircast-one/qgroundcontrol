@@ -4938,6 +4938,20 @@ mod tests {
     }
 
     #[test]
+    fn set_mode_and_arm_arms_only_once_the_vehicle_reports_the_mode() {
+        use mavlink::dialects::ardupilotmega::MavCmd;
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let started = hub.guided(None, &json!({ "action": "setModeAndArm", "mode": "Guided" }), 1_000).unwrap();
+        let MavMessage::COMMAND_LONG(set_mode) = decode(&started[0].1) else { panic!() };
+        assert_eq!((started.len(), set_mode.command, set_mode.param2), (1, MavCmd::MAV_CMD_DO_SET_MODE, 4.0), "no arm before the mode is reported");
+        let in_mode = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(4, false), 2_000_000, 2000);
+        let arming: Vec<(MavCmd, f32)> = in_mode.iter().filter_map(|(_, bytes)| match decode(bytes) { MavMessage::COMMAND_LONG(c) => Some((c.command, c.param1)), _ => None }).collect();
+        assert!(arming.contains(&(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0)), "{arming:?}");
+    }
+
+    #[test]
     #[allow(deprecated)]
     fn a_guided_takeoff_runs_through_the_hub_and_sends_on_the_vehicle_link() {
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, GLOBAL_POSITION_INT_DATA, MavCmd, MavResult};
