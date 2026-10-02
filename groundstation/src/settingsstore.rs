@@ -97,6 +97,7 @@ pub fn hidden_on_this_platform(group: &str, fact: &str) -> bool {
     match (group, fact) {
         ("App", "androidDontSaveToSDCard") => !cfg!(target_os = "android"),
         ("App", "androidUsePosixSerial") => true,
+        ("App", "savePath") => cfg!(any(target_os = "android", target_os = "ios")),
         ("Viewer3D", "enabled") => cfg!(target_os = "android"),
         _ => false,
     }

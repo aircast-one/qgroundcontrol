@@ -4,7 +4,8 @@ use crate::control::decode;
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", "video.autoStreamConfigured"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", "video.autoStreamConfigured", PERSISTENCE_OFF];
+const PERSISTENCE_OFF: &str = "settings.appSettings.disableAllPersistence";
 
 struct Page {
     title: &'static str,
@@ -103,6 +104,8 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("diskLoggingMaxFileSizeMB", "diskLoggingEnabled", true, DISK_LOGGING_OFF),
     ("diskLoggingMaxBackupFiles", "diskLoggingEnabled", true, DISK_LOGGING_OFF),
     ("enforceChecklist", "useChecklist", true, CHECKLIST_OFF),
+    ("virtualJoystickAutoCenterThrottle", "virtualJoystick", true, VIRTUAL_JOYSTICK_OFF),
+    ("virtualJoystickLeftHandedMode", "virtualJoystick", true, VIRTUAL_JOYSTICK_OFF),
     ("ntripServerHostAddress", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
     ("ntripServerPort", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
     ("ntripUsername", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
@@ -128,6 +131,9 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("streamRateExtra2", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
     ("streamRateExtra3", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
 ];
+
+const LOGGING_ROWS: [&str; 3] = ["telemetrySave", "telemetrySaveNotArmed", "saveCsvTelemetry"];
+const VIRTUAL_JOYSTICK_OFF: &str = "Has no effect while the virtual joystick is off.";
 
 const DISK_LOGGING_OFF: &str = "Writing the log to disk is off";
 
@@ -256,9 +262,11 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
         let source = facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some("videoSource")).and_then(|f| f.get("value")).and_then(Value::as_str).unwrap_or_default().to_string();
         (source, flag(&manager, "isStreamSource"), flag(&manager, "autoStreamConfigured"))
     });
+    let persistence_off = group == "mavlinkSettings" && object(&backend.get(PERSISTENCE_OFF)).get("value").and_then(Value::as_bool) == Some(true);
     let shown: Vec<Value> = facts
         .iter()
         .filter(|f| f.get("visible").and_then(Value::as_bool) != Some(false))
+        .filter(|f| !(persistence_off && f.get("name").and_then(Value::as_str).is_some_and(|n| LOGGING_ROWS.contains(&n))))
         .filter(|f| video.as_ref().is_none_or(|(source, stream, auto)| video_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), source, *stream, *auto)))
         .filter(|f| {
             let named = f.get("name").and_then(Value::as_str).unwrap_or_default();
