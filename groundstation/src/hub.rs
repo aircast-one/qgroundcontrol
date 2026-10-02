@@ -3559,7 +3559,7 @@ impl Hub {
                 if origin.v2 {
                     vehicle.max_proto_version = Some(PROTO_MAVLINK2);
                 }
-                bytes.extend(crate::gcsheartbeat::wanted().then(|| crate::mavout::encode_next(&crate::mavout::Outbound::GcsHeartbeat)).flatten());
+                bytes.extend((crate::gcsheartbeat::wanted() && !vehicle.commands.high_latency).then(|| crate::mavout::encode_next(&crate::mavout::Outbound::GcsHeartbeat)).flatten());
                 bytes.extend(vehicle.begin_connect(now_ms));
                 if header.system_id == crate::mavout::gcs_system() {
                     crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, &format!("Warning: A vehicle is using the same system id as {}: {}", crate::noticeboard::application_name(), header.system_id));

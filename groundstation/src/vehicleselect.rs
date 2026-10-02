@@ -86,7 +86,11 @@ pub fn fleet_arm(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let Some(index) = fleet_arm_index(path) else {
         return json!({ "ok": false, "refusal": "malformed", "reason": "That is not a fleet arm the core sends." });
     };
-    let arm = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(|v| v.as_bool().or_else(|| v.as_str().map(|t| t == "true")))).unwrap_or(false);
+    let given = serde_json::from_str::<Value>(value).unwrap_or(Value::Null);
+    let truth = |v: &Value| v.as_bool().or_else(|| v.as_i64().map(|n| n != 0)).or_else(|| v.as_str().and_then(|t| t.parse::<bool>().ok()));
+    let Some(arm) = given.get("value").and_then(truth).or_else(|| truth(&given)) else {
+        return json!({ "ok": false, "refusal": "malformed", "reason": "Arming needs true or false." });
+    };
     let id = integer(&object(&backend.get_fields(&format!("{FLEET_SELECTION}{index}"), "id")), "id");
     let Some(id) = id else {
         return json!({ "ok": false, "refusal": "noSuchVehicle", "reason": "No vehicle is selected at that position." });
@@ -137,6 +141,18 @@ mod tests {
         assert_eq!(deselect_all(&deaf, PATH)["ok"], false, "the count is read back, since a dispatched void call is not a cleared selection");
     }
 
+    fn one_arm() -> impl Backend {
+        struct Armable;
+        impl Backend for Armable {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "id": 7 }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { json!({ "ok": true }).to_string() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        Armable
+    }
+
     #[test]
     fn a_fleet_command_reaches_only_a_vehicle_that_can_take_it() {
         assert_eq!(fleet_target("vehicles.selectedVehicles.2.pauseVehicle"), Some((2, FleetCommand::Pause)));
@@ -149,6 +165,7 @@ mod tests {
         assert_eq!(fleet_refusal(FleetCommand::StartMission, &on_mission, true), None, "actionMVStartMission starts every armed vehicle, even one already on its mission");
         assert_eq!(fleet_refusal(FleetCommand::Pause, &json!({ "kind": "object", "armed": false }), true), None, "actionMVPause pauses every selected vehicle");
         assert_eq!(fleet_arm_index("vehicles.selectedVehicles.2.armed"), Some(2));
+        assert_eq!(fleet_arm(&one_arm(), "vehicles.selectedVehicles.0.armed", "garbage")["refusal"], "malformed", "an unreadable value never becomes a disarm");
         assert_eq!(fleet_refusal(FleetCommand::StartMission, &json!({ "kind": "object", "armed": false }), true).map(|r| r.0), Some("disarmed"));
         assert_eq!(fleet_refusal(FleetCommand::Pause, &json!({ "kind": "null" }), true).map(|r| r.0), Some("noSuchVehicle"), "a vehicle dropping off renumbers the selection");
 
