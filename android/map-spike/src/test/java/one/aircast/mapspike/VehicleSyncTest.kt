@@ -86,4 +86,13 @@ class UploadGateTest {
         assertTrue(uploadStep(null) is UploadStep.Refuse)
         assertTrue(uploadStep(uploadGate(org.json.JSONObject("{}"))) is UploadStep.Refuse)
     }
+
+    @Test
+    fun `upload label follows PlanToolBarIndicators`() {
+        assertEquals("Uploading…", uploadLabel(offline = false, syncing = true, dirty = false, hasItems = true))
+        assertEquals("✓ Uploaded", uploadLabel(offline = false, syncing = false, dirty = false, hasItems = true))
+        assertEquals("Upload", uploadLabel(offline = false, syncing = false, dirty = true, hasItems = true))
+        assertEquals("Upload", uploadLabel(offline = true, syncing = false, dirty = false, hasItems = true))
+        assertEquals("Upload", uploadLabel(offline = false, syncing = false, dirty = false, hasItems = false))
+    }
 }

@@ -230,7 +230,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Icon(painterResource(R.drawable.ic_upload), null, Modifier.size(20.dp))
-                                    Text("Upload", style = MaterialTheme.typography.labelLarge)
+                                    Text(upload.label, style = MaterialTheme.typography.labelLarge)
                                 }
                             }
                         }

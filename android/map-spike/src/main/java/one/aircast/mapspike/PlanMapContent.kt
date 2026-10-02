@@ -134,7 +134,7 @@ private fun GroupBreak() {
     )
 }
 
-class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val onClick: () -> Unit)
+class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: String, val onClick: () -> Unit)
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -255,7 +255,6 @@ internal fun MapSpikeScreen(
     val planHasItems = remember(planStatus) { planStatus?.optBoolean("containsItems") == true }
     val planOffline = remember(planStatus) { planStatus?.optBoolean("offline") == true }
     val planDirty = remember(planStatus) { planStatus?.optBoolean("dirty") == true }
-    // view.plan's sync state is offline, busy or ready; "syncing" was never sent.
     val planSyncing = remember(planStatus) {
         planStatus?.optJSONObject("sync")?.optText("state") == "busy"
     }
@@ -401,7 +400,9 @@ internal fun MapSpikeScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-    header?.invoke(PlanUpload(enabled = planHasItems, emphasised = !uploadBlocked, onClick = upload))
+    val uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems)
+    val uploadEnabled = planHasItems && !planOffline && !planSyncing
+    header?.invoke(PlanUpload(enabled = uploadEnabled, emphasised = !uploadBlocked, label = uploadText, onClick = upload))
     Box(Modifier.fillMaxWidth().weight(1f)) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
@@ -615,7 +616,7 @@ internal fun MapSpikeScreen(
                     }) { Text(if (loadArmed) "Discard & download" else "Download") }
 
                     if (header == null) {
-                        PlanUploadButton(emphasised = !uploadBlocked, enabled = planHasItems, onClick = upload, contentPadding = PRIMARY_PADDING) { Text("Upload") }
+                        PlanUploadButton(emphasised = !uploadBlocked, enabled = uploadEnabled, onClick = upload, contentPadding = PRIMARY_PADDING) { Text(uploadText) }
                     }
 
                     uploadAsk?.let { gate ->
