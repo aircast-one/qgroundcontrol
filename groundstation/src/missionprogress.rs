@@ -25,11 +25,10 @@ pub fn fraction(progress: &Progress) -> f64 {
     (progress.current as f64 / progress.last.max(1) as f64).clamp(0.0, 1.0)
 }
 
-fn last_sequence(backend: &dyn Backend) -> i64 {
+pub fn last_sequence(backend: &dyn Backend) -> i64 {
     let count = integer(&object(&backend.get("planFly.missionController.visualItems.count")), "value").unwrap_or(0);
     (count > 0)
-        .then(|| integer(&object(&backend.get_fields(&format!("planFly.missionController.visualItems.{}", count - 1), "lastSequenceNumber")), "lastSequenceNumber"))
-        .flatten()
+        .then(|| integer(&object(&backend.get_fields(&format!("planFly.missionController.visualItems.{}", count - 1), "lastSequenceNumber")), "lastSequenceNumber").unwrap_or(count - 1))
         .unwrap_or(0)
 }
 
@@ -58,6 +57,25 @@ pub fn mission_progress_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_core_fly_mission_counts_home_so_its_last_sequence_is_count_less_one() {
+        struct Core;
+        impl Backend for Core {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "planFly.missionController.visualItems.count" => json!({ "kind": "value", "value": 4 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(last_sequence(&Core), 3, "home plus three waypoints, and the core serves no visual items to read a lastSequenceNumber from");
+    }
 
     #[test]
     fn the_card_shows_only_while_armed_on_a_mission_with_items_left() {

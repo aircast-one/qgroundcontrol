@@ -46,15 +46,15 @@ internal fun missionProgressLine(progress: MissionProgress): String =
 fun MissionProgressCard(modifier: Modifier = Modifier) {
     val view by qgcPath(MISSION_PROGRESS)
     val progress = missionProgress(view) ?: return
-    var skipping by remember { mutableStateOf(false) }
+    var skipTarget by remember { mutableStateOf<Int?>(null) }
     Surface(modifier.widthIn(max = CARD_MAX_WIDTH), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
         Column(Modifier.padding(AircastSpace.s3), verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(missionProgressLine(progress), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-                progress.skipTo?.let { TextButton(onClick = { skipping = true }) { Text("Skip") } }
+                progress.skipTo?.let { next -> TextButton(onClick = { skipTarget = next }) { Text("Skip") } }
             }
             LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth())
         }
     }
-    progress.skipTo?.takeIf { skipping }?.let { next -> SetWaypointSheet(next) { skipping = false } }
+    skipTarget?.let { next -> SetWaypointSheet(next) { skipTarget = null } }
 }
