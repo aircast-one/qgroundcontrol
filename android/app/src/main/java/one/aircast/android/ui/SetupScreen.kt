@@ -52,20 +52,40 @@ internal data class SetupComponent(
     val index: Int,
     val name: String,
     val known: String? = null,
+    val className: String = "",
     val needsAttention: Boolean,
     val blockedReason: String? = null,
     val prerequisite: String? = null,
 )
 
-internal fun setupIcon(known: String?): Int = when (known) {
+internal fun setupIcon(known: String?, className: String = ""): Int = when (known) {
     "radio", "joystick" -> R.drawable.ic_gamepad
     "flightModes" -> R.drawable.ic_toggle_on
     "sensors" -> R.drawable.ic_sensors
     "safety" -> R.drawable.ic_shield
     "power" -> R.drawable.ic_bolt
     "esc" -> R.drawable.ic_tune
-    else -> R.drawable.ic_build
+    else -> COMPONENT_ICONS.entries.firstOrNull { (token, _) -> token in className }?.value ?: R.drawable.ic_build
 }
+
+private val COMPONENT_ICONS = linkedMapOf(
+    "Failsafe" to R.drawable.ic_warning,
+    "Airframe" to R.drawable.ic_flight,
+    "SubFrame" to R.drawable.ic_flight,
+    "Gimbal" to R.drawable.ic_photo_camera,
+    "Logging" to R.drawable.ic_description,
+    "Motor" to R.drawable.ic_speed,
+    "RemoteSupport" to R.drawable.ic_link,
+    "Scripting" to R.drawable.ic_terminal,
+    "Tuning" to R.drawable.ic_tune,
+    "Actuator" to R.drawable.ic_speed,
+    "Servo" to R.drawable.ic_tune,
+    "Follow" to R.drawable.ic_my_location,
+    "Airspeed" to R.drawable.ic_speed,
+    "Lights" to R.drawable.ic_bolt,
+    "ESP8266" to R.drawable.ic_wifi,
+    "Syslink" to R.drawable.ic_wifi,
+)
 
 internal fun prerequisiteText(first: String, wanted: String): String = "$first has to be set up before $wanted."
 
@@ -122,6 +142,7 @@ internal fun setupComponents(view: JSONObject?): List<SetupComponent> {
             index = index,
             name = name,
             known = element.optText("known").takeIf { !element.isNull("known") && it.isNotBlank() },
+            className = element.optText("className"),
             needsAttention = element.optBoolean("needsAttention"),
             blockedReason = element.optText("blockedReason")
                 .takeIf { !element.isNull("blockedReason") && it.isNotBlank() },
@@ -236,7 +257,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 )
                 first != null -> androidx.compose.foundation.layout.Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     val firstComponent = setupComponents(setupJson).firstOrNull { it.name == first }
-                    EmptyState(setupIcon(firstComponent?.known), "$first first", prerequisiteText(first, open.name))
+                    EmptyState(setupIcon(firstComponent?.known, firstComponent?.className.orEmpty()), "$first first", prerequisiteText(first, open.name))
                     androidx.compose.material3.Button(onClick = {
                         openComponent = setupComponents(setupJson).firstOrNull { it.name == first }
                     }) { Text("Set Up $first") }
@@ -325,7 +346,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     },
                     selected = component == openComponent,
                     summary = summaries[component.name].orEmpty(),
-                    icon = setupIcon(component.known),
+                    icon = setupIcon(component.known, component.className),
                 )
             }
         }
@@ -362,7 +383,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     },
                     selected = component == openComponent,
                     summary = summaries[component.name].orEmpty(),
-                    icon = setupIcon(component.known),
+                    icon = setupIcon(component.known, component.className),
                 )
             }
         }
