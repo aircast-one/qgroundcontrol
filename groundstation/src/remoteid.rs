@@ -76,13 +76,8 @@ pub struct Settings {
     pub class_eu: u32,
 }
 
-pub fn operator_id_good(settings: &Settings) -> (bool, Option<String>) {
-    if settings.region == REGION_EU {
-        let good = settings.operator_id_valid && eu_operator_id_valid(&settings.operator_id);
-        (good, good.then(|| settings.operator_id.chars().take(16).collect()))
-    } else {
-        (!settings.operator_id.is_empty() && settings.operator_id_type >= 0, None)
-    }
+pub fn operator_id_good(settings: &Settings) -> bool {
+    !settings.operator_id.is_empty()
 }
 
 pub fn gcs_basic_id_valid(settings: &Settings) -> bool {
@@ -207,13 +202,7 @@ impl RemoteId {
                 if inside { ((settings.latitude_fixed, settings.longitude_fixed, settings.altitude_fixed), true) } else { ((0.0, 0.0, 0.0), false) }
             }
             _ if !gcs.valid => ((gcs.latitude, gcs.longitude, gcs.altitude), false),
-            _ if settings.region == REGION_FAA && !gcs.altitude.is_finite() => {
-                if self.gcs_gps_good {
-                    self.gcs_gps_good = false;
-                    out.push(Out::GcsGpsGood(false));
-                }
-                return (Vec::new(), out);
-            }
+            _ if settings.region == REGION_FAA && !gcs.altitude.is_finite() => ((gcs.latitude, gcs.longitude, gcs.altitude), false),
             _ => ((gcs.latitude, gcs.longitude, gcs.altitude), gcs.age_ms <= ALLOWED_GPS_DELAY_MS),
         };
         if good != self.gcs_gps_good {
@@ -239,8 +228,7 @@ impl RemoteId {
         if settings.send_self_id || self.emergency || self.enforce_self_id {
             messages.push(Message::SelfId { description_type: if self.emergency { SELF_ID_EMERGENCY } else { settings.self_id_type as u32 }, description: self_id_description(settings, self.emergency) });
         }
-        let (operator_good, _) = operator_id_good(settings);
-        if (settings.send_operator_id || settings.region == REGION_EU) && operator_good {
+        if (settings.send_operator_id || settings.region == REGION_EU) && operator_id_good(settings) {
             messages.push(Message::OperatorId { id_type: settings.operator_id_type as u32, operator_id: settings.operator_id.chars().take(20).collect() });
         }
         (messages, out)
@@ -266,12 +254,9 @@ mod tests {
         assert!(!eu_operator_id_valid(&format!("fin{number}{check}-{secret}")));
         assert!(!eu_operator_id_valid(&format!("FIN{number}0-{secret}")) || check == '0');
         assert!(!eu_operator_id_valid("FIN123"));
-        let stale = Settings { region: REGION_EU, operator_id: format!("FIN{number}0-{secret}"), operator_id_valid: true, ..settings() };
-        assert!(!operator_id_good(&stale).0 || check == '0', "the stored valid flag is a checkbox the operator can leave behind after editing the id, so the checksum decides too");
-        let eu = Settings { region: REGION_EU, operator_id: dashed.clone(), operator_id_valid: true, ..settings() };
-        assert_eq!(operator_id_good(&eu), (true, Some(dashed.chars().take(16).collect())));
-        assert_eq!(operator_id_good(&Settings { operator_id: String::new(), ..settings() }), (false, None));
-        assert_eq!(operator_id_good(&settings()), (true, None));
+        let stored = Settings { region: REGION_EU, operator_id: dashed.chars().take(16).collect(), operator_id_valid: false, ..settings() };
+        assert!(operator_id_good(&stored), "only the public 16 characters are stored, so presence is the test, as _updateOperatorIDValidForRegion uses");
+        assert!(!operator_id_good(&Settings { operator_id: String::new(), ..settings() }));
     }
 
     #[test]
@@ -309,9 +294,10 @@ mod tests {
         assert!(matches!(messages[0], Message::System { gps_good: false, .. }));
         let mut faa = RemoteId { gcs_gps_good: true, ..Default::default() };
         let (messages, out) = faa.messages(&settings(), GcsFix { altitude: f64::NAN, ..fresh }, EPOCH_2019_S);
-        assert!(messages.is_empty() && out == vec![Out::GcsGpsGood(false)]);
+        assert!(matches!(messages[0], Message::System { gps_good: false, latitude: UNKNOWN_LAT, .. }) && out == vec![Out::GcsGpsGood(false)], "RemoteIDManager::_sendMessages always sends SYSTEM, with an unknown position when the FAA fix has no altitude");
+        assert!(messages.iter().any(|m| matches!(m, Message::BasicId { .. })), "and the rest of the set still goes out");
         let (again, out) = faa.messages(&settings(), GcsFix { altitude: f64::NAN, ..fresh }, EPOCH_2019_S);
-        assert!(again.is_empty() && out.is_empty(), "a fix with no altitude stays not good in the FAA region instead of going out on the next tick");
+        assert!(matches!(again[0], Message::System { gps_good: false, .. }) && out.is_empty(), "a fix with no altitude stays not good in the FAA region instead of going out on the next tick");
         let (below_sea, _) = faa.messages(&settings(), GcsFix { altitude: -5.0, ..fresh }, EPOCH_2019_S);
         assert!(!below_sea.is_empty(), "a 3D fix below sea level is a 3D fix");
 

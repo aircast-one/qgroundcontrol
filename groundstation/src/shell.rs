@@ -101,9 +101,9 @@ impl Shell {
         }
         let excess = self.lines.len().saturating_sub(MAX_LINES);
         self.lines.drain(..excess);
-        let line = line - excess;
-        self.cursor_y -= excess;
+        self.cursor_y = self.cursor_y.saturating_sub(excess);
         self.home = self.home.and_then(|home| home.checked_sub(excess));
+        let Some(line) = line.checked_sub(excess) else { return };
         let row = &mut self.lines[line];
         if self.cursor_x <= row.len() {
             let end = (self.cursor_x + text.len()).min(row.len());
@@ -123,6 +123,14 @@ mod tests {
         shell.receive(b"nsh> ver\r\nHW arch: PX4\n");
         shell.receive(b"nsh> ");
         assert_eq!(shell.lines(), vec!["nsh> ver\r", "HW arch: PX4", "nsh> "]);
+    }
+
+    #[test]
+    fn homing_after_the_first_rows_scrolled_away_writes_nothing_instead_of_panicking() {
+        let mut shell = Shell::default();
+        shell.receive(&b"line\n".repeat(MAX_LINES + 10));
+        shell.receive(b"\x1b[Hgone");
+        assert_eq!(shell.lines().len(), MAX_LINES, "MAVLinkConsoleController's row -1 is a harmless no-op");
     }
 
     #[test]
