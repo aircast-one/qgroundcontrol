@@ -156,8 +156,8 @@ private fun ParameterRow(name: String, offersRcToParam: Boolean) {
             }
             Text(
                 text = parameterValueText(loaded),
-                style = MaterialTheme.typography.labelLarge,
-                color = if (loaded.changedFromDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (loaded.changedFromDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.End,
