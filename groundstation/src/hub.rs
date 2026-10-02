@@ -3397,7 +3397,7 @@ const STORAGE_RESET_FACTORY: f64 = 3.0;
 const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
 
 const GIMBAL_RATE_REPEAT_MS: u64 = 500;
-const AUTOTUNE_SILENCE_MS: u64 = crate::mavcmd::MAX_RETRY as u64 * crate::mavcmd::ACK_TIMEOUT_MS;
+const AUTOTUNE_SILENCE_MS: u64 = 1_200;
 
 fn sensor_parameter(name: &str) -> bool {
     name.starts_with("CAL_") || name.starts_with("SENS_")

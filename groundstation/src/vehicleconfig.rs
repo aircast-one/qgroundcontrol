@@ -611,6 +611,10 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
         Some("slider") => control["sliderMin"].as_f64().or(decoded["minimum"].as_f64()).zip(control["sliderMax"].as_f64().or(decoded["maximum"].as_f64())),
         _ => None,
     };
+    let range = match (control["sliderInMetres"].as_bool(), crate::units::cooking("m")) {
+        (Some(true), Some(cooked)) => range.map(|(from, to)| ((cooked.shown)(from), (cooked.shown)(to))),
+        _ => range,
+    };
     if let Some((from, to)) = range {
         decoded["slider"] = json!({ "from": from, "to": to, "step": control["majorTickStepSize"].as_f64(), "decimals": control["decimalPlaces"].as_i64() });
     }

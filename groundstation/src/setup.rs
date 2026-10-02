@@ -299,8 +299,10 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), !c.setup_complete)).collect();
     let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);
     let incomplete = parameters_reason == INCOMPLETE;
-    let counted: &[(String, bool)] = if incomplete { &[] } else { &named };
-    let (ready, headline, detail) = readiness(connected, parameters_ready, counted, &faults);
+    let (ready, headline, detail) = match incomplete {
+        true => (None, "Parameters incomplete".to_string(), parameters_text.to_string()),
+        false => readiness(connected, parameters_ready, &named, &faults),
+    };
     let sub_frame = components.iter().any(|c| c.class_name == "APMSubFrameComponent");
     let flow_images = connected && crate::hub::lock().active_id().is_some_and(|id| crate::flowimage::image_index(id) > 0);
     let components: Vec<Component> = if incomplete { Vec::new() } else { components };
@@ -313,7 +315,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "parametersText": parameters_text,
         "firmware": if !connected { "none" } else if px4 { "px4" } else { "apm" },
         "ready": ready,
-        "setupComplete": (connected && parameters_ready).then(|| setup_complete_of(&named)),
+        "setupComplete": (connected && parameters_ready).then(|| incomplete || setup_complete_of(&named)),
         "headline": headline,
         "detail": detail,
         "components": components.iter().map(|c| json!({

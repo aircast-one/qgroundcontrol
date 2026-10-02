@@ -301,8 +301,8 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (
                     InfoLine("Zoom Levels:", set.zoomText)
                     InfoLine("Total:", set.totalText)
                     if (set.uniqueCount > 0) InfoLine("Unique:", set.uniqueText)
-                    InfoLine("Downloaded:", set.downloadedText)
-                    InfoLine("Error Count:", set.errorCountText)
+                    if (!set.complete) InfoLine("Downloaded:", set.downloadedText)
+                    if (!set.complete && set.errorCount > 0) InfoLine("Error Count:", set.errorCountText)
                 }
             }
         },

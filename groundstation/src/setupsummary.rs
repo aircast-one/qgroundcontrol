@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.vtol", "vehicle.airship", "vehicle.rover", "vehicle.sub", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion", "vehicle.firmwareVersionTypeString", "vehicle.gitHash", "vehicle.firmwareCustomMajorVersion", "vehicle.firmwareCustomMinorVersion", "vehicle.firmwareCustomPatchVersion"];
+pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.vtol", "vehicle.airship", "vehicle.vehicleTypeString", "vehicle.rover", "vehicle.sub", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion", "vehicle.firmwareVersionTypeString", "vehicle.gitHash", "vehicle.firmwareCustomMajorVersion", "vehicle.firmwareCustomMinorVersion", "vehicle.firmwareCustomPatchVersion"];
 const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
 const SETUP_REQUIRED: &str = "Setup required";
 const READY: &str = "Ready";
@@ -24,6 +24,7 @@ pub struct Vehicle {
     pub multi_rotor: bool,
     pub fixed_wing: bool,
     pub forward_flight: bool,
+    pub helicopter: bool,
     pub rover: bool,
     pub sub: bool,
     pub version: (i64, i64, i64),
@@ -75,10 +76,10 @@ fn battery_label(index: usize) -> String {
     }
 }
 
-const APM_HELI_FRAME_CLASS: f64 = 6.0;
+const MAV_TYPE_HELICOPTER: u8 = 4;
 
 fn apm_airframe(facts: Facts, vehicle: &Vehicle) -> Rows {
-    if facts("FRAME_CLASS").is_none_or(|class| number(&class) == APM_HELI_FRAME_CLASS) {
+    if vehicle.helicopter || facts("FRAME_CLASS").is_none() {
         return Vec::new();
     }
     [Some(row("Frame Class", enum_of(facts, "FRAME_CLASS"))), facts("FRAME_TYPE").map(|f| row("Frame Type", enum_text(&f))), Some(row("Firmware Version", vehicle.firmware.clone()))].into_iter().flatten().collect()
@@ -432,12 +433,13 @@ pub fn firmware_text(major: i64, minor: i64, patch: i64, kind: &str) -> String {
 }
 
 pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,vtol,airship,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash,firmwareCustomMajorVersion,firmwareCustomMinorVersion,firmwareCustomPatchVersion"));
+    let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,vtol,airship,vehicleTypeString,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash,firmwareCustomMajorVersion,firmwareCustomMinorVersion,firmwareCustomPatchVersion"));
     let part = |key: &str| read.get(key).and_then(Value::as_i64).unwrap_or(-1);
     let vehicle = Vehicle {
         multi_rotor: flag(&read, "multiRotor"),
         fixed_wing: flag(&read, "fixedWing"),
         forward_flight: ["fixedWing", "vtol", "airship"].iter().any(|key| flag(&read, key)),
+        helicopter: text(&read, "vehicleTypeString") == crate::vehiclefacade::mav_type_text(MAV_TYPE_HELICOPTER),
         rover: flag(&read, "rover") && flag(&read, "apmFirmware"),
         sub: flag(&read, "sub"),
         version: (part("firmwareMajorVersion"), part("firmwareMinorVersion"), part("firmwarePatchVersion")),
@@ -481,7 +483,7 @@ mod tests {
     }
 
     fn copter() -> Vehicle {
-        Vehicle { multi_rotor: true, fixed_wing: false, forward_flight: false, rover: false, sub: false, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new(), custom: None }
+        Vehicle { multi_rotor: true, fixed_wing: false, forward_flight: false, helicopter: false, rover: false, sub: false, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new(), custom: None }
     }
 
     #[test]

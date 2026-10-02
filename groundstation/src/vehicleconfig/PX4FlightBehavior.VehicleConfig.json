@@ -82,6 +82,7 @@
                     "control": "slider",
                     "sliderMin": 2,
                     "sliderMax": 16,
+                    "sliderInMetres": true,
                     "optional": true
                 }
             ]
