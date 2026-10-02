@@ -9032,6 +9032,7 @@
         "view.modeSlots.activeSwitches.#",
         "view.modeSlots.available",
         "view.modeSlots.channel",
+        "view.modeSlots.channelMonitor",
         "view.modeSlots.channelOptions.#",
         "view.modeSlots.channelPwm",
         "view.modeSlots.class",
@@ -13311,6 +13312,7 @@
         ],
         "available": "bool",
         "channel": "number",
+        "channelMonitor": "bool",
         "channelOptions": [
             "empty"
         ],

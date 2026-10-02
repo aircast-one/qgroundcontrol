@@ -17,6 +17,7 @@ internal data class ModeSlotsView(
     val reason: String,
     val activeSwitches: List<String> = emptyList(),
     val optionChannelsOn: List<Int> = emptyList(),
+    val channelMonitor: Boolean = false,
 )
 
 internal fun modeSlotsView(view: JSONObject?): ModeSlotsView? {
@@ -27,6 +28,7 @@ internal fun modeSlotsView(view: JSONObject?): ModeSlotsView? {
     return ModeSlotsView(
         activeSwitches = (0 until (switches?.length() ?: 0)).map { switches!!.optString(it) },
         optionChannelsOn = (0 until (options?.length() ?: 0)).mapNotNull { options?.optJSONObject(it) }.filter { it.optBoolean("enabled") }.map { it.optInt("channel") },
+        channelMonitor = view.optBoolean("channelMonitor"),
         channel = view.optInt("channel"),
         slots = (0 until (items?.length() ?: 0)).mapNotNull { index ->
             items?.optJSONObject(index)?.let {

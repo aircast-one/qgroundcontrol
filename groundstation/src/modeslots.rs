@@ -187,6 +187,7 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "class": "ModeSlots",
         "available": true,
         "activeSwitches": active_switches,
+        "channelMonitor": channel_name == "RC_MAP_FLTMODE",
         "channel": channel_index + 1,
         "channelPwm": pwm.get(channel_index as usize).copied(),
         "liveSlot": live,

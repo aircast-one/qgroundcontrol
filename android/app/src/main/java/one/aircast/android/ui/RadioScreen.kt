@@ -59,7 +59,7 @@ private fun RadioNotice(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun PwmBar(fraction: Float, modifier: Modifier = Modifier) {
+internal fun PwmBar(fraction: Float, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .height(8.dp)

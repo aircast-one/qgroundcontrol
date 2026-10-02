@@ -51,4 +51,10 @@ class ModeSlotsTest {
         assertEquals("Channel options on: channel 7", liveSwitchesText(apm))
         assertEquals(null, liveSwitchesText(modeSlotsView(org.json.JSONObject("""{"available":true,"channel":5,"slots":[]}"""))))
     }
+
+    @Test
+    fun `the channel monitor is shown where the core says so, PX4's flight modes page`() {
+        assertEquals(true, modeSlotsView(org.json.JSONObject("""{"available":true,"channel":5,"slots":[],"channelMonitor":true}"""))?.channelMonitor)
+        assertEquals(false, modeSlotsView(org.json.JSONObject("""{"available":true,"channel":5,"slots":[]}"""))?.channelMonitor)
+    }
 }
