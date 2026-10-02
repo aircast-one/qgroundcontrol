@@ -116,12 +116,17 @@ fun markerStroke(crowded: Boolean, selected: Boolean): Double = when {
     else -> MARKER_STROKE
 }
 
+fun exitMarkers(items: List<MissionItem>): List<Pair<MissionItem, TrackPoint>> =
+    items.filter { it.complexPattern }.mapNotNull { item -> item.exit?.let { item to it } }
+
 fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): FeatureCollection {
     val crowded = crowded(items.size)
-    val features = items.map { item ->
-        Feature.fromGeometry(Point.fromLngLat(item.longitude, item.latitude)).apply {
+    val markers = items.map { item -> Triple(item, TrackPoint(item.latitude, item.longitude), item.sequence) } +
+        exitMarkers(items).map { (item, exit) -> Triple(item, exit, item.sequence + item.foldedCommands) }
+    val features = markers.map { (item, at, sequence) ->
+        Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
-            addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(item.sequence, crowded))
+            addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(sequence, crowded))
             addNumberProperty(
                 WAYPOINT_RADIUS_PROPERTY,
                 markerRadius(crowded, item.index == selectedIndex),
