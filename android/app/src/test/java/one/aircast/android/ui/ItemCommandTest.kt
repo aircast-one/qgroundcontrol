@@ -27,4 +27,12 @@ class ItemCommandTest {
         assertEquals("Basic", startCategory(listOf("Basic", "Advanced"), "Gone"))
         assertEquals("Basic", startCategory(listOf("Basic", "Advanced"), null))
     }
+
+    @Test
+    fun `a plane's new takeoff shows the climb-out step until Done, like SimpleItemEditor's wizard`() {
+        val lines = wizardLines(JSONObject("""{"wizardMode":true,"wizardText":["Move 'T' Takeoff to the climbout location.","Ensure clear of obstacles and into the wind."]}"""))
+        assertEquals(listOf("Move 'T' Takeoff to the climbout location.", "Ensure clear of obstacles and into the wind."), lines)
+        assertEquals(emptyList<String>(), wizardLines(JSONObject("""{"wizardMode":false,"wizardText":["x"]}""")))
+        assertEquals("plan.missionController.visualItems.1.wizardMode", wizardModePath(1))
+    }
 }

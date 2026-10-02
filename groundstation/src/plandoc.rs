@@ -467,25 +467,34 @@ pub fn insert_land(doc: &Document, latitude: f64, longitude: f64, visual_index: 
 const CMD_NAV_TAKEOFF: i64 = 22;
 const CMD_NAV_VTOL_TAKEOFF: i64 = 84;
 
+const CLIMB_OUT_DEGREES: f64 = 30.0;
+const ABSOLUTE_CLIMB_OUT_FACTOR: f64 = 1.5;
+
+pub fn climb_out_distance(altitude: f64, relative: bool, fallback: f64) -> f64 {
+    match (relative, altitude) {
+        (true, a) if a == 0.0 => fallback,
+        (true, a) => a / CLIMB_OUT_DEGREES.to_radians().tan(),
+        (false, a) => a * ABSOLUTE_CLIMB_OUT_FACTOR,
+    }
+}
+
 pub fn insert_takeoff(doc: &Document, visual_index: i64, defaults: &EditDefaults) -> Result<Document, String> {
     let home = doc.home.ok_or("A takeoff is placed at the launch position, and this plan has none yet.")?;
-    match vehicle_class(doc.vehicle_type) {
-        VehicleClass::FixedWing => Err("A fixed-wing takeoff needs its climb-out placed on the map.".to_string()),
-        class => {
-            let at_point = match class {
-                VehicleClass::Vtol => crate::surveygrid::at_distance_and_azimuth((home[0], home[1]), defaults.vtol_transition_distance, 0.0),
-                _ => (home[0], home[1]),
-            };
-            let command = if class == VehicleClass::Vtol { CMD_NAV_VTOL_TAKEOFF } else { CMD_NAV_TAKEOFF };
-            let inserted = insert_simple(doc, command, at_point.0, at_point.1, visual_index, defaults);
-            let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
-            let launched = |item: &Item| match item {
-                Item::Simple(s) => Item::Simple(Simple { params: [s.params[0], s.params[1], s.params[2], s.params[3], Some(at_point.0), Some(at_point.1), s.params[6]], ..s.clone() }),
-                other => other.clone(),
-            };
-            Ok(Document { items: inserted.items.iter().enumerate().map(|(i, item)| if i == at { launched(item) } else { item.clone() }).collect(), ..inserted })
-        }
-    }
+    let class = vehicle_class(doc.vehicle_type);
+    let relative = doc.global_altitude_mode != crate::altitudemodes::ABSOLUTE;
+    let at_point = match class {
+        VehicleClass::Vtol => crate::surveygrid::at_distance_and_azimuth((home[0], home[1]), defaults.vtol_transition_distance, 0.0),
+        VehicleClass::FixedWing => crate::surveygrid::at_distance_and_azimuth((home[0], home[1]), climb_out_distance(defaults.mission_item_altitude, relative, defaults.vtol_transition_distance), 0.0),
+        _ => (home[0], home[1]),
+    };
+    let command = if class == VehicleClass::Vtol { CMD_NAV_VTOL_TAKEOFF } else { CMD_NAV_TAKEOFF };
+    let inserted = insert_simple(doc, command, at_point.0, at_point.1, visual_index, defaults);
+    let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
+    let launched = |item: &Item| match item {
+        Item::Simple(s) => Item::Simple(Simple { params: [s.params[0], s.params[1], s.params[2], s.params[3], Some(at_point.0), Some(at_point.1), s.params[6]], ..s.clone() }),
+        other => other.clone(),
+    };
+    Ok(Document { items: inserted.items.iter().enumerate().map(|(i, item)| if i == at { launched(item) } else { item.clone() }).collect(), ..inserted })
 }
 
 pub fn set_global_altitude_mode(doc: &Document, mode: i64) -> Document {
@@ -1083,7 +1092,15 @@ mod tests {
         let without_takeoff = remove(&section(), 1).unwrap();
         matches_qt(&insert_takeoff(&without_takeoff, 1, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-takeoff-by-qt.plan"));
         assert!(insert_takeoff(&Document { home: None, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).is_err());
-        assert!(insert_takeoff(&Document { vehicle_type: 1, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).is_err(), "Qt opens a plane's takeoff in the wizard for its climb-out");
+        let plane = insert_takeoff(&Document { vehicle_type: 1, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).unwrap();
+        let Item::Simple(climb) = &plane.items[0] else { panic!("takeoff") };
+        let launch = without_takeoff.home.unwrap();
+        let out = crate::terrain::qt_distance((launch[0], launch[1]), (climb.params[4].unwrap(), climb.params[5].unwrap()));
+        assert!((out - climb_out_distance(QT_DEFAULTS.mission_item_altitude, true, 0.0)).abs() < 0.5, "a plane's takeoff sits on a 30 degree climb-out due north of launch, as TakeoffMissionItem::_setLaunchCoordinate puts it: {out}");
+        assert!(climb.params[4].unwrap() > launch[0]);
+        assert!((climb_out_distance(50.0, true, 300.0) - 50.0 / 30f64.to_radians().tan()).abs() < 1e-9);
+        assert_eq!(climb_out_distance(0.0, true, 300.0), 300.0, "a zero relative altitude falls back to the transition distance");
+        assert_eq!(climb_out_distance(50.0, false, 300.0), 75.0);
         let vtol = insert_takeoff(&Document { vehicle_type: 20, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).unwrap();
         let Item::Simple(takeoff) = &vtol.items[0] else { panic!("takeoff") };
         let home = without_takeoff.home.unwrap();

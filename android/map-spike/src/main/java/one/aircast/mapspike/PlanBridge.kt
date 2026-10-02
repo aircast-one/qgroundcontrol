@@ -235,7 +235,7 @@ fun placeTakeoff(index: Int, latitude: Double, longitude: Double): Boolean {
         "$PLAN_ITEMS.$index.launchCoordinate",
         settingJson(coordinateJson(latitude, longitude)),
     )
-    return placed && leaveWizardMode(index)
+    return placed
 }
 
 fun placeLandingIfUnplaced(index: Int, latitude: Double, longitude: Double): Boolean {

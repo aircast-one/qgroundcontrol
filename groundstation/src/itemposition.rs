@@ -57,7 +57,18 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         }
     };
     let answered = flag(&object(&backend.set(path, &json!({ "value": sent }).to_string())), "ok");
+    if answered && member == "launchCoordinate" {
+        let same = flag(&object(&backend.get_fields(&format!("{POSITION_ITEMS}{index}"), "launchTakeoffAtSameLocation")), "launchTakeoffAtSameLocation");
+        let fixed_wing = flag(&object(&backend.get_fields("plan.controllerVehicle", "fixedWing")), "fixedWing");
+        if leaves_wizard_after_launch(same, fixed_wing) {
+            backend.set(&format!("{POSITION_ITEMS}{index}.{WIZARD}"), &json!({ "value": false }).to_string());
+        }
+    }
     json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The plan did not take that position.") } })
+}
+
+pub fn leaves_wizard_after_launch(launch_takeoff_at_same_location: bool, fixed_wing: bool) -> bool {
+    launch_takeoff_at_same_location || !fixed_wing
 }
 
 // SpeedSection::setSpecifyFlightSpeed takes the flag on any section, and appendSectionItems then
@@ -93,6 +104,13 @@ pub fn write_specify_speed(backend: &dyn Backend, path: &str, value: &str) -> Va
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_plane_stays_in_the_wizard_after_launch_is_placed_like_takeoff_item_map_visual() {
+        assert!(leaves_wizard_after_launch(true, true));
+        assert!(leaves_wizard_after_launch(false, false));
+        assert!(!leaves_wizard_after_launch(false, true), "a fixed wing is warned to move its climb-out");
+    }
     use std::cell::RefCell;
 
     struct Plan {
@@ -133,8 +151,9 @@ mod tests {
             json!({ "latitude": 47.3985, "longitude": 8.5461, "altitude": 488.0 }),
             "MissionSettingsItem stores the whole coordinate, so the head's altitude 0 became the planned home altitude"
         );
+        assert_eq!((plan.written.borrow()[1].0.as_str(), plan.written.borrow()[1].1.clone()), ("plan.missionController.visualItems.1.wizardMode", json!(false)), "a takeoff that is not a plane's leaves the wizard once launch is placed");
         let _ = write(&plan, "plan.missionController.visualItems.2.coordinate", r#"{"value":{"latitude":47.41,"longitude":8.56,"altitude":0}}"#);
-        assert_eq!(plan.written.borrow()[1].1, json!({ "latitude": 47.41, "longitude": 8.56 }), "with no altitude held, none is invented");
+        assert_eq!(plan.written.borrow()[2].1, json!({ "latitude": 47.41, "longitude": 8.56 }), "with no altitude held, none is invented");
         assert_eq!(write(&plan, "plan.missionController.visualItems.1.coordinate", r#"{"value":{"latitude":147,"longitude":8}}"#)["refusal"], "badCoordinate");
         assert_eq!(write(&plan, "plan.missionController.visualItems.5.coordinate", r#"{"value":{"latitude":47,"longitude":8}}"#)["refusal"], "noSuchItem");
         assert_eq!(write(&plan, "plan.missionController.visualItems.2.launchCoordinate", r#"{"value":{"latitude":47,"longitude":8}}"#)["refusal"], "noSuchItem", "only a takeoff has a launch coordinate");

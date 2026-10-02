@@ -3090,6 +3090,8 @@
         "view.itemFacts(1).previousCoordinate",
         "view.itemFacts(1).rawEdit",
         "view.itemFacts(1).takeoff",
+        "view.itemFacts(1).wizardMode",
+        "view.itemFacts(1).wizardText.#",
         "view.itemFacts(4).altitudeHint",
         "view.itemFacts(4).altitudeMode",
         "view.itemFacts(4).altitudesAreRelative",
@@ -3105,6 +3107,8 @@
         "view.itemFacts(4).simple",
         "view.itemFacts(4).speedSection",
         "view.itemFacts(4).takeoff",
+        "view.itemFacts(4).wizardMode",
+        "view.itemFacts(4).wizardText.#",
         "view.joystick.active",
         "view.joystick.armed",
         "view.joystick.assignableActions.#",
@@ -8313,6 +8317,8 @@
         "view.itemFacts(1).speedSection.units",
         "view.itemFacts(1).speedSection.value",
         "view.itemFacts(1).takeoff",
+        "view.itemFacts(1).wizardMode",
+        "view.itemFacts(1).wizardText.#",
         "view.itemFacts(4).altitudeHint",
         "view.itemFacts(4).altitudeMode",
         "view.itemFacts(4).altitudesAreRelative",
@@ -8417,6 +8423,8 @@
         "view.itemFacts(4).simple",
         "view.itemFacts(4).speedSection",
         "view.itemFacts(4).takeoff",
+        "view.itemFacts(4).wizardMode",
+        "view.itemFacts(4).wizardText.#",
         "view.joystick.active",
         "view.joystick.armed",
         "view.joystick.assignableActions.#",
@@ -12354,7 +12362,11 @@
             "units": "string",
             "value": "number"
         },
-        "takeoff": "bool"
+        "takeoff": "bool",
+        "wizardMode": "bool",
+        "wizardText": [
+            "empty"
+        ]
     },
     "view.itemFacts(4)": {
         "altitudeHint": "null",
@@ -12487,7 +12499,11 @@
         "rawEdit": "bool",
         "simple": "bool",
         "speedSection": "null",
-        "takeoff": "bool"
+        "takeoff": "bool",
+        "wizardMode": "bool",
+        "wizardText": [
+            "empty"
+        ]
     },
     "view.joystick": {
         "active": "null",

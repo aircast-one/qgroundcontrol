@@ -42,6 +42,7 @@ struct Held {
     shown_vehicle: Option<u8>,
     vehicle_prompt: Option<bool>,
     breach_altitude: Option<f64>,
+    wizard: Option<usize>,
 }
 
 pub const LOAD_VEHICLE_PLAN: &str = "core.plan.loadVehiclePlan";
@@ -1367,7 +1368,17 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
                 _ => insert_at(backend, &rest, true),
             }
         }
-        "takeoff" => insert_takeoff(backend, &json!([given.get(3)]).to_string()),
+        "takeoff" => {
+            let answered = insert_takeoff(backend, &json!([given.get(3)]).to_string());
+            let fixed_wing = held().document.as_ref().is_some_and(|d| plandoc::vehicle_class(d.vehicle_type) == crate::cmdinfo::VehicleClass::FixedWing);
+            if answered.get("ok").and_then(Value::as_bool) == Some(true) && fixed_wing {
+                let mut state = held();
+                let count = state.document.as_ref().map_or(0, |d| d.items.len() as i64);
+                let wanted = given.get(3).and_then(Value::as_i64).unwrap_or(-1);
+                state.wizard = usize::try_from(if (1..=count).contains(&wanted) { wanted } else { count }).ok();
+            }
+            answered
+        }
         "survey" => insert_scan(backend, &rest, false),
         "corridor" => insert_scan(backend, &rest, true),
         "structure" => insert_structure(backend, &rest),
@@ -1403,6 +1414,16 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         Err(reason) => refused(reason),
     };
     let current = held().document.clone()?;
+    if property == "wizardMode" {
+        return Some(match given.as_ref().and_then(Value::as_bool) {
+            Some(false) => {
+                held().wizard = None;
+                changed();
+                json!({ "ok": true, "result": true, "refusal": Value::Null, "reason": Value::Null })
+            }
+            _ => refused("The climb-out step is only ever left, with false."),
+        });
+    }
     if let Some(member) = property.strip_prefix("cameraSection.") {
         let (name, by_index) = match member.split_once('.') {
             Some((name, "enumIndex")) => (name, true),
@@ -2262,9 +2283,11 @@ pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     let facts = document_facts(&document, index, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0), (&vertical, &horizontal));
     let launch = (index == 0 && !vehicle_has_home(backend)).then(|| document.home.map(|home| launch_altitude_field(vertical.show(home[2]), &vertical.name, &format!("{ITEM_ROOT}.0.{LAUNCH_ALTITUDE}")))).flatten();
     let read = crate::missionitems::document_reads(&document, -1).ok().and_then(|reads| reads.get(index).cloned()).unwrap_or_default();
+    let wizard = held().wizard == Some(index) && read.get("isTakeoffItem").and_then(Value::as_bool) == Some(true);
+    let wizard_rows = crate::itemfacts::wizard_info(wizard, plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol);
     match with_previous_coordinate(facts, plandoc::previous_coordinate(&document, index as i64)) {
         Value::Object(map) => crate::itemfacts::without_hidden_mission_speed(
-            Value::Object(map.into_iter().chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))]).chain(crate::itemfacts::command_info(&read)).collect()),
+            Value::Object(map.into_iter().chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))]).chain(crate::itemfacts::command_info(&read)).chain(wizard_rows).collect()),
             index,
             plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol,
             plandoc::firmware(document.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,

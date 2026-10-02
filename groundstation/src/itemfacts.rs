@@ -166,6 +166,20 @@ pub fn without_hidden_mission_speed(facts: Value, index: usize, vtol: bool, apm:
     }
 }
 
+pub const CLIMB_OUT_TEXT: &str = "Move 'T' Takeoff to the climbout location.";
+pub const TRANSITION_TEXT: &str = "Move 'T' Transition Direction to the desired location. Ensure distance from launch to transition direction is far enough to complete transition.";
+pub const CLEAR_TEXT: &str = "Ensure clear of obstacles and into the wind.";
+
+pub fn wizard_info(wizard: bool, vtol: bool) -> [(String, Value); 2] {
+    [
+        ("wizardMode".to_string(), json!(wizard)),
+        ("wizardText".to_string(), match wizard {
+            true => json!([if vtol { TRANSITION_TEXT } else { CLIMB_OUT_TEXT }, CLEAR_TEXT]),
+            false => json!([]),
+        }),
+    ]
+}
+
 pub fn command_info(read: &Value) -> [(String, Value); 3] {
     let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|t| !t.is_empty()).map_or(Value::Null, |t| json!(t));
     [
@@ -237,8 +251,9 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         },
     });
     let controller = object(&backend.get_fields("plan.controllerVehicle", "vtol,apmFirmware"));
+    let wizard = wizard_info(simple && flag(&read, "isTakeoffItem") && flag(&read, "wizardMode"), flag(&controller, "vtol"));
     match built {
-        Value::Object(map) => without_hidden_mission_speed(Value::Object(map.into_iter().chain(info).collect()), index, flag(&controller, "vtol"), flag(&controller, "apmFirmware")),
+        Value::Object(map) => without_hidden_mission_speed(Value::Object(map.into_iter().chain(info).chain(wizard).collect()), index, flag(&controller, "vtol"), flag(&controller, "apmFirmware")),
         other => other,
     }
 }
@@ -263,6 +278,13 @@ mod tests {
         assert_eq!(without_hidden_mission_speed(facts(), 0, true, false)["speedSection"], Value::Null, "_showFlightSpeed is false for a VTOL");
         assert_eq!(without_hidden_mission_speed(facts(), 0, false, true)["speedSection"], Value::Null, "and for ArduPilot");
         assert_eq!(without_hidden_mission_speed(facts(), 3, true, true)["speedSection"]["available"], true, "a waypoint's own speed section is not the mission settings one");
+    }
+
+    #[test]
+    fn the_climb_out_step_reads_like_simple_item_editor() {
+        assert_eq!(wizard_info(true, false)[1].1, json!([CLIMB_OUT_TEXT, CLEAR_TEXT]));
+        assert_eq!(wizard_info(true, true)[1].1[0], TRANSITION_TEXT);
+        assert_eq!(wizard_info(false, false), [("wizardMode".to_string(), json!(false)), ("wizardText".to_string(), json!([]))]);
     }
 
     #[test]

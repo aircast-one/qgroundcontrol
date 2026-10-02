@@ -46,6 +46,7 @@ import one.aircast.mapspike.TrackPoint
 import one.aircast.mapspike.optText
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.compose.material3.Button
 
 internal fun itemFactsPath(index: Int): String = "view.itemFacts($index)"
 
@@ -57,6 +58,11 @@ internal const val RAW_EDIT_NOTE = "Provides advanced access to all commands/par
 
 internal fun itemNote(view: JSONObject?, rawOn: Boolean): String? =
     if (rawOn) RAW_EDIT_NOTE else view?.optText("commandDescription")?.ifBlank { null }
+
+internal fun wizardLines(view: JSONObject?): List<String> =
+    view?.takeIf { it.optBoolean("wizardMode") }?.optJSONArray("wizardText")?.let { lines -> (0 until lines.length()).map { lines.optString(it) } }.orEmpty()
+
+internal fun wizardModePath(index: Int): String = "plan.missionController.visualItems.$index.wizardMode"
 
 internal fun commandEditable(view: JSONObject?): Boolean = view?.optBoolean("simple") == true && view.optBoolean("takeoff") != true
 
@@ -192,6 +198,19 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                     TextButton(onClick = { choosing = true }) { Text("Change command") }
                 }
             }
+            val wizard = wizardLines(view)
+            if (wizard.isNotEmpty()) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(wizard.first(), style = MaterialTheme.typography.bodyMedium)
+                    wizard.drop(1).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Button(onClick = {
+                        scope.launch {
+                            refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(wizardModePath(index), false) }
+                            revision++
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+                }
+            }
             if (index == 0) {
                 MissionAltitudeFrame()
                 PlanVehicleRows()
@@ -251,7 +270,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
             areaHelp(view)?.let { help ->
                 Text(help, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
             }
-            if (areaHelp(view) == null) LazyColumn(Modifier.heightIn(max = 480.dp)) {
+            if (areaHelp(view) == null && wizard.isEmpty()) LazyColumn(Modifier.heightIn(max = 480.dp)) {
                 items(fields, key = { it.path }) { fact ->
                     if (fact.optional) OptionalFactRow(fact) { revision++ } else FactRow(fact) { revision++ }
                 }
