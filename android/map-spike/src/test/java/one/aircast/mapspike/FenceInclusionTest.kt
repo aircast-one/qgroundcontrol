@@ -46,4 +46,11 @@ class FenceInclusionTest {
         assertNull(selectedFence(null, listOf(polygon(0, true)), emptyList()))
         assertNull(selectedFence(MapHit.FenceVertex(9, 0), listOf(polygon(0, true)), emptyList()))
     }
+
+    @Test
+    fun `a new fence is sized from the visible map, like GeoFenceEditor's viewport corners`() {
+        val view = listOf(TrackPoint(48.0, 8.0), TrackPoint(48.0, 9.0), TrackPoint(47.0, 9.0), TrackPoint(47.0, 8.0))
+        assertEquals(TrackPoint(48.0, 8.0) to TrackPoint(47.0, 9.0), fenceWindow(view, TrackPoint(47.5, 8.5)))
+        assertEquals(TrackPoint(47.502, 8.498) to TrackPoint(47.498, 8.502), fenceWindow(emptyList(), TrackPoint(47.5, 8.5)))
+    }
 }

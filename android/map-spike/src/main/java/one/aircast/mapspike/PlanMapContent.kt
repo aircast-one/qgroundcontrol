@@ -134,6 +134,12 @@ private fun GroupBreak() {
     )
 }
 
+private const val FALLBACK_FENCE_DEGREES = 0.002
+
+fun fenceWindow(visible: List<TrackPoint>, at: TrackPoint): Pair<TrackPoint, TrackPoint> =
+    visible.takeIf { it.size == 4 }?.let { it[0] to it[2] }
+        ?: (TrackPoint(at.latitude + FALLBACK_FENCE_DEGREES, at.longitude - FALLBACK_FENCE_DEGREES) to TrackPoint(at.latitude - FALLBACK_FENCE_DEGREES, at.longitude + FALLBACK_FENCE_DEGREES))
+
 class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: String, val shown: Boolean, val onClick: () -> Unit)
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -650,10 +656,7 @@ internal fun MapSpikeScreen(
                     TextButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         onBridge("Adding fence", done = support.reason.ifBlank { null }) {
-                            at != null && FenceBridge.addInclusionPolygon(
-                                TrackPoint(at.latitude + 0.002, at.longitude - 0.002),
-                                TrackPoint(at.latitude - 0.002, at.longitude + 0.002),
-                            )
+                            at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionPolygon(topLeft, bottomRight) } ?: false
                         }
                     }) { Text("Fence") }
 
@@ -705,10 +708,7 @@ internal fun MapSpikeScreen(
                     TextButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         onBridge("Adding circle", done = support.reason.ifBlank { null }) {
-                            at != null && FenceBridge.addInclusionCircle(
-                                TrackPoint(at.latitude + 0.002, at.longitude - 0.002),
-                                TrackPoint(at.latitude - 0.002, at.longitude + 0.002),
-                            )
+                            at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionCircle(topLeft, bottomRight) } ?: false
                         }
                     }) { Text("Circle") }
 
