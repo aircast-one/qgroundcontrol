@@ -1309,7 +1309,7 @@ fn remove_all_from_vehicle(backend: &dyn Backend) -> Value {
     };
     let kinds = ["mission"].into_iter().chain(fence.then_some("fence")).chain(rally.then_some("rally"));
     let (sent, refusals): (Vec<&'static str>, Vec<String>) = kinds.fold((Vec::new(), Vec::new()), |(sent, refusals), kind| {
-        match crate::hub::lock().mission_request(None, &json!({ "action": "removeAll", "plan": kind }), crate::hub::now_ms()) {
+        match crate::hub::lock().mission_request(Some(id), &json!({ "action": "removeAll", "plan": kind }), crate::hub::now_ms()) {
             Ok(outbound) => {
                 deliver(outbound);
                 ([sent, vec![kind]].concat(), refusals)
