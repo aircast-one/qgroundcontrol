@@ -66,53 +66,31 @@ pub fn vehicle_class(vehicle_type: i64) -> VehicleClass {
     }
 }
 
-fn json_type(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "null",
-        Value::Bool(_) => "bool",
-        Value::Number(_) => "double",
-        Value::String(_) => "string",
-        Value::Array(_) => "array",
-        Value::Object(_) => "object",
-    }
-}
-
-fn validate_keys(object: &Value, keys: &[(&str, &str, bool)]) -> Result<(), String> {
-    let missing: Vec<&str> = keys.iter().filter(|(key, _, required)| *required && object.get(key).is_none()).map(|(key, _, _)| *key).collect();
-    if !missing.is_empty() {
-        return Err(format!("The following required keys are missing: {}", missing.join(", ")));
-    }
-    keys.iter()
-        .filter_map(|(key, expected, _)| object.get(key).map(|value| (key, expected, json_type(value))))
-        .find(|(_, expected, actual)| **expected != *actual)
-        .map_or(Ok(()), |(key, expected, actual)| Err(format!("Incorrect value type - key:type:expected {key}:{actual}:{expected}")))
-}
-
 fn validate_plan(root: &Value) -> Result<(), String> {
-    validate_keys(root, &[("groundStation", "string", true), ("fileType", "string", true), ("version", "double", true)])?;
+    crate::qtjson::validate_keys(root, &[("groundStation", "String", true), ("fileType", "String", true), ("version", "Double", true)])?;
     let file_type = root["fileType"].as_str().unwrap_or("");
     if file_type != "Plan" {
         return Err(format!("Incorrect file type key expected:Plan actual:{file_type}"));
     }
-    let version = root["version"].as_f64().unwrap_or(0.0) as i64;
+    let version = crate::qtjson::to_int(&root["version"], 0);
     match version {
         v if v < 1 => return Err(format!("File version {v} is no longer supported")),
         v if v > 1 => return Err(format!("File version {v} is newer than current supported version 1")),
         _ => {}
     }
-    validate_keys(root, &[("mission", "object", true), ("geoFence", "object", true), ("rallyPoints", "object", true)])?;
-    validate_keys(&root["mission"], &[("plannedHomePosition", "array", true), ("items", "array", true), ("firmwareType", "double", true), ("vehicleType", "double", false), ("cruiseSpeed", "double", false), ("hoverSpeed", "double", false), ("globalPlanAltitudeMode", "double", false)])
+    crate::qtjson::validate_keys(root, &[("mission", "Object", true), ("geoFence", "Object", true), ("rallyPoints", "Object", true)])?;
+    crate::qtjson::validate_keys(&root["mission"], &[("plannedHomePosition", "Array", true), ("items", "Array", true), ("firmwareType", "Double", true), ("vehicleType", "Double", false), ("cruiseSpeed", "Double", false), ("hoverSpeed", "Double", false), ("globalPlanAltitudeMode", "Double", false)])
         .map_err(|e| format!("Mission: {e}"))?;
-    validate_section(&root["geoFence"], FENCE_VERSION, &[("circles", "array", true), ("polygons", "array", true), ("breachReturn", "array", false)], "GeoFence supports version", true)?;
-    validate_section(&root["rallyPoints"], RALLY_VERSION, &[("points", "array", true)], "Rally Points supports version", false)
+    validate_section(&root["geoFence"], FENCE_VERSION, &[("circles", "Array", true), ("polygons", "Array", true), ("breachReturn", "Array", false)], "GeoFence supports version", true)?;
+    validate_section(&root["rallyPoints"], RALLY_VERSION, &[("points", "Array", true)], "Rally Points supports version", false)
 }
 
 fn validate_section(section: &Value, version: i64, keys: &[(&str, &str, bool)], refusal: &str, unversioned_is_old: bool) -> Result<(), String> {
-    let held = section.get("version").map(|v| v.as_f64().unwrap_or(0.0) as i64);
+    let held = section.get("version").map(|v| i64::from(crate::qtjson::to_int(v, 0)));
     if held == Some(1) || (held.is_none() && unversioned_is_old) {
         return Ok(());
     }
-    validate_keys(section, &[&[("version", "double", true)], keys].concat())?;
+    crate::qtjson::validate_keys(section, &[&[("version", "Double", true)], keys].concat())?;
     (held == Some(version)).then_some(()).ok_or_else(|| format!("{refusal} {version}"))
 }
 
@@ -1429,7 +1407,7 @@ mod tests {
         };
         assert_eq!(with(&["version"], json!(2)).unwrap_err(), "File version 2 is newer than current supported version 1");
         assert_eq!(with(&["fileType"], json!("Mission")).unwrap_err(), "Incorrect file type key expected:Plan actual:Mission");
-        assert_eq!(with(&["mission", "items"], json!({})).unwrap_err(), "Mission: Incorrect value type - key:type:expected items:object:array");
+        assert_eq!(with(&["mission", "items"], json!({})).unwrap_err(), "Mission: Incorrect value type - key:type:expected items:Object:Array");
         assert_eq!(with(&["rallyPoints", "version"], json!(3)).unwrap_err(), "Rally Points supports version 2");
         assert!(with(&["geoFence"], json!({})).is_ok(), "an unversioned fence is old data QGC ignores");
         assert_eq!(with(&["rallyPoints"], json!({})).unwrap_err(), "The following required keys are missing: version, points", "while an unversioned rally section is not");

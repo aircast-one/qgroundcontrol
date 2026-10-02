@@ -1,10 +1,11 @@
 use serde_json::{Value, json};
 
+use crate::qtjson::{to_int, validate_keys};
 use crate::read::object;
 use crate::router::Backend;
 
 const ACTIONS_FILE_TYPE: &str = "MavlinkActions";
-const ACTIONS_FILE_VERSION: i64 = 1;
+const ACTIONS_FILE_VERSION: i32 = 1;
 const ACTION_DEFAULT_COMPONENT: u8 = 1;
 pub const JOYSTICK_FILE: &str = "settings.mavlinkActionsSettings.joystickActionsFile";
 pub const FLY_VIEW_FILE: &str = "settings.mavlinkActionsSettings.flyViewActionsFile";
@@ -21,62 +22,61 @@ pub struct Action {
     pub params: [f64; 7],
 }
 
-fn type_name(value: &Value) -> &'static str {
-    match value {
-        Value::Null => "NULL",
-        Value::Bool(_) => "Bool",
-        Value::Number(_) => "Double",
-        Value::String(_) => "String",
-        Value::Array(_) => "Array",
-        Value::Object(_) => "Object",
-    }
-}
+const ACTION_KEYS: [(&str, &str, bool); 11] = [
+    ("label", "String", true),
+    ("description", "String", true),
+    ("mavCmd", "Double", true),
+    ("compId", "Double", false),
+    ("param1", "Double", false),
+    ("param2", "Double", false),
+    ("param3", "Double", false),
+    ("param4", "Double", false),
+    ("param5", "Double", false),
+    ("param6", "Double", false),
+    ("param7", "Double", false),
+];
 
-fn format_error(detail: String) -> String {
+fn format_error(detail: &str) -> String {
     format!("Custom actions file - incorrect format: {detail}")
 }
 
-fn number(entry: &Value, key: &str, default: f64) -> Result<f64, String> {
-    match entry.get(key) {
-        None => Ok(default),
-        Some(value) => value.as_f64().ok_or_else(|| format_error(format!("Incorrect value type - key:type:expected {key}:{}:Double", type_name(value)))),
+fn header(path: &str, text: &str) -> Result<Value, String> {
+    let file: Value = serde_json::from_str(text).map_err(|e| format!("Unable to parse json file: {path} error: {e}"))?;
+    if !file.is_object() {
+        return Err(format!("Root of json file is not object: {path}"));
+    }
+    let in_file = |detail: String| format!("Json file: '{path}'. {detail}");
+    validate_keys(&file, &[("fileType", "String", true), ("version", "Double", true)]).map_err(in_file)?;
+    let file_type = file["fileType"].as_str().unwrap_or_default();
+    if file_type != ACTIONS_FILE_TYPE {
+        return Err(in_file(format!("Incorrect file type key expected:{ACTIONS_FILE_TYPE} actual:{file_type}")));
+    }
+    match to_int(&file["version"], 0) {
+        v if v < ACTIONS_FILE_VERSION => Err(in_file(format!("File version {v} is no longer supported"))),
+        v if v > ACTIONS_FILE_VERSION => Err(in_file(format!("File version {v} is newer than current supported version {ACTIONS_FILE_VERSION}"))),
+        _ => Ok(file),
     }
 }
 
 pub fn parse(path: &str, text: &str) -> Result<Vec<Action>, String> {
-    let failed = |detail: String| format!("Failed to load custom actions file: `{path}` error: `{detail}`");
-    let file: Value = serde_json::from_str(text).map_err(|e| failed(format!("Unable to parse json file: {path} error: {e}")))?;
-    if !file.is_object() {
-        return Err(failed(format!("Root of json file is not object: {path}")));
-    }
-    let in_file = |detail: String| failed(format!("Json file: '{path}'. {detail}"));
-    if file["fileType"].as_str() != Some(ACTIONS_FILE_TYPE) {
-        return Err(in_file(format!("Incorrect file type key expected:{ACTIONS_FILE_TYPE} actual:{}", file["fileType"].as_str().unwrap_or(""))));
-    }
-    let version = file["version"].as_f64().map_or(0, |v| v as i64);
-    if version < ACTIONS_FILE_VERSION {
-        return Err(in_file(format!("File version {version} is no longer supported")));
-    }
-    if version > ACTIONS_FILE_VERSION {
-        return Err(in_file(format!("File version {version} is newer than current supported version {ACTIONS_FILE_VERSION}")));
-    }
-    let actions = file["actions"].as_array().ok_or_else(|| format_error("actions is not an array".to_string()))?;
-    actions
+    let file = header(path, text).map_err(|e| format!("Failed to load custom actions file: `{path}` error: `{e}`"))?;
+    validate_keys(&file, &[("actions", "Array", true)]).map_err(|e| format_error(&e))?;
+    file["actions"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default()
         .iter()
         .map(|entry| {
             if !entry.is_object() {
-                return Err(format_error("JsonValue not an object".to_string()));
+                return Err(format_error("JsonValue not an object"));
             }
-            let label = entry["label"].as_str().ok_or_else(|| format_error("label is required".to_string()))?;
-            let description = entry["description"].as_str().ok_or_else(|| format_error("description is required".to_string()))?;
-            let command = entry["mavCmd"].as_f64().ok_or_else(|| format_error("mavCmd is required".to_string()))?;
-            let params: Vec<f64> = (1..=7).map(|i| number(entry, &format!("param{i}"), 0.0)).collect::<Result<_, _>>()?;
+            validate_keys(entry, &ACTION_KEYS).map_err(|e| format_error(&e))?;
             Ok(Action {
-                label: label.to_string(),
-                description: description.to_string(),
-                command: command as u16,
-                component: number(entry, "compId", f64::from(ACTION_DEFAULT_COMPONENT))? as u8,
-                params: std::array::from_fn(|i| params[i]),
+                label: entry["label"].as_str().unwrap_or_default().to_string(),
+                description: entry["description"].as_str().unwrap_or_default().to_string(),
+                command: to_int(&entry["mavCmd"], 0) as u16,
+                component: to_int(&entry["compId"], i32::from(ACTION_DEFAULT_COMPONENT)) as u8,
+                params: std::array::from_fn(|i| entry.get(format!("param{}", i + 1)).and_then(Value::as_f64).unwrap_or(0.0)),
             })
         })
         .collect()
@@ -109,9 +109,11 @@ fn actions_from(backend: &dyn Backend, setting: &str) -> Vec<Action> {
         return Vec::new();
     }
     let path = std::path::Path::new(&text(ACTIONS_SAVE_PATH)).join(&file);
-    let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok();
+    let Ok(modified) = std::fs::metadata(&path).map(|m| m.modified().ok()) else {
+        return Vec::new();
+    };
     let mut cache = CACHE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if let Some((cached_path, cached_at, actions)) = cache.as_ref()
+    if let Some((cached_path, cached_at, actions)) = cache.get(setting)
         && *cached_path == path
         && *cached_at == modified
     {
@@ -125,13 +127,13 @@ fn actions_from(backend: &dyn Backend, setting: &str) -> Vec<Action> {
             Vec::new()
         }
     };
-    *cache = Some((path, modified, actions.clone()));
+    cache.insert(setting.to_string(), (path, modified, actions.clone()));
     actions
 }
 
-type Cached = Option<(std::path::PathBuf, Option<std::time::SystemTime>, Vec<Action>)>;
+type Cached = std::collections::HashMap<String, (std::path::PathBuf, Option<std::time::SystemTime>, Vec<Action>)>;
 
-static CACHE: std::sync::Mutex<Cached> = std::sync::Mutex::new(None);
+static CACHE: std::sync::LazyLock<std::sync::Mutex<Cached>> = std::sync::LazyLock::new(Default::default);
 
 pub fn mavlink_actions_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = crate::read::flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
@@ -177,9 +179,13 @@ mod tests {
         let error = |text: &str| parse("a.json", text).unwrap_err();
         assert_eq!(error(r#"{"fileType":"MavlinkActions","version":2,"actions":[]}"#), "Failed to load custom actions file: `a.json` error: `Json file: 'a.json'. File version 2 is newer than current supported version 1`");
         assert!(error(r#"{"fileType":"MavlinkActions","version":0.5,"actions":[]}"#).ends_with("File version 0 is no longer supported`"));
-        assert!(parse("a.json", r#"{"fileType":"MavlinkActions","version":1.9,"actions":[]}"#).is_ok());
+        assert!(error(r#"{"fileType":"MavlinkActions","version":1.9,"actions":[]}"#).ends_with("File version 0 is no longer supported`"));
+        assert!(error(r#"{"actions":[]}"#).ends_with("The following required keys are missing: fileType, version`"));
+        assert_eq!(error(r#"{"fileType":"MavlinkActions","version":1}"#), "Custom actions file - incorrect format: The following required keys are missing: actions");
+        assert_eq!(parse("a.json", r#"{"fileType":"MavlinkActions","version":1,"actions":[{"label":"x","description":"y","mavCmd":183.5,"compId":25.5}]}"#).unwrap()[0].component, 1);
         assert_eq!(error(r#"{"fileType":"MavlinkActions","version":1,"actions":[{"label":"x","description":"y","mavCmd":1,"compId":"25"}]}"#), "Custom actions file - incorrect format: Incorrect value type - key:type:expected compId:String:Double");
         assert!(error(r#"{"fileType":"MavlinkActions","version":1,"actions":[{"label":"x","description":"y","mavCmd":1,"param3":true}]}"#).contains("param3:Bool:Double"));
+        assert!(error(r#"{"fileType":"MavlinkActions","version":1,"actions":[{"label":"x","description":"y","mavCmd":1,"param1":"a","compId":"b"}]}"#).ends_with("compId:String:Double"));
         assert!(error("[]").contains("Root of json file is not object: a.json"));
     }
 

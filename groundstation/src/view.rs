@@ -671,6 +671,7 @@ mod deps_cover_reads {
             ("planfile", include_str!("planfile.rs")),
             ("coreplan", include_str!("coreplan.rs")),
             ("plandoc", include_str!("plandoc.rs")),
+            ("qtjson", include_str!("qtjson.rs")),
             ("planitems", include_str!("planitems.rs")),
             ("plankml", include_str!("plankml.rs")),
             ("platformbluetooth", include_str!("platformbluetooth.rs")),
