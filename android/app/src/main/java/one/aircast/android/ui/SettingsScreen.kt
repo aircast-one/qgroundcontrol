@@ -316,7 +316,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         EmptyState(R.drawable.ic_settings, "Settings", "Choose a group on the left.")
                     } else {
                         Column(Modifier.fillMaxSize()) {
-                            PageTopBar(current.title, "Back") { open = null }
+                            PageTopBar(sentenceCase(current.title), "Back") { open = null }
                             SettingsPageBody(current, Modifier.fillMaxSize())
                         }
                     }
@@ -326,7 +326,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             SettingsList(pages) { open = it }
         } else {
             Column(Modifier.fillMaxSize()) {
-                PageTopBar(current.title, "Back") { open = null }
+                PageTopBar(sentenceCase(current.title), "Back") { open = null }
                 SettingsPageBody(current, Modifier.fillMaxSize())
             }
         }
@@ -380,7 +380,7 @@ private fun SettingsList(
                 items(entries, key = { it.title }) { entry ->
                     val glance = pageGlance(entry.title)
                     SetupRow(
-                        title = entry.title,
+                        title = sentenceCase(entry.title),
                         status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else "",
                         state = if (activeLinks > 0 && entry.title == CONNECTIONS_PAGE) SetupState.Done else SetupState.Neutral,
                         subtitle = pageSubtitle(entry.title, glance),
