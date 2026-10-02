@@ -2372,6 +2372,7 @@ impl Vehicle {
         let start = best.filter(|link| self.link_kinds.high_latency.contains(link)).map(|link| (link, 1.0));
         stop.into_iter().chain(start).for_each(|(link, on)| {
             self.high_latency_links[usize::from(on > 0.0)] = Some(link);
+            self.commands.high_latency = true;
             let outs = self.commands.send(Command { component: COMP_AUTOPILOT1, command: CMD_CONTROL_HIGH_LATENCY, command_int: false, frame: 0, params: [on, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], show_error: true, tag: 0 }, now_ms);
             let routed = self.handle(outs, now_ms);
             self.link_frames.extend(routed.into_iter().map(|bytes| (link, bytes)));
@@ -4513,6 +4514,7 @@ mod tests {
         assert_eq!(hub.active().unwrap().primary_link, Some(3));
         assert_eq!(control(hub.tick(10_100)), vec![(3, 1.0)], "VehicleLinkManager::_updatePrimaryLink starts transmission on a high-latency primary");
         assert_eq!(control(hub.tick(10_100 + crate::mavcmd::ACK_TIMEOUT_MS + 600)), Vec::new(), "the high-latency ack timeout is 120 s, so an unanswered start is not resent at once");
+        assert!(!hub.active().unwrap().pending_notices.iter().any(|(_, text)| text.contains("did not respond")), "the start command is queued on the high-latency timeout, as MavCommandQueue picks it from the link it goes out on");
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
         let started = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_CONTROL_HIGH_LATENCY, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
         hub.on_frame(Origin { link: 3, replay: false, v2: true }, &header, &started, 0, 10_150);

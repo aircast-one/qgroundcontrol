@@ -596,6 +596,9 @@ pub fn close_vehicle_at(due_ms: u64, vehicle: u8, links: Vec<crate::transport::L
 }
 
 fn schedule(pending: PendingClose) {
+    if !owned() {
+        return;
+    }
     #[cfg(test)]
     CLOSED_HERE.with(|closed| *closed.borrow_mut() = Some((pending.due_ms, pending.links.clone())));
     PENDING_CLOSE.lock().unwrap_or_else(PoisonError::into_inner).push(pending);
