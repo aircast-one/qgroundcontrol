@@ -116,6 +116,8 @@ fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
     is MapHit.CircleCentre -> "Moved a fence circle"
     is MapHit.ShapeCentre -> if (hit.fence) "Moved a fence" else "Moved a survey area"
     is MapHit.ShapeRadius -> "Changed the circle radius"
+    is MapHit.LoiterRadius -> "Changed the loiter radius"
+    is MapHit.LoiterRotation -> "Changed the loiter direction"
     is MapHit.Circle -> "Changed a fence radius"
     is MapHit.Midpoint -> "Added a corner"
     is MapHit.LandingPlace -> when (hit.place) {
@@ -131,6 +133,7 @@ fun writeMove(
     surveys: List<Survey>,
     rally: List<RallyPoint>,
     fences: List<FencePolygon> = emptyList(),
+    items: List<MissionItem> = emptyList(),
 ): Boolean =
     when (hit) {
         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, latitude, longitude)
@@ -156,6 +159,10 @@ fun writeMove(
                 ?.let { current -> polygonCentre(current)?.let { centre -> circleAround(current, metresBetween(centre, TrackPoint(latitude, longitude))) } }
             target != null && circle != null && replaceShape(target, circle)
         }
+        is MapHit.LoiterRadius -> items.firstOrNull { it.index == hit.index }?.let { item ->
+            PlanBridge.setLoiterRadius(item.index, draggedLoiterRadius(item, TrackPoint(latitude, longitude)))
+        } == true
+        is MapHit.LoiterRotation -> false
         MapHit.BreachReturn -> FenceBridge.setBreachReturn(TrackPoint(latitude, longitude))
         is MapHit.Circle -> true
         is MapHit.Midpoint -> false

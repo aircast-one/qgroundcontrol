@@ -507,13 +507,13 @@ fun VehicleMap(
     ) {
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
-        renderTransectMarks(currentStyle, surveys, selectedWaypoint, legArrows(missionItems, linkStartToHome))
+        renderTransectMarks(currentStyle, surveys, selectedWaypoint, legArrows(missionItems, linkStartToHome) + loiterRotationArrows(missionItems.takeIf { editable }.orEmpty()))
         renderGimbalWedges(currentStyle, missionItems)
         renderLandings(currentStyle, landings, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint.takeIf { editable })
         renderMidpoints(currentStyle, fencePolygons.map { if (fencePath(it.index) in circledShapes) it.copy(editable = null) else it }, surveys.map { if (surveyPath(it) in circledShapes) it.copy(editable = null) else it }, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence, breachReturn?.takeIf { isPlottable(it.latitude, it.longitude) })
         (currentStyle.getSource(GCS_SOURCE) as? GeoJsonSource)?.setGeoJson(operatorFeatures(operator))
-        renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings, circledShapes)
+        renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings, circledShapes, loiterHandleFeatures(missionItems.takeIf { editable }.orEmpty(), selectedWaypoint))
         renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint, otherMissions)
     }
 

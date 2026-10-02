@@ -63,6 +63,7 @@ internal fun selectionText(
     is MapHit.Midpoint -> null
     is MapHit.ShapeCentre -> null
     is MapHit.ShapeRadius -> null
+    is MapHit.LoiterRadius, is MapHit.LoiterRotation -> null
     is MapHit.LandingPlace -> when (selected.place) {
         LANDING_PLACE_APPROACH -> "final approach"
         else -> "touchdown"

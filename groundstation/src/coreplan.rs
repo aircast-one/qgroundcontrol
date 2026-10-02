@@ -1518,6 +1518,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             Some(n) => item_edit(backend, &json!([index, n]).to_string(), property == "command"),
             None => refused("That field takes a number."),
         }),
+        "loiterRadius" => answer(number.ok_or_else(|| "A radius is a number.".to_string()).and_then(|v| plandoc::set_loiter_radius(&current, index, v).ok_or_else(|| format!("Item {index} is not a loiter.")))),
         "speedSection.flightSpeed" => answer(number.ok_or_else(|| "A speed is a number.".to_string()).and_then(|v| plandoc::set_speed(&current, index, Some(v)).ok_or_else(|| format!("Item {index} carries no speed.")))),
         "speedSection.specifyFlightSpeed" => {
             let on = given.as_ref().and_then(Value::as_bool).unwrap_or(false);

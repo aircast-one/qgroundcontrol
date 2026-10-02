@@ -26,6 +26,7 @@ fun selectionSurvives(
     is MapHit.LandingPlace -> landings.any { it.index == selected.index }
     is MapHit.ShapeCentre -> if (selected.fence) polygons.any { it.index == selected.owner } else surveys.any { it.index == selected.owner }
     is MapHit.ShapeRadius -> if (selected.fence) polygons.any { it.index == selected.owner } else surveys.any { it.index == selected.owner }
+    is MapHit.LoiterRadius, is MapHit.LoiterRotation -> false
 }
 
 internal fun selectedItem(selected: MapHit?): Int? = when (selected) {
@@ -34,6 +35,8 @@ internal fun selectedItem(selected: MapHit?): Int? = when (selected) {
     is MapHit.LandingPlace -> selected.index
     is MapHit.ShapeCentre -> selected.owner.takeIf { !selected.fence }
     is MapHit.ShapeRadius -> selected.owner.takeIf { !selected.fence }
+    is MapHit.LoiterRadius -> selected.index
+    is MapHit.LoiterRotation -> selected.index
     else -> null
 }
 

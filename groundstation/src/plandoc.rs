@@ -538,6 +538,15 @@ pub fn set_param(doc: &Document, visual_index: usize, param: usize, value: f64) 
     Some(replaced(doc, at, Simple { params, altitude, ..current.clone() }))
 }
 
+const LOITER_COMMANDS: [i64; 4] = [17, 18, 19, 31];
+const CMD_NAV_LOITER_TO_ALT: i64 = 31;
+
+pub fn set_loiter_radius(doc: &Document, visual_index: usize, radius: f64) -> Option<Document> {
+    let (_, current) = simple_at(doc, visual_index)?;
+    LOITER_COMMANDS.contains(&current.command).then_some(())?;
+    set_param(doc, visual_index, if current.command == CMD_NAV_LOITER_TO_ALT { 2 } else { 3 }, radius)
+}
+
 fn speed_change(class: VehicleClass, speed: f64) -> Simple {
     let ground = match class {
         VehicleClass::MultiRotor => 1.0,
@@ -1229,6 +1238,15 @@ mod tests {
         let Item::Simple(s) = &edited.items[1] else { panic!() };
         assert_eq!(s.params[0], Some(4.0));
         assert!(set_param(&section(), 2, 8, 1.0).is_none());
+    }
+
+    #[test]
+    fn a_loiter_radius_lands_in_the_param_setradius_writes() {
+        let loiter = |command: i64| Document { items: vec![Item::Simple(Simple { command, frame: FRAME_MISSION, params: [Some(0.0); 7], auto_continue: true, altitude: None, sections: Vec::new() })], ..section() };
+        let radius = |doc: Document| match &doc.items[0] { Item::Simple(s) => (s.params[1], s.params[2]), _ => panic!() };
+        assert_eq!(radius(set_loiter_radius(&loiter(17), 1, -80.0).unwrap()), (Some(0.0), Some(-80.0)), "a negative radius turns counter-clockwise");
+        assert_eq!(radius(set_loiter_radius(&loiter(31), 1, 60.0).unwrap()), (Some(60.0), Some(0.0)), "loiter-to-altitude keeps its radius in param 2");
+        assert!(set_loiter_radius(&loiter(CMD_NAV_WAYPOINT), 1, 60.0).is_none(), "a waypoint has no loiter radius");
     }
 
     #[test]

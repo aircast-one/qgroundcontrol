@@ -407,6 +407,8 @@ const val HANDLE_KIND_LANDING = "landing"
 const val HANDLE_KIND_FENCE_CENTRE = "fenceCentre"
 const val HANDLE_KIND_SURVEY_CENTRE = "surveyCentre"
 const val HANDLE_KIND_CIRCLE_RADIUS = "circleRadius"
+const val HANDLE_KIND_LOITER_RADIUS = "loiterRadius"
+const val HANDLE_KIND_LOITER_ROTATION = "loiterRotation"
 
 const val SHAPE_PATH_PROPERTY = "shapePath"
 const val SPLIT_INVOKABLE_PROPERTY = "splitInvokable"
@@ -427,9 +429,14 @@ fun installFenceHandleLayer(style: Style) {
             PropertyFactory.circleRadius(7f),
             PropertyFactory.circleStrokeColor("#1565C0"),
             PropertyFactory.circleStrokeWidth(3f),
+            PropertyFactory.circleOpacity(tapOnlyHidden),
+            PropertyFactory.circleStrokeOpacity(tapOnlyHidden),
         ),
     )
 }
+
+private val tapOnlyHidden: Expression =
+    Expression.match(Expression.get(HANDLE_KIND_PROPERTY), Expression.literal(1f), Expression.stop(HANDLE_KIND_LOITER_ROTATION, 0f))
 
 private fun handleFeatures(kind: String, owner: Int, vertices: List<TrackPoint>) =
     vertices.mapIndexed { vertex, point ->
@@ -471,11 +478,12 @@ fun renderVertexHandles(
     circles: List<FenceCircle> = emptyList(),
     landings: List<LandingPattern> = emptyList(),
     circled: Set<String> = emptySet(),
+    loiterHandles: List<Feature> = emptyList(),
 ) {
     val cornered = polygons.map { if (fencePath(it.index) in circled) it.copy(vertices = emptyList()) else it }
     val cornerSurveys = surveys.map { if (surveyPath(it) in circled) it.copy(area = emptyList()) else it }
     (style.getSource(FENCE_HANDLE_SOURCE) as? GeoJsonSource)
-        ?.setGeoJson(FeatureCollection.fromFeatures(vertexHandleFeatures(cornered, cornerSurveys, circles, landings).features().orEmpty() + centreHandleFeatures(polygons, surveys) + radiusHandleFeatures(polygons, surveys, circled)))
+        ?.setGeoJson(FeatureCollection.fromFeatures(vertexHandleFeatures(cornered, cornerSurveys, circles, landings).features().orEmpty() + centreHandleFeatures(polygons, surveys) + radiusHandleFeatures(polygons, surveys, circled) + loiterHandles))
 }
 
 fun radiusHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>, circled: Set<String>): List<Feature> {
@@ -489,6 +497,38 @@ fun radiusHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>, ci
         }
     return polygons.filter { fencePath(it.index) in circled }.mapNotNull { handle(it.vertices, it.index, true) } +
         surveys.filter { surveyPath(it) in circled }.mapNotNull { handle(it.area, it.index, false) }
+}
+
+private val loiterArrowAzimuths = listOf(0.0, 180.0)
+
+private fun loiterItems(items: List<MissionItem>) =
+    items.filter { it.loiterRadius.isFinite() && it.loiterRadius != 0.0 && isPlottable(it.latitude, it.longitude) }
+
+fun draggedLoiterRadius(item: MissionItem, to: TrackPoint): Double =
+    metresBetween(TrackPoint(item.latitude, item.longitude), to).let { if (item.loiterRadius >= 0) it else -it }
+
+fun loiterRotationArrows(items: List<MissionItem>): List<TransectArrow> =
+    loiterItems(items).flatMap { item ->
+        val centre = TrackPoint(item.latitude, item.longitude)
+        loiterArrowAzimuths.map { azimuth ->
+            TransectArrow(pointAt(centre, kotlin.math.abs(item.loiterRadius), azimuth), (azimuth + if (item.loiterRadius >= 0) 90.0 else 270.0) % 360.0)
+        }
+    }
+
+fun loiterHandleFeatures(items: List<MissionItem>, selected: Int?): List<Feature> {
+    fun handle(at: TrackPoint, kind: String, owner: Int, vertex: Int) =
+        Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
+            addStringProperty(HANDLE_KIND_PROPERTY, kind)
+            addNumberProperty(POLYGON_INDEX_PROPERTY, owner)
+            addNumberProperty(VERTEX_INDEX_PROPERTY, vertex)
+        }
+    val rotations = loiterItems(items).flatMap { item ->
+        loiterRotationArrows(listOf(item)).mapIndexed { vertex, arrow -> handle(arrow.at, HANDLE_KIND_LOITER_ROTATION, item.index, vertex) }
+    }
+    val radius = loiterItems(items).filter { it.index == selected }.map { item ->
+        handle(pointAt(TrackPoint(item.latitude, item.longitude), kotlin.math.abs(item.loiterRadius), 90.0), HANDLE_KIND_LOITER_RADIUS, item.index, 0)
+    }
+    return rotations + radius
 }
 
 fun centreHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>): List<Feature> =

@@ -34,6 +34,10 @@ sealed interface MapHit {
     data class ShapeCentre(val fence: Boolean, val owner: Int) : MapHit
 
     data class ShapeRadius(val fence: Boolean, val owner: Int) : MapHit
+
+    data class LoiterRadius(val index: Int) : MapHit
+
+    data class LoiterRotation(val index: Int) : MapHit
 }
 
 internal fun nearestIndex(x: Float, y: Float, points: List<Pair<Float, Float>?>): Int? =
@@ -70,6 +74,8 @@ internal fun handleHit(kind: String?, owner: Int, vertex: Int): MapHit? = when (
     HANDLE_KIND_FENCE_CENTRE -> MapHit.ShapeCentre(fence = true, owner = owner)
     HANDLE_KIND_SURVEY_CENTRE -> MapHit.ShapeCentre(fence = false, owner = owner)
     HANDLE_KIND_CIRCLE_RADIUS -> MapHit.ShapeRadius(fence = vertex == 0, owner = owner)
+    HANDLE_KIND_LOITER_RADIUS -> MapHit.LoiterRadius(owner)
+    HANDLE_KIND_LOITER_ROTATION -> MapHit.LoiterRotation(owner)
     else -> null
 }
 

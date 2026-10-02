@@ -445,7 +445,7 @@ internal fun MapSpikeScreen(
                     insertAfter(selected, allItems),
                 )
             },
-            onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList, rally, fences) } },
+            onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList, rally, fences, allItems) } },
             onWaypointSelected = { hit ->
                 when (hit) {
                     is MapHit.Midpoint -> if (hit.path == MISSION_SPLIT_PATH) {
@@ -455,11 +455,15 @@ internal fun MapSpikeScreen(
                         invokeOk("${hit.path}.${hit.invokable}", "[${hit.segment}]")
                     }
                     MapHit.BreachReturn -> editingBreach = true
+                    is MapHit.LoiterRotation -> allItems.firstOrNull { it.index == hit.index }?.let { item ->
+                        onBridge(done = movedText(hit, allItems)) { PlanBridge.setLoiterRadius(item.index, -item.loiterRadius) }
+                    }
+                    is MapHit.LoiterRadius -> selected = MapHit.Waypoint(hit.index)
                     else -> selected = hit
                 }
             },
             onMoved = { hit, lat, lon ->
-                onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList, rally, fences) }
+                onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList, rally, fences, allItems) }
             },
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
             onViewChanged = { visible = it },
@@ -492,7 +496,7 @@ internal fun MapSpikeScreen(
         positioning?.let { (hit, at) ->
             PositionDialog(at, onDismiss = { positioning = null }) { moved ->
                 positioning = null
-                onBridge(done = movedText(hit, allItems)) { writeMove(hit, moved.latitude, moved.longitude, surveyList, rally, fences) }
+                onBridge(done = movedText(hit, allItems)) { writeMove(hit, moved.latitude, moved.longitude, surveyList, rally, fences, allItems) }
             }
         }
 
