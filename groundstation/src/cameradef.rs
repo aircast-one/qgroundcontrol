@@ -480,6 +480,7 @@ fn parameter(node: Node) -> Result<Parsed, Refusal> {
                 min: limit("min"),
                 max: limit("max"),
                 increment: node.attribute("step").and_then(|raw| raw.trim().parse().ok()),
+                max_string_length: None,
                 enums: options.iter().map(|choice| choice.entry.clone()).collect(),
                 bitmask: false,
                 has_control,

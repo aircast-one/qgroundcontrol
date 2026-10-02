@@ -79,6 +79,7 @@ pub struct MetaData {
     pub min: Option<Value>,
     pub max: Option<Value>,
     pub increment: Option<f64>,
+    pub max_string_length: Option<u64>,
     pub enums: Vec<EnumEntry>,
     pub bitmask: bool,
     pub has_control: bool,
@@ -178,6 +179,7 @@ pub fn from_object_for(json: &Map<String, Value>, defines: &BTreeMap<String, Str
         min: number("min"),
         max: number("max"),
         increment: json.get("increment").and_then(Value::as_f64),
+        max_string_length: json.get("maxStringLength").and_then(Value::as_u64),
         decimal_places: json.get("decimalPlaces").and_then(Value::as_i64),
         label: text("label").unwrap_or_default(),
         short_description: text("shortDesc").unwrap_or_default(),
@@ -198,7 +200,7 @@ pub fn from_object_for(json: &Map<String, Value>, defines: &BTreeMap<String, Str
 }
 
 pub fn from_file(text: &str) -> Result<BTreeMap<String, MetaData>, String> {
-    from_file_for(text, false)
+    from_file_for(text, cfg!(any(target_os = "android", target_os = "ios")))
 }
 
 pub fn from_file_for(text: &str, mobile: bool) -> Result<BTreeMap<String, MetaData>, String> {

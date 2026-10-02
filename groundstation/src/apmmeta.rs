@@ -119,6 +119,7 @@ pub fn json_metadata(parameters: &JsonParameters, name: &str, value_type: ValueT
         min: None,
         max: None,
         increment: None,
+        max_string_length: None,
         enums: Vec::new(),
         bitmask: false,
         has_control: true,

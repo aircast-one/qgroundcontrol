@@ -39,11 +39,16 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
                 false => Some(("notAnOption", format!("Choose one of: {}.", offered.iter().filter_map(|o| o["label"].as_str()).collect::<Vec<_>>().join(", ")))),
             }
         }
-        "text" => (!asked.is_string()).then(|| ("notText", "This setting is text.".to_string())),
+        "text" => match (asked.as_str(), fact["maxStringLength"].as_u64()) {
+            (None, _) => Some(("notText", "This setting is text.".to_string())),
+            (Some(text), Some(longest)) if text.chars().count() as u64 > longest => Some(("tooLong", format!("Value must be {longest} characters or less"))),
+            _ => None,
+        },
         "bitmask" => {
             let known: i64 = control["bits"].as_array().map(|b| b.iter().filter_map(|bit| bit["raw"].as_str()?.parse::<i64>().ok()).fold(0, |all, bit| all | bit)).unwrap_or(0);
+            let current = number(&fact["rawValue"]).map_or(0, |n| n as i64);
             match number(asked).filter(|n| n.fract() == 0.0).map(|n| n as i64) {
-                Some(bits) if bits >= 0 && bits & !known == 0 => None,
+                Some(bits) if bits & !known & !current == 0 => None,
                 _ => Some(("unknownBits", "Only the listed options can be set.".to_string())),
             }
         }
@@ -51,15 +56,15 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
             let Some(value) = number(asked) else {
                 return Some(("notANumber", "This setting is a number.".to_string()));
             };
-            let (minimum, maximum) = (control["minimum"].as_f64(), control["maximum"].as_f64());
+            let (minimum, maximum) = (control["minimum"].as_f64().or(fact["min"].as_f64()), control["maximum"].as_f64().or(fact["max"].as_f64()));
             match () {
                 _ if control["wholeNumbersOnly"] == true && value.fract() != 0.0 => Some(("notWhole", "This setting takes whole numbers only.".to_string())),
                 _ if minimum.is_some_and(|m| value < m) || maximum.is_some_and(|m| value > m) => Some((
                     "outOfRange",
                     format!(
                         "This setting runs from {} to {}.",
-                        control["minimumText"].as_str().map(str::to_string).or(minimum.map(|m| m.to_string())).unwrap_or_else(|| "its lowest".to_string()),
-                        control["maximumText"].as_str().map(str::to_string).or(maximum.map(|m| m.to_string())).unwrap_or_else(|| "its highest".to_string())
+                        control["minimumText"].as_str().or(fact["minString"].as_str()).map(str::to_string).or(minimum.map(|m| m.to_string())).unwrap_or_else(|| "its lowest".to_string()),
+                        control["maximumText"].as_str().or(fact["maxString"].as_str()).map(str::to_string).or(maximum.map(|m| m.to_string())).unwrap_or_else(|| "its highest".to_string())
                     ),
                 )),
                 _ => None,
@@ -198,6 +203,15 @@ mod tests {
         let mask = fact(json!({ "bitmaskStrings": ["RC", "Battery"], "bitmaskValues": [1, 2] }));
         assert_eq!(check(mask.clone(), json!(3)), None);
         assert_eq!(check(mask, json!(4)), Some("unknownBits"));
+        let vendor = fact(json!({ "bitmaskStrings": ["RC", "Battery"], "bitmaskValues": [1, 2], "rawValue": -2147483644 }));
+        assert_eq!(check(vendor.clone(), json!(-2147483643)), None, "FactBitmask flips one box and keeps bits the metadata does not list, sign bit included");
+        assert_eq!(check(vendor, json!(-2147483643 | 8)), Some("unknownBits"));
+        let port = fact(json!({ "typeIsInteger": true, "min": 0, "max": 65535, "minIsDefaultForType": true, "maxIsDefaultForType": true, "minString": "0", "maxString": "65535" }));
+        assert_eq!(check(port.clone(), json!(70000)), Some("outOfRange"), "FactMetaData min/max default to the type range and are always checked");
+        assert_eq!(check(port, json!(-1)), Some("outOfRange"));
+        let id = fact(json!({ "typeIsString": true, "maxStringLength": 20 }));
+        assert_eq!(check(id.clone(), json!("12345678901234567890")), None);
+        assert_eq!(check(id, json!("123456789012345678901")), Some("tooLong"), "Value must be 20 characters or less");
         assert_eq!(check(fact(json!({ "readOnly": true })), json!(1)), Some("readOnly"));
         assert_eq!(check(json!({ "kind": "fact", "name": "x" }), json!(1)), None, "a fact that does not say it is read-only is not refused as one");
     }

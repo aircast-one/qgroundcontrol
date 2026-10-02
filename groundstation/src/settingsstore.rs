@@ -115,6 +115,7 @@ fn platform_meta(group: &str, fact: &str, meta: MetaData) -> MetaData {
             enums: text_enums(crate::maptypes::map_type_list(&raw_setting("settings.flightMapSettings.mapProvider").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default())),
             ..meta
         },
+        ("Video", "videoSource") => MetaData { enums: text_enums(stream_sources()), default: Some(json!(VIDEO_DISABLED)), ..meta },
         ("FlightMap", "elevationMapProvider") => MetaData { enums: text_enums(crate::maptypes::ELEVATION_PROVIDERS.iter().map(|p| p.to_string()).collect()), ..meta },
         _ => meta,
     }
@@ -315,6 +316,7 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
         "typeIsBool": meta.value_type == ValueType::Bool,
         "typeIsInteger": whole,
         "typeIsString": meta.value_type == ValueType::String,
+        "maxStringLength": meta.max_string_length,
         "readOnly": meta.read_only,
         "qgcRebootRequired": meta.qgc_reboot_required,
         "vehicleRebootRequired": meta.vehicle_reboot_required,
@@ -773,6 +775,12 @@ fn operator_id_valid_for_region() -> bool {
 }
 
 pub const VIDEO_DISABLED: &str = "Video Stream Disabled";
+
+const STREAM_SOURCE_ORDER: [&str; 6] = ["RTSP Video Stream", "UDP h.264 Video Stream", "UDP h.265 Video Stream", "TCP-MPEG2 Video Stream", "MPEG-TS Video Stream", "WebRTC (WHEP) Video Stream"];
+
+fn stream_sources() -> Vec<String> {
+    std::iter::once(VIDEO_DISABLED).chain(STREAM_SOURCE_ORDER).map(str::to_string).collect()
+}
 pub const URL_SOURCES: [(&str, &str); 6] = [
     ("UDP h.264 Video Stream", "udpUrl"),
     ("UDP h.265 Video Stream", "udpUrl"),
@@ -848,6 +856,14 @@ impl<B: Backend> Backend for Owner<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn without_qt_the_video_source_offers_qgcs_stream_sources_in_its_order() {
+        let qt: serde_json::Map<String, Value> = serde_json::from_str(include_str!("../tests/fixtures/settings-facts-by-qt.json")).unwrap();
+        let listed: Vec<String> = qt["settings.videoSettings.videoSource"]["enumStrings"].as_array().unwrap().iter().filter_map(|v| v.as_str().map(str::to_string)).take(7).collect();
+        assert_eq!(stream_sources(), listed, "the stream sources VideoSettings lists before the platform's cameras");
+        assert!(STREAM_SOURCE_ORDER.iter().all(|name| URL_SOURCES.iter().any(|(source, _)| source == name)), "every offered stream has a URL setting");
+    }
+
     #[test]
     fn the_platform_rules_answer_what_qt_answered_on_macos() {
         let qt: serde_json::Map<String, Value> = serde_json::from_str(include_str!("../tests/fixtures/settings-facts-by-qt.json")).unwrap();

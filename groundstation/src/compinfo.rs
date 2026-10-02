@@ -45,6 +45,7 @@ fn bare(name: &str, value_type: ValueType, component: u8) -> MetaData {
         min: None,
         max: None,
         increment: None,
+        max_string_length: None,
         enums: Vec::new(),
         bitmask: false,
         has_control: true,
