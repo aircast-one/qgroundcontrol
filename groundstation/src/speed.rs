@@ -75,8 +75,10 @@ pub fn change(backend: &dyn Backend, path: &str, args: &str) -> Value {
     if let Some((token, reason)) = refusal {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
-    let dispatched = flag(&object(&backend.invoke(path, &json!([asked]).to_string())), "ok");
-    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the command.") } })
+    let core = json!({ "action": "speed", "ground": command == "guidedModeChangeGroundSpeedMetersSecond", "metresPerSecond": asked });
+    let answer = crate::guided::dispatch(backend, Some(core), crate::guided::active_id(backend), path, &json!([asked]).to_string());
+    let dispatched = flag(&answer, "ok");
+    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => answer.get("reason").cloned().unwrap_or_else(|| json!("The vehicle was not sent the command.")) } })
 }
 
 fn range_meters_second(backend: &dyn Backend) -> Option<Range> {

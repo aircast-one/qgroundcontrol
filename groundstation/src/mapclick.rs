@@ -14,6 +14,7 @@ const GPS_SENSOR_BIT: i64 = 32;
 pub enum Click {
     GoTo,
     Roi,
+    HomeRoi,
     SetHome,
     Heading,
     EstimatorOrigin,
@@ -201,7 +202,7 @@ fn click_refusal(click: Click, a: Aircraft) -> Option<(&'static str, &'static st
     match click {
         _ if !a.connected => Some(("noVehicle", "No vehicle is connected.")),
         Click::GoTo | Click::Roi | Click::Heading if !a.flying => Some(("grounded", "The vehicle has to be flying for that.")),
-        Click::Roi if !a.roi => Some(("unsupported", "This vehicle cannot point at a location.")),
+        Click::Roi | Click::HomeRoi if !a.roi => Some(("unsupported", "This vehicle cannot point at a location.")),
         Click::Heading if !a.heading => Some(("unsupported", "This vehicle cannot be turned to face a point.")),
         Click::EstimatorOrigin if a.gps => Some(("hasGps", "The vehicle has GPS, so it already knows where it is.")),
         _ => None,
@@ -246,7 +247,7 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
         _ if crate::qthost::present() => None,
         Click::Heading => Some(json!({ "action": "heading", "latitude": latitude, "longitude": longitude })),
         Click::SetHome => Some(json!({ "action": "setHome", "latitude": latitude, "longitude": longitude, "terrain": crate::terrainservice::height_now(latitude, longitude).ok().flatten() })),
-        Click::Roi => Some(roi_action(backend, latitude, longitude, at.get("altitude").and_then(Value::as_f64).unwrap_or(0.0))),
+        Click::Roi | Click::HomeRoi => Some(roi_action(backend, latitude, longitude, at.get("altitude").and_then(Value::as_f64).unwrap_or(0.0))),
     };
     let sent = crate::guided::dispatch(backend, core, crate::guided::active_id(backend), path, &forwarded.to_string());
     if click == Click::GoTo && flag(&sent, "ok") {
@@ -266,6 +267,7 @@ mod tests {
         assert_eq!(click_refusal(Click::GoTo, flying), None);
         assert_eq!(click_refusal(Click::GoTo, Aircraft { flying: false, ..flying }).map(|r| r.0), Some("grounded"));
         assert_eq!(click_refusal(Click::Roi, Aircraft { roi: false, ..flying }).map(|r| r.0), Some("unsupported"), "Vehicle::guidedModeROI logs and returns while the bridge answers ok");
+        assert_eq!(click_refusal(Click::HomeRoi, Aircraft { flying: false, ..flying }), None, "GimbalIndicator's Point Home calls guidedModeROI(homePosition) on the ground too");
         assert_eq!(click_refusal(Click::Heading, Aircraft { heading: false, ..flying }).map(|r| r.0), Some("unsupported"));
         assert_eq!(click_refusal(Click::SetHome, Aircraft { flying: false, ..flying }), None, "home can be set on the ground");
         assert_eq!(click_refusal(Click::EstimatorOrigin, flying).map(|r| r.0), Some("hasGps"));

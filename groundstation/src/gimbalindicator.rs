@@ -157,7 +157,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             match (flag(&home, "valid"), home.get("latitude").and_then(Value::as_f64), home.get("longitude").and_then(Value::as_f64)) {
                 (true, Some(latitude), Some(longitude)) => crate::mapclick::send(
                     backend,
-                    crate::mapclick::Click::Roi,
+                    crate::mapclick::Click::HomeRoi,
                     "vehicle.guidedModeROI",
                     &json!([{ "latitude": latitude, "longitude": longitude, "altitude": home.get("altitude").cloned().unwrap_or(json!(0.0)) }]).to_string(),
                 ),
