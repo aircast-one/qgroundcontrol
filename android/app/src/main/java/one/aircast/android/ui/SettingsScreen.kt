@@ -390,7 +390,7 @@ private fun SettingsList(
                     SetupRow(
                         title = sentenceCase(entry.title),
                         status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else "",
-                        state = if (activeLinks > 0 && entry.title == CONNECTIONS_PAGE) SetupState.Done else SetupState.Neutral,
+                        state = SetupState.Neutral,
                         subtitle = pageSubtitle(entry.title, glance),
                         onClick = { onOpen(entry.title) },
                         icon = pageLook(entry.title).icon,

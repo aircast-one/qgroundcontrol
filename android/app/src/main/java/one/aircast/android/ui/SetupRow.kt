@@ -41,7 +41,7 @@ internal enum class SetupState { NeedsAttention, Done, Neutral, Unavailable }
 @Composable
 internal fun setupStateColor(state: SetupState): Color = when (state) {
     SetupState.NeedsAttention -> MaterialTheme.aircast.warning
-    SetupState.Done -> MaterialTheme.colorScheme.primary
+    SetupState.Done -> MaterialTheme.aircast.success
     SetupState.Neutral -> MaterialTheme.colorScheme.onSurfaceVariant
     SetupState.Unavailable -> MaterialTheme.colorScheme.onSurfaceVariant
 }
