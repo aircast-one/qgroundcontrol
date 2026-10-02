@@ -1988,12 +1988,12 @@ impl Vehicle {
     }
 
     fn handle(&mut self, outs: Vec<Out>, now_ms: u64) -> Vec<Vec<u8>> {
-        let target = (self.id, self.component);
+        let id = self.id;
         outs.into_iter()
             .flat_map(|out| match out {
-                Out::Send { command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params, .. } => self.encode(&Outbound::RawCommandLong { target, command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params }).into_iter().collect(),
-                Out::Send { command, command_int: false, params, .. } => self.encode(&Outbound::CommandLong { target, command, params }).into_iter().collect(),
-                Out::Send { command, command_int: true, frame, params, x, y, .. } => self.encode(&Outbound::CommandInt { target, command, frame, params, x, y }).into_iter().collect(),
+                Out::Send { component, command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params, .. } => self.encode(&Outbound::RawCommandLong { target: (id, component), command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params }).into_iter().collect(),
+                Out::Send { component, command, command_int: false, params, .. } => self.encode(&Outbound::CommandLong { target: (id, component), command, params }).into_iter().collect(),
+                Out::Send { component, command, command_int: true, frame, params, x, y } => self.encode(&Outbound::CommandInt { target: (id, component), command, frame, params, x, y }).into_iter().collect(),
                 Out::ShowError(text) => {
                     self.pending_notices.push((crate::noticeboard::MESSAGE, text.clone()));
                     self.note(text);

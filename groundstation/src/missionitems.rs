@@ -462,6 +462,10 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
                 w.status.min_amsl = w.status.min_amsl.min(amsl);
                 w.status.max_amsl = w.status.max_amsl.max(amsl);
             }
+            if matches!(item, crate::plandoc::Item::Complex { json, .. } if survey(json, home_alt).is_ok_and(|v| v.incomplete)) {
+                w.first_coordinate = false;
+                w.last = Some(((f64::NAN, f64::NAN), f64::NAN, true));
+            }
             if let Some(f) = flight(item, &commands, home_alt) {
                 let (low, high) = f.band;
                 w.status.min_amsl = w.status.min_amsl.min(low);
@@ -509,7 +513,7 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
         w
     });
     let mut w = walked;
-    if let (true, Some((exit, exit_amsl, _)), Some(h)) = (w.rtl, w.last, home) {
+    if let (true, Some((exit, exit_amsl, _)), Some(h)) = (w.rtl, w.last.filter(|(exit, _, _)| exit.0.is_finite()), home) {
         let distance = crate::surveygrid::distance_between(exit, (h[0], h[1]));
         if !w.past_land {
             let land = (h[2] - exit_amsl).abs() / speeds.descent;
@@ -751,6 +755,9 @@ fn with_vehicle_yaws(reads: Vec<Value>) -> Vec<Value> {
                 *yaw = read["specifiedVehicleYaw"].as_f64().filter(|y| !y.is_nan()).or_else(|| Some(crate::surveygrid::azimuth_to((*last_exit)?, spot(read, "coordinate")?))).unwrap_or(*yaw);
             }
             *last_exit = spot(read, "exitCoordinate").or_else(|| spot(read, "coordinate"));
+            if read["isIncomplete"].as_bool().unwrap_or(false) {
+                *yaw = 0.0;
+            }
             Some((!home && simple).then_some(*yaw))
         })
         .collect();
@@ -1684,6 +1691,8 @@ mod reported {
         let distances: Vec<f64> = view["items"].as_array().unwrap().iter().filter_map(|i| i["distance"].as_f64()).collect();
         assert!(distances.iter().all(|d| *d < 1_000.0), "QGC measures an invalid coordinate as 0, so nothing reaches 0,0: {distances:?}");
         assert_eq!(view["items"][2]["incomplete"], true);
+        let status = flight_status(&doc, &Speeds { hover: 5.0, cruise: 15.0, ascent: 5.0, descent: 3.0 }).unwrap();
+        assert!(status.total_distance < 1.0, "MissionFlightStatusCalculator measures from the incomplete item's invalid exit, so the totals agree with the 0 m legs: {}", status.total_distance);
     }
 
     #[test]
