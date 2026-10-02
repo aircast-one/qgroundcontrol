@@ -104,6 +104,10 @@ impl Track {
 
 static TRACKS: LazyLock<Mutex<BTreeMap<i64, Track>>> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
+pub fn observe(vehicle: i64, armed: bool, position: Option<(f64, f64)>) {
+    TRACKS.lock().unwrap_or_else(PoisonError::into_inner).entry(vehicle).or_default().observe(armed, position);
+}
+
 pub fn flight_distance(vehicle: i64) -> Option<f64> {
     TRACKS.lock().unwrap_or_else(PoisonError::into_inner).get(&vehicle).map(|track| track.flight_distance)
 }

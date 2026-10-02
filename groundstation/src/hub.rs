@@ -2835,7 +2835,9 @@ impl Vehicle {
         self.gps.apply(message);
         self.gps2.apply_second(message);
         self.batteries.apply(message);
-        self.facts.apply(from, message);
+        if self.facts.apply(from, message) && matches!(message, MavMessage::GLOBAL_POSITION_INT(_)) {
+            crate::track::observe(i64::from(self.id), self.armed(), self.facts.coordinate.map(|(latitude, longitude, _)| (latitude, longitude)));
+        }
         self.wind.apply(message);
         self.setpoint.apply(message);
         self.hygrometer.apply(message);
