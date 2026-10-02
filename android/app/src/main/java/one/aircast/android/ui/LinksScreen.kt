@@ -642,6 +642,18 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name (optional)") },
+                    placeholder = {
+                        Text(
+                            if (type == "serial") autoSerialName(portLabel(ports, portName))
+                            else autoLinkName(type, host, port.ifBlank { portFor(type, udpDefault) }),
+                        )
+                    },
+                    singleLine = true,
+                )
                 if (type == AIRCAST_CLOUD_LINK) {
                     AircastCloudFields(apiBase, deviceId, cloudErrors, { apiBase = it }, { deviceId = it })
                 } else if (type == BLUETOOTH_LINK) {
@@ -698,18 +710,6 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                         )
                     }
                 }
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Name (optional)") },
-                    placeholder = {
-                        Text(
-                            if (type == "serial") autoSerialName(portLabel(ports, portName))
-                            else autoLinkName(type, host, port.ifBlank { portFor(type, udpDefault) }),
-                        )
-                    },
-                    singleLine = true,
-                )
                 LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
                 error?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
