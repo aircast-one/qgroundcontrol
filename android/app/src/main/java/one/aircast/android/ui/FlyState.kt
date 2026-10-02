@@ -22,6 +22,7 @@ internal data class FlyState(
     val rcSignal: Int?,
     val rcOverride: Boolean?,
     val telemetry: TelemetryLink?,
+    val summaryDetail: String = "",
 )
 
 internal data class TelemetryLink(
@@ -56,6 +57,7 @@ internal fun flyState(view: JSONObject?): FlyState? {
         contactLost = if (view.isNull("contactLost")) null else view.optBoolean("contactLost"),
         state = view.optText("state"),
         stateText = view.optText("stateText"),
+        summaryDetail = view.optText("summaryDetail"),
         staleNotice = view.optText("staleNotice"),
         mode = view.optText("mode"),
         rcSupported = view.optBoolean("rcSupported"),

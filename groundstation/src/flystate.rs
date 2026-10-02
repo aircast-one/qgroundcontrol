@@ -110,7 +110,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let reported = connected.then(|| watching.then(|| flag(&links, "communicationLost"))).flatten();
     let contact_lost = reported.unwrap_or(false);
     let state = state_of(connected, contact_lost, flag(&vehicle, "armed"), flag(&vehicle, "flying"), flag(&vehicle, "landing"));
-    let nominal = vehicle_nominal(backend);
+    let health = health(backend);
     json!({
         "kind": "object",
         "class": "FlyState",
@@ -120,7 +120,8 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "landing": flag(&vehicle, "landing"),
         "contactLost": reported,
         "state": state.token(),
-        "stateText": state_line(state, state == State::Disarmed && disarmed_ready(backend), nominal),
+        "stateText": state_line(state, state == State::Disarmed && disarmed_ready(backend), health.nominal()),
+        "summaryDetail": connected.then(|| summary_detail(flag(&vehicle, "armed"), flag(&vehicle, "flying") || flag(&vehicle, "landing"), health.check_issues, &health.sensors)),
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
@@ -135,14 +136,47 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
-fn vehicle_nominal(backend: &dyn Backend) -> bool {
+struct Health {
+    report: Option<(bool, bool)>,
+    sensors: Vec<(String, bool, bool)>,
+    check_issues: usize,
+}
+
+fn health(backend: &dyn Backend) -> Health {
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,hasWarningsOrErrors"));
+    let supported = flag(&report, "supported");
     let info = object(&backend.get("vehicle.sysStatusSensorInfo"));
     let flags = |key: &str| -> Vec<bool> { info.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(v.as_i64().unwrap_or(0) != 0)).collect()).unwrap_or_default() };
     let (enabled, healthy) = (flags("sensorEnabled"), flags("sensorHealthy"));
-    let count = info.get("sensorNames").and_then(Value::as_array).map_or(0, Vec::len);
-    let sensors: Vec<(bool, bool)> = (0..count).map(|i| (enabled.get(i).copied().unwrap_or(false), healthy.get(i).copied().unwrap_or(false))).collect();
-    status_nominal(flag(&report, "supported").then(|| (flag(&report, "canArm"), flag(&report, "hasWarningsOrErrors"))), &sensors)
+    let names: Vec<String> = info.get("sensorNames").and_then(Value::as_array).map(|a| a.iter().map(|n| n.as_str().unwrap_or_default().to_string()).collect()).unwrap_or_default();
+    let problems = supported.then(|| object(&backend.get("vehicle.healthAndArmingCheckReport.problemsForCurrentMode"))).and_then(|model| model.get("elements").and_then(Value::as_array).map(Vec::len));
+    Health {
+        report: supported.then(|| (flag(&report, "canArm"), flag(&report, "hasWarningsOrErrors"))),
+        sensors: match supported {
+            true => Vec::new(),
+            false => names.into_iter().enumerate().map(|(i, name)| (name, enabled.get(i).copied().unwrap_or(false), healthy.get(i).copied().unwrap_or(false))).collect(),
+        },
+        check_issues: problems.unwrap_or(0),
+    }
+}
+
+impl Health {
+    fn nominal(&self) -> bool {
+        status_nominal(self.report, &self.sensors.iter().map(|(_, enabled, healthy)| (*enabled, *healthy)).collect::<Vec<_>>())
+    }
+}
+
+pub fn summary_detail(armed: bool, in_air: bool, check_issues: usize, sensors: &[(String, bool, bool)]) -> String {
+    let listed = |pick: fn(bool, bool) -> bool| sensors.iter().filter(|(_, enabled, healthy)| pick(*enabled, *healthy)).map(|(name, ..)| name.as_str()).collect::<Vec<_>>().join(", ");
+    let (faults, disabled) = (listed(|enabled, healthy| enabled && !healthy), listed(|enabled, _| !enabled));
+    match (armed, in_air) {
+        (true, true) => "Motors are armed and the vehicle is in the air.".to_string(),
+        (true, false) => "Motors are armed. Keep clear of the propellers.".to_string(),
+        _ if check_issues > 0 => format!("{check_issues} check(s) need attention before arming."),
+        _ if !faults.is_empty() => format!("{faults} not working. Position modes and Return to Launch may not work."),
+        _ if !disabled.is_empty() => format!("{disabled} turned off. Everything else reports normal."),
+        _ => "All checks passed.".to_string(),
+    }
 }
 
 fn disarmed_ready(backend: &dyn Backend) -> bool {
@@ -210,6 +244,17 @@ mod tests {
         assert!(!ready_to_fly(None, None, true, || false));
         assert_eq!((state_line(State::Disarmed, true, true), state_line(State::Disarmed, false, true), state_line(State::Armed, false, false)), ("Ready to Fly", "Not Ready", "Armed"));
         assert_eq!(state_line(State::Disarmed, true, false), "Not Fully Ready");
+    }
+
+    #[test]
+    fn summary_detail_reads_like_main_status_indicator() {
+        let sensors = |list: &[(&str, bool, bool)]| list.iter().map(|(n, e, h)| (n.to_string(), *e, *h)).collect::<Vec<_>>();
+        assert_eq!(summary_detail(true, true, 3, &[]), "Motors are armed and the vehicle is in the air.");
+        assert_eq!(summary_detail(true, false, 0, &[]), "Motors are armed. Keep clear of the propellers.");
+        assert_eq!(summary_detail(false, false, 2, &sensors(&[("GPS", true, false)])), "2 check(s) need attention before arming.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, false), ("Gyro", true, false), ("Mag", false, false)])), "GPS, Gyro not working. Position modes and Return to Launch may not work.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true), ("Mag", false, false)])), "Mag turned off. Everything else reports normal.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true)])), "All checks passed.");
     }
 
     #[test]

@@ -141,4 +141,11 @@ class FlyStateArmedTest {
     fun `no vehicle is not an armed vehicle`() {
         assertFalse(flyState(JSONObject("""{"kind":"object","class":"FlyState","connected":false}"""))!!.armed)
     }
+
+    @Test
+    fun `the status sheet summary is the core's line`() {
+        val state = flyState(JSONObject("""{"class":"FlyState","connected":true,"stateText":"Not Fully Ready","summaryDetail":"Mag turned off. Everything else reports normal."}"""))!!
+        assertEquals("Mag turned off. Everything else reports normal.", state.summaryDetail)
+        assertEquals("", flyState(JSONObject("""{"class":"FlyState","summaryDetail":null}"""))!!.summaryDetail)
+    }
 }
