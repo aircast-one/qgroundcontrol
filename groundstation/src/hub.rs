@@ -2720,6 +2720,10 @@ impl Vehicle {
                 self.base_mode = if apm { d.custom0 as u8 } else { crate::modes::FLAG_CUSTOM };
                 self.custom_mode = high_latency_custom_mode(self.autopilot, d.custom_mode);
                 self.armed_now = !apm || (d.custom0 as u8) & ARMED_FLAG != 0;
+                let reported = high_latency_sensors(d.failure_flags.bits());
+                if reported != self.status_bits.enabled {
+                    self.status_bits = self.status_bits.after(reported, reported, reported);
+                }
             }
             MavMessage::EXTENDED_SYS_STATE(e) if from == (self.id, self.component) => {
                 let (flying, landing) = match e.landed_state as u8 {
@@ -3292,6 +3296,12 @@ fn heartbeat_info(message: &MavMessage) -> Option<(u8, u8)> {
         MavMessage::HIGH_LATENCY2(h) => Some((h.mavtype as u8, h.autopilot as u8)),
         _ => None,
     }
+}
+
+const HL_FAILURE_TO_SENSOR: [(u16, u32); 6] = [(1, 32), (2, 16), (4, 8), (8, 2), (16, 1), (32, 4)];
+
+fn high_latency_sensors(failure_flags: u16) -> u32 {
+    HL_FAILURE_TO_SENSOR.iter().filter(|(failure, _)| failure_flags & failure != 0).fold(0, |sensors, (_, sensor)| sensors | sensor)
 }
 
 fn high_latency_custom_mode(autopilot: u8, mode: u16) -> u32 {
@@ -4453,6 +4463,7 @@ mod tests {
         hub.on_frame(origin(7), &header, &report(MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA, 0x01), 1, 1);
         assert!(!hub.vehicles[&3].armed());
         assert_eq!(high_latency_custom_mode(crate::modes::AUTOPILOT_PX4, 0x0304), 0x0304_0000, "PX4 packs main and sub mode into the high half");
+        assert_eq!(high_latency_sensors(1 | 32), 32 | 4, "QGCMAVLink::highLatencyFailuresToMavSysStatus: GPS and magnetometer failures become present, enabled sensors");
     }
 
     #[test]
