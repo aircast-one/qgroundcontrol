@@ -49,6 +49,7 @@ jni = { version = "0.21.1", optional = true }
 pbkdf2 = { version = "0.13.0", features = ["sha2"] }
 getrandom = "0.4.3"
 crc = "3.4.0"
+fs4 = { version = "0.13", features = ["sync"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 serialport = "4.10.1"

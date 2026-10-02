@@ -46,6 +46,12 @@ internal fun stageImages(context: Context, tree: Uri): Pair<String, Int> {
     return dir.absolutePath to copied
 }
 
+internal fun hasTaggedFolder(context: Context, tree: Uri): Boolean =
+    treeChildren(context, tree).any { it.name == DEFAULT_GEOTAG_OUTPUT && it.mime == DocumentsContract.Document.MIME_TYPE_DIR }
+
+internal fun holdsImages(context: Context, tree: Uri): Boolean =
+    treeChildren(context, tree).any { it.mime != DocumentsContract.Document.MIME_TYPE_DIR && isGeoTagImage(it.name) }
+
 private fun imageMime(name: String): String =
     android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.').lowercase()) ?: "application/octet-stream"
 

@@ -27,6 +27,22 @@ class GeoTagViewTest {
     }
 
     @Test
+    fun `each image shows its outcome and a tagged one its coordinate, as GeoTagPage's list does`() {
+        val images = state(""""imageModel":[{"fileName":"a.jpg","status":2,"statusString":"Tagged","errorMessage":"","coordinate":{"latitude":-35.1234567,"longitude":149.0}},{"fileName":"b.jpg","status":3,"statusString":"Skipped","errorMessage":"No matching trigger","coordinate":null}]""").images
+        assertEquals(listOf("a.jpg", "b.jpg"), images.map { it.fileName })
+        assertEquals("Tagged", geoTagImageText(images[0]))
+        assertEquals("No matching trigger", geoTagImageText(images[1]))
+        assertEquals("-35.123457, 149.000000", geoTagCoordinate(images[0]))
+        assertNull(geoTagCoordinate(images[1]))
+    }
+
+    @Test
+    fun `the error is hidden while tagging runs`() {
+        assertNull(geoTagError(state(""""inProgress":true,"errorMessage":"Tagging cancelled"""")))
+        assertEquals("Tagging cancelled", geoTagError(state(""""inProgress":false,"errorMessage":"Tagging cancelled"""")))
+    }
+
+    @Test
     fun `steps tick once filled and only the core's image types are staged`() {
         assertEquals("✓", geoTagStep(true, 1))
         assertEquals("2", geoTagStep(false, 2))
@@ -51,5 +67,8 @@ class GeoTagRunTest {
         assertEquals(-1.0, parsedOffset(" -1.0 ")!!, 0.0)
         assertNull(parsedOffset("abc"))
         assertEquals("-3.5", shownOffset(-3.5))
+        assertEquals(3600.0, parsedOffset("9000")!!, 0.0)
+        assertEquals(-3600.0, parsedOffset("-9000")!!, 0.0)
+        assertEquals(1.3, parsedOffset("1.26")!!, 0.0)
     }
 }

@@ -48,6 +48,23 @@ struct Controller {
     preview_mode: bool,
     recursive_scan: bool,
     run: u64,
+    images: Vec<ImageRow>,
+}
+
+const IMAGE_PENDING: u8 = 0;
+const IMAGE_PROCESSING: u8 = 1;
+const IMAGE_TAGGED: u8 = 2;
+const IMAGE_SKIPPED: u8 = 3;
+const IMAGE_FAILED: u8 = 4;
+const STATUS_NAMES: [&str; 5] = ["Pending", "Processing", "Tagged", "Skipped", "Failed"];
+const SPACE_MARGIN: f64 = 1.1;
+
+#[derive(Debug, Clone, PartialEq)]
+struct ImageRow {
+    file_name: String,
+    status: u8,
+    error: String,
+    coordinate: Option<(f64, f64)>,
 }
 
 static CONTROLLER: Mutex<Controller> = Mutex::new(Controller {
@@ -65,6 +82,7 @@ static CONTROLLER: Mutex<Controller> = Mutex::new(Controller {
     preview_mode: false,
     recursive_scan: false,
     run: 0,
+    images: Vec::new(),
 });
 
 fn held() -> MutexGuard<'static, Controller> {
@@ -416,7 +434,19 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     if images.is_empty() {
         return Err("The image directory doesn't contain supported images. Supported formats: JPEG, TIFF, DNG".to_string());
     }
-    update(run, |s| s.progress = LOAD_IMAGES_END);
+    let file_name = |path: &PathBuf| path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    update(run, |s| {
+        s.progress = LOAD_IMAGES_END;
+        s.images = images.iter().map(|path| ImageRow { file_name: file_name(path), status: IMAGE_PENDING, error: String::new(), coordinate: None }).collect();
+    });
+    let mark = |indices: &[usize], status: u8, error: &str| {
+        update(run, |s| {
+            s.images.iter_mut().enumerate().filter(|(i, _)| indices.contains(i)).for_each(|(_, row)| {
+                row.status = status;
+                row.error = error.to_string();
+            });
+        });
+    };
     let timestamps: Vec<i64> = images
         .iter()
         .enumerate()
@@ -432,6 +462,7 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     if timestamps.iter().all(|t| *t == 0) {
         return Err("Could not read EXIF data from any images".to_string());
     }
+    mark(&timestamps.iter().enumerate().filter(|(_, t)| **t == 0).map(|(i, _)| i).collect::<Vec<_>>(), IMAGE_SKIPPED, "Could not read EXIF timestamp");
     update(run, |s| s.progress = PARSE_EXIF_END);
     let log = std::fs::read(&job.log_file).map_err(|_| "Geotagging failed. Couldn't open log file.".to_string())?;
     if log.is_empty() {
@@ -441,6 +472,7 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     update(run, |s| s.progress = PARSE_LOGS_END);
     let calibration = calibrate(&timestamps, &triggers, job.time_offset, job.tolerance);
     let skipped = calibration.skipped_triggers + calibration.unmatched_images.len() as i64;
+    mark(&calibration.unmatched_images, IMAGE_SKIPPED, "No matching trigger");
     if calibration.image_indices.is_empty() {
         return Err("Calibration failed: No matching triggers found for images.".to_string());
     }
@@ -449,29 +481,45 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
         true => Path::new(&job.image_directory).join("TAGGED"),
         false => PathBuf::from(&job.save_directory),
     };
+    if !job.preview {
+        let required = (calibration.image_indices.iter().filter_map(|i| std::fs::metadata(&images[*i]).ok()).map(|m| m.len()).sum::<u64>() as f64 * SPACE_MARGIN) as u64;
+        let queried = if output.exists() { output.as_path() } else { output.parent().unwrap_or(&output) };
+        if fs4::available_space(queried).is_ok_and(|free| (free as f64) < required as f64 * SPACE_MARGIN) {
+            return Err(format!("Geotagging failed. Insufficient disk space. Need approximately {} MB.", required / (1024 * 1024)));
+        }
+    }
     if !job.preview && std::fs::create_dir_all(&output).is_err() {
         return Err(format!("Geotagging failed. Couldn't create output directory: {}", output.display()));
     }
     let pairs: Vec<(usize, usize)> = calibration.image_indices.iter().copied().zip(calibration.trigger_indices.iter().copied()).collect();
+    mark(&pairs.iter().map(|(image, _)| *image).collect::<Vec<_>>(), IMAGE_PROCESSING, "");
     let outcomes: Vec<bool> = pairs
         .iter()
         .enumerate()
         .take_while(|_| alive())
         .map(|(done, (image, trigger))| {
-            update(run, |s| s.progress = stage_progress(CALIBRATE_END, TAG_IMAGES_END, done + 1, pairs.len()));
             let path = &images[*image];
-            let written = || -> Option<()> {
-                let bytes = std::fs::read(path).ok()?;
+            let name = file_name(path);
+            let written = || -> Result<(), String> {
+                let bytes = std::fs::read(path).ok().filter(|b| !b.is_empty()).ok_or_else(|| format!("Geotagging failed. Couldn't open image: {name}"))?;
                 if job.preview {
-                    return Some(());
+                    return Ok(());
                 }
-                let geotagged = tagged(&bytes, &triggers[*trigger])?;
-                let target = output.join(path.file_name()?);
+                let geotagged = tagged(&bytes, &triggers[*trigger]).ok_or_else(|| format!("Geotagging failed. Couldn't write EXIF to image: {name}"))?;
+                let target = output.join(&name);
                 let staged = target.with_extension(format!("{}.part", target.extension().and_then(|e| e.to_str()).unwrap_or("")));
-                std::fs::write(&staged, geotagged).ok()?;
-                std::fs::rename(&staged, &target).ok()
+                std::fs::write(&staged, geotagged).and_then(|()| std::fs::rename(&staged, &target)).map_err(|_| format!("Geotagging failed. Couldn't save image: {}", target.display()))
             };
-            written().is_some()
+            let outcome = written();
+            update(run, |s| {
+                s.progress = stage_progress(CALIBRATE_END, TAG_IMAGES_END, done + 1, pairs.len());
+                if let Some(row) = s.images.get_mut(*image) {
+                    row.status = if outcome.is_ok() { IMAGE_TAGGED } else { IMAGE_FAILED };
+                    row.error = outcome.as_ref().err().cloned().unwrap_or_default();
+                    row.coordinate = outcome.is_ok().then_some((triggers[*trigger].latitude, triggers[*trigger].longitude));
+                }
+            });
+            outcome.is_ok()
         })
         .collect();
     if !alive() {
@@ -495,6 +543,7 @@ pub fn start() {
         state.tagged = 0;
         state.skipped = 0;
         state.failed = 0;
+        state.images.clear();
         let refusal = match () {
             _ if state.image_directory.is_empty() => Some("Please select an image directory."),
             _ if state.log_file.is_empty() => Some("Please select a log file."),
@@ -591,6 +640,13 @@ fn object() -> Value {
         "toleranceSecs": state.tolerance_secs,
         "previewMode": state.preview_mode,
         "recursiveScan": state.recursive_scan,
+        "imageModel": state.images.iter().map(|row| json!({
+            "fileName": row.file_name,
+            "status": row.status,
+            "statusString": STATUS_NAMES[usize::from(row.status)],
+            "errorMessage": row.error,
+            "coordinate": row.coordinate.map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
+        })).collect::<Vec<_>>(),
     })
 }
 
@@ -672,6 +728,38 @@ mod tests {
         assert!(!found[1].valid() && !found[2].valid());
         assert_eq!(parse_log("flight.log", &log).map(|t| t.len()), Ok(3), "an unknown extension tries ULog first");
         assert_eq!(parse_log("flight.ulg", b"ULog").err().as_deref(), Some("Could not parse ULog header"));
+    }
+
+    fn photo_at(time: &str) -> Vec<u8> {
+        let mut metadata = Metadata::new();
+        metadata.set_tag(ExifTag::CreateDate(time.to_string()));
+        let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xD9];
+        metadata.write_to_vec(&mut jpeg, little_exif::filetype::FileExtension::JPEG).unwrap();
+        jpeg
+    }
+
+    #[test]
+    fn each_image_reports_its_own_outcome_like_geotag_image_model() {
+        let folder = std::env::temp_dir().join(format!("geotag-rows-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("0-broken.jpg"), b"not a photo").unwrap();
+        std::fs::write(folder.join("1.jpg"), photo_at("2026:10:03 12:00:00")).unwrap();
+        std::fs::write(folder.join("2.jpg"), photo_at("2026:10:03 12:00:05")).unwrap();
+        let log = folder.join("flight.ulg");
+        std::fs::write(&log, ulog_with(&[(57_000_000, 149.0, 1), (62_000_000, 150.0, 1)])).unwrap();
+        let run = {
+            let mut state = held();
+            state.run += 1;
+            state.in_progress = true;
+            state.run
+        };
+        let job = Job { log_file: log.display().to_string(), image_directory: folder.display().to_string(), save_directory: String::new(), time_offset: 0, tolerance: 2, preview: true, recursive: false };
+        let counts = tag_run(run, &job);
+        let rows = held().images.clone();
+        std::fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(counts, Ok((2, 1, 0)));
+        let shown: Vec<(&str, u8, &str, Option<(f64, f64)>)> = rows.iter().map(|r| (r.file_name.as_str(), r.status, r.error.as_str(), r.coordinate)).collect();
+        assert_eq!(shown, vec![("0-broken.jpg", IMAGE_SKIPPED, "No matching trigger", None), ("1.jpg", IMAGE_TAGGED, "", Some((-35.0, 149.0))), ("2.jpg", IMAGE_TAGGED, "", Some((-35.0, 150.0)))]);
     }
 
     #[test]

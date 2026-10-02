@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -31,7 +32,9 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,6 +42,9 @@ import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.settingControl
 import java.io.File
 
+private val GEOTAG_BLUE = Color(0xFF2196F3)
+private val GEOTAG_GREEN = Color(0xFF00C853)
+private val GEOTAG_ORANGE = Color(0xFFFF9800)
 
 @Composable
 fun GeoTagScreen(modifier: Modifier = Modifier) {
@@ -78,7 +84,7 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
             Text("Geotagging in progress...", style = MaterialTheme.typography.bodyMedium)
             LinearProgressIndicator(progress = { (current.progress / 100.0).toFloat() }, modifier = Modifier.fillMaxWidth())
         }
-        listOfNotNull(current.errorMessage.ifBlank { null }, note).forEach { message ->
+        listOfNotNull(geoTagError(current), note).forEach { message ->
             Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         }
         geoTagSummary(current)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
@@ -134,6 +140,35 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
             onClick = { if (current.inProgress) GeoTagRun.cancel() else GeoTagRun.start(context) },
             modifier = Modifier.fillMaxWidth(),
         ) { Text(geoTagButton(current)) }
+        if (current.images.isNotEmpty()) {
+            Text("Images (${current.images.size})", style = MaterialTheme.typography.titleSmall)
+            current.images.forEach { GeoTagImageRow(it) }
+        }
+    }
+}
+
+@Composable
+private fun geoTagStatusColour(status: Int): Color = when (status) {
+    1 -> GEOTAG_BLUE
+    GEOTAG_TAGGED -> GEOTAG_GREEN
+    3 -> GEOTAG_ORANGE
+    4 -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+}
+
+@Composable
+private fun GeoTagImageRow(image: GeoTagImage) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Box(Modifier.size(12.dp).background(geoTagStatusColour(image.status), RoundedCornerShape(2.dp)))
+        Column(Modifier.weight(1f)) {
+            Text(image.fileName, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            geoTagCoordinate(image)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        Text(
+            geoTagImageText(image),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (image.status == 3 || image.status == 4) geoTagStatusColour(image.status) else MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 

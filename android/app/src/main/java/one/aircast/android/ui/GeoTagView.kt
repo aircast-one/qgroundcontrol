@@ -17,7 +17,40 @@ internal data class GeoTagState(
     val failed: Int,
     val timeOffsetSecs: Double,
     val previewMode: Boolean,
+    val images: List<GeoTagImage> = emptyList(),
 )
+
+internal data class GeoTagImage(
+    val fileName: String,
+    val status: Int,
+    val statusString: String,
+    val errorMessage: String,
+    val coordinate: Pair<Double, Double>?,
+)
+
+internal const val GEOTAG_TAGGED = 2
+
+internal fun geoTagImages(json: JSONObject): List<GeoTagImage> =
+    json.optJSONArray("imageModel")?.let { rows ->
+        (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.map { row ->
+            GeoTagImage(
+                fileName = row.optText("fileName"),
+                status = row.optInt("status"),
+                statusString = row.optText("statusString"),
+                errorMessage = row.optText("errorMessage"),
+                coordinate = row.optJSONObject("coordinate")?.let { it.optDouble("latitude") to it.optDouble("longitude") },
+            )
+        }
+    }.orEmpty()
+
+internal fun geoTagImageText(image: GeoTagImage): String = image.errorMessage.ifBlank { image.statusString }
+
+internal fun geoTagCoordinate(image: GeoTagImage): String? =
+    image.coordinate?.takeIf { image.status == GEOTAG_TAGGED }?.let { (latitude, longitude) ->
+        String.format(java.util.Locale.US, "%.6f, %.6f", latitude, longitude)
+    }
+
+internal fun geoTagError(state: GeoTagState): String? = state.errorMessage.takeIf { it.isNotBlank() && !state.inProgress }
 
 internal fun geoTagState(json: JSONObject?): GeoTagState? =
     json?.takeIf { it.optText("class") == "GeoTagController" }?.let {
@@ -33,6 +66,7 @@ internal fun geoTagState(json: JSONObject?): GeoTagState? =
             failed = it.optInt("failedCount"),
             timeOffsetSecs = it.optDouble("timeOffsetSecs", 0.0),
             previewMode = it.optBoolean("previewMode"),
+            images = geoTagImages(it),
         )
     }
 

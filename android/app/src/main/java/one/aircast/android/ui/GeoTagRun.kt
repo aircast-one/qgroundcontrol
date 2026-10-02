@@ -61,14 +61,20 @@ internal object GeoTagRun {
         keep(context, tree)
         imageTree.value = tree
         val (path, count) = stageImages(context, tree)
-        note.value = if (count == 0) "That folder holds no JPEG, TIFF or DNG images." else null
+        note.value = when {
+            count == 0 -> "That folder holds no JPEG, TIFF or DNG images."
+            outputTree.value == null && hasTaggedFolder(context, tree) -> GEOTAG_ALREADY_TAGGED
+            else -> null
+        }
         Qgc.set("$GEOTAG_ROOT.imageDirectory", path)
         refresh()
     }
 
-    fun pickOutput(activity: Context, tree: Uri) {
-        keep(activity.applicationContext, tree)
+    fun pickOutput(activity: Context, tree: Uri) = withFiles {
+        val context = activity.applicationContext
+        keep(context, tree)
         outputTree.value = tree
+        note.value = GEOTAG_SAVE_HAS_IMAGES.takeIf { holdsImages(context, tree) }
     }
 
     fun cancel() {
@@ -101,6 +107,12 @@ internal object GeoTagRun {
 internal fun publishedNote(published: Int, tagged: Int): String? =
     if (published == tagged) null else "Only $published of the $tagged tagged images could be written to the chosen folder."
 
-internal fun parsedOffset(typed: String): Double? = typed.trim().replace(',', '.').toDoubleOrNull()
+private const val GEOTAG_OFFSET_LIMIT = 3600.0
+
+internal fun parsedOffset(typed: String): Double? =
+    typed.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }?.coerceIn(-GEOTAG_OFFSET_LIMIT, GEOTAG_OFFSET_LIMIT)?.let { Math.round(it * 10) / 10.0 }
+
+internal const val GEOTAG_ALREADY_TAGGED = "Images have already been tagged. Existing images will be removed."
+internal const val GEOTAG_SAVE_HAS_IMAGES = "The save folder already contains images."
 
 internal fun shownOffset(seconds: Double): String = String.format(java.util.Locale.US, "%.1f", seconds)
