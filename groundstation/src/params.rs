@@ -394,6 +394,7 @@ impl Params {
             self.waiting_read.entry(component).or_default();
             self.waiting_write.entry(component).or_default();
         }
+        let reads_before = self.reads_waiting(component);
         let waiting = self.waiting_index.get_mut(&component).unwrap();
         if waiting.remove(&index).is_some() {
             self.batch_queue.retain(|i| *i != index);
@@ -412,8 +413,14 @@ impl Params {
             actions.push(Action::Added { component, name: name.to_string() });
         }
         facts.insert(name.to_string(), value);
+        let refreshed = self.px4 && self.initial_complete && reads_before > 0 && self.reads_waiting(component) == 0;
         actions.extend(self.check_initial_load_complete());
+        actions.extend(refreshed.then_some(Action::SaveCache { component }));
         actions
+    }
+
+    fn reads_waiting(&self, component: u8) -> usize {
+        self.waiting_index.get(&component).map_or(0, BTreeMap::len) + self.waiting_read.get(&component).map_or(0, BTreeMap::len)
     }
 
     fn fill_batch_queue(&mut self, timeout: bool) -> Vec<Action> {
@@ -570,6 +577,22 @@ mod tests {
         assert!(loaded.contains(&Action::Set { component: 1, name: HASH_CHECK.to_string(), value: ParamValue::U32(crc) }), "the hash is sent back so PX4 stops streaming");
         assert!(!loaded.iter().any(|a| matches!(a, Action::RequestList { .. })));
         assert_eq!(px4.value(1, "SYS_AUTOSTART"), Some(ParamValue::I32(4001)));
+    }
+
+    #[test]
+    fn a_refresh_that_reads_everything_back_rewrites_the_cache() {
+        let mut px4 = Params::new(1, true);
+        px4.start();
+        px4.on_param_value(1, "A", 2, 0, ParamValue::I32(1));
+        assert!(px4.on_param_value(1, "B", 2, 1, ParamValue::I32(2)).contains(&Action::SaveCache { component: 1 }), "the first complete load is cached");
+        px4.refresh_all(1);
+        assert!(!px4.on_param_value(1, "A", 2, 0, ParamValue::I32(3)).contains(&Action::SaveCache { component: 1 }));
+        assert!(px4.on_param_value(1, "B", 2, 1, ParamValue::I32(4)).contains(&Action::SaveCache { component: 1 }), "ParameterManager writes the cache whenever the waiting reads drain to zero");
+        let mut ardupilot = Params::new(1, false);
+        ardupilot.start();
+        ardupilot.on_param_value(1, "A", 1, 0, ParamValue::I32(1));
+        ardupilot.refresh_all(1);
+        assert!(!ardupilot.on_param_value(1, "A", 1, 0, ParamValue::I32(2)).contains(&Action::SaveCache { component: 1 }), "the cache is PX4 only");
     }
 
     #[test]
