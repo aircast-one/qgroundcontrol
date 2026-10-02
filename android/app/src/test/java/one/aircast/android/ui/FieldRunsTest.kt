@@ -39,6 +39,12 @@ class FieldRunsTest {
     }
 
     @Test
+    fun aLabelEndingInAColonLosesIt() {
+        assertEquals("Return at specified altitude", choice("RTL", label = "Return at specified altitude:").heading)
+        assertEquals("Time Offset (seconds)", text("t").copy(description = "Time Offset (seconds):", shortLabel = "").heading)
+    }
+
+    @Test
     fun aRebootNoticeSharedByTheBlockIsSaidOnce() {
         val reboot = text("a").copy(vehicleRebootRequired = true)
         assertEquals("Reboot vehicle for changes to take effect.", sharedRebootNote(listOf(reboot, text("plain"), reboot.copy(name = "b"))))

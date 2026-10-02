@@ -53,8 +53,8 @@ data class Fact(
     val smallFont: Boolean = false,
     val shortLabel: String = "",
 ) {
-    val title: String = description.ifBlank { name }
-    val heading: String = shortLabel.ifBlank { title }
+    val title: String = description.ifBlank { name }.trimEnd(':', ' ')
+    val heading: String = shortLabel.trimEnd(':', ' ').ifBlank { title }
     val detail: String = description.takeIf { shortLabel.isNotBlank() && it != shortLabel && it !in enumStrings }.orEmpty()
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()
     val isBitmask: Boolean = bitmaskStrings.isNotEmpty() && bitmaskStrings.size == bitmaskValues.size
