@@ -110,11 +110,7 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
         },
         AUTO_DETECT => {
             DETECTION_LOG.lock().unwrap_or_else(PoisonError::into_inner).clear();
-            let moded = dispatch(backend, json!({ "action": "setMode", "mode": MOTOR_DETECTION_MODE }));
-            match flag(&moded, "ok") {
-                true => dispatch(backend, json!({ "action": "arm", "arm": true })),
-                false => moded,
-            }
+            dispatch(backend, json!({ "action": "setModeAndArm", "mode": MOTOR_DETECTION_MODE }))
         }
         _ => json!({ "ok": false, "reason": format!("{action} is not a Sub motor action") }),
     }

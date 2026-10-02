@@ -151,7 +151,7 @@ fn supports(autopilot: u8, vehicle_type: u8) -> Value {
         "pauseVehicle": px4 || apm,
         "roiMode": !sub && (apm || (px4 && class == MultiRotor)),
         "smartRTL": apm && matches!(class, MultiRotor | Rover),
-        "changeHeading": ((apm || px4) && class == MultiRotor) || sub,
+        "changeHeading": (apm || px4) && class == MultiRotor,
         "orbitMode": px4 && matches!(class, MultiRotor | Vtol | FixedWing),
         "takeoffMissionCommand": takeoff,
         "guidedTakeoffWithAltitude": guided_takeoff,

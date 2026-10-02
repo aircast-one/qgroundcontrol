@@ -62,7 +62,7 @@ pub fn ardupilot(vehicle: &Vehicle) -> Vec<Value> {
     let requires_frame = exists("FRAME_CLASS") && vehicle.vehicle_type != HELICOPTER;
     let sensors_complete = !crate::sensorcal::compass_setup_needed(&zeroed) && !crate::sensorcal::accel_setup_needed(&zeroed);
     let entries = [
-        Some(Entry { requires_setup: requires_frame, setup_complete: !requires_frame || param("FRAME_CLASS").is_some_and(|v| v as i64 != 0), ..entry("Frame", "APMAirframeComponent", UNKNOWN, false, false) }),
+        requires_frame.then(|| Entry { requires_setup: true, setup_complete: param("FRAME_CLASS").is_some_and(|v| v as i64 != 0), ..entry("Frame", "APMAirframeComponent", UNKNOWN, false, false) }),
         (!sub).then(|| Entry { requires_setup: true, setup_complete: radio_complete(&param), ..entry("Radio", "APMRadioComponent", KNOWN_RADIO, false, false) }),
         (!sub || !at_least(vehicle.version, (3, 5, 0))).then(|| Entry { requires_setup: true, ..entry("Flight Modes", "APMFlightModesComponent", KNOWN_FLIGHT_MODES, false, false) }),
         Some(Entry { requires_setup: true, setup_complete: sensors_complete, ..entry("Sensors", "APMSensorsComponent", KNOWN_SENSORS, false, false) }),
@@ -226,8 +226,9 @@ mod tests {
     #[test]
     fn a_frame_class_of_zero_needs_setup_except_on_a_helicopter() {
         assert_eq!(named(&listed(2, None, &[(1, "FRAME_CLASS", 0.0)]), "Frame")["setupComplete"], false);
-        assert_eq!(named(&listed(4, None, &[(1, "FRAME_CLASS", 0.0)]), "Frame")["requiresSetup"], false);
+        assert!(!names(&listed(4, None, &[(1, "FRAME_CLASS", 0.0)])).contains(&"Frame"), "a heli has no Frame page to set up");
         assert!(names(&listed(4, Some((4, 0, 0)), &[])).contains(&"Heli"));
+        assert!(!names(&listed(4, Some((4, 0, 0)), &[(1, "FRAME_CLASS", 6.0)])).contains(&"Frame"), "APMAirframeComponent::setupSource is empty for a heli, so its Frame row is hidden");
         assert!(!names(&listed(4, Some((3, 6, 0)), &[])).contains(&"Heli"));
     }
 
@@ -236,7 +237,7 @@ mod tests {
         let sub_list = listed(12, Some((4, 1, 0)), &[]);
         let sub = names(&sub_list);
         assert!(!sub.contains(&"Radio") && !sub.contains(&"Tuning") && !sub.contains(&"Flight Modes"));
-        assert!(sub.contains(&"Lights") && sub.iter().filter(|n| **n == "Frame").count() == 2);
+        assert!(sub.contains(&"Lights") && sub.iter().filter(|n| **n == "Frame").count() == 1, "APMAirframeComponent has no page without FRAME_CLASS, and SetupView hides a component with no page");
         assert!(names(&listed(1, None, &[(240, "SW_VER", 1.0)])).contains(&"WiFi Bridge"));
     }
 }

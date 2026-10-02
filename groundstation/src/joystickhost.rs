@@ -289,7 +289,10 @@ pub fn assignable_actions(flight_modes: &[String], custom: &[String], assigned: 
 }
 
 fn settable_modes() -> Vec<String> {
-    crate::hub::lock().active().map(|v| v.flight_modes.iter().filter(|m| m.can_be_set).map(|m| m.name.clone()).collect()).unwrap_or_default()
+    crate::hub::lock().active().map(|v| match v.flight_modes.is_empty() {
+        true => crate::modes::table(v.autopilot, v.vehicle_type).iter().filter(|m| m.can_be_set).map(|m| m.name.to_string()).collect(),
+        false => v.flight_modes.iter().filter(|m| m.can_be_set).map(|m| m.name.clone()).collect(),
+    }).unwrap_or_default()
 }
 
 fn guided(id: u8, action: Value) {

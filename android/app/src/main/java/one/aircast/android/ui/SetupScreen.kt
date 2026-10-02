@@ -305,6 +305,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 headPage(open) == SENSORS -> SensorsScreen(Modifier.weight(1f))
                 headPage(open) == RADIO -> RadioScreen(Modifier.weight(1f))
                 headPage(open) == REMOTE_SUPPORT -> RemoteSupportScreen(Modifier.weight(1f))
+                nativePage?.screen == APM_SUB_MOTORS_SCREEN -> ApmSubMotorsScreen(Modifier.weight(1f))
                 headPage(open) == MOTORS -> MotorsScreen(Modifier.weight(1f))
                 headPage(open) == FLIGHT_MODES_PAGE -> FlightModesSetup(Modifier.weight(1f))
                 nativePage?.screen == PX4_TUNING_SCREEN -> Px4TuningScreen(Modifier.weight(1f))
@@ -318,7 +319,6 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 nativePage?.screen == SYSLINK_SCREEN -> SyslinkScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_SUB_FRAME_SCREEN -> ApmSubFrameScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_AIRFRAME_SCREEN -> ApmAirframeScreen(Modifier.weight(1f))
-                nativePage?.screen == APM_SUB_MOTORS_SCREEN -> ApmSubMotorsScreen(Modifier.weight(1f))
                 nativePage?.screen == OPTICAL_FLOW_SCREEN -> OpticalFlowScreen(Modifier.weight(1f))
                 nativePage?.parameterSections == true -> {
                     if (open.known == "power") PowerLiveCard()

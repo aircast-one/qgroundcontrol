@@ -1059,7 +1059,7 @@ impl Vehicle {
     }
 
     fn follow_files(&mut self, steps: Vec<crate::filejobs::Step>, now_ms: u64) -> Vec<Vec<u8>> {
-        use crate::filejobs::{Outcome, Step};
+        use crate::filejobs::Step;
         steps
             .into_iter()
             .flat_map(|step| match step {
@@ -1613,6 +1613,9 @@ impl Vehicle {
                 forward => guidedcmd::vtol_transition(forward),
             },
             "setMode" => guidedcmd::set_mode(&state, action.get("mode").and_then(Value::as_str).unwrap_or("")).map(Plan::Steps).unwrap_or_else(|| Plan::Refused("Unknown flight mode".to_string())),
+            "setModeAndArm" => guidedcmd::set_mode(&state, action.get("mode").and_then(Value::as_str).unwrap_or(""))
+                .map(|steps| Plan::Steps(steps.into_iter().chain(std::iter::once(guidedcmd::arm(true, false))).collect()))
+                .unwrap_or_else(|| Plan::Refused("Unknown flight mode".to_string())),
             other => Plan::Refused(format!("Unknown guided action {other:?}")),
         }
     }

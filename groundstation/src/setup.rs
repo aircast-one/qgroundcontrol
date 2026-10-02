@@ -225,6 +225,7 @@ fn known_component(component: &Value) -> Option<String> {
     let trimmed = named.trim_start_matches("Known").trim_end_matches("VehicleComponent");
     match trimmed.is_empty() || trimmed == "Unknown" {
         true => None,
+        false if trimmed.chars().all(|c| c.is_ascii_uppercase()) => Some(trimmed.to_lowercase()),
         false => Some(trimmed[..1].to_lowercase() + &trimmed[1..]),
     }
 }
@@ -384,6 +385,12 @@ mod tests {
         assert!(switch_applies("RC_MAP_FLAPS", false, true) && !switch_applies("RC_MAP_FLAPS", false, false), "flaps only for a plane");
         assert!(switch_applies("RC_MAP_KILL_SW", false, false));
         assert_eq!(FLIGHT_MODES_PX4[1].parameters[..6], ["RC_MAP_ARM_SW", "RC_MAP_GEAR_SW", "RC_MAP_KILL_SW", "RC_MAP_LOITER_SW", "RC_MAP_OFFB_SW", "RC_MAP_RETURN_SW"]);
+    }
+
+    #[test]
+    fn an_acronym_component_is_named_in_lower_case_for_the_head() {
+        assert_eq!(known_component(&json!({ "KnownVehicleComponent": 6 })).as_deref(), Some("esc"), "the head picks the ESC icon by esc, and eSC matched nothing");
+        assert_eq!(known_component(&json!({ "KnownVehicleComponent": 1 })).as_deref(), Some("flightModes"));
     }
 
     #[test]
