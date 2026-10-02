@@ -49,7 +49,11 @@ internal data class ParameterDiffRow(
     val vehicleValue: String,
     val units: String,
     val cannotSend: Boolean,
-)
+    val componentId: Int = 1,
+    val noVehicleValue: Boolean = false,
+) {
+    val key: String get() = "$componentId:$name"
+}
 
 internal data class ParameterReview(
     val rows: List<ParameterDiffRow>,
@@ -62,7 +66,7 @@ internal fun parameterReview(result: JSONObject?): ParameterReview? = result?.le
     ParameterReview(
         rows = (0 until (listed?.length() ?: 0)).mapNotNull { index ->
             listed!!.optJSONObject(index)?.let {
-                ParameterDiffRow(it, it.optText("name"), it.optText("fileValue"), it.optText("vehicleValue"), it.optText("units"), it.optBoolean("cannotSend"))
+                ParameterDiffRow(it, it.optText("name"), it.optText("fileValue"), it.optText("vehicleValue"), it.optText("units"), it.optBoolean("cannotSend"), it.optInt("componentId", 1), it.optBoolean("noVehicleValue"))
             }
         },
         otherVehicle = review.optBoolean("otherVehicle"),
@@ -98,8 +102,11 @@ internal fun parameterTools(view: JSONObject?): List<ParameterTool> {
     }
 }
 
+internal const val NEW_TO_VEHICLE_HINT = "Parameters marked 'new to Vehicle' have not been reported by the Vehicle. They may only become visible after they are sent and the Vehicle is rebooted."
+
 internal fun diffLine(row: ParameterDiffRow): String = when {
     row.cannotSend -> "File ${row.fileValue} · not on vehicle, cannot send"
+    row.noVehicleValue -> listOf("Vehicle N/A — new to Vehicle", "File ${row.fileValue}", row.units).filter { it.isNotBlank() }.joinToString(" · ")
     else -> listOf("Vehicle ${row.vehicleValue}", "File ${row.fileValue}", row.units).filter { it.isNotBlank() }.joinToString(" · ")
 }
 
@@ -144,7 +151,7 @@ internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
                 refusal = reviewed?.optText("reason")?.ifBlank { null } ?: "The file could not be reviewed."
             } else {
                 review = parsed
-                chosen = parsed.rows.filterNot { it.cannotSend }.map { it.name }.toSet()
+                chosen = parsed.rows.filterNot { it.cannotSend }.map { it.key }.toSet()
             }
         }
     }
@@ -155,7 +162,7 @@ internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
             PARAMETER_REVIEW_PATH -> loader.launch(PARAMETER_FILE_TYPES)
             else -> scope.launch {
                 refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(tool.path) }
-                if (refusal == null && tool.path == PARAMETER_REFRESH_PATH) onRefreshed()
+                if (refusal == null) onRefreshed()
             }
         }
     }
@@ -197,16 +204,17 @@ internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
                 Column {
                     reviewWarnings(shown).forEach { Text(it, color = MaterialTheme.aircast.warning) }
                     if (shown.rows.isEmpty()) Text("No differences between vehicle and file.")
+                    if (shown.rows.any { it.noVehicleValue && !it.cannotSend }) Text(NEW_TO_VEHICLE_HINT, style = MaterialTheme.typography.bodySmall)
                     LazyColumn(Modifier.heightIn(max = 360.dp)) {
-                        items(shown.rows, key = { it.name }) { row ->
+                        items(shown.rows, key = { it.key }) { row ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(
-                                    checked = row.name in chosen,
+                                    checked = row.key in chosen,
                                     enabled = !row.cannotSend,
-                                    onCheckedChange = { on -> chosen = if (on) chosen + row.name else chosen - row.name },
+                                    onCheckedChange = { on -> chosen = if (on) chosen + row.key else chosen - row.key },
                                 )
                                 Column(Modifier.weight(1f)) {
-                                    Text(row.name, style = MaterialTheme.typography.bodyMedium)
+                                    Text(if (shown.multipleComponents) "${row.componentId}: ${row.name}" else row.name, style = MaterialTheme.typography.bodyMedium)
                                     Text(
                                         diffLine(row),
                                         style = MaterialTheme.typography.bodySmall,
@@ -222,7 +230,7 @@ internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
                 TextButton(
                     enabled = chosen.isNotEmpty(),
                     onClick = {
-                        val rows = shown.rows.filter { it.name in chosen }.map { it.json }
+                        val rows = shown.rows.filter { it.key in chosen }.map { it.json }
                         review = null
                         scope.launch {
                             refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(PARAMETER_APPLY_PATH, org.json.JSONArray(rows)) }

@@ -95,4 +95,11 @@ class ParameterSubtitleTest {
         assertTrue(inGroup("A_TWO", placement, "Advanced", "Attitude"))
         assertTrue(!inGroup("A_ONE", placement, "Advanced", "Attitude"))
     }
+
+    @Test
+    fun `every component is listed and a non-autopilot parameter carries its component`() {
+        assertEquals(listOf("A", "B", "154:MNT_TYPE"), parameterKeys(mapOf(1 to listOf("B", "A"), 154 to listOf("MNT_TYPE"))))
+        assertEquals("vehicle.parameterManager.getParameter(154,MNT_TYPE)", parameterPath("154:MNT_TYPE"))
+        assertEquals("vehicle.parameterManager.getParameter(-1,RTL_ALT)", parameterPath("RTL_ALT"))
+    }
 }

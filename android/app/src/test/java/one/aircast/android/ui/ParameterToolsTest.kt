@@ -43,4 +43,12 @@ class ParameterToolsTest {
         assertEquals("Vehicle 1500 · File 2000 · cm", diffLine(review.rows[0]))
         assertTrue(diffLine(review.rows[1]).contains("cannot send"))
     }
+
+    @Test
+    fun `a file row is keyed by component and a parameter new to the vehicle says so`() {
+        val gimbal = ParameterDiffRow(org.json.JSONObject(), "MNT_TYPE", "1", "", "", cannotSend = false, componentId = 154, noVehicleValue = true)
+        val autopilot = gimbal.copy(componentId = 1, noVehicleValue = false, vehicleValue = "0")
+        assertTrue(gimbal.key != autopilot.key)
+        assertEquals("Vehicle N/A — new to Vehicle · File 1", diffLine(gimbal))
+    }
 }

@@ -38,7 +38,15 @@ import one.aircast.mapspike.optText
 private const val PARAMETER_MANAGER = "vehicle.parameterManager"
 private const val DEFAULT_COMPONENT = -1
 
-internal fun parameterPath(name: String) = "$PARAMETER_MANAGER.getParameter($DEFAULT_COMPONENT,$name)"
+private const val AUTOPILOT_COMPONENT = 1
+
+internal fun parameterPath(key: String): String {
+    val component = key.substringBefore(':', "").toIntOrNull()
+    return "$PARAMETER_MANAGER.getParameter(${component ?: DEFAULT_COMPONENT},${if (component == null) key else key.substringAfter(':')})"
+}
+
+internal fun parameterKeys(namesByComponent: Map<Int, List<String>>): List<String> =
+    namesByComponent.flatMap { (component, names) -> names.sorted().map { if (component == AUTOPILOT_COMPONENT || component == DEFAULT_COMPONENT) it else "$component:$it" } }
 
 @Composable
 fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") {
@@ -61,7 +69,7 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
         modified = emptySet()
     }
 
-    LaunchedEffect(names) {
+    LaunchedEffect(names, reads) {
         if (names.isNotEmpty()) {
             val summary = withContext(Dispatchers.Default) { parameterSummary(names) }
             descriptions = summary.descriptions
@@ -122,7 +130,8 @@ private fun ParameterRow(name: String, offersRcToParam: Boolean) {
     var revision by remember { mutableStateOf(0) }
     var mapping by remember { mutableStateOf(false) }
     var forcing by remember { mutableStateOf(false) }
-    val fact by produceState<Fact?>(null, name, revision) {
+    val live by qgcPath(parameterPath(name))
+    val fact by produceState<Fact?>(null, name, revision, live) {
         value = withContext(Dispatchers.Default) { parameterFact(name) }
     }
 
@@ -186,9 +195,10 @@ internal fun parameterSubtitle(description: String, units: String): String =
     listOf(description, units).filter { it.isNotBlank() }.joinToString(" · ")
 
 private fun parameterNames(): List<String> {
-    val result = Qgc.invokeResult("$PARAMETER_MANAGER.parameterNames", DEFAULT_COMPONENT) as? JSONArray
-        ?: return emptyList()
-    return (0 until result.length()).map { result.optText(it) }.sorted()
+    fun names(component: Int): List<String> =
+        (Qgc.invokeResult("$PARAMETER_MANAGER.parameterNames", component) as? JSONArray)?.let { list -> (0 until list.length()).map { list.optText(it) } }.orEmpty()
+    val components = (Qgc.invokeResult("$PARAMETER_MANAGER.componentIds") as? JSONArray)?.let { list -> (0 until list.length()).map { list.optInt(it) } }.orEmpty()
+    return parameterKeys(if (components.isEmpty()) mapOf(DEFAULT_COMPONENT to names(DEFAULT_COMPONENT)) else components.associateWith(::names))
 }
 
 internal data class ParameterSummary(
