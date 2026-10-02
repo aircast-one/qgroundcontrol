@@ -394,7 +394,7 @@ impl Params {
             self.waiting_read.entry(component).or_default();
             self.waiting_write.entry(component).or_default();
         }
-        let reads_before = self.reads_waiting(component);
+        let reads_before = self.index_reads_waiting(component);
         let waiting = self.waiting_index.get_mut(&component).unwrap();
         if waiting.remove(&index).is_some() {
             self.batch_queue.retain(|i| *i != index);
@@ -413,14 +413,14 @@ impl Params {
             actions.push(Action::Added { component, name: name.to_string() });
         }
         facts.insert(name.to_string(), value);
-        let refreshed = self.px4 && self.initial_complete && reads_before > 0 && self.reads_waiting(component) == 0;
+        let refreshed = self.px4 && self.initial_complete && reads_before > 0 && self.index_reads_waiting(component) == 0;
         actions.extend(self.check_initial_load_complete());
         actions.extend(refreshed.then_some(Action::SaveCache { component }));
         actions
     }
 
-    fn reads_waiting(&self, component: u8) -> usize {
-        self.waiting_index.get(&component).map_or(0, BTreeMap::len) + self.waiting_read.get(&component).map_or(0, BTreeMap::len)
+    fn index_reads_waiting(&self, component: u8) -> usize {
+        self.waiting_index.get(&component).map_or(0, BTreeMap::len)
     }
 
     fn fill_batch_queue(&mut self, timeout: bool) -> Vec<Action> {
@@ -588,6 +588,8 @@ mod tests {
         px4.refresh_all(1);
         assert!(!px4.on_param_value(1, "A", 2, 0, ParamValue::I32(3)).contains(&Action::SaveCache { component: 1 }));
         assert!(px4.on_param_value(1, "B", 2, 1, ParamValue::I32(4)).contains(&Action::SaveCache { component: 1 }), "ParameterManager writes the cache whenever the waiting reads drain to zero");
+        px4.refresh(1, "A");
+        assert!(!px4.on_param_value(1, "A", 2, NO_INDEX, ParamValue::I32(5)).contains(&Action::SaveCache { component: 1 }), "a single by-name read is not an index refresh, so it does not rewrite the file");
         let mut ardupilot = Params::new(1, false);
         ardupilot.start();
         ardupilot.on_param_value(1, "A", 1, 0, ParamValue::I32(1));

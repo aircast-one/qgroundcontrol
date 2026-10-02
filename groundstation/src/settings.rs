@@ -78,7 +78,9 @@ fn with_choices(backend: &dyn Backend, fact: &Value) -> Value {
             choices_json(fact, labels, raws)
         }
         Some("autoConnectNmeaBaud") => {
-            let rates = crate::links::serial_baud_rates(backend);
+            let listed = crate::links::serial_baud_rates(backend);
+            let current = fact.get("value").and_then(Value::as_i64).filter(|rate| *rate > 0 && !listed.contains(rate));
+            let rates: Vec<i64> = listed.into_iter().chain(current).collect();
             choices_json(fact, rates.iter().map(i64::to_string).collect(), rates.iter().map(|r| json!(r)).collect())
         }
         _ => fact.clone(),

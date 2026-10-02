@@ -549,7 +549,10 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
         Kind::Serial { port_name, .. } => Some(port_name.clone()),
         _ => None,
     }).collect();
-    let nmea = crate::settingsstore::raw_setting("settings.autoConnectSettings.autoConnectNmeaPort").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
+    let nmea = match crate::nmea::wanted() {
+        Some(crate::nmea::Wanted::Serial(port, _)) => port,
+        _ => String::new(),
+    };
     let host = crate::autoconnect::Host { android: cfg!(target_os = "android"), windows: cfg!(target_os = "windows") };
     let actions = SERIAL_AUTO.lock().unwrap_or_else(PoisonError::into_inner).serial(boards, &autoconnect_settings(), &host, serial_ports(), &connected, &nmea);
     actions.into_iter().for_each(|action| match action {

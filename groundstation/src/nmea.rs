@@ -106,14 +106,23 @@ pub enum Wanted {
 
 enum Running {
     Udp(Arc<AtomicBool>),
-    Serial(Box<dyn Fn() + Send>),
+    Serial { close: Box<dyn Fn() + Send>, dead: Arc<AtomicBool> },
+}
+
+impl Running {
+    fn alive(&self) -> bool {
+        match self {
+            Running::Udp(_) => true,
+            Running::Serial { dead, .. } => !dead.load(Ordering::Relaxed),
+        }
+    }
 }
 
 impl Drop for Running {
     fn drop(&mut self) {
         match self {
             Running::Udp(flag) => flag.store(false, Ordering::Relaxed),
-            Running::Serial(close) => close(),
+            Running::Serial { close, .. } => close(),
         }
     }
 }
@@ -148,8 +157,7 @@ fn listen_udp(socket: UdpSocket, running: Arc<AtomicBool>) {
     let mut buffer = [0u8; 2048];
     while running.load(Ordering::Relaxed) {
         if let Ok(size) = socket.recv(&mut buffer) {
-            let datagram = [&buffer[..size], b"\n"].concat();
-            lines.feed(&datagram).into_iter().for_each(crate::gcsposition::report_nmea);
+            lines.feed(&buffer[..size]).into_iter().for_each(crate::gcsposition::report_nmea);
         }
     }
 }
@@ -166,26 +174,28 @@ fn open_udp(port: u16) -> Option<Running> {
 #[cfg(target_os = "android")]
 fn open_serial(port: &str, baud: u32) -> Option<Running> {
     let lines = Mutex::new(Lines::default());
-    let opened = crate::platformserial::PlatformSerial::open(NMEA_SERIAL_ID, port, baud, 8, 1, 0, move |event| {
-        if let crate::platformserial::Event::Bytes(bytes) = event {
-            lines.lock().unwrap_or_else(std::sync::PoisonError::into_inner).feed(&bytes).into_iter().for_each(crate::gcsposition::report_nmea);
-        }
+    let dead = Arc::new(AtomicBool::new(false));
+    let lost = dead.clone();
+    let opened = crate::platformserial::PlatformSerial::open(NMEA_SERIAL_ID, port, baud, 8, 1, 0, move |event| match event {
+        crate::platformserial::Event::Bytes(bytes) => lines.lock().unwrap_or_else(std::sync::PoisonError::into_inner).feed(&bytes).into_iter().for_each(crate::gcsposition::report_nmea),
+        crate::platformserial::Event::Disconnected(_) => lost.store(true, Ordering::Relaxed),
     })
     .ok()?;
-    Some(Running::Serial(Box::new(move || opened.close())))
+    Some(Running::Serial { close: Box::new(move || opened.close()), dead })
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn open_serial(port: &str, baud: u32) -> Option<Running> {
     let config = crate::seriallink::SerialConfig { port_name: port.to_string(), baud, data_bits: 8, parity: 0, stop_bits: 1, flow_control: 0, usb_direct: false };
     let mut lines = Lines::default();
-    let link = crate::seriallink::SerialLink::open(&config, move |event| {
-        if let crate::seriallink::Event::Bytes(bytes) = event {
-            lines.feed(&bytes).into_iter().for_each(crate::gcsposition::report_nmea);
-        }
+    let dead = Arc::new(AtomicBool::new(false));
+    let lost = dead.clone();
+    let link = crate::seriallink::SerialLink::open(&config, move |event| match event {
+        crate::seriallink::Event::Bytes(bytes) => lines.feed(&bytes).into_iter().for_each(crate::gcsposition::report_nmea),
+        crate::seriallink::Event::Disconnected(_) => lost.store(true, Ordering::Relaxed),
     })
     .ok()?;
-    Some(Running::Serial(Box::new(move || link.close())))
+    Some(Running::Serial { close: Box::new(move || link.close()), dead })
 }
 
 #[cfg(target_os = "ios")]
@@ -196,8 +206,10 @@ fn open_serial(_port: &str, _baud: u32) -> Option<Running> {
 pub fn maintain() {
     let wanted = wanted();
     let mut current = LISTENER.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let settled = current.as_ref().is_some_and(|attempt| Some(&attempt.wanted) == wanted.as_ref() && (attempt.running.is_some() || attempt.at.elapsed() < RETRY_AFTER));
+    let alive = |attempt: &Attempt| attempt.running.as_ref().is_some_and(Running::alive);
+    let settled = current.as_ref().is_some_and(|attempt| Some(&attempt.wanted) == wanted.as_ref() && (alive(attempt) || attempt.at.elapsed() < RETRY_AFTER));
     if settled || (current.is_none() && wanted.is_none()) {
+        crate::gcsposition::lock().use_nmea(current.as_ref().is_some_and(alive));
         return;
     }
     *current = None;
@@ -208,7 +220,7 @@ pub fn maintain() {
         };
         Attempt { wanted, running, at: std::time::Instant::now() }
     });
-    crate::gcsposition::lock().use_nmea(attempt.as_ref().is_some_and(|a| a.running.is_some()));
+    crate::gcsposition::lock().use_nmea(attempt.as_ref().is_some_and(alive));
     *current = attempt;
 }
 
