@@ -120,11 +120,8 @@ internal fun SetupRow(
         if (subtitle.isNotBlank()) {
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        summary.forEach { line ->
-            Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
-                Text(line.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                Text(line.value, style = MaterialTheme.typography.bodySmall)
-            }
+        summaryGlance(summary)?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
     if (status.isNotBlank()) {
@@ -177,6 +174,11 @@ internal fun EmptyState(@DrawableRes icon: Int, title: String, text: String, mod
 }
 
 internal data class SummaryLine(val label: String, val value: String)
+
+private val UNREAD_VALUES = setOf("Unknown", "--", "")
+
+internal fun summaryGlance(summary: List<SummaryLine>): String? =
+    summary.map { it.value.trim() }.filterNot { it in UNREAD_VALUES }.distinct().takeIf { it.isNotEmpty() }?.joinToString(" \u00b7 ")
 
 @Composable
 internal fun FootNote(text: String) {
