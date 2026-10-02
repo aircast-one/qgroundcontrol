@@ -40,7 +40,13 @@ internal data class CameraCalcBlock(
     val brandPath: String,
     val modelPath: String,
     val facts: List<Pair<String, Fact>>,
+    val distanceMode: Int? = null,
+    val distanceModes: List<Pair<Int, String>> = emptyList(),
+    val distanceModePath: String = "",
 )
+
+internal fun distanceModeTitle(block: CameraCalcBlock): String? =
+    block.distanceModes.firstOrNull { it.first == block.distanceMode }?.second
 
 private fun strings(block: JSONObject, key: String): List<String> =
     block.optJSONArray(key)?.let { list -> (0 until list.length()).map { list.optString(it) } } ?: emptyList()
@@ -60,6 +66,11 @@ internal fun cameraCalc(view: JSONObject?): CameraCalcBlock? =
             valueSetIsDistancePath = block.optText("valueSetIsDistancePath"),
             brandPath = block.optText("brandPath"),
             modelPath = block.optText("modelPath"),
+            distanceMode = if (block.isNull("distanceMode")) null else block.optInt("distanceMode"),
+            distanceModes = block.optJSONArray("distanceModes")?.let { list ->
+                (0 until list.length()).mapNotNull { list.optJSONObject(it) }.map { it.optInt("raw") to it.optText("title") }
+            }.orEmpty(),
+            distanceModePath = block.optText("distanceModePath"),
             facts = (0 until (facts?.length() ?: 0)).mapNotNull { index ->
                 facts?.optJSONObject(index)?.let { control -> factFromControl(control)?.let { control.optText("pathSuffix") to it } }
             },
@@ -87,6 +98,14 @@ internal fun CameraCalcHeader(block: CameraCalcBlock, onWrite: (String, Any) -> 
             Choice(block.brand, block.brands) { onWrite(block.brandPath, it) }
             if (!block.manual && !block.custom) {
                 Choice(block.model.ifEmpty { "Model" }, block.models) { onWrite(block.modelPath, it) }
+            }
+        }
+        distanceModeTitle(block)?.let { current ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Altitude", style = MaterialTheme.typography.bodyMedium)
+                Choice(current, block.distanceModes.map { it.second }) { title ->
+                    block.distanceModes.firstOrNull { it.second == title }?.let { onWrite(block.distanceModePath, it.first) }
+                }
             }
         }
         if (!block.manual) {

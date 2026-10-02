@@ -8324,6 +8324,10 @@
         "view.itemFacts(4).camera.custom",
         "view.itemFacts(4).camera.customName",
         "view.itemFacts(4).camera.distanceMode",
+        "view.itemFacts(4).camera.distanceModePath",
+        "view.itemFacts(4).camera.distanceModes.#",
+        "view.itemFacts(4).camera.distanceModes[].raw",
+        "view.itemFacts(4).camera.distanceModes[].title",
         "view.itemFacts(4).camera.facts.#",
         "view.itemFacts(4).camera.facts[].applicationRestartRequired",
         "view.itemFacts(4).camera.facts[].bits.#",
@@ -12363,6 +12367,13 @@
             "custom": "bool",
             "customName": "string",
             "distanceMode": "number",
+            "distanceModePath": "string",
+            "distanceModes": [
+                {
+                    "raw": "number",
+                    "title": "string"
+                }
+            ],
             "facts": [
                 {
                     "applicationRestartRequired": "bool",

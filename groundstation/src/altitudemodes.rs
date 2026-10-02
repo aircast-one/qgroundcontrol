@@ -116,9 +116,41 @@ pub fn altitude_modes_view(backend: &dyn Backend, args: &[String]) -> Value {
     })
 }
 
+pub const FRAME_RELATIVE: i64 = 1;
+pub const FRAME_ABSOLUTE: i64 = 2;
+pub const FRAME_CALC_ABOVE_TERRAIN: i64 = 3;
+pub const FRAME_TERRAIN: i64 = 4;
+
+pub fn frame_short_description(frame: i64) -> &'static str {
+    match frame {
+        FRAME_RELATIVE => "Relative (Rel)",
+        FRAME_ABSOLUTE => "Absolute (AMSL)",
+        FRAME_CALC_ABOVE_TERRAIN => "Above Terrain Calced (AGLC)",
+        FRAME_TERRAIN => "Above Terrain (AGL)",
+        _ => "",
+    }
+}
+
+pub fn transect_distance_modes(manual_camera: bool, terrain_frame: bool) -> Vec<Value> {
+    [FRAME_RELATIVE, FRAME_ABSOLUTE, FRAME_CALC_ABOVE_TERRAIN, FRAME_TERRAIN]
+        .into_iter()
+        .filter(|frame| (*frame != FRAME_ABSOLUTE || manual_camera) && (*frame != FRAME_TERRAIN || terrain_frame))
+        .map(|frame| json!({ "raw": frame, "title": frame_short_description(frame) }))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_transect_frame_menu_drops_what_transect_style_terrain_follow_removes() {
+        let raws = |manual, terrain| transect_distance_modes(manual, terrain).iter().map(|m| m["raw"].as_i64().unwrap()).collect::<Vec<_>>();
+        assert_eq!(raws(true, true), [1, 2, 3, 4]);
+        assert_eq!(raws(false, true), [1, 3, 4], "Absolute only for a manual camera");
+        assert_eq!(raws(true, false), [1, 2, 3], "Terrain only where the firmware supports the terrain frame");
+        assert_eq!(transect_distance_modes(true, true)[2]["title"], "Above Terrain Calced (AGLC)");
+    }
 
     fn base() -> Inputs {
         Inputs { mission: true, current: RELATIVE, holds_altitude_above_terrain: true, has_items: true, show_absolute: true }

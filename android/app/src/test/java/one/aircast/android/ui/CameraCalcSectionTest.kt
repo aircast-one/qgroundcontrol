@@ -27,4 +27,13 @@ class CameraCalcSectionTest {
         assertEquals(listOf("cameraCalc.sensorWidth", "cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap"), shown("Custom Camera", true, true))
         assertEquals(listOf("cameraCalc.distanceToSurface"), shown("Manual (no camera specs)", false, false))
     }
+
+    @Test
+    fun `the transect altitude frame reads from the core and hides where it does not apply`() {
+        val block = cameraCalc(JSONObject("""{"camera":{"brand":"Manual (no camera specs)","manualName":"Manual (no camera specs)","distanceMode":3,"distanceModePath":"p.cameraCalc.distanceMode",
+            "distanceModes":[{"raw":1,"title":"Relative (Rel)"},{"raw":3,"title":"Above Terrain Calced (AGLC)"}],"facts":[]}}"""))!!
+        assertEquals("Above Terrain Calced (AGLC)", distanceModeTitle(block))
+        assertEquals("p.cameraCalc.distanceMode", block.distanceModePath)
+        assertEquals(null, distanceModeTitle(block.copy(distanceMode = 5)))
+    }
 }

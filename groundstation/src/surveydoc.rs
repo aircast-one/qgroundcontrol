@@ -188,6 +188,20 @@ fn with_default(value: Option<&Value>, meta: &crate::factmeta::MetaData) -> Valu
     value.cloned().or_else(|| meta.default.clone()).unwrap_or(Value::Null)
 }
 
+const TERRAIN_ADJUST: [&str; 3] = ["TerrainAdjustTolerance", "TerrainAdjustMaxClimbRate", "TerrainAdjustMaxDescentRate"];
+const NOT_FOLLOWING_TERRAIN: &str = "Only applies when the altitude is calculated above terrain.";
+
+fn terrain_gated(control: Value, name: &str, follows_terrain: bool) -> Value {
+    match (control, TERRAIN_ADJUST.contains(&name) && !follows_terrain) {
+        (Value::Object(mut fields), true) => {
+            fields.insert("enabled".to_string(), json!(false));
+            fields.insert("disabledReason".to_string(), json!(NOT_FOLLOWING_TERRAIN));
+            Value::Object(fields)
+        }
+        (other, _) => other,
+    }
+}
+
 pub fn fields(survey: &Value, item: &str, multirotor: bool, units: &Units) -> Vec<Value> {
     let transect = survey.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
     let turnaround = if multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
@@ -219,12 +233,13 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, units: &Units) -> Ve
         true => structure,
         false => listed.into_iter().chain(own).collect(),
     };
+    let follows_terrain = calc_of(survey).get("DistanceMode").and_then(Value::as_i64) == Some(crate::altitudemodes::FRAME_CALC_ABOVE_TERRAIN);
     chosen
         .into_iter()
         .filter_map(|(file, name, suffix, owner, key)| {
             let meta = meta(file, name)?;
             let value = with_default(owner.get(key), &meta);
-            Some(control(&meta, value, item, suffix, "Settings", units))
+            Some(terrain_gated(control(&meta, value, item, suffix, "Settings", units), name, follows_terrain))
         })
         .collect()
 }
@@ -244,7 +259,7 @@ fn is_structure(item: &Value) -> bool {
     item.get("complexItemType").and_then(Value::as_str) == Some("StructureScan")
 }
 
-fn calc_of(item: &Value) -> Value {
+pub fn calc_of(item: &Value) -> Value {
     match is_structure(item) {
         true => item.get("CameraCalc").cloned(),
         false => item.get("TransectStyleComplexItem").and_then(|t| t.get("CameraCalc")).cloned(),
@@ -266,7 +281,7 @@ fn with_calc(item: &Value, calc: Value) -> Value {
     changed
 }
 
-pub fn camera(survey: &Value, item: &str, units: &Units) -> Value {
+pub fn camera(survey: &Value, item: &str, units: &Units, terrain_frame: bool) -> Value {
     let calc = calc_of(survey);
     let name = calc.get("CameraName").and_then(Value::as_str).unwrap_or(MANUAL_CAMERA).to_string();
     let known = cameras();
@@ -299,6 +314,8 @@ pub fn camera(survey: &Value, item: &str, units: &Units) -> Value {
         "customName": CUSTOM_CAMERA,
         "custom": custom,
         "distanceMode": calc.get("DistanceMode").cloned().unwrap_or(Value::Null),
+        "distanceModes": crate::altitudemodes::transect_distance_modes(name == MANUAL_CAMERA, terrain_frame),
+        "distanceModePath": format!("{item}.cameraCalc.distanceMode"),
         "valueSetIsDistance": calc.get("ValueSetIsDistance").and_then(Value::as_bool).unwrap_or(true),
         "valueSetIsDistancePath": format!("{item}.cameraCalc.valueSetIsDistance"),
         "brandPath": format!("{item}.cameraCalc.cameraBrand"),
@@ -319,7 +336,7 @@ fn target(suffix: &str) -> Option<(&'static str, String)> {
         _ => match suffix.strip_prefix("cameraCalc.") {
             Some(calc) => {
                 let key = capital(calc);
-                OPTICS.iter().chain(FLIGHT.iter()).any(|(name, _)| *name == key).then_some(("calc", key)).or((calc == "valueSetIsDistance").then(|| ("calc", "ValueSetIsDistance".to_string())))
+                OPTICS.iter().chain(FLIGHT.iter()).any(|(name, _)| *name == key).then_some(("calc", key)).or((calc == "valueSetIsDistance").then(|| ("calc", "ValueSetIsDistance".to_string()))).or((calc == "distanceMode").then(|| ("calc", "DistanceMode".to_string())))
             }
             None => transect.iter().find(|name| capital(suffix) == **name).map(|name| ("transect", name.to_string())),
         },
@@ -742,6 +759,19 @@ pub fn waiting_for_terrain(item: &Value) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_terrain_frame_is_written_and_gates_the_terrain_adjust_rows() {
+        let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+        let units = Units { vertical: &metres, horizontal: &metres };
+        let survey = json!({ "complexItemType": "survey", "CameraCalc": { "DistanceMode": 1, "CameraName": MANUAL_CAMERA }, "TransectStyleComplexItem": {} });
+        let rows = |s: &Value| fields(s, "p", true, &units).into_iter().filter(|c| c["name"].as_str().is_some_and(|n| n.starts_with("TerrainAdjust"))).map(|c| c["enabled"].clone()).collect::<Vec<_>>();
+        assert_eq!(rows(&survey).len(), 3, "the three terrain-adjust rows have to be found at all");
+        assert!(rows(&survey).iter().all(|enabled| *enabled == json!(false)), "{:?}", rows(&survey));
+        let following = set(&survey, "cameraCalc.distanceMode", &json!(3), &units).expect("the frame is a camera calc key the core writes");
+        assert_eq!(calc_of(&following)["DistanceMode"], 3);
+        assert!(rows(&following).iter().all(|enabled| *enabled != json!(false)));
+    }
+
     static METRES: std::sync::LazyLock<crate::read::Unit> = std::sync::LazyLock::new(|| crate::read::Unit { name: "m".to_string(), factor: 1.0 });
 
     fn metric() -> Units<'static> {
@@ -919,7 +949,7 @@ mod tests {
         assert_eq!(calc["CameraName"], first["canonicalName"]);
         assert_eq!(calc["SensorWidth"], first["sensorWidth"]);
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
-        let described = camera(&sony, "p", &Units { vertical: &metres, horizontal: &metres });
+        let described = camera(&sony, "p", &Units { vertical: &metres, horizontal: &metres }, true);
         assert_eq!((described["brand"].as_str(), described["model"].as_str()), (Some("Sony"), first["model"].as_str()));
         let manual = set(&sony, "cameraCalc.cameraBrand", &json!(MANUAL_CAMERA), &metric()).unwrap();
         assert_eq!(manual["TransectStyleComplexItem"]["CameraCalc"]["ValueSetIsDistance"], true);
@@ -934,7 +964,7 @@ mod tests {
         let item = "plan.missionController.visualItems.1";
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let units = Units { vertical: &metres, horizontal: &metres };
-        let mine = json!({ "fields": fields(&survey, item, true, &units), "camera": camera(&survey, item, &units) });
+        let mine = json!({ "fields": fields(&survey, item, true, &units), "camera": camera(&survey, item, &units, true) });
         let rows = |v: &Value, key: &str| v[key].as_array().cloned().unwrap_or_default();
         assert_eq!(rows(&mine, "fields").len(), rows(&qt, "fields").len());
         rows(&mine, "fields").iter().zip(rows(&qt, "fields")).for_each(|(core, qt)| {
