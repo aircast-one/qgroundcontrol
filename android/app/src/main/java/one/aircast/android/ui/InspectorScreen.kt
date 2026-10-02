@@ -50,7 +50,13 @@ internal fun inspectorSystemText(view: JSONObject?): String? {
     val system = view?.takeIf { it.optBoolean("available") }?.optInt("systemId", 0) ?: 0
     return if (system > 0) "System $system" else null
 }
-private const val INSPECTOR_VIEW = "view.inspector"
+internal const val INSPECTOR_VIEW = "view.inspector"
+
+internal fun inspectorRateText(view: JSONObject?): String? =
+    view?.takeIf { it.optBoolean("available") }?.optJSONArray("messages")
+        ?.let { listed -> (0 until listed.length()).sumOf { listed.optJSONObject(it)?.optDouble("rateHz", 0.0)?.takeIf(Double::isFinite) ?: 0.0 } }
+        ?.takeIf { it > 0.0 }
+        ?.let { "${Math.round(it)} messages/s" }
 
 internal fun inspectorEmptyText(view: JSONObject?): String? =
     view?.optText("emptyText")?.ifBlank { null }

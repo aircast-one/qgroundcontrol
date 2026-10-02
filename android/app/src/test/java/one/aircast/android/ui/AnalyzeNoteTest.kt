@@ -88,4 +88,12 @@ class AnalyzeNoteTest {
         assertEquals(AnalyzePage.Vibration.description, analyzeSubtitle(AnalyzePage.Vibration, emptyList(), reading.copy(axes = listOf(axis("X", null)))))
         assertEquals(AnalyzePage.Vibration.description, analyzeSubtitle(AnalyzePage.Vibration, emptyList(), null))
     }
+
+    @Test
+    fun `the inspector row reads the total message rate`() {
+        val view = JSONObject("""{"available":true,"messages":[{"rateHz":5.0},{"rateHz":10.4},{"rateHz":0}]}""")
+        assertEquals("15 messages/s", inspectorRateText(view))
+        assertNull(inspectorRateText(JSONObject("""{"available":true,"messages":[]}""")))
+        assertEquals(AnalyzePage.Inspector.description, analyzeSubtitle(AnalyzePage.Inspector, emptyList(), null, null))
+    }
 }
