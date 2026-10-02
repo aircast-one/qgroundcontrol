@@ -173,7 +173,7 @@ fn set_json(cache: &Cache, set: &TileSet) -> Option<Value> {
         "id": set.id,
         "name": set.name,
         "subtitle": if set.default_set { "System Wide Tile Cache" } else { "" },
-        "rowText": row_text(&download_status(set, &totals), if set.default_set { totals.saved_count } else { set.tiles }),
+        "rowText": row_text(&download_status(set, &totals), if set.default_set { totals.unique_count } else { set.tiles }),
         "canDelete": totals.saved_size > 0,
         "mapTypeStr": set.type_str,
         "defaultSet": set.default_set,
