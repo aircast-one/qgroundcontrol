@@ -2610,6 +2610,14 @@ impl Vehicle {
                 self.cameras.on_camera_information(compid, info, now_ms);
                 Vec::new()
             }
+            MavMessage::CAMERA_FOV_STATUS(d) => {
+                let aspect = self.cameras.camera(compid).and_then(|camera| camera.info.aspect_vertical_over_horizontal());
+                if let Some(vertical) = crate::cameraproto::vertical_field_of_view_degrees(f64::from(d.hfov), aspect) {
+                    crate::settingsstore::set_raw("settings.gimbalControllerSettings.cameraHFov", &json!(f64::from(d.hfov)));
+                    crate::settingsstore::set_raw("settings.gimbalControllerSettings.cameraVFov", &json!(vertical));
+                }
+                Vec::new()
+            }
             MavMessage::CAMERA_SETTINGS(d) => {
                 self.cameras.on_camera_settings(compid, SettingsReport { mode_id: d.mode_id as u8, zoom_percent: f64::from(d.zoomLevel), focus_percent: f64::from(d.focusLevel) }, now_ms);
                 Vec::new()
