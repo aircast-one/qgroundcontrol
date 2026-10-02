@@ -34,10 +34,10 @@ private fun points(array: JSONArray?): List<TrackPoint> {
     }
 }
 
-const val GRID_STEP_DEGREES = 30.0
+const val GRID_ANGLE_MAX = 359f
 
-fun nextGridAngle(current: Double): Double =
-    ((if (current.isNaN()) 0.0 else current) + GRID_STEP_DEGREES) % 360.0
+fun gridAngleShown(raw: Double): Float =
+    if (raw.isNaN()) 0f else Math.round(((raw % 360.0) + 360.0) % 360.0).toFloat().coerceIn(0f, GRID_ANGLE_MAX)
 
 object SurveyBridge {
     fun surveysFrom(json: JSONObject?): List<Survey> {
@@ -72,12 +72,10 @@ object SurveyBridge {
         }
     }
 
-    fun rotateGrid(itemIndex: Int): Boolean {
-        val current = runCatching {
+    fun gridAngle(itemIndex: Int): Double =
+        runCatching {
             JSONObject(QGCBridge.get("view.control($PLAN_ITEMS.$itemIndex.gridAngle)")).optDouble("value", Double.NaN)
         }.getOrDefault(Double.NaN)
-        return setGridAngle(itemIndex, nextGridAngle(current))
-    }
 
     private fun altitudePath(itemIndex: Int) =
         "$PLAN_ITEMS.$itemIndex.cameraCalc.distanceToSurface"

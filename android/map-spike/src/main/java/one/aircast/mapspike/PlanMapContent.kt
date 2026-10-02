@@ -52,6 +52,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.produceState
@@ -913,12 +914,22 @@ internal fun MapSpikeScreen(
                             GroupBreak()
                         }
 
-                        survey?.takeIf { it.kind == KIND_SURVEY }?.let {
-                            TextButton(onClick = {
-                                onBridge("Rotating grid") {
-                                    SurveyBridge.rotateGrid(it.index)
+                        survey?.takeIf { it.kind == KIND_SURVEY }?.let { grid ->
+                            var angle by remember(grid.index) { mutableStateOf<Float?>(null) }
+                            LaunchedEffect(grid.index) {
+                                angle = withContext(Dispatchers.Default) { gridAngleShown(SurveyBridge.gridAngle(grid.index)) }
+                            }
+                            angle?.let { shown ->
+                                Column(Modifier.width(220.dp)) {
+                                    Text("Angle ${shown.toInt()}°", style = MaterialTheme.typography.labelSmall)
+                                    Slider(
+                                        value = shown,
+                                        onValueChange = { angle = Math.round(it).toFloat() },
+                                        onValueChangeFinished = { angle?.let { chosen -> onBridge("Setting the grid angle") { SurveyBridge.setGridAngle(grid.index, chosen.toDouble()) } } },
+                                        valueRange = 0f..GRID_ANGLE_MAX,
+                                    )
                                 }
-                            }) { Text("Rotate") }
+                            }
                         }
 
                         survey?.takeIf { visible.size == it.area.size }?.let {
