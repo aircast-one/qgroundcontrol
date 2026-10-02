@@ -255,7 +255,10 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 nativePage?.screen == APM_AIRFRAME_SCREEN -> ApmAirframeScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_SUB_MOTORS_SCREEN -> ApmSubMotorsScreen(Modifier.weight(1f))
                 nativePage?.screen == OPTICAL_FLOW_SCREEN -> OpticalFlowScreen(Modifier.weight(1f))
-                nativePage?.parameterSections == true -> ParameterForm(open.name, Modifier.weight(1f))
+                nativePage?.parameterSections == true -> {
+                    if (open.known == "power") PowerLiveCard()
+                    ParameterForm(open.name, Modifier.weight(1f))
+                }
                 else -> SetupNotice(
                     "${open.name} is set up on the desktop.",
                     Modifier.weight(1f),
