@@ -74,4 +74,3 @@ internal fun setupPage(view: JSONObject?, name: String): SetupPage? =
 
 internal fun setupPagePath(name: String): String = "$SETUP($name)"
 
-internal const val NEEDS_SETUP_BADGE = "Needs setup"

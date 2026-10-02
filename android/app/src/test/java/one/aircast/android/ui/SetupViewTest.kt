@@ -151,4 +151,11 @@ class SetupFirmwareTest {
         assertTrue(setupReadiness(JSONObject("""{"connected":true}"""))!!.connected)
         assertFalse(setupReadiness(JSONObject("""{"connected":false}"""))!!.connected)
     }
+
+    @Test
+    fun `a component needing attention names what to do, calibrating sensors and radio`() {
+        assertEquals("Calibrate", attentionAction("APMRadioComponent"))
+        assertEquals("Calibrate", attentionAction("SensorsComponent"))
+        assertEquals("Set up", attentionAction("APMPowerComponent"))
+    }
 }

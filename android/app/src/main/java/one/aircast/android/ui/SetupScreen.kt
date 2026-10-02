@@ -68,6 +68,9 @@ internal fun setupIcon(known: String?, className: String = ""): Int = when (know
     else -> COMPONENT_ICONS.entries.firstOrNull { (token, _) -> token in className }?.value ?: R.drawable.ic_build
 }
 
+internal fun attentionAction(className: String): String =
+    if (listOf("Sensors", "Radio").any { it in className }) "Calibrate" else "Set up"
+
 internal fun setupNote(className: String): String =
     COMPONENT_NOTES.entries.firstOrNull { (token, _) -> token in className }?.value.orEmpty()
 
@@ -364,7 +367,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 SetupRow(
                     title = component.name,
                     status = blocked?.let { "Not while $it" }
-                        ?: NEEDS_SETUP_BADGE,
+                        ?: attentionAction(component.className),
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
                     onClick = if (blocked == null && headCanOpen(page, component.name)) {
                         { parametersOpen = false; openComponent = component }
@@ -394,7 +397,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     title = component.name,
                     status = when {
                         blocked != null -> "Not while $blocked"
-                        component.needsAttention -> NEEDS_SETUP_BADGE
+                        component.needsAttention -> attentionAction(component.className)
                         !openable -> "On desktop"
                         else -> ""
                     },
