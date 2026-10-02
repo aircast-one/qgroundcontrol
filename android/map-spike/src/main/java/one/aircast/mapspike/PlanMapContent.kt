@@ -1272,9 +1272,11 @@ internal fun MapSpikeScreen(
                 }
 
                 if (profile.points.isNotEmpty()) {
-                    TextButton(onClick = {
-                        onBridge { setOk(SHOW_MISSION_ITEM_STATUS, settingJson((!missionStatusShown).toString())) }
-                    }) { Text(if (missionStatusShown) "Hide terrain" else "Terrain") }
+                    FilterChip(
+                        selected = missionStatusShown,
+                        onClick = { onBridge { setOk(SHOW_MISSION_ITEM_STATUS, settingJson((!missionStatusShown).toString())) } },
+                        label = { Text("Terrain profile") },
+                    )
                 }
                 if (missionStatusShown) {
                     TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
