@@ -3350,6 +3350,34 @@ pub struct Hub {
     log_inputs: LogInputs,
     rtcm: crate::rtcm::Fragmenter,
     link_counts: BTreeMap<LinkId, crate::linkcount::LinkCount>,
+    v1_links: BTreeMap<LinkId, V1Watch>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct V1Watch {
+    first_seen_ms: Option<u64>,
+    v2_seen: bool,
+    reported: bool,
+    due: bool,
+}
+
+const MAVLINK_V1_GRACE_MS: u64 = 10_000;
+
+pub fn mavlink_v1_notice(link: &str, application: &str) -> String {
+    let application = if application.is_empty() { "QGroundControl" } else { application };
+    format!("MAVLink v1 traffic detected on link '{link}'. {application} only supports MAVLink v2. Please ensure your vehicle is configured to use MAVLink v2.")
+}
+
+fn v1_watched(watch: V1Watch, v2: bool, now_ms: u64) -> V1Watch {
+    match (v2, watch.v2_seen || watch.reported) {
+        (true, _) => V1Watch { v2_seen: true, ..watch },
+        (false, true) => watch,
+        (false, false) => {
+            let first = watch.first_seen_ms.unwrap_or(now_ms);
+            let due = now_ms.saturating_sub(first) >= MAVLINK_V1_GRACE_MS;
+            V1Watch { first_seen_ms: Some(first), reported: due, due, ..watch }
+        }
+    }
 }
 
 pub static HUB: LazyLock<Mutex<Hub>> = LazyLock::new(|| Mutex::new(Hub::default()));
@@ -3362,6 +3390,14 @@ impl Hub {
     }
 
     pub fn on_frame(&mut self, origin: Origin, header: &MavHeader, message: &MavMessage, timestamp_us: u64, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
+        let exempt = matches!(message, MavMessage::HEARTBEAT(_) | MavMessage::RADIO_STATUS(_));
+        if origin.v2 || !exempt {
+            let watched = v1_watched(self.v1_links.get(&origin.link).copied().unwrap_or_default(), origin.v2, now_ms);
+            self.v1_links.insert(origin.link, watched);
+        }
+        if !origin.v2 && !exempt {
+            return Vec::new();
+        }
         let counted = self.link_counts.get(&origin.link).cloned().unwrap_or_default().counted(header.system_id, header.component_id, header.sequence);
         if let (Some(status), Some(vehicle)) = (counted.status(), self.vehicles.get_mut(&header.system_id)) {
             vehicle.link_status = status;
@@ -3452,6 +3488,16 @@ impl Hub {
         });
         let gone: Vec<u8> = self.vehicles.values().filter(|v| !still_open(v.link)).map(|v| v.id).collect();
         gone.iter().for_each(|id| self.remove(*id));
+    }
+
+    pub fn take_v1_reports(&mut self) -> Vec<LinkId> {
+        let due: Vec<LinkId> = self.v1_links.iter().filter(|(_, w)| w.due).map(|(link, _)| *link).collect();
+        due.iter().for_each(|link| {
+            if let Some(watch) = self.v1_links.get_mut(link) {
+                watch.due = false;
+            }
+        });
+        due
     }
 
     pub fn take_notices(&mut self) -> Vec<(&'static str, String)> {
@@ -3981,6 +4027,30 @@ mod tests {
         assert_eq!(count, 1, "the sample log carries one vehicle");
         hub.remove(vehicle.id);
         assert_eq!(hub.snapshot()["available"], false);
+    }
+
+    #[test]
+    fn mavlink_v1_frames_are_dropped_and_reported_once_after_the_grace_period() {
+        use mavlink::dialects::ardupilotmega::{EXTENDED_SYS_STATE_DATA, MavLandedState};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let v1 = Origin { link: 5, replay: false, v2: false };
+        hub.on_frame(v1, &header, &copter_heartbeat(0, false), 0, 0);
+        assert_eq!(hub.vehicle_ids(), vec![1], "a v1 HEARTBEAT still brings the vehicle up, as MAVLinkProtocol lets it through");
+        let state = MavMessage::EXTENDED_SYS_STATE(EXTENDED_SYS_STATE_DATA { landed_state: MavLandedState::MAV_LANDED_STATE_IN_AIR, ..Default::default() });
+        assert!(hub.on_frame(v1, &header, &state, 0, 1_000).is_empty());
+        assert!(!hub.active().unwrap().flying, "a v1 message other than HEARTBEAT and RADIO_STATUS is dropped");
+        assert!(hub.take_v1_reports().is_empty(), "ArduPilot starts in v1, so nothing is said inside the grace period");
+        hub.on_frame(v1, &header, &state, 0, 11_000);
+        assert_eq!(hub.take_v1_reports(), vec![5]);
+        hub.on_frame(v1, &header, &state, 0, 30_000);
+        assert!(hub.take_v1_reports().is_empty(), "it is said once per link");
+        let mut upgraded = Hub::default();
+        upgraded.on_frame(v1, &header, &state, 0, 0);
+        upgraded.on_frame(Origin { v2: true, ..v1 }, &header, &copter_heartbeat(0, false), 0, 5_000);
+        upgraded.on_frame(v1, &header, &state, 0, 20_000);
+        assert!(upgraded.take_v1_reports().is_empty(), "a link that has spoken v2 never warns");
+        assert!(mavlink_v1_notice("Radio", "").contains("link 'Radio'. QGroundControl only supports MAVLink v2."));
     }
 
     #[test]

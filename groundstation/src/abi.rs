@@ -265,6 +265,11 @@ pub(crate) fn start_pump() {
                     hub.tick_with(crate::hub::now_ms(), crate::hub::now_us() / 1_000_000)
                 };
                 deliver(outbound);
+                let v1_links = crate::hub::lock().take_v1_reports();
+                v1_links.into_iter().for_each(|link| {
+                    let name = crate::linkhost::TRANSPORTS.lock().unwrap().config(link).map_or_else(|| "unknown".to_string(), |c| c.name);
+                    crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::mavlink_v1_notice(&name, &crate::noticeboard::application_name()));
+                });
                 crate::hub::lock().take_notices().iter().for_each(|(kind, body)| {
                     crate::noticeboard::post_from_vehicle(kind, body);
                 });
