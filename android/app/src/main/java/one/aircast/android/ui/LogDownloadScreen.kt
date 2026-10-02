@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.ui.semantics.semantics
 
 import androidx.compose.ui.semantics.contentDescription
@@ -267,13 +269,13 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            TextButton(
+            FilledTonalButton(
                 onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.refresh") } },
                 enabled = logs.canRefresh,
             ) { Text("Refresh") }
 
             if (logs.sortText.isNotBlank()) {
-                TextButton(
+                FilledTonalButton(
                     onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.toggleSortByDate") } },
                     enabled = logs.canSort,
                 ) { Text(logs.sortText) }
@@ -338,25 +340,21 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                     }
                 }
                 item(key = "erase") {
-                    if (!busy && logs.eraseSelectedShown) {
-                        TextButton(
-                            enabled = logs.canEraseSelected,
-                            onClick = { confirmErase = EraseKind.Selected },
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                        ) { Text("Erase Selected") }
-                    }
                     if (!busy) {
-                        TextButton(
-                            enabled = logs.canErase,
-                            onClick = { confirmErase = EraseKind.All },
-                            colors = ButtonDefaults.textButtonColors(
-                                contentColor = MaterialTheme.colorScheme.error,
-                            ),
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                        ) { Text("Erase All") }
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (logs.eraseSelectedShown) {
+                                OutlinedButton(
+                                    enabled = logs.canEraseSelected,
+                                    onClick = { confirmErase = EraseKind.Selected },
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                                ) { Text("Erase Selected") }
+                            }
+                            OutlinedButton(
+                                enabled = logs.canErase,
+                                onClick = { confirmErase = EraseKind.All },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                            ) { Text("Erase All") }
+                        }
                     }
                     Spacer(Modifier.height(88.dp))
                 }
