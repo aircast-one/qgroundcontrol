@@ -287,6 +287,7 @@ pub(crate) fn start_pump() {
                         (0..count).filter_map(|listed| hub.listed(listed).map(|vehicle| crate::csvlog::Logged { id: vehicle.id, listed, armed: vehicle.armed() })).collect()
                     };
                     crate::csvlog::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), &logged, crate::hub::now_ms());
+                    crate::subtitles::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
                     crate::forwarding::maintain();
                     crate::ntrip::sync();
                     crate::joystickhost::tick(crate::hub::now_ms());

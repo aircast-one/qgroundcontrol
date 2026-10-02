@@ -124,6 +124,7 @@ pub fn start_recording() -> Result<(), Option<&'static str>> {
     let file = recording_file_name(&folder, &stamp, recording_format()).ok_or(Some(BAD_FORMAT_MESSAGE))?;
     let outs = host.state.start_recording();
     if outs.iter().any(|out| matches!(out, Out::StartRecording { receivers } if receivers.iter().any(|r| r == MAIN_RECEIVER))) {
+        crate::subtitles::start(&file, Some((host.reported.2, host.reported.3)), crate::hub::now_ms());
         host.recording_file = Some(file);
     }
     Ok(())
@@ -133,6 +134,7 @@ pub fn stop_recording() {
     let mut guard = synced();
     if let Some(host) = guard.as_mut() {
         host.recording_file = None;
+        crate::subtitles::stop();
         let outs = host.state.stop_recording();
         apply(host, outs, crate::hub::now_ms());
     }
@@ -200,6 +202,10 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
                 host.wanted = false;
                 host.reported = (false, false, 0, 0);
                 host.state.on_stop_complete(MAIN_RECEIVER, Outcome::Ok)
+            }
+            Out::StopTelemetryCapture => {
+                crate::subtitles::stop();
+                Vec::new()
             }
             Out::RestartAfter { receiver, delay_ms } if receiver == MAIN_RECEIVER => {
                 host.restart_at_ms = Some(now_ms + delay_ms);
