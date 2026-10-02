@@ -189,7 +189,7 @@ pub fn estimator_origin(latitude: f64, longitude: f64, altitude: f64) -> Plan {
 }
 
 pub fn reboot() -> Plan {
-    Plan::Steps(vec![Step::Command { command: CMD_PREFLIGHT_REBOOT_SHUTDOWN, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
+    Plan::Steps(vec![Step::Command { command: CMD_PREFLIGHT_REBOOT_SHUTDOWN, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: false }])
 }
 
 pub fn reset_parameters() -> Plan {

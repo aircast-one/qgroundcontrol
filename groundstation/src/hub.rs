@@ -1609,7 +1609,7 @@ impl Vehicle {
             Some(Some(due)) if now_ms >= due => {
                 self.airframe_reboot = None;
                 log::info!("Rebooting vehicle {} after the airframe change", self.id);
-                crate::corelinks::disconnect_all_at(now_ms + AIRFRAME_DISCONNECT_AFTER_MS);
+                crate::corelinks::close_links_at(now_ms + AIRFRAME_DISCONNECT_AFTER_MS, None, "the vehicle is rebooting after an airframe change");
                 self.start_guided(&json!({ "action": "reboot" }), now_ms).unwrap_or_default()
             }
             _ => Vec::new(),
@@ -1878,6 +1878,13 @@ impl Vehicle {
                 Out::ShowError(text) => {
                     self.pending_notices.push((crate::noticeboard::MESSAGE, text.clone()));
                     self.note(text);
+                    Vec::new()
+                }
+                Out::Result { command: guidedcmd::CMD_PREFLIGHT_REBOOT_SHUTDOWN, result, .. } => {
+                    match result {
+                        RESULT_ACCEPTED => crate::corelinks::close_links_at(now_ms, Some(self.link_states.iter().map(|(link, _, _)| *link).collect()), "the vehicle accepted a reboot"),
+                        _ => self.pending_notices.push((crate::noticeboard::MESSAGE, "Vehicle reboot failed.".to_string())),
+                    }
                     Vec::new()
                 }
                 Out::Result { command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, failure: failure @ (Failure::NoResponse | Failure::Duplicate), .. } => {
@@ -4683,6 +4690,21 @@ mod tests {
         assert_eq!(vehicle.autotune.status, "Autotune: Success");
         assert!(vehicle.pending_notices.iter().any(|(_, text)| text == "Autotune successful."));
         assert_eq!(polls(&vehicle.pump_with(33_000, None, 0)), 0, "finished, so polling stops");
+    }
+
+    #[test]
+    fn a_reboot_closes_the_vehicle_when_accepted_and_says_so_when_not() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let ack = |result: MavResult| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, result, ..Default::default() });
+        hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "reboot" }), 20_000).unwrap();
+        hub.on_frame(origin(4), &autopilot, &ack(MavResult::MAV_RESULT_DENIED), 20_100_000, 20_100);
+        assert!(hub.active().unwrap().pending_notices.iter().any(|(_, t)| t == "Vehicle reboot failed."));
+        hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "reboot" }), 21_000).unwrap();
+        hub.on_frame(origin(4), &autopilot, &ack(MavResult::MAV_RESULT_ACCEPTED), 21_100_000, 21_100);
+        assert_eq!(crate::corelinks::pending_close(), Some((21_100, Some(vec![4]))), "Vehicle::_rebootCommandResultHandler closes the vehicle's own links");
     }
 
     #[test]

@@ -555,28 +555,43 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
     });
 }
 
-static DISCONNECT_ALL_AT: Mutex<Option<u64>> = Mutex::new(None);
-
-pub fn disconnect_all_at(due_ms: u64) {
-    *DISCONNECT_ALL_AT.lock().unwrap_or_else(PoisonError::into_inner) = Some(due_ms);
+struct PendingClose {
+    due_ms: u64,
+    links: Option<Vec<crate::transport::LinkId>>,
+    reason: &'static str,
 }
 
-fn disconnect_all_if_due(now_ms: u64) {
-    let due = {
-        let mut at = DISCONNECT_ALL_AT.lock().unwrap_or_else(PoisonError::into_inner);
-        at.filter(|due| now_ms >= *due).inspect(|_| *at = None)
-    };
-    if due.is_some() {
+static PENDING_CLOSE: Mutex<Option<PendingClose>> = Mutex::new(None);
+
+pub fn close_links_at(due_ms: u64, links: Option<Vec<crate::transport::LinkId>>, reason: &'static str) {
+    #[cfg(test)]
+    CLOSED_HERE.with(|closed| *closed.borrow_mut() = Some((due_ms, links.clone())));
+    *PENDING_CLOSE.lock().unwrap_or_else(PoisonError::into_inner) = Some(PendingClose { due_ms, links, reason });
+}
+
+#[cfg(test)]
+thread_local! {
+    static CLOSED_HERE: std::cell::RefCell<Option<(u64, Option<Vec<crate::transport::LinkId>>)>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub fn pending_close() -> Option<(u64, Option<Vec<crate::transport::LinkId>>)> {
+    CLOSED_HERE.with(|closed| closed.borrow().clone())
+}
+
+fn close_if_due(now_ms: u64) {
+    let due = PENDING_CLOSE.lock().unwrap_or_else(PoisonError::into_inner).take_if(|pending| now_ms >= pending.due_ms);
+    if let Some(pending) = due {
         let open = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(PoisonError::into_inner).open_ids();
-        open.into_iter().for_each(|id| {
-            crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, "the vehicle is rebooting after an airframe change");
+        open.into_iter().filter(|id| pending.links.as_ref().is_none_or(|links| links.contains(id))).for_each(|id| {
+            crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, pending.reason);
         });
     }
 }
 
 pub fn tick(now_ms: u64) {
     if owned() {
-        disconnect_all_if_due(now_ms);
+        close_if_due(now_ms);
     }
     if !owned() || !AUTOCONNECTING.load(Ordering::SeqCst) || crate::logreplay::playing() {
         return;
