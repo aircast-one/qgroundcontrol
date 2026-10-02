@@ -52,8 +52,11 @@ pub fn elevation(latitude: f64, longitude: f64, cache: Option<&Cache>, fetch: &d
     tile.elevation(latitude, longitude).ok_or_else(|| "The terrain tile does not cover that position.".to_string())
 }
 
+const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 pub fn fetch_over_http(url: &str) -> Result<String, String> {
-    ureq::get(url).call().map_err(|e| format!("The terrain server did not answer: {e}"))?.body_mut().read_to_string().map_err(|e| format!("The terrain answer could not be read: {e}"))
+    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(FETCH_TIMEOUT)).build().into();
+    agent.get(url).call().map_err(|e| format!("The terrain server did not answer: {e}"))?.body_mut().read_to_string().map_err(|e| format!("The terrain answer could not be read: {e}"))
 }
 
 #[cfg(test)]
