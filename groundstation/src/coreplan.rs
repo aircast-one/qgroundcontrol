@@ -1316,7 +1316,7 @@ fn takeoff_required_first() -> bool {
 fn shape_points(file: &str, polyline: bool) -> Result<Vec<(f64, f64)>, String> {
     let lower = file.to_lowercase();
     let (points, found_polyline) = match () {
-        _ if lower.ends_with(".kml") => match crate::kml::parse(&std::fs::read_to_string(file).map_err(|e| format!("Unable to open file: {file} error: {e}"))?)? {
+        _ if lower.ends_with(".kml") => match crate::kml::parse_wanted(&std::fs::read_to_string(file).map_err(|e| format!("Unable to open file: {file} error: {e}"))?, polyline)? {
             crate::kml::Shape::Polygon(points) => (points, false),
             crate::kml::Shape::Polyline(points) => (points, true),
         },

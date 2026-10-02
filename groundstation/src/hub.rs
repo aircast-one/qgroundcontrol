@@ -3868,6 +3868,9 @@ impl Hub {
         self.selected.retain(|known| *known != id);
         if self.active == Some(id) {
             self.active = self.arrival.first().copied();
+            if let Some(vehicle) = self.active.and_then(|next| self.vehicles.get_mut(&next)) {
+                vehicle.shell = crate::shell::Shell::default();
+            }
         }
     }
 

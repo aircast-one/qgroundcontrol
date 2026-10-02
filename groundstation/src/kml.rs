@@ -64,24 +64,37 @@ fn without_closing_vertex(points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
     }
 }
 
-pub fn parse(text: &str) -> Result<Shape, String> {
+fn shape(text: &str, wanted: Option<bool>) -> Result<Shape, String> {
     let document = Document::parse(text).map_err(|e| format!("Unable to parse KML: {e}"))?;
     let root = document.root();
     let named = |name: &'static str| root.descendants().filter(move |n| n.is_element() && n.tag_name().name() == name);
-    let polygon = named("Polygon")
-        .filter_map(|polygon| child(polygon, "outerBoundaryIs").and_then(|b| child(b, "LinearRing")).and_then(|r| child(r, "coordinates")))
-        .filter_map(|node| coordinates(node).ok())
-        .find(|points| points.len() >= 3)
-        .map(|points| Shape::Polygon(filter_vertices(clockwise(without_closing_vertex(points)), 3)));
-    if let Some(found) = polygon {
-        return Ok(found);
+    let polygon = || {
+        named("Polygon")
+            .filter_map(|polygon| child(polygon, "outerBoundaryIs").and_then(|b| child(b, "LinearRing")).and_then(|r| child(r, "coordinates")))
+            .filter_map(|node| coordinates(node).ok())
+            .find(|points| points.len() >= 3)
+            .map(|points| Shape::Polygon(filter_vertices(clockwise(without_closing_vertex(points)), 3)))
+    };
+    let line = || {
+        named("LineString")
+            .filter_map(|line| child(line, "coordinates"))
+            .filter_map(|node| coordinates(node).ok())
+            .find(|points| points.len() >= 2)
+            .map(|points| Shape::Polyline(filter_vertices(points, 2)))
+    };
+    match wanted {
+        Some(true) => line().ok_or_else(|| "No polyline found in the file.".to_string()),
+        Some(false) => polygon().ok_or_else(|| "No polygon found in the file.".to_string()),
+        None => polygon().or_else(line).ok_or_else(|| "No supported type found in KML file.".to_string()),
     }
-    let line = named("LineString")
-        .filter_map(|line| child(line, "coordinates"))
-        .filter_map(|node| coordinates(node).ok())
-        .find(|points| points.len() >= 2)
-        .map(|points| Shape::Polyline(filter_vertices(points, 2)));
-    line.ok_or_else(|| "No supported type found in KML file.".to_string())
+}
+
+pub fn parse(text: &str) -> Result<Shape, String> {
+    shape(text, None)
+}
+
+pub fn parse_wanted(text: &str, polyline: bool) -> Result<Shape, String> {
+    shape(text, Some(polyline))
 }
 
 pub fn kml_view(_backend: &dyn Backend, args: &[String]) -> Value {
@@ -132,5 +145,12 @@ mod tests {
         let fixed = clockwise(counter.clone());
         assert_eq!(fixed == counter, sum >= 0.0);
         assert_eq!(clockwise(fixed.clone()), fixed);
+    }
+
+    #[test]
+    fn a_corridor_import_takes_the_line_from_a_file_that_also_holds_a_polygon() {
+        let both = r#"<kml><Document><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>8.0,47.0 8.01,47.0 8.01,47.01 8.0,47.0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark><Placemark><LineString><coordinates>8.0,47.0 8.02,47.02</coordinates></LineString></Placemark></Document></kml>"#;
+        assert!(matches!(parse_wanted(both, true), Ok(Shape::Polyline(_))), "QGCMapPolyline::loadKMLFile looks for LineStrings only");
+        assert!(matches!(parse_wanted(both, false), Ok(Shape::Polygon(_))));
     }
 }
