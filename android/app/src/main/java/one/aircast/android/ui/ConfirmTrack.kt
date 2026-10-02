@@ -3,7 +3,7 @@ package one.aircast.android.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,6 +19,8 @@ internal fun sentIsStillShowing(name: String?, snapshotAtSend: String?, live: St
 
 internal fun sentText(name: String): String = "Sent · $name"
 
+internal fun slideLabel(name: String): String = name.ifBlank { null }?.let { "Slide to ${it.lowercase()}" } ?: "Slide to confirm"
+
 @Composable
 internal fun ConfirmTrack(
     action: GuidedAction,
@@ -27,22 +29,19 @@ internal fun ConfirmTrack(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(action.confirm, style = MaterialTheme.typography.bodySmall)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            SlideToConfirm(
-                label = "Slide to confirm",
-                destructive = action.destructive,
-                modifier = Modifier.weight(1f),
-            ) {
-                action.run()
-                onSent()
-            }
-            TextButton(onClick = onCancel) { Text("Cancel") }
+        Text(action.name, style = MaterialTheme.typography.titleLarge)
+        if (action.confirm.isNotBlank()) {
+            Text(action.confirm, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        SlideToConfirm(
+            label = slideLabel(action.name),
+            destructive = action.destructive,
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            action.run()
+            onSent()
+        }
+        TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
     }
 }
 

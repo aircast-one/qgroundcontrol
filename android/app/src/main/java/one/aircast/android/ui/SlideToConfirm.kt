@@ -28,10 +28,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
@@ -64,13 +62,16 @@ fun SlideToConfirm(
     val shown by animateFloatAsState(if (settled) 0f else offsetPx, label = "slide")
 
     val accent = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val onAccent = if (destructive) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
+    val track = if (destructive) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+    val onTrack = if (destructive) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
 
     Box(
         modifier
             .fillMaxWidth()
             .height(TRACK_HEIGHT)
             .clip(CircleShape)
-            .background(accent.copy(alpha = 0.15f + 0.35f * fraction))
+            .background(track)
             .onSizeChanged { trackPx = it.width },
         contentAlignment = Alignment.Center,
     ) {
@@ -80,9 +81,8 @@ fun SlideToConfirm(
         ) {
             Text(
                 text = label,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 1f - fraction),
+                style = MaterialTheme.typography.labelLarge,
+                color = onTrack.copy(alpha = 1f - fraction),
             )
         }
         Box(
@@ -112,7 +112,7 @@ fun SlideToConfirm(
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = Color.White,
+                tint = onAccent,
             )
         }
     }
