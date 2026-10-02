@@ -117,6 +117,16 @@ fn moved_complex(kind: &str, json: &Value, transform: Transform, home: Option<(f
     Some(if landing { moved } else { crate::surveydoc::regenerate_item(&moved) })
 }
 
+pub fn move_complex_to(item: &Item, latitude: f64, longitude: f64) -> Option<Item> {
+    let Item::Complex { kind, json, item_count } = item else { return None };
+    let old = match crate::landingpattern::is_landing(kind) {
+        true => crate::landingpattern::coordinate(json, "landCoordinate").map(|at| (at.latitude, at.longitude)),
+        false => crate::missionitems::complex_entry(json),
+    }?;
+    let placed = moved_complex(kind, json, Transform::Reposition { latitude, longitude }, Some(old))?;
+    Some(Item::Complex { kind: kind.clone(), item_count: crate::plandoc::complex_count(kind, &placed).unwrap_or(*item_count), json: placed })
+}
+
 fn complex_altitude(kind: &str, json: &Value) -> Option<f64> {
     match kind {
         k if crate::landingpattern::is_landing(k) => crate::landingpattern::approach(json).map(|at| at.altitude),
@@ -274,6 +284,16 @@ mod tests {
             Item::Simple(s) => (s.params[LATITUDE].unwrap(), s.params[LONGITUDE].unwrap(), s.altitude.as_ref().unwrap().altitude),
             Item::Complex { .. } => panic!(),
         }
+    }
+
+    #[test]
+    fn a_survey_moved_to_a_point_puts_its_entry_there_as_set_coordinate_does() {
+        let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let survey = Item::Complex { kind: "survey".into(), json: plan["mission"]["items"][0].clone(), item_count: 1 };
+        let Some(moved @ Item::Complex { .. }) = move_complex_to(&survey, -35.36, 149.17) else { panic!("a placed survey moves") };
+        let Item::Complex { json, .. } = moved else { unreachable!() };
+        let entry = crate::missionitems::complex_entry(&json).unwrap();
+        assert!(distance_between(entry, (-35.36, 149.17)) < 1.0, "TransectStyleComplexItem::setCoordinate translates the polygon so the entry lands on the point: {entry:?}");
     }
 
     #[test]

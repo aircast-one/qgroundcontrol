@@ -1459,6 +1459,16 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         Err(reason) => refused(reason),
     };
     let current = held().document.clone()?;
+    if property == "coordinate" {
+        if let Some(complex @ plandoc::Item::Complex { .. }) = index.checked_sub(1).and_then(|at| current.items.get(at)) {
+            let target = crate::fenceedit::point(given.as_ref());
+            let at = index - 1;
+            return Some(match target.and_then(|(latitude, longitude)| crate::plantransform::move_complex_to(complex, latitude, longitude)) {
+                Some(moved) => edit(|doc| Ok(Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { moved.clone() } else { it.clone() }).collect(), ..doc.clone() })),
+                None => refused(format!("Item {index} could not be moved there.")),
+            });
+        }
+    }
     if property == "wizardMode" {
         return Some(match given.as_ref().and_then(Value::as_bool) {
             Some(false) => {
