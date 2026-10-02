@@ -16,6 +16,7 @@ use crate::vehicles;
 use crate::missionsummary;
 use crate::modeslots;
 use crate::flystate;
+use crate::missionprogress;
 use crate::operatorcontrol;
 use crate::orbit;
 use crate::vehiclelinks;
@@ -283,6 +284,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.track", deps: track::DEPS, compute: track::track_view },
     View { path: "view.altitudeModes", deps: altitudemodes::DEPS, compute: altitudemodes::altitude_modes_view },
     View { path: "view.flyState", deps: flystate::DEPS, compute: flystate::fly_state_view },
+    View { path: "view.missionProgress", deps: missionprogress::DEPS, compute: missionprogress::mission_progress_view },
     View { path: "view.operatorControl", deps: operatorcontrol::DEPS, compute: operatorcontrol::operator_control_view },
     View { path: "view.orbit", deps: orbit::DEPS, compute: orbit::orbit_view },
     View { path: "view.vehicleLinks", deps: vehiclelinks::DEPS, compute: vehiclelinks::vehicle_links_view },
@@ -544,6 +546,7 @@ mod deps_cover_reads {
             ("fences", include_str!("fences.rs")),
             ("flightmodes", include_str!("flightmodes.rs")),
             ("flystate", include_str!("flystate.rs")),
+            ("missionprogress", include_str!("missionprogress.rs")),
             ("followme", include_str!("followme.rs")),
         ("frame", include_str!("frame.rs")),
             ("firmwareinfo", include_str!("firmwareinfo.rs")),
@@ -747,6 +750,7 @@ mod deps_cover_reads {
 
     const UNWATCHED_BECAUSE_CONSTANT: &[&str] = &[
         "video.gstreamerEnabled",
+        "vehicle.missionFlightMode",
         "vehicle.motorCount",
         "vehicle.id",
         "vehicle.flightModeSetAvailable",

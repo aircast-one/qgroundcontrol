@@ -231,6 +231,8 @@ ACCEPTED = {
     "to": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
     "decimals": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
     "ok": "the invoke envelope, not a view field",
+    "componentId": "a parameterFile.review row (an invoke result, not a view field); paramfile.rs serves it. Read in ParameterTools.kt",
+    "noVehicleValue": "a parameterFile.review row (an invoke result, not a view field); paramfile.rs serves it. Read in ParameterTools.kt",
     "onScreen": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "clickAndDrag": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "controlLabel": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",

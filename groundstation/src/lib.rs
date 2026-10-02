@@ -42,6 +42,7 @@ pub mod fencedoc;
 pub mod fences;
 pub mod flightmodes;
 pub mod flystate;
+pub mod missionprogress;
 pub mod followme;
 pub mod frame;
 pub mod firmwareinfo;
