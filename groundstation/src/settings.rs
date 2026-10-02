@@ -158,6 +158,14 @@ const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
 ];
 
 const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
+    ("remoteIDSettings", &[
+        ("Region", &["region"]),
+        ("Basic ID", &["sendBasicID", "basicIDType", "basicIDUaType", "basicID"]),
+        ("Operator ID", &["sendOperatorID", "operatorIDType", "operatorIDEU", "operatorIDFAA"]),
+        ("Self ID", &["sendSelfID", "selfIDType", "selfIDFree", "selfIDExtended", "selfIDEmergency"]),
+        ("Ground Station Location", &["locationType", "latitudeFixed", "longitudeFixed", "altitudeFixed"]),
+        ("EU Vehicle Info", &["classificationType", "categoryEU", "classEU"]),
+    ]),
     ("mavlinkSettings", &[
         ("Ground Station", &["gcsMavlinkSystemID", "sendGCSHeartbeat", "noInitialDownloadWhenFlying"]),
         ("MAVLink Forwarding", &["forwardMavlink", "forwardMavlinkHostName", "forwardMavlinkAPMSupportHostName"]),
@@ -384,6 +392,13 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn remote_id_rows_follow_qgcs_groups_with_each_switch_ahead_of_its_fields() {
+        let controls: Vec<Value> = ["operatorIDEU", "sendOperatorID", "region", "basicID", "sendBasicID"].iter().map(|n| json!({ "name": n })).collect();
+        let order: Vec<String> = subsections("remoteIDSettings", &controls).iter().flat_map(|s| s["controls"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect::<Vec<_>>()).collect();
+        assert_eq!(order, ["region", "sendBasicID", "basicID", "sendOperatorID", "operatorIDEU"], "RemoteIDSettings.qml order");
+    }
+
     #[test]
     fn the_mavlink_page_groups_its_rows_under_qgcs_headings_so_enable_reads_as_forwarding() {
         let controls: Vec<Value> = ["telemetrySave", "forwardMavlink", "forwardMavlinkHostName", "sendGCSHeartbeat"].iter().map(|n| json!({ "name": n })).collect();
