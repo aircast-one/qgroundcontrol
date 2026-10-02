@@ -23,6 +23,9 @@ internal data class FlyState(
     val rcOverride: Boolean?,
     val telemetry: TelemetryLink?,
     val summaryDetail: String = "",
+    val nominal: Boolean = true,
+    val fault: Boolean = false,
+    val canArm: Boolean = true,
 )
 
 internal data class TelemetryLink(
@@ -58,6 +61,9 @@ internal fun flyState(view: JSONObject?): FlyState? {
         state = view.optText("state"),
         stateText = view.optText("stateText"),
         summaryDetail = view.optText("summaryDetail"),
+        nominal = view.optBoolean("nominal", true),
+        fault = view.optBoolean("fault"),
+        canArm = view.optBoolean("canArm", true),
         staleNotice = view.optText("staleNotice"),
         mode = view.optText("mode"),
         rcSupported = view.optBoolean("rcSupported"),

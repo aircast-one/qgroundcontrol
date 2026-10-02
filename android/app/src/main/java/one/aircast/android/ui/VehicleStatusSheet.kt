@@ -26,6 +26,29 @@ import one.aircast.android.bridge.qgcPath
 private const val SENSOR_FAULT_STATE = "unhealthy"
 private const val SENSORS_SETUP_PAGE = "Sensors"
 
+internal object DeckRequest {
+    var action by mutableStateOf<String?>(null)
+}
+
+internal const val ARM_REQUEST = "arm"
+internal const val FORCE_ARM_REQUEST = "forceArm"
+
+internal data class ArmControls(
+    val sliderText: String,
+    val sliderEnabled: Boolean,
+    val mayBeRefused: Boolean,
+    val forceLink: Boolean,
+    val forceSlider: Boolean,
+)
+
+internal fun armControls(state: FlyState, forceOpen: Boolean): ArmControls = ArmControls(
+    sliderText = if (state.armed) "Slide to Disarm" else "Slide to Arm",
+    sliderEnabled = state.canArm,
+    mayBeRefused = !state.armed && !state.nominal && state.canArm && !forceOpen,
+    forceLink = !state.armed && !forceOpen && (!state.canArm || state.fault),
+    forceSlider = !state.armed && forceOpen,
+)
+
 internal fun shownSensors(sensors: List<SensorHealth>, showAll: Boolean): List<SensorHealth> =
     if (showAll) sensors else sensors.filter { it.state == SENSOR_FAULT_STATE }
 
@@ -43,6 +66,7 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             StatusSummary()
+            ArmSection(onDismiss)
             health?.takeIf { healthJson?.optBoolean("healthChecksSupported") != true && it.available && it.sensors.isNotEmpty() }?.let { reading ->
                 Text("Sensors", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
                 shownSensors(reading.sensors, showAll).forEach { sensor ->
@@ -79,6 +103,30 @@ private fun StatusSummary() {
         Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ArmSection(onDismiss: () -> Unit) {
+    val stateJson by qgcPath(FLY_STATE)
+    val state = remember(stateJson) { flyState(stateJson) }?.takeIf { it.connected } ?: return
+    var forceOpen by remember { mutableStateOf(false) }
+    val controls = armControls(state, forceOpen)
+    val request: (String) -> Unit = { action ->
+        DeckRequest.action = action
+        onDismiss()
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        SlideToConfirm(controls.sliderText, destructive = state.armed, enabled = controls.sliderEnabled) { request(ARM_REQUEST) }
+        if (controls.mayBeRefused) {
+            Text("Arming may be refused.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (controls.forceLink) {
+            TextButton(onClick = { forceOpen = true }) { Text("Force Arm…") }
+        }
+        if (controls.forceSlider) {
+            SlideToConfirm("Slide to Force Arm", destructive = true) { request(FORCE_ARM_REQUEST) }
         }
     }
 }

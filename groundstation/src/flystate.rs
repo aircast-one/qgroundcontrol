@@ -47,6 +47,13 @@ pub fn ready_to_fly(report: Option<bool>, ready_to_fly: Option<bool>, sensors_he
     report.or(ready_to_fly).unwrap_or_else(|| sensors_healthy && setup_complete())
 }
 
+pub fn status_fault(report: Option<(bool, bool)>, sensors: &[(bool, bool)]) -> bool {
+    match report {
+        Some((can_arm, _)) => !can_arm,
+        None => sensors.iter().any(|(enabled, healthy)| *enabled && !*healthy),
+    }
+}
+
 pub fn status_nominal(report: Option<(bool, bool)>, sensors: &[(bool, bool)]) -> bool {
     match report {
         Some((can_arm, warnings)) => can_arm && !warnings,
@@ -121,6 +128,9 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "contactLost": reported,
         "state": state.token(),
         "stateText": state_line(state, state == State::Disarmed && disarmed_ready(backend), health.nominal()),
+        "nominal": health.nominal(),
+        "fault": health.fault(),
+        "canArm": flag(&vehicle, "armed") || health.report.is_none_or(|(can_arm, _)| can_arm),
         "summaryDetail": connected.then(|| summary_detail(flag(&vehicle, "armed"), flag(&vehicle, "flying") || flag(&vehicle, "landing"), health.check_issues, &health.sensors)),
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
@@ -161,6 +171,10 @@ fn health(backend: &dyn Backend) -> Health {
 }
 
 impl Health {
+    fn fault(&self) -> bool {
+        status_fault(self.report, &self.sensors.iter().map(|(_, enabled, healthy)| (*enabled, *healthy)).collect::<Vec<_>>())
+    }
+
     fn nominal(&self) -> bool {
         status_nominal(self.report, &self.sensors.iter().map(|(_, enabled, healthy)| (*enabled, *healthy)).collect::<Vec<_>>())
     }
@@ -255,6 +269,14 @@ mod tests {
         assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, false), ("Gyro", true, false), ("Mag", false, false)])), "GPS, Gyro not working. Position modes and Return to Launch may not work.");
         assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true), ("Mag", false, false)])), "Mag turned off. Everything else reports normal.");
         assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true)])), "All checks passed.");
+    }
+
+    #[test]
+    fn status_fault_ports_vehicle_status_summary() {
+        assert!(status_fault(Some((false, false)), &[]), "with health checks a vehicle that cannot arm is a fault");
+        assert!(!status_fault(Some((true, true)), &[(true, false)]), "warnings are only a caution, and the report replaces the sensor bits");
+        assert!(status_fault(None, &[(true, false)]), "an enabled sensor that is unhealthy is a fault");
+        assert!(!status_fault(None, &[(false, false)]), "a disabled sensor is a caution, not a fault");
     }
 
     #[test]

@@ -500,6 +500,18 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         val deck = deckIds(entries.map { it.id }.toSet(), armed)
         deckRest = entries.filter { entry -> deck.none { it.first == entry.id } }
         deckShown = deck.map { it.first }.toSet()
+        LaunchedEffect(DeckRequest.action) {
+            when (val asked = DeckRequest.action) {
+                null -> Unit
+                ARM_REQUEST -> entries.firstOrNull { it.id == ARM_REQUEST && it.enabled }?.onClick?.invoke()
+                else -> offers[asked]?.takeIf { it.ready }?.let { offer ->
+                    guidedCommand(offer.id, resumeFrom)?.let { command ->
+                        pending = GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, run = command)
+                    }
+                }
+            }
+            DeckRequest.action = null
+        }
 
         if (!simple) TelemetryRow(columns = if (side) 1 else null)
 
