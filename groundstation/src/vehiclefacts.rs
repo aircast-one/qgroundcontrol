@@ -22,6 +22,7 @@ pub struct VehicleFacts {
     pub x_track_error: f64,
     pub distance_to_next_wp: f64,
     pub range_finder_dist: f64,
+    pub imu_temp: f64,
     pub coordinate: Option<(f64, f64, f64)>,
     altitude_message_seen: bool,
     global_position_seen: bool,
@@ -62,6 +63,17 @@ fn attitude_degrees(roll: f64, pitch: f64, yaw: f64) -> (f64, f64, f64) {
     let yaw_degrees = limit_angle_to_pm_pi(yaw).to_degrees();
     let heading = if yaw_degrees < 0.0 { yaw_degrees + 360.0 } else { yaw_degrees };
     (limit_angle_to_pm_pi(roll).to_degrees(), limit_angle_to_pm_pi(pitch).to_degrees(), heading.trunc())
+}
+
+pub fn imu_temperature(centidegrees: i16) -> f64 {
+    match centidegrees {
+        0 => 0.0,
+        raw => f64::from(raw) * 0.01,
+    }
+}
+
+pub fn time_to_home(distance_to_home: Option<f64>, ground_speed: f64) -> Option<f64> {
+    distance_to_home.filter(|d| !d.is_nan()).map(|d| d / ground_speed)
 }
 
 fn zero_if_nan(value: f32) -> f64 {
@@ -137,6 +149,10 @@ impl VehicleFacts {
                 self.distance_to_next_wp = d.wp_dist as f64;
                 true
             }
+            MavMessage::RAW_IMU(d) => {
+                self.imu_temp = imu_temperature(d.temperature);
+                true
+            }
             MavMessage::RANGEFINDER(d) => {
                 self.range_finder_dist = zero_if_nan(d.distance);
                 true
@@ -160,6 +176,15 @@ impl VehicleFacts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imu_temperature_and_time_to_home_follow_vehicle_fact_group() {
+        assert_eq!(imu_temperature(4512), 45.12);
+        assert_eq!(imu_temperature(0), 0.0, "zero means not reported and stays zero");
+        assert_eq!(time_to_home(Some(100.0), 5.0), Some(20.0));
+        assert_eq!(time_to_home(None, 5.0), None);
+        assert!(time_to_home(Some(100.0), 0.0).is_some_and(f64::is_infinite), "QGC divides by a zero ground speed too");
+    }
     use mavlink::dialects::ardupilotmega::{ATTITUDE_DATA, ATTITUDE_QUATERNION_DATA, NAV_CONTROLLER_OUTPUT_DATA, VFR_HUD_DATA};
 
     fn near(a: f64, b: f64) -> bool {

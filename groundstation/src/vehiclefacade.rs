@@ -24,7 +24,7 @@ fn offline_field(path: &str, field: &str) -> Option<Value> {
     }
 }
 
-const VEHICLE_FACTS: [&str; 17] = ["rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome"];
+const VEHICLE_FACTS: [&str; 27] = ["rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome", "xTrackError", "airSpeedSetpoint", "altitudeTuning", "altitudeTuningSetpoint", "rangeFinderDist", "timeToHome", "imuTemp", "missionItemIndex", "distanceToGCS", "headingFromGCS"];
 
 pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
     let (lat1, lat2) = (from.0.to_radians(), to.0.to_radians());
@@ -459,6 +459,21 @@ fn circular_fence(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> f64
     }
 }
 
+pub fn mission_item_index(current: i32, px4: bool) -> i64 {
+    i64::from(current) + i64::from(px4)
+}
+
+fn gcs_relation(vehicle: Option<(f64, f64, f64)>) -> (Option<f64>, Option<f64>) {
+    let gcs = crate::gcsposition::lock().coordinate();
+    match (vehicle, gcs) {
+        (Some((latitude, longitude, _)), (Some(gcs_latitude), Some(gcs_longitude), _)) => (
+            Some(crate::terrain::qt_distance((latitude, longitude), (gcs_latitude, gcs_longitude))),
+            Some(qt_azimuth((gcs_latitude, gcs_longitude), (latitude, longitude))),
+        ),
+        _ => (None, None),
+    }
+}
+
 fn known_of(v: &crate::hub::Vehicle) -> Known {
     let ordered = v.sensors.ordered();
     let sensors = json!({ "sensorNames": ordered.names, "sensorStatus": ordered.status, "sensorEnabled": ordered.enabled, "sensorHealthy": ordered.healthy });
@@ -504,6 +519,16 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "altitudeAMSL": crate::vehiclefact::vehicle_fact("altitudeAMSL", &json!(v.facts.altitude_amsl)),
         "throttlePct": crate::vehiclefact::vehicle_fact("throttlePct", &json!(v.facts.throttle_pct)),
         "distanceToNextWP": crate::vehiclefact::vehicle_fact("distanceToNextWP", &json!(v.facts.distance_to_next_wp)),
+        "xTrackError": crate::vehiclefact::vehicle_fact("xTrackError", &json!(v.facts.x_track_error)),
+        "airSpeedSetpoint": crate::vehiclefact::vehicle_fact("airSpeedSetpoint", &json!(v.facts.air_speed_setpoint)),
+        "altitudeTuning": crate::vehiclefact::vehicle_fact("altitudeTuning", &json!(v.facts.altitude_tuning)),
+        "altitudeTuningSetpoint": crate::vehiclefact::vehicle_fact("altitudeTuningSetpoint", &json!(v.facts.altitude_tuning_setpoint)),
+        "rangeFinderDist": crate::vehiclefact::vehicle_fact("rangeFinderDist", &json!(v.facts.range_finder_dist)),
+        "timeToHome": crate::vehiclefact::vehicle_fact("timeToHome", &json!(crate::vehiclefacts::time_to_home(Some(home_facts(v.facts.coordinate, v.home).0), v.facts.ground_speed).filter(|t| t.is_finite()))),
+        "imuTemp": crate::vehiclefact::vehicle_fact("imuTemp", &json!(v.facts.imu_temp)),
+        "missionItemIndex": crate::vehiclefact::vehicle_fact("missionItemIndex", &json!(mission_item_index(v.mission_current, v.autopilot == crate::modes::AUTOPILOT_PX4))),
+        "distanceToGCS": crate::vehiclefact::vehicle_fact("distanceToGCS", &json!(gcs_relation(v.facts.coordinate).0)),
+        "headingFromGCS": crate::vehiclefact::vehicle_fact("headingFromGCS", &json!(gcs_relation(v.facts.coordinate).1)),
         "headingToNextWP": crate::vehiclefact::vehicle_fact("headingToNextWP", &json!(heading_to_next_wp(v.facts.coordinate, v.mission_items(), v.mission_current))),
         "distanceToHome": crate::vehiclefact::vehicle_fact("distanceToHome", &json!(home_facts(v.facts.coordinate, v.home).0)),
         "headingToHome": crate::vehiclefact::vehicle_fact("headingToHome", &json!(home_facts(v.facts.coordinate, v.home).1)),
@@ -1692,6 +1717,12 @@ impl<B: Backend> Backend for Facade<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn mission_item_index_counts_home_for_px4_like_vehicle_update_mission_item_index() {
+        assert_eq!(super::mission_item_index(3, true), 4, "PX4 does not take a home position, so QGC adds one");
+        assert_eq!(super::mission_item_index(3, false), 3);
+    }
+
     #[test]
     fn radio_bind_and_copy_trims_send_what_vehicle_pair_rx_and_start_calibration_send() {
         assert_eq!(radio_command("radioCal.spektrumBindMode", "[2]"), Some((crate::mavcmd::CMD_START_RX_PAIR, [0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0])));
