@@ -471,6 +471,7 @@ fn parameter(node: Node) -> Result<Parsed, Refusal> {
                 bits: Vec::new(),
                 name: name.clone(),
                 value_type,
+                label: String::new(),
                 short_description: description.clone(),
                 long_description: description,
                 units: node.attribute("unit").map(str::to_string),

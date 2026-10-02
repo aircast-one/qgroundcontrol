@@ -36,6 +36,7 @@ fn bare(name: &str, value_type: ValueType, component: u8) -> MetaData {
         bits: Vec::new(),
         name: name.to_string(),
         value_type,
+        label: String::new(),
         short_description: String::new(),
         long_description: String::new(),
         units: None,
@@ -66,6 +67,7 @@ impl ComponentParameters {
             Some(MetaData {
                 bits: Vec::new(),
                 name: name.to_string(),
+                label: String::new(),
                 short_description: template.short_description.replace(INDEXED_NAME_TAG, &index),
                 long_description: template.short_description.replace(INDEXED_NAME_TAG, &index),
                 ..template.clone()

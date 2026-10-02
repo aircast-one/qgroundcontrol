@@ -284,6 +284,7 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
     json!({
         "kind": "fact",
         "name": meta.name,
+        "label": meta.label,
         "shortDescription": meta.short_description,
         "longDescription": meta.long_description,
         "value": value,

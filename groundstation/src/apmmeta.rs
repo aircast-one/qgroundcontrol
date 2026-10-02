@@ -110,6 +110,7 @@ pub fn json_metadata(parameters: &JsonParameters, name: &str, value_type: ValueT
         bits: Vec::new(),
         name: name.to_string(),
         value_type,
+        label: String::new(),
         short_description: String::new(),
         long_description: String::new(),
         units: None,
@@ -167,6 +168,7 @@ pub fn json_metadata(parameters: &JsonParameters, name: &str, value_type: ValueT
         .collect();
     MetaData {
         name: name.to_string(),
+        label: String::new(),
         short_description: text("DisplayName").unwrap_or_default(),
         long_description: text("Description").unwrap_or_default(),
         units: text("Units"),

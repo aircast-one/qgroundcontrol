@@ -365,6 +365,7 @@ QJsonObject factJson(Fact *fact)
     static const QStringList kFactProperties = {
         QStringLiteral("name"),
         QStringLiteral("shortDescription"),
+        QStringLiteral("label"),
         QStringLiteral("units"),
         QStringLiteral("rawUnits"),
         QStringLiteral("unknownEnumLabel"),
