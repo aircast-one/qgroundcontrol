@@ -4,7 +4,7 @@ use crate::control::decode;
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", "video.autoStreamConfigured", PERSISTENCE_OFF];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.vtol", "vehicle.rover", "vehicle.sub", "vehicle.airship", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", "video.autoStreamConfigured", PERSISTENCE_OFF];
 const PERSISTENCE_OFF: &str = "settings.appSettings.disableAllPersistence";
 
 struct Page {
@@ -290,10 +290,29 @@ pub fn video_row_shown(name: &str, source: &str, stream_source: bool, auto_confi
     }
 }
 
+pub fn hidden_modes_row_shown(name: &str, vehicle: Option<(&str, &str)>) -> bool {
+    match (name.split_once("HiddenFlightModes"), vehicle) {
+        (Some((firmware, class)), Some((wanted_firmware, wanted_class))) => firmware == wanted_firmware && class == wanted_class,
+        _ => true,
+    }
+}
+
+fn mode_list_vehicle(backend: &dyn Backend) -> Option<(&'static str, &'static str)> {
+    flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable").then_some(())?;
+    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware,px4Firmware,multiRotor,fixedWing,vtol,rover,sub,airship"));
+    let firmware = if flag(&vehicle, "apmFirmware") { "apm" } else if flag(&vehicle, "px4Firmware") { "px4" } else { return None };
+    let class = [("vtol", "VTOL"), ("multiRotor", "MultiRotor"), ("fixedWing", "FixedWing"), ("rover", "RoverBoat"), ("sub", "Sub"), ("airship", "Airship")]
+        .iter()
+        .find(|(key, _)| flag(&vehicle, key))
+        .map(|(_, class)| *class)?;
+    Some((firmware, class))
+}
+
 fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Value {
     let path = format!("settings.{group}");
     let Some(backend) = backend else { return json!({ "title": title, "group": group, "path": path }) };
     let facts: Vec<Value> = object(&backend.get(&path)).get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
+    let modes_vehicle = (group == "flightModeSettings").then(|| mode_list_vehicle(backend)).flatten();
     let video = (group == "videoSettings").then(|| {
         let manager = object(&backend.get_fields("video", "isStreamSource,autoStreamConfigured"));
         let source = facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some("videoSource")).and_then(|f| f.get("value")).and_then(Value::as_str).unwrap_or_default().to_string();
@@ -303,6 +322,7 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
     let shown: Vec<Value> = facts
         .iter()
         .filter(|f| f.get("visible").and_then(Value::as_bool) != Some(false))
+        .filter(|f| modes_vehicle.is_none() || hidden_modes_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), modes_vehicle))
         .filter(|f| !(persistence_off && f.get("name").and_then(Value::as_str).is_some_and(|n| LOGGING_ROWS.contains(&n))))
         .filter(|f| video.as_ref().is_none_or(|(source, stream, auto)| video_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), source, *stream, *auto)))
         .filter(|f| {
@@ -412,6 +432,16 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_the_connected_vehicles_hidden_mode_list_is_offered() {
+        let quad = Some(("apm", "MultiRotor"));
+        assert!(hidden_modes_row_shown("apmHiddenFlightModesMultiRotor", quad));
+        assert!(!hidden_modes_row_shown("apmHiddenFlightModesFixedWing", quad));
+        assert!(!hidden_modes_row_shown("px4HiddenFlightModesMultiRotor", quad));
+        assert!(hidden_modes_row_shown("requireModeChangeConfirmation", quad));
+        assert!(hidden_modes_row_shown("px4HiddenFlightModesSub", None), "with no vehicle every list stays editable");
+    }
+
     #[test]
     fn gimbal_rows_group_as_the_gimbal_indicator_heads_them() {
         let controls: Vec<Value> = ["zoomMinSpeed", "clickAndDrag", "showAzimuthIndicatorOnMap", "enableOnScreenControl"].iter().map(|n| json!({ "name": n })).collect();
