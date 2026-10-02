@@ -38,6 +38,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -62,6 +65,34 @@ private val SIDE_PANEL_WIDTH = 168.dp
 private val MAP_PIP_SIZE = 120.dp
 private val VIDEO_PIP_WIDTH = 156.dp
 private val VIDEO_PIP_HEIGHT = 96.dp
+private val PIP_TOGGLE_SIZE = 28.dp
+private const val PIP_EXPANDED_KEY = "IsPIPVisible"
+
+internal fun loadPipExpanded(context: Context): Boolean =
+    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).getBoolean(PIP_EXPANDED_KEY, true)
+
+internal fun savePipExpanded(context: Context, expanded: Boolean) =
+    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).edit().putBoolean(PIP_EXPANDED_KEY, expanded).apply()
+
+internal fun videoPipShown(hasVideo: Boolean, expanded: Boolean): Boolean = hasVideo && expanded
+
+@Composable
+private fun PipToggle(expanded: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onToggle,
+        modifier = modifier.size(PIP_TOGGLE_SIZE),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                if (expanded) "Hide picture-in-picture" else "Show picture-in-picture",
+                Modifier.size(18.dp),
+            )
+        }
+    }
+}
 
 enum class FlyView(val label: String, @DrawableRes val icon: Int) {
     Video("Video", R.drawable.ic_videocam),
@@ -132,33 +163,53 @@ internal fun FlyScreen(
     actions: @Composable (FlyDeckLayout) -> Unit,
 ) {
     val simple = view == FlyView.Simple
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val videoJson by one.aircast.android.bridge.qgcPath(VIDEO_VIEW)
+    val hasVideo = videoJson?.optBoolean("available") == true
+    var pipExpanded by remember { mutableStateOf(loadPipExpanded(context)) }
+    val togglePip: () -> Unit = {
+        pipExpanded = !pipExpanded
+        savePipExpanded(context, pipExpanded)
+    }
     val stage: @Composable (Modifier) -> Unit = { stageModifier ->
         Box(stageModifier) {
             if (view == FlyView.Map) map(Modifier.fillMaxSize()) else video(Modifier.fillMaxSize(), true)
 
             if (view == FlyView.Video) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(AircastSpace.s3)
-                        .size(MAP_PIP_SIZE)
-                        .clip(CircleShape)
-                        .border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape),
-                ) {
-                    map(Modifier.fillMaxSize())
-                    Box(Modifier.fillMaxSize().clickable { onView(FlyView.Map) })
+                Box(Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3)) {
+                    if (pipExpanded) {
+                        Box(
+                            Modifier
+                                .size(MAP_PIP_SIZE)
+                                .clip(CircleShape)
+                                .border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape),
+                        ) {
+                            map(Modifier.fillMaxSize())
+                            Box(Modifier.fillMaxSize().clickable { onView(FlyView.Map) })
+                        }
+                    }
+                    PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
                 }
             }
-            if (view == FlyView.Map) {
-                video(
+            if (view == FlyView.Map && hasVideo) {
+                Box(
                     Modifier
                         .align(Alignment.TopEnd)
                         .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, end = AircastSpace.s3)
-                        .size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)
-                        .clip(MaterialTheme.shapes.medium),
-                    false,
-                )
+                        .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, end = AircastSpace.s3),
+                ) {
+                    if (videoPipShown(hasVideo, pipExpanded)) {
+                        video(
+                            Modifier
+                                .size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)
+                                .clip(MaterialTheme.shapes.medium),
+                            false,
+                        )
+                    }
+                    PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.TopEnd))
+                }
+            }
+            if (view == FlyView.Map) {
                 var layers by remember { mutableStateOf(false) }
                 Surface(
                     onClick = { layers = true },
