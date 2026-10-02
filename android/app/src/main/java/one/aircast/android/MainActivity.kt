@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Window
-import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.activity.compose.BackHandler
@@ -159,7 +158,6 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         Qgc.start()
 
         acquireMulticastLock()
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         hostView = HostPlatform.start(this)
 
@@ -167,7 +165,10 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         QGCBridge.notifySafeAreaInsets(0, 0, 0, 0)
         intent?.data?.let { QGCBridge.notifyDeepLink(it.toString()) }
 
-        setContent { AppFontScale { AircastShell(hostView) } }
+        setContent {
+            one.aircast.android.ui.ConnectionLocks()
+            AppFontScale { AircastShell(hostView) }
+        }
         GamepadInput.start(this, lifecycleScope)
     }
 
