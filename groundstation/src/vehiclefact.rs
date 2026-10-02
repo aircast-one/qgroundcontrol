@@ -539,6 +539,17 @@ pub fn terrain_raw((pending, loaded): (u16, u16), name: &str) -> Value {
     }
 }
 
+pub const RPM: GroupSpec = GroupSpec {
+    class: "VehicleRPMFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/RPMFact.json"),
+    properties: &[("rpm1", "rpm1"), ("rpm2", "rpm2"), ("rpm3", "rpm3"), ("rpm4", "rpm4"), ("rpmSensor1", "rpmSensor1"), ("rpmSensor2", "rpmSensor2")],
+    added: &["rpm1", "rpm2", "rpm3", "rpm4", "rpmSensor1", "rpmSensor2"],
+};
+
+pub fn rpm_raw(r: &crate::sensorfacts::RpmFacts, name: &str) -> Value {
+    r.reading(name).map_or(Value::Null, |v| json!(f64::from(v)))
+}
+
 pub const EFI: GroupSpec = GroupSpec {
     class: "VehicleEFIFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/EFIFact.json"),
@@ -788,6 +799,7 @@ pub fn instrument_catalogue() -> (Vec<(&'static str, Value)>, Value) {
         ("hygrometer", spec(&HYGROMETER)),
         ("generator", spec(&GENERATOR)),
         ("efi", spec(&EFI)),
+        ("rpm", spec(&RPM)),
         ("radioStatus", spec(&RADIO)),
         ("aircastLink", spec(&AIRCAST_LINK)),
     ];

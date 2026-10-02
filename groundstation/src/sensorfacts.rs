@@ -54,6 +54,32 @@ impl Escs {
     }
 }
 
+pub const RPM_READINGS: [&str; 6] = ["rpm1", "rpm2", "rpm3", "rpm4", "rpmSensor1", "rpmSensor2"];
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct RpmFacts {
+    pub readings: [Option<f32>; 6],
+    pub seen: bool,
+}
+
+impl RpmFacts {
+    pub fn apply(&mut self, message: &MavMessage) -> bool {
+        let updates: Vec<(usize, f32)> = match message {
+            MavMessage::RAW_RPM(d) if d.index < 4 => vec![(usize::from(d.index), d.frequency)],
+            MavMessage::RAW_RPM(_) => Vec::new(),
+            MavMessage::RPM(d) => vec![(4, d.rpm1), (5, d.rpm2)],
+            _ => return false,
+        };
+        updates.into_iter().for_each(|(at, value)| self.readings[at] = Some(value));
+        self.seen = true;
+        true
+    }
+
+    pub fn reading(&self, name: &str) -> Option<f32> {
+        RPM_READINGS.iter().position(|n| *n == name).and_then(|i| self.readings[i])
+    }
+}
+
 pub const EFI_READINGS: [&str; 18] = [
     "ecuIndex", "rpm", "fuelConsumed", "fuelFlow", "engineLoad", "throttlePos", "sparkTime", "baroPress", "intakePress", "intakeTemp", "cylinderTemp", "ignTime", "injTime", "exGasTemp", "throttleOut", "ptComp", "ignVoltage", "fuelPressure",
 ];
@@ -388,6 +414,16 @@ mod tests {
         escs.apply(&MavMessage::ESC_INFO(ESC_INFO_DATA { index: 4, count: 8, temperature: [0, 3150, 0, 0], ..Default::default() }));
         assert_eq!(escs.by_id.keys().copied().collect::<Vec<_>>(), vec![0, 1, 2, 3, 4, 5, 6, 7]);
         assert_eq!((escs.by_id[&5].temperature, escs.by_id[&5].count, escs.by_id[&5].rpm, escs.by_id[&0].telemetry), (3150, 8, 200, false));
+    }
+
+    #[test]
+    fn rpm_readings_follow_vehicle_rpm_fact_group() {
+        let mut rpm = RpmFacts::default();
+        rpm.apply(&MavMessage::RAW_RPM(mavlink::dialects::ardupilotmega::RAW_RPM_DATA { frequency: 1200.0, index: 2 }));
+        rpm.apply(&MavMessage::RAW_RPM(mavlink::dialects::ardupilotmega::RAW_RPM_DATA { frequency: 9.0, index: 7 }));
+        rpm.apply(&MavMessage::RPM(mavlink::dialects::ardupilotmega::RPM_DATA { rpm1: 3000.0, rpm2: 3100.0 }));
+        assert_eq!((rpm.reading("rpm3"), rpm.reading("rpm1"), rpm.reading("rpmSensor1"), rpm.reading("rpmSensor2")), (Some(1200.0), None, Some(3000.0), Some(3100.0)), "RAW_RPM fills rpm1-4 by index, ignoring others; ArduPilot RPM fills both sensors");
+        assert!(rpm.seen);
     }
 
     #[test]
