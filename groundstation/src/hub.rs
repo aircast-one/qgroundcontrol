@@ -2801,7 +2801,7 @@ impl Vehicle {
                 let end = t.text.iter().position(|b| *b == 0).unwrap_or(t.text.len());
                 let received = self.status_text.receive(header.component_id, t.severity as u8, t.id, t.chunk_seq, &t.text[..end]);
                 self.chunk_due = self.status_text.has_pending().then_some(now_ms + CHUNKED_TEXT_TIMEOUT_MS);
-                if let Some(status) = received {
+                if let Some(status) = received.map(|status| calibration_as_info(status, self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT)) {
                     if let Some(spoken) = self.spoken_status(&status, now_ms) {
                         crate::speech::say(&spoken.to_lowercase());
                     }
@@ -3122,6 +3122,16 @@ pub struct LinkKinds {
     pub cloud: Vec<LinkId>,
     pub high_latency: Vec<LinkId>,
     pub usb_direct: Vec<LinkId>,
+}
+
+const APM_CALIBRATION_PROMPTS: [&str; 2] = ["Place vehicle", "Calibration successful"];
+const SEVERITY_INFO: u8 = 6;
+
+fn calibration_as_info(status: crate::statustext::StatusText, ardupilot: bool) -> crate::statustext::StatusText {
+    match ardupilot && APM_CALIBRATION_PROMPTS.iter().any(|prompt| status.text.contains(prompt)) {
+        true => crate::statustext::StatusText { severity: SEVERITY_INFO, ..status },
+        false => status,
+    }
 }
 
 #[derive(Debug, Default)]
@@ -4175,6 +4185,25 @@ mod tests {
         assert_eq!((hub.selected_count(), hub.selected_member(0).map(|v| v.id)), (1, Some(7)), "a vehicle that goes is deselected");
         hub.deselect_vehicle(7);
         assert_eq!(hub.selected_count(), 0);
+    }
+
+    #[test]
+    fn ardupilot_calibration_prompts_are_lowered_to_info() {
+        use mavlink::dialects::ardupilotmega::{MavSeverity, STATUSTEXT_DATA};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let text = |words: &str| MavMessage::STATUSTEXT(STATUSTEXT_DATA { severity: MavSeverity::MAV_SEVERITY_CRITICAL, text: mavout::chars(words), ..Default::default() });
+        hub.on_frame(origin(0), &header, &text("Place vehicle level and press any key."), 1_000, 1);
+        hub.on_frame(origin(0), &header, &text("Calibration successful"), 2_000, 2);
+        hub.on_frame(origin(0), &header, &text("PreArm: RC not calibrated"), 3_000, 3);
+        let severities: Vec<u8> = hub.active().unwrap().recent.iter().map(|s| s.severity).collect();
+        assert_eq!(severities, [6, 6, 2], "APMFirmwarePlugin::_handleIncomingStatusText lowers only the calibration prompts");
+        assert_eq!(calibration_as_info(calibration_text("Place vehicle"), false).severity, 2, "PX4 keeps its own severity");
+    }
+
+    fn calibration_text(text: &str) -> crate::statustext::StatusText {
+        crate::statustext::StatusText { component: 1, severity: 2, text: text.to_string() }
     }
 
     #[test]
