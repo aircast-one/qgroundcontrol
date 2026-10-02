@@ -219,7 +219,7 @@ internal fun MoreActionsSheet(tiles: List<MoreTile>, onDismiss: () -> Unit, foot
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 Icon(painterResource(tile.icon), null, Modifier.size(24.dp))
-                                Text(tile.label, style = MaterialTheme.typography.labelLarge, maxLines = 2, textAlign = TextAlign.Center)
+                                Text(sentenceCase(tile.label), style = MaterialTheme.typography.labelMedium, maxLines = 2, textAlign = TextAlign.Center)
                             }
                         }
                     }
