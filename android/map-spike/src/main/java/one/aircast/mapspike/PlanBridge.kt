@@ -121,6 +121,7 @@ data class MissionItem(
     val gimbalYaw: Double = Double.NaN,
     val closesRoute: Boolean = false,
     val legBroken: Boolean = false,
+    val abbreviation: String = "",
 )
 
 private fun JSONObject.isReturn() = optBoolean("endsRoute") && optInt("command") == MAV_CMD_NAV_RETURN_TO_LAUNCH
@@ -186,6 +187,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             gimbalYaw = element.optDouble("gimbalYaw", Double.NaN),
             closesRoute = element.optBoolean("closesRoute"),
             legBroken = index in broken,
+            abbreviation = element.optText("abbreviation"),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,

@@ -52,3 +52,17 @@ class CollisionLegTest {
         assertEquals(emptyList<Pair<TrackPoint, TrackPoint>>(), collisionLegs(null))
     }
 }
+
+class MarkerLabelTest {
+
+    @Test
+    fun `a lettered item shows its first letter and its name beside it, like MissionItemIndicator`() {
+        assertEquals("T", waypointLabel(1, crowded = false, abbreviation = "Takeoff"))
+        assertEquals("Takeoff", sideLabel(crowded = false, abbreviation = "Takeoff"))
+        assertEquals("4", waypointLabel(4, crowded = false, abbreviation = ""))
+        assertEquals("", sideLabel(crowded = false, abbreviation = ""))
+        assertEquals("S", waypointLabel(5, crowded = false, abbreviation = "S"))
+        assertEquals("a one-letter abbreviation sits only in the circle", "", sideLabel(crowded = false, abbreviation = "S"))
+        assertEquals("", sideLabel(crowded = true, abbreviation = "Loiter"))
+    }
+}

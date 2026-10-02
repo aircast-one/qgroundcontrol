@@ -5,6 +5,7 @@ import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -45,6 +46,8 @@ fun renderCollisionLegs(style: Style, legs: List<Pair<TrackPoint, TrackPoint>>) 
 
 const val WAYPOINT_ID_PROPERTY = "waypointId"
 internal const val WAYPOINT_LABEL_PROPERTY = "label"
+internal const val WAYPOINT_SIDE_LABEL_PROPERTY = "sideLabel"
+private const val MISSION_SIDE_LABEL_LAYER = "aircast-mission-side-label-layer"
 const val WAYPOINT_COLOUR_PROPERTY = "waypointColour"
 const val WAYPOINT_SELECTED_PROPERTY = "waypointSelected"
 
@@ -121,13 +124,34 @@ fun installMissionLayers(style: Style) {
                 PropertyFactory.textIgnorePlacement(false),
             ),
         )
+        style.addLayer(
+            SymbolLayer(MISSION_SIDE_LABEL_LAYER, MISSION_SOURCE).withProperties(
+                PropertyFactory.textField("{$WAYPOINT_SIDE_LABEL_PROPERTY}"),
+                PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
+                PropertyFactory.textSize(13f),
+                PropertyFactory.textColor("#FFFFFF"),
+                PropertyFactory.textHaloColor("#37474F"),
+                PropertyFactory.textHaloWidth(2f),
+                PropertyFactory.textAnchor(Property.TEXT_ANCHOR_LEFT),
+                PropertyFactory.textOffset(arrayOf(1.2f, 0f)),
+                PropertyFactory.textAllowOverlap(true),
+            ),
+        )
     }
 }
 
 fun crowded(itemCount: Int): Boolean = itemCount > CROWDED_ITEMS
 
-fun waypointLabel(sequence: Int, crowded: Boolean): String =
-    if (crowded) "" else sequence.toString()
+fun waypointLabel(sequence: Int, crowded: Boolean, abbreviation: String = ""): String = when {
+    crowded -> ""
+    lettered(abbreviation) -> abbreviation.take(1)
+    else -> sequence.toString()
+}
+
+fun sideLabel(crowded: Boolean, abbreviation: String): String =
+    if (!crowded && lettered(abbreviation) && abbreviation.length > 1) abbreviation else ""
+
+private fun lettered(abbreviation: String): Boolean = abbreviation.firstOrNull()?.let { it > 'A' && it < 'z' } == true
 
 fun markerRadius(crowded: Boolean, selected: Boolean): Double =
     if (crowded && !selected) CROWDED_RADIUS else MARKER_RADIUS
@@ -148,7 +172,8 @@ fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): Featu
     val features = markers.map { (item, at, sequence) ->
         Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
-            addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(sequence, crowded))
+            addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(sequence, crowded, item.abbreviation.takeIf { at == TrackPoint(item.latitude, item.longitude) }.orEmpty()))
+            addStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY, sideLabel(crowded, item.abbreviation.takeIf { at == TrackPoint(item.latitude, item.longitude) }.orEmpty()))
             addNumberProperty(
                 WAYPOINT_RADIUS_PROPERTY,
                 markerRadius(crowded, item.index == selectedIndex),
