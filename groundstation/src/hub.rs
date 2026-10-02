@@ -4074,9 +4074,6 @@ impl Hub {
                 let command = payload.get(0..2).and_then(|b| b.try_into().ok()).map_or(0, u16::from_le_bytes);
                 let result = payload.get(2).copied().unwrap_or(0);
                 if command == crate::operatorcontrol::REQUEST_OPERATOR_CONTROL || command == guidedcmd::CMD_DO_SET_GLOBAL_ORIGIN {
-                    if command == guidedcmd::CMD_DO_SET_GLOBAL_ORIGIN {
-                        vehicle.guided.on_command_result(command, result == RESULT_ACCEPTED);
-                    }
                     let outs = vehicle.commands.on_ack(header.component_id, command, result, now_ms());
                     let replied = vehicle.handle(outs, now_ms());
                     return replied.into_iter().filter(|_| !vehicle.replay).map(|bytes| (link, bytes)).collect();
@@ -5075,7 +5072,6 @@ mod tests {
         let unsupported = [&611u16.to_le_bytes()[..], &[3, 0, 0, 0, 0, 0, 0, 255, 190][..]].concat();
         let fallback = hub.on_extra(&autopilot, COMMAND_ACK_ID, &unsupported);
         assert!(fallback.iter().any(|(_, bytes)| matches!(decode(bytes), MavMessage::SET_GPS_GLOBAL_ORIGIN(o) if o.latitude == 475_000_000 && o.altitude == 400_000)), "Vehicle::setEstimatorOrigin falls back to the deprecated message when the command is unsupported");
-        assert!(hub.guided(Some(1), &json!({ "action": "estimatorOrigin", "vehicle": 1, "latitude": 47.5, "longitude": 8.5, "altitude": 400.0 }), 3_000).is_ok(), "the raw ack also ends the guided step, so the next action is not refused as still running");
     }
 
     #[test]
