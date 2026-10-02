@@ -37,7 +37,7 @@ pub fn templates_json(backend: &dyn Backend, patterns: &[String], contains_items
     let home_set = flag(&object(&backend.get_fields("plan.missionController", "homePositionSet")), "homePositionSet");
     json!({
         "show": show(contains_items),
-        "enabled": home_set,
+        "enabled": home_set || crate::coreplan::enabled(),
         "prompt": if home_set { "Drag to move home position. Click to set new position." } else { "Click in map to set position" },
         "names": patterns.iter().map(String::as_str).chain(std::iter::once(NO_TEMPLATE)).collect::<Vec<_>>(),
     })
@@ -54,6 +54,24 @@ pub fn steps(name: &str, latitude: f64, longitude: f64) -> Vec<(&'static str, Va
     ]
 }
 
+fn core_kind(name: &str) -> &'static str {
+    match name {
+        "Corridor Scan" => "corridor",
+        "Structure Scan" => "structure",
+        _ => "survey",
+    }
+}
+
+pub fn core_steps(name: &str, latitude: f64, longitude: f64) -> Vec<(&'static str, Value)> {
+    vec![
+        ("plan.removeAll", json!([])),
+        ("mission.insert", json!(["takeoff", latitude, longitude, -1])),
+        ("mission.insert", json!([core_kind(name), latitude, longitude, -1])),
+        ("mission.insert", json!(["land", latitude, longitude, -1])),
+        ("plan.missionController.setCurrentPlanViewSeqNum", json!([TAKEOFF_SEQUENCE, true])),
+    ]
+}
+
 pub fn create(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let name = given.get(0).and_then(Value::as_str).unwrap_or_default();
@@ -65,8 +83,16 @@ pub fn create(backend: &dyn Backend, args: &str) -> Value {
     let (Some(latitude), Some(longitude)) = (coordinate(1, 90.0), coordinate(2, 180.0)) else {
         return json!({ "ok": false, "reason": "A template is placed at the map centre's latitude and longitude." });
     };
-    let failed = steps(name, latitude, longitude).into_iter().find_map(|(path, args)| {
-        let answer = crate::actions::run(backend, path, &args.to_string());
+    let core = crate::coreplan::enabled();
+    let planned = match core {
+        true => core_steps(name, latitude, longitude),
+        false => steps(name, latitude, longitude),
+    };
+    let failed = planned.into_iter().find_map(|(path, args)| {
+        let answer = match core {
+            true => crate::coreplan::route_invoke(backend, path, &args.to_string()).unwrap_or_else(|| json!({ "ok": false, "reason": "The core plan did not carry out the template." })),
+            false => crate::actions::run(backend, path, &args.to_string()),
+        };
         (!flag(&answer, "ok")).then(|| answer.get("reason").and_then(Value::as_str).unwrap_or("The plan refused the template.").to_string())
     });
     match failed {
@@ -85,6 +111,8 @@ mod tests {
         assert_eq!(paths, ["plan.removeAll", "plan.missionController.insertTakeoffItem", "plan.missionController.insertComplexMissionItem", "plan.missionController.insertLandItem", "plan.missionController.setCurrentPlanViewSeqNum"]);
         assert_eq!(steps("Survey", 47.4, 8.5)[2].1, json!(["Survey", { "latitude": 47.4, "longitude": 8.5 }, -1, false]));
         assert_eq!(steps("Survey", 47.4, 8.5)[4].1, json!([1, true]), "the takeoff is selected, as setCurrentPlanViewSeqNum(takeoff, true)");
+        let core: Vec<Value> = core_steps("Corridor Scan", 47.4, 8.5).into_iter().map(|(_, args)| args).collect();
+        assert_eq!(core[2], json!(["corridor", 47.4, 8.5, -1]), "the core plan inserts through its own mission.insert, so a template never reaches the absent Qt controller");
     }
 
     #[test]

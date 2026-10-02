@@ -1550,6 +1550,14 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                 .ok_or_else(|| "An altitude mode is a number.".to_string())
                 .and_then(|mode| plandoc::set_altitude_mode(&current, index, mode as i64).ok_or_else(|| format!("Item {index} cannot take that altitude mode."))),
         ),
+        "coordinate" => answer(
+            crate::fenceedit::point(given.as_ref())
+                .ok_or_else(|| "A position needs a latitude from -90 to 90 and a longitude from -180 to 180.".to_string())
+                .and_then(|(latitude, longitude)| match index {
+                    0 => Ok(Document { home: Some([latitude, longitude, current.home.map_or(0.0, |h| h[2])]), ..current.clone() }),
+                    _ => plandoc::set_param(&current, index, 5, latitude).and_then(|moved| plandoc::set_param(&moved, index, 6, longitude)).ok_or_else(|| format!("Item {index} has no position to move.")),
+                }),
+        ),
         "loiterRadius" => answer(number.ok_or_else(|| "A radius is a number.".to_string()).and_then(|v| plandoc::set_loiter_radius(&current, index, v).ok_or_else(|| format!("Item {index} is not a loiter.")))),
         "speedSection.flightSpeed" => answer(
             number
