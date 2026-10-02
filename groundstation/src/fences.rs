@@ -322,12 +322,29 @@ pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
         "removeInvokable": "removeVertex",
         "vertices": vertices.iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
         "midpoints": midpoints,
+        "edgeLengths": edge_lengths(&vertices, segments, &Unit::horizontal(backend)),
     })
+}
+
+pub fn edge_lengths(vertices: &[(f64, f64)], segments: usize, unit: &Unit) -> Vec<String> {
+    (0..segments)
+        .map(|i| crate::surveygrid::distance_between(vertices[i], vertices[(i + 1) % vertices.len()]))
+        .map(|metres| format!("{:.1} {}", unit.show(metres), unit.name))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_edge_reads_its_length_like_the_polygon_drag_handles() {
+        let metres = Unit { name: "m".to_string(), factor: 1.0 };
+        let square = [(0.0, 0.0), (0.0, 0.001), (0.001, 0.001)];
+        let lengths = edge_lengths(&square, 3, &metres);
+        assert_eq!(lengths.len(), 3, "a ring closes, so its last edge runs back to the first vertex");
+        assert!(lengths[0].starts_with("111.") && lengths[0].ends_with(" m"), "{lengths:?}: metersToAppSettingsHorizontalDistanceUnits(distance).toFixed(1) plus the unit");
+    }
 
     struct Fake;
     struct RadiusFact;

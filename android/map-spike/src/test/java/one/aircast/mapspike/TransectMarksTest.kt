@@ -58,4 +58,12 @@ class TransectMarksTest {
         val labels = missionFeatures(listOf(survey)).features()!!.map { it.getStringProperty(WAYPOINT_LABEL_PROPERTY) }
         assertEquals("TransectStyleMapVisuals labels the exit with lastSequenceNumber", listOf("2", "8"), labels)
     }
+
+    @Test
+    fun `dragging a fence corner labels every edge of that fence with its length`() {
+        val shape = EditableShape("p", listOf(TrackPoint(47.0, 8.0), TrackPoint(47.1, 8.0)), "", true, listOf("12.0 m", "8.5 m"))
+        val fence = FencePolygon(index = 0, inclusion = true, vertices = emptyList(), editable = shape)
+        assertEquals(listOf("12.0 m", "8.5 m"), edgeLabels(MapHit.FenceVertex(0, 1), listOf(fence), emptyList()).map { it.text })
+        assertEquals("nothing while no vertex is dragged", 0, edgeLabels(null, listOf(fence), emptyList()).size)
+    }
 }

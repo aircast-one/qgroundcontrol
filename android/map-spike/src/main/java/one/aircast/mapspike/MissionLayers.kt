@@ -480,6 +480,8 @@ const val LANDING_SHAPE_KIND = "kind"
 const val LANDING_LABEL_SOURCE = "aircast-landing-labels"
 const val LANDING_LABEL_LAYER = "aircast-landing-label-layer"
 const val LANDING_LABEL_TEXT = "text"
+const val EDGE_LABEL_SOURCE = "aircast-edge-labels"
+const val EDGE_LABEL_LAYER = "aircast-edge-label-layer"
 const val LANDING_LOITER_LAYER = "aircast-landing-loiter-layer"
 
 const val SURVEY_LINE_SOURCE = "aircast-survey-line"
@@ -538,6 +540,20 @@ fun renderMidpoints(style: Style, polygons: List<FencePolygon>, surveys: List<Su
 }
 
 fun installLandingLayers(style: Style) {
+    if (style.getSource(EDGE_LABEL_SOURCE) == null) {
+        style.addSource(GeoJsonSource(EDGE_LABEL_SOURCE))
+        style.addLayer(
+            SymbolLayer(EDGE_LABEL_LAYER, EDGE_LABEL_SOURCE).withProperties(
+                PropertyFactory.textField(Expression.get(LANDING_LABEL_TEXT)),
+                PropertyFactory.textColor(android.graphics.Color.WHITE),
+                PropertyFactory.textHaloColor(android.graphics.Color.BLACK),
+                PropertyFactory.textHaloWidth(1.5f),
+                PropertyFactory.textSize(12f),
+                PropertyFactory.textAllowOverlap(true),
+                PropertyFactory.textIgnorePlacement(true),
+            ),
+        )
+    }
     if (style.getSource(LANDING_LABEL_SOURCE) == null) {
         style.addSource(GeoJsonSource(LANDING_LABEL_SOURCE))
         style.addLayer(

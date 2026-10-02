@@ -463,9 +463,6 @@
         "view.plan.defaults.ascent.maximum",
         "view.plan.defaults.ascent.maximumText",
         "view.plan.defaults.ascent.valueMeters",
-        "view.plan.defaults.cruise.maximum",
-        "view.plan.defaults.cruise.maximumText",
-        "view.plan.defaults.cruise.valueMeters",
         "view.plan.defaults.descent.maximum",
         "view.plan.defaults.descent.maximumText",
         "view.plan.defaults.descent.valueMeters",
@@ -9791,6 +9788,8 @@
         "view.polygon(plan.geoFenceController.polygons.0).adjustInvokable",
         "view.polygon(plan.geoFenceController.polygons.0).canRemoveVertex",
         "view.polygon(plan.geoFenceController.polygons.0).class",
+        "view.polygon(plan.geoFenceController.polygons.0).edgeLengths.#",
+        "view.polygon(plan.geoFenceController.polygons.0).edgeLengths[]",
         "view.polygon(plan.geoFenceController.polygons.0).hasEnoughVertices",
         "view.polygon(plan.geoFenceController.polygons.0).kind",
         "view.polygon(plan.geoFenceController.polygons.0).midpoints.#",
@@ -14256,6 +14255,9 @@
         "adjustInvokable": "string",
         "canRemoveVertex": "bool",
         "class": "string",
+        "edgeLengths": [
+            "string"
+        ],
         "hasEnoughVertices": "bool",
         "kind": "string",
         "midpoints": [

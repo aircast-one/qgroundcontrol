@@ -208,6 +208,7 @@ fun VehicleMap(
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
+    var draggingVertex by remember { mutableStateOf<MapHit?>(null) }
     var panning by remember { mutableStateOf(false) }
     var trackingResumesAtMs by remember { mutableLongStateOf(0L) }
     val trackJson by mapPath(TRACK_VIEW)
@@ -322,12 +323,24 @@ fun VehicleMap(
                         onMove = onMove,
                         onSelected = onWaypointSelected,
                         onMoved = onMoved,
+                        onDragging = { draggingVertex = it },
                     )
                 }
                 style = loadedStyle
             }
         }
         onDispose { }
+    }
+
+    LaunchedEffect(style, draggingVertex, fencePolygons, surveys) {
+        val edgeStyle = style ?: return@LaunchedEffect
+        (edgeStyle.getSource(EDGE_LABEL_SOURCE) as? GeoJsonSource)?.setGeoJson(
+            FeatureCollection.fromFeatures(
+                edgeLabels(draggingVertex, fencePolygons, surveys).map { label ->
+                    Feature.fromGeometry(Point.fromLngLat(label.at.longitude, label.at.latitude)).apply { addStringProperty(LANDING_LABEL_TEXT, label.text) }
+                },
+            ),
+        )
     }
 
     LaunchedEffect(style, traffic) {

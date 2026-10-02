@@ -117,6 +117,7 @@ fun attachMissionEditing(
     onMove: (MapHit, Double, Double) -> Unit,
     onSelected: (MapHit?) -> Unit = {},
     onMoved: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
+    onDragging: (MapHit?) -> Unit = {},
 ) {
     var dragging: MapHit? = null
     var downX = 0f
@@ -156,6 +157,7 @@ fun attachMissionEditing(
                 }
                 if (!moved && !withinTap(event.x - downX, event.y - downY)) {
                     moved = true
+                    onDragging(hit)
                 }
                 val now = event.eventTime
                 if (moved && now - lastWriteAt >= DRAG_WRITE_INTERVAL_MS) {
@@ -170,6 +172,7 @@ fun attachMissionEditing(
                 val hit = dragging
                 dragging = null
                 map.uiSettings.setAllGesturesEnabled(true)
+                if (moved) onDragging(null)
                 if (hit == null) {
                     if (!addedInGesture &&
                         event.actionMasked == MotionEvent.ACTION_UP &&
