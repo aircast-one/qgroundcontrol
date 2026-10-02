@@ -16,6 +16,10 @@ pub enum VehicleClass {
     Other,
 }
 
+pub fn is_vtol(mav_type: u8) -> bool {
+    (19..=25).contains(&mav_type)
+}
+
 pub fn vehicle_class(mav_type: u8) -> VehicleClass {
     match mav_type {
         1 | 19 | 20 | 21 | 22 | 23 | 24 | 25 => VehicleClass::FixedWing,

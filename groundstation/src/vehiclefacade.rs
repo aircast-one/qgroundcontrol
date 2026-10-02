@@ -318,7 +318,7 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
         (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(15, Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold"), (Some(6), "Follow"), (0, "Manual")),
         (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(4, None, None, Some(3), (None, ""), (None, ""), (None, ""), (0, "Stabilize")),
         (AUTOPILOT_PX4, _) => json!({
-            "flightModes": px4_offered(&flagged, crate::modes::vehicle_class(vehicle_type)),
+            "flightModes": px4_offered(&flagged, if crate::modes::is_vtol(vehicle_type) { VehicleClass::Other } else { crate::modes::vehicle_class(vehicle_type) }),
             "advancedFlightModes": names(true),
             "flightModeSetAvailable": true,
             "rtlFlightMode": named(Some(px4(4, 5)), ""),
@@ -1872,6 +1872,8 @@ mod tests {
         let fixed = mode_fields(12, 1, &[]);
         assert!(!fixed["flightModes"].as_array().unwrap().contains(&json!("Precision Land")), "PX4FirmwarePlugin::updateAvailableFlightModes takes precision land off fixed wings");
         assert!(quad["flightModes"].as_array().unwrap().contains(&json!("Precision Land")));
+        let vtol = mode_fields(12, 22, &[]);
+        assert!(vtol["flightModes"].as_array().unwrap().contains(&json!("Precision Land")), "a VTOL is neither fixedWing nor multiRotor in QGCMAVLink, so PX4FirmwarePlugin offers it every settable mode");
         assert!(mode_fields(0, 2, &[]).is_empty());
     }
 

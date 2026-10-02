@@ -225,7 +225,7 @@ mod tests {
     use crate::modes::{AUTOPILOT_ARDUPILOT, AUTOPILOT_PX4};
 
     fn copter() -> VehicleState {
-        VehicleState { autopilot: AUTOPILOT_ARDUPILOT, vehicle_type: 2, base_mode: 0x81, flight_mode: "Loiter".into(), armed: false, altitude_amsl: Some(500.0), altitude_relative: Some(20.0), home_altitude: Some(480.0), capabilities: 0, reposition_supported: None, minimum_takeoff_altitude: 2.5, current_heading: None }
+        VehicleState { autopilot: AUTOPILOT_ARDUPILOT, vehicle_type: 2, base_mode: 0x81, flight_mode: "Loiter".into(), armed: false, altitude_amsl: Some(500.0), altitude_relative: Some(20.0), home_altitude: Some(480.0), capabilities: 0, reposition_supported: None, minimum_takeoff_altitude: 2.5, current_heading: None, announced_modes: Vec::new() }
     }
 
     fn steps(plan: Plan) -> Vec<Step> {

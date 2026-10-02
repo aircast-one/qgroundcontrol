@@ -1444,7 +1444,12 @@ impl Vehicle {
     }
 
     pub fn flight_mode(&self) -> String {
-        crate::modes::name(self.autopilot, self.vehicle_type, self.base_mode, self.custom_mode)
+        let announced = (self.base_mode & crate::modes::FLAG_CUSTOM != 0).then(|| self.flight_modes.iter().find(|m| m.custom_mode == self.custom_mode)).flatten();
+        announced.map_or_else(|| crate::modes::name(self.autopilot, self.vehicle_type, self.base_mode, self.custom_mode), |m| m.name.clone())
+    }
+
+    fn custom_mode_named(&self, name: &str) -> Option<u32> {
+        self.flight_modes.iter().find(|m| m.name == name).map(|m| m.custom_mode).or_else(|| crate::modes::custom_mode_for(self.autopilot, self.vehicle_type, name))
     }
 
     fn observed(&self) -> Observed {
@@ -1469,6 +1474,7 @@ impl Vehicle {
             reposition_supported: self.reposition_supported,
             minimum_takeoff_altitude: crate::vehiclefacade::minimum_takeoff_altitude(self.autopilot, self.vtol(), &|name| self.raw_parameter(name)),
             current_heading: Some(self.facts.heading),
+            announced_modes: self.flight_modes.iter().map(|m| (m.name.clone(), m.custom_mode)).collect(),
         }
     }
 
@@ -3136,8 +3142,8 @@ impl Vehicle {
 
     fn refresh_arming_report(&mut self) {
         let mode = if self.intended_custom_mode != 0 { self.intended_custom_mode } else { self.custom_mode };
-        let takeoff = crate::modes::custom_mode_for(self.autopilot, self.vehicle_type, "Takeoff");
-        let mission = crate::modes::custom_mode_for(self.autopilot, self.vehicle_type, "Mission");
+        let takeoff = self.custom_mode_named("Takeoff");
+        let mission = self.custom_mode_named("Mission");
         self.events.refresh(self.component, mode, takeoff, mission);
     }
 

@@ -48,6 +48,7 @@ pub struct VehicleState {
     pub reposition_supported: Option<bool>,
     pub minimum_takeoff_altitude: f64,
     pub current_heading: Option<f64>,
+    pub announced_modes: Vec<(String, u32)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,7 +80,7 @@ fn nan() -> f64 {
 }
 
 pub fn set_mode(state: &VehicleState, mode: &str) -> Option<Vec<Step>> {
-    let custom = modes::custom_mode_for(state.autopilot, state.vehicle_type, mode)?;
+    let custom = state.announced_modes.iter().find(|(name, _)| name == mode).map(|(_, custom)| *custom).or_else(|| modes::custom_mode_for(state.autopilot, state.vehicle_type, mode))?;
     let base = (state.base_mode & !FLAG_CUSTOM) | FLAG_CUSTOM;
     let via_command = state.autopilot == AUTOPILOT_ARDUPILOT;
     Some(vec![Step::SetMode { mode: mode.to_string(), base_mode: base, custom_mode: custom, via_command }, Step::WaitForMode(mode.to_string())])
@@ -429,11 +430,11 @@ mod tests {
     }
 
     fn px4() -> VehicleState {
-        VehicleState { autopilot: AUTOPILOT_PX4, vehicle_type: 2, base_mode: 0x81, flight_mode: "Position".into(), armed: true, altitude_amsl: Some(500.0), altitude_relative: Some(20.0), home_altitude: Some(480.0), capabilities: CAP_COMMAND_INT, reposition_supported: None, minimum_takeoff_altitude: 2.5, current_heading: Some(90.0) }
+        VehicleState { autopilot: AUTOPILOT_PX4, vehicle_type: 2, base_mode: 0x81, flight_mode: "Position".into(), armed: true, altitude_amsl: Some(500.0), altitude_relative: Some(20.0), home_altitude: Some(480.0), capabilities: CAP_COMMAND_INT, reposition_supported: None, minimum_takeoff_altitude: 2.5, current_heading: Some(90.0), announced_modes: Vec::new() }
     }
 
     fn copter() -> VehicleState {
-        VehicleState { autopilot: AUTOPILOT_ARDUPILOT, vehicle_type: 2, base_mode: 0x81, flight_mode: "Loiter".into(), armed: false, altitude_amsl: Some(500.0), altitude_relative: Some(20.0), home_altitude: Some(480.0), capabilities: 0, reposition_supported: None, minimum_takeoff_altitude: 2.5, current_heading: None }
+        VehicleState { autopilot: AUTOPILOT_ARDUPILOT, vehicle_type: 2, base_mode: 0x81, flight_mode: "Loiter".into(), armed: false, altitude_amsl: Some(500.0), altitude_relative: Some(20.0), home_altitude: Some(480.0), capabilities: 0, reposition_supported: None, minimum_takeoff_altitude: 2.5, current_heading: None, announced_modes: Vec::new() }
     }
 
     fn command(step: &Step) -> (u16, [f64; 7], bool) {
@@ -453,6 +454,13 @@ mod tests {
             Step::Command { command, .. } => format!("cmd {command}"),
             other => format!("{other:?}"),
         }).collect()
+    }
+
+    #[test]
+    fn a_mode_the_vehicle_announces_is_set_by_its_announced_number() {
+        let external = VehicleState { announced_modes: vec![("MyMode".into(), 385_875_968)], ..px4() };
+        let steps = set_mode(&external, "MyMode").expect("FirmwarePlugin::updateAvailableFlightModes rebuilds the name table from AVAILABLE_MODES");
+        assert!(matches!(steps[0], Step::SetMode { custom_mode: 385_875_968, .. }));
     }
 
     #[test]
