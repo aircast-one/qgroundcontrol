@@ -1084,6 +1084,8 @@ internal fun MapSpikeScreen(
                                     },
                                 ) { Text("-10") }
 
+                                WaypointSpeedField(item.index, onWrite = { label, work -> onBridge(label) { work() } }, onRefused = { say(it) })
+
                                 if (itemReferenceShown(globalFrame)) AltitudeModePicker(
                                     item = item,
                                     onPick = { raw ->
