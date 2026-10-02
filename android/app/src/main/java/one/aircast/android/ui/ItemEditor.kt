@@ -276,13 +276,15 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
             landingNotes(view).takeIf { wizard.isEmpty() }.orEmpty().forEach { note ->
                 Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 20.dp))
             }
-            if (wizard.isEmpty()) one.aircast.mapspike.ItemCameraSection(index, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { revision++ }
             areaHelp(view)?.let { help ->
                 Text(help, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
             }
             if (areaHelp(view) == null && wizard.isEmpty()) LazyColumn(Modifier.heightIn(max = 480.dp)) {
                 items(fields, key = { it.path }) { fact ->
                     if (fact.optional) OptionalFactRow(fact) { revision++ } else FactRow(fact) { revision++ }
+                }
+                item(key = "itemCamera") {
+                    one.aircast.mapspike.ItemCameraSection(index, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { revision++ }
                 }
                 camera?.let { block ->
                     item(key = "camera") {

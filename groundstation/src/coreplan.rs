@@ -794,7 +794,7 @@ fn follow_vehicle() {
         });
         (hub.active_id(), ready)
     };
-    let adopted = {
+    let (adopted, classes) = {
         let mut state = held();
         if state.fetching {
             return;
@@ -816,22 +816,24 @@ fn follow_vehicle() {
                 state.selected = 0;
                 settle_clean(&mut state);
                 state.file = None;
-                None
+                (None, None)
             }
             (Some(id), Some(vehicle)) if state.shown_vehicle != Some(id) && vehicle.0 == id => {
                 state.shown_vehicle = Some(id);
-                let (firmware_class, vehicle_class) = offline_classes(vehicle.5 .0, vehicle.5 .1);
-                crate::settingsstore::set_raw("settings.appSettings.offlineEditingFirmwareClass", &json!(firmware_class));
-                crate::settingsstore::set_raw("settings.appSettings.offlineEditingVehicleClass", &json!(vehicle_class));
+                let classes = offline_classes(vehicle.5 .0, vehicle.5 .1);
                 let has_items = state.document.as_ref().is_some_and(contains_items);
                 if state.dirty_for_save && has_items {
                     state.vehicle_prompt = Some(false);
                 }
-                (!state.dirty_for_save || !has_items).then_some(vehicle)
+                ((!state.dirty_for_save || !has_items).then_some(vehicle), Some(classes))
             }
             _ => return,
         }
     };
+    if let Some((firmware_class, vehicle_class)) = classes {
+        crate::settingsstore::set_raw("settings.appSettings.offlineEditingFirmwareClass", &json!(firmware_class));
+        crate::settingsstore::set_raw("settings.appSettings.offlineEditingVehicleClass", &json!(vehicle_class));
+    }
     if let Some((_, snapshot, sends_home, fence, rally, types, vehicle_home)) = adopted {
         adopt(&snapshot, sends_home, fence, rally, types, vehicle_home);
         held().file = None;
@@ -2751,7 +2753,7 @@ pub fn camera_section(index: usize) -> Option<Value> {
     };
     Some(match index.checked_sub(1).map(|at| document.items.get(at)) {
         None => with_support(plandoc::camera_section(&document.settings_sections)),
-        Some(Some(plandoc::Item::Simple(simple))) => with_support(plandoc::camera_section(&simple.sections)),
+        Some(Some(plandoc::Item::Simple(simple))) if simple.command == plandoc::CMD_NAV_WAYPOINT => with_support(plandoc::camera_section(&simple.sections)),
         _ => json!({ "kind": "null" }),
     })
 }

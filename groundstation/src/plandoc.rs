@@ -294,7 +294,7 @@ pub struct EditDefaults {
 
 pub const VTOL_TRANSITION_DISTANCE_DEFAULT: f64 = 300.0;
 
-const CMD_NAV_WAYPOINT: i64 = 16;
+pub const CMD_NAV_WAYPOINT: i64 = 16;
 const PLANNED_HOME_OFFSET_M: f64 = 30.0;
 
 fn frame_for(mode: i64) -> i64 {
