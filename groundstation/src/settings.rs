@@ -54,6 +54,8 @@ const HIDDEN: &[&str] = &[
     "udpListenPort",
     "udpTargetHostIP",
     "udpTargetHostPort",
+    "showMissionItemStatus",
+    "showGimbalOnlyWhenSet",
 ];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls"), ("extraVideoSources", "additional cameras")];
 
@@ -462,6 +464,7 @@ mod tests {
             ("APMMavlinkStreamRate", include_str!("../../src/Settings/APMMavlinkStreamRate.SettingsGroup.json")),
             ("AutoConnect", include_str!("../../src/Settings/AutoConnect.SettingsGroup.json")),
             ("LogManager", include_str!("../../src/Settings/LogManager.SettingsGroup.json")),
+            ("PlanView", include_str!("../../src/Settings/PlanView.SettingsGroup.json")),
         ];
         let declares = |name: &str| -> Vec<&str> {
             GROUPS.iter().filter(|(_, body)| body.contains(&format!("\"{name}\""))).map(|(group, _)| *group).collect()
