@@ -255,7 +255,7 @@ internal fun settingsSections(page: JSONObject?): List<SettingsSectionRows> {
                         SettingsBlock(
                             title = block.optText("title"),
                             facts = (0 until (controls?.length() ?: 0)).mapNotNull { control ->
-                                controls!!.optJSONObject(control)?.let(::factFromControl)
+                                controls!!.optJSONObject(control)?.let(::factFromControl)?.let(::paletteNamed)
                             },
                         )
                     }

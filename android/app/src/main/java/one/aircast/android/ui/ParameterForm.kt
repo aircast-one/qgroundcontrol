@@ -85,6 +85,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         value = control.opt("value"),
         wholeNumbersOnly = control.optBoolean("wholeNumbersOnly"),
         enumStrings = labels,
+        enumValues = (0 until (options?.length() ?: 0)).map { options!!.optJSONObject(it).optText("raw") },
         enumIndex = labels.indexOf(control.optText("display")),
         bitmaskStrings = bitEntries.map { it.first },
         bitmaskValues = bitEntries.map { it.second },
