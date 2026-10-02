@@ -1878,6 +1878,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_speed_for_time_between_shots_follows_the_flight_status_calculator() {
+        let simple = |command: i64, speed: f64| plandoc::Item::Simple(plandoc::Simple { command, frame: 2, params: [Some(1.0), Some(speed), Some(-1.0), Some(0.0), None, None, None], auto_continue: true, altitude: None, sections: vec![] });
+        let doc = |vehicle_type: i64, items: Vec<plandoc::Item>| Document { vehicle_type, items, ..empty_document() };
+        assert_eq!(speed_in_force(&doc(22, vec![]), 0, 5.0, 15.0), 5.0, "a VTOL starts at the hover speed");
+        assert_eq!(speed_in_force(&doc(1, vec![]), 0, 5.0, 15.0), 15.0, "a plane at cruise");
+        assert_eq!(speed_in_force(&doc(2, vec![simple(178, 10.0)]), 1, 5.0, 15.0), 10.0, "a standalone DO_CHANGE_SPEED counts");
+        assert_eq!(speed_in_force(&doc(2, vec![simple(178, -1.0)]), 1, 5.0, 15.0), 5.0, "one leaving the speed alone does not");
+    }
+
+    #[test]
     fn a_mission_parameter_in_metres_is_shown_in_the_users_units_like_its_fact() {
         let feet = crate::units::cooking_with("m", |_| Some("0".to_string()), 0);
         let radius = json!({ "label": "Radius", "units": "m", "default": 30.0, "decimalPlaces": 1 });
@@ -2466,14 +2476,19 @@ pub fn fence_and_rally() -> Option<(Value, Value)> {
     Some((document.fence, document.rally))
 }
 
+fn specified_speed(simple: &plandoc::Simple) -> Option<f64> {
+    (simple.command == 178).then_some(simple.params[1]).flatten().filter(|speed| *speed > 0.0)
+}
+
 fn speed_in_force(document: &Document, before: usize, hover: f64, cruise: f64) -> f64 {
-    let multirotor = plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::MultiRotor;
-    let start = if multirotor { hover } else { cruise };
-    let changes = std::iter::once(&document.settings_sections).chain(document.items.iter().take(before).filter_map(|item| match item {
-        plandoc::Item::Simple(s) => Some(&s.sections),
-        plandoc::Item::Complex { .. } => None,
-    }));
-    changes.fold(start, |speed, sections| sections.iter().find(|s| s.command == 178).and_then(|s| s.params[1]).unwrap_or(speed))
+    let hovering = matches!(plandoc::vehicle_class(document.vehicle_type), crate::cmdinfo::VehicleClass::MultiRotor | crate::cmdinfo::VehicleClass::Vtol);
+    let start = if hovering { hover } else { cruise };
+    let settings = document.settings_sections.iter().filter_map(specified_speed);
+    let items = document.items.iter().take(before).flat_map(|item| match item {
+        plandoc::Item::Simple(s) => std::iter::once(s).chain(s.sections.iter()).filter_map(specified_speed).collect::<Vec<_>>(),
+        plandoc::Item::Complex { .. } => Vec::new(),
+    });
+    settings.chain(items).last().unwrap_or(start)
 }
 
 const BREACH_RETURN_META: &str = include_str!("../../src/MissionManager/BreachReturn.FactMetaData.json");
