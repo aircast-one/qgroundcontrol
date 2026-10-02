@@ -100,6 +100,12 @@ impl Track {
 
 static TRACKS: LazyLock<Mutex<BTreeMap<i64, Track>>> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
+pub fn clear(vehicle: i64) {
+    if let Some(track) = TRACKS.lock().unwrap_or_else(PoisonError::into_inner).get_mut(&vehicle) {
+        track.restart();
+    }
+}
+
 pub fn track_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
     let vehicle = object(&backend.get_fields("vehicle", "id,armed,coordinate"));
@@ -141,6 +147,19 @@ mod tests {
                 (lat, lon)
             })
             .collect()
+    }
+
+    #[test]
+    fn a_mission_transfer_clears_the_trail_like_vehicle_connecting_trajectory_clear() {
+        let start = (47.397, 8.545);
+        let mut flown = Track::default();
+        flown.observe(true, Some(start));
+        flown.observe(true, Some(north_of(start, 50.0)));
+        TRACKS.lock().unwrap_or_else(PoisonError::into_inner).insert(9_901, flown);
+        clear(9_901);
+        let cleared = TRACKS.lock().unwrap_or_else(PoisonError::into_inner).remove(&9_901).unwrap();
+        assert!(cleared.points.is_empty());
+        clear(9_902);
     }
 
     #[test]

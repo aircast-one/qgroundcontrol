@@ -731,6 +731,7 @@ impl Vehicle {
                     }
                     if kind == plantransfer::PLAN_MISSION {
                         self.clear_trigger_points();
+                        crate::track::clear(i64::from(self.id));
                         if self.plans[plan].transfer.wrote {
                             (self.mission_current, self.mission_last_current) = (-1, -1);
                         }
