@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.rover", "vehicle.sub", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion", "vehicle.firmwareVersionTypeString", "vehicle.gitHash", "vehicle.firmwareCustomMajorVersion", "vehicle.firmwareCustomMinorVersion", "vehicle.firmwareCustomPatchVersion"];
+pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.vtol", "vehicle.airship", "vehicle.rover", "vehicle.sub", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion", "vehicle.firmwareVersionTypeString", "vehicle.gitHash", "vehicle.firmwareCustomMajorVersion", "vehicle.firmwareCustomMinorVersion", "vehicle.firmwareCustomPatchVersion"];
 const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
 const SETUP_REQUIRED: &str = "Setup required";
 const READY: &str = "Ready";
@@ -23,6 +23,7 @@ static LEVEL_SUFFIX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)at\s+(c
 pub struct Vehicle {
     pub multi_rotor: bool,
     pub fixed_wing: bool,
+    pub forward_flight: bool,
     pub rover: bool,
     pub sub: bool,
     pub version: (i64, i64, i64),
@@ -361,10 +362,22 @@ fn px4_safety(facts: Facts) -> Rows {
 
 fn px4_sensors(facts: Facts, vehicle: &Vehicle) -> Rows {
     let extra_compass = |n: u8| facts(&format!("CAL_MAG{n}_ID")).filter(|f| number(f) != 0.0).map(|_| row(&format!("Compass {n}"), READY));
-    match vehicle.fixed_wing {
-        true => vec![row("Compass", ready_unless_zero(facts, "CAL_MAG0_ID")), row("Gyro", ready_unless_zero(facts, "CAL_GYRO0_ID")), row("Accelerometer", ready_unless_zero(facts, "CAL_ACC0_ID"))],
+    match vehicle.forward_flight {
+        true => [Some(row("Compass", ready_unless_zero(facts, "CAL_MAG0_ID"))), Some(row("Gyro", ready_unless_zero(facts, "CAL_GYRO0_ID"))), Some(row("Accelerometer", ready_unless_zero(facts, "CAL_ACC0_ID"))), px4_airspeed_row(facts, vehicle)].into_iter().flatten().collect(),
         false => [Some(row("Compass 0", ready_unless_zero(facts, "CAL_MAG0_ID"))), extra_compass(1), extra_compass(2), Some(row("Gyro", ready_unless_zero(facts, "CAL_GYRO0_ID"))), Some(row("Accelerometer", ready_unless_zero(facts, "CAL_ACC0_ID")))].into_iter().flatten().collect(),
     }
+}
+
+const AIRSPEED_CHECK_CIRCUIT_BREAKER: i64 = 162_128;
+
+fn px4_airspeed_row(facts: Facts, vehicle: &Vehicle) -> Option<(String, String)> {
+    let value = |name: &str| facts(name).map(|f| number(&f)).unwrap_or(0.0);
+    let (major, minor, _) = vehicle.version;
+    let supported = match major > 1 || (major == 1 && minor > 14) {
+        true => value("SYS_HAS_NUM_ASPD") != 0.0,
+        false => value("FW_ARSP_MODE") == 0.0 && value("CBRK_AIRSPD_CHK") as i64 != AIRSPEED_CHECK_CIRCUIT_BREAKER,
+    };
+    supported.then(|| row("Airspeed", if value("SENS_DPRES_OFF") == 0.0 { SETUP_REQUIRED } else { READY }))
 }
 
 fn px4_airframe(facts: Facts, vehicle: &Vehicle) -> Rows {
@@ -419,11 +432,12 @@ pub fn firmware_text(major: i64, minor: i64, patch: i64, kind: &str) -> String {
 }
 
 pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash,firmwareCustomMajorVersion,firmwareCustomMinorVersion,firmwareCustomPatchVersion"));
+    let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,vtol,airship,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash,firmwareCustomMajorVersion,firmwareCustomMinorVersion,firmwareCustomPatchVersion"));
     let part = |key: &str| read.get(key).and_then(Value::as_i64).unwrap_or(-1);
     let vehicle = Vehicle {
         multi_rotor: flag(&read, "multiRotor"),
         fixed_wing: flag(&read, "fixedWing"),
+        forward_flight: ["fixedWing", "vtol", "airship"].iter().any(|key| flag(&read, key)),
         rover: flag(&read, "rover") && flag(&read, "apmFirmware"),
         sub: flag(&read, "sub"),
         version: (part("firmwareMajorVersion"), part("firmwareMinorVersion"), part("firmwarePatchVersion")),
@@ -457,8 +471,17 @@ mod tests {
         move |name| map.get(name).cloned()
     }
 
+    #[test]
+    fn a_px4_vtol_sensors_summary_uses_the_fixed_wing_rows_with_airspeed() {
+        let map: HashMap<&str, Value> = [("CAL_MAG0_ID", json!({ "kind": "fact", "name": "CAL_MAG0_ID", "value": 1 })), ("SYS_HAS_NUM_ASPD", json!({ "kind": "fact", "name": "SYS_HAS_NUM_ASPD", "value": 1 })), ("SENS_DPRES_OFF", json!({ "kind": "fact", "name": "SENS_DPRES_OFF", "value": 0 }))].into_iter().collect();
+        let vtol = Vehicle { multi_rotor: false, forward_flight: true, version: (1, 15, 0), ..copter() };
+        let rows = px4_sensors(&lookup(&map), &vtol);
+        assert_eq!(rows[0].0, "Compass", "SensorsComponent picks the fixed-wing summary for fixed wing, VTOL and airship");
+        assert!(rows.contains(&row("Airspeed", SETUP_REQUIRED)), "with an airspeed sensor and no offset, the Airspeed row asks for setup: {rows:?}");
+    }
+
     fn copter() -> Vehicle {
-        Vehicle { multi_rotor: true, fixed_wing: false, rover: false, sub: false, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new(), custom: None }
+        Vehicle { multi_rotor: true, fixed_wing: false, forward_flight: false, rover: false, sub: false, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new(), custom: None }
     }
 
     #[test]
