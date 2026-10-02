@@ -536,8 +536,16 @@ pub fn command_class_at(doc: &Document, at: usize) -> VehicleClass {
     if class != VehicleClass::Vtol {
         return class;
     }
-    let vtol_takeoff = doc.items.iter().any(|item| matches!(item, Item::Simple(s) if s.command == 84));
-    let start = if vtol_takeoff { VehicleClass::MultiRotor } else { VehicleClass::FixedWing };
+    let is_rtl = |item: &Item| matches!(item, Item::Simple(s) if s.command == 20);
+    if doc.items.iter().take(at + 1).any(is_rtl) {
+        return class;
+    }
+    let before_rtl = doc.items.iter().position(is_rtl).unwrap_or(doc.items.len());
+    let last_takeoff = doc.items[..before_rtl].iter().rev().find_map(|item| match item {
+        Item::Simple(s) if s.command == 22 || s.command == 84 => Some(s.command),
+        _ => None,
+    });
+    let start = if last_takeoff == Some(84) { VehicleClass::MultiRotor } else { VehicleClass::FixedWing };
     doc.items.iter().take(at).fold(start, |mode, item| match item {
         Item::Simple(s) => match (s.command, s.params[0].map(|p| p as i64)) {
             (22 | 84 | 21, _) => VehicleClass::FixedWing,

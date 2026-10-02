@@ -1500,7 +1500,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             });
         }
     }
-    let commands = crate::cmdinfo::tree(plandoc::firmware(current.firmware_type), plandoc::vehicle_class(current.vehicle_type));
+    let commands = crate::cmdinfo::tree(plandoc::firmware(current.firmware_type), plandoc::command_class_at(&current, index.saturating_sub(1)));
     let simple = index.checked_sub(1).and_then(|i| current.items.get(i)).and_then(|item| match item {
         plandoc::Item::Simple(s) => Some(s),
         plandoc::Item::Complex { .. } => None,
@@ -1906,7 +1906,7 @@ mod tests {
         assert_eq!(speed_in_force(&doc(2, vec![simple(178, -1.0)]), 1, 5.0, 15.0), 5.0, "one leaving the speed alone does not");
         let later = doc(2, vec![simple(178, 10.0), simple(16, 0.0)]);
         assert_eq!(speed_section(&later, 2, &[], true, 5.0, 15.0)["value"], 10.0, "SimpleMissionItem::setMissionFlightStatus seeds an unset, available speed with the speed in force there");
-        assert_eq!(speed_section(&doc(22, vec![simple(16, 0.0)]), 1, &[], true, 5.0, 15.0)["value"], 5.0, "a VTOL starts at hover speed");
+        assert_eq!(speed_section(&doc(22, vec![simple(16, 0.0)]), 1, &[], true, 5.0, 15.0)["available"], false, "SpeedSection::setAvailable only takes multirotors and fixed wings, so a VTOL never offers Flight Speed");
     }
 
     #[test]
@@ -1918,6 +1918,11 @@ mod tests {
         let facts = document_facts(&doc, 1, 5.0, 15.0, (&metres, &metres));
         let labels: Vec<String> = facts["fields"].as_array().unwrap().iter().filter_map(|f| f["label"].as_str().map(str::to_string)).collect();
         assert!(labels.iter().any(|l| l.contains("Pitch")), "so its NAV_TAKEOFF shows the fixed-wing Pitch field: {labels:?}");
+        let simple = |command: i64| plandoc::Item::Simple(plandoc::Simple { command, frame: 3, params: [Some(0.0); 7], auto_continue: true, altitude: None, sections: vec![] });
+        let mixed = Document { vehicle_type: 22, items: vec![simple(16), simple(84), simple(16), simple(22), simple(20), simple(16)], ..empty_document() };
+        assert_eq!(plandoc::command_class_at(&mixed, 0), crate::cmdinfo::VehicleClass::FixedWing, "the start follows the LAST takeoff before the RTL, here a fixed-wing NAV_TAKEOFF");
+        assert_eq!(plandoc::command_class_at(&mixed, 2), crate::cmdinfo::VehicleClass::FixedWing, "a VTOL takeoff leaves fixed-wing mode behind it");
+        assert_eq!(plandoc::command_class_at(&mixed, 5), crate::cmdinfo::VehicleClass::Vtol, "items from the RTL on get no flight status, so they keep the VTOL tree");
     }
 
     #[test]
@@ -2379,7 +2384,8 @@ fn simple_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap
     combo_params.enumerate().map(build("comboboxFacts")).chain(text_params.enumerate().map(build("textFieldFacts"))).chain(optional).collect()
 }
 
-fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple], available: bool, hover: f64, cruise: f64) -> Value {
+fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple], offered: bool, hover: f64, cruise: f64) -> Value {
+    let available = offered && matches!(plandoc::vehicle_class(document.vehicle_type), crate::cmdinfo::VehicleClass::MultiRotor | crate::cmdinfo::VehicleClass::FixedWing);
     let item = format!("{ITEM_ROOT}.{index}.speedSection");
     let specified = sections.iter().find(|s| s.command == 178).and_then(|s| s.params[1]);
     let default = match (available, plandoc::vehicle_class(document.vehicle_type)) {

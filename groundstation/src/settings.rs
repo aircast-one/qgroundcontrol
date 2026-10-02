@@ -134,6 +134,7 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("streamRateExtra3", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
 ];
 
+const MOBILE: bool = cfg!(any(target_os = "android", target_os = "ios"));
 const LOGGING_ROWS: [&str; 3] = ["telemetrySave", "telemetrySaveNotArmed", "saveCsvTelemetry"];
 const VIRTUAL_JOYSTICK_OFF: &str = "Has no effect while the virtual joystick is off.";
 
@@ -276,7 +277,7 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
                 *hidden == named && facts.iter().find(|other| other.get("name").and_then(Value::as_str) == Some(requires)).and_then(|other| other.get("value")).and_then(Value::as_bool) == Some(*when)
             })
         })
-        .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n)))
+        .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n) && !(MOBILE && n == "savePath")))
         .map(|f| with_choices(backend, f))
         .map(|f| decode(&f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .collect();
