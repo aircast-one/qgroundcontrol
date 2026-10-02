@@ -2202,6 +2202,7 @@ impl Vehicle {
         if let Some(sending) = best {
             self.link = sending;
         }
+        self.commands.high_latency = best.is_some_and(|link| self.link_kinds.high_latency.contains(&link));
         switched
     }
 
@@ -3324,6 +3325,7 @@ fn calibration_as_info(status: crate::statustext::StatusText, ardupilot: bool) -
 #[derive(Debug, Default)]
 pub struct Hub {
     vehicles: BTreeMap<u8, Vehicle>,
+    link_kinds: LinkKinds,
     arrival: Vec<u8>,
     active: Option<u8>,
     host_selects: bool,
@@ -3356,6 +3358,8 @@ impl Hub {
             let excluded_type = matches!(kind, TYPE_GCS | TYPE_ONBOARD_CONTROLLER | TYPE_GIMBAL | TYPE_ADSB);
             if header.component_id == COMP_AUTOPILOT1 && !excluded_type && autopilot != AUTOPILOT_INVALID && header.system_id != 0 && !self.vehicles.contains_key(&header.system_id) {
                 let mut vehicle = Vehicle::new(header.system_id, header.component_id, autopilot, kind, origin.link, origin.replay);
+                vehicle.link_kinds = self.link_kinds.clone();
+                vehicle.commands.high_latency = self.link_kinds.high_latency.contains(&origin.link);
                 if kind == TYPE_SUBMARINE && !origin.replay && !crate::qthost::present() {
                     sub_video_defaults();
                 }
@@ -3686,6 +3690,7 @@ impl Hub {
     }
 
     pub fn check_links(&mut self, now_ms: u64, kinds: &LinkKinds) {
+        self.link_kinds = kinds.clone();
         self.vehicles.values_mut().for_each(|v| {
             v.link_kinds = kinds.clone();
             v.check_links(now_ms);
@@ -4462,6 +4467,11 @@ mod tests {
         assert_eq!((vehicle.facts.ground_speed, vehicle.facts.heading), (10.0, 90.0), "HL2 speeds in 0.2 m/s and heading in 2 degree steps");
         hub.on_frame(origin(7), &header, &report(MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA, 0x01), 1, 1);
         assert!(!hub.vehicles[&3].armed());
+        let mut iridium = Hub::default();
+        iridium.check_links(0, &LinkKinds { high_latency: vec![7], ..LinkKinds::default() });
+        let first = iridium.on_frame(origin(7), &header, &report(MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA, 0x01), 0, 0);
+        assert!(iridium.vehicles[&3].commands.high_latency, "the vehicle knows its link is high latency, as Vehicle::isHighLatency reads the primary link");
+        assert!(!first.iter().any(|(_, b)| matches!(decode(b), MavMessage::PARAM_REQUEST_LIST(_) | MavMessage::MISSION_REQUEST_LIST(_))), "and InitialConnectStateMachine skips the parameter and plan loads over it");
         assert_eq!(high_latency_custom_mode(crate::modes::AUTOPILOT_PX4, 0x0304), 0x0304_0000, "PX4 packs main and sub mode into the high half");
         assert_eq!(high_latency_sensors(1 | 32), 32 | 4, "QGCMAVLink::highLatencyFailuresToMavSysStatus: GPS and magnetometer failures become present, enabled sensors");
     }
