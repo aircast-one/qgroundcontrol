@@ -531,7 +531,7 @@ internal fun FactRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (fact.isBool && !fact.acceptsWrite && notBuiltHere(fact) == null) {
+            if (!fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact)) {
                 Text(
                     text = inertNote(fact),
                     style = MaterialTheme.typography.labelSmall,
@@ -566,13 +566,6 @@ internal fun FactRow(
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    if (notBuiltHere(fact) == null && !fact.isBool) {
-                        Text(
-                            text = inertNote(fact),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
