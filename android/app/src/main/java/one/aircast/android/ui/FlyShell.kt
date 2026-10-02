@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.zIndex
+
 import one.aircast.mapspike.MapLayersSheet
 
 import androidx.compose.runtime.remember
@@ -173,39 +175,61 @@ internal fun FlyScreen(
     }
     val stage: @Composable (Modifier) -> Unit = { stageModifier ->
         Box(stageModifier) {
-            if (view == FlyView.Map) map(Modifier.fillMaxSize()) else video(Modifier.fillMaxSize(), true)
+            val mapIsPip = view == FlyView.Video
+            val videoIsPip = view == FlyView.Map
+            val mapShown = view == FlyView.Map || (mapIsPip && pipExpanded)
+            val videoShown = view != FlyView.Map || videoPipShown(hasVideo, pipExpanded)
+            val pipCorner = Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, end = AircastSpace.s3)
 
-            if (view == FlyView.Video) {
-                Box(Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3)) {
-                    if (pipExpanded) {
-                        Box(
-                            Modifier
-                                .size(MAP_PIP_SIZE)
-                                .clip(CircleShape)
-                                .border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape),
-                        ) {
-                            map(Modifier.fillMaxSize())
-                            Box(Modifier.fillMaxSize().clickable { onView(FlyView.Map) })
-                        }
-                    }
+            if (mapShown) {
+                map(
+                    if (mapIsPip) {
+                        Modifier
+                            .zIndex(1f)
+                            .align(Alignment.BottomEnd)
+                            .padding(AircastSpace.s3)
+                            .size(MAP_PIP_SIZE)
+                            .clip(CircleShape)
+                            .border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                    } else {
+                        Modifier.fillMaxSize()
+                    },
+                )
+            }
+            if (videoShown) {
+                video(
+                    if (videoIsPip) {
+                        Modifier
+                            .zIndex(1f)
+                            .align(Alignment.TopEnd)
+                            .then(pipCorner)
+                            .size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)
+                            .clip(MaterialTheme.shapes.medium)
+                    } else {
+                        Modifier.fillMaxSize()
+                    },
+                    !videoIsPip,
+                )
+            }
+            if (mapIsPip) {
+                if (pipExpanded) {
+                    Box(
+                        Modifier
+                            .zIndex(2f)
+                            .align(Alignment.BottomEnd)
+                            .padding(AircastSpace.s3)
+                            .size(MAP_PIP_SIZE)
+                            .clip(CircleShape)
+                            .clickable { onView(FlyView.Map) },
+                    )
+                }
+                Box(Modifier.zIndex(3f).align(Alignment.BottomEnd).padding(AircastSpace.s3).size(MAP_PIP_SIZE)) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
                 }
             }
-            if (view == FlyView.Map && hasVideo) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, end = AircastSpace.s3),
-                ) {
-                    if (videoPipShown(hasVideo, pipExpanded)) {
-                        video(
-                            Modifier
-                                .size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)
-                                .clip(MaterialTheme.shapes.medium),
-                            false,
-                        )
-                    }
+            if (videoIsPip && hasVideo) {
+                Box(Modifier.zIndex(3f).align(Alignment.TopEnd).then(pipCorner).size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.TopEnd))
                 }
             }
