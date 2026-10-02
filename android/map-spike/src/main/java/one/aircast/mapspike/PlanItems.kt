@@ -51,6 +51,17 @@ internal fun itemPlace(item: MissionItem, items: List<MissionItem>): String? {
     return listOfNotNull("Item ${at + 1} of ${listed.size}", leg).joinToString(" \u00b7 ")
 }
 
+internal fun surveyTiles(item: MissionItem, stats: SurveyStats?): List<Pair<String, String>> =
+    if (stats == null) emptyList() else listOf(
+        "AREA" to stats.areaText,
+        "PHOTOS" to item.cameraShots.takeIf { it > 0 }?.toString().orEmpty(),
+        "INTERVAL" to stats.intervalText,
+    ).filter { it.second.isNotBlank() }
+
+internal fun sheetDetail(item: MissionItem, stats: SurveyStats?): String =
+    if (surveyTiles(item, stats).isEmpty()) itemDetail(item, stats)
+    else itemDetail(item.copy(cameraShots = 0), stats?.copy(areaText = ""))
+
 fun itemRows(
     items: List<MissionItem>,
     stats: Map<Int, SurveyStats> = emptyMap(),

@@ -636,7 +636,7 @@ internal fun MapSpikeScreen(
                                     "${item.command.ifBlank { "Item" }} ${sequenceLabel(item)}",
                                     style = MaterialTheme.typography.titleLarge,
                                 )
-                                listOfNotNull(itemPlace(item, allItems), itemDetail(item, surveyStatsMap[item.index]).ifBlank { null }).joinToString(" \u00b7 ").ifBlank { null }?.let {
+                                listOfNotNull(itemPlace(item, allItems), sheetDetail(item, surveyStatsMap[item.index]).ifBlank { null }).joinToString(" \u00b7 ").ifBlank { null }?.let {
                                     Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
@@ -644,6 +644,11 @@ internal fun MapSpikeScreen(
                                 Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
                                 Spacer(Modifier.width(ButtonDefaults.IconSpacing))
                                 Text("Done")
+                            }
+                        }
+                        surveyTiles(item, surveyStatsMap[item.index]).takeIf { it.isNotEmpty() }?.let { tiles ->
+                            Row(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                tiles.forEach { (label, value) -> StatTile(label, value) }
                             }
                         }
                     }
@@ -1503,5 +1508,22 @@ private fun CenterMenu(
             },
             dismissButton = { TextButton(onClick = { asking = false }) { Text("Cancel") } },
         )
+    }
+}
+
+@Composable
+private fun StatTile(label: String, value: String) {
+    val unit = value.substringAfterLast(' ', "").takeIf { value.contains(' ') }.orEmpty()
+    val number = value.removeSuffix(unit).trim()
+    Column(
+        Modifier
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.medium)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(number, style = MaterialTheme.typography.titleLarge)
+            if (unit.isNotBlank()) Text(unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
