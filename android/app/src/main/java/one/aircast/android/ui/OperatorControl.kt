@@ -71,11 +71,14 @@ internal fun requestSentLabel(remainingMs: Long): String =
 internal fun allowTakeoverSetting(): Boolean? =
     Qgc.get(ALLOW_TAKEOVER_SETTING).let { read -> if (read.isNull("value")) null else read.optBoolean("value") }
 
-internal fun changeTakeover(allow: Boolean): String? = when {
-    !Qgc.set("$ALLOW_TAKEOVER_PATH.rawValue", allow) -> "This station could not save whether it allows a takeover."
-    !Qgc.invoke(REQUEST_CONTROL, allow, 0) -> "The vehicle did not take the change."
-    else -> null
-}
+internal fun saveAllowTakeover(allow: Boolean): String? =
+    if (Qgc.set("$ALLOW_TAKEOVER_PATH.rawValue", allow)) null else "This station could not save whether it allows a takeover."
+
+internal fun changeTakeover(allow: Boolean): String? =
+    if (Qgc.invoke(REQUEST_CONTROL, allow, 0)) null else "The vehicle did not take the change."
+
+internal fun allowTakeoverEditable(station: ControlStation?): Boolean =
+    station?.inControl == true || station?.takeoverAllowed == true
 
 internal fun requestTimeoutSeconds(station: ControlStation, setting: Int): Int =
     if (station.takeoverAllowed == true) 0 else setting

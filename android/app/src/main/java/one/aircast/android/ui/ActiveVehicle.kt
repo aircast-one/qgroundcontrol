@@ -354,7 +354,13 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
             modifier = Modifier.padding(horizontal = 24.dp),
         )
     }
-    requestEndsAt?.let { endsAt -> RequestCountdown(endsAt) { requestEndsAt = null } }
+    requestEndsAt?.let { endsAt ->
+        RequestCountdown(endsAt) {
+            requestEndsAt = null
+            asked = null
+        }
+    }
+    AllowTakeoverBox(holder, onRefusal)
     controlWaitLine(holder)?.takeIf { requestEndsAt == null }?.let { waiting ->
         Text(
             text = waiting,
@@ -406,10 +412,31 @@ private fun RequestCountdown(endsAt: Long, onDone: () -> Unit) {
 private const val COUNTDOWN_TICK_MS = 100L
 
 @Composable
+private fun AllowTakeoverBox(holder: ControlStation, onRefusal: (String?) -> Unit, onRead: (Boolean?) -> Unit = {}) {
+    val scope = rememberCoroutineScope()
+    var allow by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(Unit) { allow = withContext(Dispatchers.Default) { allowTakeoverSetting() }.also(onRead) }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+    ) {
+        Text("Allow takeover", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Checkbox(
+            checked = allow == true,
+            enabled = allow != null && allowTakeoverEditable(holder),
+            onCheckedChange = { wanted ->
+                allow = wanted
+                onRead(wanted)
+                scope.launch { onRefusal(withContext(Dispatchers.Default) { saveAllowTakeover(wanted) }) }
+            },
+        )
+    }
+}
+
+@Composable
 private fun InControlNote(holder: ControlStation, onRefusal: (String?) -> Unit) {
     val scope = rememberCoroutineScope()
     var allow by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(holder.takeoverAllowed) { allow = withContext(Dispatchers.Default) { allowTakeoverSetting() } }
     inControlLine(holder)?.let { line ->
         Text(
             text = line,
@@ -426,13 +453,7 @@ private fun InControlNote(holder: ControlStation, onRefusal: (String?) -> Unit) 
             modifier = Modifier.padding(horizontal = 24.dp),
         )
     }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-    ) {
-        Text("Allow takeover", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Checkbox(checked = allow == true, enabled = allow != null, onCheckedChange = { allow = it })
-    }
+    AllowTakeoverBox(holder, onRefusal) { allow = it }
     TextButton(
         enabled = takeoverChangeable(holder, allow),
         onClick = {

@@ -128,8 +128,12 @@ fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
 }
 
 private val moveWrites = java.util.concurrent.locks.ReentrantLock()
+private val committedMoves = java.util.concurrent.atomic.AtomicLong()
+
+fun moveGeneration(): Long = committedMoves.get()
 
 fun writeDragStep(
+    generation: Long,
     hit: MapHit,
     latitude: Double,
     longitude: Double,
@@ -138,7 +142,7 @@ fun writeDragStep(
     fences: List<FencePolygon>,
     items: List<MissionItem>,
 ): Boolean = !moveWrites.tryLock() || try {
-    writeMove(hit, latitude, longitude, surveys, rally, fences, items)
+    generation != committedMoves.get() || applyMove(hit, latitude, longitude, surveys, rally, fences, items)
 } finally {
     moveWrites.unlock()
 }
@@ -152,6 +156,19 @@ fun writeMove(
     fences: List<FencePolygon> = emptyList(),
     items: List<MissionItem> = emptyList(),
 ): Boolean = moveWrites.withLock {
+    committedMoves.incrementAndGet()
+    applyMove(hit, latitude, longitude, surveys, rally, fences, items)
+}
+
+private fun applyMove(
+    hit: MapHit,
+    latitude: Double,
+    longitude: Double,
+    surveys: List<Survey>,
+    rally: List<RallyPoint>,
+    fences: List<FencePolygon>,
+    items: List<MissionItem>,
+): Boolean =
     when (hit) {
         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, latitude, longitude)
         is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, latitude, longitude)
@@ -186,7 +203,6 @@ fun writeMove(
         is MapHit.LandingPlace ->
             moveLandingPlace(hit.index, hit.place, latitude, longitude)
     }
-}
 
 internal fun patternName(index: Int, items: List<MissionItem>): String =
     items.firstOrNull { it.index == index }?.command?.ifBlank { null } ?: "pattern"

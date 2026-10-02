@@ -565,6 +565,7 @@ fn open(file: &str) -> Value {
                 let mut state = held();
                 let before = state.document.take();
                 state.document = Some(document);
+                state.wizard = None;
                 remember(&mut state, before, crate::hub::now_ms());
                 state.selected = 0;
                 state.file = Some(file.to_string());
@@ -755,6 +756,7 @@ fn follow_vehicle() {
                 }
                 let before = state.document.clone();
                 state.document = state.document.clone().map(|d| Document { home: None, items: Vec::new(), settings_sections: Vec::new(), ..d });
+                state.wizard = None;
                 remember(&mut state, before, crate::hub::now_ms());
                 state.selected = 0;
                 settle_clean(&mut state);
@@ -924,6 +926,7 @@ fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool,
     let template = Document { firmware_type: types.0, vehicle_type: types.1, ..held_document };
     let before = state.document.clone();
     let mission = plandoc::from_vehicle(&downloaded, sends_home, &template);
+    state.wizard = None;
     state.document = Some(Document {
         fence: if fence_read { fence_from(&snapshot["fence"]) } else { mission.fence.clone() },
         rally: if rally_read { json!({ "version": 2, "points": snapshot["rally"]["points"] }) } else { mission.rally.clone() },
@@ -1278,6 +1281,7 @@ fn clear(backend: &dyn Backend) -> Value {
         let template = state.document.clone().or(fresh).unwrap_or_else(empty_document);
         let before = state.document.clone();
         state.document = Some(Document { home: None, items: Vec::new(), settings_sections: Vec::new(), ..template });
+        state.wizard = None;
         remember(&mut state, before, crate::hub::now_ms());
         state.selected = 0;
         settle_clean(&mut state);
@@ -1776,13 +1780,20 @@ pub fn shape_vertices(path: &str) -> Option<Vec<(f64, f64)>> {
     Some(vertices.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect())
 }
 
+fn live_wizard(state: &Held) -> Option<usize> {
+    state.wizard.filter(|at| {
+        let item = at.checked_sub(1).and_then(|i| state.document.as_ref()?.items.get(i));
+        matches!(item, Some(plandoc::Item::Simple(s)) if [CMD_NAV_TAKEOFF, CMD_NAV_VTOL_TAKEOFF_ID].contains(&s.command))
+    })
+}
+
 pub fn wizard_item() -> Option<usize> {
-    enabled().then(|| held().wizard).flatten()
+    enabled().then(|| live_wizard(&held())).flatten()
 }
 
 pub fn drawing() -> bool {
     let state = held();
-    state.wizard.is_some()
+    live_wizard(&state).is_some()
         || state.document.as_ref().is_some_and(|d| {
             d.items.iter().any(|item| {
                 matches!(item, plandoc::Item::Complex { json, .. } if json.get("polygon").and_then(Value::as_array).is_some_and(|p| p.len() < 3) || json.get("polyline").and_then(Value::as_array).is_some_and(|p| p.len() < 2) || json.get(crate::landingpattern::WIZARD).and_then(Value::as_bool) == Some(true))
@@ -1854,6 +1865,15 @@ pub fn route_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_climb_out_step_only_counts_while_its_takeoff_is_still_there() {
+        let simple = |command: i64| plandoc::Item::Simple(plandoc::Simple { command, frame: 3, params: [Some(0.0); 7], auto_continue: true, altitude: None, sections: vec![] });
+        let with = |items: Vec<plandoc::Item>| Held { wizard: Some(1), document: Some(Document { items, ..empty_document() }), ..Held::default() };
+        assert_eq!(live_wizard(&with(vec![simple(CMD_NAV_TAKEOFF)])), Some(1));
+        assert_eq!(live_wizard(&with(vec![simple(16)])), None, "an item inserted before it shifted the takeoff away");
+        assert_eq!(live_wizard(&with(Vec::new())), None, "the takeoff was deleted, so save and upload are not held back by it");
+    }
 
     #[test]
     fn a_connected_vehicle_sets_the_offline_planning_classes_like_plan_master_controller() {

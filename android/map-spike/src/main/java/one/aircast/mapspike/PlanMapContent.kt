@@ -165,7 +165,7 @@ internal fun MapSpikeScreen(
     var shape by remember { mutableStateOf<List<String>>(emptyList()) }
     var linkStartToHome by remember { mutableStateOf(false) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
-    var circled by remember { mutableStateOf(setOf<String>()) }
+    var chosenCircles by remember { mutableStateOf(setOf<String>()) }
     var radiusFor by remember { mutableStateOf<ShapeTarget?>(null) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
     var operator by remember { mutableStateOf<TrackPoint?>(null) }
@@ -174,6 +174,7 @@ internal fun MapSpikeScreen(
     var breach by remember { mutableStateOf<BreachReturn?>(null) }
     var editingBreach by remember { mutableStateOf(false) }
     var surveyList by remember { mutableStateOf<List<Survey>>(emptyList()) }
+    val circled = liveCircles(chosenCircles, fences, surveyList)
     var landingList by remember { mutableStateOf<List<LandingPattern>>(emptyList()) }
     var surveyStatsMap by remember { mutableStateOf<Map<Int, SurveyStats>>(emptyMap()) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
@@ -313,6 +314,10 @@ internal fun MapSpikeScreen(
 
     val selectedSequence = selectionSequence(selected, allItems)
 
+    LaunchedEffect(Unit) {
+        PlanFocus.requests.collect { selected = MapHit.Waypoint(it) }
+    }
+
     LaunchedEffect(selectedSequence) {
         val sequence = selectedSequence ?: return@LaunchedEffect
         withContext(Dispatchers.Default) { PlanBridge.selectSequence(sequence) }
@@ -407,7 +412,7 @@ internal fun MapSpikeScreen(
                 val view = withContext(Dispatchers.Default) { freshPlanView() }
                 when (val step = uploadStep(uploadGate(view), notReadyToSend(view))) {
                     is UploadStep.Refuse -> {
-                        nextNotReady(view)?.let { selected = MapHit.Waypoint(it) }
+                        PlanFocus.notReady(view)
                         say(step.reason)
                     }
                     is UploadStep.Confirm -> uploadAsk = step.gate
@@ -448,7 +453,10 @@ internal fun MapSpikeScreen(
                     insertAfter(selected, allItems),
                 )
             },
-            onMove = { hit, lat, lon -> onBridge { writeDragStep(hit, lat, lon, surveyList, rally, fences, allItems) } },
+            onMove = { hit, lat, lon ->
+                val generation = moveGeneration()
+                onBridge { writeDragStep(generation, hit, lat, lon, surveyList, rally, fences, allItems) }
+            },
             onWaypointSelected = { hit ->
                 when (hit) {
                     is MapHit.Midpoint -> if (hit.path == MISSION_SPLIT_PATH) {
@@ -1054,11 +1062,11 @@ internal fun MapSpikeScreen(
                                 }) { Text("Line") }
                             } else {
                                 TextButton(enabled = visible.size == 4, onClick = {
-                                    circled = circled - target.path
+                                    chosenCircles = chosenCircles - target.path
                                     onBridge("Drawing rectangle") { replaceShape(target, defaultRectangle(visible)) }
                                 }) { Text("Rectangle") }
                                 TextButton(enabled = visible.size == 4, onClick = {
-                                    circled = circled + target.path
+                                    chosenCircles = chosenCircles + target.path
                                     onBridge("Drawing circle") { replaceShape(target, defaultCircle(visible)) }
                                 }) { Text("Circle") }
                                 if (target.path in circled) {
@@ -1066,11 +1074,11 @@ internal fun MapSpikeScreen(
                                 }
                             }
                             TextButton(onClick = {
-                                circled = circled - target.path
+                                chosenCircles = chosenCircles - target.path
                                 tracing = target to emptyList()
                             }) { Text("Trace") }
                             TextButton(onClick = {
-                                circled = circled - target.path
+                                chosenCircles = chosenCircles - target.path
                                 importInto = target
                                 polygonFile.launch(arrayOf("*/*"))
                             }) { Text("Import\u2026") }

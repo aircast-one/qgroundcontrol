@@ -524,7 +524,7 @@ fun loiterHandleFeatures(items: List<MissionItem>, selected: Int?): List<Feature
             addNumberProperty(POLYGON_INDEX_PROPERTY, owner)
             addNumberProperty(VERTEX_INDEX_PROPERTY, vertex)
         }
-    val rotations = loiterItems(items).flatMap { item ->
+    val rotations = loiterItems(items).filter { it.index == selected }.flatMap { item ->
         loiterRotationArrows(listOf(item)).mapIndexed { vertex, arrow -> handle(arrow.at, HANDLE_KIND_LOITER_ROTATION, item.index, vertex) }
     }
     val radius = loiterItems(items).filter { it.index == selected }.map { item ->

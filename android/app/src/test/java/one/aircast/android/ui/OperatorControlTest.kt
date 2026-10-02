@@ -60,6 +60,15 @@ class OperatorControlTest {
         assertFalse("Change is off until the box differs from what the vehicle reports", takeoverChangeable(station, true))
         assertTrue(takeoverChangeable(station, false))
         assertFalse(takeoverChangeable(controlStation(elsewhere(takeover = true)), false))
+        assertTrue("QGC enables the box while this station holds control", allowTakeoverEditable(station))
+        assertTrue("or while the holder allows a takeover", allowTakeoverEditable(controlStation(elsewhere(takeover = true))))
+        assertFalse(allowTakeoverEditable(controlStation(elsewhere(takeover = false))))
+        assertTrue("QGC enables the box while this station holds control", allowTakeoverEditable(station))
+        assertTrue("or while the holder allows a takeover", allowTakeoverEditable(controlStation(elsewhere(takeover = true))))
+        assertFalse(allowTakeoverEditable(controlStation(elsewhere(takeover = false))))
+        assertTrue("QGC enables the box while this station holds control", allowTakeoverEditable(station))
+        assertTrue("or while the holder allows a takeover", allowTakeoverEditable(controlStation(elsewhere(takeover = true))))
+        assertFalse(allowTakeoverEditable(controlStation(elsewhere(takeover = false))))
     }
 
     @Test

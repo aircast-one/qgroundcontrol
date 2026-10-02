@@ -36,3 +36,27 @@ class CircleModeTest {
         assertEquals(emptyList<TrackPoint>(), shapeVertices(ShapeTarget(fencePath(3), line = false), listOf(fence), emptyList()))
     }
 }
+
+class DragStepTest {
+
+    @Test
+    fun `a drag step dispatched before the drop never lands after it`() {
+        val before = moveGeneration()
+        writeMove(MapHit.Midpoint("", "", 0), 0.0, 0.0, emptyList(), emptyList())
+        assertEquals(true, writeDragStep(before, MapHit.Midpoint("", "", 0), 0.0, 0.0, emptyList(), emptyList(), emptyList(), emptyList()))
+        assertEquals("a current step is written, and a midpoint write reports false", false, writeDragStep(moveGeneration(), MapHit.Midpoint("", "", 0), 0.0, 0.0, emptyList(), emptyList(), emptyList(), emptyList()))
+    }
+}
+
+class LiveCircleTest {
+
+    @Test
+    fun `circle mode follows the shape at that path, not just its index`() {
+        val ring = circleAround(circleRing(TrackPoint(47.0, 8.0), 100.0, 16), 100.0)!!
+        val square = listOf(TrackPoint(47.0, 8.0), TrackPoint(47.001, 8.0), TrackPoint(47.001, 8.001), TrackPoint(47.0, 8.001))
+        val chosen = setOf(fencePath(0))
+        assertEquals(chosen, liveCircles(chosen, listOf(FencePolygon(0, true, ring)), emptyList()))
+        assertEquals("fence 0 was deleted and a square slid into its place", emptySet<String>(), liveCircles(chosen, listOf(FencePolygon(0, true, square)), emptyList()))
+        assertEquals(emptySet<String>(), liveCircles(chosen, emptyList(), emptyList()))
+    }
+}

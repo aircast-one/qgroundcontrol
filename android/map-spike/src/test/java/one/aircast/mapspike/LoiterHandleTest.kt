@@ -15,9 +15,10 @@ class LoiterHandleTest {
     }
 
     @Test
-    fun `only the current loiter gets a radius handle, every loiter gets its arrows`() {
+    fun `only the current loiter can be dragged or flipped, every loiter shows its arrows`() {
         val kinds = { selected: Int? -> loiterHandleFeatures(listOf(waypoint, loiter), selected).map { it.getStringProperty(HANDLE_KIND_PROPERTY) } }
-        assertEquals(listOf(HANDLE_KIND_LOITER_ROTATION, HANDLE_KIND_LOITER_ROTATION), kinds(null))
+        assertEquals("QGCMapCircleVisuals: the arrows' mouse area is visible only while interactive", emptyList<String>(), kinds(null))
+        assertEquals(2, loiterRotationArrows(listOf(waypoint, loiter)).size)
         assertEquals(listOf(HANDLE_KIND_LOITER_ROTATION, HANDLE_KIND_LOITER_ROTATION, HANDLE_KIND_LOITER_RADIUS), kinds(2))
         assertEquals(MapHit.LoiterRadius(2), handleHit(HANDLE_KIND_LOITER_RADIUS, 2, 0))
         assertEquals(MapHit.LoiterRotation(2), handleHit(HANDLE_KIND_LOITER_ROTATION, 2, 1))

@@ -110,6 +110,18 @@ fun shapeVertices(target: ShapeTarget, fences: List<FencePolygon>, surveys: List
         ?: surveys.firstOrNull { surveyPath(it) == target.path }?.area
         ?: emptyList()
 
+private const val CIRCLE_TOLERANCE = 0.01
+
+fun isCircleShape(vertices: List<TrackPoint>): Boolean {
+    val centre = polygonCentre(vertices) ?: return false
+    val radius = circleRadius(vertices) ?: return false
+    return vertices.size == DEFAULT_CIRCLE_SEGMENTS && radius > 0 &&
+        vertices.all { kotlin.math.abs(metresBetween(centre, it) - radius) <= radius * CIRCLE_TOLERANCE }
+}
+
+fun liveCircles(circled: Set<String>, fences: List<FencePolygon>, surveys: List<Survey>): Set<String> =
+    circled.filter { path -> isCircleShape(shapeVertices(ShapeTarget(path, line = false), fences, surveys)) }.toSet()
+
 fun replaceShape(target: ShapeTarget, vertices: List<TrackPoint>): Boolean =
     vertices.size >= target.minimum &&
         // qtpaths: plan.geoFenceController.polygons.0.clear, plan.missionController.visualItems.0.surveyAreaPolygon.clear, plan.missionController.visualItems.0.corridorPolyline.clear

@@ -213,8 +213,12 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
 
     fun guarded(action: () -> Unit) {
         scope.launch {
-            val blocked = withContext(Dispatchers.Default) { saveBlockedReason(freshPlanView()) }
-            if (blocked == null) action() else onResult(blocked)
+            val view = withContext(Dispatchers.Default) { freshPlanView() }
+            val blocked = saveBlockedReason(view)
+            if (blocked == null) action() else {
+                one.aircast.mapspike.PlanFocus.notReady(view)
+                onResult(blocked)
+            }
         }
     }
 
