@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -236,9 +237,9 @@ fun OfflineMapsSection() {
     if (adding) {
         OfflineSetEditor(
             onDismiss = { adding = false },
-            onDownload = { name, mapType, region, minZoom, maxZoom ->
+            onDownload = { name, mapType, region, minZoom, maxZoom, elevation ->
                 scope.launch {
-                    refusal = act(OFFLINE_START, name, mapType, region.west, region.north, region.east, region.south, minZoom, maxZoom)
+                    refusal = act(OFFLINE_START, name, mapType, region.west, region.north, region.east, region.south, minZoom, maxZoom, elevation)
                     if (refusal == null) adding = false
                     polls++
                 }
@@ -325,7 +326,7 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (
 @Composable
 private fun OfflineSetEditor(
     onDismiss: () -> Unit,
-    onDownload: (String, String, OfflineRegion, Int, Int) -> Unit,
+    onDownload: (String, String, OfflineRegion, Int, Int, Boolean) -> Unit,
 ) {
     var mapType by remember { mutableStateOf(currentMapType()) }
     var zooms by remember { mutableStateOf(DEFAULT_MIN_ZOOM.toFloat()..DEFAULT_MAX_ZOOM.toFloat()) }
@@ -335,6 +336,7 @@ private fun OfflineSetEditor(
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var typeMenu by remember { mutableStateOf(false) }
     var showPreview by remember { mutableStateOf(false) }
+    var fetchElevation by remember { mutableStateOf(true) }
     val minZoom = zooms.start.toInt()
     val maxZoom = zooms.endInclusive.toInt()
 
@@ -428,10 +430,14 @@ private fun OfflineSetEditor(
                         InfoLine("Est Size:", it.tileSizeText)
                         if (it.tooMany) Text("Too many tiles", color = MaterialTheme.aircast.alert)
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = fetchElevation, onCheckedChange = { fetchElevation = it })
+                        Text("Fetch elevation data")
+                    }
                     if (nameTaken) Text("Tile set with this name already exists", color = MaterialTheme.aircast.alert)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
-                            onClick = { region?.let { onDownload(chosenName.trim(), mapType, it, minZoom, maxZoom) } },
+                            onClick = { region?.let { onDownload(chosenName.trim(), mapType, it, minZoom, maxZoom, fetchElevation) } },
                             enabled = region != null && estimate != null && !estimate.tooMany && !nameTaken && chosenName.isNotBlank(),
                         ) { Text("Download") }
                         OutlinedButton(onClick = onDismiss) { Text("Cancel") }

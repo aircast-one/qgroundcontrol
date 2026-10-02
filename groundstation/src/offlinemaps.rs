@@ -216,14 +216,17 @@ fn download(set: i64, provider: String, cancel: Arc<AtomicBool>) {
         if batch.is_empty() || cancel.load(Ordering::Relaxed) {
             return true;
         }
-        let fetched: Vec<(String, Option<Vec<u8>>)> = std::thread::scope(|scope| {
+        let fetched: Vec<(String, Option<(String, Vec<u8>)>)> = std::thread::scope(|scope| {
             batch
                 .chunks(batch.len().div_ceil(CONCURRENT_DOWNLOADS))
                 .map(|chunk| {
                     scope.spawn(|| {
                         chunk
                             .iter()
-                            .map(|(hash, x, y, z)| (hash.clone(), crate::maptiles::fetch(&provider, *x, *y, *z, &keys, None, false, &crate::maptiles::fetch_over_http)))
+                            .map(|(hash, x, y, z)| match crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str()) {
+                                true => (hash.clone(), crate::terrainquery::fetched_tile(*x, *y, &crate::terrainquery::fetch_over_http)),
+                                false => (hash.clone(), crate::maptiles::fetch(&provider, *x, *y, *z, &keys, None, false, &crate::maptiles::fetch_over_http).and_then(|image| Some((crate::maptiles::image_format(&image)?.to_string(), image)))),
+                            })
                             .collect::<Vec<_>>()
                     })
                 })
@@ -233,10 +236,7 @@ fn download(set: i64, provider: String, cancel: Arc<AtomicBool>) {
                 .collect()
         });
         fetched.iter().for_each(|(hash, image)| {
-            let stored = image.as_ref().and_then(|image| {
-                let format = crate::maptiles::image_format(image)?;
-                cache.complete(set, &Tile { hash: hash.clone(), format: format.to_string(), image: image.clone(), kind }).ok()
-            });
+            let stored = image.as_ref().and_then(|(format, image)| cache.complete(set, &Tile { hash: hash.clone(), format: format.clone(), image: image.clone(), kind }).ok());
             if stored.is_none() {
                 let _ = cache.mark_error(set, hash);
             }
@@ -273,6 +273,7 @@ pub fn start_download(args: &str) -> Value {
     let provider = argument(&args, 1).and_then(Value::as_str).unwrap_or_default().to_string();
     let region = (|| Some(Region { top_left_lon: float(&args, 2)?, top_left_lat: float(&args, 3)?, bottom_right_lon: float(&args, 4)?, bottom_right_lat: float(&args, 5)? }))();
     let zooms = float(&args, 6).zip(float(&args, 7)).map(|(min, max)| (min as i32, max as i32));
+    let fetch_elevation = argument(&args, 8).and_then(Value::as_bool).unwrap_or(true);
     let (Some(kind), Some(region), Some((min_zoom, max_zoom))) = (provider_hash(&provider), region, zooms) else {
         return json!({ "ok": false, "reason": "offlineMaps.startDownload takes a name, a map type, the region's top-left and bottom-right lon/lat and the zoom range" });
     };
@@ -305,9 +306,34 @@ pub fn start_download(args: &str) -> Value {
         Ok(id) => {
             log::info!("Offline map set \"{name}\" created with {count} tiles of {provider}");
             start(id, &provider);
+            if fetch_elevation && !crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str()) {
+                create_elevation_set(&name, &region);
+            }
             json!({ "ok": true, "result": id })
         }
         Err(reason) => json!({ "ok": false, "reason": reason }),
+    }
+}
+
+fn create_elevation_set(name: &str, region: &Region) {
+    let provider = crate::maptypes::ELEVATION_PROVIDERS[0];
+    let Some(kind) = provider_hash(provider) else { return };
+    let tiles = crate::terrainquery::region_tiles((region.top_left_lat, region.top_left_lon), (region.bottom_right_lat, region.bottom_right_lon));
+    let set = TileSet {
+        id: 0,
+        name: format!("{name} Elevation"),
+        type_str: provider.to_string(),
+        top_left: (region.top_left_lat, region.top_left_lon),
+        bottom_right: (region.bottom_right_lat, region.bottom_right_lon),
+        min_zoom: 1,
+        max_zoom: 1,
+        kind,
+        tiles: tiles.len() as i64,
+        default_set: false,
+    };
+    match open_cache().and_then(|cache| cache.create_set(&set, &tiles).map_err(|error| error.to_string())) {
+        Ok(id) => start(id, provider),
+        Err(reason) => log::warn!("Offline elevation set for \"{name}\" was not created: {reason}"),
     }
 }
 

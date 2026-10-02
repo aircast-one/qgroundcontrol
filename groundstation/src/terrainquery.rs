@@ -26,6 +26,16 @@ pub fn url(x: i32, y: i32) -> String {
     format!("{PROVIDER_URL}/api/v1/carpet?points={},{},{},{}", corner(y, 90.0), corner(x, 180.0), corner(y + 1, 90.0), corner(x + 1, 180.0))
 }
 
+pub fn region_tiles(top_left: (f64, f64), bottom_right: (f64, f64)) -> Vec<(i32, i32, i32)> {
+    let (x0, y1) = tile_xy(top_left.0, top_left.1);
+    let (x1, y0) = tile_xy(bottom_right.0, bottom_right.1);
+    (x0.min(x1)..=x0.max(x1)).flat_map(|x| (y0.min(y1)..=y0.max(y1)).map(move |y| (x, y, TERRAIN_ZOOM))).collect()
+}
+
+pub fn fetched_tile(x: i32, y: i32, fetch: &dyn Fn(&str) -> Result<String, String>) -> Option<(String, Vec<u8>)> {
+    terraintile::serialize(&fetch(&url(x, y)).ok()?).ok().map(|bytes| (TILE_FORMAT.to_string(), bytes))
+}
+
 pub fn tile_hash(x: i32, y: i32) -> Option<String> {
     tilecache::provider_hash(PROVIDER).map(|provider| tilecache::tile_hash(provider, x, y, TERRAIN_ZOOM))
 }
@@ -62,6 +72,16 @@ pub fn fetch_over_http(url: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_offline_elevation_set_lists_the_tiles_terrain_queries_read() {
+        let tiles = region_tiles((47.405, 8.50), (47.395, 8.52));
+        assert_eq!(tiles.len(), 2 * 3, "0.01 degree tiles over the box, as the Copernicus provider cuts them");
+        let (x, y, z) = tiles[0];
+        let kind = tilecache::provider_hash(PROVIDER).unwrap();
+        assert_eq!(Some(tilecache::tile_hash(kind, x, y, z)), tile_hash(x, y), "a tile the offline download stores is the one height lookups find in the cache");
+        assert!(tiles.contains(&(tile_xy(47.40, 8.51).0, tile_xy(47.40, 8.51).1, TERRAIN_ZOOM)));
+    }
 
     fn serving<'a>(body: &'static str, asked: &'a std::cell::RefCell<Vec<String>>) -> impl Fn(&str) -> Result<String, String> + 'a {
         move |url: &str| {
