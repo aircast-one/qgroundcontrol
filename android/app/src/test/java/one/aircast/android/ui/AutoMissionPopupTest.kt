@@ -17,6 +17,13 @@ class AutoMissionPopupTest {
     }
 
     @Test
+    fun `land abort pops up on a fixed-wing approach even with mission popups off`() {
+        val approach = mapOf("landAbort" to offer("landAbort", "ready"))
+        assertEquals("GuidedActionsController's onShowLandAbortChanged confirms it whatever enableAutomaticMissionPopups says", "landAbort", autoMissionPopup(emptySet(), approach, enabled = false)?.id)
+        assertNull(autoMissionPopup(setOf("landAbort"), approach, enabled = false))
+    }
+
+    @Test
     fun `continue mission pops up too`() {
         assertEquals("continueMission", autoMissionPopup(emptySet(), mapOf("continueMission" to offer("continueMission", "ready")), enabled = true)?.id)
     }
