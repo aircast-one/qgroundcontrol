@@ -41,7 +41,7 @@ enum class AnalyzePage(
     ),
     GeoTag(
         "Geotag images",
-        "Match photographs to where the vehicle was when it took them",
+        "Match photos to the flight log",
         AnalyzeSection.FlightData,
         R.drawable.ic_photo_camera,
     ),
@@ -59,7 +59,7 @@ enum class AnalyzePage(
     ),
     Console(
         "Console",
-        "Shell over the vehicle link",
+        "Vehicle shell over MAVLink",
         AnalyzeSection.Live,
         R.drawable.ic_terminal,
     ),
