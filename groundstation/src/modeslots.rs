@@ -169,23 +169,30 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
         _ => (0..CHANNEL_OPTIONS).map(|index| json!({ "channel": index + 6, "enabled": option_enabled(pwm.get(index + 5).copied()) })).collect(),
     };
 
-    let active_switches: Vec<String> = match channel_name {
+    let raised: Vec<&str> = match channel_name {
         "RC_MAP_FLTMODE" => PX4_SWITCHES
             .iter()
             .filter(|(switch, _)| exists(backend, switch))
-            .filter_map(|(switch, threshold)| {
-                let channel = parameter(backend, switch)? as i64 - 1;
+            .filter(|(switch, threshold)| {
                 let th = (!threshold.is_empty()).then(|| parameter(backend, threshold)).flatten().unwrap_or(DEFAULT_SWITCH_THRESHOLD);
-                let pwm_at = usize::try_from(channel).ok().and_then(|i| pwm.get(i).copied());
-                switch_active(pwm_at, th).then(|| switch_label(backend, switch))
+                let pwm_at = parameter(backend, switch).and_then(|ch| usize::try_from(ch as i64 - 1).ok()).and_then(|i| pwm.get(i).copied());
+                switch_active(pwm_at, th)
             })
+            .map(|(switch, _)| *switch)
             .collect(),
         _ => Vec::new(),
     };
+    let active_switches: Vec<String> = raised.iter().map(|switch| switch_label(backend, switch)).collect();
+    let switch_params: Vec<String> = match channel_name {
+        "RC_MAP_FLTMODE" => raised.iter().map(|switch| switch.to_string()).collect(),
+        _ => (0..CHANNEL_OPTIONS).filter(|index| option_enabled(pwm.get(index + 5).copied())).map(|index| format!("RC{}_OPTION", index + 6)).collect(),
+    };
+    let active_params: Vec<String> = (live > 0).then(|| format!("{slot_prefix}{live}")).into_iter().chain(switch_params).collect();
     json!({
         "kind": "object",
         "class": "ModeSlots",
         "available": true,
+        "activeParams": active_params,
         "activeSwitches": active_switches,
         "channelMonitor": channel_name == "RC_MAP_FLTMODE",
         "channel": channel_index + 1,
@@ -313,6 +320,16 @@ mod tests {
         assert_eq!(slots.iter().filter(|slot| slot["live"] == true).count(), 1, "exactly one slot is live, which is the whole question the screen exists to answer");
         assert_eq!(slots[3]["live"], true);
         assert_eq!(slots[3]["mode"], "Mode 4");
+    }
+
+    #[test]
+    fn the_rows_to_highlight_are_the_live_slot_and_the_raised_option_channels() {
+        let mut pwm = channels(1500, 4);
+        pwm[6] = 1900;
+        let view = slots_view(&copter(5.0, pwm), &[]);
+        assert_eq!(view["activeParams"], json!(["FLTMODE4", "RC7_OPTION"]), "APMFlightModesComponent paints the active slot and each enabled channel option yellow");
+        let off = slots_view(&copter(12.0, channels(1500, 4)), &[]);
+        assert_eq!(off["activeParams"], json!([]));
     }
 
     #[test]

@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import one.aircast.mapspike.aircast
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.fillMaxSize
 import one.aircast.android.bridge.FactSlider
 import kotlinx.coroutines.launch
@@ -131,6 +133,7 @@ internal fun readPage(page: String): List<ParameterRows> {
 internal fun ParameterForm(
     page: String,
     modifier: Modifier = Modifier,
+    highlighted: Set<String> = emptySet(),
 ) {
     var rows by remember { mutableStateOf(emptyList<ParameterRows>()) }
     var loaded by remember { mutableStateOf(false) }
@@ -184,7 +187,7 @@ internal fun ParameterForm(
                     } else if (fact.slider != null) {
                         FactSliderRow(fact, fact.slider) { reloads++ }
                     } else {
-                        FactRow(fact) { reloads++ }
+                        FactRow(fact, titleColor = if (fact.name in highlighted) MaterialTheme.aircast.warning else Color.Unspecified) { reloads++ }
                         section.calculators[fact.path]?.let { calculator ->
                             TextButton(onClick = { calculating = calculator }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Calculate") }
                         }

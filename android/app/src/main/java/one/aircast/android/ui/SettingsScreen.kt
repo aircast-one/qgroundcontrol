@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FilterChip
 
 import androidx.compose.foundation.background
@@ -459,6 +460,7 @@ internal fun FactRow(
     fact: Fact,
     title: String = fact.title,
     subtitle: String = factSubtitle(fact),
+    titleColor: Color = Color.Unspecified,
     onWrite: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
@@ -488,6 +490,7 @@ internal fun FactRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
+                color = titleColor,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )

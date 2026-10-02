@@ -57,4 +57,11 @@ class ModeSlotsTest {
         assertEquals(true, modeSlotsView(org.json.JSONObject("""{"available":true,"channel":5,"slots":[],"channelMonitor":true}"""))?.channelMonitor)
         assertEquals(false, modeSlotsView(org.json.JSONObject("""{"available":true,"channel":5,"slots":[]}"""))?.channelMonitor)
     }
+
+    @Test
+    fun `the rows to paint are the ones the core names`() {
+        val view = modeSlotsView(org.json.JSONObject("""{"available":true,"activeParams":["FLTMODE4","RC7_OPTION"]}"""))!!
+        assertEquals(setOf("FLTMODE4", "RC7_OPTION"), view.activeParams)
+        assertEquals(emptySet<String>(), modeSlotsView(org.json.JSONObject("""{"available":true}"""))!!.activeParams)
+    }
 }

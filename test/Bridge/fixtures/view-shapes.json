@@ -9032,6 +9032,7 @@
         "view.missionSummary.rows[].label",
         "view.missionSummary.rows[].value",
         "view.missionSummary.timeSeconds",
+        "view.modeSlots.activeParams.#",
         "view.modeSlots.activeSwitches.#",
         "view.modeSlots.available",
         "view.modeSlots.channel",
@@ -13312,6 +13313,9 @@
         "timeSeconds": "number"
     },
     "view.modeSlots": {
+        "activeParams": [
+            "empty"
+        ],
         "activeSwitches": [
             "empty"
         ],

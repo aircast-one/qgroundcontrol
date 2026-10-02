@@ -34,7 +34,7 @@ fun FlightModesSetup(modifier: Modifier = Modifier) {
                 )
             }
         }
-        ParameterForm(FLIGHT_MODES_PAGE, Modifier.fillMaxWidth())
+        ParameterForm(FLIGHT_MODES_PAGE, Modifier.fillMaxWidth(), highlighted = slots?.activeParams.orEmpty())
         if (slots?.channelMonitor == true) ChannelMonitor()
     }
 }
