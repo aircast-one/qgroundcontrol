@@ -612,7 +612,6 @@ mod tests {
         assert_eq!(crate::debugapi::AUTOPILOT_ARDUPILOTMEGA, MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA as i64, "same value as modes::AUTOPILOT_ARDUPILOT under a different name, so the duplicate-name check cannot see it");
         assert_eq!(crate::debugapi::AUTOPILOT_PX4, MavAutopilot::MAV_AUTOPILOT_PX4 as i64);
         assert_eq!(crate::debugapi::VEHICLE_TYPE_QUADROTOR, MavType::MAV_TYPE_QUADROTOR as i64);
-        assert_eq!(crate::metacache::PX4_FIRMWARE, MavAutopilot::MAV_AUTOPILOT_PX4 as u8, "a third copy of the PX4 autopilot number, named for what it is used for rather than what it is");
     }
 
 }

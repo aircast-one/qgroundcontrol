@@ -39,7 +39,7 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
                 false => Some(("notAnOption", format!("Choose one of: {}.", offered.iter().filter_map(|o| o["label"].as_str()).collect::<Vec<_>>().join(", ")))),
             }
         }
-        "text" => match (asked.as_str(), fact["maxStringLength"].as_u64()) {
+        "text" => match (asked.as_str(), fact["maxStringLength"].as_u64().filter(|longest| *longest > 0)) {
             (None, _) => Some(("notText", "This setting is text.".to_string())),
             (Some(text), Some(longest)) if text.chars().count() as u64 > longest => Some(("tooLong", format!("Value must be {longest} characters or less"))),
             _ => None,

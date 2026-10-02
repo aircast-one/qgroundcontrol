@@ -383,6 +383,7 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("typeIsBool"),
         QStringLiteral("typeIsInteger"),
         QStringLiteral("typeIsString"),
+        QStringLiteral("maxStringLength"),
         QStringLiteral("min"),
         QStringLiteral("max"),
         QStringLiteral("minString"),

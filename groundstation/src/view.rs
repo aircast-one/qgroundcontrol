@@ -651,7 +651,6 @@ mod deps_cover_reads {
             ("mavcmd", include_str!("mavcmd.rs")),
             ("mavout", include_str!("mavout.rs")),
             ("messages", include_str!("messages.rs")),
-            ("metacache", include_str!("metacache.rs")),
             ("mission", include_str!("mission.rs")),
             ("missionitems", include_str!("missionitems.rs")),
             ("missionkinds", include_str!("missionkinds.rs")),

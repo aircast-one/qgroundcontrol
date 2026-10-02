@@ -316,7 +316,7 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
         "typeIsBool": meta.value_type == ValueType::Bool,
         "typeIsInteger": whole,
         "typeIsString": meta.value_type == ValueType::String,
-        "maxStringLength": meta.max_string_length,
+        "maxStringLength": meta.max_string_length.unwrap_or(0),
         "readOnly": meta.read_only,
         "qgcRebootRequired": meta.qgc_reboot_required,
         "vehicleRebootRequired": meta.vehicle_reboot_required,
