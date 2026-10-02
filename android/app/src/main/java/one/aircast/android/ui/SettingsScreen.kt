@@ -693,7 +693,7 @@ internal fun FactRow(
 }
 
 internal const val SEGMENT_LABEL_BUDGET = 28
-internal const val PAIRED_LABEL_BUDGET = 20
+internal const val PAIRED_LABEL_BUDGET = 24
 internal const val FIELD_LABEL_BUDGET = 40
 internal const val PAIRED_OPTION_BUDGET = 16
 internal const val PAIRED_UNITS_BUDGET = 6
