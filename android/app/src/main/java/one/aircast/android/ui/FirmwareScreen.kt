@@ -39,6 +39,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.qgcBool
 import one.aircast.mapspike.optText
 import org.json.JSONObject
 import java.io.File
@@ -102,6 +104,10 @@ internal val FIRMWARE_SOURCES: List<Pair<String, String>> =
         }
 
 internal const val DEFAULT_FIRMWARE_SOURCE = "px4:stable"
+internal const val APM_FIRMWARE = "vehicle.apmFirmware"
+internal const val FLASH_BOOTLOADER = "vehicle.flashBootloader"
+
+internal fun bootloaderOffered(advanced: Boolean, apmVehicle: Boolean): Boolean = advanced && apmVehicle
 
 internal fun firmwareSources(advanced: Boolean): List<Pair<String, String>> =
     if (advanced) FIRMWARE_SOURCES else FIRMWARE_SOURCES.filter { it.first.endsWith(":stable") }
@@ -132,6 +138,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
     var port by remember { mutableStateOf("") }
     var file by remember { mutableStateOf<File?>(null) }
     var advanced by remember { mutableStateOf(false) }
+    val apmVehicle by qgcBool(APM_FIRMWARE)
     var source by remember { mutableStateOf(DEFAULT_FIRMWARE_SOURCE) }
     var sourceMenu by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf("") }
@@ -208,6 +215,9 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                         source = sourceAfterAdvanced(source, it)
                     })
                     Text("Advanced settings", style = MaterialTheme.typography.bodyMedium)
+                }
+                if (bootloaderOffered(advanced, apmVehicle)) {
+                    OutlinedButton(enabled = !busy, onClick = { offMainDetached { Qgc.invoke(FLASH_BOOTLOADER) } }) { Text("Flash ChibiOS Bootloader") }
                 }
                 if (source == FIRMWARE_FROM_FILE) {
                     Text(file?.name?.removePrefix("firmware-") ?: "No firmware file chosen", style = MaterialTheme.typography.bodyMedium)

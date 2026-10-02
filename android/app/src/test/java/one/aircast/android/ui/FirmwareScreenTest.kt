@@ -55,4 +55,11 @@ class FirmwareScreenTest {
         assertEquals(DEFAULT_FIRMWARE_SOURCE, sourceAfterAdvanced(FIRMWARE_FROM_FILE, advanced = false))
         assertEquals("px4:beta", sourceAfterAdvanced("px4:beta", advanced = true))
     }
+
+    @Test
+    fun `the bootloader button needs advanced settings and an ArduPilot vehicle`() {
+        assertTrue(bootloaderOffered(advanced = true, apmVehicle = true))
+        assertFalse(bootloaderOffered(advanced = false, apmVehicle = true))
+        assertFalse(bootloaderOffered(advanced = true, apmVehicle = false))
+    }
 }
