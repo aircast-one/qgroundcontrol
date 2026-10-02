@@ -47,5 +47,9 @@ internal fun appDarkTheme(): Boolean {
         }
         store.edit().putBoolean(PALETTE_DEFAULTED, true).apply()
     }
-    return paletteIsDark(value, isSystemInDarkTheme())
+    val pending = control != null && shouldDefaultToDark(
+        control?.optBoolean("changedFromDefault") ?: false,
+        context.getSharedPreferences(PALETTE_STORE, Context.MODE_PRIVATE).getBoolean(PALETTE_DEFAULTED, false),
+    )
+    return paletteIsDark(if (pending) PALETTE_INDOOR else value, isSystemInDarkTheme())
 }
