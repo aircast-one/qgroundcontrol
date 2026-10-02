@@ -709,11 +709,19 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
 
 @Composable
 private fun EnumField(fact: Fact, label: String?, write: (() -> Boolean) -> Unit) {
+    ChoiceField(label, enumLabel(fact), fact.enumStrings) { index ->
+        // qtpaths: settings.appSettings.indoorPalette.enumIndex, vehicle.parameterManager.getParameter(-1,RTL_TYPE).enumIndex
+        write { Qgc.set("${fact.path}.enumIndex", index) }
+    }
+}
+
+@Composable
+internal fun ChoiceField(label: String?, value: String, options: List<String>, modifier: Modifier = Modifier, onPick: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
 
-    Box {
+    Box(modifier) {
         OutlinedTextField(
-            value = enumLabel(fact),
+            value = value,
             onValueChange = {},
             readOnly = true,
             singleLine = true,
@@ -723,13 +731,12 @@ private fun EnumField(fact: Fact, label: String?, write: (() -> Boolean) -> Unit
         )
         Box(Modifier.matchParentSize().clickable { expanded = true })
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            fact.enumStrings.forEachIndexed { index, option ->
+            options.forEachIndexed { index, option ->
                 DropdownMenuItem(
                     text = { Text(option) },
                     onClick = {
                         expanded = false
-                        // qtpaths: settings.appSettings.indoorPalette.enumIndex, vehicle.parameterManager.getParameter(-1,RTL_TYPE).enumIndex
-                        write { Qgc.set("${fact.path}.enumIndex", index) }
+                        onPick(index)
                     },
                 )
             }
