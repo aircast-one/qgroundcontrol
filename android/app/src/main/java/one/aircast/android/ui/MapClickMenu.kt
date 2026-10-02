@@ -168,7 +168,7 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
                 }
                 actions.forEach { action ->
                     ListItem(
-                        headlineContent = { Text(action.label) },
+                        headlineContent = { Text(sentenceCase(action.label)) },
                         modifier = Modifier.clickable {
                             refusal = null
                             if (action.confirm) confirming = action else run(action)
