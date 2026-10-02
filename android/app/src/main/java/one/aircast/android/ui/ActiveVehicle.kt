@@ -25,7 +25,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
@@ -326,8 +329,13 @@ internal fun fleetIsDestructive(action: MvAction): Boolean = action.id != "mvPau
 @Composable
 private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> Unit) {
     val holder = station ?: return
+    if (holder.inControl == true) {
+        InControlNote(holder, onRefusal)
+        return
+    }
     val line = controlLine(holder) ?: return
     val scope = rememberCoroutineScope()
+    var requestEndsAt by remember(holder.holderSystemId) { mutableStateOf<Long?>(null) }
     Text(
         text = line,
         style = MaterialTheme.typography.bodyMedium,
@@ -338,7 +346,16 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
     )
     var asked by remember(holder.holderSystemId) { mutableStateOf<String?>(null) }
-    controlWaitLine(holder)?.let { waiting ->
+    takeoverLine(holder)?.let { takeover ->
+        Text(
+            text = takeover,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+    }
+    requestEndsAt?.let { endsAt -> RequestCountdown(endsAt) { requestEndsAt = null } }
+    controlWaitLine(holder)?.takeIf { requestEndsAt == null }?.let { waiting ->
         Text(
             text = waiting,
             style = MaterialTheme.typography.bodySmall,
@@ -351,9 +368,10 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
             null -> TextButton(
                 onClick = {
                     scope.launch {
-                        val refused = withContext(Dispatchers.Default) { askForControl(holder) }
-                        onRefusal(refused)
-                        asked = if (refused == null) label else null
+                        val ask = withContext(Dispatchers.Default) { askForControl(holder) }
+                        onRefusal(ask.refusal)
+                        asked = if (ask.refusal == null) label else null
+                        requestEndsAt = if (ask.refusal == null && ask.timeoutSeconds > 0) System.currentTimeMillis() + ask.timeoutSeconds * 1000L else null
                     }
                 },
                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -365,6 +383,64 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
             )
         }
     }
+}
+
+@Composable
+private fun RequestCountdown(endsAt: Long, onDone: () -> Unit) {
+    var now by remember(endsAt) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(endsAt) {
+        while (now < endsAt) {
+            delay(COUNTDOWN_TICK_MS)
+            now = System.currentTimeMillis()
+        }
+        onDone()
+    }
+    Text(
+        text = requestSentLabel(endsAt - now),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+    )
+}
+
+private const val COUNTDOWN_TICK_MS = 100L
+
+@Composable
+private fun InControlNote(holder: ControlStation, onRefusal: (String?) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var allow by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(holder.takeoverAllowed) { allow = withContext(Dispatchers.Default) { allowTakeoverSetting() } }
+    inControlLine(holder)?.let { line ->
+        Text(
+            text = line,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+    }
+    takeoverLine(holder)?.let { takeover ->
+        Text(
+            text = takeover,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+    ) {
+        Text("Allow takeover", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Checkbox(checked = allow == true, enabled = allow != null, onCheckedChange = { allow = it })
+    }
+    TextButton(
+        enabled = takeoverChangeable(holder, allow),
+        onClick = {
+            val wanted = allow ?: return@TextButton
+            scope.launch { onRefusal(withContext(Dispatchers.Default) { changeTakeover(wanted) }) }
+        },
+        modifier = Modifier.padding(horizontal = 16.dp),
+    ) { Text("Change") }
 }
 
 internal const val MULTI_VEHICLE_PANEL = "settings.appSettings.enableMultiVehiclePanel.rawValue"

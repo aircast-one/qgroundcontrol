@@ -50,11 +50,25 @@ class OperatorControlTest {
     }
 
     @Test
-    fun `holding control says nothing at all`() {
+    fun `holding control offers no request, only the takeover condition`() {
         val station = controlStation(ours)!!
         assertFalse(controlIsElsewhere(station))
         assertNull(controlLine(station))
         assertNull(acquireLabel(station))
+        assertEquals("System in control: This GCS (255)", inControlLine(station))
+        assertEquals("Takeover allowed", takeoverLine(station))
+        assertFalse("Change is off until the box differs from what the vehicle reports", takeoverChangeable(station, true))
+        assertTrue(takeoverChangeable(station, false))
+        assertFalse(takeoverChangeable(controlStation(elsewhere(takeover = true)), false))
+    }
+
+    @Test
+    fun `the takeover condition shows whoever holds control, and the request counts down`() {
+        assertEquals("Takeover NOT allowed", takeoverLine(controlStation(elsewhere(takeover = false))))
+        assertNull(takeoverLine(controlStation(silent)))
+        assertNull(inControlLine(controlStation(elsewhere(takeover = true))))
+        assertEquals("Request sent: 9.5", requestSentLabel(9_500))
+        assertEquals("Request sent: 0.0", requestSentLabel(-20))
     }
 
     @Test
