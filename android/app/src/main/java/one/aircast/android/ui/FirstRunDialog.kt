@@ -6,6 +6,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -59,6 +61,8 @@ internal fun firstRun(view: JSONObject?): FirstRun? =
         )
     }
 
+private val FIRST_RUN_WIDTH = 560.dp
+
 internal const val WELCOME_NOTE = "Two questions so numbers and controls match your drone."
 
 @Composable
@@ -70,7 +74,7 @@ fun FirstRunDialog() {
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
             Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 48.dp),
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).wrapContentWidth().widthIn(max = FIRST_RUN_WIDTH).padding(horizontal = 8.dp, vertical = 48.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
