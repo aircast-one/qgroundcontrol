@@ -150,6 +150,7 @@ pub struct Transfer {
     writing: Vec<Item>,
     pub items: Vec<Item>,
     pub wrote: bool,
+    pub removed_all: bool,
 }
 
 fn result_text(result: u8) -> String {
@@ -219,6 +220,7 @@ impl Transfer {
         self.expect = None;
         let transaction = self.transaction.take();
         self.wrote = success && transaction == Some(Transaction::Write);
+        self.removed_all = transaction == Some(Transaction::RemoveAll);
         match (transaction, success) {
             (Some(Transaction::Read), false) => self.items.clear(),
             (Some(Transaction::Write), true) => self.items = std::mem::take(&mut self.writing),
@@ -437,7 +439,7 @@ mod tests {
         assert!(transfer.remove_all().is_empty(), "one transaction at a time");
         assert_eq!(transfer.on_timeout()[0], Out::ClearAll, "a lost ack is retried");
         assert!(matches!(transfer.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: true, .. })));
-        assert!(!transfer.in_progress() && !transfer.wrote);
+        assert!(!transfer.in_progress() && !transfer.wrote && transfer.removed_all, "Vehicle clears the trail on sendComplete and newMissionItemsAvailable, never on removeAllComplete");
         let mut refused = Transfer::new(true, PLAN_FENCE);
         refused.remove_all();
         assert!(matches!(refused.on_ack(1).last(), Some(Out::Done { success: false, error }) if error == "Vehicle remove all failed. Error: Unspecified error."));

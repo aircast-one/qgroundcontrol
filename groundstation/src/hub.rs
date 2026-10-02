@@ -100,6 +100,15 @@ const FENCE_BREACH_MAXALT: u8 = 2;
 const FENCE_BREACH_BOUNDARY: u8 = 3;
 const FENCE_SPEECH_GAP_MS: u64 = 3000;
 const COMMAND_ACK_ID: u32 = 77;
+const MISSION_ITEM_INT_ID: u32 = 73;
+const MISSION_ACK_ID: u32 = 47;
+const MISSION_ITEM_INT_LEN: usize = 38;
+
+#[allow(clippy::too_many_arguments)]
+fn transfer_item(seq: u16, frame: u8, command: u16, current: bool, auto_continue: bool, params: [f32; 4], x: i32, y: i32, z: f32) -> plantransfer::Item {
+    let scale = |v: i32| if frame == plantransfer::FRAME_MISSION { v as f64 } else { v as f64 * 1e-7 };
+    plantransfer::Item { seq, frame, command, current, auto_continue, params: [params[0] as f64, params[1] as f64, params[2] as f64, params[3] as f64, scale(x), scale(y), z as f64] }
+}
 const COMMAND_LONG_ID: u32 = 76;
 const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
 const LINK_SILENT_MS: u64 = 3500;
@@ -732,6 +741,25 @@ impl Vehicle {
         }
     }
 
+    fn undecoded_plan_message(&mut self, msgid: u32, payload: &[u8], now_ms: u64) -> Vec<Vec<u8>> {
+        let wire = payload.iter().copied().chain(std::iter::repeat(0)).take(MISSION_ITEM_INT_LEN).collect::<Vec<u8>>();
+        let f32_at = |at: usize| f32::from_le_bytes([wire[at], wire[at + 1], wire[at + 2], wire[at + 3]]);
+        let i32_at = |at: usize| i32::from_le_bytes([wire[at], wire[at + 1], wire[at + 2], wire[at + 3]]);
+        let u16_at = |at: usize| u16::from_le_bytes([wire[at], wire[at + 1]]);
+        match msgid {
+            MISSION_ITEM_INT_ID if mavout::for_us(wire[32]) && wire[37] < 3 => {
+                let item = transfer_item(u16_at(28), wire[34], u16_at(30), wire[35] != 0, wire[36] != 0, [f32_at(0), f32_at(4), f32_at(8), f32_at(12)], i32_at(16), i32_at(20), f32_at(24));
+                let outs = self.plans[wire[37] as usize].transfer.on_item(item);
+                self.follow_plan(wire[37], outs, now_ms)
+            }
+            MISSION_ACK_ID if mavout::for_us(wire[0]) && wire[3] < 3 => {
+                let outs = self.plans[wire[3] as usize].transfer.on_ack(wire[2]);
+                self.follow_plan(wire[3], outs, now_ms)
+            }
+            _ => Vec::new(),
+        }
+    }
+
     fn follow_plan(&mut self, kind: u8, outs: Vec<plantransfer::Out>, now_ms: u64) -> Vec<Vec<u8>> {
         let target = (self.id, self.component);
         let plan = kind as usize;
@@ -764,7 +792,7 @@ impl Vehicle {
                     if kind == plantransfer::PLAN_MISSION && self.plans[plan].transfer.wrote {
                         self.resume_failed = self.resume_upload.take().filter(|_| !success);
                     }
-                    if kind == plantransfer::PLAN_MISSION {
+                    if kind == plantransfer::PLAN_MISSION && !self.plans[plan].transfer.removed_all {
                         self.clear_trigger_points();
                         crate::track::clear(i64::from(self.id));
                         if self.plans[plan].transfer.wrote {
@@ -3036,11 +3064,9 @@ impl Vehicle {
                 return self.follow_plan(kind, outs, now_ms);
             }
             MavMessage::MISSION_ITEM_INT(m) if mavout::for_us(m.target_system) && (m.mission_type as u8) < 3 => {
-                let kind = m.mission_type as u8;
-                let scale = |v: i32| if m.frame as u8 == plantransfer::FRAME_MISSION { v as f64 } else { v as f64 * 1e-7 };
-                let item = plantransfer::Item { seq: m.seq, frame: m.frame as u8, command: m.command as u32 as u16, current: m.current != 0, auto_continue: m.autocontinue != 0, params: [m.param1 as f64, m.param2 as f64, m.param3 as f64, m.param4 as f64, scale(m.x), scale(m.y), m.z as f64] };
-                let outs = self.plans[kind as usize].transfer.on_item(item);
-                return self.follow_plan(kind, outs, now_ms);
+                let item = transfer_item(m.seq, m.frame as u8, m.command as u32 as u16, m.current != 0, m.autocontinue != 0, [m.param1, m.param2, m.param3, m.param4], m.x, m.y, m.z);
+                let outs = self.plans[m.mission_type as usize].transfer.on_item(item);
+                return self.follow_plan(m.mission_type as u8, outs, now_ms);
             }
             MavMessage::MISSION_REQUEST_INT(m) if mavout::for_us(m.target_system) && (m.mission_type as u8) < 3 => {
                 let kind = m.mission_type as u8;
@@ -3945,9 +3971,11 @@ impl Hub {
         self.listed.as_ref().unwrap_or(&self.arrival).get(index).and_then(|id| self.vehicles.get(id))
     }
 
-    pub fn on_extra(&mut self, header: &MavHeader, msgid: u32, payload: &[u8]) {
-        let Some(vehicle) = self.vehicles.get_mut(&header.system_id) else { return };
+    pub fn on_extra(&mut self, header: &MavHeader, msgid: u32, payload: &[u8]) -> Vec<(LinkId, Vec<u8>)> {
+        let Some(vehicle) = self.vehicles.get_mut(&header.system_id) else { return Vec::new() };
+        let link = vehicle.link;
         match (msgid, payload.first(), payload.get(1)) {
+            (MISSION_ITEM_INT_ID | MISSION_ACK_ID, _, _) => return vehicle.undecoded_plan_message(msgid, payload, now_ms()).into_iter().filter(|_| !vehicle.replay).map(|bytes| (link, bytes)).collect(),
             (crate::operatorcontrol::CONTROL_STATUS, Some(flags), Some(main)) => vehicle.control.on_status(*flags, *main),
             (crate::gpsfacts::GNSS_INTEGRITY, _, _) => {
                 let (receiver, integrity) = crate::gpsfacts::integrity_of(payload);
@@ -3980,6 +4008,7 @@ impl Hub {
             }
             _ => {}
         }
+        Vec::new()
     }
 
     pub fn any_pending_parameter_writes(&self) -> bool {
@@ -4922,6 +4951,27 @@ mod tests {
     fn param_value(name: &str, count: u16, index: u16, value: f32) -> MavMessage {
         use mavlink::dialects::ardupilotmega::{MavParamType, PARAM_VALUE_DATA};
         MavMessage::PARAM_VALUE(PARAM_VALUE_DATA { param_value: value, param_count: count, param_index: index, param_id: mavout::param_id(name), param_type: MavParamType::MAV_PARAM_TYPE_REAL32 })
+    }
+
+    #[test]
+    fn a_mission_item_with_a_command_outside_the_dialect_still_downloads_as_plan_manager_decodes_it_raw() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &autopilot, &copter_heartbeat(5, false), 1_000_000, 1_000);
+        hub.mission_request(None, &json!({ "action": "load" }), 1_100).unwrap();
+        hub.on_frame(origin(4), &autopilot, &mission_count(1), 1_200_000, 1_200);
+        let MavMessage::MISSION_ITEM_INT(known) = mission_item(0, 47.4) else { unreachable!() };
+        let mut payload = vec![0u8; MISSION_ITEM_INT_LEN];
+        payload[0..4].copy_from_slice(&2.5f32.to_le_bytes());
+        payload[16..20].copy_from_slice(&known.x.to_le_bytes());
+        payload[20..24].copy_from_slice(&known.y.to_le_bytes());
+        payload[24..28].copy_from_slice(&known.z.to_le_bytes());
+        payload[30..32].copy_from_slice(&31999u16.to_le_bytes());
+        (payload[32], payload[33], payload[34], payload[36]) = (255, 190, 6, 1);
+        let acked = hub.on_extra(&autopilot, MISSION_ITEM_INT_ID, &payload[..37]);
+        assert!(matches!(decode(&acked[0].1), MavMessage::MISSION_ACK(a) if a.mavtype as u8 == 0), "a truncated v2 payload is zero-padded and the read completes");
+        let item = hub.active().unwrap().mission_snapshot()["mission"]["items"][0].clone();
+        assert_eq!((item["command"].as_u64(), item["params"][0].as_f64(), item["params"][4].as_f64(), item["frame"].as_u64()), (Some(31999), Some(2.5), Some(47.4), Some(3)), "the _INT frame is stored as its float twin");
     }
 
     #[test]
