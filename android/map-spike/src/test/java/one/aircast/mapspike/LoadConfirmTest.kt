@@ -28,4 +28,10 @@ class LoadConfirmTest {
     fun `an empty plan downloads without confirming`() {
         assertEquals(LoadStep.Load, loadStep(dirty = true, containsItems = false, armed = false))
     }
+
+    @Test
+    fun `the replace warning counts the plan that would be lost`() {
+        org.junit.Assert.assertEquals("Your unsaved plan here (6 items) will be replaced.", replaceWarning(6))
+        org.junit.Assert.assertEquals("Your unsaved plan here (1 item) will be replaced.", replaceWarning(1))
+    }
 }

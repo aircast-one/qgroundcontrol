@@ -400,13 +400,6 @@ internal fun MapSpikeScreen(
         }
     }
 
-    LaunchedEffect(loadArmed) {
-        if (loadArmed) {
-            delay(CONFIRM_TIMEOUT_MS)
-            loadArmed = false
-        }
-    }
-
     LaunchedEffect(clearArmed) {
         if (clearArmed) {
             delay(CONFIRM_TIMEOUT_MS)
@@ -687,6 +680,19 @@ internal fun MapSpikeScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
+                    fun download() {
+                        loadArmed = false
+                        busy = "Downloading from vehicle"
+                        selected = null
+                        scope.launch {
+                            val outcome = withContext(Dispatchers.Default) {
+                                uploadOutcome(PlanBridge.loadFromVehicle())
+                            }
+                            busy = downloadMessage(outcome)
+                            delay(FAILURE_MESSAGE_MS)
+                            busy = null
+                        }
+                    }
                     FilledTonalButton(onClick = {
                         val refusal = syncRefusal(
                             vehicleSyncState(planOffline, planSyncing), "download from",
@@ -694,21 +700,18 @@ internal fun MapSpikeScreen(
                         when {
                             refusal != null -> say(refusal)
                             loadStep(planDirty, planHasItems, loadArmed) == LoadStep.Confirm -> loadArmed = true
-                            else -> {
-                                loadArmed = false
-                                busy = "Downloading from vehicle"
-                                selected = null
-                                scope.launch {
-                                    val outcome = withContext(Dispatchers.Default) {
-                                        uploadOutcome(PlanBridge.loadFromVehicle())
-                                    }
-                                    busy = downloadMessage(outcome)
-                                    delay(FAILURE_MESSAGE_MS)
-                                    busy = null
-                                }
-                            }
+                            else -> download()
                         }
-                    }) { Text(if (loadArmed) "Discard & download" else "Download") }
+                    }) { Text("Download") }
+                    if (loadArmed) {
+                        AlertDialog(
+                            onDismissRequest = { loadArmed = false },
+                            title = { Text("Load plan from vehicle?") },
+                            text = { Text(replaceWarning(allItems.count { it.index != HOME_ITEM })) },
+                            confirmButton = { TextButton(onClick = ::download) { Text("Replace") } },
+                            dismissButton = { TextButton(onClick = { loadArmed = false }) { Text("Keep mine") } },
+                        )
+                    }
 
                     if (header == null && !planOffline) {
                         PlanUploadButton(emphasised = !uploadBlocked, enabled = uploadEnabled, onClick = upload, contentPadding = PRIMARY_PADDING) { Text(uploadText) }
