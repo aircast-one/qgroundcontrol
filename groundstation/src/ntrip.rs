@@ -780,12 +780,13 @@ fn sane(latitude: f64, longitude: f64) -> bool {
     latitude.is_finite() && longitude.is_finite() && !(latitude == 0.0 && longitude == 0.0) && latitude.abs() <= 90.0 && longitude.abs() <= 180.0
 }
 
-const GGA_SOURCES: [(u8, &str); 3] = [(1, "Vehicle GPS"), (2, "Vehicle EKF"), (4, "GCS Position")];
+const GGA_SOURCES: [(u8, &str); 4] = [(1, "Vehicle GPS"), (2, "Vehicle EKF"), (3, "RTK Base"), (4, "GCS Position")];
 
 fn position_from(source: u8) -> Option<(f64, f64, f64)> {
     let found = match source {
         1 => crate::hub::lock().active().and_then(|v| Some((v.gps.latitude?, v.gps.longitude?, v.facts.altitude_amsl))),
         2 => crate::hub::lock().active().and_then(|v| v.facts.coordinate.map(|(lat, lon, _)| (lat, lon, v.facts.altitude_amsl))),
+        3 => crate::rtkbase::surveyed_position(),
         4 => match crate::gcsposition::lock().coordinate() {
             (Some(lat), Some(lon), alt) => Some((lat, lon, alt.unwrap_or(0.0))),
             _ => None,

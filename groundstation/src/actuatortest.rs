@@ -8,6 +8,7 @@ const RESULT_ACCEPTED: u8 = 0;
 const RESULT_TEMPORARILY_REJECTED: u8 = 1;
 const RESULT_DENIED: u8 = 2;
 const RESULT_UNSUPPORTED: u8 = 3;
+const RESULT_IN_PROGRESS: u8 = 5;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
@@ -78,6 +79,10 @@ impl ActuatorTest {
     }
 
     pub fn on_ack(&mut self, result: u8, now_ms: u64) -> (Option<Request>, Option<&'static str>) {
+        if result == RESULT_IN_PROGRESS {
+            self.in_progress_until = Some(now_ms + ACK_TIMEOUT_MS);
+            return (None, None);
+        }
         self.in_progress_until = None;
         let current = self.current.and_then(|f| self.channels.get_mut(&f));
         let message = match result {
@@ -157,6 +162,8 @@ mod tests {
         let mut test = ActuatorTest::default();
         test.set_active(true, 0);
         test.set(101, 0.5, 0);
+        assert_eq!(test.on_ack(RESULT_IN_PROGRESS, 5), (None, None), "IN_PROGRESS keeps waiting for the final answer, as MavCommandQueue does");
+        assert!(!test.had_failure);
         assert_eq!(test.on_ack(RESULT_DENIED, 10).1, Some("Actuator test command denied"));
         test.set(102, 0.5, 20);
         assert_eq!(test.on_ack(RESULT_UNSUPPORTED, 30).1, None, "only the first failure is announced");

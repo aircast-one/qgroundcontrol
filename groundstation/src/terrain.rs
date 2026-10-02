@@ -381,7 +381,7 @@ fn flag_of(read: &Value, key: &str) -> bool {
 
 pub fn simple_legs(reads: &[Value], fixed_wing: bool, height: &dyn Fn(f64, f64) -> Option<f64>) -> Vec<Value> {
     let home = reads.first().filter(|h| spot(h.get("coordinate")).is_some());
-    let flown: Vec<&Value> = reads.iter().skip(1).filter(|r| flag_of(r, "specifiesCoordinate") && !flag_of(r, "isStandaloneCoordinate") && !flag_of(r, "isIncomplete")).collect();
+    let flown: Vec<&Value> = reads.iter().skip(1).filter(|r| flag_of(r, "specifiesCoordinate") && !flag_of(r, "isStandaloneCoordinate")).collect();
     let before_rtl = reads.iter().skip(1).position(|r| r.get("command").and_then(Value::as_i64) == Some(RETURN_TO_LAUNCH));
     let rtl_sequence = before_rtl.and_then(|at| reads.get(at + 1)).and_then(|r| r.get("sequenceNumber")).and_then(Value::as_i64);
     let flown: Vec<&Value> = flown
@@ -390,9 +390,14 @@ pub fn simple_legs(reads: &[Value], fixed_wing: bool, height: &dyn Fn(f64, f64) 
         .collect();
     let starts_on_ground = flown.first().is_some_and(|first| flag_of(first, "isTakeoffItem"));
     let path: Vec<&Value> = home.filter(|_| starts_on_ground).into_iter().chain(flown).chain(home.filter(|_| rtl_sequence.is_some())).collect();
+    let to_home = |second: &Value| home.is_some_and(|h| std::ptr::eq(h, second));
     path.windows(2)
         .filter(|pair| !flag_of(pair[0], "isLandCommand"))
-        .filter(|pair| pair[0].get("altitudeFrame").or_else(|| pair[0].get("altitudeMode")).and_then(Value::as_i64) != Some(TERRAIN_FRAME))
+        .filter(|pair| !flag_of(pair[0], "isIncomplete") && !flag_of(pair[1], "isIncomplete"))
+        .filter(|pair| {
+            let terrain_frame = !to_home(pair[1]) && pair[0].get("altitudeFrame").or_else(|| pair[0].get("altitudeMode")).and_then(Value::as_i64) == Some(TERRAIN_FRAME);
+            !terrain_frame || flag_of(pair[1], "isTakeoffItem") || flag_of(pair[1], "isLandCommand")
+        })
         .filter_map(|pair| {
             let (first, second) = (pair[0], pair[1]);
             let from = spot(first.get("exitCoordinate")).or_else(|| spot(first.get("coordinate")))?;
@@ -498,6 +503,22 @@ mod tests {
         assert!(hits.iter().all(|leg| leg["from"]["latitude"] != 47.01), "no segment is drawn out of a landing");
         assert!(hits.iter().any(|leg| leg["to"]["latitude"] == 46.99), "after an RTL the last item links home, and that low leg is red");
         assert!(!hits.iter().any(|leg| leg["to"]["latitude"] == 47.01), "a land leg's last 10 m touching the ground is not a collision");
+    }
+
+    #[test]
+    fn a_leg_out_of_a_terrain_waypoint_into_a_landing_is_still_checked_and_an_incomplete_item_breaks_the_line() {
+        let at = |lat: f64, alt: f64| json!({ "specifiesCoordinate": true, "isSimpleItem": true, "coordinate": { "latitude": lat, "longitude": 8.0 }, "amslEntryAlt": alt });
+        let mut terrain_wp = at(47.0, 600.0);
+        terrain_wp["altitudeFrame"] = json!(TERRAIN_FRAME);
+        let mut land = at(47.02, 500.0);
+        land["isLandCommand"] = json!(true);
+        let ridge = |lat: f64, _lon: f64| Some(if lat > 47.008 && lat < 47.012 { 700.0 } else { 500.0 });
+        let legs = simple_legs(&[json!({ "homePosition": true }), terrain_wp, land], false, &ridge);
+        assert_eq!(legs.len(), 1, "segmentTypeForPair makes a pair into a landing a Land segment before it looks at the terrain frame");
+        let mut survey = at(47.01, 600.0);
+        survey["isIncomplete"] = json!(true);
+        let gapped = simple_legs(&[json!({ "homePosition": true }), at(47.0, 600.0), survey, at(47.02, 600.0)], false, &ridge);
+        assert!(gapped.is_empty(), "MissionController draws no segment into or out of an incomplete item, so none is checked: {gapped:?}");
     }
 
     #[test]

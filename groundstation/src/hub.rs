@@ -1550,7 +1550,10 @@ impl Vehicle {
             "landingGear" => guidedcmd::landing_gear(flag("retract")),
             "motorInterlock" => guidedcmd::motor_interlock(&state, flag("enable")),
             "motorTest" => guidedcmd::motor_test(number("motor"), number("percent"), number("seconds")),
-            "vtolTransition" => guidedcmd::vtol_transition(action.get("forward").and_then(Value::as_bool).unwrap_or(false)),
+            "vtolTransition" => match action.get("forward").and_then(Value::as_bool).unwrap_or(false) {
+                forward if forward == self.vtol_in_forward_flight => Plan::Steps(Vec::new()),
+                forward => guidedcmd::vtol_transition(forward),
+            },
             "setMode" => guidedcmd::set_mode(&state, action.get("mode").and_then(Value::as_str).unwrap_or("")).map(Plan::Steps).unwrap_or_else(|| Plan::Refused("Unknown flight mode".to_string())),
             other => Plan::Refused(format!("Unknown guided action {other:?}")),
         }

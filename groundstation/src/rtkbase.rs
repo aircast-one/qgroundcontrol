@@ -21,6 +21,10 @@ fn session() -> MutexGuard<'static, Session> {
     SESSION.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+pub fn surveyed_position() -> Option<(f64, f64, f64)> {
+    session().survey.filter(|survey| survey.valid).map(|survey| (survey.latitude, survey.longitude, f64::from(survey.altitude_m)))
+}
+
 fn owned<R: Default>(stop: &AtomicBool, change: impl FnOnce(&mut Session) -> R) -> R {
     let mut held = session();
     match stop.load(Ordering::Relaxed) {
