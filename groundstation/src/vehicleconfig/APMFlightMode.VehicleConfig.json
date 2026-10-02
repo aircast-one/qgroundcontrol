@@ -23,6 +23,7 @@
                     "param": "RTL_ALT_M",
                     "label": "Return At",
                     "control": "radiogroup",
+                    "raw": true,
                     "options": [
                         {
                             "label": "Current altitude",

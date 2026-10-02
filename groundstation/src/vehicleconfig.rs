@@ -729,6 +729,7 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
         (None, None) => (String::new(), None),
     };
     match (kind, fact) {
+        ("toggleCheckbox", None) if control["optional"].as_bool() == Some(true) && control.get("param").is_some() => vec![],
         ("toggleCheckbox", _) => {
             let checked = scope.eval_text(control["toggleCheckbox"]["checked"].as_str().unwrap_or("false")).truthy();
             vec![json!({ "control": "toggle", "name": name, "label": label, "value": checked, "enabled": enabled, "path": path })]

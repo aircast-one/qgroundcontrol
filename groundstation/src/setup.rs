@@ -87,8 +87,8 @@ pub struct Section {
 }
 
 const FLIGHT_MODES_APM: &[Section] = &[
-    Section { title: "Mode switch channel", note: "", parameters: &["FLTMODE_CH"] },
-    Section { title: "Mode slots", note: "", parameters: &["FLTMODE1", "FLTMODE2", "FLTMODE3", "FLTMODE4", "FLTMODE5", "FLTMODE6"] },
+    Section { title: "Mode switch channel", note: "", parameters: &["FLTMODE_CH", "MODE_CH"] },
+    Section { title: "Mode slots", note: "", parameters: &["FLTMODE1", "FLTMODE2", "FLTMODE3", "FLTMODE4", "FLTMODE5", "FLTMODE6", "MODE1", "MODE2", "MODE3", "MODE4", "MODE5", "MODE6"] },
     Section { title: "Options", note: "", parameters: &["INITIAL_MODE"] },
     Section { title: "Switch Options", note: "", parameters: &["RC6_OPTION", "RC7_OPTION", "RC8_OPTION", "RC9_OPTION", "RC10_OPTION", "RC11_OPTION", "RC12_OPTION", "RC13_OPTION", "RC14_OPTION", "RC15_OPTION", "RC16_OPTION"] },
 ];
@@ -391,6 +391,7 @@ mod tests {
         let parameters: Vec<&str> = FLIGHT_MODES_APM.iter().flat_map(|s| s.parameters.iter().copied()).collect();
         assert!((6..=16).all(|channel| parameters.contains(&format!("RC{channel}_OPTION").as_str())), "APMFlightModesComponent lists RC6 to RC16 options");
         assert!(!parameters.contains(&"SIMPLE"), "the Simple Mode choice writes SIMPLE and SUPER_SIMPLE; raw rows beside it disagreed with it");
+        assert!(["MODE_CH", "MODE1", "MODE6"].iter().all(|name| parameters.contains(name)), "APMFlightModesComponentController switches to MODE_CH and MODE1-6 on ArduRover");
     }
 
     #[test]

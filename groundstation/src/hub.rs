@@ -3841,7 +3841,10 @@ impl Hub {
     }
 
     pub fn set_transmitter_mode(&mut self, mode: i64) -> bool {
-        self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.rccal.transmitter_mode = if (1..=4).contains(&mode) { mode as i32 } else { 2 }).is_some()
+        let mode = if (1..=4).contains(&mode) { mode as i32 } else { 2 };
+        crate::settingsstore::written("RadioCalibration/TransmitterMode", &mode.to_string());
+        self.vehicles.values_mut().for_each(|v| v.rccal.transmitter_mode = mode);
+        self.active.is_some()
     }
 
     pub fn set_centered_throttle(&mut self, centered: bool) -> bool {
