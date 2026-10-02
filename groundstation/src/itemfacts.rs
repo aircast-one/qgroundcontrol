@@ -21,7 +21,7 @@ pub const DEPS: &[&str] = &[
 ];
 
 const ITEM_ROOT: &str = "plan.missionController.visualItems";
-const LISTS: [&str; 3] = ["textFieldFacts", "comboboxFacts", "nanFacts"];
+const LISTS: [&str; 3] = ["comboboxFacts", "textFieldFacts", "nanFacts"];
 // Mission Settings edits the launch altitude through its own control, so it is not a field here.
 const LAUNCH_ALTITUDE: &str = "plannedHomePositionAltitude";
 const SURVEY_PROPERTIES: [&str; 4] = ["distanceToSurface", "imageDensity", "frontalOverlap", "sideOverlap"];
@@ -352,8 +352,8 @@ mod tests {
     #[test]
     fn a_simple_item_edits_its_lists_and_carries_no_camera() {
         let view = item_facts_view(&Plan { simple: true, lists: true, custom: false }, &["2".to_string()]);
-        assert_eq!(suffixes(&view, "fields"), ["textFieldFacts.0", "comboboxFacts.0"], "an unnamed element is not a field anyone can edit, and the position stays the list's own");
-        assert_eq!(view["fields"][0]["path"], "plan.missionController.visualItems.2.textFieldFacts.0", "the path is the one the head writes");
+        assert_eq!(suffixes(&view, "fields"), ["comboboxFacts.0", "textFieldFacts.0"], "an unnamed element is not a field anyone can edit, the position stays the list's own, and dropdowns come first as SimpleItemEditor lays them out");
+        assert_eq!(view["fields"][1]["path"], "plan.missionController.visualItems.2.textFieldFacts.0", "the path is the one the head writes");
         assert!(crate::factwrite::owns(view["fields"][0]["path"].as_str().unwrap()), "and that write is one the core validates");
         assert_eq!(view["fields"][0]["class"], "Control", "each field is view.control's shape, which the head already decodes");
         assert_eq!(view["camera"], Value::Null);
@@ -378,7 +378,7 @@ mod tests {
         assert_eq!(custom["camera"]["facts"][0]["pathSuffix"], "cameraCalc.sensorWidth", "a custom camera's optics come first, then the survey figures");
 
         let listed = item_facts_view(&Plan { simple: false, lists: true, custom: false }, &["2".to_string()]);
-        assert_eq!(suffixes(&listed, "fields"), ["textFieldFacts.0", "comboboxFacts.0"], "a complex item with lists edits the lists, as the head chose");
+        assert_eq!(suffixes(&listed, "fields"), ["comboboxFacts.0", "textFieldFacts.0"], "a complex item with lists edits the lists, as the head chose");
     }
 
     #[test]

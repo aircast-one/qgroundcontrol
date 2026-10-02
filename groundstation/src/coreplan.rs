@@ -2365,7 +2365,7 @@ fn simple_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap
         Value::Object(map) => Value::Object(map.into_iter().chain([("optional".to_string(), json!(true))]).collect()),
         other => other,
     });
-    text_params.enumerate().map(build("textFieldFacts")).chain(combo_params.enumerate().map(build("comboboxFacts"))).chain(optional).collect()
+    combo_params.enumerate().map(build("comboboxFacts")).chain(text_params.enumerate().map(build("textFieldFacts"))).chain(optional).collect()
 }
 
 fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple], available: bool, hover: f64, cruise: f64) -> Value {
