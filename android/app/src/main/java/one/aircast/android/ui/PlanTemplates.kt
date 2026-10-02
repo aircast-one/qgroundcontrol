@@ -88,7 +88,7 @@ fun PlanTemplates(planStatus: JSONObject?, centre: Pair<Double, Double>?, onRefu
                         color = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     ) {
-                        Text(name, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
+                        Text(sentenceCase(name), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
                     }
                 }
             }
