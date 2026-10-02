@@ -38,6 +38,8 @@ fn axis_json(axis: &str, value: Option<f64>) -> Value {
     })
 }
 
+const VIBRATION_UNITS: &str = "m/s²";
+
 pub fn vibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
     // DEPS has always listed activeVehicleAvailable first, so this view already recomputes when it
     // changes and then dropped it. A head needing it had to fetch it in a second call, and a
@@ -50,7 +52,7 @@ pub fn vibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let axes: Vec<(&str, Option<f64>)> = [("x", "xAxis"), ("y", "yAxis"), ("z", "zAxis")].iter().map(|(axis, name)| (*axis, number(name))).collect();
     let worst = axes.iter().filter_map(|(_, v)| *v).fold(None, |acc: Option<f64>, v| Some(acc.map_or(v, |a| a.max(v))));
     let clip_counts: Vec<Value> = ["clipCount1", "clipCount2", "clipCount3"].iter().map(|name| json!(number(name).map(|v| v as i64).unwrap_or(0))).collect();
-    let units = fact("xAxis").and_then(|f| f.get("units")).and_then(Value::as_str).unwrap_or("");
+    let units = fact("xAxis").and_then(|f| f.get("units")).and_then(Value::as_str).filter(|u| !u.is_empty()).unwrap_or(VIBRATION_UNITS);
     let silence = match (axes.iter().any(|(_, v)| v.is_some()), connected) {
         (true, _) => None,
         (false, false) => Some(("noVehicle", "No vehicle is connected.")),
@@ -148,6 +150,24 @@ mod tests {
         assert_eq!(view["clipCounts"][1], 3);
         assert_eq!(view["clipping"], true);
         assert_eq!(view["units"], "m/s²");
+    }
+
+    #[test]
+    fn the_axes_read_in_metres_per_second_squared_when_the_fact_carries_no_unit() {
+        struct Bare;
+        impl Backend for Bare {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                    _ => json!({ "kind": "object", "facts": [{ "name": "xAxis", "value": 12.0, "units": "" }, { "name": "yAxis", "value": 9.0 }, { "name": "zAxis", "value": 18.0 }] }).to_string(),
+                }
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(vibration_view(&Bare, &[])["units"], "m/s²", "VibrationFact.json gives the axes no unit; MAVLink VIBRATION defines them in m/s/s");
     }
 
     #[test]
