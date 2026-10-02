@@ -456,7 +456,7 @@ fn items(backend: &dyn Backend, args: &str) -> Value {
         return refused("There is no plan.");
     };
     let rover = crate::read::flag(&crate::read::object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover");
-    match crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover) {
+    match crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::horizontal(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover) {
         Ok(view) => json!({ "ok": true, "view": view }),
         Err(reason) => refused(reason),
     }
@@ -1021,7 +1021,7 @@ fn flown_view(backend: &dyn Backend, mission: &FlownMission) -> Result<Value, St
     let document = plandoc::from_vehicle(&mission.items, mission.sends_home, &template);
     let rover = plandoc::vehicle_class(mission.types.1) == crate::cmdinfo::VehicleClass::Rover;
     let selected = visual_index_of_sequence(&document, mission.current).filter(|index| *index > 0).unwrap_or(-1);
-    crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover)
+    crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::horizontal(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover)
 }
 
 pub fn fly_view(backend: &dyn Backend) -> Value {
@@ -1047,7 +1047,7 @@ pub fn view(backend: &dyn Backend) -> Value {
         (state.document.clone().unwrap_or_else(empty_document), state.selected, state.clean.clone())
     };
     let rover = crate::read::flag(&crate::read::object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover");
-    crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover)
+    crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::horizontal(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover)
         .map(|view| marked_edited(view, &document, clean.as_ref()))
         .unwrap_or_else(|reason| json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": reason }))
 }

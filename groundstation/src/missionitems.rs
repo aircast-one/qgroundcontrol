@@ -45,6 +45,7 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     }
     let everything = args.iter().any(|arg| arg == "fields");
     let vertical = Unit::vertical(backend);
+    let horizontal = Unit::horizontal(backend);
     let speed = Unit::speed(backend);
     let imperial = crate::missionsummary::imperial(backend);
     let shapes = args.iter().any(|arg| arg == "geometry");
@@ -56,9 +57,9 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
     let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
     let items: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
-        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical, &speed, imperial)).collect(),
+        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical, &horizontal, &speed, imperial)).collect(),
         None => (0..count)
-            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical, &speed, imperial))
+            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical, &horizontal, &speed, imperial))
             .collect(),
     };
     let items: Vec<Value> = match walked(&items) {
@@ -527,8 +528,8 @@ pub fn altitude_from_shown(shown: f64) -> f64 {
     crate::units::cooking(ALTITUDE_RAW_UNITS).map_or(shown, |c| (c.base)(shown))
 }
 
-pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &Unit, speed: &Unit, imperial: bool, rover: bool) -> Result<Value, String> {
-    let items: Vec<Value> = document_reads(doc, selected)?.into_iter().enumerate().map(|(index, read)| item(&read, index as i64, vertical, speed, imperial)).collect();
+pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &Unit, horizontal: &Unit, speed: &Unit, imperial: bool, rover: bool) -> Result<Value, String> {
+    let items: Vec<Value> = document_reads(doc, selected)?.into_iter().enumerate().map(|(index, read)| item(&read, index as i64, vertical, horizontal, speed, imperial)).collect();
     let items: Vec<Value> = match walked(&items) {
         true => items,
         false => items.into_iter().map(unwalked).collect(),
@@ -803,7 +804,7 @@ fn at_key(read: &Value, key: &str) -> Option<Value> {
     (at.get("valid").and_then(Value::as_bool) == Some(true) && !unset).then(|| at.clone())
 }
 
-fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool) -> Value {
+fn item(read: &Value, index: i64, vertical: &Unit, horizontal: &Unit, speed: &Unit, imperial: bool) -> Value {
     let coordinate = placed(read);
     let exit = match flag(read, "exitCoordinateSameAsEntry") {
         true => None,
@@ -825,7 +826,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "exitCoordinate": exit,
         "altitude": height(read),
         "altitudeText": height_metres(read).map(|metres| format_measure(vertical.show(metres), &vertical.name)),
-        "altitudeUnits": height(read).map(|_| vertical.name.clone()),
+        "altitudeUnits": height(read).map(|_| if flag(read, "homePosition") { &vertical.name } else { &horizontal.name }),
         "altitudeEditUnits": fact_units(read, "altitude").or_else(|| fact_units(read, "plannedHomePositionAltitude")),
         "altitudeMetres": height_metres(read),
         "specifiesAltitude": flag(read, "isSimpleItem").then(|| flag(read, "specifiesAltitude")),
@@ -1222,7 +1223,7 @@ mod from_the_document {
         let loaded = crate::plandoc::load(plan, 2).unwrap();
         let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], terrain_under_home]), ..loaded };
         let (vertical, speed) = metres();
-        let mine = by_value(document_view(&doc, 0, &vertical, &speed, false, false).unwrap());
+        let mine = by_value(document_view(&doc, 0, &vertical, &vertical, &speed, false, false).unwrap());
         let qt = by_value(serde_json::from_str(qt).unwrap());
         let rows = |v: &Value| v["items"].as_array().unwrap().clone();
         assert_eq!(rows(&mine).len(), rows(&qt).len());
@@ -1300,7 +1301,7 @@ mod from_the_document {
         let terrain_under_home = 35.0;
         let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], terrain_under_home]), ..loaded };
         let (vertical, speed) = metres();
-        let mine = by_value(document_view(&doc, 0, &vertical, &speed, false, false).unwrap());
+        let mine = by_value(document_view(&doc, 0, &vertical, &vertical, &speed, false, false).unwrap());
         let qt = by_value(serde_json::from_str(include_str!("../tests/fixtures/missionitems-sectiontest-by-qt.json")).unwrap());
         let rows = |v: &Value| v["items"].as_array().unwrap().clone();
         assert_eq!(rows(&mine).len(), rows(&qt).len());
@@ -1619,7 +1620,7 @@ mod reported {
             fn get(&self, path: &str) -> String { One(self.0.clone()).get(path) }
             fn get_fields(&self, path: &str, fields: &str) -> String {
                 match path {
-                    "units" => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft" }).to_string(),
+                    "units" => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft", "appSettingsHorizontalDistanceUnitsString": "ft" }).to_string(),
                     _ => One(self.0.clone()).get_fields(path, fields),
                 }
             }
@@ -1654,6 +1655,21 @@ mod reported {
         assert_eq!(metric["altitudeEditUnits"], Value::Null, "the fake without a units key gets none, which is what compactFactJson emitted before rawValue and units were added to it");
         assert_eq!(imperial["altitudeUnits"], "ft");
         assert_eq!(imperial["altitude"], 75.0);
+    }
+
+    #[test]
+    fn a_waypoint_altitude_is_labelled_in_horizontal_units_and_the_launch_height_in_vertical() {
+        let doc = crate::plandoc::load(&json!({
+            "fileType": "Plan", "version": 1, "groundStation": "QGroundControl",
+            "mission": { "version": 2, "firmwareType": 12, "vehicleType": 2, "cruiseSpeed": 15, "hoverSpeed": 5, "plannedHomePosition": [47.0, 8.0, 500.0],
+                "items": [ { "type": "SimpleItem", "autoContinue": true, "command": 16, "doJumpId": 1, "frame": 3, "params": [0, 0, 0, null, 47.001, 8.0, 50] } ] },
+            "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }
+        }).to_string(), 2)
+        .unwrap();
+        let unit = |name: &str| Unit { name: name.to_string(), factor: 1.0 };
+        let view = document_view(&doc, 0, &unit("m"), &unit("ft"), &unit("m/s"), false, false).unwrap();
+        assert_eq!(view["items"][0]["altitudeUnits"], "m", "plannedHomePositionAltitude declares vertical m");
+        assert_eq!(view["items"][1]["altitudeUnits"], "ft", "a waypoint's altitude declares m, which QGC shows in the horizontal unit, so its cooked number must carry that name");
     }
 
     #[test]
@@ -2231,7 +2247,7 @@ mod reported {
         assert!(yaw(4).is_some_and(|y| (y - 90.0).abs() < 1.0), "the next leg heads east from the yawed waypoint");
         assert_eq!(yaw(5), yaw(4), "the last fly-through item, even a pattern, keeps the running yaw");
         let unit = |name: &str| crate::read::Unit { name: name.to_string(), factor: 1.0 };
-        assert_eq!(item(&reads[4], 4, &unit("m"), &unit("m/s"), false)["headingText"], "90\u{b0}");
+        assert_eq!(item(&reads[4], 4, &unit("m"), &unit("m"), &unit("m/s"), false)["headingText"], "90\u{b0}");
     }
 
     #[test]
