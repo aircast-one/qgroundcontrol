@@ -383,7 +383,7 @@ private fun LinkRowItem(
 
 @Composable
 private fun LinkFlagSwitches(autoConnect: Boolean, highLatency: Boolean, onAutoConnect: (Boolean) -> Unit, onHighLatency: (Boolean) -> Unit) {
-    listOf(Triple("Automatically Connect on Start", autoConnect, onAutoConnect), Triple("High Latency", highLatency, onHighLatency)).forEach { (label, checked, onChange) ->
+    listOf(Triple("Connect automatically", autoConnect, onAutoConnect), Triple("High latency", highLatency, onHighLatency)).forEach { (label, checked, onChange) ->
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(label, modifier = Modifier.weight(1f))
             Switch(checked = checked, onCheckedChange = onChange)
@@ -569,7 +569,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Link") },
+        title = { Text("Add link") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -829,10 +829,10 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     ExtendedFloatingActionButton(
         onClick = { adding = true },
         icon = { Icon(painterResource(R.drawable.ic_add), null) },
-        text = { Text("Add Link…") },
+        text = { Text("Add link") },
         containerColor = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { contentDescription = "Add Link…" },
+        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { contentDescription = "Add link" },
     )
     }
 

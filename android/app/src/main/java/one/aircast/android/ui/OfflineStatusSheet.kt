@@ -91,7 +91,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
                 Text(shown.footnote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (shown.noLinks) {
-                Button(onClick = { openConnectionSettings(onDismiss) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) { Text("Add Link…") }
+                Button(onClick = { openConnectionSettings(onDismiss) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) { Text("Add link") }
             }
             shown.links.forEach { link ->
                 ListItem(
