@@ -93,4 +93,10 @@ class ChecklistPopupTest {
         assertEquals("Pre-Flight Checklist (Passed)", checklistHeading(true))
         assertEquals("Pre-Flight Checklist In Progress", checklistHeading(false))
     }
+
+    @Test
+    fun `only a group that has just passed collapses, like PreFlightCheckList _handleGroupPassedChanged`() {
+        assertEquals(setOf("Initial checks"), collapsedAfterPass(emptySet(), emptySet(), setOf("Initial checks")))
+        assertEquals("a group the operator reopened stays open when another passes", setOf("Arm"), collapsedAfterPass(emptySet(), setOf("Initial checks"), setOf("Initial checks", "Arm")))
+    }
 }

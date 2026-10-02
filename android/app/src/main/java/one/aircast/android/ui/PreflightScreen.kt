@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,17 +14,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import one.aircast.android.bridge.qgcPath
 
 @Composable
@@ -43,10 +48,22 @@ fun PreflightScreen(
         return
     }
 
+    var collapsed by remember { mutableStateOf(setOf<String>()) }
+    val passedGroups = checks.groups.filter { groupPassed(it, ticked) }.map { it.name }.toSet()
+    var passedBefore by remember { mutableStateOf(setOf<String>()) }
+    LaunchedEffect(passedGroups) {
+        delay(GROUP_COLLAPSE_DELAY_MS)
+        collapsed = collapsedAfterPass(collapsed, passedBefore, passedGroups)
+        passedBefore = passedGroups
+    }
+
     Column(modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(checklistHeading(checklistIsComplete(checks, ticked)), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = { onTicked(emptySet()) }, enabled = ticked.isNotEmpty()) { Text("Reset") }
+            TextButton(onClick = {
+                onTicked(emptySet())
+                collapsed = emptySet()
+            }, enabled = ticked.isNotEmpty()) { Text("Reset") }
         }
         Text(
             text = preflightSummary(checks, ticked),
@@ -71,15 +88,19 @@ fun PreflightScreen(
         LazyColumn(Modifier.fillMaxSize()) {
             checks.groups.forEachIndexed { groupIndex, group ->
                 val open = groupEnabled(checks.groups, groupIndex, ticked)
+                val folded = group.name in collapsed
                 item(key = "group:${group.name}") {
                     Text(
                         text = groupHeading(group, ticked),
                         style = MaterialTheme.typography.labelLarge,
                         color = if (open) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { collapsed = if (folded) collapsed - group.name else collapsed + group.name }
+                            .padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
                     )
                 }
-                items(group.checks.size, key = { "${group.name}:${group.checks[it].name}" }) { index ->
+                if (!folded) items(group.checks.size, key = { "${group.name}:${group.checks[it].name}" }) { index ->
                     val check = group.checks[index]
                     val isTicked = check.name in ticked
                     Row(

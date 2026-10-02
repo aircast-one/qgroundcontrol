@@ -87,6 +87,11 @@ internal fun groupEnabled(groups: List<PreflightGroup>, index: Int, ticked: Set<
 internal fun groupHeading(group: PreflightGroup, ticked: Set<String>): String =
     if (groupPassed(group, ticked)) "${group.name} (passed)" else group.name
 
+internal const val GROUP_COLLAPSE_DELAY_MS = 750L
+
+internal fun collapsedAfterPass(collapsed: Set<String>, passedBefore: Set<String>, passedNow: Set<String>): Set<String> =
+    collapsed + (passedNow - passedBefore)
+
 internal fun checklistHeading(passed: Boolean): String = "Pre-Flight Checklist ${if (passed) "(Passed)" else "In Progress"}"
 
 internal fun checklistIsComplete(preflight: Preflight?, ticked: Set<String>): Boolean {
