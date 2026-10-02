@@ -417,7 +417,15 @@ ACCEPTED = {
     "invalidText": "view.apmAirframe is ArduPilot copter/rover's frame page and the recording rig is a PX4 multirotor, so it records only available=false; apmairframe.rs apm_airframe_view serves it",
     "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
-    "triggerCount": "geotag.rs:757 serves it, on a structure the recording has no instance of",
+    "errorMessage": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
+    "failedCount": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
+    "imageDirectory": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
+    "logFile": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
+    "previewMode": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
+    "saveDirectory": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
+    "skippedCount": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
+    "taggedCount": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
+    "timeOffsetSecs": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
 }
 
 

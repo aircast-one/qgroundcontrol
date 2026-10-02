@@ -123,6 +123,7 @@ pub mod plan;
 pub mod packetradio;
 pub mod params;
 mod paramcache;
+mod nmea;
 pub mod planfile;
 pub mod corelinks;
 pub mod coreplan;

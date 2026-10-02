@@ -181,6 +181,7 @@ pub struct GcsPosition {
     pub refusal: Option<Refusal>,
     pub error: Option<Error>,
     pub hosted: bool,
+    host: Source,
     stale_announced: bool,
 }
 
@@ -312,8 +313,23 @@ impl GcsPosition {
     }
 
     pub fn host_source(&mut self, source: Source) {
-        self.select_source(source);
+        if self.source != Source::Nmea {
+            self.select_source(source);
+        }
         self.hosted = true;
+        self.host = source;
+    }
+
+    pub fn use_nmea(&mut self, on: bool) -> Vec<Out> {
+        let host = self.host;
+        let switched = match (on, self.source == Source::Nmea) {
+            (true, false) => self.select_source(Source::Nmea),
+            (false, true) => self.select_source(host),
+            _ => return Vec::new(),
+        };
+        self.hosted = true;
+        self.host = host;
+        switched
     }
 
     pub fn property(&self, name: &str) -> Option<Value> {
@@ -434,6 +450,18 @@ fn live_vehicle(backend: &dyn Backend) -> Option<(f64, f64)> {
 }
 
 pub fn report(update: Update) {
+    if lock().source != Source::Nmea {
+        deliver(update);
+    }
+}
+
+pub fn report_nmea(update: Update) {
+    if lock().source == Source::Nmea {
+        deliver(update);
+    }
+}
+
+fn deliver(update: Update) {
     let coordinate = {
         let mut position = lock();
         position.on_update(update, wall_now());
@@ -451,6 +479,17 @@ pub fn report(update: Update) {
 mod tests {
     use super::*;
     use crate::router::Backend;
+
+    #[test]
+    fn an_nmea_source_outranks_the_hosts_gps_and_hands_back_when_turned_off() {
+        let mut position = GcsPosition::default();
+        position.host_source(Source::InternalGps);
+        assert!(position.use_nmea(true).contains(&Out::Source(Source::Nmea)), "setNmeaSourceDevice switches the position manager to the NMEA source");
+        position.host_source(Source::InternalGps);
+        assert_eq!(position.source, Source::Nmea, "the host choosing its GPS again does not take over from NMEA");
+        assert!(position.use_nmea(false).contains(&Out::Source(Source::InternalGps)), "resetNmeaSourceDevice falls back to the internal GPS");
+        assert!(position.use_nmea(false).is_empty());
+    }
 
     struct Station(&'static str, i64);
     impl Backend for Station {

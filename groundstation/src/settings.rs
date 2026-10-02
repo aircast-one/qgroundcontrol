@@ -53,10 +53,8 @@ const HIDDEN: &[&str] = &[
     "udpListenPort",
     "udpTargetHostIP",
     "udpTargetHostPort",
-    "nmeaSource",
     "autoConnectNmeaPort",
     "autoConnectNmeaBaud",
-    "nmeaUdpPort",
 ];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls"), ("extraVideoSources", "additional cameras")];
 

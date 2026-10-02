@@ -270,6 +270,7 @@ pub(crate) fn start_pump() {
                 });
                 announce_notices();
                 crate::corelinks::tick(crate::hub::now_ms());
+                crate::nmea::maintain();
                 crate::applog::flush_to_disk();
                 crate::signingkeys::tick(crate::hub::now_ms());
                 if crate::vehiclefacade::switched_on() {
