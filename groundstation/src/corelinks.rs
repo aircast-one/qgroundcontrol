@@ -451,10 +451,19 @@ fn disconnect(index: usize) -> bool {
     }
 }
 
+fn udp_target_hosts(setting: &dyn Fn(&str) -> Option<Value>) -> Vec<(String, u16)> {
+    let host = setting("udpTargetHostIP").and_then(|v| v.as_str().map(|s| s.trim().to_string())).unwrap_or_default();
+    let port = setting("udpTargetHostPort").and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok());
+    match (host.is_empty(), port) {
+        (false, Some(port)) => vec![(host, port)],
+        _ => Vec::new(),
+    }
+}
+
 fn udp_autoconnect_entry() -> Option<Entry> {
     let wanted = crate::settingsstore::raw_setting("settings.autoConnectSettings.autoConnectUDP").and_then(|v| v.as_bool()).unwrap_or(true);
     wanted.then(|| Entry {
-        config: LinkConfig { name: crate::autoconnect::DEFAULT_UDP_LINK_NAME.to_string(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: defaults().udp_port, hosts: Vec::new() } },
+        config: LinkConfig { name: crate::autoconnect::DEFAULT_UDP_LINK_NAME.to_string(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: defaults().udp_port, hosts: udp_target_hosts(&|name| crate::settingsstore::raw_setting(&format!("settings.autoConnectSettings.{name}"))) } },
         dynamic: true,
     })
 }
@@ -674,6 +683,17 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_autoconnect_udp_link_sends_to_the_target_host_like_udp_configuration() {
+        let given = |ip: &'static str| move |name: &str| match name {
+            "udpTargetHostIP" => Some(serde_json::json!(ip)),
+            "udpTargetHostPort" => Some(serde_json::json!(14550)),
+            _ => None,
+        };
+        assert_eq!(udp_target_hosts(&given("192.168.4.1")), [("192.168.4.1".to_string(), 14550)], "UDPConfiguration::setAutoConnect adds udpTargetHostIP:udpTargetHostPort");
+        assert!(udp_target_hosts(&given("")).is_empty(), "a blank IP adds nothing");
+    }
 
     #[test]
     fn udp_servers_are_added_and_removed_like_udp_configuration() {
