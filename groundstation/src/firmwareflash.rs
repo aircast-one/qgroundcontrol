@@ -111,7 +111,7 @@ pub fn flash<P: Port>(port: P, file: &str, contents: &[u8], report: &mut dyn FnM
 pub enum Source {
     File(String),
     Url(String),
-    Px4 { beta: bool },
+    Px4(crate::firmwarecatalog::Build),
     ArduPilot { vehicle: crate::firmwarecatalog::Vehicle, build: crate::firmwarecatalog::Build },
     Sik,
 }
@@ -148,11 +148,7 @@ pub fn source(given: &str) -> Result<Source, String> {
         [scheme, ..] if matches!(*scheme, "http" | "https") => Ok(Source::Url(given.to_string())),
         ["sik", "stable"] => Ok(Source::Sik),
         ["sik", build] => Err(format!("SiK radio firmware is only published as stable, not {build}")),
-        ["px4", build] => match *build {
-            "stable" => Ok(Source::Px4 { beta: false }),
-            "beta" => Ok(Source::Px4 { beta: true }),
-            _ => Err(format!("PX4 builds are stable or beta, not {build}")),
-        },
+        ["px4", build] => crate::firmwarecatalog::Build::parse(build).map(Source::Px4).ok_or_else(|| format!("PX4 builds are stable, beta or dev, not {build}")),
         ["ardupilot", vehicle, build] => match (crate::firmwarecatalog::Vehicle::parse(vehicle), crate::firmwarecatalog::Build::parse(build)) {
             (Some(vehicle), Some(build)) => Ok(Source::ArduPilot { vehicle, build }),
             _ => Err(format!("ArduPilot builds are ardupilot:<copter|heli|plane|rover|sub>:<stable|beta|dev>, not {given}")),
@@ -178,7 +174,7 @@ pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &m
     let url = match source {
         Source::File(path) => return std::fs::read(path).map(|bytes| (path.clone(), bytes)).map_err(|e| format!("Unable to open firmware file {path}: {e}")),
         Source::Url(url) => url.clone(),
-        Source::Px4 { beta } => crate::firmwarecatalog::px4_url(board.board_id, *beta).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
+        Source::Px4(build) => crate::firmwarecatalog::px4_url(board.board_id, *build).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
         Source::Sik => sik_url(board.board_id).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
         Source::ArduPilot { vehicle, build } => {
             report(Event::Status("Downloading the ArduPilot firmware list...".into()));
@@ -617,11 +613,12 @@ mod tests {
         use crate::firmwarecatalog::{Build, Vehicle};
         assert_eq!(source("/tmp/fw.px4"), Ok(Source::File("/tmp/fw.px4".into())));
         assert_eq!(source("https://firmware.ardupilot.org/x.apj"), Ok(Source::Url("https://firmware.ardupilot.org/x.apj".into())));
-        assert_eq!(source("px4:beta"), Ok(Source::Px4 { beta: true }));
+        assert_eq!(source("px4:beta"), Ok(Source::Px4(Build::Beta)));
+        assert_eq!(source("px4:dev"), Ok(Source::Px4(Build::Developer)), "the developer build is master, offered behind Advanced");
         assert_eq!(source("ardupilot:heli:dev"), Ok(Source::ArduPilot { vehicle: Vehicle::Heli, build: Build::Developer }));
         assert!(source("ardupilot:boat:stable").is_err());
         let board = BoardInfo { bootloader_version: 5, board_id: 4242, flash_size: 1024 };
-        assert_eq!(resolve(&Source::Px4 { beta: false }, &board, "", &mut |_| {}), Err("Unable to find specified firmware for board type".to_string()), "a board PX4 publishes no build for is refused before any download");
+        assert_eq!(resolve(&Source::Px4(Build::Stable), &board, "", &mut |_| {}), Err("Unable to find specified firmware for board type".to_string()), "a board PX4 publishes no build for is refused before any download");
     }
 
     #[test]
@@ -636,7 +633,7 @@ mod tests {
         .unwrap();
         assert_eq!(lines[..2], ["Connected to SiK radio:", "  Board ID: 80"]);
         assert_eq!(source("sik:stable"), Ok(Source::Sik));
-        assert!(Source::Url("https://x/radio~hb1060.ihx".into()).sik() && !Source::Px4 { beta: false }.sik());
+        assert!(Source::Url("https://x/radio~hb1060.ihx".into()).sik() && !Source::Px4(crate::firmwarecatalog::Build::Stable).sik());
         assert_eq!(sik_url(80).as_deref(), Some("https://px4-travis.s3.amazonaws.com/SiK/stable/radio~hb1060.ihx"));
     }
 

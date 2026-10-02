@@ -73,9 +73,14 @@ const PX4_BOARDS: &[(u32, &str)] = &[
     (7120, "accton-godwit_ga1_default"),
 ];
 
-pub fn px4_url(board_id: u32, beta: bool) -> Option<String> {
+pub fn px4_url(board_id: u32, build: Build) -> Option<String> {
     let name = PX4_BOARDS.iter().rev().find(|(id, _)| *id == board_id)?.1;
-    Some(format!("{PX4_FIRMWARE_URL}/{}/{name}.px4", if beta { "beta" } else { "stable" }))
+    let folder = match build {
+        Build::Stable => "stable",
+        Build::Beta => "beta",
+        Build::Developer => "master",
+    };
+    Some(format!("{PX4_FIRMWARE_URL}/{folder}/{name}.px4"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -234,8 +239,9 @@ mod tests {
 
     #[test]
     fn px4_files_are_named_from_the_bootloaders_board_id() {
-        assert_eq!(px4_url(50, false).as_deref(), Some("http://px4-travis.s3.amazonaws.com/Firmware/stable/px4_fmu-v5_default.px4"));
-        assert_eq!(px4_url(140, true).as_deref(), Some("http://px4-travis.s3.amazonaws.com/Firmware/beta/cubepilot_cubeorange_default.px4"));
-        assert_eq!(px4_url(4242, false), None);
+        assert_eq!(px4_url(50, Build::Stable).as_deref(), Some("http://px4-travis.s3.amazonaws.com/Firmware/stable/px4_fmu-v5_default.px4"));
+        assert_eq!(px4_url(140, Build::Beta).as_deref(), Some("http://px4-travis.s3.amazonaws.com/Firmware/beta/cubepilot_cubeorange_default.px4"));
+        assert_eq!(px4_url(4242, Build::Stable), None);
+        assert_eq!(px4_url(50, Build::Developer).as_deref(), Some("http://px4-travis.s3.amazonaws.com/Firmware/master/px4_fmu-v5_default.px4"), "FirmwareUpgradeController files the developer build under master");
     }
 }

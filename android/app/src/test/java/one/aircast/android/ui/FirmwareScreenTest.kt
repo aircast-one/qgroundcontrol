@@ -49,6 +49,8 @@ class FirmwareScreenTest {
         assertTrue("px4:stable" in plain)
         assertTrue(FIRMWARE_FROM_FILE !in plain)
         assertTrue(FIRMWARE_FROM_FILE in firmwareSources(advanced = true).map { it.first })
+        assertTrue("px4:dev" in firmwareSources(advanced = true).map { it.first })
+        assertEquals(DEV_WARNING, firmwareWarning("px4:dev"))
         assertEquals("ardupilot:plane:stable", sourceAfterAdvanced("ardupilot:plane:dev", advanced = false))
         assertEquals(DEFAULT_FIRMWARE_SOURCE, sourceAfterAdvanced(FIRMWARE_FROM_FILE, advanced = false))
         assertEquals("px4:beta", sourceAfterAdvanced("px4:beta", advanced = true))

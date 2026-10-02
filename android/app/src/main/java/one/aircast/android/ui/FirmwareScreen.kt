@@ -94,7 +94,7 @@ internal fun firmwarePhaseText(phase: String): String = when (phase) {
 internal const val FIRMWARE_FROM_FILE = "file"
 
 internal val FIRMWARE_SOURCES: List<Pair<String, String>> =
-    listOf(FIRMWARE_FROM_FILE to "A firmware file", "px4:stable" to "PX4 Pro, stable", "px4:beta" to "PX4 Pro, beta", "sik:stable" to "SiK radio, stable") +
+    listOf(FIRMWARE_FROM_FILE to "A firmware file", "px4:stable" to "PX4 Pro, stable", "px4:beta" to "PX4 Pro, beta", "px4:dev" to "PX4 Pro, dev", "sik:stable" to "SiK radio, stable") +
         listOf("copter", "heli", "plane", "rover", "sub").flatMap { vehicle ->
             listOf("stable", "beta", "dev").map { build ->
                 "ardupilot:$vehicle:$build" to "ArduPilot ${vehicle.replaceFirstChar { it.uppercase() }}, $build"
