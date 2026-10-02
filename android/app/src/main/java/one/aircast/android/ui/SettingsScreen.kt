@@ -522,9 +522,10 @@ internal fun FactRow(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (subtitle.isNotBlank() && !subtitle.equals(title, ignoreCase = true)) {
+            val rowNote = subtitle.split(" · ").filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
+            if (rowNote.isNotBlank() && !rowNote.equals(title, ignoreCase = true)) {
                 Text(
-                    text = subtitle,
+                    text = rowNote,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
@@ -562,7 +563,7 @@ internal fun FactRow(
                         Switch(checked = fact.boolValue, onCheckedChange = null, enabled = false)
                     } else {
                         Text(
-                            text = enumLabel(fact),
+                            text = listOf(enumLabel(fact), fact.units.takeIf { !fact.isEnum }.orEmpty()).filter { it.isNotBlank() }.joinToString(" "),
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
