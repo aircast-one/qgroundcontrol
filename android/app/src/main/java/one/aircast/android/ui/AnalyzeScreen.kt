@@ -34,13 +34,13 @@ enum class AnalyzePage(
     @DrawableRes val icon: Int,
 ) {
     LogDownload(
-        "Log Download",
+        "Flight logs",
         "Download flight logs from the vehicle",
         AnalyzeSection.FlightData,
         R.drawable.ic_download,
     ),
     GeoTag(
-        "GeoTag Images",
+        "Geotag images",
         "Match photographs to where the vehicle was when it took them",
         AnalyzeSection.FlightData,
         R.drawable.ic_photo_camera,
@@ -52,13 +52,13 @@ enum class AnalyzePage(
         R.drawable.ic_vibration,
     ),
     Inspector(
-        "MAVLink Inspector",
+        "MAVLink inspector",
         "Live message rates and field values",
         AnalyzeSection.Live,
         R.drawable.ic_analytics,
     ),
     Console(
-        "MAVLink Console",
+        "Console",
         "Shell over the vehicle link",
         AnalyzeSection.Live,
         R.drawable.ic_terminal,
@@ -86,6 +86,9 @@ internal fun analyzeStatus(page: AnalyzePage, unread: Int, vibration: String?): 
     else -> "" to SetupState.Neutral
 }
 
+internal fun analyzeSubtitle(page: AnalyzePage, messages: List<VehicleMessage>): String =
+    if (page == AnalyzePage.Messages && messages.isNotEmpty()) severitySummary(messages) else page.description
+
 internal fun analyzeNote(
     page: AnalyzePage,
     connected: Boolean,
@@ -108,6 +111,7 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
     val messagesJson by qgcPath(MESSAGES)
     val vibrationLevel = remember(vibrationJson) { vibrationReading(vibrationJson)?.let(::worstSeverity) }
     val unread = remember(messagesJson) { unreadCount(messagesJson) }
+    val messages = remember(messagesJson) { vehicleMessages(messagesJson) }
 
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "title") {
@@ -128,7 +132,7 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
                     title = page.label,
                     status = status,
                     state = state,
-                    subtitle = listOfNotNull(page.description, analyzeNote(page, connected, px4, caveat)).joinToString("\n"),
+                    subtitle = listOfNotNull(analyzeSubtitle(page, messages), analyzeNote(page, connected, px4, caveat)).joinToString("\n"),
                     onClick = { onSelect(page) },
                     icon = page.icon,
                     selected = page == selected,

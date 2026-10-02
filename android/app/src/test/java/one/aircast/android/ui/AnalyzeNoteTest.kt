@@ -71,4 +71,12 @@ class AnalyzeNoteTest {
         assertEquals("OK" to SetupState.Done, analyzeStatus(AnalyzePage.Vibration, 0, "normal"))
         assertEquals("" to SetupState.Neutral, analyzeStatus(AnalyzePage.Console, 5, "danger"))
     }
+
+    @Test
+    fun `the messages row reads what the vehicle has said, the others what the tool does`() {
+        val said = listOf(VehicleMessage(0, "", "", MessageSeverity.Warning, "Low battery"), VehicleMessage(1, "", "", MessageSeverity.Normal, "Armed"))
+        org.junit.Assert.assertEquals("1 warning \u00b7 1 message", analyzeSubtitle(AnalyzePage.Messages, said))
+        org.junit.Assert.assertEquals(AnalyzePage.Messages.description, analyzeSubtitle(AnalyzePage.Messages, emptyList()))
+        org.junit.Assert.assertEquals(AnalyzePage.Console.description, analyzeSubtitle(AnalyzePage.Console, said))
+    }
 }
