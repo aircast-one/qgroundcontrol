@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::control::decode;
-use crate::read::object;
+use crate::read::{flag, object};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[];
@@ -54,6 +54,7 @@ const NTRIP_NO_FORWARD: &str = "Has no effect while UDP forwarding is off.";
 const RTCM_NO_INPUT: &str = "Has no effect while UDP RTCM input is off.";
 const FORWARDING_OFF: &str = "Has no effect while MAVLink forwarding is off.";
 const TELEMETRY_SAVE_OFF: &str = "Has no effect while saving telemetry logs is off.";
+const STREAMS_FROM_VEHICLE: &str = "Stream rates are controlled by the vehicle.";
 const ADSB_SERVER_OFF: &str = "Has no effect while the ADSB server connection is off.";
 
 const GATED: &[(&str, &str, bool, &str)] = &[
@@ -74,7 +75,16 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("telemetrySaveNotArmed", "telemetrySave", true, TELEMETRY_SAVE_OFF),
     ("adsbServerHostAddress", "adsbServerConnectEnabled", true, ADSB_SERVER_OFF),
     ("adsbServerPort", "adsbServerConnectEnabled", true, ADSB_SERVER_OFF),
+    ("streamRateRawSensors", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
+    ("streamRateExtendedStatus", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
+    ("streamRateRCChannels", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
+    ("streamRatePosition", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
+    ("streamRateExtra1", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
+    ("streamRateExtra2", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
+    ("streamRateExtra3", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
 ];
+
+const GATED_FROM: &[(&str, &str)] = &[("apmMavlinkStreamRateSettings", "mavlinkSettings")];
 
 // QGC distinguishes the two, and which binding a page uses is what decides this. FlyViewSettings
 // binds the checklist row's `enabled`, so that control is real but inert and says why. The RTK
@@ -151,8 +161,22 @@ fn page_json(page: &Page, with_controls: Option<&dyn Backend>) -> Value {
         "showsConsole": page.shows_console,
         "showsNtrip": page.shows_ntrip,
         "showsPx4Logs": page.shows_px4_logs,
-        "sections": page.sections.iter().map(|(title, group)| section_json(title, group, with_controls)).collect::<Vec<_>>(),
+        "sections": page.sections.iter().filter(|(_, group)| section_applies(group, with_controls)).map(|(title, group)| section_json(title, group, with_controls)).collect::<Vec<_>>(),
     })
+}
+
+pub fn apm_streams_apply(connected: bool, apm_firmware: bool) -> bool {
+    !connected || apm_firmware
+}
+
+fn section_applies(group: &str, backend: Option<&dyn Backend>) -> bool {
+    match (group, backend) {
+        ("apmMavlinkStreamRateSettings", Some(backend)) => apm_streams_apply(
+            flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
+            flag(&object(&backend.get_fields("vehicle", "apmFirmware")), "apmFirmware"),
+        ),
+        _ => true,
+    }
 }
 
 fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Value {
@@ -171,7 +195,12 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
         .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n)))
         .map(|f| decode(f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .collect();
-    let shown = gated(&shown, &facts);
+    let borrowed: Vec<Value> = GATED_FROM
+        .iter()
+        .filter(|(gated_group, _)| *gated_group == group)
+        .flat_map(|(_, from)| object(&backend.get(&format!("settings.{from}"))).get("facts").and_then(Value::as_array).cloned().unwrap_or_default())
+        .collect();
+    let shown = gated(&shown, &[facts.clone(), borrowed].concat());
     let desktop_only: Vec<&str> = facts.iter().filter_map(|f| f.get("name").and_then(Value::as_str)).filter_map(|n| DESKTOP_ONLY.iter().find(|(d, _)| *d == n).map(|(_, label)| *label)).collect();
     let note = match desktop_only.is_empty() {
         true => String::new(),
@@ -254,9 +283,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn apm_stream_rates_show_for_an_apm_vehicle_or_none_like_telemetry_settings() {
+        assert!(apm_streams_apply(false, false));
+        assert!(apm_streams_apply(true, true));
+        assert!(!apm_streams_apply(true, false));
+    }
+
+    #[test]
     fn telemetry_and_adsb_rows_follow_their_switches_like_the_qml_pages() {
-        let controls: Vec<Value> = ["forwardMavlinkHostName", "telemetrySaveNotArmed", "adsbServerHostAddress", "adsbServerPort"].iter().map(|n| json!({ "name": n })).collect();
-        let facts = |on: bool| ["forwardMavlink", "telemetrySave", "adsbServerConnectEnabled"].iter().map(|n| json!({ "name": n, "value": on })).collect::<Vec<_>>();
+        let controls: Vec<Value> = ["forwardMavlinkHostName", "telemetrySaveNotArmed", "adsbServerHostAddress", "adsbServerPort", "streamRateRawSensors", "streamRateExtra3"].iter().map(|n| json!({ "name": n })).collect();
+        let facts = |on: bool| ["forwardMavlink", "telemetrySave", "adsbServerConnectEnabled", "apmStartMavlinkStreams"].iter().map(|n| json!({ "name": n, "value": on })).collect::<Vec<_>>();
         assert!(gated(&controls, &facts(false)).iter().all(|c| c["enabled"] == false && c["disabledReason"].is_string()));
         assert!(gated(&controls, &facts(true)).iter().all(|c| c["enabled"] == true));
     }
@@ -295,6 +331,7 @@ mod tests {
             ("MavlinkActions", include_str!("../../src/Settings/MavlinkActions.SettingsGroup.json")),
             ("Mavlink", include_str!("../../src/Settings/Mavlink.SettingsGroup.json")),
             ("ADSBVehicleManager", include_str!("../../src/Settings/ADSBVehicleManager.SettingsGroup.json")),
+            ("APMMavlinkStreamRate", include_str!("../../src/Settings/APMMavlinkStreamRate.SettingsGroup.json")),
         ];
         let declares = |name: &str| -> Vec<&str> {
             GROUPS.iter().filter(|(_, body)| body.contains(&format!("\"{name}\""))).map(|(group, _)| *group).collect()
