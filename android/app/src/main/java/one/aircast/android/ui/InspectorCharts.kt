@@ -89,9 +89,9 @@ internal fun chartToggleEnabled(charts: InspectorCharts?, field: String, type: S
     }
 }
 
-internal fun toggleChartField(chart: Int, field: String, on: Boolean, label: String) {
+internal fun toggleChartField(chart: Int, field: String, on: Boolean) {
     offMainDetached {
-        if (on) Qgc.invoke(CHART_ADD, chart, field) else Qgc.invoke(CHART_REMOVE, chart, label)
+        Qgc.invoke(if (on) CHART_ADD else CHART_REMOVE, chart, field)
     }
 }
 

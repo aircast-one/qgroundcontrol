@@ -269,7 +269,7 @@ fn message_json(system: &System, message: &Message) -> Value {
         "kind": "object", "class": "QGCMAVLinkMessage", "objectName": "", "children": ["fields"], "facts": [],
         "id": message.id, "compId": message.comp_id, "sysId": system.id, "name": message.name, "instanceValue": message.instance,
         "count": message.count, "actualRateHz": message.actual_rate_hz, "targetRateHz": message.target_rate_hz,
-        "selected": message.selected, "fieldSelected": false,
+        "selected": message.selected, "fieldSelected": crate::inspectorchart::charts_message(system.id, message.comp_id, message.id, &message.instance),
     })
 }
 

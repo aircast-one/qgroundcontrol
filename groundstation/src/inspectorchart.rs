@@ -59,6 +59,10 @@ fn charted(held: &[Chart; CHART_COUNT], system: u8, component: u8, message: u32,
     held.iter().position(|chart| chart.plots.iter().any(|p| p.system == system && p.component == component && p.message == message && p.instance == instance && p.field == field))
 }
 
+pub fn charts_message(system: u8, component: u8, message: u32, instance: &str) -> bool {
+    charts().iter().any(|chart| chart.plots.iter().any(|p| p.system == system && p.component == component && p.message == message && p.instance == instance))
+}
+
 fn args(given: &str) -> (Option<usize>, Value) {
     let parsed: Value = serde_json::from_str(given).unwrap_or(Value::Null);
     (parsed.get(0).and_then(Value::as_u64).map(|c| c as usize).filter(|c| *c < CHART_COUNT), parsed.get(1).cloned().unwrap_or(Value::Null))
@@ -91,8 +95,8 @@ pub fn run(path: &str, given: &str) -> Value {
             held[chart].plots.push(Plot { system, component, message, instance, field: field.to_string(), label: format!("{name}.{field}"), samples: VecDeque::new() });
         }
         CHART_REMOVE => {
-            let Some(label) = second.as_str() else { return refused("Name the charted field to remove.") };
-            held[chart].plots.retain(|p| p.label != label);
+            let (Some((((system, component, message), _), instance)), Some(field)) = (selected, second.as_str()) else { return refused("Name the charted field to remove.") };
+            held[chart].plots.retain(|p| !(p.system == system && p.component == component && p.message == message && p.instance == instance && p.field == field));
         }
         CHART_RANGE_X => match second.as_u64().map(|i| i as usize).filter(|i| *i < CHART_TIME_SCALES.len()) {
             Some(index) => held[chart].range_x = index,

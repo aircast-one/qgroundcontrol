@@ -10,7 +10,7 @@ use crate::router::Backend;
 // and the view keeps serving the previous system's id beside the new system's empty message list.
 pub const DEPS: &[&str] =
     &["vehicles.activeVehicleAvailable", "mavlinkInspector.activeSystem.messages", "mavlinkInspector@systemsChanged", "mavlinkInspector@activeSystemChanged", crate::mavinspect::INSPECTOR_CHANGED];
-const FIELDS: &str = "id,compId,name,count,actualRateHz,targetRateHz,selected";
+const FIELDS: &str = "id,compId,name,count,actualRateHz,targetRateHz,selected,fieldSelected";
 const RATE_DISABLED: i64 = -1;
 const RATE_DEFAULT: i64 = 0;
 const RATE_CHOICES: &[i64] = &[-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 25, 50, 100];
@@ -77,6 +77,7 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
                         "targetRateHz": target,
                         "targetRateTitle": rate_title(shown_rate(target)),
                         "selected": m.get("selected").and_then(Value::as_bool).unwrap_or(false),
+                        "fieldSelected": m.get("fieldSelected").and_then(Value::as_bool).unwrap_or(false),
                     }))
                 })
                 .collect()

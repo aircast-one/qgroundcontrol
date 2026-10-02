@@ -7530,6 +7530,7 @@
         "view.inspector.messages.#",
         "view.inspector.messages[].compId",
         "view.inspector.messages[].count",
+        "view.inspector.messages[].fieldSelected",
         "view.inspector.messages[].id",
         "view.inspector.messages[].index",
         "view.inspector.messages[].name",
@@ -11581,6 +11582,7 @@
             {
                 "compId": "number",
                 "count": "number",
+                "fieldSelected": "bool",
                 "id": "number",
                 "index": "number",
                 "name": "string",

@@ -71,6 +71,7 @@ internal data class InspectorMessage(
     val compId: Int,
     val title: String,
     val targetRateTitle: String = "",
+    val fieldSelected: Boolean = false,
 )
 
 internal data class InspectorRate(val rate: Int, val title: String)
@@ -80,8 +81,12 @@ internal data class InspectorChoice(val id: Int, val title: String)
 internal fun inspectorChoices(view: JSONObject?, key: String): List<InspectorChoice> =
     view?.optJSONArray(key)?.let { list -> (0 until list.length()).mapNotNull { list.optJSONObject(it) }.map { InspectorChoice(it.optInt("id"), it.optText("title")) } }.orEmpty()
 
-internal fun inspectorQualifier(message: InspectorMessage): String =
-    message.title.removePrefix(message.name).trim().removeSurrounding("(", ")")
+internal fun inspectorDetails(message: InspectorMessage): List<Pair<String, String>> = listOf(
+    "Message" to "${message.name} (${message.id})",
+    "Component" to message.compId.toString(),
+    "Count" to message.count.toString(),
+    "Actual Rate" to message.rateText,
+)
 
 internal fun inspectorShown(messages: List<InspectorMessage>, filter: String, component: Int?): List<InspectorMessage> =
     messages.filter { it.name.contains(filter, ignoreCase = true) && (component == null || it.compId == component) }
@@ -113,6 +118,7 @@ internal fun inspectorMessages(view: JSONObject?): List<InspectorMessage> {
                 compId = message.optInt("compId"),
                 title = message.optText("title").ifBlank { message.optText("name") },
                 targetRateTitle = message.optText("targetRateTitle"),
+                fieldSelected = message.optBoolean("fieldSelected"),
             )
         }
     }.sortedBy { it.name }
@@ -235,10 +241,7 @@ private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
                             Checkbox(
                                 checked = on,
                                 enabled = chartToggleEnabled(charts, field.name, field.type, chart),
-                                onCheckedChange = { wanted ->
-                                    val label = charts?.charts?.getOrNull(chart)?.plots?.firstOrNull { it.field == field.name }?.label.orEmpty()
-                                    toggleChartField(chart, field.name, wanted, label)
-                                },
+                                onCheckedChange = { wanted -> toggleChartField(chart, field.name, wanted) },
                             )
                         }
                     }
@@ -293,6 +296,14 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
             ) {
                 RatePicker(open.path, open.targetRateTitle, inspectorRateChoices(inspectorJson))
             }
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                inspectorDetails(open).forEach { (label, value) ->
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        Text(value, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
             HorizontalDivider()
             FieldList(open.path, Modifier.weight(1f))
         }
@@ -340,8 +351,8 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
         LazyColumn(Modifier.fillMaxSize()) {
             items(shown, key = { it.path }) { message ->
                 SetupRow(
-                    title = message.name.ifBlank { message.title },
-                    subtitle = inspectorQualifier(message),
+                    title = message.name.ifBlank { message.title } + if (message.fieldSelected) " *" else "",
+                    subtitle = "comp ${message.compId}",
                     status = message.rateText,
                     onClick = { openPath = message.path },
                 )
