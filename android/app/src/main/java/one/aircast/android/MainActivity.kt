@@ -286,7 +286,7 @@ fun AircastShell(hostView: android.view.View?) {
                 Qgc.invoke("host.acknowledgeThrough", batch.through)
             }
             val critical = one.aircast.android.ui.criticalBanner(batch)
-            banners.forEach { banner ->
+            banners.filterNot { it == critical && tab == Tab.Fly }.forEach { banner ->
                 when (banner == critical) {
                     true -> {
                         snackbars.showSnackbar(banner, withDismissAction = true, duration = androidx.compose.material3.SnackbarDuration.Indefinite)
