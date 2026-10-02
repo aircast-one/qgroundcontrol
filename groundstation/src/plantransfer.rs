@@ -146,6 +146,7 @@ pub struct Transfer {
     to_read: Vec<u16>,
     count_to_read: u16,
     to_write: Vec<u16>,
+    last_request: Option<u16>,
     writing: Vec<Item>,
     pub items: Vec<Item>,
     pub wrote: bool,
@@ -153,18 +154,37 @@ pub struct Transfer {
 
 fn result_text(result: u8) -> String {
     match result {
-        0 => "Mission accepted".to_string(),
-        1 => "Unspecified error".to_string(),
-        2 => "Coordinate frame is not supported".to_string(),
-        3 => "Command is not supported".to_string(),
-        4 => "Mission item exceeds storage space".to_string(),
-        5 => "One of the parameters has an invalid value".to_string(),
-        6..=12 => format!("Param {} has an invalid value", result - 5),
-        13 => "Received mission item out of sequence".to_string(),
-        14 => "Not accepting any mission commands".to_string(),
-        15 => "Mission operation cancelled".to_string(),
-        other => format!("QGC Internal Error: unknown mission result {other}"),
+        0 => "Mission accepted.".to_string(),
+        1 => "Unspecified error.".to_string(),
+        2 => "Coordinate frame is not supported.".to_string(),
+        3 => "Command is not supported.".to_string(),
+        4 => "Mission item exceeds storage space.".to_string(),
+        5 => "One of the parameters has an invalid value.".to_string(),
+        6..=12 => format!("Param {} invalid value.", result - 5),
+        13 => "Received mission item out of sequence.".to_string(),
+        14 => "Not accepting any mission commands.".to_string(),
+        other => format!("Unknown error: {other}."),
     }
+}
+
+fn friendly_name(command: u16) -> String {
+    crate::cmdinfo::tree(crate::cmdinfo::Firmware::Generic, crate::cmdinfo::VehicleClass::Generic)
+        .get(&i64::from(command))
+        .map_or_else(|| format!("MAV_CMD({command})"), |c| c.friendly_name.clone())
+}
+
+fn last_request_text(item: Option<&Item>, result: u8) -> Option<String> {
+    let item = item?;
+    let postfix = match result {
+        2 => Some(format!("Frame: {}", item.frame)),
+        6..=12 => Some(format!("Value: {}", crate::control::qt_shortest(item.params[usize::from(result - 6)]))),
+        _ => None,
+    };
+    Some([Some(format!("Item #{} Command: {}", item.seq, friendly_name(item.command))), postfix].into_iter().flatten().collect::<Vec<_>>().join(" "))
+}
+
+fn rejection_text(item: Option<&Item>, result: u8) -> String {
+    [Some(result_text(result)), last_request_text(item, result)].into_iter().flatten().collect::<Vec<_>>().join(" ")
 }
 
 impl Transfer {
@@ -268,6 +288,7 @@ impl Transfer {
             })
             .collect();
         self.to_write = (0..self.writing.len() as u16).collect();
+        self.last_request = None;
         self.retries = 0;
         self.transaction = Some(Transaction::Write);
         let mut out = vec![Out::Progress(0.0)];
@@ -368,6 +389,7 @@ impl Transfer {
             return self.finish(false, &format!("Vehicle requested item outside range, count:request {}:{seq}. Send to Vehicle failed.", self.writing.len()));
         }
         self.to_write.retain(|s| *s != seq);
+        self.last_request = Some(seq);
         let item = self.writing[seq as usize].clone();
         let mut out = vec![Out::StopTimer, Out::Progress(seq as f64 / self.writing.len() as f64), Out::SendItem(Item { current: seq == 0, ..item })];
         out.extend(self.expecting(Expect::Request));
@@ -385,7 +407,10 @@ impl Transfer {
             (Expect::Request, RESULT_ACCEPTED, false) => self.finish(false, "Vehicle acknowledged the mission before requesting every item."),
             (Expect::ClearAck, RESULT_ACCEPTED, _) => self.finish(true, ""),
             (Expect::ClearAck, failed, _) => self.finish(false, &format!("Vehicle remove all failed. Error: {}", result_text(failed))),
-            _ => self.finish(false, &result_text(result)),
+            _ => {
+                let text = rejection_text(self.last_request.and_then(|seq| self.writing.get(usize::from(seq))), result);
+                self.finish(false, &text)
+            }
         }
     }
 }
@@ -415,7 +440,7 @@ mod tests {
         assert!(!transfer.in_progress() && !transfer.wrote);
         let mut refused = Transfer::new(true, PLAN_FENCE);
         refused.remove_all();
-        assert!(matches!(refused.on_ack(1).last(), Some(Out::Done { success: false, error }) if error == "Vehicle remove all failed. Error: Unspecified error"));
+        assert!(matches!(refused.on_ack(1).last(), Some(Out::Done { success: false, error }) if error == "Vehicle remove all failed. Error: Unspecified error."));
         let mut lost = Transfer::new(true, PLAN_RALLY);
         lost.remove_all();
         (0..=MAX_RETRY).for_each(|_| { lost.on_timeout(); });
@@ -451,6 +476,27 @@ mod tests {
         let gave_up = transfer.on_timeout();
         assert!(matches!(gave_up.last(), Some(Out::Done { success: false, error }) if error.contains("maximum retries")));
         assert!(!transfer.in_progress());
+    }
+
+    #[test]
+    fn a_rejected_write_names_the_last_requested_item_like_plan_manager() {
+        let error = |result: u8| {
+            let mut transfer = Transfer::new(true, PLAN_MISSION);
+            transfer.write(vec![waypoint(0, 0.0), waypoint(1, 47.25)]);
+            transfer.on_request(0);
+            transfer.on_request(1);
+            match transfer.on_ack(result).last() {
+                Some(Out::Done { success: false, error }) => error.clone(),
+                other => panic!("{other:?}"),
+            }
+        };
+        assert_eq!(error(10), "Param 5 invalid value. Item #1 Command: Waypoint Value: 47.25", "PlanManager::_lastMissionReqestString");
+        assert_eq!(error(2), "Coordinate frame is not supported. Item #1 Command: Waypoint Frame: 6");
+        assert_eq!(error(3), "Command is not supported. Item #1 Command: Waypoint");
+        assert_eq!(error(15), "Unknown error: 15. Item #1 Command: Waypoint", "QGC has no case for a cancelled operation");
+        let mut unrequested = Transfer::new(true, PLAN_MISSION);
+        unrequested.write(vec![waypoint(0, 0.0)]);
+        assert!(matches!(unrequested.on_ack(1).last(), Some(Out::Done { error, .. }) if error == "Unspecified error."), "before any request there is no item to name");
     }
 
     #[test]
