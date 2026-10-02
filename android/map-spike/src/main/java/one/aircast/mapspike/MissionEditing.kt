@@ -30,6 +30,8 @@ sealed interface MapHit {
     data class LandingPlace(val index: Int, val place: Int) : MapHit
 
     data class Midpoint(val path: String, val invokable: String, val segment: Int) : MapHit
+
+    data class ShapeCentre(val fence: Boolean, val owner: Int) : MapHit
 }
 
 internal fun nearestIndex(x: Float, y: Float, points: List<Pair<Float, Float>?>): Int? =
@@ -63,6 +65,8 @@ internal fun handleHit(kind: String?, owner: Int, vertex: Int): MapHit? = when (
     HANDLE_KIND_SURVEY -> MapHit.SurveyVertex(owner, vertex)
     HANDLE_KIND_CIRCLE -> MapHit.CircleCentre(owner)
     HANDLE_KIND_LANDING -> MapHit.LandingPlace(owner, vertex)
+    HANDLE_KIND_FENCE_CENTRE -> MapHit.ShapeCentre(fence = true, owner = owner)
+    HANDLE_KIND_SURVEY_CENTRE -> MapHit.ShapeCentre(fence = false, owner = owner)
     else -> null
 }
 

@@ -442,7 +442,7 @@ internal fun MapSpikeScreen(
                     insertAfter(selected, allItems),
                 )
             },
-            onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList, rally) } },
+            onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList, rally, fences) } },
             onWaypointSelected = { hit ->
                 when (hit) {
                     is MapHit.Midpoint -> if (hit.path == MISSION_SPLIT_PATH) {
@@ -456,7 +456,7 @@ internal fun MapSpikeScreen(
                 }
             },
             onMoved = { hit, lat, lon ->
-                onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList, rally) }
+                onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList, rally, fences) }
             },
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
             onViewChanged = { visible = it },
@@ -479,7 +479,7 @@ internal fun MapSpikeScreen(
         positioning?.let { (hit, at) ->
             PositionDialog(at, onDismiss = { positioning = null }) { moved ->
                 positioning = null
-                onBridge(done = movedText(hit, allItems)) { writeMove(hit, moved.latitude, moved.longitude, surveyList, rally) }
+                onBridge(done = movedText(hit, allItems)) { writeMove(hit, moved.latitude, moved.longitude, surveyList, rally, fences) }
             }
         }
 

@@ -404,6 +404,8 @@ const val HANDLE_KIND_FENCE = "fence"
 const val HANDLE_KIND_SURVEY = "survey"
 const val HANDLE_KIND_CIRCLE = "circle"
 const val HANDLE_KIND_LANDING = "landing"
+const val HANDLE_KIND_FENCE_CENTRE = "fenceCentre"
+const val HANDLE_KIND_SURVEY_CENTRE = "surveyCentre"
 
 const val SHAPE_PATH_PROPERTY = "shapePath"
 const val SPLIT_INVOKABLE_PROPERTY = "splitInvokable"
@@ -469,8 +471,12 @@ fun renderVertexHandles(
     landings: List<LandingPattern> = emptyList(),
 ) {
     (style.getSource(FENCE_HANDLE_SOURCE) as? GeoJsonSource)
-        ?.setGeoJson(vertexHandleFeatures(polygons, surveys, circles, landings))
+        ?.setGeoJson(FeatureCollection.fromFeatures(vertexHandleFeatures(polygons, surveys, circles, landings).features().orEmpty() + centreHandleFeatures(polygons, surveys)))
 }
+
+fun centreHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>): List<Feature> =
+    polygons.mapNotNull { fence -> polygonCentre(fence.vertices)?.let { handleFeatures(HANDLE_KIND_FENCE_CENTRE, fence.index, listOf(it)) } }.flatten() +
+        surveys.filter { it.property != CORRIDOR_PROPERTY }.mapNotNull { area -> polygonCentre(area.area)?.let { handleFeatures(HANDLE_KIND_SURVEY_CENTRE, area.index, listOf(it)) } }.flatten()
 
 const val SURVEY_AREA_SOURCE = "aircast-survey-area"
 const val SURVEY_AREA_LAYER = "aircast-survey-area-layer"

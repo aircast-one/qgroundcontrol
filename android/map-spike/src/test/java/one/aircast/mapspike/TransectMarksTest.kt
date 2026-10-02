@@ -74,4 +74,16 @@ class TransectMarksTest {
         assertEquals(listOf(1, 2, 0), route.map { it.index })
         assertEquals("the last arrow sits on the leg home", 47.0005, legArrows(listOf(home, leg(1), leg(2)), linkStartToHome = false).last().at.latitude, 0.0002)
     }
+
+    @Test
+    fun `dragging a polygon's centre moves every corner by the same offset`() {
+        val square = listOf(TrackPoint(47.0, 8.0), TrackPoint(47.0, 8.002), TrackPoint(47.002, 8.002), TrackPoint(47.002, 8.0))
+        val centre = polygonCentre(square)!!
+        assertEquals(47.001, centre.latitude, 1e-9)
+        assertEquals(8.001, centre.longitude, 1e-9)
+        val moved = shapeMovedTo(square, TrackPoint(47.011, 8.001))!!
+        assertEquals("QGCMapPolygon::setCenter shifts each vertex by the centre's displacement", 47.010, moved[0].latitude, 1e-6)
+        assertEquals(8.0, moved[0].longitude, 1e-6)
+        assertEquals("a line has no centre handle", null, polygonCentre(square.take(2)))
+    }
 }

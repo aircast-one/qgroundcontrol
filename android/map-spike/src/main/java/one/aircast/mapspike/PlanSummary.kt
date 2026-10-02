@@ -61,6 +61,7 @@ internal fun selectionText(
         ?.let { "corner ${selected.vertex + 1} of ${it.vertices.size}" }
     is MapHit.SurveyVertex -> null
     is MapHit.Midpoint -> null
+    is MapHit.ShapeCentre -> null
     is MapHit.LandingPlace -> when (selected.place) {
         LANDING_PLACE_APPROACH -> "final approach"
         else -> "touchdown"

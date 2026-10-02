@@ -75,6 +75,26 @@ fun defaultLine(view: List<TrackPoint>): List<TrackPoint> =
         }
     } ?: emptyList()
 
+fun polygonCentre(vertices: List<TrackPoint>): TrackPoint? {
+    if (vertices.size < 3) return null
+    val origin = vertices.first()
+    val local = vertices.map { it.longitude - origin.longitude to it.latitude - origin.latitude }
+    val edges = local.indices.map { i -> local[i] to local[(i + 1) % local.size] }
+    val cross = edges.map { (a, b) -> a.first * b.second - b.first * a.second }
+    val area = cross.sum() / 2
+    if (area == 0.0) return null
+    val x = edges.zip(cross).sumOf { (edge, c) -> (edge.first.first + edge.second.first) * c } / (6 * area)
+    val y = edges.zip(cross).sumOf { (edge, c) -> (edge.first.second + edge.second.second) * c } / (6 * area)
+    return TrackPoint(origin.latitude + y, origin.longitude + x)
+}
+
+fun shapeMovedTo(vertices: List<TrackPoint>, centre: TrackPoint): List<TrackPoint>? {
+    val from = polygonCentre(vertices) ?: return null
+    val distance = metresBetween(from, centre)
+    val azimuth = azimuthBetween(from, centre)
+    return vertices.map { pointAt(it, distance, azimuth) }
+}
+
 fun replaceShape(target: ShapeTarget, vertices: List<TrackPoint>): Boolean =
     vertices.size >= target.minimum &&
         // qtpaths: plan.geoFenceController.polygons.0.clear, plan.missionController.visualItems.0.surveyAreaPolygon.clear, plan.missionController.visualItems.0.corridorPolyline.clear
