@@ -202,7 +202,22 @@ fn terrain_gated(control: Value, name: &str, follows_terrain: bool) -> Value {
     }
 }
 
-pub fn fields(survey: &Value, item: &str, multirotor: bool, units: &Units) -> Vec<Value> {
+fn disabled(control: Value, reason: &str) -> Value {
+    match control {
+        Value::Object(mut fields) => {
+            fields.insert("enabled".to_string(), json!(false));
+            fields.insert("disabledReason".to_string(), json!(reason));
+            Value::Object(fields)
+        }
+        other => other,
+    }
+}
+
+const HOVER_NEEDS_FIXED_ALTITUDE: &str = "Only with a relative or absolute altitude.";
+const REFLY_NOT_WITH_TERRAIN: &str = "Not while the altitude is calculated above terrain.";
+const TURNAROUND_NOT_WITH_HOVER: &str = "Not while hovering to capture each image.";
+
+pub fn fields(survey: &Value, item: &str, multirotor: bool, hover_allowed: bool, units: &Units) -> Vec<Value> {
     let transect = survey.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
     let turnaround = if multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
     let corridor = survey.get("complexItemType").and_then(Value::as_str) == Some("CorridorScan");
@@ -233,13 +248,23 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, units: &Units) -> Ve
         true => structure,
         false => listed.into_iter().chain(own).collect(),
     };
-    let follows_terrain = calc_of(survey).get("DistanceMode").and_then(Value::as_i64) == Some(crate::altitudemodes::FRAME_CALC_ABOVE_TERRAIN);
+    let distance_mode = calc_of(survey).get("DistanceMode").and_then(Value::as_i64);
+    let follows_terrain = distance_mode == Some(crate::altitudemodes::FRAME_CALC_ABOVE_TERRAIN);
+    let fixed_altitude = matches!(distance_mode, Some(crate::altitudemodes::FRAME_RELATIVE | crate::altitudemodes::FRAME_ABSOLUTE));
+    let hovering = hover_allowed && transect.get("HoverAndCapture").and_then(Value::as_bool) == Some(true);
     chosen
         .into_iter()
+        .filter(|(_, name, ..)| *name != "HoverAndCapture" || hover_allowed)
         .filter_map(|(file, name, suffix, owner, key)| {
             let meta = meta(file, name)?;
             let value = with_default(owner.get(key), &meta);
-            Some(terrain_gated(control(&meta, value, item, suffix, "Settings", units), name, follows_terrain))
+            let shown = terrain_gated(control(&meta, value, item, suffix, "Settings", units), name, follows_terrain);
+            Some(match name {
+                "HoverAndCapture" if !fixed_altitude => disabled(shown, HOVER_NEEDS_FIXED_ALTITUDE),
+                "Refly90Degrees" if follows_terrain => disabled(shown, REFLY_NOT_WITH_TERRAIN),
+                "CameraTriggerInTurnAround" if hovering => disabled(shown, TURNAROUND_NOT_WITH_HOVER),
+                _ => shown,
+            })
         })
         .collect()
 }
@@ -760,11 +785,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hover_refly_and_turnaround_switches_follow_surveyitemeditor() {
+        let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+        let units = Units { vertical: &metres, horizontal: &metres };
+        let survey = |mode: i64, hover: bool| json!({ "complexItemType": "survey", "TransectStyleComplexItem": { "HoverAndCapture": hover, "CameraCalc": { "DistanceMode": mode, "CameraName": MANUAL_CAMERA } } });
+        let enabled = |s: &Value, hover_allowed: bool, suffix: &str| fields(s, "p", true, hover_allowed, &units).into_iter().find(|c| c["pathSuffix"] == suffix).map(|c| c["enabled"] != false);
+        assert_eq!(enabled(&survey(1, false), false, "hoverAndCapture"), None, "a fixed wing never sees hover-and-capture");
+        assert_eq!(enabled(&survey(1, false), true, "hoverAndCapture"), Some(true));
+        assert_eq!(enabled(&survey(3, false), true, "hoverAndCapture"), Some(false), "only with a relative or absolute altitude");
+        assert_eq!(enabled(&survey(3, false), true, "refly90Degrees"), Some(false), "no refly while following terrain");
+        assert_eq!(enabled(&survey(1, true), true, "cameraTriggerInTurnAround"), Some(false), "no turnaround images while hovering");
+        assert_eq!(enabled(&survey(1, true), false, "cameraTriggerInTurnAround"), Some(true), "a stored hover flag means nothing where hovering is not allowed");
+    }
+
+    #[test]
     fn the_terrain_frame_is_written_and_gates_the_terrain_adjust_rows() {
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let units = Units { vertical: &metres, horizontal: &metres };
         let survey = json!({ "complexItemType": "survey", "CameraCalc": { "DistanceMode": 1, "CameraName": MANUAL_CAMERA }, "TransectStyleComplexItem": {} });
-        let rows = |s: &Value| fields(s, "p", true, &units).into_iter().filter(|c| c["name"].as_str().is_some_and(|n| n.starts_with("TerrainAdjust"))).map(|c| c["enabled"].clone()).collect::<Vec<_>>();
+        let rows = |s: &Value| fields(s, "p", true, true, &units).into_iter().filter(|c| c["name"].as_str().is_some_and(|n| n.starts_with("TerrainAdjust"))).map(|c| c["enabled"].clone()).collect::<Vec<_>>();
         assert_eq!(rows(&survey).len(), 3, "the three terrain-adjust rows have to be found at all");
         assert!(rows(&survey).iter().all(|enabled| *enabled == json!(false)), "{:?}", rows(&survey));
         let following = set(&survey, "cameraCalc.distanceMode", &json!(3), &units).expect("the frame is a camera calc key the core writes");
@@ -791,8 +830,8 @@ mod tests {
         real["CameraName"] = json!("Sony ILCE-QX1");
         let camera = with_calc(&pitched, real);
         assert_eq!(camera["GimbalPitch"], 0, "StructureScanComplexItem::_updateGimbalPitch zeroes the pitch for a real camera");
-        assert!(fields(&camera, "i", true, &metric()).iter().all(|f| f["pathSuffix"] != "gimbalPitch"), "and StructureScanEditor shows it only for a manual camera");
-        let shown = fields(&pitched, "i", true, &metric()).into_iter().find(|f| f["pathSuffix"] == "gimbalPitch").unwrap();
+        assert!(fields(&camera, "i", true, true, &metric()).iter().all(|f| f["pathSuffix"] != "gimbalPitch"), "and StructureScanEditor shows it only for a manual camera");
+        let shown = fields(&pitched, "i", true, true, &metric()).into_iter().find(|f| f["pathSuffix"] == "gimbalPitch").unwrap();
         assert_eq!((shown["value"].as_f64(), shown["minimum"].as_f64(), shown["maximum"].as_f64(), shown["units"].as_str()), (Some(45.0), Some(0.0), Some(90.0), Some("deg")));
     }
 
@@ -853,7 +892,7 @@ mod tests {
         assert_eq!(wider["CorridorWidth"], 80.0);
         assert!(passes(&wider) > passes(corridor), "{} passes at 80 m against {} at 50 m", passes(&wider), passes(corridor));
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
-        let listed: Vec<String> = fields(corridor, "i", true, &Units { vertical: &metres, horizontal: &metres }).iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
+        let listed: Vec<String> = fields(corridor, "i", true, true, &Units { vertical: &metres, horizontal: &metres }).iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
         assert!(listed.contains(&"corridorWidth".to_string()) && !listed.contains(&"gridAngle".to_string()), "{listed:?}");
     }
 
@@ -964,7 +1003,7 @@ mod tests {
         let item = "plan.missionController.visualItems.1";
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let units = Units { vertical: &metres, horizontal: &metres };
-        let mine = json!({ "fields": fields(&survey, item, true, &units), "camera": camera(&survey, item, &units, true) });
+        let mine = json!({ "fields": fields(&survey, item, true, true, &units), "camera": camera(&survey, item, &units, true) });
         let rows = |v: &Value, key: &str| v[key].as_array().cloned().unwrap_or_default();
         assert_eq!(rows(&mine, "fields").len(), rows(&qt, "fields").len());
         rows(&mine, "fields").iter().zip(rows(&qt, "fields")).for_each(|(core, qt)| {
