@@ -5,7 +5,7 @@ use crate::read::{flag, object};
 use crate::router::Backend;
 use crate::sensors;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.parameterManager.missingParameters", "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.parameterManager.missingParameters", "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.vtol", "vehicle.fixedWing", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
 const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Heli", "Follow Me", "Tuning - Advanced", "Scripting", "Lights", "Remote Support"];
@@ -93,10 +93,17 @@ const FLIGHT_MODES_APM: &[Section] = &[
     Section { title: "Switch Options", note: "", parameters: &["RC6_OPTION", "RC7_OPTION", "RC8_OPTION", "RC9_OPTION", "RC10_OPTION", "RC11_OPTION", "RC12_OPTION", "RC13_OPTION", "RC14_OPTION", "RC15_OPTION", "RC16_OPTION"] },
 ];
 const FLIGHT_MODES_PX4: &[Section] = &[
-    Section { title: "Mode switch channel", note: "", parameters: &["RC_MAP_FLTMODE"] },
-    Section { title: "Mode slots", note: "", parameters: &["COM_FLTMODE1", "COM_FLTMODE2", "COM_FLTMODE3", "COM_FLTMODE4", "COM_FLTMODE5", "COM_FLTMODE6"] },
-    Section { title: "Single function switches", note: "", parameters: &["RC_MAP_RETURN_SW", "RC_MAP_KILL_SW", "RC_MAP_ARM_SW", "RC_MAP_LOITER_SW", "RC_MAP_OFFB_SW", "RC_MAP_GEAR_SW", "RC_MAP_TRANS_SW"] },
+    Section { title: "Flight Mode Settings", note: "", parameters: &["RC_MAP_FLTMODE", "COM_FLTMODE1", "COM_FLTMODE2", "COM_FLTMODE3", "COM_FLTMODE4", "COM_FLTMODE5", "COM_FLTMODE6"] },
+    Section { title: "Switch Settings", note: "", parameters: &["RC_MAP_ARM_SW", "RC_MAP_GEAR_SW", "RC_MAP_KILL_SW", "RC_MAP_LOITER_SW", "RC_MAP_OFFB_SW", "RC_MAP_RETURN_SW", "RC_MAP_TRANS_SW", "RC_MAP_FLAPS"] },
 ];
+
+pub fn switch_applies(parameter: &str, vtol: bool, fixed_wing: bool) -> bool {
+    match parameter {
+        "RC_MAP_TRANS_SW" => vtol,
+        "RC_MAP_FLAPS" => fixed_wing,
+        _ => true,
+    }
+}
 const HELI_APM: &[Section] = &[
     Section { title: "Servo 1", note: "", parameters: &["SERVO1_FUNCTION", "SERVO1_MIN", "SERVO1_MAX", "SERVO1_TRIM", "SERVO1_REVERSED"] },
     Section { title: "Servo 2", note: "", parameters: &["SERVO2_FUNCTION", "SERVO2_MIN", "SERVO2_MAX", "SERVO2_TRIM", "SERVO2_REVERSED"] },
@@ -340,9 +347,11 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
         ("Flight Modes", false) => crate::vehicleconfig::page(backend, crate::vehicleconfig::SIMPLE_MODES, false)["sections"].as_array().cloned().unwrap_or_default(),
         _ => Vec::new(),
     };
+    let shape = object(&backend.get_fields("vehicle", "vtol,fixedWing"));
+    let (vtol, fixed_wing) = (crate::read::flag(&shape, "vtol"), crate::read::flag(&shape, "fixedWing"));
     let listed: Vec<Value> = sections
         .iter()
-        .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter_map(|p| read(p)).collect::<Vec<_>>() }))
+        .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter(|p| switch_applies(p, vtol, fixed_wing)).filter_map(|p| read(p)).collect::<Vec<_>>() }))
         .chain(simple_modes)
         .filter(|s| !s["controls"].as_array().is_none_or(Vec::is_empty))
         .collect();
@@ -352,6 +361,15 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn px4_switches_follow_px4_flight_modes_qml() {
+        assert!(!switch_applies("RC_MAP_TRANS_SW", false, true), "the transition switch is for a VTOL");
+        assert!(switch_applies("RC_MAP_TRANS_SW", true, false));
+        assert!(switch_applies("RC_MAP_FLAPS", false, true) && !switch_applies("RC_MAP_FLAPS", false, false), "flaps only for a plane");
+        assert!(switch_applies("RC_MAP_KILL_SW", false, false));
+        assert_eq!(FLIGHT_MODES_PX4[1].parameters[..6], ["RC_MAP_ARM_SW", "RC_MAP_GEAR_SW", "RC_MAP_KILL_SW", "RC_MAP_LOITER_SW", "RC_MAP_OFFB_SW", "RC_MAP_RETURN_SW"]);
+    }
 
     #[test]
     fn apm_flight_modes_offers_every_switch_option_and_no_raw_simple_masks() {
