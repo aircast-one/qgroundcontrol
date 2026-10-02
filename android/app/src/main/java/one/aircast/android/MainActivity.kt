@@ -274,7 +274,6 @@ fun AircastShell(hostView: android.view.View?) {
             ?.also { said -> refusalScope.launch { snackbars.showSnackbar(said) } } != null
     }
     BackHandler(enabled = tab != Tab.Fly) { if (!refuseNavigation()) tab = Tab.Fly }
-    one.aircast.android.ui.CloseGuard(enabled = tab == Tab.Fly)
 
     LaunchedEffect(notices) {
         val batch = one.aircast.android.ui.noticeBatch(notices) ?: return@LaunchedEffect
@@ -334,6 +333,7 @@ fun AircastShell(hostView: android.view.View?) {
     BackHandler(enabled = fullScreen) { videoFullScreen = false }
 
     AircastTheme(dark = darkBars) {
+        one.aircast.android.ui.CloseGuard(enabled = tab == Tab.Fly && !fullScreen)
         val barColor = MaterialTheme.colorScheme.surface.toArgb()
         SideEffect {
             (view.context as? Activity)?.window?.let { window ->
