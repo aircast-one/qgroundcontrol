@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.Checkbox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -20,7 +22,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,6 +73,9 @@ internal data class InspectorChoice(val id: Int, val title: String)
 
 internal fun inspectorChoices(view: JSONObject?, key: String): List<InspectorChoice> =
     view?.optJSONArray(key)?.let { list -> (0 until list.length()).mapNotNull { list.optJSONObject(it) }.map { InspectorChoice(it.optInt("id"), it.optText("title")) } }.orEmpty()
+
+internal fun inspectorQualifier(message: InspectorMessage): String =
+    message.title.removePrefix(message.name).trim().removeSurrounding("(", ")")
 
 internal fun inspectorShown(messages: List<InspectorMessage>, filter: String, component: Int?): List<InspectorMessage> =
     messages.filter { it.name.contains(filter, ignoreCase = true) && (component == null || it.compId == component) }
@@ -303,7 +307,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
             )
         }
         if (systems.size > 1 || components.size > 1) {
-            androidx.compose.foundation.layout.FlowRow(Modifier.padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (systems.size > 1) systems.forEach { system ->
                     androidx.compose.material3.FilterChip(
                         selected = system.id == activeSystem,
@@ -320,15 +324,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
-        OutlinedTextField(
-            value = filter,
-            onValueChange = { filter = it },
-            label = { Text("Filter messages") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-        )
+        SearchPill(filter, { filter = it }, "Filter messages")
 
         if (shown.isEmpty()) {
             InspectorNotice("No message matches \"$filter\".")
@@ -338,7 +334,8 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
         LazyColumn(Modifier.fillMaxSize()) {
             items(shown, key = { it.path }) { message ->
                 SetupRow(
-                    title = message.title,
+                    title = message.name.ifBlank { message.title },
+                    subtitle = inspectorQualifier(message),
                     status = message.rateText,
                     onClick = { openPath = message.path },
                 )
