@@ -534,20 +534,17 @@ internal fun MapSpikeScreen(
         )
 
         Column(
-            // The Follow chip is the TopEnd child of this same Box, so a summary wide enough to
-            // reach it covers it entirely - a long plan cost the operator the control, not just
-            // the space. Stop short of the chip instead of overlapping it.
             Modifier.align(Alignment.TopStart).padding(8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),
         ) {
             Surface(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
+                shape = MaterialTheme.shapes.extraLarge,
                 onClick = { listOpen = true },
                 enabled = worthListing(allItems),
             ) {
                 val ready by MapBridge.bridgeReady.collectAsState()
                 Row(
-                    Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -562,10 +559,7 @@ internal fun MapSpikeScreen(
                                 canPlaceByButton = placeAt() != null,
                             )
                         },
-                        style = MaterialTheme.typography.bodySmall,
-                        // Yield to the icon rather than crowding it out: without this the text
-                        // takes the whole row and the list affordance vanishes on a long plan,
-                        // leaving a card that is still tappable but no longer looks it.
+                        style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f, fill = false),
                     )
                     if (worthListing(allItems)) {
