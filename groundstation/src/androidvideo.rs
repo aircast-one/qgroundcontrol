@@ -83,7 +83,6 @@ fn initialise(vm: &JavaVM, video: &Video) -> jni::errors::Result<bool> {
 struct Driver {
     driven: Option<String>,
     error: String,
-    reported: Option<(bool, i64, c_int, c_int)>,
     recording: Option<serde_json::Value>,
     recording_reported: bool,
 }
@@ -108,8 +107,8 @@ impl Driver {
     }
 
     fn step(&mut self, video: &Video) {
-        if crate::videohost::RESTART.swap(false, std::sync::atomic::Ordering::Relaxed) {
-            self.driven = None;
+        if crate::videohost::RESTART.swap(false, std::sync::atomic::Ordering::Relaxed) && self.driven.take().is_some() {
+            unsafe { (video.stop)() };
         }
         let wanted = crate::videohost::native_pipeline();
         if wanted != self.driven {
@@ -122,7 +121,6 @@ impl Driver {
                 None => unsafe { (video.stop)() },
             }
             self.driven = wanted;
-            self.reported = None;
         }
         self.record(video);
         if self.driven.is_none() {
@@ -130,11 +128,7 @@ impl Driver {
         }
         let (running, frames, width, height) = unsafe { ((video.running)(), (video.frames)(), (video.width)(), (video.height)()) };
         crate::videostats::sample(running, frames, i64::from(height), crate::hub::now_ms());
-        let state = (running, frames.min(1), width, height);
-        if self.reported != Some(state) {
-            self.reported = Some(state);
-            crate::videohost::invoke("video.reportNative", &serde_json::json!([running, frames, width, height, self.error]).to_string());
-        }
+        crate::videohost::invoke("video.reportNative", &serde_json::json!([running, frames, width, height, self.error]).to_string());
     }
 }
 

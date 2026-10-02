@@ -2,7 +2,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::videostate::{MAIN_RECEIVER, Out, Outcome, PrimaryUrls, Settings, SourceSlot, Status, TILE_RECEIVER_PREFIX, VideoState, source_uri};
+use crate::videostate::{MAIN_RECEIVER, Out, Outcome, PrimaryUrls, Settings, SourceSlot, Status, TILE_RECEIVER_PREFIX, VideoState};
 
 const RECORD_TEE: &str = "tee name=nativerec ! queue";
 #[cfg(not(target_os = "android"))]
@@ -19,6 +19,8 @@ struct Host {
     reported: (bool, bool, u32, u32),
     recording_file: Option<String>,
     auto_stream: Option<(u8, u8, String)>,
+    timeout_s: u32,
+    progress: Option<(u64, i64)>,
 }
 
 const FILE_EXTENSIONS: [&str; 3] = ["mkv", "mov", "mp4"];
@@ -198,14 +200,17 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
     let follow_ups: Vec<Out> = outs
         .into_iter()
         .flat_map(|out| match out {
-            Out::StartReceiver { receiver, .. } if receiver == MAIN_RECEIVER => {
+            Out::StartReceiver { receiver, timeout_s, .. } if receiver == MAIN_RECEIVER => {
                 host.wanted = true;
                 host.restart_at_ms = None;
+                host.timeout_s = timeout_s;
+                host.progress = Some((now_ms, 0));
                 Vec::new()
             }
             Out::StopReceiver { receiver } if receiver == MAIN_RECEIVER => {
                 crate::subtitles::stop();
                 host.wanted = false;
+                host.progress = None;
                 host.reported = (false, false, 0, 0);
                 host.state.on_stop_complete(MAIN_RECEIVER, Outcome::Ok)
             }
@@ -335,7 +340,28 @@ pub fn get(path: &str) -> Option<Value> {
     }
 }
 
+pub fn stalled(progress: Option<(u64, i64)>, frames: i64, timeout_s: u32, now_ms: u64) -> (Option<(u64, i64)>, bool) {
+    let Some((since, seen)) = progress else { return (None, false) };
+    if frames != seen {
+        return (Some((now_ms, frames)), false);
+    }
+    let budget_ms = u64::from(timeout_s) * 1000 * if frames > 0 { 2 } else { 1 };
+    (progress, timeout_s > 0 && now_ms.saturating_sub(since) > budget_ms)
+}
+
 fn report(host: &mut Host, running: bool, frames: i64, width: u32, height: u32) {
+    let now_ms = crate::hub::now_ms();
+    let (progress, stall) = stalled(host.progress, frames, host.timeout_s, now_ms);
+    host.progress = progress;
+    if host.wanted && stall {
+        host.wanted = false;
+        host.progress = None;
+        host.reported = (false, false, 0, 0);
+        RESTART.store(true, std::sync::atomic::Ordering::Relaxed);
+        let outs: Vec<Out> = [host.state.on_decoding(MAIN_RECEIVER, false), host.state.on_streaming(MAIN_RECEIVER, false), host.state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed)].into_iter().flatten().collect();
+        apply(host, outs, now_ms);
+        return;
+    }
     let decoding = running && frames > 0;
     let before = host.reported;
     host.reported = (running, decoding, width, height);
@@ -425,6 +451,15 @@ mod tests {
         let videos = vec![("old".to_string(), 6, at(1)), ("new".to_string(), 6, at(3)), ("mid".to_string(), 6, at(2))];
         assert_eq!(videos_to_delete(videos.clone(), 10), vec!["old".to_string(), "mid".to_string()], "oldest first until the total is under the limit");
         assert!(videos_to_delete(videos, 100).is_empty());
+    }
+
+    #[test]
+    fn a_stream_that_stops_delivering_frames_is_a_failure_as_the_receiver_watchdog_says() {
+        assert_eq!(stalled(None, 0, 3, 99_000), (None, false), "nothing started, nothing to watch");
+        assert_eq!(stalled(Some((0, 0)), 0, 3, 3_000), (Some((0, 0)), false));
+        assert_eq!(stalled(Some((0, 0)), 0, 3, 3_001), (Some((0, 0)), true), "no frame inside the start budget");
+        assert_eq!(stalled(Some((0, 0)), 5, 3, 3_001), (Some((3_001, 5)), false), "frames moving reset the clock");
+        assert!(!stalled(Some((0, 5)), 5, 3, 6_000).1 && stalled(Some((0, 5)), 5, 3, 6_001).1, "once decoding, the decoder gets twice the budget");
     }
 
     #[test]
