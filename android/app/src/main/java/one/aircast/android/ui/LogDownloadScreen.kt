@@ -190,7 +190,7 @@ private fun LogRow(entry: LogEntry, enabled: Boolean, onToggle: (Boolean) -> Uni
     ) {
         Box(
             Modifier.size(40.dp).background(
-                if (entry.selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                if (entry.selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
                 CircleShape,
             ),
             contentAlignment = Alignment.Center,
@@ -198,19 +198,19 @@ private fun LogRow(entry: LogEntry, enabled: Boolean, onToggle: (Boolean) -> Uni
             Icon(
                 painterResource(if (entry.selected) R.drawable.ic_check_circle else R.drawable.ic_description),
                 null,
-                tint = if (entry.selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (entry.selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
                 modifier = Modifier.size(24.dp),
             )
         }
         Column(Modifier.weight(1f)) {
-            Text("Log ${entry.id}", style = MaterialTheme.typography.titleMedium)
+            Text("Log ${entry.id}", style = MaterialTheme.typography.bodyLarge)
             Text(
                 listOf(entry.time, entry.sizeStr).filter { it.isNotBlank() }.joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text(entry.status, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        Text(entry.status, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
     }
 }
 
