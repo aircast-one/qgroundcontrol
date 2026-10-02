@@ -189,7 +189,11 @@ pub fn offline_maps_view(backend: &dyn Backend, args: &[String]) -> Value {
     let limit = max_tiles(backend);
     let estimate_json = match (args.first().filter(|provider| provider_hash(provider).is_some()), region_of(args, 1), number(args, 5), number(args, 6)) {
         (Some(provider), Some(region), Some(min_zoom), Some(max_zoom)) => {
-            let (count, size) = estimate(provider, &region, min_zoom as i32, max_zoom as i32);
+            let (image_count, image_size) = estimate(provider, &region, min_zoom as i32, max_zoom as i32);
+            let fetch_elevation = args.get(7).is_none_or(|flag| flag != "false") && !crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str());
+            let elevation_count = if fetch_elevation { crate::terrainquery::region_tiles((region.top_left_lat, region.top_left_lon), (region.bottom_right_lat, region.bottom_right_lon)).len() as u64 } else { 0 };
+            let elevation_size = elevation_count * average_size(crate::maptypes::ELEVATION_PROVIDERS[0]);
+            let (count, size) = (image_count + elevation_count, image_size + elevation_size);
             json!({ "tileCount": count, "tileCountText": grouped(count), "tileSizeText": size_text(size), "tooMany": count > limit })
         }
         _ => Value::Null,

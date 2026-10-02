@@ -39,12 +39,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.mapspike.TRACK_VIEW
 import one.aircast.mapspike.TrackPoint
 import one.aircast.mapspike.VehicleMap
@@ -158,11 +160,11 @@ private fun coordinate(value: Double): String = String.format(Locale.US, "%.7f",
 internal fun regionCentre(region: OfflineRegion): TrackPoint =
     TrackPoint((region.north + region.south) / 2.0, (region.west + region.east) / 2.0)
 
-internal fun offlineMapsPath(mapType: String?, region: OfflineRegion?, minZoom: Int, maxZoom: Int): String =
+internal fun offlineMapsPath(mapType: String?, region: OfflineRegion?, minZoom: Int, maxZoom: Int, fetchElevation: Boolean = true): String =
     if (mapType == null || region == null) {
         OFFLINE_MAPS_VIEW
     } else {
-        "$OFFLINE_MAPS_VIEW($mapType,${coordinate(region.west)},${coordinate(region.north)},${coordinate(region.east)},${coordinate(region.south)},$minZoom,$maxZoom)"
+        "$OFFLINE_MAPS_VIEW($mapType,${coordinate(region.west)},${coordinate(region.north)},${coordinate(region.east)},${coordinate(region.south)},$minZoom,$maxZoom,$fetchElevation)"
     }
 
 private fun zoomSetting(path: String, fallback: Int): Int =
@@ -347,8 +349,8 @@ private fun OfflineSetEditor(
         zooms = min.toFloat()..max.toFloat()
         centre = at
     }
-    LaunchedEffect(mapType, region, minZoom, maxZoom) {
-        read = withContext(Dispatchers.IO) { offlineMaps(Qgc.get(offlineMapsPath(mapType, region, minZoom, maxZoom))) }
+    LaunchedEffect(mapType, region, minZoom, maxZoom, fetchElevation) {
+        read = withContext(Dispatchers.IO) { offlineMaps(Qgc.get(offlineMapsPath(mapType, region, minZoom, maxZoom, fetchElevation))) }
         if (name == null) name = read?.uniqueName
     }
 
@@ -397,6 +399,12 @@ private fun OfflineSetEditor(
                     RangeSlider(
                         value = zooms,
                         onValueChange = { zooms = it },
+                        onValueChangeFinished = {
+                            offMainDetached {
+                                Qgc.set(MIN_ZOOM_PATH, zooms.start.roundToInt())
+                                Qgc.set(MAX_ZOOM_PATH, zooms.endInclusive.roundToInt())
+                            }
+                        },
                         valueRange = SLIDER_MIN_ZOOM..SLIDER_MAX_ZOOM,
                         steps = (SLIDER_MAX_ZOOM - SLIDER_MIN_ZOOM).toInt() - 1,
                     )

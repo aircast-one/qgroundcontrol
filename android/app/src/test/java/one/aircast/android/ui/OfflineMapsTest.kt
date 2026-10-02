@@ -14,7 +14,7 @@ class OfflineMapsTest {
         )!!
         assertEquals(OfflineRegion(west = 8.50, north = 47.40, east = 8.60, south = 47.35), region)
         assertEquals(
-            "view.offlineMaps(Google Satellite,8.5000000,47.4000000,8.6000000,47.3500000,13,19)",
+            "view.offlineMaps(Google Satellite,8.5000000,47.4000000,8.6000000,47.3500000,13,19,true)",
             offlineMapsPath("Google Satellite", region, 13, 19),
         )
         assertEquals("view.offlineMaps", offlineMapsPath("Google Satellite", null, 13, 19))
