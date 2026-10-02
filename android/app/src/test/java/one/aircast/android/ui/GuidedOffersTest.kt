@@ -22,4 +22,9 @@ class GuidedOffersTest {
         val offers = guidedOffers(JSONObject("""{"actions":[{"id":"land","offer":"ready"},{"id":"takeoff","offer":"hidden"}]}"""))
         assertEquals(listOf(false, true, true, false), listOf(offerWithdrawn("land", offers), offerWithdrawn("takeoff", offers), offerWithdrawn("orbit", offers), offerWithdrawn(null, offers)))
     }
+
+    @Test
+    fun `the checklist result is written as Vehicle's CheckListPassed or CheckListFailed`() {
+        assertEquals(listOf(1, 2), listOf(checklistStateValue(true), checklistStateValue(false)))
+    }
 }

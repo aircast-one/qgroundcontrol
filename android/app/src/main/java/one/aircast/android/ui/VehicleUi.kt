@@ -91,6 +91,11 @@ internal data class GuidedAction(
     val run: () -> Unit,
 )
 
+internal const val CHECKLIST_PASSED = 1
+internal const val CHECKLIST_FAILED = 2
+
+internal fun checklistStateValue(passed: Boolean): Int = if (passed) CHECKLIST_PASSED else CHECKLIST_FAILED
+
 internal fun offerWithdrawn(offerId: String?, offers: Map<String, GuidedOffer>): Boolean =
     offerId != null && offers[offerId]?.shown != true
 
@@ -319,6 +324,21 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
 
     val vehiclesJson by qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
     val vehicleId = remember(vehiclesJson) { activeVehicleId(vehiclesJson) }
+    var checklistStateSent by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(vehicleId) {
+        checklistTicked = emptySet()
+        checklistStateSent = null
+    }
+    val checklistPassed = checklistIsComplete(checks, checklistTicked)
+    LaunchedEffect(checklistPassed, vehicleId) {
+        if (vehicleId == null || checklistStateSent == checklistPassed) return@LaunchedEffect
+        if (checklistStateSent == null && !checklistPassed) {
+            checklistStateSent = false
+            return@LaunchedEffect
+        }
+        checklistStateSent = checklistPassed
+        withContext(Dispatchers.Default) { Qgc.set("vehicle.checkListState", checklistStateValue(checklistPassed)) }
+    }
 
     val deciding = pending != null || speedTarget != null ||
         takeoffTarget != null || altitudeTarget != null
