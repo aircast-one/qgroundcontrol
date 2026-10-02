@@ -28,6 +28,11 @@ class ParameterFormTest {
     }
 
     @Test
+    fun `a section's icon is read from the asset folder the build copies it into`() {
+        assertEquals("file:///android_asset/SetupSections/Battery.svg", sectionImageAsset("Battery.svg"))
+    }
+
+    @Test
     fun `an indented small-font help row keeps both cues`() {
         val help = factFromControl(control(""","indent":true,"smallFont":true"""))!!
         assertTrue(help.indent && help.smallFont)

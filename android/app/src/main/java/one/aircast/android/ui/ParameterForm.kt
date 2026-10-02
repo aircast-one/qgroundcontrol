@@ -35,6 +35,7 @@ internal data class ParameterRows(
     val facts: List<Fact>,
     val note: String,
     val calculators: Map<String, PowerCalculator> = emptyMap(),
+    val image: String = "",
 )
 
 internal fun factFromParameter(name: String, json: JSONObject): Fact? =
@@ -120,7 +121,7 @@ internal fun readPage(page: String): List<ParameterRows> {
                 val calculators = (0 until (controls?.length() ?: 0)).mapNotNull { control ->
                     controls!!.optJSONObject(control)?.let { row -> powerCalculator(row.optJSONObject("calculator"))?.let { row.optText("path") to it } }
                 }.toMap()
-                ParameterRows(section.optText("title"), facts, note.joinToString(" "), calculators)
+                ParameterRows(section.optText("title"), facts, note.joinToString(" "), calculators, section.optText("image"))
             }
         }
     }
@@ -155,7 +156,7 @@ internal fun ParameterForm(
     LazyColumn(modifier.fillMaxSize()) {
         rows.forEach { section ->
             item(key = "section:${section.title}") {
-                SectionHeader(section.title)
+                SectionHeader(section.title, section.image)
                 if (section.note.isNotBlank()) {
                     Text(
                         text = section.note,

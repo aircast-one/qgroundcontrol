@@ -797,6 +797,10 @@ fn disabled_companion(scope: &Scope, page: &str, section_index: usize, section: 
     (!controls.is_empty()).then(|| json!({ "title": companion["heading"], "note": "", "controls": controls }))
 }
 
+fn section_image(section: &Value) -> Value {
+    section["image"].as_str().and_then(|path| path.rsplit('/').next()).filter(|leaf| !leaf.is_empty()).map_or(Value::Null, |leaf| json!(leaf))
+}
+
 pub fn page(backend: &dyn Backend, page: &str, px4: bool) -> Value {
     let Some(config) = config(backend, page, px4) else { return crate::read::refused(&format!("{page} has no VehicleConfig definition for this firmware")) };
     let base = scope_for(backend, &config);
@@ -826,7 +830,7 @@ pub fn page(backend: &dyn Backend, page: &str, px4: bool) -> Value {
                                 .flat_map(|(control_index, control)| rows(&scope, page, &format!("{section_index}.{}.{control_index}", instance.index), control))
                                 .collect(),
                         };
-                        Some(json!({ "title": instance.heading, "note": "", "controls": controls }))
+                        Some(json!({ "title": instance.heading, "note": "", "image": section_image(section), "controls": controls }))
                     })
                     .collect();
             shown.into_iter().chain(disabled_companion(&base, page, section_index, section))
@@ -1015,6 +1019,15 @@ mod tests {
         assert_eq!(row["options"][3]["raw"], "3");
         assert_eq!(row["display"], "XKF4 and GSF");
         assert_eq!(row["label"], "EKF3 logging verbosity");
+    }
+
+    #[test]
+    fn sections_name_their_icon_by_file() {
+        assert_eq!(section_image(&json!({ "image": "/qmlimages/Battery.svg" })), "Battery.svg");
+        assert_eq!(section_image(&json!({})), Value::Null);
+        let fake = Fake::new(&[("BATT_MONITOR", 4.0), ("BATT_CAPACITY", 5000.0)]);
+        let served = page(&fake, "Power", false);
+        assert!(served["sections"].as_array().unwrap().iter().any(|s| s["image"] == "Battery.svg"), "{served}");
     }
 
     #[test]

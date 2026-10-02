@@ -25,6 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
+import coil3.compose.AsyncImage
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
@@ -39,14 +42,30 @@ internal fun setupStateColor(state: SetupState): Color = when (state) {
 }
 
 @Composable
-internal fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
-    )
+internal fun SectionHeader(text: String, image: String = "") {
+    Row(
+        Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (image.isNotBlank()) {
+            AsyncImage(
+                model = sectionImageAsset(image),
+                imageLoader = IconLoader.of(LocalContext.current),
+                contentDescription = null,
+                colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+                modifier = Modifier.size(width = 48.dp, height = 24.dp),
+            )
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
 }
+
+internal fun sectionImageAsset(image: String): String = "file:///android_asset/SetupSections/$image"
 
 @Composable
 internal fun SetupRow(

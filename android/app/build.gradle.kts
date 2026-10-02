@@ -103,6 +103,17 @@ val copyAirframeImages by tasks.registering(Copy::class) {
     into(instrumentIconAssets.map { it.dir("Airframe") })
 }
 
+val copySectionImages by tasks.registering(Copy::class) {
+    from(rootProject.file("../src/Toolbar/Images")) { include("Battery.svg", "Gears.svg") }
+    from(rootProject.file("../src/AutoPilotPlugins/PX4/Images")) {
+        include(
+            "DatalinkLoss.svg", "GeoFence.svg", "LandModeCopter.svg", "LowBattery.svg", "ObjectAvoidance.svg",
+            "RCLoss.svg", "ReturnToHomeAltitude.svg", "ReturnToHomeAltitudeCopter.svg",
+        )
+    }
+    into(instrumentIconAssets.map { it.dir("SetupSections") })
+}
+
 val copyCoreBridge by tasks.registering(Copy::class) {
     from(rootProject.file("../deploy/android/src")) {
         include(listOf("QGCBridge", "QGCUsbSerialManager", "QGCUsbSerialProber", "QGCUsbId", "QGCFtdiDriver", "QGCFtdiSerialDriver", "QGCLogger").map { "org/mavlink/qgroundcontrol/$it.java" })
@@ -142,7 +153,7 @@ val buildCoreVideo by tasks.registering(Exec::class) {
     }
 }
 
-tasks.named("preBuild") { dependsOn(copyInstrumentIcons, copyAirframeImages) }
+tasks.named("preBuild") { dependsOn(copyInstrumentIcons, copyAirframeImages, copySectionImages) }
 
 tasks.matching { it.name.startsWith("preCore") && it.name.endsWith("Build") }.configureEach {
     dependsOn(copyCoreBridge, buildCoreLibrary, buildCoreVideo)
