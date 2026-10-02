@@ -1,10 +1,17 @@
 package one.aircast.android.ui
 
+import one.aircast.mapspike.aircast
+import one.aircast.android.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -89,11 +96,16 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
     val letters = remember(setupJson) { setupReadiness(setupJson)?.firmware == "apm" }
 
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Motor test", style = MaterialTheme.typography.titleMedium)
+        Surface(color = MaterialTheme.aircast.warningContainer, contentColor = MaterialTheme.aircast.warning, shape = CircleShape) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(painterResource(R.drawable.ic_warning), null)
+                Text("Take the propellers off first", style = MaterialTheme.typography.labelLarge)
+            }
+        }
         Text(
-            "Each motor spins for $TIMEOUT_SECONDS seconds at the throttle below. " +
-                "Make sure you remove all props.",
+            "Each motor spins for $TIMEOUT_SECONDS seconds at the throttle below.",
             style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         motorCountNotice(reported)?.let {
             Text(it, style = MaterialTheme.typography.bodySmall)
@@ -125,19 +137,35 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth(),
         )
 
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            (1..motors).forEach { motor ->
-                Button(onClick = { spin(motor, throttle.toInt()) }, enabled = canTest(gate, propsOff)) {
-                    Text(motorLabel(motor, letters))
+        (1..motors).chunked(2).forEach { pair ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                pair.forEach { motor ->
+                    Surface(
+                        onClick = { spin(motor, throttle.toInt()) },
+                        enabled = canTest(gate, propsOff),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Column(Modifier.padding(vertical = 20.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Motor ${motorLabel(motor, letters)}", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                if (canTest(gate, propsOff)) "Tap to spin" else "Locked",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
+            FilledTonalButton(
                 onClick = { (1..motors).forEach { spin(it, throttle.toInt()) } },
                 enabled = canTest(gate, propsOff),
-            ) { Text("All") }
+            ) { Text("Spin all for $TIMEOUT_SECONDS s") }
             OutlinedButton(
                 onClick = { (1..motors).forEach { spin(it, 0) } },
                 enabled = canStop(gate),
