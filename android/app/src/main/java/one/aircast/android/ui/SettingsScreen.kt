@@ -738,7 +738,7 @@ internal const val FIELD_LABEL_BUDGET = 40
 internal const val PAIRED_OPTION_BUDGET = 16
 internal const val PAIRED_UNITS_BUDGET = 6
 
-private val PROPER_NOUNS = setOf("Android", "ArduPilot", "Bing", "Esri", "Google", "Mapbox", "Tianditu", "VWorld", "OpenAIP", "QGroundControl")
+private val PROPER_NOUNS = setOf("Android", "ArduPilot", "Pixhawk", "Herelink", "Trimble", "Septentrio", "Bing", "Esri", "Google", "Mapbox", "Tianditu", "VWorld", "OpenAIP", "QGroundControl")
 
 private fun keepsCase(word: String): Boolean =
     word in PROPER_NOUNS || word.drop(1).any(Char::isUpperCase) || word.none(Char::isLowerCase)

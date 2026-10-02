@@ -82,6 +82,7 @@ class FieldRunsTest {
         assertEquals("Use preflight checklist", sentenceCase("Use Preflight Checklist"))
         assertEquals("Forward MAVLink to UDP host", sentenceCase("Forward MAVLink To UDP Host"))
         assertEquals("Mapbox token", sentenceCase("Mapbox Token"))
+        assertEquals("Automatically connect to a Pixhawk board", sentenceCase("Automatically connect to a Pixhawk board"))
         assertEquals("Time offset (seconds)", sentenceCase("Time Offset (seconds)"))
         assertEquals("Auto-center throttle", sentenceCase("Auto-Center throttle"))
         assertEquals("Left-handed mode", sentenceCase("Left-Handed mode"))
