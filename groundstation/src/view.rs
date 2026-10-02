@@ -312,7 +312,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.itemCamera", deps: itemcamera::DEPS, compute: itemcamera::item_camera_view },
     View { path: "view.itemFacts", deps: itemfacts::DEPS, compute: itemfacts::item_facts_view },
     View { path: "view.gpsRtkBase", deps: gpsrtk::DEPS, compute: gpsrtk::base_view },
-    View { path: "view.gpsRtk", deps: &[], compute: rtkbase::rtk_view },
+    View { path: "view.gpsRtk", deps: rtkbase::RTK_DEPS, compute: rtkbase::rtk_view },
     View { path: "view.speech", deps: &[], compute: speech::speech_view },
     View { path: "view.proximityRadar", deps: proximity::DEPS, compute: proximity::proximity_view },
     View { path: "view.aircastLink", deps: aircastlink::DEPS, compute: aircastlink::aircast_link_view },

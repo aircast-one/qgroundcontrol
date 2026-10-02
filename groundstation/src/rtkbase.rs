@@ -3,7 +3,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use crate::gpsrtk::{Driver, Fault, INITIAL_BAUD, Out, RECEIVE_TIMEOUT_MS, Session, Settings};
 use crate::router::Backend;
@@ -250,14 +250,37 @@ pub fn disconnect() {
     session().disconnect();
 }
 
-pub fn rtk_view(_backend: &dyn Backend, _args: &[String]) -> Value {
-    session().facts(crate::hub::now_ms())
+pub const RTK_DEPS: &[&str] = &["settings.unitsSettings.horizontalDistanceUnits"];
+
+pub fn accuracy_text(metres: f64, unit: &crate::read::Unit) -> String {
+    format!("{:.1} {}", unit.show(metres), unit.name)
+}
+
+pub fn rtk_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let facts = session().facts(crate::hub::now_ms());
+    let text = facts["currentAccuracy"].as_f64().map(|metres| accuracy_text(metres, &crate::read::Unit::horizontal(backend)));
+    match facts {
+        Value::Object(mut fields) => {
+            fields.insert("currentAccuracyText".into(), json!(text));
+            Value::Object(fields)
+        }
+        other => other,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::gpsrtk::Link;
+
+    #[test]
+    fn accuracy_reads_in_the_horizontal_distance_unit_like_gps_indicator_page() {
+        let metres = crate::read::Unit { name: "m".into(), factor: 1.0 };
+        let feet = crate::read::Unit { name: "ft".into(), factor: 3.28084 };
+        assert_eq!(accuracy_text(1.5, &metres), "1.5 m");
+        assert_eq!(accuracy_text(2.0, &metres), "2.0 m");
+        assert_eq!(accuracy_text(1.5, &feet), "4.9 ft");
+    }
 
     struct Silent(u64);
 

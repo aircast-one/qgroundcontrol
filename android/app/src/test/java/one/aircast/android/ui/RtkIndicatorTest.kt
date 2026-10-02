@@ -14,9 +14,9 @@ class RtkIndicatorTest {
 
     @Test
     fun `a survey in progress reads like QGC's RTK section`() {
-        val status = rtkStatus(JSONObject("""{"connected":true,"active":true,"valid":false,"numSatellites":17,"currentDuration":42.0,"currentAccuracy":3.456}"""))!!
+        val status = rtkStatus(JSONObject("""{"connected":true,"active":true,"valid":false,"numSatellites":17,"currentDuration":42.0,"currentAccuracy":3.456,"currentAccuracyText":"11.3 ft"}"""))!!
         assertEquals("Survey-in Active", rtkHeadline(status))
-        assertEquals(listOf("Satellites" to "17", "Duration" to "42 s", "Current Accuracy" to "3.5 m"), rtkRows(status))
+        assertEquals(listOf("Satellites" to "17", "Duration" to "42 s", "Current Accuracy" to "11.3 ft"), rtkRows(status))
     }
 
     @Test

@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
+import one.aircast.mapspike.optText
 import org.json.JSONObject
 import java.util.Locale
 
@@ -43,6 +44,7 @@ internal data class RtkStatus(
     val satellites: Int?,
     val durationS: Double?,
     val accuracyM: Double?,
+    val accuracyText: String? = null,
     val latitude: Double? = null,
     val longitude: Double? = null,
     val altitudeM: Double? = null,
@@ -76,6 +78,7 @@ internal fun rtkStatus(view: JSONObject?): RtkStatus? =
             satellites = it.number("numSatellites")?.toInt(),
             durationS = it.number("currentDuration"),
             accuracyM = it.number("currentAccuracy"),
+            accuracyText = it.optText("currentAccuracyText").ifEmpty { null },
             latitude = it.number("currentLatitude"),
             longitude = it.number("currentLongitude"),
             altitudeM = it.number("currentAltitude"),
@@ -86,7 +89,7 @@ internal fun rtkRows(status: RtkStatus): List<Pair<String, String>> =
     listOfNotNull(
         "Satellites" to (status.satellites?.toString() ?: ""),
         "Duration" to "${String.format(Locale.US, "%.0f", status.durationS ?: 0.0)} s",
-        status.accuracyM?.takeIf { it > 0 }?.let { (if (status.valid) "Accuracy" else "Current Accuracy") to "${String.format(Locale.US, "%.1f", it)} m" },
+        status.accuracyText?.takeIf { (status.accuracyM ?: 0.0) > 0 }?.let { (if (status.valid) "Accuracy" else "Current Accuracy") to it },
     )
 
 internal fun rtkHeadline(status: RtkStatus): String = if (status.active) "Survey-in Active" else "RTK Streaming"
