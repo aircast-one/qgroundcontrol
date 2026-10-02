@@ -8,6 +8,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CalibrationViewTest {
+    @Test
+    fun `the step line counts the positions reached among the visible ones`() {
+        fun side(key: String, stage: String, visible: Boolean = true) = CalibrationSide(key, key, visible, stage, rotate = false)
+        val sides = listOf(side("down", "done"), side("up", "done"), side("left", "inProgress"), side("right", "pending"), side("nose", "pending", visible = false))
+
+        assertEquals("3 of 4 positions", positionsText(sides))
+        assertEquals("1 of 4 positions", positionsText(sides.map { it.copy(stage = "pending") }))
+        assertEquals(null, positionsText(emptyList()))
+    }
+
     private val served = JSONObject(
         """{"kind":"object","class":"Calibration","connected":true,"inProgress":false,
             "busy":false,"showsSides":false,"nextEnabled":false,"cancelEnabled":false,

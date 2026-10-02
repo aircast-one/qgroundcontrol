@@ -164,6 +164,12 @@ private fun StartDialog(
     )
 }
 
+internal fun positionsText(sides: List<CalibrationSide>): String? {
+    val shown = sides.filter { it.visible }
+    val reached = shown.count { it.stage == "done" || it.stage == "inProgress" }
+    return "${reached.coerceAtLeast(1)} of ${shown.size} positions".takeIf { shown.isNotEmpty() }
+}
+
 internal fun sideLabel(side: CalibrationSide): String = when {
     side.stage == "inProgress" && side.rotate -> "${side.title} · rotate"
     side.stage == "inProgress" -> "${side.title} · hold still"
@@ -224,6 +230,9 @@ private fun RunningCalibration(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        if (state.showsSides) {
+            positionsText(state.sides)?.let { Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
+        }
         Text(runningTitle(name), style = MaterialTheme.typography.titleLarge)
 
         if (helpText.isNotBlank()) {
