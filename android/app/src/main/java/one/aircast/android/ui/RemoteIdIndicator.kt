@@ -7,11 +7,13 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +35,7 @@ import one.aircast.mapspike.optText
 import org.json.JSONObject
 
 internal const val REMOTE_ID_STATUS_PATH = "view.remoteIdStatus"
+internal const val REMOTE_ID_SETTINGS_PAGE = "Remote ID"
 
 internal data class RemoteIdStatus(
     val state: String,
@@ -95,6 +98,11 @@ internal fun RemoteIdIndicatorCell() {
         modifier = Modifier.clickable { open = true },
     )
 
+    val configure = {
+        AppNavigation.settingsPage = REMOTE_ID_SETTINGS_PAGE
+        open = false
+    }
+
     if (open) {
         ModalBottomSheet(onDismissRequest = { open = false }) {
             Column(
@@ -103,7 +111,12 @@ internal fun RemoteIdIndicatorCell() {
             ) {
                 Text("RemoteID Status", style = MaterialTheme.typography.titleMedium)
                 remoteIdRows(status).forEach { (label, good) ->
-                    Text(label, style = MaterialTheme.typography.labelLarge, color = if (good) MaterialTheme.aircast.success else MaterialTheme.colorScheme.error)
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (good) MaterialTheme.aircast.success else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.clickable(onClick = configure),
+                    )
                 }
                 if (status.armError.isNotBlank()) {
                     Text("Arm Status Error  ${status.armError}", style = MaterialTheme.typography.bodySmall)
@@ -139,6 +152,10 @@ internal fun RemoteIdIndicatorCell() {
                             )
                         }
                     }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Remote ID", modifier = Modifier.weight(1f))
+                    OutlinedButton(onClick = configure) { Text("Configure") }
                 }
             }
         }
