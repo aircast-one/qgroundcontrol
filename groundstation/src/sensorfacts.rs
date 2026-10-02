@@ -54,6 +54,47 @@ impl Escs {
     }
 }
 
+pub const SUB_INFO_READINGS: [&str; 9] = ["cameraTilt", "tetherTurns", "lights1", "lights2", "pilotGain", "inputHold", "rollPitchToggle", "rangefinderDistance", "rangefinderTarget"];
+
+const SUB_NAMED_VALUES: [(&str, &str, f32); 8] = [
+    ("CamTilt", "cameraTilt", 100.0),
+    ("TetherTrn", "tetherTurns", 1.0),
+    ("Lights1", "lights1", 100.0),
+    ("Lights2", "lights2", 100.0),
+    ("PilotGain", "pilotGain", 100.0),
+    ("InputHold", "inputHold", 1.0),
+    ("RollPitch", "rollPitchToggle", 1.0),
+    ("RFTarget", "rangefinderTarget", 1.0),
+];
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct SubInfoFacts {
+    pub readings: [Option<f32>; 9],
+    pub seen: bool,
+}
+
+impl SubInfoFacts {
+    pub fn apply(&mut self, message: &MavMessage) -> bool {
+        let update = match message {
+            MavMessage::NAMED_VALUE_FLOAT(d) => {
+                let name = d.name.to_str().unwrap_or("");
+                SUB_NAMED_VALUES.iter().find(|(sent, _, _)| *sent == name).map(|(_, fact, scale)| (*fact, d.value * scale))
+            }
+            MavMessage::RANGEFINDER(d) => Some(("rangefinderDistance", d.distance)),
+            _ => None,
+        };
+        let Some((fact, value)) = update else { return false };
+        let at = SUB_INFO_READINGS.iter().position(|n| *n == fact).unwrap_or(0);
+        self.readings[at] = Some(value);
+        self.seen = true;
+        true
+    }
+
+    pub fn reading(&self, name: &str) -> Option<f32> {
+        SUB_INFO_READINGS.iter().position(|n| *n == name).and_then(|i| self.readings[i])
+    }
+}
+
 pub const RPM_READINGS: [&str; 6] = ["rpm1", "rpm2", "rpm3", "rpm4", "rpmSensor1", "rpmSensor2"];
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -414,6 +455,17 @@ mod tests {
         escs.apply(&MavMessage::ESC_INFO(ESC_INFO_DATA { index: 4, count: 8, temperature: [0, 3150, 0, 0], ..Default::default() }));
         assert_eq!(escs.by_id.keys().copied().collect::<Vec<_>>(), vec![0, 1, 2, 3, 4, 5, 6, 7]);
         assert_eq!((escs.by_id[&5].temperature, escs.by_id[&5].count, escs.by_id[&5].rpm, escs.by_id[&0].telemetry), (3150, 8, 200, false));
+    }
+
+    #[test]
+    fn sub_info_follows_ardusub_named_values() {
+        let named = |name: &str, value: f32| MavMessage::NAMED_VALUE_FLOAT(mavlink::dialects::ardupilotmega::NAMED_VALUE_FLOAT_DATA { time_boot_ms: 0, value, name: name.into() });
+        let mut sub = SubInfoFacts::default();
+        sub.apply(&named("CamTilt", 0.25));
+        sub.apply(&named("TetherTrn", 3.0));
+        sub.apply(&named("Other", 9.0));
+        sub.apply(&MavMessage::RANGEFINDER(mavlink::dialects::ardupilotmega::RANGEFINDER_DATA { distance: 1.5, voltage: 0.0 }));
+        assert_eq!((sub.reading("cameraTilt"), sub.reading("tetherTurns"), sub.reading("rangefinderDistance"), sub.reading("lights1")), (Some(25.0), Some(3.0), Some(1.5), None), "ArduSubFirmwarePlugin::_handleNamedValueFloat scales tilt, lights and gain to percent");
     }
 
     #[test]

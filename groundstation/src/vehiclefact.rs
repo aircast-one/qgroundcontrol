@@ -539,6 +539,29 @@ pub fn terrain_raw((pending, loaded): (u16, u16), name: &str) -> Value {
     }
 }
 
+pub const SUB_INFO: GroupSpec = GroupSpec {
+    class: "APMSubmarineFactGroup",
+    meta: include_str!("../../src/Vehicle/FactGroups/SubmarineFact.json"),
+    properties: &[
+        ("cameraTilt", "cameraTilt"),
+        ("tetherTurns", "tetherTurns"),
+        ("lights1", "lights1"),
+        ("lights2", "lights2"),
+        ("pilotGain", "pilotGain"),
+        ("inputHold", "inputHold"),
+        ("rollPitchToggle", "rollPitchToggle"),
+        ("rangefinderDistance", "rangefinderDistance"),
+        ("rangefinderTarget", "rangefinderTarget"),
+    ],
+    added: &["cameraTilt", "tetherTurns", "lights1", "lights2", "pilotGain", "inputHold", "rollPitchToggle", "rangefinderDistance", "rangefinderTarget"],
+};
+
+pub const SUB_INFO_GROUP: &str = "apmSubInfo";
+
+pub fn sub_info_raw(s: &crate::sensorfacts::SubInfoFacts, name: &str) -> Value {
+    s.reading(name).map_or(Value::Null, |v| json!(f64::from(v)))
+}
+
 pub const RPM: GroupSpec = GroupSpec {
     class: "VehicleRPMFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/RPMFact.json"),
@@ -800,6 +823,7 @@ pub fn instrument_catalogue() -> (Vec<(&'static str, Value)>, Value) {
         ("generator", spec(&GENERATOR)),
         ("efi", spec(&EFI)),
         ("rpm", spec(&RPM)),
+        (SUB_INFO_GROUP, spec(&SUB_INFO)),
         ("radioStatus", spec(&RADIO)),
         ("aircastLink", spec(&AIRCAST_LINK)),
     ];

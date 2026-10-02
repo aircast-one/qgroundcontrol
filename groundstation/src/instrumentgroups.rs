@@ -33,10 +33,11 @@ fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
 }
 
 fn catalogued() -> Option<(Vec<Value>, Value)> {
-    (crate::vehiclefacade::switched_on() && crate::hub::lock().active().is_some()).then_some(())?;
+    let sub = crate::vehiclefacade::switched_on().then(|| crate::hub::lock().active().map(crate::hub::Vehicle::is_ardusub)).flatten()?;
     let (groups, vehicle) = crate::vehiclefact::instrument_catalogue();
     let listed = groups
         .into_iter()
+        .filter(|(group, _)| sub || *group != crate::vehiclefact::SUB_INFO_GROUP)
         .filter_map(|(group, listing)| {
             let facts = facts_of(&listing, &format!("{group}/"));
             (!facts.is_empty()).then(|| json!({ "group": group, "title": humanise(group), "facts": facts }))
