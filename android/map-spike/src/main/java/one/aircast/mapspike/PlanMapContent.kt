@@ -1028,6 +1028,7 @@ internal fun MapSpikeScreen(
                                             PlanBridge.setAltitudeMode(item.index, raw)
                                         }
                                     },
+                                    modifier = Modifier.fillMaxWidth(),
                                     globalFrameMixed = itemReferenceSelectable(globalFrame),
                                 )
                             }
