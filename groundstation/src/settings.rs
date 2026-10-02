@@ -195,6 +195,16 @@ fn section_applies(group: &str, backend: Option<&dyn Backend>) -> bool {
     }
 }
 
+pub const AUTO_CONFIGURED: &str = "Configured automatically over MAVLink.";
+const PRIMARY_CAMERA: [&str; 6] = ["videoSource", "primaryCameraName", "udpUrl", "rtspUrl", "tcpUrl", "whepUrl"];
+
+fn auto_locked(control: Value) -> Value {
+    match control.get("name").and_then(Value::as_str).is_some_and(|name| PRIMARY_CAMERA.contains(&name)) {
+        true => Value::Object(control.as_object().cloned().unwrap_or_default().into_iter().chain([("enabled".to_string(), json!(false)), ("disabledReason".to_string(), json!(AUTO_CONFIGURED))]).collect()),
+        false => control,
+    }
+}
+
 const STREAM_ONLY: [&str; 4] = ["rtspTimeout", "disableWhenDisarmed", "lowLatencyMode", "aspectRatio"];
 
 pub fn video_row_shown(name: &str, source: &str, stream_source: bool, auto_configured: bool) -> bool {
@@ -234,6 +244,10 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
         .flat_map(|(_, from)| object(&backend.get(&format!("settings.{from}"))).get("facts").and_then(Value::as_array).cloned().unwrap_or_default())
         .collect();
     let shown = gated(&shown, &[facts.clone(), borrowed].concat());
+    let shown = match video.as_ref().is_some_and(|(_, _, auto)| *auto) {
+        true => shown.into_iter().map(auto_locked).collect(),
+        false => shown,
+    };
     let desktop_only: Vec<&str> = facts.iter().filter_map(|f| f.get("name").and_then(Value::as_str)).filter_map(|n| DESKTOP_ONLY.iter().find(|(d, _)| *d == n).map(|(_, label)| *label)).collect();
     let note = match desktop_only.is_empty() {
         true => String::new(),
@@ -318,6 +332,9 @@ mod tests {
     #[test]
     fn video_rows_follow_the_source_like_video_settings() {
         assert!(video_row_shown("rtspUrl", "RTSP Video Stream", true, false));
+        let locked = auto_locked(json!({ "name": "videoSource", "enabled": true }));
+        assert_eq!((locked["enabled"].clone(), locked["disabledReason"].clone()), (json!(false), json!(AUTO_CONFIGURED)), "VideoSettings.qml locks camera 0's name, source and URL while _videoAutoStreamConfig");
+        assert_eq!(auto_locked(json!({ "name": "streamEnabled", "enabled": true }))["enabled"], true);
         assert!(!video_row_shown("udpUrl", "RTSP Video Stream", true, false), "only the selected source's URL");
         assert!(video_row_shown("udpUrl", "MPEG-TS Video Stream", true, false));
         assert!(!video_row_shown("whepUrl", "Video Stream Disabled", false, false));
