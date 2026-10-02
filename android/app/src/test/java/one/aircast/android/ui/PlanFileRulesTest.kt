@@ -30,4 +30,12 @@ class PlanFileRulesTest {
         org.junit.Assert.assertEquals("route.kml", mainBoundaryName(listOf("route.kml")))
         org.junit.Assert.assertNull(mainBoundaryName(emptyList()))
     }
+
+    @Test
+    fun `a saved name without the plan suffix gets one, as QGCFileDialog appends it`() {
+        assertEquals("survey.plan", withExtension("survey", PLAN_EXTENSION))
+        assertEquals("survey.PLAN", withExtension("survey.PLAN", PLAN_EXTENSION))
+        assertEquals("survey.txt.plan", withExtension("survey.txt", PLAN_EXTENSION))
+        assertEquals("area.kml", withExtension("area", KML_EXTENSION))
+    }
 }

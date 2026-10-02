@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import android.content.Context
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -114,6 +115,12 @@ private fun displayName(context: Context, uri: Uri): String? = runCatching {
         ?.use { if (it.moveToFirst()) it.getString(0) else null }
 }.getOrNull()
 
+private fun suffixed(context: Context, uri: Uri, extension: String): Uri = runCatching {
+    val shown = displayName(context, uri) ?: return uri
+    val wanted = withExtension(shown, extension)
+    if (wanted == shown) uri else DocumentsContract.renameDocument(context.contentResolver, uri, wanted) ?: uri
+}.getOrDefault(uri)
+
 @Composable
 fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     val context = LocalContext.current
@@ -196,7 +203,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 null
             }
             if (message == null) {
-                adopt(target)
+                adopt(withContext(Dispatchers.IO) { suffixed(context, target, PLAN_EXTENSION) })
                 onResult("Plan saved.")
             } else {
                 onResult(message)
@@ -236,6 +243,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 if (!copyOut(context, staged, target)) {
                     return@withContext "The KML was written but could not be copied out."
                 }
+                suffixed(context, target, KML_EXTENSION)
                 null
             }
             onResult(message ?: "KML exported.")

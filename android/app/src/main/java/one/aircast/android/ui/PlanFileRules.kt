@@ -7,6 +7,11 @@ import one.aircast.mapspike.optText
 internal const val DEFAULT_PLAN_NAME = "mission.plan"
 internal const val DEFAULT_KML_NAME = "mission.kml"
 internal const val DEFAULT_BOUNDARY_EXT = "kml"
+internal const val PLAN_EXTENSION = "plan"
+internal const val KML_EXTENSION = "kml"
+
+internal fun withExtension(name: String, extension: String): String =
+    if (name.endsWith(".$extension", ignoreCase = true)) name else "$name.$extension"
 
 internal fun boundaryCacheName(displayName: String?): String {
     val ext = displayName?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
