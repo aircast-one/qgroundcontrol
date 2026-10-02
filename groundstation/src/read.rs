@@ -6,6 +6,10 @@ pub fn object(json: &str) -> Value {
     serde_json::from_str(json).unwrap_or(Value::Null)
 }
 
+pub fn switch_on(value: &Value) -> Option<bool> {
+    value.as_bool().or_else(|| value.as_f64().map(|number| number != 0.0))
+}
+
 pub fn flag(object: &Value, key: &str) -> bool {
     object.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
@@ -286,5 +290,16 @@ mod measure_tests {
 
         let unlabelled = json!({ "kind": "fact", "valueString": "", "enumOrValueString": "" });
         assert_eq!(shown_text(&unlabelled), None, "a fact with no metadata answers empty to both, which is not the string \"\"");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn an_enum_setting_reads_as_a_switch_by_its_number() {
+        assert_eq!((switch_on(&json!(1)), switch_on(&json!(0)), switch_on(&json!(true)), switch_on(&json!("x"))), (Some(true), Some(false), Some(true), None), "RTK useFixedBasePosition is a uint8 enum, so 1 is Fixed");
     }
 }

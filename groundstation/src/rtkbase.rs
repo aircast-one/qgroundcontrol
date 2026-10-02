@@ -43,7 +43,7 @@ fn settings() -> Settings {
     Settings {
         survey_in_accuracy_m: number("surveyInAccuracyLimit"),
         survey_in_duration_s: number("surveyInMinObservationDuration") as u32,
-        use_fixed_base: setting("useFixedBasePosition").as_bool().unwrap_or(false),
+        use_fixed_base: crate::read::switch_on(&setting("useFixedBasePosition")).unwrap_or(false),
         fixed_latitude: number("fixedBasePositionLatitude"),
         fixed_longitude: number("fixedBasePositionLongitude"),
         fixed_altitude_m: number("fixedBasePositionAltitude") as f32,
@@ -200,11 +200,25 @@ fn driver_for<T: Transport + 'static>(driver: Driver, transport: T, plan: crate:
     }
 }
 
+const MANUFACTURER_SETTING: &str = "settings.rtkSettings.baseReceiverManufacturers";
+
+pub fn manufacturer_id(driver: Driver) -> u8 {
+    match driver {
+        Driver::Trimble => 1,
+        Driver::Septentrio => 2,
+        Driver::Femtomes => 3,
+        Driver::UBlox => 4,
+    }
+}
+
 pub fn run<T: Transport + 'static>(transport: T, stop: &AtomicBool) {
     let configure = owned(stop, Session::serial_opened).into_iter().find_map(|out| match out {
         Out::ConfigureDriver { driver, plan, .. } => Some((driver, plan)),
         _ => None,
     });
+    if let Some((driver, _)) = configure.as_ref() {
+        crate::settingsstore::set_raw(MANUFACTURER_SETTING, &json!(manufacturer_id(*driver)));
+    }
     let Some(mut base) = configure.and_then(|(driver, plan)| driver_for(driver, transport, plan)) else {
         owned(stop, |held| held.serial_failed(Fault::ConfigureFailed));
         return;

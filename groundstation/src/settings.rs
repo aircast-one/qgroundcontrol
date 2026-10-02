@@ -218,6 +218,13 @@ const GATED_FROM: &[(&str, &str)] = &[("apmMavlinkStreamRateSettings", "mavlinkS
 // Specify position radio pair - the two sets are alternatives under a mode selector, not a switch
 // with dependents. Four greyed latitude boxes under a Survey-In selection would be a control
 // disabled with nothing on screen saying what it is disabled FOR.
+const MANUFACTURER_ALL: i64 = 0;
+const MANUFACTURER_ROWS: &[(&str, &[i64])] = &[("surveyInAccuracyLimit", &[4]), ("surveyInMinObservationDuration", &[4, 3, 1]), ("fixedBasePositionAccuracy", &[4])];
+
+pub fn shown_for_manufacturer(name: &str, manufacturer: i64) -> bool {
+    manufacturer == MANUFACTURER_ALL || MANUFACTURER_ROWS.iter().find(|(row, _)| *row == name).is_none_or(|(_, makers)| makers.contains(&manufacturer))
+}
+
 const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
     ("surveyInAccuracyLimit", "useFixedBasePosition", true),
     ("surveyInMinObservationDuration", "useFixedBasePosition", true),
@@ -392,10 +399,14 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .filter(|f| {
             let named = f.get("name").and_then(Value::as_str).unwrap_or_default();
             !HIDDEN_WHEN.iter().any(|(hidden, requires, when)| {
-                *hidden == named && facts.iter().find(|other| other.get("name").and_then(Value::as_str) == Some(requires)).and_then(|other| other.get("value")).and_then(Value::as_bool) == Some(*when)
+                *hidden == named && facts.iter().find(|other| other.get("name").and_then(Value::as_str) == Some(requires)).and_then(|other| other.get("value")).and_then(crate::read::switch_on) == Some(*when)
             })
         })
         .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n) && !(MOBILE && n == "savePath")))
+        .filter(|f| {
+            let maker = facts.iter().find(|other| other.get("name").and_then(Value::as_str) == Some("baseReceiverManufacturers")).and_then(|other| other.get("value")).and_then(Value::as_i64).unwrap_or(MANUFACTURER_ALL);
+            group != "rtkSettings" || shown_for_manufacturer(f.get("name").and_then(Value::as_str).unwrap_or_default(), maker)
+        })
         .map(|f| with_choices(backend, f))
         .map(|f| decode(&f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .collect();
@@ -745,11 +756,19 @@ mod tests {
     }
 
     #[test]
+    fn rtk_rows_follow_the_receiver_maker_like_gps_indicator_page() {
+        assert!(super::shown_for_manufacturer("surveyInAccuracyLimit", 4) && !super::shown_for_manufacturer("surveyInAccuracyLimit", 2));
+        assert!(super::shown_for_manufacturer("surveyInMinObservationDuration", 1) && !super::shown_for_manufacturer("surveyInMinObservationDuration", 2));
+        assert!(super::shown_for_manufacturer("fixedBasePositionLatitude", 2), "position rows show for every maker");
+        assert!(super::shown_for_manufacturer("fixedBasePositionAccuracy", 0), "All shows every row");
+    }
+
+    #[test]
     fn the_rtk_page_shows_one_mode_at_a_time_rather_than_both_sets_at_once() {
         struct Rtk(Option<bool>);
         impl Backend for Rtk {
             fn get(&self, path: &str) -> String {
-                let mode = self.0.map(|on| json!({ "kind": "fact", "name": "useFixedBasePosition", "typeIsBool": true, "value": on }));
+                let mode = self.0.map(|fixed| json!({ "kind": "fact", "name": "useFixedBasePosition", "enumStrings": ["Survey-In", "Fixed"], "value": u8::from(fixed) }));
                 let facts: Vec<Value> = mode
                     .into_iter()
                     .chain(["surveyInAccuracyLimit", "surveyInMinObservationDuration", "fixedBasePositionLatitude", "fixedBasePositionLongitude", "fixedBasePositionAltitude", "fixedBasePositionAccuracy"].iter().map(|n| json!({ "kind": "fact", "name": n, "typeIsString": true })))

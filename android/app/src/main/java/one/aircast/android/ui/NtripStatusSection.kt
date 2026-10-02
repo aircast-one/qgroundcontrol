@@ -144,8 +144,8 @@ internal fun NtripStatusSection(onWrite: () -> Unit) {
         }
         if (status.status != "disconnected") {
             if (status.dataStale && connected) Text("Connected but no data received recently", color = NTRIP_ORANGE)
-            if (status.mountpoint.isNotBlank()) StatusLine("Mountpoint", status.mountpoint)
-            if (connected) StatusLine("Messages", status.messages.toString())
+            if (connected && status.mountpoint.isNotBlank()) StatusLine("Mountpoint", status.mountpoint)
+            if (connected && status.messages > 0) StatusLine("Messages", status.messages.toString())
             if (connected && status.messageTypes.isNotEmpty()) {
                 Text("Message types", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

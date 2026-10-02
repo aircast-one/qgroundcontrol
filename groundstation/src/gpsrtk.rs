@@ -746,7 +746,7 @@ pub fn settings_from(backend: &dyn Backend) -> Settings {
     Settings {
         survey_in_accuracy_m: number("surveyInAccuracyLimit"),
         survey_in_duration_s: number("surveyInMinObservationDuration") as u32,
-        use_fixed_base: flag(&object(&backend.get(&fact_path("useFixedBasePosition"))), "value"),
+        use_fixed_base: object(&backend.get(&fact_path("useFixedBasePosition"))).get("value").and_then(crate::read::switch_on).unwrap_or(false),
         fixed_latitude: number("fixedBasePositionLatitude"),
         fixed_longitude: number("fixedBasePositionLongitude"),
         fixed_altitude_m: number("fixedBasePositionAltitude") as f32,
