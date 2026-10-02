@@ -78,11 +78,11 @@ fun FirstRunDialog() {
                     Text(prompt.title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
                 }
                 if (prompt.preferences.isNotEmpty()) {
-                    SectionHeader(prompt.vehicleHeading)
+                    SectionHeader(sentenceCase(prompt.vehicleHeading))
                     Text(prompt.vehicleDescription, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
                     prompt.preferences.forEach { fact -> FactRow(fact) }
                 }
-                SectionHeader(prompt.unitsHeading)
+                SectionHeader(sentenceCase(prompt.unitsHeading))
                 Text(prompt.unitsDescription, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
                 UnitsSection(Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
