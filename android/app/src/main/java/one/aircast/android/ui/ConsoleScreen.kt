@@ -1,5 +1,15 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.layout.size
+import one.aircast.android.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TextField
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,9 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
@@ -153,7 +161,9 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
+                .background(MaterialTheme.colorScheme.surfaceContainerLowest),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(lines) { line ->
                 val warning = MaterialTheme.aircast.warning
@@ -161,7 +171,8 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
                 Text(
                     text = consoleLineStyled(line, warning, error),
                     fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isPromptLine(line)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 )
             }
         }
@@ -169,29 +180,43 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            OutlinedTextField(
+            TextField(
                 value = command,
                 onValueChange = { command = it },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                placeholder = { Text("Enter Commands here...") },
+                shape = CircleShape,
+                placeholder = { Text("Type a command") },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                ),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { send() }),
             )
             listOf("historyUp" to "\u2191", "historyDown" to "\u2193").forEach { (step, arrow) ->
-                TextButton(onClick = {
+                TextButton(contentPadding = PaddingValues(0.dp), modifier = Modifier.size(40.dp), onClick = {
                     val current = command
                     scope.launch { command = withContext(Dispatchers.Default) { Qgc.invokeResult("$CONSOLE_ROOT.$step", current) as? String } ?: current }
                 }) { Text(arrow) }
             }
-            Button(onClick = { send() }) { Text("Send") }
+            SmallFloatingActionButton(
+                onClick = { send() },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ) { Icon(painterResource(R.drawable.ic_send), "Send") }
         }
     }
 }
+
+internal fun isPromptLine(line: String): Boolean = Regex("^\\w*sh> ").containsMatchIn(line)
 
 internal fun consoleLineStyled(line: String, warning: Color, error: Color): AnnotatedString {
     val marked = listOf("WARN" to warning, "ERROR" to error).firstOrNull { (prefix, _) -> line.startsWith(prefix) }

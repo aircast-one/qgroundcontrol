@@ -145,4 +145,11 @@ class ConsoleEmptyReasonTest {
         assertEquals(listOf(Triple(0, 5, error)), consoleLineStyled("ERROR x", warn, error).spanStyles.map { Triple(it.start, it.end, it.item.color) })
         assertTrue("case sensitive, and only at the start", consoleLineStyled("warn: an INFO WARN", warn, error).spanStyles.isEmpty())
     }
+
+    @Test
+    fun promptLinesAreTheEchoedCommands() {
+        assertTrue(isPromptLine("nsh> free"))
+        org.junit.Assert.assertFalse(isPromptLine("total  used  free"))
+        org.junit.Assert.assertFalse(isPromptLine("note: nsh> appears mid-line"))
+    }
 }
