@@ -81,9 +81,11 @@ internal fun SetupRow(
     summary: List<SummaryLine> = emptyList(),
     @DrawableRes icon: Int? = null,
     subtitle: String = "",
+    selected: Boolean = false,
 ) {
     val row = Modifier
         .fillMaxWidth()
+        .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
         .let { if (onClick == null) it else it.clickable(onClick = onClick) }
         .heightIn(min = 72.dp)
         .padding(horizontal = 16.dp, vertical = 12.dp)

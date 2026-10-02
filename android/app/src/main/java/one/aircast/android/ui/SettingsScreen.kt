@@ -1,5 +1,8 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FilterChip
 
@@ -264,21 +267,40 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     BackHandler(enabled = open != null) { open = null }
 
     val current = pages.firstOrNull { it.title == open }
-    if (current == null) {
-        SettingsList(pages, modifier) { open = it }
-        return
-    }
-
-    Column(modifier.fillMaxSize()) {
-        PageTopBar(current.title, "Back") { open = null }
-        SettingsPageBody(current, Modifier.fillMaxSize())
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        if (maxWidth >= LIST_DETAIL_MIN_WIDTH) {
+            Row(Modifier.fillMaxSize()) {
+                SettingsList(pages, Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow), selected = open) { open = it }
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    if (current == null) {
+                        EmptyState(R.drawable.ic_settings, "Settings", "Choose a group on the left.")
+                    } else {
+                        Column(Modifier.fillMaxSize()) {
+                            PageTopBar(current.title, "Back") { open = null }
+                            SettingsPageBody(current, Modifier.fillMaxSize())
+                        }
+                    }
+                }
+            }
+        } else if (current == null) {
+            SettingsList(pages) { open = it }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                PageTopBar(current.title, "Back") { open = null }
+                SettingsPageBody(current, Modifier.fillMaxSize())
+            }
+        }
     }
 }
+
+internal val LIST_DETAIL_MIN_WIDTH = 840.dp
+internal val LIST_PANE_WIDTH = 380.dp
 
 @Composable
 private fun SettingsList(
     pages: List<SettingsPageEntry>,
     modifier: Modifier = Modifier,
+    selected: String? = null,
     onOpen: (String) -> Unit,
 ) {
     var search by rememberSaveable { mutableStateOf("") }
@@ -319,6 +341,7 @@ private fun SettingsList(
                         subtitle = PAGE_NOTES[entry.title].orEmpty(),
                         onClick = { onOpen(entry.title) },
                         icon = pageLook(entry.title).icon,
+                        selected = entry.title == selected,
                     )
                 }
             }
