@@ -52,6 +52,9 @@ const NTRIP_ACTIVE: &str = "Disconnect from the NTRIP server to change this.";
 const NTRIP_NO_TLS: &str = "Only applies with TLS encryption on.";
 const NTRIP_NO_FORWARD: &str = "Has no effect while UDP forwarding is off.";
 const RTCM_NO_INPUT: &str = "Has no effect while UDP RTCM input is off.";
+const FORWARDING_OFF: &str = "Has no effect while MAVLink forwarding is off.";
+const TELEMETRY_SAVE_OFF: &str = "Has no effect while saving telemetry logs is off.";
+const ADSB_SERVER_OFF: &str = "Has no effect while the ADSB server connection is off.";
 
 const GATED: &[(&str, &str, bool, &str)] = &[
     ("enforceChecklist", "useChecklist", true, CHECKLIST_OFF),
@@ -67,6 +70,10 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("ntripUdpTargetPort", "ntripUdpForwardEnabled", true, NTRIP_NO_FORWARD),
     ("rtcmUdpInputPort", "rtcmUdpInputEnabled", true, RTCM_NO_INPUT),
     ("rtcmUdpValidate", "rtcmUdpInputEnabled", true, RTCM_NO_INPUT),
+    ("forwardMavlinkHostName", "forwardMavlink", true, FORWARDING_OFF),
+    ("telemetrySaveNotArmed", "telemetrySave", true, TELEMETRY_SAVE_OFF),
+    ("adsbServerHostAddress", "adsbServerConnectEnabled", true, ADSB_SERVER_OFF),
+    ("adsbServerPort", "adsbServerConnectEnabled", true, ADSB_SERVER_OFF),
 ];
 
 // QGC distinguishes the two, and which binding a page uses is what decides this. FlyViewSettings
@@ -246,6 +253,14 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 mod tests {
     use super::*;
 
+    #[test]
+    fn telemetry_and_adsb_rows_follow_their_switches_like_the_qml_pages() {
+        let controls: Vec<Value> = ["forwardMavlinkHostName", "telemetrySaveNotArmed", "adsbServerHostAddress", "adsbServerPort"].iter().map(|n| json!({ "name": n })).collect();
+        let facts = |on: bool| ["forwardMavlink", "telemetrySave", "adsbServerConnectEnabled"].iter().map(|n| json!({ "name": n, "value": on })).collect::<Vec<_>>();
+        assert!(gated(&controls, &facts(false)).iter().all(|c| c["enabled"] == false && c["disabledReason"].is_string()));
+        assert!(gated(&controls, &facts(true)).iter().all(|c| c["enabled"] == true));
+    }
+
     struct Fake;
     impl Backend for Fake {
         fn get(&self, path: &str) -> String {
@@ -278,6 +293,8 @@ mod tests {
             ("Viewer3D", include_str!("../../src/Settings/Viewer3D.SettingsGroup.json")),
             ("NTRIP", include_str!("../../src/Settings/NTRIP.SettingsGroup.json")),
             ("MavlinkActions", include_str!("../../src/Settings/MavlinkActions.SettingsGroup.json")),
+            ("Mavlink", include_str!("../../src/Settings/Mavlink.SettingsGroup.json")),
+            ("ADSBVehicleManager", include_str!("../../src/Settings/ADSBVehicleManager.SettingsGroup.json")),
         ];
         let declares = |name: &str| -> Vec<&str> {
             GROUPS.iter().filter(|(_, body)| body.contains(&format!("\"{name}\""))).map(|(group, _)| *group).collect()
