@@ -12,6 +12,12 @@ pub const TILE_RECEIVER_PREFIX: &str = "extraVideo";
 pub const MAX_VIDEO_TILES: usize = 8;
 pub const START_TIMEOUT_S: u32 = 3;
 pub const RESTART_DELAY_MS: u64 = 1000;
+const MAX_VIDEO_RECONNECT_ATTEMPTS: u32 = 30;
+const MAX_RECONNECT_DELAY_S: u64 = 30;
+
+pub fn reconnect_delay_ms(attempt: u32) -> u64 {
+    (1u64 << attempt.saturating_sub(1).min(5)).min(MAX_RECONNECT_DELAY_S) * RESTART_DELAY_MS
+}
 
 pub const SOURCE_NO_VIDEO: &str = "No Video Available";
 pub const SOURCE_DISABLED: &str = "Video Stream Disabled";
@@ -267,6 +273,7 @@ pub struct Settings {
     pub save_path_set: bool,
     pub recording_format_valid: bool,
     pub rtsp_timeout_s: u32,
+    pub reconnect_disabled: bool,
 }
 
 impl Settings {
@@ -380,6 +387,7 @@ struct Receiver {
     status: Option<Status>,
     size: Option<(u32, u32)>,
     last_frame_s: Option<u64>,
+    reconnect_attempts: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -657,11 +665,15 @@ impl VideoState {
         self.receivers.entry(receiver.to_string()).and_modify(|state| state.started = false);
         match outcome {
             Outcome::InvalidUrl => self.set_status(receiver, Status::InvalidStreamUrl, false),
-            _ => self
-                .set_status(receiver, Status::Reconnecting, true)
-                .into_iter()
-                .chain(std::iter::once(Out::RestartAfter { receiver: receiver.to_string(), delay_ms: RESTART_DELAY_MS }))
-                .collect(),
+            _ if self.settings.reconnect_disabled => self.set_status(receiver, Status::ConnectionFailed, false),
+            _ => {
+                let attempt = self.receivers.get(receiver).map_or(0, |state| state.reconnect_attempts).saturating_add(1).min(MAX_VIDEO_RECONNECT_ATTEMPTS);
+                self.receivers.entry(receiver.to_string()).and_modify(|state| state.reconnect_attempts = attempt);
+                self.set_status(receiver, Status::Reconnecting, true)
+                    .into_iter()
+                    .chain(std::iter::once(Out::RestartAfter { receiver: receiver.to_string(), delay_ms: reconnect_delay_ms(attempt) }))
+                    .collect()
+            }
         }
     }
 
@@ -719,7 +731,10 @@ impl VideoState {
     }
 
     pub fn on_frame(&mut self, receiver: &str, at_s: u64) {
-        self.receivers.entry(receiver.to_string()).and_modify(|state| state.last_frame_s = Some(at_s));
+        self.receivers.entry(receiver.to_string()).and_modify(|state| {
+            state.last_frame_s = Some(at_s);
+            state.reconnect_attempts = 0;
+        });
     }
 
     fn set_status(&mut self, receiver: &str, status: Status, connecting: bool) -> Vec<Out> {
@@ -914,6 +929,7 @@ mod tests {
             save_path_set: true,
             recording_format_valid: true,
             rtsp_timeout_s: 12,
+            reconnect_disabled: false,
         }
     }
 
@@ -1036,7 +1052,8 @@ mod tests {
         assert_eq!(start_timeout_s(SOURCE_UDP_H264, 12), 3, "a plain udp stream gets the three second start budget");
         assert_eq!(start_timeout_s(SOURCE_RTSP, 12), 12, "rtsp may fall back to tcp after five seconds, so it gets the configured budget");
         assert_eq!(start_timeout_s(SOURCE_WEBRTC, 12), 12, "whep signalling plus ice needs the same headroom as rtsp");
-        assert_eq!(RESTART_DELAY_MS, 1000, "a stopped receiver is retried after exactly one second");
+        assert_eq!(RESTART_DELAY_MS, 1000, "a stopped receiver is first retried after exactly one second");
+        assert_eq!((1..=8).map(reconnect_delay_ms).collect::<Vec<_>>(), [1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000], "GstVideoReceiver::_scheduleReconnect backs off 1, 2, 4, 8, 16 then 30 s");
     }
 
     #[test]
@@ -1162,6 +1179,14 @@ mod tests {
         let stopped = state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
         assert_eq!(state.camera_status(0), Status::Reconnecting);
         assert!(stopped.contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: RESTART_DELAY_MS }), "a stop must schedule the retry, or the receiver is latched off");
+        let again = state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
+        assert!(again.contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: 2000 }), "the second retry waits longer");
+        state.on_frame(MAIN_RECEIVER, 20);
+        assert!(state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed).contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: RESTART_DELAY_MS }), "a frame resets the backoff");
+        state.settings.reconnect_disabled = true;
+        assert!(!state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed).iter().any(|o| matches!(o, Out::RestartAfter { .. })), "rtspAutoReconnect off gives up after one failure");
+        assert_eq!(state.camera_status(0), Status::ConnectionFailed);
+        state.settings.reconnect_disabled = false;
         let bad_url = state.on_stop_complete(MAIN_RECEIVER, Outcome::InvalidUrl);
         assert_eq!(state.camera_status(0), Status::InvalidStreamUrl);
         assert!(!bad_url.iter().any(|o| matches!(o, Out::RestartAfter { .. })), "an invalid url is not retried forever");

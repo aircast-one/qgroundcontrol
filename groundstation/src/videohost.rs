@@ -51,6 +51,7 @@ pub fn settings_from(text: &dyn Fn(&str) -> String, flag: &dyn Fn(&str, bool) ->
         save_path_set: false,
         recording_format_valid: false,
         rtsp_timeout_s: u32::try_from(number("rtspTimeout", 8)).unwrap_or(8),
+        reconnect_disabled: !flag("rtspAutoReconnect", true),
     }
 }
 
