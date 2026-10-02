@@ -1,5 +1,6 @@
 package one.aircast.android
 
+import androidx.compose.ui.graphics.toArgb
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.wifi.WifiManager
@@ -333,6 +334,15 @@ fun AircastShell(hostView: android.view.View?) {
     BackHandler(enabled = fullScreen) { videoFullScreen = false }
 
     AircastTheme(dark = darkBars) {
+        val barColor = MaterialTheme.colorScheme.surface.toArgb()
+        SideEffect {
+            (view.context as? Activity)?.window?.let { window ->
+                @Suppress("DEPRECATION")
+                window.statusBarColor = barColor
+                @Suppress("DEPRECATION")
+                window.navigationBarColor = barColor
+            }
+        }
         if (fullScreen) {
             Box(Modifier.fillMaxSize()) { flyVideo(Modifier.fillMaxSize(), true) }
             return@AircastTheme
