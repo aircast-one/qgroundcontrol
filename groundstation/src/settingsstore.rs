@@ -703,7 +703,7 @@ fn operator_id_valid_for_region() -> bool {
 }
 
 pub const VIDEO_DISABLED: &str = "Video Stream Disabled";
-const URL_SOURCES: [(&str, &str); 6] = [
+pub const URL_SOURCES: [(&str, &str); 6] = [
     ("UDP h.264 Video Stream", "udpUrl"),
     ("UDP h.265 Video Stream", "udpUrl"),
     ("MPEG-TS Video Stream", "udpUrl"),

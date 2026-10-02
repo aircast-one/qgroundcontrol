@@ -54,6 +54,7 @@ const NTRIP_NO_FORWARD: &str = "Has no effect while UDP forwarding is off.";
 const RTCM_NO_INPUT: &str = "Has no effect while UDP RTCM input is off.";
 const FORWARDING_OFF: &str = "Has no effect while MAVLink forwarding is off.";
 const TELEMETRY_SAVE_OFF: &str = "Has no effect while saving telemetry logs is off.";
+const STORAGE_LIMIT_OFF: &str = "Has no effect while the storage limit is off.";
 const STREAMS_FROM_VEHICLE: &str = "Stream rates are controlled by the vehicle.";
 const ADSB_SERVER_OFF: &str = "Has no effect while the ADSB server connection is off.";
 
@@ -75,6 +76,7 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("telemetrySaveNotArmed", "telemetrySave", true, TELEMETRY_SAVE_OFF),
     ("adsbServerHostAddress", "adsbServerConnectEnabled", true, ADSB_SERVER_OFF),
     ("adsbServerPort", "adsbServerConnectEnabled", true, ADSB_SERVER_OFF),
+    ("maxVideoSize", "enableStorageLimit", true, STORAGE_LIMIT_OFF),
     ("streamRateRawSensors", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
     ("streamRateExtendedStatus", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
     ("streamRateRCChannels", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
@@ -179,13 +181,30 @@ fn section_applies(group: &str, backend: Option<&dyn Backend>) -> bool {
     }
 }
 
+const STREAM_ONLY: [&str; 4] = ["rtspTimeout", "disableWhenDisarmed", "lowLatencyMode", "aspectRatio"];
+
+pub fn video_row_shown(name: &str, source: &str, stream_source: bool, auto_configured: bool) -> bool {
+    let url_fact = crate::settingsstore::URL_SOURCES.iter().find(|(served, _)| *served == source).map(|(_, fact)| *fact);
+    match name {
+        "udpUrl" | "rtspUrl" | "tcpUrl" | "whepUrl" => url_fact == Some(name),
+        _ if STREAM_ONLY.contains(&name) => stream_source && !auto_configured,
+        _ => true,
+    }
+}
+
 fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Value {
     let path = format!("settings.{group}");
     let Some(backend) = backend else { return json!({ "title": title, "group": group, "path": path }) };
     let facts: Vec<Value> = object(&backend.get(&path)).get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
+    let video = (group == "videoSettings").then(|| {
+        let manager = object(&backend.get_fields("video", "isStreamSource,autoStreamConfigured"));
+        let source = facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some("videoSource")).and_then(|f| f.get("value")).and_then(Value::as_str).unwrap_or_default().to_string();
+        (source, flag(&manager, "isStreamSource"), flag(&manager, "autoStreamConfigured"))
+    });
     let shown: Vec<Value> = facts
         .iter()
         .filter(|f| f.get("visible").and_then(Value::as_bool) != Some(false))
+        .filter(|f| video.as_ref().is_none_or(|(source, stream, auto)| video_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), source, *stream, *auto)))
         .filter(|f| {
             let named = f.get("name").and_then(Value::as_str).unwrap_or_default();
             !HIDDEN_WHEN.iter().any(|(hidden, requires, when)| {
@@ -281,6 +300,17 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn video_rows_follow_the_source_like_video_settings() {
+        assert!(video_row_shown("rtspUrl", "RTSP Video Stream", true, false));
+        assert!(!video_row_shown("udpUrl", "RTSP Video Stream", true, false), "only the selected source's URL");
+        assert!(video_row_shown("udpUrl", "MPEG-TS Video Stream", true, false));
+        assert!(!video_row_shown("whepUrl", "Video Stream Disabled", false, false));
+        assert!(!video_row_shown("lowLatencyMode", "RTSP Video Stream", true, true), "auto-configured streams hide the stream rows");
+        assert!(!video_row_shown("rtspTimeout", "UVC Device", false, false), "and so does a source that is not a stream");
+        assert!(video_row_shown("videoFit", "UVC Device", false, false));
+    }
 
     #[test]
     fn apm_stream_rates_show_for_an_apm_vehicle_or_none_like_telemetry_settings() {
