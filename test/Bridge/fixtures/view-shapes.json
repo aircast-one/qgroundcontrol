@@ -8244,6 +8244,7 @@
         "view.instruments(vehicle/altitudeRelative).items[].units",
         "view.instruments(vehicle/altitudeRelative).items[].value",
         "view.instruments(vehicle/altitudeRelative).kind",
+        "view.instruments(vehicle/altitudeRelative).vehicleClass",
         "view.instruments.available",
         "view.instruments.class",
         "view.instruments.items.#",
@@ -8257,6 +8258,7 @@
         "view.instruments.items[].units",
         "view.instruments.items[].value",
         "view.instruments.kind",
+        "view.instruments.vehicleClass",
         "view.itemCamera(1).available",
         "view.itemCamera(1).cameraAction",
         "view.itemCamera(1).cameraAction.choice",
@@ -12267,7 +12269,8 @@
                 "value": "string"
             }
         ],
-        "kind": "string"
+        "kind": "string",
+        "vehicleClass": "string"
     },
     "view.instruments(vehicle/altitudeRelative)": {
         "available": "bool",
@@ -12285,7 +12288,8 @@
                 "value": "string"
             }
         ],
-        "kind": "string"
+        "kind": "string",
+        "vehicleClass": "string"
     },
     "view.itemCamera(1)": {
         "available": "bool",

@@ -158,7 +158,9 @@ fun VehicleTitle() {
 @Composable
 fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
     val context = LocalContext.current
-    var chosen by remember { mutableStateOf(readChosen(context)) }
+    val classView by qgcPath(INSTRUMENTS_VIEW)
+    val vehicleClass = instrumentVehicleClass(classView)
+    var chosen by remember(vehicleClass) { mutableStateOf(readChosen(context, vehicleClass)) }
     var choosing by remember { mutableStateOf(false) }
     var displays by remember { mutableStateOf(readDisplays(context)) }
     var styling by remember { mutableStateOf<Instrument?>(null) }
@@ -200,7 +202,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
             chosen = chosen,
             onToggle = { name ->
                 chosen = withInstrument(chosen, name)
-                writeChosen(context, chosen)
+                writeChosen(context, vehicleClass, chosen)
             },
             onDismiss = { choosing = false },
         )

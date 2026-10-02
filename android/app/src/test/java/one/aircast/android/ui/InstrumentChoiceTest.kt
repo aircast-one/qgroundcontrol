@@ -141,4 +141,11 @@ class InstrumentChoiceTest {
         )
         assertEquals("Connect a vehicle to see what it can report.", emptyCatalogueText(connected = false))
     }
+
+    @Test
+    fun `each vehicle class keeps its own instruments, like FactValueGrid's settings key`() {
+        assertEquals("multiRotor", instrumentVehicleClass(org.json.JSONObject("""{"vehicleClass":"multiRotor"}""")))
+        assertEquals("generic", instrumentVehicleClass(null))
+        assertEquals("chosen-fixedWing", chosenKey("fixedWing"))
+    }
 }

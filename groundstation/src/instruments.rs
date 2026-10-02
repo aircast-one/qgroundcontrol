@@ -9,6 +9,9 @@ pub const DEPS: &[&str] = &[
     "vehicle.fixedWing",
     "vehicle.vtol",
     "vehicle.airship",
+    "vehicle.multiRotor",
+    "vehicle.rover",
+    "vehicle.sub",
     "settings.unitsSettings.horizontalDistanceUnits",
     "settings.unitsSettings.verticalDistanceUnits",
     "settings.unitsSettings.speedUnits",
@@ -82,8 +85,12 @@ fn converted(backend: &dyn Backend, fact: &Value) -> Option<(String, String)> {
     Some((crate::read::settled(format!("{:.places$}", unit.show(raw))), unit.name.clone()))
 }
 
+pub fn vehicle_class_key(class: &Value) -> &'static str {
+    ["vtol", "fixedWing", "airship", "multiRotor", "rover", "sub"].into_iter().find(|key| crate::read::flag(class, key)).unwrap_or("generic")
+}
+
 pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let class = object(&backend.get_fields("vehicle", "fixedWing,vtol,airship"));
+    let class = object(&backend.get_fields("vehicle", "fixedWing,vtol,airship,multiRotor,rover,sub"));
     let forward_flight = ["fixedWing", "vtol", "airship"].iter().any(|key| crate::read::flag(&class, key));
     let items: Vec<Value> = selections(args, forward_flight)
         .iter()
@@ -119,6 +126,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "Instruments",
+        "vehicleClass": vehicle_class_key(&class),
         "available": items.iter().any(|i| i["missing"] == false),
         "items": items,
     })
@@ -128,6 +136,13 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_layout_key_is_the_vehicle_class_like_fact_value_grid() {
+        assert_eq!(vehicle_class_key(&json!({ "multiRotor": true })), "multiRotor");
+        assert_eq!(vehicle_class_key(&json!({ "vtol": true, "fixedWing": true })), "vtol", "a VTOL is its own class, not a plane");
+        assert_eq!(vehicle_class_key(&json!({})), "generic");
+    }
 
     struct Fake;
     impl Backend for Fake {
@@ -304,10 +319,10 @@ mod tests {
 
     #[test]
     fn dependencies_are_the_selected_facts_not_their_groups() {
-        assert_eq!(deps_for(&["gps/count".to_string(), "vehicle/heading".to_string(), "batteries.0/voltage".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicle.airship", "vehicle.batteries.0.voltage", "vehicle.fixedWing", "vehicle.gps.count", "vehicle.heading", "vehicle.vtol", "vehicles.activeVehicleAvailable"]);
-        assert_eq!(deps_for(&[]).len(), 13);
+        assert_eq!(deps_for(&["gps/count".to_string(), "vehicle/heading".to_string(), "batteries.0/voltage".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicle.airship", "vehicle.batteries.0.voltage", "vehicle.fixedWing", "vehicle.gps.count", "vehicle.heading", "vehicle.multiRotor", "vehicle.rover", "vehicle.sub", "vehicle.vtol", "vehicles.activeVehicleAvailable"]);
+        assert_eq!(deps_for(&[]).len(), 16);
         assert!(deps_for(&[]).contains(&"vehicle.altitudeRelative".to_string()));
-        assert_eq!(deps_for(&["/".to_string(), "".to_string(), "gps/".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicle.airship", "vehicle.fixedWing", "vehicle.vtol", "vehicles.activeVehicleAvailable"], "an empty name never turns into a read of the whole vehicle");
+        assert_eq!(deps_for(&["/".to_string(), "".to_string(), "gps/".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicle.airship", "vehicle.fixedWing", "vehicle.multiRotor", "vehicle.rover", "vehicle.sub", "vehicle.vtol", "vehicles.activeVehicleAvailable"], "an empty name never turns into a read of the whole vehicle");
         assert!(instruments_view(&Fake, &["vehicle/".to_string()])["items"].as_array().unwrap().is_empty());
     }
 

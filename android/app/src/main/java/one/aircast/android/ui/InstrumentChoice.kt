@@ -13,7 +13,7 @@ internal val DEFAULT_INSTRUMENTS = listOf(
     "climbRate",
 )
 
-private const val INSTRUMENTS_VIEW = "view.instruments"
+internal const val INSTRUMENTS_VIEW = "view.instruments"
 
 internal const val MOST_INSTRUMENTS = 6
 
@@ -82,18 +82,23 @@ internal fun instrumentChoiceNote(chosen: List<String>): String = when (chosen.s
 }
 
 private const val STORE = "fly-instruments"
-private const val KEY = "chosen"
+private const val GENERIC_CLASS = "generic"
 
-internal fun readChosen(context: Context): List<String> =
+internal fun instrumentVehicleClass(view: JSONObject?): String =
+    view?.optText("vehicleClass")?.ifBlank { null } ?: GENERIC_CLASS
+
+internal fun chosenKey(vehicleClass: String): String = "chosen-$vehicleClass"
+
+internal fun readChosen(context: Context, vehicleClass: String): List<String> =
     context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
-        .getString(KEY, null)
+        .getString(chosenKey(vehicleClass), null)
         ?.split(",")
         ?.filter { it.isNotBlank() }
         ?: DEFAULT_INSTRUMENTS
 
-internal fun writeChosen(context: Context, chosen: List<String>) {
+internal fun writeChosen(context: Context, vehicleClass: String, chosen: List<String>) {
     context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
         .edit()
-        .putString(KEY, chosen.joinToString(","))
+        .putString(chosenKey(vehicleClass), chosen.joinToString(","))
         .apply()
 }

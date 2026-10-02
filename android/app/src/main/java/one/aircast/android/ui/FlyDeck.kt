@@ -85,7 +85,9 @@ private val SIMPLE_RETURN_HEIGHT = 96.dp
 @Composable
 internal fun SimpleTiles(modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val chosen = remember { readChosen(context) }
+    val classView by qgcPath(INSTRUMENTS_VIEW)
+    val vehicleClass = instrumentVehicleClass(classView)
+    val chosen = remember(vehicleClass) { readChosen(context, vehicleClass) }
     val displays = remember { readDisplays(context) }
     val view by qgcPath(instrumentsPath(chosen))
     val shown = remember(view, chosen) { if (showsInstruments(chosen)) instruments(view).take(SIMPLE_TILE_COUNT) else emptyList() }
