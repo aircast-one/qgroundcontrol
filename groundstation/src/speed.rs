@@ -95,7 +95,7 @@ fn range_meters_second(backend: &dyn Backend) -> Option<Range> {
         }
         false => {
             let maximum = number("vehicle.maximumHorizontalSpeedMultirotorMetersSecond")?;
-            Range { label: "Ground speed", command: "guidedModeChangeGroundSpeedMetersSecond", minimum: SLOWEST_GROUND_SPEED_METERS_SECOND, maximum, initial: maximum / 2.0 }
+            Range { label: "Speed", command: "guidedModeChangeGroundSpeedMetersSecond", minimum: SLOWEST_GROUND_SPEED_METERS_SECOND, maximum, initial: maximum / 2.0 }
         }
     };
     (range.maximum > range.minimum).then_some(range)
@@ -141,7 +141,7 @@ mod tests {
     #[test]
     fn a_multirotor_gets_ground_speed_from_a_tenth_to_its_maximum() {
         let view = speed_view(&Fake { connected: true, forward: false, maximum: 15.0 }, &["20".to_string()]);
-        assert_eq!(view["label"], "Ground speed");
+        assert_eq!(view["label"], "Speed");
         assert_eq!(view["command"], "guidedModeChangeGroundSpeedMetersSecond");
         assert_eq!(view["minimum"], 0.1);
         assert_eq!(view["initial"], 7.5);
@@ -167,10 +167,10 @@ mod tests {
 
     #[test]
     fn a_speed_change_is_sent_only_on_the_command_the_frame_flies_and_inside_its_range() {
-        let ground = Range { label: "Ground speed", command: "guidedModeChangeGroundSpeedMetersSecond", minimum: 0.1, maximum: 12.0, initial: 6.0 };
+        let ground = Range { label: "Speed", command: "guidedModeChangeGroundSpeedMetersSecond", minimum: 0.1, maximum: 12.0, initial: 6.0 };
         let air = Range { label: "Airspeed", command: "guidedModeChangeEquivalentAirspeedMetersSecond", minimum: 14.0, maximum: 30.0, initial: 22.0 };
         assert_eq!(speed_refusal(Some(&ground), "guidedModeChangeGroundSpeedMetersSecond", Some(8.0)), None);
-        assert_eq!(speed_refusal(Some(&ground), "guidedModeChangeGroundSpeedMetersSecond", Some(40.0)).map(|r| r.1), Some("Ground speed runs from 0.1 to 12.0 m/s.".to_string()), "QGC forwards a speed past the vehicle's own maximum");
+        assert_eq!(speed_refusal(Some(&ground), "guidedModeChangeGroundSpeedMetersSecond", Some(40.0)).map(|r| r.1), Some("Speed runs from 0.1 to 12.0 m/s.".to_string()), "QGC forwards a speed past the vehicle's own maximum");
         assert_eq!(speed_refusal(Some(&air), "guidedModeChangeGroundSpeedMetersSecond", Some(20.0)).map(|r| r.0), Some("wrongCommand"), "a VTOL that transitioned after the view was read flies on airspeed now");
         assert_eq!(speed_refusal(Some(&air), "guidedModeChangeEquivalentAirspeedMetersSecond", Some(10.0)).map(|r| r.0), Some("outOfRange"), "below stall is refused, not clamped");
         assert_eq!(speed_refusal(Some(&air), "guidedModeChangeEquivalentAirspeedMetersSecond", None).map(|r| r.0), Some("outOfRange"));

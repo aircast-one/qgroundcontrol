@@ -12,7 +12,7 @@ class GuidedSpeedTest {
     @Test
     fun `the core picks the command so the head never chooses airspeed or ground speed`() {
         val multirotor = guidedSpeed(
-            JSONObject("""{"available":true,"label":"Ground speed","unit":"m/s",
+            JSONObject("""{"available":true,"label":"Speed","unit":"m/s",
                 "command":"guidedModeChangeGroundSpeedMetersSecond",
                 "initial":5.0,"minimum":1.0,"maximum":20.0}"""),
         )!!
@@ -24,7 +24,7 @@ class GuidedSpeedTest {
 
         assertEquals("guidedModeChangeGroundSpeedMetersSecond", multirotor.command)
         assertEquals("guidedModeChangeEquivalentAirspeedMetersSecond", forward.command)
-        assertEquals("Ground speed", multirotor.label)
+        assertEquals("Speed", multirotor.label)
         assertEquals("Airspeed", forward.label)
     }
 
@@ -46,7 +46,7 @@ class GuidedSpeedTest {
             speedRangeUsable(
                 guidedSpeed(
                     JSONObject("""{"available":true,"command":"guidedModeChangeGroundSpeedMetersSecond",
-                        "label":"Ground speed","unit":"m/s","minimum":1.0,"maximum":20.0,"initial":5.0}"""),
+                        "label":"Speed","unit":"m/s","minimum":1.0,"maximum":20.0,"initial":5.0}"""),
                 ),
             ),
         )
