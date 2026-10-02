@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstring>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -126,6 +127,44 @@ void dropRecording()
         gst_object_unref(recording.teePad);
     }
     recording = Recording{};
+}
+
+constexpr const char *kWhepLatencyPrefix = "whep_latency_";
+
+GstElement *findByFactory(GstBin *bin, const char *factory)
+{
+    GstIterator *const it = gst_bin_iterate_recurse(bin);
+    GValue item = G_VALUE_INIT;
+    GstElement *found = nullptr;
+    while (!found && gst_iterator_next(it, &item) == GST_ITERATOR_OK) {
+        GstElement *const element = GST_ELEMENT(g_value_get_object(&item));
+        GstElementFactory *const made = gst_element_get_factory(element);
+        if (made && g_strcmp0(gst_plugin_feature_get_name(GST_PLUGIN_FEATURE(made)), factory) == 0) {
+            found = GST_ELEMENT(gst_object_ref(element));
+        }
+        g_value_reset(&item);
+    }
+    g_value_unset(&item);
+    gst_iterator_free(it);
+    return found;
+}
+
+void applyWhepLatency(GstBin *bin)
+{
+    GstElement *const source = findByFactory(bin, "whepsrc");
+    if (!source) {
+        return;
+    }
+    gchar *const name = gst_element_get_name(source);
+    if (name && g_str_has_prefix(name, kWhepLatencyPrefix) && GST_IS_BIN(source)) {
+        const guint latency = static_cast<guint>(g_ascii_strtoull(name + strlen(kWhepLatencyPrefix), nullptr, 10));
+        if (GstElement *const webrtcbin = findByFactory(GST_BIN(source), "webrtcbin")) {
+            g_object_set(webrtcbin, "latency", latency, nullptr);
+            gst_object_unref(webrtcbin);
+        }
+    }
+    g_free(name);
+    gst_object_unref(source);
 }
 
 GstPadProbeReturn onSourceBuffer(GstPad *, GstPadProbeInfo *, gpointer)
@@ -306,6 +345,8 @@ bool qgc_video_start(const char *pipelineDescription)
         qgc_video_stop();
         return false;
     }
+
+    applyWhepLatency(GST_BIN(pipeline));
 
     if (GstElement *const tee = gst_bin_get_by_name(GST_BIN(pipeline), kRecordingTee)) {
         if (GstPad *const teeSink = gst_element_get_static_pad(tee, "sink")) {
