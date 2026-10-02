@@ -43,7 +43,21 @@ const PAGES: &[Page] = &[
 // radio reports. Left in the generic list it renders a second control writing the same fact - a
 // free-text field beside the picker, where a name that is not an adapter gets no feedback at all.
 // Same shape as extraVideoSources: when a bespoke block owns a fact, the fact leaves the list.
-const HIDDEN: &[&str] = &["firstRunPromptIdsShown", "deviceName", "ntripServerConnectEnabled", "flyViewActionsFile", "joystickActionsFile"];
+const HIDDEN: &[&str] = &[
+    "firstRunPromptIdsShown",
+    "deviceName",
+    "ntripServerConnectEnabled",
+    "flyViewActionsFile",
+    "joystickActionsFile",
+    "autoConnectZeroConf",
+    "udpListenPort",
+    "udpTargetHostIP",
+    "udpTargetHostPort",
+    "nmeaSource",
+    "autoConnectNmeaPort",
+    "autoConnectNmeaBaud",
+    "nmeaUdpPort",
+];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls"), ("extraVideoSources", "additional cameras")];
 
 const CHECKLIST_OFF: &str = "Has no effect while the preflight checklist is off.";
@@ -362,6 +376,7 @@ mod tests {
             ("Mavlink", include_str!("../../src/Settings/Mavlink.SettingsGroup.json")),
             ("ADSBVehicleManager", include_str!("../../src/Settings/ADSBVehicleManager.SettingsGroup.json")),
             ("APMMavlinkStreamRate", include_str!("../../src/Settings/APMMavlinkStreamRate.SettingsGroup.json")),
+            ("AutoConnect", include_str!("../../src/Settings/AutoConnect.SettingsGroup.json")),
         ];
         let declares = |name: &str| -> Vec<&str> {
             GROUPS.iter().filter(|(_, body)| body.contains(&format!("\"{name}\""))).map(|(group, _)| *group).collect()
