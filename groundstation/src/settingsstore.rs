@@ -626,20 +626,8 @@ pub fn get_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Str
     Some(answer.to_string())
 }
 
-pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
-    let at = address(path)?;
-    let cooked = match at.field.as_deref() {
-        None | Some("value") => true,
-        Some("rawValue") => false,
-        Some(_) => return None,
-    };
-    let written = crate::read::object(value);
-    let given = written.get("value").cloned().unwrap_or(written);
-    let raw_given = match (cooked, unit_for(&at.meta), given.as_f64()) {
-        (true, Some(u), Some(n)) => json!((u.base)(n)),
-        _ => given,
-    };
-    if let Some(new) = typed(&at.meta.value_type, &raw_given) {
+fn store_raw(at: &Addressed, raw_given: &Value) {
+    if let Some(new) = typed(&at.meta.value_type, raw_given) {
         let spelled = match &new {
             Value::String(text) => text.clone(),
             other => other.to_string(),
@@ -656,6 +644,28 @@ pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
             crate::coreplan::default_altitude_changed();
         }
     }
+}
+
+pub fn set_raw(path: &str, raw_given: &Value) {
+    if let Some(at) = address(path) {
+        store_raw(&at, raw_given);
+    }
+}
+
+pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
+    let at = address(path)?;
+    let cooked = match at.field.as_deref() {
+        None | Some("value") => true,
+        Some("rawValue") => false,
+        Some(_) => return None,
+    };
+    let written = crate::read::object(value);
+    let given = written.get("value").cloned().unwrap_or(written);
+    let raw_given = match (cooked, unit_for(&at.meta), given.as_f64()) {
+        (true, Some(u), Some(n)) => json!((u.base)(n)),
+        _ => given,
+    };
+    store_raw(&at, &raw_given);
     match crate::qthost::present() {
         true => Some(backend.set(path, value)),
         false => Some(json!({ "ok": true }).to_string()),

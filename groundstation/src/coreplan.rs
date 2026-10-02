@@ -763,6 +763,9 @@ fn follow_vehicle() {
             }
             (Some(id), Some(vehicle)) if state.shown_vehicle != Some(id) && vehicle.0 == id => {
                 state.shown_vehicle = Some(id);
+                let (firmware_class, vehicle_class) = offline_classes(vehicle.5 .0, vehicle.5 .1);
+                crate::settingsstore::set_raw("settings.appSettings.offlineEditingFirmwareClass", &json!(firmware_class));
+                crate::settingsstore::set_raw("settings.appSettings.offlineEditingVehicleClass", &json!(vehicle_class));
                 let has_items = state.document.as_ref().is_some_and(|d| !d.items.is_empty());
                 if state.dirty && has_items {
                     state.vehicle_prompt = Some(false);
@@ -1153,11 +1156,7 @@ fn plan_speeds(backend: &dyn Backend, file: &str) {
         });
 }
 
-fn plan_for_offline_vehicle(backend: &dyn Backend) {
-    if !offline() {
-        return;
-    }
-    let Some((firmware, vehicle)) = held().document.as_ref().map(|d| (d.firmware_type, d.vehicle_type)) else { return };
+fn offline_classes(firmware: i64, vehicle: i64) -> (i64, i64) {
     let firmware_class = match plandoc::firmware(firmware) {
         crate::cmdinfo::Firmware::Px4 => 12,
         crate::cmdinfo::Firmware::ArduPilot => 3,
@@ -1171,6 +1170,15 @@ fn plan_for_offline_vehicle(backend: &dyn Backend) {
         crate::cmdinfo::VehicleClass::Rover => 10,
         crate::cmdinfo::VehicleClass::Generic => 0,
     };
+    (firmware_class, vehicle_class)
+}
+
+fn plan_for_offline_vehicle(backend: &dyn Backend) {
+    if !offline() {
+        return;
+    }
+    let Some((firmware, vehicle)) = held().document.as_ref().map(|d| (d.firmware_type, d.vehicle_type)) else { return };
+    let (firmware_class, vehicle_class) = offline_classes(firmware, vehicle);
     backend.set("settings.appSettings.offlineEditingFirmwareClass", &json!({ "value": firmware_class }).to_string());
     backend.set("settings.appSettings.offlineEditingVehicleClass", &json!({ "value": vehicle_class }).to_string());
 }
@@ -1839,6 +1847,13 @@ pub fn route_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_connected_vehicle_sets_the_offline_planning_classes_like_plan_master_controller() {
+        assert_eq!(offline_classes(3, 1), (3, 1), "an ArduPilot plane plans as ArduPilot fixed wing");
+        assert_eq!(offline_classes(12, 2), (12, 2), "a PX4 quad as PX4 multirotor");
+        assert_eq!(offline_classes(12, 22), (12, 20), "a VTOL type as VTOL");
+    }
 
     fn by_value(value: Value) -> Value {
         match value {
