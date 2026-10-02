@@ -1304,7 +1304,7 @@ pub fn history() -> Option<(bool, bool)> {
 }
 
 fn remove_all_from_vehicle(backend: &dyn Backend) -> Value {
-    let Some((fence, rally)) = crate::hub::lock().active().map(crate::hub::Vehicle::plans_supported) else {
+    let Some((id, (fence, rally))) = crate::hub::lock().active().map(|v| (v.id, v.plans_supported())) else {
         return refused("No vehicle is connected through the core.");
     };
     let kinds = ["mission"].into_iter().chain(fence.then_some("fence")).chain(rally.then_some("rally"));
@@ -1318,8 +1318,14 @@ fn remove_all_from_vehicle(backend: &dyn Backend) -> Value {
         }
     });
     let fresh = held().document.is_none().then(|| fresh_document(backend));
+    {
+        let mut state = held();
+        state.dirty = false;
+        state.file = None;
+    }
+    changed();
     std::thread::spawn(move || {
-        let removed: Vec<&str> = sent.into_iter().filter(|kind| settle(kind) && crate::hub::lock().active().is_some_and(|v| v.mission_snapshot()[*kind]["error"].is_null())).collect();
+        let removed: Vec<&str> = sent.into_iter().filter(|kind| removed_on(id, kind)).collect();
         if !removed.is_empty() {
             clear_kinds(fresh, &removed);
         }
@@ -1328,6 +1334,14 @@ fn remove_all_from_vehicle(backend: &dyn Backend) -> Value {
         None => json!({ "ok": true }),
         Some(reason) => refused(reason.clone()),
     }
+}
+
+fn removed_on(id: u8, kind: &str) -> bool {
+    let settled = (0..600).any(|_| {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        crate::hub::lock().vehicle(id).is_none_or(|v| v.mission_snapshot()[kind]["inProgress"].as_bool() != Some(true))
+    });
+    settled && crate::hub::lock().vehicle(id).is_some_and(|v| v.mission_snapshot()[kind]["error"].is_null())
 }
 
 fn clear(backend: &dyn Backend) -> Value {

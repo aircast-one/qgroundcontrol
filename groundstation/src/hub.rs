@@ -3970,6 +3970,10 @@ impl Hub {
         self.active.and_then(|id| self.vehicles.get(&id))
     }
 
+    pub fn vehicle(&self, id: u8) -> Option<&Vehicle> {
+        self.vehicles.get(&id)
+    }
+
     pub fn note_cellular(&mut self, system: u8, message: &MavMessage, raw: &[u8]) {
         if let (MavMessage::CELLULAR_STATUS(cellular), Some(vehicle)) = (message, self.vehicles.get_mut(&system)) {
             vehicle.aircast.apply(cellular, crate::vehiclefact::cellular_rx_rate(raw));
