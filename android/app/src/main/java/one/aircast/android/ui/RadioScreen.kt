@@ -77,34 +77,16 @@ internal fun PwmBar(fraction: Float, modifier: Modifier = Modifier) {
 
 @Composable
 private fun AttitudeRow(stick: RadioStick) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(
-            text = stick.title,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.width(72.dp),
-        )
-        if (!stick.mapped) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stick.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Text(
-                text = "Not Mapped",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.weight(1f),
-            )
-        } else {
-            PwmBar(stick.fraction, Modifier.weight(1f))
-            Text(
-                text = if (stick.reversed) "${stick.valueText} R" else stick.valueText,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.width(64.dp),
+                text = if (!stick.mapped) "Not mapped" else listOfNotNull(stick.valueText, "reversed".takeIf { stick.reversed }).joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (stick.mapped) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
             )
         }
+        if (stick.mapped) PwmBar(stick.fraction, Modifier.fillMaxWidth())
     }
 }
 
@@ -203,6 +185,7 @@ private fun ConfirmDialog(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun AdditionalSetup(onInvoke: (String, Int?) -> Unit) {
     var prompt by remember { mutableStateOf<RadioPrompt?>(null) }
     val asked = prompt
@@ -219,7 +202,7 @@ private fun AdditionalSetup(onInvoke: (String, Int?) -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(bottom = 4.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             RADIO_PROMPTS.forEach { entry ->
                 OutlinedButton(onClick = { prompt = entry }) { Text(entry.title) }
             }
