@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -328,6 +329,14 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
         EditPositionDialog(
             at = at,
             onDismiss = { editingPosition = false },
+            altitudeMode = view?.takeIf { !it.isNull("altitudeMode") }?.optInt("altitudeMode", -1),
+            onAltitude = { shown ->
+                scope.launch {
+                    val set = withContext(Dispatchers.Default) { PlanBridge.setAltitude(index, shown) }
+                    refusal = if (set) null else "The altitude could not be set."
+                    revision++
+                }
+            },
             onMove = { latitude, longitude ->
                 editingPosition = false
                 scope.launch {
@@ -481,8 +490,13 @@ internal fun EditPositionDialog(
     title: String = "Edit Position",
     confirm: String = "Move",
     vehicleNote: String = "Move the item to the vehicle's current position.",
+    altitudeMode: Int? = null,
+    onAltitude: ((Double) -> Unit)? = null,
     onMove: (Double, Double) -> Unit,
 ) {
+    val altitudePath = vehicleAltitudePath(altitudeMode).takeIf { onAltitude != null }
+    var setPosition by remember { mutableStateOf(true) }
+    var setAltitude by remember { mutableStateOf(false) }
     var system by remember { mutableStateOf(CoordinateSystem.Geographic) }
     var latitude by remember { mutableStateOf(String.format(java.util.Locale.US, "%.7f", at.latitude)) }
     var longitude by remember { mutableStateOf(String.format(java.util.Locale.US, "%.7f", at.longitude)) }
@@ -506,7 +520,23 @@ internal fun EditPositionDialog(
         }
     }
 
+    fun fromVehicle() {
+        scope.launch {
+            val (position, altitude) = withContext(Dispatchers.Default) {
+                geoOf(Qgc.get("vehicle.coordinate")).takeIf { setPosition } to
+                    altitudePath?.takeIf { setAltitude }?.let { Qgc.get(it).optDouble("value", Double.NaN) }?.takeIf { it.isFinite() }
+            }
+            altitude?.let { onAltitude?.invoke(it) }
+            when {
+                setPosition && position == null -> problem = "That position could not be read."
+                position != null -> onMove(position.first, position.second)
+                else -> onDismiss()
+            }
+        }
+    }
+
     fun move() {
+        if (system == CoordinateSystem.Vehicle) return fromVehicle()
         scope.launch {
             val target = withContext(Dispatchers.Default) {
                 when (system) {
@@ -546,7 +576,19 @@ internal fun EditPositionDialog(
                         PositionField("Northing", northing) { northing = it }
                     }
                     CoordinateSystem.Mgrs -> PositionField("MGRS", mgrs, KeyboardType.Text) { mgrs = it }
-                    CoordinateSystem.Vehicle -> Text(vehicleNote)
+                    CoordinateSystem.Vehicle -> {
+                        Text(vehicleNote)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = setPosition, onCheckedChange = { setPosition = it })
+                            Text("Set position from vehicle")
+                        }
+                        if (altitudePath != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = setAltitude, onCheckedChange = { setAltitude = it })
+                                Text("Set altitude from vehicle")
+                            }
+                        }
+                    }
                 }
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
@@ -554,6 +596,13 @@ internal fun EditPositionDialog(
         confirmButton = { TextButton(onClick = { move() }) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+internal fun vehicleAltitudePath(altitudeMode: Int?): String? = when (altitudeMode) {
+    1 -> "vehicle.altitudeRelative"
+    2 -> "vehicle.altitudeAMSL"
+    3, 4 -> "vehicle.altitudeAboveTerr"
+    else -> null
 }
 
 @Composable

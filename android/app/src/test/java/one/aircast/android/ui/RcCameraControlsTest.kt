@@ -22,3 +22,15 @@ class RcCameraControlsTest {
         assertFalse(cameraRecording(recordChannel = 0, channelRecording = true, streamRecording = false))
     }
 }
+
+class VehicleAltitudeTest {
+
+    @Test
+    fun `the vehicle altitude copied is the one in the item's frame, as EditPositionDialog picks it`() {
+        assertEquals("vehicle.altitudeRelative", vehicleAltitudePath(1))
+        assertEquals("vehicle.altitudeAMSL", vehicleAltitudePath(2))
+        assertEquals("vehicle.altitudeAboveTerr", vehicleAltitudePath(3))
+        assertEquals("vehicle.altitudeAboveTerr", vehicleAltitudePath(4))
+        assertEquals(null, vehicleAltitudePath(null))
+    }
+}
