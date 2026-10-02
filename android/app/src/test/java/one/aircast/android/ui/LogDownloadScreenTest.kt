@@ -23,6 +23,15 @@ class LogDownloadScreenTest {
     """
 
     @Test
+    fun `the download card names the log being fetched by its status id, not its translated status`() {
+        val downloading = served.replace("\"status\":\"Available\",", "\"status\":\"1.2 MB (300 KB/s)\",\"statusId\":\"downloading\",")
+        val logs = logsView(JSONObject(downloading))!!
+
+        assertEquals("Downloading log 2" to "1.2 MB (300 KB/s)", downloadCard(logs.entries))
+        assertEquals("Downloading" to "", downloadCard(logsView(JSONObject(served))!!.entries))
+    }
+
+    @Test
     fun `the entries carry the core's formatted size and time`() {
         val logs = logsView(JSONObject(served))!!
 

@@ -91,7 +91,13 @@ internal data class LogEntry(
     val received: Boolean,
     val selected: Boolean,
     val status: String,
+    val downloading: Boolean = false,
 )
+
+internal fun downloadCard(entries: List<LogEntry>): Pair<String, String> =
+    entries.firstOrNull { it.downloading }
+        ?.let { "Downloading log ${it.id}" to it.status }
+        ?: ("Downloading" to "")
 
 internal data class LogsView(
     val connected: Boolean,
@@ -131,6 +137,7 @@ internal fun logsView(view: JSONObject?): LogsView? {
                     received = entry.optBoolean("received"),
                     selected = entry.optBoolean("selected"),
                     status = entry.optText("status"),
+                    downloading = entry.optText("statusId") == "downloading",
                 )
             }
         },
@@ -316,8 +323,12 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val (title, progress) = downloadCard(entries)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Downloading", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                        if (progress.isNotBlank()) {
+                            Text(progress, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                         if (logs.canCancel) {
                             TextButton(onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.cancel") } }) { Text("Cancel") }
                         }
