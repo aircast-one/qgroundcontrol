@@ -49,6 +49,7 @@ internal object OverlayLayout {
     var editing by mutableStateOf(false)
     var hidden by mutableStateOf(emptySet<String>())
     var indicatorOrder by mutableStateOf(emptyList<String>())
+    var valueSize by mutableStateOf(ValueSize.Default)
 }
 
 internal fun orderedKeys(available: List<String>, order: List<String>): List<String> =
@@ -121,6 +122,10 @@ internal fun OverlayEditBar(modifier: Modifier = Modifier) {
     Surface(modifier, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 3.dp) {
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Hide or show widgets", style = MaterialTheme.typography.labelMedium)
+            TextButton(onClick = {
+                OverlayLayout.valueSize = nextValueSize(OverlayLayout.valueSize)
+                writeValueSize(context, OverlayLayout.valueSize)
+            }) { Text(valueSizePillText(OverlayLayout.valueSize)) }
             var armed by remember { mutableStateOf(false) }
             LaunchedEffect(armed) {
                 if (armed) {

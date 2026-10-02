@@ -148,4 +148,21 @@ class InstrumentChoiceTest {
         assertEquals("generic", instrumentVehicleClass(null))
         assertEquals("chosen-fixedWing", chosenKey("fixedWing"))
     }
+
+    @Test
+    fun `the size pill cycles QGC's four value sizes and says which`() {
+        assertEquals(listOf("Default", "Small", "Medium", "Large"), ValueSize.entries.map { it.label })
+        assertEquals(ValueSize.Small, nextValueSize(ValueSize.Default))
+        assertEquals(ValueSize.Default, nextValueSize(ValueSize.Large))
+        assertEquals(ValueSize.Default, valueSizeAt(9))
+        assertEquals("Size: Medium", valueSizePillText(ValueSize.Medium))
+        assertEquals(listOf(1f, 0.86f, 1.25f, 1.5f), ValueSize.entries.map { it.scale })
+    }
+
+    @Test
+    fun `a scaled value keeps the telemetry figures and grows its line with it`() {
+        val large = scaledNumber(1.5f)
+        assertEquals(one.aircast.mapspike.TelemetryNumber.fontSize * 1.5f, large.fontSize)
+        assertEquals(one.aircast.mapspike.TelemetryNumber.fontFeatureSettings, large.fontFeatureSettings)
+    }
 }

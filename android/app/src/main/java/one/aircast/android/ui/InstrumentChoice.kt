@@ -102,3 +102,25 @@ internal fun writeChosen(context: Context, vehicleClass: String, chosen: List<St
         .putString(chosenKey(vehicleClass), chosen.joinToString(","))
         .apply()
 }
+
+private const val VALUE_SIZE_KEY = "fontSize"
+
+internal enum class ValueSize(val label: String, val scale: Float) {
+    Default("Default", 1f),
+    Small("Small", 0.86f),
+    Medium("Medium", 1.25f),
+    Large("Large", 1.5f),
+}
+
+internal fun valueSizeAt(ordinal: Int): ValueSize = ValueSize.entries.getOrElse(ordinal) { ValueSize.Default }
+
+internal fun nextValueSize(size: ValueSize): ValueSize = valueSizeAt((size.ordinal + 1) % ValueSize.entries.size)
+
+internal fun valueSizePillText(size: ValueSize): String = "Size: ${size.label}"
+
+internal fun readValueSize(context: Context): ValueSize =
+    valueSizeAt(context.getSharedPreferences(STORE, Context.MODE_PRIVATE).getInt(VALUE_SIZE_KEY, 0))
+
+internal fun writeValueSize(context: Context, size: ValueSize) {
+    context.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().putInt(VALUE_SIZE_KEY, size.ordinal).apply()
+}

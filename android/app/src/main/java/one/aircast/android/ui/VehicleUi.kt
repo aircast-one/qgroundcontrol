@@ -34,6 +34,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -173,6 +175,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
     var choosing by remember { mutableStateOf(false) }
     var displays by remember { mutableStateOf(readDisplays(context)) }
     var styling by remember { mutableStateOf<Instrument?>(null) }
+    LaunchedEffect(Unit) { OverlayLayout.valueSize = readValueSize(context) }
     val view by qgcPath(instrumentsPath(chosen))
     val gcsJson by qgcPath(GCS_POSITION)
     val shown = remember(view, gcsJson, chosen) {
@@ -236,7 +239,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         instrument.value,
-                        style = TelemetryNumber,
+                        style = scaledNumber(OverlayLayout.valueSize.scale),
                         color = displayColour(display, instrument.raw)?.let { Color(it) } ?: MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.alignByBaseline(),
                     )
@@ -258,6 +261,11 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
         }
     }
 }
+
+internal fun scaledNumber(scale: Float): TextStyle = TelemetryNumber.copy(
+    fontSize = TelemetryNumber.fontSize * scale,
+    lineHeight = if (TelemetryNumber.lineHeight.isSpecified) TelemetryNumber.lineHeight * scale else TelemetryNumber.lineHeight,
+)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
