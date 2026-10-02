@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.FilledTonalButton
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -132,11 +132,11 @@ internal fun SigningKeysSection() {
     val keys = read ?: return
 
     SectionHeader("Signing Keys")
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (keys.vehicle) {
             Row(Modifier.fillMaxWidth()) {
-                Text("Active Key", modifier = Modifier.weight(1f))
-                Text(keys.activeKey)
+                Text("Active Key", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Text(keys.activeKey, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         keys.keys.forEach { key ->
@@ -167,8 +167,8 @@ internal fun SigningKeysSection() {
             }
         }
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-        if (keys.keys.isEmpty()) Text("No keys configured", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton(onClick = { adding = true }) { Text("Add Key") }
+        if (keys.keys.isEmpty()) Text("No keys configured", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FilledTonalButton(onClick = { adding = true }) { Text("Add Key") }
     }
 
     confirmEnable?.let { name ->
