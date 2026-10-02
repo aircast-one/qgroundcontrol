@@ -55,8 +55,9 @@ fn signing_rows(status: &crate::signing::Status) -> Vec<(&'static str, String)> 
         "on" => "On",
         _ => "Off",
     };
-    let key = (status.state == "on").then(|| ("Signing key", if status.key_name.is_empty() { "None".to_string() } else { status.key_name.clone() }));
-    std::iter::once(("Signing", text.to_string())).chain(key).collect()
+    let enabled = matches!(status.state, "on" | "disabling");
+    let shown = [("Signing key", if status.key_name.is_empty() { "None".to_string() } else { status.key_name.clone() }), ("Signing streams", status.stream_count.to_string())];
+    std::iter::once(("Signing", text.to_string())).chain(shown.into_iter().filter(|_| enabled)).collect()
 }
 
 pub fn link_status_view(backend: &dyn crate::router::Backend, _args: &[String]) -> serde_json::Value {
@@ -85,10 +86,11 @@ mod tests {
 
     #[test]
     fn signing_reads_as_mavlink_link_status_spells_it() {
-        let status = |state: &'static str, key: &str| crate::signing::Status { state, key_name: key.to_string() };
+        let status = |state: &'static str, key: &str| crate::signing::Status { state, key_name: key.to_string(), stream_count: 2 };
         assert_eq!(signing_rows(&status("off", "")), vec![("Signing", "Off".to_string())]);
         assert_eq!(signing_rows(&status("enabling", "field")), vec![("Signing", "Configuring\u{2026}".to_string())]);
-        assert_eq!(signing_rows(&status("on", "field")), vec![("Signing", "On".to_string()), ("Signing key", "field".to_string())]);
+        assert_eq!(signing_rows(&status("on", "field")), vec![("Signing", "On".to_string()), ("Signing key", "field".to_string()), ("Signing streams", "2".to_string())]);
+        assert_eq!(signing_rows(&status("disabling", "")).len(), 3, "SigningController counts Disabling as enabled until the vehicle confirms");
     }
 
     #[test]

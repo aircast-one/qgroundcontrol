@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -67,13 +67,14 @@ struct Channel {
     bad_signatures: u8,
     link_id: u8,
     timestamp: u64,
+    streams: BTreeSet<(u8, u8, u8)>,
 }
 
 impl Channel {
     fn new(name: &str, key: Key, link: LinkId, sign_outgoing: bool, policy: Policy, op: Op, seed: u64) -> Channel {
         let link_id = (link & 0xFF) as u8;
         let data = SigningData::from_config(SigningConfig::new(key, link_id, true, false));
-        Channel { name: name.to_string(), key, data, sign_outgoing, policy, op, bad_signatures: 0, link_id, timestamp: seed }
+        Channel { name: name.to_string(), key, data, sign_outgoing, policy, op, bad_signatures: 0, link_id, timestamp: seed, streams: BTreeSet::new() }
     }
 
     fn sign(&mut self, bytes: &[u8]) -> Option<Vec<u8>> {
@@ -108,6 +109,7 @@ pub struct Inbound {
 pub struct Status {
     pub state: &'static str,
     pub key_name: String,
+    pub stream_count: usize,
 }
 
 fn raw_frame(bytes: &[u8]) -> Option<MAVLinkV2MessageRaw> {
@@ -134,7 +136,7 @@ pub fn verifies(key: Key, bytes: &[u8]) -> bool {
 impl Signing {
     pub fn status(&self, link: LinkId) -> Status {
         match self.channels.get(&link) {
-            None => Status { state: "off", key_name: String::new() },
+            None => Status { state: "off", key_name: String::new(), stream_count: 0 },
             Some(channel) => Status {
                 state: match channel.op {
                     Op::Enable { .. } => "enabling",
@@ -142,6 +144,7 @@ impl Signing {
                     Op::None => "on",
                 },
                 key_name: channel.name.clone(),
+                stream_count: channel.streams.len(),
             },
         }
     }
@@ -188,7 +191,7 @@ impl Signing {
         };
         let pending_enable = matches!(channel.op, Op::Enable { .. });
         let valid = match signed {
-            true => raw_frame(bytes).is_some_and(|raw| channel.data.verify_signature(&raw)),
+            true => raw_frame(bytes).filter(|raw| channel.data.verify_signature(raw)).map(|raw| channel.streams.insert((raw.system_id(), raw.component_id(), raw.signature_link_id()))).is_some(),
             false => channel.policy.accepts_unsigned(id),
         };
         if signed && !valid {
@@ -366,7 +369,9 @@ mod tests {
         assert_eq!(signing.outbound(3, &frame(&heartbeat(), None)), frame(&heartbeat(), None), "nothing is signed until the vehicle confirms");
         assert!(signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, 10).accept, "an unsigned heartbeat still passes while pending");
         assert!(signing.inbound(3, 1, &frame(&heartbeat(), Some(KEY)), &heartbeat(), &no_keys, 20).accept);
-        assert_eq!(signing.status(3), Status { state: "on", key_name: "field".into() });
+        assert_eq!(signing.status(3), Status { state: "on", key_name: "field".into(), stream_count: 1 });
+        signing.inbound(3, 1, &frame(&heartbeat(), Some(KEY)), &heartbeat(), &no_keys, 25);
+        assert_eq!(signing.status(3).stream_count, 1, "a stream is one system, component and link id, counted once");
         let out = signing.outbound(3, &frame(&heartbeat(), None));
         assert!(is_signed(&out) && verifies(KEY, &out));
         assert!(!signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, 30).accept, "once on, unsigned traffic is refused");
@@ -417,7 +422,7 @@ mod tests {
         let mut signing = Signing::default();
         let stored = || vec![("bench".to_string(), [1; 32], 0), ("field".to_string(), KEY, 0)];
         assert!(signing.inbound(3, 1, &frame(&heartbeat(), Some(KEY)), &heartbeat(), &stored, 0).accept);
-        assert_eq!(signing.status(3), Status { state: "on", key_name: "field".into() });
+        assert_eq!((signing.status(3).state, signing.status(3).key_name.as_str()), ("on", "field"));
         let mut unknown = Signing::default();
         unknown.inbound(4, 1, &frame(&heartbeat(), Some([5; 32])), &heartbeat(), &stored, 0);
         assert_eq!(unknown.status(4).state, "off");
