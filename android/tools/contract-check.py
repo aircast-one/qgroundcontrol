@@ -222,6 +222,7 @@ ONLY_IN = {
 }
 
 ACCEPTED = {
+    "wording": "view.flightModes.modeAck is the core hub's last DO_SET_MODE ack; the Qt rig has no hub vehicle, so it is null there. Read in FlightModes.kt",
     "slider": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
     "from": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
     "to": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",

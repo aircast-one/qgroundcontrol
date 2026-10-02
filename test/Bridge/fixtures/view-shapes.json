@@ -164,6 +164,7 @@
         "view.firstRun.vehiclePreferences.1.minimum",
         "view.firstRun.vehiclePreferences.1.minimumText",
         "view.firstRun.vehiclePreferences.1.valueMeters",
+        "view.flightModes.modeAck",
         "view.flyFences.breachReturnAltitude",
         "view.flyFences.breachReturnPoint",
         "view.flyMissionItems(geometry).items.0.altitudeBandText",
@@ -2437,6 +2438,7 @@
         "view.firstRun.vehiclePreferences.1.wholeNumbersOnly",
         "view.flightModes.class",
         "view.flightModes.kind",
+        "view.flightModes.modeAck",
         "view.flyFences.available",
         "view.flyFences.breachReturnAltitude",
         "view.flyFences.breachReturnPoint",
@@ -7677,6 +7679,7 @@
         "view.flightModes.hiddenSetting",
         "view.flightModes.hidden[]",
         "view.flightModes.kind",
+        "view.flightModes.modeAck",
         "view.flightModes.modes.#",
         "view.flightModes.modes[].advanced",
         "view.flightModes.modes[].current",
@@ -11495,6 +11498,7 @@
         ],
         "hiddenSetting": "null|string",
         "kind": "string",
+        "modeAck": "null",
         "modes": [
             {
                 "advanced": "bool",

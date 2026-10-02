@@ -182,7 +182,20 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "hiddenSetting": hidden_setting,
         "hidden": hidden,
         "modes": modes,
+        "modeAck": crate::hub::lock().active().and_then(|v| v.mode_ack).map(|(result, serial)| json!({ "serial": serial, "accepted": result == RESULT_ACCEPTED, "wording": rejection_wording(result) })),
     })
+}
+
+const RESULT_ACCEPTED: u8 = 0;
+
+pub fn rejection_wording(result: u8) -> &'static str {
+    match result {
+        RESULT_ACCEPTED => "",
+        1 => "refused for now",
+        2 => "denied",
+        3 => "not supported",
+        _ => "failed",
+    }
 }
 
 fn folded(mode: &Value) -> bool {
@@ -225,6 +238,11 @@ pub fn write_mode(backend: &dyn Backend, path: &str, value: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_mode_change_reads_like_flight_mode_indicator() {
+        assert_eq!([0, 1, 2, 3, 4, 9].map(rejection_wording), ["", "refused for now", "denied", "not supported", "failed", "failed"]);
+    }
 
     #[test]
     fn a_flight_mode_is_set_only_by_a_name_the_vehicle_lists() {

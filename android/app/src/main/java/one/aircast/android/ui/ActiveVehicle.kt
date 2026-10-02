@@ -144,7 +144,9 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
         )
-        if (choices.ambiguous || taken) {
+        if (FlightModePending.mode != null) {
+            androidx.compose.material3.CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        } else if (choices.ambiguous || taken) {
             val alarm = lostVehiclesText(lostVehicles(choices)) ?: controlLine(station).takeIf { taken }
             Icon(
                 painter = painterResource(if (alarm == null) R.drawable.ic_arrow_drop_down else R.drawable.ic_warning),

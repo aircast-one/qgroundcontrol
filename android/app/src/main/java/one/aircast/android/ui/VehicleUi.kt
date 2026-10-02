@@ -700,6 +700,10 @@ internal object FlyRefusal {
     var text by mutableStateOf<String?>(null)
 }
 
+internal object FlightModePending {
+    var mode by mutableStateOf<String?>(null)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: () -> Unit) {
@@ -716,12 +720,26 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     if (modes == null) return
 
     fun send(mode: FlightModeOption) {
-        scope.attemptCommand(
-            action = mode.name,
-            report = onRefusal,
-            withdraw = onWithdraw,
-            reached = { flightModeNow() == mode.name },
-        ) { Qgc.set("vehicle.flightMode", mode.name) }
+        scope.launch {
+            onRefusal(null)
+            FlightModePending.mode = mode.name
+            val before = withContext(Dispatchers.Default) { modeAck(Qgc.get(FLIGHT_MODES)) }
+            withContext(Dispatchers.Default) { Qgc.set("vehicle.flightMode", mode.name) }
+            val started = System.currentTimeMillis()
+            var outcome: ModeOutcome = ModeOutcome.Pending
+            while (outcome == ModeOutcome.Pending) {
+                delay(200)
+                outcome = withContext(Dispatchers.Default) {
+                    modeOutcome(mode.name, before, modeAck(Qgc.get(FLIGHT_MODES)), flightModeNow() == mode.name, System.currentTimeMillis() - started)
+                }
+            }
+            FlightModePending.mode = null
+            (outcome as? ModeOutcome.Rejected)?.let { rejected ->
+                onRefusal(rejected.text)
+                delay(MODE_REJECTION_MS)
+                onWithdraw(rejected.text)
+            }
+        }
     }
 
     fun choose(mode: FlightModeOption) {
