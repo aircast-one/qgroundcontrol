@@ -1,5 +1,8 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
@@ -537,16 +540,17 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
         title = { Text("Add Link") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    choices.forEach { id ->
-                        FilterChip(
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    choices.forEachIndexed { index, id ->
+                        SegmentedButton(
                             selected = type == id,
                             onClick = {
                                 type = id
                                 if (id == BLUETOOTH_LINK) askBluetooth.launch(bluetoothPermissions(android.os.Build.VERSION.SDK_INT))
                             },
-                            label = { Text(when (id) { "serial" -> "Serial"; BLUETOOTH_LINK -> "Bluetooth"; AIRCAST_CLOUD_LINK -> "Aircast Cloud"; else -> id.uppercase() }) },
+                            shape = SegmentedButtonDefaults.itemShape(index, choices.size),
+                            icon = {},
+                            label = { Text(when (id) { "serial" -> "Serial"; BLUETOOTH_LINK -> "BT"; AIRCAST_CLOUD_LINK -> "Cloud"; else -> id.uppercase() }, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) },
                         )
                     }
                 }
@@ -599,19 +603,23 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                         }
                     }
                 } else {
-                    OutlinedTextField(
-                        value = host,
-                        onValueChange = { host = it },
-                        label = { Text(if (type == "tcp") "Address" else "Address (optional)") },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = port,
-                        onValueChange = { port = it },
-                        label = { Text("Port") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedTextField(
+                            value = host,
+                            onValueChange = { host = it },
+                            label = { Text(if (type == "tcp") "Host" else "Host (optional)", maxLines = 1) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1.6f),
+                        )
+                        OutlinedTextField(
+                            value = port,
+                            onValueChange = { port = it },
+                            label = { Text("Port") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
                 OutlinedTextField(
                     value = name,
@@ -625,6 +633,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     },
                     singleLine = true,
                 )
+                LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
                 error?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
