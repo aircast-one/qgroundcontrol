@@ -70,6 +70,25 @@ pub fn duration_text(seconds: f64) -> String {
     }
 }
 
+pub fn whole_distance_text(metres: f64, imperial: bool) -> String {
+    match (metres.is_finite() && metres >= 0.0, imperial) {
+        (false, _) => UNKNOWN.to_string(),
+        (true, true) => format!("{:.0} ft", metres * FEET_PER_METRE),
+        (true, false) => format!("{metres:.0} m"),
+    }
+}
+
+pub fn mission_time_text(seconds: f64) -> String {
+    let whole = if seconds.is_finite() && seconds > 0.0 { seconds as i64 } else { 0 };
+    let days = whole / (24 * SECONDS_PER_HOUR);
+    let rest = whole % (24 * SECONDS_PER_HOUR);
+    let clock = format!("{:02}:{:02}:{:02}", rest / SECONDS_PER_HOUR, rest % SECONDS_PER_HOUR / SECONDS_PER_MINUTE, rest % SECONDS_PER_MINUTE);
+    match days {
+        0 => clock,
+        n => format!("{n:02} days {clock}"),
+    }
+}
+
 fn point_of(value: &Value) -> Option<(f64, f64)> {
     let at = value.as_object()?;
     Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?))
@@ -222,14 +241,12 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     let hovers = vtol || crate::read::flag(&airframe, "multiRotor");
     let cruises = vtol || !crate::read::flag(&airframe, "multiRotor");
 
-    let total = metres("missionTotalDistance");
     let rows: Vec<Value> = vec![
-        row("distance", "Distance", total.map(|value| distance_text(value, imperial))),
-        row("planned", "Planned", metres("missionPlannedDistance").map(|value| distance_text(value, imperial))),
-        row("time", "Time", seconds("missionTime").map(duration_text)),
+        row("distance", "Distance", metres("missionPlannedDistance").map(|value| whole_distance_text(value, imperial))),
+        row("time", "Time", seconds("missionTime").map(mission_time_text)),
         row("hover", "Hover", hovers.then(|| metres("missionHoverDistance")).flatten().map(|value| distance_text(value, imperial))),
         row("cruise", "Cruise", cruises.then(|| metres("missionCruiseDistance")).flatten().map(|value| distance_text(value, imperial))),
-        row("furthest", "Furthest from launch", metres("missionMaxTelemetry").map(|value| distance_text(value, imperial))),
+        row("furthest", "Furthest from launch", metres("missionMaxTelemetry").map(|value| whole_distance_text(value, imperial))),
     ];
 
     json!({
@@ -238,7 +255,7 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         "available": has_items,
         "imperial": imperial,
         "rows": rows.into_iter().filter(|row| row["value"] != Value::Null).collect::<Vec<_>>(),
-        "distanceMetres": total,
+        "distanceMetres": metres("missionTotalDistance"),
         "durationComputedSeconds": walked
             .as_ref()
             .and_then(|items| {
@@ -493,8 +510,8 @@ mod tests {
     fn a_flown_plan_reports_what_it_will_cost_to_fly() {
         let view = summary_view(&Plan(flown(), 1.0, quad()), &[]);
         assert_eq!(view["available"], true);
-        assert_eq!(labelled(&view, "Distance").unwrap(), "1.50 km");
-        assert_eq!(labelled(&view, "Time").unwrap(), "3:05");
+        assert_eq!(labelled(&view, "Distance").unwrap(), "1400 m", "PlanToolBarIndicators shows missionPlannedDistance to the whole unit");
+        assert_eq!(labelled(&view, "Time").unwrap(), "00:03:05", "and the time as hh:mm:ss");
         assert_eq!(labelled(&view, "Furthest from launch").unwrap(), "640 m");
         let ids: Vec<&str> = view["rows"].as_array().unwrap().iter().filter_map(|r| r["id"].as_str()).collect();
         assert!(ids.contains(&"furthest"), "a head picking the rows it wants to emphasise keys on this rather than on the label, because the labels are English display strings and the day they are localised every lookup returns nothing: {ids:?}");
@@ -507,10 +524,11 @@ mod tests {
     fn the_same_plan_reads_in_feet_when_that_is_what_was_chosen() {
         let view = summary_view(&Plan(flown(), 0.0, quad()), &[]);
         assert_eq!(view["imperial"], true);
-        assert_eq!(labelled(&view, "Distance").unwrap(), "4921 ft", "fifteen hundred metres is under a mile, so it reads in feet");
-        let longer = summary_view(&Plan({ let mut plan = flown(); plan["missionTotalDistance"] = json!(3000.0); plan }, 0.0, quad()), &[]);
-        assert_eq!(labelled(&longer, "Distance").unwrap(), "1.86 mi");
-        assert_eq!(labelled(&view, "Time").unwrap(), "3:05", "time is not a unit the operator chooses");
+        assert_eq!(labelled(&view, "Distance").unwrap(), "4593 ft");
+        let longer = summary_view(&Plan({ let mut plan = flown(); plan["missionPlannedDistance"] = json!(3000.0); plan }, 0.0, quad()), &[]);
+        assert_eq!(labelled(&longer, "Distance").unwrap(), "9843 ft", "QGC never switches to miles here");
+        assert_eq!(labelled(&view, "Time").unwrap(), "00:03:05", "time is not a unit the operator chooses");
+        assert_eq!(mission_time_text(90_000.0), "01 days 01:00:00");
         assert_eq!(view["distanceMetres"], 1500.0, "the raw number stays metric whichever way it is drawn");
         assert_eq!(view["altitudeRange"]["text"], "480 m to 530 m", "QGC keeps the vertical unit apart from the horizontal one, and an operator flying in feet over a map in miles still reads altitudes in the unit they set for altitudes");
     }
