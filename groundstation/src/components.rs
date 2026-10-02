@@ -83,7 +83,7 @@ pub fn ardupilot(vehicle: &Vehicle) -> Vec<Value> {
         (vehicle.parameter)(UDP_BRIDGE_COMPONENT, "SW_VER").is_some().then(|| entry("WiFi Bridge", "ESP8266Component", UNKNOWN, false, false)),
         Some(entry("Logging", "APMLoggingComponent", UNKNOWN, true, true)),
         Some(entry("Remote Support", "APMRemoteSupportComponent", UNKNOWN, false, false)),
-        Some(entry("Joystick", "JoystickComponent", KNOWN_JOYSTICK, false, false)),
+        Some(Entry { setup_complete: !crate::joystickhost::active_uncalibrated(), ..entry("Joystick", "JoystickComponent", KNOWN_JOYSTICK, false, false) }),
         Some(entry("Scripting", "ScriptingComponent", UNKNOWN, false, false)),
     ];
     let mut listed: Vec<Entry> = entries.into_iter().flatten().collect();
@@ -143,7 +143,7 @@ pub fn px4(vehicle: &Vehicle, actuators: Option<Px4Actuators>) -> Vec<Value> {
         Some(entry("PID Tuning", "PX4TuningComponent", UNKNOWN, true, true)),
         (exists("SYS_VEHICLE_RESP") && COPTER_TYPES.contains(&vehicle.vehicle_type)).then(|| entry("Flight Behavior", "PX4FlightBehavior", UNKNOWN, true, true)),
         (vehicle.parameter)(UDP_BRIDGE_COMPONENT, "SW_VER").is_some().then(|| entry("WiFi Bridge", "ESP8266Component", UNKNOWN, false, false)),
-        Some(entry("Joystick", "JoystickComponent", KNOWN_JOYSTICK, false, false)),
+        Some(Entry { setup_complete: !crate::joystickhost::active_uncalibrated(), ..entry("Joystick", "JoystickComponent", KNOWN_JOYSTICK, false, false) }),
         exists("SLNK_RADIO_CHAN").then(|| entry("Syslink", "SyslinkComponent", UNKNOWN, false, false)),
     ];
     let mut listed: Vec<Entry> = entries.into_iter().flatten().collect();

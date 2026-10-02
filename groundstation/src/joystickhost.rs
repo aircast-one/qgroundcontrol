@@ -456,6 +456,12 @@ fn polling(enabled_for_vehicle: bool, vehicle: bool, calibrated: bool) -> Pollin
     Polling { vehicle: vehicle && enabled_for_vehicle && calibrated, configuration: false }
 }
 
+static ACTIVE_UNCALIBRATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn active_uncalibrated() -> bool {
+    ACTIVE_UNCALIBRATED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 fn send(vehicle: (u8, u32), outs: Vec<Out>) {
     let (id, link) = vehicle;
     if crate::hub::lock().active().is_some_and(|v| v.id == id && v.on_high_latency_link()) {
@@ -486,6 +492,7 @@ fn sync_polling(now_ms: u64) {
     let enabled = enabled_vehicles();
     let mut host = host();
     let active = active_name(&host.devices);
+    ACTIVE_UNCALIBRATED.store(active.as_deref().is_some_and(|name| !settings_for(name).calibrated), std::sync::atomic::Ordering::Relaxed);
     let names: Vec<String> = host.joysticks.keys().cloned().collect();
     let outs: Vec<Out> = names
         .iter()

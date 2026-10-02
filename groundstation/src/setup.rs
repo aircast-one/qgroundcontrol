@@ -251,7 +251,7 @@ fn blocked_by(component: &Value, armed: bool, flying: bool, rover: bool) -> Opti
 }
 
 pub fn setup_complete(backend: &dyn Backend) -> bool {
-    vehicle_components(backend).iter().all(|component| !component.needs_attention)
+    vehicle_components(backend).iter().all(|component| component.setup_complete)
 }
 
 fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
@@ -296,7 +296,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let components = vehicle_components(backend);
     let rc_in_mode = px4.then(|| crate::read::value_number(&backend.get("vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue")).map(|m| m as i64)).flatten();
     let faults: Vec<String> = sensors::sensors(&object(&backend.get("vehicle.sysStatusSensorInfo"))).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
-    let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), c.needs_attention)).collect();
+    let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), !c.setup_complete)).collect();
     let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);
     let incomplete = parameters_reason == INCOMPLETE;
     let counted: &[(String, bool)] = if incomplete { &[] } else { &named };
