@@ -97,6 +97,8 @@ internal fun factFromControl(control: JSONObject): Fact? {
         warning = control.optBoolean("warning"),
         optional = control.optBoolean("optional"),
         firstEntryIsAll = control.optBoolean("firstEntryIsAll"),
+        indent = control.optBoolean("indent"),
+        smallFont = control.optBoolean("smallFont"),
     )
 }
 
@@ -168,21 +170,23 @@ internal fun ParameterForm(
             }
             items(section.facts.size, key = { section.facts[it].path }) { index ->
                 val fact = section.facts[index]
-                if (fact.controlKind == DIALOG_CONTROL) {
-                    OutlinedButton(enabled = fact.enabled, onClick = { calibratingEscs = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Text(fact.title) }
-                } else if (fact.controlKind == LABEL_CONTROL) {
-                    Text(
-                        text = fact.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (fact.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                    )
-                } else if (fact.slider != null) {
-                    FactSliderRow(fact, fact.slider) { reloads++ }
-                } else {
-                    FactRow(fact) { reloads++ }
-                    section.calculators[fact.path]?.let { calculator ->
-                        TextButton(onClick = { calculating = calculator }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Calculate") }
+                Column(Modifier.padding(start = if (fact.indent) INDENT else 0.dp)) {
+                    if (fact.controlKind == DIALOG_CONTROL) {
+                        OutlinedButton(enabled = fact.enabled, onClick = { calibratingEscs = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Text(fact.title) }
+                    } else if (fact.controlKind == LABEL_CONTROL) {
+                        Text(
+                            text = fact.title,
+                            style = if (fact.smallFont) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                            color = if (fact.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
+                        )
+                    } else if (fact.slider != null) {
+                        FactSliderRow(fact, fact.slider) { reloads++ }
+                    } else {
+                        FactRow(fact) { reloads++ }
+                        section.calculators[fact.path]?.let { calculator ->
+                            TextButton(onClick = { calculating = calculator }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Calculate") }
+                        }
                     }
                 }
             }
@@ -216,6 +220,8 @@ internal fun bitmaskSummary(fact: Fact): String {
 }
 
 internal const val LABEL_CONTROL = "label"
+
+private val INDENT = 16.dp
 
 internal val KNOWN_CONTROL_KINDS = setOf("toggle", "choice", "bitmask", "text", "number", LABEL_CONTROL, DIALOG_CONTROL)
 

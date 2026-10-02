@@ -647,7 +647,16 @@ fn rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Value> {
             crate::powercalc::calculator(control["dialogButton"]["dialogComponent"].as_str().unwrap_or_default(), index, &param)
         })
         .flatten();
-    let built = control_rows(scope, page, id, control);
+    let indent = flag(control, "indent");
+    let built: Vec<Value> = control_rows(scope, page, id, control)
+        .into_iter()
+        .map(|mut row| {
+            if indent {
+                row["indent"] = json!(true);
+            }
+            row
+        })
+        .collect();
     match calculator {
         Some(calculator) => built.into_iter().map(|mut row| {
             row["calculator"] = calculator.clone();
@@ -672,7 +681,7 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
     let path = row_path(page, id);
     let name = control["param"].as_str().map_or_else(|| format!("{page}.{id}"), |param| scope.full_name(param));
     if kind == "label" {
-        return vec![json!({ "control": "label", "name": name, "label": label, "warning": flag(control, "warning"), "path": path })];
+        return vec![json!({ "control": "label", "name": name, "label": label, "warning": flag(control, "warning"), "smallFont": flag(control, "smallFont"), "path": path })];
     }
     if kind == "dialogButton" && control["dialogButton"]["dialogComponent"] == "ESCCalibrationDialog" {
         return vec![json!({ "control": "dialog", "name": name, "label": control["dialogButton"]["text"], "dialog": "escCalibration", "enabled": enabled, "path": path })];
@@ -1006,6 +1015,17 @@ mod tests {
         assert_eq!(row["options"][3]["raw"], "3");
         assert_eq!(row["display"], "XKF4 and GSF");
         assert_eq!(row["label"], "EKF3 logging verbosity");
+    }
+
+    #[test]
+    fn indented_help_rows_say_so() {
+        let fake = Fake::new(&[]);
+        let config = json!({});
+        let scope = scope_for(&fake, &config);
+        let help = rows(&scope, "P", "0.0", &json!({ "control": "label", "label": "Why", "indent": true, "smallFont": true }));
+        assert_eq!((help[0]["indent"].clone(), help[0]["smallFont"].clone()), (json!(true), json!(true)));
+        let plain = rows(&scope, "P", "0.1", &json!({ "control": "label", "label": "Why" }));
+        assert_eq!((plain[0]["indent"].clone(), plain[0]["smallFont"].clone()), (Value::Null, json!(false)));
     }
 
     #[test]

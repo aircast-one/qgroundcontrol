@@ -47,6 +47,8 @@ data class Fact(
     val longDescription: String = "",
     val slider: FactSlider? = null,
     val firstEntryIsAll: Boolean = false,
+    val indent: Boolean = false,
+    val smallFont: Boolean = false,
 ) {
     val title: String = description.ifBlank { name }
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()

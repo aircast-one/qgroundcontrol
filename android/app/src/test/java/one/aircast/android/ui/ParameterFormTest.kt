@@ -28,6 +28,14 @@ class ParameterFormTest {
     }
 
     @Test
+    fun `an indented small-font help row keeps both cues`() {
+        val help = factFromControl(control(""","indent":true,"smallFont":true"""))!!
+        assertTrue(help.indent && help.smallFont)
+        val plain = factFromControl(control())!!
+        assertFalse(plain.indent || plain.smallFont)
+    }
+
+    @Test
     fun `a control the core says is inert is not offered, and says why`() {
         val fact = factFromControl(control(""","enabled":false,"disabledReason":"Turn on Use preflight checklist first""""))!!
         assertFalse(fact.acceptsWrite)
