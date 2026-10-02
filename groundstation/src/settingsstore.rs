@@ -241,6 +241,9 @@ fn elapsed_text(seconds: f64) -> String {
     format!("{:02}:{:02}:{:02}", whole / 3600, whole / 60 % 60, whole % 60)
 }
 
+const FACT_DEFAULT_CATEGORY: &str = "Other";
+const FACT_DEFAULT_GROUP: &str = "Misc";
+
 pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conversion>) -> Value {
     let whole = integer(&meta.value_type);
     let limits = type_limits(&meta.value_type);
@@ -286,6 +289,8 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
         "name": meta.name,
         "label": meta.label,
         "shortDescription": meta.short_description,
+        "category": meta.category.clone().unwrap_or_else(|| FACT_DEFAULT_CATEGORY.to_string()),
+        "group": meta.group.clone().unwrap_or_else(|| FACT_DEFAULT_GROUP.to_string()),
         "longDescription": meta.long_description,
         "value": value,
         "rawValue": raw,

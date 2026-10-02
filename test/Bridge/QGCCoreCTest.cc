@@ -1532,10 +1532,8 @@ void QGCCoreCTest::_everyRegisteredViewIsRecordedOrExcused()
 void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
 {
     static const QMap<QString, QString> kNotServed = {
-        { QStringLiteral("category"), QStringLiteral("groups facts in the Qt parameter editor's tree; no head draws that tree") },
         { QStringLiteral("componentId"), QStringLiteral("view.coreParameters carries the component beside the parameter already") },
         { QStringLiteral("enumStringValue"), QStringLiteral("enumOrValueString is the same string with a fallback, and that one is served") },
-        { QStringLiteral("group"), QStringLiteral("the path already says which group a fact came from") },
         { QStringLiteral("hasControl"), QStringLiteral("nothing asks yet; view.control decides its own control kind from the type and the enum") },
         { QStringLiteral("increment"), QStringLiteral("nothing asks yet - a stepper would want it") },
         { QStringLiteral("selectedBitmaskStrings"), QStringLiteral("view.control computes the set bits from bitmaskValues and the value") },

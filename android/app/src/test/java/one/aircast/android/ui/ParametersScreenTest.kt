@@ -80,4 +80,19 @@ class ParameterSubtitleTest {
         org.junit.Assert.assertEquals("", parameterSubtitle("", ""))
     }
 
+
+    @Test
+    fun `parameters fall into categories and groups the way the Qt editor builds its tree`() {
+        val placement = mapOf(
+            "A_ONE" to ("Advanced" to "Misc"),
+            "A_TWO" to ("Advanced" to "Attitude"),
+            "B_ONE" to ("Other" to "Misc"),
+            "C_ONE" to ("Standard" to "Battery"),
+        )
+        val tree = parameterTree(listOf("A_ONE", "A_TWO", "B_ONE", "C_ONE"), placement)
+        assertEquals("Standard first, the default category last", listOf("Standard", "Advanced", "Other"), tree.map { it.name })
+        assertEquals("the default group last", listOf("Attitude", "Misc"), tree[1].groups)
+        assertTrue(inGroup("A_TWO", placement, "Advanced", "Attitude"))
+        assertTrue(!inGroup("A_ONE", placement, "Advanced", "Attitude"))
+    }
 }
