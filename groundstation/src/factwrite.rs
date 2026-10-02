@@ -160,9 +160,10 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let given = serde_json::from_str::<Value>(value).unwrap_or(Value::Null);
     let asked = given.get("value").cloned().unwrap_or(Value::Null);
     let forced = given.get("force").and_then(Value::as_bool) == Some(true);
+    let force_edit = forced && path.starts_with("vehicle.parameterManager.getParameter(");
     let fact = crate::actuators::output_function_fact(backend, path, fact);
     let control = decode(&fact, path);
-    let judged = match forced {
+    let judged = match force_edit {
         true => Value::Object(fact.as_object().cloned().unwrap_or_default().into_iter().filter(|(key, _)| key != "readOnly").collect()),
         false => fact.clone(),
     };

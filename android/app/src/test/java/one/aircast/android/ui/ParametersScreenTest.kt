@@ -101,5 +101,6 @@ class ParameterSubtitleTest {
         assertEquals(listOf("A", "B", "154:MNT_TYPE"), parameterKeys(mapOf(1 to listOf("B", "A"), 154 to listOf("MNT_TYPE"))))
         assertEquals("vehicle.parameterManager.getParameter(154,MNT_TYPE)", parameterPath("154:MNT_TYPE"))
         assertEquals("vehicle.parameterManager.getParameter(-1,RTL_ALT)", parameterPath("RTL_ALT"))
+        assertTrue("an anchored search matches the parameter name, not its component prefix", parameterMatches("154:MNT_TYPE", emptyList(), "^MNT"))
     }
 }

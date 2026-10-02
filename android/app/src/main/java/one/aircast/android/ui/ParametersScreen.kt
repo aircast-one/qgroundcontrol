@@ -65,8 +65,6 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
 
     LaunchedEffect(ready, reads) {
         names = if (!ready) emptyList() else withContext(Dispatchers.Default) { parameterNames() }
-        descriptions = emptyMap()
-        modified = emptySet()
     }
 
     LaunchedEffect(names, reads) {
@@ -165,7 +163,7 @@ private fun ParameterRow(name: String, offersRcToParam: Boolean) {
                 textAlign = TextAlign.End,
                 modifier = Modifier.widthIn(max = 160.dp),
             )
-            if (offersRcToParam && !loaded.readOnly) TextButton(onClick = { mapping = true }) { Text("RC") }
+            if (offersRcToParam && !loaded.readOnly && ':' !in name) TextButton(onClick = { mapping = true }) { Text("RC") }
             if (forcing) ParameterEditDialog(name) {
                 forcing = false
                 revision++
@@ -181,7 +179,7 @@ internal fun parameterShown(name: String, descriptions: List<String>, search: St
 internal fun parameterMatches(name: String, descriptions: List<String>, search: String): Boolean =
     search.split(' ').filter { it.isNotEmpty() }.all { word ->
         val pattern = runCatching { Regex(word, RegexOption.IGNORE_CASE) }.getOrNull()
-        (listOf(name) + descriptions).any { text ->
+        (listOf(name.substringAfter(':')) + descriptions).any { text ->
             pattern?.containsMatchIn(text) ?: text.contains(word, ignoreCase = true)
         }
     }

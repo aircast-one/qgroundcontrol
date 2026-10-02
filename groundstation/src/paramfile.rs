@@ -145,7 +145,9 @@ fn shown(read: &Value, raw: f64) -> String {
         .and_then(|(label, _)| label.as_str().map(str::to_string))
         .unwrap_or_else(|| {
             let raw_units = read.get("rawUnits").and_then(Value::as_str).unwrap_or_default();
-            match crate::units::built_in(raw_units).or_else(|| crate::units::cooking(raw_units)) {
+            let real = matches!(read.get("mavType").and_then(Value::as_u64), Some(9 | 10));
+            let listed = !labels.is_empty() || read.get("bitmaskStrings").and_then(Value::as_array).is_some_and(|bits| !bits.is_empty());
+            match crate::units::built_in(raw_units).or_else(|| crate::units::cooking(raw_units).filter(|_| real && !listed)) {
                 Some(conversion) => crate::settingsstore::fixed_as_qt((conversion.shown)(raw), read.get("decimalPlaces").and_then(Value::as_u64).unwrap_or(3) as usize),
                 None => raw_text(raw, read.get("mavType").and_then(Value::as_u64).map_or(MAV_PARAM_TYPE_REAL32, |t| t as u8)),
             }

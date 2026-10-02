@@ -131,7 +131,7 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                             forceRefusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                             TextButton(enabled = forcedText.isNotBlank(), onClick = {
                                 scope.launch {
-                                    val entered = forcedText.trim().toDoubleOrNull() ?: forcedText.trim()
+                                    val entered = if (loaded.isString) forcedText else forcedText.trim().toDoubleOrNull() ?: forcedText.trim()
                                     forceRefusal = withContext(Dispatchers.Default) { Qgc.writeForcedRefusal(loaded.path, entered) }
                                     if (forceRefusal == null) revision++
                                 }
@@ -143,8 +143,8 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                     fact?.takeIf { (!it.readOnly || forced) && default != null }?.let { loaded ->
                         TextButton(onClick = {
                             scope.launch {
-                                withContext(Dispatchers.Default) { Qgc.writeRefusal(loaded.path, default) }
-                                onDismiss()
+                                forceRefusal = withContext(Dispatchers.Default) { if (forced) Qgc.writeForcedRefusal(loaded.path, default) else Qgc.writeRefusal(loaded.path, default) }
+                                if (forceRefusal == null) onDismiss()
                             }
                         }) { Text("Reset to default") }
                     }
