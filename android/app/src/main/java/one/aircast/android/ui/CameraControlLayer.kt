@@ -258,15 +258,15 @@ private fun CameraDetailsSheet(
             }
         }
         if (camera.streamLabels.size > 1) {
-            SectionHeader("Video Stream")
+            SectionHeader("Video stream")
             camera.streamLabels.forEachIndexed { index, label ->
                 SheetRadioRow(label, index == camera.currentStream) { offMainDetached { Qgc.set(CAMERA_CURRENT_STREAM, index) } }
             }
         }
         if (camera.canPhoto) {
-            SectionHeader("Photo Mode")
+            SectionHeader("Photo mode")
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Single" to false, "Time Lapse" to true).forEachIndexed { index, (label, lapse) ->
+                listOf("Single" to false, "Time lapse" to true).forEachIndexed { index, (label, lapse) ->
                     FilterChip(
                         selected = camera.timelapse == lapse,
                         onClick = { offMainDetached { Qgc.set(CAMERA_PHOTO_MODE, index) } },
@@ -311,14 +311,14 @@ private fun CameraDetailsSheet(
         }
 
         thermal?.let { thermal ->
-            SectionHeader("Thermal View Mode")
+            SectionHeader("Thermal view mode")
             THERMAL_MODES.forEach { token ->
                 SheetRadioRow(thermalModeLabel(token), token == thermal.mode) {
                     offMainDetached { Qgc.set(CAMERA_THERMAL_MODE, THERMAL_MODES.indexOf(token)) }
                 }
             }
             if (thermalOpacityIsOffered(thermal)) {
-                SectionHeader("Blend Opacity")
+                SectionHeader("Blend opacity")
                 var typed by remember(thermal.opacity) {
                     mutableFloatStateOf((thermal.opacity ?: 0.0).toFloat())
                 }
