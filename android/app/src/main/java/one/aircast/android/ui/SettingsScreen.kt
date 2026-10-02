@@ -458,8 +458,8 @@ internal fun factSubtitle(fact: Fact): String = listOfNotNull(
 @Composable
 internal fun FactRow(
     fact: Fact,
-    title: String = fact.title,
-    subtitle: String = factSubtitle(fact),
+    title: String = fact.heading,
+    subtitle: String = listOf(fact.detail, factSubtitle(fact)).filter { it.isNotBlank() }.joinToString(" · "),
     titleColor: Color = Color.Unspecified,
     onWrite: () -> Unit = {},
 ) {
@@ -468,6 +468,8 @@ internal fun FactRow(
 
     val segmented = !editOnDesktop(fact) && notBuiltHere(fact) == null && !fact.isBitmask &&
         showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings)
+    val asField = !segmented && fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact) &&
+        !fact.isBool && !fact.isBitmask
 
     fun write(block: () -> Boolean) {
         scope.launch {
@@ -475,6 +477,25 @@ internal fun FactRow(
             refusal = writeRefusal(accepted)
             if (accepted) onWrite()
         }
+    }
+
+    if (asField) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            if (fact.isEnum && !fact.valueIsOffTheEnumList) EnumField(fact, title, ::write) else FactTextField(fact, onWrite, title)
+            val note = subtitle.split(" · ").filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
+            if (note.isNotBlank()) {
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+                )
+            }
+            refusal?.let {
+                Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 16.dp, top = 4.dp))
+            }
+        }
+        return
     }
 
     Column {
@@ -545,9 +566,7 @@ internal fun FactRow(
                     checked = fact.boolValue,
                     onCheckedChange = { checked -> write { Qgc.set(fact.path, checked) } },
                 )
-                fact.isBitmask -> BitmaskPicker(fact, ::write)
-                fact.isEnum && !fact.valueIsOffTheEnumList -> EnumPicker(fact, ::write)
-                else -> FactTextField(fact, onWrite)
+                else -> BitmaskPicker(fact, ::write)
             }
         }
     }
@@ -654,27 +673,20 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
 }
 
 @Composable
-private fun EnumPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
+private fun EnumField(fact: Fact, label: String, write: (() -> Boolean) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val label = enumLabel(fact)
 
-    Column {
-        TextButton(
-            onClick = { expanded = true },
-            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-        ) {
-            Text(
-                text = label,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            Icon(
-                imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                modifier = Modifier.padding(start = 2.dp),
-            )
-        }
+    Box {
+        OutlinedTextField(
+            value = enumLabel(fact),
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            trailingIcon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Box(Modifier.matchParentSize().clickable { expanded = true })
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             fact.enumStrings.forEachIndexed { index, option ->
                 DropdownMenuItem(
@@ -745,7 +757,7 @@ private suspend fun rejectionFor(fact: Fact, text: String): String? =
     }
 
 @Composable
-private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
+private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String) {
     var editing by remember(fact.path) { mutableStateOf<String?>(null) }
     var rejection by remember(fact.path) { mutableStateOf<String?>(null) }
     var revealed by remember(fact.path) { mutableStateOf(false) }
@@ -755,6 +767,8 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
     Column {
         OutlinedTextField(
             value = editing ?: fact.valueString,
+            label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            suffix = fact.units.takeIf { it.isNotBlank() }?.let { { Text(it) } },
             visualTransformation = if (secret && !revealed) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
             leadingIcon = if (secret) {
                 { TextButton(onClick = { revealed = !revealed }) { Text(if (revealed) "Hide" else "Show") } }
@@ -798,6 +812,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
                 text = it,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp),
             )
         }
         if (rejection == null) {
@@ -806,6 +821,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp),
                 )
             }
         }
@@ -814,6 +830,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit) {
                 text = it,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.aircast.warning,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp),
             )
         }
     }
