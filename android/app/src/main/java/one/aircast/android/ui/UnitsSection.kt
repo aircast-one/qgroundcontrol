@@ -51,7 +51,7 @@ internal fun unitFacts(page: JSONObject?): List<Fact> {
 
 internal fun unitRowsFor(system: Int, facts: List<Fact>): List<Fact> {
     val custom = unitSystemLabel(system) == UNIT_SYSTEM_LABELS[UNIT_SYSTEM_CUSTOM]
-    return facts.filterNot { it.name == "customUnits" }
+    return facts.filterNot { it.name == "customUnits" || it.name == "weightUnits" }
         .filterNot { !custom && it.name in PRESET_UNIT_FACTS }
 }
 

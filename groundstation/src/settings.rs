@@ -46,6 +46,11 @@ const PAGES: &[Page] = &[
 // Same shape as extraVideoSources: when a bespoke block owns a fact, the fact leaves the list.
 const HIDDEN: &[&str] = &[
     "androidUsePosixSerial",
+    "qLocaleLanguage",
+    "overlayGlassFrost",
+    "batteryPercentRemainingAnnounce",
+    "loginAirLink",
+    "passAirLink",
     "preferredFirmwareClass",
     "preferredVehicleClass",
     "audioVolume",

@@ -357,13 +357,22 @@ pub fn forgotten(key: &str) {
     persist();
 }
 
+fn clear_asked(values: &BTreeMap<String, Setting>) -> bool {
+    matches!(values.get(&key("App", "clearSettingsNextBoot")), Some(Setting::Text(text)) if text == "true" || text == "1")
+}
+
 pub fn cleared_on_boot(values: BTreeMap<String, Setting>) -> BTreeMap<String, Setting> {
-    let asked = matches!(values.get(&key("App", "clearSettingsNextBoot")), Some(Setting::Text(text)) if text == "true" || text == "1");
-    if asked { BTreeMap::new() } else { values }
+    if clear_asked(&values) { BTreeMap::new() } else { values }
 }
 
 pub fn open(path: &std::path::Path) {
-    *stored() = Some(cleared_on_boot(crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default())));
+    let read = crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default());
+    if clear_asked(&read)
+        && let Some(cache) = crate::paramcache::folder_for(path)
+    {
+        let _ = std::fs::remove_dir_all(cache);
+    }
+    *stored() = Some(cleared_on_boot(read));
     *PATH.lock().unwrap_or_else(PoisonError::into_inner) = Some(path.to_path_buf());
 }
 

@@ -12,6 +12,12 @@ private const val ORGANIZATION = "Aircast"
 private const val DEFAULT_APPLICATION = "Aircast QGC"
 private const val DEBUG_API_PORT = "8777"
 
+internal fun measurementSystem(): Int = when (android.icu.util.LocaleData.getMeasurementSystem(android.icu.util.ULocale.getDefault())) {
+    android.icu.util.LocaleData.MeasurementSystem.US -> 1
+    android.icu.util.LocaleData.MeasurementSystem.UK -> 2
+    else -> 0
+}
+
 object HostPlatform {
     private var started = false
 
@@ -32,6 +38,7 @@ object HostPlatform {
             "--app-name", application,
             "--map-cache", File(mapCache, "qgcMapCache.db").absolutePath,
             "--save-path", File(activity.getExternalFilesDir(null) ?: activity.filesDir, application).absolutePath,
+            "--measurement-system", measurementSystem().toString(),
         ) + removableSavePath(activity, application) + if (BuildConfig.DEBUG) listOf("--port", DEBUG_API_PORT) else emptyList()
         QGCBridge.start(arguments.toTypedArray())
         val tileCache = File(mapCache, "qgcMapCache.db").absolutePath

@@ -25,13 +25,13 @@ class UnitsSectionTest {
     @Test
     fun `a preset hides the measurements it already decides`() {
         val rows = unitRowsFor(0, all).map { it.name }
-        assertEquals(listOf("weightUnits"), rows)
+        assertEquals(emptyList<String>(), rows)
     }
 
     @Test
     fun `custom shows every measurement`() {
         val rows = unitRowsFor(UNIT_SYSTEM_CUSTOM, all).map { it.name }
-        assertEquals(PRESET_UNIT_FACTS + listOf("weightUnits"), rows)
+        assertEquals(PRESET_UNIT_FACTS, rows)
     }
 
     @Test
@@ -42,8 +42,8 @@ class UnitsSectionTest {
     }
 
     @Test
-    fun `weight survives a preset because no preset sets it`() {
-        assertTrue(unitRowsFor(1, all).any { it.name == "weightUnits" })
+    fun `weight is never a row, as GeneralSettings lists only five units and weight follows the locale`() {
+        listOf(0, 1, UNIT_SYSTEM_CUSTOM).forEach { system -> assertTrue(unitRowsFor(system, all).none { it.name == "weightUnits" }) }
     }
 
     @Test
@@ -59,7 +59,7 @@ class UnitsSectionTest {
             assertEquals("Custom", unitSystemLabel(rogue))
             assertEquals("Each measurement is set on its own below.", unitSystemNote(rogue))
             assertEquals(
-                PRESET_UNIT_FACTS + listOf("weightUnits"),
+                PRESET_UNIT_FACTS,
                 unitRowsFor(rogue, all).map { it.name },
             )
         }

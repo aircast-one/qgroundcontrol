@@ -56,6 +56,12 @@ pub fn mark_shown(backend: &dyn Backend) -> Value {
     if ids.contains(&INITIAL_SETUP_PROMPT_ID) {
         return json!({ "ok": true });
     }
+    [("preferredFirmwareClass", "offlineEditingFirmwareClass"), ("preferredVehicleClass", "offlineEditingVehicleClass")].iter().for_each(|(preferred, offline)| {
+        let chosen = object(&backend.get(&format!("settings.appSettings.{preferred}")));
+        if let Some(class) = chosen.get("rawValue").or(chosen.get("value")).and_then(Value::as_i64).filter(|class| *class != 0) {
+            crate::factwrite::write(backend, &format!("settings.appSettings.{offline}"), &json!({ "value": class }).to_string());
+        }
+    });
     let updated = ids.iter().chain([&INITIAL_SETUP_PROMPT_ID]).map(i64::to_string).collect::<Vec<_>>().join(",");
     crate::factwrite::write(backend, SHOWN_PATH, &json!({ "value": updated }).to_string())
 }

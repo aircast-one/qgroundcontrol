@@ -23,6 +23,7 @@ pub struct Options {
     pub position_source: String,
     pub autoconnect: bool,
     pub debug_port: Option<u16>,
+    pub measurement_system: u8,
 }
 
 fn default_settings_path(application: &str) -> std::path::PathBuf {
@@ -46,6 +47,7 @@ pub fn options(arguments: &[String]) -> Options {
         position_source: option("--position-source").unwrap_or_else(|| "none".to_string()),
         autoconnect: !arguments.iter().any(|a| a == "--no-autoconnect"),
         debug_port: option("--port").or_else(|| std::env::var("QGC_DEBUG_API_PORT").ok()).and_then(|p| p.parse().ok()),
+        measurement_system: option("--measurement-system").and_then(|m| m.parse().ok()).unwrap_or(crate::units::METRIC),
         application,
     }
 }
