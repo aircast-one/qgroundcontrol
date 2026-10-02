@@ -287,6 +287,7 @@ pub struct Vehicle {
     pub recent: Vec<StatusText>,
     pub by_name: BTreeMap<String, u64>,
     pub capabilities: u64,
+    version_notified: bool,
     pub capabilities_known: bool,
     pub home_altitude: Option<f64>,
     pub home: Option<(f64, f64, f64)>,
@@ -470,6 +471,7 @@ impl Vehicle {
             recent: Vec::new(),
             by_name: BTreeMap::new(),
             capabilities: 0,
+            version_notified: false,
             capabilities_known: false,
             home_altitude: None,
             home: None,
@@ -2685,6 +2687,12 @@ impl Vehicle {
                 return self.follow_calibration(actions, now_ms);
             }
             MavMessage::AUTOPILOT_VERSION(v) => {
+                if self.autopilot == crate::modes::AUTOPILOT_PX4 && !self.version_notified {
+                    if let Some(notice) = crate::connectnotices::outdated_px4(v.flight_sw_version) {
+                        self.version_notified = true;
+                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", notice);
+                    }
+                }
                 let outs = self.commands.on_message(header.component_id, MSG_AUTOPILOT_VERSION);
                 if outs.is_empty() {
                     return Vec::new();
