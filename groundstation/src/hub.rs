@@ -889,6 +889,9 @@ impl Vehicle {
     }
 
     fn stream_parameters(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        if self.params.px4 {
+            self.params.use_cache(crate::paramcache::load(self.id, self.params.default_component));
+        }
         let actions = self.params.start();
         self.follow_params(actions, now_ms)
     }
@@ -1408,6 +1411,12 @@ impl Vehicle {
                     }
                     let clock = self.send_clock();
                     clock.into_iter().chain(self.step_done(connect::Step::Parameters, now_ms)).collect()
+                }
+                params::Action::SaveCache { component } => {
+                    let bundled = crate::px4meta::bundled();
+                    let cache = self.params.entries(component).map(|(name, value)| (name.clone(), params::CachedParam { value: *value, volatile: bundled.get(name).is_some_and(|meta| meta.volatile_value) })).collect();
+                    crate::paramcache::save(self.id, component, &cache);
+                    Vec::new()
                 }
                 params::Action::NoResponse => {
                     self.note("The vehicle did not respond to the parameter request.".to_string());

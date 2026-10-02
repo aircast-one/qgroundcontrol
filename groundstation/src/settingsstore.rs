@@ -558,6 +558,10 @@ fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Stri
     Some(answer.to_string())
 }
 
+pub fn file() -> Option<std::path::PathBuf> {
+    PATH.lock().unwrap_or_else(PoisonError::into_inner).clone()
+}
+
 pub fn folder() -> Option<std::path::PathBuf> {
     PATH.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(|path| path.parent().map(std::path::Path::to_path_buf))
 }

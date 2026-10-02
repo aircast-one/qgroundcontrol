@@ -122,6 +122,7 @@ pub mod onboardlogs;
 pub mod plan;
 pub mod packetradio;
 pub mod params;
+mod paramcache;
 pub mod planfile;
 pub mod corelinks;
 pub mod coreplan;
