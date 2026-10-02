@@ -728,7 +728,8 @@ internal fun pairsAsField(fact: Fact): Boolean =
         fact.isEnum -> !fact.valueIsOffTheEnumList &&
             !showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings) &&
             fact.enumStrings.all { it.length <= PAIRED_OPTION_BUDGET }
-        else -> !fact.isString && !fact.isBitmask && fact.enumStrings.isEmpty() && fact.units.length <= PAIRED_UNITS_BUDGET
+        fact.isString -> !isSecret(fact) && fact.valueString.length in 1..PAIRED_OPTION_BUDGET
+        else -> !fact.isBitmask && fact.enumStrings.isEmpty() && fact.units.length <= PAIRED_UNITS_BUDGET
     }
 
 internal fun fieldRuns(facts: List<Fact>, pairable: (Fact) -> Boolean = { true }): List<List<Fact>> =

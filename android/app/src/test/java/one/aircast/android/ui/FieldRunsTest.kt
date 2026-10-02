@@ -86,4 +86,13 @@ class FieldRunsTest {
         assertEquals("Auto-center throttle", sentenceCase("Auto-Center throttle"))
         assertEquals("Left-handed mode", sentenceCase("Left-Handed mode"))
     }
+
+    @Test
+    fun aShortTextValuePairsAndALongOrEmptyOneKeepsTheRow() {
+        val host = text("host").copy(valueString = "127.0.0.1")
+        val port = text("port", isString = false).copy(valueString = "30003")
+        assertEquals(listOf(listOf("host", "port")), fieldRuns(listOf(host, port)).map { run -> run.map { it.name } })
+        val url = text("url").copy(valueString = "rtsp://192.168.144.25:8554/main.264")
+        assertEquals(listOf(listOf("url"), listOf("port")), fieldRuns(listOf(url, port)).map { run -> run.map { it.name } })
+    }
 }
