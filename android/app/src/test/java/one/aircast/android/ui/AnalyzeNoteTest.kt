@@ -79,4 +79,13 @@ class AnalyzeNoteTest {
         org.junit.Assert.assertEquals(AnalyzePage.Messages.description, analyzeSubtitle(AnalyzePage.Messages, emptyList()))
         org.junit.Assert.assertEquals(AnalyzePage.Console.description, analyzeSubtitle(AnalyzePage.Console, said))
     }
+
+    @Test
+    fun `the vibration row reads the three axes in their unit`() {
+        val axis = { name: String, value: Double? -> VibrationAxis(name, value, 0f, null) }
+        val reading = VibrationReading("m/s\u00b2", 60.0, 30.0, 60.0, listOf(axis("X", 12.4), axis("Y", 8.6), axis("Z", 18.0)), emptyList())
+        assertEquals("X 12 \u00b7 Y 9 \u00b7 Z 18 m/s\u00b2", analyzeSubtitle(AnalyzePage.Vibration, emptyList(), reading))
+        assertEquals(AnalyzePage.Vibration.description, analyzeSubtitle(AnalyzePage.Vibration, emptyList(), reading.copy(axes = listOf(axis("X", null)))))
+        assertEquals(AnalyzePage.Vibration.description, analyzeSubtitle(AnalyzePage.Vibration, emptyList(), null))
+    }
 }

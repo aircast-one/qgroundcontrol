@@ -115,6 +115,11 @@ internal fun vibrationReading(view: JSONObject?): VibrationReading? {
     )
 }
 
+internal fun vibrationGlance(reading: VibrationReading): String? =
+    reading.axes.mapNotNull { axis -> axis.value?.takeIf { it.isFinite() }?.let { "${axis.axis} ${Math.round(it)}" } }
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(" \u00b7 ", postfix = reading.units.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty())
+
 internal fun worstSeverity(reading: VibrationReading): String? =
     listOf("danger", "warning", "normal").firstOrNull { level -> reading.axes.any { it.severity == level } }
 

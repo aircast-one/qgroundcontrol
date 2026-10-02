@@ -86,8 +86,11 @@ internal fun analyzeStatus(page: AnalyzePage, unread: Int, vibration: String?): 
     else -> "" to SetupState.Neutral
 }
 
-internal fun analyzeSubtitle(page: AnalyzePage, messages: List<VehicleMessage>): String =
-    if (page == AnalyzePage.Messages && messages.isNotEmpty()) severitySummary(messages) else page.description
+internal fun analyzeSubtitle(page: AnalyzePage, messages: List<VehicleMessage>, vibration: VibrationReading? = null): String = when {
+    page == AnalyzePage.Messages && messages.isNotEmpty() -> severitySummary(messages)
+    page == AnalyzePage.Vibration -> vibration?.let(::vibrationGlance) ?: page.description
+    else -> page.description
+}
 
 internal fun analyzeNote(
     page: AnalyzePage,
@@ -109,7 +112,8 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
     val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     val caveat = remember(vibrationJson) { vibrationCaveat(vibrationJson) }
     val messagesJson by qgcPath(MESSAGES)
-    val vibrationLevel = remember(vibrationJson) { vibrationReading(vibrationJson)?.let(::worstSeverity) }
+    val vibration = remember(vibrationJson) { vibrationReading(vibrationJson) }
+    val vibrationLevel = vibration?.let(::worstSeverity)
     val unread = remember(messagesJson) { unreadCount(messagesJson) }
     val messages = remember(messagesJson) { vehicleMessages(messagesJson) }
 
@@ -132,7 +136,7 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
                     title = page.label,
                     status = status,
                     state = state,
-                    subtitle = listOfNotNull(analyzeSubtitle(page, messages), analyzeNote(page, connected, px4, caveat)).joinToString("\n"),
+                    subtitle = listOfNotNull(analyzeSubtitle(page, messages, vibration), analyzeNote(page, connected, px4, caveat)).joinToString("\n"),
                     onClick = { onSelect(page) },
                     icon = page.icon,
                     selected = page == selected,
