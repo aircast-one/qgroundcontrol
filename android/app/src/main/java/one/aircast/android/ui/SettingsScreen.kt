@@ -307,15 +307,7 @@ private fun SettingsList(
             )
         }
         item(key = "search") {
-            OutlinedTextField(
-                value = search,
-                onValueChange = { search = it },
-                label = { Text("Search settings") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-            )
+            SearchPill(search, { search = it }, "Search settings")
         }
 
         if (search.isBlank()) {

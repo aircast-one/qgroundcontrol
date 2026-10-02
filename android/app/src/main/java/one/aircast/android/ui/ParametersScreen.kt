@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.FilterChip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.Arrangement
@@ -14,9 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +50,9 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
     var descriptions by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var modified by remember { mutableStateOf<Set<String>>(emptySet()) }
     var modifiedOnly by remember { mutableStateOf(false) }
+    var placement by remember { mutableStateOf<Map<String, Pair<String, String>>>(emptyMap()) }
+    var chosenCategory by remember { mutableStateOf<String?>(null) }
+    var chosenGroup by remember { mutableStateOf<String?>(null) }
     var reads by remember { mutableStateOf(0) }
 
     LaunchedEffect(ready, reads) {
@@ -64,20 +66,20 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
             val summary = withContext(Dispatchers.Default) { parameterSummary(names) }
             descriptions = summary.descriptions
             modified = summary.modified
+            placement = summary.placement
         }
     }
 
-    val matches = remember(names, descriptions, modified, search, modifiedOnly) {
+    val tree = remember(names, placement) { parameterTree(names, placement) }
+    val browsing = search.isBlank() && !modifiedOnly
+    val category = tree.firstOrNull { it.name == chosenCategory } ?: tree.firstOrNull()
+    val group = category?.groups?.firstOrNull { it == chosenGroup } ?: category?.groups?.firstOrNull()
+    val matches = remember(names, descriptions, modified, search, modifiedOnly, placement, category, group) {
         names.filter { parameterShown(it, descriptions[it].orEmpty(), search, modifiedOnly, modified) }
+            .filter { !browsing || inGroup(it, placement, category?.name, group) }
     }
     Column(modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = search,
-            onValueChange = { search = it },
-            label = { Text("Search parameters") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+        SearchPill(search, { search = it }, "Search parameters")
 
         if (!ready) {
             Text("Waiting for parameters from the vehicle.", Modifier.padding(16.dp))
@@ -93,9 +95,18 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.weight(1f),
             )
-            Checkbox(checked = modifiedOnly, onCheckedChange = { modifiedOnly = it })
-            Text("Modified", style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !modifiedOnly, onClick = { modifiedOnly = false }, label = { Text("All") })
+                FilterChip(selected = modifiedOnly, onClick = { modifiedOnly = true }, label = { Text("Changed") })
+            }
             ParameterToolsMenu(onRefreshed = { reads++ })
+        }
+
+        if (browsing && category != null) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChoiceButton(category.name, tree.map { it.name }) { chosenCategory = it; chosenGroup = null }
+                group?.let { shown -> ChoiceButton(shown, category.groups) { chosenGroup = it } }
+            }
         }
 
         LazyColumn(Modifier.fillMaxSize()) {
@@ -180,15 +191,52 @@ private fun parameterNames(): List<String> {
     return (0 until result.length()).map { result.optText(it) }.sorted()
 }
 
-internal data class ParameterSummary(val descriptions: Map<String, List<String>>, val modified: Set<String>)
+internal data class ParameterSummary(
+    val descriptions: Map<String, List<String>>,
+    val modified: Set<String>,
+    val placement: Map<String, Pair<String, String>> = emptyMap(),
+)
+
+internal data class ParameterCategory(val name: String, val groups: List<String>)
+
+private const val STANDARD_CATEGORY = "Standard"
+private const val DEFAULT_CATEGORY = "Other"
+private const val DEFAULT_GROUP = "Misc"
+
+internal fun parameterTree(names: List<String>, placement: Map<String, Pair<String, String>>): List<ParameterCategory> {
+    val placed = names.mapNotNull { placement[it] }
+    val categories = placed.map { it.first }.distinct()
+    val ordered = categories.filter { it == STANDARD_CATEGORY } + categories.filter { it != STANDARD_CATEGORY && it != DEFAULT_CATEGORY } + categories.filter { it == DEFAULT_CATEGORY }
+    return ordered.map { category ->
+        val groups = placed.filter { it.first == category }.map { it.second }.distinct()
+        ParameterCategory(category, groups.filter { it != DEFAULT_GROUP } + groups.filter { it == DEFAULT_GROUP })
+    }
+}
+
+internal fun inGroup(name: String, placement: Map<String, Pair<String, String>>, category: String?, group: String?): Boolean =
+    category == null || group == null || placement[name] == (category to group)
 
 private fun parameterSummary(names: List<String>): ParameterSummary {
     val facts = names.mapNotNull { name -> parameterFact(name)?.let { name to it } }
     return ParameterSummary(
         descriptions = facts.associate { (name, fact) -> name to listOf(fact.description, fact.longDescription).filter { it.isNotBlank() } },
         modified = facts.filter { it.second.changedFromDefault }.map { it.first }.toSet(),
+        placement = facts.associate { (name, fact) -> name to (fact.category to fact.group) },
     )
 }
 
 internal fun parameterFact(name: String): Fact? =
     factFromParameter(name, Qgc.get(parameterPath(name)))
+
+@Composable
+private fun ChoiceButton(shown: String, options: List<String>, onPick: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    androidx.compose.foundation.layout.Box {
+        androidx.compose.material3.OutlinedButton(onClick = { open = true }) { Text(shown, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            options.forEach { option ->
+                androidx.compose.material3.DropdownMenuItem(text = { Text(option) }, onClick = { open = false; onPick(option) })
+            }
+        }
+    }
+}

@@ -14,7 +14,6 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -282,11 +281,10 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         }
 
         item(key = "search") {
-            OutlinedTextField(
+            SearchPill(
                 value = setupSearch,
                 onValueChange = { setupSearch = it },
-                placeholder = { Text("Search") },
-                singleLine = true,
+                placeholder = "Search",
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = {
                     if (setupSearch.isNotBlank()) {
@@ -294,7 +292,6 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                         parametersOpen = true
                     }
                 }),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }
 
