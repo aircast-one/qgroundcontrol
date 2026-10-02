@@ -360,7 +360,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         }
 
         if (needSetup.isNotEmpty()) {
-            item(key = "attention") { SectionHeader("Needs setup") }
+            item(key = "attention") { SectionHeader("Needs attention") }
             items(needSetup, key = { "a${it.index}" }) { component ->
                 val blocked = component.blockedReason
                 val page = setupPage(setupJson, component.name)
@@ -388,7 +388,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 parametersIncomplete(setupJson)?.let { SetupNotice(it) } ?: EmptyState(R.drawable.ic_build, NOTHING_TO_CONFIGURE, NOTHING_TO_CONFIGURE_TEXT)
             }
         } else if (remaining.isNotEmpty()) {
-            item(key = "allheader") { SectionHeader("Setup") }
+            item(key = "allheader") { SectionHeader("Ready") }
             items(remaining, key = { it.index }) { component ->
                 val page = setupPage(setupJson, component.name)
                 val openable = headCanOpen(page, headPage(component))
