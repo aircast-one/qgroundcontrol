@@ -1519,7 +1519,10 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     let unknown = || Err(format!("Item {index} has no such field."));
     Some(match property {
         "altitude" | "command" => return Some(match number {
-            Some(n) => item_edit(backend, &json!([index, n]).to_string(), property == "command"),
+            Some(n) => {
+                let raw = if property == "altitude" { crate::read::Unit::vertical(backend).meters(n) } else { n };
+                item_edit(backend, &json!([index, raw]).to_string(), property == "command")
+            }
             None => refused("That field takes a number."),
         }),
         "loiterRadius" => answer(number.ok_or_else(|| "A radius is a number.".to_string()).and_then(|v| plandoc::set_loiter_radius(&current, index, v).ok_or_else(|| format!("Item {index} is not a loiter.")))),

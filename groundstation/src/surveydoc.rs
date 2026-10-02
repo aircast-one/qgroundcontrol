@@ -248,13 +248,14 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, hover_allowed: bool,
         true => structure,
         false => listed.into_iter().chain(own).collect(),
     };
-    let distance_mode = calc_of(survey).get("DistanceMode").and_then(Value::as_i64);
+    let distance_mode = Some(calc_of(survey).get("DistanceMode").and_then(Value::as_i64).unwrap_or(crate::altitudemodes::FRAME_RELATIVE));
     let follows_terrain = distance_mode == Some(crate::altitudemodes::FRAME_CALC_ABOVE_TERRAIN);
     let fixed_altitude = matches!(distance_mode, Some(crate::altitudemodes::FRAME_RELATIVE | crate::altitudemodes::FRAME_ABSOLUTE));
     let hovering = hover_allowed && transect.get("HoverAndCapture").and_then(Value::as_bool) == Some(true);
     chosen
         .into_iter()
         .filter(|(_, name, ..)| *name != "HoverAndCapture" || hover_allowed)
+        .filter(|(_, name, ..)| !corridor || !matches!(*name, "HoverAndCapture" | "Refly90Degrees"))
         .filter_map(|(file, name, suffix, owner, key)| {
             let meta = meta(file, name)?;
             let value = with_default(owner.get(key), &meta);
@@ -795,7 +796,7 @@ mod tests {
         assert_eq!(enabled(&survey(3, false), true, "hoverAndCapture"), Some(false), "only with a relative or absolute altitude");
         assert_eq!(enabled(&survey(3, false), true, "refly90Degrees"), Some(false), "no refly while following terrain");
         assert_eq!(enabled(&survey(1, true), true, "cameraTriggerInTurnAround"), Some(false), "no turnaround images while hovering");
-        assert_eq!(enabled(&survey(1, true), false, "cameraTriggerInTurnAround"), Some(true), "a stored hover flag means nothing where hovering is not allowed");
+        assert_eq!(enabled(&survey(1, true), false, "cameraTriggerInTurnAround"), Some(true), "the turnaround switch is not held back by a hover switch the vehicle never shows, as QGC gates it on hoverAndCaptureAllowed");
     }
 
     #[test]
@@ -894,6 +895,7 @@ mod tests {
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let listed: Vec<String> = fields(corridor, "i", true, true, &Units { vertical: &metres, horizontal: &metres }).iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
         assert!(listed.contains(&"corridorWidth".to_string()) && !listed.contains(&"gridAngle".to_string()), "{listed:?}");
+        assert!(!listed.iter().any(|s| s == "hoverAndCapture" || s == "refly90Degrees"), "CorridorScanEditor shows width, turnaround and images in turnarounds only: {listed:?}");
     }
 
     #[test]
