@@ -820,6 +820,9 @@ impl Camera {
     }
 
     fn tick(&mut self, now_ms: u64) -> Vec<Command> {
+        if let Some(unanswered) = self.outcome.as_ref().filter(|o| o.result.is_none() && o.command != CMD_RESET_CAMERA_SETTINGS && now_ms.saturating_sub(o.at_ms) > crate::mavcmd::ACK_TIMEOUT_MS).map(|o| o.command) {
+            self.on_command_result(unanswered, RESULT_FAILED, now_ms);
+        }
         self.resetting_until = self.resetting_until.filter(|until| now_ms < *until);
         let settings = self.settings.ripe(now_ms).then(|| self.settings_due(now_ms)).flatten();
         let refresh = self.settings_refresh.filter(|due| now_ms >= *due).map(|_| {
@@ -1100,15 +1103,18 @@ struct Tracked {
     last_heartbeat_ms: u64,
     attempts: u32,
     due: Option<u64>,
+    answer_by: Option<u64>,
     identified: bool,
 }
 
 impl Tracked {
-    fn request(&mut self) -> Option<Command> {
+    fn request(&mut self, now_ms: u64) -> Option<Command> {
         self.due = None;
+        self.answer_by = None;
         if self.attempts >= MAX_INFORMATION_ATTEMPTS {
             return None;
         }
+        self.answer_by = Some(now_ms + crate::mavcmd::ACK_TIMEOUT_MS);
         match self.attempts % 2 {
             0 => Some(request_message(self.compid, MSG_CAMERA_INFORMATION, 0.0)),
             _ => Some(command(self.compid, CMD_REQUEST_CAMERA_INFORMATION, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
@@ -1126,7 +1132,7 @@ impl Tracked {
                 self.due = Some(now_ms + (1u64 << (self.attempts / 2)) * 1000);
                 None
             }
-            false => self.request(),
+            false => self.request(now_ms),
         }
     }
 
@@ -1219,8 +1225,8 @@ impl Cameras {
             camera.last_heartbeat_ms = now_ms;
         }
         let Some(tracked) = self.tracked.iter_mut().find(|tracked| tracked.compid == compid) else {
-            self.tracked.push(Tracked { compid, last_heartbeat_ms: now_ms, attempts: 0, due: None, identified: false });
-            return self.tracked.last_mut().and_then(Tracked::request).into_iter().collect();
+            self.tracked.push(Tracked { compid, last_heartbeat_ms: now_ms, attempts: 0, due: None, answer_by: None, identified: false });
+            return self.tracked.last_mut().and_then(|tracked| tracked.request(now_ms)).into_iter().collect();
         };
         let silent = now_ms.saturating_sub(tracked.last_heartbeat_ms) > SILENT_TIMEOUT_MS;
         tracked.last_heartbeat_ms = now_ms;
@@ -1229,7 +1235,7 @@ impl Cameras {
         }
         tracked.attempts = 0;
         tracked.due = None;
-        tracked.request().into_iter().collect()
+        tracked.request(now_ms).into_iter().collect()
     }
 
     pub fn on_camera_information(&mut self, compid: u8, info: Info, now_ms: u64) {
@@ -1294,7 +1300,12 @@ impl Cameras {
     pub fn on_command_result(&mut self, compid: u8, sent: u16, param1: f64, result: u8, now_ms: u64) -> Vec<Command> {
         let asked_for_information = sent == CMD_REQUEST_CAMERA_INFORMATION || (sent == CMD_REQUEST_MESSAGE && param1 as u32 == MSG_CAMERA_INFORMATION);
         let retried = match (asked_for_information, result) {
-            (true, RESULT_ACCEPTED | RESULT_IN_PROGRESS) => None,
+            (true, RESULT_ACCEPTED | RESULT_IN_PROGRESS) => {
+                if let Some(tracked) = self.tracked.iter_mut().find(|tracked| tracked.compid == compid && !tracked.identified) {
+                    tracked.answer_by = Some(now_ms + REQUEST_TIMEOUT_MS);
+                }
+                None
+            }
             (true, _) => self
                 .tracked
                 .iter_mut()
@@ -1312,8 +1323,12 @@ impl Cameras {
         let waking: Vec<Command> = self
             .tracked
             .iter_mut()
-            .filter(|tracked| !tracked.identified && tracked.due.is_some_and(|due| now_ms >= due))
-            .filter_map(Tracked::request)
+            .filter(|tracked| !tracked.identified)
+            .filter_map(|tracked| match (tracked.due.is_some_and(|due| now_ms >= due), tracked.answer_by.is_some_and(|by| now_ms >= by)) {
+                (true, _) => tracked.request(now_ms),
+                (false, true) => tracked.retry(now_ms),
+                (false, false) => None,
+            })
             .collect();
         let lost: Vec<u8> = self
             .cameras
@@ -1997,6 +2012,26 @@ mod tests {
             at(&mut undeclared, RESET_SETTINGS_DELAY_MS - 1).is_empty(),
             "a camera naming a definition file expects parameters whether or not a host has said so, so the longer wait is right before the hook is ever called"
         );
+    }
+
+    #[test]
+    fn camera_information_is_asked_again_when_an_accepted_request_never_delivers_it() {
+        let mut cameras = Cameras::new();
+        let first = cameras.on_heartbeat(CAMERA, 0);
+        assert_eq!(first.len(), 1);
+        assert!(cameras.on_command_result(CAMERA, CMD_REQUEST_MESSAGE, f64::from(MSG_CAMERA_INFORMATION), RESULT_ACCEPTED, 10).is_empty());
+        assert!(cameras.tick(10 + REQUEST_TIMEOUT_MS - 1).is_empty());
+        assert_eq!(cameras.tick(10 + REQUEST_TIMEOUT_MS).len(), 1, "QGCCameraManager times out a missing CAMERA_INFORMATION and asks again");
+    }
+
+    #[test]
+    fn a_photo_whose_command_is_never_answered_does_not_lock_the_shutter() {
+        let mut cameras = quiet(CAP_HAS_MODES | CAP_CAPTURE_IMAGE);
+        cameras.take_photo(None, 1, 0).unwrap();
+        let timeout = crate::mavcmd::ACK_TIMEOUT_MS + 1;
+        at(&mut cameras, timeout);
+        let polled = at(&mut cameras, timeout + BUSY_POLL_MS);
+        assert!(polled.iter().any(|c| c.params[0] as u32 == MSG_CAMERA_CAPTURE_STATUS || c.command == CMD_REQUEST_CAMERA_CAPTURE_STATUS), "a start capture with no answer fails like a NoResponse, so capture status is polled, as VehicleCameraControl does: {polled:?}");
     }
 
     #[test]
