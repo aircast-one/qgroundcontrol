@@ -51,9 +51,14 @@ fun landingLabels(pattern: LandingPattern): List<LandingLabel> {
     )
 }
 
-fun landingLabelFeatures(patterns: List<LandingPattern>, selected: Int?): FeatureCollection =
+fun structureScanLabels(items: List<MissionItem>): List<LandingLabel> =
+    items.filter { it.kind == KIND_STRUCTURE }.flatMap { item ->
+        item.exit?.let { exit -> listOf(LandingLabel(TrackPoint(item.latitude, item.longitude), "Entry"), LandingLabel(exit, "Exit")) }.orEmpty()
+    }
+
+fun landingLabelFeatures(patterns: List<LandingPattern>, selected: Int?, items: List<MissionItem> = emptyList()): FeatureCollection =
     FeatureCollection.fromFeatures(
-        patterns.filter { it.index == selected }.flatMap(::landingLabels).map { label ->
+        (patterns.filter { it.index == selected }.flatMap(::landingLabels) + structureScanLabels(items)).map { label ->
             Feature.fromGeometry(Point.fromLngLat(label.at.longitude, label.at.latitude)).apply { addStringProperty(LANDING_LABEL_TEXT, label.text) }
         },
     )

@@ -184,4 +184,11 @@ class IsLandingPatternTest {
         assertEquals("FWLandingPatternMapVisual draws both whether or not the item is current", 2, landingAreaFeatures(listOf(straight)).features()!!.size)
         assertEquals("only the current item's labels show", 0, landingLabelFeatures(listOf(straight), selected = 2).features()!!.size)
     }
+
+    @Test
+    fun `a structure scan names its entry and exit`() {
+        val scan = MissionItem(index = 2, sequence = 2, latitude = 47.0, longitude = 8.0, command = "", selected = false, kind = KIND_STRUCTURE, exit = TrackPoint(47.1, 8.0))
+        assertEquals(listOf("Entry", "Exit"), structureScanLabels(listOf(scan)).map { it.text })
+        assertEquals(0, structureScanLabels(listOf(scan.copy(exit = null))).size)
+    }
 }

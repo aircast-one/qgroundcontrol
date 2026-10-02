@@ -635,7 +635,7 @@ private fun headingArrow(): Bitmap {
 
 private fun renderLandings(style: Style, landings: List<LandingPattern>, items: List<MissionItem>, selected: Int?) {
     (style.getSource(LANDING_AREA_SOURCE) as? GeoJsonSource)?.setGeoJson(landingAreaFeatures(landings))
-    (style.getSource(LANDING_LABEL_SOURCE) as? GeoJsonSource)?.setGeoJson(landingLabelFeatures(landings, selected))
+    (style.getSource(LANDING_LABEL_SOURCE) as? GeoJsonSource)?.setGeoJson(landingLabelFeatures(landings, selected, items))
     (style.getSource(LANDING_PATH_SOURCE) as? GeoJsonSource)?.setGeoJson(landingPathFeatures(landings))
     (style.getSource(LANDING_LOITER_SOURCE) as? GeoJsonSource)?.setGeoJson(landingLoiterFeatures(landings, items))
 }
