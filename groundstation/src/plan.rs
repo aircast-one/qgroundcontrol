@@ -189,7 +189,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "defaults": defaults_json(backend),
         "applyAltitudePrompt": crate::coreplan::altitude_prompt(),
         "vehicleChangePrompt": crate::coreplan::vehicle_change_prompt(),
-        "readiness": readiness_json(readiness),
+        "readiness": readiness_json(readiness, &if readiness == Some(2) { not_ready_items(backend) } else { Vec::new() }),
         "upload": upload_json(upload),
         "actions": {
             "open": !syncing,
@@ -238,14 +238,33 @@ fn send_precheck(backend: &dyn Backend) -> i64 {
     }
 }
 
-fn readiness_json(state: Option<i64>) -> Value {
+const SET_ITS_LOCATION: &str = "Set its location";
+
+fn not_ready_items(backend: &dyn Backend) -> Vec<Value> {
+    let rows = crate::missionitems::items_view(backend, &[]);
+    let rows = rows["items"].as_array().cloned().unwrap_or_default();
+    let wizard = crate::coreplan::wizard_item();
+    rows.iter()
+        .filter_map(|row| {
+            let reason = match row["blocked"] == true {
+                true => row["blockedReason"].as_str().map(str::to_string),
+                false => (row["index"].as_u64().map(|i| i as usize) == wizard && wizard.is_some()).then(|| SET_ITS_LOCATION.to_string()),
+            }?;
+            Some(json!({ "index": row["index"], "sequence": row["sequence"], "name": row["name"], "reason": reason }))
+        })
+        .collect()
+}
+
+fn readiness_json(state: Option<i64>, items: &[Value]) -> Value {
+    let listed = items.iter().map(|item| format!("\n\u{2022} Item {} \u{b7} {} \u{2014} {}", item["sequence"], item["name"].as_str().unwrap_or(""), item["reason"].as_str().unwrap_or(""))).collect::<String>();
     let reason = match state {
         Some(0) => None,
-        Some(1) => Some("Waiting for terrain heights before the plan can be saved or sent."),
-        Some(2) => Some("An item is still being drawn, so the plan cannot be saved or sent."),
-        _ => Some("The plan could not be checked for saving."),
+        Some(1) => Some("Plan is waiting on terrain data from server for correct altitude values.".to_string()),
+        Some(2) if !items.is_empty() => Some(format!("These items still need a position or a value:{listed}")),
+        Some(2) => Some("An item is still being drawn, so the plan cannot be saved or sent.".to_string()),
+        _ => Some("The plan could not be checked for saving.".to_string()),
     };
-    json!({ "state": state, "ready": state == Some(0), "reason": reason })
+    json!({ "state": state, "ready": state == Some(0), "reason": reason, "items": items, "next": items.first().map(|item| item["index"].clone()) })
 }
 
 fn upload_json(state: Option<i64>) -> Value {
@@ -586,6 +605,15 @@ mod tests {
         assert_eq!(state_line(false, true, true, 1), "Edited \u{b7} 1 item");
         assert_eq!(state_line(false, true, false, 4), "Uploaded \u{b7} 4 items", "PlanToolBarIndicators says Uploaded whenever the plan is clean, offline or not");
         assert_eq!(view["file"], Value::Null);
+    }
+
+    #[test]
+    fn unfinished_items_are_listed_the_way_plan_view_lists_them() {
+        let items = [json!({ "index": 3, "sequence": 4, "name": "Survey", "reason": "Draw the area" }), json!({ "index": 1, "sequence": 1, "name": "Takeoff", "reason": "Set its location" })];
+        let readiness = readiness_json(Some(2), &items);
+        assert_eq!(readiness["reason"], "These items still need a position or a value:\n\u{2022} Item 4 \u{b7} Survey \u{2014} Draw the area\n\u{2022} Item 1 \u{b7} Takeoff \u{2014} Set its location", "PlanView.qml waitingOnIncompleteDataMessage");
+        assert_eq!(readiness["next"], 3, "selectNextNotReady goes to the first one");
+        assert_eq!(readiness_json(Some(2), &[])["next"], Value::Null);
     }
 
     #[test]

@@ -51,4 +51,11 @@ class UploadReadinessTest {
 
         assertEquals("The plan is not ready to send.", notReadyToSend(v))
     }
+
+    @Test
+    fun `a refused upload goes to the first item that still needs something`() {
+        assertEquals(3, nextNotReady(org.json.JSONObject("""{"readiness":{"ready":false,"next":3}}""")))
+        assertEquals(null, nextNotReady(org.json.JSONObject("""{"readiness":{"ready":false,"next":null}}""")))
+        assertEquals(null, nextNotReady(org.json.JSONObject("""{"readiness":{"ready":true,"next":3}}""")))
+    }
 }

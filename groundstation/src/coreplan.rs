@@ -1776,12 +1776,18 @@ pub fn shape_vertices(path: &str) -> Option<Vec<(f64, f64)>> {
     Some(vertices.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect())
 }
 
+pub fn wizard_item() -> Option<usize> {
+    enabled().then(|| held().wizard).flatten()
+}
+
 pub fn drawing() -> bool {
-    held().document.as_ref().is_some_and(|d| {
-        d.items.iter().any(|item| {
-            matches!(item, plandoc::Item::Complex { json, .. } if json.get("polygon").and_then(Value::as_array).is_some_and(|p| p.len() < 3) || json.get(crate::landingpattern::WIZARD).and_then(Value::as_bool) == Some(true))
+    let state = held();
+    state.wizard.is_some()
+        || state.document.as_ref().is_some_and(|d| {
+            d.items.iter().any(|item| {
+                matches!(item, plandoc::Item::Complex { json, .. } if json.get("polygon").and_then(Value::as_array).is_some_and(|p| p.len() < 3) || json.get("polyline").and_then(Value::as_array).is_some_and(|p| p.len() < 2) || json.get(crate::landingpattern::WIZARD).and_then(Value::as_bool) == Some(true))
+            })
         })
-    })
 }
 
 pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {

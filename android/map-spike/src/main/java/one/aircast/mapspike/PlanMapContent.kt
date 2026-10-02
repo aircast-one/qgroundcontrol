@@ -406,7 +406,10 @@ internal fun MapSpikeScreen(
             scope.launch {
                 val view = withContext(Dispatchers.Default) { freshPlanView() }
                 when (val step = uploadStep(uploadGate(view), notReadyToSend(view))) {
-                    is UploadStep.Refuse -> say(step.reason)
+                    is UploadStep.Refuse -> {
+                        nextNotReady(view)?.let { selected = MapHit.Waypoint(it) }
+                        say(step.reason)
+                    }
                     is UploadStep.Confirm -> uploadAsk = step.gate
                     UploadStep.Send -> sendPlan(scope, say = { busy = it }, done = { busy = null })
                 }

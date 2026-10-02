@@ -28,6 +28,9 @@ fun notReadyToSend(view: org.json.JSONObject?): String? =
         ?.takeIf { !it.optBoolean("ready") }
         ?.let { it.optText("reason").ifBlank { "The plan is not ready to send." } }
 
+fun nextNotReady(view: org.json.JSONObject?): Int? =
+    view?.optJSONObject("readiness")?.takeIf { !it.optBoolean("ready") }?.optInt("next", -1)?.takeIf { it > 0 }
+
 fun uploadGate(view: org.json.JSONObject?): UploadGate? =
     view?.optJSONObject("upload")?.let {
         UploadGate(

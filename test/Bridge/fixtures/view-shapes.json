@@ -472,6 +472,7 @@
         "view.plan.file",
         "view.plan.filePath",
         "view.plan.planningFor.home",
+        "view.plan.readiness.next",
         "view.plan.readiness.reason",
         "view.plan.unsupportedReason",
         "view.plan.vehicleChangePrompt",
@@ -4572,6 +4573,8 @@
         "view.plan.planningFor.firmware",
         "view.plan.planningFor.home",
         "view.plan.rallySupported",
+        "view.plan.readiness.items.#",
+        "view.plan.readiness.next",
         "view.plan.readiness.ready",
         "view.plan.readiness.reason",
         "view.plan.readiness.state",
@@ -9723,6 +9726,8 @@
         "view.plan.planningFor.type",
         "view.plan.planningFor.vtol",
         "view.plan.rallySupported",
+        "view.plan.readiness.items.#",
+        "view.plan.readiness.next",
         "view.plan.readiness.ready",
         "view.plan.readiness.reason",
         "view.plan.readiness.state",
@@ -14167,6 +14172,10 @@
         },
         "rallySupported": "bool",
         "readiness": {
+            "items": [
+                "empty"
+            ],
+            "next": "null",
             "ready": "bool",
             "reason": "null",
             "state": "number"
