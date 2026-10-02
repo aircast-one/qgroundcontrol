@@ -195,6 +195,7 @@ class SettingsViewTest {
     fun aGlanceJoinsTheSetValuesOnly() {
         org.junit.Assert.assertEquals("Bing · Hybrid", glanceText(listOf("Bing", "Hybrid")))
         org.junit.Assert.assertEquals("", glanceText(listOf("", " ")))
+        org.junit.Assert.assertEquals("Video stream disabled · Google · Satellite", glanceText(listOf("Video Stream Disabled", "Google", "Satellite")))
     }
 
     @Test

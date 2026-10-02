@@ -103,7 +103,7 @@ private val PAGE_GLANCES = mapOf(
     "Video" to listOf("settings.videoSettings.videoSource"),
 )
 
-internal fun glanceText(displays: List<String>): String = displays.filter { it.isNotBlank() }.joinToString(" · ")
+internal fun glanceText(displays: List<String>): String = displays.filter { it.isNotBlank() }.map(::sentenceCase).joinToString(" · ")
 
 @Composable
 private fun pageGlance(title: String): String {
