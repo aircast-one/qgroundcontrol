@@ -1,5 +1,5 @@
 use serde_json::{Value, json};
-use shapefile::{PolygonRing, Shape};
+use shapefile::Shape;
 
 use crate::router::Backend;
 
@@ -47,26 +47,21 @@ fn to_geo(projection: &Projection, x: f64, y: f64) -> (f64, f64) {
     }
 }
 
+const CLOSURE_METRES: f64 = 0.01;
+
 pub fn filtered(points: Vec<(f64, f64)>, closed: bool) -> Vec<(f64, f64)> {
-    let trimmed = match (closed, points.first().copied()) {
-        (true, Some(first)) => {
-            let mut keep = points.len();
-            while keep > 3 && metres_between(points[keep - 1], first) < VERTEX_FILTER_METRES {
-                keep -= 1;
-            }
-            points.into_iter().take(keep).collect::<Vec<_>>()
-        }
-        _ => points,
-    };
-    let Some((last, body)) = trimmed.split_last() else { return trimmed };
-    let mut kept: Vec<(f64, f64)> = body.iter().fold(Vec::new(), |mut kept, p| {
-        if kept.last().map(|k| metres_between(*k, *p) >= VERTEX_FILTER_METRES).unwrap_or(true) {
-            kept.push(*p);
-        }
-        kept
+    let minimum = if closed { 3 } else { 2 };
+    let total = points.len();
+    let closes = |kept: &[(f64, f64)]| kept.first().zip(kept.last()).is_some_and(|(first, last)| metres_between(*first, *last) < CLOSURE_METRES);
+    let explicit_closure = closed && closes(&points);
+    let kept = points.iter().enumerate().fold(Vec::new(), |kept: Vec<(f64, f64)>, (index, point)| match kept.last() {
+        Some(last) if kept.len() + (total - index) > minimum && metres_between(*last, *point) < VERTEX_FILTER_METRES => kept,
+        _ => kept.into_iter().chain(std::iter::once(*point)).collect(),
     });
-    kept.push(*last);
-    kept
+    match explicit_closure && kept.len() > 3 && closes(&kept) {
+        true => kept[..kept.len() - 1].to_vec(),
+        false => kept,
+    }
 }
 
 pub fn parse(shp_path: &str) -> Result<(String, usize, Vec<(f64, f64)>), String> {
@@ -81,18 +76,13 @@ pub fn parse(shp_path: &str) -> Result<(String, usize, Vec<(f64, f64)>), String>
     let Some(first) = shapes.into_iter().next() else { return Err("Failed to read polygon object.".to_string()) };
     match first {
         Shape::Polygon(polygon) => {
-            let rings: Vec<&PolygonRing<shapefile::Point>> = polygon.rings().iter().collect();
-            if rings.len() != 1 {
-                return Err("Only single part polygons are supported.".to_string());
-            }
-            let points: Vec<(f64, f64)> = rings[0].points().iter().map(|p| to_geo(&projection, p.x, p.y)).collect();
+            let Some(outer) = polygon.rings().first() else { return Err("Failed to read polygon object.".to_string()) };
+            let points: Vec<(f64, f64)> = outer.points().iter().map(|p| to_geo(&projection, p.x, p.y)).collect();
             Ok(("polygon".to_string(), entities, filtered(points, true)))
         }
         Shape::Polyline(line) => {
-            if line.parts().len() != 1 {
-                return Err("Only single part polylines are supported.".to_string());
-            }
-            let points: Vec<(f64, f64)> = line.parts()[0].iter().map(|p| to_geo(&projection, p.x, p.y)).collect();
+            let Some(first_part) = line.parts().first() else { return Err("Failed to read polyline object.".to_string()) };
+            let points: Vec<(f64, f64)> = first_part.iter().map(|p| to_geo(&projection, p.x, p.y)).collect();
             Ok(("polyline".to_string(), entities, filtered(points, false)))
         }
         _ => Err("No supported types found.".to_string()),
@@ -154,7 +144,8 @@ mod tests {
         let near = (47.00001, 8.0);
         let far = (47.001, 8.0);
         let farther = (47.002, 8.0);
-        assert_eq!(filtered(vec![base, near, far, farther, near], true), vec![base, far, farther]);
+        assert_eq!(filtered(vec![base, near, far, farther, near], true), vec![base, far, farther, near], "SHPFileHelper drops only consecutive close vertices, not a distinct last one near the first");
+        assert_eq!(filtered(vec![base, far, farther, (47.0015, 8.001), base], true), vec![base, far, farther, (47.0015, 8.001)], "an exact closing vertex is removed");
         assert_eq!(filtered(vec![base, near, far], false), vec![base, far]);
     }
 }
