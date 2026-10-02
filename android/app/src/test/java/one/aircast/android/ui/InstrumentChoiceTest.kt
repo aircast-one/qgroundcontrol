@@ -8,6 +8,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstrumentChoiceTest {
+    @Test
+    fun `the tiles already shown lead the sheet in their own order and leave their groups`() {
+        val alt = InstrumentFact("alt", "Altitude", "a.alt")
+        val speed = InstrumentFact("speed", "Speed", "a.speed")
+        val roll = InstrumentFact("roll", "Roll", "v.roll")
+        val groups = listOf(InstrumentGroup("vehicle", "Vehicle", listOf(roll)), InstrumentGroup("air", "Air", listOf(alt, speed)))
+
+        assertEquals(
+            listOf("Shown" to listOf("Speed", "Altitude"), "Vehicle" to listOf("Roll")),
+            shownFirst(groups, listOf("a.speed", "a.alt")).map { it.title to it.facts.map(InstrumentFact::label) },
+        )
+        assertEquals(listOf("Vehicle", "Air"), shownFirst(groups, emptyList()).map { it.title })
+    }
+
 
     private val served = JSONObject(
         """

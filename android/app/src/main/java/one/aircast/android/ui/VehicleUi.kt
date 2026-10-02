@@ -945,6 +945,7 @@ private fun InstrumentSheet(
     onDismiss: () -> Unit,
 ) {
     var groups by remember { mutableStateOf(emptyList<InstrumentGroup>()) }
+    val shownAtOpen = remember { chosen }
     val connected = hasVehicle()
     LaunchedEffect(connected) {
         groups = withContext(Dispatchers.Default) {
@@ -961,7 +962,7 @@ private fun InstrumentSheet(
             return@ModalBottomSheet
         }
         LazyColumn(Modifier.fillMaxWidth()) {
-            groups.forEach { group ->
+            shownFirst(groups, shownAtOpen).forEach { group ->
                 item(key = "head${group.group}") { SectionHeader(group.title) }
                 items(group.facts, key = { it.path }) { fact ->
                     val picked = fact.path in chosen

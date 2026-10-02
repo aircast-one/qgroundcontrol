@@ -127,3 +127,12 @@ internal fun readValueSize(context: Context): ValueSize =
 internal fun writeValueSize(context: Context, size: ValueSize) {
     context.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().putInt(VALUE_SIZE_KEY, size.ordinal).apply()
 }
+
+internal fun shownFirst(groups: List<InstrumentGroup>, shown: List<String>): List<InstrumentGroup> {
+    val all = groups.flatMap { it.facts }
+    val picked = InstrumentGroup(SHOWN_GROUP, "Shown", shown.mapNotNull { path -> all.firstOrNull { it.path == path } })
+    return (listOf(picked) + groups.map { group -> group.copy(facts = group.facts.filterNot { it.path in shown }) })
+        .filter { it.facts.isNotEmpty() }
+}
+
+private const val SHOWN_GROUP = "shown"
