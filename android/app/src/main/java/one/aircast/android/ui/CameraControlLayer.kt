@@ -1,5 +1,9 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -205,6 +209,18 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+private fun SheetRadioRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().selectable(selected = selected, role = Role.RadioButton, onClick = onClick).heightIn(min = 56.dp).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CameraDetailsSheet(
@@ -219,12 +235,12 @@ private fun CameraDetailsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text(
             camera.title.ifBlank { "Camera" },
-            Modifier.padding(horizontal = 20.dp),
-            style = MaterialTheme.typography.titleSmall,
+            Modifier.padding(horizontal = 16.dp),
+            style = MaterialTheme.typography.titleLarge,
         )
         cameraDetails(camera).forEach { (label, reading) ->
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(label, style = MaterialTheme.typography.bodyMedium)
@@ -232,48 +248,27 @@ private fun CameraDetailsSheet(
             }
         }
         if (camera.labels.size > 1) {
-            Text(
-                "Cameras",
-                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.titleSmall,
-            )
+            SectionHeader("Cameras")
             camera.labels.forEachIndexed { index, label ->
-                FilterChip(
-                    selected = index == current,
-                    onClick = { onSelect(index) },
-                    label = { Text(label) },
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                )
+                SheetRadioRow(label, index == current) { onSelect(index) }
             }
         }
         if (camera.streamLabels.size > 1) {
-            Text(
-                "Video Stream",
-                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.titleSmall,
-            )
+            SectionHeader("Video Stream")
             camera.streamLabels.forEachIndexed { index, label ->
-                FilterChip(
-                    selected = index == camera.currentStream,
-                    onClick = { offMainDetached { Qgc.set(CAMERA_CURRENT_STREAM, index) } },
-                    label = { Text(label) },
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                )
+                SheetRadioRow(label, index == camera.currentStream) { offMainDetached { Qgc.set(CAMERA_CURRENT_STREAM, index) } }
             }
         }
         if (camera.canPhoto) {
-            Text(
-                "Photo Mode",
-                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.titleSmall,
-            )
-            listOf("Single" to false, "Time Lapse" to true).forEachIndexed { index, (label, lapse) ->
-                FilterChip(
-                    selected = camera.timelapse == lapse,
-                    onClick = { offMainDetached { Qgc.set(CAMERA_PHOTO_MODE, index) } },
-                    label = { Text(label) },
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                )
+            SectionHeader("Photo Mode")
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Single" to false, "Time Lapse" to true).forEachIndexed { index, (label, lapse) ->
+                    FilterChip(
+                        selected = camera.timelapse == lapse,
+                        onClick = { offMainDetached { Qgc.set(CAMERA_PHOTO_MODE, index) } },
+                        label = { Text(label) },
+                    )
+                }
             }
             if (camera.timelapse) {
                 var interval by remember(camera.lapseSeconds) {
@@ -312,27 +307,14 @@ private fun CameraDetailsSheet(
         }
 
         thermal?.let { thermal ->
-            Text(
-                "Thermal View Mode",
-                Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.titleSmall,
-            )
+            SectionHeader("Thermal View Mode")
             THERMAL_MODES.forEach { token ->
-                FilterChip(
-                    selected = token == thermal.mode,
-                    onClick = {
-                        offMainDetached { Qgc.set(CAMERA_THERMAL_MODE, THERMAL_MODES.indexOf(token)) }
-                    },
-                    label = { Text(thermalModeLabel(token)) },
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                )
+                SheetRadioRow(thermalModeLabel(token), token == thermal.mode) {
+                    offMainDetached { Qgc.set(CAMERA_THERMAL_MODE, THERMAL_MODES.indexOf(token)) }
+                }
             }
             if (thermalOpacityIsOffered(thermal)) {
-                Text(
-                    "Blend Opacity",
-                    Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.titleSmall,
-                )
+                SectionHeader("Blend Opacity")
                 var typed by remember(thermal.opacity) {
                     mutableFloatStateOf((thermal.opacity ?: 0.0).toFloat())
                 }
