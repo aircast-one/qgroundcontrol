@@ -1149,7 +1149,10 @@ impl<B: Backend> Facade<B> {
             "deselectAllVehicles" => crate::hub::lock().set_selected(Vec::new()),
             _ => return None,
         }
-        Some(self.0.invoke(path, args))
+        Some(match crate::qthost::present() {
+            true => self.0.invoke(path, args),
+            false => json!({ "ok": true }).to_string(),
+        })
     }
 
     fn onboard_log_invoke(&self, path: &str, args: &str) -> Option<String> {

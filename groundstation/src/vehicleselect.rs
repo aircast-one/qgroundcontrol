@@ -53,11 +53,8 @@ pub fn fleet_target(path: &str) -> Option<(usize, FleetCommand)> {
 fn fleet_refusal(command: FleetCommand, vehicle: &Value, pause_supported: bool) -> Option<(&'static str, &'static str)> {
     match command {
         _ if vehicle.get("kind").and_then(Value::as_str) != Some("object") => Some(("noSuchVehicle", "No vehicle is selected at that position.")),
-        _ if !flag(vehicle, "armed") => Some(("disarmed", "That vehicle is not armed.")),
+        FleetCommand::StartMission if !flag(vehicle, "armed") => Some(("disarmed", "That vehicle is not armed.")),
         FleetCommand::Pause if !pause_supported => Some(("unsupported", "That vehicle does not support being paused.")),
-        FleetCommand::StartMission if vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("missionFlightMode") => {
-            Some(("alreadyOnMission", "That vehicle is already flying its mission."))
-        }
         _ => None,
     }
 }
@@ -66,14 +63,39 @@ pub fn fleet_command(backend: &dyn Backend, path: &str) -> Value {
     let Some((index, command)) = fleet_target(path) else {
         return json!({ "ok": false, "refusal": "malformed", "reason": "That is not a fleet command the core sends." });
     };
-    let vehicle = object(&backend.get_fields(&format!("{FLEET_SELECTION}{index}"), "id,armed,flightMode,missionFlightMode"));
+    let vehicle = object(&backend.get_fields(&format!("{FLEET_SELECTION}{index}"), "id,armed,flying"));
     let pause_supported = flag(&object(&backend.get_fields(&format!("{FLEET_SELECTION}{index}.supports"), "pauseVehicle")), "pauseVehicle");
     let id = integer(&vehicle, "id");
     if let Some((token, reason)) = fleet_refusal(command, &vehicle, pause_supported) {
         return json!({ "ok": false, "refusal": token, "reason": reason, "vehicle": id });
     }
-    let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
-    json!({ "ok": dispatched, "refusal": Value::Null, "vehicle": id, "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the command.") } })
+    let core = match command {
+        FleetCommand::Pause => json!({ "action": "pause" }),
+        FleetCommand::StartMission => json!({ "action": "startMission", "flying": flag(&vehicle, "flying") }),
+    };
+    let answer = crate::guided::dispatch(backend, Some(core), id, path, "[]");
+    let dispatched = flag(&answer, "ok");
+    json!({ "ok": dispatched, "refusal": Value::Null, "vehicle": id, "reason": match dispatched { true => Value::Null, false => answer.get("reason").cloned().unwrap_or_else(|| json!("The vehicle was not sent the command.")) } })
+}
+
+pub fn fleet_arm_index(path: &str) -> Option<usize> {
+    path.strip_prefix(FLEET_SELECTION)?.strip_suffix(".armed")?.parse().ok()
+}
+
+pub fn fleet_arm(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let Some(index) = fleet_arm_index(path) else {
+        return json!({ "ok": false, "refusal": "malformed", "reason": "That is not a fleet arm the core sends." });
+    };
+    let arm = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(|v| v.as_bool().or_else(|| v.as_str().map(|t| t == "true")))).unwrap_or(false);
+    let id = integer(&object(&backend.get_fields(&format!("{FLEET_SELECTION}{index}"), "id")), "id");
+    let Some(id) = id else {
+        return json!({ "ok": false, "refusal": "noSuchVehicle", "reason": "No vehicle is selected at that position." });
+    };
+    match backend.core_guided(&json!({ "action": "arm", "arm": arm, "vehicle": id })) {
+        Some(Ok(())) => json!({ "ok": true, "vehicle": id }),
+        Some(Err(reason)) => json!({ "ok": false, "vehicle": id, "reason": reason }),
+        None => object(&backend.set(path, value)),
+    }
 }
 
 #[cfg(test)]
@@ -124,7 +146,9 @@ mod tests {
         assert_eq!(fleet_refusal(FleetCommand::Pause, &flying, false).map(|r| r.0), Some("unsupported"));
         assert_eq!(fleet_refusal(FleetCommand::StartMission, &flying, true), None);
         let on_mission = json!({ "kind": "object", "armed": true, "flightMode": "Mission", "missionFlightMode": "Mission" });
-        assert_eq!(fleet_refusal(FleetCommand::StartMission, &on_mission, true).map(|r| r.0), Some("alreadyOnMission"));
+        assert_eq!(fleet_refusal(FleetCommand::StartMission, &on_mission, true), None, "actionMVStartMission starts every armed vehicle, even one already on its mission");
+        assert_eq!(fleet_refusal(FleetCommand::Pause, &json!({ "kind": "object", "armed": false }), true), None, "actionMVPause pauses every selected vehicle");
+        assert_eq!(fleet_arm_index("vehicles.selectedVehicles.2.armed"), Some(2));
         assert_eq!(fleet_refusal(FleetCommand::StartMission, &json!({ "kind": "object", "armed": false }), true).map(|r| r.0), Some("disarmed"));
         assert_eq!(fleet_refusal(FleetCommand::Pause, &json!({ "kind": "null" }), true).map(|r| r.0), Some("noSuchVehicle"), "a vehicle dropping off renumbers the selection");
 

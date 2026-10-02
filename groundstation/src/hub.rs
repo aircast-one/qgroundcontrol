@@ -3559,6 +3559,7 @@ impl Hub {
                 if origin.v2 {
                     vehicle.max_proto_version = Some(PROTO_MAVLINK2);
                 }
+                bytes.extend(crate::gcsheartbeat::wanted().then(|| crate::mavout::encode_next(&crate::mavout::Outbound::GcsHeartbeat)).flatten());
                 bytes.extend(vehicle.begin_connect(now_ms));
                 if header.system_id == crate::mavout::gcs_system() {
                     crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, &format!("Warning: A vehicle is using the same system id as {}: {}", crate::noticeboard::application_name(), header.system_id));
@@ -4989,6 +4990,8 @@ mod tests {
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         let mut hub = Hub::default();
         let first = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(5, false), 1_000_000, 1_000);
+        assert!(matches!(decode(&first[0].1), MavMessage::HEARTBEAT(h) if h.mavtype as u8 == 6), "MultiVehicleManager sends a GCS heartbeat the moment a vehicle appears");
+        let first = first[1..].to_vec();
         assert_eq!(request_of(&first[0].1), (512, 148.0), "the first thing asked of a new vehicle is its autopilot version");
         let streams: Vec<(u8, u16)> = first.iter().filter_map(|(_, b)| match decode(b) { MavMessage::REQUEST_DATA_STREAM(r) => Some((r.req_stream_id, r.req_message_rate)), _ => None }).collect();
         assert_eq!(streams, [(1, 2), (2, 2), (3, 2), (6, 3), (10, 10), (11, 10), (12, 3)], "APMFirmwarePlugin::initializeStreamRates asks for every stream at its default rate");

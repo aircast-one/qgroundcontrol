@@ -8,7 +8,7 @@ pub fn due(last: Option<u64>, now_ms: u64) -> bool {
     last.is_none_or(|last| now_ms.saturating_sub(last) >= PERIOD_MS)
 }
 
-fn wanted() -> bool {
+pub fn wanted() -> bool {
     crate::settingsstore::raw_setting("settings.mavlinkSettings.sendGCSHeartbeat").and_then(|v| v.as_bool()).unwrap_or(true)
 }
 

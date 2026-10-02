@@ -132,7 +132,7 @@ pub fn owns(path: &str) -> bool {
 pub const OWNED_WRITES: &[&str] = &[ZOOM, CURRENT_CAMERA, TRANSMITTER_MODE, CENTERED_THROTTLE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED, BREACH_ALTITUDE];
 
 pub fn owns_write(path: &str) -> bool {
-    OWNED_WRITES.contains(&path) || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some() || crate::fenceedit::owns_member_write(path) || crate::vehicleconfig::owns(path)
+    OWNED_WRITES.contains(&path) || crate::vehicleselect::fleet_arm_index(path).is_some() || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some() || crate::fenceedit::owns_member_write(path) || crate::vehicleconfig::owns(path)
 }
 
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -143,6 +143,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         CENTERED_THROTTLE => crate::radio::write_centered_throttle(backend, path, value),
         BREACH_ALTITUDE => crate::factwrite::write(backend, path, value),
         INSPECTOR_SELECTED => crate::inspector::write_selected(backend, value),
+        _ if crate::vehicleselect::fleet_arm_index(path).is_some() => crate::vehicleselect::fleet_arm(backend, path, value),
         _ if crate::logs::selection_index(path).is_some() => crate::logs::write_selected(backend, path, value),
         _ if crate::itemposition::owns(path) => crate::itemposition::write(backend, path, value),
         _ if crate::commandtree::command_target(path).is_some() => crate::commandtree::write_command(backend, path, value),
