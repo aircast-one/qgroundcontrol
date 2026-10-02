@@ -1588,10 +1588,10 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                     let moved_home = Document { home: Some([latitude, longitude, current.home.map_or(0.0, |h| h[2])]), ..current.clone() };
                     let moved_item = |doc: &Document| plandoc::set_param(doc, index, 5, latitude).and_then(|moved| plandoc::set_param(&moved, index, 6, longitude)).ok_or_else(|| format!("Item {index} has no position to move."));
                     let same_location = launch_at_takeoff(&current, index);
+                    let transition_distance = crate::read::value_number(&backend.get("settings.planViewSettings.vtolTransitionDistance.rawValue")).unwrap_or(plandoc::VTOL_TRANSITION_DISTANCE_DEFAULT);
                     match (index, property) {
                         (0, _) => Ok(moved_home),
-                        (_, "launchCoordinate") if same_location => moved_item(&moved_home),
-                        (_, "launchCoordinate") => Ok(moved_home),
+                        (_, "launchCoordinate") => plandoc::set_launch(&current, index, latitude, longitude, same_location, transition_distance).ok_or_else(|| format!("Item {index} is not a takeoff.")),
                         (_, _) if same_location => moved_item(&moved_home),
                         _ => moved_item(&current),
                     }

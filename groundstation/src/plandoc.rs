@@ -512,6 +512,24 @@ pub fn insert_takeoff(doc: &Document, visual_index: i64, defaults: &EditDefaults
     Ok(Document { items: inserted.items.iter().enumerate().map(|(i, item)| if i == at { launched(item) } else { item.clone() }).collect(), ..inserted })
 }
 
+pub fn set_launch(doc: &Document, visual_index: usize, latitude: f64, longitude: f64, same_location: bool, transition_distance: f64) -> Option<Document> {
+    let (at, takeoff) = simple_at(doc, visual_index)?;
+    let moved = Document { home: Some([latitude, longitude, doc.home.map_or(0.0, |h| h[2])]), ..doc.clone() };
+    if takeoff.params[4].zip(takeoff.params[5]).is_some() {
+        return Some(moved);
+    }
+    let distance = match vehicle_class(doc.vehicle_type) {
+        VehicleClass::FixedWing => climb_out_distance(takeoff.params[6].unwrap_or(0.0), doc.global_altitude_mode != crate::altitudemodes::ABSOLUTE, transition_distance),
+        _ => transition_distance,
+    };
+    let point = match same_location {
+        true => (latitude, longitude),
+        false => crate::surveygrid::at_distance_and_azimuth((latitude, longitude), distance, 0.0),
+    };
+    let params = [takeoff.params[0], takeoff.params[1], takeoff.params[2], takeoff.params[3], Some(point.0), Some(point.1), takeoff.params[6]];
+    Some(replaced(&moved, at, Simple { params, ..takeoff.clone() }))
+}
+
 pub fn set_global_altitude_mode(doc: &Document, mode: i64) -> Document {
     Document { global_altitude_mode: mode, ..doc.clone() }
 }
@@ -1198,6 +1216,19 @@ mod tests {
         let at = (takeoff.params[4].unwrap(), takeoff.params[5].unwrap());
         assert!((crate::surveygrid::distance_between((home[0], home[1]), at) - VTOL_TRANSITION_DISTANCE_DEFAULT).abs() < 0.5, "a VTOL takes off the transition distance north of launch");
         assert_eq!(takeoff.command, CMD_NAV_VTOL_TAKEOFF, "insertTakeoffItem sends MAV_CMD_NAV_VTOL_TAKEOFF for a VTOL; command 22 is a fixed-wing takeoff on a QuadPlane");
+    }
+
+    #[test]
+    fn moving_the_launch_moves_home_and_places_only_an_unplaced_takeoff() {
+        let placed = insert_takeoff(&remove(&section(), 1).unwrap(), 1, &QT_DEFAULTS).unwrap();
+        let Item::Simple(takeoff) = &placed.items[0] else { panic!("takeoff") };
+        let moved = set_launch(&placed, 1, 47.5, 8.5, true, 300.0).unwrap();
+        assert_eq!((moved.home.map(|h| (h[0], h[1])), &moved.items[0]), (Some((47.5, 8.5)), &placed.items[0]), "TakeoffMissionItem::_setLaunchCoordinate leaves a valid takeoff where it is");
+        let unplaced = replaced(&placed, 0, Simple { params: [takeoff.params[0], takeoff.params[1], takeoff.params[2], takeoff.params[3], None, None, takeoff.params[6]], ..takeoff.clone() });
+        let Item::Simple(together) = &set_launch(&unplaced, 1, 47.5, 8.5, true, 300.0).unwrap().items[0] else { panic!("takeoff") };
+        assert_eq!((together.params[4], together.params[5]), (Some(47.5), Some(8.5)));
+        let Item::Simple(apart) = &set_launch(&unplaced, 1, 47.5, 8.5, false, 300.0).unwrap().items[0] else { panic!("takeoff") };
+        assert!((crate::surveygrid::distance_between((47.5, 8.5), (apart.params[4].unwrap(), apart.params[5].unwrap())) - 300.0).abs() < 0.5);
     }
 
     #[test]
