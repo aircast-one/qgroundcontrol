@@ -549,6 +549,7 @@ fn valued_check(kind: Valued, args: &Value, s: &GuidedState, takeoff: Option<(f6
     let malformed = |what: &str| Err(("malformed", what.to_string()));
     match kind {
         Valued::Pause => Ok((vec![Action::Pause], "[]".to_string())),
+        Valued::Takeoff if !s.takeoff_with_altitude => Ok((vec![Action::Takeoff], "[]".to_string())),
         Valued::Takeoff => {
             let Some(metres) = number(0) else { return malformed("Takeoff needs a height in metres.") };
             let Some((lo, hi)) = takeoff else { return Err(("noRange", "The takeoff height range is not known yet.".to_string())) };
@@ -634,8 +635,10 @@ mod tests {
 
     #[test]
     fn a_guided_value_is_checked_against_the_range_its_view_served() {
-        let s = GuidedState { resume_from_sequence: 7, ..GuidedState::default() };
+        let s = GuidedState { resume_from_sequence: 7, takeoff_with_altitude: true, ..GuidedState::default() };
         let check = |kind, args: Value| valued_check(kind, &args, &s, Some((3.0, 120.0)), Some((40.0, 10.0, 120.0)));
+        let plane = GuidedState { takeoff_with_altitude: false, ..s.clone() };
+        assert_eq!(valued_check(Valued::Takeoff, &json!([]), &plane, None, None), Ok((vec![Action::Takeoff], "[]".to_string())), "GuidedActionsController calls startTakeoff() with no height when guidedTakeoffWithAltitude is false, and needs no range for it");
         assert_eq!(check(Valued::Takeoff, json!([30.0])), Ok((vec![Action::Takeoff], "[30.0]".to_string())));
         assert_eq!(check(Valued::Takeoff, json!([500.0])).map_err(|e| e.0), Err("outOfRange"), "guidedModeTakeoff sends whatever height it is given, and 500 m is past the operator's own guided maximum");
         assert_eq!(check(Valued::Takeoff, json!([])).map_err(|e| e.0), Err("malformed"));

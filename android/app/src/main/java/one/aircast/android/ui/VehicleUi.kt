@@ -437,6 +437,17 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 }
             }.takeIf { armAction?.shown == true },
             DeckEntry("takeoff", offers["takeoff"]?.title ?: "Takeoff", R.drawable.ic_flight_takeoff, offers["takeoff"]?.ready == true) {
+                if (offers["takeoff"]?.carriesValue == false) {
+                    pending = GuidedAction(
+                        offerId = "takeoff",
+                        name = offers["takeoff"]?.title ?: "Takeoff",
+                        confirm = offers["takeoff"]?.prompt?.ifBlank { null } ?: "Takeoff from ground and hold position.",
+                        destructive = false,
+                    ) {
+                        offMainDetached { Qgc.invoke("vehicle.guidedModeTakeoff") }
+                    }
+                    return@DeckEntry
+                }
                 scope.launch {
                     val fresh = withContext(Dispatchers.Default) {
                         guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))
