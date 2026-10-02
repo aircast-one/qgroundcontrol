@@ -121,8 +121,33 @@ fn with_choices(backend: &dyn Backend, fact: &Value) -> Value {
             let rates: Vec<i64> = listed.into_iter().chain(current).collect();
             choices_json(fact, rates.iter().map(i64::to_string).collect(), rates.iter().map(|r| json!(r)).collect())
         }
+        Some("appFontPointSize") => ui_scaling(fact),
         _ => fact.clone(),
     }
+}
+
+const SCALE_PERCENTS: [u32; 8] = [80, 90, 100, 110, 125, 150, 175, 200];
+const PLATFORM_FONT_POINT_SIZE: f64 = 14.0;
+
+fn point_size_for(percent: u32) -> i64 {
+    (PLATFORM_FONT_POINT_SIZE * f64::from(percent) / 100.0).round() as i64
+}
+
+pub fn scaled_point_size(index: usize) -> Option<i64> {
+    SCALE_PERCENTS.get(index).map(|percent| point_size_for(*percent))
+}
+
+pub fn nearest_scale_index(point_size: f64) -> usize {
+    let current = if point_size > 0.0 { point_size / PLATFORM_FONT_POINT_SIZE * 100.0 } else { 100.0 };
+    SCALE_PERCENTS.iter().enumerate().min_by(|(_, a), (_, b)| (f64::from(**a) - current).abs().total_cmp(&(f64::from(**b) - current).abs())).map_or(2, |(i, _)| i)
+}
+
+fn ui_scaling(fact: &Value) -> Value {
+    let mut chosen = choices_json(fact, SCALE_PERCENTS.iter().map(|p| format!("{p}%")).collect(), SCALE_PERCENTS.iter().map(|p| json!(point_size_for(*p))).collect());
+    chosen["enumIndex"] = json!(nearest_scale_index(fact.get("value").and_then(Value::as_f64).unwrap_or(0.0)));
+    chosen["label"] = json!("UI Scaling");
+    chosen["units"] = json!("");
+    chosen
 }
 
 const CHECKLIST_OFF: &str = "Has no effect while the preflight checklist is off.";
@@ -468,6 +493,16 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_font_size_is_offered_as_qgcs_ui_scaling_percentages() {
+        use serde_json::json;
+        let shown = super::ui_scaling(&json!({ "name": "appFontPointSize", "value": 0, "label": "Application font size", "units": "pt" }));
+        assert_eq!((shown["label"].clone(), shown["enumIndex"].clone()), (json!("UI Scaling"), json!(2)), "an unset size is the platform size, 100%");
+        assert_eq!(shown["enumValues"], json!([11, 13, 14, 15, 18, 21, 25, 28]), "Math.round(platform * percent / 100) with the 14 pt base");
+        assert_eq!(super::nearest_scale_index(20.0), 5, "a stored 20 pt is closest to 150%");
+        assert_eq!((super::scaled_point_size(7), super::scaled_point_size(8)), (Some(28), None));
+    }
+
     #[test]
     fn every_row_the_general_fly_and_video_pages_show_has_a_heading() {
         let groups = [

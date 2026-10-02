@@ -715,6 +715,7 @@ pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
     let raw_given = match (at.field.as_deref(), unit_for(&at.meta), given.as_f64()) {
         (None | Some("value"), Some(u), Some(n)) => json!((u.base)(n)),
         (None | Some("value" | "rawValue"), _, _) => given,
+        (Some("enumIndex"), _, _) if at.fact == "appFontPointSize" => json!(crate::settings::scaled_point_size(usize::try_from(given.as_i64()?).ok()?)?),
         (Some("enumIndex"), _, _) => enum_index_raw(&at.meta, &given)?,
         _ => return None,
     };
