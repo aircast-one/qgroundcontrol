@@ -156,11 +156,25 @@ fn download_status(set: &TileSet, totals: &Totals) -> String {
     }
 }
 
+fn row_text(status: &str, tiles: i64) -> String {
+    match tiles > 0 {
+        true => format!("{status} ({tiles} tiles)"),
+        false => status.to_string(),
+    }
+}
+
+fn free_name(wanted: &str, taken: &[String]) -> String {
+    std::iter::once(wanted.to_string()).chain((1..).map(|i| format!("{wanted} ({i})"))).find(|name| !taken.contains(name)).unwrap_or_default()
+}
+
 fn set_json(cache: &Cache, set: &TileSet) -> Option<Value> {
     let totals = totals(cache, set).ok()?;
     Some(json!({
         "id": set.id,
-        "name": if set.default_set { "System Wide Tile Cache".to_string() } else { set.name.clone() },
+        "name": set.name,
+        "subtitle": if set.default_set { "System Wide Tile Cache" } else { "" },
+        "rowText": row_text(&download_status(set, &totals), if set.default_set { totals.saved_count } else { set.tiles }),
+        "canDelete": totals.saved_size > 0,
         "mapTypeStr": set.type_str,
         "defaultSet": set.default_set,
         "zoomText": format!("{} - {}", set.min_zoom, set.max_zoom),
@@ -432,10 +446,10 @@ pub fn run(path: &str, args: &str) -> Value {
                 return Err("The system wide tile cache keeps its name.".to_string());
             }
             let name = serde_json::from_str::<Value>(args).ok().and_then(|args| args.get(1)?.as_str().map(str::trim).map(str::to_string)).unwrap_or_default();
-            match (name.is_empty(), cache.sets().map_err(|error| error.to_string())?.iter().any(|other| other.name == name && other.id != set.id)) {
-                (true, _) => Err("The tile set needs a name.".to_string()),
-                (false, true) => Err("Tile set with this name already exists".to_string()),
-                (false, false) => cache.rename_set(set.id, &name).map_err(|error| error.to_string()),
+            let taken: Vec<String> = cache.sets().map_err(|error| error.to_string())?.into_iter().filter(|other| other.id != set.id).map(|other| other.name).collect();
+            match name.is_empty() {
+                true => Err("The tile set needs a name.".to_string()),
+                false => cache.rename_set(set.id, &free_name(&name, &taken)).map_err(|error| error.to_string()),
             }
         }),
         _ => json!({ "ok": false, "reason": format!("{path} is not an offline map action") }),

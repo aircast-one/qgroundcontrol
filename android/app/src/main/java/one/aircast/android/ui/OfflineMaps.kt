@@ -91,6 +91,9 @@ internal data class OfflineSet(
     val downloadStatus: String,
     val downloading: Boolean,
     val complete: Boolean,
+    val subtitle: String = "",
+    val rowText: String = "",
+    val canDelete: Boolean = true,
 )
 
 internal data class OfflineEstimate(val tileCountText: String, val tileSizeText: String, val tooMany: Boolean)
@@ -135,6 +138,9 @@ internal fun offlineMaps(view: JSONObject?): OfflineMaps? =
                         downloadStatus = set.optText("downloadStatus"),
                         downloading = set.optBoolean("downloading"),
                         complete = set.optBoolean("complete"),
+                        subtitle = set.optText("subtitle"),
+                        rowText = set.optText("rowText"),
+                        canDelete = set.optBoolean("canDelete"),
                     )
                 }
             },
@@ -205,7 +211,7 @@ fun OfflineMapsSection() {
                 Text(set.name, modifier = Modifier.weight(1f))
                 if (set.downloading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                 if (set.errorCount > 0) Text(set.errorCountText, color = MaterialTheme.aircast.alert)
-                Text(set.downloadStatus, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(set.rowText, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             HorizontalDivider()
         }
@@ -293,6 +299,7 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (set.defaultSet) {
+                    Text(set.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     InfoLine("Size:", set.sizeText)
                     InfoLine("Tile Count:", set.tileCountText)
                 } else {
@@ -314,7 +321,7 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (
                 if (!set.defaultSet && set.downloading) {
                     TextButton(onClick = { onAction(OFFLINE_CANCEL) }) { Text("Cancel Download") }
                 }
-                TextButton(onClick = { confirming = true }) { Text("Delete") }
+                TextButton(onClick = { confirming = true }, enabled = set.canDelete) { Text("Delete") }
                 if (!set.defaultSet) {
                     TextButton(enabled = typedName.isNotBlank(), onClick = {
                         renameWanted(set.name, typedName)?.let(onRename)

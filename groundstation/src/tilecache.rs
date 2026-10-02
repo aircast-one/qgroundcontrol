@@ -229,6 +229,14 @@ impl Cache {
     }
 
     pub fn prune(&self, free_bytes: i64) -> rusqlite::Result<i64> {
+        let (deleted, left) = self.prune_batch(free_bytes)?;
+        match deleted > 0 && left > 0 {
+            true => Ok(deleted + self.prune(left)?),
+            false => Ok(deleted),
+        }
+    }
+
+    fn prune_batch(&self, free_bytes: i64) -> rusqlite::Result<(i64, i64)> {
         let mut statement = self.connection.prepare(
             "SELECT tileID, size FROM Tiles WHERE tileID IN (SELECT A.tileID FROM SetTiles A join SetTiles B on A.tileID = B.tileID WHERE B.setID = ?1 GROUP by A.tileID HAVING COUNT(A.tileID) = 1) ORDER BY date ASC LIMIT 128",
         )?;
@@ -240,14 +248,15 @@ impl Cache {
                 *remaining -= size;
                 Some((*id, owed))
             })
-            .take_while(|(_, owed)| *owed >= 0)
+            .take_while(|(_, owed)| *owed > 0)
             .map(|(id, _)| id)
             .collect();
+        let freed: i64 = aged.iter().filter(|(id, _)| doomed.contains(id)).map(|(_, size)| size).sum();
         doomed.iter().try_for_each(|id| {
             self.connection.execute("DELETE FROM SetTiles WHERE tileID = ?1", params![id])?;
             self.connection.execute("DELETE FROM Tiles WHERE tileID = ?1", params![id]).map(|_| ())
         })?;
-        Ok(doomed.len() as i64)
+        Ok((doomed.len() as i64, free_bytes - freed))
     }
 
     pub fn create_set(&self, set: &TileSet, tiles: &[(i32, i32, i32)]) -> rusqlite::Result<i64> {
@@ -690,13 +699,15 @@ mod tests {
         let cache = Cache::open_in_memory().unwrap();
         assert_eq!(cache.prune(5000).unwrap(), 0);
         let (full, _) = aged_cache(2);
-        assert_eq!(full.prune(0).unwrap(), 1, "a debt of nothing still takes one tile, which is what the Qt worker does rather than looping forever on a full cache");
+        assert_eq!(full.prune(0).unwrap(), 0, "QGCTileCacheDatabase::pruneCache stops once nothing is owed");
     }
 
     #[test]
-    fn pruning_takes_no_more_than_a_batch_at_a_time() {
+    fn pruning_loops_batches_until_the_debt_is_paid_and_stops_on_an_exact_hit() {
         let (cache, _) = aged_cache(200);
-        assert_eq!(cache.prune(1_000_000).unwrap(), 128, "the Qt worker prunes a hundred and twenty eight at a time and is called again, rather than holding a write lock over the whole cache");
+        assert_eq!(cache.prune(1_000_000).unwrap(), 200, "batches of 128 repeat until the overage is gone");
+        let (exact, _) = aged_cache(5);
+        assert_eq!(exact.prune(2000).unwrap(), 2, "two 1000-byte tiles pay 2000 exactly, so a third is not taken");
     }
 }
 
