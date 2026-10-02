@@ -22,6 +22,16 @@ data class ProfilePoint(
     val distance: Double,
     val terrain: Double?,
     val planned: Double,
+    val collision: Boolean = false,
+)
+
+data class ProfileMarker(
+    val sequence: Int,
+    val distance: Double,
+    val label: String,
+    val endDistance: Double? = null,
+    val lastSequence: Int? = null,
+    val pattern: String = "",
 )
 
 data class TerrainProfile(
@@ -31,6 +41,7 @@ data class TerrainProfile(
     val highestText: String = "",
     val distanceText: String = "",
     val bandText: String = "",
+    val markers: List<ProfileMarker> = emptyList(),
 ) {
     val distance: Double get() = points.lastOrNull()?.distance ?: 0.0
 
@@ -106,8 +117,22 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
                 distance = point.optDouble("distance", 0.0),
                 terrain = point.optDouble("terrainAltitude", Double.NaN).takeIf { !it.isNaN() },
                 planned = planned,
+                collision = point.optBoolean("collision"),
             )
         },
+        markers = view.optJSONArray("markers")?.let { list ->
+            (0 until list.length()).mapNotNull { list.optJSONObject(it) }.map { marker ->
+                val complex = marker.optJSONObject("complex")
+                ProfileMarker(
+                    sequence = marker.optInt("sequence"),
+                    distance = marker.optDouble("distance", 0.0),
+                    label = marker.optText("label"),
+                    endDistance = complex?.optDouble("endDistance"),
+                    lastSequence = complex?.optInt("lastSequence"),
+                    pattern = complex?.optText("pattern").orEmpty(),
+                )
+            }
+        }.orEmpty(),
         clearance = clearanceOf(view),
         lowestText = view.optText("lowestText"),
         highestText = view.optText("highestText"),

@@ -1,6 +1,7 @@
 package one.aircast.mapspike
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -12,13 +13,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 private val TERRAIN_COLOUR = Color(0xFF8D6E63)
 private val PLANNED_COLOUR = Color(0xFF4FC3F7)
+private val COLLISION_COLOUR = Color.Red
+private val PATTERN_COLOUR = Color.Green.copy(alpha = 0.5f)
+private const val MARKER_TAP_SLOP_PX = 48f
 private const val FULL_TERRAIN = 0.98
 
 internal fun profileOffsets(
@@ -40,6 +49,24 @@ internal fun profileOffsets(
         Offset(x, y)
     }
 }
+
+internal fun collisionSegments(profile: TerrainProfile, planned: List<Offset>): List<Pair<Offset, Offset>> =
+    profile.points.zip(planned).zipWithNext()
+        .filter { (from, to) -> from.first.collision && to.first.collision }
+        .map { (from, to) -> from.second to to.second }
+
+internal fun markerX(distance: Double, profile: TerrainProfile, width: Float): Float =
+    profile.distance.takeIf { it > 0.0 }?.let { (distance / it * width).toFloat() } ?: 0f
+
+internal fun tappedSequence(profile: TerrainProfile, width: Float, tapX: Float): Int? =
+    profile.markers
+        .flatMap { marker -> listOfNotNull(marker.distance, marker.endDistance).map { markerX(it, profile, width) to marker.sequence } }
+        .minByOrNull { (x, _) -> kotlin.math.abs(x - tapX) }
+        ?.takeIf { (x, _) -> kotlin.math.abs(x - tapX) <= MARKER_TAP_SLOP_PX }
+        ?.second
+        ?: profile.markers.firstOrNull { marker ->
+            marker.endDistance?.let { end -> tapX in markerX(marker.distance, profile, width)..markerX(end, profile, width) } == true
+        }?.sequence
 
 internal fun groundOutline(terrain: List<Offset>, height: Float): List<Offset> =
     if (terrain.size < 2) {
@@ -75,7 +102,13 @@ internal const val ELEVATION_PROVIDER = "settings.flightMapSettings.elevationMap
 internal fun elevationCredit(notice: String): String? = notice.takeIf { it.isNotBlank() }?.let { "Powered by $it" }
 
 @Composable
-fun TerrainProfileView(profile: TerrainProfile, notice: String, modifier: Modifier = Modifier) {
+fun TerrainProfileView(
+    profile: TerrainProfile,
+    notice: String,
+    modifier: Modifier = Modifier,
+    selectedSequence: Int? = null,
+    onSelect: (Int) -> Unit = {},
+) {
     if (profile.points.isEmpty()) {
         return
     }
@@ -105,17 +138,48 @@ fun TerrainProfileView(profile: TerrainProfile, notice: String, modifier: Modifi
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
     ) {
         Box {
-            Canvas(Modifier.fillMaxWidth().height(110.dp).padding(8.dp)) {
+            val measurer = rememberTextMeasurer()
+            val labelStyle = MaterialTheme.typography.labelSmall
+            val ink = MaterialTheme.colorScheme.onSurface
+            val accent = MaterialTheme.colorScheme.primary
+            val onAccent = MaterialTheme.colorScheme.onPrimary
+            val paper = MaterialTheme.colorScheme.surface
+            Canvas(
+                Modifier.fillMaxWidth().height(110.dp).padding(8.dp).pointerInput(profile) {
+                    detectTapGestures { tap -> tappedSequence(profile, size.width.toFloat(), tap.x)?.let(onSelect) }
+                },
+            ) {
                 val terrain = profileOffsets(profile, size.width, size.height) { it.terrain }
                 val planned = profileOffsets(profile, size.width, size.height) { it.planned }
 
                 if (terrain.size >= 2) {
                     val ground = pathOf(groundOutline(terrain, size.height)).apply { close() }
                     drawPath(ground, TERRAIN_COLOUR.copy(alpha = 0.45f))
-                    drawPath(pathOf(terrain), TERRAIN_COLOUR, style = androidx.compose.ui.graphics.drawscope.Stroke(3f))
+                    drawPath(pathOf(terrain), TERRAIN_COLOUR, style = Stroke(3f))
                 }
                 if (planned.size >= 2) {
-                    drawPath(pathOf(planned), PLANNED_COLOUR, style = androidx.compose.ui.graphics.drawscope.Stroke(3f))
+                    drawPath(pathOf(planned), PLANNED_COLOUR, style = Stroke(3f))
+                }
+                collisionSegments(profile, planned).forEach { (from, to) -> drawLine(COLLISION_COLOUR, from, to, strokeWidth = 9f) }
+
+                profile.markers.forEach { marker ->
+                    val start = markerX(marker.distance, profile, size.width)
+                    val labels = listOfNotNull(start to marker.label, marker.endDistance?.let { markerX(it, profile, size.width) to (marker.lastSequence ?: marker.sequence).toString() })
+                    marker.endDistance?.let { end ->
+                        val band = measurer.measure(marker.pattern, labelStyle)
+                        val right = markerX(end, profile, size.width)
+                        drawRect(PATTERN_COLOUR, Offset(start, size.height - band.size.height), Size(right - start, band.size.height.toFloat()))
+                        drawText(band, ink, Offset((start + right - band.size.width) / 2f, size.height - band.size.height))
+                    }
+                    labels.forEach { (x, text) ->
+                        drawLine(ink, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
+                        val measured = measurer.measure(text, labelStyle)
+                        val radius = maxOf(measured.size.width, measured.size.height) / 2f + 3f
+                        val centre = Offset(x, size.height - radius)
+                        val chosen = marker.sequence == selectedSequence
+                        drawCircle(if (chosen) accent else ink.copy(alpha = 0.8f), radius, centre)
+                        drawText(measured, if (chosen) onAccent else paper, centre - Offset(measured.size.width / 2f, measured.size.height / 2f))
+                    }
                 }
             }
 

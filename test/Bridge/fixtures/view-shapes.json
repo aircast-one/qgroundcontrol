@@ -793,6 +793,7 @@
         "view.setup.groups.2.pages.1.blockedReason",
         "view.setup.groups.2.pages.2.blockedReason",
         "view.setup.groups.2.pages.2.screen",
+        "view.terrainProfile.markers.0.complex",
         "view.video.nativePipeline",
         "view.video.nativeRecording",
         "view.video.sourceSize",
@@ -6844,6 +6845,10 @@
         "view.terrainProfile.class",
         "view.terrainProfile.hasCollision",
         "view.terrainProfile.kind",
+        "view.terrainProfile.markers.0.complex",
+        "view.terrainProfile.markers.0.distance",
+        "view.terrainProfile.markers.0.label",
+        "view.terrainProfile.markers.0.sequence",
         "view.terrainProfile.unknownTerrain",
         "view.track.class",
         "view.track.dropped",
@@ -9970,6 +9975,14 @@
         "view.terrainProfile.highestText",
         "view.terrainProfile.kind",
         "view.terrainProfile.lowestText",
+        "view.terrainProfile.markers.#",
+        "view.terrainProfile.markers[].complex",
+        "view.terrainProfile.markers[].complex.endDistance",
+        "view.terrainProfile.markers[].complex.lastSequence",
+        "view.terrainProfile.markers[].complex.pattern",
+        "view.terrainProfile.markers[].distance",
+        "view.terrainProfile.markers[].label",
+        "view.terrainProfile.markers[].sequence",
         "view.terrainProfile.maxAltitudeMeters",
         "view.terrainProfile.minAltitudeMeters",
         "view.terrainProfile.minClearanceMetres",
@@ -14545,6 +14558,18 @@
         "highestText": "string",
         "kind": "string",
         "lowestText": "string",
+        "markers": [
+            {
+                "complex": {
+                    "endDistance": "number",
+                    "lastSequence": "number",
+                    "pattern": "string"
+                },
+                "distance": "number",
+                "label": "string",
+                "sequence": "number"
+            }
+        ],
         "maxAltitudeMeters": "number",
         "minAltitudeMeters": "number",
         "minClearanceMetres": "null|number",

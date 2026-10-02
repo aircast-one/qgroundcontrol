@@ -7,7 +7,7 @@ pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.mi
     "settings.unitsSettings.verticalDistanceUnits", crate::coreplan::CHANGED, crate::terrainservice::TERRAIN_CHANGED,
 ];
 
-const FIELDS: &str = "specifiesCoordinate,specifiesAltitudeOnly,altitudeFrame,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance";
+const FIELDS: &str = "specifiesCoordinate,specifiesAltitudeOnly,altitudeFrame,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance,isStandaloneCoordinate,isSimpleItem,abbreviation,lastSequenceNumber,patternName,commandName,isSingleItem,homePosition";
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Point {
@@ -280,6 +280,32 @@ fn sample_at(step: usize, steps: usize, length: f64, spacing: f64) -> f64 {
     }
 }
 
+pub fn markers(model: &Value) -> Vec<Value> {
+    let elements = model.get("elements").and_then(Value::as_array).cloned().unwrap_or_default();
+    elements
+        .iter()
+        .filter(|e| e.get("specifiesCoordinate") == Some(&Value::Bool(true)) && e.get("isStandaloneCoordinate") != Some(&Value::Bool(true)))
+        .map(|e| {
+            let text = |key: &str| e.get(key).and_then(Value::as_str).unwrap_or_default();
+            let sequence = e.get("sequenceNumber").and_then(Value::as_i64).unwrap_or(-1);
+            let distance = e.get("distanceFromStart").and_then(Value::as_f64).unwrap_or(0.0);
+            let flagged = |key: &str| e.get(key) == Some(&Value::Bool(true));
+            let complex = e.get("isSimpleItem") == Some(&Value::Bool(false)) && !flagged("isSingleItem") && !flagged("homePosition");
+            let lettered = text("abbreviation").chars().next().filter(|c| !complex && *c > 'A' && *c < 'z');
+            json!({
+                "sequence": sequence,
+                "distance": distance,
+                "label": lettered.map_or_else(|| sequence.to_string(), |c| c.to_string()),
+                "complex": complex.then(|| json!({
+                    "endDistance": distance + e.get("complexDistance").and_then(Value::as_f64).unwrap_or(0.0),
+                    "lastSequence": e.get("lastSequenceNumber").and_then(Value::as_i64).unwrap_or(sequence),
+                    "pattern": Some(text("patternName")).filter(|p| !p.is_empty()).unwrap_or(text("commandName")),
+                })),
+            })
+        })
+        .collect()
+}
+
 fn walked(backend: &dyn Backend, model: &Value) -> Vec<Point> {
     let Some(elements) = model.get("elements").and_then(Value::as_array) else { return Vec::new() };
     elements
@@ -353,6 +379,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "lowestText": crate::read::format_measure(vertical.show(profile.min_altitude), &vertical.name),
         "highestText": crate::read::format_measure(vertical.show(profile.max_altitude), &vertical.name),
         "bandText": crate::read::range_text(profile.min_altitude, profile.max_altitude, &vertical),
+        "markers": markers(&model),
         "points": profile.points.iter().map(|p| json!({
             "sequence": p.sequence,
             "distance": p.distance,
@@ -367,6 +394,21 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn markers_follow_terrain_status_item_labels() {
+        let model = json!({ "elements": [
+            { "specifiesCoordinate": true, "isSimpleItem": false, "isSingleItem": true, "abbreviation": "L", "sequenceNumber": 0, "distanceFromStart": 0.0 },
+            { "specifiesCoordinate": true, "isSimpleItem": true, "abbreviation": "", "sequenceNumber": 1, "distanceFromStart": 120.0 },
+            { "specifiesCoordinate": true, "isStandaloneCoordinate": true, "isSimpleItem": true, "sequenceNumber": 2, "distanceFromStart": 120.0 },
+            { "specifiesCoordinate": false, "isSimpleItem": true, "sequenceNumber": 3 },
+            { "specifiesCoordinate": true, "isSimpleItem": false, "abbreviation": "S", "sequenceNumber": 4, "lastSequenceNumber": 9, "distanceFromStart": 300.0, "complexDistance": 500.0, "patternName": "Survey" },
+        ]});
+        let shown = markers(&model);
+        assert_eq!(shown.iter().map(|m| m["label"].as_str().unwrap()).collect::<Vec<_>>(), ["L", "1", "4"], "a complex item is numbered, and a standalone coordinate and an item with no coordinate get no marker");
+        assert_eq!(shown[2]["complex"], json!({ "endDistance": 800.0, "lastSequence": 9, "pattern": "Survey" }));
+        assert_eq!(shown[1]["complex"], Value::Null);
+    }
 
     fn point(distance: f64, mission: f64, terrain: Option<f64>) -> Point {
         Point { sequence: 1, distance, mission_altitude: mission, terrain_altitude: terrain, collision: false }

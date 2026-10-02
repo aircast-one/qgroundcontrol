@@ -239,4 +239,23 @@ class HeightRangeTest {
         assertEquals("50 m AMSL", heightRange(profile(50.0, 50.0, "50 m", "50 m", "50 m to 50 m")))
     }
 
+
+    @Test
+    fun `markers and collisions come from the core and a tap picks the nearest item`() {
+        val profile = terrainProfile(org.json.JSONObject("""{"points":[
+            {"distance":0,"missionAltitude":100,"terrainAltitude":50},
+            {"distance":100,"missionAltitude":100,"terrainAltitude":120,"collision":true},
+            {"distance":200,"missionAltitude":100,"terrainAltitude":130,"collision":true},
+            {"distance":1000,"missionAltitude":100,"terrainAltitude":50}],
+            "markers":[{"sequence":0,"distance":0,"label":"T"},{"sequence":2,"distance":200,"label":"2","complex":{"endDistance":600,"lastSequence":7,"pattern":"Survey"}}]}"""))
+        assertEquals(listOf("T", "2"), profile.markers.map { it.label })
+        assertEquals(7, profile.markers[1].lastSequence)
+        val planned = profileOffsets(profile, 1000f, 100f) { it.planned }
+        assertEquals(1, collisionSegments(profile, planned).size)
+        assertEquals(
+            "the exit line and the band between belong to the pattern; open ground selects nothing",
+            listOf(0, 2, 2, null),
+            listOf(10f, 590f, 400f, 850f).map { tappedSequence(profile, 1000f, it) },
+        )
+    }
 }

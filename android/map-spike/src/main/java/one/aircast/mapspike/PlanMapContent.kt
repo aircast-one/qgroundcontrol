@@ -1183,7 +1183,9 @@ internal fun MapSpikeScreen(
                     }
                 }
 
-                TerrainProfileView(profile, elevationNotice)
+                TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
+                    allItems.firstOrNull { it.sequence == sequence }?.let { selected = MapHit.Waypoint(it.index) }
+                }
             }
         }
 
