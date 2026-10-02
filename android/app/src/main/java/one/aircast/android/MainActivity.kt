@@ -20,12 +20,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -71,7 +65,8 @@ import one.aircast.android.ui.VirtualJoystick
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.annotation.DrawableRes
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import android.app.Activity
@@ -123,12 +118,12 @@ private const val MULTICAST_LOCK_TAG = "Aircast"
 internal fun reselectClearsAnalyze(current: Tab, tapped: Tab): Boolean =
     current == tapped && tapped == Tab.Analyze
 
-enum class Tab(val label: String, val icon: ImageVector) {
-    Fly("Fly", Icons.Default.Home),
-    Plan("Plan", Icons.Default.Place),
-    Setup("Setup", Icons.Default.Build),
-    Analyze("Analyze", Icons.Default.Info),
-    Settings("Settings", Icons.Default.Settings);
+enum class Tab(val label: String, @DrawableRes val icon: Int) {
+    Fly("Fly", R.drawable.ic_flight),
+    Plan("Plan", R.drawable.ic_map),
+    Setup("Setup", R.drawable.ic_build),
+    Analyze("Analyze", R.drawable.ic_analytics),
+    Settings("Settings", R.drawable.ic_settings);
 
     companion object {
         fun from(destination: String) = when (destination.lowercase()) {
@@ -379,7 +374,7 @@ fun AircastShell(hostView: android.view.View?) {
                     NavigationRailItem(
                         selected = tab == entry,
                         onClick = { selectTab(entry) },
-                        icon = { Icon(entry.icon, entry.label) },
+                        icon = { Icon(painterResource(entry.icon), entry.label) },
                         label = { Text(entry.label) },
                     )
                 }
@@ -397,7 +392,7 @@ fun AircastShell(hostView: android.view.View?) {
                         NavigationBarItem(
                             selected = tab == entry,
                             onClick = { selectTab(entry) },
-                            icon = { Icon(entry.icon, entry.label) },
+                            icon = { Icon(painterResource(entry.icon), entry.label) },
                             label = { Text(entry.label) },
                         )
                     }
