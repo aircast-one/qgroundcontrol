@@ -928,7 +928,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
             )
         }
         DropdownMenuItem(
-            text = { Text("Flight Mode Settings") },
+            text = { Text("Flight mode settings") },
             onClick = {
                 onDismiss()
                 settings = true
@@ -943,7 +943,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
         )
         if (modes.hiddenSetting != null) {
             DropdownMenuItem(
-                text = { Text("Edit Displayed Flight Modes") },
+                text = { Text("Edit displayed flight modes") },
                 trailingIcon = { Switch(checked = editing, onCheckedChange = null) },
                 onClick = { editing = !editing },
             )

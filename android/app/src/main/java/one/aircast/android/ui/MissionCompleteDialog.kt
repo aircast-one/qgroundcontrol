@@ -53,7 +53,7 @@ fun MissionCompleteDialog() {
 
     AlertDialog(
         onDismissRequest = close,
-        title = { Text("Flight Plan complete") },
+        title = { Text("Flight plan complete") },
         confirmButton = { TextButton(onClick = close) { Text("Close") } },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

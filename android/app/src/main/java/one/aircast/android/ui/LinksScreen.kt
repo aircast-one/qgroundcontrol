@@ -363,7 +363,7 @@ private fun LinkRowItem(
                 },
             )
             DropdownMenuItem(
-                text = { Text("Edit Link") },
+                text = { Text("Edit link") },
                 enabled = linkIsEditable(row),
                 onClick = {
                     menuOpen = false
@@ -371,7 +371,7 @@ private fun LinkRowItem(
                 },
             )
             DropdownMenuItem(
-                text = { Text("Delete Link") },
+                text = { Text("Delete link") },
                 onClick = {
                     menuOpen = false
                     onRemove()
@@ -415,7 +415,7 @@ private fun BluetoothPicker(chosen: BluetoothDeviceChoice?, onPick: (BluetoothDe
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("Device: ${chosen?.name.orEmpty()}", style = MaterialTheme.typography.bodySmall)
         Text("Address: ${chosen?.address.orEmpty()}", style = MaterialTheme.typography.bodySmall)
-        Text("Bluetooth Devices", style = MaterialTheme.typography.titleSmall)
+        Text("Bluetooth devices", style = MaterialTheme.typography.titleSmall)
         state.devices.forEach { device ->
             FilterChip(selected = device == chosen, onClick = { onPick(device) }, label = { Text(device.name) })
         }
@@ -478,7 +478,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = advanced, onCheckedChange = { advanced = it })
-                        Text("Advanced Settings")
+                        Text("Advanced settings")
                     }
                     if (advanced) SerialFramingControls(framing) { framing = it }
                 } else {
@@ -915,7 +915,7 @@ private fun SerialFramingControls(framing: SerialFraming, onChange: (SerialFrami
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = framing.flowControl != 0, onCheckedChange = { onChange(framing.copy(flowControl = if (it) 1 else 0)) })
-            Text("Enable Flow Control")
+            Text("Enable flow control")
         }
         FramingPicker("Parity", PARITY_CHOICES.firstOrNull { it.second == framing.parity }?.first.orEmpty(), PARITY_CHOICES.map { it.first }) {
             onChange(framing.copy(parity = PARITY_CHOICES[it].second))
@@ -962,7 +962,7 @@ private fun UdpServers(index: Int, initial: List<String>) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Server Addresses (optional)", style = MaterialTheme.typography.labelLarge)
+        Text("Server addresses (optional)", style = MaterialTheme.typography.labelLarge)
         servers.forEach { server ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(server, modifier = Modifier.weight(1f))
@@ -980,7 +980,7 @@ private fun UdpServers(index: Int, initial: List<String>) {
             TextButton(enabled = typed.isNotBlank(), onClick = {
                 change("addHost", typed.trim())
                 typed = ""
-            }) { Text("Add Server") }
+            }) { Text("Add server") }
         }
     }
 }

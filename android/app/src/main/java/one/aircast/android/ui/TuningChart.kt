@@ -132,7 +132,7 @@ internal fun TuningChart(axis: TuningAxis, unit: String, windowSeconds: Double, 
                     autoModeChange = checked
                     if (checked) running = false
                 })
-                Text("Automatic Flight Mode Switching")
+                Text("Automatic flight mode switching")
             }
             if (autoModeChange) {
                 Text("Switches to 'Stabilized' when you click Start.", style = MaterialTheme.typography.bodySmall)

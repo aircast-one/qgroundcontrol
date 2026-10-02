@@ -57,7 +57,7 @@ internal fun ResetAllSettingsRow() {
     if (asking) {
         AlertDialog(
             onDismissRequest = { asking = false },
-            title = { Text("Reset All Settings") },
+            title = { Text("Reset all settings") },
             text = { Text("All settings will be cleared the next time Aircast starts. This cannot be undone.") },
             confirmButton = { TextButton(onClick = { asking = false; write(true) }) { Text("Ok") } },
             dismissButton = { TextButton(onClick = { asking = false }) { Text("Cancel") } },

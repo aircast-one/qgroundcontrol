@@ -249,7 +249,7 @@ internal fun SetWaypointSheet(sequence: Int, onDismiss: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Set Waypoint", style = MaterialTheme.typography.titleLarge)
+            Text("Set waypoint", style = MaterialTheme.typography.titleLarge)
             Text(setWaypointMessage(sequence), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             SlideOrCancel("Set Waypoint", onConfirm = {
                 scope.launch {
@@ -367,7 +367,7 @@ internal fun RoiSheet(at: TrackPoint, onDismiss: () -> Unit) {
             Text("ROI", style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { run(STOP_ROI_PATH, emptyArray()) }) { Text("Cancel ROI") }
-                OutlinedButton(onClick = { editing = true }) { Text("Edit Position") }
+                OutlinedButton(onClick = { editing = true }) { Text("Edit position") }
             }
             refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         }

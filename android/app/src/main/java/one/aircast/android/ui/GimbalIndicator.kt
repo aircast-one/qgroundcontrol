@@ -127,7 +127,7 @@ internal fun GimbalIndicatorCell() {
                 }
                 OutlinedButton(onClick = { act("gimbal.center") }, modifier = Modifier.fillMaxWidth()) { Text("Center") }
                 OutlinedButton(onClick = { act("gimbal.tilt90") }, modifier = Modifier.fillMaxWidth()) { Text("Tilt 90") }
-                OutlinedButton(onClick = { act("gimbal.pointHome") }, modifier = Modifier.fillMaxWidth()) { Text("Point Home") }
+                OutlinedButton(onClick = { act("gimbal.pointHome") }, modifier = Modifier.fillMaxWidth()) { Text("Point home") }
                 if (state.retractOffered) {
                     OutlinedButton(onClick = { act("gimbal.retract") }, modifier = Modifier.fillMaxWidth()) { Text("Retract") }
                 }

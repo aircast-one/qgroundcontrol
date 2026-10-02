@@ -43,7 +43,7 @@ internal fun MissionAltitudeFrame() {
     val picks = choosable(view)
     var open by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("Altitude Frame", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Text("Altitude frame", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Box {
             TextButton(onClick = { open = true }, enabled = picks.size > 1) { Text(picks.firstOrNull { it.current }?.title ?: "Frame") }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {

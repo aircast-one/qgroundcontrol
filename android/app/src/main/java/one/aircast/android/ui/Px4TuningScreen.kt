@@ -182,17 +182,17 @@ fun Px4TuningScreen(modifier: Modifier = Modifier) {
                 }
                 axis?.let { current ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { clipboard = current.params.map { it.fact to it.fact.valueString } }) { Text("Save To Clipboard") }
+                        OutlinedButton(onClick = { clipboard = current.params.map { it.fact to it.fact.valueString } }) { Text("Save to clipboard") }
                         OutlinedButton(
                             onClick = { clipboard.forEach { (fact, value) -> value.toDoubleOrNull()?.let { write(fact.path, it) } } },
                             enabled = clipboard.isNotEmpty(),
-                        ) { Text("Restore From Clipboard") }
+                        ) { Text("Restore from clipboard") }
                     }
                 }
             }
             refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             if (clipboard.isNotEmpty()) {
-                Text("Clipboard Values:", style = MaterialTheme.typography.labelLarge)
+                Text("Clipboard values:", style = MaterialTheme.typography.labelLarge)
                 clipboard.forEach { (fact, value) -> Text("${fact.name}  $value", style = MaterialTheme.typography.bodySmall) }
             }
         }

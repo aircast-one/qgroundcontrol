@@ -97,7 +97,7 @@ internal fun TileSetTransfer(sets: List<OfflineSet>, onRefusal: (String?) -> Uni
     if (choosingSets) {
         AlertDialog(
             onDismissRequest = { choosingSets = false },
-            title = { Text("Export Selected Tile Sets") },
+            title = { Text("Export selected tile sets") },
             text = {
                 Column {
                     sets.forEach { set ->

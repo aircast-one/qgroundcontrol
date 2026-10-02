@@ -215,7 +215,7 @@ fun OfflineMapsSection() {
             }
             HorizontalDivider()
         }
-        Button(onClick = { adding = true }) { Text("Add New Set") }
+        Button(onClick = { adding = true }) { Text("Add new set") }
         TileSetTransfer(read.sets) {
             refusal = it
             polls++
@@ -273,7 +273,7 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (
     if (confirming) {
         AlertDialog(
             onDismissRequest = { confirming = false },
-            title = { Text("Confirm Delete") },
+            title = { Text("Confirm delete") },
             text = {
                 Text(
                     if (set.defaultSet) {
@@ -316,10 +316,10 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (
         confirmButton = {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (!set.defaultSet && !set.complete && !set.downloading) {
-                    TextButton(onClick = { onAction(OFFLINE_RESUME) }) { Text("Resume Download") }
+                    TextButton(onClick = { onAction(OFFLINE_RESUME) }) { Text("Resume download") }
                 }
                 if (!set.defaultSet && set.downloading) {
-                    TextButton(onClick = { onAction(OFFLINE_CANCEL) }) { Text("Cancel Download") }
+                    TextButton(onClick = { onAction(OFFLINE_CANCEL) }) { Text("Cancel download") }
                 }
                 TextButton(onClick = { confirming = true }, enabled = set.canDelete) { Text("Delete") }
                 if (!set.defaultSet) {
@@ -384,7 +384,7 @@ private fun OfflineSetEditor(
                     Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("Add New Set", style = MaterialTheme.typography.titleMedium)
+                    Text("Add new set", style = MaterialTheme.typography.titleMedium)
                     OutlinedTextField(
                         value = chosenName,
                         onValueChange = { name = it },

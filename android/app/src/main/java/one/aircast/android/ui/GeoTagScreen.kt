@@ -109,14 +109,14 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
             enabled = editable,
         ) { outputPicker.launch(null) }
 
-        Text("Advanced Options", style = MaterialTheme.typography.titleSmall)
+        Text("Advanced options", style = MaterialTheme.typography.titleSmall)
         OutlinedTextField(
             value = offsetText ?: shownOffset(current.timeOffsetSecs),
             onValueChange = { typed ->
                 offsetText = typed
                 parsedOffset(typed)?.let { GeoTagRun.set("timeOffsetSecs", it) }
             },
-            label = { Text("Time Offset (seconds):") },
+            label = { Text("Time offset (seconds):") },
             supportingText = { Text("Adjust if camera clock differs from flight log") },
             singleLine = true,
             enabled = editable,

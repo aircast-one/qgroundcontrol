@@ -60,7 +60,7 @@ internal fun NoVideoPanel(video: VideoReading?) {
                     seconds = 0
                     offMainDetached { Qgc.invoke(VIDEO_RESTART) }
                 }) { Text("Retry") }
-                OutlinedButton(onClick = { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }) { Text("Video Settings") }
+                OutlinedButton(onClick = { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }) { Text("Video settings") }
             }
         }
     }

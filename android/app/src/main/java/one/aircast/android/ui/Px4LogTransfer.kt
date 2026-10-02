@@ -122,13 +122,13 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
         LogFlag("Start logging automatically", log.settings.optBoolean("enableAutoStart"), editable) { act("mavlinkLog.set", "enableAutoStart", it) }
 
         SectionHeader("Log Upload")
-        LogText("Email Address", log.settings.optText("emailAddress"), editable) { act("mavlinkLog.set", "emailAddress", it) }
-        LogText("Default Description", log.settings.optText("description"), editable) { act("mavlinkLog.set", "description", it) }
+        LogText("Email address", log.settings.optText("emailAddress"), editable) { act("mavlinkLog.set", "emailAddress", it) }
+        LogText("Default description", log.settings.optText("description"), editable) { act("mavlinkLog.set", "description", it) }
         LogText("Upload URL", log.settings.optText("uploadURL"), editable) { act("mavlinkLog.set", "uploadURL", it) }
         LogText("Video URL", log.settings.optText("videoURL"), editable) { act("mavlinkLog.set", "videoURL", it) }
         LogChoice("Wind Speed", WIND_SPEEDS, log.settings.optText("windSpeed"), editable) { act("mavlinkLog.set", "windSpeed", it) }
         LogChoice("Flight Rating", FLIGHT_RATINGS, log.settings.optText("rating"), editable) { act("mavlinkLog.set", "rating", it) }
-        LogText("Additional Feedback", log.settings.optText("feedback"), editable) { act("mavlinkLog.set", "feedback", it) }
+        LogText("Additional feedback", log.settings.optText("feedback"), editable) { act("mavlinkLog.set", "feedback", it) }
         LogFlag("Make logs public", log.settings.optBoolean("publicLog"), editable) { act("mavlinkLog.set", "publicLog", it) }
         LogFlag("Upload logs automatically", log.settings.optBoolean("enableAutoUpload"), editable) { act("mavlinkLog.set", "enableAutoUpload", it) }
         LogFlag("Delete logs after upload", log.settings.optBoolean("deleteAfterUpload"), editable && log.settings.optBoolean("enableAutoUpload")) {
@@ -159,8 +159,8 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
         val idle = !log.uploading
         val uploadedSelected = log.files.any { it.name in selected && it.uploaded }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(enabled = idle, onClick = { selected = log.files.map { it.name }.toSet() }) { Text("Select All") }
-            TextButton(enabled = idle, onClick = { selected = emptySet() }) { Text("Select None") }
+            TextButton(enabled = idle, onClick = { selected = log.files.map { it.name }.toSet() }) { Text("Select all") }
+            TextButton(enabled = idle, onClick = { selected = emptySet() }) { Text("Select none") }
             TextButton(enabled = selected.isNotEmpty() && idle, onClick = {
                 confirming = "Delete the selected log files?" to {
                     act("mavlinkLog.delete", *selected.toTypedArray())
@@ -168,7 +168,7 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
                 }
             }) { Text("Delete…") }
             if (log.uploading) {
-                TextButton(onClick = { confirming = "Cancel the upload in progress?" to { act("mavlinkLog.cancelUpload") } }) { Text("Cancel Upload…") }
+                TextButton(onClick = { confirming = "Cancel the upload in progress?" to { act("mavlinkLog.cancelUpload") } }) { Text("Cancel upload…") }
             } else {
                 TextButton(enabled = selected.isNotEmpty() && !uploadedSelected, onClick = {
                     if (log.settings.optText("emailAddress").isBlank()) {

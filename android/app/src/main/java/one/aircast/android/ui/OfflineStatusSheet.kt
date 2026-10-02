@@ -113,7 +113,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
             }
             HorizontalDivider()
             ListItem(
-                headlineContent = { Text("Connection Settings") },
+                headlineContent = { Text("Connection settings") },
                 modifier = Modifier.clickable { openConnectionSettings(onDismiss) },
             )
         }

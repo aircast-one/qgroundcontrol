@@ -93,7 +93,7 @@ fun SyslinkScreen(modifier: Modifier = Modifier) {
         RadioField("Address", radio.address, radio.addressHint, KeyboardType.Ascii, accept = ::hexAddress) { act("syslink.setAddress", it) }
         ChoiceField("Data Rate", radio.rates.getOrElse(radio.rate) { "" }, radio.rates) { act("syslink.setRate", it) }
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        OutlinedButton(onClick = { act("syslink.resetDefaults") }) { Text("Restore Defaults") }
+        OutlinedButton(onClick = { act("syslink.resetDefaults") }) { Text("Restore defaults") }
     }
 }
 

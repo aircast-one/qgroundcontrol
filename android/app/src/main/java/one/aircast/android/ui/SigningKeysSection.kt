@@ -135,7 +135,7 @@ internal fun SigningKeysSection() {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (keys.vehicle) {
             Row(Modifier.fillMaxWidth()) {
-                Text("Active Key", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Text("Active key", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                 Text(keys.activeKey, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -168,13 +168,13 @@ internal fun SigningKeysSection() {
         }
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         if (keys.keys.isEmpty()) Text("No keys configured", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FilledTonalButton(onClick = { adding = true }) { Text("Add Key") }
+        FilledTonalButton(onClick = { adding = true }) { Text("Add key") }
     }
 
     confirmEnable?.let { name ->
         AlertDialog(
             onDismissRequest = { confirmEnable = null },
-            title = { Text("Send Signing Key") },
+            title = { Text("Send signing key") },
             text = { Text("This will transmit key '$name' to the vehicle over '${read?.linkName.orEmpty()}'. Only proceed if this link is secure (USB or trusted local network).") },
             confirmButton = {
                 TextButton(onClick = {
@@ -188,7 +188,7 @@ internal fun SigningKeysSection() {
     if (armedWarning) {
         AlertDialog(
             onDismissRequest = { armedWarning = false },
-            title = { Text("Disable Signing While Armed?") },
+            title = { Text("Disable signing while armed?") },
             text = { Text("Vehicle is armed. ArduPilot will refuse to disable signing while armed and PX4 will not accept the disable packet without a valid signature. The disable attempt will likely time out and leave the link in an inconsistent state.\n\nDisarm the vehicle first.") },
             confirmButton = { TextButton(onClick = { armedWarning = false }) { Text("Cancel") } },
         )
@@ -199,7 +199,7 @@ internal fun SigningKeysSection() {
     confirmDelete?.let { name ->
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
-            title = { Text("Delete Signing Key") },
+            title = { Text("Delete signing key") },
             text = { Text("Are you sure you want to delete '$name'?\n\nIf a vehicle still has this key configured, you will no longer be able to communicate with it over a signed connection. Raw or generated keys cannot be recovered — Export the hex first if you may need it later.") },
             confirmButton = {
                 TextButton(onClick = {
@@ -236,16 +236,16 @@ private fun AddKeyDialog(minPassphrase: Int, onDone: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = { if (!saving) onDone() },
-        title = { Text("Add Signing Key") },
+        title = { Text("Add signing key") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Key Name")
+                Text("Key name")
                 OutlinedTextField(value = name, onValueChange = { name = it }, singleLine = true, placeholder = { Text("Enter a friendly name") })
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = !raw, onClick = { raw = false })
                     Text("Passphrase")
                     RadioButton(selected = raw, onClick = { raw = true })
-                    Text("Raw Key (hex)")
+                    Text("Raw key (hex)")
                 }
                 if (!raw) {
                     OutlinedTextField(

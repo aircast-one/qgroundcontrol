@@ -1135,7 +1135,7 @@ internal fun MapSpikeScreen(
 
                         listOfNotNull(fenceHit, surveyHit).firstOrNull()?.let { hit ->
                             cornerPosition(hit, fences, surveyList)?.let { at ->
-                                TextButton(onClick = { positioning = hit to at }) { Text("Edit Position") }
+                                TextButton(onClick = { positioning = hit to at }) { Text("Edit position") }
                             }
                         }
 
@@ -1519,7 +1519,7 @@ private fun PositionDialog(at: TrackPoint, onDismiss: () -> Unit, onMove: (Track
     val parsed = parsedCoordinate(latitude, longitude)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Position") },
+        title = { Text("Edit position") },
         text = {
             Column {
                 OutlinedTextField(value = latitude, onValueChange = { latitude = it }, label = { Text("Latitude") }, singleLine = true)
@@ -1549,10 +1549,10 @@ private fun CenterMenu(
         FilledTonalButton(onClick = { open = true }) { Text("Center") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             DropdownMenuItem(text = { Text("Mission") }, onClick = { open = false; onFit(missionPoints) })
-            DropdownMenuItem(text = { Text("All Items") }, onClick = { open = false; onFit(null) })
+            DropdownMenuItem(text = { Text("All items") }, onClick = { open = false; onFit(null) })
             DropdownMenuItem(text = { Text("Launch") }, enabled = launch != null, onClick = { open = false; launch?.let(onCentre) })
             DropdownMenuItem(text = { Text("Vehicle") }, enabled = vehicle != null, onClick = { open = false; vehicle?.let(onCentre) })
-            DropdownMenuItem(text = { Text("My Location") }, enabled = myLocation != null, onClick = { open = false; myLocation?.let(onCentre) })
+            DropdownMenuItem(text = { Text("My location") }, enabled = myLocation != null, onClick = { open = false; myLocation?.let(onCentre) })
             DropdownMenuItem(text = { Text("Coordinates…") }, onClick = { open = false; asking = true })
         }
     }

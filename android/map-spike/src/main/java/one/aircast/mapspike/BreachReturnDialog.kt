@@ -25,7 +25,7 @@ fun BreachReturnDialog(breach: BreachReturn, onDismiss: () -> Unit, onAltitude: 
     val value = typed.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Breach Return Point") },
+        title = { Text("Breach return point") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
@@ -37,7 +37,7 @@ fun BreachReturnDialog(breach: BreachReturn, onDismiss: () -> Unit, onAltitude: 
                     isError = value == null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 )
-                TextButton(onClick = onRemove) { Text("Remove Breach Return Point", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = onRemove) { Text("Remove breach return point", color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = { TextButton(onClick = { value?.let(onAltitude) }, enabled = value != null && breach.altitudePath.isNotEmpty()) { Text("Set") } },

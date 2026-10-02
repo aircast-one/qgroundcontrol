@@ -331,7 +331,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
                 TextButton(onClick = {
                     rebootPrompt = null
                     scope.launch { withContext(Dispatchers.Default) { Qgc.invoke(REBOOT_VEHICLE) } }
-                }) { Text("Reboot Vehicle") }
+                }) { Text("Reboot vehicle") }
             },
             dismissButton = { TextButton(onClick = { rebootPrompt = null }) { Text("Close") } },
         )

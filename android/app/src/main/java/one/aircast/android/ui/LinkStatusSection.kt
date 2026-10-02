@@ -27,7 +27,7 @@ internal fun LinkStatusSection() {
     val rows = remember(json) { linkStatusRows(json) }
     SectionHeader("Link Status (Current Vehicle)")
     if (rows.isEmpty()) {
-        Text("Not Connected", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+        Text("Not connected", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
     }
     rows.forEach { (label, value) ->
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {

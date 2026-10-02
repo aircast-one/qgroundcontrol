@@ -184,7 +184,7 @@ private fun Swatch(colour: Long, chosen: Boolean, onClick: () -> Unit) {
 private fun IconPickerDialog(names: List<String>, chosen: String, onDismiss: () -> Unit, onPick: (String) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Icon") },
+        title = { Text("Select icon") },
         text = {
             LazyVerticalGrid(columns = GridCells.Adaptive(44.dp), modifier = Modifier.height(360.dp)) {
                 items(names) { name ->
@@ -228,7 +228,7 @@ internal fun ValueDisplayDialog(label: String, initial: ValueDisplay, onDismiss:
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Telemetry Display") },
+        title = { Text("Telemetry display") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(label, style = MaterialTheme.typography.labelMedium)
@@ -245,10 +245,10 @@ internal fun ValueDisplayDialog(label: String, initial: ValueDisplay, onDismiss:
                     OutlinedTextField(value = display.text, onValueChange = { display = display.copy(text = it) }, label = { Text("Text") }, singleLine = true)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Show Units", modifier = Modifier.weight(1f))
+                    Text("Show units", modifier = Modifier.weight(1f))
                     Switch(checked = display.showUnits, onCheckedChange = { display = display.copy(showUnits = it) })
                 }
-                Text("Value Range", style = MaterialTheme.typography.titleSmall)
+                Text("Value range", style = MaterialTheme.typography.titleSmall)
                 Text("Change the color, opacity or icon when the value crosses a threshold", style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     RangeType.entries.forEach { type ->
@@ -277,7 +277,7 @@ internal fun ValueDisplayDialog(label: String, initial: ValueDisplay, onDismiss:
                             if (row < display.values.size && display.values.size > 1) TextButton(onClick = { display = withoutRow(display, row) }) { Text("✕") }
                         }
                     }
-                    TextButton(onClick = { display = withRow(display, firstIcon) }) { Text("Add Row") }
+                    TextButton(onClick = { display = withRow(display, firstIcon) }) { Text("Add row") }
                 }
             }
         },

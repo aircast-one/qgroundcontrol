@@ -87,7 +87,7 @@ internal fun PatternPresets(index: Int, kind: String, onApplied: () -> Unit) {
     deleting?.let { name ->
         AlertDialog(
             onDismissRequest = { deleting = null },
-            title = { Text("Delete Preset") },
+            title = { Text("Delete preset") },
             text = { Text("Are you sure you want to delete '$name' preset?") },
             confirmButton = {
                 TextButton(onClick = {
@@ -102,11 +102,11 @@ internal fun PatternPresets(index: Int, kind: String, onApplied: () -> Unit) {
         var typed by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { saving = false },
-            title = { Text("Save Preset") },
+            title = { Text("Save preset") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Save the current settings as a named preset.")
-                    OutlinedTextField(value = typed, onValueChange = { typed = it }, label = { Text("Preset Name") }, placeholder = { Text("Enter preset name") }, singleLine = true)
+                    OutlinedTextField(value = typed, onValueChange = { typed = it }, label = { Text("Preset name") }, placeholder = { Text("Enter preset name") }, singleLine = true)
                 }
             },
             confirmButton = {

@@ -195,7 +195,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         DropdownMenu(expanded = positionMenu, onDismissRequest = { positionMenu = false }) {
                             DropdownMenuItem(text = { Text("Move to Vehicle Position") }, enabled = connected, onClick = { moveTo(null) })
                             DropdownMenuItem(text = { Text("Move to Previous Item") }, enabled = previous != null, onClick = { moveTo(previous) })
-                            DropdownMenuItem(text = { Text("Edit Position…") }, onClick = { positionMenu = false; editingPosition = true })
+                            DropdownMenuItem(text = { Text("Edit position…") }, onClick = { positionMenu = false; editingPosition = true })
                         }
                     }
                 }
@@ -220,7 +220,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                 MissionAltitudeFrame()
                 PlanVehicleRows()
                 view?.optJSONObject("launchAltitude")?.let(::factFromControl)?.let { launch ->
-                    Text("Launch Position", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                    Text("Launch position", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
                     FactRow(launch, subtitle = "Actual position is set by the vehicle at flight time.") { revision++ }
                     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("Position", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
@@ -231,7 +231,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                                 refusal = if (moved) null else "The launch position could not be moved there."
                                 revision++
                             }
-                        }) { Text("Set To Map Center") }
+                        }) { Text("Set to map center") }
                     }
                 }
             }
@@ -251,7 +251,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
             }
             raw?.let { current ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Show All Values", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Text("Show all values", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     Switch(checked = current.on, onCheckedChange = { wanted ->
                         scope.launch {
                             refusal = rawEditRefusal(current) ?: withContext(Dispatchers.Default) { Qgc.writeRefusal(itemRawEditPath(index), wanted) }
@@ -385,7 +385,7 @@ private fun CommandPicker(itemCategory: String?, onDismiss: () -> Unit, onChosen
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Select Mission Command") },
+        title = { Text("Select mission command") },
         text = {
             Column {
                 Row(Modifier.horizontalScroll(rememberScrollState())) {

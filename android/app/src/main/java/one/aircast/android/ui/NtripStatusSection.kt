@@ -147,7 +147,7 @@ internal fun NtripStatusSection(onWrite: () -> Unit) {
             if (status.mountpoint.isNotBlank()) StatusLine("Mountpoint", status.mountpoint)
             if (connected) StatusLine("Messages", status.messages.toString())
             if (connected && status.messageTypes.isNotEmpty()) {
-                Text("Message Types", style = MaterialTheme.typography.labelLarge)
+                Text("Message types", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     status.messageTypes.forEach { (id, count) ->
                         Text(

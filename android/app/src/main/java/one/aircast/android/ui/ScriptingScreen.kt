@@ -160,7 +160,7 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
             }
             if (page.busy) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton(onClick = { act(SCRIPTING_CANCEL) }) { Text("Cancel Operation") }
+                    TextButton(onClick = { act(SCRIPTING_CANCEL) }) { Text("Cancel operation") }
                     Text("Transferring... ${Math.round(page.progress * 100)}%")
                 }
                 LinearProgressIndicator(progress = { page.progress }, modifier = Modifier.fillMaxWidth())
@@ -171,7 +171,7 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
     confirmDelete?.let { name ->
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
-            title = { Text("Delete Lua Script") },
+            title = { Text("Delete Lua script") },
             text = { Text("Are you sure you want to delete the script \"$name\"? This action cannot be undone.") },
             confirmButton = {
                 TextButton(onClick = {

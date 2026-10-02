@@ -234,7 +234,7 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
             }
         }
         outputs.testing?.let { Column(Modifier.padding(16.dp)) { ActuatorTestSection(it, outputs.actions, testing, outputs.assignment.active) { on -> testing = on } } }
-        Text("Actuator Outputs", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
+        Text("Actuator outputs", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 16.dp))
         if (outputs.hasUnsetRequiredFunctions) {
             Text("One or more actuator still needs to be assigned to an output.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
         }
@@ -253,7 +253,7 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
                     ) { Text("Identify & Assign Motors") }
                 }
                 if (outputs.assignment.active) {
-                    androidx.compose.material3.OutlinedButton(onClick = { scope.launch(Dispatchers.IO) { Qgc.invoke(MOTOR_ASSIGNMENT_SPIN) } }) { Text("Spin Motor Again") }
+                    androidx.compose.material3.OutlinedButton(onClick = { scope.launch(Dispatchers.IO) { Qgc.invoke(MOTOR_ASSIGNMENT_SPIN) } }) { Text("Spin motor again") }
                     androidx.compose.material3.OutlinedButton(onClick = {
                         scope.launch {
                             withContext(Dispatchers.IO) { Qgc.invoke(MOTOR_ASSIGNMENT_ABORT) }
@@ -266,7 +266,7 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
         confirming?.let { message ->
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { confirming = null },
-                title = { Text("Motor Order Identification and Assignment") },
+                title = { Text("Motor order identification and assignment") },
                 text = { Text(message) },
                 confirmButton = {
                     androidx.compose.material3.TextButton(onClick = {

@@ -142,7 +142,7 @@ fun LogReplayBar() {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!replay.loaded) {
-                    TextButton(onClick = { if (replay.canLoad) picker.launch(arrayOf("*/*")) else message = replay.loadRefusal }) { Text("Load Telemetry Log") }
+                    TextButton(onClick = { if (replay.canLoad) picker.launch(arrayOf("*/*")) else message = replay.loadRefusal }) { Text("Load telemetry log") }
                 }
                 TextButton(onClick = { act(LOG_REPLAY_CLOSE) }) { Text("Close") }
             }
@@ -151,7 +151,7 @@ fun LogReplayBar() {
     message?.let {
         AlertDialog(
             onDismissRequest = { message = null },
-            title = { Text("Log Replay") },
+            title = { Text("Log replay") },
             text = { Text(it) },
             confirmButton = { TextButton(onClick = { message = null }) { Text("OK") } },
         )

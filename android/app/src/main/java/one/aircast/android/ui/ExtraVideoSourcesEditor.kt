@@ -142,7 +142,7 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
         Button(
             onClick = { draft = SourceDraft(-1, "", kinds.firstOrNull()?.raw.orEmpty(), "") },
             modifier = Modifier.padding(16.dp),
-        ) { Text("Add Camera") }
+        ) { Text("Add camera") }
     }
 
     draft?.let { current ->

@@ -78,7 +78,7 @@ internal fun LoggingCategoriesDialog(onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Logging Categories") },
+        title = { Text("Logging categories") },
         text = {
             Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -91,11 +91,11 @@ internal fun LoggingCategoriesDialog(onDismiss: () -> Unit) {
                     )
                     TextButton(onClick = { search = "" }) { Text("Clear") }
                 }
-                Text("Active Categories", style = MaterialTheme.typography.titleSmall)
+                Text("Active categories", style = MaterialTheme.typography.titleSmall)
                 read?.active?.forEach { name ->
                     CategorySwitch(name, checked = true, depth = 0) { act(LOG_SET_CATEGORY, name, false) }
                 }
-                OutlinedButton(onClick = { act(LOG_RESET_CATEGORIES) }) { Text("Reset All") }
+                OutlinedButton(onClick = { act(LOG_RESET_CATEGORIES) }) { Text("Reset all") }
                 Text("Categories", style = MaterialTheme.typography.titleSmall)
                 filteredCategories(read?.categories.orEmpty(), search).forEach { category ->
                     val label = if (search.isBlank()) category.shortName else category.name

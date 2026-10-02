@@ -21,7 +21,7 @@ internal fun AboutPage(links: List<HelpLink>, modifier: Modifier = Modifier) {
     Column(modifier.padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SectionHeader("About")
         ListItem(
-            headlineContent = { Text("Aircast Version") },
+            headlineContent = { Text("Aircast version") },
             trailingContent = { Text(BuildConfig.VERSION_NAME, style = MaterialTheme.typography.bodyMedium) },
         )
         SectionHeader("Support")

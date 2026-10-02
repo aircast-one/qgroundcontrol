@@ -225,7 +225,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                     Text("Advanced settings", style = MaterialTheme.typography.bodyMedium)
                 }
                 if (bootloaderOffered(advanced, apmVehicle)) {
-                    OutlinedButton(enabled = !busy, onClick = { offMainDetached { Qgc.invoke(FLASH_BOOTLOADER) } }) { Text("Flash ChibiOS Bootloader") }
+                    OutlinedButton(enabled = !busy, onClick = { offMainDetached { Qgc.invoke(FLASH_BOOTLOADER) } }) { Text("Flash ChibiOS bootloader") }
                 }
                 if (source == FIRMWARE_FROM_FILE) {
                     Text(file?.name?.removePrefix("firmware-") ?: "No firmware file chosen", style = MaterialTheme.typography.bodyMedium)

@@ -130,15 +130,15 @@ fun EspBridgeScreen(modifier: Modifier = Modifier) {
         }
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { act("espBridge.restoreDefaults") }) { Text("Restore Defaults") }
-            OutlinedButton(onClick = { confirmReboot = true }) { Text("Restart WiFi Bridge") }
-            OutlinedButton(onClick = { act("espBridge.resetCounters") }) { Text("Reset Counters") }
+            OutlinedButton(onClick = { act("espBridge.restoreDefaults") }) { Text("Restore defaults") }
+            OutlinedButton(onClick = { confirmReboot = true }) { Text("Restart WiFi bridge") }
+            OutlinedButton(onClick = { act("espBridge.resetCounters") }) { Text("Reset counters") }
         }
     }
     if (confirmReboot) {
         AlertDialog(
             onDismissRequest = { confirmReboot = false },
-            title = { Text("Reboot WiFi Bridge") },
+            title = { Text("Reboot WiFi bridge") },
             text = { Text(bridge.rebootPrompt) },
             confirmButton = {
                 TextButton(onClick = {

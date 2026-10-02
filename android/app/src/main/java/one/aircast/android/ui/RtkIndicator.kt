@@ -144,7 +144,7 @@ private fun RtkSettingsSection(status: RtkStatus) {
     facts.forEach { FactRow(it) { reloads++ } }
     val writes = basePositionWrites(status)
     if (fixedBaseChosen(facts)) Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Current Base Position", modifier = Modifier.weight(1f))
+        Text("Current base position", modifier = Modifier.weight(1f))
         OutlinedButton(enabled = writes != null, onClick = {
             scope.launch {
                 withContext(Dispatchers.Default) { writes?.forEach { (path, value) -> Qgc.set(path, value) } }

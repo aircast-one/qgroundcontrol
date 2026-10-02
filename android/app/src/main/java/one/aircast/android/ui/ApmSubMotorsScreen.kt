@@ -130,7 +130,7 @@ fun ApmSubMotorsScreen(modifier: Modifier = Modifier) {
                 })
             }
         }
-        Text("Reverse Motor Direction", style = MaterialTheme.typography.bodySmall)
+        Text("Reverse motor direction", style = MaterialTheme.typography.bodySmall)
         Text(state.warning, style = MaterialTheme.typography.bodySmall)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Switch(checked = state.armed, enabled = !coolingDown, onCheckedChange = { act("apmSubMotors.arm", it) })
@@ -140,7 +140,7 @@ fun ApmSubMotorsScreen(modifier: Modifier = Modifier) {
             )
         }
         if (state.offersAutoDetect) {
-            Text("Automatic Motor Direction Detection", style = MaterialTheme.typography.titleMedium)
+            Text("Automatic motor direction detection", style = MaterialTheme.typography.titleMedium)
             Text(state.autoDetectHelp, style = MaterialTheme.typography.bodySmall)
             Button(enabled = !state.detecting, onClick = { act("apmSubMotors.autoDetect") }) { Text("Auto-Detect Directions") }
             if (state.detectionMessages.isNotBlank()) Text(state.detectionMessages, style = MaterialTheme.typography.bodySmall)

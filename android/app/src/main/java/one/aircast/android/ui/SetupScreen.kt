@@ -246,7 +246,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     if (!hasVehicle) {
         Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             EmptyState(R.drawable.ic_build, NO_VEHICLE_HEADLINE, NO_VEHICLE_TEXT)
-            OutlinedButton(onClick = { AppNavigation.settingsPage = "Connections" }) { Text("Set Up Connection") }
+            OutlinedButton(onClick = { AppNavigation.settingsPage = "Connections" }) { Text("Set up connection") }
         }
         return
     }
@@ -267,7 +267,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 androidx.compose.material3.Button(
                     onClick = { one.aircast.android.bridge.offMainDetached { Qgc.invoke(PARAMETER_REFRESH) } },
                     modifier = Modifier.align(Alignment.CenterHorizontally),
-                ) { Text("Download Parameters") }
+                ) { Text("Download parameters") }
             }
         }
         return

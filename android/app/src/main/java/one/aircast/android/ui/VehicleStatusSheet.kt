@@ -127,7 +127,7 @@ private fun ArmSection(onDismiss: () -> Unit) {
             Text("Arming may be refused.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (controls.forceLink) {
-            TextButton(onClick = { forceOpen = true }) { Text("Force Arm…") }
+            TextButton(onClick = { forceOpen = true }) { Text("Force arm…") }
         }
         if (controls.forceSlider) {
             SlideToConfirm("Slide to Force Arm", destructive = true) { request(FORCE_ARM_REQUEST) }

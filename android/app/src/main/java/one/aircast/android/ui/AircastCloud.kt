@@ -68,7 +68,7 @@ internal fun AircastCloudFields(apiBase: String, deviceId: String, showErrors: B
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        OutlinedTextField(value = apiBase, onValueChange = onApiBase, label = { Text("Account Server") }, placeholder = { Text("https://api.aircast.one") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+        OutlinedTextField(value = apiBase, onValueChange = onApiBase, label = { Text("Account server") }, placeholder = { Text("https://api.aircast.one") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
         if (showErrors && !cloudApiBaseValid(apiBase)) Text("Enter the account server address, starting with https://", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(value = deviceId, onValueChange = onDeviceId, label = { Text("Device") }, singleLine = true)
         if (showErrors && !cloudDeviceValid(deviceId)) Text("Set up from the device to fill this in", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -76,14 +76,14 @@ internal fun AircastCloudFields(apiBase: String, deviceId: String, showErrors: B
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Account  ${accountLine(state)}", modifier = Modifier.weight(1f))
                 when {
-                    state.signedIn -> OutlinedButton(onClick = { offMainDetached { Qgc.invoke("account.signOut") } }) { Text("Sign Out") }
+                    state.signedIn -> OutlinedButton(onClick = { offMainDetached { Qgc.invoke("account.signOut") } }) { Text("Sign out") }
                     state.signingIn -> OutlinedButton(onClick = { offMainDetached { Qgc.invoke("account.cancelSignIn") } }) { Text("Cancel") }
                     else -> OutlinedButton(onClick = {
                         offMainDetached {
                             Qgc.set("account.apiBase", apiBase)
                             Qgc.invoke("account.signIn")
                         }
-                    }) { Text("Sign In") }
+                    }) { Text("Sign in") }
                 }
             }
             if (state.signingIn) Text("Your browser opened ${state.verificationUrl} — approve code ${state.userCode} there.", style = MaterialTheme.typography.bodySmall)

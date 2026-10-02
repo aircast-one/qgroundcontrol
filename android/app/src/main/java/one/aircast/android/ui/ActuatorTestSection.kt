@@ -112,7 +112,7 @@ internal fun ActuatorTestSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Actuator Testing", style = MaterialTheme.typography.titleMedium)
+        Text("Actuator testing", style = MaterialTheme.typography.titleMedium)
         if (actions.isNotEmpty()) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 actions.forEach { group -> ActionGroupButton(group, enabled = !enabled && !assigning) }

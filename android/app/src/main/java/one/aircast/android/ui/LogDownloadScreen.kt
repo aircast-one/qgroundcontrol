@@ -367,7 +367,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                                     enabled = logs.canEraseSelected,
                                     onClick = { confirmErase = EraseKind.Selected },
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                                ) { Text("Erase Selected") }
+                                ) { Text("Erase selected") }
                             }
                             OutlinedButton(
                                 enabled = logs.canErase,

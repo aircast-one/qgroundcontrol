@@ -109,7 +109,7 @@ fun PlanTransformDialog(onDismiss: () -> Unit) {
         title = { Text("Transform") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Offset Mission", style = MaterialTheme.typography.titleSmall)
+                Text("Offset mission", style = MaterialTheme.typography.titleSmall)
                 NumberField("East (m)", east) { east = it }
                 NumberField("North (m)", north) { north = it }
                 NumberField("Up (m)", up) { up = it }
@@ -117,15 +117,15 @@ fun PlanTransformDialog(onDismiss: () -> Unit) {
                 CheckRow("Also move landing items", offsetLanding) { offsetLanding = it }
                 Text("Note: Home altitude is not modified.", style = note)
                 val offset = offsetArgs(east, north, up, offsetTakeoff, offsetLanding)
-                OutlinedButton(onClick = { offset?.let { apply(OFFSET_MISSION, it) } }, enabled = offset != null) { Text("Apply Offset") }
+                OutlinedButton(onClick = { offset?.let { apply(OFFSET_MISSION, it) } }, enabled = offset != null) { Text("Apply offset") }
 
                 HorizontalDivider()
-                Text("Reposition Mission", style = MaterialTheme.typography.titleSmall)
+                Text("Reposition mission", style = MaterialTheme.typography.titleSmall)
                 if (home == null) Text("Home position must be set to reposition the mission.", style = note)
                 OutlinedButton(onClick = { repositioning = true }, enabled = home != null) { Text("Move to Position") }
 
                 HorizontalDivider()
-                Text("Rotate Mission", style = MaterialTheme.typography.titleSmall)
+                Text("Rotate mission", style = MaterialTheme.typography.titleSmall)
                 if (home == null) Text("Home position must be set to rotate the mission.", style = note)
                 NumberField("Clockwise (deg)", degrees) { degrees = it }
                 CheckRow("Also move takeoff items", rotateTakeoff) { rotateTakeoff = it }
@@ -135,7 +135,7 @@ fun PlanTransformDialog(onDismiss: () -> Unit) {
                 OutlinedButton(
                     onClick = { rotation?.let { apply(ROTATE_MISSION, listOf(it, rotateTakeoff, rotateLanding)) } },
                     enabled = home != null && rotation != null,
-                ) { Text("Apply Rotation") }
+                ) { Text("Apply rotation") }
 
                 refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }

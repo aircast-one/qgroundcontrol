@@ -47,7 +47,7 @@ private fun ChannelMonitor() {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { one.aircast.android.bridge.Qgc.invoke(radioCalAction("start")) }
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-        Text("Channel Monitor", style = MaterialTheme.typography.titleSmall)
+        Text("Channel monitor", style = MaterialTheme.typography.titleSmall)
         channels.forEach { channel ->
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(channel.label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(28.dp))

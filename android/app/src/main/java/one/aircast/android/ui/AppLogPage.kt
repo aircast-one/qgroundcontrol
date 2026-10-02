@@ -187,7 +187,7 @@ fun AppLogPage(modifier: Modifier = Modifier) {
                 FilledTonalButton(
                     onClick = { following = true },
                     modifier = Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
-                ) { Text("Show Latest") }
+                ) { Text("Show latest") }
             }
         }
         HorizontalDivider()

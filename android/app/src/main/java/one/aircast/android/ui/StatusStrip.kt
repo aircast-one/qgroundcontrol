@@ -180,8 +180,8 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         InstrumentSheet(instrumentTitle(shown), rows, action = if (shown == StripDetail.Battery) {
             {
                 if (batteryReturnOffered(batteryJson)) BatteryReturnButton { detail = null }
-                TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery Failsafes") }
-                if (hasPowerSetup) TextButton(onClick = { detail = null; AppNavigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle Power: Configure") }
+                TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery failsafes") }
+                if (hasPowerSetup) TextButton(onClick = { detail = null; AppNavigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle power: configure") }
             }
         } else {
             null

@@ -113,7 +113,7 @@ internal fun SensorSettingsBlock(calibrating: Boolean, showCompasses: Boolean, o
                     simple = it
                     report(it)
                 })
-                Text("Simple Accelerometer Calibration")
+                Text("Simple accelerometer calibration")
             }
         }
         if (showCompasses && (!calibrating || settings.compassesWhileCalibrating)) {
@@ -132,7 +132,7 @@ internal fun SensorSettingsBlock(calibrating: Boolean, showCompasses: Boolean, o
                 compass.orientation?.let { FactRow(it, title = compass.orientationTitle, onWrite = refresh) }
             }
             settings.declination?.let { declination ->
-                Text("Magnetic Declination", style = MaterialTheme.typography.titleSmall)
+                Text("Magnetic declination", style = MaterialTheme.typography.titleSmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = declination.manual, onCheckedChange = { manual ->
                         scope.launch {
@@ -140,7 +140,7 @@ internal fun SensorSettingsBlock(calibrating: Boolean, showCompasses: Boolean, o
                             refresh()
                         }
                     })
-                    Text("Manual Magnetic Declination")
+                    Text("Manual magnetic declination")
                 }
                 declination.value?.let { FactRow(it.copy(enabled = declination.manual), onWrite = refresh) }
             }

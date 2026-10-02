@@ -196,7 +196,7 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
 
         SectionHeader("Settings")
         BASIC_SETTINGS.mapNotNull(setting).forEach { SettingRow(it) { value -> act(JOYSTICK_SETTING, it.name, value) } }
-        OutlinedButton(onClick = { advanced = !advanced }) { Text("Advanced Settings") }
+        OutlinedButton(onClick = { advanced = !advanced }) { Text("Advanced settings") }
         if (advanced) {
             ADVANCED_SETTINGS.mapNotNull(setting).forEach { SettingRow(it) { value -> act(JOYSTICK_SETTING, it.name, value) } }
             if (setting("useDeadband")?.value == true) {
@@ -204,7 +204,7 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
             }
             Text("MANUAL_CONTROL Extensions", style = MaterialTheme.typography.titleSmall)
             EXTENSION_SETTINGS.mapNotNull(setting).zip(listOf("Pitch", "Roll")).forEach { (s, label) -> SettingRow(s.copy(label = label)) { value -> act(JOYSTICK_SETTING, s.name, value) } }
-            Text("Additional Axes", style = MaterialTheme.typography.titleSmall)
+            Text("Additional axes", style = MaterialTheme.typography.titleSmall)
             val viaRc = (setting("additionalAxesFunction")?.value as? Number)?.toInt() == 1
             Row(verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.material3.RadioButton(selected = !viaRc, onClick = { act(JOYSTICK_SETTING, "additionalAxesFunction", 0) })
@@ -222,7 +222,7 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
     offerEnable?.let { name ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { offerEnable = null },
-            title = { Text("Enable Joystick") },
+            title = { Text("Enable joystick") },
             text = { Text("$name calibration is complete. Enable it now?") },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {

@@ -66,7 +66,7 @@ fun OpticalFlowScreen(modifier: Modifier = Modifier) {
         }
     }
     Column(modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("Optical Flow Camera", style = MaterialTheme.typography.titleMedium)
+        Text("Optical flow camera", style = MaterialTheme.typography.titleMedium)
         image?.let { Image(it, contentDescription = "Optical flow camera image", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth(0.5f).aspectRatio(4f / 3f)) }
     }
 }

@@ -133,14 +133,14 @@ fun ApmFollowScreen(modifier: Modifier = Modifier) {
         if (follow.waiting) Text("Waiting for Vehicle to update", style = MaterialTheme.typography.bodyMedium)
         if (!follow.supported) {
             Text(follow.unsupportedText, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
-            Button(onClick = { act(APM_FOLLOW_RESET) }) { Text("Reset To Supported Settings") }
+            Button(onClick = { act(APM_FOLLOW_RESET) }) { Text("Reset to supported settings") }
         }
         if (follow.showSettings) {
             SectionHeader("Follow Me Settings")
             Choice("Vehicle Position", follow.positionOptions, follow.positionIndex) { act(APM_FOLLOW_POSITION, it) }
             if (!follow.rover) Choice("Point Vehicle", follow.pointOptions, follow.pointIndex) { act(APM_FOLLOW_POINT, it) }
             if (follow.positionIndex == 1) {
-                Text("Vehicle Offsets", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+                Text("Vehicle offsets", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
                 androidx.compose.foundation.layout.Row {
                     OffsetGraphic(follow) { act(APM_FOLLOW_OFFSETS, it, follow.distance) }
                     if (!follow.rover) HeightGraphic(follow.height)

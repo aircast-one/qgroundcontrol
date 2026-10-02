@@ -143,7 +143,7 @@ private fun ModeRow(mode: Int, centeredThrottle: Boolean?, onPick: (Int) -> Unit
         centeredThrottle?.let { centered ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = centered, onCheckedChange = onCentered)
-                Text("Centered Throttle", style = MaterialTheme.typography.bodyMedium)
+                Text("Centered throttle", style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
