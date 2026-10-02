@@ -282,7 +282,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     val componentPage: (@Composable (Modifier) -> Unit)? = openComponent?.takeIf { headCanOpen(setupPage(setupJson, it.name), it.name) }?.let { open -> { pane ->
         Column(pane.fillMaxSize()) {
-            PageTopBar(open.name, "Back to Setup") { openComponent = null }
+            PageTopBar(sentenceCase(open.name), "Back to Setup") { openComponent = null }
             val nativePage = setupPage(setupJson, open.name)
             val blocked = open.blockedReason
             val first = open.prerequisite
@@ -369,7 +369,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 val blocked = component.blockedReason
                 val page = setupPage(setupJson, component.name)
                 SetupRow(
-                    title = component.name,
+                    title = sentenceCase(component.name),
                     status = blocked?.let { "Not while $it" }
                         ?: attentionAction(component.className),
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
@@ -398,7 +398,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 val openable = headCanOpen(page, headPage(component))
                 val blocked = component.blockedReason
                 SetupRow(
-                    title = component.name,
+                    title = sentenceCase(component.name),
                     status = when {
                         blocked != null -> "Not while $blocked"
                         component.needsAttention -> attentionAction(component.className)
