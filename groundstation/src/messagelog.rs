@@ -8,6 +8,7 @@ struct Logged {
     severity: u8,
     time: String,
     text: String,
+    dismissed: bool,
 }
 
 #[derive(Debug, Default)]
@@ -42,7 +43,7 @@ impl MessageLog {
     pub fn record_html(&mut self, component: u8, severity: u8, text: String, time: String) {
         let active = *self.active.get_or_insert(component);
         self.multi |= component != active;
-        self.items.push(Logged { component: self.multi.then_some(component), severity, time, text });
+        self.items.push(Logged { component: self.multi.then_some(component), severity, time, text, dismissed: false });
     }
 
     pub fn count(&self) -> usize {
@@ -54,8 +55,16 @@ impl MessageLog {
         self.read_through = 0;
     }
 
+    fn unread_items(&self) -> impl Iterator<Item = &Logged> {
+        self.items[self.read_through..].iter().filter(|m| !m.dismissed)
+    }
+
     pub fn unread(&self) -> usize {
-        self.items.len() - self.read_through
+        self.unread_items().count()
+    }
+
+    pub fn reset_errors(&mut self) {
+        self.items[self.read_through..].iter_mut().filter(|m| kind(m.severity) == Kind::Error).for_each(|m| m.dismissed = true);
     }
 
     pub fn reset_all(&mut self) {
@@ -63,7 +72,7 @@ impl MessageLog {
     }
 
     pub fn unread_type(&self) -> &'static str {
-        let unread = &self.items[self.read_through..];
+        let unread: Vec<&Logged> = self.unread_items().collect();
         match () {
             _ if unread.iter().any(|m| kind(m.severity) == Kind::Error) => "error",
             _ if unread.iter().any(|m| kind(m.severity) == Kind::Warning) => "warning",
@@ -117,6 +126,20 @@ mod tests {
         assert_eq!((log.unread(), log.unread_type()), (1, "warning"));
         log.clear();
         assert_eq!(log.unread(), 0);
+    }
+
+    #[test]
+    fn dismissing_the_critical_popup_drops_only_unread_errors_as_reset_error_level_messages_does() {
+        let mut log = MessageLog::default();
+        log.record(1, 3, "error".into(), "t".into());
+        log.record(1, 4, "warning".into(), "t".into());
+        log.reset_errors();
+        assert_eq!((log.unread(), log.unread_type(), log.count()), (1, "warning", 2));
+        log.record(1, 2, "critical".into(), "t".into());
+        assert_eq!((log.unread(), log.unread_type()), (2, "error"), "a later error counts again");
+        log.reset_errors();
+        log.reset_all();
+        assert_eq!((log.unread(), log.unread_type()), (0, "none"));
     }
 
     #[test]

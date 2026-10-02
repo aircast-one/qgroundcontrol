@@ -291,6 +291,7 @@ fun AircastShell(hostView: android.view.View?) {
                 Qgc.invoke("host.acknowledgeThrough", batch.through)
             }
             banners.forEach { snackbars.showSnackbar(it) }
+            if (batch.vehicleError) withContext(Dispatchers.Default) { Qgc.invoke(one.aircast.android.ui.RESET_ERROR_LEVEL_MESSAGES) }
         }
     }
 

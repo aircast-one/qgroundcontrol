@@ -2066,7 +2066,6 @@
         "view.cameraProtocol.refusals.5",
         "view.cameraProtocol.refusals.6",
         "view.cameraProtocol.refusals.7",
-        "view.cameraProtocol.refusals.8",
         "view.cameraProtocol.results.#",
         "view.cameraProtocol.results.0.code",
         "view.cameraProtocol.results.0.token",
@@ -6377,6 +6376,7 @@
         "view.speech(0).kind",
         "view.speech(0).last",
         "view.speech(0).lines.#",
+        "view.speech(0).muted",
         "view.supportHost(support.ardupilot.org:14550).class",
         "view.supportHost(support.ardupilot.org:14550).error",
         "view.supportHost(support.ardupilot.org:14550).kind",
@@ -9557,6 +9557,7 @@
         "view.speech(0).kind",
         "view.speech(0).last",
         "view.speech(0).lines.#",
+        "view.speech(0).muted",
         "view.supportHost(support.ardupilot.org:14550).class",
         "view.supportHost(support.ardupilot.org:14550).error",
         "view.supportHost(support.ardupilot.org:14550).kind",
@@ -14220,7 +14221,8 @@
         "last": "number",
         "lines": [
             "empty"
-        ]
+        ],
+        "muted": "bool"
     },
     "view.supportHost(support.ardupilot.org:14550)": {
         "class": "string",

@@ -92,13 +92,19 @@ fn setting(path: &str) -> Option<Value> {
     crate::settingsstore::raw_setting(path)
 }
 
+fn volume() -> f64 {
+    setting(VOLUME_PATH).and_then(|v| v.as_f64()).unwrap_or(DEFAULT_VOLUME).clamp(0.0, 100.0)
+}
+
+fn silenced() -> bool {
+    setting(MUTED_PATH).and_then(|v| v.as_bool()).unwrap_or(false) || volume() <= 0.0
+}
+
 pub fn say(text: &str) {
-    let muted = setting(MUTED_PATH).and_then(|v| v.as_bool()).unwrap_or(false);
-    let volume = setting(VOLUME_PATH).and_then(|v| v.as_f64()).unwrap_or(DEFAULT_VOLUME).clamp(0.0, 100.0);
-    if muted || volume <= 0.0 {
+    if silenced() {
         return;
     }
-    enqueue(&fix_text(text), volume / 100.0);
+    enqueue(&fix_text(text), volume() / 100.0);
 }
 
 #[cfg(test)]
@@ -140,6 +146,7 @@ pub fn speech_view(_backend: &dyn Backend, args: &[String]) -> Value {
         "kind": "object",
         "class": "Speech",
         "last": queue.next - 1,
+        "muted": silenced(),
         "lines": queue.spoken.iter().filter(|(sequence, _, _)| *sequence > after).map(|(sequence, text, volume)| json!({ "sequence": sequence, "text": text, "volume": volume })).collect::<Vec<_>>(),
     })
 }

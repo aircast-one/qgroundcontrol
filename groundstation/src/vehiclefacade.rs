@@ -1020,6 +1020,7 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         local if local.starts_with("vehicle.localPosition.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::LOCAL_POSITION, &local["vehicle.localPosition.".len()..], |n| crate::vehiclefact::local_position_raw(&known.local, n)),
         "vehicle.vibration" => return Some(crate::vehiclefact::vibration_group(&known.vibration)),
         vibration if vibration.starts_with("vehicle.vibration.") => return crate::vehiclefact::vibration_fact(&known.vibration, &vibration["vehicle.vibration.".len()..], None),
+        "vehicle.gps.telemetryAvailable" => return Some(json!({ "kind": "value", "value": known.gps.telemetry })),
         gps if gps.starts_with("vehicle.gps.") => return crate::vehiclefact::gps_fact(&known.gps, &gps["vehicle.gps.".len()..]),
         gps if gps.starts_with("vehicle.gps2.") => return crate::vehiclefact::gps_fact(&known.gps2, &gps["vehicle.gps2.".len()..]),
         gps if gps.starts_with("vehicle.gpsAggregate.") => return crate::vehiclefact::gps_aggregate_fact(&known.gps, &known.gps2, known.integrity_stale, &gps["vehicle.gpsAggregate.".len()..]),
@@ -1826,6 +1827,12 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if path == "vehicle.resetAllMessages" && switched_on() {
             crate::hub::lock().reset_message_log();
+            if !crate::qthost::present() {
+                return json!({ "ok": true }).to_string();
+            }
+        }
+        if path == "vehicle.resetErrorLevelMessages" && switched_on() {
+            crate::hub::lock().reset_error_messages();
             if !crate::qthost::present() {
                 return json!({ "ok": true }).to_string();
             }

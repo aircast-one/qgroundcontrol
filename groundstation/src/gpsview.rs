@@ -9,6 +9,7 @@ use crate::router::Backend;
 // ("3D Lock") rather than its index. That rule now lives here once.
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
+    "vehicle.gps.telemetryAvailable",
     "vehicle.gps.lat",
     "vehicle.gps.lon",
     "vehicle.gps.mgrs",
@@ -103,7 +104,8 @@ fn whole(reading: Option<&Reading>) -> Option<i64> {
 }
 
 pub fn gps_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let available = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
+    let active = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
+    let available = active && object(&backend.get("vehicle.gps.telemetryAvailable"))["value"] == true;
     let fact = |name: &str| available.then(|| reading(&object(&backend.get(&format!("vehicle.gps.{name}"))))).flatten();
     let lock = fact("lock");
     let count = fact("count");
@@ -144,6 +146,7 @@ mod tests {
     #[test]
     fn the_gps_rows_are_the_ones_both_heads_drew_and_the_lock_is_spelled_by_its_meaning() {
         let gps = Gps(vec![
+            ("telemetryAvailable", json!({ "kind": "value", "value": true })),
             ("lat", fact("lat", json!(47.3977), "47.3977420", "deg")),
             ("lon", fact("lon", json!(8.5456), "8.5456075", "deg")),
             ("count", fact("count", json!(10), "10", "")),
@@ -164,10 +167,12 @@ mod tests {
         assert!(!dop_usable("vdop", &Reading { number: Some(0.0), ..unknown_dop.clone() }));
         assert!(dop_usable("hdop", &Reading { number: Some(1.4), ..unknown_dop.clone() }) && dop_usable("count", &unknown_dop));
 
-        let antenna = Gps(vec![("count", fact("count", json!(10), "10", "")), ("systemErrors", fact("systemErrors", json!(8), "8", ""))]);
+        let antenna = Gps(vec![("telemetryAvailable", json!({ "kind": "value", "value": true })), ("count", fact("count", json!(10), "10", "")), ("systemErrors", fact("systemErrors", json!(8), "8", ""))]);
         assert_eq!(gps_view(&antenna, &[])["rows"].as_array().unwrap().last().unwrap(), &json!({ "label": "GPS Error", "value": "Antenna" }));
         assert_eq!(gps_error_text(12), "Multiple errors");
 
+        let silent = gps_view(&Gps(vec![("count", fact("count", json!(0), "0", ""))]), &[]);
+        assert_eq!(silent["available"], false, "a vehicle that never sent GPS_RAW_INT has no GPS indicator, as VehicleGPSIndicator shows only with gps.telemetryAvailable");
         let none = gps_view(&Gps(Vec::new()), &[]);
         assert_eq!((&none["available"], &none["satellites"], &none["rows"]), (&json!(false), &Value::Null, &json!([])));
     }

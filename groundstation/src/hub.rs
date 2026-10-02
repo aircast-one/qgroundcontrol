@@ -3733,7 +3733,7 @@ impl Hub {
 
     pub fn tick_with(&mut self, now_ms: u64, now_s: u64) -> Vec<(LinkId, Vec<u8>)> {
         let count = self.vehicles.len();
-        self.vehicles.values_mut().filter(|vehicle| !vehicle.replay).for_each(|vehicle| {
+        self.vehicles.values_mut().for_each(|vehicle| {
             let prefix = crate::speech::vehicle_prefix(vehicle.id, count);
             vehicle.announce(&prefix);
         });
@@ -3924,6 +3924,12 @@ impl Hub {
     pub fn reset_message_log(&mut self) {
         if let Some(vehicle) = self.active.and_then(|id| self.vehicles.get_mut(&id)) {
             vehicle.message_log.reset_all();
+        }
+    }
+
+    pub fn reset_error_messages(&mut self) {
+        if let Some(vehicle) = self.active.and_then(|id| self.vehicles.get_mut(&id)) {
+            vehicle.message_log.reset_errors();
         }
     }
 
