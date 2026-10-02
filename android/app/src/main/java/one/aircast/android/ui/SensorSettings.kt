@@ -79,6 +79,21 @@ internal fun sensorSettings(view: JSONObject?): SensorSettings? = view?.takeIf {
     )
 }
 
+internal const val ORIENTATIONS_HELP = "Adjust orientations as needed.\n\nROTATION_NONE indicates component points in direction of flight."
+
+@Composable
+internal fun CompassOrientations() {
+    var revision by remember { mutableIntStateOf(0) }
+    var read by remember { mutableStateOf<SensorSettings?>(null) }
+    LaunchedEffect(revision) { read = withContext(Dispatchers.Default) { sensorSettings(Qgc.get(SENSOR_SETTINGS_VIEW)) } }
+    val oriented = read?.compasses.orEmpty().mapNotNull { compass -> compass.orientation?.let { compass to it } }
+    if (oriented.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(ORIENTATIONS_HELP, style = MaterialTheme.typography.bodySmall)
+        oriented.forEach { (compass, orientation) -> FactRow(orientation, title = compass.orientationTitle) { revision++ } }
+    }
+}
+
 @Composable
 internal fun SensorSettingsBlock(calibrating: Boolean, showCompasses: Boolean, onSimpleAccel: ((Boolean) -> Unit)? = null) {
     var revision by remember { mutableIntStateOf(0) }

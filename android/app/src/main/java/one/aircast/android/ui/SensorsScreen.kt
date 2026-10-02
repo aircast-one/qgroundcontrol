@@ -342,7 +342,12 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         AlertDialog(
             onDismissRequest = { rebootPrompt = null },
             title = { Text(postCalibrationTitle(ranRoutine, state.px4)) },
-            text = { Text(prompt) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(prompt)
+                    if (state.px4 && ranRoutine == COMPASS_ROUTINE) CompassOrientations()
+                }
+            },
             confirmButton = {
                 TextButton(onClick = {
                     rebootPrompt = null
