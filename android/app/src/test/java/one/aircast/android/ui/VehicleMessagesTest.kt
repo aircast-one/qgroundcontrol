@@ -81,7 +81,7 @@ class VehicleMessagesTest {
             message(2, MessageSeverity.Normal, "Mode changed"),
         )
 
-        assertEquals("EKF variance · 3 messages from the vehicle", bannerText(null, messages))
+        assertEquals("EKF variance", bannerText(null, messages))
     }
 
     @Test
@@ -91,7 +91,7 @@ class VehicleMessagesTest {
             message(1, MessageSeverity.Error, "EKF variance"),
         )
 
-        assertEquals("EKF variance · 2 messages from the vehicle", bannerText(null, messages))
+        assertEquals("EKF variance", bannerText(null, messages))
     }
 
     @Test
@@ -126,7 +126,7 @@ class VehicleMessagesTest {
     fun `a warning is named when nothing worse has happened`() {
         val messages = listOf(message(0, MessageSeverity.Warning, "Low battery"))
 
-        assertEquals("Low battery · 1 message from the vehicle", bannerText(null, messages))
+        assertEquals("Low battery", bannerText(null, messages))
     }
 
     @Test

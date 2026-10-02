@@ -60,7 +60,7 @@ internal fun bannerText(blocker: String?, messages: List<VehicleMessage>): Strin
     val worst = messages.lastOrNull { it.level == MessageSeverity.Error }
         ?: messages.lastOrNull { it.level == MessageSeverity.Warning }
     val count = messageCountText(messages.size)
-    return worst?.text?.takeIf { it.isNotBlank() }?.let { "$it · $count" } ?: count
+    return worst?.text?.takeIf { it.isNotBlank() } ?: count
 }
 
 internal fun messageCountText(count: Int): String = "$count message${if (count == 1) "" else "s"} from the vehicle"
