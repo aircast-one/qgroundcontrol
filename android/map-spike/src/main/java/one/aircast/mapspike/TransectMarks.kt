@@ -30,7 +30,7 @@ data class TransectArrow(val at: TrackPoint, val bearing: Double)
 
 data class TransectMarks(val arrows: List<TransectArrow>, val stubs: List<List<TrackPoint>>)
 
-private fun arrowOn(from: TrackPoint, to: TrackPoint, quarter: Int): TransectArrow {
+internal fun arrowOn(from: TrackPoint, to: TrackPoint, quarter: Int): TransectArrow {
     val at = pointAt(from, metresBetween(from, to) / 4 * quarter, azimuthBetween(from, to))
     return TransectArrow(at, azimuthBetween(at, to))
 }
@@ -86,11 +86,11 @@ fun installTransectMarks(style: Style) {
     )
 }
 
-fun renderTransectMarks(style: Style, surveys: List<Survey>, selected: Int?) {
+fun renderTransectMarks(style: Style, surveys: List<Survey>, selected: Int?, legArrows: List<TransectArrow> = emptyList()) {
     val marks = surveys.map { transectMarks(it.transects, it.turnaround, it.index == selected) }
     (style.getSource(TRANSECT_ARROW_SOURCE) as? GeoJsonSource)?.setGeoJson(
         FeatureCollection.fromFeatures(
-            marks.flatMap { it.arrows }.map { arrow ->
+            (marks.flatMap { it.arrows } + legArrows).map { arrow ->
                 Feature.fromGeometry(Point.fromLngLat(arrow.at.longitude, arrow.at.latitude)).apply { addNumberProperty(ARROW_BEARING, arrow.bearing) }
             },
         ),

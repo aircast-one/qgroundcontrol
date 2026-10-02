@@ -28,4 +28,18 @@ class TransectMarksTest {
         assertEquals(2, marks.stubs.size)
         assertTrue(transectMarks(lawnmower(4, false), turnaround = false, current = false).stubs.isEmpty())
     }
+
+    private fun leg(index: Int, complex: Boolean = false) = MissionItem(
+        index = index, sequence = index, latitude = 47.0 + index * 0.001, longitude = 8.0, command = "", selected = false, complexPattern = complex,
+    )
+
+    @Test
+    fun `mission legs carry arrows on the second leg, every sixth after, and at pattern boundaries`() {
+        val plain = (0..14).map { leg(it) }
+        val arrows = legArrows(plain, linkStartToHome = true)
+        assertEquals("MissionController: the home-to-first leg has none, one when the count passes five, and the last leg always", 2, arrows.size)
+        val withSurvey = (0..4).map { leg(it, complex = it == 3) }
+        assertEquals("both legs touching a pattern get one", 2, legArrows(withSurvey, linkStartToHome = true).size)
+        assertTrue("arrows sit three quarters along the leg", arrows.first().at.latitude > 47.007 && arrows.first().at.latitude < 47.008)
+    }
 }

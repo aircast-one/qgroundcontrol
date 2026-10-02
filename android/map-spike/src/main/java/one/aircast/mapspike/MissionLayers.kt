@@ -137,6 +137,31 @@ fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): Featu
     return FeatureCollection.fromFeatures(features)
 }
 
+private const val LEG_ARROW_QUARTER = 3
+private const val LEG_ARROW_SPACING = 5
+
+private data class ArrowWalk(val arrows: List<Boolean>, val count: Int)
+
+fun legArrows(items: List<MissionItem>, linkStartToHome: Boolean): List<TransectArrow> {
+    val flown = (if (linkStartToHome) items else items.filterNot { it.index == 0 }).filter { it.routed }
+    val legs = flown.zipWithNext()
+    val walk = legs.foldIndexed(ArrowWalk(emptyList(), 0)) { leg, walk, (from, to) ->
+        when (to.index) {
+            1 -> walk.copy(arrows = walk.arrows + false)
+            else -> {
+                val boundary = (leg == 0 && from.index == 0) || from.complexPattern || to.complexPattern
+                val spaced = !boundary && walk.count > LEG_ARROW_SPACING
+                walk.copy(arrows = walk.arrows + (boundary || spaced), count = if (spaced) 1 else walk.count + 1)
+            }
+        }
+    }
+    val marked = walk.arrows.mapIndexed { leg, arrow -> arrow || leg == legs.lastIndex }
+    return legs.zip(marked).filter { it.second }.map { (leg, _) ->
+        val (from, to) = leg
+        arrowOn(from.exit ?: TrackPoint(from.latitude, from.longitude), TrackPoint(to.latitude, to.longitude), LEG_ARROW_QUARTER)
+    }
+}
+
 fun missionPath(items: List<MissionItem>, linkStartToHome: Boolean): Feature? {
     val flown = (if (linkStartToHome) items else items.filterNot { it.index == 0 })
         .filter { it.routed }
