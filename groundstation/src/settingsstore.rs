@@ -609,6 +609,10 @@ pub fn establish_save_path(given: Option<&str>, removable: Option<&str>, applica
     if let Some(chosen) = roots.map(|roots| chosen_save_root(&roots, dont_save_to_sd_card())).or(root) {
         written(&key("App", "savePath"), &chosen.to_string_lossy());
     }
+    create_save_directories();
+}
+
+fn create_save_directories() {
     if let Some(saved) = stored_text(&key("App", "savePath")).filter(|path| !path.is_empty()).map(std::path::PathBuf::from)
         && std::fs::create_dir_all(&saved).is_ok()
     {
@@ -672,6 +676,9 @@ fn store_raw(at: &Addressed, raw_given: &Value) {
             });
         }
         persist();
+        if at.group == "App" && at.fact == "androidDontSaveToSDCard" && before != new {
+            create_save_directories();
+        }
         if at.group == "App" && at.fact == "defaultMissionItemAltitude" && before != new {
             crate::coreplan::default_altitude_changed();
         }

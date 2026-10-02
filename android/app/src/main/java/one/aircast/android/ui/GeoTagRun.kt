@@ -10,7 +10,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import one.aircast.android.bridge.Qgc
 
 private const val GEOTAG_POLL_MS = 250L
@@ -37,12 +36,12 @@ internal object GeoTagRun {
     }
 
     private fun withFiles(work: suspend () -> Unit) {
+        if (!files.tryLock()) return
+        busy.value = true
         scope.launch {
-            files.withLock {
-                busy.value = true
-                runCatching { work() }
-                busy.value = false
-            }
+            runCatching { work() }
+            busy.value = false
+            files.unlock()
         }
     }
 
@@ -50,13 +49,15 @@ internal object GeoTagRun {
         runCatching { context.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
     }
 
-    fun pickLog(context: Context, uri: Uri) = withFiles {
+    fun pickLog(activity: Context, uri: Uri) = withFiles {
+        val context = activity.applicationContext
         val staged = stageLog(context, uri, documentName(context, uri))
         if (staged == null) note.value = "That file could not be read." else Qgc.set("$GEOTAG_ROOT.logFile", staged)
         refresh()
     }
 
-    fun pickImages(context: Context, tree: Uri) = withFiles {
+    fun pickImages(activity: Context, tree: Uri) = withFiles {
+        val context = activity.applicationContext
         keep(context, tree)
         imageTree.value = tree
         val (path, count) = stageImages(context, tree)
@@ -65,8 +66,8 @@ internal object GeoTagRun {
         refresh()
     }
 
-    fun pickOutput(context: Context, tree: Uri) {
-        keep(context, tree)
+    fun pickOutput(activity: Context, tree: Uri) {
+        keep(activity.applicationContext, tree)
         outputTree.value = tree
     }
 
@@ -77,7 +78,8 @@ internal object GeoTagRun {
         }
     }
 
-    fun start(context: Context) = withFiles {
+    fun start(activity: Context) = withFiles {
+        val context = activity.applicationContext
         note.value = null
         val output = taggedOutputDir(context)
         Qgc.set("$GEOTAG_ROOT.saveDirectory", output.absolutePath)

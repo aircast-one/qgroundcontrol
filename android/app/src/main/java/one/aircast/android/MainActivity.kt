@@ -10,6 +10,7 @@ import android.view.Window
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.activity.compose.BackHandler
+import one.aircast.android.ui.ConnectionLocks
 import one.aircast.android.ui.videoReading
 import one.aircast.android.ui.VIDEO_VIEW
 import one.aircast.android.bridge.qgcPath
@@ -166,7 +167,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         intent?.data?.let { QGCBridge.notifyDeepLink(it.toString()) }
 
         setContent {
-            one.aircast.android.ui.ConnectionLocks()
+            ConnectionLocks()
             AppFontScale { AircastShell(hostView) }
         }
         GamepadInput.start(this, lifecycleScope)

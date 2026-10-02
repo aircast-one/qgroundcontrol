@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const ALL_COMPONENTS: u8 = 0;
 pub const NO_INDEX: u16 = 65535;
@@ -166,21 +166,15 @@ pub struct Params {
     ready: bool,
     missing: bool,
     total_count: usize,
-    cache: Option<BTreeMap<String, CachedParam>>,
+    cache: Option<(BTreeMap<String, ParamValue>, BTreeSet<String>)>,
     hash_check_pending: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CachedParam {
-    pub value: ParamValue,
-    pub volatile: bool,
-}
-
-pub fn cache_crc(cache: &BTreeMap<String, CachedParam>) -> u32 {
+pub fn cache_crc(cache: &BTreeMap<String, ParamValue>, volatile: &BTreeSet<String>) -> u32 {
     cache
         .iter()
-        .filter(|(_, param)| !param.volatile)
-        .fold(0, |crc, (name, param)| crate::bootloader::crc32(&param.value.encode().to_le_bytes()[..param.value.size()], crate::bootloader::crc32(name.as_bytes(), crc)))
+        .filter(|(name, _)| !volatile.contains(*name))
+        .fold(0, |crc, (name, value)| crate::bootloader::crc32(&value.encode().to_le_bytes()[..value.size()], crate::bootloader::crc32(name.as_bytes(), crc)))
 }
 
 fn hash_of(value: ParamValue) -> u32 {
@@ -299,8 +293,8 @@ impl Params {
         self.facts.get(&component).map(|m| m.keys().cloned().collect()).unwrap_or_default()
     }
 
-    pub fn use_cache(&mut self, cache: BTreeMap<String, CachedParam>) {
-        self.cache = Some(cache).filter(|c| !c.is_empty());
+    pub fn use_cache(&mut self, cache: BTreeMap<String, ParamValue>, volatile: BTreeSet<String>) {
+        self.cache = Some((cache, volatile)).filter(|(c, _)| !c.is_empty());
     }
 
     pub fn start(&mut self) -> Vec<Action> {
@@ -316,11 +310,11 @@ impl Params {
 
     fn hash_answered(&mut self, component: u8, value: ParamValue) -> Vec<Action> {
         self.hash_check_pending = false;
-        let cache = self.cache.clone().unwrap_or_default();
-        let crc = cache_crc(&cache);
-        match crc == hash_of(value) {
+        let (cache, volatile) = self.cache.clone().unwrap_or_default();
+        let crc = cache_crc(&cache, &volatile);
+        match component == self.default_component && crc == hash_of(value) {
             true => {
-                let entries: Vec<PackEntry> = cache.iter().map(|(name, param)| PackEntry { name: name.clone(), value: param.value, default: None }).collect();
+                let entries: Vec<PackEntry> = cache.iter().map(|(name, value)| PackEntry { name: name.clone(), value: *value, default: None }).collect();
                 self.load_pack(component, &entries)
                     .into_iter()
                     .chain([Action::Set { component, name: HASH_CHECK.to_string(), value: ParamValue::U32(crc) }])
@@ -380,16 +374,16 @@ impl Params {
     }
 
     pub fn on_param_value(&mut self, component: u8, name: &str, count: u16, index: u16, value: ParamValue) -> Vec<Action> {
-        if index == NO_INDEX && name != HASH_CHECK && self.initial_timer_active {
-            return Vec::new();
-        }
-        self.initial_timer_active = false;
         if self.px4 && name == HASH_CHECK {
             return match self.hash_check_pending {
                 true => self.hash_answered(component, value),
-                false => vec![Action::StopInitialTimer],
+                false => Vec::new(),
             };
         }
+        if index == NO_INDEX && self.initial_timer_active {
+            return Vec::new();
+        }
+        self.initial_timer_active = false;
         let mut actions = vec![Action::StopInitialTimer, Action::StopWaitingTimer];
         if !self.counts.contains_key(&component) {
             self.counts.insert(component, count);
@@ -543,14 +537,15 @@ impl Params {
 mod tests {
     use super::*;
 
-    fn cached() -> BTreeMap<String, CachedParam> {
-        [
-            ("SYS_AUTOSTART".to_string(), CachedParam { value: ParamValue::I32(4001), volatile: false }),
-            ("MPC_XY_VEL_MAX".to_string(), CachedParam { value: ParamValue::F32(12.0), volatile: false }),
-            ("COM_FLIGHT_UUID".to_string(), CachedParam { value: ParamValue::I32(77), volatile: true }),
-        ]
-        .into_iter()
-        .collect()
+    fn cached() -> BTreeMap<String, ParamValue> {
+        [("SYS_AUTOSTART", ParamValue::I32(4001)), ("MPC_XY_VEL_MAX", ParamValue::F32(12.0)), ("COM_FLIGHT_UUID", ParamValue::I32(77))]
+            .into_iter()
+            .map(|(name, value)| (name.to_string(), value))
+            .collect()
+    }
+
+    fn volatile() -> BTreeSet<String> {
+        ["COM_FLIGHT_UUID".to_string()].into_iter().collect()
     }
 
     #[test]
@@ -558,18 +553,18 @@ mod tests {
         let expected = [("MPC_XY_VEL_MAX", 12.0f32.to_le_bytes()), ("SYS_AUTOSTART", 4001i32.to_le_bytes())]
             .iter()
             .fold(0, |crc, (name, bytes)| crate::bootloader::crc32(bytes, crate::bootloader::crc32(name.as_bytes(), crc)));
-        assert_eq!(cache_crc(&cached()), expected, "ParameterManager::_tryCacheHashLoad: sorted names, each name then its value bytes, volatile parameters left out");
+        assert_eq!(cache_crc(&cached(), &volatile()), expected, "ParameterManager::_tryCacheHashLoad: sorted names, each name then its value bytes, volatile parameters left out");
         let mut changed = cached();
-        changed.insert("COM_FLIGHT_UUID".to_string(), CachedParam { value: ParamValue::I32(78), volatile: true });
-        assert_eq!(cache_crc(&changed), expected, "a volatile value changing does not break the cache");
+        changed.insert("COM_FLIGHT_UUID".to_string(), ParamValue::I32(78));
+        assert_eq!(cache_crc(&changed, &volatile()), expected, "a volatile value changing does not break the cache");
     }
 
     #[test]
     fn a_matching_hash_loads_the_cache_instead_of_the_full_list() {
         let mut px4 = Params::new(1, true);
-        px4.use_cache(cached());
+        px4.use_cache(cached(), volatile());
         assert_eq!(px4.start(), vec![Action::StartInitialTimer, Action::ReadByName { component: 1, name: HASH_CHECK.to_string() }]);
-        let crc = cache_crc(&cached());
+        let crc = cache_crc(&cached(), &volatile());
         let loaded = px4.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(crc));
         assert!(loaded.contains(&Action::Ready { missing: false }));
         assert!(loaded.contains(&Action::Set { component: 1, name: HASH_CHECK.to_string(), value: ParamValue::U32(crc) }), "the hash is sent back so PX4 stops streaming");
@@ -580,17 +575,22 @@ mod tests {
     #[test]
     fn a_stale_cache_or_a_silent_vehicle_falls_back_to_the_full_list() {
         let mut stale = Params::new(1, true);
-        stale.use_cache(cached());
+        stale.use_cache(cached(), volatile());
         stale.start();
         assert!(stale.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(1)).contains(&Action::RequestList { component: ALL_COMPONENTS }));
         let mut silent = Params::new(1, true);
-        silent.use_cache(cached());
+        silent.use_cache(cached(), volatile());
         silent.start();
         assert!(silent.on_initial_timeout().contains(&Action::RequestList { component: ALL_COMPONENTS }), "the hash check timing out goes on to PARAM_REQUEST_LIST");
+        assert_eq!(silent.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(cache_crc(&cached(), &volatile()))), Vec::new(), "a late answer leaves the list request and its retry timer alone");
+        let mut stranger = Params::new(1, true);
+        stranger.use_cache(cached(), volatile());
+        stranger.start();
+        assert!(stranger.on_param_value(154, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(cache_crc(&cached(), &volatile()))).contains(&Action::RequestList { component: ALL_COMPONENTS }), "the cache belongs to the autopilot, not whichever component answered");
         let mut fresh = Params::new(1, true);
         assert!(fresh.start().contains(&Action::RequestList { component: ALL_COMPONENTS }), "with no cache there is nothing to check");
         let mut ardupilot = Params::new(1, false);
-        ardupilot.use_cache(cached());
+        ardupilot.use_cache(cached(), volatile());
         assert!(ardupilot.start().contains(&Action::RequestList { component: ALL_COMPONENTS }), "only PX4 answers _HASH_CHECK");
     }
 
@@ -672,7 +672,7 @@ mod tests {
         assert!(actions.contains(&Action::Set { component: 1, name: "X".into(), value: ParamValue::I32(1) }));
         let mut px4 = Params::new(1, true);
         px4.start();
-        assert_eq!(px4.on_param_value(1, "_HASH_CHECK", 3, NO_INDEX, ParamValue::U32(7)), vec![Action::StopInitialTimer]);
+        assert_eq!(px4.on_param_value(1, "_HASH_CHECK", 3, NO_INDEX, ParamValue::U32(7)), Vec::new());
         let mut fresh = Params::new(1, false);
         assert!(fresh.refresh(5, "Y").contains(&Action::ReadByName { component: 5, name: "Y".into() }));
     }

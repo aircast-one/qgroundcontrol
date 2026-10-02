@@ -435,7 +435,11 @@ private fun AllowTakeoverBox(holder: ControlStation, onRefusal: (String?) -> Uni
             onCheckedChange = { wanted ->
                 typed = wanted
                 onRead(wanted)
-                scope.launch { onRefusal(withContext(Dispatchers.Default) { saveAllowTakeover(wanted) }) }
+                scope.launch {
+                    val refusal = withContext(Dispatchers.Default) { saveAllowTakeover(wanted) }
+                    onRefusal(refusal)
+                    if (refusal != null) typed = null
+                }
             },
         )
     }
