@@ -194,7 +194,7 @@ fn landing(json: &Value, home_altitude: f64) -> Result<Survey, String> {
 }
 
 pub(crate) fn complex_entry(json: &Value) -> Option<(f64, f64)> {
-    survey(json, 0.0).ok().map(|pattern| pattern.entry)
+    survey(json, 0.0).ok().filter(|pattern| !pattern.incomplete).map(|pattern| pattern.entry)
 }
 
 fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
@@ -275,7 +275,7 @@ fn flight(item: &crate::plandoc::Item, commands: &std::collections::BTreeMap<i64
                 Flight { entry: at, exit: at, amsl, exit_amsl: amsl, band: (amsl, amsl), is_land: info.is_land, within: 0.0 }
             })
         }
-        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, exit_amsl: v.exit_amsl, band: (v.lowest, v.highest), is_land: v.landing, within: v.distance }),
+        crate::plandoc::Item::Complex { json, .. } => survey(json, home_altitude).ok().filter(|v| !v.incomplete).map(|v| Flight { entry: v.entry, exit: v.exit, amsl: v.amsl, exit_amsl: v.exit_amsl, band: (v.lowest, v.highest), is_land: v.landing, within: v.distance }),
     }
 }
 
@@ -289,17 +289,26 @@ fn legs(doc: &crate::plandoc::Document, commands: &std::collections::BTreeMap<i6
         last: Option<((f64, f64), f64, bool)>,
         total: f64,
         rtl: bool,
+        broken: bool,
     }
+    let incomplete = |item: &crate::plandoc::Item| matches!(item, crate::plandoc::Item::Complex { json, .. } if survey(json, home[2]).is_ok_and(|v| v.incomplete));
     let unflown = || Leg { azimuth: 0.0, distance: 0.0, alt_difference: 0.0, from_start: 0.0 };
     doc.items
         .iter()
         .zip(flights)
-        .scan(Walk { last: None, total: 0.0, rtl: false }, |walk, (item, flown)| {
+        .scan(Walk { last: None, total: 0.0, rtl: false, broken: false }, |walk, (item, flown)| {
             walk.rtl = walk.rtl || matches!(item, crate::plandoc::Item::Simple(s) if s.command == 20);
+            if incomplete(item) {
+                walk.broken = true;
+                return Some(unflown());
+            }
             let Some(f) = flown.filter(|_| !walk.rtl) else {
                 return Some(unflown());
             };
-            let previous = walk.last.or(link_start_to_home.then_some(((home[0], home[1]), home[2], false)));
+            let previous = match std::mem::take(&mut walk.broken) {
+                true => None,
+                false => walk.last.or(link_start_to_home.then_some(((home[0], home[1]), home[2], false))),
+            };
             let leg = match previous {
                 Some((from, from_amsl, was_land)) => {
                     let distance = if was_land { 0.0 } else { crate::surveygrid::distance_between(from, f.entry) };
@@ -692,7 +701,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
 }
 
 fn spot(read: &Value, key: &str) -> Option<(f64, f64)> {
-    let at = read.get(key)?;
+    let at = read.get(key).filter(|at| at.get("valid") != Some(&Value::Bool(false)))?;
     Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?))
 }
 
@@ -1660,6 +1669,21 @@ mod reported {
         assert_eq!(metric["altitudeEditUnits"], Value::Null, "the fake without a units key gets none, which is what compactFactJson emitted before rawValue and units were added to it");
         assert_eq!(imperial["altitudeUnits"], "ft");
         assert_eq!(imperial["altitude"], 75.0);
+    }
+
+    #[test]
+    fn a_survey_with_no_transects_measures_no_leg_to_null_island() {
+        let mut plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        plan["mission"]["items"][0]["TransectStyleComplexItem"]["VisualTransectPoints"] = json!([]);
+        let waypoint = |lat: f64, jump: i64| json!({ "type": "SimpleItem", "autoContinue": true, "command": 16, "doJumpId": jump, "frame": 3, "params": [0, 0, 0, null, lat, 149.1652, 50] });
+        let survey = plan["mission"]["items"][0].clone();
+        plan["mission"]["items"] = json!([waypoint(-35.36, 1), survey, waypoint(-35.359, 99)]);
+        let doc = crate::plandoc::load(&plan.to_string(), 2).unwrap();
+        let unit = |name: &str| Unit { name: name.to_string(), factor: 1.0 };
+        let view = document_view(&doc, 0, &unit("m"), &unit("m"), &unit("m/s"), false, false).unwrap();
+        let distances: Vec<f64> = view["items"].as_array().unwrap().iter().filter_map(|i| i["distance"].as_f64()).collect();
+        assert!(distances.iter().all(|d| *d < 1_000.0), "QGC measures an invalid coordinate as 0, so nothing reaches 0,0: {distances:?}");
+        assert_eq!(view["items"][2]["incomplete"], true);
     }
 
     #[test]

@@ -78,7 +78,7 @@ pub fn parse(shp_path: &str) -> Result<(String, usize, Vec<(f64, f64)>), String>
         Shape::Polygon(polygon) => {
             let Some(outer) = polygon.rings().first() else { return Err("Failed to read polygon object.".to_string()) };
             let points: Vec<(f64, f64)> = outer.points().iter().map(|p| to_geo(&projection, p.x, p.y)).collect();
-            Ok(("polygon".to_string(), entities, filtered(points, true)))
+            Ok(("polygon".to_string(), entities, filtered(crate::kml::clockwise(points), true)))
         }
         Shape::Polyline(line) => {
             let Some(first_part) = line.parts().first() else { return Err("Failed to read polyline object.".to_string()) };

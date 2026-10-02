@@ -388,6 +388,11 @@ pub fn simple_legs(reads: &[Value], fixed_wing: bool, height: &dyn Fn(f64, f64) 
         .into_iter()
         .filter(|r| rtl_sequence.is_none_or(|rtl| r.get("sequenceNumber").and_then(Value::as_i64).is_some_and(|s| s < rtl)))
         .collect();
+    let trailing_incomplete = match rtl_sequence {
+        Some(_) => flown.iter().rev().take_while(|r| flag_of(r, "isIncomplete")).count(),
+        None => 0,
+    };
+    let flown: Vec<&Value> = flown[..flown.len() - trailing_incomplete].to_vec();
     let starts_on_ground = flown.first().is_some_and(|first| flag_of(first, "isTakeoffItem"));
     let path: Vec<&Value> = home.filter(|_| starts_on_ground).into_iter().chain(flown).chain(home.filter(|_| rtl_sequence.is_some())).collect();
     let to_home = |second: &Value| home.is_some_and(|h| std::ptr::eq(h, second));
@@ -526,6 +531,15 @@ mod tests {
         let rtl = json!({ "command": 20, "sequenceNumber": 2, "specifiesCoordinate": false });
         let back = simple_legs(&[home, landing, rtl], false, &ridge);
         assert_eq!(back.len(), 1, "after an RTL the leg from the last landing back home is a generic segment and is checked: {back:?}");
+        let mut tail = at(47.01, 600.0);
+        tail["isIncomplete"] = json!(true);
+        tail["sequenceNumber"] = json!(2);
+        let mut before = at(47.02, 600.0);
+        before["sequenceNumber"] = json!(1);
+        let home = json!({ "homePosition": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "amslEntryAlt": 600.0 });
+        let rtl = json!({ "command": 20, "sequenceNumber": 3, "specifiesCoordinate": false });
+        let home_leg = simple_legs(&[home, before, tail, rtl], false, &ridge);
+        assert_eq!(home_leg.len(), 1, "QGC keeps the last valid item as lastFlyThroughVI past an incomplete one, so the leg home still starts there: {home_leg:?}");
     }
 
     #[test]

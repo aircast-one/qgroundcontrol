@@ -707,6 +707,9 @@ pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
         (Some("enumIndex"), _, _) => enum_index_raw(&at.meta, &given)?,
         _ => return None,
     };
+    if let Some(reason) = refused_write(at.group, &at.fact, &raw_given) {
+        return Some(json!({ "ok": false, "reason": reason }).to_string());
+    }
     store_raw(&at, &raw_given);
     match crate::qthost::present() {
         true => Some(backend.set(path, value)),
@@ -729,6 +732,15 @@ fn owned_invoke(path: &str, args: &str) -> Option<String> {
 }
 
 const EU_PUBLIC_OPERATOR_ID_LENGTH: usize = 16;
+
+const INVALID_EU_OPERATOR_ID: &str = "Invalid Operator ID. Enter the full 19 or 20 character ID including the 3 secret characters.";
+
+fn refused_write(group: &str, fact: &str, raw: &Value) -> Option<&'static str> {
+    let candidate = raw.as_str()?;
+    let stored = raw_setting(&format!("settings.remoteIDSettings.{fact}")).and_then(|v| v.as_str().map(str::to_string));
+    let legal = candidate.is_empty() || stored.as_deref() == Some(candidate) || crate::remoteid::eu_operator_id_valid(candidate);
+    (group == "RemoteID" && fact == "operatorIDEU" && !legal).then_some(INVALID_EU_OPERATOR_ID)
+}
 
 fn follow_ups(group: &str, fact: &str, new: &Value) -> Vec<(&'static str, String)> {
     match (group, fact) {
@@ -976,7 +988,10 @@ mod tests {
         let check = crate::remoteid::luhn_mod36(&format!("{number}xyz")).unwrap();
         let full = format!("FIN{number}{check}-xyz");
         assert_eq!(follow_ups("RemoteID", "operatorIDEU", &json!(full)), vec![("operatorIDEU", format!("FIN{number}{check}"))], "the three secret characters are never stored");
-        assert!(follow_ups("RemoteID", "operatorIDEU", &json!("FIN87astrdge12kQ-abc")).is_empty(), "an invalid ID is kept as written, as Qt does");
+        assert!(follow_ups("RemoteID", "operatorIDEU", &json!("FIN87astrdge12kQ-abc")).is_empty());
+        assert_eq!(refused_write("RemoteID", "operatorIDEU", &json!("FIN87astrdge12kQ-abc")), Some(INVALID_EU_OPERATOR_ID), "RemoteIDSettings' cooked validator refuses an invalid EU ID, so its secret is never stored or sent");
+        assert_eq!(refused_write("RemoteID", "operatorIDEU", &json!(full)), None);
+        assert_eq!(refused_write("RemoteID", "operatorIDEU", &json!("")), None, "clearing is always legal");
         assert!(follow_ups("App", "region", &json!(1)).is_empty());
     }
 
