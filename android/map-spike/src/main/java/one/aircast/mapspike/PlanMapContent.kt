@@ -1,5 +1,7 @@
 package one.aircast.mapspike
 
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.semantics.semantics
@@ -891,7 +893,7 @@ internal fun MapSpikeScreen(
 
                         waypoint?.let { item ->
                             if (itemEditor != null) {
-                                TextButton(onClick = { editingItem = item }) { Text("Edit item") }
+                                FilledTonalButton(onClick = { editingItem = item }) { Text("Edit item") }
                             }
                             var cameraRevision by remember(item.index) { mutableStateOf(0) }
                             val camera by produceState<JSONObject?>(null, item.index, cameraRevision) {
@@ -905,8 +907,9 @@ internal fun MapSpikeScreen(
                                 PaletteNote(it)
                             }
                             cameraChoices(camera)?.let { choices ->
-                                TextButton(onClick = { cameraMenuFor = item.index }) {
-                                    Text(choices.labels.getOrElse(choices.chosen) { "Camera…" })
+                                OutlinedButton(onClick = { cameraMenuFor = item.index }) {
+                                    Text("Camera: " + choices.labels.getOrElse(choices.chosen) { "…" })
+                                    Icon(Icons.Default.ArrowDropDown, null)
                                 }
                                 DropdownMenu(
                                     expanded = cameraMenuFor == item.index,
