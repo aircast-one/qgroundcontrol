@@ -9,6 +9,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.size
 
 import androidx.compose.material3.Surface
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarDuration
@@ -166,7 +168,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
             offMainDetached { Qgc.invoke("vehicle.resetAllMessages") }
         },
         modifier = modifier,
-        shape = MaterialTheme.shapes.small,
+        shape = if (urgent) RoundedCornerShape(ALERT_CORNER) else CircleShape,
         color = when {
             urgent -> MaterialTheme.colorScheme.errorContainer
             hasWarning -> MaterialTheme.aircast.warningContainer
@@ -174,7 +176,6 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
         },
         contentColor = when {
             urgent -> MaterialTheme.colorScheme.onErrorContainer
-            hasWarning -> MaterialTheme.aircast.warning
             else -> MaterialTheme.colorScheme.onSurface
         },
     ) {
@@ -183,7 +184,18 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(painterResource(if (urgent || hasWarning) R.drawable.ic_warning else R.drawable.ic_notifications), null, Modifier.size(22.dp))
+            Icon(
+                painterResource(
+                    when {
+                        urgent -> R.drawable.ic_error
+                        hasWarning -> R.drawable.ic_warning
+                        else -> R.drawable.ic_notifications
+                    },
+                ),
+                null,
+                tint = if (!urgent && hasWarning) MaterialTheme.aircast.warning else LocalContentColor.current,
+                modifier = Modifier.size(24.dp),
+            )
             Text(
                 text = bannerText(blocker, unread) ?: messageCountText(messages.size),
                 maxLines = 2,
@@ -193,7 +205,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
             )
             if (blocker == null && unread.isNotEmpty()) {
                 IconButton(onClick = { offMainDetached { Qgc.invoke("vehicle.resetAllMessages") } }, modifier = Modifier.size(32.dp)) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Dismiss messages", modifier = Modifier.size(18.dp))
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Dismiss messages", modifier = Modifier.size(24.dp))
                 }
             }
         }
