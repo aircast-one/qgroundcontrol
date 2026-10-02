@@ -234,7 +234,7 @@ impl Action {
             && match self {
                 Action::Arm => !s.armed,
                 Action::Disarm => s.armed && !s.flying,
-                Action::Grab | Action::Release | Action::Hold => s.initial_connect_complete && s.has_gripper,
+                Action::Grab | Action::Release | Action::Hold => s.has_gripper,
                 Action::Rtl => s.armed && s.guided_supported && s.flying && !s.in_rtl,
                 Action::Takeoff => s.takeoff_supported && !s.flying,
                 Action::Land => s.guided_supported && s.armed && !s.fixed_wing && !s.in_land,
@@ -251,8 +251,8 @@ impl Action {
                     s.armed && s.guided_supported && s.flying && !s.mission_active() && s.speed_limits
                 }
                 Action::EmergencyStop => s.armed && s.flying,
-                Action::VtolTransitionToFixedWing => s.vtol && s.flying && !s.vtol_in_fwd_flight,
-                Action::VtolTransitionToMultiRotor => s.vtol && s.flying && s.vtol_in_fwd_flight,
+                Action::VtolTransitionToFixedWing => s.vtol && (s.flying || s.landing) && !s.vtol_in_fwd_flight,
+                Action::VtolTransitionToMultiRotor => s.vtol && (s.flying || s.landing) && s.vtol_in_fwd_flight,
                 Action::ForceArm => !s.armed,
             }
     }
@@ -272,9 +272,10 @@ impl Action {
     }
 
     pub fn offer(self, s: &GuidedState) -> Offer {
-        let (offer, reason) = match self.shown(s) && self.gate(s).is_none() {
-            true => ("ready", ""),
-            false => ("hidden", ""),
+        let (offer, reason) = match (self.shown(s), self.gate(s)) {
+            (true, None) => ("ready", ""),
+            (true, Some(reason)) => ("hidden", reason),
+            (false, _) => ("hidden", ""),
         };
         Offer {
             id: self,

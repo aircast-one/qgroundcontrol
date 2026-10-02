@@ -9,7 +9,7 @@ pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.id", "ve
 
 const DISTANCE_TOLERANCE_M: f64 = 2.0;
 const AZIMUTH_TOLERANCE_DEG: f64 = 1.5;
-pub const MAX_POINTS: usize = 500;
+pub const MAX_POINTS: usize = 100_000;
 const MAX_TRACKED_VEHICLES: usize = 8;
 
 #[derive(Debug, Default)]
