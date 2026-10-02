@@ -1,5 +1,6 @@
 #include "QGCVideoC.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -149,6 +150,89 @@ GstElement *findByFactory(GstBin *bin, const char *factory)
     return found;
 }
 
+constexpr gint64 kJitterAdaptIntervalUs = G_USEC_PER_SEC;
+constexpr guint kJitterStepUpMs = 40;
+constexpr guint kJitterStepDownMs = 20;
+constexpr guint kJitterRtxMarginMs = 50;
+constexpr guint kJitterCapMs = 500;
+constexpr gint64 kJitterCleanWindowMs = 10000;
+
+struct JitterAdapter
+{
+    GstElement *jitterBuffer;
+    guint floorMs;
+    guint currentMs;
+    guint64 lost;
+    guint64 late;
+    gint64 lastCheckUs;
+    gint64 cleanSinceUs;
+};
+
+guint adaptJitterLatencyMs(guint currentMs, guint floorMs, bool degraded, gint64 cleanForMs, guint rttMs)
+{
+    if (degraded) {
+        const guint rtxTarget = (rttMs > 0) ? (rttMs + kJitterRtxMarginMs) : 0;
+        return std::min(kJitterCapMs, std::max({currentMs + kJitterStepUpMs, rtxTarget, floorMs}));
+    }
+    if (cleanForMs >= kJitterCleanWindowMs && currentMs > floorMs) {
+        return std::max(floorMs, (currentMs > kJitterStepDownMs) ? (currentMs - kJitterStepDownMs) : 0u);
+    }
+    return currentMs;
+}
+
+GstPadProbeReturn adaptJitterLatency(GstPad *, GstPadProbeInfo *, gpointer data)
+{
+    auto *const adapter = static_cast<JitterAdapter *>(data);
+    const gint64 now = g_get_monotonic_time();
+    if ((now - adapter->lastCheckUs) < kJitterAdaptIntervalUs) {
+        return GST_PAD_PROBE_OK;
+    }
+    adapter->lastCheckUs = now;
+    GstStructure *stats = nullptr;
+    g_object_get(adapter->jitterBuffer, "stats", &stats, nullptr);
+    if (!stats) {
+        return GST_PAD_PROBE_OK;
+    }
+    guint64 lost = 0;
+    guint64 late = 0;
+    guint64 rttNs = 0;
+    gst_structure_get_uint64(stats, "num-lost", &lost);
+    gst_structure_get_uint64(stats, "num-late", &late);
+    gst_structure_get_uint64(stats, "rtx-rtt", &rttNs);
+    gst_structure_free(stats);
+    const bool degraded = (lost > adapter->lost) || (late > adapter->late);
+    adapter->lost = lost;
+    adapter->late = late;
+    if (degraded) {
+        adapter->cleanSinceUs = now;
+    }
+    const guint next = adaptJitterLatencyMs(adapter->currentMs, adapter->floorMs, degraded, (now - adapter->cleanSinceUs) / 1000, static_cast<guint>(rttNs / GST_MSECOND));
+    if (next != adapter->currentMs) {
+        g_object_set(adapter->jitterBuffer, "latency", next, nullptr);
+        adapter->currentMs = next;
+        adapter->cleanSinceUs = now;
+    }
+    return GST_PAD_PROBE_OK;
+}
+
+void adaptNewJitterBuffer(GstElement *, GstElement *jitterBuffer, guint, guint, gpointer data)
+{
+    guint currentMs = 0;
+    g_object_get(jitterBuffer, "latency", &currentMs, nullptr);
+    const gint64 now = g_get_monotonic_time();
+    auto *const adapter = new JitterAdapter{jitterBuffer, GPOINTER_TO_UINT(data), currentMs, 0, 0, now, now};
+    g_object_set_data_full(G_OBJECT(jitterBuffer), "qgc-jitter-adapter", adapter, [](gpointer p) { delete static_cast<JitterAdapter *>(p); });
+    if (GstPad *const src = gst_element_get_static_pad(jitterBuffer, "src")) {
+        gst_pad_add_probe(src, GST_PAD_PROBE_TYPE_BUFFER, adaptJitterLatency, adapter, nullptr);
+        gst_object_unref(src);
+    }
+}
+
+void requestRetransmission(GstElement *, GObject *transceiver, gpointer)
+{
+    g_object_set(transceiver, "do-nack", TRUE, nullptr);
+}
+
 void applyWhepLatency(GstBin *bin)
 {
     GstElement *const source = findByFactory(bin, "whepsrc");
@@ -160,6 +244,11 @@ void applyWhepLatency(GstBin *bin)
         const guint latency = static_cast<guint>(g_ascii_strtoull(name + strlen(kWhepLatencyPrefix), nullptr, 10));
         if (GstElement *const webrtcbin = findByFactory(GST_BIN(source), "webrtcbin")) {
             g_object_set(webrtcbin, "latency", latency, nullptr);
+            g_signal_connect(webrtcbin, "on-new-transceiver", G_CALLBACK(requestRetransmission), nullptr);
+            if (GstElement *const rtpbin = findByFactory(GST_BIN(webrtcbin), "rtpbin")) {
+                g_signal_connect(rtpbin, "new-jitterbuffer", G_CALLBACK(adaptNewJitterBuffer), GUINT_TO_POINTER(latency));
+                gst_object_unref(rtpbin);
+            }
             gst_object_unref(webrtcbin);
         }
     }
