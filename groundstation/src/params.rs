@@ -272,6 +272,10 @@ impl Params {
         self.unanswered
     }
 
+    pub fn components(&self) -> Vec<u8> {
+        self.facts.iter().filter(|(_, facts)| !facts.is_empty()).map(|(component, _)| *component).collect()
+    }
+
     pub fn component_label(&self, component: u8) -> String {
         if self.facts.len() > 1 { format!("comp: {component}") } else { String::new() }
     }

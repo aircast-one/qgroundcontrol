@@ -1608,6 +1608,11 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::account::invoke(path) {
             return answer.to_string();
         }
+        if path == "vehicle.parameterManager.componentIds" && switched_on() {
+            if let Some(components) = crate::hub::lock().active().map(crate::hub::Vehicle::parameter_components) {
+                return json!({ "ok": true, "result": components }).to_string();
+            }
+        }
         if path == "vehicle.parameterManager.parameterNames" && switched_on() {
             let asked = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0).and_then(Value::as_i64)).unwrap_or(-1);
             let names = crate::hub::lock().active().map(|v| {

@@ -1462,6 +1462,10 @@ impl Vehicle {
         announced.map_or_else(|| crate::modes::name(self.autopilot, self.vehicle_type, self.base_mode, self.custom_mode), |m| m.name.clone())
     }
 
+    pub fn parameter_components(&self) -> Vec<u8> {
+        self.params.components()
+    }
+
     pub fn announced_name(&self, canonical: &str) -> String {
         crate::modes::custom_mode_for(self.autopilot, self.vehicle_type, canonical)
             .and_then(|custom| self.flight_modes.iter().find(|m| m.custom_mode == custom))

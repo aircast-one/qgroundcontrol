@@ -84,8 +84,13 @@ fn fact(backend: &dyn Backend, component: i64, name: &str) -> Option<Value> {
     present.then_some(read)
 }
 
-fn names(backend: &dyn Backend) -> Vec<String> {
-    let listed = object(&backend.invoke("vehicle.parameterManager.parameterNames", "[-1]"));
+fn components(backend: &dyn Backend) -> Vec<i64> {
+    let listed = object(&backend.invoke("vehicle.parameterManager.componentIds", "[]"));
+    listed.get("result").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_i64).collect::<Vec<_>>()).filter(|c| !c.is_empty()).unwrap_or_else(|| vec![-1])
+}
+
+fn names(backend: &dyn Backend, component: i64) -> Vec<String> {
+    let listed = object(&backend.invoke("vehicle.parameterManager.parameterNames", &json!([component]).to_string()));
     listed
         .get("result")
         .and_then(Value::as_array)
@@ -107,10 +112,11 @@ pub fn save(backend: &dyn Backend) -> Value {
         "#".to_string(),
         "# Vehicle-Id Component-Id Name Value Type".to_string(),
     ];
-    let rows: Vec<String> = names(backend)
-        .iter()
-        .filter_map(|name| {
-            let read = fact(backend, -1, name)?;
+    let rows: Vec<String> = components(backend)
+        .into_iter()
+        .flat_map(|asked| names(backend, asked).into_iter().map(move |name| (asked, name)))
+        .filter_map(|(asked, name)| {
+            let read = fact(backend, asked, &name)?;
             let mav_type = read.get("mavType").and_then(Value::as_u64).and_then(|t| u8::try_from(t).ok())?;
             let component = integer(&read, "componentId").unwrap_or(1);
             let raw = read.get("rawValue").and_then(Value::as_f64)?;
@@ -272,6 +278,32 @@ mod tests {
         assert_eq!(lines[8], "1\t1\tRTL_ALT\t1500\t6");
         assert_eq!(lines[9], "1\t1\tWPNAV_SPEED\t0.1\t9", "a float is written in the shortest form that reads back to the same bits");
         assert_eq!(parse(&saved).len(), 2, "and it reads back");
+    }
+
+    #[test]
+    fn every_component_with_parameters_is_saved() {
+        struct Two;
+        impl Backend for Two {
+            fn get(&self, path: &str) -> String {
+                let (component, name) = path.trim_end_matches(')').rsplit_once('(').unwrap().1.split_once(',').unwrap();
+                json!({ "kind": "fact", "name": name, "rawValue": 1.0, "mavType": 6, "componentId": component.parse::<i64>().unwrap() }).to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "id": 1, "firmwareType": 3, "vehicleType": 2 }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                match (path, args) {
+                    ("vehicle.parameterManager.componentIds", _) => json!({ "ok": true, "result": [1, 154] }),
+                    (_, "[1]") => json!({ "ok": true, "result": ["RTL_ALT"] }),
+                    (_, "[154]") => json!({ "ok": true, "result": ["MNT1_TYPE"] }),
+                    _ => json!({ "ok": false }),
+                }
+                .to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let saved = save(&Two)["result"].as_str().unwrap().to_string();
+        let rows: Vec<&str> = saved.lines().filter(|l| !l.starts_with('#')).collect();
+        assert_eq!(rows, ["1\t1\tRTL_ALT\t1\t6", "1\t154\tMNT1_TYPE\t1\t6"], "ParameterManager::writeParametersToStream walks every component's map");
     }
 
     #[test]
