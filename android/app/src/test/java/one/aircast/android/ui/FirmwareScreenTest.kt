@@ -41,4 +41,16 @@ class FirmwareScreenTest {
         assertEquals(DEV_WARNING, firmwareWarning("ardupilot:copter:dev"))
         assertEquals(null, firmwareWarning("px4:stable"))
     }
+
+    @Test
+    fun `without advanced settings only the standard builds are offered, as FirmwareUpgrade shows`() {
+        val plain = firmwareSources(advanced = false).map { it.first }
+        assertTrue(plain.all { it.endsWith(":stable") })
+        assertTrue("px4:stable" in plain)
+        assertTrue(FIRMWARE_FROM_FILE !in plain)
+        assertTrue(FIRMWARE_FROM_FILE in firmwareSources(advanced = true).map { it.first })
+        assertEquals("ardupilot:plane:stable", sourceAfterAdvanced("ardupilot:plane:dev", advanced = false))
+        assertEquals(DEFAULT_FIRMWARE_SOURCE, sourceAfterAdvanced(FIRMWARE_FROM_FILE, advanced = false))
+        assertEquals("px4:beta", sourceAfterAdvanced("px4:beta", advanced = true))
+    }
 }

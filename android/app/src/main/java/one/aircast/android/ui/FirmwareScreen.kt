@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
@@ -100,6 +101,14 @@ internal val FIRMWARE_SOURCES: List<Pair<String, String>> =
             }
         }
 
+internal const val DEFAULT_FIRMWARE_SOURCE = "px4:stable"
+
+internal fun firmwareSources(advanced: Boolean): List<Pair<String, String>> =
+    if (advanced) FIRMWARE_SOURCES else FIRMWARE_SOURCES.filter { it.first.endsWith(":stable") }
+
+internal fun sourceAfterAdvanced(source: String, advanced: Boolean): String =
+    source.takeIf { advanced || it.endsWith(":stable") } ?: source.substringBeforeLast(':', "").takeIf { it.isNotEmpty() }?.let { "$it:stable" } ?: DEFAULT_FIRMWARE_SOURCE
+
 internal const val BETA_WARNING = "WARNING: BETA FIRMWARE. This firmware version is ONLY intended for beta testers. Although it has received FLIGHT TESTING, it represents actively changed code. Do NOT use for normal operation."
 internal const val DEV_WARNING = "WARNING: CONTINUOUS BUILD FIRMWARE. This firmware has NOT BEEN FLIGHT TESTED. It is only intended for DEVELOPERS. Run bench tests without props first. Do NOT fly this without additional safety precautions. Follow the forums actively when using it."
 
@@ -122,7 +131,8 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
     var ports by remember { mutableStateOf<List<FirmwarePort>>(emptyList()) }
     var port by remember { mutableStateOf("") }
     var file by remember { mutableStateOf<File?>(null) }
-    var source by remember { mutableStateOf(FIRMWARE_FROM_FILE) }
+    var advanced by remember { mutableStateOf(false) }
+    var source by remember { mutableStateOf(DEFAULT_FIRMWARE_SOURCE) }
     var sourceMenu by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf("") }
 
@@ -184,13 +194,20 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                         Text(FIRMWARE_SOURCES.firstOrNull { it.first == source }?.second ?: source)
                     }
                     DropdownMenu(expanded = sourceMenu, onDismissRequest = { sourceMenu = false }) {
-                        FIRMWARE_SOURCES.forEach { (token, title) ->
+                        firmwareSources(advanced).forEach { (token, title) ->
                             DropdownMenuItem(text = { Text(title) }, onClick = {
                                 source = token
                                 sourceMenu = false
                             })
                         }
                     }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = advanced, enabled = !busy, onCheckedChange = {
+                        advanced = it
+                        source = sourceAfterAdvanced(source, it)
+                    })
+                    Text("Advanced settings", style = MaterialTheme.typography.bodyMedium)
                 }
                 if (source == FIRMWARE_FROM_FILE) {
                     Text(file?.name?.removePrefix("firmware-") ?: "No firmware file chosen", style = MaterialTheme.typography.bodyMedium)
