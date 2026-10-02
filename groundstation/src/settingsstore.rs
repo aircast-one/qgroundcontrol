@@ -652,18 +652,21 @@ pub fn set_raw(path: &str, raw_given: &Value) {
     }
 }
 
+fn enum_index_raw(meta: &MetaData, given: &Value) -> Option<Value> {
+    (!meta.bitmask).then_some(())?;
+    let index = usize::try_from(given.as_i64()?).ok()?;
+    meta.enums.get(index).map(|entry| entry.value.clone())
+}
+
 pub fn set(backend: &dyn Backend, path: &str, value: &str) -> Option<String> {
     let at = address(path)?;
-    let cooked = match at.field.as_deref() {
-        None | Some("value") => true,
-        Some("rawValue") => false,
-        Some(_) => return None,
-    };
     let written = crate::read::object(value);
     let given = written.get("value").cloned().unwrap_or(written);
-    let raw_given = match (cooked, unit_for(&at.meta), given.as_f64()) {
-        (true, Some(u), Some(n)) => json!((u.base)(n)),
-        _ => given,
+    let raw_given = match (at.field.as_deref(), unit_for(&at.meta), given.as_f64()) {
+        (None | Some("value"), Some(u), Some(n)) => json!((u.base)(n)),
+        (None | Some("value" | "rawValue"), _, _) => given,
+        (Some("enumIndex"), _, _) => enum_index_raw(&at.meta, &given)?,
+        _ => return None,
     };
     store_raw(&at, &raw_given);
     match crate::qthost::present() {
@@ -861,6 +864,17 @@ mod tests {
         assert_eq!(muted["readOnly"], json!(false), "a compact fact without readOnly decodes as read-only and the page cannot edit it");
         let palette = facts.iter().find(|f| f["property"] == "indoorPalette").unwrap();
         assert!(palette["enumStrings"].as_array().is_some_and(|e| !e.is_empty()), "an enum keeps its choices");
+    }
+
+    #[test]
+    fn an_enum_index_write_stores_that_choice_raw_value() {
+        let palette = address("settings.appSettings.indoorPalette.enumIndex").unwrap();
+        assert_eq!(palette.field.as_deref(), Some("enumIndex"));
+        let labels: Vec<_> = palette.meta.enums.iter().map(|e| (e.label.clone(), e.value.clone())).collect();
+        let outdoor = labels.iter().position(|(label, _)| label == "Outdoor").unwrap();
+        assert_eq!(enum_index_raw(&palette.meta, &json!(outdoor)), Some(labels[outdoor].1.clone()), "the index names a choice; its raw value is what the setting holds");
+        assert_eq!(enum_index_raw(&palette.meta, &json!(labels.len())), None, "past the list is not a choice");
+        assert_eq!(enum_index_raw(&palette.meta, &json!(-1)), None);
     }
 
     #[test]
