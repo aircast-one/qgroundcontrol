@@ -2623,8 +2623,8 @@ impl Vehicle {
                 if let Some(vertical) = crate::cameraproto::vertical_field_of_view_degrees(f64::from(d.hfov), aspect) {
                     [("settings.gimbalControllerSettings.cameraHFov", f64::from(d.hfov)), ("settings.gimbalControllerSettings.cameraVFov", vertical)]
                         .into_iter()
-                        .filter(|(path, value)| crate::settingsstore::raw_setting(path).and_then(|v| v.as_f64()) != Some(value.trunc()))
-                        .for_each(|(path, value)| crate::settingsstore::set_raw(path, &json!(value.trunc() as u32)));
+                        .filter(|(path, value)| crate::settingsstore::raw_setting(path).and_then(|v| v.as_f64()) != Some(value.round()))
+                        .for_each(|(path, value)| crate::settingsstore::set_raw(path, &json!(value.round() as u32)));
                 }
                 Vec::new()
             }
@@ -2811,7 +2811,7 @@ impl Vehicle {
                 }
                 self.custom_mode = h.custom_mode;
                 self.system_status = h.system_status as u8;
-                self.vehicle_type = h.mavtype as u8;
+                self.vehicle_type = assumed_type(h.mavtype as u8, self.autopilot);
                 if self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT && header.component_id == COMP_AUTOPILOT1 {
                     self.flying = self.armed() && matches!(self.system_status, MAV_STATE_ACTIVE | MAV_STATE_CRITICAL | MAV_STATE_EMERGENCY);
                 }
@@ -3388,6 +3388,12 @@ fn sensor_parameter(name: &str) -> bool {
     name.starts_with("CAL_") || name.starts_with("SENS_")
 }
 
+const TYPE_QUADROTOR: u8 = 2;
+
+fn assumed_type(kind: u8, autopilot: u8) -> u8 {
+    if kind == TYPE_GENERIC && autopilot == crate::modes::AUTOPILOT_ARDUPILOT { TYPE_QUADROTOR } else { kind }
+}
+
 fn heartbeat_info(message: &MavMessage) -> Option<(u8, u8)> {
     match message {
         MavMessage::HEARTBEAT(h) => Some((h.mavtype as u8, h.autopilot as u8)),
@@ -3426,7 +3432,6 @@ pub struct Hub {
     link_kinds: LinkKinds,
     arrival: Vec<u8>,
     active: Option<u8>,
-    host_selects: bool,
     listed: Option<Vec<u8>>,
     selected: Vec<u8>,
     remote_inputs: Option<RemoteInputs>,
@@ -3496,7 +3501,7 @@ impl Hub {
         if let Some((kind, autopilot)) = heartbeat_info(message) {
             let excluded_type = matches!(kind, TYPE_GCS | TYPE_ONBOARD_CONTROLLER | TYPE_GIMBAL | TYPE_ADSB);
             if header.component_id == COMP_AUTOPILOT1 && !excluded_type && autopilot != AUTOPILOT_INVALID && header.system_id != 0 && !self.vehicles.contains_key(&header.system_id) {
-                let mut vehicle = Vehicle::new(header.system_id, header.component_id, autopilot, kind, origin.link, origin.replay);
+                let mut vehicle = Vehicle::new(header.system_id, header.component_id, autopilot, assumed_type(kind, autopilot), origin.link, origin.replay);
                 vehicle.link_kinds = self.link_kinds.clone();
                 vehicle.commands.high_latency = self.link_kinds.high_latency.contains(&origin.link);
                 if kind == TYPE_SUBMARINE && !origin.replay && !crate::qthost::present() {
@@ -3514,8 +3519,8 @@ impl Hub {
                 if self.vehicles.len() > 1 {
                     crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, &format!("Connected to Vehicle {}", header.system_id));
                 }
-                if !self.host_selects {
-                    self.active.get_or_insert(header.system_id);
+                if self.vehicles.len() == 1 {
+                    self.active = Some(header.system_id);
                 }
             }
         }
@@ -3861,13 +3866,12 @@ impl Hub {
         self.vehicles.remove(&id);
         self.arrival.retain(|known| *known != id);
         self.selected.retain(|known| *known != id);
-        if self.active == Some(id) && !self.host_selects {
+        if self.active == Some(id) {
             self.active = self.arrival.first().copied();
         }
     }
 
     pub fn set_active(&mut self, id: Option<u8>) {
-        self.host_selects = true;
         if self.active != id {
             if let Some(vehicle) = id.and_then(|id| self.vehicles.get_mut(&id)) {
                 vehicle.shell = crate::shell::Shell::default();
@@ -4484,7 +4488,7 @@ mod tests {
     }
 
     #[test]
-    fn the_host_chooses_the_active_vehicle_once_it_has_said_anything() {
+    fn the_host_chooses_the_active_vehicle_and_a_lost_choice_falls_back_to_the_first() {
         let mut hub = Hub::default();
         assert_eq!(hub.active_id(), None, "with nothing heard there is no vehicle to answer for");
         hub.on_frame(origin(0), &MavHeader { system_id: 7, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 0, 0);
@@ -4497,9 +4501,13 @@ mod tests {
         assert_eq!(hub.listed_count(), None, "the list is the host's until it reports one");
         hub.set_listed(vec![7]);
         assert_eq!((hub.listed_count(), hub.listed(0).map(|v| v.id), hub.listed(1).map(|v| v.id)), (Some(1), Some(7), None));
-        assert_eq!(hub.active().map(|v| v.id), None, "once the host chooses, losing its choice leaves nothing active until it chooses again");
-        hub.set_active(Some(7));
-        assert_eq!(hub.active().map(|v| v.id), Some(7));
+        assert_eq!(hub.active().map(|v| v.id), Some(7), "losing the chosen vehicle makes the first remaining one active, as MultiVehicleManager::_deleteVehiclePhase2 does, even after a choice");
+    }
+
+    #[test]
+    fn a_freshly_flashed_ardupilot_with_a_generic_type_is_taken_for_a_quad() {
+        assert_eq!(assumed_type(TYPE_GENERIC, crate::modes::AUTOPILOT_ARDUPILOT), TYPE_QUADROTOR, "MultiVehicleManager assumes ArduCopter, the one variant that boots without FRAME_CLASS");
+        assert_eq!(assumed_type(TYPE_GENERIC, crate::modes::AUTOPILOT_PX4), TYPE_GENERIC);
     }
 
     #[test]
