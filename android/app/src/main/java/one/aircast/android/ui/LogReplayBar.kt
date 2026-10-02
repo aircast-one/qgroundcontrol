@@ -44,7 +44,11 @@ internal const val LOG_REPLAY_TOGGLE = "logReplay.togglePlay"
 internal const val LOG_REPLAY_SPEED = "logReplay.speed"
 internal const val LOG_REPLAY_SEEK = "logReplay.seek"
 internal const val LOG_REPLAY_CLOSE = "logReplay.close"
-private const val REPLAY_CACHE = "log-replay.tlog"
+private const val REPLAY_FOLDER = "log-replay"
+private const val REPLAY_FALLBACK = "log-replay.tlog"
+
+internal fun replayFileName(shown: String?): String =
+    shown?.substringAfterLast('/')?.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: REPLAY_FALLBACK
 private const val PLAYING_POLL_MS = 250L
 private const val IDLE_POLL_MS = 1000L
 
@@ -106,7 +110,12 @@ fun LogReplayBar() {
         val chosen = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             message = withContext(Dispatchers.IO) {
-                val staged = File(context.cacheDir, REPLAY_CACHE)
+                val shown = runCatching {
+                    context.contentResolver.query(chosen, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        cursor.takeIf { it.moveToFirst() }?.getString(0)
+                    }
+                }.getOrNull()
+                val staged = File(File(context.cacheDir, REPLAY_FOLDER).apply { deleteRecursively(); mkdirs() }, replayFileName(shown))
                 val copied = runCatching {
                     context.contentResolver.openInputStream(chosen)?.use { source -> staged.outputStream().use { source.copyTo(it) } } != null
                 }.getOrDefault(false)

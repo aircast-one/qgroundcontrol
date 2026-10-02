@@ -68,7 +68,10 @@ fn start(recording: &mut Recording) {
     }
     let path = folder.join(format!("FlightData{}.{TEMP_EXTENSION}", chrono::Utc::now().timestamp_micros()));
     match File::create(&path) {
-        Ok(file) => recording.open = Some((path, file)),
+        Ok(file) => {
+            recording.open = Some((path, file));
+            check_save_path();
+        }
         Err(error) => {
             log::warn!("MAVLink Logging failed. Could not open {}: {error}", path.display());
             crate::noticeboard::post(crate::noticeboard::MESSAGE, "MAVLink", &format!("Opening Flight Data file for writing failed. Unable to write to {}. Please choose a different file location.", path.display()));
@@ -107,6 +110,9 @@ pub fn received(frame: &crate::transport::Frame) {
 }
 
 pub fn sent(bytes: &[u8]) {
+    if crate::logreplay::playing() {
+        return;
+    }
     let mut recording = RECORDING.lock().unwrap_or_else(PoisonError::into_inner);
     write(&mut recording, bytes);
 }
@@ -150,13 +156,24 @@ pub fn saved_name(folder: &Path, now: chrono::DateTime<chrono::Local>) -> PathBu
         .unwrap_or_else(|| folder.join(format!("{stamp}.{SAVED_EXTENSION}")))
 }
 
+fn check_save_path() {
+    let problem = match save_folder() {
+        None => Some("Unable to save telemetry log. Application save directory is not set.".to_string()),
+        Some(folder) if !folder.is_dir() => Some(format!("Unable to save telemetry log. Telemetry save directory \"{}\" does not exist.", folder.display())),
+        Some(_) => None,
+    };
+    if let Some(problem) = problem {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &problem);
+    }
+}
+
 fn save(temp: &Path) {
     let Some(folder) = save_folder() else {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", "Unable to save telemetry log. Application save directory is not set.");
         let _ = std::fs::remove_file(temp);
         return;
     };
-    if std::fs::create_dir_all(&folder).is_err() {
+    if !folder.is_dir() {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &format!("Unable to save telemetry log. Telemetry save directory \"{}\" does not exist.", folder.display()));
         let _ = std::fs::remove_file(temp);
         return;

@@ -67,8 +67,8 @@ impl ReplayLink {
     pub fn open(file: &str, deliver: impl Fn(&[u8]) + Send + 'static) -> Result<ReplayLink, String> {
         let bytes = std::fs::read(file).map_err(|e| format!("Unable to open log file: '{file}', error: {e}"))?;
         let replay = Replay::from_tlog(&bytes, crate::hub::now_us());
-        if replay.duration_s() == 0 && !replay.has_frames() {
-            return Err(format!("The log file '{}' has no MAVLink messages.", short_name(file)));
+        if replay.duration_us() == 0 {
+            return Err(format!("The log file '{file}' is corrupt or empty."));
         }
         let generation = {
             let mut controller = lock();
@@ -137,8 +137,9 @@ fn start(backend: &dyn Backend, path: &str) -> Value {
             json!({ "ok": true })
         }
         Err(failure) => {
-            lock().error = failure.reason.clone();
-            json!({ "ok": false, "reason": failure.reason })
+            let reason = format!("Link: {}, {}.", short_name(path), failure.reason);
+            lock().error = reason.clone();
+            json!({ "ok": false, "reason": reason })
         }
     }
 }

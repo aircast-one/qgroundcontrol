@@ -33,12 +33,12 @@ impl Replay {
         Self::new(crate::tlog::entries(bytes, now_us))
     }
 
-    pub fn duration_s(&self) -> u64 {
-        self.duration_us / 1_000_000
+    pub fn duration_us(&self) -> u64 {
+        self.duration_us
     }
 
-    pub fn has_frames(&self) -> bool {
-        !self.entries.is_empty()
+    pub fn duration_s(&self) -> u64 {
+        self.duration_us / 1_000_000
     }
 
     pub fn is_playing(&self) -> bool {
