@@ -274,7 +274,7 @@ fn flash_sik<P: Port>(loader: &mut Bootloader<P>, board: &BoardInfo, fetch: &mut
     let (_, contents) = fetch(board)?;
     let blocks = crate::bootloader::parse_ihx(&String::from_utf8_lossy(&contents)).map_err(|e| image_load_failed(&e, report))?;
     loader.init_flash_sequence()?;
-    report(Event::Phase(Phase::Erasing));
+    begin_erase(report)?;
     report(Event::Status("Erasing previous program...".into()));
     loader.erase()?;
     report(Event::Status("Erase complete".into()));
@@ -296,7 +296,7 @@ fn image_load_failed(error: &str, report: &mut dyn FnMut(Event)) -> String {
 fn flash_px4<P: Port>(loader: &mut Bootloader<P>, board: &BoardInfo, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
     let (file, contents) = fetch(board)?;
     let image = image_for(&file, &contents, board, report)?;
-    report(Event::Phase(Phase::Erasing));
+    begin_erase(report)?;
     report(Event::Status("Erasing previous program...".into()));
     loader.erase()?;
     report(Event::Status("Erase complete".into()));
@@ -388,7 +388,21 @@ impl Port for Serial {
 }
 
 fn description_of(port: &str) -> String {
-    ports().into_iter().find(|p| p["port"] == port).and_then(|p| p["description"].as_str().map(str::to_string)).unwrap_or_default()
+    crate::corelinks::port_infos().into_iter().find(|p| p.system_location == port).map(|p| p.description).unwrap_or_default()
+}
+
+fn begin_erase(report: &mut dyn FnMut(Event)) -> Result<(), String> {
+    {
+        let mut held = job();
+        if cancelled() {
+            return Err(FLASH_CANCELLED.to_string());
+        }
+        if held.phase.busy() {
+            held.phase = Phase::Erasing;
+        }
+    }
+    report(Event::Phase(Phase::Erasing));
+    Ok(())
 }
 
 #[cfg(not(target_os = "android"))]
@@ -534,16 +548,19 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
     std::thread::Builder::new()
         .name("firmware-flash".into())
         .spawn(move || {
-            let mut target = Target::new(&port, &crate::corelinks::port_infos());
-            let waited = wait_for_bootloader(&mut || target.find(&crate::corelinks::port_infos(), &flashable), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &cancelled, &mut apply);
-            let port = target.location.clone();
-            let description = description_of(&port);
-            let outcome = waited.and_then(|()| open(&port)).and_then(|opened| {
-                if chosen.sik() {
-                    std::thread::sleep(std::time::Duration::from_millis(SIK_OPEN_SETTLE_MS));
-                }
-                flash_from(opened, chosen.sik(), &mut |board| resolve(&chosen, board, &description, &mut apply).and_then(|fetched| if cancelled() { Err(FLASH_CANCELLED.to_string()) } else { Ok(fetched) }), &mut apply)
-            });
+            let flashed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let mut target = Target::new(&port, &crate::corelinks::port_infos());
+                let waited = wait_for_bootloader(&mut || target.find(&crate::corelinks::port_infos(), &flashable), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &cancelled, &mut apply);
+                let port = target.location.clone();
+                let description = description_of(&port);
+                waited.and_then(|()| open(&port)).and_then(|opened| {
+                    if chosen.sik() {
+                        std::thread::sleep(std::time::Duration::from_millis(SIK_OPEN_SETTLE_MS));
+                    }
+                    flash_from(opened, chosen.sik(), &mut |board| resolve(&chosen, board, &description, &mut apply).and_then(|fetched| if cancelled() { Err(FLASH_CANCELLED.to_string()) } else { Ok(fetched) }), &mut apply)
+                })
+            }));
+            let outcome = flashed.unwrap_or_else(|_| Err("The firmware upgrade stopped unexpectedly".to_string()));
             let mut held = job();
             match outcome {
                 Ok(()) => {
@@ -562,7 +579,10 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
             }
         })
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| {
+            job().phase = Phase::Failed;
+            e.to_string()
+        })
 }
 
 pub fn view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
