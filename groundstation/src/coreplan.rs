@@ -1517,6 +1517,14 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         }
     };
     let unknown = || Err(format!("Item {index} has no such field."));
+    let raw_of = |param: usize, shown: f64| match raw {
+        true => shown,
+        false => simple
+            .and_then(|s| commands.get(&s.command))
+            .and_then(|info| info.params.get(&u8::try_from(param).ok()?))
+            .and_then(param_conversion)
+            .map_or(shown, |c| (c.base)(shown)),
+    };
     Some(match property {
         "altitude" | "command" => return Some(match number {
             Some(n) => {
@@ -1539,11 +1547,11 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             answer(plandoc::set_speed(&current, index, speed).ok_or_else(|| format!("Item {index} carries no speed.")))
         }
         _ if property.starts_with("nanFacts.") => match field("nanFacts.") {
-            Some(param) => answer(plandoc::set_param(&current, index, param, number.unwrap_or(f64::NAN)).ok_or_else(|| format!("Item {index} has no such field."))),
+            Some(param) => answer(plandoc::set_param(&current, index, param, number.map_or(f64::NAN, |v| raw_of(param, v))).ok_or_else(|| format!("Item {index} has no such field."))),
             None => answer(unknown()),
         },
         _ => match (field("textFieldFacts.").or_else(|| field("comboboxFacts.")), number) {
-            (Some(param), Some(v)) => answer(plandoc::set_param(&current, index, param, v).ok_or_else(|| format!("Item {index} has no such field."))),
+            (Some(param), Some(v)) => answer(plandoc::set_param(&current, index, param, raw_of(param, v)).ok_or_else(|| format!("Item {index} has no such field."))),
             (Some(_), None) => refused("That field takes a number."),
             (None, _) => answer(unknown()),
         },
@@ -1870,6 +1878,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_mission_parameter_in_metres_is_shown_in_the_users_units_like_its_fact() {
+        let feet = crate::units::cooking_with("m", |_| Some("0".to_string()), 0);
+        let radius = json!({ "label": "Radius", "units": "m", "default": 30.0, "decimalPlaces": 1 });
+        let shown = param_fact_with(&radius, 30.48, feet);
+        assert!((shown["value"].as_f64().unwrap() - 100.0).abs() < 1e-9, "FactMetaData translates m to ft for a float parameter");
+        assert_eq!((shown["units"].as_str(), shown["rawUnits"].as_str(), shown["rawValue"].as_f64()), (Some("ft"), Some("m"), Some(30.48)));
+        let listed = json!({ "label": "Mode", "units": "m", "enumStrings": "A,B", "enumValues": "0,1" });
+        assert_eq!(param_conversion(&listed).map(|c| c.name), None, "an enumerated fact is never translated");
+    }
+
+    #[test]
     fn the_climb_out_step_only_counts_while_its_takeoff_is_still_there() {
         let simple = |command: i64| plandoc::Item::Simple(plandoc::Simple { command, frame: 3, params: [Some(0.0); 7], auto_continue: true, altitude: None, sections: vec![] });
         let with = |items: Vec<plandoc::Item>| Held { wizard: Some(1), document: Some(Document { items, ..empty_document() }), ..Held::default() };
@@ -2163,13 +2182,24 @@ fn number_json(value: f64) -> Value {
     }
 }
 
-fn param_fact(param: &Value, value: f64) -> Value {
+fn param_conversion(param: &Value) -> Option<crate::units::Conversion> {
+    list(param, "enumStrings").is_empty().then(|| param.get("units").and_then(Value::as_str).and_then(crate::units::cooking)).flatten()
+}
+
+fn param_fact(param: &Value, raw: f64) -> Value {
+    param_fact_with(param, raw, param_conversion(param))
+}
+
+fn param_fact_with(param: &Value, raw: f64, conversion: Option<crate::units::Conversion>) -> Value {
+    let show = |v: f64| conversion.map_or(v, |c| (c.shown)(v));
     let label = param.get("label").and_then(Value::as_str).unwrap_or("").to_string();
     let decimals = param.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(DEFAULT_DECIMAL_PLACES);
-    let units = param.get("units").and_then(Value::as_str).unwrap_or("").to_string();
-    let default = param.get("default").and_then(Value::as_f64);
-    let min = param.get("min").and_then(Value::as_f64);
-    let max = param.get("max").and_then(Value::as_f64);
+    let raw_units = param.get("units").and_then(Value::as_str).unwrap_or("").to_string();
+    let units = conversion.map_or_else(|| raw_units.clone(), |c| c.name.to_string());
+    let value = show(raw);
+    let default = param.get("default").and_then(Value::as_f64).map(show);
+    let min = param.get("min").and_then(Value::as_f64).map(show);
+    let max = param.get("max").and_then(Value::as_f64).map(show);
     let labels = list(param, "enumStrings");
     let values: Vec<f64> = list(param, "enumValues").iter().filter_map(|v| v.parse().ok()).collect();
     json!({
@@ -2177,10 +2207,10 @@ fn param_fact(param: &Value, value: f64) -> Value {
         "name": label,
         "shortDescription": label,
         "value": number_json(value),
-        "rawValue": value,
+        "rawValue": raw,
         "valueString": formatted(value, decimals),
         "units": units,
-        "rawUnits": units,
+        "rawUnits": raw_units,
         "decimalPlaces": decimals,
         "min": min,
         "max": max,
