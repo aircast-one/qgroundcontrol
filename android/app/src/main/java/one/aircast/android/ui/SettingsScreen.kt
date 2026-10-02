@@ -549,7 +549,7 @@ internal fun factSubtitle(fact: Fact): String = listOfNotNull(
 @Composable
 internal fun FactRow(
     fact: Fact,
-    title: String = fact.heading,
+    title: String = sentenceCase(fact.heading),
     subtitle: String = listOf(fact.detail, factSubtitle(fact)).filter { it.isNotBlank() }.joinToString(" · "),
     titleColor: Color = Color.Unspecified,
     fieldModifier: Modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -699,6 +699,18 @@ internal const val PAIRED_LABEL_BUDGET = 24
 internal const val FIELD_LABEL_BUDGET = 40
 internal const val PAIRED_OPTION_BUDGET = 16
 internal const val PAIRED_UNITS_BUDGET = 6
+
+private val PROPER_NOUNS = setOf("Android", "ArduPilot", "Bing", "Esri", "Google", "Mapbox", "Tianditu", "VWorld", "OpenAIP", "QGroundControl")
+
+private fun keepsCase(word: String): Boolean =
+    word in PROPER_NOUNS || word.drop(1).any(Char::isUpperCase) || word.none(Char::isLowerCase)
+
+internal fun sentenceCase(label: String): String =
+    label.split(" ").mapIndexed { at, word ->
+        word.split("-").mapIndexed { part, piece ->
+            if ((at == 0 && part == 0) || keepsCase(piece)) piece else piece.replaceFirstChar(Char::lowercaseChar)
+        }.joinToString("-")
+    }.joinToString(" ")
 
 internal fun showsAsField(fact: Fact): Boolean =
     !fact.readOnly && notBuiltHere(fact) == null && !editOnDesktop(fact) && !fact.isBool

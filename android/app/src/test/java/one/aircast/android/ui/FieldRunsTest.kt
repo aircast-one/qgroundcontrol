@@ -75,4 +75,15 @@ class FieldRunsTest {
     @Test
     fun shortNumbersPairButWideUnitsDoNot() =
         assertEquals(listOf(listOf("speed", "alt"), listOf("rate")), fieldRuns(listOf(text("speed", false, "m/s"), text("alt", false, "m"), text("rate", false, "degrees/second"))).map { run -> run.map { it.name } })
+
+    @Test
+    fun aRowLabelReadsInSentenceCaseKeepingAcronymsAndNames() {
+        assertEquals("Mute audio output", sentenceCase("Mute Audio Output"))
+        assertEquals("Use preflight checklist", sentenceCase("Use Preflight Checklist"))
+        assertEquals("Forward MAVLink to UDP host", sentenceCase("Forward MAVLink To UDP Host"))
+        assertEquals("Mapbox token", sentenceCase("Mapbox Token"))
+        assertEquals("Time offset (seconds)", sentenceCase("Time Offset (seconds)"))
+        assertEquals("Auto-center throttle", sentenceCase("Auto-Center throttle"))
+        assertEquals("Left-handed mode", sentenceCase("Left-Handed mode"))
+    }
 }
