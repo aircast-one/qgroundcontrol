@@ -130,7 +130,7 @@ internal fun SetupRow(
     if (status.isNotBlank()) {
         Text(
             text = status,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelMedium,
             color = setupStateColor(state),
         )
     }
