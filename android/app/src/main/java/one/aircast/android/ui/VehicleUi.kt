@@ -363,7 +363,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         checklistStateSent = null
     }
     val checklistPassed = checklistIsComplete(checks, checklistTicked)
-    LaunchedEffect(checklistPassed, showChecklist) {
+    LaunchedEffect(checklistPassed) {
         if (checklistPassed && showChecklist) {
             delay(CHECKLIST_CLOSE_DELAY_MS)
             showChecklist = false

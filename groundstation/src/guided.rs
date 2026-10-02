@@ -22,6 +22,7 @@ pub fn remember_flight(previous: Option<FlightMemory>, vehicle: i64, flying: boo
 
 pub const DEPS: &[&str] = &[
     "settings.flyViewSettings.forwardFlightGoToLocationLoiterRad",
+    "vehicle.vehicleLinkManager.communicationLost",
     "vehicles.activeVehicleAvailable",
     "vehicle.parameterManager.parametersReady",
     "vehicle.id",
@@ -91,6 +92,7 @@ pub struct GuidedState {
     pub was_flying: bool,
     pub takeoff_with_altitude: bool,
     pub smart_rtl_supported: bool,
+    pub contact_lost: bool,
 }
 
 impl GuidedState {
@@ -106,6 +108,7 @@ impl GuidedState {
 
     pub fn can_resume(&self) -> bool {
         !self.armed
+            && !self.contact_lost
             && self.was_flying
             && self.mission_available
             && self.resume_from_sequence > 0
@@ -411,6 +414,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         resume_from_sequence: integer(&flying, "resumeMissionIndex").unwrap_or(0),
         roi_supported: flag(&supports, "roiMode"),
         smart_rtl_supported: flag(&supports, "smartRTL"),
+        contact_lost: flag(&object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost")), "communicationLost"),
         roi_active: flag(&vehicle, "isROIEnabled"),
         was_flying: {
             let mut memory = FLIGHT_MEMORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -771,6 +775,8 @@ mod tests {
 
         let armed = GuidedState { armed: true, ..landed.clone() };
         assert!(!armed.can_resume(), "resuming is an offer for a vehicle on the ground");
+        let silent = GuidedState { contact_lost: true, ..landed.clone() };
+        assert!(!silent.can_resume(), "FlyViewMissionCompleteDialog offers Resume only while the link is up");
 
         let never_flew = GuidedState { was_flying: false, ..landed.clone() };
         assert!(!never_flew.can_resume(), "QGC offers it only once flying has gone false this session, so a stale resume index on connect or during Start Mission does not pop it up");
