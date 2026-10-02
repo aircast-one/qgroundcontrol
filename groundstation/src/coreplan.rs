@@ -1308,16 +1308,22 @@ fn remove_all_from_vehicle(backend: &dyn Backend) -> Value {
         return refused("No vehicle is connected through the core.");
     };
     let kinds = ["mission"].into_iter().chain(fence.then_some("fence")).chain(rally.then_some("rally"));
-    let refusals: Vec<String> = kinds
-        .filter_map(|kind| match crate::hub::lock().mission_request(None, &json!({ "action": "removeAll", "plan": kind }), crate::hub::now_ms()) {
+    let (sent, refusals): (Vec<&'static str>, Vec<String>) = kinds.fold((Vec::new(), Vec::new()), |(sent, refusals), kind| {
+        match crate::hub::lock().mission_request(None, &json!({ "action": "removeAll", "plan": kind }), crate::hub::now_ms()) {
             Ok(outbound) => {
                 deliver(outbound);
-                None
+                ([sent, vec![kind]].concat(), refusals)
             }
-            Err(reason) => Some(reason),
-        })
-        .collect();
-    clear(backend);
+            Err(reason) => (sent, [refusals, vec![reason]].concat()),
+        }
+    });
+    let fresh = held().document.is_none().then(|| fresh_document(backend));
+    std::thread::spawn(move || {
+        let removed: Vec<&str> = sent.into_iter().filter(|kind| settle(kind) && crate::hub::lock().active().is_some_and(|v| v.mission_snapshot()[*kind]["error"].is_null())).collect();
+        if !removed.is_empty() {
+            clear_kinds(fresh, &removed);
+        }
+    });
     match refusals.first() {
         None => json!({ "ok": true }),
         Some(reason) => refused(reason.clone()),
@@ -1326,11 +1332,25 @@ fn remove_all_from_vehicle(backend: &dyn Backend) -> Value {
 
 fn clear(backend: &dyn Backend) -> Value {
     let fresh = held().document.is_none().then(|| fresh_document(backend));
+    clear_kinds(fresh, &["mission", "fence", "rally"]);
+    json!({ "ok": true })
+}
+
+fn clear_kinds(fresh: Option<Document>, kinds: &[&str]) {
     {
         let mut state = held();
         let template = state.document.clone().or(fresh).unwrap_or_else(empty_document);
         let before = state.document.clone();
-        state.document = Some(Document { home: None, items: Vec::new(), settings_sections: Vec::new(), fence: empty_document().fence, rally: empty_document().rally, ..template });
+        let empty = empty_document();
+        let mission = kinds.contains(&"mission");
+        state.document = Some(Document {
+            home: if mission { None } else { template.home },
+            items: if mission { Vec::new() } else { template.items.clone() },
+            settings_sections: if mission { Vec::new() } else { template.settings_sections.clone() },
+            fence: if kinds.contains(&"fence") { empty.fence } else { template.fence.clone() },
+            rally: if kinds.contains(&"rally") { empty.rally } else { template.rally.clone() },
+            ..template
+        });
         state.wizard = None;
         remember(&mut state, before, crate::hub::now_ms());
         state.selected = 0;
@@ -1338,7 +1358,6 @@ fn clear(backend: &dyn Backend) -> Value {
         state.file = None;
     }
     changed();
-    json!({ "ok": true })
 }
 
 fn takeoff_required_first() -> bool {
