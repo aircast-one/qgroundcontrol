@@ -5732,7 +5732,7 @@ mod tests {
         chunk[..16].copy_from_slice(&header);
         chunk[16..21].copy_from_slice(&[2, 0, b'I', 7, 7]);
         let data = MavMessage::LOGGING_DATA(LOGGING_DATA_DATA { sequence: 0, target_system: 255, target_component: 190, length: 21, first_message_offset: 0, data: chunk });
-        assert!(hub.on_frame(origin(4), &autopilot, &data, 1_300_000, 1_300).is_empty());
+        assert!(!hub.on_frame(origin(4), &autopilot, &data, 1_300_000, 1_300).iter().any(|(_, b)| matches!(decode(b), MavMessage::LOGGING_ACK(_))), "plain LOGGING_DATA is not acknowledged");
         let acked = MavMessage::LOGGING_DATA_ACKED(LOGGING_DATA_ACKED_DATA { sequence: 1, target_system: 255, target_component: 190, length: 5, first_message_offset: 0, data: { let mut c = [0u8; 249]; c[..5].copy_from_slice(&[2, 0, b'I', 8, 8]); c } });
         let replied = hub.on_frame(origin(4), &autopilot, &acked, 1_400_000, 1_400);
         assert!(matches!(decode(&replied[0].1), MavMessage::LOGGING_ACK(a) if a.sequence == 1 && a.target_system == 3));

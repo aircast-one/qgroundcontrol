@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 pub const COMP_ID_ALL: u8 = 0;
 pub const MAX_RETRY: u32 = 3;
-pub const ACK_TIMEOUT_MS: u64 = 3000;
+pub const ACK_TIMEOUT_MS: u64 = 1200;
 pub const ACK_TIMEOUT_HIGH_LATENCY_MS: u64 = 120_000;
 pub const MESSAGE_WAIT_MS: u64 = 1000;
 pub const RESULT_ACCEPTED: u8 = 0;
