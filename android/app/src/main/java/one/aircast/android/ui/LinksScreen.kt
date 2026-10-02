@@ -243,6 +243,8 @@ internal fun linkFormError(type: String, host: String, port: String): String? {
     }
 }
 
+private const val CONNECTED_STATUS = "Connected"
+
 @Composable
 private fun LinkRowItem(
     row: LinkRow,
@@ -282,15 +284,17 @@ private fun LinkRowItem(
             Column(Modifier.weight(1f)) {
                 Text(
                     text = row.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = row.statusLine,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (row.goneQuiet) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (!(row.connected && row.statusLine == CONNECTED_STATUS)) {
+                    Text(
+                        text = row.statusLine,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (row.goneQuiet) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (row.lastError.isNotBlank()) {
                     Text(
                         row.lastError,
@@ -307,7 +311,7 @@ private fun LinkRowItem(
                 }
             }
             if (row.connected) {
-                Text("Connected", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.success)
+                Text(CONNECTED_STATUS, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.success)
             }
             Icon(painterResource(R.drawable.ic_chevron_right), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
