@@ -159,13 +159,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     val components = remember(setupJson) { setupComponents(setupJson) }
     var summaries by remember { mutableStateOf(emptyMap<String, List<SummaryLine>>()) }
-    val overviewShown = hasVehicle && openComponent == null && !parametersOpen
-    LaunchedEffect(overviewShown, hasVehicle) {
+    LaunchedEffect(hasVehicle) {
         if (!hasVehicle) summaries = emptyMap()
-        while (overviewShown) {
-            summaries = withContext(Dispatchers.Default) { setupSummaries(Qgc.get(SETUP_SUMMARY)) }
-            delay(SETUP_SUMMARY_POLL_MS)
-        }
     }
 
     LaunchedEffect(AppNavigation.setupPage, components) {
@@ -279,7 +274,14 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val firmware = line.summary
     val needSetup = components.filter { it.needsAttention && setupMatches(it.name, setupSearch) }
 
-    val overview: @Composable (Modifier) -> Unit = { pane -> LazyColumn(pane.fillMaxSize()) {
+    val overview: @Composable (Modifier) -> Unit = { pane ->
+    LaunchedEffect(Unit) {
+        while (true) {
+            summaries = withContext(Dispatchers.Default) { setupSummaries(Qgc.get(SETUP_SUMMARY)) }
+            delay(SETUP_SUMMARY_POLL_MS)
+        }
+    }
+    LazyColumn(pane.fillMaxSize()) {
         item(key = "verdict") {
             val readiness = setup
             ReadinessHeader(
