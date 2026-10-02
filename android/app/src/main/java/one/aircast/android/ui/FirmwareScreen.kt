@@ -100,6 +100,15 @@ internal val FIRMWARE_SOURCES: List<Pair<String, String>> =
             }
         }
 
+internal const val BETA_WARNING = "WARNING: BETA FIRMWARE. This firmware version is ONLY intended for beta testers. Although it has received FLIGHT TESTING, it represents actively changed code. Do NOT use for normal operation."
+internal const val DEV_WARNING = "WARNING: CONTINUOUS BUILD FIRMWARE. This firmware has NOT BEEN FLIGHT TESTED. It is only intended for DEVELOPERS. Run bench tests without props first. Do NOT fly this without additional safety precautions. Follow the forums actively when using it."
+
+internal fun firmwareWarning(source: String): String? = when {
+    source.endsWith(":beta") -> BETA_WARNING
+    source.endsWith(":dev") -> DEV_WARNING
+    else -> null
+}
+
 internal fun firmwareChoice(source: String, file: String?): String? =
     if (source == FIRMWARE_FROM_FILE) file else source
 
@@ -186,6 +195,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                 if (source == FIRMWARE_FROM_FILE) {
                     Text(file?.name?.removePrefix("firmware-") ?: "No firmware file chosen", style = MaterialTheme.typography.bodyMedium)
                 }
+                firmwareWarning(source)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
                 val choice = firmwareChoice(source, file?.absolutePath)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (source == FIRMWARE_FROM_FILE) {

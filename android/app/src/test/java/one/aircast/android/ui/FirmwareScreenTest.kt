@@ -34,4 +34,11 @@ class FirmwareScreenTest {
         assertTrue(firmwareFileAccepted("fw.bin"))
         assertFalse(firmwareFileAccepted("notes.txt"))
     }
+
+    @Test
+    fun `beta and developer builds carry QGC's warnings, like FirmwareUpgrade`() {
+        assertEquals(BETA_WARNING, firmwareWarning("px4:beta"))
+        assertEquals(DEV_WARNING, firmwareWarning("ardupilot:copter:dev"))
+        assertEquals(null, firmwareWarning("px4:stable"))
+    }
 }
