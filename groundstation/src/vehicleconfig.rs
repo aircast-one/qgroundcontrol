@@ -453,7 +453,7 @@ impl<'a> Scope<'a> {
         let Expr::Member(fact, property) = target else { return Err(format!("{statement} does not write a parameter")) };
         let Val::Fact(name) = self.eval(&fact) else { return Err("That parameter is not on this vehicle.".to_string()) };
         let value = self.eval_text(body[at + 1..].trim()).number().ok_or_else(|| format!("{statement} does not compute a number"))?;
-        write_parameter(self.backend, &name, property == "rawValue", value)
+        set_parameter(self.backend, &name, property == "rawValue", value)
     }
 }
 
@@ -465,8 +465,20 @@ fn strict_equal(a: &Val, b: &Val) -> bool {
 }
 
 fn write_parameter(backend: &dyn Backend, name: &str, raw: bool, value: f64) -> Result<(), String> {
+    write_checked(backend, name, raw, value, true)
+}
+
+fn set_parameter(backend: &dyn Backend, name: &str, raw: bool, value: f64) -> Result<(), String> {
+    write_checked(backend, name, raw, value, false)
+}
+
+fn write_checked(backend: &dyn Backend, name: &str, raw: bool, value: f64, checked: bool) -> Result<(), String> {
     let path = parameter_path(name);
-    let payload = json!({ "value": value }).to_string();
+    let payload = match checked {
+        true => json!({ "value": value }),
+        false => json!({ "value": value, "force": true }),
+    }
+    .to_string();
     let answer = match raw {
         true => object(&backend.set(&format!("{path}.rawValue"), &payload)),
         false => crate::factwrite::write(backend, &path, &payload),
@@ -755,7 +767,10 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
         }
         ("factslider", Some(fact)) if control.get("linkedParams").is_some() => vec![labelled(decode(&fact, &path), control, enabled)],
         (_, Some(fact)) => {
-            let row = listed_values(labelled(decode(&fact, &fact_path), control, enabled), control, &fact);
+            let mut row = listed_values(labelled(decode(&fact, &fact_path), control, enabled), control, &fact);
+            if control["enumValues"].is_array() {
+                row["path"] = json!(path);
+            }
             match control.get("enableCheckbox") {
                 None => vec![row],
                 Some(toggle) => {
@@ -937,7 +952,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
             let name = repeat_prefixes(&scope, repeat).get(at.instance).map(|(prefix, _)| format!("{prefix}{}", repeat["enableParam"].as_str().unwrap_or_default()));
             let chosen = scope.eval_text(repeat["disabledSection"]["enabledParamValue"].as_str().unwrap_or("0")).number();
             match (name, chosen, checked) {
-                (Some(name), Some(enabled), true) => write_parameter(backend, &name, false, enabled),
+                (Some(name), Some(enabled), true) => set_parameter(backend, &name, false, enabled),
                 (Some(_), _, false) => Ok(()),
                 _ => Err("That battery is no longer reported.".to_string()),
             }
@@ -970,6 +985,14 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
                 _ => Err("Choose one of the listed channels.".to_string()),
             }
         }
+        (_, _, true) if control["enumValues"].is_array() => {
+            let name = scope.full_name(control["param"].as_str().unwrap_or_default());
+            let index = asked.as_u64().or_else(|| asked.as_str().and_then(|s| s.parse().ok()));
+            match index.and_then(|i| control["enumValues"].get(i as usize)).and_then(|e| e["value"].as_f64()) {
+                Some(v) => set_parameter(backend, &name, true, v),
+                None => Err("Choose one of the listed options.".to_string()),
+            }
+        }
         (_, "radiogroup", true) => {
             let name = scope.full_name(control["param"].as_str().unwrap_or_default());
             let option = asked.as_u64().or_else(|| asked.as_str().and_then(|s| s.parse().ok())).and_then(|i| control["options"].get(i as usize));
@@ -977,7 +1000,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
                 return answer(scope.assign(statement));
             }
             match option.and_then(|o| scope.eval_text(o["value"].as_str().unwrap_or_default()).number()) {
-                Some(v) => write_parameter(backend, &name, flag(control, "raw"), v),
+                Some(v) => set_parameter(backend, &name, flag(control, "raw"), v),
                 None => Err("Choose one of the listed options.".to_string()),
             }
         }
@@ -990,7 +1013,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
                     let linked = scope.with(resolved.repeat.clone(), locals);
                     control["linkedParams"].as_object().cloned().unwrap_or_default().iter().try_for_each(|(other, expression)| {
                         let computed = linked.eval_text(expression.as_str().unwrap_or("value")).number().ok_or_else(|| format!("{other} could not be computed"))?;
-                        write_parameter(backend, other, false, computed)
+                        set_parameter(backend, other, false, computed)
                     })
                 }),
             }
@@ -1029,6 +1052,8 @@ mod tests {
         assert_eq!(row["options"][3]["raw"], "3");
         assert_eq!(row["display"], "XKF4 and GSF");
         assert_eq!(row["label"], "EKF3 logging verbosity");
+        assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", row["path"].as_str().unwrap()), r#"{"value":3}"#)["ok"], true, "the combo writes the chosen option's value, the parameter itself lists none");
+        assert_eq!(fake.writes.borrow().last(), Some(&("EK3_LOG_LEVEL".to_string(), 3.0)));
     }
 
     #[test]
@@ -1161,6 +1186,25 @@ mod tests {
         assert_eq!(gcs["controls"][0]["value"], false);
         let throttle = served["sections"].as_array().unwrap().iter().find(|s| s["title"] == "Throttle Failsafe").unwrap();
         assert_eq!(throttle["controls"][2]["display"], "Always RTL");
+    }
+
+    #[test]
+    fn a_choice_the_page_makes_is_written_unchecked_as_fact_value_assignment_is() {
+        struct Ranged(RefCell<Vec<String>>);
+        impl Backend for Ranged {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "fact", "name": "RTL_ALT", "value": 1500, "rawValue": 1500, "typeIsInteger": true, "min": 200, "max": 32767, "minString": "200", "maxString": "32767" }).to_string() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn set(&self, _p: &str, value: &str) -> String {
+                self.0.borrow_mut().push(value.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let ranged = Ranged(RefCell::new(vec![]));
+        assert!(write_parameter(&ranged, "RTL_ALT", false, 0.0).is_err(), "a value the operator types is still held to the range");
+        assert_eq!(set_parameter(&ranged, "RTL_ALT", false, 0.0), Ok(()), "Return at current altitude sets RTL_ALT 0 below its minimum, as Fact::setCookedValue does without validating");
+        assert_eq!(ranged.0.borrow().len(), 1);
     }
 
     #[test]
