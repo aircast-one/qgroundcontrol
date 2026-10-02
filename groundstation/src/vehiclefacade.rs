@@ -1182,6 +1182,13 @@ impl<B: Backend> Facade<B> {
         Some(json!({ "ok": started.is_ok() }).to_string())
     }
 
+    fn held_write(&self, path: &str, value: &str) -> String {
+        match crate::qthost::present() {
+            true => self.0.set(path, value),
+            false => json!({ "ok": true }).to_string(),
+        }
+    }
+
     fn selection_invoke(&self, path: &str, args: &str) -> Option<String> {
         let name = path.strip_prefix("vehicles.")?;
         switched_on().then_some(())?;
@@ -1521,7 +1528,7 @@ impl<B: Backend> Backend for Facade<B> {
             if let Some(on) = on {
                 crate::hub::lock().set_link_flag(flag, on);
             }
-            return self.0.set(path, value);
+            return self.held_write(path, value);
         }
         if let Some(index) = crate::logs::selection_index(path).filter(|_| switched_on()) {
             let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
@@ -1556,7 +1563,7 @@ impl<B: Backend> Backend for Facade<B> {
                     let _ = self.real_camera_invoke("stopTracking", "[]");
                 }
             }
-            return self.0.set(path, value);
+            return self.held_write(path, value);
         }
         if let Some(key) = camera_stored_key(path).filter(|_| switched_on() && crate::hub::lock().active().is_some_and(|v| v.cameras.selected().is_some())) {
             let number = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64).or_else(|| v.as_f64()));
@@ -1593,7 +1600,7 @@ impl<B: Backend> Backend for Facade<B> {
             if let Some(index) = index.and_then(|i| usize::try_from(i).ok()) {
                 crate::hub::lock().select_camera(index);
             }
-            return self.0.set(path, value);
+            return self.held_write(path, value);
         }
         if path == "mavlinkInspector.activeSystem.selected" && inspector_owned() {
             let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
@@ -1617,7 +1624,7 @@ impl<B: Backend> Backend for Facade<B> {
             if let Some(state) = state {
                 crate::hub::lock().set_check_list_state(state);
             }
-            return self.0.set(path, value);
+            return self.held_write(path, value);
         }
         if path == "vehicle.vtolInFwdFlight" && switched_on() {
             let forward = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
@@ -1723,6 +1730,7 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(op) = (switched_on() && crate::hub::lock().active().is_some()).then(|| match path {
             "radioCal.nextButtonClicked" => Some("next"),
             "radioCal.cancelButtonClicked" => Some("cancel"),
+            "radioCal.start" => Some("start"),
             _ => None,
         }).flatten() {
             let vehicle = crate::hub::lock().active_id();

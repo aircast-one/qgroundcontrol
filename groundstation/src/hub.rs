@@ -1882,7 +1882,7 @@ impl Vehicle {
                     let lookup = |name: &str| self.params.value(self.component, name).map(|p| p.as_f64());
                     match action.get("op").and_then(Value::as_str) {
                         Some("next") => cal.next(&vehicle, &lookup),
-                        Some("cancel") => vec![cal.stop(&vehicle, &lookup)],
+                        Some("cancel" | "start") => vec![cal.stop(&vehicle, &lookup)],
                         _ => Vec::new(),
                     }
                 };
