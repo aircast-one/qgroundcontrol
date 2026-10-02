@@ -26,7 +26,7 @@ enum Wait {
     None,
     Mode { since_ms: u64, tries: u32 },
     Armed { since_ms: u64 },
-    Accepted { command: u16, since_ms: u64 },
+    Accepted { command: u16, since_ms: u64, failure: Option<String> },
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -57,7 +57,7 @@ fn label(step: &Step) -> String {
         Step::PositionTargetLocalNed { .. } => "Sending position target".to_string(),
         Step::GuidedMissionItem { .. } => "Sending guided waypoint".to_string(),
         Step::SkipIfNoDelta => String::new(),
-        Step::AwaitAccepted(command) => format!("Waiting for command {command}"),
+        Step::AwaitAccepted { command, .. } => format!("Waiting for command {command}"),
         Step::FailWith { .. } => String::new(),
     }
 }
@@ -130,15 +130,20 @@ impl Executor {
                     }
                     return out;
                 }
-                Wait::Accepted { command, since_ms } => {
+                Wait::Accepted { command, since_ms, ref failure } => {
+                    let failure = failure.clone();
+                    let refused = |executor: &mut Self| match failure {
+                        Some(reason) => executor.fail(reason),
+                        None => executor.finish(),
+                    };
                     match self.acked.take() {
                         Some((acked, true)) if acked == command => {
                             self.wait = Wait::None;
                             self.at += 1;
                             continue;
                         }
-                        Some((acked, false)) if acked == command => self.finish(),
-                        _ if now_ms.saturating_sub(since_ms) >= ACCEPT_WAIT_MS => self.finish(),
+                        Some((acked, false)) if acked == command => refused(self),
+                        _ if now_ms.saturating_sub(since_ms) >= ACCEPT_WAIT_MS => refused(self),
                         _ => {}
                     }
                     return out;
@@ -192,7 +197,7 @@ impl Executor {
                     self.at += 1;
                 }
                 Step::SkipIfNoDelta => self.at += 1,
-                Step::AwaitAccepted(command) => self.wait = Wait::Accepted { command, since_ms: now_ms },
+                Step::AwaitAccepted { command, failure } => self.wait = Wait::Accepted { command, since_ms: now_ms, failure },
                 Step::FailWith { mode, arm } => {
                     self.failures = Some((mode, arm));
                     self.at += 1;
@@ -277,7 +282,7 @@ mod tests {
         assert_eq!(commands(&first), vec![CMD_COMPONENT_ARM_DISARM], "the mode already matches, so arming is the first thing sent");
         assert!(executor.advance(&observed("Guided", false), 1499).is_empty());
         assert!(executor.advance(&observed("Guided", false), 1500).is_empty());
-        assert_eq!(executor.snapshot(), json!({ "state": "failed", "reason": "Unable to arm vehicle.", "step": 3, "steps": 5, "label": "Arming" }));
+        assert_eq!(executor.snapshot(), json!({ "state": "failed", "reason": "Unable to takeoff: Vehicle failed to arm.", "step": 4, "steps": 6, "label": "Arming" }));
     }
 
     #[test]
@@ -325,5 +330,18 @@ mod tests {
         refused.on_command_result(guidedcmd::CMD_NAV_TAKEOFF, false);
         assert!(refused.advance(&observed("Hold", false), 100).is_empty(), "a refused takeoff never arms");
         assert!(!refused.running());
+    }
+
+    #[test]
+    fn a_px4_pause_the_vehicle_refuses_never_changes_altitude() {
+        let mut px4 = copter();
+        px4.autopilot = crate::modes::AUTOPILOT_PX4;
+        px4.home_altitude = Some(500.0);
+        let mut exec = Executor::default();
+        let sent = exec.start(steps(guidedcmd::change_altitude(&px4, 5.0, true)), &observed("Mission", false), 0);
+        assert_eq!(commands(&sent), vec![guidedcmd::CMD_DO_REPOSITION]);
+        exec.on_command_result(guidedcmd::CMD_DO_REPOSITION, false);
+        assert!(exec.advance(&observed("Mission", false), 100).is_empty());
+        assert_eq!(exec.snapshot()["reason"], "Unable to pause vehicle.", "PX4FirmwarePlugin::_pauseVehicleThenChangeAltResultHandler");
     }
 }

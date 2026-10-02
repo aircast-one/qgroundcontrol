@@ -60,7 +60,7 @@ pub enum Step {
     PositionTargetLocalNed { frame: u8, type_mask: u16, x: f64, y: f64, z: f64 },
     GuidedMissionItem { latitude: f64, longitude: f64, altitude_relative: f64 },
     SkipIfNoDelta,
-    AwaitAccepted(u16),
+    AwaitAccepted { command: u16, failure: Option<String> },
     FailWith { mode: String, arm: String },
 }
 
@@ -149,7 +149,7 @@ pub fn takeoff(state: &VehicleState, altitude_relative: f64) -> Plan {
     match state.autopilot {
         AUTOPILOT_PX4 => Plan::Steps(vec![
             Step::Command { command: CMD_NAV_TAKEOFF, params: [nan(), nan(), 0.0, nan(), nan(), nan(), altitude_relative + amsl], command_int: false, frame: FRAME_GLOBAL, show_error: true },
-            Step::AwaitAccepted(CMD_NAV_TAKEOFF),
+            Step::AwaitAccepted { command: CMD_NAV_TAKEOFF, failure: None },
             Step::Arm,
         ]),
         AUTOPILOT_ARDUPILOT => {
@@ -158,14 +158,12 @@ pub fn takeoff(state: &VehicleState, altitude_relative: f64) -> Plan {
                 return Plan::Refused("Vehicle does not support guided takeoff".into());
             }
             let altitude = if altitude_relative.is_finite() && altitude_relative > state.minimum_takeoff_altitude { altitude_relative } else { state.minimum_takeoff_altitude };
-            let mut steps = match mode_or_refuse(state, "Guided") {
+            let guided = match mode_or_refuse(state, "Guided") {
                 Ok(steps) => steps,
                 Err(reason) => return Plan::Refused(reason),
             };
-            steps.push(Step::Arm);
-            steps.push(Step::WaitArmed);
-            steps.push(Step::Command { command: CMD_NAV_TAKEOFF, params: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, altitude], command_int: false, frame: FRAME_GLOBAL, show_error: true });
-            Plan::Steps(steps)
+            let steps = guided.into_iter().chain([Step::Arm, Step::WaitArmed, Step::Command { command: CMD_NAV_TAKEOFF, params: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, altitude], command_int: false, frame: FRAME_GLOBAL, show_error: true }]).collect();
+            Plan::Steps(failing_with("Unable to takeoff: Vehicle failed to change to Guided mode.", "Unable to takeoff: Vehicle failed to arm.", steps))
         }
         _ => Plan::Refused("Vehicle does not support guided takeoff".into()),
     }
@@ -282,6 +280,8 @@ pub fn goto(state: &VehicleState, latitude: f64, longitude: f64, loiter_radius: 
     }
 }
 
+const PAUSE_FAILED: &str = "Unable to pause vehicle.";
+
 pub fn change_altitude(state: &VehicleState, delta: f64, pause_first: bool) -> Plan {
     match state.autopilot {
         AUTOPILOT_PX4 => {
@@ -291,6 +291,7 @@ pub fn change_altitude(state: &VehicleState, delta: f64, pause_first: bool) -> P
             let mut steps = Vec::new();
             if pause_first {
                 steps.push(Step::Command { command: CMD_DO_REPOSITION, params: [-1.0, REPOSITION_CHANGE_MODE, 0.0, nan(), nan(), nan(), nan()], command_int: false, frame: FRAME_GLOBAL, show_error: false });
+                steps.push(Step::AwaitAccepted { command: CMD_DO_REPOSITION, failure: Some(PAUSE_FAILED.into()) });
             }
             steps.push(Step::Command { command: CMD_DO_REPOSITION, params: [-1.0, REPOSITION_CHANGE_MODE, 0.0, nan(), nan(), nan(), target], command_int: false, frame: FRAME_GLOBAL, show_error: true });
             Plan::Steps(steps)
@@ -302,9 +303,10 @@ pub fn change_altitude(state: &VehicleState, delta: f64, pause_first: bool) -> P
             let mut steps = Vec::new();
             if pause_first {
                 match mode_or_refuse(state, pause_mode(state)) {
-                    Ok(mode_steps) => steps.extend(mode_steps),
+                    Ok(mode_steps) => steps.extend(failing_with(PAUSE_FAILED, "", mode_steps)),
                     Err(reason) => return Plan::Refused(reason),
                 }
+                steps.push(Step::FailWith { mode: "Unable to change to Guided mode.".into(), arm: String::new() });
             }
             if delta.abs() < 0.01 {
                 steps.push(Step::SkipIfNoDelta);
@@ -518,14 +520,15 @@ mod tests {
         let Plan::Steps(steps) = takeoff(&state, 15.0) else { panic!() };
         let (cmd, params, _) = command(&steps[0]);
         assert_eq!((cmd, params[0].is_nan(), params[2], params[6]), (CMD_NAV_TAKEOFF, true, 0.0, 515.0), "PX4FirmwarePlugin::guidedModeTakeoff sends no pitch and AMSL altitude");
-        assert_eq!(&steps[1..], &[Step::AwaitAccepted(CMD_NAV_TAKEOFF), Step::Arm], "and arms once the takeoff is accepted");
+        assert_eq!(&steps[1..], &[Step::AwaitAccepted { command: CMD_NAV_TAKEOFF, failure: None }, Step::Arm], "and arms once the takeoff is accepted");
         let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 0.0) else { panic!() };
         let (cmd, params, int) = command(&steps[0]);
         assert_eq!((cmd, params[1], params[4], params[5], params[6], int), (CMD_DO_REPOSITION, 1.0, 47.4, 8.5, 500.0, true));
         let Plan::Steps(steps) = change_altitude(&state, 5.0, true) else { panic!() };
-        assert_eq!(steps.len(), 2);
+        assert_eq!(steps.len(), 3);
         assert!(command(&steps[0]).1[6].is_nan());
-        assert_eq!(command(&steps[1]).1[6], 505.0);
+        assert_eq!(steps[1], Step::AwaitAccepted { command: CMD_DO_REPOSITION, failure: Some("Unable to pause vehicle.".into()) }, "PX4 only changes altitude once the pause is accepted");
+        assert_eq!(command(&steps[2]).1[6], 505.0);
         let Plan::Steps(steps) = pause(&state) else { panic!() };
         assert_eq!(command(&steps[0]).0, CMD_DO_REPOSITION);
         assert_eq!(rtl(&state, true), Plan::Steps(vec![Step::SetMode { mode: "Return".into(), base_mode: 0x81, custom_mode: modes::px4(4, 5), via_command: false }, Step::WaitForMode("Return".into())]));
@@ -539,9 +542,10 @@ mod tests {
     fn ardupilot_plans_change_mode_first_and_use_relative_altitudes() {
         let state = copter();
         let Plan::Steps(steps) = takeoff(&state, 1.0) else { panic!() };
-        assert!(matches!(&steps[0], Step::SetMode { mode, via_command: true, custom_mode: 4, .. } if mode == "Guided"));
-        assert_eq!(steps[2], Step::Arm);
-        assert_eq!(command(&steps[4]).1[6], 2.5, "the minimum takeoff altitude wins over a lower request");
+        assert!(matches!(&steps[0], Step::FailWith { mode, arm } if mode == "Unable to takeoff: Vehicle failed to change to Guided mode." && arm == "Unable to takeoff: Vehicle failed to arm."));
+        assert!(matches!(&steps[1], Step::SetMode { mode, via_command: true, custom_mode: 4, .. } if mode == "Guided"));
+        assert_eq!(steps[3], Step::Arm);
+        assert_eq!(command(&steps[5]).1[6], 2.5, "the minimum takeoff altitude wins over a lower request");
         let Plan::Steps(steps) = goto(&state, 47.4, 8.5, 30.0) else { panic!() };
         assert_eq!((command(&steps[0]).1[2], command(&steps[0]).1[3]), (30.0, 0.0), "a positive radius loiters clockwise");
         let Plan::Steps(steps) = goto(&state, 47.4, 8.5, -30.0) else { panic!() };
@@ -554,7 +558,8 @@ mod tests {
         let unsupported = VehicleState { reposition_supported: Some(false), ..copter() };
         assert!(matches!(goto(&unsupported, 1.0, 2.0, 0.0), Plan::Steps(s) if matches!(s[0], Step::SetMode { .. })));
         let Plan::Steps(steps) = change_altitude(&state, 3.0, true) else { panic!() };
-        assert!(matches!(&steps[0], Step::SetMode { mode, .. } if mode == "Brake"));
+        assert!(matches!(&steps[0], Step::FailWith { mode, .. } if mode == "Unable to pause vehicle."));
+        assert!(matches!(&steps[1], Step::SetMode { mode, .. } if mode == "Brake"));
         assert!(matches!(steps.last(), Some(Step::PositionTargetLocalNed { z, type_mask: 0xFFF8, .. }) if *z == -3.0));
         let Plan::Steps(hold) = change_altitude(&state, 0.0, true) else { panic!() };
         assert_eq!(hold.last(), Some(&Step::SkipIfNoDelta));
