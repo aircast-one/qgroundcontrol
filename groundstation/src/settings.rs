@@ -55,6 +55,14 @@ const HIDDEN: &[&str] = &[
     "coreLinks",
     "detectionsHttpPort",
     "favoriteParameters",
+    "activeVideoSource",
+    "rtpJitterLatencyMs",
+    "rtspAutoReconnect",
+    "forceCpuVideoPath",
+    "videoConversionElement",
+    "disablePixelAspectRatio",
+    "instrumentQmlFile2",
+    "enableAutomaticMissionPopups",
     "px4HiddenFlightModesMultiRotor",
     "px4HiddenFlightModesFixedWing",
     "px4HiddenFlightModesVTOL",
@@ -454,11 +462,25 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn every_application_row_the_general_page_shows_has_a_heading() {
-        let app = include_str!("../../src/Settings/App.SettingsGroup.json");
-        let names: Vec<String> = serde_json::from_str::<Value>(app).unwrap()["QGC.MetaData.Facts"].as_array().unwrap().iter().filter_map(|f| f["name"].as_str().map(str::to_string)).collect();
-        let headed: Vec<&str> = SUBSECTIONS.iter().filter(|(g, _)| *g == "appSettings").flat_map(|(_, s)| s.iter().flat_map(|(_, n)| n.iter().copied())).collect();
-        let loose: Vec<&String> = names.iter().filter(|n| slice_shows("appSettings", n) && !HIDDEN.contains(&n.as_str()) && !headed.contains(&n.as_str()) && !DESKTOP_ONLY.iter().any(|(d, _)| d == n)).collect();
+    fn every_row_the_general_fly_and_video_pages_show_has_a_heading() {
+        let groups = [
+            ("appSettings", include_str!("../../src/Settings/App.SettingsGroup.json")),
+            ("flyViewSettings", include_str!("../../src/Settings/FlyView.SettingsGroup.json")),
+            ("videoSettings", include_str!("../../src/Settings/Video.SettingsGroup.json")),
+        ];
+        let loose: Vec<String> = groups
+            .iter()
+            .flat_map(|(group, json)| {
+                let headed: Vec<&str> = SUBSECTIONS.iter().filter(|(g, _)| g == group).flat_map(|(_, s)| s.iter().flat_map(|(_, n)| n.iter().copied())).collect();
+                serde_json::from_str::<Value>(json).unwrap()["QGC.MetaData.Facts"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter_map(|f| f["name"].as_str().map(str::to_string))
+                    .filter(|n| slice_shows(group, n) && !HIDDEN.contains(&n.as_str()) && !headed.contains(&n.as_str()) && !DESKTOP_ONLY.iter().any(|(d, _)| d == n))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
         assert!(loose.is_empty(), "these would land in an Other block: {loose:?}");
     }
 
