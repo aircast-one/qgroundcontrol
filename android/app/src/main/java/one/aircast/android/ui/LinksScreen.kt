@@ -90,6 +90,17 @@ data class LinkRow(
     val highLatency: Boolean = false,
 )
 
+internal data class AutoLink(val name: String, val summary: String, val heard: Boolean)
+
+internal fun autoLinks(view: JSONObject?): List<AutoLink> {
+    val links = view?.optJSONArray("links") ?: return emptyList()
+    return (0 until links.length()).mapNotNull { links.optJSONObject(it) }
+        .filter { it.optBoolean("dynamic") && it.optBoolean("connected") }
+        .map { AutoLink(it.optText("name"), it.optText("displaySummary"), it.optBoolean("heardVehicle")) }
+}
+
+internal fun autoLinkStatus(link: AutoLink): String = if (link.heard) "Vehicle" else "Listening"
+
 internal fun linkRows(view: JSONObject?): List<LinkRow> {
     val links = view?.optJSONArray("configured") ?: return emptyList()
     return (0 until links.length()).mapNotNull { position ->
@@ -247,6 +258,27 @@ internal fun linkFormError(type: String, host: String, port: String): String? {
 }
 
 private const val CONNECTED_STATUS = "Connected"
+
+@Composable
+private fun AutoLinkItem(link: AutoLink) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(
+            Modifier.size(40.dp).background(if (link.heard) MaterialTheme.aircast.successContainer else MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(painterResource(R.drawable.ic_link), null, tint = if (link.heard) MaterialTheme.aircast.success else MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(24.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(link.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${link.summary} \u00b7 automatic", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(autoLinkStatus(link), style = MaterialTheme.typography.labelMedium, color = if (link.heard) MaterialTheme.aircast.success else MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 @Composable
 private fun LinkRowItem(
@@ -717,6 +749,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     val view by qgcPath(LINKS_VIEW)
     val hasVehicle = hasVehicle()
     val rows = linkRows(view)
+    val auto = autoLinks(view)
     val scope = rememberCoroutineScope()
 
     var notice by remember { mutableStateOf<String?>(null) }
@@ -750,16 +783,18 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     }
 
     LazyColumn(Modifier.weight(1f)) {
-        if (rows.isEmpty()) {
+        val connected = rows.filter { it.connected }
+        val saved = rows.filterNot { it.connected }
+        if (rows.isEmpty() && auto.isEmpty()) {
             item(key = "empty") {
                 FootNote(
                     "No links saved. Aircast finds a vehicle on the network by itself, so you " +
                         "only need to add one when that does not reach it.",
                 )
             }
-        } else {
-            rows.groupBy { it.connected }.toList().sortedByDescending { it.first }.forEach { (connected, group) ->
-            item(key = "head$connected") { SectionHeader(if (connected) "Connected" else "Saved") }
+        }
+        listOf("Connected" to connected, "Saved" to saved).forEach { (title, group) ->
+            if (group.isNotEmpty() || (title == "Connected" && auto.isNotEmpty())) item(key = "head$title") { SectionHeader(title) }
             items(group, key = { "link${it.name}" }) { row ->
                 LinkRowItem(
                     row = row,
@@ -783,13 +818,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                     onEdit = { editing = row },
                 )
             }
-            }
-        }
-
-        item(key = "note") {
-            FootNote(
-                "Automatic connections are not listed here — they come and go on their own.",
-            )
+            if (title == "Connected") items(auto, key = { "auto${it.name}" }) { AutoLinkItem(it) }
         }
 
         item(key = "footer") { footer() }
