@@ -223,9 +223,6 @@ internal fun ParameterForm(
                 }
             }
         }
-        item(key = "refresh") {
-            FootNote("Values refresh after each change.")
-        }
     }
 
     if (calibratingEscs) EscCalibrationDialog { calibratingEscs = false }
