@@ -256,8 +256,11 @@ private fun FactSliderRow(fact: Fact, slider: FactSlider, onWrite: () -> Unit) {
     val scope = rememberCoroutineScope()
     val held = (fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull() ?: slider.from
     var shown by remember(fact.path, held) { mutableStateOf(held.coerceIn(slider.from, slider.to)) }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
-        Text(fact.title, style = MaterialTheme.typography.bodyMedium)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(fact.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text("%.${slider.decimals}f".format(shown), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
         if (slider.hint.isNotBlank()) Text(slider.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Slider(
             value = shown,
@@ -271,6 +274,5 @@ private fun FactSliderRow(fact: Fact, slider: FactSlider, onWrite: () -> Unit) {
                 }
             },
         )
-        Text("%.${slider.decimals}f".format(shown), style = MaterialTheme.typography.labelMedium)
     }
 }
