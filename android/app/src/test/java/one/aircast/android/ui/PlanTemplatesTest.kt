@@ -17,4 +17,10 @@ class PlanTemplatesTest {
         assertEquals(PlanTemplatesState(true, false, "Click in map to set position", listOf("Survey", "Corridor Scan", "Structure Scan", "No Template")), read)
         assertNull(planTemplates(JSONObject("{}")))
     }
+
+    @Test
+    fun `the prompt speaks of taps on a touch screen`() {
+        assertEquals("Tap in map to set position", touchWording("Click in map to set position"))
+        assertEquals("Drag to move home position. Tap to set new position.", touchWording("Drag to move home position. Click to set new position."))
+    }
 }

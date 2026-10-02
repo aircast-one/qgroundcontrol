@@ -35,6 +35,11 @@ internal const val CREATE_FROM_TEMPLATE = "plan.createFromTemplate"
 private const val DISABLED_ALPHA = 0.5f
 private val TEMPLATE_PANEL_WIDTH = 380.dp
 
+private val POINTER_VERBS = Regex("""\b([Cc])lick""")
+
+internal fun touchWording(prompt: String): String =
+    POINTER_VERBS.replace(prompt) { if (it.groupValues[1] == "C") "Tap" else "tap" }
+
 internal data class PlanTemplatesState(val show: Boolean, val enabled: Boolean, val prompt: String, val names: List<String>)
 
 internal fun planTemplates(view: JSONObject?): PlanTemplatesState? =
@@ -64,7 +69,7 @@ fun PlanTemplates(planStatus: JSONObject?, centre: Pair<Double, Double>?, onRefu
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("No mission yet", style = MaterialTheme.typography.titleLarge)
-            Text(state.prompt, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+            Text(touchWording(state.prompt), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
