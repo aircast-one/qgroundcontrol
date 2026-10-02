@@ -13,8 +13,10 @@ pub const DEPS: &[&str] = &[
 ];
 
 const MAX_PACKS: usize = 8;
-const PACK_FACTS: [&str; 9] = ["voltage", "current", "percentRemaining", "chargeState", "timeRemaining", "timeRemainingStr", "instantPower", "mahConsumed", "temperature"];
-const DETAIL_FACTS: [&str; 6] = ["voltage", "current", "instantPower", "mahConsumed", "timeRemainingStr", "temperature"];
+const PACK_FACTS: [&str; 10] = ["voltage", "current", "percentRemaining", "chargeState", "timeRemaining", "timeRemainingStr", "instantPower", "mahConsumed", "temperature", "function"];
+const DETAIL_FACTS: [&str; 7] = ["function", "voltage", "current", "instantPower", "mahConsumed", "timeRemainingStr", "temperature"];
+const FUNCTION_UNKNOWN: f64 = 0.0;
+const FUNCTION_ALL: f64 = 1.0;
 static PACKS_SEEN: AtomicUsize = AtomicUsize::new(0);
 
 fn pack_fact_path(index: usize, name: &str) -> String {
@@ -111,8 +113,13 @@ fn detail_facts(backend: &dyn Backend, index: usize) -> Value {
         .iter()
         .filter_map(|name| {
             let fact = object(&backend.get(&pack_fact_path(index, name)));
-            let spelled = fact.get("valueString").and_then(Value::as_str).filter(|s| !s.is_empty())?;
-            Some(json!({ "name": name, "valueString": spelled, "units": fact.get("units").and_then(Value::as_str).unwrap_or_default() }))
+            let raw = fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64);
+            if *name == "function" && raw.is_none_or(|f| f == FUNCTION_UNKNOWN || f == FUNCTION_ALL) {
+                return None;
+            }
+            let key = if *name == "function" { "enumOrValueString" } else { "valueString" };
+            let spelled = fact.get(key).and_then(Value::as_str).filter(|s| !s.is_empty())?;
+            Some(json!({ "name": name, "valueString": spelled, "value": fact.get("value").cloned().unwrap_or(Value::Null), "units": fact.get("units").and_then(Value::as_str).unwrap_or_default() }))
         })
         .collect()
 }
@@ -192,6 +199,17 @@ mod tests {
 
     fn pack_of(facts: &[(String, Value)]) -> Pack {
         pack(&|name: &str| facts.iter().find(|(n, _)| n == name).map(|(_, f)| f.clone()).unwrap_or(Value::Null))
+    }
+
+    #[test]
+    fn details_carry_the_value_for_total_draw_and_a_function_qgc_names() {
+        let base = pack_facts(Some(50.0), 1, "OK");
+        let shown = detail_facts_of(&base);
+        assert_eq!(shown.as_array().unwrap().iter().find(|f| f["name"] == "instantPower").unwrap()["value"], 197.5, "BatteryIndicator sums instantPower, so the number has to travel");
+        let propulsion = base.iter().cloned().chain(std::iter::once(("function".to_string(), json!({ "kind": "fact", "name": "function", "value": 2, "enumOrValueString": "Propulsion" })))).collect::<Vec<_>>();
+        assert_eq!(detail_facts_of(&propulsion)[0], json!({ "name": "function", "valueString": "Propulsion", "value": 2, "units": "" }));
+        let all = base.iter().cloned().chain(std::iter::once(("function".to_string(), json!({ "kind": "fact", "name": "function", "value": 1, "enumOrValueString": "All" })))).collect::<Vec<_>>();
+        assert!(detail_facts_of(&all).as_array().unwrap().iter().all(|f| f["name"] != "function"), "UNKNOWN and ALL are not shown");
     }
 
     #[test]

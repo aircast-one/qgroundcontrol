@@ -7150,6 +7150,7 @@
         "view.battery.packs[].facts.#",
         "view.battery.packs[].facts[].name",
         "view.battery.packs[].facts[].units",
+        "view.battery.packs[].facts[].value",
         "view.battery.packs[].facts[].valueString",
         "view.battery.packs[].index",
         "view.battery.packs[].level",
@@ -10326,6 +10327,7 @@
                     {
                         "name": "string",
                         "units": "string",
+                        "value": "null|number|string",
                         "valueString": "string"
                     }
                 ],
