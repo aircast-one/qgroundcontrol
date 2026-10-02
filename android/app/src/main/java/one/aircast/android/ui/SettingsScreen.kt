@@ -120,6 +120,8 @@ private fun pageGlance(title: String): String {
     return glanceText(displays)
 }
 
+internal fun pageTitle(title: String): String = if (title == CONNECTIONS_PAGE) "Links" else sentenceCase(title)
+
 internal fun pageSubtitle(title: String, glance: String): String = glance.ifBlank { PAGE_NOTES[title].orEmpty() }
 
 internal fun activeLinkCount(view: JSONObject?): Int =
@@ -323,7 +325,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         EmptyState(R.drawable.ic_settings, "Settings", "Choose a group on the left.")
                     } else {
                         Column(Modifier.fillMaxSize()) {
-                            PageTopBar(sentenceCase(current.title), "Back") { open = null }
+                            PageTopBar(pageTitle(current.title), "Back") { open = null }
                             SettingsPageBody(current, Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH))
                         }
                     }
@@ -333,7 +335,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             SettingsList(pages) { open = it }
         } else {
             Column(Modifier.fillMaxSize()) {
-                PageTopBar(sentenceCase(current.title), "Back") { open = null }
+                PageTopBar(pageTitle(current.title), "Back") { open = null }
                 SettingsPageBody(current, Modifier.fillMaxSize())
             }
         }
@@ -388,7 +390,7 @@ private fun SettingsList(
                 items(entries, key = { it.title }) { entry ->
                     val glance = if (entry.title == CONNECTIONS_PAGE) activeLinksGlance(linksJson) else pageGlance(entry.title)
                     SetupRow(
-                        title = sentenceCase(entry.title),
+                        title = pageTitle(entry.title),
                         status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else "",
                         state = SetupState.Neutral,
                         subtitle = pageSubtitle(entry.title, glance),

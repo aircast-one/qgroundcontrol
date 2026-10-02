@@ -192,6 +192,12 @@ class SettingsViewTest {
     }
 
     @Test
+    fun theConnectionsPageReadsAsLinksLikePenpot() {
+        org.junit.Assert.assertEquals("Links", pageTitle(CONNECTIONS_PAGE))
+        org.junit.Assert.assertEquals("Fly view", pageTitle("Fly View"))
+    }
+
+    @Test
     fun aGlanceJoinsTheSetValuesOnly() {
         org.junit.Assert.assertEquals("Bing · Hybrid", glanceText(listOf("Bing", "Hybrid")))
         org.junit.Assert.assertEquals("", glanceText(listOf("", " ")))
