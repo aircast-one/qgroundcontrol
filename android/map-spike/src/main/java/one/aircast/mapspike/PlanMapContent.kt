@@ -1,7 +1,7 @@
 package one.aircast.mapspike
 
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.semantics.semantics
@@ -959,47 +959,6 @@ internal fun MapSpikeScreen(
                             if (itemEditor != null) {
                                 FilledTonalButton(onClick = { editingItem = item }) { Text("Edit item") }
                             }
-                            var cameraRevision by remember(item.index) { mutableStateOf(0) }
-                            val camera by produceState<JSONObject?>(null, item.index, cameraRevision) {
-                                value = withContext(Dispatchers.Default) {
-                                    ItemCameraBridge.read(item.index)
-                                }
-                            }
-                            val cameraPicker = cameraChoices(camera)
-                                ?.let { it.labels.getOrNull(it.chosen) }
-                            itemCameraTextBeside(camera, cameraPicker)?.let {
-                                PaletteNote(it)
-                            }
-                            cameraChoices(camera)?.let { choices ->
-                                OutlinedButton(onClick = { cameraMenuFor = item.index }) {
-                                    Text("Camera: " + choices.labels.getOrElse(choices.chosen) { "…" })
-                                    Icon(Icons.Default.ArrowDropDown, null)
-                                }
-                                DropdownMenu(
-                                    expanded = cameraMenuFor == item.index,
-                                    onDismissRequest = { cameraMenuFor = null },
-                                ) {
-                                    choices.labels.forEachIndexed { at, label ->
-                                        DropdownMenuItem(
-                                            text = { Text(label) },
-                                            onClick = {
-                                                cameraMenuFor = null
-                                                onBridge("Setting the camera action") {
-                                                    ItemCameraBridge.chooseAction(item.index, at)
-                                                }
-                                                cameraRevision += 1
-                                            },
-                                        )
-                                    }
-                                }
-                                cameraExtras(camera)?.let { extras ->
-                                    CameraSectionExtras(extras) { member, value ->
-                                        onBridge("Setting the camera") { ItemCameraBridge.set(item.index, member, value) }
-                                        cameraRevision += 1
-                                    }
-                                }
-                                itemCameraNote(camera)?.let { PaletteNote(it) }
-                            }
                         }
 
                         landingText(selectedLanding(selected, landingList))?.let {
@@ -1086,7 +1045,6 @@ internal fun MapSpikeScreen(
                                 ) { Text("-10") }
 
                                 WaypointSpeedField(item.index, onWrite = { label, work -> onBridge(label) { work() } }, onRefused = { say(it) })
-                                WaypointHoldField(item.index, onWrite = { label, work -> onBridge(label) { work() } }, onRefused = { say(it) })
 
                                 if (itemReferenceShown(globalFrame)) AltitudeModePicker(
                                     item = item,
@@ -1100,6 +1058,59 @@ internal fun MapSpikeScreen(
                                 )
                             }
 
+                            var cameraRevision by remember(item.index) { mutableStateOf(0) }
+                            val camera by produceState<JSONObject?>(null, item.index, cameraRevision) {
+                                value = withContext(Dispatchers.Default) {
+                                    ItemCameraBridge.read(item.index)
+                                }
+                            }
+                            val cameraPicker = cameraChoices(camera)
+                                ?.let { it.labels.getOrNull(it.chosen) }
+                            itemCameraTextBeside(camera, cameraPicker)?.let {
+                                PaletteNote(it)
+                            }
+                            cameraChoices(camera)?.let { choices ->
+                                Box {
+                                    OutlinedTextField(
+                                        value = choices.labels.getOrElse(choices.chosen) { "…" },
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        label = { Text("At this point") },
+                                        trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
+                                        singleLine = true,
+                                        textStyle = MaterialTheme.typography.bodySmall,
+                                        modifier = Modifier.width(AT_THIS_POINT_WIDTH),
+                                    )
+                                    Box(Modifier.matchParentSize().clickable { cameraMenuFor = item.index })
+                                    DropdownMenu(
+                                        expanded = cameraMenuFor == item.index,
+                                        onDismissRequest = { cameraMenuFor = null },
+                                    ) {
+                                        choices.labels.forEachIndexed { at, label ->
+                                            DropdownMenuItem(
+                                                text = { Text(label) },
+                                                onClick = {
+                                                    cameraMenuFor = null
+                                                    onBridge("Setting the camera action") {
+                                                        ItemCameraBridge.chooseAction(item.index, at)
+                                                    }
+                                                    cameraRevision += 1
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            WaypointHoldField(item.index, onWrite = { label, work -> onBridge(label) { work() } }, onRefused = { say(it) })
+                            cameraChoices(camera)?.let {
+                                cameraExtras(camera)?.let { extras ->
+                                    CameraSectionExtras(extras) { member, value ->
+                                        onBridge("Setting the camera") { ItemCameraBridge.set(item.index, member, value) }
+                                        cameraRevision += 1
+                                    }
+                                }
+                                itemCameraNote(camera)?.let { PaletteNote(it) }
+                            }
                             if (item.index > HOME_ITEM) {
                                 TextButton(onClick = {
                                     scope.launch {
@@ -1636,3 +1647,5 @@ private fun FenceListRow(row: FenceRow, onRemove: () -> Unit) {
         IconButton(onClick = onRemove) { Icon(Icons.Filled.Close, contentDescription = "Remove ${row.title}") }
     }
 }
+
+private val AT_THIS_POINT_WIDTH = 242.dp
