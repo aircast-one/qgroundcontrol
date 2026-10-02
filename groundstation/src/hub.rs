@@ -1464,6 +1464,10 @@ impl Vehicle {
         announced.map_or_else(|| crate::modes::name(self.autopilot, self.vehicle_type, self.base_mode, self.custom_mode), |m| m.name.clone())
     }
 
+    pub fn auto_stream(&self) -> Option<(u8, u8, String)> {
+        self.cameras.selected().and_then(|camera| camera.current_stream()).filter(|stream| !stream.thermal()).map(|stream| (stream.kind, stream.encoding, stream.uri.clone()))
+    }
+
     pub fn parameter_components(&self) -> Vec<u8> {
         self.params.components()
     }
@@ -2629,6 +2633,7 @@ impl Vehicle {
                     stream_id: d.stream_id,
                     count: d.count,
                     kind: d.mavtype as u8,
+                    encoding: d.encoding as u8,
                     flags: d.flags.bits(),
                     framerate_hz: f64::from(d.framerate),
                     resolution_h: d.resolution_h,

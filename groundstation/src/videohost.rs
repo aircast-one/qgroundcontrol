@@ -18,6 +18,7 @@ struct Host {
     restart_at_ms: Option<u64>,
     reported: (bool, bool, u32, u32),
     recording_file: Option<String>,
+    auto_stream: Option<(u8, u8, String)>,
 }
 
 const FILE_EXTENSIONS: [&str; 3] = ["mkv", "mov", "mp4"];
@@ -208,6 +209,10 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
                 crate::subtitles::stop();
                 Vec::new()
             }
+            Out::SetSetting { name, value } => {
+                crate::settingsstore::set_raw(&format!("settings.videoSettings.{name}"), &json!(value));
+                Vec::new()
+            }
             Out::RestartAfter { receiver, delay_ms } if receiver == MAIN_RECEIVER => {
                 host.restart_at_ms = Some(now_ms + delay_ms);
                 Vec::new()
@@ -221,9 +226,15 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
 }
 
 fn synced() -> MutexGuard<'static, Option<Host>> {
+    let auto_stream = crate::hub::lock().active().and_then(crate::hub::Vehicle::auto_stream);
     let mut guard = HOST.lock().unwrap_or_else(PoisonError::into_inner);
     let host = guard.get_or_insert_with(Host::default);
     let now_ms = crate::hub::now_ms();
+    if auto_stream.is_some() && auto_stream != host.auto_stream {
+        host.auto_stream = auto_stream.clone();
+        let outs = auto_stream.map(|(kind, encoding, uri)| host.state.on_auto_stream(kind, encoding, &uri)).unwrap_or_default();
+        apply(host, outs, now_ms);
+    }
     let settings = stored_settings();
     if settings != host.state.settings {
         let outs = host.state.on_settings(settings);

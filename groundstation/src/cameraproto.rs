@@ -397,6 +397,7 @@ pub struct StreamReport {
     pub stream_id: u8,
     pub count: u8,
     pub kind: u8,
+    pub encoding: u8,
     pub flags: u16,
     pub framerate_hz: f64,
     pub resolution_h: u16,
@@ -424,6 +425,7 @@ pub struct StreamStatusReport {
 pub struct Stream {
     pub stream_id: u8,
     pub kind: u8,
+    pub encoding: u8,
     pub flags: u16,
     pub framerate_hz: f64,
     pub resolution_h: u16,
@@ -929,6 +931,7 @@ impl Camera {
             let arrived = Stream {
                 stream_id: report.stream_id,
                 kind: report.kind,
+                encoding: report.encoding,
                 flags: report.flags,
                 framerate_hz: report.framerate_hz,
                 resolution_h: report.resolution_h,
@@ -2056,6 +2059,7 @@ mod tests {
             stream_id: 1,
             count: 3,
             kind: 0,
+            encoding: 0,
             flags: STREAM_FLAG_RUNNING,
             framerate_hz: 30.0,
             resolution_h: 1920,
