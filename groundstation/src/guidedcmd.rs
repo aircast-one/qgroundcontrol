@@ -61,6 +61,11 @@ pub enum Step {
     GuidedMissionItem { latitude: f64, longitude: f64, altitude_relative: f64 },
     SkipIfNoDelta,
     AwaitAccepted(u16),
+    FailWith { mode: String, arm: String },
+}
+
+fn failing_with(mode: &str, arm: &str, steps: Vec<Step>) -> Vec<Step> {
+    std::iter::once(Step::FailWith { mode: mode.to_string(), arm: arm.to_string() }).chain(steps).collect()
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -127,15 +132,15 @@ pub fn guided_takeoff_with_altitude(state: &VehicleState) -> bool {
 }
 
 pub fn start_takeoff(state: &VehicleState, flying: bool) -> Plan {
-    let mode_then_arm = |refusal: &str| match set_mode(state, "Takeoff") {
-        Some(steps) => Plan::Steps(steps.into_iter().chain([Step::Arm]).collect()),
+    let mode_then_arm = |refusal: &str, arm: &str| match set_mode(state, "Takeoff") {
+        Some(steps) => Plan::Steps(failing_with(refusal, arm, steps.into_iter().chain([Step::Arm]).collect())),
         None => Plan::Refused(refusal.to_string()),
     };
     match (state.autopilot, flying, state.armed) {
         (AUTOPILOT_ARDUPILOT, true, _) => Plan::Refused("Unable to start takeoff: Vehicle is already in the air.".into()),
         (AUTOPILOT_ARDUPILOT, false, true) => Plan::Steps(Vec::new()),
-        (AUTOPILOT_ARDUPILOT, false, false) => mode_then_arm("Unable to start takeoff: Vehicle failed to change to Takeoff mode."),
-        _ => mode_then_arm("Unable to start takeoff: Vehicle not changing to Takeoff flight mode."),
+        (AUTOPILOT_ARDUPILOT, false, false) => mode_then_arm("Unable to start takeoff: Vehicle failed to change to Takeoff mode.", "Unable to start takeoff: Vehicle failed to arm."),
+        _ => mode_then_arm("Unable to start takeoff: Vehicle not changing to Takeoff flight mode.", "Unable to start takeoff: Vehicle rejected arming."),
     }
 }
 
@@ -333,21 +338,26 @@ pub fn start_mission(state: &VehicleState, flying: bool) -> Plan {
         steps.extend([Step::Arm, Step::WaitArmed]);
         steps
     };
+    const APM_ARM: &str = "Unable to start mission: Vehicle failed to arm.";
+    const APM_AUTO: &str = "Unable to start mission: Vehicle failed to change to Auto mode.";
+    let plan = |mode: &str, arm_text: &str, steps: Result<Vec<Step>, String>| steps.map(|steps| failing_with(mode, arm_text, steps)).map_or_else(Plan::Refused, Plan::Steps);
     match state.autopilot {
-        AUTOPILOT_PX4 => mode_or_refuse(state, "Mission").map(arm).map_or_else(Plan::Refused, Plan::Steps),
-        AUTOPILOT_ARDUPILOT if flying => mode_or_refuse(state, "Auto").map_or_else(Plan::Refused, Plan::Steps),
-        AUTOPILOT_ARDUPILOT if modes::vehicle_class(state.vehicle_type) == VehicleClass::FixedWing => mode_or_refuse(state, "Auto").map(arm).map_or_else(Plan::Refused, Plan::Steps),
+        AUTOPILOT_PX4 => plan("Unable to start mission: Vehicle not changing to Mission flight mode.", "Unable to start mission: Vehicle rejected arming.", mode_or_refuse(state, "Mission").map(arm)),
+        AUTOPILOT_ARDUPILOT if flying => plan(APM_AUTO, APM_ARM, mode_or_refuse(state, "Auto")),
+        AUTOPILOT_ARDUPILOT if modes::vehicle_class(state.vehicle_type) == VehicleClass::FixedWing => plan(APM_AUTO, APM_ARM, mode_or_refuse(state, "Auto").map(arm)),
         AUTOPILOT_ARDUPILOT => {
             let armed = match state.armed {
                 true => Ok(vec![]),
                 false => mode_or_refuse(state, "Guided").map(arm),
             };
-            armed
-                .map(|mut steps| {
+            plan(
+                "Unable to start mission: Vehicle failed to change to Guided mode.",
+                APM_ARM,
+                armed.map(|mut steps| {
                     steps.push(Step::Command { command: CMD_MISSION_START, params: [0.0; 7], command_int: false, frame: FRAME_GLOBAL, show_error: true });
                     steps
-                })
-                .map_or_else(Plan::Refused, Plan::Steps)
+                }),
+            )
         }
         _ => Plan::Refused("Vehicle does not support starting a mission".into()),
     }
@@ -436,7 +446,7 @@ mod tests {
 
     fn modes_of(plan: Plan) -> Vec<String> {
         let Plan::Steps(steps) = plan else { panic!("refused") };
-        steps.iter().map(|step| match step {
+        steps.iter().filter(|step| !matches!(step, Step::FailWith { .. })).map(|step| match step {
             Step::SetMode { mode, .. } => format!("mode {mode}"),
             Step::WaitForMode(mode) => format!("wait {mode}"),
             Step::Arm => "arm".into(),
@@ -602,7 +612,8 @@ mod tests {
         let plane = VehicleState { autopilot: AUTOPILOT_ARDUPILOT, vehicle_type: 1, armed: false, ..px4() };
         assert!(!guided_takeoff_with_altitude(&plane), "supports.guidedTakeoffWithAltitude is multirotor or VTOL only");
         let Plan::Steps(steps) = start_takeoff(&plane, false) else { panic!("a grounded plane can start a takeoff") };
-        assert!(matches!(steps.first(), Some(Step::SetMode { mode, .. }) if mode == "Takeoff"));
+        assert!(matches!(steps.get(1), Some(Step::SetMode { mode, .. }) if mode == "Takeoff"));
+        assert_eq!(steps.first(), Some(&Step::FailWith { mode: "Unable to start takeoff: Vehicle failed to change to Takeoff mode.".into(), arm: "Unable to start takeoff: Vehicle failed to arm.".into() }), "APMFirmwarePlugin::startTakeoff's own failure texts");
         assert_eq!(steps.last(), Some(&Step::Arm));
         assert!(matches!(start_takeoff(&plane, true), Plan::Refused(r) if r.contains("already in the air")));
         let px4_plane = VehicleState { vehicle_type: 1, ..px4() };

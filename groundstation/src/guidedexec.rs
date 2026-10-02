@@ -46,6 +46,7 @@ pub struct Executor {
     state: State,
     label: String,
     acked: Option<(u16, bool)>,
+    failures: Option<(String, String)>,
 }
 
 fn label(step: &Step) -> String {
@@ -57,6 +58,7 @@ fn label(step: &Step) -> String {
         Step::GuidedMissionItem { .. } => "Sending guided waypoint".to_string(),
         Step::SkipIfNoDelta => String::new(),
         Step::AwaitAccepted(command) => format!("Waiting for command {command}"),
+        Step::FailWith { .. } => String::new(),
     }
 }
 
@@ -123,7 +125,7 @@ impl Executor {
                                 Some(Step::SetMode { mode, .. } | Step::WaitForMode(mode)) => mode.clone(),
                                 _ => String::new(),
                             };
-                            self.fail(format!("Unable to change to {mode} mode."));
+                            self.fail(self.failures.as_ref().map_or_else(|| format!("Unable to change to {mode} mode."), |(text, _)| text.clone()));
                         }
                     }
                     return out;
@@ -148,7 +150,7 @@ impl Executor {
                         continue;
                     }
                     if now_ms.saturating_sub(since_ms) >= ARM_WAIT_MS {
-                        self.fail("Unable to arm vehicle.".to_string());
+                        self.fail(self.failures.as_ref().map_or_else(|| "Unable to arm vehicle.".to_string(), |(_, text)| text.clone()));
                     }
                     return out;
                 }
@@ -191,6 +193,10 @@ impl Executor {
                 }
                 Step::SkipIfNoDelta => self.at += 1,
                 Step::AwaitAccepted(command) => self.wait = Wait::Accepted { command, since_ms: now_ms },
+                Step::FailWith { mode, arm } => {
+                    self.failures = Some((mode, arm));
+                    self.at += 1;
+                }
             }
         }
         out
@@ -272,6 +278,20 @@ mod tests {
         assert!(executor.advance(&observed("Guided", false), 1499).is_empty());
         assert!(executor.advance(&observed("Guided", false), 1500).is_empty());
         assert_eq!(executor.snapshot(), json!({ "state": "failed", "reason": "Unable to arm vehicle.", "step": 3, "steps": 5, "label": "Arming" }));
+    }
+
+    #[test]
+    fn a_mission_start_fails_in_the_firmware_plugins_words() {
+        let mut executor = Executor::default();
+        executor.start(steps(guidedcmd::start_mission(&copter(), false)), &observed("Loiter", false), 0);
+        executor.advance(&observed("Loiter", false), 1300);
+        executor.advance(&observed("Loiter", false), 2600);
+        executor.advance(&observed("Loiter", false), 3900);
+        assert_eq!(executor.snapshot()["reason"], "Unable to start mission: Vehicle failed to change to Guided mode.");
+        let mut arming = Executor::default();
+        arming.start(steps(guidedcmd::start_mission(&copter(), false)), &observed("Guided", false), 0);
+        arming.advance(&observed("Guided", false), 1500);
+        assert_eq!(arming.snapshot()["reason"], "Unable to start mission: Vehicle failed to arm.");
     }
 
     #[test]
