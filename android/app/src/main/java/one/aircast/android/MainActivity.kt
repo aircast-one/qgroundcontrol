@@ -168,6 +168,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
             AppFontScale { AircastShell(hostView) }
         }
         GamepadInput.start(this, lifecycleScope)
+        one.aircast.android.ui.VirtualStickSender.start(lifecycleScope)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean =

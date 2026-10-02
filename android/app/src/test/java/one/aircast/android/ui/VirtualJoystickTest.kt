@@ -21,4 +21,10 @@ class VirtualJoystickTest {
         assertEquals(listOf(0.3, -0.4, 0.1, 0.9), joystickValues(throttle, attitude, leftHanded = false))
         assertEquals(listOf(0.1, 0.9, 0.3, -0.4), joystickValues(throttle, attitude, leftHanded = true))
     }
+
+    @Test
+    fun `with the sticks never touched the resting positions are sent, as VirtualJoystick sends from the start`() {
+        val state = VirtualJoystickState(show = true, sending = true, autoCenterThrottle = false, leftHandedMode = false, leftPositiveOnly = true, rightPositiveOnly = false, periodMs = 40)
+        org.junit.Assert.assertEquals(joystickValues(stickAxes(0.5f, 1f, true), stickAxes(0.5f, 0.5f, false), false), restingValues(state))
+    }
 }

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
@@ -65,6 +66,36 @@ internal fun virtualJoystick(view: JSONObject?): VirtualJoystickState? =
 
 internal data class StickAxes(val x: Double, val y: Double)
 
+private const val STATE_REFRESH_MS = 500L
+
+internal fun restingValues(state: VirtualJoystickState): List<Double> =
+    joystickValues(stickAxes(0.5f, restingY(state.autoCenterThrottle), state.leftPositiveOnly), stickAxes(0.5f, 0.5f, state.rightPositiveOnly), state.leftHandedMode)
+
+object VirtualStickSender {
+    @Volatile
+    internal var latest: List<Double>? = null
+
+    fun start(scope: kotlinx.coroutines.CoroutineScope) {
+        scope.launch(Dispatchers.IO) {
+            var state: VirtualJoystickState? = null
+            var readAt = 0L
+            while (isActive) {
+                val now = System.currentTimeMillis()
+                if (now - readAt >= STATE_REFRESH_MS) {
+                    state = virtualJoystick(Qgc.get(VIRTUAL_JOYSTICK_PATH))
+                    readAt = now
+                    if (state?.show != true) latest = null
+                }
+                val current = state
+                if (current != null && current.show && current.sending) {
+                    Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *(latest ?: restingValues(current)).toTypedArray())
+                }
+                delay(current?.periodMs ?: DEFAULT_PERIOD_MS)
+            }
+        }
+    }
+}
+
 internal fun stickAxes(fractionX: Float, fractionY: Float, positiveOnly: Boolean): StickAxes {
     val pctUp = 1.0 - fractionY.coerceIn(0f, 1f)
     return StickAxes(
@@ -96,15 +127,8 @@ fun VirtualJoystick(modifier: Modifier = Modifier) {
     val latestRight by rememberUpdatedState(stickAxes(right.x, right.y, state.rightPositiveOnly))
     val latestState by rememberUpdatedState(state)
 
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            val current = latestState
-            if (current.sending) {
-                val values = joystickValues(latestLeft, latestRight, current.leftHandedMode)
-                withContext(Dispatchers.IO) { Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *values.toTypedArray()) }
-            }
-            delay(current.periodMs)
-        }
+    LaunchedEffect(latestLeft, latestRight, latestState.leftHandedMode) {
+        VirtualStickSender.latest = joystickValues(latestLeft, latestRight, latestState.leftHandedMode)
     }
 
     BoxWithConstraints(modifier.fillMaxWidth()) {
