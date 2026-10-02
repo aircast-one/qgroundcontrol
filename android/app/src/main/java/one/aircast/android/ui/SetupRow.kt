@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
 internal enum class SetupState { NeedsAttention, Done, Neutral, Unavailable }
@@ -101,35 +102,17 @@ internal fun SetupRow(
         }
     }
     Column(Modifier.weight(1f)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (state == SetupState.Unavailable) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                modifier = Modifier.weight(1f),
-            )
-            if (status.isNotBlank()) {
-                Text(
-                    text = status,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = setupStateColor(state),
-                )
-            }
-            if (onClick != null) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            }
-        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (state == SetupState.Unavailable) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+        )
         if (subtitle.isNotBlank()) {
-            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         summary.forEach { line ->
             Row(Modifier.fillMaxWidth().padding(top = 2.dp)) {
@@ -137,6 +120,20 @@ internal fun SetupRow(
                 Text(line.value, style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+    if (status.isNotBlank()) {
+        Text(
+            text = status,
+            style = MaterialTheme.typography.labelLarge,
+            color = setupStateColor(state),
+        )
+    }
+    if (onClick != null) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
     }
 }
