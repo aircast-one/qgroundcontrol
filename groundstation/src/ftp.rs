@@ -147,15 +147,15 @@ pub struct Download {
     written: u32,
     file_size: u32,
     file: Vec<u8>,
-    sink: Option<(std::fs::File, std::path::PathBuf)>,
+    sink_path: Option<std::path::PathBuf>,
+    sink: Option<std::fs::File>,
     missing: Vec<Missing>,
     retries: u32,
 }
 
 impl Download {
     pub fn stream_to(&mut self, local: &std::path::Path) -> Result<(), String> {
-        let file = std::fs::File::create(local).map_err(|e| format!("Download failed for: {} - {e}", self.path))?;
-        self.sink = Some((file, local.to_path_buf()));
+        self.sink_path = Some(local.to_path_buf());
         Ok(())
     }
 
@@ -187,7 +187,7 @@ impl Download {
 
     fn fail(&mut self, error: &str) -> Vec<Out> {
         self.phase = None;
-        if let Some((file, path)) = self.sink.take() {
+        if let (Some(file), Some(path)) = (self.sink.take(), self.sink_path.as_ref()) {
             drop(file);
             let _ = std::fs::remove_file(path);
         }
@@ -231,7 +231,7 @@ impl Download {
 
     fn write_at(&mut self, offset: u32, data: &[u8]) -> Result<(), String> {
         match self.sink.as_mut() {
-            Some((file, _)) => {
+            Some(file) => {
                 use std::io::{Seek, SeekFrom, Write};
                 file.seek(SeekFrom::Start(u64::from(offset))).and_then(|_| file.write_all(data)).map_err(|e| format!("Download failed for: {} - {e}", self.path))?;
             }
@@ -316,6 +316,12 @@ impl Download {
         match reply.opcode {
             RSP_ACK => match reply.open_length() {
                 Some(size) => {
+                    if let Some(path) = self.sink_path.clone() {
+                        match std::fs::File::create(&path) {
+                            Ok(file) => self.sink = Some(file),
+                            Err(e) => return self.fail(&format!("Download failed for: {} - {e}", self.path)),
+                        }
+                    }
                     self.session = reply.session;
                     self.file_size = size;
                     self.expected_offset = 0;
@@ -797,11 +803,19 @@ mod tests {
         let done = download.on_payload(&ack(reset.seq + 1, 0, CMD_RESET_SESSIONS, 0, &[], false));
         assert!(matches!(done.last(), Some(Out::Complete { ok: true, bytes, .. }) if bytes.is_empty()), "the bytes are on disk, not held in memory");
         assert_eq!(std::fs::read(&local).unwrap(), file);
-        let failed = dir.join("missing.bin");
+        let kept = dir.join("kept.bin");
+        std::fs::write(&kept, b"earlier copy").unwrap();
         let (mut missing, _) = Download::start(1, "/fs/missing", true).unwrap();
-        missing.stream_to(&failed).unwrap();
+        missing.stream_to(&kept).unwrap();
         missing.on_payload(&nak(2, 0, CMD_OPEN_FILE_RO, 10));
-        assert!(!failed.exists(), "a failed download leaves no partial file");
+        assert_eq!(std::fs::read(&kept).unwrap(), b"earlier copy", "_openFileROAckOrNak opens the file only on the ack, so a refused open leaves the old one alone");
+        let partial = dir.join("partial.bin");
+        let (mut broken, _) = Download::start(1, "/fs/log.bin", true).unwrap();
+        broken.stream_to(&partial).unwrap();
+        broken.on_payload(&ack(2, 7, CMD_OPEN_FILE_RO, 0, &400u32.to_le_bytes(), false));
+        broken.on_payload(&ack(4, 7, CMD_BURST_READ_FILE, 0, &file[..239], false));
+        (0..4).for_each(|_| { broken.on_timeout(); });
+        assert!(!partial.exists(), "a download that fails after opening removes what it wrote");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

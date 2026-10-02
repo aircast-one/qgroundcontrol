@@ -1090,7 +1090,6 @@ impl Vehicle {
                     self.ftp_seq = job.expected_seq();
                     self.ftp_list_time_unsupported = self.ftp_list_time_unsupported || job.list_time_unsupported();
                     let for_logs = std::mem::take(&mut self.files_for_logs);
-
                     if for_logs {
                         let kind = match &result {
                             Ok(crate::filejobs::Outcome::Listed(_)) => LogFileKind::List,
