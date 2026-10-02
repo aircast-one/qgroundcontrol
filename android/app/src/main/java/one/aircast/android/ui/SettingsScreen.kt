@@ -48,6 +48,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
@@ -495,6 +497,25 @@ private fun SettingsControls(
 
 @Composable
 internal fun FactRuns(facts: List<Fact>, onWrite: () -> Unit = {}) {
+    val shared = sharedRebootNote(facts)
+    shared?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.aircast.warning,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+    }
+    CompositionLocalProvider(LocalBlockRebootNote provides shared) { FactRunRows(facts, onWrite) }
+}
+
+internal val LocalBlockRebootNote = compositionLocalOf<String?> { null }
+
+internal fun sharedRebootNote(facts: List<Fact>): String? =
+    facts.mapNotNull(::factRebootNote).takeIf { it.size > 1 }?.distinct()?.singleOrNull()
+
+@Composable
+private fun FactRunRows(facts: List<Fact>, onWrite: () -> Unit) {
     fieldRuns(facts).forEach { run ->
         if (run.size == 1) {
             FactRow(run.first(), onWrite = onWrite)
@@ -924,7 +945,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
                 )
             }
         }
-        factRebootNote(fact)?.let {
+        factRebootNote(fact)?.takeIf { it != LocalBlockRebootNote.current }?.let {
             Text(
                 text = it,
                 style = MaterialTheme.typography.bodySmall,

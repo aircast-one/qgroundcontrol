@@ -16,6 +16,14 @@ class FieldRunsTest {
     )
 
     @Test
+    fun aRebootNoticeSharedByTheBlockIsSaidOnce() {
+        val reboot = text("a").copy(vehicleRebootRequired = true)
+        assertEquals("Reboot vehicle for changes to take effect.", sharedRebootNote(listOf(reboot, text("plain"), reboot.copy(name = "b"))))
+        assertEquals(null, sharedRebootNote(listOf(reboot, text("plain"))))
+        assertEquals(null, sharedRebootNote(listOf(reboot, text("c").copy(qgcRebootRequired = true))))
+    }
+
+    @Test
     fun consecutiveShortChoicesShareARow() =
         assertEquals(listOf(listOf("a", "b"), listOf("c", "d"), listOf("e")), fieldRuns(listOf("a", "b", "c", "d", "e").map { choice(it) }).map { run -> run.map { it.name } })
 
