@@ -4,7 +4,7 @@ use crate::control::decode;
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &[];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", "video.autoStreamConfigured"];
 
 struct Page {
     title: &'static str,
@@ -350,16 +350,33 @@ fn subsections(group: &str, controls: &[Value]) -> Vec<Value> {
     }
 }
 
+fn page_shown(page: &Page, connected: bool, px4: bool) -> bool {
+    !page.shows_px4_logs || !connected || px4
+}
+
 pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
     match args.first() {
         Some(title) => PAGES.iter().find(|p| p.title == title).map(|p| page_json(p, Some(backend))).unwrap_or(json!({ "kind": "null" })),
-        None => json!({ "kind": "object", "class": "Settings", "pages": PAGES.iter().map(|p| page_json(p, None)).collect::<Vec<_>>() }),
+        None => {
+            let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
+            let px4 = flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware");
+            json!({ "kind": "object", "class": "Settings", "pages": PAGES.iter().filter(|p| page_shown(p, connected, px4)).map(|p| page_json(p, None)).collect::<Vec<_>>() })
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn px4_log_transfer_is_listed_only_for_px4_or_with_no_vehicle() {
+        let page = PAGES.iter().find(|p| p.shows_px4_logs).unwrap();
+        assert!(page_shown(page, false, false), "SettingsPagesModel shows it with no vehicle");
+        assert!(page_shown(page, true, true));
+        assert!(!page_shown(page, true, false), "an ArduPilot vehicle does not get it");
+        assert!(PAGES.iter().filter(|p| !p.shows_px4_logs).all(|p| page_shown(p, true, false)));
+    }
 
     #[test]
     fn the_nmea_port_is_picked_from_the_ports_found_like_nmeagpssettings() {
