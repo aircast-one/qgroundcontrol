@@ -2243,6 +2243,7 @@ impl Vehicle {
     }
 
     pub fn check_links(&mut self, now_ms: u64) {
+        self.commands.high_latency = self.primary_link.or(Some(self.link)).is_some_and(|link| self.link_kinds.high_latency.contains(&link));
         if !self.comm_lost_enabled {
             return;
         }
@@ -4472,6 +4473,8 @@ mod tests {
         let first = iridium.on_frame(origin(7), &header, &report(MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA, 0x01), 0, 0);
         assert!(iridium.vehicles[&3].commands.high_latency, "the vehicle knows its link is high latency, as Vehicle::isHighLatency reads the primary link");
         assert!(!first.iter().any(|(_, b)| matches!(decode(b), MavMessage::PARAM_REQUEST_LIST(_) | MavMessage::MISSION_REQUEST_LIST(_))), "and InitialConnectStateMachine skips the parameter and plan loads over it");
+        iridium.check_links(1, &LinkKinds::default());
+        assert!(!iridium.vehicles[&3].commands.high_latency, "a link reconfigured as normal stops being treated as high latency on the next check");
         assert_eq!(high_latency_custom_mode(crate::modes::AUTOPILOT_PX4, 0x0304), 0x0304_0000, "PX4 packs main and sub mode into the high half");
         assert_eq!(high_latency_sensors(1 | 32), 32 | 4, "QGCMAVLink::highLatencyFailuresToMavSysStatus: GPS and magnetometer failures become present, enabled sensors");
     }
