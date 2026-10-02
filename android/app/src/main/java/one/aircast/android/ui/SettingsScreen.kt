@@ -34,7 +34,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -342,7 +341,6 @@ private fun SettingsList(
             item(key = "head${section.title}") { SectionHeader(section.title) }
             items(section.blocks.flatMap { it.facts }, key = { it.path }) { fact ->
                 FactRow(fact) { searches++ }
-                HorizontalDivider()
             }
         }
     }
@@ -426,7 +424,6 @@ private fun SettingsControls(
             blockHeading(page.title, section, block).takeIf { it.isNotBlank() }?.let { SectionHeader(it) }
             block.facts.forEach { fact ->
                 FactRow(fact, onWrite = onWrite)
-                HorizontalDivider()
             }
             if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
         }
@@ -483,7 +480,7 @@ internal fun FactRow(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 64.dp)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -553,7 +550,7 @@ internal fun FactRow(
     }
     if (segmented) {
         Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             fact.enumStrings.forEachIndexed { index, option ->
@@ -570,7 +567,7 @@ internal fun FactRow(
             text = it,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(start = 20.dp, bottom = 8.dp),
+            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
         )
     }
     }
