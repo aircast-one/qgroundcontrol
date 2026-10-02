@@ -475,8 +475,8 @@ fn circular_fence(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> f64
     }
 }
 
-pub fn mission_item_index(current: i32, px4: bool) -> i64 {
-    i64::from(current) + i64::from(px4)
+pub fn mission_item_index(current: i32, adds_home: bool) -> i64 {
+    i64::from(current) + i64::from(adds_home)
 }
 
 fn gcs_relation(vehicle: Option<(f64, f64, f64)>) -> (Option<f64>, Option<f64>) {
@@ -542,7 +542,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "rangeFinderDist": crate::vehiclefact::vehicle_fact("rangeFinderDist", &json!(v.facts.range_finder_dist)),
         "timeToHome": crate::vehiclefact::vehicle_fact("timeToHome", &json!(crate::vehiclefacts::time_to_home(Some(home_facts(v.facts.coordinate, v.home).0), v.facts.ground_speed).filter(|t| t.is_finite()))),
         "imuTemp": crate::vehiclefact::vehicle_fact("imuTemp", &json!(v.facts.imu_temp)),
-        "missionItemIndex": crate::vehiclefact::vehicle_fact("missionItemIndex", &json!(mission_item_index(v.mission_current, v.autopilot == crate::modes::AUTOPILOT_PX4))),
+        "missionItemIndex": crate::vehiclefact::vehicle_fact("missionItemIndex", &json!(mission_item_index(v.mission_current, !v.sends_home()))),
         "distanceToGCS": crate::vehiclefact::vehicle_fact("distanceToGCS", &json!(gcs_relation(v.facts.coordinate).0)),
         "headingFromGCS": crate::vehiclefact::vehicle_fact("headingFromGCS", &json!(gcs_relation(v.facts.coordinate).1)),
         "flightDistance": crate::vehiclefact::vehicle_fact("flightDistance", &json!(crate::track::flight_distance(i64::from(v.id)).unwrap_or(0.0))),
@@ -1771,7 +1771,7 @@ mod tests {
     #[test]
     fn mission_item_index_counts_home_for_px4_like_vehicle_update_mission_item_index() {
         assert_eq!(super::mission_item_index(3, true), 4, "PX4 does not take a home position, so QGC adds one");
-        assert_eq!(super::mission_item_index(3, false), 3);
+        assert_eq!(super::mission_item_index(3, false), 3, "ArduPilot sends home as item 0, so nothing is added");
     }
 
     #[test]

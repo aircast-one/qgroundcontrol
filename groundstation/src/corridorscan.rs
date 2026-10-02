@@ -1,7 +1,6 @@
 use crate::surveygrid::{Coord, retype, typed};
 
-const NO_SPACING_M: f64 = 100_000.0;
-const MIN_SPACING_M: f64 = 0.5;
+const MAX_TRANSECT_COUNT: f64 = 1000.0;
 
 type Point = (f64, f64);
 
@@ -13,19 +12,20 @@ pub struct Params {
     pub entry: i64,
 }
 
-pub fn transect_spacing(spacing: f64) -> f64 {
-    if spacing < MIN_SPACING_M { NO_SPACING_M } else { spacing }
+pub fn transect_spacing(width: f64, spacing: f64) -> f64 {
+    if spacing <= 0.0 { 0.0 } else if width <= 0.0 { spacing } else { spacing.max(width / MAX_TRANSECT_COUNT) }
 }
 
 pub fn transect_count(width: f64, spacing: f64) -> i64 {
-    if width > 0.0 { (width / transect_spacing(spacing)).ceil() as i64 } else { 1 }
+    let spacing = transect_spacing(width, spacing);
+    if width <= 0.0 || spacing <= 0.0 { 1 } else { (width / spacing).ceil().min(MAX_TRANSECT_COUNT) as i64 }
 }
 
 pub fn typed_transects(polyline: &[Point], params: &Params) -> Vec<Vec<Coord>> {
     if polyline.len() < 2 {
         return Vec::new();
     }
-    let spacing = transect_spacing(params.spacing);
+    let spacing = transect_spacing(params.width, params.spacing);
     let count = transect_count(params.width, params.spacing);
     let half_width = params.width / 2.0;
     let laid: Vec<Vec<Coord>> = (0..count)
@@ -103,6 +103,8 @@ mod tests {
         assert_eq!(transect_count(120.0, 60.0), 2);
         assert_eq!(transect_count(300.0, 60.0), 5);
         assert_eq!(transect_count(0.0, 60.0), 1, "a corridor with no width is still flown once");
-        assert_eq!(transect_spacing(0.1), NO_SPACING_M, "a footprint too small to be real means one pass, as the Qt item treats it");
+        assert_eq!(transect_count(300.0, 0.0), 1, "no footprint is one pass, as the Qt item treats it");
+        assert_eq!(transect_count(300.0, 0.1), 1000, "the Qt item caps a corridor at 1000 transects");
+        assert_eq!(transect_spacing(300.0, 0.1), 0.3, "and widens the spacing to fit them");
     }
 }
