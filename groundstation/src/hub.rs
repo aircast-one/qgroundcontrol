@@ -1818,7 +1818,8 @@ impl Vehicle {
                     self.note("Attempt to calibrate with a reversed throttle. Reverse the throttle on the transmitter and calibrate again.".to_string());
                 }
                 let target = (self.id, self.component);
-                return Ok(outcomes
+                let wrote = outcomes.iter().any(|outcome| matches!(outcome, crate::rccal::Outcome::Write(_)));
+                let sent: Vec<Vec<u8>> = outcomes
                     .into_iter()
                     .flat_map(|outcome| match outcome {
                         crate::rccal::Outcome::StartCalibration => self.encode(&Outbound::CommandLong { target, command: sensorcal::CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0] }).into_iter().collect(),
@@ -1835,7 +1836,14 @@ impl Vehicle {
                             .collect(),
                         _ => Vec::new(),
                     })
-                    .collect());
+                    .collect();
+                if wrote {
+                    let lookup = |name: &str| self.params.value(self.component, name).map(|p| p.as_f64());
+                    let mut cal = std::mem::take(&mut self.rccal);
+                    cal.read_stored(&vehicle, &lookup);
+                    self.rccal = cal;
+                }
+                return Ok(sent);
             }
             Some("resumeMission") => {
                 let index = action.get("index").and_then(Value::as_i64).ok_or("A resume names the mission index to resume from.")?;

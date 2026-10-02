@@ -366,6 +366,9 @@ impl Params {
             self.write_batch += 1;
         }
         self.pending_write.entry(component).or_default().insert(name.to_string(), value);
+        if let Some(known) = self.facts.get_mut(&component).and_then(|facts| facts.get_mut(name)) {
+            *known = value;
+        }
         vec![self.progress(), Action::StartWaitingTimer, Action::Set { component, name: name.to_string(), value }]
     }
 
@@ -774,7 +777,7 @@ mod tests {
         deliver(&mut params, &["A"], &[]);
         let sent = params.write(1, "A", ParamValue::I32(9));
         assert_eq!(sent, vec![Action::Progress(0.5), Action::StartWaitingTimer, Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }]);
-        assert_eq!(params.value(1, "A"), Some(ParamValue::I32(0)));
+        assert_eq!(params.value(1, "A"), Some(ParamValue::I32(9)), "Fact::setRawValue changes the local value at once, before the vehicle acknowledges it");
         let resend = params.on_waiting_timeout();
         assert!(resend.contains(&Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }));
         let ack = params.on_param_value(1, "A", 1, 0, ParamValue::I32(9));
