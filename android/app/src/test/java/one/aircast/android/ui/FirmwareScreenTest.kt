@@ -17,6 +17,9 @@ class FirmwareScreenTest {
         assertNull("a refusal that is not the firmware view reads as nothing to show", firmwareJob(JSONObject("""{"kind":"null"}""")))
         assertEquals("Waiting for the bootloader", firmwarePhaseText("connecting"))
         assertEquals("", firmwarePhaseText("idle"))
+        val choosing = JSONObject("""{"class":"FirmwareUpgrade","phase":"choosing","busy":true,"cancellable":true,"choices":[{"name":"CUAVv5 - 4.6.2","url":"https://f/c.apj"}]}""")
+        assertEquals(listOf("CUAVv5 - 4.6.2" to "https://f/c.apj"), firmwareJob(choosing)!!.choices)
+        assertEquals("Choose board type", firmwarePhaseText("choosing"))
     }
 
     @Test

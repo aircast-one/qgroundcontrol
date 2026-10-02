@@ -11,6 +11,7 @@ pub enum Phase {
     #[default]
     Idle,
     Connecting,
+    Choosing,
     Erasing,
     Programming,
     Verifying,
@@ -23,6 +24,7 @@ impl Phase {
         match self {
             Phase::Idle => "idle",
             Phase::Connecting => "connecting",
+            Phase::Choosing => "choosing",
             Phase::Erasing => "erasing",
             Phase::Programming => "programming",
             Phase::Verifying => "verifying",
@@ -32,7 +34,7 @@ impl Phase {
     }
 
     fn busy(self) -> bool {
-        matches!(self, Phase::Connecting | Phase::Erasing | Phase::Programming | Phase::Verifying)
+        matches!(self, Phase::Connecting | Phase::Choosing | Phase::Erasing | Phase::Programming | Phase::Verifying)
     }
 }
 
@@ -45,6 +47,8 @@ pub struct Job {
     pub board: Option<BoardInfo>,
     pub port: Option<String>,
     pub file: Option<String>,
+    pub choices: Vec<(String, String)>,
+    pub chosen: Option<String>,
 }
 
 pub enum Event {
@@ -52,6 +56,24 @@ pub enum Event {
     Status(String),
     Board(BoardInfo),
     Progress(f64),
+    Choose(Vec<(String, String)>),
+}
+
+const CHOICE_POLL_MS: u64 = 200;
+
+fn await_choice(choices: Vec<(String, String)>, report: &mut dyn FnMut(Event)) -> Result<String, String> {
+    report(Event::Choose(choices));
+    let picked = std::iter::repeat(())
+        .take_while(|()| !cancelled())
+        .find_map(|()| {
+            let taken = job().chosen.take();
+            if taken.is_none() {
+                std::thread::sleep(std::time::Duration::from_millis(CHOICE_POLL_MS));
+            }
+            taken
+        });
+    report(Event::Phase(Phase::Connecting));
+    picked.ok_or_else(|| FLASH_CANCELLED.to_string())
 }
 
 fn image_for(file: &str, contents: &[u8], board: &BoardInfo, report: &mut dyn FnMut(Event)) -> Result<Vec<u8>, String> {
@@ -194,7 +216,10 @@ pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &m
         Source::ArduPilot { vehicle, build } => {
             report(Event::Status("Downloading the ArduPilot firmware list...".into()));
             let chibios = crate::settingsstore::raw_setting(APM_CHIBIOS).and_then(|v| v.as_i64()).unwrap_or(0) == 0;
-            crate::firmwarecatalog::apm_url(&manifest()?, board.board_id, *build, *vehicle, chibios, description)?
+            match crate::firmwarecatalog::apm_url(&manifest()?, board.board_id, *build, *vehicle, chibios, description)? {
+                crate::firmwarecatalog::ApmPick::Url(url) => url,
+                crate::firmwarecatalog::ApmPick::Choose(choices) => await_choice(choices, report)?,
+            }
         }
     };
     report(Event::Status(format!("Downloading firmware from {url}")));
@@ -273,6 +298,11 @@ fn apply(event: Event) {
         Event::Status(text) => held.messages.push(text),
         Event::Board(board) => held.board = Some(board),
         Event::Progress(fraction) => held.progress = fraction,
+        Event::Choose(choices) => {
+            held.phase = Phase::Choosing;
+            held.choices = choices;
+            held.chosen = None;
+        }
     }
 }
 
@@ -517,7 +547,8 @@ pub fn view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
         "class": "FirmwareUpgrade",
         "phase": held.phase.token(),
         "busy": held.phase.busy(),
-        "cancellable": held.phase == Phase::Connecting,
+        "cancellable": matches!(held.phase, Phase::Connecting | Phase::Choosing),
+        "choices": held.choices.iter().map(|(name, url)| json!({ "name": name, "url": url })).collect::<Vec<_>>(),
         "progress": held.progress,
         "messages": held.messages,
         "error": held.error,
@@ -533,12 +564,23 @@ pub fn ports_view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Va
 
 pub fn invoke(path: &str, args: &str) -> Option<Value> {
     if path == "firmware.cancel" {
-        return Some(match job().phase == Phase::Connecting {
+        return Some(match matches!(job().phase, Phase::Connecting | Phase::Choosing) {
             true => {
                 CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
                 json!({ "ok": true })
             }
             false => json!({ "ok": false, "reason": "The upgrade can no longer be cancelled once erasing has started." }),
+        });
+    }
+    if path == "firmware.choose" {
+        let url = serde_json::from_str::<Vec<String>>(args).unwrap_or_default().into_iter().next().unwrap_or_default();
+        let mut held = job();
+        return Some(match held.phase == Phase::Choosing && held.choices.iter().any(|(_, offered)| *offered == url) {
+            true => {
+                held.chosen = Some(url);
+                json!({ "ok": true })
+            }
+            false => json!({ "ok": false, "reason": "Choose one of the offered board types." }),
         });
     }
     (path == "firmware.flash").then_some(())?;

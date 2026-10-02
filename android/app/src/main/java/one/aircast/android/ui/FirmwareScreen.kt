@@ -47,6 +47,7 @@ internal const val FIRMWARE_VIEW = "view.firmwareUpgrade"
 internal const val FIRMWARE_PORTS_VIEW = "view.firmwarePorts"
 internal const val FIRMWARE_FLASH = "firmware.flash"
 internal const val FIRMWARE_CANCEL = "firmware.cancel"
+internal const val FIRMWARE_CHOOSE = "firmware.choose"
 internal const val FIRMWARE_UPGRADE_SETTINGS = "settings.firmwareUpgradeSettings"
 internal const val APM_CHIBIOS = "apmChibiOS"
 internal const val FIRMWARE_POLL_MS = 500L
@@ -61,6 +62,7 @@ internal data class FirmwareJob(
     val progress: Float,
     val messages: List<String>,
     val error: String,
+    val choices: List<Pair<String, String>> = emptyList(),
 )
 
 internal fun firmwarePorts(view: JSONObject?): List<FirmwarePort> {
@@ -83,11 +85,15 @@ internal fun firmwareJob(view: JSONObject?): FirmwareJob? = view?.takeIf { it.op
         progress = it.optDouble("progress", 0.0).toFloat(),
         messages = (0 until (messages?.length() ?: 0)).map { index -> messages!!.optString(index) },
         error = it.optText("error"),
+        choices = it.optJSONArray("choices")?.let { listed ->
+            (0 until listed.length()).mapNotNull { index -> listed.optJSONObject(index)?.let { c -> c.optText("name") to c.optText("url") } }
+        }.orEmpty(),
     )
 }
 
 internal fun firmwarePhaseText(phase: String): String = when (phase) {
     "connecting" -> "Waiting for the bootloader"
+    "choosing" -> "Choose board type"
     "erasing" -> "Erasing"
     "programming" -> "Programming"
     "verifying" -> "Verifying"
@@ -249,6 +255,12 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                 job?.let { current ->
                     if (current.busy) LinearProgressIndicator(progress = { current.progress }, modifier = Modifier.fillMaxWidth())
                     firmwarePhaseText(current.phase).takeIf { it.isNotBlank() }?.let { Text(it) }
+                    if (current.phase == "choosing") current.choices.forEach { (name, url) ->
+                        OutlinedButton(
+                            onClick = { scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(FIRMWARE_CHOOSE, url) }.orEmpty() } },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(name) }
+                    }
                     current.error.takeIf { it.isNotBlank() }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (current.phase == "failed") Text(FLASH_FAIL_TEXT, style = MaterialTheme.typography.bodyMedium)
                 }
