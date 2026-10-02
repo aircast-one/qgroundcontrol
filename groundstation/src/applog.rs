@@ -148,6 +148,7 @@ fn level_of(level: log::Level) -> usize {
 }
 
 static DISK_PENDING: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
+static DISK_ERROR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 const DISK_LOG_NAME: &str = "AppLog";
 const DISK_LOG_EXTENSION: &str = "log";
 const BYTES_PER_MB: u64 = 1024 * 1024;
@@ -184,10 +185,12 @@ pub fn flush_to_disk() {
     let setting = |path: &str| crate::settingsstore::raw_setting(path);
     let enabled = setting("settings.logManagerSettings.diskLoggingEnabled").and_then(|v| v.as_bool()).unwrap_or(false);
     let persisting = !setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
-    let Some(dir) = crate::settingsstore::log_save_path().filter(|_| enabled && persisting && !pending.is_empty()) else { return };
+    let failed = DISK_ERROR.load(std::sync::atomic::Ordering::Relaxed);
+    let Some(dir) = crate::settingsstore::log_save_path().filter(|_| enabled && persisting && !failed && !pending.is_empty()) else { return };
     let max_bytes = setting("settings.logManagerSettings.diskLoggingMaxFileSizeMB").and_then(|v| v.as_u64()).unwrap_or(10) * BYTES_PER_MB;
     let backups = setting("settings.logManagerSettings.diskLoggingMaxBackupFiles").and_then(|v| v.as_u64()).and_then(|v| u32::try_from(v).ok()).unwrap_or(5);
     if let Err(error) = write_rotating(std::path::Path::new(&dir), &as_text(&pending), max_bytes, backups) {
+        DISK_ERROR.store(true, std::sync::atomic::Ordering::Relaxed);
         eprintln!("app log could not be written to {dir}: {error}");
     }
 }
