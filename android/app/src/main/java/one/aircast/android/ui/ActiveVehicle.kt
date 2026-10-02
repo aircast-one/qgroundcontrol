@@ -157,6 +157,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 painter = painterResource(if (alarm == null) R.drawable.ic_arrow_drop_down else R.drawable.ic_warning),
                 contentDescription = alarm ?: "Choose which vehicle to fly",
             )
+        } else if (!disconnected) {
+            Icon(painterResource(R.drawable.ic_arrow_drop_down), contentDescription = "Change flight mode")
         }
         var loading by remember { mutableStateOf<Float?>(null) }
         androidx.compose.runtime.LaunchedEffect(choices.choices.size) {
