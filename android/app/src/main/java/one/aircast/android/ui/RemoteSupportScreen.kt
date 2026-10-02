@@ -1,5 +1,9 @@
 package one.aircast.android.ui
 
+import one.aircast.android.R
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Row
 import one.aircast.android.bridge.settingControl
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -103,43 +106,21 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        EmptyState(
+            R.drawable.ic_link,
+            if (forwarding) "Forwarding to support" else "Not forwarding",
+            "Sends live telemetry, including position, to an ArduPilot support engineer for as long as the link stays up.",
+        )
 
         if (host == null) {
-            Text("Reading the support address.", style = MaterialTheme.typography.bodyMedium)
+            Text("Reading the support address.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp))
             return@Column
         }
 
         FactRow(host) {}
-
-        HorizontalDivider()
-
-        Text(
-            text = if (forwarding) "Forwarding" else "Not forwarding",
-            style = MaterialTheme.typography.titleMedium,
-            color = if (forwarding) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        )
-
-        if (forwarding) {
-            Button(
-                onClick = {
-                    offMainDetached { Qgc.invoke("links.endMavlinkForwardingSupportLink") }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Stop forwarding") }
-        } else {
-            Button(
-                onClick = { confirming = true },
-                enabled = verdict?.valid == true,
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Start forwarding") }
-        }
 
         if (!forwarding && verdict?.valid != true) {
             Text(
@@ -147,12 +128,16 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
                     ?: "Enter the address your support engineer gave you first.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 32.dp),
             )
         }
 
-        FootNote(
-            "Sends live telemetry, including position, to an ArduPilot support " +
-                "engineer for as long as the link stays up.",
-        )
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
+            if (forwarding) {
+                Button(onClick = { offMainDetached { Qgc.invoke("links.endMavlinkForwardingSupportLink") } }) { Text("Stop forwarding") }
+            } else {
+                Button(onClick = { confirming = true }, enabled = verdict?.valid == true) { Text("Start forwarding") }
+            }
+        }
     }
 }
