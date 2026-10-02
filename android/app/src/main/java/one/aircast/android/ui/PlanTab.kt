@@ -211,7 +211,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                 )
                             }
                         }
-                        Surface(
+                        if (upload.shown) Surface(
                             onClick = upload.onClick,
                             enabled = upload.enabled,
                             modifier = Modifier.alpha(if (upload.enabled) 1f else 0.38f),

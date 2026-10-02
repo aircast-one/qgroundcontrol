@@ -134,7 +134,7 @@ private fun GroupBreak() {
     )
 }
 
-class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: String, val onClick: () -> Unit)
+class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: String, val shown: Boolean, val onClick: () -> Unit)
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -405,7 +405,7 @@ internal fun MapSpikeScreen(
     Column(Modifier.fillMaxSize()) {
     val uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems)
     val uploadEnabled = planHasItems && !planOffline && !planSyncing
-    header?.invoke(PlanUpload(enabled = uploadEnabled, emphasised = !uploadBlocked, label = uploadText, onClick = upload))
+    header?.invoke(PlanUpload(enabled = uploadEnabled, emphasised = !uploadBlocked, label = uploadText, shown = !planOffline, onClick = upload))
     Box(Modifier.fillMaxWidth().weight(1f)) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
@@ -618,7 +618,7 @@ internal fun MapSpikeScreen(
                         }
                     }) { Text(if (loadArmed) "Discard & download" else "Download") }
 
-                    if (header == null) {
+                    if (header == null && !planOffline) {
                         PlanUploadButton(emphasised = !uploadBlocked, enabled = uploadEnabled, onClick = upload, contentPadding = PRIMARY_PADDING) { Text(uploadText) }
                     }
 
