@@ -16,7 +16,10 @@ pub const DEPS: &[&str] = &[
     crate::coreplan::CHANGED,
 ];
 
-const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw";
+const LOITER_TIME: i64 = 19;
+const LOITER_TO_ALT: i64 = 31;
+
+const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -606,7 +609,12 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
             let info = commands.get(&s.command);
             let coordinate = info.is_some_and(|c| c.specifies_coordinate);
             let altitude = s.altitude.as_ref();
+            let loiter = info.is_some_and(|c| c.is_loiter);
+            let loiter_time_radius = commands.get(&LOITER_TIME).is_some_and(|c| c.params.contains_key(&3) && !c.hidden.contains(&3));
+            let fixed_wing_like = matches!(crate::plandoc::vehicle_class(doc.vehicle_type), crate::cmdinfo::VehicleClass::FixedWing | crate::cmdinfo::VehicleClass::Vtol);
             json!({
+                "showLoiterRadius": coordinate && fixed_wing_like && loiter && !(s.command == LOITER_TIME && !loiter_time_radius),
+                "loiterRadius": loiter.then(|| if s.command == LOITER_TO_ALT { s.params[1] } else { s.params[2] }).flatten(),
                 "isSimpleItem": true,
                 "homePosition": false,
                 "specifiesCoordinate": coordinate,
@@ -765,6 +773,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "endsRoute": flag(read, "isLandCommand") || integer(read, "command") == Some(RETURN_TO_LAUNCH),
         "command": integer(read, "command"),
         "flownLeg": flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") && !flag(read, "isIncomplete"),
+        "loiterRadius": flag(read, "showLoiterRadius").then(|| number(read, "loiterRadius")).flatten().filter(|radius| radius.is_finite()),
         "movable": coordinate.is_some(),
         "blocked": ready.is_some_and(|state| state != READY_TO_SAVE && state != AWAITING_TERRAIN),
         "awaitingTerrain": ready == Some(AWAITING_TERRAIN),
@@ -1091,6 +1100,20 @@ mod from_the_document {
             Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
             other => other,
         }
+    }
+
+    #[test]
+    fn a_fixed_wing_loiter_shows_its_signed_radius_like_simple_mission_item() {
+        let plan = |vehicle: i64| json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": vehicle, "plannedHomePosition": [47.0, 8.0, 0], "items": [
+            { "type": "SimpleItem", "command": 16, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 47.01, 8.0, 50] },
+            { "type": "SimpleItem", "command": 18, "frame": 3, "doJumpId": 2, "params": [2, 0, -80, 0, 47.02, 8.0, 50] },
+            { "type": "SimpleItem", "command": 31, "frame": 3, "doJumpId": 3, "params": [0, 120, 0, 0, 47.03, 8.0, 80] },
+        ] } }).to_string();
+        let reads = |vehicle: i64| document_reads(&crate::plandoc::load(&plan(vehicle), 2).unwrap(), 0).unwrap();
+        let plane = reads(1);
+        let shown: Vec<(bool, Value)> = plane.iter().skip(1).map(|r| (r["showLoiterRadius"].as_bool().unwrap(), r["loiterRadius"].clone())).collect();
+        assert_eq!(shown, [(false, Value::Null), (true, json!(-80.0)), (true, json!(120.0))], "param3 for turns (negative is counter-clockwise), param2 for loiter-to-altitude, nothing for a waypoint");
+        assert!(reads(2).iter().all(|r| r["showLoiterRadius"] != true), "a multirotor never draws the ring");
     }
 
     fn agrees(plan: &str, terrain_under_home: f64, qt: &str) {
