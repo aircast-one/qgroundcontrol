@@ -1,10 +1,10 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.Surface
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,8 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -140,7 +138,6 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
     var advanced by remember { mutableStateOf(false) }
     val apmVehicle by qgcBool(APM_FIRMWARE)
     var source by remember { mutableStateOf(DEFAULT_FIRMWARE_SOURCE) }
-    var sourceMenu by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
@@ -176,14 +173,17 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
     val busy = job?.busy == true
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "note") {
-            FootNote(
-                "Plug in your device via USB, choose its port and either a release, downloaded once the board is " +
-                    "identified, or a firmware file, then press Flash. A board " +
-                    "running its firmware is asked to be unplugged and plugged back in so its bootloader starts.",
-            )
-        }
-        if (ports.isEmpty()) {
-            item(key = "noPorts") { ListItem(headlineContent = { Text("No USB serial devices attached") }) }
+            Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (ports.isEmpty()) "No USB serial devices attached" else "Flash a board over USB", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Plug in your device via USB, choose its port and either a release, downloaded once the board is " +
+                            "identified, or a firmware file, then press Flash. A board " +
+                            "running its firmware is asked to be unplugged and plugged back in so its bootloader starts.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
         }
         items(ports.size, key = { ports[it].port }) { index ->
             val entry = ports[index]
@@ -195,20 +195,14 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
             )
         }
         item(key = "actions") {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box {
-                    OutlinedButton(enabled = !busy, onClick = { sourceMenu = true }) {
-                        Text(FIRMWARE_SOURCES.firstOrNull { it.first == source }?.second ?: source)
-                    }
-                    DropdownMenu(expanded = sourceMenu, onDismissRequest = { sourceMenu = false }) {
-                        firmwareSources(advanced).forEach { (token, title) ->
-                            DropdownMenuItem(text = { Text(title) }, onClick = {
-                                source = token
-                                sourceMenu = false
-                            })
-                        }
-                    }
-                }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val offered = firmwareSources(advanced)
+                ChoiceField(
+                    "Firmware",
+                    FIRMWARE_SOURCES.firstOrNull { it.first == source }?.second ?: source,
+                    offered.map { it.second },
+                    Modifier.fillMaxWidth(),
+                ) { index -> if (!busy) source = offered[index].first }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = advanced, enabled = !busy, onCheckedChange = {
                         advanced = it
@@ -224,7 +218,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                 }
                 firmwareWarning(source)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
                 val choice = firmwareChoice(source, file?.absolutePath)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                     if (source == FIRMWARE_FROM_FILE) {
                         OutlinedButton(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Choose file") }
                     }
