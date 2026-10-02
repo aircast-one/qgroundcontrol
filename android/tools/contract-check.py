@@ -426,6 +426,10 @@ ACCEPTED = {
     "skippedCount": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
     "taggedCount": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
     "timeOffsetSecs": "GeoTagView.kt reads the geoTag controller object itself (geotagcontroller.rs object()), not a recorded view",
+    "channelHint": "view.syslink serves only available=false on the PX4 SITL rig, which has no SLNK_RADIO_* parameters (a Crazyflie does); syslink.rs syslink_view serves it",
+    "addressHint": "view.syslink serves only available=false on the PX4 SITL rig, which has no SLNK_RADIO_* parameters (a Crazyflie does); syslink.rs syslink_view serves it",
+    "rates": "view.syslink serves only available=false on the PX4 SITL rig, which has no SLNK_RADIO_* parameters (a Crazyflie does); syslink.rs syslink_view serves it",
+    "address": "view.syslink serves only available=false on the PX4 SITL rig, which has no SLNK_RADIO_* parameters (a Crazyflie does); syslink.rs syslink_view serves it",
 }
 
 

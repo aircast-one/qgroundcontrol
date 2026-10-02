@@ -129,6 +129,7 @@ pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
         ("Scripting", false) => Some("scripting"),
         ("Joystick", _) => Some("joystick"),
         ("WiFi Bridge", _) => Some("espBridge"),
+        ("Syslink", _) => Some("syslink"),
         ("Servo Outputs", false) => Some("apmServos"),
         ("Follow Me", false) => Some("apmFollow"),
         ("Actuators", true) if crate::vehiclefacade::switched_on() => Some("actuators"),

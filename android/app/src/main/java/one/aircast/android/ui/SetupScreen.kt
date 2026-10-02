@@ -251,6 +251,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 nativePage?.screen == SCRIPTING_SCREEN -> ScriptingScreen(Modifier.weight(1f))
                 nativePage?.screen == JOYSTICK_SCREEN -> JoystickScreen(Modifier.weight(1f))
                 nativePage?.screen == ESP_BRIDGE_SCREEN -> EspBridgeScreen(Modifier.weight(1f))
+                nativePage?.screen == SYSLINK_SCREEN -> SyslinkScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_SUB_FRAME_SCREEN -> ApmSubFrameScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_AIRFRAME_SCREEN -> ApmAirframeScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_SUB_MOTORS_SCREEN -> ApmSubMotorsScreen(Modifier.weight(1f))

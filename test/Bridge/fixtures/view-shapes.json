@@ -7052,6 +7052,9 @@
         "view.surveyStats(4).minimumInterval",
         "view.surveyStats(4).tooFast",
         "view.surveyStats(4).warning",
+        "view.syslink.available",
+        "view.syslink.class",
+        "view.syslink.kind",
         "view.terrainDownload.busy",
         "view.terrainDownload.class",
         "view.terrainDownload.fraction",
@@ -10233,6 +10236,9 @@
         "view.surveyStats(4).surfaceDistanceText",
         "view.surveyStats(4).tooFast",
         "view.surveyStats(4).warning",
+        "view.syslink.available",
+        "view.syslink.class",
+        "view.syslink.kind",
         "view.terrainDownload.busy",
         "view.terrainDownload.class",
         "view.terrainDownload.fraction",
@@ -11331,6 +11337,7 @@
             "view.logReplay",
             "view.sensorSettings",
             "view.espBridge",
+            "view.syslink",
             "view.mavlinkActions",
             "view.scripting",
             "view.signingKeys",
@@ -14885,6 +14892,11 @@
         "surfaceDistanceText": "null|string",
         "tooFast": "bool",
         "warning": "string"
+    },
+    "view.syslink": {
+        "available": "bool",
+        "class": "string",
+        "kind": "string"
     },
     "view.terrainDownload": {
         "busy": "bool",
