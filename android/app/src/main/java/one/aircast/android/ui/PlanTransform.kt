@@ -94,7 +94,7 @@ fun PlanTransformDialog(onDismiss: () -> Unit) {
         EditPositionDialog(
             at = home,
             onDismiss = { repositioning = false },
-            title = "Reposition Mission",
+            title = "Reposition mission",
             confirm = "Move to Position",
             vehicleNote = "Move to Vehicle Position",
         ) { latitude, longitude ->

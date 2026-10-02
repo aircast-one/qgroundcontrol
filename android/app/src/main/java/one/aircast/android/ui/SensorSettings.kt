@@ -120,7 +120,7 @@ internal fun SensorSettingsBlock(calibrating: Boolean, showCompasses: Boolean, o
             settings.compasses.forEach { compass ->
                 Text(compass.label, style = MaterialTheme.typography.titleSmall)
                 if (compass.device.isNotBlank()) Text(compass.device, style = MaterialTheme.typography.bodySmall)
-                compass.use?.let { FactRow(it, title = "Use Compass", onWrite = refresh) }
+                compass.use?.let { FactRow(it, title = "Use compass", onWrite = refresh) }
                 compass.priority?.let { slot ->
                     PriorityPicker(settings.priorities, slot) { picked ->
                         scope.launch {

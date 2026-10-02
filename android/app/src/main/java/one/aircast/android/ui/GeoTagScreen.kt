@@ -85,7 +85,7 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
 
         GeoTagStepRow(
             mark = geoTagStep(current.logFile.isNotBlank(), 1),
-            title = "Select Flight Log",
+            title = "Select flight log",
             detail = current.logFile.ifBlank { null }?.substringAfterLast('/') ?: "No file selected",
             enabled = editable,
         ) { logPicker.launch(arrayOf("*/*")) }
@@ -98,13 +98,13 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
         }
         GeoTagStepRow(
             mark = geoTagStep(current.imageDirectory.isNotBlank(), 2),
-            title = "Select Image Folder",
+            title = "Select image folder",
             detail = imageTree?.let(::treeName) ?: "No folder selected",
             enabled = editable,
         ) { imagePicker.launch(null) }
         GeoTagStepRow(
             mark = "3",
-            title = "Output Folder (Optional)",
+            title = "Output folder (optional)",
             detail = outputTree?.let(::treeName) ?: "Default: /$DEFAULT_GEOTAG_OUTPUT subfolder",
             enabled = editable,
         ) { outputPicker.launch(null) }

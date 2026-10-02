@@ -121,7 +121,7 @@ internal val RADIO_PROMPTS = listOf(
         choices = emptyList(),
     ),
     RadioPrompt(
-        title = "Copy Trims",
+        title = "Copy trims",
         body = "Center your sticks and move throttle all the way down, then press Ok to copy trims. After pressing Ok, reset the trims on your radio back to zero.",
         action = "copyTrims",
         choices = emptyList(),

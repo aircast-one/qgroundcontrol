@@ -144,7 +144,7 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
         return
     }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        page.enable?.let { FactRow(it, title = "Enable Scripting") { act(SCRIPTING_REFRESH) } }
+        page.enable?.let { FactRow(it, title = "Enable scripting") { act(SCRIPTING_REFRESH) } }
         Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (page.status.isNotBlank()) Text(page.status, style = MaterialTheme.typography.bodyMedium)
             OutlinedButton(enabled = page.enabled && !page.busy, onClick = { uploader.launch(arrayOf("*/*")) }) { Text("Upload") }
