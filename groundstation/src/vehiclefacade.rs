@@ -24,7 +24,7 @@ fn offline_field(path: &str, field: &str) -> Option<Value> {
     }
 }
 
-const VEHICLE_FACTS: [&str; 27] = ["rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome", "xTrackError", "airSpeedSetpoint", "altitudeTuning", "altitudeTuningSetpoint", "rangeFinderDist", "timeToHome", "imuTemp", "missionItemIndex", "distanceToGCS", "headingFromGCS"];
+const VEHICLE_FACTS: [&str; 28] = ["rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome", "xTrackError", "airSpeedSetpoint", "altitudeTuning", "altitudeTuningSetpoint", "rangeFinderDist", "timeToHome", "imuTemp", "missionItemIndex", "distanceToGCS", "headingFromGCS", "flightDistance"];
 
 pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
     let (lat1, lat2) = (from.0.to_radians(), to.0.to_radians());
@@ -529,6 +529,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "missionItemIndex": crate::vehiclefact::vehicle_fact("missionItemIndex", &json!(mission_item_index(v.mission_current, v.autopilot == crate::modes::AUTOPILOT_PX4))),
         "distanceToGCS": crate::vehiclefact::vehicle_fact("distanceToGCS", &json!(gcs_relation(v.facts.coordinate).0)),
         "headingFromGCS": crate::vehiclefact::vehicle_fact("headingFromGCS", &json!(gcs_relation(v.facts.coordinate).1)),
+        "flightDistance": crate::vehiclefact::vehicle_fact("flightDistance", &json!(crate::track::flight_distance(i64::from(v.id)).unwrap_or(0.0))),
         "headingToNextWP": crate::vehiclefact::vehicle_fact("headingToNextWP", &json!(heading_to_next_wp(v.facts.coordinate, v.mission_items(), v.mission_current))),
         "distanceToHome": crate::vehiclefact::vehicle_fact("distanceToHome", &json!(home_facts(v.facts.coordinate, v.home).0)),
         "headingToHome": crate::vehiclefact::vehicle_fact("headingToHome", &json!(home_facts(v.facts.coordinate, v.home).1)),

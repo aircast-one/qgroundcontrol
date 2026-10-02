@@ -20,6 +20,7 @@ pub struct Track {
     dropped: u64,
     armed: bool,
     touched: u64,
+    flight_distance: f64,
 }
 
 fn offset(from: (f64, f64), to: (f64, f64)) -> (f64, f64) {
@@ -63,15 +64,18 @@ impl Track {
         self.armed = armed;
         if armed_edge {
             self.restart();
+            self.flight_distance = 0.0;
         }
         let Some(position) = position.filter(|_| armed) else { return };
         let Some(&last) = self.points.back() else {
             self.append(position);
             return;
         };
-        if distance_m(last, position) <= DISTANCE_TOLERANCE_M {
+        let moved = distance_m(last, position);
+        if moved <= DISTANCE_TOLERANCE_M {
             return;
         }
+        self.flight_distance += moved;
         let azimuth = azimuth_deg(last, position);
         if self.last_azimuth.is_some_and(|anchor| turn_deg(anchor, azimuth) <= AZIMUTH_TOLERANCE_DEG) {
             let end = self.points.len() - 1;
@@ -99,6 +103,10 @@ impl Track {
 }
 
 static TRACKS: LazyLock<Mutex<BTreeMap<i64, Track>>> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
+pub fn flight_distance(vehicle: i64) -> Option<f64> {
+    TRACKS.lock().unwrap_or_else(PoisonError::into_inner).get(&vehicle).map(|track| track.flight_distance)
+}
 
 pub fn clear(vehicle: i64) {
     if let Some(track) = TRACKS.lock().unwrap_or_else(PoisonError::into_inner).get_mut(&vehicle) {
@@ -147,6 +155,23 @@ mod tests {
                 (lat, lon)
             })
             .collect()
+    }
+
+    #[test]
+    fn flight_distance_adds_each_move_past_the_tolerance_and_restarts_on_arm_like_trajectory_points() {
+        let start = (47.397, 8.545);
+        let mut track = Track::default();
+        track.observe(true, Some(start));
+        track.observe(true, Some(north_of(start, 1.0)));
+        assert_eq!(track.flight_distance, 0.0, "inside the tolerance nothing is flown");
+        track.observe(true, Some(north_of(start, 10.0)));
+        track.observe(true, Some(north_of(start, 20.0)));
+        assert!((track.flight_distance - 20.0).abs() < 0.5, "{}", track.flight_distance);
+        track.restart();
+        assert!(track.flight_distance > 19.0, "clearing the trail keeps the distance flown");
+        track.observe(false, None);
+        track.observe(true, Some(start));
+        assert_eq!(track.flight_distance, 0.0, "a new arming starts a new flight");
     }
 
     #[test]
