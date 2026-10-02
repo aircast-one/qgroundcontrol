@@ -331,7 +331,9 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
             planStatus = planStatus,
             centre = centre,
             onRefused = { notice = it },
-            modifier = Modifier.align(Alignment.Center).padding(horizontal = 16.dp),
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = TEMPLATES_TOP, start = 16.dp, end = 16.dp),
         )
     }
 }
+
+private val TEMPLATES_TOP = 168.dp
