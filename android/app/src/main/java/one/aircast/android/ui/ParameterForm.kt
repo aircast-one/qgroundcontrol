@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.android.R
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -157,7 +158,7 @@ internal fun ParameterForm(
     }
 
     if (rows.isEmpty()) {
-        Text("This vehicle exposes none of these parameters.", modifier.padding(16.dp))
+        EmptyState(R.drawable.ic_tune, "Nothing to set here", "This vehicle exposes none of these parameters.", modifier)
         return
     }
 
