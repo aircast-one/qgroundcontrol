@@ -516,13 +516,16 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             DeckRequest.action = null
         }
 
-        if (!simple) TelemetryRow(columns = if (side) 1 else null)
+        if (!simple && !side) TelemetryRow()
 
-        if (side) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            deck.forEach { (id, primary) ->
-                entries.firstOrNull { it.id == id }?.let { entry -> DeckButton(entry, primary, Modifier.fillMaxWidth()) }
+        if (side) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                deck.forEach { (id, primary) ->
+                    entries.firstOrNull { it.id == id }?.let { entry -> DeckButton(entry, primary, Modifier.fillMaxWidth()) }
+                }
+                DeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false, modifier = Modifier.fillMaxWidth())
             }
-            DeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false, modifier = Modifier.fillMaxWidth())
+            TelemetryRow(columns = 1)
         } else if (simple) SimpleDeck(deck, entries) { showMore = true } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             deck.forEach { (id, primary) ->
                 entries.firstOrNull { it.id == id }?.let { entry ->
