@@ -1561,10 +1561,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             let on = given.as_ref().and_then(Value::as_bool).unwrap_or(false);
             let keep = plandoc::specified_speed(&current, index);
             let setting = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
-            let default = match plandoc::vehicle_class(current.vehicle_type) {
-                crate::cmdinfo::VehicleClass::MultiRotor => setting("offlineEditingHoverSpeed", 5.0),
-                _ => setting("offlineEditingCruiseSpeed", 15.0),
-            };
+            let default = speed_in_force(&current, index.saturating_sub(1), setting("offlineEditingHoverSpeed", 5.0), setting("offlineEditingCruiseSpeed", 15.0));
             let speed = on.then(|| keep.unwrap_or(default));
             answer(plandoc::set_speed(&current, index, speed).ok_or_else(|| format!("Item {index} carries no speed.")))
         }
@@ -1907,6 +1904,9 @@ mod tests {
         assert_eq!(speed_in_force(&doc(1, vec![]), 0, 5.0, 15.0), 15.0, "a plane at cruise");
         assert_eq!(speed_in_force(&doc(2, vec![simple(178, 10.0)]), 1, 5.0, 15.0), 10.0, "a standalone DO_CHANGE_SPEED counts");
         assert_eq!(speed_in_force(&doc(2, vec![simple(178, -1.0)]), 1, 5.0, 15.0), 5.0, "one leaving the speed alone does not");
+        let later = doc(2, vec![simple(178, 10.0), simple(16, 0.0)]);
+        assert_eq!(speed_section(&later, 2, &[], true, 5.0, 15.0)["value"], 10.0, "SimpleMissionItem::setMissionFlightStatus seeds an unset, available speed with the speed in force there");
+        assert_eq!(speed_section(&doc(22, vec![simple(16, 0.0)]), 1, &[], true, 5.0, 15.0)["value"], 5.0, "a VTOL starts at hover speed");
     }
 
     #[test]
@@ -2371,9 +2371,10 @@ fn simple_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap
 fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple], available: bool, hover: f64, cruise: f64) -> Value {
     let item = format!("{ITEM_ROOT}.{index}.speedSection");
     let specified = sections.iter().find(|s| s.command == 178).and_then(|s| s.params[1]);
-    let default = match plandoc::vehicle_class(document.vehicle_type) {
-        crate::cmdinfo::VehicleClass::MultiRotor => hover,
-        _ => cruise,
+    let default = match (available, plandoc::vehicle_class(document.vehicle_type)) {
+        (true, _) => speed_in_force(document, index.saturating_sub(1), hover, cruise),
+        (false, crate::cmdinfo::VehicleClass::MultiRotor) => hover,
+        (false, _) => cruise,
     };
     let speed = crate::units::cooking("m/s");
     json!({
