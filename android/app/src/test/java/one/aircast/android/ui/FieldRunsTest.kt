@@ -103,4 +103,12 @@ class FieldRunsTest {
         org.junit.Assert.assertNull(sharedInertNote(listOf(off, off.copy(name = "port", enabled = true))))
         org.junit.Assert.assertNull(sharedInertNote(listOf(off, off.copy(name = "port", disabledReason = "Other"))))
     }
+
+    @Test
+    fun aBlockWhoseFieldsAreAllOffForOneReasonSaysItOnce() {
+        val off = text("basicID").copy(enabled = false, disabledReason = "Has no effect while Basic ID broadcast is off.")
+        val switch = text("sendBasicID")
+        assertEquals("Has no effect while Basic ID broadcast is off.", blockInertNote(listOf(switch, off, off.copy(name = "uaType"))))
+        org.junit.Assert.assertNull(blockInertNote(listOf(switch, off)))
+    }
 }

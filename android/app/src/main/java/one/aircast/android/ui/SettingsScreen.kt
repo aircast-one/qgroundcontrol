@@ -516,12 +516,24 @@ internal fun FactRuns(facts: List<Fact>, onWrite: () -> Unit = {}) {
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
     }
-    CompositionLocalProvider(LocalBlockRebootNote provides shared) { FactRunRows(facts, onWrite) }
+    val inert = blockInertNote(facts)
+    CompositionLocalProvider(LocalBlockRebootNote provides shared, LocalRunInertNote provides inert) { FactRunRows(facts, onWrite) }
+    inert?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+    }
 }
 
 internal val LocalBlockRebootNote = compositionLocalOf<String?> { null }
 
 internal val LocalRunInertNote = compositionLocalOf<String?> { null }
+
+internal fun blockInertNote(facts: List<Fact>): String? =
+    facts.filterNot { it.enabled }.takeIf { it.size > 1 }?.map(::inertNote)?.distinct()?.singleOrNull()
 
 internal fun sharedInertNote(run: List<Fact>): String? =
     run.takeIf { facts -> facts.size > 1 && facts.none { it.enabled } }?.map(::inertNote)?.distinct()?.singleOrNull()
@@ -535,8 +547,9 @@ private fun FactRunRows(facts: List<Fact>, onWrite: () -> Unit) {
         if (run.size == 1) {
             FactRow(run.first(), onWrite = onWrite)
         } else {
-            val inert = sharedInertNote(run)
-            CompositionLocalProvider(LocalRunInertNote provides inert) {
+            val blockInert = LocalRunInertNote.current
+            val inert = sharedInertNote(run)?.takeIf { it != blockInert }
+            CompositionLocalProvider(LocalRunInertNote provides (inert ?: blockInert)) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     run.forEach { fact ->
                         FactRow(fact, subtitle = factSubtitle(fact), fieldModifier = Modifier.weight(1f).padding(vertical = 8.dp), onWrite = onWrite)
