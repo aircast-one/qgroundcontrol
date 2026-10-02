@@ -1105,7 +1105,7 @@ internal fun MapSpikeScreen(
                                             busy = null
                                         }
                                     }
-                                }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Delete #${item.sequence}") }
+                                }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(deleteLabel(item)) }
                             }
                         }
 

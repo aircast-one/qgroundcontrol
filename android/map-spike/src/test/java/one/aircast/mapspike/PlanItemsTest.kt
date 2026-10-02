@@ -33,6 +33,12 @@ class PlanItemsTest {
     }
 
     @Test
+    fun `the delete button names the kind of item it removes`() {
+        assertEquals("Delete waypoint", deleteLabel(item(2, 2, "Waypoint")))
+        assertEquals("Delete item", deleteLabel(item(2, 2, "")))
+    }
+
+    @Test
     fun `the sheet places an item among the listed ones and names the leg from the one before`() {
         val home = item(0, 0, "Home")
         val takeoff = item(1, 1, "Takeoff")

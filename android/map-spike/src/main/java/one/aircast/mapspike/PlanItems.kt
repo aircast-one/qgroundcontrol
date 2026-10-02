@@ -62,6 +62,8 @@ internal fun sheetDetail(item: MissionItem, stats: SurveyStats?): String =
     if (surveyTiles(item, stats).isEmpty()) itemDetail(item, stats)
     else itemDetail(item.copy(cameraShots = 0), stats?.copy(areaText = ""))
 
+internal fun deleteLabel(item: MissionItem): String = "Delete ${item.command.ifBlank { "item" }.lowercase()}"
+
 fun itemRows(
     items: List<MissionItem>,
     stats: Map<Int, SurveyStats> = emptyMap(),
