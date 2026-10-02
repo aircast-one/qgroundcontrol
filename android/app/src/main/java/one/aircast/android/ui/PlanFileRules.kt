@@ -113,7 +113,7 @@ internal fun confirmCopy(kind: PlanConfirm): ConfirmCopy = when (kind) {
 }
 
 internal fun planTitle(documentName: String?): String =
-    documentName?.ifBlank { null }?.let { name -> name.lastIndexOf('.').takeIf { it > 0 }?.let { name.substring(0, it) } ?: name } ?: "Untitled Plan"
+    documentName?.ifBlank { null }?.let { name -> name.lastIndexOf('.').takeIf { it > 0 }?.let { name.substring(0, it) } ?: name } ?: "New plan"
 
 internal fun planStatusText(view: org.json.JSONObject?): String =
     view?.optText("status").orEmpty()
