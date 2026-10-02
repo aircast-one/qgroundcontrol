@@ -74,3 +74,33 @@ fun WaypointSpeedField(index: Int, onWrite: (label: String, work: () -> Boolean)
 }
 
 private val SPEED_FIELD_WIDTH = 120.dp
+
+data class WaypointHold(val seconds: Double, val units: String, val path: String)
+
+fun waypointHold(view: JSONObject?): WaypointHold? =
+    view?.optJSONObject("hold")?.let { WaypointHold(it.optDouble("value", 0.0), it.optText("units"), it.optText("path")) }?.takeIf { it.path.isNotBlank() }
+
+fun holdEntry(text: String): Double? =
+    text.trim().replace(',', '.').ifEmpty { "0" }.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+
+@Composable
+fun WaypointHoldField(index: Int, onWrite: (label: String, work: () -> Boolean) -> Unit, onRefused: (String) -> Unit) {
+    val json by mapPath("view.itemFacts($index)")
+    val hold = waypointHold(json) ?: return
+    var typed by remember(index, hold.seconds) { mutableStateOf(plainSpeed(hold.seconds)) }
+    OutlinedTextField(
+        value = typed,
+        onValueChange = { typed = it },
+        label = { Text("Hold") },
+        suffix = { Text(hold.units) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = {
+            holdEntry(typed)?.let { seconds -> onWrite("Setting the hold") { setOk(hold.path, settingJson("$seconds")) } } ?: onRefused("Not a hold time")
+        }),
+        textStyle = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.width(HOLD_FIELD_WIDTH),
+    )
+}
+
+private val HOLD_FIELD_WIDTH = 110.dp

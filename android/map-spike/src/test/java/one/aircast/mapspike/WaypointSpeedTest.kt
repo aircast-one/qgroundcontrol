@@ -22,4 +22,14 @@ class WaypointSpeedTest {
         assertEquals("", speedFieldText(speed.copy(specified = false)))
         assertNull(waypointSpeed(JSONObject("""{"speedSection":{"available":false}}""")))
     }
+
+    @Test
+    fun `a waypoint's hold is seconds from zero, an empty field meaning no hold`() {
+        assertEquals(WaypointHold(5.0, "s", "p"), waypointHold(JSONObject("""{"hold":{"value":5.0,"units":"s","path":"p"}}""")))
+        assertNull(waypointHold(JSONObject("""{"hold":null}""")))
+        assertEquals(0.0, holdEntry(" ")!!, 0.0)
+        assertEquals(2.5, holdEntry("2,5")!!, 0.0)
+        assertNull(holdEntry("-1"))
+        assertNull(holdEntry("long"))
+    }
 }

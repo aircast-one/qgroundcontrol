@@ -1598,6 +1598,12 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                 }),
         ),
         "loiterRadius" => answer(number.ok_or_else(|| "A radius is a number.".to_string()).and_then(|v| plandoc::set_loiter_radius(&current, index, v).ok_or_else(|| format!("Item {index} is not a loiter.")))),
+        "hold" => answer(
+            number
+                .filter(|v| v.is_finite() && *v >= 0.0)
+                .ok_or_else(|| "A hold is a number of seconds, 0 or more.".to_string())
+                .and_then(|v| plandoc::set_param(&current, index, usize::from(HOLD_PARAM), v).ok_or_else(|| format!("Item {index} has no hold."))),
+        ),
         "speedSection.flightSpeed" => answer(
             number
                 .map(|shown| crate::units::cooking("m/s").map_or(shown, |c| (c.base)(shown)))
@@ -1979,6 +1985,18 @@ mod tests {
         assert!(launch_at_takeoff(&copter, 1), "TakeoffMissionItem keeps launch and takeoff together for a multirotor whose takeoff sits on home");
         assert!(!launch_at_takeoff(&Document { items: vec![takeoff(47.001)], ..copter.clone() }, 1), "unless the two were moved apart");
         assert!(!launch_at_takeoff(&Document { vehicle_type: 1, ..copter }, 1), "a fixed wing launches apart from its takeoff");
+    }
+
+    #[test]
+    fn a_waypoint_offers_its_hold_time_which_qgc_keeps_among_the_advanced_fields() {
+        let waypoint = |hold: Option<f64>| plandoc::Simple { command: 16, frame: 3, params: [hold, Some(0.0), Some(0.0), None, Some(47.0), Some(8.0), Some(30.0)], auto_continue: true, altitude: None, sections: vec![] };
+        let commands = crate::cmdinfo::tree(crate::cmdinfo::Firmware::ArduPilot, crate::cmdinfo::VehicleClass::MultiRotor);
+        let info = commands.get(&16);
+        assert_eq!(hold_field(&waypoint(Some(5.0)), info, false, "plan.missionController.visualItems.2"), json!({ "value": 5.0, "units": "s", "path": "plan.missionController.visualItems.2.hold" }));
+        assert_eq!(hold_field(&waypoint(None), info, false, "x")["value"], 0.0, "an unset hold reads as no hold");
+        assert_eq!(hold_field(&waypoint(Some(5.0)), info, true, "x"), Value::Null, "raw edit already shows Param1");
+        let takeoff = plandoc::Simple { command: 22, ..waypoint(Some(5.0)) };
+        assert_eq!(hold_field(&takeoff, commands.get(&22), false, "x"), Value::Null);
     }
 
     #[test]
@@ -2447,6 +2465,16 @@ fn simple_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap
     combo_params.enumerate().map(build("comboboxFacts")).chain(text_params.enumerate().map(build("textFieldFacts"))).chain(optional).collect()
 }
 
+const HOLD_PARAM: u8 = 1;
+
+fn hold_field(simple: &plandoc::Simple, info: Option<&crate::cmdinfo::Command>, raw: bool, item: &str) -> Value {
+    let label = info.and_then(|c| c.params.get(&HOLD_PARAM)).and_then(|p| p.get("label")).and_then(Value::as_str);
+    match (raw, simple.command, label) {
+        (false, 16, Some("Hold")) => json!({ "value": simple.params[usize::from(HOLD_PARAM) - 1].filter(|v| v.is_finite()).unwrap_or(0.0), "units": "s", "path": format!("{item}.hold") }),
+        _ => Value::Null,
+    }
+}
+
 fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple], offered: bool, hover: f64, cruise: f64) -> Value {
     let available = offered && matches!(plandoc::vehicle_class(document.vehicle_type), crate::cmdinfo::VehicleClass::MultiRotor | crate::cmdinfo::VehicleClass::FixedWing);
     let item = format!("{ITEM_ROOT}.{index}.speedSection");
@@ -2555,7 +2583,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
                     let hint = s.altitude.as_ref().and_then(|a| {
                         crate::itemfacts::altitude_hint(land, Some(a.mode), a.amsl_above_terrain.filter(|v| v.is_finite()).map(|metres| units.0.label(metres)))
                     });
-                    Value::Object(fields.into_iter().chain([("rawEdit".to_string(), json!(raw)), ("friendlyEditAllowed".to_string(), json!(friendly_edit_allowed(s, info))), ("altitudeHint".to_string(), json!(hint))]).collect())
+                    Value::Object(fields.into_iter().chain([("rawEdit".to_string(), json!(raw)), ("friendlyEditAllowed".to_string(), json!(friendly_edit_allowed(s, info))), ("altitudeHint".to_string(), json!(hint)), ("hold".to_string(), hold_field(s, info, raw, &item))]).collect())
                 }
                 other => other,
             }
