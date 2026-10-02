@@ -511,7 +511,11 @@ internal fun FactRow(
         Column(fieldModifier) {
             val inside = title.takeIf { it.length <= FIELD_LABEL_BUDGET }
             if (inside == null) Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor, modifier = Modifier.padding(bottom = 8.dp))
-            if (fact.isEnum && !fact.valueIsOffTheEnumList) EnumField(fact, inside, ::write) else FactTextField(fact, onWrite, inside)
+            when {
+                fact.isBitmask -> BitmaskPicker(fact, ::write, inside)
+                fact.isEnum && !fact.valueIsOffTheEnumList -> EnumField(fact, inside, ::write)
+                else -> FactTextField(fact, onWrite, inside)
+            }
             val note = subtitle.split(" · ").filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
             if (note.isNotBlank()) {
                 Text(
@@ -633,14 +637,14 @@ internal const val PAIRED_OPTION_BUDGET = 16
 internal const val PAIRED_UNITS_BUDGET = 6
 
 internal fun showsAsField(fact: Fact): Boolean =
-    fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact) && !fact.isBool && !fact.isBitmask
+    fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact) && !fact.isBool
 
 internal fun pairsAsField(fact: Fact): Boolean =
     fact.shortLabel.length in 1..PAIRED_LABEL_BUDGET && showsAsField(fact) && when {
         fact.isEnum -> !fact.valueIsOffTheEnumList &&
             !showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings) &&
             fact.enumStrings.all { it.length <= PAIRED_OPTION_BUDGET }
-        else -> !fact.isString && fact.enumStrings.isEmpty() && fact.units.length <= PAIRED_UNITS_BUDGET
+        else -> !fact.isString && !fact.isBitmask && fact.enumStrings.isEmpty() && fact.units.length <= PAIRED_UNITS_BUDGET
     }
 
 internal fun fieldRuns(facts: List<Fact>, pairable: (Fact) -> Boolean = { true }): List<List<Fact>> =
@@ -667,26 +671,21 @@ internal fun bitmaskEntryEnabled(fact: Fact, raw: Long, index: Int): Boolean =
     !(fact.firstEntryIsAll && index > 0 && fact.bitmaskValues.isNotEmpty() && raw and fact.bitmaskValues[0] != 0L)
 
 @Composable
-private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
+private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit, label: String? = null) {
     var editing by remember(fact.path) { mutableStateOf(false) }
     val raw = bitmaskRaw(fact)
 
-    TextButton(
-        onClick = { editing = true },
-        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-    ) {
-        Text(
-            text = bitmaskSummary(fact),
-            style = MaterialTheme.typography.bodyMedium,
+    Box {
+        OutlinedTextField(
+            value = bitmaskSummary(fact),
+            onValueChange = {},
+            readOnly = true,
             maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
+            label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            trailingIcon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth(),
         )
-        Icon(
-            imageVector = Icons.Default.KeyboardArrowDown,
-            contentDescription = null,
-            modifier = Modifier.padding(start = 2.dp),
-        )
+        Box(Modifier.matchParentSize().clickable { editing = true })
     }
 
     if (editing) {
