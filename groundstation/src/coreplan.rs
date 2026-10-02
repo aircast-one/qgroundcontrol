@@ -650,6 +650,11 @@ fn send_shape(kind: &str, document: &Document) -> Value {
     }
 }
 
+fn contains_items(document: &Document) -> bool {
+    let listed = |section: &Value, key: &str| section.get(key).and_then(Value::as_array).is_some_and(|items| !items.is_empty());
+    !document.items.is_empty() || listed(&document.fence, "polygons") || listed(&document.fence, "circles") || listed(&document.rally, "points")
+}
+
 fn send_after_mission(document: Document) {
     std::thread::spawn(move || {
         let (fence, rally) = crate::hub::lock().active().map_or((false, false), crate::hub::Vehicle::plans_supported);
@@ -745,7 +750,7 @@ fn follow_vehicle() {
         match (active, ready) {
             (None, _) if state.shown_vehicle.is_some() => {
                 state.shown_vehicle = None;
-                let has_items = state.document.as_ref().is_some_and(|d| !d.items.is_empty());
+                let has_items = state.document.as_ref().is_some_and(contains_items);
                 if state.dirty && has_items {
                     state.vehicle_prompt = Some(true);
                 }
@@ -768,7 +773,7 @@ fn follow_vehicle() {
                 let (firmware_class, vehicle_class) = offline_classes(vehicle.5 .0, vehicle.5 .1);
                 crate::settingsstore::set_raw("settings.appSettings.offlineEditingFirmwareClass", &json!(firmware_class));
                 crate::settingsstore::set_raw("settings.appSettings.offlineEditingVehicleClass", &json!(vehicle_class));
-                let has_items = state.document.as_ref().is_some_and(|d| !d.items.is_empty());
+                let has_items = state.document.as_ref().is_some_and(contains_items);
                 if state.dirty && has_items {
                     state.vehicle_prompt = Some(false);
                 }
@@ -1931,6 +1936,13 @@ mod tests {
         assert_eq!(plandoc::command_class_at(&mixed, 0), crate::cmdinfo::VehicleClass::FixedWing, "the start follows the LAST takeoff before the RTL, here a fixed-wing NAV_TAKEOFF");
         assert_eq!(plandoc::command_class_at(&mixed, 2), crate::cmdinfo::VehicleClass::FixedWing, "a VTOL takeoff leaves fixed-wing mode behind it");
         assert_eq!(plandoc::command_class_at(&mixed, 5), crate::cmdinfo::VehicleClass::Vtol, "items from the RTL on get no flight status, so they keep the VTOL tree");
+    }
+
+    #[test]
+    fn a_plan_of_only_a_fence_or_rally_points_contains_items() {
+        assert!(!contains_items(&empty_document()));
+        assert!(contains_items(&Document { fence: json!({ "polygons": [{ "inclusion": true, "polygon": [] }], "circles": [] }), ..empty_document() }), "PlanMasterController::containsItems counts the geofence");
+        assert!(contains_items(&Document { rally: json!({ "points": [[47.0, 8.0, 50.0]] }), ..empty_document() }), "and the rally points");
     }
 
     #[test]
