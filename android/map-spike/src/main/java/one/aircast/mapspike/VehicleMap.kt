@@ -165,6 +165,7 @@ fun VehicleMap(
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
     onMoved: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
+    canDrag: (MapHit) -> Boolean = { true },
     onCentreChanged: (TrackPoint, Double) -> Unit = { _, _ -> },
     onViewChanged: (List<TrackPoint>) -> Unit = { },
     bottomInsetPx: Int = 0,
@@ -199,6 +200,11 @@ fun VehicleMap(
     val latestRoi by rememberUpdatedState(roi)
     val latestRoiClick by rememberUpdatedState(onRoiClick)
     val latestItems by rememberUpdatedState(missionItems)
+    val latestOnAdd by rememberUpdatedState(onAdd)
+    val latestOnMove by rememberUpdatedState(onMove)
+    val latestOnSelected by rememberUpdatedState(onWaypointSelected)
+    val latestOnMoved by rememberUpdatedState(onMoved)
+    val latestCanDrag by rememberUpdatedState(canDrag)
     val linkLost by mapViewFlag(FLY_STATE_VIEW, "contactLost")
     val fleetJson by mapPath(VEHICLES_VIEW)
     val fleet = remember(fleetJson) { vehicleChoices(fleetJson).choices }
@@ -324,11 +330,12 @@ fun VehicleMap(
                 if (editable) {
                     attachMissionEditing(
                         mapView, loaded, loadedStyle,
-                        onAdd = onAdd,
-                        onMove = onMove,
-                        onSelected = onWaypointSelected,
-                        onMoved = onMoved,
+                        onAdd = { latitude, longitude -> latestOnAdd(latitude, longitude) },
+                        onMove = { hit, latitude, longitude -> latestOnMove(hit, latitude, longitude) },
+                        onSelected = { hit -> latestOnSelected(hit) },
+                        onMoved = { hit, latitude, longitude -> latestOnMoved(hit, latitude, longitude) },
                         onDragging = { draggingVertex = it },
+                        canDrag = { hit -> latestCanDrag(hit) },
                     )
                 }
                 draggingVertex = null

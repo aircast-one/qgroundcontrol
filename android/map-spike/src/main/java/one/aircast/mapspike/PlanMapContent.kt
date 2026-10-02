@@ -309,10 +309,9 @@ internal fun MapSpikeScreen(
     val missionStatusJson by mapPath("$SHOW_MISSION_ITEM_STATUS.rawValue")
     val missionStatusShown = missionItemStatusShown(missionStatusJson)
 
-    fun placeAt(): TrackPoint? = when {
-        isPlottable(latitude, longitude) -> TrackPoint(latitude, longitude)
-        else -> centre?.takeIf { isPlottable(it.latitude, it.longitude) }
-    }
+    fun placeAt(): TrackPoint? =
+        centre?.takeIf { isPlottable(it.latitude, it.longitude) }
+            ?: TrackPoint(latitude, longitude).takeIf { isPlottable(latitude, longitude) }
 
     var visible by remember { mutableStateOf<List<TrackPoint>>(emptyList()) }
     val context = LocalContext.current
@@ -350,8 +349,7 @@ internal fun MapSpikeScreen(
     }
 
     LaunchedEffect(selectedSequence) {
-        val sequence = selectedSequence ?: return@LaunchedEffect
-        withContext(Dispatchers.Default) { PlanBridge.selectSequence(sequence) }
+        withContext(Dispatchers.Default) { PlanBridge.selectSequence(selectedSequence ?: 0) }
     }
 
     suspend fun refresh() {
@@ -473,11 +471,18 @@ internal fun MapSpikeScreen(
                     tracing = target to points + TrackPoint(lat, lon)
                     return@VehicleMap
                 }
-                addMissionItem(
-                    KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon),
-                    insertAfter(selected, allItems),
-                )
+                when (layer) {
+                    PlanLayer.Mission -> addMissionItem(
+                        KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon),
+                        insertAfter(selected, allItems),
+                    )
+                    PlanLayer.Rally -> if (support.rally) {
+                        onBridge("Adding rally", done = support.reason.ifBlank { null }) { FenceBridge.addRallyPoint(lat, lon) }
+                    }
+                    PlanLayer.Fence -> Unit
+                }
             },
+            canDrag = { hit -> dragAllowed(hit, selected, layer) },
             onMove = { hit, lat, lon ->
                 val generation = moveGeneration()
                 onBridge { writeDragStep(generation, hit, lat, lon, surveyList, rally, fences, allItems) }
@@ -711,7 +716,7 @@ internal fun MapSpikeScreen(
                         )
                         when {
                             refusal != null -> say(refusal)
-                            loadStep(planDirty, planHasItems, loadArmed) == LoadStep.Confirm -> loadArmed = true
+                            loadStep(planDirty, loadArmed) == LoadStep.Confirm -> loadArmed = true
                             else -> download()
                         }
                     }) { Text("Download") }
@@ -1574,6 +1579,28 @@ private fun StatTile(label: String, value: String) {
 }
 
 internal enum class PlanLayer(val label: String) { Mission("Mission"), Fence("Fence"), Rally("Rally") }
+
+internal fun ownerOf(hit: MapHit?): String? = when (hit) {
+    is MapHit.Waypoint -> "m${hit.index}"
+    is MapHit.SurveyVertex -> "m${hit.item}"
+    is MapHit.LandingPlace -> "m${hit.index}"
+    is MapHit.LoiterRadius -> "m${hit.index}"
+    is MapHit.LoiterRotation -> "m${hit.index}"
+    is MapHit.ShapeCentre -> if (hit.fence) "p${hit.owner}" else "m${hit.owner}"
+    is MapHit.ShapeRadius -> if (hit.fence) "c${hit.owner}" else "m${hit.owner}"
+    is MapHit.FenceVertex -> "p${hit.polygon}"
+    is MapHit.Circle -> "c${hit.index}"
+    is MapHit.CircleCentre -> "c${hit.index}"
+    is MapHit.Rally -> "r${hit.index}"
+    MapHit.BreachReturn -> "breach"
+    else -> null
+}
+
+internal fun dragAllowed(hit: MapHit, selected: MapHit?, layer: PlanLayer): Boolean = when (hit) {
+    is MapHit.Midpoint -> selected != null
+    MapHit.BreachReturn -> layer == PlanLayer.Fence
+    else -> layerOf(hit) == layer && ownerOf(hit) != null && ownerOf(hit) == ownerOf(selected)
+}
 
 internal fun layerOf(hit: MapHit?): PlanLayer? = when (hit) {
     null -> null

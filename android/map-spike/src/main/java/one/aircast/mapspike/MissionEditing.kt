@@ -131,8 +131,10 @@ fun attachMissionEditing(
     onSelected: (MapHit?) -> Unit = {},
     onMoved: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onDragging: (MapHit?) -> Unit = {},
+    canDrag: (MapHit) -> Boolean = { true },
 ) {
     var dragging: MapHit? = null
+    var tapped: MapHit? = null
     var downX = 0f
     var downY = 0f
     var moved = false
@@ -153,7 +155,8 @@ fun attachMissionEditing(
                 downY = event.y
                 moved = false
                 addedInGesture = false
-                if (hit == null) {
+                tapped = hit?.takeIf { !canDrag(it) }
+                if (hit == null || tapped != null) {
                     map.uiSettings.setAllGesturesEnabled(true)
                     false
                 } else {
@@ -186,12 +189,14 @@ fun attachMissionEditing(
                 dragging = null
                 map.uiSettings.setAllGesturesEnabled(true)
                 if (moved) onDragging(null)
+                val tap = tapped
+                tapped = null
                 if (hit == null) {
                     if (!addedInGesture &&
                         event.actionMasked == MotionEvent.ACTION_UP &&
                         withinTap(event.x - downX, event.y - downY)
                     ) {
-                        onSelected(null)
+                        onSelected(tap)
                     }
                     false
                 } else {
