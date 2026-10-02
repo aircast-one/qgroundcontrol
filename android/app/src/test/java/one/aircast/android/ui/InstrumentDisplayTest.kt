@@ -15,6 +15,19 @@ class InstrumentDisplayTest {
         assertEquals(3L, displayColour(ranged, 25.0))
         assertEquals("an unknown value is the first range, as QGC treats NaN", 1L, displayColour(ranged, null))
         assertNull(displayColour(ValueDisplay(), 5.0))
+        assertNull("an unchecked colour slot falls back to the palette colour", displayColour(ranged.copy(colours = listOf(NO_COLOUR, 2L, 3L)), -1.0))
+    }
+
+    @Test
+    fun `forward flight vehicles keep airspeed among their default values like QGCCorePlugin`() {
+        assertEquals(DEFAULT_INSTRUMENTS + "airSpeed", defaultInstruments("fixedWing"))
+        assertEquals(DEFAULT_INSTRUMENTS, defaultInstruments("multiRotor"))
+    }
+
+    @Test
+    fun `removing a threshold drops the band above it, as InstrumentValueData removeRangeValue does`() {
+        val coloured = ValueDisplay(rangeType = RangeType.Color, values = listOf(0.0, 50.0), colours = listOf(1L, 2L, 3L))
+        assertEquals(listOf(1L, 3L), withoutRow(coloured, 0).colours)
     }
 
     @Test

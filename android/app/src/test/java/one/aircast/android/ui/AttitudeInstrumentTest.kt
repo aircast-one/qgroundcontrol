@@ -11,12 +11,12 @@ class AttitudeInstrumentTest {
     fun `reads the angles and hides pointers the core withholds`() {
         val reading = attitude(
             JSONObject(
-                """{"available":true,"roll":-12.5,"pitch":4,"heading":7.4,"headingText":"007°",""" +
+                """{"available":true,"roll":-12.5,"pitch":4,"heading":7.4,"headingText":"007",""" +
                     """"courseOverGround":null,"headingToHome":190,"headingToNextWaypoint":null,"noseUp":false}""",
             ),
         )!!
         assertEquals(-12.5f, reading.roll)
-        assertEquals("007°", reading.headingText)
+        assertEquals("007", reading.headingText)
         assertNull(reading.courseOverGround)
         assertEquals(190f, reading.headingToHome)
         assertFalse(reading.noseUp)

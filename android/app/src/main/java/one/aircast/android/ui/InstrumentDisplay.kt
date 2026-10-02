@@ -49,9 +49,10 @@ import org.json.JSONObject
 private const val DISPLAY_STORE = "fly-instrument-display"
 private const val DEFAULT_RANGE_LOW = 0.0
 private const val DEFAULT_RANGE_HIGH = 100.0
-private const val GREEN = 0xFF00FF00
+private const val GREEN = 0xFF008000
+internal const val NO_COLOUR = 0L
 private const val ICON_FOLDER = "InstrumentValueIcons"
-internal val RANGE_COLOURS = listOf(GREEN, 0xFFFFFF00, 0xFFFFA500, 0xFFFF0000, 0xFF0000FF, 0xFFFFFFFF)
+internal val RANGE_COLOURS = listOf(GREEN, 0xFFFFFF00, 0xFFFFA500, 0xFFFF0000, 0xFF0000FF, 0xFFFFFFFF, NO_COLOUR)
 
 internal enum class RangeType(val label: String) { None("None"), Color("Color"), Opacity("Opacity"), Icon("Icon") }
 
@@ -88,16 +89,16 @@ internal fun withRow(display: ValueDisplay, firstIcon: String): ValueDisplay = d
 
 internal fun withoutRow(display: ValueDisplay, index: Int): ValueDisplay = display.copy(
     values = display.values.filterIndexed { i, _ -> i != index },
-    colours = display.colours.filterIndexed { i, _ -> i != index },
-    opacities = display.opacities.filterIndexed { i, _ -> i != index },
-    icons = display.icons.filterIndexed { i, _ -> i != index },
+    colours = display.colours.filterIndexed { i, _ -> i != index + 1 },
+    opacities = display.opacities.filterIndexed { i, _ -> i != index + 1 },
+    icons = display.icons.filterIndexed { i, _ -> i != index + 1 },
 )
 
 internal fun rangeIndex(raw: Double?, values: List<Double>): Int =
     raw?.takeIf { !it.isNaN() }?.let { value -> values.indexOfFirst { value <= it }.takeIf { it >= 0 } ?: values.size } ?: 0
 
 internal fun displayColour(display: ValueDisplay, raw: Double?): Long? =
-    display.takeIf { it.rangeType == RangeType.Color }?.colours?.getOrNull(rangeIndex(raw, display.values))
+    display.takeIf { it.rangeType == RangeType.Color }?.colours?.getOrNull(rangeIndex(raw, display.values))?.takeIf { it != NO_COLOUR }
 
 internal fun displayOpacity(display: ValueDisplay, raw: Double?): Float =
     display.takeIf { it.rangeType == RangeType.Opacity }?.opacities?.getOrNull(rangeIndex(raw, display.values))?.toFloat()?.coerceIn(0f, 1f) ?: 1f
@@ -177,7 +178,7 @@ internal fun ValueIcon(name: String, tint: Color, size: Dp, modifier: Modifier =
 @Composable
 private fun Swatch(colour: Long, chosen: Boolean, onClick: () -> Unit) {
     val ring = if (chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    Box(Modifier.size(24.dp).background(Color(colour), CircleShape).border(2.dp, ring, CircleShape).clickable(onClick = onClick))
+    Box(Modifier.size(24.dp).background(if (colour == NO_COLOUR) Color.Transparent else Color(colour), CircleShape).border(2.dp, ring, CircleShape).clickable(onClick = onClick))
 }
 
 @Composable

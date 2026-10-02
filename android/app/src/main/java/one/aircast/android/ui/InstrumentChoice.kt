@@ -15,6 +15,11 @@ internal val DEFAULT_INSTRUMENTS = listOf(
     "climbRate",
 )
 
+private val FORWARD_FLIGHT_CLASSES = setOf("fixedWing", "vtol", "airship")
+
+internal fun defaultInstruments(vehicleClass: String): List<String> =
+    DEFAULT_INSTRUMENTS + listOf("airSpeed").filter { vehicleClass in FORWARD_FLIGHT_CLASSES }
+
 internal const val INSTRUMENTS_VIEW = "view.instruments"
 
 internal const val MOST_INSTRUMENTS = 6
@@ -96,7 +101,7 @@ internal fun readChosen(context: Context, vehicleClass: String): List<String> =
         .getString(chosenKey(vehicleClass), null)
         ?.split(",")
         ?.filter { it.isNotBlank() }
-        ?: DEFAULT_INSTRUMENTS
+        ?: defaultInstruments(vehicleClass)
 
 internal fun writeChosen(context: Context, vehicleClass: String, chosen: List<String>) {
     context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
