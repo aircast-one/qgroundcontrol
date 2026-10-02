@@ -44,7 +44,7 @@ internal fun ConfirmTrack(
 ) {
     var optionChecked by remember(action) { mutableStateOf(false) }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(action.name, style = MaterialTheme.typography.titleLarge)
+        Text(sentenceCase(action.name), style = MaterialTheme.typography.titleLarge)
         if (action.confirm.isNotBlank()) {
             Text(action.confirm, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
