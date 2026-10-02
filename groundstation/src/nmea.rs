@@ -71,6 +71,7 @@ impl Reader {
                 vertical_accuracy_m: self.vdop.map(|v| v * USER_EQUIVALENT_RANGE_ERROR_M),
                 direction_deg: None,
                 direction_accuracy_deg: None,
+                ground_speed_m_s: None,
             }),
         }
     }

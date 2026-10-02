@@ -3967,6 +3967,10 @@ impl Hub {
         self.listed.as_ref().map(Vec::len)
     }
 
+    pub fn vehicle_link(&self, id: u8) -> Option<LinkId> {
+        self.vehicles.get(&id).filter(|v| !v.replay).map(|v| v.link)
+    }
+
     pub fn listed(&self, index: usize) -> Option<&Vehicle> {
         self.listed.as_ref().unwrap_or(&self.arrival).get(index).and_then(|id| self.vehicles.get(id))
     }

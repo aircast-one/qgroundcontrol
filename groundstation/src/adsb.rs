@@ -597,6 +597,13 @@ pub fn on_message(message: &MavMessage, now_ms: u64) -> bool {
     lock().on_message(message, now_ms)
 }
 
+pub fn pump(now_ms: u64) {
+    let due = lock().tick(now_ms);
+    if due {
+        changed();
+    }
+}
+
 fn follow(source: Source, generation: u64) {
     while lock().generation == generation {
         let opened = source.address().ok_or_else(|| format!("{} does not resolve", source.host)).and_then(|address| TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|error| error.to_string()));

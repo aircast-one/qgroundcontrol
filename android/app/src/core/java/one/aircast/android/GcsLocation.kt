@@ -33,6 +33,7 @@ object GcsLocation {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && location.hasVerticalAccuracy()) location.verticalAccuracyMeters.toDouble() else Double.NaN,
             if (location.hasBearing()) location.bearing.toDouble() else Double.NaN,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && location.hasBearingAccuracy()) location.bearingAccuracyDegrees.toDouble() else Double.NaN,
+            if (location.hasSpeed()) location.speed.toDouble() else Double.NaN,
         )
     }
 
@@ -88,5 +89,6 @@ object GcsLocation {
         verticalAccuracy: Double,
         direction: Double,
         directionAccuracy: Double,
+        groundSpeed: Double,
     )
 }

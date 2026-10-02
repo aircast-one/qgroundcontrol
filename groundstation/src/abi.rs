@@ -294,11 +294,13 @@ pub(crate) fn start_pump() {
                     crate::wfbhost::tick(crate::hub::now_ms());
                     crate::camsettings::tick(crate::hub::now_ms());
                     crate::gcsheartbeat::tick(crate::hub::now_ms());
+                    crate::followme::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
                     if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
                         CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
                     }
                 }
                 announce_guided();
+                crate::adsb::pump(crate::hub::now_ms());
                 if !crate::qthost::present() && poll_due() {
                     CORE.poll().iter().for_each(|(path, json)| announce(path, json));
                 }
@@ -623,6 +625,7 @@ pub extern "C" fn qgc_core_gcs_position_update(latitude: f64, longitude: f64, al
         vertical_accuracy_m: Some(vertical_accuracy_m),
         direction_deg: Some(direction_deg),
         direction_accuracy_deg: Some(direction_accuracy_deg),
+        ground_speed_m_s: None,
     };
     crate::gcsposition::report(update);
 }

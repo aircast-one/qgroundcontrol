@@ -136,6 +136,7 @@ pub struct Update {
     pub vertical_accuracy_m: Option<f64>,
     pub direction_deg: Option<f64>,
     pub direction_accuracy_deg: Option<f64>,
+    pub ground_speed_m_s: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -176,6 +177,7 @@ pub struct GcsPosition {
     pub horizontal_accuracy_m: Option<f64>,
     pub vertical_accuracy_m: Option<f64>,
     pub direction_accuracy_deg: Option<f64>,
+    pub motion: (Option<f64>, Option<f64>),
     pub stamped_ms: Option<u64>,
     pub last_report_ms: Option<u64>,
     pub refusal: Option<Refusal>,
@@ -273,6 +275,7 @@ impl GcsPosition {
             return (before.error != self.error).then(|| vec![Out::Error(None), Out::Reported]).unwrap_or_default();
         }
         self.last_report_ms = Some(now.0);
+        self.motion = (present(update.direction_deg).map(wrap_heading), present(update.ground_speed_m_s));
 
         let latitude = present(update.latitude);
         let longitude = present(update.longitude).map(wrap_longitude);
@@ -344,6 +347,8 @@ impl GcsPosition {
             "gcsPositionHorizontalAccuracy" => Some(json!(self.horizontal_accuracy_m)),
             "gcsPositionTimestamp" => Some(json!(self.stamped_ms.unwrap_or(0))),
             "gcsPositionSource" => Some(json!(self.source.token())),
+            "gcsDirection" => Some(json!(self.motion.0)),
+            "gcsGroundSpeed" => Some(json!(self.motion.1)),
             _ => None,
         }
     }

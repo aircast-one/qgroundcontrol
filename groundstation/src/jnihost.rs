@@ -443,6 +443,7 @@ pub extern "system" fn Java_one_aircast_android_GcsLocation_nativeUpdate(
     vertical_accuracy_m: f64,
     direction_deg: f64,
     direction_accuracy_deg: f64,
+    ground_speed_m_s: f64,
 ) {
     crate::gcsposition::report(crate::gcsposition::Update {
         latitude: reading(latitude),
@@ -452,5 +453,6 @@ pub extern "system" fn Java_one_aircast_android_GcsLocation_nativeUpdate(
         vertical_accuracy_m: reading(vertical_accuracy_m),
         direction_deg: reading(direction_deg),
         direction_accuracy_deg: reading(direction_accuracy_deg),
+        ground_speed_m_s: reading(ground_speed_m_s),
     });
 }

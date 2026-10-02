@@ -9,6 +9,8 @@ pub const GCS_POSITION: &str = "positionManager.gcsPosition";
 pub const GCS_HEADING: &str = "positionManager.gcsHeading";
 pub const GCS_HORIZONTAL_ACCURACY: &str = "positionManager.gcsPositionHorizontalAccuracy";
 pub const GCS_TIMESTAMP: &str = "positionManager.gcsPositionTimestamp";
+pub const GCS_DIRECTION: &str = "positionManager.gcsDirection";
+pub const GCS_GROUND_SPEED: &str = "positionManager.gcsGroundSpeed";
 
 pub const DEPS: &[&str] = &[SETTING, "vehicles.vehicles.count", "vehicle.id", "vehicle.flightMode", "vehicle.homePosition", GCS_POSITION, GCS_HEADING, GCS_HORIZONTAL_ACCURACY, GCS_TIMESTAMP];
 
@@ -406,6 +408,63 @@ fn target_of(read: &Value) -> Option<Target> {
     })
 }
 
+pub fn outbound(stream: Stream, report: &Report, home_altitude_amsl_m: Option<f64>, now_ms: u64) -> crate::mavout::Outbound {
+    use mavlink::dialects::ardupilotmega::{FOLLOW_TARGET_DATA, GLOBAL_POSITION_INT_DATA};
+    match stream {
+        Stream::FollowTarget => {
+            let wire = follow_target(report);
+            crate::mavout::Outbound::FollowTarget {
+                data: FOLLOW_TARGET_DATA { timestamp: now_ms, lat: wire.latitude_deg_e7, lon: wire.longitude_deg_e7, alt: wire.altitude_amsl_m, vel: wire.velocity_m_s, position_cov: wire.position_cov, est_capabilities: wire.estimation, ..Default::default() },
+            }
+        }
+        Stream::GlobalPositionInt => {
+            let position = global_position(report, home_altitude_amsl_m.unwrap_or(0.0));
+            crate::mavout::Outbound::GlobalPositionInt {
+                data: GLOBAL_POSITION_INT_DATA {
+                    time_boot_ms: now_ms as u32,
+                    lat: position.latitude_deg_e7,
+                    lon: position.longitude_deg_e7,
+                    alt: position.altitude_amsl_mm,
+                    relative_alt: position.relative_altitude_mm,
+                    vx: position.velocity_north_cm_s,
+                    vy: position.velocity_east_cm_s,
+                    vz: position.velocity_down_cm_s,
+                    hdg: position.heading_cdeg,
+                },
+            }
+        }
+    }
+}
+
+static LAST_SENT_MS: std::sync::Mutex<Option<u64>> = std::sync::Mutex::new(None);
+
+pub fn tick(backend: &dyn Backend, now_ms: u64) {
+    {
+        let mut last = LAST_SENT_MS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if last.is_some_and(|last| now_ms.saturating_sub(last) < MOTION_INTERVAL_MS) {
+            return;
+        }
+        *last = Some(now_ms);
+    }
+    let mode = Mode::from_setting(value_number(&backend.get(SETTING)));
+    let Some(report) = gcs_fix(backend, crate::hub::now_us() / 1000).as_ref().and_then(motion_report) else { return };
+    let fleet = fleet_of(backend);
+    let sends: Vec<(crate::transport::LinkId, Vec<u8>)> = {
+        let hub = crate::hub::lock();
+        fleet
+            .iter()
+            .filter_map(|target| {
+                let stream = stream(mode, target).ok()?;
+                let link = hub.vehicle_link(u8::try_from(target.id).ok()?)?;
+                Some((link, crate::mavout::encode_next(&outbound(stream, &report, target.home_altitude_amsl_m, now_ms))?))
+            })
+            .collect()
+    };
+    sends.iter().for_each(|(link, bytes)| {
+        crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
+    });
+}
+
 pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {
     let stamp = value_number(&backend.get(GCS_TIMESTAMP)).filter(|t| *t > 0.0)? as u64;
     let position = object(&backend.get(GCS_POSITION));
@@ -416,8 +475,8 @@ pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {
         latitude: read("latitude").unwrap_or(f64::NAN),
         longitude: read("longitude").unwrap_or(f64::NAN),
         altitude_amsl_m: read("altitude"),
-        heading_deg: value_number(&backend.get(GCS_HEADING)),
-        ground_speed_m_s: None,
+        heading_deg: value_number(&backend.get(GCS_DIRECTION)).or_else(|| value_number(&backend.get(GCS_HEADING))),
+        ground_speed_m_s: value_number(&backend.get(GCS_GROUND_SPEED)),
         vertical_speed_down_m_s: None,
         horizontal_accuracy_m: value_number(&backend.get(GCS_HORIZONTAL_ACCURACY)),
         vertical_accuracy_m: None,
@@ -450,6 +509,24 @@ mod tests {
 
     fn follower(mode: &str, apm: bool) -> Target {
         Target { id: 1, flight_mode: mode.to_string(), follow_flight_mode: "Follow Me".to_string(), apm, home_altitude_amsl_m: Some(500.0) }
+    }
+
+    #[test]
+    fn a_report_goes_out_as_follow_target_for_px4_and_global_position_for_ardupilot() {
+        use mavlink::dialects::ardupilotmega::MavMessage;
+        let fix = Fix { valid: true, latitude: 47.5, longitude: 8.5, altitude_amsl_m: Some(400.0), heading_deg: Some(90.0), ground_speed_m_s: Some(2.0), horizontal_accuracy_m: Some(3.0), ..Default::default() };
+        let report = motion_report(&fix).unwrap();
+        let crate::mavout::Outbound::FollowTarget { data } = outbound(Stream::FollowTarget, &report, None, 1234) else { panic!("follow target") };
+        assert_eq!((data.timestamp, data.lat, data.alt, data.est_capabilities), (1234, 475_000_000, 400.0, ESTIMATION_POSITION | ESTIMATION_VELOCITY | ESTIMATION_HEADING));
+        assert!(data.vel[0].abs() < 1e-5 && (data.vel[1] - 2.0).abs() < 1e-5, "heading east at 2 m/s: {:?}", data.vel);
+        let still = motion_report(&Fix { ground_speed_m_s: None, ..fix }).unwrap();
+        let crate::mavout::Outbound::FollowTarget { data } = outbound(Stream::FollowTarget, &still, None, 0) else { panic!("follow target") };
+        assert!(data.vel.iter().all(|v| v.is_nan()) && data.est_capabilities & ESTIMATION_VELOCITY == 0);
+        let crate::mavout::Outbound::GlobalPositionInt { data } = outbound(Stream::GlobalPositionInt, &report, Some(500.0), 1234) else { panic!("global position") };
+        assert_eq!((data.time_boot_ms, data.alt, data.relative_alt, data.vy, data.hdg), (1234, 500_000, 0, 200, 9000), "APMFirmwarePlugin sends the home altitude and no relative altitude");
+        let bytes = crate::mavout::encode(0, &outbound(Stream::FollowTarget, &report, None, 1)).unwrap();
+        let (_, decoded) = mavlink::read_v2_msg::<MavMessage, _>(&mut mavlink::peek_reader::PeekReader::new(bytes.as_slice())).unwrap();
+        assert!(matches!(decoded, MavMessage::FOLLOW_TARGET(_)));
     }
 
     const FOLLOW_ME: Option<f64> = Some(2.0);

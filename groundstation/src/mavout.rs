@@ -62,6 +62,8 @@ pub enum Outbound {
     LogErase { target: (u8, u8) },
     ShellData { target: (u8, u8), data: Vec<u8> },
     GpsRtcmData { data: mavlink::dialects::ardupilotmega::GPS_RTCM_DATA_DATA },
+    FollowTarget { data: mavlink::dialects::ardupilotmega::FOLLOW_TARGET_DATA },
+    GlobalPositionInt { data: mavlink::dialects::ardupilotmega::GLOBAL_POSITION_INT_DATA },
     SetupSigning { data: mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA },
     RequestDataStream { target: (u8, u8), stream: u8, rate: u16 },
     GcsHeartbeat,
@@ -243,6 +245,8 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
             }),
         }),
         Outbound::GpsRtcmData { data } => Some(MavMessage::GPS_RTCM_DATA(data.clone())),
+        Outbound::FollowTarget { data } => Some(MavMessage::FOLLOW_TARGET(data.clone())),
+        Outbound::GlobalPositionInt { data } => Some(MavMessage::GLOBAL_POSITION_INT(data.clone())),
         Outbound::RequestDataStream { target, stream, rate } => Some(MavMessage::REQUEST_DATA_STREAM(mavlink::dialects::ardupilotmega::REQUEST_DATA_STREAM_DATA {
             req_message_rate: *rate,
             target_system: target.0,
