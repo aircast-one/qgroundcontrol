@@ -947,8 +947,8 @@ private fun InstrumentSheet(
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        SectionHeader("Readings on the flight screen")
-        FootNote(instrumentChoiceNote(chosen))
+        Text("Instrument tiles", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
+        Text(instrumentChoiceNote(chosen), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp))
         if (groups.isEmpty()) {
             FootNote(emptyCatalogueText(connected))
             return@ModalBottomSheet
@@ -961,10 +961,11 @@ private fun InstrumentSheet(
                     val choosable = picked || chosen.size < MOST_INSTRUMENTS
                     ListItem(
                         headlineContent = { Text(fact.label) },
-                        trailingContent = {
+                        leadingContent = {
                             Checkbox(checked = picked, onCheckedChange = null, enabled = choosable)
                         },
                         colors = ListItemDefaults.colors(
+                            containerColor = Color.Transparent,
                             headlineColor = when {
                                 choosable -> MaterialTheme.colorScheme.onSurface
                                 else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
