@@ -68,7 +68,7 @@ internal fun unitSystemNote(system: Int): String =
 
 @Composable
 private fun UnitSystemRow(system: Int, onPick: (Int) -> Unit) {
-    ChoiceField("Measurement system", unitSystemLabel(system), UNIT_SYSTEM_LABELS, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), onPick)
+    ChoiceField("Measurement system", unitSystemLabel(system), UNIT_SYSTEM_LABELS, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), onPick = onPick)
 }
 
 @Composable

@@ -16,6 +16,14 @@ class FieldRunsTest {
     )
 
     @Test
+    fun aSettingWithNoEffectYetStillDrawsAsAFieldAndPairs() {
+        val host = text("host", isString = false).copy(enabled = false, disabledReason = "Has no effect while the ADSB server connection is off.")
+        assertEquals(true, showsAsField(host))
+        assertEquals(listOf(listOf("host", "port")), fieldRuns(listOf(host, host.copy(name = "port"))).map { run -> run.map { it.name } })
+        assertEquals(false, showsAsField(host.copy(readOnly = true)))
+    }
+
+    @Test
     fun aRebootNoticeSharedByTheBlockIsSaidOnce() {
         val reboot = text("a").copy(vehicleRebootRequired = true)
         assertEquals("Reboot vehicle for changes to take effect.", sharedRebootNote(listOf(reboot, text("plain"), reboot.copy(name = "b"))))

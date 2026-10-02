@@ -577,7 +577,8 @@ internal fun FactRow(
                 fact.isEnum && !fact.valueIsOffTheEnumList -> EnumField(fact, inside, ::write)
                 else -> FactTextField(fact, onWrite, inside)
             }
-            val note = subtitle.split(" · ").filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
+            val note = (subtitle.split(" · ") + listOfNotNull(inertNote(fact).takeIf { !fact.enabled }))
+                .filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
             if (note.isNotBlank()) {
                 Text(
                     text = note,
@@ -698,7 +699,7 @@ internal const val PAIRED_OPTION_BUDGET = 16
 internal const val PAIRED_UNITS_BUDGET = 6
 
 internal fun showsAsField(fact: Fact): Boolean =
-    fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact) && !fact.isBool
+    !fact.readOnly && notBuiltHere(fact) == null && !editOnDesktop(fact) && !fact.isBool
 
 internal fun pairsAsField(fact: Fact): Boolean =
     fact.shortLabel.length in 1..PAIRED_LABEL_BUDGET && showsAsField(fact) && when {
@@ -757,7 +758,7 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit, label: Str
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     fact.bitmaskStrings.indices.forEach { index ->
                         val bit = fact.bitmaskValues[index]
-                        val live = bitmaskEntryEnabled(fact, raw, index)
+                        val live = fact.enabled && bitmaskEntryEnabled(fact, raw, index)
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -787,14 +788,14 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit, label: Str
 
 @Composable
 private fun EnumField(fact: Fact, label: String?, write: (() -> Boolean) -> Unit) {
-    ChoiceField(label, enumLabel(fact), fact.enumStrings) { index ->
+    ChoiceField(label, enumLabel(fact), fact.enumStrings, enabled = fact.enabled) { index ->
         // qtpaths: settings.appSettings.indoorPalette.enumIndex, vehicle.parameterManager.getParameter(-1,RTL_TYPE).enumIndex
         write { Qgc.set("${fact.path}.enumIndex", index) }
     }
 }
 
 @Composable
-internal fun ChoiceField(label: String?, value: String, options: List<String>, modifier: Modifier = Modifier, onPick: (Int) -> Unit) {
+internal fun ChoiceField(label: String?, value: String, options: List<String>, modifier: Modifier = Modifier, enabled: Boolean = true, onPick: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
 
     Box(modifier) {
@@ -802,12 +803,13 @@ internal fun ChoiceField(label: String?, value: String, options: List<String>, m
             value = value,
             onValueChange = {},
             readOnly = true,
+            enabled = enabled,
             singleLine = true,
             label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             trailingIcon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
             modifier = Modifier.fillMaxWidth(),
         )
-        Box(Modifier.matchParentSize().clickable { expanded = true })
+        Box(Modifier.matchParentSize().clickable(enabled = enabled) { expanded = true })
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEachIndexed { index, option ->
                 DropdownMenuItem(
@@ -887,6 +889,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
     Column {
         OutlinedTextField(
             value = editing ?: fact.valueString,
+            enabled = fact.enabled,
             label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             suffix = fact.units.takeIf { it.isNotBlank() }?.let { { Text(it) } },
             visualTransformation = if (secret && !revealed) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
