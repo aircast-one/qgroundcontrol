@@ -7,6 +7,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VehicleMessagesTest {
+    @Test
+    fun `a message time drops the milliseconds QGC stamps it with`() {
+        org.junit.Assert.assertEquals("20:00:53", messageTime("20:00:53.747"))
+        org.junit.Assert.assertEquals("yesterday", messageTime("yesterday"))
+    }
+
 
     private val served = """
         {"kind":"object","class":"VehicleMessages","order":"oldestFirst","items":[

@@ -87,7 +87,7 @@ internal fun vehicleMessages(view: JSONObject?): List<VehicleMessage> {
             } else {
                 VehicleMessage(
                     index = item.optInt("index", at),
-                    time = item.optText("time"),
+                    time = messageTime(item.optText("time")),
                     severity = item.optText("severity"),
                     level = levelOf(item.optText("level")),
                     text = text,
@@ -120,6 +120,11 @@ internal fun armingChecks(view: JSONObject?): List<ArmingCheck>? {
         }
     }.filter { it.message.isNotBlank() }
 }
+
+private val CLOCK_WITH_MILLIS = Regex("""^(\d{1,2}:\d{2}:\d{2})\.\d+$""")
+
+internal fun messageTime(served: String): String =
+    CLOCK_WITH_MILLIS.matchEntire(served.trim())?.groupValues?.get(1) ?: served
 
 @Composable
 fun VehicleMessageBanner(modifier: Modifier = Modifier) {
