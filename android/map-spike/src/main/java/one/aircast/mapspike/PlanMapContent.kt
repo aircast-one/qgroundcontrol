@@ -55,7 +55,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.Composable
@@ -137,11 +136,6 @@ private fun PaletteNote(text: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
     )
-}
-
-@Composable
-private fun GroupBreak() {
-    Spacer(Modifier.width(8.dp))
 }
 
 private const val FALLBACK_FENCE_DEGREES = 0.002
@@ -699,8 +693,6 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    GroupBreak()
-
                     FilledTonalButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         onBridge("Adding fence", done = support.reason.ifBlank { null }) {
@@ -710,7 +702,6 @@ internal fun MapSpikeScreen(
 
                     addingAfterText(selected, allItems)?.let {
                         PaletteNote(it)
-                        GroupBreak()
                     }
 
                     FilledTonalButton(
@@ -817,10 +808,8 @@ internal fun MapSpikeScreen(
                     ) { Text(kindLabel(insertable, KIND_LAND)) }
 
                     blockedReason(insertable)?.let {
-                        GroupBreak()
                         PaletteNote(it)
                     }
-                    GroupBreak()
 
                     CenterMenu(
                         launch = allItems.firstOrNull { it.sequence == 0 }?.let { TrackPoint(it.latitude, it.longitude) },
@@ -897,7 +886,6 @@ internal fun MapSpikeScreen(
 
                         fenceDetail(selected, fences, circles)?.let {
                             PaletteNote(it)
-                            GroupBreak()
                         }
 
                         waypoint?.let { item ->
@@ -943,23 +931,19 @@ internal fun MapSpikeScreen(
                                     }
                                 }
                                 itemCameraNote(camera)?.let { PaletteNote(it) }
-                                GroupBreak()
                             }
                         }
 
                         landingText(selectedLanding(selected, landingList))?.let {
                             PaletteNote(it)
-                            GroupBreak()
                         }
 
                         survey?.let { cameraText(surveyStatsMap[it.index]) }?.let {
                             PaletteNote(it)
-                            GroupBreak()
                         }
 
                         layersText(survey)?.let {
                             PaletteNote(it)
-                            GroupBreak()
                         }
 
                         survey?.takeIf { it.kind == KIND_SURVEY }?.let { grid ->
