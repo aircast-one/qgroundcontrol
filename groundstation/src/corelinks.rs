@@ -483,9 +483,16 @@ pub fn start() {
 static SERIAL_AUTO: LazyLock<Mutex<crate::autoconnect::AutoConnect>> = LazyLock::new(|| Mutex::new(crate::autoconnect::AutoConnect::default()));
 static BOARDS: LazyLock<Option<crate::boards::BoardTable>> = LazyLock::new(|| crate::boards::BoardTable::bundled().ok());
 
+pub fn board_type_of(port: &crate::boards::PortInfo) -> Option<crate::boards::BoardType> {
+    BOARDS.as_ref()?.classify(port, cfg!(target_os = "android")).map(|(board, _)| board)
+}
+
 pub fn board_type_at(location: &str) -> Option<crate::boards::BoardType> {
-    let boards = BOARDS.as_ref()?;
-    serial_ports().into_iter().find(|p| p.system_location == location).and_then(|p| boards.classify(&p, cfg!(target_os = "android"))).map(|(board, _)| board)
+    serial_ports().into_iter().find(|p| p.system_location == location).as_ref().and_then(board_type_of)
+}
+
+pub fn port_infos() -> Vec<crate::boards::PortInfo> {
+    serial_ports()
 }
 
 fn autoconnect_setting(name: &str, unset: bool) -> bool {

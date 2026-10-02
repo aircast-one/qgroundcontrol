@@ -116,6 +116,48 @@ pub fn in_bootloader(description: &str) -> bool {
     description.contains("BL") || description.to_ascii_lowercase().contains("bootloader")
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Target {
+    pub location: String,
+    serial: String,
+    ignored: Vec<String>,
+    seen: bool,
+}
+
+impl Target {
+    pub fn new(location: &str, ports: &[crate::boards::PortInfo]) -> Target {
+        Target {
+            location: location.to_string(),
+            serial: ports.iter().find(|p| p.system_location == location).map(|p| p.serial_number.clone()).unwrap_or_default(),
+            ignored: ports.iter().filter(|p| p.system_location != location).map(|p| p.system_location.clone()).collect(),
+            seen: false,
+        }
+    }
+
+    pub fn find(&mut self, ports: &[crate::boards::PortInfo], can_flash: &dyn Fn(&crate::boards::PortInfo) -> bool) -> Sighting {
+        let found = ports.iter().find(|p| {
+            p.system_location == self.location
+                || (!self.serial.is_empty() && p.serial_number == self.serial)
+                || (self.seen && can_flash(p) && !self.ignored.contains(&p.system_location))
+        });
+        match found {
+            None => Sighting::Absent,
+            Some(port) => {
+                self.seen = true;
+                self.location = port.system_location.clone();
+                if self.serial.is_empty() {
+                    self.serial = port.serial_number.clone();
+                }
+                if in_bootloader(&port.description) { Sighting::Bootloader } else { Sighting::Running }
+            }
+        }
+    }
+}
+
+fn flashable(port: &crate::boards::PortInfo) -> bool {
+    matches!(crate::corelinks::board_type_of(port), Some(crate::boards::BoardType::Pixhawk | crate::boards::BoardType::SiKRadio))
+}
+
 pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn FnMut(), cancelled: &dyn Fn() -> bool, report: &mut dyn FnMut(Event)) -> Result<(), String> {
     let first = look();
     if first == Sighting::Bootloader {
@@ -345,16 +387,6 @@ impl Port for Serial {
     }
 }
 
-#[cfg(not(target_os = "android"))]
-fn look_at(port: &str) -> Sighting {
-    let found = serialport::available_ports().unwrap_or_default().into_iter().find(|p| p.port_name == port);
-    match found.map(|p| p.port_type) {
-        None => Sighting::Absent,
-        Some(serialport::SerialPortType::UsbPort(usb)) if in_bootloader(usb.product.as_deref().unwrap_or_default()) => Sighting::Bootloader,
-        Some(_) => Sighting::Running,
-    }
-}
-
 fn description_of(port: &str) -> String {
     ports().into_iter().find(|p| p["port"] == port).and_then(|p| p["description"].as_str().map(str::to_string)).unwrap_or_default()
 }
@@ -381,15 +413,6 @@ fn ports() -> Vec<Value> {
         .into_iter()
         .map(|p| json!({ "port": p.system_location, "bootloader": in_bootloader(&p.description), "description": crate::platformserial::display_name(&p) }))
         .collect()
-}
-
-#[cfg(target_os = "android")]
-fn look_at(port: &str) -> Sighting {
-    match crate::platformserial::ports().into_iter().find(|p| p.system_location == port) {
-        None => Sighting::Absent,
-        Some(p) if in_bootloader(&p.description) => Sighting::Bootloader,
-        Some(_) => Sighting::Running,
-    }
 }
 
 #[cfg(not(target_os = "android"))]
@@ -511,7 +534,9 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
     std::thread::Builder::new()
         .name("firmware-flash".into())
         .spawn(move || {
-            let waited = wait_for_bootloader(&mut || look_at(&port), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &cancelled, &mut apply);
+            let mut target = Target::new(&port, &crate::corelinks::port_infos());
+            let waited = wait_for_bootloader(&mut || target.find(&crate::corelinks::port_infos(), &flashable), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &cancelled, &mut apply);
+            let port = target.location.clone();
             let description = description_of(&port);
             let outcome = waited.and_then(|()| open(&port)).and_then(|opened| {
                 if chosen.sik() {
@@ -731,6 +756,25 @@ mod tests {
         assert_eq!(source("sik:stable"), Ok(Source::Sik));
         assert!(Source::Url("https://x/radio~hb1060.ihx".into()).sik() && !Source::Px4(crate::firmwarecatalog::Build::Stable).sik());
         assert_eq!(sik_url(80).as_deref(), Some("https://px4-travis.s3.amazonaws.com/SiK/stable/radio~hb1060.ihx"));
+    }
+
+    fn usb(location: &str, serial: &str, description: &str) -> crate::boards::PortInfo {
+        crate::boards::PortInfo { system_location: location.into(), port_name: location.into(), description: description.into(), manufacturer: String::new(), serial_number: serial.into(), vendor_id: Some(0x26ac), product_id: Some(0x11) }
+    }
+
+    #[test]
+    fn a_board_is_followed_to_a_new_path_by_serial_or_as_a_new_flashable_port() {
+        let radio = usb("/dev/bus/usb/001/003", "R1", "FTDI");
+        let mut target = Target::new("/dev/bus/usb/001/002", &[usb("/dev/bus/usb/001/002", "", "PX4 FMU v5.x"), radio.clone()]);
+        let anything = |_: &crate::boards::PortInfo| true;
+        assert_eq!(target.find(&[usb("/dev/bus/usb/001/002", "", "PX4 FMU v5.x"), radio.clone()], &anything), Sighting::Running);
+        assert_eq!(target.find(&[radio.clone()], &anything), Sighting::Absent, "a port already plugged in at the start is never taken for the board");
+        assert_eq!(target.find(&[radio.clone(), usb("/dev/bus/usb/001/004", "", "PX4 BL FMU v5.x")], &anything), Sighting::Bootloader, "Android numbers a replugged device anew");
+        assert_eq!(target.location, "/dev/bus/usb/001/004");
+        let mut by_serial = Target::new("/dev/ttyACM0", &[usb("/dev/ttyACM0", "S9", "PX4 FMU v5.x")]);
+        assert_eq!(by_serial.find(&[usb("/dev/ttyACM1", "S9", "PX4 BL FMU v5.x")], &|_| false), Sighting::Bootloader);
+        let mut unseen = Target::new("/dev/ttyACM0", &[]);
+        assert_eq!(unseen.find(&[usb("/dev/ttyACM1", "", "PX4 BL")], &anything), Sighting::Absent, "a new port is only taken once the board was seen");
     }
 
     #[test]
