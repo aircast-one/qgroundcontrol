@@ -606,8 +606,16 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
     if !control["label"].is_null() {
         decoded["label"] = control["label"].clone();
     }
-    if let Some((from, to)) = (control["control"] == "factslider").then(|| control["sliderFrom"].as_f64().zip(control["sliderTo"].as_f64())).flatten() {
+    let range = match control["control"].as_str() {
+        Some("factslider") => control["sliderFrom"].as_f64().zip(control["sliderTo"].as_f64()),
+        Some("slider") => control["sliderMin"].as_f64().zip(control["sliderMax"].as_f64()),
+        _ => None,
+    };
+    if let Some((from, to)) = range {
         decoded["slider"] = json!({ "from": from, "to": to, "step": control["majorTickStepSize"].as_f64(), "decimals": control["decimalPlaces"].as_i64() });
+    }
+    if control["firstEntryIsAll"] == true {
+        decoded["firstEntryIsAll"] = json!(true);
     }
     if let Some(description) = control["description"].as_str() {
         decoded["description"] = json!(description);
@@ -964,6 +972,15 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plain_sliders_and_first_entry_all_bitmasks_carry_their_qml_properties() {
+        let slider = labelled(json!({}), &json!({ "control": "slider", "sliderMin": 0, "sliderMax": 10 }), true);
+        assert_eq!((slider["slider"]["from"].as_f64(), slider["slider"]["to"].as_f64()), (Some(0.0), Some(10.0)), "FactTextFieldSlider draws sliderMin..sliderMax");
+        assert_eq!(labelled(json!({}), &json!({ "control": "slider" }), true)["slider"], Value::Null, "with no range there is no slider");
+        assert_eq!(labelled(json!({}), &json!({ "control": "bitmask", "firstEntryIsAll": true }), true)["firstEntryIsAll"], true);
+        assert_eq!(labelled(json!({}), &json!({ "control": "bitmask" }), true)["firstEntryIsAll"], Value::Null);
+    }
     use std::cell::RefCell;
 
     struct Fake {

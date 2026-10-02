@@ -578,6 +578,19 @@ internal const val SEGMENT_LABEL_BUDGET = 28
 internal fun showsAsSegments(isEnum: Boolean, offList: Boolean, writable: Boolean, options: List<String>): Boolean =
     isEnum && !offList && writable && options.size in 2..4 && options.sumOf { it.length } <= SEGMENT_LABEL_BUDGET
 
+internal fun bitmaskToggled(fact: Fact, raw: Long, index: Int): Long {
+    val bit = fact.bitmaskValues[index]
+    val all = fact.firstEntryIsAll && index == 0
+    return when {
+        raw and bit != 0L -> raw and bit.inv()
+        all -> fact.bitmaskValues.drop(1).fold(raw) { value, other -> value and other.inv() } or bit
+        else -> raw or bit
+    }
+}
+
+internal fun bitmaskEntryEnabled(fact: Fact, raw: Long, index: Int): Boolean =
+    !(fact.firstEntryIsAll && index > 0 && fact.bitmaskValues.isNotEmpty() && raw and fact.bitmaskValues[0] != 0L)
+
 @Composable
 private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
     var editing by remember(fact.path) { mutableStateOf(false) }
@@ -609,11 +622,12 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     fact.bitmaskStrings.indices.forEach { index ->
                         val bit = fact.bitmaskValues[index]
+                        val live = bitmaskEntryEnabled(fact, raw, index)
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    write { Qgc.set(fact.path, (raw xor bit).toString()) }
+                                .clickable(enabled = live) {
+                                    write { Qgc.set(fact.path, bitmaskToggled(fact, raw, index).toString()) }
                                 }
                                 .padding(vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -621,8 +635,9 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
                         ) {
                             Checkbox(
                                 checked = raw and bit != 0L,
+                                enabled = live,
                                 onCheckedChange = {
-                                    write { Qgc.set(fact.path, (raw xor bit).toString()) }
+                                    write { Qgc.set(fact.path, bitmaskToggled(fact, raw, index).toString()) }
                                 },
                             )
                             Text(fact.bitmaskStrings[index], Modifier.weight(1f))

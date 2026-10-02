@@ -61,4 +61,14 @@ class BitmaskTest {
 
         assertFalse(ragged.isBitmask)
     }
+
+    @Test
+    fun `checking All clears and locks the rest, like FactBitmask firstEntryIsAll`() {
+        val fact = arming(2L or 8L).copy(firstEntryIsAll = true)
+        assertEquals(1L, bitmaskToggled(fact, 2L or 8L, 0))
+        assertFalse(bitmaskEntryEnabled(fact, 1L, 2))
+        assertTrue(bitmaskEntryEnabled(fact, 0L, 2))
+        assertEquals("unchecking All only clears its own bit", 0L, bitmaskToggled(fact, 1L, 0))
+        assertEquals("without the flag All is an ordinary bit", 2L or 1L, bitmaskToggled(arming(2L), 2L, 0))
+    }
 }

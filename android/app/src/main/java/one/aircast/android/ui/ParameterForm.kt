@@ -96,6 +96,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         slider = control.optJSONObject("slider")?.let { factSlider(it, control.optText("description")) },
         warning = control.optBoolean("warning"),
         optional = control.optBoolean("optional"),
+        firstEntryIsAll = control.optBoolean("firstEntryIsAll"),
     )
 }
 

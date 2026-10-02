@@ -222,6 +222,7 @@ ONLY_IN = {
 }
 
 ACCEPTED = {
+    "firstEntryIsAll": "view.setup on the ArduPilot Flight Safety page (ARMING_CHECK); the rig records a PX4 mock, so no such bitmask is served. Read in ParameterForm.kt",
     "wording": "view.flightModes.modeAck is the core hub's last DO_SET_MODE ack; the Qt rig has no hub vehicle, so it is null there. Read in FlightModes.kt",
     "slider": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
     "from": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
