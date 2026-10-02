@@ -352,10 +352,10 @@ fun VehicleMap(
         (trafficStyle.getSource(TRAFFIC_SOURCE) as? GeoJsonSource)?.setGeoJson(trafficFeatures(traffic))
     }
 
-    val radarJson = if (proximityRadar) mapPath(PROXIMITY_RADAR_VIEW).value else null
-    LaunchedEffect(style, latitude, longitude, heading, radarJson) {
+    val radars = if (proximityRadar) placedRadars(fleet, TrackPoint(latitude, longitude), heading) else emptyList()
+    LaunchedEffect(style, radars) {
         val radarStyle = style ?: return@LaunchedEffect
-        renderProximityRadar(radarStyle, latitude, longitude, heading, radarReading(radarJson))
+        renderProximityRadars(radarStyle, radars)
     }
 
     LaunchedEffect(style, orbit, goto) {

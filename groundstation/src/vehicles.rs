@@ -12,6 +12,14 @@ static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
 // Heading is a Fact whose raw unit is degrees; the raw value is served so a unit setting cannot turn
 // it into something else, and a NaN (no attitude yet) is null rather than north.
+fn proximity(backend: &dyn Backend, index: i64) -> Value {
+    let group = object(&backend.get(&format!("vehicles.vehicles.{index}.distanceSensors")));
+    match flag(&group, "telemetryAvailable") {
+        true => json!({ "shown": true, "maxMeters": crate::proximity::max_meters(&group), "sectors": crate::proximity::sectors(&group) }),
+        false => Value::Null,
+    }
+}
+
 fn heading(backend: &dyn Backend, index: i64) -> Option<f64> {
     let fact = object(&backend.get(&format!("vehicles.vehicles.{index}.heading")));
     fact.get("rawValue").or_else(|| fact.get("value")).and_then(Value::as_f64).filter(|h| h.is_finite()).map(|h| h.rem_euclid(360.0))
@@ -28,6 +36,7 @@ fn per_vehicle_paths() -> Vec<String> {
                 .iter()
                 .map(move |name| format!("vehicles.vehicles.{index}.{name}"))
                 .chain(["communicationLost", "communicationLostEnabled"].map(move |flag| format!("vehicles.vehicles.{index}.vehicleLinkManager.{flag}")))
+                .chain(crate::proximity::DEPS.iter().filter_map(move |dep| dep.strip_prefix("vehicle.").map(|fact| format!("vehicles.vehicles.{index}.{fact}"))))
         })
         .collect()
 }
@@ -110,6 +119,7 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "missionFlightMode": text(&read, "missionFlightMode"),
                 "pauseSupported": flag(&supports, "pauseVehicle"),
                 "selected": id.is_some_and(|id| chosen_ids.contains(&id)),
+                "proximity": proximity(backend, index),
             })
         })
         .collect();
@@ -157,9 +167,10 @@ mod tests {
             match path {
                 "vehicles.vehicles.count" => json!({ "kind": "value", "value": self.0.len() }).to_string(),
                 "vehicles.selectedVehicles.count" => json!({ "kind": "value", "value": self.chosen().len() }).to_string(),
-                _ => match path.strip_prefix("vehicles.vehicles.").and_then(|rest| rest.strip_suffix(".heading")).and_then(|i| i.parse::<usize>().ok()) {
-                    Some(index) => self.0.get(index).and_then(|v| v.get("headingFact")).map(Value::to_string).unwrap_or_default(),
-                    None => String::new(),
+                _ => match path.strip_prefix("vehicles.vehicles.").and_then(|rest| rest.split_once('.')).and_then(|(i, tail)| Some((i.parse::<usize>().ok()?, tail))) {
+                    Some((index, "heading")) => self.0.get(index).and_then(|v| v.get("headingFact")).map(Value::to_string).unwrap_or_default(),
+                    Some((index, "distanceSensors")) => self.0.get(index).and_then(|v| v.get("distanceSensors")).map(Value::to_string).unwrap_or_default(),
+                    _ => String::new(),
                 },
             }
         }
@@ -359,6 +370,19 @@ mod tests {
         let fleet: Vec<Value> = (1..=17).map(|id| aircraft(id, "Multi-Rotor", "SITL")).collect();
         vehicles_view(&Fleet(fleet, Some(1)), &[]);
         assert!(deps().contains(&"vehicles.vehicles.16.armed".to_string()), "a cap on how many vehicles are watched stops at a number nothing reports, so the vehicles past it are stale with no tell - the count QGC gives is already bounded by what has connected");
+    }
+
+    #[test]
+    fn every_vehicle_carries_its_own_proximity_radar() {
+        let _guard = fleet_guard();
+        let mut lead = aircraft(1, "Quadrotor", "Radio");
+        lead["distanceSensors"] = json!({ "kind": "object", "telemetryAvailable": true, "facts": [{ "property": "rotationNone", "rawValue": 2.5, "valueString": "2.50" }, { "name": "maxDistance", "rawValue": 40.0 }] });
+        let wing = aircraft(2, "Quadrotor", "Radio");
+        let view = vehicles_view(&Fleet(vec![lead, wing], Some(2)), &[]);
+        assert_eq!(view["vehicles"][0]["proximity"]["sectors"][0]["meters"], 2.5, "FlyViewMap draws ProximityRadarMapView for every vehicle, not only the active one");
+        assert_eq!(view["vehicles"][0]["proximity"]["maxMeters"], 40.0);
+        assert_eq!(view["vehicles"][1]["proximity"], Value::Null, "a vehicle with no distance sensors draws no radar");
+        assert!(deps().contains(&"vehicles.vehicles.0.distanceSensors.rotationNone".to_string()), "the group itself has no change signal; its facts do");
     }
 
     #[test]

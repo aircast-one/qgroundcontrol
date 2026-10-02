@@ -12,7 +12,6 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
-const val PROXIMITY_RADAR_VIEW = "view.proximityRadar"
 private const val RADAR_SOURCE = "aircast-proximity-radar"
 private const val RADAR_LAYER = "aircast-proximity-radar-layer"
 private const val COLOUR_PROPERTY = "colour"
@@ -58,10 +57,20 @@ fun installProximityRadarLayer(style: Style) {
     )
 }
 
-fun renderProximityRadar(style: Style, latitude: Double, longitude: Double, heading: Double, reading: RadarReading?) {
-    val lines = reading?.takeIf { isPlottable(latitude, longitude) }
-        ?.let { radarLines(TrackPoint(latitude, longitude), heading, it) }
-        .orEmpty()
+data class PlacedRadar(val at: TrackPoint, val heading: Double, val reading: RadarReading)
+
+fun placedRadars(fleet: List<VehicleChoice>, active: TrackPoint, activeHeading: Double): List<PlacedRadar> =
+    fleet.mapNotNull { vehicle ->
+        vehicle.radar?.let { reading ->
+            when {
+                vehicle.active -> PlacedRadar(active, activeHeading, reading)
+                else -> PlacedRadar(TrackPoint(vehicle.latitude, vehicle.longitude), vehicle.heading, reading)
+            }
+        }
+    }.filter { isPlottable(it.at.latitude, it.at.longitude) }
+
+fun renderProximityRadars(style: Style, radars: List<PlacedRadar>) {
+    val lines = radars.flatMap { radarLines(it.at, it.heading, it.reading) }
     (style.getSource(RADAR_SOURCE) as? GeoJsonSource)?.setGeoJson(
         FeatureCollection.fromFeatures(
             lines.map { (colour, points) ->

@@ -32,3 +32,20 @@ class ProximityRadarMapTest {
         assertEquals(1, radarLines(centre, Double.NaN, RadarReading(null, listOf(180.0 to 5.0))).size)
     }
 }
+
+class FleetRadarTest {
+
+    private val reading = RadarReading(40.0, listOf(0.0 to 10.0))
+
+    @Test
+    fun `every vehicle with sensors gets its own radar, the active one at its live position`() {
+        val fleet = listOf(
+            VehicleChoice(id = 1, name = "A", state = "", link = "", contactLost = false, active = true, latitude = 1.0, longitude = 1.0, radar = reading),
+            VehicleChoice(id = 2, name = "B", state = "", link = "", contactLost = false, active = false, latitude = 47.0, longitude = 8.0, heading = 90.0, radar = reading),
+            VehicleChoice(id = 3, name = "C", state = "", link = "", contactLost = false, active = false, latitude = 48.0, longitude = 8.0),
+        )
+        val placed = placedRadars(fleet, TrackPoint(47.5, 8.5), 10.0)
+        assertEquals(listOf(TrackPoint(47.5, 8.5), TrackPoint(47.0, 8.0)), placed.map { it.at })
+        assertEquals(listOf(10.0, 90.0), placed.map { it.heading })
+    }
+}

@@ -92,6 +92,7 @@ data class VehicleChoice(
     val selected: Boolean = false,
     val heading: Double = Double.NaN,
     val home: TrackPoint? = null,
+    val radar: RadarReading? = null,
 )
 
 data class VehicleChoices(
@@ -126,6 +127,7 @@ fun vehicleChoices(view: JSONObject?): VehicleChoices {
                     // view.vehicles serves each aircraft's own heading, null before any attitude,
                     // and its home, null while QGC holds an invalid one.
                     heading = if (entry.isNull("heading")) Double.NaN else entry.optDouble("heading", Double.NaN),
+                    radar = radarReading(entry.optJSONObject("proximity")),
                     home = entry.optJSONObject("home")?.let { at ->
                         TrackPoint(at.optDouble("latitude", Double.NaN), at.optDouble("longitude", Double.NaN))
                             .takeIf { isPlottable(it.latitude, it.longitude) }

@@ -10335,6 +10335,7 @@
         "view.vehicles.vehicles[].missionFlightMode",
         "view.vehicles.vehicles[].name",
         "view.vehicles.vehicles[].pauseSupported",
+        "view.vehicles.vehicles[].proximity",
         "view.vehicles.vehicles[].selected",
         "view.vehicles.vehicles[].type",
         "view.vibration.available",
@@ -15018,6 +15019,7 @@
                 "missionFlightMode": "string",
                 "name": "string",
                 "pauseSupported": "bool",
+                "proximity": "null",
                 "selected": "bool",
                 "type": "string"
             }
