@@ -1,8 +1,13 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.TextButton
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -97,7 +101,6 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
         LazyColumn(Modifier.fillMaxSize()) {
             items(matches, key = { it }) { name ->
                 ParameterRow(name, px4)
-                HorizontalDivider()
             }
         }
     }
@@ -118,17 +121,31 @@ private fun ParameterRow(name: String, offersRcToParam: Boolean) {
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
         )
-        else -> Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) {
-                FactRow(
-                    fact = loaded,
-                    title = loaded.name,
-                    subtitle = parameterSubtitle(loaded.description, loaded.units),
-                    onWrite = { revision++ },
-                )
+        else -> Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { forcing = true }
+                .heightIn(min = 72.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(loaded.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (loaded.description.isNotBlank()) {
+                    Text(loaded.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
+            Text(
+                text = parameterValueText(loaded),
+                style = MaterialTheme.typography.labelLarge,
+                color = if (loaded.changedFromDefault) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.End,
+                modifier = Modifier.widthIn(max = 160.dp),
+            )
             if (offersRcToParam && !loaded.readOnly) TextButton(onClick = { mapping = true }) { Text("RC") }
-            TextButton(onClick = { forcing = true }) { Text("Edit") }
             if (forcing) ParameterEditDialog(name) {
                 forcing = false
                 revision++
@@ -148,6 +165,11 @@ internal fun parameterMatches(name: String, descriptions: List<String>, search: 
             pattern?.containsMatchIn(text) ?: text.contains(word, ignoreCase = true)
         }
     }
+
+internal fun parameterValueText(fact: Fact): String = when {
+    fact.isBitmask -> bitmaskSummary(fact)
+    else -> listOf(enumLabel(fact), fact.units.takeIf { !fact.isEnum }.orEmpty()).filter { it.isNotBlank() }.joinToString(" ")
+}
 
 internal fun parameterSubtitle(description: String, units: String): String =
     listOf(description, units).filter { it.isNotBlank() }.joinToString(" · ")
