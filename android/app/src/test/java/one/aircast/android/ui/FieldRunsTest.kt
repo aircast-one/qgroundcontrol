@@ -31,6 +31,14 @@ class FieldRunsTest {
     }
 
     @Test
+    fun aLabelThatNamesAnOptionIsNotShownAsTheSubtitle() {
+        val fence = choice("FENCE_ENABLE", listOf("Disabled", "Enabled"), label = "Fence enable/disable").copy(description = "Enabled")
+        assertEquals("", fence.detail)
+        assertEquals("Fence enable/disable", fence.heading)
+        assertEquals("Allows the fence", fence.copy(description = "Allows the fence").detail)
+    }
+
+    @Test
     fun aRebootNoticeSharedByTheBlockIsSaidOnce() {
         val reboot = text("a").copy(vehicleRebootRequired = true)
         assertEquals("Reboot vehicle for changes to take effect.", sharedRebootNote(listOf(reboot, text("plain"), reboot.copy(name = "b"))))

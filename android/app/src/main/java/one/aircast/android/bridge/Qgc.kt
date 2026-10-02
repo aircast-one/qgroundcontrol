@@ -55,7 +55,7 @@ data class Fact(
 ) {
     val title: String = description.ifBlank { name }
     val heading: String = shortLabel.ifBlank { title }
-    val detail: String = description.takeIf { shortLabel.isNotBlank() && it != shortLabel }.orEmpty()
+    val detail: String = description.takeIf { shortLabel.isNotBlank() && it != shortLabel && it !in enumStrings }.orEmpty()
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()
     val isBitmask: Boolean = bitmaskStrings.isNotEmpty() && bitmaskStrings.size == bitmaskValues.size
     val valueIsOffTheEnumList: Boolean =
@@ -63,9 +63,6 @@ data class Fact(
 
     val boolValue: Boolean = value == true || valueString.equals("true", ignoreCase = true) || valueString == "1"
 
-    // readOnly means the value cannot be written; enabled false means writing it changes
-    // nothing. A control can be writable and pointless at once - enforceChecklist while
-    // useChecklist is off is exactly that - and every call site wants the same answer.
     val acceptsWrite: Boolean = !readOnly && enabled
     val optionalSet: Boolean = (value as? Number)?.toDouble()?.isNaN() == false
 }
