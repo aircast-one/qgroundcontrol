@@ -382,7 +382,7 @@ fun AircastShell(hostView: android.view.View?) {
         }
         Scaffold(
             modifier = Modifier.weight(1f),
-            snackbarHost = { SnackbarHost(snackbars) },
+            snackbarHost = { SnackbarHost(snackbars) { one.aircast.android.ui.AppSnackbar(it) } },
             contentWindowInsets = if (onFly) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
             bottomBar = {
                 Column {

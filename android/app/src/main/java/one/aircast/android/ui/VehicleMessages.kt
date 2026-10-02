@@ -9,6 +9,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.size
 
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarData
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.foundation.shape.RoundedCornerShape
 
 import androidx.compose.material3.ModalBottomSheet
 
@@ -303,3 +307,25 @@ private fun MessageLine(level: MessageSeverity, time: String, content: @Composab
         }
     }
 }
+
+@Composable
+internal fun AppSnackbar(data: SnackbarData) {
+    if (data.visuals.duration != SnackbarDuration.Indefinite) return Snackbar(data)
+    Snackbar(
+        modifier = Modifier.padding(12.dp),
+        dismissAction = {
+            IconButton(onClick = data::dismiss) { Icon(painterResource(R.drawable.ic_close), contentDescription = "Dismiss") }
+        },
+        shape = RoundedCornerShape(ALERT_CORNER),
+        containerColor = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        dismissActionContentColor = MaterialTheme.colorScheme.onErrorContainer,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(painterResource(R.drawable.ic_error), null, Modifier.size(24.dp))
+            Text(data.visuals.message, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+private val ALERT_CORNER = 12.dp
