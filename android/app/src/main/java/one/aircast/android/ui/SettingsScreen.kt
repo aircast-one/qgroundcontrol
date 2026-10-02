@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.qgcPath
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
@@ -92,6 +93,23 @@ internal val SECTIONS_WITHOUT_A_SCREEN = mapOf(
 )
 
 internal const val CONNECTIONS_PAGE = "Connections"
+
+private val PAGE_GLANCES = mapOf(
+    "Maps" to listOf("settings.flightMapSettings.mapProvider", "settings.flightMapSettings.mapType"),
+    "Video" to listOf("settings.videoSettings.videoSource"),
+)
+
+internal fun glanceText(displays: List<String>): String = displays.filter { it.isNotBlank() }.joinToString(" · ")
+
+@Composable
+private fun pageGlance(title: String): String {
+    val paths = PAGE_GLANCES[title] ?: return ""
+    val displays = paths.map { path ->
+        val json by qgcPath(settingControl(path))
+        json?.optText("display").orEmpty()
+    }
+    return glanceText(displays)
+}
 
 internal fun activeLinkCount(view: JSONObject?): Int =
     view?.optJSONArray("links")?.let { links -> (0 until links.length()).count { links.optJSONObject(it)?.optBoolean("connected") == true } } ?: 0
@@ -350,9 +368,10 @@ private fun SettingsList(
             groupedPages(pages).forEach { (group, entries) ->
                 item(key = "group${group.name}") { SectionHeader(group.title) }
                 items(entries, key = { it.title }) { entry ->
+                    val glance = pageGlance(entry.title)
                     SetupRow(
                         title = entry.title,
-                        status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else "",
+                        status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else glance,
                         state = if (activeLinks > 0 && entry.title == CONNECTIONS_PAGE) SetupState.Done else SetupState.Neutral,
                         subtitle = PAGE_NOTES[entry.title].orEmpty(),
                         onClick = { onOpen(entry.title) },

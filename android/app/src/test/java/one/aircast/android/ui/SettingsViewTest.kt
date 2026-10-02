@@ -190,4 +190,10 @@ class SettingsViewTest {
         org.junit.Assert.assertEquals("", activeLinksText(0))
         org.junit.Assert.assertEquals(0, activeLinkCount(null))
     }
+
+    @Test
+    fun aGlanceJoinsTheSetValuesOnly() {
+        org.junit.Assert.assertEquals("Bing · Hybrid", glanceText(listOf("Bing", "Hybrid")))
+        org.junit.Assert.assertEquals("", glanceText(listOf("", " ")))
+    }
 }
