@@ -750,6 +750,10 @@ internal fun sentenceCase(label: String): String =
         }.joinToString("-")
     }.joinToString(" ")
 
+private val SECONDS = setOf("s", "sec", "secs", "second", "seconds")
+
+internal fun shownUnits(units: String): String = if (units.lowercase() in SECONDS) "s" else units
+
 internal fun showsAsField(fact: Fact): Boolean =
     !fact.readOnly && notBuiltHere(fact) == null && !editOnDesktop(fact) && !fact.isBool
 
@@ -949,7 +953,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
             value = editing ?: fieldText(fact),
             enabled = fact.enabled,
             label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
-            suffix = fact.units.takeIf { it.isNotBlank() }?.let { { Text(it) } },
+            suffix = fact.units.takeIf { it.isNotBlank() }?.let { { Text(shownUnits(it)) } },
             visualTransformation = if (secret && !revealed) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
             leadingIcon = if (secret) {
                 { TextButton(onClick = { revealed = !revealed }) { Text(if (revealed) "Hide" else "Show") } }

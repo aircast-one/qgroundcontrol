@@ -111,4 +111,11 @@ class FieldRunsTest {
         assertEquals("Has no effect while Basic ID broadcast is off.", blockInertNote(listOf(switch, off, off.copy(name = "uaType"))))
         org.junit.Assert.assertNull(blockInertNote(listOf(switch, off)))
     }
+
+    @Test
+    fun secondsReadAsS() {
+        assertEquals("s", shownUnits("secs"))
+        assertEquals("s", shownUnits("Seconds"))
+        assertEquals("m/s", shownUnits("m/s"))
+    }
 }
