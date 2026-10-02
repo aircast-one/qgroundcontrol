@@ -202,4 +202,11 @@ class SettingsViewTest {
         org.junit.Assert.assertEquals("Bing · Hybrid", pageSubtitle("Maps", "Bing · Hybrid"))
         org.junit.Assert.assertEquals(PAGE_NOTES["Maps"], pageSubtitle("Maps", ""))
     }
+
+    @Test
+    fun theConnectionsRowNamesItsLiveLinks() {
+        val view = org.json.JSONObject("""{"links":[{"name":"UDP Link","connected":true,"summary":"UDP port 14550"},{"name":"Spare","connected":false,"summary":"COM3"},{"name":"TCP 127.0.0.1:5771","connected":true,"summary":""}]}""")
+        org.junit.Assert.assertEquals("UDP port 14550 \u00b7 TCP 127.0.0.1:5771", activeLinksGlance(view))
+        org.junit.Assert.assertEquals("", activeLinksGlance(null))
+    }
 }

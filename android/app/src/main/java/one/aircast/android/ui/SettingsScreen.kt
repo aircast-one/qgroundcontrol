@@ -124,6 +124,12 @@ internal fun pageSubtitle(title: String, glance: String): String = glance.ifBlan
 internal fun activeLinkCount(view: JSONObject?): Int =
     view?.optJSONArray("links")?.let { links -> (0 until links.length()).count { links.optJSONObject(it)?.optBoolean("connected") == true } } ?: 0
 
+internal fun activeLinksGlance(view: JSONObject?): String =
+    view?.optJSONArray("links")?.let { links ->
+        (0 until links.length()).mapNotNull { links.optJSONObject(it) }.filter { it.optBoolean("connected") }
+            .map { it.optText("summary").ifBlank { it.optText("name") } }.filter { it.isNotBlank() }.distinct().joinToString(" \u00b7 ")
+    }.orEmpty()
+
 internal fun activeLinksText(count: Int): String = if (count > 0) "$count active" else ""
 
 internal val PAGE_NOTES = mapOf(
@@ -378,7 +384,7 @@ private fun SettingsList(
             groupedPages(pages).forEach { (group, entries) ->
                 item(key = "group${group.name}") { SectionHeader(group.title) }
                 items(entries, key = { it.title }) { entry ->
-                    val glance = pageGlance(entry.title)
+                    val glance = if (entry.title == CONNECTIONS_PAGE) activeLinksGlance(linksJson) else pageGlance(entry.title)
                     SetupRow(
                         title = sentenceCase(entry.title),
                         status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else "",
