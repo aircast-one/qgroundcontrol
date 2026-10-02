@@ -42,4 +42,11 @@ class TransectMarksTest {
         assertEquals("both legs touching a pattern get one", 2, legArrows(withSurvey, linkStartToHome = true).size)
         assertTrue("arrows sit three quarters along the leg", arrows.first().at.latitude > 47.007 && arrows.first().at.latitude < 47.008)
     }
+
+    @Test
+    fun `a waypoint's gimbal wedge points at its heading plus the gimbal yaw`() {
+        val looking = leg(2).copy(heading = 90.0, gimbalYaw = 30.0)
+        val bare = leg(3).copy(heading = 90.0)
+        assertEquals(listOf(120.0), gimbalWedges(listOf(looking, bare)).map { it.bearing })
+    }
 }

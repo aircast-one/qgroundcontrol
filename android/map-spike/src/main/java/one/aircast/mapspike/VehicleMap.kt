@@ -494,6 +494,7 @@ fun VehicleMap(
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
         renderTransectMarks(currentStyle, surveys, selectedWaypoint, legArrows(missionItems, linkStartToHome))
+        renderGimbalWedges(currentStyle, missionItems)
         renderLandings(currentStyle, landings, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint.takeIf { editable })
         renderMidpoints(currentStyle, fencePolygons, surveys, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence, breachReturn?.takeIf { isPlottable(it.latitude, it.longitude) })

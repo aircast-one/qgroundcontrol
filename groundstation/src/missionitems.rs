@@ -19,7 +19,7 @@ pub const DEPS: &[&str] = &[
 const LOITER_TIME: i64 = 19;
 const LOITER_TO_ALT: i64 = 31;
 
-const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius";
+const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -639,6 +639,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                 "facts": altitude_fact("altitude", altitude.map_or(0.0, |a| a.altitude)),
                 "additionalTimeDelay": match s.command { 16 | 112 | 93 => s.params[0].unwrap_or(0.0), _ => 0.0 },
                 "specifiedVehicleYaw": if s.command == 16 { s.params[3] } else { None },
+                "specifiedGimbalYaw": s.sections.iter().find(|section| section.command == MOUNT_CONTROL).map_or(if s.command == MOUNT_CONTROL { s.params[2] } else { None }, |section| section.params[2]),
                 "altDifference": leg.alt_difference,
                 "azimuth": leg.azimuth,
                 "distance": leg.distance,
@@ -647,12 +648,35 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
             })
         })
         .collect();
-    Ok(with_vehicle_yaws(std::iter::once(settings).chain(reads).collect()))
+    let only_when_set = crate::settingsstore::raw_setting("settings.planViewSettings.showGimbalOnlyWhenSet").and_then(|v| v.as_bool()).unwrap_or(false);
+    Ok(with_gimbal_yaws(with_vehicle_yaws(std::iter::once(settings).chain(reads).collect()), only_when_set))
 }
 
 fn spot(read: &Value, key: &str) -> Option<(f64, f64)> {
     let at = read.get(key)?;
     Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?))
+}
+
+const MOUNT_CONTROL: i64 = 205;
+const GIMBAL_CLEARING: [i64; 4] = [201, 195, 196, 1000];
+
+fn with_gimbal_yaws(reads: Vec<Value>, only_when_set: bool) -> Vec<Value> {
+    reads
+        .into_iter()
+        .scan(None::<f64>, |carried, read| {
+            if read["command"].as_i64().is_some_and(|command| GIMBAL_CLEARING.contains(&command)) {
+                *carried = None;
+            }
+            let specified = read["specifiedGimbalYaw"].as_f64().filter(|y| y.is_finite());
+            if specified.is_some() || only_when_set {
+                *carried = specified;
+            }
+            Some(match (*carried, read) {
+                (Some(yaw), Value::Object(fields)) => Value::Object(fields.into_iter().chain(std::iter::once(("missionGimbalYaw".to_string(), json!(yaw)))).collect()),
+                (_, read) => read,
+            })
+        })
+        .collect()
 }
 
 fn with_vehicle_yaws(reads: Vec<Value>) -> Vec<Value> {
@@ -764,6 +788,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, speed: &Unit, imperial: bool)
         "azimuthText": number(read, "azimuth").map(|bearing| format!("{}\u{b0}", (bearing.round() as i64).rem_euclid(360))),
         "heading": number(read, "missionVehicleYaw"),
         "headingText": number(read, "missionVehicleYaw").map(|bearing| format!("{}\u{b0}", (bearing.round() as i64).rem_euclid(360))),
+        "gimbalYaw": number(read, "missionGimbalYaw").filter(|yaw| yaw.is_finite()),
         "distance": number(read, "distance"),
         "distanceText": number(read, "distance").map(|metres| crate::missionsummary::distance_text(metres, imperial)),
         "gradientText": gradient_text(number(read, "altDifference"), number(read, "distance")),
@@ -2047,6 +2072,16 @@ mod reported {
         );
     }
 
+
+    #[test]
+    fn gimbal_yaw_carries_from_item_to_item_until_an_roi_clears_it() {
+        let item = |command: i64, gimbal: Option<f64>| json!({ "command": command, "specifiedGimbalYaw": gimbal });
+        let reads = vec![item(16, None), item(16, Some(30.0)), item(16, None), item(201, None), item(16, None)];
+        let carried: Vec<Value> = with_gimbal_yaws(reads.clone(), false).iter().map(|r| r["missionGimbalYaw"].clone()).collect();
+        assert_eq!(carried, [Value::Null, json!(30.0), json!(30.0), Value::Null, Value::Null], "MissionFlightStatusCalculator: a set yaw carries on, an ROI clears it");
+        let strict: Vec<Value> = with_gimbal_yaws(reads, true).iter().map(|r| r["missionGimbalYaw"].clone()).collect();
+        assert_eq!(strict, [Value::Null, json!(30.0), Value::Null, Value::Null, Value::Null], "showGimbalOnlyWhenSet shows it only where it is set");
+    }
 
     #[test]
     fn vehicle_yaw_follows_each_leg_unless_a_waypoint_names_one() {

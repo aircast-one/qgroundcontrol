@@ -69,7 +69,43 @@ private fun chevron(): Bitmap {
     return bitmap
 }
 
+private const val GIMBAL_WEDGE_SOURCE = "aircast-gimbal-wedges"
+private const val GIMBAL_WEDGE_LAYER = "aircast-gimbal-wedge-layer"
+private const val GIMBAL_WEDGE_IMAGE = "aircast-gimbal-wedge"
+private const val GIMBAL_WEDGE_PX = 72
+private const val GIMBAL_WEDGE_SWEEP = 90f
+
+fun gimbalWedges(items: List<MissionItem>): List<TransectArrow> =
+    items.filter { it.heading.isFinite() && it.gimbalYaw.isFinite() }
+        .map { TransectArrow(TrackPoint(it.latitude, it.longitude), it.heading + it.gimbalYaw) }
+
+private fun wedge(): Bitmap {
+    val bitmap = Bitmap.createBitmap(GIMBAL_WEDGE_PX, GIMBAL_WEDGE_PX, Bitmap.Config.ARGB_8888)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(140, 255, 255, 255); style = Paint.Style.FILL }
+    Canvas(bitmap).drawArc(android.graphics.RectF(0f, 0f, GIMBAL_WEDGE_PX.toFloat(), GIMBAL_WEDGE_PX.toFloat()), -90f - GIMBAL_WEDGE_SWEEP / 2, GIMBAL_WEDGE_SWEEP, true, paint)
+    return bitmap
+}
+
+fun renderGimbalWedges(style: Style, items: List<MissionItem>) {
+    (style.getSource(GIMBAL_WEDGE_SOURCE) as? GeoJsonSource)?.setGeoJson(
+        FeatureCollection.fromFeatures(gimbalWedges(items).map { Feature.fromGeometry(Point.fromLngLat(it.at.longitude, it.at.latitude)).apply { addNumberProperty(ARROW_BEARING, it.bearing) } }),
+    )
+}
+
 fun installTransectMarks(style: Style) {
+    if (style.getSource(GIMBAL_WEDGE_SOURCE) == null) {
+        style.addSource(GeoJsonSource(GIMBAL_WEDGE_SOURCE))
+        style.addImage(GIMBAL_WEDGE_IMAGE, wedge())
+        style.addLayer(
+            SymbolLayer(GIMBAL_WEDGE_LAYER, GIMBAL_WEDGE_SOURCE).withProperties(
+                PropertyFactory.iconImage(GIMBAL_WEDGE_IMAGE),
+                PropertyFactory.iconRotate(Expression.get(ARROW_BEARING)),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+            ),
+        )
+    }
     if (style.getSource(TRANSECT_ARROW_SOURCE) != null) return
     style.addSource(GeoJsonSource(TRANSECT_STUB_SOURCE))
     style.addLayer(LineLayer(TRANSECT_STUB_LAYER, TRANSECT_STUB_SOURCE).withProperties(PropertyFactory.lineColor("#FFFFFF"), PropertyFactory.lineWidth(2f)))
