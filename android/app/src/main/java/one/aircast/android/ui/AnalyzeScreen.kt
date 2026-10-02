@@ -78,6 +78,14 @@ enum class AnalyzePage(
     ;
 }
 
+internal fun analyzeStatus(page: AnalyzePage, unread: Int, vibration: String?): Pair<String, SetupState> = when {
+    page == AnalyzePage.Messages && unread > 0 -> "$unread new" to SetupState.NeedsAttention
+    page == AnalyzePage.Vibration && vibration == "danger" -> "High" to SetupState.NeedsAttention
+    page == AnalyzePage.Vibration && vibration == "warning" -> "Caution" to SetupState.NeedsAttention
+    page == AnalyzePage.Vibration && vibration == "normal" -> "OK" to SetupState.Done
+    else -> "" to SetupState.Neutral
+}
+
 internal fun analyzeNote(
     page: AnalyzePage,
     connected: Boolean,
@@ -97,6 +105,9 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
     val connected = hasVehicle()
     val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     val caveat = remember(vibrationJson) { vibrationCaveat(vibrationJson) }
+    val messagesJson by qgcPath(MESSAGES)
+    val vibrationLevel = remember(vibrationJson) { vibrationReading(vibrationJson)?.let(::worstSeverity) }
+    val unread = remember(messagesJson) { unreadCount(messagesJson) }
 
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "title") {
@@ -112,8 +123,11 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
         AnalyzePage.entries.groupBy { it.section }.forEach { (section, pages) ->
             item(key = section.name) { SectionHeader(section.title) }
             items(pages, key = { it.name }) { page ->
+                val (status, state) = analyzeStatus(page, unread, vibrationLevel)
                 SetupRow(
                     title = page.label,
+                    status = status,
+                    state = state,
                     subtitle = listOfNotNull(page.description, analyzeNote(page, connected, px4, caveat)).joinToString("\n"),
                     onClick = { onSelect(page) },
                     icon = page.icon,
