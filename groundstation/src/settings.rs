@@ -53,10 +53,37 @@ const HIDDEN: &[&str] = &[
     "udpListenPort",
     "udpTargetHostIP",
     "udpTargetHostPort",
-    "autoConnectNmeaPort",
-    "autoConnectNmeaBaud",
 ];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls"), ("extraVideoSources", "additional cameras")];
+
+fn choices_json(fact: &Value, labels: Vec<String>, raws: Vec<Value>) -> Value {
+    let current = fact.get("value").cloned().unwrap_or(Value::Null);
+    let index = raws.iter().position(|raw| raw.to_string() == current.to_string() || raw.as_str().is_some_and(|r| current.as_str() == Some(r)));
+    let mut chosen = fact.clone();
+    chosen["enumStrings"] = json!(labels);
+    chosen["enumValues"] = json!(raws);
+    chosen["enumIndex"] = json!(index.map_or(-1, |i| i as i64));
+    chosen
+}
+
+fn with_choices(backend: &dyn Backend, fact: &Value) -> Value {
+    match fact.get("name").and_then(Value::as_str) {
+        Some("autoConnectNmeaPort") => {
+            let ports = object(&backend.get_fields("links", "serialPorts,serialPortStrings"));
+            let listed = crate::links::serial_ports(ports.get("serialPorts"), ports.get("serialPortStrings"));
+            let current = fact.get("value").and_then(Value::as_str).filter(|v| !v.is_empty()).map(str::to_string);
+            let extra = current.filter(|c| !listed.iter().any(|p| p["port"].as_str() == Some(c.as_str())));
+            let labels = listed.iter().map(|p| p["label"].as_str().unwrap_or("").to_string()).chain(extra.clone()).collect();
+            let raws = listed.iter().map(|p| p["port"].clone()).chain(extra.map(Value::from)).collect();
+            choices_json(fact, labels, raws)
+        }
+        Some("autoConnectNmeaBaud") => {
+            let rates = crate::links::serial_baud_rates(backend);
+            choices_json(fact, rates.iter().map(i64::to_string).collect(), rates.iter().map(|r| json!(r)).collect())
+        }
+        _ => fact.clone(),
+    }
+}
 
 const CHECKLIST_OFF: &str = "Has no effect while the preflight checklist is off.";
 
@@ -238,7 +265,8 @@ fn section_json(title: &str, group: &str, backend: Option<&dyn Backend>) -> Valu
             })
         })
         .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n)))
-        .map(|f| decode(f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
+        .map(|f| with_choices(backend, f))
+        .map(|f| decode(&f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .collect();
     let borrowed: Vec<Value> = GATED_FROM
         .iter()
@@ -330,6 +358,16 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_nmea_port_is_picked_from_the_ports_found_like_nmeagpssettings() {
+        let fact = json!({ "name": "autoConnectNmeaPort", "value": "/dev/ttyUSB1", "typeIsString": true });
+        let chosen = choices_json(&fact, vec!["GPS".into(), "Radio".into()], vec![json!("/dev/ttyUSB0"), json!("/dev/ttyUSB1")]);
+        assert_eq!(chosen["enumIndex"], 1);
+        let control = decode(&chosen, "settings.autoConnectSettings.autoConnectNmeaPort");
+        assert_eq!(control["control"], "choice");
+        assert_eq!(control["display"], "Radio");
+    }
 
     #[test]
     fn video_rows_follow_the_source_like_video_settings() {

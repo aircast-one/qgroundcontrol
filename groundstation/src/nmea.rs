@@ -76,53 +76,140 @@ impl Reader {
     }
 }
 
-struct Listener {
-    port: u16,
-    running: Arc<AtomicBool>,
+#[derive(Debug, Default)]
+pub struct Lines {
+    pending: String,
+    reader: Reader,
 }
 
-static LISTENER: Mutex<Option<Listener>> = Mutex::new(None);
-
-pub fn wanted_port() -> Option<u16> {
-    let source = crate::settingsstore::raw_setting("settings.autoConnectSettings.nmeaSource").and_then(|v| v.as_u64())?;
-    (source == NMEA_SOURCE_UDP).then(|| {
-        crate::settingsstore::raw_setting("settings.autoConnectSettings.nmeaUdpPort").and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()).unwrap_or(DEFAULT_NMEA_UDP_PORT)
-    })
+impl Lines {
+    pub fn feed(&mut self, bytes: &[u8]) -> Vec<Update> {
+        self.pending.push_str(&String::from_utf8_lossy(bytes));
+        let complete = self.pending.rfind('\n').map(|end| self.pending.drain(..=end).collect::<String>()).unwrap_or_default();
+        if self.pending.len() > MAX_NMEA_LINE_BYTES {
+            self.pending.clear();
+        }
+        complete.lines().filter_map(parse).filter_map(|sentence| self.reader.read(sentence)).collect()
+    }
 }
 
-fn listen(socket: UdpSocket, running: Arc<AtomicBool>) {
-    let mut reader = Reader::default();
-    let mut buffer = [0u8; 2048];
-    while running.load(Ordering::Relaxed) {
-        if let Ok(size) = socket.recv(&mut buffer) {
-            String::from_utf8_lossy(&buffer[..size]).lines().filter_map(parse).for_each(|sentence| {
-                if let Some(update) = reader.read(sentence) {
-                    crate::gcsposition::report_nmea(update);
-                }
-            });
+const MAX_NMEA_LINE_BYTES: usize = 4096;
+const NMEA_SOURCE_SERIAL: u64 = 2;
+const NMEA_SERIAL_ID: u32 = 0xfff0_0003;
+const DEFAULT_NMEA_BAUD: u32 = 4800;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Wanted {
+    Udp(u16),
+    Serial(String, u32),
+}
+
+enum Running {
+    Udp(Arc<AtomicBool>),
+    Serial(Box<dyn Fn() + Send>),
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        match self {
+            Running::Udp(flag) => flag.store(false, Ordering::Relaxed),
+            Running::Serial(close) => close(),
         }
     }
 }
 
+struct Attempt {
+    wanted: Wanted,
+    running: Option<Running>,
+    at: std::time::Instant,
+}
+
+const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+
+static LISTENER: Mutex<Option<Attempt>> = Mutex::new(None);
+
+fn setting(name: &str) -> Option<serde_json::Value> {
+    crate::settingsstore::raw_setting(&format!("settings.autoConnectSettings.{name}"))
+}
+
+pub fn wanted() -> Option<Wanted> {
+    match setting("nmeaSource").and_then(|v| v.as_u64())? {
+        NMEA_SOURCE_UDP => Some(Wanted::Udp(setting("nmeaUdpPort").and_then(|v| v.as_u64()).and_then(|p| u16::try_from(p).ok()).unwrap_or(DEFAULT_NMEA_UDP_PORT))),
+        NMEA_SOURCE_SERIAL => {
+            let port = setting("autoConnectNmeaPort").and_then(|v| v.as_str().map(str::to_string)).filter(|p| !p.trim().is_empty())?;
+            Some(Wanted::Serial(port, setting("autoConnectNmeaBaud").and_then(|v| v.as_u64()).and_then(|b| u32::try_from(b).ok()).unwrap_or(DEFAULT_NMEA_BAUD)))
+        }
+        _ => None,
+    }
+}
+
+fn listen_udp(socket: UdpSocket, running: Arc<AtomicBool>) {
+    let mut lines = Lines::default();
+    let mut buffer = [0u8; 2048];
+    while running.load(Ordering::Relaxed) {
+        if let Ok(size) = socket.recv(&mut buffer) {
+            let datagram = [&buffer[..size], b"\n"].concat();
+            lines.feed(&datagram).into_iter().for_each(crate::gcsposition::report_nmea);
+        }
+    }
+}
+
+fn open_udp(port: u16) -> Option<Running> {
+    let socket = UdpSocket::bind(("0.0.0.0", port)).ok()?;
+    socket.set_read_timeout(Some(std::time::Duration::from_millis(NMEA_POLL_MS))).ok()?;
+    let running = Arc::new(AtomicBool::new(true));
+    let thread_running = running.clone();
+    std::thread::spawn(move || listen_udp(socket, thread_running));
+    Some(Running::Udp(running))
+}
+
+#[cfg(target_os = "android")]
+fn open_serial(port: &str, baud: u32) -> Option<Running> {
+    let lines = Mutex::new(Lines::default());
+    let opened = crate::platformserial::PlatformSerial::open(NMEA_SERIAL_ID, port, baud, 8, 1, 0, move |event| {
+        if let crate::platformserial::Event::Bytes(bytes) = event {
+            lines.lock().unwrap_or_else(std::sync::PoisonError::into_inner).feed(&bytes).into_iter().for_each(crate::gcsposition::report_nmea);
+        }
+    })
+    .ok()?;
+    Some(Running::Serial(Box::new(move || opened.close())))
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+fn open_serial(port: &str, baud: u32) -> Option<Running> {
+    let config = crate::seriallink::SerialConfig { port_name: port.to_string(), baud, data_bits: 8, parity: 0, stop_bits: 1, flow_control: 0, usb_direct: false };
+    let mut lines = Lines::default();
+    let link = crate::seriallink::SerialLink::open(&config, move |event| {
+        if let crate::seriallink::Event::Bytes(bytes) = event {
+            lines.feed(&bytes).into_iter().for_each(crate::gcsposition::report_nmea);
+        }
+    })
+    .ok()?;
+    Some(Running::Serial(Box::new(move || link.close())))
+}
+
+#[cfg(target_os = "ios")]
+fn open_serial(_port: &str, _baud: u32) -> Option<Running> {
+    None
+}
+
 pub fn maintain() {
-    let wanted = wanted_port();
+    let wanted = wanted();
     let mut current = LISTENER.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if current.as_ref().map(|l| l.port) == wanted {
+    let settled = current.as_ref().is_some_and(|attempt| Some(&attempt.wanted) == wanted.as_ref() && (attempt.running.is_some() || attempt.at.elapsed() < RETRY_AFTER));
+    if settled || (current.is_none() && wanted.is_none()) {
         return;
     }
-    if let Some(old) = current.take() {
-        old.running.store(false, Ordering::Relaxed);
-    }
-    let bound = wanted.and_then(|port| {
-        let socket = UdpSocket::bind(("0.0.0.0", port)).ok()?;
-        socket.set_read_timeout(Some(std::time::Duration::from_millis(NMEA_POLL_MS))).ok()?;
-        let running = Arc::new(AtomicBool::new(true));
-        let thread_running = running.clone();
-        std::thread::spawn(move || listen(socket, thread_running));
-        Some(Listener { port, running })
+    *current = None;
+    let attempt = wanted.map(|wanted| {
+        let running = match &wanted {
+            Wanted::Udp(port) => open_udp(*port),
+            Wanted::Serial(port, baud) => open_serial(port, *baud),
+        };
+        Attempt { wanted, running, at: std::time::Instant::now() }
     });
-    crate::gcsposition::lock().use_nmea(bound.is_some());
-    *current = bound;
+    crate::gcsposition::lock().use_nmea(attempt.as_ref().is_some_and(|a| a.running.is_some()));
+    *current = attempt;
 }
 
 #[cfg(test)]
@@ -140,6 +227,15 @@ mod tests {
         assert_eq!(update.altitude, Some(545.4));
         assert!((update.horizontal_accuracy_m.unwrap() - 0.9 * 5.1).abs() < 1e-9, "QGCPositionManager sets a 5.1 m user equivalent range error on its NMEA source");
         assert!((update.vertical_accuracy_m.unwrap() - 2.1 * 5.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sentences_split_across_serial_reads_are_joined() {
+        let mut lines = Lines::default();
+        assert!(lines.feed(b"$GPGGA,123519,4807.038,N,01131.0").is_empty());
+        let fixes = lines.feed(b"00,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n$GPGGA,1235");
+        assert_eq!(fixes.len(), 1);
+        assert_eq!(fixes[0].altitude, Some(545.4));
     }
 
     #[test]
