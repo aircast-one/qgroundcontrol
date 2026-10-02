@@ -406,6 +406,7 @@ const val HANDLE_KIND_CIRCLE = "circle"
 const val HANDLE_KIND_LANDING = "landing"
 const val HANDLE_KIND_FENCE_CENTRE = "fenceCentre"
 const val HANDLE_KIND_SURVEY_CENTRE = "surveyCentre"
+const val HANDLE_KIND_CIRCLE_RADIUS = "circleRadius"
 
 const val SHAPE_PATH_PROPERTY = "shapePath"
 const val SPLIT_INVOKABLE_PROPERTY = "splitInvokable"
@@ -469,9 +470,25 @@ fun renderVertexHandles(
     surveys: List<Survey>,
     circles: List<FenceCircle> = emptyList(),
     landings: List<LandingPattern> = emptyList(),
+    circled: Set<String> = emptySet(),
 ) {
+    val cornered = polygons.map { if (fencePath(it.index) in circled) it.copy(vertices = emptyList()) else it }
+    val cornerSurveys = surveys.map { if (surveyPath(it) in circled) it.copy(area = emptyList()) else it }
     (style.getSource(FENCE_HANDLE_SOURCE) as? GeoJsonSource)
-        ?.setGeoJson(FeatureCollection.fromFeatures(vertexHandleFeatures(polygons, surveys, circles, landings).features().orEmpty() + centreHandleFeatures(polygons, surveys)))
+        ?.setGeoJson(FeatureCollection.fromFeatures(vertexHandleFeatures(cornered, cornerSurveys, circles, landings).features().orEmpty() + centreHandleFeatures(polygons, surveys) + radiusHandleFeatures(polygons, surveys, circled)))
+}
+
+fun radiusHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>, circled: Set<String>): List<Feature> {
+    fun handle(vertices: List<TrackPoint>, owner: Int, fence: Boolean) =
+        polygonCentre(vertices)?.let { centre -> circleRadius(vertices)?.let { radius -> pointAt(centre, radius, 90.0) } }?.let { at ->
+            Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
+                addStringProperty(HANDLE_KIND_PROPERTY, HANDLE_KIND_CIRCLE_RADIUS)
+                addNumberProperty(POLYGON_INDEX_PROPERTY, owner)
+                addNumberProperty(VERTEX_INDEX_PROPERTY, if (fence) 0 else 1)
+            }
+        }
+    return polygons.filter { fencePath(it.index) in circled }.mapNotNull { handle(it.vertices, it.index, true) } +
+        surveys.filter { surveyPath(it) in circled }.mapNotNull { handle(it.area, it.index, false) }
 }
 
 fun centreHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>): List<Feature> =

@@ -115,6 +115,7 @@ fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
     MapHit.BreachReturn -> "Moved the breach return point"
     is MapHit.CircleCentre -> "Moved a fence circle"
     is MapHit.ShapeCentre -> if (hit.fence) "Moved a fence" else "Moved a survey area"
+    is MapHit.ShapeRadius -> "Changed the circle radius"
     is MapHit.Circle -> "Changed a fence radius"
     is MapHit.Midpoint -> "Added a corner"
     is MapHit.LandingPlace -> when (hit.place) {
@@ -148,6 +149,12 @@ fun writeMove(
             val vertices = if (hit.fence) fences.firstOrNull { it.index == hit.owner }?.vertices else surveys.firstOrNull { it.index == hit.owner }?.area
             val moved = vertices?.let { shapeMovedTo(it, TrackPoint(latitude, longitude)) }
             target != null && moved != null && replaceShape(target, moved)
+        }
+        is MapHit.ShapeRadius -> {
+            val target = if (hit.fence) shapeTarget(hit.owner, null) else shapeTarget(null, surveys.firstOrNull { it.index == hit.owner })
+            val circle = target?.let { shapeVertices(it, fences, surveys) }
+                ?.let { current -> polygonCentre(current)?.let { centre -> circleAround(current, metresBetween(centre, TrackPoint(latitude, longitude))) } }
+            target != null && circle != null && replaceShape(target, circle)
         }
         MapHit.BreachReturn -> FenceBridge.setBreachReturn(TrackPoint(latitude, longitude))
         is MapHit.Circle -> true

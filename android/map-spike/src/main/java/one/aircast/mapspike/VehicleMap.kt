@@ -159,6 +159,7 @@ fun VehicleMap(
     landings: List<LandingPattern> = emptyList(),
     editable: Boolean = false,
     selectedWaypoint: Int? = null,
+    circledShapes: Set<String> = emptySet(),
     firmwareFence: FirmwareFence? = null,
     onAdd: (Double, Double) -> Unit = { _, _ -> },
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
@@ -502,17 +503,17 @@ fun VehicleMap(
 
     LaunchedEffect(
         style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys,
-        landings, firmwareFence, selectedWaypoint, linkStartToHome, operator, breachReturn, otherMissions,
+        landings, firmwareFence, selectedWaypoint, linkStartToHome, operator, breachReturn, otherMissions, circledShapes,
     ) {
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
         renderTransectMarks(currentStyle, surveys, selectedWaypoint, legArrows(missionItems, linkStartToHome))
         renderGimbalWedges(currentStyle, missionItems)
         renderLandings(currentStyle, landings, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint.takeIf { editable })
-        renderMidpoints(currentStyle, fencePolygons, surveys, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint)
+        renderMidpoints(currentStyle, fencePolygons.map { if (fencePath(it.index) in circledShapes) it.copy(editable = null) else it }, surveys.map { if (surveyPath(it) in circledShapes) it.copy(editable = null) else it }, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence, breachReturn?.takeIf { isPlottable(it.latitude, it.longitude) })
         (currentStyle.getSource(GCS_SOURCE) as? GeoJsonSource)?.setGeoJson(operatorFeatures(operator))
-        renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings)
+        renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings, circledShapes)
         renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint, otherMissions)
     }
 

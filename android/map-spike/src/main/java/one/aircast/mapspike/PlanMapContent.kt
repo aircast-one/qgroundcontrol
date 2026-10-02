@@ -165,6 +165,8 @@ internal fun MapSpikeScreen(
     var shape by remember { mutableStateOf<List<String>>(emptyList()) }
     var linkStartToHome by remember { mutableStateOf(false) }
     var fences by remember { mutableStateOf<List<FencePolygon>>(emptyList()) }
+    var circled by remember { mutableStateOf(setOf<String>()) }
+    var radiusFor by remember { mutableStateOf<ShapeTarget?>(null) }
     var rally by remember { mutableStateOf<List<RallyPoint>>(emptyList()) }
     var operator by remember { mutableStateOf<TrackPoint?>(null) }
     var circles by remember { mutableStateOf<List<FenceCircle>>(emptyList()) }
@@ -432,6 +434,7 @@ internal fun MapSpikeScreen(
             surveys = surveyList,
             landings = landingList,
             editable = true,
+            circledShapes = circled,
             onAdd = { lat, lon ->
                 tracing?.let { (target, points) ->
                     tracing = target to points + TrackPoint(lat, lon)
@@ -475,6 +478,16 @@ internal fun MapSpikeScreen(
             centreRequest = centreRequest,
             centreOn = centreOn,
         )
+
+        radiusFor?.let { target ->
+            val vertices = shapeVertices(target, fences, surveyList)
+            RadiusDialog(circleRadius(vertices) ?: 0.0, onDismiss = { radiusFor = null }) { radius ->
+                radiusFor = null
+                circleAround(vertices, radius)?.let { ring ->
+                    onBridge("Changed the circle radius") { replaceShape(target, ring) }
+                }
+            }
+        }
 
         positioning?.let { (hit, at) ->
             PositionDialog(at, onDismiss = { positioning = null }) { moved ->
@@ -826,6 +839,7 @@ internal fun MapSpikeScreen(
                 val survey = selectedSurvey(selected, surveyList)
                 val waypoint = (selected as? MapHit.Waypoint)
                     ?.let { hit -> allItems.firstOrNull { it.index == hit.index } }
+                val shapeFence = (selected as? MapHit.ShapeCentre)?.takeIf { it.fence }?.owner ?: (selected as? MapHit.ShapeRadius)?.takeIf { it.fence }?.owner
                 val fenceHit = selected as? MapHit.FenceVertex
                 val surveyHit = selected as? MapHit.SurveyVertex
                 val rallyHit = selected as? MapHit.Rally
@@ -833,7 +847,7 @@ internal fun MapSpikeScreen(
                     ?: (selected as? MapHit.CircleCentre)?.index
                 val circle = circleIndex?.let { index -> circles.firstOrNull { it.index == index } }
 
-                if (survey != null || waypoint != null || fenceHit != null ||
+                if (survey != null || waypoint != null || fenceHit != null || shapeFence != null ||
                     rallyHit != null || circle != null
                 ) {
                     FlowRow(
@@ -1026,21 +1040,30 @@ internal fun MapSpikeScreen(
                             }
                         }
 
-                        shapeTarget(fenceHit?.polygon, survey?.takeIf { surveyHit != null })?.let { target ->
+                        shapeTarget(fenceHit?.polygon ?: shapeFence, survey?.takeIf { surveyHit != null || selected is MapHit.ShapeCentre || selected is MapHit.ShapeRadius })?.let { target ->
                             if (target.line) {
                                 TextButton(enabled = visible.size == 4, onClick = {
                                     onBridge("Drawing line") { replaceShape(target, defaultLine(visible)) }
                                 }) { Text("Line") }
                             } else {
                                 TextButton(enabled = visible.size == 4, onClick = {
+                                    circled = circled - target.path
                                     onBridge("Drawing rectangle") { replaceShape(target, defaultRectangle(visible)) }
                                 }) { Text("Rectangle") }
                                 TextButton(enabled = visible.size == 4, onClick = {
+                                    circled = circled + target.path
                                     onBridge("Drawing circle") { replaceShape(target, defaultCircle(visible)) }
                                 }) { Text("Circle") }
+                                if (target.path in circled) {
+                                    TextButton(onClick = { radiusFor = target }) { Text("Set radius\u2026") }
+                                }
                             }
-                            TextButton(onClick = { tracing = target to emptyList() }) { Text("Trace") }
                             TextButton(onClick = {
+                                circled = circled - target.path
+                                tracing = target to emptyList()
+                            }) { Text("Trace") }
+                            TextButton(onClick = {
+                                circled = circled - target.path
                                 importInto = target
                                 polygonFile.launch(arrayOf("*/*"))
                             }) { Text("Import\u2026") }
@@ -1374,6 +1397,21 @@ fun cornerPosition(hit: MapHit, fences: List<FencePolygon>, surveys: List<Survey
     is MapHit.FenceVertex -> fences.firstOrNull { it.index == hit.polygon }?.vertices?.getOrNull(hit.vertex)
     is MapHit.SurveyVertex -> surveys.firstOrNull { it.index == hit.item }?.area?.getOrNull(hit.vertex)
     else -> null
+}
+
+@Composable
+private fun RadiusDialog(radius: Double, onDismiss: () -> Unit, onSet: (Double) -> Unit) {
+    var text by remember(radius) { mutableStateOf(String.format(java.util.Locale.US, "%.1f", radius)) }
+    val parsed = text.toDoubleOrNull()?.takeIf { it > 0 }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set radius") },
+        text = {
+            OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Radius (m)") }, singleLine = true)
+        },
+        confirmButton = { TextButton(enabled = parsed != null, onClick = { parsed?.let(onSet) }) { Text("Set") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

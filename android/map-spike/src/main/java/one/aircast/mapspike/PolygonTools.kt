@@ -95,6 +95,21 @@ fun shapeMovedTo(vertices: List<TrackPoint>, centre: TrackPoint): List<TrackPoin
     return vertices.map { pointAt(it, distance, azimuth) }
 }
 
+fun fencePath(index: Int) = "$FENCE_POLYGONS.$index"
+
+fun surveyPath(survey: Survey) = "$PLAN_ITEMS.${survey.index}.${survey.property}"
+
+fun circleRadius(vertices: List<TrackPoint>): Double? =
+    polygonCentre(vertices)?.let { centre -> vertices.firstOrNull()?.let { metresBetween(centre, it) } }
+
+fun circleAround(vertices: List<TrackPoint>, radius: Double): List<TrackPoint>? =
+    polygonCentre(vertices)?.takeIf { radius > 0 }?.let { circleRing(it, radius, DEFAULT_CIRCLE_SEGMENTS) }
+
+fun shapeVertices(target: ShapeTarget, fences: List<FencePolygon>, surveys: List<Survey>): List<TrackPoint> =
+    fences.firstOrNull { fencePath(it.index) == target.path }?.vertices
+        ?: surveys.firstOrNull { surveyPath(it) == target.path }?.area
+        ?: emptyList()
+
 fun replaceShape(target: ShapeTarget, vertices: List<TrackPoint>): Boolean =
     vertices.size >= target.minimum &&
         // qtpaths: plan.geoFenceController.polygons.0.clear, plan.missionController.visualItems.0.surveyAreaPolygon.clear, plan.missionController.visualItems.0.corridorPolyline.clear
