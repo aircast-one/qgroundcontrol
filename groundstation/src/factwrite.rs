@@ -162,7 +162,11 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let forced = given.get("force").and_then(Value::as_bool) == Some(true);
     let fact = crate::actuators::output_function_fact(backend, path, fact);
     let control = decode(&fact, path);
-    if let Some((token, reason)) = refusal(&control, &fact, &asked).filter(|_| !unchanged(&fact, &asked)).filter(|(token, _)| !forced || *token == "readOnly" || CONVERSION_REFUSALS.contains(token)) {
+    let judged = match forced {
+        true => Value::Object(fact.as_object().cloned().unwrap_or_default().into_iter().filter(|(key, _)| key != "readOnly").collect()),
+        false => fact.clone(),
+    };
+    if let Some((token, reason)) = refusal(&control, &judged, &asked).filter(|_| !unchanged(&fact, &asked)).filter(|(token, _)| !forced || CONVERSION_REFUSALS.contains(token)) {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason, "path": path });
     }
     let answered = flag(&object(&backend.set(path, value)), "ok");
@@ -254,6 +258,7 @@ mod tests {
             fn get(&self, p: &str) -> String {
                 match p {
                     "vehicle.parameterManager.getParameter(1,SERVO_RATE)" => json!({ "kind": "fact", "name": "SERVO_RATE", "typeIsInteger": true, "min": 25, "max": 400, "minIsDefaultForType": false, "maxIsDefaultForType": false, "readOnly": false }),
+                    "vehicle.parameterManager.getParameter(1,SYS_LOCKED)" => json!({ "kind": "fact", "name": "SYS_LOCKED", "typeIsInteger": true, "readOnly": true }),
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
@@ -274,11 +279,15 @@ mod tests {
         assert_eq!(write(&vehicle, path, r#"{"value":50.5,"force":true}"#)["refusal"], "notWhole", "but the value must still convert");
         assert_eq!(write(&vehicle, path, r#"{"value":50}"#)["result"], true);
         assert_eq!(write(&vehicle, "plan.missionController.visualItems.2.altitudeMode", r#"{"value":1}"#)["ok"], true);
+        let locked = "vehicle.parameterManager.getParameter(1,SYS_LOCKED)";
+        assert_eq!(write(&vehicle, locked, r#"{"value":2}"#)["refusal"], "readOnly");
+        assert_eq!(write(&vehicle, locked, r#"{"value":2.5,"force":true}"#)["refusal"], "notWhole", "a forced read-only write still has to convert");
+        assert_eq!(write(&vehicle, locked, r#"{"value":2,"force":true}"#)["result"], true, "ParameterEditorDialog's Force edit writes a read-only parameter, as Fact::setCookedValue never checks");
         assert!(unchanged(&json!({ "value": 0.0 }), &json!(0)) && unchanged(&json!({ "value": null }), &Value::Null));
         assert!(!unchanged(&json!({ "value": 0.0 }), &json!(0.05)) && !unchanged(&json!({ "value": null }), &json!(3)));
         assert_eq!(
             vehicle.0.borrow().as_slice(),
-            &[path.to_string(), path.to_string(), "plan.missionController.visualItems.2.altitudeFrame".to_string()],
+            &[path.to_string(), path.to_string(), "plan.missionController.visualItems.2.altitudeFrame".to_string(), locked.to_string()],
             "an item's renamed field is still rewritten when the fact check takes the write before the router's own rename does"
         );
     }

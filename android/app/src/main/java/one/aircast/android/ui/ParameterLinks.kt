@@ -103,14 +103,14 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
             ) {
                 Text(name, style = MaterialTheme.typography.titleLarge)
                 fact?.let { loaded ->
-                    if (loaded.description.isNotBlank()) {
-                        Text(loaded.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    loaded.longDescription.ifBlank { loaded.description }.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     val editable = !loaded.readOnly || forced
                     forceEditNote(loaded.readOnly, forced)?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = if (forced) MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurface)
                     }
-                    val shown = loaded.copy(readOnly = !editable).let { if (manual) manualEntryFact(it) else it }
+                    val shown = loaded.let { if (manual) manualEntryFact(it) else it }
                     FactRow(fact = shown, title = loaded.shortLabel.ifBlank { "Value" }, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = { revision++ })
                     if (loaded.qgcRebootRequired) Text("Application restart required after change", style = MaterialTheme.typography.bodySmall)
                     if (editable) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
@@ -124,9 +124,9 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                         if (advanced && loaded.readOnly) CheckRow("Force edit read-only param", forced) { forced = it }
                         if (advanced && editable && hasChoices) CheckRow("Manual Entry", manual) { manual = it }
                     }
-                    if (editable && !hasChoices && !loaded.isString && !loaded.isBool) {
-                        CheckRow("Force save (dangerous!)", forceSave) { forceSave = it }
-                        if (forceSave) {
+                    if (forced || (editable && !hasChoices && !loaded.isString && !loaded.isBool)) {
+                        if (!forced) CheckRow("Force save (dangerous!)", forceSave) { forceSave = it }
+                        if (forceSave || forced) {
                             OutlinedTextField(value = forcedText, onValueChange = { forcedText = it }, singleLine = true, label = { Text("Value") })
                             forceRefusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                             TextButton(enabled = forcedText.isNotBlank(), onClick = {

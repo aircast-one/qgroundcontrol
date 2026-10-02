@@ -143,7 +143,13 @@ fn shown(read: &Value, raw: f64) -> String {
         .zip(values.iter())
         .find(|(_, v)| v.as_f64() == Some(raw) || v.as_str().and_then(|s| s.parse::<f64>().ok()) == Some(raw))
         .and_then(|(label, _)| label.as_str().map(str::to_string))
-        .unwrap_or_else(|| raw_text(raw, read.get("mavType").and_then(Value::as_u64).map_or(MAV_PARAM_TYPE_REAL32, |t| t as u8)))
+        .unwrap_or_else(|| {
+            let raw_units = read.get("rawUnits").and_then(Value::as_str).unwrap_or_default();
+            match crate::units::built_in(raw_units).or_else(|| crate::units::cooking(raw_units)) {
+                Some(conversion) => crate::settingsstore::fixed_as_qt((conversion.shown)(raw), read.get("decimalPlaces").and_then(Value::as_u64).unwrap_or(3) as usize),
+                None => raw_text(raw, read.get("mavType").and_then(Value::as_u64).map_or(MAV_PARAM_TYPE_REAL32, |t| t as u8)),
+            }
+        })
 }
 
 pub fn review(backend: &dyn Backend, args: &str) -> Value {
@@ -213,7 +219,7 @@ pub fn apply(backend: &dyn Backend, args: &str) -> Value {
             let sendable = !flag(row, "cannotSend");
             let written = match (sendable, fact(backend, component, &name).is_some()) {
                 (false, _) => false,
-                (true, true) => flag(&crate::factwrite::write(backend, &parameter_path(component, &name), &json!({ "value": value }).to_string()), "ok"),
+                (true, true) => flag(&object(&backend.set(&format!("{}.rawValue", parameter_path(component, &name)), &json!({ "value": value }).to_string())), "ok"),
                 (true, false) => {
                     let vehicle = crate::hub::lock().active_id();
                     let raw = json!({ "action": "paramSetRaw", "vehicle": vehicle, "component": component, "name": name, "value": value, "type": row.get("mavType") });
@@ -252,6 +258,7 @@ mod tests {
             json!({ "kind": "object", "id": 1, "firmwareType": 3, "vehicleType": 2, "firmwareMajorVersion": 4, "firmwareMinorVersion": 6, "firmwarePatchVersion": 1, "firmwareVersionTypeString": "Official", "gitHash": "abc" }).to_string()
         }
         fn set(&self, path: &str, value: &str) -> String {
+            let path = path.strip_suffix(".rawValue").expect("ParameterEditorController sends the file value with setRawValue, unconverted");
             let name = path.rsplit(',').next().unwrap_or_default().trim_end_matches(')').to_string();
             let v = serde_json::from_str::<Value>(value).unwrap()["value"].as_f64().unwrap();
             let kind = self.0.borrow()[&name].1;

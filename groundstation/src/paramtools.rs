@@ -54,11 +54,18 @@ pub fn run(backend: &dyn Backend, path: &str) -> Value {
     if vehicle.is_none() {
         return json!({ "ok": false, "refusal": "noVehicle", "reason": "No vehicle is connected." });
     }
+    let refresh = || crate::guided::dispatch(backend, Some(json!({ "action": "refreshParameters" })), vehicle, "vehicle.parameterManager.refreshAllParameters", "[]");
+    let then_refresh = |answer: Value| {
+        if answer.get("ok").and_then(Value::as_bool) == Some(true) {
+            refresh();
+        }
+        answer
+    };
     match path {
-        REFRESH => crate::guided::dispatch(backend, Some(json!({ "action": "refreshParameters" })), vehicle, "vehicle.parameterManager.refreshAllParameters", "[]"),
-        RESET_DEFAULTS => crate::guided::dispatch(backend, Some(json!({ "action": "resetParameters" })), vehicle, "vehicle.parameterManager.resetAllParametersToDefaults", "[]"),
+        REFRESH => refresh(),
+        RESET_DEFAULTS => then_refresh(crate::guided::dispatch(backend, Some(json!({ "action": "resetParameters" })), vehicle, "vehicle.parameterManager.resetAllParametersToDefaults", "[]")),
         _ => match autoconfig_exists(backend) {
-            true => crate::factwrite::write(backend, AUTOCONFIG, &json!({ "value": AUTOCONFIG_RESET }).to_string()),
+            true => then_refresh(crate::factwrite::write(backend, AUTOCONFIG, &json!({ "value": AUTOCONFIG_RESET }).to_string())),
             false => json!({ "ok": false, "refusal": "unsupported", "reason": "This vehicle has no SYS_AUTOCONFIG to reset from." }),
         },
     }
@@ -102,6 +109,30 @@ mod tests {
         let tools = parameter_tools_view(&Fake { apm: true, autoconfig: false, ready: true }, &[]);
         assert_eq!(tools["tools"][0]["confirm"], false, "Refresh is immediate");
         assert_eq!(tools["tools"][3]["confirm"], true, "the resets ask first");
+    }
+
+    #[test]
+    fn a_reset_is_followed_by_a_refresh_as_the_editor_controller_does() {
+        struct Recorder(std::cell::RefCell<Vec<String>>);
+        impl Backend for Recorder {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "vehicle.parameterManager.parametersReady" => json!({ "value": true }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "apmFirmware": true, "px4Firmware": false, "id": 1 }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { json!({ "ok": true }).to_string() }
+            fn invoke(&self, path: &str, _a: &str) -> String {
+                self.0.borrow_mut().push(path.to_string());
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let recorder = Recorder(std::cell::RefCell::new(Vec::new()));
+        assert_eq!(run(&recorder, RESET_DEFAULTS)["ok"], true);
+        assert_eq!(*recorder.0.borrow(), ["vehicle.parameterManager.resetAllParametersToDefaults", "vehicle.parameterManager.refreshAllParameters"]);
     }
 
     #[test]
