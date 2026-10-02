@@ -237,6 +237,7 @@ pub struct Vehicle {
     pub motor_assignment: crate::motorassignment::MotorAssignment,
     autotune_due: Option<u64>,
     autotune_heard_ms: u64,
+    autotune_sent_ms: u64,
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
     pub shell: crate::shell::Shell,
@@ -465,6 +466,7 @@ impl Vehicle {
             motor_assignment: crate::motorassignment::MotorAssignment::default(),
             autotune_due: None,
             autotune_heard_ms: 0,
+            autotune_sent_ms: 0,
             rc_due: None,
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
@@ -1655,12 +1657,16 @@ impl Vehicle {
     }
 
     fn tick_autotune(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
-        if self.autotune.in_progress && now_ms.saturating_sub(self.autotune_heard_ms) > AUTOTUNE_SILENCE_MS {
+        let ack_timeout_ms = if self.commands.high_latency { crate::mavcmd::ACK_TIMEOUT_HIGH_LATENCY_MS } else { AUTOTUNE_SILENCE_MS };
+        if self.autotune.in_progress && self.autotune_heard_ms < self.autotune_sent_ms && now_ms.saturating_sub(self.autotune_sent_ms) > ack_timeout_ms {
             self.autotune.on_ack(crate::autotune::RESULT_FAILED, 0);
         }
         match self.autotune_due {
             Some(due) if self.autotune.in_progress && now_ms >= due => {
                 self.autotune_due = Some(now_ms + crate::autotune::POLL_MS);
+                if self.autotune_heard_ms >= self.autotune_sent_ms {
+                    self.autotune_sent_ms = now_ms;
+                }
                 self.autotune_poll()
             }
             Some(_) if !self.autotune.in_progress => {
@@ -1782,7 +1788,8 @@ impl Vehicle {
             Some("autotune") => {
                 self.autotune.request();
                 self.autotune_due = Some(now_ms + crate::autotune::POLL_MS);
-                self.autotune_heard_ms = now_ms;
+                self.autotune_heard_ms = now_ms.saturating_sub(1);
+                self.autotune_sent_ms = now_ms;
                 return Ok(self.autotune_poll());
             }
             Some("pidTuningMode") => {
@@ -5107,6 +5114,14 @@ mod tests {
         quiet.pump_with(30_000 + AUTOTUNE_SILENCE_MS + 1, None, 0);
         assert_eq!(quiet.autotune.status, "Autotune: Failed", "a vehicle that never answers ends it as Autotune::handleAckFailure does after the queue gives up");
         let ack = |progress: u8, result: MavResult| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_AUTOTUNE_ENABLE, result, progress, ..Default::default() });
+        let mut jittery = Hub::default();
+        connect_copter(&mut jittery, &autopilot);
+        jittery.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "autotune" }), 30_000).unwrap();
+        jittery.on_frame(origin(4), &autopilot, &ack(10, MavResult::MAV_RESULT_IN_PROGRESS), 30_300_000, 30_300);
+        jittery.vehicles.get_mut(&1).unwrap().pump_with(31_000, None, 0);
+        jittery.on_frame(origin(4), &autopilot, &ack(20, MavResult::MAV_RESULT_IN_PROGRESS), 31_550_000, 31_550);
+        jittery.vehicles.get_mut(&1).unwrap().pump_with(31_600, None, 0);
+        assert!(jittery.vehicles[&1].autotune.in_progress, "each poll gets its own 1.2 s from when it was sent, so a 550 ms answer on a cellular link is not a failure");
         hub.on_frame(origin(4), &autopilot, &ack(30, MavResult::MAV_RESULT_IN_PROGRESS), 31_100_000, 31_100);
         assert_eq!(hub.vehicles[&1].autotune.status, "Autotune: roll");
         hub.on_frame(origin(4), &autopilot, &ack(100, MavResult::MAV_RESULT_ACCEPTED), 31_200_000, 31_200);

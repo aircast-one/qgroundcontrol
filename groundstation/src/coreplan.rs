@@ -650,6 +650,22 @@ fn send_shape(kind: &str, document: &Document) -> Value {
     }
 }
 
+fn launch_at_takeoff(document: &Document, visual_index: usize) -> bool {
+    let commands = crate::cmdinfo::tree(plandoc::firmware(document.firmware_type), plandoc::vehicle_class(document.vehicle_type));
+    let forward_flight = matches!(plandoc::vehicle_class(document.vehicle_type), crate::cmdinfo::VehicleClass::FixedWing | crate::cmdinfo::VehicleClass::Vtol);
+    let takeoff = visual_index.checked_sub(1).and_then(|at| document.items.get(at)).and_then(|item| match item {
+        plandoc::Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.is_takeoff) => Some(s),
+        _ => None,
+    });
+    takeoff.is_some_and(|s| {
+        let at_home = match (s.params[4].zip(s.params[5]), document.home) {
+            (Some((lat, lon)), Some(home)) => lat == home[0] && lon == home[1],
+            _ => true,
+        };
+        !forward_flight && at_home
+    })
+}
+
 fn contains_items(document: &Document) -> bool {
     let listed = |section: &Value, key: &str| section.get(key).and_then(Value::as_array).is_some_and(|items| !items.is_empty());
     !document.items.is_empty() || listed(&document.fence, "polygons") || listed(&document.fence, "circles") || listed(&document.rally, "points")
@@ -1555,12 +1571,20 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                 .ok_or_else(|| "An altitude mode is a number.".to_string())
                 .and_then(|mode| plandoc::set_altitude_mode(&current, index, mode as i64).ok_or_else(|| format!("Item {index} cannot take that altitude mode."))),
         ),
-        "coordinate" => answer(
+        "coordinate" | "launchCoordinate" => answer(
             crate::fenceedit::point(given.as_ref())
                 .ok_or_else(|| "A position needs a latitude from -90 to 90 and a longitude from -180 to 180.".to_string())
-                .and_then(|(latitude, longitude)| match index {
-                    0 => Ok(Document { home: Some([latitude, longitude, current.home.map_or(0.0, |h| h[2])]), ..current.clone() }),
-                    _ => plandoc::set_param(&current, index, 5, latitude).and_then(|moved| plandoc::set_param(&moved, index, 6, longitude)).ok_or_else(|| format!("Item {index} has no position to move.")),
+                .and_then(|(latitude, longitude)| {
+                    let moved_home = Document { home: Some([latitude, longitude, current.home.map_or(0.0, |h| h[2])]), ..current.clone() };
+                    let moved_item = |doc: &Document| plandoc::set_param(doc, index, 5, latitude).and_then(|moved| plandoc::set_param(&moved, index, 6, longitude)).ok_or_else(|| format!("Item {index} has no position to move."));
+                    let same_location = launch_at_takeoff(&current, index);
+                    match (index, property) {
+                        (0, _) => Ok(moved_home),
+                        (_, "launchCoordinate") if same_location => moved_item(&moved_home),
+                        (_, "launchCoordinate") => Ok(moved_home),
+                        (_, _) if same_location => moved_item(&moved_home),
+                        _ => moved_item(&current),
+                    }
                 }),
         ),
         "loiterRadius" => answer(number.ok_or_else(|| "A radius is a number.".to_string()).and_then(|v| plandoc::set_loiter_radius(&current, index, v).ok_or_else(|| format!("Item {index} is not a loiter.")))),
@@ -1936,6 +1960,15 @@ mod tests {
         assert_eq!(plandoc::command_class_at(&mixed, 0), crate::cmdinfo::VehicleClass::FixedWing, "the start follows the LAST takeoff before the RTL, here a fixed-wing NAV_TAKEOFF");
         assert_eq!(plandoc::command_class_at(&mixed, 2), crate::cmdinfo::VehicleClass::FixedWing, "a VTOL takeoff leaves fixed-wing mode behind it");
         assert_eq!(plandoc::command_class_at(&mixed, 5), crate::cmdinfo::VehicleClass::Vtol, "items from the RTL on get no flight status, so they keep the VTOL tree");
+    }
+
+    #[test]
+    fn a_multirotor_takeoff_at_home_moves_with_it_and_a_plane_does_not() {
+        let takeoff = |lat: f64| plandoc::Item::Simple(plandoc::Simple { command: 22, frame: 3, params: [Some(0.0), Some(0.0), Some(0.0), None, Some(lat), Some(8.0), Some(30.0)], auto_continue: true, altitude: None, sections: vec![] });
+        let copter = Document { vehicle_type: 2, firmware_type: 12, home: Some([47.0, 8.0, 0.0]), items: vec![takeoff(47.0)], ..empty_document() };
+        assert!(launch_at_takeoff(&copter, 1), "TakeoffMissionItem keeps launch and takeoff together for a multirotor whose takeoff sits on home");
+        assert!(!launch_at_takeoff(&Document { items: vec![takeoff(47.001)], ..copter.clone() }, 1), "unless the two were moved apart");
+        assert!(!launch_at_takeoff(&Document { vehicle_type: 1, ..copter }, 1), "a fixed wing launches apart from its takeoff");
     }
 
     #[test]
