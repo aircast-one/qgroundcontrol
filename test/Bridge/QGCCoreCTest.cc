@@ -10,6 +10,7 @@
 #include "SysStatusSensorInfo.h"
 #include "SettingsManager.h"
 #include "AppSettings.h"
+#include "QGCMAVLink.h"
 #include "SettingsFact.h"
 #include "MapProvider.h"
 #include "QGCMapUrlEngine.h"
@@ -1601,6 +1602,9 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
 
 void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 {
+    AppSettings *const app = SettingsManager::instance()->appSettings();
+    app->offlineEditingFirmwareClass()->setRawValue(QGCMAVLink::FirmwareClassPX4);
+    app->offlineEditingVehicleClass()->setRawValue(QGCMAVLink::VehicleClassMultiRotor);
     ignoreLogMessage("Comms.TCPLink", QtWarningMsg, QRegularExpression(QStringLiteral(".*")));
     ignoreLogMessage("qgc.comms.corelink", QtWarningMsg, QRegularExpression(QStringLiteral("core link open failed")));
     ignoreLogMessage("Utilities.QGCStateMachine", QtWarningMsg, QRegularExpression(QStringLiteral("No active link available")));
