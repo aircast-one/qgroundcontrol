@@ -396,6 +396,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     }
 
     val running = state.inProgress
+    BlocksNavigation(running && state.px4, CALIBRATION_BLOCK)
     DisposableEffect(running) {
         onDispose {
             if (running) {

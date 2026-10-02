@@ -105,6 +105,7 @@ internal data class LogsView(
     val canSort: Boolean = false,
     val sortText: String = "",
     val busy: Boolean,
+    val downloading: Boolean = false,
     val anyDownloaded: Boolean,
     val savePath: String,
     val savePathReason: String,
@@ -142,6 +143,7 @@ internal fun logsView(view: JSONObject?): LogsView? {
         canSort = view.optBoolean("canSort"),
         sortText = view.optText("sortText"),
         busy = view.optBoolean("busy"),
+        downloading = view.optBoolean("downloading"),
         anyDownloaded = view.optBoolean("anyDownloaded"),
         savePath = view.optText("savePath"),
         savePathReason = view.optText("savePathReason"),
@@ -236,6 +238,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
     val selectedCount = entries.count { it.selected }
     val selectable = entries.filter { it.received }
     val busy = logs?.busy == true
+    BlocksNavigation(logs?.downloading == true, LOG_DOWNLOAD_BLOCK)
 
     if (logs?.connected != true) {
         EmptyState(R.drawable.ic_description, "No vehicle", logs?.emptyText?.ifBlank { null } ?: "Connect a vehicle to download its flight logs.", modifier)

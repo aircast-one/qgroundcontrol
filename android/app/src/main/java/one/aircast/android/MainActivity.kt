@@ -265,7 +265,12 @@ fun AircastShell(hostView: android.view.View?) {
     val noticeScope = rememberCoroutineScope()
     var shownAt by remember { mutableStateOf(emptyMap<String, Long>()) }
 
-    BackHandler(enabled = tab != Tab.Fly) { tab = Tab.Fly }
+    val refusalScope = rememberCoroutineScope()
+    val refuseNavigation: () -> Boolean = {
+        one.aircast.android.ui.navigationRefusal(one.aircast.android.ui.AppNavigation.blockedReason, leaving = true)
+            ?.also { said -> refusalScope.launch { snackbars.showSnackbar(said) } } != null
+    }
+    BackHandler(enabled = tab != Tab.Fly) { if (!refuseNavigation()) tab = Tab.Fly }
     one.aircast.android.ui.CloseGuard(enabled = tab == Tab.Fly)
 
     LaunchedEffect(notices) {
@@ -337,11 +342,13 @@ fun AircastShell(hostView: android.view.View?) {
         val armedOnFly = remember(flyStateJson) { one.aircast.android.ui.flyState(flyStateJson)?.armed == true }
         val showNav = !(onFly && armedOnFly)
         val selectTab: (Tab) -> Unit = { entry ->
-            if (tab == entry) {
-                if (reselectClearsAnalyze(tab, entry)) analyzePage = null
-                popEpoch++
-            } else {
-                tab = entry
+            when {
+                refuseNavigation() -> Unit
+                tab == entry -> {
+                    if (reselectClearsAnalyze(tab, entry)) analyzePage = null
+                    popEpoch++
+                }
+                else -> tab = entry
             }
         }
         Row(Modifier.fillMaxSize()) {
