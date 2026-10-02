@@ -22,20 +22,22 @@ object SpeechOut {
     private var poller: ScheduledExecutorService? = null
     private var after: Long? = null
     private val waiting = AtomicInteger(0)
+    private val generation = AtomicInteger(0)
     private var muted = false
 
     private val progress = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String?) = Unit
-        override fun onDone(utteranceId: String?) = finished()
+        override fun onDone(utteranceId: String?) = finished(utteranceId)
         @Deprecated("Deprecated in Java")
-        override fun onError(utteranceId: String?) = finished()
-        override fun onStop(utteranceId: String?, interrupted: Boolean) = finished()
-        private fun finished() {
-            waiting.updateAndGet { (it - 1).coerceAtLeast(0) }
+        override fun onError(utteranceId: String?) = finished(utteranceId)
+        override fun onStop(utteranceId: String?, interrupted: Boolean) = finished(utteranceId)
+        private fun finished(utteranceId: String?) {
+            if (utteranceId?.startsWith("qgc-${generation.get()}-") == true) waiting.updateAndGet { (it - 1).coerceAtLeast(0) }
         }
     }
 
     private fun flush() {
+        generation.incrementAndGet()
         engine?.stop()
         waiting.set(0)
     }
@@ -67,7 +69,7 @@ object SpeechOut {
         (0 until lines.length()).mapNotNull { lines.optJSONObject(it) }.forEach { line ->
             if (waiting.get() >= MAX_TEXT_QUEUE) flush()
             val volume = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, line.optDouble("volume", 1.0).toFloat()) }
-            engine?.speak(line.optString("text"), TextToSpeech.QUEUE_ADD, volume, "qgc-${line.optLong("sequence")}")
+            engine?.speak(line.optString("text"), TextToSpeech.QUEUE_ADD, volume, "qgc-${generation.get()}-${line.optLong("sequence")}")
                 ?.takeIf { it == TextToSpeech.SUCCESS }?.let { waiting.incrementAndGet() }
         }
     }

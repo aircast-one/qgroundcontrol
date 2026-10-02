@@ -682,7 +682,7 @@ fn write_mode_parameter(action: &Value) -> Option<String> {
     let differs = {
         let hub = crate::hub::lock();
         let camera = hub.active()?.cameras.selected()?;
-        camera.mode_is_parameter() && camera.mode_now().map(u64::from) != Some(wanted)
+        camera.mode_is_parameter() && camera.gate(crate::cameraproto::Action::SetMode).is_none() && camera.mode_now().map(u64::from) != Some(wanted)
     };
     let written = differs.then(|| crate::camsettings::set_setting(&json!(["CAM_MODE", wanted]).to_string()))?;
     (written["ok"] != true).then(|| written["reason"].as_str().unwrap_or("The camera mode could not be set.").to_string())

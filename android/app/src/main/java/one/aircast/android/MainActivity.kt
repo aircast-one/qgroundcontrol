@@ -290,8 +290,16 @@ fun AircastShell(hostView: android.view.View?) {
             withContext(Dispatchers.Default) {
                 Qgc.invoke("host.acknowledgeThrough", batch.through)
             }
-            banners.forEach { snackbars.showSnackbar(it) }
-            if (batch.vehicleError) withContext(Dispatchers.Default) { Qgc.invoke(one.aircast.android.ui.RESET_ERROR_LEVEL_MESSAGES) }
+            val critical = one.aircast.android.ui.criticalBanner(batch)
+            banners.forEach { banner ->
+                when (banner == critical) {
+                    true -> {
+                        snackbars.showSnackbar(banner, withDismissAction = true, duration = androidx.compose.material3.SnackbarDuration.Indefinite)
+                        withContext(Dispatchers.Default) { Qgc.invoke(one.aircast.android.ui.RESET_ERROR_LEVEL_MESSAGES) }
+                    }
+                    false -> snackbars.showSnackbar(banner)
+                }
+            }
         }
     }
 

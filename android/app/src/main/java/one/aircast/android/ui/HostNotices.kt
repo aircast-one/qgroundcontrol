@@ -14,7 +14,7 @@ internal data class NoticeBatch(
     val destination: String?,
     val banners: List<String>,
     val unknownKinds: List<String>,
-    val vehicleError: Boolean,
+    val errorBanners: List<String>,
 )
 
 internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
@@ -27,13 +27,15 @@ internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
         destination = view.optText("destination").ifBlank { null },
         banners = (0 until (banners?.length() ?: 0)).mapNotNull { banners?.optString(it)?.ifBlank { null } },
         unknownKinds = notices.filter { !it.optBoolean("known", true) }.map { it.optText("kind") },
-        vehicleError = notices.any { it.optText("kind") == VEHICLE_ERROR_KIND },
+        errorBanners = notices.filter { it.optText("kind") == VEHICLE_ERROR_KIND }.map { it.optText("banner") }.filter { it.isNotBlank() }.distinct(),
     )
 }
 
 const val REPEAT_QUIET_MS = 30_000L
 internal const val VEHICLE_ERROR_KIND = "vehicleError"
 internal const val RESET_ERROR_LEVEL_MESSAGES = "vehicle.resetErrorLevelMessages"
+
+internal fun criticalBanner(batch: NoticeBatch): String? = batch.errorBanners.singleOrNull()
 
 internal fun quietBanners(banners: List<String>, shownAt: Map<String, Long>, now: Long): List<String> =
     banners.distinct().filter { banner -> shownAt[banner]?.let { now - it < REPEAT_QUIET_MS } != true }
