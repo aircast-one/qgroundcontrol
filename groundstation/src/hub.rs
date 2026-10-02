@@ -1468,6 +1468,10 @@ impl Vehicle {
         self.cameras.selected().and_then(|camera| camera.current_stream()).filter(|stream| !stream.thermal()).map(|stream| (stream.kind, stream.encoding, stream.uri.clone()))
     }
 
+    pub fn on_high_latency_link(&self) -> bool {
+        self.commands.high_latency
+    }
+
     pub fn parameter_components(&self) -> Vec<u8> {
         self.params.components()
     }

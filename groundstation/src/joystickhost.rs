@@ -458,6 +458,9 @@ fn polling(enabled_for_vehicle: bool, vehicle: bool, calibrated: bool) -> Pollin
 
 fn send(vehicle: (u8, u32), outs: Vec<Out>) {
     let (id, link) = vehicle;
+    if crate::hub::lock().active().is_some_and(|v| v.id == id && v.on_high_latency_link()) {
+        return;
+    }
     outs.into_iter()
         .filter_map(|out| match out {
             Out::ManualControl { x, y, z, r, buttons, buttons2, enabled_extensions, extensions } => Some(Outbound::JoystickManualControl { target: id, x, y, z, r, buttons, buttons2, enabled_extensions, extensions }),
