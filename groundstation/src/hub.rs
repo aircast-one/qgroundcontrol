@@ -38,7 +38,7 @@ const CMD_CONTROL_HIGH_LATENCY: u16 = 2600;
 const AIRFRAME_DISCONNECT_AFTER_MS: u64 = 1000;
 pub const AUTOPILOT_INVALID: u8 = 8;
 pub const ARMED_FLAG: u8 = 128;
-const HIGH_LATENCY_DOWNLOAD: &str = "Download not supported on high latency links.";
+pub const HIGH_LATENCY_DOWNLOAD: &str = "Download not supported on high latency links.";
 const HIGH_LATENCY_UPLOAD: &str = "Upload not supported on high latency links.";
 
 const MANUAL_CONTROL_SCALE: f32 = 1000.0;

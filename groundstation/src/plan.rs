@@ -231,8 +231,8 @@ fn send_precheck(backend: &dyn Backend) -> i64 {
         return 3;
     }
     let setting = |name: &str| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64);
-    let (firmware, class) = (setting("offlineEditingFirmwareClass").unwrap_or(0), setting("offlineEditingVehicleClass").unwrap_or(0));
-    match firmware != autopilot || crate::plandoc::vehicle_class(class) != crate::plandoc::vehicle_class(vehicle_type) {
+    let (firmware, class) = crate::coreplan::plan_types().unwrap_or((setting("offlineEditingFirmwareClass").unwrap_or(0), setting("offlineEditingVehicleClass").unwrap_or(0)));
+    match crate::plandoc::firmware(firmware) != crate::plandoc::firmware(autopilot) || crate::plandoc::vehicle_class(class) != crate::plandoc::vehicle_class(vehicle_type) {
         true => 2,
         false => 0,
     }

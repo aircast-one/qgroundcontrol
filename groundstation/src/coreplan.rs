@@ -35,6 +35,7 @@ struct Held {
     selected: i64,
     file: Option<String>,
     dirty: bool,
+    dirty_for_save: bool,
     clean: Option<Document>,
     undo: Vec<Document>,
     redo: Vec<Document>,
@@ -71,7 +72,7 @@ pub fn vehicle_change_prompt_for(offline: Option<bool>, dirty: bool) -> Value {
 
 pub fn vehicle_change_prompt() -> Value {
     let state = held();
-    vehicle_change_prompt_for(state.vehicle_prompt, state.dirty)
+    vehicle_change_prompt_for(state.vehicle_prompt, state.dirty_for_save)
 }
 
 const UNDO_DEPTH: usize = 100;
@@ -87,9 +88,14 @@ fn remember(state: &mut Held, before: Option<Document>, now: u64) {
     state.redo.clear();
 }
 
-fn settle_clean(state: &mut Held) {
+fn settle_uploaded(state: &mut Held) {
     state.dirty = false;
     state.clean = state.document.clone();
+}
+
+fn settle_clean(state: &mut Held) {
+    settle_uploaded(state);
+    state.dirty_for_save = false;
 }
 
 pub const CHANGED: &str = "core.plan@changed";
@@ -163,6 +169,7 @@ pub fn act(backend: &dyn Backend, path: &str, args: &str) -> Value {
                 state.shown_vehicle = state.vehicle_prompt.filter(|offline| *offline).map(|_| NO_VEHICLE_SHOWN);
                 state.vehicle_prompt = None;
                 state.dirty = false;
+                state.dirty_for_save = false;
             }
             follow_vehicle();
             changed();
@@ -228,6 +235,7 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
                 let previous = state.document.replace(changed);
                 remember(&mut state, previous, crate::hub::now_ms());
                 state.dirty = true;
+                state.dirty_for_save = true;
                 (json!({ "ok": true, "items": count }), before)
             }
             Err(reason) => return refused(reason),
@@ -590,6 +598,7 @@ fn save(file: &str) -> Value {
             {
                 let mut state = held();
                 state.file = Some(file.to_string());
+                state.dirty_for_save = false;
                 if offline {
                     settle_clean(&mut state);
                 }
@@ -717,7 +726,7 @@ fn send_through_host(backend: &dyn Backend) -> Value {
     }
     let sent = crate::read::object(&backend.invoke("plan.sendToVehicle", "[]"));
     if crate::read::flag(&sent, "ok") {
-        settle_clean(&mut held());
+        settle_uploaded(&mut held());
         changed();
     }
     sent
@@ -767,16 +776,14 @@ fn follow_vehicle() {
             (None, _) if state.shown_vehicle.is_some() => {
                 state.shown_vehicle = None;
                 let has_items = state.document.as_ref().is_some_and(contains_items);
-                if state.dirty && has_items {
+                if state.dirty_for_save && has_items {
                     state.vehicle_prompt = Some(true);
-                }
-                if state.dirty || !has_items {
                     drop(state);
                     changed();
                     return;
                 }
                 let before = state.document.clone();
-                state.document = state.document.clone().map(|d| Document { home: None, items: Vec::new(), settings_sections: Vec::new(), ..d });
+                state.document = state.document.clone().map(|d| Document { home: None, items: Vec::new(), settings_sections: Vec::new(), fence: empty_document().fence, rally: empty_document().rally, ..d });
                 state.wizard = None;
                 remember(&mut state, before, crate::hub::now_ms());
                 state.selected = 0;
@@ -790,10 +797,10 @@ fn follow_vehicle() {
                 crate::settingsstore::set_raw("settings.appSettings.offlineEditingFirmwareClass", &json!(firmware_class));
                 crate::settingsstore::set_raw("settings.appSettings.offlineEditingVehicleClass", &json!(vehicle_class));
                 let has_items = state.document.as_ref().is_some_and(contains_items);
-                if state.dirty && has_items {
+                if state.dirty_for_save && has_items {
                     state.vehicle_prompt = Some(false);
                 }
-                (!state.dirty).then_some(vehicle)
+                (!state.dirty_for_save || !has_items).then_some(vehicle)
             }
             _ => return,
         }
@@ -871,7 +878,7 @@ fn send() -> Value {
     match started {
         Ok(outbound) => {
             deliver(outbound);
-            settle_clean(&mut held());
+            settle_uploaded(&mut held());
             send_after_mission(document);
             changed();
             json!({ "ok": true, "items": items.len() })
@@ -975,6 +982,9 @@ fn fetch() -> Value {
     }) else {
         return refused("No vehicle is connected through the core.");
     };
+    if crate::hub::lock().active().is_some_and(crate::hub::Vehicle::on_high_latency_link) {
+        return refused(crate::hub::HIGH_LATENCY_DOWNLOAD);
+    }
     held().fetching = true;
     std::thread::spawn(move || {
         let mission_read = load("mission");
@@ -1274,9 +1284,14 @@ fn step(undoing: bool) -> Value {
         }
         state.last_change_ms = 0;
         state.dirty = state.document.as_ref().map(plandoc::save) != state.clean.as_ref().map(plandoc::save);
+        state.dirty_for_save = true;
     }
     changed();
     json!({ "ok": true, "reason": null, "refusal": null })
+}
+
+pub fn plan_types() -> Option<(i64, i64)> {
+    held().document.as_ref().map(|document| (document.firmware_type, document.vehicle_type))
 }
 
 pub fn history() -> Option<(bool, bool)> {
@@ -1313,7 +1328,7 @@ fn clear(backend: &dyn Backend) -> Value {
         let mut state = held();
         let template = state.document.clone().or(fresh).unwrap_or_else(empty_document);
         let before = state.document.clone();
-        state.document = Some(Document { home: None, items: Vec::new(), settings_sections: Vec::new(), ..template });
+        state.document = Some(Document { home: None, items: Vec::new(), settings_sections: Vec::new(), fence: empty_document().fence, rally: empty_document().rally, ..template });
         state.wizard = None;
         remember(&mut state, before, crate::hub::now_ms());
         state.selected = 0;
