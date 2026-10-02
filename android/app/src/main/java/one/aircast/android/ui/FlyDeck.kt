@@ -177,7 +177,9 @@ internal fun guidedIcon(id: String): Int = when (id) {
     "cancelRoi" -> R.drawable.ic_close
     PAUSE -> R.drawable.ic_pause
     "landAbort" -> R.drawable.ic_flight_takeoff
-    "release", "grab", "hold" -> R.drawable.ic_tune
+    "release" -> R.drawable.ic_download
+    "grab" -> R.drawable.ic_upload
+    "hold" -> R.drawable.ic_stop_circle
     "vtolTransitionToFixedWing", "vtolTransitionToMultiRotor" -> R.drawable.ic_swap_horiz
     "forceArm" -> R.drawable.ic_bolt
     else -> R.drawable.ic_send
