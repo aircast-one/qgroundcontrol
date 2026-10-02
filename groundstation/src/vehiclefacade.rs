@@ -1609,6 +1609,9 @@ impl<B: Backend> Backend for Facade<B> {
             let started = self.0.core_guided(&json!({ "action": "calibrate", "vehicle": vehicle, "request": request }));
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
+        if path == "vehicle.flashBootloader" && switched_on() && !crate::hub::lock().active().is_some_and(|v| v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT) {
+            return json!({ "ok": true }).to_string();
+        }
         if let Some(params) = (switched_on()).then(|| vehicle_command(path, args)).flatten() {
             if let Some(vehicle) = crate::hub::lock().active_id() {
                 let (command, params) = params;

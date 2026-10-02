@@ -1390,13 +1390,13 @@ impl Vehicle {
                         let app = Some(crate::noticeboard::application_name()).filter(|n| !n.is_empty()).unwrap_or_else(|| "QGroundControl".to_string());
                         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &format!("{app} was unable to retrieve the full set of parameters from vehicle {}. This will cause {app} to be unable to display its full user interface. If you are using modified firmware, you may need to resolve any vehicle startup errors to resolve the issue. If you are using standard firmware, you may need to upgrade to a newer version to resolve the issue.", self.id));
                     }
-                    let time = Outbound::SystemTime { time_unix_usec: now_us() };
-                    let clock: Vec<Vec<u8>> = [&time, &time].into_iter().filter_map(|send| self.encode(send)).collect();
+                    let clock = self.send_clock();
                     clock.into_iter().chain(self.step_done(connect::Step::Parameters, now_ms)).collect()
                 }
                 params::Action::NoResponse => {
                     self.note("The vehicle did not respond to the parameter request.".to_string());
-                    self.step_done(connect::Step::Parameters, now_ms)
+                    let clock = self.send_clock();
+                    clock.into_iter().chain(self.step_done(connect::Step::Parameters, now_ms)).collect()
                 }
                 params::Action::ReadFailed { component, name } => {
                     self.note(format!("Parameter read failed: {name} on component {component}"));
@@ -1851,6 +1851,11 @@ impl Vehicle {
             self.note(format!("Unable to encode {send:?}"));
         }
         bytes
+    }
+
+    fn send_clock(&mut self) -> Vec<Vec<u8>> {
+        let time = Outbound::SystemTime { time_unix_usec: now_us() };
+        [&time, &time].into_iter().filter_map(|send| self.encode(send)).collect()
     }
 
     fn send_tagged(&mut self, command: u16, params: [f64; 7], show_error: bool, tag: u64, now_ms: u64) -> Vec<Vec<u8>> {
@@ -2660,6 +2665,7 @@ impl Vehicle {
                 if a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED {
                     match a.command {
                         mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_ROI_LOCATION => self.roi_enabled = true,
+                        mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_FLASH_BOOTLOADER => self.pending_notices.push((crate::noticeboard::MESSAGE, "Bootloader flash succeeded".to_string())),
                         mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_ROI_NONE => {
                             self.roi_enabled = false;
                             self.roi_coord = None;
@@ -4723,6 +4729,16 @@ mod tests {
         assert_eq!(vehicle.autotune.status, "Autotune: Success");
         assert!(vehicle.pending_notices.iter().any(|(_, text)| text == "Autotune successful."));
         assert_eq!(polls(&vehicle.pump_with(33_000, None, 0)), 0, "finished, so polling stops");
+    }
+
+    #[test]
+    fn an_accepted_bootloader_flash_says_so() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(0), &header, &MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_FLASH_BOOTLOADER, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() }), 1, 1);
+        assert!(hub.active().unwrap().pending_notices.iter().any(|(_, t)| t == "Bootloader flash succeeded"), "Vehicle::_handleCommandAck");
     }
 
     #[test]
