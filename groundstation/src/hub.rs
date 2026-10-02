@@ -315,6 +315,7 @@ pub struct Vehicle {
     params: Params,
     initial_due: Option<u64>,
     waiting_due: Option<u64>,
+    sensor_refresh_due: Option<u64>,
     metadata_types: BTreeMap<u8, Uris>,
     parameter_metadata: Option<ComponentParameters>,
     pub parameter_download_skipped: bool,
@@ -499,6 +500,7 @@ impl Vehicle {
             params: Params::new(component, autopilot == crate::modes::AUTOPILOT_PX4),
             initial_due: None,
             waiting_due: None,
+            sensor_refresh_due: None,
             metadata_types: BTreeMap::new(),
             parameter_metadata: None,
             parameter_download_skipped: false,
@@ -1963,6 +1965,12 @@ impl Vehicle {
             let actions = self.params.on_initial_timeout();
             bytes.extend(self.follow_params(actions, now_ms));
         }
+        if self.sensor_refresh_due.is_some_and(|due| now_ms >= due) {
+            self.sensor_refresh_due = None;
+            let component = self.component;
+            let actions: Vec<params::Action> = self.parameters(component).into_iter().filter(|(name, _)| sensor_parameter(name)).flat_map(|(name, _)| self.params.refresh(component, &name)).collect();
+            bytes.extend(self.follow_params(actions, now_ms));
+        }
         if self.waiting_due.is_some_and(|due| now_ms >= due) {
             self.waiting_due = None;
             let actions = self.params.on_waiting_timeout();
@@ -2618,6 +2626,11 @@ impl Vehicle {
                     if a.command == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_MODE {
                         self.mode_ack = Some((a.result as u8, self.mode_ack.map_or(1, |(_, serial)| serial + 1)));
                     }
+                    if a.command == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_PREFLIGHT_STORAGE && self.autopilot == crate::modes::AUTOPILOT_PX4 {
+                        let reset = a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED;
+                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", if reset { "Reset successful" } else { "Reset failed" });
+                        self.sensor_refresh_due = reset.then_some(now_ms + SENSOR_REFRESH_DELAY_MS);
+                    }
                 }
                 if a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED {
                     match a.command {
@@ -3132,6 +3145,12 @@ pub struct LinkKinds {
     pub cloud: Vec<LinkId>,
     pub high_latency: Vec<LinkId>,
     pub usb_direct: Vec<LinkId>,
+}
+
+const SENSOR_REFRESH_DELAY_MS: u64 = 1000;
+
+fn sensor_parameter(name: &str) -> bool {
+    name.starts_with("CAL_") || name.starts_with("SENS_")
 }
 
 const APM_CALIBRATION_PROMPTS: [&str; 2] = ["Place vehicle", "Calibration successful"];
@@ -4195,6 +4214,32 @@ mod tests {
         assert_eq!((hub.selected_count(), hub.selected_member(0).map(|v| v.id)), (1, Some(7)), "a vehicle that goes is deselected");
         hub.deselect_vehicle(7);
         assert_eq!(hub.selected_count(), 0);
+    }
+
+    #[test]
+    fn a_px4_factory_reset_rereads_the_sensor_parameters_a_second_after_it_is_accepted() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, HEARTBEAT_DATA, MavAutopilot, MavCmd, MavResult, MavType};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut beat = HEARTBEAT_DATA::default();
+        beat.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        beat.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+        hub.on_frame(origin(0), &header, &MavMessage::HEARTBEAT(beat), 0, 0);
+        [("CAL_ACC0_ID", 0), ("SENS_BOARD_ROT", 1), ("RTL_RETURN_ALT", 2)].iter().for_each(|(name, index)| {
+            hub.on_frame(origin(0), &header, &param_value(name, 3, *index, 1.0), 0, 10);
+        });
+        let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_PREFLIGHT_STORAGE, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
+        hub.on_frame(origin(0), &header, &ack, 0, 100);
+        let reads = |frames: Vec<(LinkId, Vec<u8>)>| -> Vec<String> { frames.iter().filter_map(|(_, b)| match decode(b) { MavMessage::PARAM_REQUEST_READ(r) => Some(r.param_id.to_str().unwrap().to_string()), _ => None }).collect() };
+        assert!(reads(hub.tick(1_099)).is_empty(), "SensorsComponentController waits a second before _refreshParams");
+        let mut reread = reads(hub.tick(1_100));
+        reread.sort();
+        assert_eq!(reread, ["CAL_ACC0_ID", "SENS_BOARD_ROT"], "only CAL_* and SENS_* are bulk-refreshed");
+    }
+
+    #[test]
+    fn sensor_parameters_are_the_cal_and_sens_families() {
+        assert!(sensor_parameter("CAL_MAG0_ROT") && sensor_parameter("SENS_DPRES_OFF") && !sensor_parameter("RTL_RETURN_ALT"));
     }
 
     #[test]
