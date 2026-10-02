@@ -102,6 +102,10 @@ internal val PAGE_NOTES = mapOf(
     "Packet Radio" to "Video and telemetry over a wfb-ng radio on a USB Wi-Fi adapter",
     "Remote ID" to "Operator and aircraft identification, which some regions require in flight",
     "RTK GPS" to "Base station accuracy and position",
+    "NTRIP / RTK" to "Correction stream from a caster for centimetre GPS",
+    "PX4 Log Transfer" to "Stream the vehicle's log to this device while it flies",
+    "About" to "Version and where to get help",
+    "Console" to "The app's own log, for diagnosing a problem",
 )
 
 internal enum class SettingsGroup(val title: String) { Connection("Connection"), Flying("Flying"), App("App"), More("More") }
