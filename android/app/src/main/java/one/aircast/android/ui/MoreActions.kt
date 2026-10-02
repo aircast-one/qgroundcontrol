@@ -31,6 +31,8 @@ private const val LAND_ABORT = "landAbort"
 
 internal val AUTO_POPUP_ACTIONS = listOf(LAND_ABORT, "startMission", "continueMission")
 
+internal fun popupReplacesOpenConfirm(id: String): Boolean = id == LAND_ABORT
+
 internal fun autoMissionPopup(wasReady: Set<String>, offers: Map<String, GuidedOffer>, enabled: Boolean): GuidedOffer? =
     AUTO_POPUP_ACTIONS.mapNotNull { offers[it] }.firstOrNull { (enabled || it.id == LAND_ABORT) && it.ready && it.id !in wasReady }
 

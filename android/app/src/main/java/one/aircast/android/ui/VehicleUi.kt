@@ -319,7 +319,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         if (altitudeTarget != null && offerWithdrawn(if (altitudePauses) PAUSE else "changeAltitude", offers)) altitudeTarget = null
         val popup = missionReady?.let { autoMissionPopup(it, offers, automaticMissionPopups) }
         missionReady = AUTO_POPUP_ACTIONS.filter { offers[it]?.ready == true }.toSet()
-        if (popup != null && pending == null) {
+        if (popup != null && (pending == null || popupReplacesOpenConfirm(popup.id))) {
             guidedCommand(popup.id, resumeFrom)?.let { command ->
                 pending = GuidedAction(name = popup.title, confirm = popup.prompt, destructive = popup.destructive, offerId = popup.id, run = command)
             }

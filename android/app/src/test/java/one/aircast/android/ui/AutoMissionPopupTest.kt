@@ -21,6 +21,8 @@ class AutoMissionPopupTest {
         val approach = mapOf("landAbort" to offer("landAbort", "ready"))
         assertEquals("GuidedActionsController's onShowLandAbortChanged confirms it whatever enableAutomaticMissionPopups says", "landAbort", autoMissionPopup(emptySet(), approach, enabled = false)?.id)
         assertNull(autoMissionPopup(setOf("landAbort"), approach, enabled = false))
+        assertEquals("confirmAction(actionLandAbort) replaces whatever confirm is open", true, popupReplacesOpenConfirm("landAbort"))
+        assertEquals(false, popupReplacesOpenConfirm("startMission"))
     }
 
     @Test
