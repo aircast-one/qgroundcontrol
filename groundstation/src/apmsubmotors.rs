@@ -27,12 +27,17 @@ pub fn is_detection_text(text: &str) -> bool {
     lower.contains("thruster") || lower.contains("motor")
 }
 
-pub fn on_text(flight_mode: &str, text: &str) {
-    if flight_mode == MOTOR_DETECTION_MODE && is_detection_text(text) {
+pub fn on_text(detecting: bool, text: &str) {
+    if detecting && is_detection_text(text) {
         let mut log = DETECTION_LOG.lock().unwrap_or_else(PoisonError::into_inner);
         log.push_str(text);
         log.push('\n');
     }
+}
+
+fn in_detection(vehicle: &Value) -> bool {
+    let detection = vehicle.get("motorDetectionFlightMode").and_then(Value::as_str).unwrap_or(MOTOR_DETECTION_MODE);
+    vehicle.get("flightMode").and_then(Value::as_str) == Some(detection)
 }
 
 fn direction_path(motor: i64) -> String {
@@ -52,11 +57,11 @@ pub fn test_percent(slider: f64, reversed: bool) -> f64 {
 }
 
 pub fn apm_sub_motors_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "sub,apmFirmware,armed,flightMode,motorCount,firmwareMajorVersion"));
+    let vehicle = object(&backend.get_fields("vehicle", "sub,apmFirmware,armed,flightMode,motorDetectionFlightMode,motorCount,firmwareMajorVersion"));
     if !(flag(&vehicle, "sub") && flag(&vehicle, "apmFirmware")) {
         return json!({ "kind": "object", "class": "ApmSubMotors", "available": false });
     }
-    let detecting = vehicle.get("flightMode").and_then(Value::as_str) == Some(MOTOR_DETECTION_MODE);
+    let detecting = in_detection(&vehicle);
     let armed = flag(&vehicle, "armed");
     let count = slider_count(vehicle.get("motorCount").and_then(Value::as_i64));
     json!({
@@ -87,8 +92,8 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
             _ => json!({ "ok": false, "reason": "apmSubMotors.reverse takes a motor number and whether it is reversed" }),
         },
         TEST => {
-            let vehicle = object(&backend.get_fields("vehicle", "armed,flightMode"));
-            if !flag(&vehicle, "armed") || vehicle.get("flightMode").and_then(Value::as_str) == Some(MOTOR_DETECTION_MODE) {
+            let vehicle = object(&backend.get_fields("vehicle", "armed,flightMode,motorDetectionFlightMode"));
+            if !flag(&vehicle, "armed") || in_detection(&vehicle) {
                 return json!({ "ok": false, "reason": "Arm the vehicle with the switch to test the motors." });
             }
             match (number(0).filter(|i| *i >= 0.0), number(1).filter(|v| (0.0..=FULL_SLIDER).contains(v))) {

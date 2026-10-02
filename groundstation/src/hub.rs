@@ -1448,6 +1448,12 @@ impl Vehicle {
         announced.map_or_else(|| crate::modes::name(self.autopilot, self.vehicle_type, self.base_mode, self.custom_mode), |m| m.name.clone())
     }
 
+    pub fn announced_name(&self, canonical: &str) -> String {
+        crate::modes::custom_mode_for(self.autopilot, self.vehicle_type, canonical)
+            .and_then(|custom| self.flight_modes.iter().find(|m| m.custom_mode == custom))
+            .map_or_else(|| canonical.to_string(), |m| m.name.clone())
+    }
+
     fn custom_mode_named(&self, name: &str) -> Option<u32> {
         self.flight_modes.iter().find(|m| m.name == name).map(|m| m.custom_mode).or_else(|| crate::modes::custom_mode_for(self.autopilot, self.vehicle_type, name))
     }
@@ -2037,14 +2043,9 @@ impl Vehicle {
         bytes.extend(self.onboard_log_outs(was_busy, log_due, now_ms));
         if self.chunk_due.is_some_and(|due| now_ms >= due) {
             self.chunk_due = None;
-            let expired = self.status_text.expire_pending();
-            expired.iter().for_each(|status| {
-                self.log_status(status);
-                self.note_prearm(&status.text, status.severity, status.component, now_ms);
-            });
-            self.recent.extend(expired);
-            let excess = self.recent.len().saturating_sub(MAX_MESSAGES);
-            self.recent.drain(..excess);
+            let ardupilot = self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
+            let expired: Vec<Vec<u8>> = self.status_text.expire_pending().into_iter().map(|status| calibration_as_info(status, ardupilot)).flat_map(|status| self.take_status(status, now_ms)).collect();
+            bytes.extend(expired);
         }
         let stalled = self.calibrate.tick(now_ms);
         bytes.extend(self.follow_calibration(stalled, now_ms));
@@ -2182,7 +2183,7 @@ impl Vehicle {
         }
         self.log_status(&status);
         crate::escal::on_text(self.id, &status.text);
-        crate::apmsubmotors::on_text(&self.flight_mode(), &status.text);
+        crate::apmsubmotors::on_text(self.flight_mode() == self.announced_name(crate::apmsubmotors::MOTOR_DETECTION_MODE), &status.text);
         let actions = self.calibrate.on_text(&status.text, now_ms);
         let bytes = self.follow_calibration(actions, now_ms);
         self.note_prearm(&status.text, status.severity, status.component, now_ms);

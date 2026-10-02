@@ -512,6 +512,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "sensorsUnhealthyBits": v.status_bits.unhealthy(),
         "landing": v.landing,
         "flightMode": v.flight_mode(),
+        "motorDetectionFlightMode": v.announced_name(crate::apmsubmotors::MOTOR_DETECTION_MODE),
         "px4Firmware": v.autopilot == crate::modes::AUTOPILOT_PX4,
         "apmFirmware": v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT,
         "fixedWing": class == FixedWing,

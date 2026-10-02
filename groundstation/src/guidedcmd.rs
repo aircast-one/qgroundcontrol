@@ -81,9 +81,10 @@ fn nan() -> f64 {
 
 pub fn set_mode(state: &VehicleState, mode: &str) -> Option<Vec<Step>> {
     let custom = state.announced_modes.iter().find(|(name, _)| name == mode).map(|(_, custom)| *custom).or_else(|| modes::custom_mode_for(state.autopilot, state.vehicle_type, mode))?;
+    let shown = state.announced_modes.iter().find(|(_, announced)| *announced == custom).map_or_else(|| mode.to_string(), |(name, _)| name.clone());
     let base = (state.base_mode & !FLAG_CUSTOM) | FLAG_CUSTOM;
     let via_command = state.autopilot == AUTOPILOT_ARDUPILOT;
-    Some(vec![Step::SetMode { mode: mode.to_string(), base_mode: base, custom_mode: custom, via_command }, Step::WaitForMode(mode.to_string())])
+    Some(vec![Step::SetMode { mode: shown.clone(), base_mode: base, custom_mode: custom, via_command }, Step::WaitForMode(shown)])
 }
 
 fn mode_or_refuse(state: &VehicleState, mode: &str) -> Result<Vec<Step>, String> {
@@ -461,6 +462,8 @@ mod tests {
         let external = VehicleState { announced_modes: vec![("MyMode".into(), 385_875_968)], ..px4() };
         let steps = set_mode(&external, "MyMode").expect("FirmwarePlugin::updateAvailableFlightModes rebuilds the name table from AVAILABLE_MODES");
         assert!(matches!(steps[0], Step::SetMode { custom_mode: 385_875_968, .. }));
+        let upper = VehicleState { announced_modes: vec![("GUIDED".into(), 4)], ..copter() };
+        assert_eq!(set_mode(&upper, "Guided").unwrap()[1], Step::WaitForMode("GUIDED".into()), "APMFirmwarePlugin::guidedFlightMode resolves through the announced names, so the wait matches what the vehicle reports");
     }
 
     #[test]

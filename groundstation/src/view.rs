@@ -752,6 +752,7 @@ mod deps_cover_reads {
         "vehicle.id",
         "vehicle.flightModeSetAvailable",
         "vehicle.rtlFlightMode",
+        "vehicle.motorDetectionFlightMode",
         "vehicle.landFlightMode",
         "links.linkTypeStrings",
     "vehicle.supports.roiMode",
