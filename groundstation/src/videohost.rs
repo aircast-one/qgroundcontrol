@@ -156,17 +156,21 @@ fn host_port(rest: &str) -> Option<(String, u16)> {
 }
 
 const RETRANSMISSION_MIN_LATENCY_MS: i64 = 40;
+const UDP_BUFFER_BYTES: u32 = 8 * 1024 * 1024;
+const TS_VIDEO: &str = "\"video/x-h264;video/x-h265\"";
+const WHEP_TIMEOUT_S: u32 = 8;
+const WHEP_VIDEO_CAPS: &str = "application/x-rtp,media=(string)video,encoding-name=(string)H264,payload=(int)96,clock-rate=(int)90000;application/x-rtp,media=(string)video,encoding-name=(string)H265,payload=(int)97,clock-rate=(int)90000";
 
 pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String> {
     let retransmit = latency_ms >= RETRANSMISSION_MIN_LATENCY_MS && !low_latency;
     let jitter = match low_latency {
         true => String::new(),
-        false => format!(" ! rtpjitterbuffer latency={latency_ms} do-lost=true do-retransmission={retransmit} drop-on-latency=true"),
+        false => format!(" ! rtpjitterbuffer latency={latency_ms} do-lost=true do-retransmission={retransmit} drop-on-latency=true{}", if retransmit { " rtx-delay=25 rtx-max-retries=1" } else { "" }),
     };
     let rtp = |encoding: &str, rest: &str| {
         let (host, port) = host_port(rest)?;
         Some(format!(
-            "udpsrc address={host} port={port} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string){encoding}\"{jitter}"
+            "udpsrc address={host} port={port} buffer-size={UDP_BUFFER_BYTES} caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string){encoding}\"{jitter}"
         ))
     };
     let source = match uri.split_once("://")? {
@@ -175,15 +179,15 @@ pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String>
         ("udp265", rest) => rtp("H265", rest)?,
         ("mpegts", rest) => {
             let (host, port) = host_port(rest)?;
-            format!("udpsrc address={host} port={port} ! tsdemux")
+            format!("udpsrc address={host} port={port} buffer-size={UDP_BUFFER_BYTES} ! tsdemux ! {TS_VIDEO}")
         }
         ("tcp", rest) => {
             let (host, port) = host_port(rest)?;
-            format!("tcpclientsrc host={host} port={port} ! tsdemux")
+            format!("tcpclientsrc host={host} port={port} ! tsdemux ! {TS_VIDEO}")
         }
         ("http" | "https" | "whep" | "wheps", _) => {
             let endpoint = uri.replacen("wheps://", "https://", 1).replacen("whep://", "http://", 1);
-            format!("whepsrc whep-endpoint={}", quoted(&endpoint))
+            format!("whepsrc whep-endpoint={} video-caps={} audio-caps=EMPTY timeout={WHEP_TIMEOUT_S}", quoted(&endpoint), quoted(WHEP_VIDEO_CAPS))
         }
         _ => return None,
     };
@@ -279,7 +283,7 @@ fn object(host: &Host) -> Value {
     let settings = &state.settings;
     let current = settings.current_index();
     let latency = setting("rtpJitterLatencyMs").as_i64().unwrap_or(80);
-    let uri = state.main_camera().map(|main| source_uri(settings.source_at(main), state.url_at(main))).unwrap_or_default();
+    let uri = state.desired_uri(MAIN_RECEIVER);
     let (width, height) = state.video_size.unwrap_or((0, 0));
     json!({
         "kind": "object",
@@ -425,10 +429,13 @@ mod tests {
 
     #[test]
     fn a_uri_becomes_a_pipeline_ending_in_the_native_sink() {
-        assert_eq!(pipeline("udp://0.0.0.0:5600", 80, false).unwrap(), "udpsrc address=0.0.0.0 port=5600 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! rtpjitterbuffer latency=80 do-lost=true do-retransmission=true drop-on-latency=true ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=true");
-        assert_eq!(pipeline("udp://0.0.0.0:5600", 80, true).unwrap(), "udpsrc address=0.0.0.0 port=5600 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false", "low latency drops the jitter buffer and the clock sync, as GstVideoReceiver does with _buffer -1");
+        assert_eq!(pipeline("udp://0.0.0.0:5600", 80, false).unwrap(), "udpsrc address=0.0.0.0 port=5600 buffer-size=8388608 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! rtpjitterbuffer latency=80 do-lost=true do-retransmission=true drop-on-latency=true rtx-delay=25 rtx-max-retries=1 ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=true");
+        assert_eq!(pipeline("udp://0.0.0.0:5600", 80, true).unwrap(), "udpsrc address=0.0.0.0 port=5600 buffer-size=8388608 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false", "low latency drops the jitter buffer and the clock sync, as GstVideoReceiver does with _buffer -1");
         assert_eq!(pipeline("rtsp://cam/main", 20, false).unwrap(), "rtspsrc location=\"rtsp://cam/main\" latency=20 do-rtcp=true do-retransmission=false drop-on-latency=true ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=true", "retransmission needs 40 ms of headroom");
         assert!(pipeline("whep://sfu/whep/x", 80, false).unwrap().starts_with("whepsrc whep-endpoint=\"http://sfu/whep/x\""));
+        assert!(pipeline("whep://sfu/whep/x", 80, false).unwrap().contains("encoding-name=(string)H265,payload=(int)97") && pipeline("whep://sfu/whep/x", 80, false).unwrap().contains("audio-caps=EMPTY timeout=8"), "buildWhepSource offers H.264 and H.265 video only");
+        assert!(pipeline("mpegts://0.0.0.0:5600", 80, false).unwrap().contains("tsdemux ! \"video/x-h264;video/x-h265\" ! tee"), "only a video pad of the transport stream reaches the tee");
+        assert_eq!(crate::videostate::source_uri(crate::videostate::SOURCE_WEBRTC, "sfu.host/whep/x"), "http://sfu.host/whep/x", "QUrl::fromUserInput supplies the scheme");
         assert_eq!(pipeline("bogus", 80, false), None);
     }
 

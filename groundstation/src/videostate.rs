@@ -124,7 +124,11 @@ pub fn source_uri(source: &str, url: &str) -> String {
         SOURCE_MPEGTS => format!("mpegts://{url}"),
         SOURCE_RTSP => url.to_string(),
         SOURCE_TCP => format!("tcp://{url}"),
-        SOURCE_WEBRTC => url.trim().to_string(),
+        SOURCE_WEBRTC => match url.trim() {
+            "" => String::new(),
+            bare if !bare.contains("://") => format!("http://{bare}"),
+            given => given.to_string(),
+        },
         SOURCE_3DR_SOLO => "udp://0.0.0.0:5600".to_string(),
         SOURCE_PARROT_DISCOVERY => "udp://0.0.0.0:8888".to_string(),
         SOURCE_YUNEEC_MANTIS_G => "rtsp://192.168.42.1:554/live".to_string(),
@@ -459,7 +463,7 @@ impl VideoState {
         self.settings.switchable().len() > 1
     }
 
-    fn desired_uri(&self, receiver: &str) -> String {
+    pub fn desired_uri(&self, receiver: &str) -> String {
         let Some(index) = self.settings.camera_index_for_receiver(receiver) else { return String::new() };
         match (index, self.auto_stream_uri.as_ref()) {
             (0, Some(uri)) if receiver == MAIN_RECEIVER => uri.clone(),
