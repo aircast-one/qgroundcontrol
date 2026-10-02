@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.FilterChip
+
 import androidx.compose.foundation.background
 
 import androidx.compose.ui.draw.clip
@@ -465,6 +467,9 @@ internal fun FactRow(
     val scope = rememberCoroutineScope()
     var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
 
+    val segmented = !editOnDesktop(fact) && notBuiltHere(fact) == null && !fact.isBitmask &&
+        showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings)
+
     fun write(block: () -> Boolean) {
         scope.launch {
             val accepted = withContext(Dispatchers.Default) { block() }
@@ -500,7 +505,7 @@ internal fun FactRow(
             }
         }
 
-        Box(Modifier.widthIn(max = 190.dp), contentAlignment = Alignment.CenterEnd) {
+        if (!segmented) Box(Modifier.widthIn(max = 190.dp), contentAlignment = Alignment.CenterEnd) {
             when {
                 editOnDesktop(fact) -> Column(
                     horizontalAlignment = Alignment.End,
@@ -546,6 +551,20 @@ internal fun FactRow(
             }
         }
     }
+    if (segmented) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            fact.enumStrings.forEachIndexed { index, option ->
+                FilterChip(
+                    selected = index == fact.enumIndex,
+                    onClick = { write { Qgc.set("${fact.path}.enumIndex", index) } },
+                    label = { Text(option) },
+                )
+            }
+        }
+    }
     refusal?.let {
         Text(
             text = it,
@@ -556,6 +575,11 @@ internal fun FactRow(
     }
     }
 }
+
+internal const val SEGMENT_LABEL_BUDGET = 28
+
+internal fun showsAsSegments(isEnum: Boolean, offList: Boolean, writable: Boolean, options: List<String>): Boolean =
+    isEnum && !offList && writable && options.size in 2..4 && options.sumOf { it.length } <= SEGMENT_LABEL_BUDGET
 
 @Composable
 private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
