@@ -22,9 +22,9 @@ pub fn state(enabled: bool, healthy: bool) -> &'static str {
 
 fn state_label(state: &str) -> &'static str {
     match state {
-        "healthy" => "Healthy",
-        "unhealthy" => "Fault",
-        _ => "Not enabled",
+        "healthy" => "Normal",
+        "unhealthy" => "Error",
+        _ => "Disabled",
     }
 }
 
@@ -100,7 +100,7 @@ mod tests {
         let view = sensors_view(&Fake, &[]);
         assert_eq!(view["available"], true);
         assert_eq!(view["failing"][0], "GPS");
-        assert_eq!(view["sensors"][0]["label"], "Fault");
+        assert_eq!(view["sensors"][0]["label"], "Error");
         assert_eq!(view["status"], "");
     }
 }

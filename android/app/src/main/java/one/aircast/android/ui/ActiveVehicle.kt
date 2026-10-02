@@ -121,13 +121,15 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     androidx.compose.material3.Surface(
         shape = MaterialTheme.shapes.small,
         color = when {
-            lost -> MaterialTheme.colorScheme.errorContainer
+            lost || fly?.fault == true -> MaterialTheme.colorScheme.errorContainer
             disconnected -> MaterialTheme.colorScheme.surfaceContainerHigh
+            fly?.nominal == false -> MaterialTheme.aircast.warningContainer
             else -> MaterialTheme.aircast.successContainer
         },
         contentColor = when {
-            lost -> MaterialTheme.colorScheme.onErrorContainer
+            lost || fly?.fault == true -> MaterialTheme.colorScheme.onErrorContainer
             disconnected -> MaterialTheme.colorScheme.onSurface
+            fly?.nominal == false -> MaterialTheme.aircast.warning
             else -> MaterialTheme.aircast.success
         },
         onClick = {
@@ -241,6 +243,12 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
+            }
+            if (!disconnected && !taken) {
+                Row(Modifier.padding(horizontal = 16.dp)) {
+                    androidx.compose.material3.TextButton(onClick = { picking = false; modeMenu = true }) { Text("Flight mode") }
+                    androidx.compose.material3.TextButton(onClick = { picking = false; statusSettings = true }) { Text("Vehicle status") }
+                }
             }
             ControlHolderNote(station) { message -> refusal = message }
             FootNote(

@@ -55,7 +55,7 @@ pub fn indicator(snapshot: &Value, show_azimuth: bool, show_control: bool, on_sc
         "class": "GimbalIndicator",
         "shown": true,
         "multi": gimbals.len() > 1,
-        "gimbals": gimbals.iter().enumerate().map(|(i, g)| json!({ "name": format!("Gimbal {}", i + 1), "managerCompid": g["managerCompid"], "deviceId": g["deviceId"], "active": flag(g, "active") })).collect::<Vec<_>>(),
+        "gimbals": gimbals.iter().enumerate().map(|(i, g)| json!({ "name": format!("Gimbal {}-{}", g["managerCompid"].as_i64().unwrap_or(0), g["deviceId"].as_i64().unwrap_or(0)), "managerCompid": g["managerCompid"], "deviceId": g["deviceId"], "active": flag(g, "active") })).collect::<Vec<_>>(),
         "statusText": status_text(&active),
         "pitchText": angle(&active["pitch"]).map(|v| format!("P: {v}")),
         "yawText": yaw,

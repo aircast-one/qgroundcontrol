@@ -52,6 +52,7 @@ const DESCRIPTIONS: &[(&str, &str)] = &[
     ("Auto", "Flies the uploaded mission"),
     ("Mission", "Flies the uploaded mission"),
     ("RTL", "Climbs, returns home and lands"),
+    ("Return to Groundstation", "Returns to the ground station"),
     ("Return", "Climbs, returns home and lands"),
     ("Smart RTL", "Retraces its own path back home"),
     ("AutoRTL", "Follows the mission's landing sequence home"),

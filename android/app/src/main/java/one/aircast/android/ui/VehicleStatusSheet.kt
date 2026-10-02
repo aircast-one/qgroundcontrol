@@ -53,8 +53,10 @@ internal fun armControls(state: FlyState, forceOpen: Boolean): ArmControls = Arm
     forceSlider = !state.armed && forceOpen,
 )
 
+internal const val SENSOR_HEALTHY_STATE = "healthy"
+
 internal fun shownSensors(sensors: List<SensorHealth>, showAll: Boolean): List<SensorHealth> =
-    if (showAll) sensors else sensors.filter { it.state == SENSOR_FAULT_STATE }
+    if (showAll) sensors else sensors.filter { it.state != SENSOR_HEALTHY_STATE }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,7 +85,7 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
                         Text(sensor.label, style = MaterialTheme.typography.bodySmall, color = if (fault) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                val normal = reading.sensors.count { it.state != SENSOR_FAULT_STATE }
+                val normal = reading.sensors.count { it.state == SENSOR_HEALTHY_STATE }
                 if (normal > 0) TextButton(onClick = { showAll = !showAll }, modifier = Modifier.padding(horizontal = 12.dp)) {
                     Text(if (showAll) "Show Less" else "Show $normal More")
                 }
