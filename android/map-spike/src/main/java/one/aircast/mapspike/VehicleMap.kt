@@ -169,6 +169,7 @@ fun VehicleMap(
     onViewChanged: (List<TrackPoint>) -> Unit = { },
     bottomInsetPx: Int = 0,
     topInsetPx: Int = 0,
+    leftInsetPx: Int = 0,
     cameraBottomPx: Int = 0,
     fitRequest: Int = 0,
     fitOnly: List<TrackPoint>? = null,
@@ -459,10 +460,10 @@ fun VehicleMap(
         map?.setPadding(0, 0, 0, cameraBottomPx)
     }
 
-    LaunchedEffect(map, bottomInsetPx) {
+    LaunchedEffect(map, bottomInsetPx, leftInsetPx) {
         val settings = map?.uiSettings ?: return@LaunchedEffect
-        settings.setLogoMargins(LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
-        settings.setAttributionMargins(LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
+        settings.setLogoMargins(leftInsetPx + LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
+        settings.setAttributionMargins(leftInsetPx + LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
     }
 
     LaunchedEffect(centreRequest, map) {
@@ -505,7 +506,7 @@ fun VehicleMap(
         currentMap.animateCamera(
             CameraUpdateFactory.newLatLngBounds(
                 LatLngBounds.from(bounds.north, bounds.east, bounds.south, bounds.west),
-                FIT_PADDING_PIXELS,
+                FIT_PADDING_PIXELS + leftInsetPx,
                 FIT_PADDING_PIXELS + topInsetPx,
                 FIT_PADDING_PIXELS,
                 FIT_PADDING_PIXELS + bottomInsetPx,

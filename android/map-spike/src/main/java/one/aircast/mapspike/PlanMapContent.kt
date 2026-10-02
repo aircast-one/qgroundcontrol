@@ -81,6 +81,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -102,6 +105,8 @@ private const val PLAN_POLL_MS = 700L
 private const val FAILURE_MESSAGE_MS = 2500L
 private const val CONFIRM_TIMEOUT_MS = 5000L
 private val CONTROLS_MAX_HEIGHT = 320.dp
+private val SIDE_PANEL_WIDTH = 380.dp
+private const val SIDE_PANEL_MIN_WIDTH_DP = 840
 internal const val SUMMARY_MAX_FRACTION = 0.74f
 
 private val PRIMARY_PADDING = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
@@ -203,6 +208,8 @@ internal fun MapSpikeScreen(
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableDoubleStateOf(0.0) }
     var controlsHeightPx by remember { mutableIntStateOf(0) }
+    val sidePanel = LocalConfiguration.current.screenWidthDp >= SIDE_PANEL_MIN_WIDTH_DP
+    val sidePanelPx = with(LocalDensity.current) { SIDE_PANEL_WIDTH.roundToPx() }.takeIf { sidePanel } ?: 0
     var topOverlayPx by remember { mutableIntStateOf(0) }
 
     val kindsView by mapPath("view.missionKinds")
@@ -505,6 +512,7 @@ internal fun MapSpikeScreen(
             },
             bottomInsetPx = controlsHeightPx,
             topInsetPx = topOverlayPx,
+            leftInsetPx = sidePanelPx,
             fitRequest = fitRequest,
             fitOnly = fitOnly,
             onFitFailed = { onBridge("Fitting the plan") { false } },
@@ -547,7 +555,7 @@ internal fun MapSpikeScreen(
         overlay?.invoke(this)
 
         Column(
-            Modifier.align(Alignment.TopStart).padding(8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),
+            Modifier.align(Alignment.TopStart).padding(start = if (sidePanel) SIDE_PANEL_WIDTH + 8.dp else 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
@@ -607,17 +615,21 @@ internal fun MapSpikeScreen(
         }
 
         Surface(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .onGloballyPositioned { controlsHeightPx = it.size.height },
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            if (sidePanel) {
+                Modifier.align(Alignment.TopStart).width(SIDE_PANEL_WIDTH).fillMaxHeight()
+            } else {
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .onGloballyPositioned { controlsHeightPx = it.size.height }
+            },
+            shape = if (sidePanel) RectangleShape else RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
         ) {
             Column(
                 Modifier.padding(horizontal = 12.dp)
-                    .heightIn(max = CONTROLS_MAX_HEIGHT)
+                    .then(if (sidePanel) Modifier.fillMaxHeight().padding(top = 12.dp) else Modifier.heightIn(max = CONTROLS_MAX_HEIGHT))
                     .verticalScroll(rememberScrollState()),
             ) {
-                Box(
+                if (!sidePanel) Box(
                     Modifier
                         .align(Alignment.CenterHorizontally)
                         .padding(vertical = 10.dp)
