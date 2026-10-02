@@ -254,6 +254,7 @@ pub struct Vehicle {
     pub mode_ack: Option<(u8, u64)>,
     pub roi_coord: Option<(f64, f64, f64)>,
     pub comm_lost_enabled: bool,
+    gimbal_rate_due: Option<u64>,
     pub link_states: Vec<(LinkId, u64, bool)>,
     pub primary_link: Option<LinkId>,
     pub link_kinds: LinkKinds,
@@ -440,6 +441,7 @@ impl Vehicle {
             mode_ack: None,
             roi_coord: None,
             comm_lost_enabled: true,
+            gimbal_rate_due: None,
             link_states: Vec::new(),
             primary_link: None,
             link_kinds: LinkKinds::default(),
@@ -2077,6 +2079,10 @@ impl Vehicle {
             let expired: Vec<Vec<u8>> = self.status_text.expire_pending().into_iter().map(|status| calibration_as_info(status, ardupilot)).flat_map(|status| self.take_status(status, now_ms)).collect();
             bytes.extend(expired);
         }
+        if self.gimbal_rate_due.is_some_and(|due| now_ms >= due) {
+            let outs = crate::gimbal::lock().set_rates(None, None, now_ms);
+            bytes.extend(self.gimbal_outs(outs, now_ms).unwrap_or_default());
+        }
         let stalled = self.calibrate.tick(now_ms);
         bytes.extend(self.follow_calibration(stalled, now_ms));
         if self.odid_due.is_some_and(|due| now_ms >= due) {
@@ -3216,11 +3222,17 @@ impl Vehicle {
                 _ => return Vec::new(),
             }
         };
-        self.gimbal_outs(outs).unwrap_or_default()
+        self.gimbal_outs(outs, now_ms).unwrap_or_default()
     }
 
-    fn gimbal_outs(&mut self, outs: Vec<crate::gimbal::Out>) -> Result<Vec<Vec<u8>>, String> {
+    fn gimbal_outs(&mut self, outs: Vec<crate::gimbal::Out>, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
         use crate::gimbal::Out;
+        if outs.contains(&Out::StopRateRepeat) {
+            self.gimbal_rate_due = None;
+        }
+        if outs.contains(&Out::StartRateRepeat) {
+            self.gimbal_rate_due = Some(now_ms + GIMBAL_RATE_REPEAT_MS);
+        }
         const MAV_CMD_REQUEST_MESSAGE: u16 = 512;
         const MAV_CMD_SET_MESSAGE_INTERVAL: u16 = 511;
         if let Some(reason) = outs.iter().find_map(|out| match out {
@@ -3275,7 +3287,7 @@ impl Vehicle {
                 other => return Err(format!("Unknown gimbal action {other:?}")),
             }
         };
-        self.gimbal_outs(outs)
+        self.gimbal_outs(outs, now_ms)
     }
 
     pub fn snapshot(&self) -> Value {
@@ -3346,6 +3358,8 @@ const REBOOT_TAG: u64 = 0x5245_424F_4F54;
 const FACTORY_RESET_TAG: u64 = 0x5245_5345_5446;
 const STORAGE_RESET_FACTORY: f64 = 3.0;
 const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
+
+const GIMBAL_RATE_REPEAT_MS: u64 = 500;
 
 fn sensor_parameter(name: &str) -> bool {
     name.starts_with("CAL_") || name.starts_with("SENS_")
