@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.draw.alpha
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
@@ -35,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 internal const val SLIDE_CONFIRM_FRACTION = 0.9f
+private const val DISABLED_SLIDE_ALPHA = 0.38f
 
 private val TRACK_HEIGHT = 64.dp
 private val THUMB_SIZE = 56.dp
@@ -52,6 +55,7 @@ fun SlideToConfirm(
     label: String,
     modifier: Modifier = Modifier,
     destructive: Boolean = false,
+    enabled: Boolean = true,
     onConfirm: () -> Unit,
 ) {
     var offsetPx by remember(label) { mutableFloatStateOf(0f) }
@@ -70,6 +74,7 @@ fun SlideToConfirm(
         modifier
             .fillMaxWidth()
             .height(TRACK_HEIGHT)
+            .alpha(if (enabled) 1f else DISABLED_SLIDE_ALPHA)
             .clip(CircleShape)
             .background(track)
             .onSizeChanged { trackPx = it.width },
@@ -94,6 +99,7 @@ fun SlideToConfirm(
                 .clip(CircleShape)
                 .background(accent)
                 .draggable(
+                    enabled = enabled,
                     orientation = Orientation.Horizontal,
                     state = rememberDraggableState { delta ->
                         settled = false
