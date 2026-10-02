@@ -291,7 +291,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                 FilledTonalButton(
                     onClick = { scope.offMain { Qgc.invoke("$LOG_ROOT.toggleSortByDate") } },
                     enabled = logs.canSort,
-                ) { Text(logs.sortText) }
+                ) { Text(sentenceCase(logs.sortText)) }
             }
         }
 
@@ -315,7 +315,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                     onCheckedChange = null,
                 )
                 Text(
-                    text = if (selectedCount < selectable.size) "Select All" else "Deselect All",
+                    text = if (selectedCount < selectable.size) "Select all" else "Deselect all",
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier.padding(start = 8.dp),
                 )
@@ -373,7 +373,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                                 enabled = logs.canErase,
                                 onClick = { confirmErase = EraseKind.All },
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                            ) { Text("Erase All") }
+                            ) { Text("Erase all") }
                         }
                     }
                     Spacer(Modifier.height(88.dp))
