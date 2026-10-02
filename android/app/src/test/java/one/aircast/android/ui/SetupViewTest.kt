@@ -10,8 +10,6 @@ import org.junit.Test
 class SetupViewTest {
     @Test
     fun `setup wording follows VehicleSummary and SetupView`() {
-        assertEquals("Setup complete", setupPillText(true))
-        assertEquals("Needs setup", setupPillText(false))
         assertEquals("No Vehicle Connected", NO_VEHICLE_HEADLINE)
         assertEquals(true, setupReadiness(org.json.JSONObject("""{"ready":false,"setupComplete":true}"""))?.setupComplete)
         assertEquals(null, setupReadiness(org.json.JSONObject("""{"ready":false}"""))?.setupComplete)
@@ -157,5 +155,14 @@ class SetupFirmwareTest {
         assertEquals("Calibrate", attentionAction("APMRadioComponent"))
         assertEquals("Calibrate", attentionAction("SensorsComponent"))
         assertEquals("Set up", attentionAction("APMPowerComponent"))
+    }
+
+    @Test
+    fun `the header names firmware then frame and speaks only when the list cannot`() {
+        assertEquals("ArduPilot 4.5.7 · Quadrotor", setupSubtitle("Quadrotor", "ArduPilot 4.5.7"))
+        val pending = SetupReadiness(ready = false, setupComplete = false, headline = "1 component needs setup", detail = "Radio", connected = true, firmware = "")
+        assertNull(readinessNote(pending, listed = true))
+        assertEquals("1 component needs setup. Radio", readinessNote(pending, listed = false))
+        assertNull(readinessNote(pending.copy(setupComplete = true), listed = false))
     }
 }

@@ -54,7 +54,6 @@ internal const val NO_VEHICLE_TEXT = "Connect a vehicle to see and change its se
 internal const val NOTHING_TO_CONFIGURE = "Nothing to Configure"
 internal const val NOTHING_TO_CONFIGURE_TEXT = "Aircast doesn't support setup for this vehicle type. If it is already configured, you can still fly."
 
-internal fun setupPillText(complete: Boolean): String = if (complete) "Setup complete" else "Needs setup"
 
 internal fun setupReadiness(view: JSONObject?): SetupReadiness? = view?.let {
     SetupReadiness(

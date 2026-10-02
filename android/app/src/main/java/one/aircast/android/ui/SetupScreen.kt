@@ -68,6 +68,12 @@ internal fun setupIcon(known: String?, className: String = ""): Int = when (know
     else -> COMPONENT_ICONS.entries.firstOrNull { (token, _) -> token in className }?.value ?: R.drawable.ic_build
 }
 
+internal fun setupSubtitle(vehicle: String, firmware: String): String =
+    listOf(firmware, vehicle).filter { it.isNotBlank() }.joinToString(" · ")
+
+internal fun readinessNote(readiness: SetupReadiness?, listed: Boolean): String? =
+    readiness?.takeIf { it.setupComplete != true && !listed }?.let { listOf(it.headline, it.detail).filter(String::isNotBlank).joinToString(". ") }?.ifBlank { null }
+
 internal fun attentionAction(className: String): String =
     if (listOf("Sensors", "Radio").any { it in className }) "Calibrate" else "Set up"
 
@@ -336,11 +342,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         item(key = "verdict") {
             val readiness = setup
             ReadinessHeader(
-                ready = readiness?.setupComplete,
                 vehicle = vehicleType.ifBlank { "Vehicle" },
                 firmware = firmware,
-                headline = readiness?.headline.orEmpty(),
-                detail = readiness?.detail.orEmpty(),
+                note = readinessNote(readiness, components.any { it.needsAttention }),
             )
         }
 
@@ -455,11 +459,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
 @Composable
 private fun ReadinessHeader(
-    ready: Boolean?,
     vehicle: String,
     firmware: String,
-    headline: String,
-    detail: String,
+    note: String?,
 ) {
     Column(
         modifier = Modifier
@@ -468,31 +470,14 @@ private fun ReadinessHeader(
             .padding(top = 20.dp, bottom = 8.dp),
     ) {
         Text("Vehicle setup", style = MaterialTheme.typography.headlineMedium)
-        ready?.let { verdict ->
-            Text(
-                text = setupPillText(verdict),
-                style = MaterialTheme.typography.titleMedium,
-                color = if (verdict) MaterialTheme.aircast.success else MaterialTheme.aircast.warning,
-            )
-        }
         Text(
-            text = listOfNotNull(
-                vehicle,
-                firmware.takeIf { it.isNotBlank() },
-            ).joinToString(" · "),
+            text = setupSubtitle(vehicle, firmware),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (ready != true && headline.isNotBlank()) {
+        note?.let {
             Text(
-                text = headline,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-        if (detail.isNotBlank()) {
-            Text(
-                text = detail,
+                text = it,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
