@@ -53,7 +53,9 @@ class LandingPatternTest {
 
     @Test
     fun `the loiter circle is drawn around the approach, and only when it has a radius`() {
-        assertEquals(1, landingLoiterFeatures(listOf(landingPattern(4, view(whole))!!)).features()!!.size)
+        val pattern = landingPattern(4, view(whole))!!
+        assertEquals("FWLandingPatternMapVisual shows the circle only with loiter-to-altitude", 0, landingLoiterFeatures(listOf(pattern)).features()!!.size)
+        assertEquals(1, landingLoiterFeatures(listOf(pattern.copy(loiterToAltitude = true))).features()!!.size)
 
         val noRadius = landingPattern(
             4,
@@ -175,7 +177,11 @@ class IsLandingPatternTest {
         assertEquals(4, area.size)
         assertEquals("corners are the half-diagonal from touchdown", kotlin.math.hypot(7.5, 50.0), metresBetween(landing, area[0]), 0.5)
         assertEquals("without loiter-to-altitude the slope reaches the final approach", approach, glideSlope(straight)!!.last())
-        assertEquals("with it, the slope start", slope, glideSlope(straight.copy(loiterRadiusMetres = 75.0))!!.last())
-        assertEquals("only the selected pattern draws them", 0, landingAreaFeatures(listOf(straight), selected = 2).features()!!.size)
+        assertEquals("a radius alone is not loiter-to-altitude", approach, glideSlope(straight.copy(loiterRadiusMetres = 75.0))!!.last())
+        assertEquals("with it, the slope start", slope, glideSlope(straight.copy(loiterRadiusMetres = 75.0, loiterToAltitude = true))!!.last())
+        val labels = landingLabels(straight.copy(heights = GlideSlopeHeights("5 m*", "52 m*", "100.0 m"))).map { it.text }
+        assertEquals("FWLandingPatternMapVisual's two names and three heights", listOf("Landing Area", "Glide Slope", "5 m*", "52 m*", "100.0 m"), labels)
+        assertEquals("FWLandingPatternMapVisual draws both whether or not the item is current", 2, landingAreaFeatures(listOf(straight)).features()!!.size)
+        assertEquals("only the current item's labels show", 0, landingLabelFeatures(listOf(straight), selected = 2).features()!!.size)
     }
 }

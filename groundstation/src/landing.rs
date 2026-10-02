@@ -8,6 +8,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.containsItems",
     "plan.dirty",
     "settings.unitsSettings.horizontalDistanceUnits",
+    "settings.unitsSettings.verticalDistanceUnits",
 ];
 
 const FIELDS: &str = "isSimpleItem,landingCoordinate,slopeStartCoordinate,finalApproachCoordinate";
@@ -22,6 +23,14 @@ fn place(item: &Value, key: &str) -> Option<Value> {
         true => Some(json!({ "latitude": latitude, "longitude": longitude, "altitude": number("altitude") })),
         false => None,
     }
+}
+
+const LANDING_LENGTH_M: f64 = 100.0;
+
+pub fn glide_slope_heights(adjacent: f64, opposite: f64) -> (f64, f64) {
+    let slope = (opposite / adjacent).atan().tan();
+    let transition = LANDING_LENGTH_M / 2.0;
+    (slope * transition, slope * (transition + (adjacent - transition) / 2.0))
 }
 
 pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
@@ -55,7 +64,15 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
             .and_then(|value| value.as_bool().or_else(|| value.as_f64().map(|number| number != 0.0)))
     };
     let unit = Unit::horizontal(backend);
+    let vertical = Unit::vertical(backend);
     let radius = fact("loiterRadius").filter(|metres| *metres > 0.0);
+    let loiter = truth("useLoiterToAlt").unwrap_or(false);
+    let point = |at: &Option<Value>| at.as_ref().and_then(|p| Some((p.get("latitude")?.as_f64()?, p.get("longitude")?.as_f64()?)));
+    let heights = point(&landing).zip(point(if loiter { &slope_start } else { &approach })).zip(fact("finalApproachAltitude").zip(fact("landingAltitude"))).map(|((touchdown, top), (approach_alt, landing_alt))| {
+        let (transition, mid) = glide_slope_heights(crate::surveygrid::distance_between(touchdown, top), approach_alt - landing_alt);
+        let approximate = |metres: f64| format!("{} {}*", vertical.show(metres).floor(), vertical.name);
+        json!({ "transition": approximate(transition), "midSlope": approximate(mid), "approach": format!("{:.1} {}", vertical.show(approach_alt), vertical.name) })
+    });
     json!({
         "kind": "object",
         "class": "LandingPattern",
@@ -70,6 +87,7 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
         "landingAltitudeMetres": fact("landingAltitude"),
         "landingHeadingDegrees": fact("landingHeading"),
         "landingDistanceMetres": fact("landingDistance"),
+        "heights": heights,
     })
 }
 
@@ -110,14 +128,23 @@ mod tests {
                     { "property": "loiterClockwise", "value": true },
                     { "property": "useLoiterToAlt", "value": false },
                     { "property": "landingAltitude", "value": 0.0 },
+                    { "property": "finalApproachAltitude", "value": 100.0 },
                     { "property": "landingHeading", "value": 130.0 },
                     { "property": "landingDistance", "value": 200.0 }
                 ] })
     }
 
     #[test]
+    fn glide_slope_heights_follow_fw_landing_pattern_map_visual() {
+        let (transition, mid) = glide_slope_heights(1000.0, 100.0);
+        assert!((transition - 5.0).abs() < 1e-9 && (mid - 52.5).abs() < 1e-9, "tan(slope) times 50 m, and times halfway along the rest");
+    }
+
+    #[test]
     fn the_three_places_a_landing_pattern_is_drawn_from_all_travel() {
         let view = landing_view(&Plan(pattern()), &["4".to_string()]);
+        assert_eq!(view["heights"]["approach"], "100.0 m", "the final approach altitude to one decimal");
+        assert!(view["heights"]["transition"].as_str().unwrap().ends_with(" m*"), "glide slope heights are floored and starred as approximate");
         assert_eq!(view["landing"]["latitude"], 47.400);
         assert_eq!(view["slopeStart"]["longitude"], 8.546);
         assert_eq!(view["finalApproach"]["latitude"], 47.410);

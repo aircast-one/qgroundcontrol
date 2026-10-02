@@ -15,6 +15,8 @@ data class LandingPattern(
     val loiterRadiusMetres: Double?,
     val loiterClockwise: Boolean,
     val loiterRadiusText: String = "",
+    val loiterToAltitude: Boolean = false,
+    val heights: GlideSlopeHeights? = null,
 )
 
 private fun place(view: JSONObject?, key: String): TrackPoint? =
@@ -26,6 +28,35 @@ private fun place(view: JSONObject?, key: String): TrackPoint? =
             else -> TrackPoint(latitude, longitude)
         }
     }
+
+data class GlideSlopeHeights(val transition: String, val midSlope: String, val approach: String)
+
+data class LandingLabel(val at: TrackPoint, val text: String)
+
+fun landingLabels(pattern: LandingPattern): List<LandingLabel> {
+    val landing = pattern.landing ?: return emptyList()
+    val slopeStart = pattern.slopeStart ?: return emptyList()
+    val bearing = azimuthBetween(landing, slopeStart)
+    val side = bearing + if (bearing > 180) -90 else 90
+    val transition = pointAt(landing, LANDING_LENGTH_M / 2, bearing)
+    val top = (if (pattern.loiterToAltitude) slopeStart else pattern.finalApproach) ?: slopeStart
+    val mid = pointAt(transition, metresBetween(transition, top) / 2, bearing)
+    val heights = pattern.heights
+    return listOfNotNull(
+        LandingLabel(landing, "Landing Area"),
+        LandingLabel(pointAt(landing, LANDING_LENGTH_M / 2 + 2, bearing), "Glide Slope"),
+        heights?.let { LandingLabel(pointAt(transition, LANDING_WIDTH_M, side), it.transition) },
+        heights?.let { LandingLabel(pointAt(mid, LANDING_WIDTH_M / 2, side), it.midSlope) },
+        heights?.let { LandingLabel(slopeStart, it.approach) },
+    )
+}
+
+fun landingLabelFeatures(patterns: List<LandingPattern>, selected: Int?): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        patterns.filter { it.index == selected }.flatMap(::landingLabels).map { label ->
+            Feature.fromGeometry(Point.fromLngLat(label.at.longitude, label.at.latitude)).apply { addStringProperty(LANDING_LABEL_TEXT, label.text) }
+        },
+    )
 
 fun isLandingPattern(view: JSONObject?): Boolean =
     view != null && view.optString("kind") != "null" && !view.has("reason")
@@ -42,6 +73,8 @@ fun landingPattern(index: Int, view: JSONObject?): LandingPattern? {
         loiterRadiusMetres = view.optDouble("loiterRadiusMetres", Double.NaN).takeIf { !it.isNaN() },
         loiterClockwise = view.optBoolean("loiterClockwise"),
         loiterRadiusText = view.optText("loiterRadiusText"),
+        loiterToAltitude = view.optBoolean("loiterToAltitude"),
+        heights = view.optJSONObject("heights")?.let { GlideSlopeHeights(it.optText("transition"), it.optText("midSlope"), it.optText("approach")) },
     )
     return pattern.takeIf { it.landing != null || it.slopeStart != null || it.finalApproach != null }
 }
@@ -86,13 +119,13 @@ fun landingArea(pattern: LandingPattern): List<TrackPoint>? {
 fun glideSlope(pattern: LandingPattern): List<TrackPoint>? {
     val landing = pattern.landing ?: return null
     val slopeStart = pattern.slopeStart ?: return null
-    val top = (if (pattern.loiterRadiusMetres != null) slopeStart else pattern.finalApproach) ?: return null
+    val top = (if (pattern.loiterToAltitude) slopeStart else pattern.finalApproach) ?: return null
     return landingCorners(landing, azimuthBetween(landing, slopeStart)).take(2) + top
 }
 
-fun landingAreaFeatures(patterns: List<LandingPattern>, selected: Int?): FeatureCollection =
+fun landingAreaFeatures(patterns: List<LandingPattern>): FeatureCollection =
     FeatureCollection.fromFeatures(
-        patterns.filter { it.index == selected }.flatMap { pattern ->
+        patterns.flatMap { pattern ->
             listOfNotNull(landingArea(pattern)?.let { LANDING_AREA_KIND to it }, glideSlope(pattern)?.let { GLIDE_SLOPE_KIND to it })
         }.map { (kind, ring) ->
             Feature.fromGeometry(Polygon.fromLngLats(listOf((ring + ring.first()).map { Point.fromLngLat(it.longitude, it.latitude) }))).apply { addStringProperty(LANDING_SHAPE_KIND, kind) }
@@ -100,7 +133,7 @@ fun landingAreaFeatures(patterns: List<LandingPattern>, selected: Int?): Feature
     )
 
 fun loiterRings(patterns: List<LandingPattern>, items: List<MissionItem>): List<Pair<TrackPoint, Double>> =
-    patterns.mapNotNull { pattern -> pattern.finalApproach?.let { centre -> pattern.loiterRadiusMetres?.let { centre to it } } } +
+    patterns.filter { it.loiterToAltitude }.mapNotNull { pattern -> pattern.finalApproach?.let { centre -> pattern.loiterRadiusMetres?.let { centre to it } } } +
         items.filter { it.loiterRadius.isFinite() && it.loiterRadius != 0.0 }.map { TrackPoint(it.latitude, it.longitude) to kotlin.math.abs(it.loiterRadius) }
 
 fun landingLoiterFeatures(patterns: List<LandingPattern>, items: List<MissionItem> = emptyList()): FeatureCollection =

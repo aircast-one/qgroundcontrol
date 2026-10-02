@@ -8755,6 +8755,9 @@
         "view.landingPattern(6).finalApproach.altitude",
         "view.landingPattern(6).finalApproach.latitude",
         "view.landingPattern(6).finalApproach.longitude",
+        "view.landingPattern(6).heights.approach",
+        "view.landingPattern(6).heights.midSlope",
+        "view.landingPattern(6).heights.transition",
         "view.landingPattern(6).index",
         "view.landingPattern(6).kind",
         "view.landingPattern(6).landing.altitude",
@@ -12906,6 +12909,11 @@
             "altitude": "number",
             "latitude": "number",
             "longitude": "number"
+        },
+        "heights": {
+            "approach": "string",
+            "midSlope": "string",
+            "transition": "string"
         },
         "index": "number",
         "kind": "string",
