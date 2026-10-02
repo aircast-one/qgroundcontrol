@@ -2,7 +2,7 @@ use mavlink::dialects::ardupilotmega::GPS_RTCM_DATA_DATA;
 use serde_json::{Value, json};
 
 use crate::geo::wrap_longitude;
-use crate::read::{flag, object, value_number};
+use crate::read::{object, value_number};
 use crate::router::Backend;
 use crate::rtcm::Fragmenter;
 
