@@ -665,6 +665,11 @@ impl VideoState {
         self.receivers.entry(receiver.to_string()).and_modify(|state| state.started = false);
         match outcome {
             Outcome::InvalidUrl => self.set_status(receiver, Status::InvalidStreamUrl, false),
+            _ if !(outcome == Outcome::Failed || self.receivers.get(receiver).is_some_and(|state| state.failing_since_s.is_some())) => self
+                .set_status(receiver, Status::Reconnecting, true)
+                .into_iter()
+                .chain(std::iter::once(Out::RestartAfter { receiver: receiver.to_string(), delay_ms: RESTART_DELAY_MS }))
+                .collect(),
             _ if self.settings.reconnect_disabled => self.set_status(receiver, Status::ConnectionFailed, false),
             _ => {
                 let attempt = self.receivers.get(receiver).map_or(0, |state| state.reconnect_attempts).saturating_add(1).min(MAX_VIDEO_RECONNECT_ATTEMPTS);
@@ -694,6 +699,10 @@ impl VideoState {
             state.attempts = match active {
                 true => 0,
                 false => state.attempts,
+            };
+            state.reconnect_attempts = match active {
+                true => 0,
+                false => state.reconnect_attempts,
             };
             state.failing_since_s = match active {
                 true => None,
@@ -1166,6 +1175,20 @@ mod tests {
         let stopped = state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
         assert!(stopped.contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: RESTART_DELAY_MS }));
         assert!(state.start_receiver(MAIN_RECEIVER).is_empty(), "and the retry that stop scheduled must find no video to show, or the stop never sticks");
+    }
+
+    #[test]
+    fn a_deliberate_restart_is_not_a_failure_to_back_off_from() {
+        let mut state = wired();
+        state.on_start_complete(MAIN_RECEIVER, Outcome::Ok, 0);
+        state.settings.reconnect_disabled = true;
+        let restarted = (0..8).map(|_| state.on_stop_complete(MAIN_RECEIVER, Outcome::Ok)).last().unwrap();
+        assert!(restarted.contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: RESTART_DELAY_MS }), "a settings restart starts again at once, auto-reconnect or not, however many times");
+        state.settings.reconnect_disabled = false;
+        state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
+        state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
+        state.on_decoding(MAIN_RECEIVER, true);
+        assert!(state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed).contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: RESTART_DELAY_MS }), "decoding frames resets the backoff, as the first tee frame does in GstVideoReceiver");
     }
 
     #[test]
