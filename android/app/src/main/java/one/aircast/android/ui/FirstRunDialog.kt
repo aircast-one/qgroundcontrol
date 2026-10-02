@@ -1,15 +1,28 @@
 package one.aircast.android.ui
 
+import one.aircast.android.R
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Button
+import androidx.compose.material3.Surface
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -52,21 +65,30 @@ fun FirstRunDialog() {
     val prompt = remember(view) { firstRun(view) } ?: return
     val close = { offMainDetached { Qgc.invoke("firstRun.markShown") } }
 
-    AlertDialog(
-        onDismissRequest = close,
-        title = { Text(prompt.title) },
-        text = {
-            Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+    Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(
+                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 48.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Box(Modifier.size(96.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(painterResource(R.drawable.ic_flight), null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(48.dp))
+                    }
+                    Text(prompt.title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+                }
                 if (prompt.preferences.isNotEmpty()) {
-                    Text(prompt.vehicleHeading, style = MaterialTheme.typography.titleSmall)
-                    Text(prompt.vehicleDescription, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 8.dp))
+                    SectionHeader(prompt.vehicleHeading)
+                    Text(prompt.vehicleDescription, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
                     prompt.preferences.forEach { fact -> FactRow(fact) }
                 }
-                Text(prompt.unitsHeading, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
-                Text(prompt.unitsDescription, style = MaterialTheme.typography.bodySmall)
+                SectionHeader(prompt.unitsHeading)
+                Text(prompt.unitsDescription, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
                 UnitsSection(Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
+                    Button(onClick = close) { Text("Continue") }
+                }
             }
-        },
-        confirmButton = { TextButton(onClick = close) { Text("Done") } },
-    )
+        }
+    }
 }
