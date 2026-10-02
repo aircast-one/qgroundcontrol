@@ -1073,10 +1073,7 @@ internal fun MapSpikeScreen(
                                     TextButton(onClick = { radiusFor = target }) { Text("Set radius\u2026") }
                                 }
                             }
-                            TextButton(onClick = {
-                                chosenCircles = chosenCircles - target.path
-                                tracing = target to emptyList()
-                            }) { Text("Trace") }
+                            TextButton(onClick = { tracing = target to emptyList() }) { Text("Trace") }
                             TextButton(onClick = {
                                 chosenCircles = chosenCircles - target.path
                                 importInto = target
