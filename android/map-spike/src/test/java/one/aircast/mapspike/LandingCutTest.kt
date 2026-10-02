@@ -43,12 +43,23 @@ class LandingCutTest {
     }
 
     @Test
-    fun `a landing and a return both end the route, and the head does not tell them apart`() {
+    fun `only a return ends the route, a landing just skips the leg after it`() {
         val byCommand = plan(settings, placed(44.1), rtl, placed(44.2)).optJSONArray("items")
         val byLanding = plan(settings, placed(44.1), landed, placed(44.2)).optJSONArray("items")
 
         assertEquals(2, routeEndsAfter(byCommand))
-        assertEquals(2, routeEndsAfter(byLanding))
+        assertEquals("MissionController breaks only at an RTL", Int.MAX_VALUE, routeEndsAfter(byLanding))
+    }
+
+    @Test
+    fun `the leg out of a landing is not drawn, the ones after it are`() {
+        val land = """{"kind":"land","endsRoute":true,"command":21,"flownLeg":true,""" +
+            """"coordinate":{"latitude":41.0,"longitude":44.15}}"""
+        val items = missionItems(plan(settings, placed(44.1), land, placed(44.2), placed(44.3)))
+        assertEquals(setOf(3), legsAfterLanding(plan(settings, placed(44.1), land, placed(44.2), placed(44.3)).optJSONArray("items")))
+        val path = missionPath(items, false)?.geometry() as org.maplibre.geojson.MultiLineString
+        assertEquals("Don't draw segments immediately after a landing item", listOf(listOf(44.1, 44.15), listOf(44.2, 44.3)), path.coordinates().map { line -> line.map { it.longitude() } })
+        assertTrue(legArrows(items, false).none { it.at.longitude in 44.15..44.2 })
     }
 
     @Test
@@ -64,7 +75,7 @@ class LandingCutTest {
     @Test
     fun `the stray items after a landing are counted in the plan shape`() {
         assertEquals(
-            listOf("RTL", "1 after the landing"),
+            listOf("RTL", "1 after RTL"),
             planShape(plan(settings, rtl, placed(44.2))),
         )
     }

@@ -6,7 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.maplibre.geojson.LineString
+import org.maplibre.geojson.MultiLineString
 
 class MissionPathTest {
     private fun item(index: Int, longitude: Double) =
@@ -17,8 +17,8 @@ class MissionPathTest {
     private val second = item(2, 44.2)
 
     private fun longitudes(items: List<MissionItem>, link: Boolean): List<Double>? =
-        (missionPath(items, link)?.geometry() as? LineString)
-            ?.coordinates()?.map { it.longitude() }
+        (missionPath(items, link)?.geometry() as? MultiLineString)
+            ?.coordinates()?.single()?.map { it.longitude() }
 
     @Test
     fun `without a takeoff the line does not start at the planned home`() {

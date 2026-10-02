@@ -29,7 +29,7 @@ class PlanItemCountTest {
                 """{"kind":"waypoint","flownLeg":true}]}""",
         )
 
-        assertEquals(listOf("takeoff", "RTL", "1 after the landing"), planShape(plan))
+        assertEquals(listOf("takeoff", "RTL", "1 after RTL"), planShape(plan))
     }
 
     @Test
@@ -45,7 +45,7 @@ class PlanItemCountTest {
                 """{"kind":"command","command":20,"endsRoute":true},{"kind":"waypoint","flownLeg":true},{"kind":"waypoint","flownLeg":true}]}""",
         )
 
-        assertEquals(listOf("RTL", "2 after the landing"), planShape(plan))
+        assertEquals(listOf("RTL", "2 after RTL"), planShape(plan))
     }
 
     @Test

@@ -11,6 +11,7 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
+import org.maplibre.geojson.MultiLineString
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
 
@@ -167,24 +168,25 @@ fun legArrows(items: List<MissionItem>, linkStartToHome: Boolean): List<Transect
         }
     }
     val marked = walk.arrows.mapIndexed { leg, arrow -> arrow || leg == legs.lastIndex }
-    return legs.zip(marked).filter { it.second }.map { (leg, _) ->
+    return legs.zip(marked).filter { (leg, arrow) -> arrow && !leg.second.legBroken }.map { (leg, _) ->
         val (from, to) = leg
         arrowOn(from.exit ?: TrackPoint(from.latitude, from.longitude), TrackPoint(to.latitude, to.longitude), LEG_ARROW_QUARTER)
     }
 }
 
 fun missionPath(items: List<MissionItem>, linkStartToHome: Boolean): Feature? {
-    val flown = flownRoute(items, linkStartToHome)
-    val points = flown.flatMap { item ->
-        listOfNotNull(
-            Point.fromLngLat(item.longitude, item.latitude),
-            item.exit?.let { Point.fromLngLat(it.longitude, it.latitude) },
-        )
+    val runs = flownRoute(items, linkStartToHome).fold(emptyList<List<MissionItem>>()) { runs, item ->
+        if (item.legBroken || runs.isEmpty()) runs + listOf(listOf(item)) else runs.dropLast(1) + listOf(runs.last() + item)
     }
-    if (points.size < 2) {
-        return null
-    }
-    return Feature.fromGeometry(LineString.fromLngLats(points))
+    val lines = runs.map { run ->
+        run.flatMap { item ->
+            listOfNotNull(
+                Point.fromLngLat(item.longitude, item.latitude),
+                item.exit?.let { Point.fromLngLat(it.longitude, it.latitude) },
+            )
+        }
+    }.filter { it.size >= 2 }
+    return lines.takeIf { it.isNotEmpty() }?.let { Feature.fromGeometry(MultiLineString.fromLngLats(it)) }
 }
 
 data class OtherMission(val items: List<MissionItem>, val linkStartToHome: Boolean)

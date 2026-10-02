@@ -29,7 +29,7 @@ class PlanBridgeTest {
         JSONObject("""{"kind":"object","items":[${elements.joinToString(",")}]}""")
 
     @Test
-    fun `everything after the item that ends the route is flagged, read from the plan itself`() {
+    fun `a landing does not end the route, it only breaks the leg after it`() {
         val plan = JSONObject(
             """{"kind":"object","items":[""" +
                 """{"sequence":0,"name":"Mission Start","flownLeg":false,""" +
@@ -45,11 +45,12 @@ class PlanBridgeTest {
         val items = missionItems(plan)
 
         assertEquals(
-            listOf(false, false, false, true),
+            "MissionController keeps going past a landing",
+            listOf(false, false, false, false),
             items.map { it.afterRouteEnds },
         )
-        assertFalse("the land itself is the end, not past it", items[2].afterRouteEnds)
-        assertFalse("and the map draws no leg to what follows", items[3].routed)
+        assertTrue("the waypoint after the land is still routed", items[3].routed)
+        assertTrue("but the leg into it is not drawn", items[3].legBroken)
     }
 
     @Test

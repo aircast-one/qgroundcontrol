@@ -79,7 +79,7 @@ fun planShape(json: JSONObject?): List<String> {
     val stranded = (1 until items.length()).count { it > endsAfter }
 
     return named + listOfNotNull(
-        stranded.takeIf { it > 0 }?.let { "$it after the landing" },
+        stranded.takeIf { it > 0 }?.let { "$it after RTL" },
     )
 }
 
@@ -120,12 +120,22 @@ data class MissionItem(
     val heading: Double = Double.NaN,
     val gimbalYaw: Double = Double.NaN,
     val closesRoute: Boolean = false,
+    val legBroken: Boolean = false,
 )
+
+private fun JSONObject.isReturn() = optBoolean("endsRoute") && optInt("command") == MAV_CMD_NAV_RETURN_TO_LAUNCH
+
+private fun JSONObject.isLanding() = optBoolean("endsRoute") && optInt("command") != MAV_CMD_NAV_RETURN_TO_LAUNCH
 
 fun routeEndsAfter(items: JSONArray?): Int =
     (0 until (items?.length() ?: 0))
-        .firstOrNull { index -> items?.optJSONObject(index)?.optBoolean("endsRoute") == true }
+        .firstOrNull { index -> items?.optJSONObject(index)?.isReturn() == true }
         ?: Int.MAX_VALUE
+
+fun legsAfterLanding(items: JSONArray?): Set<Int> {
+    val flown = (0 until (items?.length() ?: 0)).filter { items?.optJSONObject(it)?.optBoolean("flownLeg") == true }
+    return flown.zipWithNext().filter { (from, _) -> items?.optJSONObject(from)?.isLanding() == true }.map { it.second }.toSet()
+}
 
 internal fun placed(element: JSONObject, key: String): TrackPoint? {
     val at = element.optJSONObject(key) ?: return null
@@ -137,6 +147,7 @@ internal fun placed(element: JSONObject, key: String): TrackPoint? {
 fun allMissionItems(json: JSONObject?): List<MissionItem> {
     val items = planItems(json) ?: return emptyList()
     val endsAfter = routeEndsAfter(items)
+    val broken = legsAfterLanding(items)
     return (0 until items.length()).mapNotNull { index ->
         val element = items.optJSONObject(index) ?: return@mapNotNull null
         val at = placed(element, "coordinate")
@@ -174,6 +185,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             heading = element.optDouble("heading", Double.NaN),
             gimbalYaw = element.optDouble("gimbalYaw", Double.NaN),
             closesRoute = element.optBoolean("closesRoute"),
+            legBroken = index in broken,
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,
