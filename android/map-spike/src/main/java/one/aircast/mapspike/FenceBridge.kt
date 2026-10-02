@@ -27,6 +27,15 @@ fun fenceRows(polygons: List<FencePolygon>, circles: List<FenceCircle>): List<Fe
     polygons.map { FenceRow(it.index, false, it.kindText.ifBlank { if (it.inclusion) "Keep-in polygon" else "Keep-out polygon" }, it.detailText) } +
         circles.map { FenceRow(it.index, true, it.kindText.ifBlank { if (it.inclusion) "Keep-in circle" else "Keep-out circle" }, it.detailText) }
 
+fun rallyRows(points: List<RallyPoint>): List<FenceRow> = points.map { point ->
+    val height = point.altitude.takeIf { it.isFinite() }?.let { "${plainAltitude(it)} ${point.altitudeUnits.ifBlank { "m" }}" }
+    val where = String.format(java.util.Locale.US, "%.6f, %.6f", point.latitude, point.longitude)
+    FenceRow(point.index, false, "Rally point ${point.index + 1}", listOfNotNull(height, where).joinToString(" \u00b7 "))
+}
+
+private fun plainAltitude(value: Double): String =
+    if (value == kotlin.math.floor(value)) value.toLong().toString() else String.format(java.util.Locale.US, "%.1f", value)
+
 data class FenceCircle(
     val index: Int,
     val inclusion: Boolean,

@@ -667,6 +667,11 @@ internal fun MapSpikeScreen(
                         ) { Text(option.label) }
                     }
                 }
+                if (layer == PlanLayer.Rally) {
+                    rallyRows(rally).forEach { row ->
+                        FenceListRow(row) { onBridge("Removing ${row.title.lowercase()}") { FenceBridge.removeRallyPoint(row.index) } }
+                    }
+                }
                 if (layer == PlanLayer.Fence) {
                     fenceRows(fences, circles).forEach { row ->
                         FenceListRow(row) {

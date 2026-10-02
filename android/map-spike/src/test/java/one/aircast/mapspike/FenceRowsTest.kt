@@ -14,4 +14,12 @@ class FenceRowsTest {
             fenceRows(listOf(polygon), listOf(circle)),
         )
     }
+
+    @Test
+    fun `rally points are numbered from one with their height and position`() {
+        val point = RallyPoint(1, 41.7151, 44.8271, altitude = 50.0, altitudeUnits = "m")
+
+        assertEquals(listOf(FenceRow(1, false, "Rally point 2", "50 m \u00b7 41.715100, 44.827100")), rallyRows(listOf(point)))
+        assertEquals("41.715100, 44.827100", rallyRows(listOf(point.copy(altitude = Double.NaN))).single().detail)
+    }
 }
