@@ -136,6 +136,8 @@ internal fun readPage(page: String): List<ParameterRows> {
     }
 }
 
+internal val EMPTY_PAGE_TEXTS = mapOf("Gimbal" to "Gimbal settings are not available for this firmware version.")
+
 @Composable
 internal fun ParameterForm(
     page: String,
@@ -159,7 +161,7 @@ internal fun ParameterForm(
     }
 
     if (rows.isEmpty()) {
-        EmptyState(R.drawable.ic_tune, "Nothing to set here", "This vehicle exposes none of these parameters.", modifier)
+        EmptyState(R.drawable.ic_tune, "Nothing to set here", EMPTY_PAGE_TEXTS[page] ?: "This vehicle exposes none of these parameters.", modifier)
         return
     }
 

@@ -82,8 +82,17 @@ pub fn calculator(component: &str, battery_index: usize, param: &str) -> Option<
     }))
 }
 
+fn position_of(backend: &dyn Backend, battery_id: usize) -> Option<usize> {
+    let count = crate::read::value_number(&backend.get("vehicle.batteries.count")).unwrap_or(0.0).max(0.0) as usize;
+    (0..count).find(|position| {
+        let id = object(&backend.get(&format!("vehicle.batteries.{position}.id")));
+        id.get("rawValue").or(id.get("value")).and_then(Value::as_f64).is_some_and(|id| id as usize == battery_id)
+    })
+}
+
 fn reading(backend: &dyn Backend, measure: &str, battery_index: usize) -> Option<(f64, String)> {
-    let fact = object(&backend.get(&format!("vehicle.batteries.{}.{measure}", battery_index.checked_sub(1)?)));
+    let position = position_of(backend, battery_index.checked_sub(1)?)?;
+    let fact = object(&backend.get(&format!("vehicle.batteries.{position}.{measure}")));
     let value = fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite())?;
     Some((value, fact.get("valueString").and_then(Value::as_str).unwrap_or_default().to_string()))
 }
@@ -131,6 +140,29 @@ pub fn calculate(backend: &dyn Backend, args: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Packs;
+    impl Backend for Packs {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicle.batteries.count" => json!({ "kind": "value", "value": 1 }),
+                "vehicle.batteries.0.id" => json!({ "kind": "fact", "rawValue": 1 }),
+                "vehicle.batteries.0.voltage" => json!({ "kind": "fact", "rawValue": 15.2, "valueString": "15.20" }),
+                _ => json!({ "kind": "null" }),
+            }
+            .to_string()
+        }
+        fn get_fields(&self, _: &str, _: &str) -> String { String::new() }
+        fn set(&self, _: &str, _: &str) -> String { String::new() }
+        fn invoke(&self, _: &str, _: &str) -> String { String::new() }
+        fn watch(&self, _: &[String]) {}
+    }
+
+    #[test]
+    fn a_calculator_reads_the_battery_by_its_status_id_not_its_list_position() {
+        assert_eq!(reading(&Packs, "voltage", 2), Some((15.2, "15.20".to_string())), "BATT2 is BATTERY_STATUS id 1, the only pack reporting when BATT_MONITOR is off");
+        assert_eq!(reading(&Packs, "voltage", 1), None);
+    }
 
     #[test]
     fn the_new_value_scales_the_old_by_measured_over_reported_like_the_qgc_dialogs() {

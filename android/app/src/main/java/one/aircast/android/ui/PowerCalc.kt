@@ -92,7 +92,7 @@ internal fun PowerCalcDialog(calculator: PowerCalculator, onDone: () -> Unit) {
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 )
-                if (available) Text("${calculator.readingLabel} ${live?.optText("readingText").orEmpty()}")
+                if (available || calculator.noReading.isBlank()) Text("${calculator.readingLabel} ${live?.optText("readingText").orEmpty()}")
                 Text("${calculator.paramLabel} ${live?.optText("paramText").orEmpty()}")
                 refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
