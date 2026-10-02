@@ -174,6 +174,8 @@ fun VehicleMap(
     onFitFailed: () -> Unit = {},
     centreRequest: Int = 0,
     centreOn: TrackPoint? = null,
+    centreZoom: Double? = null,
+    gestures: Boolean = true,
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
     traffic: List<TrafficMark> = emptyList(),
@@ -442,13 +444,15 @@ fun VehicleMap(
         val at = centreOn?.takeIf { isPlottable(it.latitude, it.longitude) } ?: return@LaunchedEffect
         val loaded = map ?: return@LaunchedEffect
         val target = LatLng(at.latitude, at.longitude)
-        loaded.animateCamera(
-            if (loaded.cameraPosition.zoom > 1.0) {
-                CameraUpdateFactory.newLatLng(target)
-            } else {
-                CameraUpdateFactory.newLatLngZoom(target, DEFAULT_ZOOM)
-            },
-        )
+        when {
+            centreZoom != null -> loaded.moveCamera(CameraUpdateFactory.newLatLngZoom(target, centreZoom))
+            loaded.cameraPosition.zoom > 1.0 -> loaded.animateCamera(CameraUpdateFactory.newLatLng(target))
+            else -> loaded.animateCamera(CameraUpdateFactory.newLatLngZoom(target, DEFAULT_ZOOM))
+        }
+    }
+
+    LaunchedEffect(map, gestures) {
+        map?.uiSettings?.setAllGesturesEnabled(gestures)
     }
 
     LaunchedEffect(fitRequest) {

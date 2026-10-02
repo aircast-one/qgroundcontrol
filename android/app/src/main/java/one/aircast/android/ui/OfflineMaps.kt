@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -52,7 +53,6 @@ import one.aircast.mapspike.optText
 import one.aircast.mapspike.qgcRasterStyle
 import one.aircast.mapspike.trackReading
 import org.json.JSONObject
-import java.util.Locale
 
 internal const val OFFLINE_MAPS_GROUP = "offlineMapsSettings"
 internal const val OFFLINE_MAPS_VIEW = "view.offlineMaps"
@@ -153,6 +153,9 @@ internal fun offlineRegion(corners: List<TrackPoint>): OfflineRegion? =
     }
 
 private fun coordinate(value: Double): String = String.format(Locale.US, "%.7f", value)
+
+internal fun regionCentre(region: OfflineRegion): TrackPoint =
+    TrackPoint((region.north + region.south) / 2.0, (region.west + region.east) / 2.0)
 
 internal fun offlineMapsPath(mapType: String?, region: OfflineRegion?, minZoom: Int, maxZoom: Int): String =
     if (mapType == null || region == null) {
@@ -331,6 +334,7 @@ private fun OfflineSetEditor(
     var read by remember { mutableStateOf<OfflineMaps?>(null) }
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var typeMenu by remember { mutableStateOf(false) }
+    var showPreview by remember { mutableStateOf(false) }
     val minZoom = zooms.start.toInt()
     val maxZoom = zooms.endInclusive.toInt()
 
@@ -397,6 +401,27 @@ private fun OfflineSetEditor(
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Text("Min Zoom: $minZoom")
                         Text("Max Zoom: $maxZoom")
+                    }
+                    val previewAt = region?.let(::regionCentre)
+                    if (previewAt == null || !showPreview) {
+                        OutlinedButton(onClick = { showPreview = true }, enabled = previewAt != null) { Text("Show zoom previews") }
+                    } else {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf("Min Zoom: $minZoom" to minZoom, "Max Zoom: $maxZoom" to maxZoom).forEach { (label, zoom) ->
+                                Box(Modifier.size(150.dp).clickable { showPreview = false }) {
+                                    VehicleMap(
+                                        modifier = Modifier.fillMaxSize(),
+                                        mapStyle = qgcRasterStyle(mapType),
+                                        follow = false,
+                                        centreRequest = zoom + 1,
+                                        centreOn = previewAt,
+                                        centreZoom = zoom.toDouble(),
+                                        gestures = false,
+                                    )
+                                    Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.align(Alignment.BottomCenter).padding(4.dp))
+                                }
+                            }
+                        }
                     }
                     estimate?.let {
                         InfoLine("Tile Count:", it.tileCountText)

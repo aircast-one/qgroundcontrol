@@ -41,4 +41,9 @@ class OfflineMapsTest {
         org.junit.Assert.assertNull(renameWanted("Set 1", "Set 1"))
         org.junit.Assert.assertNull(renameWanted("Set 1", "  "))
     }
+
+    @Test
+    fun `zoom previews centre on the chosen region, like OfflineMapEditor's preview maps`() {
+        assertEquals(one.aircast.mapspike.TrackPoint(41.5, 44.5), regionCentre(OfflineRegion(west = 44.0, north = 42.0, east = 45.0, south = 41.0)))
+    }
 }
