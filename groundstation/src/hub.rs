@@ -1890,9 +1890,10 @@ impl Vehicle {
                     return Err("A message rate names a component, a message and a rate.".to_string());
                 };
                 let interval = if rate > 0 { 1_000_000.0 / rate as f64 } else { rate as f64 };
-                let set = Outbound::CommandLong { target: (self.id, component), command: 511, params: [message as f64, interval, 0.0, 0.0, 0.0, 0.0, 0.0] };
-                let ask = Outbound::CommandLong { target: (self.id, component), command: 512, params: [244.0, message as f64, 0.0, 0.0, 0.0, 0.0, 0.0] };
-                return Ok([set, ask].iter().filter_map(|send| self.encode(send)).collect());
+                let Ok(message) = u32::try_from(message) else { return Err("A message id is a positive number.".to_string()) };
+                let params = [f64::from(message), interval, 0.0, 0.0, 0.0, 0.0, 0.0];
+                let outs = self.commands.send(Command { component, command: CMD_SET_MESSAGE_INTERVAL, command_int: false, frame: 0, params, show_error: false, tag: INSPECTOR_RATE_TAG + u64::from(message) }, now_ms);
+                return Ok(self.handle(outs, now_ms));
             }
             Some("shellCommand") => {
                 let Some(command) = action.get("command").and_then(Value::as_str) else {
@@ -1997,6 +1998,10 @@ impl Vehicle {
                     self.pending_notices.push((crate::noticeboard::MESSAGE, text.clone()));
                     self.note(text);
                     Vec::new()
+                }
+                Out::Result { tag, component, result: RESULT_ACCEPTED, .. } if (INSPECTOR_RATE_TAG..INSPECTOR_RATE_TAG + (1 << 32)).contains(&tag) => {
+                    let message = tag - INSPECTOR_RATE_TAG;
+                    self.encode(&Outbound::CommandLong { target: (self.id, component), command: crate::mavcmd::CMD_REQUEST_MESSAGE, params: [f64::from(MSG_MESSAGE_INTERVAL), message as f64, 0.0, 0.0, 0.0, 0.0, 0.0] }).into_iter().collect()
                 }
                 Out::Result { tag: FACTORY_RESET_TAG, result, .. } => {
                     let reset = result == RESULT_ACCEPTED;
@@ -3379,6 +3384,8 @@ pub struct LinkKinds {
 const SENSOR_REFRESH_DELAY_MS: u64 = 1000;
 const REBOOT_TAG: u64 = 0x5245_424F_4F54;
 const FACTORY_RESET_TAG: u64 = 0x5245_5345_5446;
+const INSPECTOR_RATE_TAG: u64 = 0x4D53_4749_0000_0000;
+const MSG_MESSAGE_INTERVAL: u32 = 244;
 const STORAGE_RESET_FACTORY: f64 = 3.0;
 const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
 
