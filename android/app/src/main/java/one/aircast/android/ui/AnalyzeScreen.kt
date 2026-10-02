@@ -1,5 +1,10 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.annotation.DrawableRes
 import one.aircast.android.R
 
@@ -86,7 +91,7 @@ internal fun analyzeNote(
 }
 
 @Composable
-private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier = Modifier) {
+private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier = Modifier, selected: AnalyzePage? = null) {
     val setupJson by qgcPath(SETUP)
     val vibrationJson by qgcPath(VIBRATION_VIEW)
     val connected = hasVehicle()
@@ -112,6 +117,7 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
                     subtitle = listOfNotNull(page.description, analyzeNote(page, connected, px4, caveat)).joinToString("\n"),
                     onClick = { onSelect(page) },
                     icon = page.icon,
+                    selected = page == selected,
                 )
             }
         }
@@ -125,19 +131,33 @@ fun AnalyzeScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val leave: () -> Unit = {
+    val switchTo: (AnalyzePage?) -> Unit = { next ->
         navigationRefusal(AppNavigation.blockedReason, leaving = true)
+            ?.takeIf { page != null }
             ?.let { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() }
-            ?: onSelect(null)
+            ?: onSelect(next)
     }
+    val leave: () -> Unit = { switchTo(null) }
     BackHandler(enabled = page != null) { leave() }
 
-    if (page == null) {
-        Surface(modifier.fillMaxSize()) { AnalyzePageList(onSelect = onSelect) }
-        return
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val wide = maxWidth >= LIST_DETAIL_MIN_WIDTH
+        when {
+            wide -> Row(Modifier.fillMaxSize()) {
+                AnalyzePageList(onSelect = switchTo, modifier = Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow), selected = page)
+                Surface(Modifier.weight(1f).fillMaxHeight()) {
+                    if (page == null) EmptyState(R.drawable.ic_analytics, "Analyze", "Choose a tool on the left.") else AnalyzePageBody(page, leave)
+                }
+            }
+            page == null -> Surface(Modifier.fillMaxSize()) { AnalyzePageList(onSelect = onSelect) }
+            else -> AnalyzePageBody(page, leave)
+        }
     }
+}
 
-    Column(modifier.fillMaxSize()) {
+@Composable
+private fun AnalyzePageBody(page: AnalyzePage, leave: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
         PageTopBar(page.label, "Back to Analyze") { leave() }
         Surface(Modifier.weight(1f)) {
             when (page) {
