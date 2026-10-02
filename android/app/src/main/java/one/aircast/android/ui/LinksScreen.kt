@@ -183,8 +183,20 @@ internal fun editWrites(
     else -> emptyList()
 }
 
-internal fun autoLinkName(type: String, host: String, port: String): String =
-    if (host.isBlank()) "${type.uppercase()} $port" else "${type.uppercase()} $host:$port"
+internal fun autoLinkName(type: String, host: String, port: String): String = when {
+    type == "udp" -> "UDP $port"
+    host.isBlank() -> type.uppercase()
+    else -> "${type.uppercase()} $host:$port"
+}
+
+internal fun uniqueLinkName(base: String, taken: List<String>): String =
+    (listOf(base) + (2..taken.size + 2).map { "$base ($it)" }).first { it !in taken }
+
+internal fun editedLinkSuggestion(editing: String, host: String, port: String, portName: String): String = when (editing) {
+    "serial" -> autoSerialName(portName)
+    "hostAndPort" -> autoLinkName("tcp", host, port)
+    else -> autoLinkName("udp", host, port)
+}
 
 internal const val DEFAULT_BAUD = 57600
 
@@ -218,7 +230,7 @@ internal fun serialFormError(
     !anyPorts -> "Nothing is plugged in. Connect a radio over USB and it will appear here."
     portName.isBlank() -> "Pick the port the radio is plugged into."
     baud <= 0 -> "Pick a baud rate."
-    name.ifBlank { autoSerialName(portName) } in taken -> "A link with that name already exists."
+    name.isNotBlank() && name.trim() in taken -> "A link with that name already exists."
     else -> null
 }
 
@@ -400,7 +412,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Name") },
+                    label = { Text("Name (optional)") },
                     singleLine = true,
                 )
                 LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
@@ -449,7 +461,6 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                 onClick = {
                     val parsed = port.toIntOrNull() ?: 0
                     val invalid = when {
-                        name.isBlank() -> "A link needs a name."
                         row.editing != "serial" && parsed !in 1..65535 ->
                             "Port must be a number between 1 and 65535."
                         else -> null
@@ -460,26 +471,29 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                             // The menu gated on a watched row. A link can connect between that
                             // poll and this tap, and writing a port or baud underneath a live
                             // link changes the configuration without changing the connection.
-                            val live = withContext(Dispatchers.Default) {
-                                currentRows().firstOrNull { it.index == row.index }
-                            }
+                            val rows = withContext(Dispatchers.Default) { currentRows() }
+                            val live = rows.firstOrNull { it.index == row.index }
                             if (live == null || live.connected) {
                                 error = "Disconnect the link before changing its settings."
                                 return@launch
                             }
+                            val resolved = name.trim().ifBlank {
+                                uniqueLinkName(editedLinkSuggestion(row.editing, host, port, portName), rows.filter { it.index != row.index }.map { it.name })
+                            }
                             withContext(Dispatchers.Default) {
-                                editWrites(row.editing, name, host, parsed, portName, baud, autoConnect, highLatency, framing)
+                                editWrites(row.editing, resolved, host, parsed, portName, baud, autoConnect, highLatency, framing)
                                     .forEach { (field, value) ->
                                         // qtpaths: links.linkConfigurations.0.name, links.linkConfigurations.0.autoConnect, links.linkConfigurations.0.highLatency, links.linkConfigurations.0.host, links.linkConfigurations.0.port, links.linkConfigurations.0.localPort, links.linkConfigurations.0.portName, links.linkConfigurations.0.baud, links.linkConfigurations.0.dataBits, links.linkConfigurations.0.stopBits, links.linkConfigurations.0.parity, links.linkConfigurations.0.flowControl
                                         Qgc.set("$LINKS_PATH.${row.index}.$field", value)
                                     }
                                 Qgc.invoke("links.commitLinkConfigurations")
+                                Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")
                             }
                             onSaved()
                         }
                     }
                 },
-            ) { Text("Save") }
+            ) { Text("Save & Connect") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -629,13 +643,16 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     error = invalid?.ifBlank { null }
                     if (invalid == null) {
                         busy = true
-                        val chosen = name.ifBlank {
-                            when (type) {
-                                AIRCAST_CLOUD_LINK -> AIRCAST_CLOUD_NAME
-                                BLUETOOTH_LINK -> device?.name.orEmpty()
-                                "serial" -> autoSerialName(portName)
-                                else -> autoLinkName(type, host, port)
-                            }
+                        val chosen = name.trim().ifBlank {
+                            uniqueLinkName(
+                                when (type) {
+                                    AIRCAST_CLOUD_LINK -> AIRCAST_CLOUD_NAME
+                                    BLUETOOTH_LINK -> device?.name.orEmpty()
+                                    "serial" -> autoSerialName(portName)
+                                    else -> autoLinkName(type, host, port)
+                                },
+                                taken,
+                            )
                         }
                         scope.launch {
                             val added = withContext(Dispatchers.Default) {

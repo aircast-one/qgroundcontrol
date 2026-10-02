@@ -92,7 +92,16 @@ class LinksScreenTest {
     @Test
     fun `a link names itself from what it points at`() {
         assertEquals("UDP 14550", autoLinkName("udp", "", "14550"))
+        assertEquals("UDP 14550", autoLinkName("udp", "10.0.0.4", "14550"))
         assertEquals("TCP 10.0.0.4:5760", autoLinkName("tcp", "10.0.0.4", "5760"))
+        assertEquals("TCP", autoLinkName("tcp", "", "5760"))
+    }
+
+    @Test
+    fun `a suggested name already in use gets a number, like LinkSettings _uniqueName`() {
+        assertEquals("UDP 14550", uniqueLinkName("UDP 14550", listOf("TCP")))
+        assertEquals("UDP 14550 (2)", uniqueLinkName("UDP 14550", listOf("UDP 14550")))
+        assertEquals("UDP 14550 (3)", uniqueLinkName("UDP 14550", listOf("UDP 14550", "UDP 14550 (2)")))
     }
 
     @Test
@@ -141,11 +150,12 @@ class SerialLinkFormTest {
     }
 
     @Test
-    fun `a duplicate name is refused before the invoke rejects it`() {
+    fun `a typed duplicate name is refused, a blank one is numbered instead`() {
         assertEquals(
             "A link with that name already exists.",
-            serialFormError("/dev/ttyUSB0", DEFAULT_BAUD, listOf("Serial ttyUSB0"), "", anyPorts = true),
+            serialFormError("/dev/ttyUSB0", DEFAULT_BAUD, listOf("Serial ttyUSB0"), "Serial ttyUSB0", anyPorts = true),
         )
+        assertNull(serialFormError("/dev/ttyUSB0", DEFAULT_BAUD, listOf("Serial ttyUSB0"), "", anyPorts = true))
     }
 
     @Test
