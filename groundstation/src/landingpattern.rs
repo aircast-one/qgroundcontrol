@@ -109,7 +109,7 @@ pub fn fresh(fresh: &Fresh) -> Value {
 const REQUIRED: [&str; 3] = ["loiterRadius", "loiterClockwise", "landCoordinate"];
 
 pub fn loaded(kind: &str, saved: &Value) -> Result<Value, String> {
-    let version = saved.get("version").and_then(Value::as_f64).map(|v| v as i64).ok_or("The following required keys are missing: version")?;
+    let version = saved.get("version").and_then(Value::as_f64).ok_or("The following required keys are missing: version").map(|v| if v.fract() == 0.0 { v as i64 } else { 0 })?;
     let supported = if kind == VTOL_PATTERN { version == 1 } else { matches!(version, 1 | 2) };
     if !supported {
         return Err(format!("{kind} complex item version {version} not supported"));

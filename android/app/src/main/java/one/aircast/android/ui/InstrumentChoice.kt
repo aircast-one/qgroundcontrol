@@ -65,7 +65,7 @@ internal fun vehicleOwnGroup(view: JSONObject?): InstrumentGroup? {
 }
 
 internal fun instrumentsPath(chosen: List<String>, vehicleClass: String = GENERIC_CLASS): String = when {
-    chosen.isEmpty() || chosen == DEFAULT_INSTRUMENTS || chosen == defaultInstruments(vehicleClass) -> INSTRUMENTS_VIEW
+    chosen.isEmpty() || chosen == defaultInstruments(vehicleClass) -> INSTRUMENTS_VIEW
     else -> "$INSTRUMENTS_VIEW(${chosen.joinToString(",")})"
 }
 
