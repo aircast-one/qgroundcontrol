@@ -24,6 +24,13 @@ class FieldRunsTest {
     }
 
     @Test
+    fun aNumberFieldDropsThePaddedDecimalsButTextIsLeftAlone() {
+        assertEquals("300", fieldText(text("d", isString = false).copy(valueString = "300.000")))
+        assertEquals("2.5", fieldText(text("d", isString = false).copy(valueString = "2.50")))
+        assertEquals("007.10", fieldText(text("s").copy(valueString = "007.10")))
+    }
+
+    @Test
     fun aRebootNoticeSharedByTheBlockIsSaidOnce() {
         val reboot = text("a").copy(vehicleRebootRequired = true)
         assertEquals("Reboot vehicle for changes to take effect.", sharedRebootNote(listOf(reboot, text("plain"), reboot.copy(name = "b"))))

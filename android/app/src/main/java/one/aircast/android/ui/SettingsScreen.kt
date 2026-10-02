@@ -842,6 +842,9 @@ internal fun factKeyboard(fact: Fact): KeyboardType = when {
     else -> KeyboardType.Decimal
 }
 
+internal fun fieldText(fact: Fact): String =
+    if (fact.isString || isSecret(fact)) fact.valueString else plainNumber(fact.valueString)
+
 internal fun plainNumber(text: String): String {
     val parsed = text.toDoubleOrNull() ?: return text
     if (!parsed.isFinite() || abs(parsed) >= 1e15) return text
@@ -888,7 +891,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
 
     Column {
         OutlinedTextField(
-            value = editing ?: fact.valueString,
+            value = editing ?: fieldText(fact),
             enabled = fact.enabled,
             label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             suffix = fact.units.takeIf { it.isNotBlank() }?.let { { Text(it) } },
@@ -909,7 +912,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
             modifier = Modifier.fillMaxWidth(),
             trailingIcon = {
                 val committed = editing
-                if (committed != null && committed != fact.valueString) {
+                if (committed != null && committed != fieldText(fact)) {
                     TextButton(onClick = {
                         scope.launch {
                             val refused = rejectionFor(fact, committed)
