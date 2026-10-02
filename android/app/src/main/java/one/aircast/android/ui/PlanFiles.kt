@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
@@ -117,6 +118,29 @@ private fun displayName(context: Context, uri: Uri): String? = runCatching {
         ?.use { if (it.moveToFirst()) it.getString(0) else null }
 }.getOrNull()
 
+private const val FILES_STORE = "plan-files"
+private const val LAST_DOCUMENT_KEY = "lastDocument"
+
+private fun lastDocument(context: Context): Uri? =
+    context.getSharedPreferences(FILES_STORE, Context.MODE_PRIVATE).getString(LAST_DOCUMENT_KEY, null)?.let(Uri::parse)
+
+private fun rememberDocument(context: Context, uri: Uri) {
+    context.getSharedPreferences(FILES_STORE, Context.MODE_PRIVATE).edit().putString(LAST_DOCUMENT_KEY, uri.toString()).apply()
+}
+
+private fun Intent.startingAt(folder: Uri?): Intent =
+    folder?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) } ?: this
+
+private class OpenFrom(private val folder: () -> Uri?) : ActivityResultContracts.OpenDocument() {
+    override fun createIntent(context: Context, input: Array<String>): Intent =
+        super.createIntent(context, input).startingAt(folder())
+}
+
+private class CreateIn(private val folder: () -> Uri?) : ActivityResultContracts.CreateDocument(PLAN_MIME) {
+    override fun createIntent(context: Context, input: String): Intent =
+        super.createIntent(context, input).startingAt(folder())
+}
+
 private fun suffixed(context: Context, uri: Uri, extension: String): Uri = runCatching {
     val shown = displayName(context, uri) ?: return uri
     val wanted = withExtension(shown, extension)
@@ -133,6 +157,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
 
     fun adopt(uri: Uri) {
         document.value = uri
+        rememberDocument(context, uri)
         scope.launch {
             name.value = withContext(Dispatchers.IO) { displayName(context, uri) }
         }
@@ -214,7 +239,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
         }
     }
 
-    val opener = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val opener = rememberLauncherForActivityResult(OpenFrom { lastDocument(context) }) { uri ->
         val chosen = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             val staged = File(context.cacheDir, OPEN_CACHE)
@@ -255,7 +280,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     }
 
     val kmlCreator = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument(PLAN_MIME),
+        CreateIn { lastDocument(context) },
     ) { uri -> uri?.let { exportKmlTo(it) } }
 
     val pendingImport = remember { mutableStateOf<List<Uri>?>(null) }
@@ -277,7 +302,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     }
 
     val creator = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument(PLAN_MIME),
+        CreateIn { lastDocument(context) },
     ) { uri -> uri?.let { writeTo(it) } }
 
     val choosePattern = PatternChoice(
