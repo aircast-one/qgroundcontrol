@@ -17,6 +17,7 @@ unsafe extern "C" {
 pub struct Video {
     init: unsafe extern "C" fn(*mut jni::sys::JavaVM, jni::sys::jobject, jni::sys::jobject, *const c_char, *const c_char) -> bool,
     pub set_surface: unsafe extern "C" fn(*mut jni::sys::JNIEnv, jni::sys::jobject) -> bool,
+    force_decoder: unsafe extern "C" fn(c_int),
     start: unsafe extern "C" fn(*const c_char) -> bool,
     stop: unsafe extern "C" fn(),
     running: unsafe extern "C" fn() -> bool,
@@ -45,6 +46,7 @@ fn load() -> Option<Video> {
     Some(Video {
         init: symbol(handle, c"qgc_video_android_init")?,
         set_surface: symbol(handle, c"qgc_video_android_set_surface")?,
+        force_decoder: symbol(handle, c"qgc_video_android_force_decoder")?,
         start: symbol(handle, c"qgc_video_start")?,
         stop: symbol(handle, c"qgc_video_stop")?,
         running: symbol(handle, c"qgc_video_running")?,
@@ -78,7 +80,10 @@ fn initialise(vm: &JavaVM, video: &Video) -> jni::errors::Result<bool> {
     let (files, cache) = (folder(&mut env, &application, "getFilesDir")?, folder(&mut env, &application, "getCacheDir")?);
     let globals = (env.new_global_ref(application)?, env.new_global_ref(loader)?);
     let (application, loader) = APPLICATION.get_or_init(|| globals);
-    Ok(unsafe { (video.init)(vm.get_java_vm_pointer(), application.as_obj().as_raw(), loader.as_obj().as_raw(), files.as_ptr(), cache.as_ptr()) })
+    let initialised = unsafe { (video.init)(vm.get_java_vm_pointer(), application.as_obj().as_raw(), loader.as_obj().as_raw(), files.as_ptr(), cache.as_ptr()) };
+    let forced = crate::settingsstore::raw_setting("settings.videoSettings.forceVideoDecoder").and_then(|v| v.as_i64()).unwrap_or(0);
+    unsafe { (video.force_decoder)(forced as c_int) };
+    Ok(initialised)
 }
 
 #[derive(Default)]

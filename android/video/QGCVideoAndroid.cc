@@ -48,6 +48,38 @@ void drawFrame(const uint8_t *pixels, int width, int height, int stride)
     ANativeWindow_unlockAndPost(window);
 }
 
+bool hardwareDecoder(const gchar *name)
+{
+    const bool softwareWrapper = name && (g_str_has_prefix(name, "amcviddec-omxgoogle") || g_str_has_prefix(name, "amcviddec-c2android"));
+    return name && g_str_has_prefix(name, "amcviddec-") && !softwareWrapper;
+}
+
+void rankDecoders(bool preferHardware)
+{
+    GList *const decoders = gst_element_factory_list_get_elements(
+        static_cast<GstElementFactoryListType>(GST_ELEMENT_FACTORY_TYPE_DECODER | GST_ELEMENT_FACTORY_TYPE_MEDIA_VIDEO), GST_RANK_NONE);
+    for (GList *item = decoders; item; item = item->next) {
+        GstPluginFeature *const feature = GST_PLUGIN_FEATURE(item->data);
+        const bool preferred = hardwareDecoder(gst_plugin_feature_get_name(feature)) == preferHardware;
+        if (preferred) {
+            gst_plugin_feature_set_rank(feature, GST_RANK_PRIMARY + 1);
+        } else if (gst_plugin_feature_get_rank(feature) >= GST_RANK_MARGINAL) {
+            gst_plugin_feature_set_rank(feature, GST_RANK_NONE);
+        }
+    }
+    gst_plugin_feature_list_free(decoders);
+}
+
+void rankNamed(const char *const *names, size_t count)
+{
+    for (size_t i = 0; i < count; ++i) {
+        if (GstPluginFeature *const feature = gst_registry_lookup_feature(gst_registry_get(), names[i])) {
+            gst_plugin_feature_set_rank(feature, GST_RANK_PRIMARY + 1);
+            gst_object_unref(feature);
+        }
+    }
+}
+
 void preferHardwareDecoders()
 {
     GList *const decoders = gst_element_factory_list_get_elements(
@@ -113,6 +145,27 @@ __attribute__((visibility("default"))) bool qgc_video_android_init(JavaVM *vm, j
         qgc_video_set_frame_callback(drawFrame);
     });
     return gst_is_initialized();
+}
+
+__attribute__((visibility("default"))) void qgc_video_android_force_decoder(int option)
+{
+    constexpr int kSoftware = 1;
+    constexpr int kVulkan = 7;
+    constexpr int kHardware = 8;
+    static const char *const kVulkanDecoders[] = {"vulkanh264dec", "vulkanh265dec"};
+    switch (option) {
+    case kSoftware:
+        rankDecoders(false);
+        break;
+    case kHardware:
+        rankDecoders(true);
+        break;
+    case kVulkan:
+        rankNamed(kVulkanDecoders, sizeof(kVulkanDecoders) / sizeof(kVulkanDecoders[0]));
+        break;
+    default:
+        break;
+    }
 }
 
 __attribute__((visibility("default"))) bool qgc_video_android_set_surface(JNIEnv *env, jobject surface)
