@@ -97,8 +97,9 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "${matches.size} parameter${if (matches.size == 1) "" else "s"}",
-                style = MaterialTheme.typography.labelMedium,
+                parameterCountLine(matches.size, modified.size),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -183,6 +184,12 @@ internal fun parameterMatches(name: String, descriptions: List<String>, search: 
             pattern?.containsMatchIn(text) ?: text.contains(word, ignoreCase = true)
         }
     }
+
+internal fun parameterCountLine(shown: Int, changed: Int): String =
+    listOfNotNull(
+        "%,d parameter%s".format(java.util.Locale.US, shown, if (shown == 1) "" else "s"),
+        "%,d changed".format(java.util.Locale.US, changed).takeIf { changed > 0 },
+    ).joinToString(" \u00b7 ")
 
 internal fun parameterValueText(fact: Fact): String = when {
     fact.isBitmask -> bitmaskSummary(fact)

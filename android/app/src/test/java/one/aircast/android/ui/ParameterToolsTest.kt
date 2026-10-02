@@ -51,4 +51,10 @@ class ParameterToolsTest {
         assertTrue(gimbal.key != autopilot.key)
         assertEquals("Vehicle N/A — new to Vehicle · File 1", diffLine(gimbal))
     }
+
+    @Test
+    fun `the count line reads like the Penpot header`() {
+        org.junit.Assert.assertEquals("1,204 parameters \u00b7 3 changed", parameterCountLine(1204, 3))
+        org.junit.Assert.assertEquals("1 parameter", parameterCountLine(1, 0))
+    }
 }
