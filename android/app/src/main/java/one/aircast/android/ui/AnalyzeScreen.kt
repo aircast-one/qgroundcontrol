@@ -58,6 +58,12 @@ enum class AnalyzePage(
         AnalyzeSection.Live,
         R.drawable.ic_terminal,
     ),
+    Messages(
+        "Messages",
+        "What the vehicle has said since it connected",
+        AnalyzeSection.Live,
+        R.drawable.ic_description,
+    ),
     Firmware(
         "Firmware",
         "Flash a board through its bootloader over USB",
@@ -141,6 +147,7 @@ fun AnalyzeScreen(
                 AnalyzePage.Vibration -> VibrationScreen()
                 AnalyzePage.GeoTag -> GeoTagScreen()
                 AnalyzePage.Firmware -> FirmwareScreen()
+                AnalyzePage.Messages -> VehicleMessagesPage()
             }
         }
     }

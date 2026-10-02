@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
 import one.aircast.android.R
 
 import androidx.compose.ui.res.painterResource
@@ -223,6 +225,30 @@ private fun VehicleMessageLog(
                     onDismiss()
                 }) { Text("Clear") }
                 TextButton(onClick = onDismiss) { Text("Close") }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun VehicleMessagesPage(modifier: Modifier = Modifier) {
+    val messagesJson by qgcPath(MESSAGES)
+    val lines = remember(messagesJson) { vehicleMessages(messagesJson).asReversed() }
+    LaunchedEffect(Unit) { offMainDetached { Qgc.invoke("vehicle.resetAllMessages") } }
+
+    if (lines.isEmpty()) {
+        EmptyState(R.drawable.ic_description, "No messages", "The vehicle has not said anything yet.", modifier)
+        return
+    }
+    LazyColumn(modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+        items(lines) { message ->
+            MessageLine(level = message.level, time = message.time) {
+                Text(message.text, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = { offMainDetached { Qgc.invoke("vehicle.clearMessages") } }) { Text("Clear") }
             }
         }
     }
