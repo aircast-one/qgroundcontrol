@@ -1,5 +1,10 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Surface
 import one.aircast.mapspike.aircast
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,7 +20,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -190,7 +194,15 @@ internal fun ParameterForm(
                     } else {
                         FactRow(fact, titleColor = if (fact.name in highlighted) MaterialTheme.aircast.warning else Color.Unspecified) { reloads++ }
                         section.calculators[fact.path]?.let { calculator ->
-                            TextButton(onClick = { calculating = calculator }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Calculate") }
+                            Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(calculator.title, style = MaterialTheme.typography.bodyLarge)
+                                        Text("Measure the ${calculator.measure} with a meter", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    FilledTonalButton(onClick = { calculating = calculator }) { Text("Calibrate") }
+                                }
+                            }
                         }
                     }
                 }
