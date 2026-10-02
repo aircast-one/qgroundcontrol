@@ -14,7 +14,7 @@
             "shortDesc": "Use click and drag control instead of click to point",
             "type": "bool",
             "default": false,
-            "label": "Use click and drag control instead of click to point"
+            "label": "Click and drag"
         },
         {
             "name": "cameraVFov",
@@ -38,14 +38,14 @@
             "type": "uint32",
             "default": 30,
             "units": "deg/s",
-            "label": "Maximum gimbal speed on click and drag (deg/sec)"
+            "label": "Max speed"
         },
         {
             "name": "showAzimuthIndicatorOnMap",
             "shortDesc": "Show gimbal Azimuth indicator over vehicle icon in map",
             "type": "bool",
             "default": true,
-            "label": "Show gimbal Azimuth indicator over vehicle icon in map"
+            "label": "Show gimbal azimuth indicator in map"
         },
         {
             "name": "toolbarIndicatorShowAzimuth",
@@ -59,7 +59,7 @@
             "shortDesc": "Show Azimuth Acquire/release buttons in the gimbal buttons panel",
             "type": "bool",
             "default": false,
-            "label": "Show Azimuth Acquire/release buttons in the gimbal buttons panel"
+            "label": "Show Acquire/Release control button"
         },
         {
             "name": "joystickButtonsSpeed",
@@ -68,7 +68,7 @@
             "type": "uint32",
             "default": 20,
             "units": "deg/s",
-            "label": "Rate used for joystick button control (deg/sec)"
+            "label": "Joystick buttons speed"
         },
         {
             "name": "zoomMinSpeed",
@@ -76,7 +76,7 @@
             "type": "uint32",
             "default": 5,
             "units": "deg/s",
-            "label": "Maximum gimbal speed for min zoom (deg/sec)"
+            "label": "Min speed (max zoom)"
         },
         {
             "name": "zoomMaxSpeed",
@@ -84,7 +84,7 @@
             "type": "uint32",
             "default": 60,
             "units": "deg/s",
-            "label": "Minimum gimbal speed for max zoom (deg/sec)"
+            "label": "Max speed (min zoom)"
         }
     ]
 }
