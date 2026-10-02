@@ -147,8 +147,14 @@ private const val LEG_ARROW_SPACING = 5
 
 private data class ArrowWalk(val arrows: List<Boolean>, val count: Int)
 
-fun legArrows(items: List<MissionItem>, linkStartToHome: Boolean): List<TransectArrow> {
+fun flownRoute(items: List<MissionItem>, linkStartToHome: Boolean): List<MissionItem> {
     val flown = (if (linkStartToHome) items else items.filterNot { it.index == 0 }).filter { it.routed }
+    val home = items.firstOrNull { it.index == 0 && it.closesRoute }
+    return if (home != null && flown.any { it.index != 0 }) flown + home.copy(exit = null) else flown
+}
+
+fun legArrows(items: List<MissionItem>, linkStartToHome: Boolean): List<TransectArrow> {
+    val flown = flownRoute(items, linkStartToHome)
     val legs = flown.zipWithNext()
     val walk = legs.foldIndexed(ArrowWalk(emptyList(), 0)) { leg, walk, (from, to) ->
         when (to.index) {
@@ -168,8 +174,7 @@ fun legArrows(items: List<MissionItem>, linkStartToHome: Boolean): List<Transect
 }
 
 fun missionPath(items: List<MissionItem>, linkStartToHome: Boolean): Feature? {
-    val flown = (if (linkStartToHome) items else items.filterNot { it.index == 0 })
-        .filter { it.routed }
+    val flown = flownRoute(items, linkStartToHome)
     val points = flown.flatMap { item ->
         listOfNotNull(
             Point.fromLngLat(item.longitude, item.latitude),

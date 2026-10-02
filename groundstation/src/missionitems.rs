@@ -93,7 +93,7 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
         "linksStartToHome": rover || starts_from_the_ground(&items),
         "editing": editable(backend, current),
         "selected": current,
-        "items": items,
+        "items": with_closed_route(items),
         "reason": match has_items {
             true => "",
             false => "This plan has no items yet.",
@@ -512,7 +512,7 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
         "linksStartToHome": rover || starts_from_the_ground(&items),
         "editing": Value::Null,
         "selected": selected,
-        "items": items,
+        "items": with_closed_route(items),
         "reason": if has_items { "" } else { "This plan has no items yet." },
     }))
 }
@@ -717,6 +717,28 @@ fn with_vehicle_yaws(reads: Vec<Value>) -> Vec<Value> {
             (_, read) => read,
         })
         .collect()
+}
+
+fn with_closed_route(items: Vec<Value>) -> Vec<Value> {
+    let closes = ends_at_home(&items);
+    items
+        .into_iter()
+        .enumerate()
+        .map(|(index, item)| match (index, item) {
+            (0, Value::Object(mut fields)) => {
+                fields.insert("closesRoute".to_string(), json!(closes));
+                Value::Object(fields)
+            }
+            (_, item) => item,
+        })
+        .collect()
+}
+
+fn ends_at_home(items: &[Value]) -> bool {
+    let before_rtl = items.iter().skip(1).take_while(|item| item["command"].as_i64() != Some(RETURN_TO_LAUNCH)).count();
+    items.iter().skip(1).any(|item| item["command"].as_i64() == Some(RETURN_TO_LAUNCH))
+        && items.iter().skip(1).take(before_rtl).any(|item| item["flownLeg"] == true)
+        && !items.iter().skip(1).take(before_rtl).any(|item| item["endsRoute"] == true)
 }
 
 fn starts_from_the_ground(items: &[Value]) -> bool {
@@ -2089,6 +2111,17 @@ mod reported {
         assert_eq!(mount_gimbal_yaw(&mount(2.0)), Some(30.0), "MissionItem::specifiedGimbalYaw");
         assert_eq!(mount_gimbal_yaw(&mount(0.0)), None, "a retract is not aiming anywhere");
         assert_eq!(sections_gimbal_yaw(&[mount(0.0), mount(2.0)]), Some(30.0));
+    }
+
+    #[test]
+    fn an_rtl_links_the_route_back_to_home_like_mission_controller() {
+        let item = |command: i64, flown: bool, ends: bool| json!({ "command": command, "flownLeg": flown, "endsRoute": ends });
+        let home = item(0, false, false);
+        assert!(ends_at_home(&[home.clone(), item(16, true, false), item(20, false, true)]), "linkEndToHome after an RTL");
+        assert!(!ends_at_home(&[home.clone(), item(16, true, false)]), "no RTL, no return leg");
+        assert!(!ends_at_home(&[home.clone(), item(21, true, true), item(20, false, true)]), "a land before the RTL ends the route there");
+        assert!(!ends_at_home(&[home.clone(), item(20, false, true)]), "nothing flown before it");
+        assert_eq!(with_closed_route(vec![home, item(16, true, false), item(20, false, true)])[0]["closesRoute"], true, "served on the home row, which every map already reads");
     }
 
     #[test]

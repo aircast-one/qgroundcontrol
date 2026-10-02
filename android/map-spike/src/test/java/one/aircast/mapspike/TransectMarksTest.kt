@@ -66,4 +66,12 @@ class TransectMarksTest {
         assertEquals(listOf("12.0 m", "8.5 m"), edgeLabels(MapHit.FenceVertex(0, 1), listOf(fence), emptyList()).map { it.text })
         assertEquals("nothing while no vertex is dragged", 0, edgeLabels(null, listOf(fence), emptyList()).size)
     }
+
+    @Test
+    fun `an rtl closes the route back to home and its leg carries the last arrow`() {
+        val home = leg(0).copy(closesRoute = true)
+        val route = flownRoute(listOf(home, leg(1), leg(2)), linkStartToHome = false)
+        assertEquals(listOf(1, 2, 0), route.map { it.index })
+        assertEquals("the last arrow sits on the leg home", 47.0005, legArrows(listOf(home, leg(1), leg(2)), linkStartToHome = false).last().at.latitude, 0.0002)
+    }
 }

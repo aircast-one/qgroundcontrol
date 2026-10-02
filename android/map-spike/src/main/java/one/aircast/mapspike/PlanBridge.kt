@@ -119,6 +119,7 @@ data class MissionItem(
     val loiterRadius: Double = Double.NaN,
     val heading: Double = Double.NaN,
     val gimbalYaw: Double = Double.NaN,
+    val closesRoute: Boolean = false,
 )
 
 fun routeEndsAfter(items: JSONArray?): Int =
@@ -172,6 +173,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             loiterRadius = element.optDouble("loiterRadius", Double.NaN),
             heading = element.optDouble("heading", Double.NaN),
             gimbalYaw = element.optDouble("gimbalYaw", Double.NaN),
+            closesRoute = element.optBoolean("closesRoute"),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,
