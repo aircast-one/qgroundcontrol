@@ -25,6 +25,9 @@ class VirtualJoystickTest {
     @Test
     fun `with the sticks never touched the resting positions are sent, as VirtualJoystick sends from the start`() {
         val state = VirtualJoystickState(show = true, sending = true, autoCenterThrottle = false, leftHandedMode = false, leftPositiveOnly = true, rightPositiveOnly = false, periodMs = 40)
-        org.junit.Assert.assertEquals(joystickValues(stickAxes(0.5f, 1f, true), stickAxes(0.5f, 0.5f, false), false), restingValues(state))
+        org.junit.Assert.assertEquals(joystickValues(stickAxes(0.5f, 1f, true), stickAxes(0.5f, 0.5f, false), false), stickValues(state, null, null))
+        val held = androidx.compose.ui.geometry.Offset(0.2f, 0.3f)
+        org.junit.Assert.assertEquals("values follow the current layout, not the one in force when the stick was held", stickValues(state.copy(leftHandedMode = true), held, null), joystickValues(stickAxes(0.2f, 0.3f, true), stickAxes(0.5f, 0.5f, false), true))
+        org.junit.Assert.assertEquals("a released throttle stays where it was without auto-centre", androidx.compose.ui.geometry.Offset(0.5f, 0.3f), released(held, false))
     }
 }

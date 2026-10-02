@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,12 +69,24 @@ internal data class StickAxes(val x: Double, val y: Double)
 
 private const val STATE_REFRESH_MS = 500L
 
-internal fun restingValues(state: VirtualJoystickState): List<Double> =
-    joystickValues(stickAxes(0.5f, restingY(state.autoCenterThrottle), state.leftPositiveOnly), stickAxes(0.5f, 0.5f, state.rightPositiveOnly), state.leftHandedMode)
+internal fun restingLeft(autoCenterThrottle: Boolean): Offset = Offset(0.5f, restingY(autoCenterThrottle))
+
+internal val RESTING_RIGHT = Offset(0.5f, 0.5f)
+
+internal fun released(stick: Offset, reCenterY: Boolean): Offset = Offset(0.5f, if (reCenterY) 0.5f else stick.y)
+
+internal fun stickValues(state: VirtualJoystickState, left: Offset?, right: Offset?): List<Double> {
+    val l = left ?: restingLeft(state.autoCenterThrottle)
+    val r = right ?: RESTING_RIGHT
+    return joystickValues(stickAxes(l.x, l.y, state.leftPositiveOnly), stickAxes(r.x, r.y, state.rightPositiveOnly), state.leftHandedMode)
+}
 
 object VirtualStickSender {
     @Volatile
-    internal var latest: List<Double>? = null
+    internal var left: Offset? = null
+
+    @Volatile
+    internal var right: Offset? = null
 
     fun start(scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch(Dispatchers.IO) {
@@ -82,13 +95,17 @@ object VirtualStickSender {
             while (isActive) {
                 val now = System.currentTimeMillis()
                 if (now - readAt >= STATE_REFRESH_MS) {
-                    state = virtualJoystick(Qgc.get(VIRTUAL_JOYSTICK_PATH))
+                    val fresh = virtualJoystick(Qgc.get(VIRTUAL_JOYSTICK_PATH))
+                    if (fresh?.show != true || fresh.autoCenterThrottle != state?.autoCenterThrottle) {
+                        left = null
+                        right = null
+                    }
+                    state = fresh
                     readAt = now
-                    if (state?.show != true) latest = null
                 }
                 val current = state
                 if (current != null && current.show && current.sending) {
-                    Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *(latest ?: restingValues(current)).toTypedArray())
+                    Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *stickValues(current, left, right).toTypedArray())
                 }
                 delay(current?.periodMs ?: DEFAULT_PERIOD_MS)
             }
@@ -118,17 +135,18 @@ fun VirtualJoystick(modifier: Modifier = Modifier) {
     val view by qgcPath(VIRTUAL_JOYSTICK_PATH)
     val state = virtualJoystick(view)?.takeIf { it.show } ?: return
 
-    var left by remember { mutableStateOf(Offset(0.5f, restingY(state.autoCenterThrottle))) }
-    var right by remember { mutableStateOf(Offset(0.5f, 0.5f)) }
-    LaunchedEffect(state.autoCenterThrottle) {
-        left = Offset(0.5f, restingY(state.autoCenterThrottle))
+    var left by remember(state.autoCenterThrottle) { mutableStateOf(VirtualStickSender.left ?: restingLeft(state.autoCenterThrottle)) }
+    var right by remember { mutableStateOf(VirtualStickSender.right ?: RESTING_RIGHT) }
+    val autoCenter by rememberUpdatedState(state.autoCenterThrottle)
+    LaunchedEffect(left, right) {
+        VirtualStickSender.left = left
+        VirtualStickSender.right = right
     }
-    val latestLeft by rememberUpdatedState(stickAxes(left.x, left.y, state.leftPositiveOnly))
-    val latestRight by rememberUpdatedState(stickAxes(right.x, right.y, state.rightPositiveOnly))
-    val latestState by rememberUpdatedState(state)
-
-    LaunchedEffect(latestLeft, latestRight, latestState.leftHandedMode) {
-        VirtualStickSender.latest = joystickValues(latestLeft, latestRight, latestState.leftHandedMode)
+    DisposableEffect(Unit) {
+        onDispose {
+            VirtualStickSender.left = VirtualStickSender.left?.let { released(it, autoCenter) }
+            VirtualStickSender.right = VirtualStickSender.right?.let { released(it, true) }
+        }
     }
 
     BoxWithConstraints(modifier.fillMaxWidth()) {
@@ -180,7 +198,7 @@ private fun ThumbPad(stick: Offset, reCenterY: Boolean, description: String, siz
                             ),
                         )
                     }
-                    onMove(Offset(0.5f, if (reCenterY) 0.5f else latestStick.y))
+                    onMove(released(latestStick, reCenterY))
                 }
             },
     ) {
