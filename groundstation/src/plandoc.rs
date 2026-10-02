@@ -175,7 +175,7 @@ fn resolve_jumps(items: Vec<Item>, saved: &[Value]) -> Result<Vec<Item>, String>
 }
 
 fn current_or_empty(section: Option<&Value>, version: i64, empty: Value) -> Value {
-    section.filter(|s| s.get("version").and_then(Value::as_i64) == Some(version)).cloned().unwrap_or(empty)
+    section.filter(|s| s.get("version").and_then(whole) == Some(version)).cloned().unwrap_or(empty)
 }
 
 fn load_item(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>) -> Result<Item, String> {
@@ -228,6 +228,7 @@ fn load_simple(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo:
     })
 }
 
+#[derive(Debug, Clone)]
 pub struct Downloaded {
     pub frame: i64,
     pub command: i64,
@@ -269,9 +270,8 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
     };
     let landings = crate::landingpattern::fold(listed.iter().map(simple).collect(), firmware(template.firmware_type) == Firmware::ArduPilot);
     let (settings_sections, items) = fold(landings, vehicle_class(template.vehicle_type));
-    let derived = home.or_else(|| home_from_first_coordinate(&Document { items: items.clone(), ..template.clone() }, None));
     Document {
-        home: derived,
+        home,
         settings_sections,
         items,
         global_altitude_mode: match listed.is_empty() {
@@ -316,6 +316,12 @@ fn previous_altitude(doc: &Document, commands: &std::collections::BTreeMap<i64, 
     })
 }
 
+pub fn planned_home(doc: &Document, vehicle_home: Option<[f64; 3]>) -> Option<[f64; 3]> {
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    let takes_off = doc.items.iter().any(|item| matches!(item, Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.is_takeoff)));
+    doc.home.or(vehicle_home.filter(|_| takes_off)).or_else(|| home_from_first_coordinate(doc, None))
+}
+
 pub fn home_from_first_coordinate(doc: &Document, clicked: Option<(f64, f64)>) -> Option<[f64; 3]> {
     let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
     let first = doc.items.iter().find_map(|item| match item {
@@ -329,7 +335,7 @@ pub fn home_from_first_coordinate(doc: &Document, clicked: Option<(f64, f64)>) -
 }
 
 fn whole(value: &Value) -> Option<i64> {
-    value.as_i64().or_else(|| value.as_f64().filter(|f| f.is_finite()).map(|f| f as i64))
+    value.as_i64().or_else(|| value.as_f64().map(|f| if f.fract() == 0.0 && (f64::from(i32::MIN)..=f64::from(i32::MAX)).contains(&f) { f as i64 } else { 0 }))
 }
 
 pub fn previous_coordinate(doc: &Document, visual_index: i64) -> Option<(f64, f64)> {
@@ -1029,14 +1035,20 @@ mod tests {
         let text = r#"{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{"version":2,"firmwareType":12.0,"vehicleType":2,"cruiseSpeed":15,"hoverSpeed":5,"plannedHomePosition":[47.0,8.0,500],"items":[{"type":"SimpleItem","autoContinue":true,"command":16.0,"doJumpId":1.0,"frame":3.0,"params":[0,0,0,null,47.001,8.0,50]}]},"geoFence":{"version":2,"polygons":[],"circles":[]},"rallyPoints":{"version":2,"points":[]}}"#;
         let doc = load(text, 2).expect("16.0 is a command");
         assert_eq!(doc.firmware_type, 12, "12.0 is PX4, not the generic firmware a failed integer read falls back to");
+        assert_eq!(whole(&json!(16.5)), Some(0), "QJsonValue::toInt gives the default for a fractional double");
     }
 
     #[test]
     fn a_downloaded_px4_mission_puts_home_thirty_metres_north_of_its_first_waypoint() {
         let waypoint = Downloaded { frame: 3, command: 16, params: [0.0, 0.0, 0.0, 0.0, 47.0, 8.0, 50.0], auto_continue: true };
         let template = Document { home: Some([-35.36, 149.17, 0.0]), ..section() };
-        let home = from_vehicle(&[waypoint], false, &template).home.expect("MissionController::_setPlannedHomePositionFromFirstCoordinate places one");
-        assert!((home[0] - 47.0 - 30.0 / 111_195.0).abs() < 1e-6 && (home[1] - 8.0).abs() < 1e-9 && home[2] == 0.0, "not the previous plan's home: {home:?}");
+        let downloaded = from_vehicle(&[waypoint.clone()], false, &template);
+        assert_eq!(downloaded.home, None, "the fly view keeps no derived home; only the plan view places one");
+        let home = planned_home(&downloaded, Some([1.0, 2.0, 3.0])).expect("MissionController::_setPlannedHomePositionFromFirstCoordinate places one");
+        assert!((home[0] - 47.0 - 30.0 / 111_195.0).abs() < 1e-6 && (home[1] - 8.0).abs() < 1e-9 && home[2] == 0.0, "not the previous plan's home, and not the vehicle's without a takeoff: {home:?}");
+        let takeoff = Downloaded { command: 22, ..waypoint };
+        let launched = from_vehicle(&[takeoff], false, &template);
+        assert_eq!(planned_home(&launched, Some([1.0, 2.0, 3.0])), Some([1.0, 2.0, 3.0]), "TakeoffMissionItem copies the active vehicle's home into an unset planned home");
     }
 
     #[test]

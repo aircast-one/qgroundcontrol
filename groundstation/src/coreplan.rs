@@ -203,9 +203,7 @@ fn settle_home_on_terrain(before: Option<(f64, f64)>) {
             let mut state = held();
             let same = home_of(state.document.as_ref()) == Some((latitude, longitude));
             if same {
-                let moved = state.document.as_ref().and_then(|d| d.home).is_some_and(|h| h[2] != ground);
                 state.document = state.document.take().map(|d| Document { home: d.home.map(|h| [h[0], h[1], ground]), ..d });
-                state.dirty = state.dirty || moved;
             }
             same
         };
@@ -735,7 +733,7 @@ fn follow_vehicle() {
         let hub = crate::hub::lock();
         let ready = hub.active().filter(|v| v.connected).map(|v| {
             let (fence, rally) = v.plans_supported();
-            (v.id, v.mission_snapshot(), v.sends_home(), fence, rally, (i64::from(v.autopilot), i64::from(v.vehicle_type)))
+            (v.id, v.mission_snapshot(), v.sends_home(), fence, rally, (i64::from(v.autopilot), i64::from(v.vehicle_type)), v.home.map(|(lat, lon, alt)| [lat, lon, alt]))
         });
         (hub.active_id(), ready)
     };
@@ -779,8 +777,8 @@ fn follow_vehicle() {
             _ => return,
         }
     };
-    if let Some((_, snapshot, sends_home, fence, rally, types)) = adopted {
-        adopt(&snapshot, sends_home, fence, rally, types);
+    if let Some((_, snapshot, sends_home, fence, rally, types, vehicle_home)) = adopted {
+        adopt(&snapshot, sends_home, fence, rally, types, vehicle_home);
         held().file = None;
     }
     changed();
@@ -912,7 +910,7 @@ fn remembered_speed(name: &str, fallback: f64) -> f64 {
     crate::settingsstore::stored_text(name).and_then(|text| text.parse().ok()).unwrap_or(fallback)
 }
 
-fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool, types: (i64, i64)) {
+fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool, types: (i64, i64), vehicle_home: Option<[f64; 3]>) {
     let downloaded: Vec<Downloaded> = snapshot["mission"]["items"]
         .as_array()
         .map(|items| {
@@ -935,7 +933,8 @@ fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool,
     });
     let template = Document { firmware_type: types.0, vehicle_type: types.1, ..held_document };
     let before = state.document.clone();
-    let mission = plandoc::from_vehicle(&downloaded, sends_home, &template);
+    let downloaded_mission = plandoc::from_vehicle(&downloaded, sends_home, &template);
+    let mission = Document { home: plandoc::planned_home(&downloaded_mission, vehicle_home), ..downloaded_mission };
     state.wizard = None;
     state.document = Some(Document {
         fence: if fence_read { fence_from(&snapshot["fence"]) } else { mission.fence.clone() },
@@ -949,9 +948,9 @@ fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool,
 }
 
 fn fetch() -> Value {
-    let Some((fence, rally, sends_home, types)) = crate::hub::lock().active().map(|v| {
+    let Some((fence, rally, sends_home, types, vehicle_home)) = crate::hub::lock().active().map(|v| {
         let (fence, rally) = v.plans_supported();
-        (fence, rally, v.sends_home(), (i64::from(v.autopilot), i64::from(v.vehicle_type)))
+        (fence, rally, v.sends_home(), (i64::from(v.autopilot), i64::from(v.vehicle_type)), v.home.map(|(lat, lon, alt)| [lat, lon, alt]))
     }) else {
         return refused("No vehicle is connected through the core.");
     };
@@ -963,7 +962,7 @@ fn fetch() -> Value {
         let snapshot = crate::hub::lock().active().map(crate::hub::Vehicle::mission_snapshot).unwrap_or(Value::Null);
         match mission_read {
             true => {
-                adopt(&snapshot, sends_home, fence_read, rally_read, types);
+                adopt(&snapshot, sends_home, fence_read, rally_read, types, vehicle_home);
                 settle_home_on_terrain(None);
             }
             false => held().fetching = false,
@@ -1012,6 +1011,7 @@ struct FlownMission {
     sends_home: bool,
     types: (i64, i64),
     current: i64,
+    home: Option<[f64; 3]>,
 }
 
 fn flown_mission(v: &crate::hub::Vehicle) -> FlownMission {
@@ -1020,6 +1020,7 @@ fn flown_mission(v: &crate::hub::Vehicle) -> FlownMission {
         sends_home: v.sends_home(),
         types: (i64::from(v.autopilot), i64::from(v.vehicle_type)),
         current: i64::from(v.current_mission_index()),
+        home: v.home.map(|(lat, lon, alt)| [lat, lon, alt]),
     }
 }
 
@@ -1028,7 +1029,8 @@ fn flown_view(backend: &dyn Backend, mission: &FlownMission) -> Result<Value, St
         return Err("The vehicle holds no mission.".to_string());
     }
     let template = Document { firmware_type: mission.types.0, vehicle_type: mission.types.1, ..empty_document() };
-    let document = plandoc::from_vehicle(&mission.items, mission.sends_home, &template);
+    let downloaded = plandoc::from_vehicle(&mission.items, mission.sends_home, &template);
+    let document = Document { home: downloaded.home.or(mission.home), ..downloaded };
     let rover = plandoc::vehicle_class(mission.types.1) == crate::cmdinfo::VehicleClass::Rover;
     let selected = visual_index_of_sequence(&document, mission.current).filter(|index| *index > 0).unwrap_or(-1);
     crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::horizontal(backend), &crate::read::Unit::speed(backend), crate::missionsummary::imperial(backend), rover)
