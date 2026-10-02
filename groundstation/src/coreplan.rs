@@ -485,6 +485,31 @@ fn item_edit(backend: &dyn Backend, args: &str, command: bool) -> Value {
     })
 }
 
+pub fn offline_types_changed() {
+    if !offline() {
+        return;
+    }
+    let (firmware_type, vehicle_type) = (offline_type("offlineEditingFirmwareClass"), offline_type("offlineEditingVehicleClass"));
+    let moved = {
+        let mut state = held();
+        let Some(document) = state.document.as_ref() else { return };
+        let terrain = plandoc::firmware(firmware_type) != crate::cmdinfo::Firmware::Px4;
+        let frame = match document.global_altitude_mode == crate::altitudemodes::TERRAIN_FRAME && !terrain {
+            true => crate::altitudemodes::CALC_ABOVE_TERRAIN,
+            false => document.global_altitude_mode,
+        };
+        let next = Document { firmware_type, vehicle_type, global_altitude_mode: frame, ..document.clone() };
+        let differs = plandoc::save(&next) != plandoc::save(document);
+        if differs {
+            state.document = Some(next);
+        }
+        differs
+    };
+    if moved {
+        changed();
+    }
+}
+
 pub fn default_altitude_changed() {
     let has_items = held().document.as_ref().is_some_and(|d| !d.items.is_empty());
     if has_items {

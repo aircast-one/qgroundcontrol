@@ -12,7 +12,7 @@ pub const CALC_ABOVE_TERRAIN: i64 = 3;
 pub const TERRAIN_FRAME: i64 = 4;
 
 const NO_TERRAIN_FRAME: &str = "This vehicle's firmware cannot hold an altitude above terrain.";
-const NO_ITEMS_YET: &str = "Add a mission item before choosing how its altitude is measured.";
+const ITEMS_ADDED: &str = "The plan's altitude mode is chosen before mission items are added; once they exist only Mixed is left.";
 const NOT_A_PLAN: &str = "Mixed applies to a whole plan, where each item sets its own.";
 const ABSOLUTE_HIDDEN: &str = "This build does not offer altitudes above mean sea level for mission items.";
 
@@ -44,7 +44,7 @@ fn offered(mode: i64, inputs: &Inputs) -> bool {
 }
 
 fn enabled(mode: i64, inputs: &Inputs) -> bool {
-    mode == inputs.current || mode == MIXED || !inputs.mission || inputs.has_items
+    mode == inputs.current || mode == MIXED || !inputs.mission || !inputs.has_items
 }
 
 fn absence(mode: i64) -> &'static str {
@@ -68,7 +68,7 @@ fn reason(mode: i64, inputs: &Inputs) -> &'static str {
     match () {
         _ if enabled(mode, inputs) => "",
         _ if mode == TERRAIN_FRAME && !inputs.holds_altitude_above_terrain => NO_TERRAIN_FRAME,
-        _ => NO_ITEMS_YET,
+        _ => ITEMS_ADDED,
     }
 }
 
@@ -97,7 +97,10 @@ pub(crate) fn read_inputs(backend: &dyn Backend, mission_context: bool, current:
     Inputs {
         mission: mission_context,
         current,
-        holds_altitude_above_terrain: flag(&vehicles, "activeVehicleAvailable") && flag(&vehicle, "terrainFrame"),
+        holds_altitude_above_terrain: match flag(&vehicles, "activeVehicleAvailable") {
+            true => flag(&vehicle, "terrainFrame"),
+            false => crate::coreplan::plan_types().is_none_or(|(firmware, _)| crate::plandoc::firmware(firmware) != crate::cmdinfo::Firmware::Px4),
+        },
         has_items: flag(&mission, "containsItems"),
         show_absolute: options.get("showMissionAbsoluteAltitude").and_then(Value::as_bool).unwrap_or(true),
     }
@@ -200,12 +203,13 @@ mod tests {
     }
 
     #[test]
-    fn an_empty_plan_shows_the_modes_but_will_not_let_one_be_chosen() {
+    fn the_plan_mode_is_chosen_before_items_exist_and_only_mixed_opens_after() {
         let empty = Inputs { has_items: false, ..base() };
-        let listed = modes(&empty);
+        assert!(modes(&empty).iter().all(|m| m["enabled"] == true), "MissionSettingsEditor disables nothing while _noMissionItemsAdded");
+        let listed = modes(&Inputs { has_items: true, ..base() });
         let enabled_raws: Vec<i64> = listed.iter().filter(|m| m["enabled"] == true).map(|m| m["raw"].as_i64().unwrap()).collect();
-        assert_eq!(enabled_raws, [RELATIVE, MIXED], "only the mode already chosen and mixed stay live until the plan has something to measure");
-        assert_eq!(listed[1]["reason"], NO_ITEMS_YET);
+        assert_eq!(enabled_raws, [RELATIVE, MIXED], "with items only the mode in use and mixed stay live");
+        assert_eq!(listed[1]["reason"], ITEMS_ADDED);
         let item = Inputs { mission: false, has_items: false, ..base() };
         assert!(modes(&item).iter().all(|m| m["enabled"] == true), "an item editor is only open because an item exists");
     }
@@ -242,7 +246,7 @@ mod tests {
 
     #[test]
     fn the_view_reads_the_vehicle_and_the_plan() {
-        let view = altitude_modes_view(&Fake { terrain: false, items: true }, &["mission".to_string(), "1".to_string()]);
+        let view = altitude_modes_view(&Fake { terrain: false, items: false }, &["mission".to_string(), "1".to_string()]);
         assert_eq!(view["context"], "mission");
         assert_eq!(view["holdsAltitudeAboveTerrain"], false, "this answers for the terrain frame alone, raw 4, and Calculated Above Terrain at raw 3 stays selectable while it is false - a head reading the old name as a verdict on terrain altitudes would have hidden a mode that works");
         assert!(view["modes"].as_array().unwrap().iter().any(|m| m["raw"] == 3 && m["enabled"] == true), "the mode this flag does not speak for");
@@ -251,7 +255,7 @@ mod tests {
         let absent = altitude_modes_view(&Fake { terrain: true, items: false }, &[]);
         assert_eq!(absent["current"], -1, "a head that names no current mode is not told one is chosen");
         assert!(absent["modes"].as_array().unwrap().iter().all(|m| m["current"] == false));
-        assert_eq!(absent["modes"].as_array().unwrap().iter().filter(|m| m["enabled"] == true).count(), 1, "with no items and no current mode only mixed stays live");
+        assert!(absent["modes"].as_array().unwrap().iter().all(|m| m["enabled"] == true), "with no items every mode can still be chosen");
     }
     #[test]
     fn the_altitude_modes_are_the_ordinals_qgc_declares() {

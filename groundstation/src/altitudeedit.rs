@@ -15,7 +15,7 @@ fn frame_refusal(raw: Option<i64>, inputs: &Inputs) -> Option<(&'static str, Str
     }
     match modes(inputs).into_iter().find(|m| m["raw"] == raw) {
         None => Some(("malformed", format!("{raw} is not an altitude mode."))),
-        Some(mode) if mode["enabled"] != true => Some(("notYet", mode["reason"].as_str().unwrap_or("").to_string())),
+        Some(mode) if mode["enabled"] != true => Some(("locked", mode["reason"].as_str().unwrap_or("").to_string())),
         Some(_) => None,
     }
 }
@@ -82,14 +82,14 @@ mod tests {
 
     #[test]
     fn a_plan_altitude_mode_is_written_only_when_the_picker_would_offer_it() {
-        let inputs = Inputs { mission: true, current: RELATIVE, holds_altitude_above_terrain: false, has_items: true, show_absolute: true };
+        let inputs = Inputs { mission: true, current: RELATIVE, holds_altitude_above_terrain: false, has_items: false, show_absolute: true };
         let token = |raw, i: &Inputs| frame_refusal(Some(raw), i).map(|r| r.0);
         assert_eq!(token(ABSOLUTE, &inputs), None);
         assert_eq!(token(MIXED, &inputs), None);
         assert_eq!(token(CALC_ABOVE_TERRAIN, &inputs), None);
         assert_eq!(token(TERRAIN_FRAME, &inputs), Some("notOffered"), "a vehicle that cannot hold an altitude above terrain is never given a plan measured in that frame");
         assert_eq!(token(ABSOLUTE, &Inputs { show_absolute: false, ..inputs }), Some("notOffered"));
-        assert_eq!(token(ABSOLUTE, &Inputs { has_items: false, ..inputs }), Some("notYet"));
+        assert_eq!(token(ABSOLUTE, &Inputs { has_items: true, ..inputs }), Some("locked"), "once mission items exist the plan mode is fixed, as MissionSettingsEditor disables the others");
         assert_eq!(token(9, &inputs), Some("malformed"));
         assert_eq!(frame_refusal(None, &inputs).map(|r| r.0), Some("malformed"));
     }
@@ -101,7 +101,7 @@ mod tests {
             fn get(&self, p: &str) -> String { self.get_fields(p, "") }
             fn get_fields(&self, p: &str, _f: &str) -> String {
                 match p {
-                    "plan.missionController" => json!({ "kind": "object", "containsItems": true, "globalAltitudeFrame": *self.0.borrow() }),
+                    "plan.missionController" => json!({ "kind": "object", "containsItems": false, "globalAltitudeFrame": *self.0.borrow() }),
                     "corePlugin.options" => json!({ "kind": "object", "showMissionAbsoluteAltitude": true }),
                     _ => json!({ "kind": "object" }),
                 }

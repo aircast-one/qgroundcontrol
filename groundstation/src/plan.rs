@@ -216,6 +216,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "filePath": (!file.is_empty()).then_some(file),
         "dirty": dirty,
         "containsItems": contains_items,
+        "hasMissionItems": has_mission_items,
         "offline": offline,
         "canUndo": crate::coreplan::history().map_or_else(|| flag(&plan, "canUndo"), |(undo, _)| undo && crate::coreplan::undo_tracking()),
         "canRedo": crate::coreplan::history().map_or_else(|| flag(&plan, "canRedo"), |(_, redo)| redo && crate::coreplan::undo_tracking()),

@@ -26,7 +26,7 @@ private const val APP_SETTINGS = "settings.appSettings"
 private val OFFLINE_CLASSES = listOf("offlineEditingFirmwareClass" to "Firmware", "offlineEditingVehicleClass" to "Vehicle")
 
 internal fun choosesPlanVehicle(connected: Boolean, plan: JSONObject?): Boolean =
-    !connected && plan?.optBoolean("containsItems") != true
+    !connected && plan?.optBoolean("hasMissionItems") != true
 
 @Composable
 internal fun PlanVehicleRows() {
