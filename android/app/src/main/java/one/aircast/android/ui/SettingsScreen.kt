@@ -495,6 +495,7 @@ private fun SettingsControls(
             blockHeading(page.title, section, block).takeIf { it.isNotBlank() }?.let { SectionHeader(sentenceCase(it)) }
             FactRuns(block.facts, onWrite)
             if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
+            if (section.group == REMOTE_ID_GROUP && block.title == GCS_LOCATION_BLOCK) GcsPositionStatus()
         }
         section.note
             .takeIf { it.isNotBlank() && section.group !in GROUPS_WITH_A_HEAD_EDITOR }
