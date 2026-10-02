@@ -109,12 +109,20 @@ fn defaults_json(backend: &dyn Backend) -> Value {
     let climbs = flag(&vehicle, "multiRotor") || flag(&vehicle, "vtol");
     let vertical = |name: &str| if climbs { plan_default(backend, name) } else { Value::Null };
     let (shows_cruise, shows_hover) = (!flag(&vehicle, "multiRotor"), climbs);
+    let vtol = flag(&vehicle, "vtol");
+    let named = |control: Value, vtol_label: &str, plain: &str| match control {
+        Value::Object(mut fields) => {
+            fields.insert("label".to_string(), json!(if vtol { vtol_label } else { plain }));
+            Value::Object(fields)
+        }
+        other => other,
+    };
     json!({
         "altitude": altitude,
-        "cruise": if shows_cruise { cruise } else { Value::Null },
-        "hover": if shows_hover { hover } else { Value::Null },
-        "ascent": vertical("offlineEditingAscentSpeed"),
-        "descent": vertical("offlineEditingDescentSpeed"),
+        "cruise": if shows_cruise { named(cruise, "FW - Flight speed", "Flight speed") } else { Value::Null },
+        "hover": if shows_hover { named(hover, "MR - Flight speed", "Flight speed") } else { Value::Null },
+        "ascent": named(vertical("offlineEditingAscentSpeed"), "MR - Ascent speed", "Ascent speed"),
+        "descent": named(vertical("offlineEditingDescentSpeed"), "MR - Descent speed", "Descent speed"),
         "speedUnits": speed_units,
         "speedNote": (shows_cruise || shows_hover).then_some(SPEED_NOTE),
     })
@@ -428,6 +436,7 @@ mod tests {
         assert_eq!(agreed["speedUnits"], "m/s");
         assert_eq!(agreed["altitude"]["units"], "m", "the altitude keeps its own unit; only the two speeds share one");
         assert_eq!(agreed["cruise"]["valueString"], "15.00");
+        assert_eq!(agreed["cruise"]["label"], "Flight speed", "MissionDefaultsEditor's own label, 'FW - Flight speed' only for a VTOL");
         assert_eq!(agreed["altitude"]["minimum"], 0.0, "the bound travels decoded, so a head does not rebuild FactRange from min and minIsDefaultForType");
         assert_eq!(
             (agreed["altitude"]["maximum"].clone(), agreed["cruise"]["maximum"].clone(), agreed["hover"]["maximum"].clone()),
