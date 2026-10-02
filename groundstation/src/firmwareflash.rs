@@ -54,10 +54,10 @@ pub enum Event {
     Progress(f64),
 }
 
-fn image_for(file: &str, contents: &[u8], board: &BoardInfo) -> Result<Vec<u8>, String> {
+fn image_for(file: &str, contents: &[u8], board: &BoardInfo, report: &mut dyn FnMut(Event)) -> Result<Vec<u8>, String> {
     let lower = file.to_ascii_lowercase();
     let bytes = match lower.ends_with(".px4") || lower.ends_with(".apj") {
-        true => crate::bootloader::parse_px4(&String::from_utf8_lossy(contents), board.board_id)?.bytes,
+        true => crate::bootloader::parse_px4(&String::from_utf8_lossy(contents), board.board_id).map_err(|e| image_load_failed(&e, report))?.bytes,
         false => contents.iter().copied().chain(std::iter::repeat_n(0xff, (4 - contents.len() % 4) % 4)).collect(),
     };
     match bytes.len() <= board.flash_size as usize {
@@ -172,7 +172,10 @@ fn manifest() -> Result<Vec<crate::firmwarecatalog::Entry>, String> {
 
 pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &mut dyn FnMut(Event)) -> Result<(String, Vec<u8>), String> {
     let url = match source {
-        Source::File(path) => return std::fs::read(path).map(|bytes| (path.clone(), bytes)).map_err(|e| format!("Unable to open firmware file {path}: {e}")),
+        Source::File(path) => {
+            report(Event::Status(format!("Using firmware file {path}")));
+            return std::fs::read(path).map(|bytes| (path.clone(), bytes)).map_err(|e| format!("Unable to open firmware file {path}: {e}"));
+        }
         Source::Url(url) => url.clone(),
         Source::Px4(build) => crate::firmwarecatalog::px4_url(board.board_id, *build).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
         Source::Sik => sik_url(board.board_id).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
@@ -182,15 +185,15 @@ pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &m
         }
     };
     report(Event::Status(format!("Downloading firmware from {url}")));
-    crate::firmwarecatalog::download(&url).map(|bytes| (url, bytes))
+    let bytes = crate::firmwarecatalog::download(&url)?;
+    report(Event::Status("Download complete".into()));
+    Ok((url, bytes))
 }
 
-fn flash_sik<P: Port>(mut loader: Bootloader<P>, board: &BoardInfo, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
-    report(Event::Status("Connected to SiK radio:".into()));
-    report(Event::Status(format!("  Board ID: {}", board.board_id)));
-    loader.init_flash_sequence()?;
+fn flash_sik<P: Port>(loader: &mut Bootloader<P>, board: &BoardInfo, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
     let (_, contents) = fetch(board)?;
-    let blocks = crate::bootloader::parse_ihx(&String::from_utf8_lossy(&contents))?;
+    let blocks = crate::bootloader::parse_ihx(&String::from_utf8_lossy(&contents)).map_err(|e| image_load_failed(&e, report))?;
+    loader.init_flash_sequence()?;
     report(Event::Phase(Phase::Erasing));
     report(Event::Status("Erasing previous program...".into()));
     loader.erase()?;
@@ -205,20 +208,14 @@ fn flash_sik<P: Port>(mut loader: Bootloader<P>, board: &BoardInfo, fetch: &mut 
     Ok(())
 }
 
-pub fn flash_from<P: Port>(port: P, sik: bool, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
-    let mut loader = if sik { Bootloader::sik(port) } else { Bootloader::new(port) };
-    let board = loader.board_info()?;
-    report(Event::Board(board));
-    if sik {
-        return flash_sik(loader, &board, fetch, report);
-    }
-    report(Event::Board(board));
-    report(Event::Status("Connected to bootloader:".into()));
-    report(Event::Status(format!("  Version: {}", board.bootloader_version)));
-    report(Event::Status(format!("  Board ID: {}", board.board_id)));
-    report(Event::Status(format!("  Flash size: {}", board.flash_size)));
-    let (file, contents) = fetch(&board)?;
-    let image = image_for(&file, &contents, &board)?;
+fn image_load_failed(error: &str, report: &mut dyn FnMut(Event)) -> String {
+    report(Event::Status(error.to_string()));
+    "Image load failed".to_string()
+}
+
+fn flash_px4<P: Port>(loader: &mut Bootloader<P>, board: &BoardInfo, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
+    let (file, contents) = fetch(board)?;
+    let image = image_for(&file, &contents, board, report)?;
     report(Event::Phase(Phase::Erasing));
     report(Event::Status("Erasing previous program...".into()));
     loader.erase()?;
@@ -231,6 +228,23 @@ pub fn flash_from<P: Port>(port: P, sik: bool, fetch: &mut dyn FnMut(&BoardInfo)
     loader.verify(&image, &mut |_, _| {})?;
     report(Event::Status("Rebooting board".into()));
     Ok(())
+}
+
+pub fn flash_from<P: Port>(port: P, sik: bool, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
+    let mut loader = if sik { Bootloader::sik(port) } else { Bootloader::new(port) };
+    let board = loader.board_info()?;
+    report(Event::Board(board));
+    report(Event::Status("Connected to bootloader:".into()));
+    report(Event::Status(format!("  Version: {}", board.bootloader_version)));
+    report(Event::Status(format!("  Board ID: {}", board.board_id)));
+    report(Event::Status(format!("  Flash size: {}", board.flash_size)));
+    let flashed = match sik {
+        true => flash_sik(&mut loader, &board, fetch, report),
+        false => flash_px4(&mut loader, &board, fetch, report),
+    };
+    flashed.inspect_err(|_| {
+        let _ = loader.reboot();
+    })
 }
 
 static JOB: LazyLock<Mutex<Job>> = LazyLock::new(|| Mutex::new(Job::default()));
@@ -458,6 +472,7 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
                 }
                 Err(e) => {
                     held.phase = Phase::Failed;
+                    held.messages.extend([format!("Error: {e}"), "Upgrade cancelled".to_string()]);
                     held.error = Some(e);
                 }
             }
@@ -631,7 +646,7 @@ mod tests {
             }
         })
         .unwrap();
-        assert_eq!(lines[..2], ["Connected to SiK radio:", "  Board ID: 80"]);
+        assert_eq!(lines[..4], ["Connected to bootloader:", "  Version: 0", "  Board ID: 80", "  Flash size: 0"], "a SiK radio reports like a bootloader, as _foundBoardInfo logs it");
         assert_eq!(source("sik:stable"), Ok(Source::Sik));
         assert!(Source::Url("https://x/radio~hb1060.ihx".into()).sik() && !Source::Px4(crate::firmwarecatalog::Build::Stable).sik());
         assert_eq!(sik_url(80).as_deref(), Some("https://px4-travis.s3.amazonaws.com/SiK/stable/radio~hb1060.ihx"));
@@ -640,8 +655,12 @@ mod tests {
     #[test]
     fn an_image_bigger_than_the_flash_is_refused_before_erasing() {
         let mut events = Vec::new();
-        let outcome = flash(Board::new(5, 50, 256), "fw.bin", &[0u8; 400], &mut |event| events.push(event));
+        let mut board = Board::new(5, 50, 256);
+        let outcome = flash(&mut board, "fw.bin", &[0u8; 400], &mut |event| events.push(event));
         assert_eq!(outcome, Err("Image size of 400 is too large for board flash size 256".to_string()));
+        assert!(board.booted, "a failed upgrade reboots the board out of its bootloader as PX4FirmwareUpgradeThread does");
+        let mut corrupt = Board::new(5, 50, 256);
+        assert_eq!(flash(&mut corrupt, "fw.px4", b"not json", &mut |_| {}), Err("Image load failed".to_string()));
         assert!(!events.iter().any(|e| matches!(e, Event::Phase(Phase::Erasing))));
     }
 }

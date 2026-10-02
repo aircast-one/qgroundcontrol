@@ -92,6 +92,7 @@ internal fun firmwarePhaseText(phase: String): String = when (phase) {
 }
 
 internal const val FIRMWARE_FROM_FILE = "file"
+internal const val FLASH_FAIL_TEXT = "If upgrade failed, make sure to connect directly to a powered USB port on your computer, not through a USB hub. Also make sure you are only powered via USB not battery."
 
 internal val FIRMWARE_SOURCES: List<Pair<String, String>> =
     listOf(FIRMWARE_FROM_FILE to "A firmware file", "px4:stable" to "PX4 Pro, stable", "px4:beta" to "PX4 Pro, beta", "px4:dev" to "PX4 Pro, dev", "sik:stable" to "SiK radio, stable") +
@@ -236,6 +237,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                     if (current.busy) LinearProgressIndicator(progress = { current.progress }, modifier = Modifier.fillMaxWidth())
                     firmwarePhaseText(current.phase).takeIf { it.isNotBlank() }?.let { Text(it) }
                     current.error.takeIf { it.isNotBlank() }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (current.phase == "failed") Text(FLASH_FAIL_TEXT, style = MaterialTheme.typography.bodyMedium)
                 }
                 refusal.takeIf { it.isNotBlank() }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 job?.messages?.takeIf { it.isNotEmpty() }?.let {

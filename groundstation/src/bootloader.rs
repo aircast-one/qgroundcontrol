@@ -69,6 +69,21 @@ pub trait Port {
     }
 }
 
+impl<P: Port> Port for &mut P {
+    fn write(&mut self, bytes: &[u8]) -> Result<(), String> {
+        (**self).write(bytes)
+    }
+    fn read_exact(&mut self, count: usize, timeout_ms: u64) -> Result<Vec<u8>, String> {
+        (**self).read_exact(count, timeout_ms)
+    }
+    fn discard_input(&mut self) {
+        (**self).discard_input()
+    }
+    fn set_baud(&mut self, baud: u32) -> Result<(), String> {
+        (**self).set_baud(baud)
+    }
+}
+
 pub type IhxBlocks = Vec<(u16, Vec<u8>)>;
 
 fn hex_byte(text: &str, at: usize) -> Option<u8> {
