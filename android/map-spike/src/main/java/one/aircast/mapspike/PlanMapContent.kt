@@ -562,7 +562,10 @@ internal fun MapSpikeScreen(
             ),
         )
 
-        overlay?.invoke(this)
+        overlay?.let { content ->
+            val inset = with(LocalDensity.current) { controlsHeightPx.toDp() }
+            Box(Modifier.fillMaxSize().padding(start = if (sidePanel) SIDE_PANEL_WIDTH else 0.dp, bottom = if (sidePanel) 0.dp else inset), content = content)
+        }
 
         if (busy != null || !summaryHidden) Column(
             Modifier.align(Alignment.TopStart).padding(start = if (sidePanel) SIDE_PANEL_WIDTH + 8.dp else 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),

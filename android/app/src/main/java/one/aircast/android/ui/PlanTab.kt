@@ -192,7 +192,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                     planStatus = planStatus,
                     centre = centre,
                     onRefused = { notice = it },
-                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 100.dp, start = 16.dp, end = 16.dp),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp, start = 16.dp, end = 16.dp),
                 )
             },
             header = { upload ->
