@@ -656,6 +656,12 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 valueRange = (altitudeRange?.minimum ?: 0.0).toFloat()..
                     (altitudeRange?.maximum ?: 0.0).toFloat(),
             )
+            altitudeRange?.let { range -> guidedBounds(range.minimum, range.maximum)?.let { range to it } }?.let { (range, bounds) ->
+                GuidedQuickPicks(target, bounds.first, bounds.second, range.unit) { picked ->
+                    altitudeTarget = picked
+                    altitudeSettled = picked
+                }
+            }
             rangeLabel(altitudeRange?.minimum, altitudeRange?.maximum, altitudeRange?.unit.orEmpty())
                 ?.let { RangeHint(it) }
         }

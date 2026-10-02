@@ -6,6 +6,15 @@ import org.junit.Test
 
 class GuidedStepperTest {
     @Test
+    fun `quick picks climb ten and twenty from the target and stop at the maximum`() {
+        assertEquals(
+            listOf("+10 m" to 52.0, "+20 m" to 62.0, "Max 120 m" to 120.0),
+            guidedQuickPicks(42.0, 1.0, 120.0, "m"),
+        )
+        assertEquals(120.0, guidedQuickPicks(115.0, 1.0, 120.0, "m")[1].second, 1e-9)
+    }
+
+    @Test
     fun `a step moves one unit and stays inside the range, like GuidedValueSlider step`() {
         assertEquals(26.0, guidedStepped(25.0, 1, 1.0, 120.0, "m"), 1e-9)
         assertEquals(120.0, guidedStepped(119.6, 1, 1.0, 120.0, "m"), 1e-9)

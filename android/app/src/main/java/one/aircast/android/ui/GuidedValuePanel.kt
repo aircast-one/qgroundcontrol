@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -85,6 +88,20 @@ internal fun guidedTyped(text: String, minimum: Double, maximum: Double, unit: S
 
 internal fun guidedValueText(value: Double, unit: String): String =
     String.format(Locale.US, "%.${guidedDecimals(unit)}f", value)
+
+internal fun guidedQuickPicks(value: Double, minimum: Double, maximum: Double, unit: String): List<Pair<String, Double>> =
+    listOf(10, 20).map { step -> "+$step $unit".trim() to guidedStepped(value, step, minimum, maximum, unit) } +
+        ("Max ${guidedValueText(maximum, unit).removeSuffix(".0")} $unit".trim() to guidedRounded(maximum, unit))
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun GuidedQuickPicks(value: Double, minimum: Double, maximum: Double, unit: String, onValue: (Double) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        guidedQuickPicks(value, minimum, maximum, unit).forEach { (label, target) ->
+            FilterChip(selected = false, enabled = target != value, onClick = { onValue(target) }, label = { Text(label) })
+        }
+    }
+}
 
 @Composable
 internal fun GuidedStepper(
