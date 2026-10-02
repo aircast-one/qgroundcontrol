@@ -1272,6 +1272,10 @@ impl Vehicle {
         self.params.value(component, &self.parameter_name(name))
     }
 
+    pub fn parameter_exact(&self, component: u8, name: &str) -> Option<ParamValue> {
+        self.params.value(component, name)
+    }
+
     fn vtol(&self) -> bool {
         (19..=25).contains(&self.vehicle_type)
     }
@@ -5151,6 +5155,8 @@ mod tests {
         assert_eq!((plans["mission"]["items"][0]["command"].as_u64(), plans["mission"]["items"][0]["params"][4].as_f64()), (Some(16), Some(47.4)));
         assert_eq!(snapshot["vehicle"]["connectProgress"], 1.0);
         assert_eq!(hub.active().unwrap().parameter(1, "RTL_ALT").map(ParamValue::as_f64), Some(1500.0));
+        let literal = hub.active().unwrap().parameter_name("noremap.RTL_ALT_M");
+        assert_eq!((literal.as_str(), hub.active().unwrap().parameter_exact(1, &literal)), ("RTL_ALT_M", None), "ParameterManager skips the remap for noremap., so a 4.5 copter has no RTL_ALT_M - reading it through the remap again found RTL_ALT and wrote 15 cm");
         assert!(hub.tick(10_000).is_empty(), "nothing is pending once connected");
         let written = hub.parameter_request(None, &json!({ "name": "RTL_ALT", "value": 2000.0 }), 11_000).unwrap();
         let MavMessage::PARAM_SET(set) = decode(&written[0].1) else { panic!() };

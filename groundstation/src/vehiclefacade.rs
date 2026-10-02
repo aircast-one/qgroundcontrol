@@ -1092,7 +1092,7 @@ pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
         let hub = crate::hub::lock();
         let vehicle = hub.active()?;
         let (component, name) = parameter_address(vehicle, call)?;
-        let known = vehicle.parameter(component, &name)?;
+        let known = vehicle.parameter_exact(component, &name)?;
         let raw = match raw_given {
             true => number,
             false => {
@@ -1114,7 +1114,7 @@ fn answer_parameter(path: &str) -> Option<Value> {
     (ardupilot || vehicle.autopilot == crate::modes::AUTOPILOT_PX4).then_some(())?;
     let (component, name) = parameter_address(vehicle, call)?;
     let name = name.as_str();
-    let Some(value) = vehicle.parameter(component, name) else {
+    let Some(value) = vehicle.parameter_exact(component, name) else {
         return vehicle.parameters_ready().then(|| field_of(absent_parameter(), rest)).flatten();
     };
     let value_type = crate::factmeta::ValueType::from_param_type(value.param_type())?;
