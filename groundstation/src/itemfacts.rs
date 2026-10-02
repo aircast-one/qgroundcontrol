@@ -9,6 +9,8 @@ use crate::router::Backend;
 // complex item. Each fact is served here in view.control's shape, with the path the head writes.
 pub const DEPS: &[&str] = &[
     "plan.missionController.visualItems.count",
+    "plan.controllerVehicle.vtol",
+    "plan.controllerVehicle.apmFirmware",
     "plan.missionController@visualItemsReset",
     "plan.dirty",
     "settings.unitsSettings.horizontalDistanceUnits",
@@ -151,6 +153,16 @@ pub fn altitude_hint(land: bool, mode: Option<i64>, amsl_sent: Option<String>) -
     }
 }
 
+pub fn without_hidden_mission_speed(facts: Value, index: usize, vtol: bool, apm: bool) -> Value {
+    match (facts, index == 0 && (vtol || apm)) {
+        (Value::Object(mut map), true) => {
+            map.insert("speedSection".to_string(), Value::Null);
+            Value::Object(map)
+        }
+        (other, _) => other,
+    }
+}
+
 pub fn command_info(read: &Value) -> [(String, Value); 3] {
     let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|t| !t.is_empty()).map_or(Value::Null, |t| json!(t));
     [
@@ -221,8 +233,9 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
             false => Value::Null,
         },
     });
+    let controller = object(&backend.get_fields("plan.controllerVehicle", "vtol,apmFirmware"));
     match built {
-        Value::Object(map) => Value::Object(map.into_iter().chain(info).collect()),
+        Value::Object(map) => without_hidden_mission_speed(Value::Object(map.into_iter().chain(info).collect()), index, flag(&controller, "vtol"), flag(&controller, "apmFirmware")),
         other => other,
     }
 }
@@ -239,6 +252,15 @@ fn qt_previous_coordinate(backend: &dyn Backend, index: usize) -> Option<(f64, f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mission_settings_flight_speed_is_dropped_where_mission_settings_editor_hides_it() {
+        let facts = || json!({ "speedSection": { "available": true } });
+        assert_eq!(without_hidden_mission_speed(facts(), 0, false, false)["speedSection"]["available"], true);
+        assert_eq!(without_hidden_mission_speed(facts(), 0, true, false)["speedSection"], Value::Null, "_showFlightSpeed is false for a VTOL");
+        assert_eq!(without_hidden_mission_speed(facts(), 0, false, true)["speedSection"], Value::Null, "and for ArduPilot");
+        assert_eq!(without_hidden_mission_speed(facts(), 3, true, true)["speedSection"]["available"], true, "a waypoint's own speed section is not the mission settings one");
+    }
 
     #[test]
     fn command_info_carries_what_the_command_picker_and_editor_read() {

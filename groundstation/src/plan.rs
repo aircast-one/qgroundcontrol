@@ -92,6 +92,8 @@ fn plan_default(backend: &dyn Backend, name: &str) -> Value {
     crate::control::decode(&object(&backend.get(&path)), &path)
 }
 
+const SPEED_NOTE: &str = "Speeds are used to estimate mission time only. They do not change the flight speed.";
+
 fn defaults_json(backend: &dyn Backend) -> Value {
     let altitude = plan_default(backend, "defaultMissionItemAltitude");
     let cruise = plan_default(backend, "offlineEditingCruiseSpeed");
@@ -106,7 +108,16 @@ fn defaults_json(backend: &dyn Backend) -> Value {
     let vehicle = planning_for(backend);
     let climbs = flag(&vehicle, "multiRotor") || flag(&vehicle, "vtol");
     let vertical = |name: &str| if climbs { plan_default(backend, name) } else { Value::Null };
-    json!({ "altitude": altitude, "cruise": cruise, "hover": hover, "ascent": vertical("offlineEditingAscentSpeed"), "descent": vertical("offlineEditingDescentSpeed"), "speedUnits": speed_units })
+    let (shows_cruise, shows_hover) = (!flag(&vehicle, "multiRotor"), climbs);
+    json!({
+        "altitude": altitude,
+        "cruise": if shows_cruise { cruise } else { Value::Null },
+        "hover": if shows_hover { hover } else { Value::Null },
+        "ascent": vertical("offlineEditingAscentSpeed"),
+        "descent": vertical("offlineEditingDescentSpeed"),
+        "speedUnits": speed_units,
+        "speedNote": (shows_cruise || shows_hover).then_some(SPEED_NOTE),
+    })
 }
 
 fn patterns(mission: &Value) -> Vec<Value> {

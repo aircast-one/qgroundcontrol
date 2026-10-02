@@ -68,13 +68,15 @@ class PlanDefaultsTest {
     fun `a core too old to serve defaults says so rather than showing an empty dialog`() {
         assertEquals(emptyList<Any>(), planDefaults(JSONObject("""{"kind":"object"}""")))
         assertEquals(emptyList<Any>(), planDefaults(null))
-        assertTrue(planDefaultsNote(emptyList()).contains("does not report"))
+        assertTrue(planDefaultsNote(null, emptyList()).contains("does not report"))
     }
 
     @Test
-    fun `with defaults present the note explains what they do`() {
-        val facts = planDefaults(plan("""{"altitude":${control("a", 50.0, "m")}}"""))
+    fun `with defaults present the note is the core's speed note, like MissionSettingsEditor`() {
+        val view = plan("""{"altitude":${control("a", 50.0, "m")},"speedNote":"Speeds are used to estimate mission time only. They do not change the flight speed."}""")
 
-        assertTrue(planDefaultsNote(facts).contains("New mission items"))
+        assertEquals("Speeds are used to estimate mission time only. They do not change the flight speed.", planDefaultsNote(view, planDefaults(view)))
+        val noSpeeds = plan("""{"altitude":${control("a", 50.0, "m")},"speedNote":null}""")
+        assertEquals("", planDefaultsNote(noSpeeds, planDefaults(noSpeeds)))
     }
 }

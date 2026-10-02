@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Fact
+import one.aircast.mapspike.optText
 import org.json.JSONObject
 
 internal val PLAN_DEFAULT_KEYS = listOf("altitude", "cruise", "hover", "ascent", "descent")
@@ -21,12 +22,11 @@ internal fun planDefaults(view: JSONObject?): List<Fact> {
     }
 }
 
-internal fun planDefaultsNote(facts: List<Fact>): String =
+internal fun planDefaultsNote(view: JSONObject?, facts: List<Fact>): String =
     if (facts.isEmpty()) {
         "This core does not report the plan's defaults."
     } else {
-        "New mission items start at this height, and a plan edited with no vehicle " +
-            "connected is flown at these speeds."
+        view?.optJSONObject("defaults")?.optText("speedNote").orEmpty()
     }
 
 @Composable
@@ -38,7 +38,7 @@ internal fun PlanDefaultsDialog(view: JSONObject?, onDismiss: () -> Unit) {
         title = { Text("Plan defaults") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(planDefaultsNote(facts), style = MaterialTheme.typography.bodySmall)
+                planDefaultsNote(view, facts).takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 facts.forEach { fact -> FactRow(fact) {} }
             }
         },

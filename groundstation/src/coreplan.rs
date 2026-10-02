@@ -2252,7 +2252,12 @@ pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     let launch = (index == 0 && !vehicle_has_home(backend)).then(|| document.home.map(|home| launch_altitude_field(vertical.show(home[2]), &vertical.name, &format!("{ITEM_ROOT}.0.{LAUNCH_ALTITUDE}")))).flatten();
     let read = crate::missionitems::document_reads(&document, -1).ok().and_then(|reads| reads.get(index).cloned()).unwrap_or_default();
     match with_previous_coordinate(facts, plandoc::previous_coordinate(&document, index as i64)) {
-        Value::Object(map) => Value::Object(map.into_iter().chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))]).chain(crate::itemfacts::command_info(&read)).collect()),
+        Value::Object(map) => crate::itemfacts::without_hidden_mission_speed(
+            Value::Object(map.into_iter().chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))]).chain(crate::itemfacts::command_info(&read)).collect()),
+            index,
+            plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol,
+            plandoc::firmware(document.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
+        ),
         other => other,
     }
 }
