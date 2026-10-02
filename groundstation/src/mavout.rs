@@ -27,6 +27,7 @@ static SEQUENCE: AtomicU8 = AtomicU8::new(0);
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outbound {
     CommandLong { target: (u8, u8), command: u16, params: [f64; 7] },
+    GpsGlobalOrigin { system: u8, latitude: f64, longitude: f64, altitude: f64 },
     CommandLongTry { target: (u8, u8), command: u16, params: [f64; 7], confirmation: u8 },
     CommandInt { target: (u8, u8), command: u16, frame: u8, params: [f64; 7], x: i32, y: i32 },
     SetMode { system: u8, base_mode: u8, custom_mode: u32 },
@@ -114,6 +115,46 @@ impl MessageData for CommandLongBits {
         payload[..input.len().min(33)].copy_from_slice(&input[..input.len().min(33)]);
         let param = |i: usize| f32::from_le_bytes([payload[i * 4], payload[i * 4 + 1], payload[i * 4 + 2], payload[i * 4 + 3]]);
         Ok(CommandLongBits { target: (payload[30], payload[31]), command: u16::from_le_bytes([payload[28], payload[29]]), params: std::array::from_fn(param) })
+    }
+}
+
+pub struct CommandIntBits {
+    pub target: (u8, u8),
+    pub command: u16,
+    pub frame: u8,
+    pub params: [f32; 4],
+    pub x: i32,
+    pub y: i32,
+    pub z: f32,
+}
+
+impl MessageData for CommandIntBits {
+    type Message = MavMessage;
+    const ID: u32 = 75;
+    const NAME: &'static str = "COMMAND_INT";
+    const EXTRA_CRC: u8 = 158;
+    const ENCODED_LEN: usize = 35;
+
+    fn ser(&self, _version: MavlinkVersion, payload: &mut [u8]) -> usize {
+        self.params.iter().enumerate().for_each(|(i, p)| payload[i * 4..i * 4 + 4].copy_from_slice(&p.to_le_bytes()));
+        payload[16..20].copy_from_slice(&self.x.to_le_bytes());
+        payload[20..24].copy_from_slice(&self.y.to_le_bytes());
+        payload[24..28].copy_from_slice(&self.z.to_le_bytes());
+        payload[28..30].copy_from_slice(&self.command.to_le_bytes());
+        payload[30] = self.target.0;
+        payload[31] = self.target.1;
+        payload[32] = self.frame;
+        payload[33] = 0;
+        payload[34] = 0;
+        Self::ENCODED_LEN
+    }
+
+    fn deser(_version: MavlinkVersion, input: &[u8]) -> Result<Self, mavlink::error::ParserError> {
+        let mut payload = [0u8; 35];
+        payload[..input.len().min(35)].copy_from_slice(&input[..input.len().min(35)]);
+        let float = |at: usize| f32::from_le_bytes([payload[at], payload[at + 1], payload[at + 2], payload[at + 3]]);
+        let int = |at: usize| i32::from_le_bytes([payload[at], payload[at + 1], payload[at + 2], payload[at + 3]]);
+        Ok(CommandIntBits { target: (payload[30], payload[31]), command: u16::from_le_bytes([payload[28], payload[29]]), frame: payload[32], params: std::array::from_fn(|i| float(i * 4)), x: int(16), y: int(20), z: float(24) })
     }
 }
 
@@ -250,6 +291,13 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
             }),
         }),
         Outbound::GpsRtcmData { data } => Some(MavMessage::GPS_RTCM_DATA(data.clone())),
+        Outbound::GpsGlobalOrigin { system, latitude, longitude, altitude } => Some(MavMessage::SET_GPS_GLOBAL_ORIGIN(mavlink::dialects::ardupilotmega::SET_GPS_GLOBAL_ORIGIN_DATA {
+            latitude: (latitude * 1e7) as i32,
+            longitude: (longitude * 1e7) as i32,
+            altitude: (altitude * 1e3) as i32,
+            target_system: *system,
+            time_usec: 0,
+        })),
         Outbound::FollowTarget { data } => Some(MavMessage::FOLLOW_TARGET(data.clone())),
         Outbound::GlobalPositionInt { data } => Some(MavMessage::GLOBAL_POSITION_INT(data.clone())),
         Outbound::RequestDataStream { target, stream, rate } => Some(MavMessage::REQUEST_DATA_STREAM(mavlink::dialects::ardupilotmega::REQUEST_DATA_STREAM_DATA {
@@ -386,6 +434,7 @@ pub fn encode(sequence: u8, send: &Outbound) -> Option<Vec<u8>> {
     match send {
         Outbound::SetMode { system, base_mode, custom_mode } => raw.serialize_message_data(header, &SetModeBits { system: *system, base_mode: *base_mode, custom_mode: *custom_mode }),
         Outbound::RawCommandLong { target, command, params } => raw.serialize_message_data(header, &CommandLongBits { target: *target, command: *command, params: params.map(|p| p as f32) }),
+        Outbound::CommandInt { target, command, frame, params, x, y } if message(send).is_none() => raw.serialize_message_data(header, &CommandIntBits { target: *target, command: *command, frame: *frame, params: [params[0], params[1], params[2], params[3]].map(|p| p as f32), x: *x, y: *y, z: params[6] as f32 }),
         other => raw.serialize_message(header, &message(other)?),
     }
     Some(raw.raw_bytes().to_vec())

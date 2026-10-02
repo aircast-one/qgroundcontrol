@@ -286,6 +286,7 @@ pub struct Vehicle {
     pub link_kinds: LinkKinds,
     link_frames: Vec<(LinkId, Vec<u8>)>,
     high_latency_links: [Option<LinkId>; 2],
+    estimator_origin: Option<(f64, f64, f64)>,
     pub auto_disconnect: bool,
     pub check_list_state: i64,
     pub mission_last_current: i32,
@@ -477,6 +478,7 @@ impl Vehicle {
             link_kinds: LinkKinds::default(),
             link_frames: Vec::new(),
             high_latency_links: [None, None],
+            estimator_origin: None,
             auto_disconnect: false,
             check_list_state: 0,
             mission_last_current: -1,
@@ -1979,6 +1981,10 @@ impl Vehicle {
             Plan::Refused(reason) => Err(reason),
             Plan::Steps(steps) => {
                 self.errors.clear();
+                if action.get("action").and_then(Value::as_str) == Some("estimatorOrigin") {
+                    let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+                    self.estimator_origin = Some((number("latitude"), number("longitude"), number("altitude")));
+                }
                 if action.get("action").and_then(Value::as_str) == Some("roi") {
                     let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
                     self.roi_coord = Some((number("latitude"), number("longitude"), number("altitude")));
@@ -2110,6 +2116,10 @@ impl Vehicle {
                     let calibration = self.calibrate.on_ack(sensorcal::CMD_DO_CANCEL_MAG_CAL, result, now_ms);
                     self.follow_calibration(calibration, now_ms)
                 }
+                Out::Result { command: guidedcmd::CMD_DO_SET_GLOBAL_ORIGIN, result: RESULT_UNSUPPORTED, .. } => match self.estimator_origin.take() {
+                    Some((latitude, longitude, altitude)) => self.encode(&Outbound::GpsGlobalOrigin { system: id, latitude, longitude, altitude }).into_iter().collect(),
+                    None => Vec::new(),
+                },
                 Out::Result { command: CMD_DO_REPOSITION, result, failure: Failure::ResultOnly, .. } => {
                     self.reposition_supported = match result {
                         RESULT_ACCEPTED => Some(true),
@@ -4058,9 +4068,13 @@ impl Hub {
             (COMMAND_ACK_ID, _, _) => {
                 let command = payload.get(0..2).and_then(|b| b.try_into().ok()).map_or(0, u16::from_le_bytes);
                 let result = payload.get(2).copied().unwrap_or(0);
-                if command == crate::operatorcontrol::REQUEST_OPERATOR_CONTROL {
+                if command == crate::operatorcontrol::REQUEST_OPERATOR_CONTROL || command == guidedcmd::CMD_DO_SET_GLOBAL_ORIGIN {
+                    if command == guidedcmd::CMD_DO_SET_GLOBAL_ORIGIN {
+                        vehicle.guided.on_command_result(command, result == RESULT_ACCEPTED);
+                    }
                     let outs = vehicle.commands.on_ack(header.component_id, command, result, now_ms());
-                    vehicle.handle(outs, now_ms());
+                    let replied = vehicle.handle(outs, now_ms());
+                    return replied.into_iter().filter(|_| !vehicle.replay).map(|bytes| (link, bytes)).collect();
                 }
             }
             (COMMAND_LONG_ID, _, _) => {
@@ -5043,6 +5057,20 @@ mod tests {
         assert!(matches!(decode(&acked[0].1), MavMessage::MISSION_ACK(a) if a.mavtype as u8 == 0), "a truncated v2 payload is zero-padded and the read completes");
         let item = hub.active().unwrap().mission_snapshot()["mission"]["items"][0].clone();
         assert_eq!((item["command"].as_u64(), item["params"][0].as_f64(), item["params"][4].as_f64(), item["frame"].as_u64()), (Some(31999), Some(2.5), Some(47.4), Some(3)), "the _INT frame is stored as its float twin");
+    }
+
+    #[test]
+    fn the_estimator_origin_goes_out_as_command_int_611_and_falls_back_to_set_gps_global_origin() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &autopilot, &copter_heartbeat(5, false), 1_000_000, 1_000);
+        let sent = hub.guided(Some(1), &json!({ "action": "estimatorOrigin", "vehicle": 1, "latitude": 47.5, "longitude": 8.5, "altitude": 400.0 }), 2_000).unwrap();
+        let command_int = sent.iter().find(|(_, bytes)| bytes.get(7..10) == Some(&[75, 0, 0][..])).expect("a COMMAND_INT left, though 611 is outside the ardupilotmega dialect");
+        assert_eq!(u16::from_le_bytes([command_int.1[10 + 28], command_int.1[10 + 29]]), 611);
+        let unsupported = [&611u16.to_le_bytes()[..], &[3, 0, 0, 0, 0, 0, 0, 255, 190][..]].concat();
+        let fallback = hub.on_extra(&autopilot, COMMAND_ACK_ID, &unsupported);
+        assert!(fallback.iter().any(|(_, bytes)| matches!(decode(bytes), MavMessage::SET_GPS_GLOBAL_ORIGIN(o) if o.latitude == 475_000_000 && o.altitude == 400_000)), "Vehicle::setEstimatorOrigin falls back to the deprecated message when the command is unsupported");
+        assert!(hub.guided(Some(1), &json!({ "action": "estimatorOrigin", "vehicle": 1, "latitude": 47.5, "longitude": 8.5, "altitude": 400.0 }), 3_000).is_ok(), "the raw ack also ends the guided step, so the next action is not refused as still running");
     }
 
     #[test]
