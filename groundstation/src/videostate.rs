@@ -665,7 +665,7 @@ impl VideoState {
         self.receivers.entry(receiver.to_string()).and_modify(|state| state.started = false);
         match outcome {
             Outcome::InvalidUrl => self.set_status(receiver, Status::InvalidStreamUrl, false),
-            _ if !(outcome == Outcome::Failed || self.receivers.get(receiver).is_some_and(|state| state.failing_since_s.is_some())) => self
+            _ if outcome != Outcome::Failed => self
                 .set_status(receiver, Status::Reconnecting, true)
                 .into_iter()
                 .chain(std::iter::once(Out::RestartAfter { receiver: receiver.to_string(), delay_ms: RESTART_DELAY_MS }))
@@ -1189,6 +1189,15 @@ mod tests {
         state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
         state.on_decoding(MAIN_RECEIVER, true);
         assert!(state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed).contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: RESTART_DELAY_MS }), "decoding frames resets the backoff, as the first tee frame does in GstVideoReceiver");
+    }
+
+    #[test]
+    fn a_deliberate_stop_after_a_failure_restarts_at_once_even_without_auto_reconnect() {
+        let mut state = wired();
+        state.on_start_complete(MAIN_RECEIVER, Outcome::Failed, 10);
+        state.settings.reconnect_disabled = true;
+        let stopped = state.on_stop_complete(MAIN_RECEIVER, Outcome::Ok);
+        assert!(stopped.contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: RESTART_DELAY_MS }), "VideoManager restarts after any stop that is not a bad URL; only a failed one backs off");
     }
 
     #[test]
