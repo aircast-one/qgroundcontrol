@@ -647,6 +647,10 @@ fn vehicle_command(path: &str, args: &str) -> Option<(u16, [f64; 7])> {
     }
 }
 
+fn current_camera_mode() -> Option<u8> {
+    crate::hub::lock().active()?.cameras.selected()?.mode_now()
+}
+
 fn real_camera_op(name: &str, args: &str) -> Option<Value> {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let timelapse = stored_number("PhotoCaptureMode").is_some_and(|mode| mode as i64 != crate::simcamera::PHOTO_CAPTURE_SINGLE);
@@ -659,7 +663,11 @@ fn real_camera_op(name: &str, args: &str) -> Option<Value> {
         "toggleVideoRecording" => json!({ "op": "toggleRecording" }),
         "setCameraModePhoto" => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_PHOTO }),
         "setCameraModeVideo" => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_VIDEO }),
-        "toggleCameraMode" => json!({ "op": "toggleMode" }),
+        "toggleCameraMode" => match current_camera_mode() {
+            Some(crate::cameraproto::MODE_VIDEO) => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_PHOTO }),
+            Some(_) => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_VIDEO }),
+            None => json!({ "op": "toggleMode" }),
+        },
         "resetSettings" => json!({ "op": "reset" }),
         "formatCard" => json!({ "op": "format", "storage": given.get(0).and_then(Value::as_u64).unwrap_or(1) }),
         "startTrackingRect" => json!({ "op": "trackRect", "rect": given.get(0).cloned().unwrap_or(Value::Null) }),
@@ -667,6 +675,17 @@ fn real_camera_op(name: &str, args: &str) -> Option<Value> {
         "stopTracking" => json!({ "op": "stopTracking" }),
         _ => return None,
     })
+}
+
+fn write_mode_parameter(action: &Value) -> Option<String> {
+    let wanted = action.get("mode").and_then(Value::as_u64)?;
+    let differs = {
+        let hub = crate::hub::lock();
+        let camera = hub.active()?.cameras.selected()?;
+        camera.mode_is_parameter() && camera.mode_now().map(u64::from) != Some(wanted)
+    };
+    let written = differs.then(|| crate::camsettings::set_setting(&json!(["CAM_MODE", wanted]).to_string()))?;
+    (written["ok"] != true).then(|| written["reason"].as_str().unwrap_or("The camera mode could not be set.").to_string())
 }
 
 fn simulated_camera() -> Option<(u8, crate::simcamera::Inputs)> {
@@ -1236,6 +1255,9 @@ impl<B: Backend> Facade<B> {
         let mut action = real_camera_op(name, args)?;
         action["action"] = json!("camera");
         action["vehicle"] = json!(vehicle);
+        if let Some(refused) = write_mode_parameter(&action) {
+            return Some(json!({ "ok": false, "result": false, "error": refused }).to_string());
+        }
         Some(match self.0.core_guided(&action)? {
             Ok(()) => json!({ "ok": true, "result": true }).to_string(),
             Err(reason) => json!({ "ok": false, "result": false, "error": reason }).to_string(),

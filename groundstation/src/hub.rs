@@ -2655,11 +2655,11 @@ impl Vehicle {
             },
             "setMode" => self.cameras.set_mode(action.get("mode").and_then(Value::as_u64).and_then(|m| u8::try_from(m).ok()).unwrap_or(crate::cameraproto::MODE_PHOTO), now_ms),
             "toggleMode" => {
-                let next = match self.cameras.selected().and_then(|camera| camera.mode) {
-                    Some(crate::cameraproto::MODE_VIDEO) => crate::cameraproto::MODE_PHOTO,
-                    _ => crate::cameraproto::MODE_VIDEO,
-                };
-                self.cameras.set_mode(next, now_ms)
+                match self.cameras.selected().and_then(|camera| camera.mode_now()) {
+                    Some(crate::cameraproto::MODE_VIDEO) => self.cameras.set_mode(crate::cameraproto::MODE_PHOTO, now_ms),
+                    Some(_) => self.cameras.set_mode(crate::cameraproto::MODE_VIDEO, now_ms),
+                    None => Ok(Vec::new()),
+                }
             }
             "level" => self.cameras.set_level(axis, action.get("percent").and_then(Value::as_f64).unwrap_or(0.0), now_ms),
             "trackRect" | "trackPoint" | "stopTracking" => return self.camera_tracking(action),

@@ -207,7 +207,6 @@ pub enum Refusal {
     WrongMode,
     UnknownStream,
     UnknownStorage,
-    ModeIsParameter,
 }
 
 pub const REFUSALS: &[Refusal] = &[
@@ -219,7 +218,6 @@ pub const REFUSALS: &[Refusal] = &[
     Refusal::WrongMode,
     Refusal::UnknownStream,
     Refusal::UnknownStorage,
-    Refusal::ModeIsParameter,
 ];
 
 impl Refusal {
@@ -233,7 +231,6 @@ impl Refusal {
             Refusal::WrongMode => "wrongMode",
             Refusal::UnknownStream => "unknownStream",
             Refusal::UnknownStorage => "unknownStorage",
-            Refusal::ModeIsParameter => "modeIsParameter",
         }
     }
 }
@@ -657,6 +654,10 @@ impl Camera {
         self.record_since_ms.map(|since| now_ms.saturating_sub(since))
     }
 
+    pub fn mode_is_parameter(&self) -> bool {
+        self.mode_is_parameter
+    }
+
     pub fn mode_now(&self) -> Option<u8> {
         self.commanded.mode.or(self.mode)
     }
@@ -701,8 +702,7 @@ impl Camera {
         let missing = |capability: u32| (!self.info.has(capability)).then_some(Refusal::Unsupported);
         match action {
             Action::SetMode => resetting
-                .or_else(|| missing(CAP_HAS_MODES))
-                .or_else(|| self.mode_is_parameter.then_some(Refusal::ModeIsParameter)),
+                .or_else(|| missing(CAP_HAS_MODES)),
             Action::TakePhoto => resetting
                 .or_else(|| missing(CAP_CAPTURE_IMAGE))
                 .or_else(|| (self.mode_now() == Some(MODE_VIDEO) && !self.info.has(CAP_IMAGE_IN_VIDEO_MODE)).then_some(Refusal::WrongMode))
@@ -1372,6 +1372,10 @@ impl Cameras {
         if camera.mode_now() == Some(mode) {
             return Ok(Vec::new());
         }
+        if camera.mode_is_parameter {
+            camera.adopt_mode(mode, now_ms);
+            return Ok(Vec::new());
+        }
         let sent = command(camera.compid, CMD_SET_CAMERA_MODE, [0.0, f64::from(mode), 0.0, 0.0, 0.0, 0.0, 0.0]);
         camera.command_mode(mode, now_ms);
         camera.note_sent(CMD_SET_CAMERA_MODE, now_ms);
@@ -1986,16 +1990,11 @@ mod tests {
     }
 
     #[test]
-    fn a_camera_whose_mode_lives_in_its_definition_is_not_commanded_over_mavlink() {
+    fn a_camera_whose_mode_lives_in_its_definition_takes_the_mode_without_a_mavlink_command() {
         let mut cameras = idle(CAP_HAS_MODES);
         cameras.on_definition_known(CAMERA, true, true);
-        assert_eq!(
-            cameras.set_mode(MODE_VIDEO, 0),
-            Err(Refusal::ModeIsParameter),
-            "the C++ sets the CAM_MODE parameter for these cameras and only falls back to the command when there is none, so sending the command here would fight the parameter tree"
-        );
-        assert_eq!(cameras.snapshot(0)["cameras"][0]["actions"]["setMode"], json!({ "offer": "blocked", "refusal": "modeIsParameter" }));
-        assert!(cameras.camera(CAMERA).unwrap().mode_now().is_none(), "and nothing was adopted locally, so the core never disagrees with the parameter");
+        assert_eq!(cameras.set_mode(MODE_VIDEO, 0), Ok(Vec::new()), "the CAM_MODE parameter write carries the change, as in VehicleCameraControl::setCameraMode");
+        assert_eq!(cameras.camera(CAMERA).unwrap().mode_now(), Some(MODE_VIDEO), "and the mode is taken at once like _setCameraMode");
         let mut plain = idle(CAP_HAS_MODES);
         plain.on_definition_known(CAMERA, true, false);
         assert_eq!(commands(&plain.set_mode(MODE_VIDEO, 0).unwrap()), vec![(CMD_SET_CAMERA_MODE, 0.0)], "a definition with no mode parameter still takes the command path");
