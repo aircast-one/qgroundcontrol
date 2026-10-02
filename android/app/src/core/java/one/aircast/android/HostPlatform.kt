@@ -32,7 +32,7 @@ object HostPlatform {
             "--app-name", application,
             "--map-cache", File(mapCache, "qgcMapCache.db").absolutePath,
             "--save-path", File(activity.getExternalFilesDir(null) ?: activity.filesDir, application).absolutePath,
-        ) + if (BuildConfig.DEBUG) listOf("--port", DEBUG_API_PORT) else emptyList()
+        ) + removableSavePath(activity, application) + if (BuildConfig.DEBUG) listOf("--port", DEBUG_API_PORT) else emptyList()
         QGCBridge.start(arguments.toTypedArray())
         val tileCache = File(mapCache, "qgcMapCache.db").absolutePath
         MapTileHost.fetch = { mapType, x, y, zoom -> QGCBridge.mapTile(mapType, x, y, zoom, tileCache) }
@@ -40,6 +40,11 @@ object HostPlatform {
         SpeechOut.start(activity)
         return null
     }
+
+    private fun removableSavePath(activity: Activity, application: String): List<String> =
+        activity.getExternalFilesDirs(null).drop(1).firstOrNull { it != null && android.os.Environment.getExternalStorageState(it) == android.os.Environment.MEDIA_MOUNTED }
+            ?.let { listOf("--removable-save-path", File(it, application).absolutePath) }
+            .orEmpty()
 
     fun stop(activity: Activity) {
         if (!activity.isFinishing) return

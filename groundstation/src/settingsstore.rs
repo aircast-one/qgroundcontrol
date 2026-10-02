@@ -572,7 +572,27 @@ pub fn default_save_path(application: &str) -> Option<std::path::PathBuf> {
     Some(home.join("Documents").join(application))
 }
 
-pub fn establish_save_path(given: Option<&str>, application: &str) {
+#[derive(Clone, Debug, PartialEq)]
+pub struct SaveRoots {
+    pub internal: std::path::PathBuf,
+    pub removable: Option<std::path::PathBuf>,
+}
+
+static SAVE_ROOTS: Mutex<Option<SaveRoots>> = Mutex::new(None);
+
+fn usable(dir: &std::path::Path) -> bool {
+    std::fs::create_dir_all(dir).is_ok() && std::fs::metadata(dir).is_ok_and(|m| m.is_dir() && !m.permissions().readonly())
+}
+
+pub fn chosen_save_root(roots: &SaveRoots, dont_save_to_sd_card: bool) -> std::path::PathBuf {
+    roots.removable.clone().filter(|sd| !dont_save_to_sd_card && usable(sd)).unwrap_or_else(|| roots.internal.clone())
+}
+
+fn dont_save_to_sd_card() -> bool {
+    stored_text(&key("App", "androidDontSaveToSDCard")).is_some_and(|text| text == "true" || text == "1")
+}
+
+pub fn establish_save_path(given: Option<&str>, removable: Option<&str>, application: &str) {
     let root = match given {
         Some(path) => Some(std::path::PathBuf::from(path)),
         None => match stored_text(&key("App", "savePath")).filter(|path| !path.is_empty()) {
@@ -580,8 +600,10 @@ pub fn establish_save_path(given: Option<&str>, application: &str) {
             None => default_save_path(application),
         },
     };
-    if let Some(root) = root {
-        written(&key("App", "savePath"), &root.to_string_lossy());
+    let roots = root.clone().map(|internal| SaveRoots { internal, removable: removable.map(std::path::PathBuf::from) });
+    *SAVE_ROOTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = roots.clone();
+    if let Some(chosen) = roots.map(|roots| chosen_save_root(&roots, dont_save_to_sd_card())).or(root) {
+        written(&key("App", "savePath"), &chosen.to_string_lossy());
     }
     if let Some(saved) = stored_text(&key("App", "savePath")).filter(|path| !path.is_empty()).map(std::path::PathBuf::from)
         && std::fs::create_dir_all(&saved).is_ok()
@@ -703,6 +725,12 @@ fn follow_ups(group: &str, fact: &str, new: &Value) -> Vec<(&'static str, String
             .as_str()
             .and_then(|provider| crate::maptypes::map_type_list(provider).into_iter().next())
             .map(|first| vec![("mapType", first)])
+            .unwrap_or_default(),
+        ("App", "androidDontSaveToSDCard") => SAVE_ROOTS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .map(|roots| vec![("savePath", chosen_save_root(&roots, new.as_bool() == Some(true)).to_string_lossy().into_owned())])
             .unwrap_or_default(),
         ("RemoteID", "region") if new.as_i64() == Some(crate::remoteid::REGION_EU) => vec![("sendOperatorID", "true".to_string())],
         ("RemoteID", "region") if new.as_i64() == Some(crate::remoteid::REGION_FAA) => vec![("locationType", crate::remoteid::LOCATION_LIVE.to_string())],
@@ -845,6 +873,20 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn data_goes_to_the_sd_card_unless_told_not_to_or_it_cannot_be_written() {
+        let base = std::env::temp_dir().join(format!("qgc-save-roots-{}", std::process::id()));
+        let roots = SaveRoots { internal: base.join("internal"), removable: Some(base.join("sd")) };
+        assert_eq!(chosen_save_root(&roots, false), base.join("sd"), "AppSettings saves to the SD card by default");
+        assert_eq!(chosen_save_root(&roots, true), base.join("internal"), "androidDontSaveToSDCard keeps it internal");
+        assert_eq!(chosen_save_root(&SaveRoots { removable: None, ..roots.clone() }, false), base.join("internal"), "no card, internal storage");
+        let blocked = base.join("file");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(&blocked, b"").unwrap();
+        assert_eq!(chosen_save_root(&SaveRoots { removable: Some(blocked.join("sd")), ..roots }, false), base.join("internal"), "a card that cannot be written falls back to internal storage");
+        std::fs::remove_dir_all(&base).ok();
+    }
 
     #[test]
     fn choosing_a_map_provider_moves_the_map_type_to_its_first() {
