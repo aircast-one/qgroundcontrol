@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer", "vehicle.healthAndArmingCheckReport.supported", "vehicle.healthAndArmingCheckReport.canArm", "vehicle.readyToFlyAvailable", "vehicle.readyToFly", "vehicle.allSensorsHealthy", crate::setup::COMPONENTS];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer", "vehicle.healthAndArmingCheckReport.supported", "vehicle.healthAndArmingCheckReport.canArm", "vehicle.healthAndArmingCheckReport.hasWarningsOrErrors", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorEnabled", "vehicle.sysStatusSensorInfo.sensorHealthy", "vehicle.readyToFlyAvailable", "vehicle.readyToFly", "vehicle.allSensorsHealthy", crate::setup::COMPONENTS];
 
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
 
@@ -47,11 +47,19 @@ pub fn ready_to_fly(report: Option<bool>, ready_to_fly: Option<bool>, sensors_he
     report.or(ready_to_fly).unwrap_or_else(|| sensors_healthy && setup_complete())
 }
 
-pub fn state_line(state: State, ready: bool) -> &'static str {
-    match (state, ready) {
-        (State::Disarmed, true) => "Ready to Fly",
-        (State::Disarmed, false) => "Not Ready",
-        (other, _) => other.line(),
+pub fn status_nominal(report: Option<(bool, bool)>, sensors: &[(bool, bool)]) -> bool {
+    match report {
+        Some((can_arm, warnings)) => can_arm && !warnings,
+        None => sensors.iter().all(|(enabled, healthy)| *enabled && *healthy),
+    }
+}
+
+pub fn state_line(state: State, ready: bool, nominal: bool) -> &'static str {
+    match (state, ready, nominal) {
+        (State::Disarmed, true, true) => "Ready to Fly",
+        (State::Disarmed, true, _) => "Not Fully Ready",
+        (State::Disarmed, false, _) => "Not Ready",
+        (other, ..) => other.line(),
     }
 }
 
@@ -102,6 +110,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let reported = connected.then(|| watching.then(|| flag(&links, "communicationLost"))).flatten();
     let contact_lost = reported.unwrap_or(false);
     let state = state_of(connected, contact_lost, flag(&vehicle, "armed"), flag(&vehicle, "flying"), flag(&vehicle, "landing"));
+    let nominal = vehicle_nominal(backend);
     json!({
         "kind": "object",
         "class": "FlyState",
@@ -111,7 +120,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "landing": flag(&vehicle, "landing"),
         "contactLost": reported,
         "state": state.token(),
-        "stateText": state_line(state, state == State::Disarmed && disarmed_ready(backend)),
+        "stateText": state_line(state, state == State::Disarmed && disarmed_ready(backend), nominal),
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
@@ -124,6 +133,16 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "rcOverride": connected.then(|| flag(&vehicle, "rcChannelOverrideActive")),
         "telemetry": telemetry(&radio),
     })
+}
+
+fn vehicle_nominal(backend: &dyn Backend) -> bool {
+    let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,hasWarningsOrErrors"));
+    let info = object(&backend.get("vehicle.sysStatusSensorInfo"));
+    let flags = |key: &str| -> Vec<bool> { info.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(v.as_i64().unwrap_or(0) != 0)).collect()).unwrap_or_default() };
+    let (enabled, healthy) = (flags("sensorEnabled"), flags("sensorHealthy"));
+    let count = info.get("sensorNames").and_then(Value::as_array).map_or(0, Vec::len);
+    let sensors: Vec<(bool, bool)> = (0..count).map(|i| (enabled.get(i).copied().unwrap_or(false), healthy.get(i).copied().unwrap_or(false))).collect();
+    status_nominal(flag(&report, "supported").then(|| (flag(&report, "canArm"), flag(&report, "hasWarningsOrErrors"))), &sensors)
 }
 
 fn disarmed_ready(backend: &dyn Backend) -> bool {
@@ -189,7 +208,18 @@ mod tests {
         assert!(!ready_to_fly(None, Some(false), true, || true), "then readyToFly when it is available");
         assert!(ready_to_fly(None, None, true, || true), "then healthy sensors and a finished setup");
         assert!(!ready_to_fly(None, None, true, || false));
-        assert_eq!((state_line(State::Disarmed, true), state_line(State::Disarmed, false), state_line(State::Armed, false)), ("Ready to Fly", "Not Ready", "Armed"));
+        assert_eq!((state_line(State::Disarmed, true, true), state_line(State::Disarmed, false, true), state_line(State::Armed, false, false)), ("Ready to Fly", "Not Ready", "Armed"));
+        assert_eq!(state_line(State::Disarmed, true, false), "Not Fully Ready");
+    }
+
+    #[test]
+    fn status_nominal_ports_vehicle_status_summary() {
+        assert!(status_nominal(Some((true, false)), &[(true, false)]), "the arming report replaces the sensor bits");
+        assert!(!status_nominal(Some((true, true)), &[]), "warnings are a caution");
+        assert!(!status_nominal(Some((false, false)), &[]));
+        assert!(!status_nominal(None, &[(true, true), (false, false)]), "a disabled sensor is a caution");
+        assert!(!status_nominal(None, &[(true, false)]));
+        assert!(status_nominal(None, &[(true, true)]));
     }
 
     #[test]
