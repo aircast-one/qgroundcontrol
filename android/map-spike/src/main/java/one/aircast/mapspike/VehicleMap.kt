@@ -87,6 +87,11 @@ const val OSM_RASTER_STYLE = """
 
 data class TrackPoint(val latitude: Double, val longitude: Double)
 
+object FlightMapPosition {
+    @Volatile
+    var latest: TrackPoint? = null
+}
+
 fun isPlottable(latitude: Double, longitude: Double): Boolean =
     !latitude.isNaN() && !longitude.isNaN() &&
         !(latitude == 0.0 && longitude == 0.0) &&

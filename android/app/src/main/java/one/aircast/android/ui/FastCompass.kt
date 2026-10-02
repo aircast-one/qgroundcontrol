@@ -14,8 +14,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import one.aircast.mapspike.FlightMapPosition
+import one.aircast.mapspike.TrackPoint
 import one.aircast.mapspike.optText
 import org.json.JSONObject
+import java.util.Locale
 
 internal data class FastCompass(
     val invocation: String,
@@ -25,7 +28,14 @@ internal data class FastCompass(
     val gcsLongitude: Double?,
 )
 
-internal data class FastCompassChoice(val enabled: Boolean, val useGcs: Boolean, val latitude: String, val longitude: String)
+internal data class FastCompassChoice(
+    val enabled: Boolean,
+    val useGcs: Boolean,
+    val latitude: String,
+    val longitude: String,
+    val useMap: Boolean = false,
+    val mapPosition: TrackPoint? = null,
+)
 
 internal fun fastCompass(json: JSONObject?): FastCompass? = json?.let {
     val gcs = it.optJSONObject("gcsPosition")
@@ -39,12 +49,14 @@ internal fun fastCompass(json: JSONObject?): FastCompass? = json?.let {
     )
 }
 
-internal fun initialFastCompassChoice(fast: FastCompass): FastCompassChoice =
-    FastCompassChoice(enabled = false, useGcs = fast.gcsLatitude != null, latitude = "0.00", longitude = "0.00")
+internal fun initialFastCompassChoice(fast: FastCompass, mapPosition: TrackPoint? = FlightMapPosition.latest): FastCompassChoice =
+    FastCompassChoice(enabled = false, useGcs = fast.gcsLatitude != null, latitude = "0.00", longitude = "0.00", mapPosition = mapPosition)
 
 internal fun fastCompassArguments(fast: FastCompass, choice: FastCompassChoice): List<Any> =
     if (choice.useGcs && fast.gcsLatitude != null && fast.gcsLongitude != null) {
         listOf(fast.gcsLatitude, fast.gcsLongitude)
+    } else if (choice.useMap && choice.mapPosition != null) {
+        listOf(choice.mapPosition.latitude, choice.mapPosition.longitude)
     } else {
         listOf(choice.latitude.toDoubleOrNull() ?: choice.latitude, choice.longitude.toDoubleOrNull() ?: choice.longitude)
     }
@@ -57,7 +69,10 @@ internal fun FastCompassBlock(fast: FastCompass, choice: FastCompassChoice, onCh
         LabeledCheckbox("Fast Calibration", choice.enabled) { onChange(choice.copy(enabled = it)) }
         if (asksForPosition) Text("Vehicle has no valid position, please provide it", style = MaterialTheme.typography.bodySmall)
         if (asksForPosition && fast.gcsLatitude != null) LabeledCheckbox("Use GCS position instead", choice.useGcs) { onChange(choice.copy(useGcs = it)) }
-        if (choice.enabled && !choice.useGcs) {
+        if (asksForPosition && fast.gcsLatitude == null && choice.mapPosition != null) LabeledCheckbox("Use current map position instead", choice.useMap) { onChange(choice.copy(useMap = it)) }
+        val shownMap = choice.mapPosition?.takeIf { choice.useMap }
+        if (shownMap != null) Text(String.format(Locale.US, "Lat: %.4f Lon: %.4f", shownMap.latitude, shownMap.longitude), style = MaterialTheme.typography.bodySmall)
+        if (choice.enabled && !choice.useGcs && shownMap == null) {
             CoordinateField("Latitude", choice.latitude) { onChange(choice.copy(latitude = it)) }
             CoordinateField("Longitude", choice.longitude) { onChange(choice.copy(longitude = it)) }
         }

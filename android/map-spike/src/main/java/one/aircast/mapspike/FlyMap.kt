@@ -150,6 +150,7 @@ fun FlyMap(
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level
+                FlightMapPosition.latest = at
             },
         )
         centre?.takeIf { zoom > 0.0 }?.let { at ->
