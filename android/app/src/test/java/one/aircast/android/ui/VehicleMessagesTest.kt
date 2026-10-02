@@ -8,6 +8,13 @@ import org.junit.Test
 
 class VehicleMessagesTest {
     @Test
+    fun `the log summary counts errors and warnings apart from the rest`() {
+        fun message(level: MessageSeverity) = VehicleMessage(0, "", "", level, "x")
+        org.junit.Assert.assertEquals("1 error \u00b7 2 warnings \u00b7 1 message", severitySummary(listOf(message(MessageSeverity.Error), message(MessageSeverity.Warning), message(MessageSeverity.Warning), message(MessageSeverity.Normal))))
+        org.junit.Assert.assertEquals("0 messages from the vehicle", severitySummary(emptyList()))
+    }
+
+    @Test
     fun `a message time drops the milliseconds QGC stamps it with`() {
         org.junit.Assert.assertEquals("20:00:53", messageTime("20:00:53.747"))
         org.junit.Assert.assertEquals("yesterday", messageTime("yesterday"))

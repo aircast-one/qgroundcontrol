@@ -63,6 +63,18 @@ internal fun bannerText(blocker: String?, messages: List<VehicleMessage>): Strin
     return worst?.text?.takeIf { it.isNotBlank() } ?: count
 }
 
+internal fun severitySummary(messages: List<VehicleMessage>): String {
+    fun counted(n: Int, one: String) = "$n $one${if (n == 1) "" else "s"}"
+    val errors = messages.count { it.level == MessageSeverity.Error }
+    val warnings = messages.count { it.level == MessageSeverity.Warning }
+    val rest = messages.size - errors - warnings
+    return listOfNotNull(
+        counted(errors, "error").takeIf { errors > 0 },
+        counted(warnings, "warning").takeIf { warnings > 0 },
+        counted(rest, "message").takeIf { rest > 0 },
+    ).joinToString(" \u00b7 ").ifBlank { messageCountText(0) }
+}
+
 internal fun messageCountText(count: Int): String = "$count message${if (count == 1) "" else "s"} from the vehicle"
 
 internal fun unreadMessages(messages: List<VehicleMessage>, unread: Int): List<VehicleMessage> =
@@ -203,7 +215,7 @@ private fun VehicleMessageLog(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Text(if (checks.isEmpty()) "Messages" else "Why it will not arm", style = MaterialTheme.typography.headlineSmall)
-            Text(messageCountText(lines.size), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(severitySummary(lines), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (lines.isEmpty() && checks.isEmpty()) {
                 Text("The vehicle has not said anything yet.", Modifier.padding(vertical = 16.dp))
             } else {
