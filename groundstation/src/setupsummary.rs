@@ -449,12 +449,12 @@ pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
         custom: (part("firmwareCustomMajorVersion") != -1).then(|| format!("{}.{}.{}", part("firmwareCustomMajorVersion"), part("firmwareCustomMinorVersion"), part("firmwareCustomPatchVersion"))),
     };
     let facts = |name: &str| Some(object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))).filter(|f| f.get("kind").and_then(Value::as_str) == Some("fact") && !text(f, "name").is_empty());
-    let count = object(&backend.get(COMPONENTS)).get("value").and_then(Value::as_array).map_or(0, Vec::len);
-    let components: Vec<Value> = (0..count)
-        .filter_map(|index| {
-            let component = object(&backend.get_fields(&format!("{COMPONENTS}.{index}"), "name"));
-            let found = rows(&text(&component, "class"), &facts, &vehicle)?;
-            Some(json!({ "name": text(&component, "name"), "rows": found.iter().map(|(label, value)| json!({ "label": label, "value": value })).collect::<Vec<_>>() }))
+    let listed = object(&backend.get(COMPONENTS)).get("value").and_then(Value::as_array).cloned().unwrap_or_default();
+    let components: Vec<Value> = listed
+        .iter()
+        .filter_map(|component| {
+            let found = rows(&text(component, "class"), &facts, &vehicle)?;
+            Some(json!({ "name": text(component, "name"), "rows": found.iter().map(|(label, value)| json!({ "label": label, "value": value })).collect::<Vec<_>>() }))
         })
         .collect();
     json!({ "kind": "object", "class": "SetupSummary", "components": components })
@@ -568,5 +568,26 @@ mod tests {
             [row("Arming Checks:", "Some disabled"), row("GeoFence:", "Altitude,Circle"), row("GeoFence:", "RTL or Land"), row("RTL min alt:", "current")]
         );
         assert_eq!(rows("APMLightsComponent", &facts, &copter()).unwrap(), [row("Lights Output 1", "Channel 9"), row("Lights Output 2", DISABLED)]);
+    }
+
+    #[test]
+    fn the_summary_reads_each_component_from_the_listed_array_as_a_backend_without_indexed_paths_answers() {
+        struct ListOnly;
+        impl Backend for ListOnly {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    COMPONENTS => json!({ "kind": "value", "value": [{ "kind": "object", "class": "APMFailsafesComponent", "name": "Failsafes" }, { "kind": "object", "class": "APMAirframeComponent", "name": "Frame" }] }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn get_fields(&self, path: &str, _fields: &str) -> String {
+                if path == "vehicle" { json!({ "kind": "object", "multiRotor": true, "apmFirmware": true }).to_string() } else { json!({ "kind": "null" }).to_string() }
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let names: Vec<String> = setup_summary_view(&ListOnly, &[])["components"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect();
+        assert_eq!(names, ["Failsafes", "Frame"], "the Android core answers vehicleComponents whole and null for vehicleComponents.N");
     }
 }
