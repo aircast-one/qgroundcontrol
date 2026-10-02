@@ -20,15 +20,19 @@ private const val GOTO_RING_SOURCE = "aircast-goto-ring"
 private const val GOTO_LAYER = "aircast-goto-layer"
 private const val GOTO_LABEL_LAYER = "aircast-goto-label"
 private const val GOTO_RING_LAYER = "aircast-goto-ring-layer"
+private const val GOTO_RADIUS_SOURCE = "aircast-goto-radius"
+private const val GOTO_RADIUS_LAYER = "aircast-goto-radius-layer"
+private const val RADIUS_TEXT = "text"
 private const val GOTO_COLOUR = "#2E7D32"
 
-data class GotoLocation(val at: TrackPoint, val loiterRadiusMetres: Double?)
+data class GotoLocation(val at: TrackPoint, val loiterRadiusMetres: Double?, val loiterRadiusText: String = "")
 
 fun gotoLocation(view: JSONObject?): GotoLocation? =
     view?.optJSONObject("gotoLocation")?.let { json ->
         GotoLocation(
             TrackPoint(json.optDouble("latitude"), json.optDouble("longitude")),
             json.optDouble("loiterRadiusMetres").takeIf { !it.isNaN() && it > 0 },
+            json.optText("loiterRadiusText"),
         )
     }?.takeIf { isPlottable(it.at.latitude, it.at.longitude) }
 
@@ -43,6 +47,7 @@ fun installGotoLayer(style: Style) {
     if (style.getSource(GOTO_SOURCE) != null) return
     style.addSource(GeoJsonSource(GOTO_SOURCE))
     style.addSource(GeoJsonSource(GOTO_RING_SOURCE))
+    style.addSource(GeoJsonSource(GOTO_RADIUS_SOURCE))
     style.addLayer(
         LineLayer(GOTO_RING_LAYER, GOTO_RING_SOURCE).withProperties(
             PropertyFactory.lineColor(GOTO_COLOUR),
@@ -55,6 +60,18 @@ fun installGotoLayer(style: Style) {
             PropertyFactory.circleRadius(9f),
             PropertyFactory.circleStrokeColor("#FFFFFF"),
             PropertyFactory.circleStrokeWidth(2f),
+        ),
+    )
+    style.addLayer(
+        SymbolLayer(GOTO_RADIUS_LAYER, GOTO_RADIUS_SOURCE).withProperties(
+            PropertyFactory.textField(org.maplibre.android.style.expressions.Expression.get(RADIUS_TEXT)),
+            PropertyFactory.textSize(12f),
+            PropertyFactory.textColor("#000000"),
+            PropertyFactory.textHaloColor("#80FFFFFF"),
+            PropertyFactory.textHaloWidth(4f),
+            PropertyFactory.textAnchor(Property.TEXT_ANCHOR_BOTTOM),
+            PropertyFactory.textAllowOverlap(true),
+            PropertyFactory.textIgnorePlacement(true),
         ),
     )
     style.addLayer(
@@ -73,6 +90,14 @@ fun installGotoLayer(style: Style) {
 fun renderGoto(style: Style, location: GotoLocation?) {
     (style.getSource(GOTO_SOURCE) as? GeoJsonSource)?.setGeoJson(
         FeatureCollection.fromFeatures(listOfNotNull(location).map { Feature.fromGeometry(Point.fromLngLat(it.at.longitude, it.at.latitude)) }),
+    )
+    (style.getSource(GOTO_RADIUS_SOURCE) as? GeoJsonSource)?.setGeoJson(
+        FeatureCollection.fromFeatures(
+            listOfNotNull(location?.takeIf { it.loiterRadiusMetres != null && it.loiterRadiusText.isNotBlank() }).map { shown ->
+                val edge = pointAt(shown.at, shown.loiterRadiusMetres ?: 0.0, 0.0)
+                Feature.fromGeometry(Point.fromLngLat(edge.longitude, edge.latitude)).also { it.addStringProperty(RADIUS_TEXT, shown.loiterRadiusText) }
+            },
+        ),
     )
     val ring = gotoRing(location)
     (style.getSource(GOTO_RING_SOURCE) as? GeoJsonSource)?.setGeoJson(

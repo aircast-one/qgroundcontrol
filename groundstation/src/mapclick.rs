@@ -103,10 +103,13 @@ fn loiter_offer(backend: &dyn Backend) -> Option<(f64, f64)> {
 fn goto_location(backend: &dyn Backend) -> Option<Value> {
     let (vehicle, in_goto_mode) = goto_vehicle(backend);
     goto_shown(in_goto_mode).map(|mark| {
+        let radius = loiter_circle_shown(backend, &vehicle).then_some(mark.radius.abs());
+        let unit = crate::read::Unit::horizontal(backend);
         json!({
             "latitude": mark.latitude,
             "longitude": mark.longitude,
-            "loiterRadiusMetres": loiter_circle_shown(backend, &vehicle).then_some(mark.radius.abs()),
+            "loiterRadiusMetres": radius,
+            "loiterRadiusText": radius.map(|metres| format!("{:.0} {}", unit.show(metres), unit.name)),
         })
     })
 }

@@ -154,6 +154,7 @@ fun VehicleMap(
     fenceCircles: List<FenceCircle> = emptyList(),
     rallyPoints: List<RallyPoint> = emptyList(),
     operator: TrackPoint? = null,
+    operatorHeading: Double = Double.NaN,
     surveys: List<Survey> = emptyList(),
     shots: List<TrackPoint> = emptyList(),
     landings: List<LandingPattern> = emptyList(),
@@ -433,9 +434,10 @@ fun VehicleMap(
             )
 
         (currentStyle.getSource(HOME_SOURCE) as? GeoJsonSource)?.setGeoJson(
-            home?.let { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) }
-                ?.let { FeatureCollection.fromFeatures(listOf(it)) }
-                ?: FeatureCollection.fromFeatures(emptyList()),
+            FeatureCollection.fromFeatures(
+                (if (fleet.isEmpty()) listOfNotNull(home) else fleet.mapNotNull { it.home })
+                    .map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) },
+            ),
         )
 
         (currentStyle.getSource(TRAIL_SOURCE) as? GeoJsonSource)?.setGeoJson(
@@ -523,7 +525,7 @@ fun VehicleMap(
 
     LaunchedEffect(
         style, missionItems, fencePolygons, fenceCircles, rallyPoints, surveys,
-        landings, firmwareFence, selectedWaypoint, linkStartToHome, operator, breachReturn, otherMissions, circledShapes,
+        landings, firmwareFence, selectedWaypoint, linkStartToHome, operator, operatorHeading, breachReturn, otherMissions, circledShapes,
     ) {
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
@@ -532,7 +534,7 @@ fun VehicleMap(
         renderLandings(currentStyle, landings, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint.takeIf { editable })
         renderMidpoints(currentStyle, fencePolygons.map { if (fencePath(it.index) in circledShapes) it.copy(editable = null) else it }, surveys.map { if (surveyPath(it) in circledShapes) it.copy(editable = null) else it }, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence, breachReturn?.takeIf { isPlottable(it.latitude, it.longitude) })
-        (currentStyle.getSource(GCS_SOURCE) as? GeoJsonSource)?.setGeoJson(operatorFeatures(operator))
+        (currentStyle.getSource(GCS_SOURCE) as? GeoJsonSource)?.setGeoJson(operatorFeatures(operator, operatorHeading))
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings, circledShapes, loiterHandleFeatures(missionItems.takeIf { editable }.orEmpty(), selectedWaypoint))
         renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint, otherMissions)
     }

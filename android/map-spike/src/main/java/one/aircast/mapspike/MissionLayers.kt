@@ -336,6 +336,19 @@ fun installFenceLayers(style: Style) {
                 PropertyFactory.circleStrokeWidth(3f),
             ),
         )
+        style.addLayer(
+            SymbolLayer(GCS_HEADING_LAYER, GCS_SOURCE).withProperties(
+                PropertyFactory.textField("\u25B2"),
+                PropertyFactory.textSize(12f),
+                PropertyFactory.textColor("#1976D2"),
+                PropertyFactory.textOpacity(0.85f),
+                PropertyFactory.textRotate(Expression.get(GCS_HEADING_PROPERTY)),
+                PropertyFactory.textRotationAlignment(Property.TEXT_ROTATION_ALIGNMENT_MAP),
+                PropertyFactory.textOffset(arrayOf(0f, -1.1f)),
+                PropertyFactory.textAllowOverlap(true),
+                PropertyFactory.textIgnorePlacement(true),
+            ).withFilter(Expression.has(GCS_HEADING_PROPERTY)),
+        )
     }
 
     if (style.getSource(BREACH_SOURCE) == null) {
@@ -391,9 +404,16 @@ fun breachFeatures(point: TrackPoint?): FeatureCollection =
 const val GCS_SOURCE = "aircast-gcs"
 const val GCS_LAYER = "aircast-gcs-layer"
 
-fun operatorFeatures(point: TrackPoint?): FeatureCollection =
+const val GCS_HEADING_LAYER = "aircast-gcs-heading-layer"
+const val GCS_HEADING_PROPERTY = "heading"
+
+fun operatorFeatures(point: TrackPoint?, heading: Double = Double.NaN): FeatureCollection =
     FeatureCollection.fromFeatures(
-        listOfNotNull(point).map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) },
+        listOfNotNull(point).map { at ->
+            Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).also { feature ->
+                if (!heading.isNaN()) feature.addNumberProperty(GCS_HEADING_PROPERTY, heading)
+            }
+        },
     )
 
 const val CIRCLE_INDEX_PROPERTY = "circleIndex"

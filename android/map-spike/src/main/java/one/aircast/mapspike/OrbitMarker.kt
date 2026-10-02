@@ -21,14 +21,24 @@ private const val ORBIT_LAYER = "aircast-orbit-layer"
 private const val ORBIT_LABEL_LAYER = "aircast-orbit-label"
 private const val ORBIT_RING_LAYER = "aircast-orbit-ring-layer"
 private const val ORBIT_COLOUR = "#FFFFFF"
+private const val ORBIT_ARROW_SOURCE = "aircast-orbit-arrows"
+private const val ORBIT_ARROW_LAYER = "aircast-orbit-arrow-layer"
+private const val ARROW_BEARING = "bearing"
 
-data class OrbitCircle(val centre: TrackPoint, val radiusMetres: Double)
+data class OrbitCircle(val centre: TrackPoint, val radiusMetres: Double, val clockwise: Boolean = true)
+
+fun orbitArrows(orbit: OrbitCircle?): List<Pair<TrackPoint, Double>> =
+    orbit?.let { circle ->
+        listOf(0.0 to 90.0, 180.0 to 270.0).map { (around, travel) ->
+            pointAt(circle.centre, circle.radiusMetres, around) to if (circle.clockwise) travel else (travel + 180.0) % 360.0
+        }
+    }.orEmpty()
 
 fun orbitCircle(view: JSONObject?): OrbitCircle? {
     val turning = view?.takeIf { it.optBoolean("orbiting") } ?: return null
     val centre = turning.optJSONObject("centre") ?: return null
     val radius = turning.optDouble("radiusMetres").takeIf { !it.isNaN() && it > 0 } ?: return null
-    return OrbitCircle(TrackPoint(centre.optDouble("latitude"), centre.optDouble("longitude")), radius)
+    return OrbitCircle(TrackPoint(centre.optDouble("latitude"), centre.optDouble("longitude")), radius, turning.optBoolean("clockwise", true))
 }
 
 fun orbitRing(orbit: OrbitCircle?): List<TrackPoint> =
@@ -42,10 +52,22 @@ fun installOrbitLayer(style: Style) {
     if (style.getSource(ORBIT_SOURCE) != null) return
     style.addSource(GeoJsonSource(ORBIT_SOURCE))
     style.addSource(GeoJsonSource(ORBIT_RING_SOURCE))
+    style.addSource(GeoJsonSource(ORBIT_ARROW_SOURCE))
     style.addLayer(
         LineLayer(ORBIT_RING_LAYER, ORBIT_RING_SOURCE).withProperties(
             PropertyFactory.lineColor(ORBIT_COLOUR),
             PropertyFactory.lineWidth(2f),
+        ),
+    )
+    style.addLayer(
+        SymbolLayer(ORBIT_ARROW_LAYER, ORBIT_ARROW_SOURCE).withProperties(
+            PropertyFactory.textField("\u25B2"),
+            PropertyFactory.textSize(14f),
+            PropertyFactory.textColor(ORBIT_COLOUR),
+            PropertyFactory.textRotate(org.maplibre.android.style.expressions.Expression.get(ARROW_BEARING)),
+            PropertyFactory.textRotationAlignment(Property.TEXT_ROTATION_ALIGNMENT_MAP),
+            PropertyFactory.textAllowOverlap(true),
+            PropertyFactory.textIgnorePlacement(true),
         ),
     )
     style.addLayer(
@@ -70,6 +92,13 @@ fun installOrbitLayer(style: Style) {
 fun renderOrbit(style: Style, orbit: OrbitCircle?, gotoShown: Boolean) {
     (style.getSource(ORBIT_SOURCE) as? GeoJsonSource)?.setGeoJson(
         FeatureCollection.fromFeatures(listOfNotNull(orbit?.takeIf { !gotoShown }).map { Feature.fromGeometry(Point.fromLngLat(it.centre.longitude, it.centre.latitude)) }),
+    )
+    (style.getSource(ORBIT_ARROW_SOURCE) as? GeoJsonSource)?.setGeoJson(
+        FeatureCollection.fromFeatures(
+            orbitArrows(orbit).map { (at, bearing) ->
+                Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).also { it.addNumberProperty(ARROW_BEARING, bearing) }
+            },
+        ),
     )
     (style.getSource(ORBIT_RING_SOURCE) as? GeoJsonSource)?.setGeoJson(
         FeatureCollection.fromFeatures(

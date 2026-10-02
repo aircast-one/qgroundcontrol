@@ -24,7 +24,7 @@ private const val MAX_BAR_DP = 100
 fun ScaleBarView(latitude: Double, zoom: Double, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
     val maxPixels = with(density) { MAX_BAR_DP.dp.toPx() }.toDouble()
-    val across = metresAcross(latitude, zoom, maxPixels)
+    val across = metresAcross(latitude, zoom, MAX_BAR_DP.toDouble())
     val view by produceState<JSONObject?>(null, across) {
         value = across?.let {
             withContext(Dispatchers.Default) {

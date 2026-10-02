@@ -39,6 +39,7 @@ private data class FlownPlan(
     val rally: List<RallyPoint> = emptyList(),
     val surveys: List<Survey> = emptyList(),
     val operator: TrackPoint? = null,
+    val operatorHeading: Double = Double.NaN,
     val shots: List<TrackPoint> = emptyList(),
     val traffic: List<TrafficMark> = emptyList(),
     val gimbals: List<GimbalAzimuth> = emptyList(),
@@ -88,6 +89,7 @@ fun FlyMap(
                 val next = withContext(Dispatchers.Default) {
                     val raw = runCatching { JSONObject(QGCBridge.get(FLY_MISSION_ITEMS)) }.getOrNull()
                     val fences = FenceBridge.readFlown()
+                    val gcs = OperatorBridge.read()
                     if (raw != null) {
                         MapBridge.markReachable()
                     }
@@ -101,7 +103,8 @@ fun FlyMap(
                         breachReturn = breachReturn(fences)?.point,
                         rally = rallyPoints(fences),
                         surveys = SurveyBridge.surveysFrom(raw),
-                        operator = operatorPoint(OperatorBridge.read()),
+                        operator = gcs.let(::operatorPoint),
+                        operatorHeading = operatorHeading(gcs),
                         shots = shotPoints(VideoBridge.read()),
                         traffic = TrafficBridge.read(),
                         gimbals = GimbalBridge.read(),
@@ -137,6 +140,7 @@ fun FlyMap(
             breachReturn = plan.breachReturn,
             rallyPoints = plan.rally,
             operator = plan.operator,
+            operatorHeading = plan.operatorHeading,
             surveys = plan.surveys,
             shots = plan.shots,
             traffic = plan.traffic,
