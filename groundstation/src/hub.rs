@@ -28,6 +28,8 @@ use crate::sysstatus::SysStatusSensors;
 use crate::vehiclefacts::VehicleFacts;
 
 pub const TYPE_GCS: u8 = 6;
+const TYPE_GENERIC: u8 = 0;
+const AUTOPILOT_GENERIC: u8 = 0;
 pub const TYPE_ONBOARD_CONTROLLER: u8 = 18;
 pub const TYPE_GIMBAL: u8 = 26;
 pub const TYPE_ADSB: u8 = 27;
@@ -2650,6 +2652,17 @@ impl Vehicle {
                     self.flying = self.armed() && matches!(self.system_status, MAV_STATE_ACTIVE | MAV_STATE_CRITICAL | MAV_STATE_EMERGENCY);
                 }
             }
+            MavMessage::HIGH_LATENCY(d) if from == (self.id, self.component) => {
+                self.base_mode = crate::modes::FLAG_CUSTOM;
+                self.custom_mode = high_latency_custom_mode(self.autopilot, d.custom_mode as u16);
+                self.armed_now = true;
+            }
+            MavMessage::HIGH_LATENCY2(d) if from == (self.id, self.component) => {
+                let apm = d.autopilot as u8 == crate::modes::AUTOPILOT_ARDUPILOT;
+                self.base_mode = if apm { d.custom0 as u8 } else { crate::modes::FLAG_CUSTOM };
+                self.custom_mode = high_latency_custom_mode(self.autopilot, d.custom_mode);
+                self.armed_now = !apm || (d.custom0 as u8) & ARMED_FLAG != 0;
+            }
             MavMessage::EXTENDED_SYS_STATE(e) if from == (self.id, self.component) => {
                 let (flying, landing) = match e.landed_state as u8 {
                     LANDED_ON_GROUND => (Some(false), Some(false)),
@@ -3203,6 +3216,22 @@ fn sensor_parameter(name: &str) -> bool {
     name.starts_with("CAL_") || name.starts_with("SENS_")
 }
 
+fn heartbeat_info(message: &MavMessage) -> Option<(u8, u8)> {
+    match message {
+        MavMessage::HEARTBEAT(h) => Some((h.mavtype as u8, h.autopilot as u8)),
+        MavMessage::HIGH_LATENCY(_) => Some((TYPE_GENERIC, AUTOPILOT_GENERIC)),
+        MavMessage::HIGH_LATENCY2(h) => Some((h.mavtype as u8, h.autopilot as u8)),
+        _ => None,
+    }
+}
+
+fn high_latency_custom_mode(autopilot: u8, mode: u16) -> u32 {
+    match autopilot {
+        crate::modes::AUTOPILOT_PX4 => u32::from(mode) << 16,
+        _ => u32::from(mode),
+    }
+}
+
 const APM_CALIBRATION_PROMPTS: [&str; 2] = ["Place vehicle", "Calibration successful"];
 const SEVERITY_INFO: u8 = 6;
 
@@ -3244,8 +3273,7 @@ impl Hub {
         self.link_counts.insert(origin.link, counted);
         let mut bytes = Vec::new();
         crate::adsb::on_message(message, now_ms);
-        if let MavMessage::HEARTBEAT(h) = message {
-            let (kind, autopilot) = (h.mavtype as u8, h.autopilot as u8);
+        if let Some((kind, autopilot)) = heartbeat_info(message) {
             let excluded_type = matches!(kind, TYPE_GCS | TYPE_ONBOARD_CONTROLLER | TYPE_GIMBAL | TYPE_ADSB);
             if header.component_id == COMP_AUTOPILOT1 && !excluded_type && autopilot != AUTOPILOT_INVALID && header.system_id != 0 && !self.vehicles.contains_key(&header.system_id) {
                 let mut vehicle = Vehicle::new(header.system_id, header.component_id, autopilot, kind, origin.link, origin.replay);
@@ -4340,6 +4368,22 @@ mod tests {
         let answered = hub.on_frame(origin(0), &header, &ping(0), 1, 1);
         assert!(matches!(decode(&answered[0].1), MavMessage::PING(p) if (p.time_usec, p.seq, p.target_system, p.target_component) == (42, 7, 1, 1)), "Vehicle::_handlePing echoes the request back to its sender");
         assert!(hub.on_frame(origin(0), &header, &ping(255), 2, 2).is_empty(), "a response addressed to someone is not a request");
+    }
+
+    #[test]
+    fn a_high_latency_vehicle_is_placed_and_moded_from_its_reports() {
+        use mavlink::dialects::ardupilotmega::{HIGH_LATENCY2_DATA, MavAutopilot, MavType};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 3, component_id: 1, sequence: 0 };
+        let report = |autopilot: MavAutopilot, custom0: i8| MavMessage::HIGH_LATENCY2(HIGH_LATENCY2_DATA { latitude: 474_000_000, longitude: 85_000_000, altitude: 520, custom_mode: 5, groundspeed: 50, heading: 45, mavtype: MavType::MAV_TYPE_QUADROTOR, autopilot, custom0, ..Default::default() });
+        hub.on_frame(origin(7), &header, &report(MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA, 0x81u8 as i8), 0, 0);
+        let vehicle = hub.vehicles.get(&3).expect("MAVLinkProtocol treats HIGH_LATENCY2 as a heartbeat");
+        assert_eq!((vehicle.custom_mode, vehicle.armed()), (5, true), "ArduPilot carries base mode and arming in custom0");
+        assert_eq!(vehicle.facts.coordinate, Some((47.4, 8.5, 520.0)));
+        assert_eq!((vehicle.facts.ground_speed, vehicle.facts.heading), (10.0, 90.0), "HL2 speeds in 0.2 m/s and heading in 2 degree steps");
+        hub.on_frame(origin(7), &header, &report(MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA, 0x01), 1, 1);
+        assert!(!hub.vehicles[&3].armed());
+        assert_eq!(high_latency_custom_mode(crate::modes::AUTOPILOT_PX4, 0x0304), 0x0304_0000, "PX4 packs main and sub mode into the high half");
     }
 
     #[test]

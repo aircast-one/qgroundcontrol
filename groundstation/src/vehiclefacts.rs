@@ -157,7 +157,19 @@ impl VehicleFacts {
                 self.range_finder_dist = zero_if_nan(d.distance);
                 true
             }
+            MavMessage::HIGH_LATENCY2(d) => {
+                self.coordinate = Some((d.latitude as f64 / 1e7, d.longitude as f64 / 1e7, f64::from(d.altitude)));
+                self.air_speed = f64::from(d.airspeed) / 5.0;
+                self.ground_speed = f64::from(d.groundspeed) / 5.0;
+                self.climb_rate = f64::from(d.climb_rate) / 10.0;
+                self.heading = f64::from(d.heading) * 2.0;
+                self.altitude_relative = f64::NAN;
+                self.altitude_amsl = f64::from(d.altitude);
+                true
+            }
             MavMessage::HIGH_LATENCY(d) => {
+                self.coordinate = Some((d.latitude as f64 / 1e7, d.longitude as f64 / 1e7, f64::from(d.altitude_amsl)));
+                self.altitude_relative = f64::NAN;
                 self.altitude_amsl = d.altitude_amsl as f64;
                 self.air_speed = d.airspeed as f64;
                 self.ground_speed = d.groundspeed as f64;
