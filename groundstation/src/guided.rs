@@ -90,6 +90,7 @@ pub struct GuidedState {
     pub roi_active: bool,
     pub was_flying: bool,
     pub takeoff_with_altitude: bool,
+    pub smart_rtl_supported: bool,
 }
 
 impl GuidedState {
@@ -170,6 +171,7 @@ pub struct Offer {
     pub reason: &'static str,
     pub destructive: bool,
     pub carries_value: bool,
+    pub option: &'static str,
 }
 
 impl Action {
@@ -288,6 +290,10 @@ impl Action {
             reason,
             destructive: matches!(self, Action::EmergencyStop | Action::ForceArm),
             carries_value: self.carries_value() && !(self == Action::Takeoff && !s.takeoff_with_altitude),
+            option: match (self, s.smart_rtl_supported) {
+                (Action::Rtl, true) => "Smart RTL",
+                _ => "",
+            },
         }
     }
 }
@@ -353,7 +359,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         "vehicle",
         "id,armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     ));
-    let supports = object(&backend.get_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude"));
+    let supports = object(&backend.get_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude,smartRTL"));
     let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
     let mission = object(&backend.get_fields("planFly.missionController", "containsItems"));
     let flying = object(&backend.get_fields("planFly.missionController", "currentMissionIndex,resumeMissionIndex"));
@@ -403,6 +409,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         current_mission_index: integer(&flying, "currentMissionIndex").unwrap_or(-1),
         resume_from_sequence: integer(&flying, "resumeMissionIndex").unwrap_or(0),
         roi_supported: flag(&supports, "roiMode"),
+        smart_rtl_supported: flag(&supports, "smartRTL"),
         roi_active: flag(&vehicle, "isROIEnabled"),
         was_flying: {
             let mut memory = FLIGHT_MEMORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -683,6 +690,15 @@ mod tests {
         let reads = Counting(RefCell::new(0));
         assert_eq!(invoke_offered(&reads, &[Action::EmergencyStop], "vehicle.emergencyStop", "[]")["ok"], true);
         assert_eq!(*reads.0.borrow(), 2, "an emergency stop waits on two reads of Qt's thread, not the whole guided state with its parameter lookups");
+    }
+
+    #[test]
+    fn rtl_offers_smart_rtl_when_the_firmware_has_it_like_guided_actions_controller() {
+        let plain = GuidedState { connected: true, ..GuidedState::default() };
+        assert_eq!(Action::Rtl.offer(&plain).option, "");
+        let smart = GuidedState { smart_rtl_supported: true, ..plain };
+        assert_eq!(Action::Rtl.offer(&smart).option, "Smart RTL");
+        assert_eq!(Action::Land.offer(&smart).option, "");
     }
 
     fn offer_of(state: &GuidedState, action: Action) -> &'static str {

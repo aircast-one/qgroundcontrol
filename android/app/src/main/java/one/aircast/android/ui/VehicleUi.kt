@@ -80,10 +80,13 @@ import one.aircast.mapspike.optText
 private const val GCS_POSITION = "view.gcsPosition"
 
 
+internal data class ConfirmOption(val label: String, val run: (Boolean) -> Unit)
+
 internal data class GuidedAction(
     val name: String,
     val confirm: String,
     val destructive: Boolean,
+    val option: ConfirmOption? = null,
     val run: () -> Unit,
 )
 
@@ -415,6 +418,9 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     name = offers["rtl"]?.title ?: "Return",
                     confirm = offers["rtl"]?.prompt?.ifBlank { null } ?: "Return to the launch position of the vehicle",
                     destructive = false,
+                    option = offers["rtl"]?.option?.ifBlank { null }?.let { label ->
+                        ConfirmOption(label) { smart -> offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", smart) } }
+                    },
                 ) {
                     offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
                 }

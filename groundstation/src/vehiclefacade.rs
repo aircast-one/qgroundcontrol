@@ -139,6 +139,7 @@ fn supports(autopilot: u8, vehicle_type: u8) -> Value {
         "guidedMode": px4 || apm,
         "pauseVehicle": px4 || apm,
         "roiMode": !sub && (apm || (px4 && class == MultiRotor)),
+        "smartRTL": apm && matches!(class, MultiRotor | Rover),
         "changeHeading": ((apm || px4) && class == MultiRotor) || sub,
         "orbitMode": px4 && matches!(class, MultiRotor | Vtol | FixedWing),
         "takeoffMissionCommand": takeoff,
@@ -1846,6 +1847,7 @@ mod tests {
         assert_eq!(answer_get("vehicle.armed", &known), Some(json!({ "kind": "value", "value": false })));
         assert_eq!(answer_fields("vehicle.supports", "guidedTakeoffWithAltitude,orbitMode,smartRTL", &known).0, json!({ "guidedTakeoffWithAltitude": true, "orbitMode": false, "smartRTL": true }).as_object().unwrap().clone(), "an ArduCopter quad");
         assert_eq!(supports(12, 1)["guidedTakeoffWithoutAltitude"], true, "a PX4 plane takes off without an altitude");
+        assert_eq!((supports(3, 2)["smartRTL"].clone(), supports(3, 10)["smartRTL"].clone(), supports(3, 1)["smartRTL"].clone(), supports(12, 2)["smartRTL"].clone()), (json!(true), json!(true), json!(false), json!(false)), "ArduCopter and ArduRover only");
         assert_eq!(answer_get("vehicle.sysStatusSensorInfo.sensorNames", &known), Some(json!({ "kind": "value", "value": ["GPS"] })));
     }
 }

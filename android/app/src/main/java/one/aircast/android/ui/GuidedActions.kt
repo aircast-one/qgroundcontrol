@@ -13,6 +13,7 @@ internal data class GuidedOffer(
     val prompt: String,
     val destructive: Boolean,
     val carriesValue: Boolean,
+    val option: String = "",
 ) {
     val ready: Boolean get() = offer == "ready"
     val shown: Boolean get() = offer != "hidden"
@@ -34,6 +35,7 @@ internal fun guidedOffers(view: JSONObject?): Map<String, GuidedOffer> {
                     prompt = action.optText("prompt"),
                     destructive = action.optBoolean("destructive"),
                     carriesValue = action.optBoolean("carriesValue"),
+                    option = action.optText("option"),
                 )
             }
         }

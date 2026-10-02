@@ -752,6 +752,7 @@ mod deps_cover_reads {
         "vehicle.landFlightMode",
         "links.linkTypeStrings",
     "vehicle.supports.roiMode",
+    "vehicle.supports.smartRTL",
     "vehicle.supports.changeHeading",
     "vehicle.gotoFlightMode",
     "vehicle.supports.orbitMode",

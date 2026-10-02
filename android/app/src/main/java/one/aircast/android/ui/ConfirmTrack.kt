@@ -3,12 +3,18 @@ package one.aircast.android.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -28,17 +34,27 @@ internal fun ConfirmTrack(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var optionChecked by remember(action) { mutableStateOf(false) }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(action.name, style = MaterialTheme.typography.titleLarge)
         if (action.confirm.isNotBlank()) {
             Text(action.confirm, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        action.option?.let { option ->
+            Row(
+                Modifier.fillMaxWidth().clickable { optionChecked = !optionChecked },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = optionChecked, onCheckedChange = { optionChecked = it })
+                Text(option.label, style = MaterialTheme.typography.labelLarge)
+            }
         }
         SlideToConfirm(
             label = slideLabel(action.name),
             destructive = action.destructive,
             modifier = Modifier.padding(top = 8.dp),
         ) {
-            action.run()
+            action.option?.run?.invoke(optionChecked) ?: action.run()
             onSent()
         }
         TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
