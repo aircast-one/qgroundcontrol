@@ -1910,6 +1910,17 @@ mod tests {
     }
 
     #[test]
+    fn a_vtol_item_shows_the_fields_of_the_mode_it_flies_in() {
+        let text = r#"{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{"version":2,"firmwareType":12,"vehicleType":22,"cruiseSpeed":15,"hoverSpeed":5,"plannedHomePosition":[47.0,8.0,500],"items":[{"type":"SimpleItem","autoContinue":true,"command":22,"doJumpId":1,"frame":3,"params":[15,0,0,null,47.001,8.0,50]}]},"geoFence":{"version":2,"polygons":[],"circles":[]},"rallyPoints":{"version":2,"points":[]}}"#;
+        let doc = plandoc::load(text, 22).unwrap();
+        assert_eq!(plandoc::command_class_at(&doc, 0), crate::cmdinfo::VehicleClass::FixedWing, "MissionFlightStatusCalculator starts a VTOL without a VTOL takeoff in fixed-wing mode");
+        let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
+        let facts = document_facts(&doc, 1, 5.0, 15.0, (&metres, &metres));
+        let labels: Vec<String> = facts["fields"].as_array().unwrap().iter().filter_map(|f| f["label"].as_str().map(str::to_string)).collect();
+        assert!(labels.iter().any(|l| l.contains("Pitch")), "so its NAV_TAKEOFF shows the fixed-wing Pitch field: {labels:?}");
+    }
+
+    #[test]
     fn a_plan_without_speeds_keeps_the_offline_speeds_as_qgc_does() {
         let text = r#"{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{"version":2,"firmwareType":12,"vehicleType":2,"plannedHomePosition":[47.0,8.0,500],"items":[]},"geoFence":{"version":2,"polygons":[],"circles":[]},"rallyPoints":{"version":2,"points":[]}}"#;
         assert!(plandoc::load(text, 2).unwrap().cruise_speed.is_nan(), "absent is told apart from zero");
@@ -2453,7 +2464,7 @@ fn shape_complete(kind: &str, pattern: &Value) -> bool {
 
 fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, units: (&crate::read::Unit, &crate::read::Unit)) -> Value {
     let document = document.clone();
-    let commands = crate::cmdinfo::tree(plandoc::firmware(document.firmware_type), plandoc::vehicle_class(document.vehicle_type));
+    let commands = crate::cmdinfo::tree(plandoc::firmware(document.firmware_type), plandoc::command_class_at(&document, index.saturating_sub(1)));
     let item = format!("{ITEM_ROOT}.{index}");
     let base = |simple: bool, fields: Vec<Value>, section: Value, mode: Option<i64>| {
         json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": simple, "fields": fields, "camera": Value::Null, "speedSection": section, "altitudeMode": mode })

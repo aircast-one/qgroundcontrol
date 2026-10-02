@@ -528,9 +528,31 @@ fn replaced(doc: &Document, at: usize, item: Simple) -> Document {
     Document { items: doc.items.iter().enumerate().map(|(i, existing)| if i == at { Item::Simple(item.clone()) } else { existing.clone() }).collect(), ..doc.clone() }
 }
 
+const VTOL_STATE_MC: i64 = 3;
+const VTOL_STATE_FW: i64 = 4;
+
+pub fn command_class_at(doc: &Document, at: usize) -> VehicleClass {
+    let class = vehicle_class(doc.vehicle_type);
+    if class != VehicleClass::Vtol {
+        return class;
+    }
+    let vtol_takeoff = doc.items.iter().any(|item| matches!(item, Item::Simple(s) if s.command == 84));
+    let start = if vtol_takeoff { VehicleClass::MultiRotor } else { VehicleClass::FixedWing };
+    doc.items.iter().take(at).fold(start, |mode, item| match item {
+        Item::Simple(s) => match (s.command, s.params[0].map(|p| p as i64)) {
+            (22 | 84 | 21, _) => VehicleClass::FixedWing,
+            (85, _) => VehicleClass::MultiRotor,
+            (3000, Some(VTOL_STATE_MC)) => VehicleClass::MultiRotor,
+            (3000, Some(VTOL_STATE_FW)) => VehicleClass::FixedWing,
+            _ => mode,
+        },
+        Item::Complex { .. } => mode,
+    })
+}
+
 pub fn set_command(doc: &Document, visual_index: usize, command: i64, defaults: &EditDefaults) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
-    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), command_class_at(doc, at));
     match current.command == command {
         true => Some(doc.clone()),
         false => Some(replaced(doc, at, with_command_defaults(doc, &commands, command, current.params, defaults))),
