@@ -321,6 +321,8 @@ pub struct Vehicle {
     initial_due: Option<u64>,
     waiting_due: Option<u64>,
     sensor_refresh_due: Option<u64>,
+    terrain_request: Option<crate::terrainprotocol::Request>,
+    terrain_due: Option<u64>,
     metadata_types: BTreeMap<u8, Uris>,
     parameter_metadata: Option<ComponentParameters>,
     pub parameter_download_skipped: bool,
@@ -508,6 +510,8 @@ impl Vehicle {
             initial_due: None,
             waiting_due: None,
             sensor_refresh_due: None,
+            terrain_request: None,
+            terrain_due: None,
             metadata_types: BTreeMap::new(),
             parameter_metadata: None,
             parameter_download_skipped: false,
@@ -1863,6 +1867,30 @@ impl Vehicle {
         bytes
     }
 
+    fn send_terrain(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        let Some(request) = self.terrain_request else {
+            self.terrain_due = None;
+            return Vec::new();
+        };
+        let step = crate::terrainprotocol::step(&request, crate::terrainservice::cached_height);
+        self.terrain_due = (step != crate::terrainprotocol::Step::Done).then_some(now_ms + crate::terrainprotocol::SEND_INTERVAL_MS);
+        match step {
+            crate::terrainprotocol::Step::Done => {
+                self.terrain_request = None;
+                Vec::new()
+            }
+            crate::terrainprotocol::Step::Wait => Vec::new(),
+            crate::terrainprotocol::Step::Skip { bit } => {
+                self.terrain_request = Some(crate::terrainprotocol::without(request, bit));
+                Vec::new()
+            }
+            crate::terrainprotocol::Step::Send { bit, data } => {
+                self.terrain_request = Some(crate::terrainprotocol::without(request, bit));
+                self.encode(&Outbound::TerrainData { lat: request.lat, lon: request.lon, grid_spacing: request.grid_spacing, gridbit: bit, data }).into_iter().collect()
+            }
+        }
+    }
+
     fn send_clock(&mut self) -> Vec<Vec<u8>> {
         let time = Outbound::SystemTime { time_unix_usec: now_us() };
         [&time, &time].into_iter().filter_map(|send| self.encode(send)).collect()
@@ -2009,6 +2037,9 @@ impl Vehicle {
             self.initial_due = None;
             let actions = self.params.on_initial_timeout();
             bytes.extend(self.follow_params(actions, now_ms));
+        }
+        if self.terrain_due.is_some_and(|due| now_ms >= due) {
+            bytes.extend(self.send_terrain(now_ms));
         }
         if self.sensor_refresh_due.is_some_and(|due| now_ms >= due) {
             self.sensor_refresh_due = None;
@@ -2752,6 +2783,13 @@ impl Vehicle {
             MavMessage::MAG_CAL_REPORT(r) => {
                 let actions = self.calibrate.on_mag_report(r.compass_id, r.cal_status as u8, r.fitness as f64, now_ms);
                 return self.follow_calibration(actions, now_ms);
+            }
+            MavMessage::TERRAIN_REQUEST(r) if from == (self.id, self.component) => {
+                if !crate::terrainprotocol::accepts(r.lat, r.lon) {
+                    return Vec::new();
+                }
+                self.terrain_request = Some(crate::terrainprotocol::Request { lat: r.lat, lon: r.lon, grid_spacing: r.grid_spacing, mask: r.mask });
+                return self.send_terrain(now_ms);
             }
             MavMessage::PING(p) if p.target_system == 0 && p.target_component == 0 => {
                 return self.encode(&Outbound::Ping { time_usec: p.time_usec, seq: p.seq, target: (header.system_id, header.component_id) }).into_iter().collect();
@@ -4384,6 +4422,16 @@ mod tests {
         hub.on_frame(origin(7), &header, &report(MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA, 0x01), 1, 1);
         assert!(!hub.vehicles[&3].armed());
         assert_eq!(high_latency_custom_mode(crate::modes::AUTOPILOT_PX4, 0x0304), 0x0304_0000, "PX4 packs main and sub mode into the high half");
+    }
+
+    #[test]
+    fn a_terrain_request_before_gps_lock_is_ignored() {
+        use mavlink::dialects::ardupilotmega::TERRAIN_REQUEST_DATA;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(0), &header, &MavMessage::TERRAIN_REQUEST(TERRAIN_REQUEST_DATA { mask: 1, lat: 0, lon: 0, grid_spacing: 100 }), 1, 1);
+        assert_eq!((hub.active().unwrap().terrain_request, hub.active().unwrap().terrain_due), (None, None), "TerrainProtocolHandler drops lat=0, lon=0");
     }
 
     #[test]

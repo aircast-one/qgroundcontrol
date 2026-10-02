@@ -91,6 +91,18 @@ pub fn height(latitude: f64, longitude: f64) -> Option<f64> {
     }
 }
 
+pub fn cached_height(latitude: f64, longitude: f64) -> Option<Option<f64>> {
+    let lookup = TABLE.lock().unwrap_or_else(PoisonError::into_inner).lookup(latitude, longitude, crate::hub::now_ms());
+    match lookup {
+        Lookup::Known(height) => Some(height),
+        Lookup::Waiting => None,
+        Lookup::Fetch(key) => {
+            fetch_in_background(key);
+            None
+        }
+    }
+}
+
 pub fn height_now(latitude: f64, longitude: f64) -> Result<Option<f64>, String> {
     let lookup = TABLE.lock().unwrap_or_else(PoisonError::into_inner).lookup(latitude, longitude, crate::hub::now_ms());
     match lookup {
