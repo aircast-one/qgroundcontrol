@@ -256,7 +256,7 @@ void QGCCoreCTest::_takeoffAndSpeedRangesFollowTheVehicle()
 
     QTRY_COMPARE_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedSpeed")).value(QStringLiteral("available")).toBool(false), true, 5000);
     const QJsonObject speed = take(qgc_bridge_get("view.guidedSpeed(3)"));
-    QCOMPARE(speed.value(QStringLiteral("label")).toString(), QStringLiteral("Ground speed"));
+    QCOMPARE(speed.value(QStringLiteral("label")).toString(), QStringLiteral("Speed"));
     QCOMPARE(speed.value(QStringLiteral("command")).toString(), QStringLiteral("guidedModeChangeGroundSpeedMetersSecond"));
     QVERIFY(speed.value(QStringLiteral("targetMetersSecond")).toDouble() > 0);
     QVERIFY(!speed.value(QStringLiteral("unit")).toString().isEmpty());
