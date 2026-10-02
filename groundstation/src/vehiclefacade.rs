@@ -24,7 +24,7 @@ fn offline_field(path: &str, field: &str) -> Option<Value> {
     }
 }
 
-const VEHICLE_FACTS: [&str; 28] = ["rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome", "xTrackError", "airSpeedSetpoint", "altitudeTuning", "altitudeTuningSetpoint", "rangeFinderDist", "timeToHome", "imuTemp", "missionItemIndex", "distanceToGCS", "headingFromGCS", "flightDistance"];
+const VEHICLE_FACTS: [&str; 29] = ["altitudeAboveTerr", "rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome", "xTrackError", "airSpeedSetpoint", "altitudeTuning", "altitudeTuningSetpoint", "rangeFinderDist", "timeToHome", "imuTemp", "missionItemIndex", "distanceToGCS", "headingFromGCS", "flightDistance"];
 
 pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
     let (lat1, lat2) = (from.0.to_radians(), to.0.to_radians());
@@ -534,6 +534,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "climbRate": crate::vehiclefact::vehicle_fact("climbRate", &json!(v.facts.climb_rate)),
         "altitudeRelative": crate::vehiclefact::vehicle_fact("altitudeRelative", &json!(v.facts.altitude_relative)),
         "altitudeAMSL": crate::vehiclefact::vehicle_fact("altitudeAMSL", &json!(v.facts.altitude_amsl)),
+        "altitudeAboveTerr": crate::vehiclefact::vehicle_fact("altitudeAboveTerr", &json!(v.facts.coordinate.and_then(|(latitude, longitude, _)| crate::terrainservice::height(latitude, longitude)).map(|terrain| v.facts.altitude_amsl - terrain))),
         "throttlePct": crate::vehiclefact::vehicle_fact("throttlePct", &json!(v.facts.throttle_pct)),
         "distanceToNextWP": crate::vehiclefact::vehicle_fact("distanceToNextWP", &json!(v.facts.distance_to_next_wp)),
         "xTrackError": crate::vehiclefact::vehicle_fact("xTrackError", &json!(v.facts.x_track_error)),
@@ -958,6 +959,8 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         aircast if aircast.starts_with("vehicle.aircastLink.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::AIRCAST_LINK, &aircast["vehicle.aircastLink.".len()..], |n| known.aircast.raw(n)),
         "vehicle.radioStatus" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::RADIO, |n| known.radio.raw(n), known.radio.telemetry)),
         radio if radio.starts_with("vehicle.radioStatus.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::RADIO, &radio["vehicle.radioStatus.".len()..], |n| known.radio.raw(n)),
+        "vehicle.clock" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::CLOCK, |n| crate::vehiclefact::clock_raw(chrono::Local::now(), n), true)),
+        clock if clock.starts_with("vehicle.clock.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::CLOCK, &clock["vehicle.clock.".len()..], |n| crate::vehiclefact::clock_raw(chrono::Local::now(), n)),
         "vehicle.temperature" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::TEMPERATURE, |n| crate::vehiclefact::temperature_raw(&known.temperature, n), known.temperature.seen.iter().any(|s| *s))),
         temperature if temperature.starts_with("vehicle.temperature.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::TEMPERATURE, &temperature["vehicle.temperature.".len()..], |n| crate::vehiclefact::temperature_raw(&known.temperature, n)),
         "vehicle.orbitMapCircle" => return crate::vehiclefact::orbit_circle(known.orbit),

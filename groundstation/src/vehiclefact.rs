@@ -446,6 +446,22 @@ impl ObstacleFacts {
     }
 }
 
+pub const CLOCK: GroupSpec = GroupSpec {
+    class: "VehicleClockFactGroup",
+    meta: CLOCK_META,
+    properties: &[("currentTime", "currentTime"), ("currentUTCTime", "currentUTCTime"), ("currentDate", "currentDate")],
+    added: &["currentTime", "currentUTCTime", "currentDate"],
+};
+
+pub fn clock_raw(local: chrono::DateTime<chrono::Local>, name: &str) -> Value {
+    match name {
+        "currentTime" => json!(local.format("%H:%M:%S").to_string()),
+        "currentUTCTime" => json!(local.with_timezone(&chrono::Utc).format("%H:%M:%S").to_string()),
+        "currentDate" => json!(local.format("%-m/%-d/%y").to_string()),
+        _ => Value::Null,
+    }
+}
+
 pub const TEMPERATURE: GroupSpec = GroupSpec {
     class: "VehicleTemperatureFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/TemperatureFact.json"),
@@ -812,7 +828,7 @@ pub fn instrument_catalogue() -> (Vec<(&'static str, Value)>, Value) {
         ("wind", spec(&WIND)),
         ("vibration", listing(VIBRATION_META, same_names(&VIBRATION_FACT_NAMES))),
         ("temperature", spec(&TEMPERATURE)),
-        ("clock", listing(CLOCK_META, same_names(&["currentTime", "currentUTCTime", "currentDate"]))),
+        ("clock", spec(&CLOCK)),
         ("setpoint", spec(&SETPOINT)),
         ("estimatorStatus", spec(&ESTIMATOR)),
         ("terrain", spec(&TERRAIN)),
@@ -944,6 +960,14 @@ pub fn gps_aggregate_fact(gps: &crate::gpsfacts::GpsFacts, gps2: &crate::gpsfact
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_clock_reads_the_ground_station_time_as_vehicle_clock_fact_group_does() {
+        use chrono::TimeZone;
+        let at = chrono::Local.with_ymd_and_hms(2026, 10, 2, 7, 5, 9).unwrap();
+        assert_eq!((clock_raw(at, "currentTime"), clock_raw(at, "currentDate")), (json!("07:05:09"), json!("10/2/26")), "QTime::toString and the English short date");
+        assert_eq!(clock_raw(at, "currentUTCTime").as_str().map(str::len), Some(8));
+    }
 
     #[test]
     fn flight_time_is_an_elapsed_seconds_fact_as_vehicle_publishes_it() {
