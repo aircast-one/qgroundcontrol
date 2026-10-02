@@ -589,6 +589,7 @@ pub struct Camera {
     storage: BTreeMap<u8, Storage>,
     commanded: Commanded,
     outcome: Option<Outcome>,
+    unanswered: BTreeMap<u16, u64>,
     last_heartbeat_ms: u64,
     record_since_ms: Option<u64>,
     settings_at_ms: Option<u64>,
@@ -628,6 +629,7 @@ impl Camera {
             storage: BTreeMap::new(),
             commanded: Commanded::default(),
             outcome: None,
+            unanswered: BTreeMap::new(),
             last_heartbeat_ms: now_ms,
             record_since_ms: None,
             settings_at_ms: None,
@@ -725,6 +727,7 @@ impl Camera {
 
     fn note_sent(&mut self, sent: u16, now_ms: u64) {
         self.outcome = Some(Outcome { command: sent, result: None, at_ms: now_ms });
+        self.unanswered.insert(sent, now_ms);
     }
 
     fn request_settings(&mut self, now_ms: u64) -> Command {
@@ -821,10 +824,9 @@ impl Camera {
         }
     }
 
-    fn tick(&mut self, now_ms: u64) -> Vec<Command> {
-        if let Some(unanswered) = self.outcome.as_ref().filter(|o| o.result.is_none() && o.command != CMD_RESET_CAMERA_SETTINGS && now_ms.saturating_sub(o.at_ms) > crate::mavcmd::ACK_TIMEOUT_MS).map(|o| o.command) {
-            self.on_command_result(unanswered, RESULT_FAILED, now_ms);
-        }
+    fn tick(&mut self, now_ms: u64, ack_timeout_ms: u64) -> Vec<Command> {
+        let expired: Vec<u16> = self.unanswered.iter().filter(|(command, at)| **command != CMD_RESET_CAMERA_SETTINGS && now_ms.saturating_sub(**at) > ack_timeout_ms).map(|(command, _)| *command).collect();
+        expired.into_iter().for_each(|command| self.on_command_result(command, RESULT_FAILED, now_ms));
         self.resetting_until = self.resetting_until.filter(|until| now_ms < *until);
         let settings = self.settings.ripe(now_ms).then(|| self.settings_due(now_ms)).flatten();
         let refresh = self.settings_refresh.filter(|due| now_ms >= *due).map(|_| {
@@ -971,6 +973,10 @@ impl Camera {
 
     fn on_command_result(&mut self, sent: u16, result: u8, now_ms: u64) {
         self.outcome = Some(Outcome { command: sent, result: Some(result), at_ms: now_ms });
+        match result {
+            RESULT_IN_PROGRESS => self.unanswered.insert(sent, now_ms),
+            _ => self.unanswered.remove(&sent),
+        };
         if result == RESULT_IN_PROGRESS {
             return;
         }
@@ -1133,6 +1139,7 @@ impl Tracked {
         match self.attempts >= 2 && self.attempts.is_multiple_of(2) {
             true => {
                 self.due = Some(now_ms + (1u64 << (self.attempts / 2)) * 1000);
+                self.answer_by = None;
                 None
             }
             false => self.request(now_ms),
@@ -1154,6 +1161,7 @@ pub struct Cameras {
     tracked: Vec<Tracked>,
     cameras: Vec<Camera>,
     selected: Option<u8>,
+    pub high_latency: bool,
 }
 
 impl Cameras {
@@ -1344,7 +1352,8 @@ impl Cameras {
             self.tracked.retain(|tracked| !lost.contains(&tracked.compid));
             self.selected = self.selected.filter(|compid| !lost.contains(compid));
         }
-        let requests: Vec<Command> = self.cameras.iter_mut().flat_map(|camera| camera.tick(now_ms)).collect();
+        let ack_timeout_ms = if self.high_latency { crate::mavcmd::ACK_TIMEOUT_HIGH_LATENCY_MS } else { crate::mavcmd::ACK_TIMEOUT_MS };
+        let requests: Vec<Command> = self.cameras.iter_mut().flat_map(|camera| camera.tick(now_ms, ack_timeout_ms)).collect();
         waking.into_iter().chain(requests).collect()
     }
 
@@ -2025,6 +2034,18 @@ mod tests {
         assert!(cameras.on_command_result(CAMERA, CMD_REQUEST_MESSAGE, f64::from(MSG_CAMERA_INFORMATION), RESULT_ACCEPTED, 10).is_empty());
         assert!(cameras.tick(10 + REQUEST_TIMEOUT_MS - 1).is_empty());
         assert_eq!(cameras.tick(10 + REQUEST_TIMEOUT_MS).len(), 1, "QGCCameraManager times out a missing CAMERA_INFORMATION and asks again");
+    }
+
+    #[test]
+    fn an_unanswered_photo_times_out_even_when_another_command_is_answered_meanwhile() {
+        let mut cameras = quiet(CAP_HAS_MODES | CAP_CAPTURE_IMAGE);
+        cameras.take_photo(None, 1, 0).unwrap();
+        cameras.on_command_result(CAMERA, CMD_IMAGE_START_CAPTURE, 0.0, RESULT_IN_PROGRESS, 1_000);
+        cameras.on_command_result(CAMERA, CMD_SET_CAMERA_ZOOM, 0.0, RESULT_ACCEPTED, 1_500);
+        at(&mut cameras, 1_000 + crate::mavcmd::ACK_TIMEOUT_MS);
+        assert!(cameras.camera(CAMERA).unwrap().unanswered.contains_key(&CMD_IMAGE_START_CAPTURE), "IN_PROGRESS re-arms the wait, as the command queue does");
+        at(&mut cameras, 1_001 + crate::mavcmd::ACK_TIMEOUT_MS);
+        assert!(!cameras.camera(CAMERA).unwrap().unanswered.contains_key(&CMD_IMAGE_START_CAPTURE), "each command waits on its own ack, so a zoom's answer does not cancel the photo's timeout");
     }
 
     #[test]

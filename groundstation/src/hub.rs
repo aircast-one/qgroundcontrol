@@ -2076,6 +2076,7 @@ impl Vehicle {
         bytes.extend(self.actuator_request(actuator));
         let spin = self.motor_assignment.tick(now_ms);
         bytes.extend(self.motor_spin(spin));
+        self.cameras.high_latency = self.commands.high_latency;
         let camera_due = self.cameras.tick(now_ms);
         bytes.extend(self.camera_commands(camera_due));
         let was_busy = self.onboard_logs.busy();
@@ -2617,8 +2618,10 @@ impl Vehicle {
             MavMessage::CAMERA_FOV_STATUS(d) => {
                 let aspect = self.cameras.camera(compid).and_then(|camera| camera.info.aspect_vertical_over_horizontal());
                 if let Some(vertical) = crate::cameraproto::vertical_field_of_view_degrees(f64::from(d.hfov), aspect) {
-                    crate::settingsstore::set_raw("settings.gimbalControllerSettings.cameraHFov", &json!(f64::from(d.hfov)));
-                    crate::settingsstore::set_raw("settings.gimbalControllerSettings.cameraVFov", &json!(vertical));
+                    [("settings.gimbalControllerSettings.cameraHFov", f64::from(d.hfov)), ("settings.gimbalControllerSettings.cameraVFov", vertical)]
+                        .into_iter()
+                        .filter(|(path, value)| crate::settingsstore::raw_setting(path).and_then(|v| v.as_f64()) != Some(value.trunc()))
+                        .for_each(|(path, value)| crate::settingsstore::set_raw(path, &json!(value.trunc() as u32)));
                 }
                 Vec::new()
             }

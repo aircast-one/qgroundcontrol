@@ -230,9 +230,12 @@ fn synced() -> MutexGuard<'static, Option<Host>> {
     let mut guard = HOST.lock().unwrap_or_else(PoisonError::into_inner);
     let host = guard.get_or_insert_with(Host::default);
     let now_ms = crate::hub::now_ms();
-    if auto_stream.is_some() && auto_stream != host.auto_stream {
+    if auto_stream != host.auto_stream {
         host.auto_stream = auto_stream.clone();
-        let outs = auto_stream.map(|(kind, encoding, uri)| host.state.on_auto_stream(kind, encoding, &uri)).unwrap_or_default();
+        let outs = match auto_stream {
+            Some((kind, encoding, uri)) => host.state.on_auto_stream(kind, encoding, &uri),
+            None => host.state.on_auto_stream(0, 0, ""),
+        };
         apply(host, outs, now_ms);
     }
     let settings = stored_settings();
