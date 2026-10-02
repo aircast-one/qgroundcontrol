@@ -27,7 +27,7 @@ import org.json.JSONObject
 private const val DISTANCE_SUFFIX = "cameraCalc.distanceToSurface"
 private const val DENSITY_SUFFIX = "cameraCalc.imageDensity"
 private val OVERLAP_SUFFIXES = setOf("cameraCalc.frontalOverlap", "cameraCalc.sideOverlap")
-private val MANUAL_SUFFIXES = setOf(DISTANCE_SUFFIX, "cameraCalc.adjustedFootprintFrontal", "cameraCalc.adjustedFootprintSide")
+private val SPACING_SUFFIXES = setOf("cameraCalc.adjustedFootprintFrontal", "cameraCalc.adjustedFootprintSide")
 
 internal data class CameraCalcBlock(
     val brand: String,
@@ -82,11 +82,11 @@ internal fun shownCameraFacts(block: CameraCalcBlock): List<Fact> =
     block.facts
         .filter { (suffix, _) ->
             when {
-                block.manual -> suffix in MANUAL_SUFFIXES
+                block.manual -> suffix == DISTANCE_SUFFIX || suffix in SPACING_SUFFIXES
                 suffix == DISTANCE_SUFFIX -> block.valueSetIsDistance
                 suffix == DENSITY_SUFFIX -> !block.valueSetIsDistance
                 suffix in OVERLAP_SUFFIXES -> true
-                suffix in MANUAL_SUFFIXES -> false
+                suffix in SPACING_SUFFIXES -> true
                 else -> block.custom
             }
         }

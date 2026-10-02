@@ -217,6 +217,7 @@ fn labelled(control: Value, label: &str) -> Value {
     match control {
         Value::Object(mut fields) => {
             fields.insert("label".to_string(), json!(label));
+            fields.insert("shortLabel".to_string(), json!(label));
             Value::Object(fields)
         }
         other => other,
@@ -348,24 +349,23 @@ pub fn camera(survey: &Value, item: &str, units: &Units, terrain_frame: bool) ->
     let brand = listed.and_then(|c| c.get("brand").and_then(Value::as_str)).map_or_else(|| name.clone(), str::to_string);
     let model = listed.and_then(|c| c.get("model").and_then(Value::as_str)).unwrap_or("").to_string();
     let custom = name == CUSTOM_CAMERA;
+    let name_is_manual = name == MANUAL_CAMERA;
     let brands: Vec<String> = [MANUAL_CAMERA.to_string(), CUSTOM_CAMERA.to_string()]
         .into_iter()
         .chain(known.iter().filter_map(|c| c.get("brand").and_then(Value::as_str).map(str::to_string)))
         .fold(Vec::new(), |seen, b| if seen.contains(&b) { seen } else { seen.into_iter().chain(std::iter::once(b)).collect() });
     let models: Vec<String> = known.iter().filter(|c| c.get("brand").and_then(Value::as_str) == Some(brand.as_str())).filter_map(|c| c.get("model").and_then(Value::as_str).map(str::to_string)).collect();
-    let wanted: Vec<(&str, &str)> = match (custom, name == MANUAL_CAMERA) {
-        (true, _) => OPTICS.iter().chain(FLIGHT.iter()).copied().collect(),
-        (false, true) => FLIGHT.iter().chain(MANUAL_SPACING.iter()).copied().collect(),
-        (false, false) => FLIGHT.to_vec(),
-    };
+    let optics: &[(&str, &str)] = if custom { &OPTICS } else { &[] };
+    let wanted: Vec<(&str, &str)> = optics.iter().chain(FLIGHT.iter()).chain(MANUAL_SPACING.iter()).copied().collect();
     let facts: Vec<Value> = wanted
         .iter()
         .filter_map(|(name, suffix)| {
             let meta = meta(CAMERA_META, name).or_else(|| meta(CAMERA_SPEC_META, name))?;
             let built = control(&meta, with_default(calc.get(*name), &meta), item, &format!("cameraCalc.{suffix}"), "Camera", units);
-            Some(match spacing_label(survey, name) {
-                Some(label) => labelled(built, label),
-                None => built,
+            Some(match (spacing_label(survey, name), name_is_manual) {
+                (Some(label), true) => labelled(built, label),
+                (Some(label), false) => read_only(labelled(built, label)),
+                (None, _) => built,
             })
         })
         .collect();
@@ -481,7 +481,7 @@ fn chosen_camera(calc: &Value, suffix: &str, value: &Value) -> Option<String> {
 pub fn regenerate_item(item: &Value) -> Value {
     match item.get("complexItemType").and_then(Value::as_str) {
         Some("CorridorScan") => regenerate_corridor(item),
-        Some("StructureScan") => item.clone(),
+        Some("StructureScan") => relayered(item),
         _ => regenerate(item),
     }
 }
@@ -499,6 +499,10 @@ pub fn set(survey: &Value, suffix: &str, value: &Value, units: &Units) -> Option
         "cameraCalc.cameraBrand" | "cameraCalc.cameraModel" => with_calc(survey, named_camera(&calc, &chosen_camera(&calc, suffix, value)?)),
         _ => {
             let (owner, key) = target(suffix)?;
+            let manual = calc.get("CameraName").and_then(Value::as_str).is_none_or(|name| name == MANUAL_CAMERA);
+            if key.starts_with("AdjustedFootprint") && !manual {
+                return None;
+            }
             match owner {
                 "survey" => {
                     let mut changed = survey.clone();
@@ -526,17 +530,12 @@ pub fn set(survey: &Value, suffix: &str, value: &Value, units: &Units) -> Option
             }
         }
     };
-    Some(regenerate_item(&relayered(survey, &changed)))
+    Some(regenerate_item(&changed))
 }
 
-fn relayered(before: &Value, after: &Value) -> Value {
-    let inputs = |item: &Value| (item.get("StructureHeight").cloned(), item.get("ScanBottomAlt").cloned(), calc_of(item).get("AdjustedFootprintFrontal").cloned());
-    if !is_structure(after) || inputs(before) == inputs(after) {
-        return after.clone();
-    }
-    let plan = crate::structurescan::saved_plan(after);
-    let mut changed = after.clone();
-    changed["Layers"] = json!(crate::structurescan::layer_count(plan.structure_height, plan.scan_bottom_alt, plan.adjusted_frontal));
+fn relayered(scan: &Value) -> Value {
+    let mut changed = scan.clone();
+    changed["Layers"] = json!(crate::structurescan::saved_plan(scan).layers);
     changed
 }
 
@@ -634,12 +633,13 @@ fn fresh_calc(fresh: &Fresh, group: &str, lowered_when_manual: bool) -> serde_js
 
 fn fresh_transect(fresh: &Fresh, group: &str) -> Value {
     let calc = fresh_calc(fresh, group, true);
+    let follows_terrain = calc.get("DistanceMode").and_then(Value::as_i64) == Some(crate::altitudemodes::FRAME_CALC_ABOVE_TERRAIN);
     let turnaround = if fresh.multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
     json!({
         "CameraCalc": calc,
         "CameraTriggerInTurnAround": remembered(fresh, group, TRANSECT_META, "CameraTriggerInTurnAround"),
-        "HoverAndCapture": remembered(fresh, group, TRANSECT_META, "HoverAndCapture"),
-        "Refly90Degrees": remembered(fresh, group, TRANSECT_META, "Refly90Degrees"),
+        "HoverAndCapture": if follows_terrain { json!(false) } else { remembered(fresh, group, TRANSECT_META, "HoverAndCapture") },
+        "Refly90Degrees": if follows_terrain { json!(false) } else { remembered(fresh, group, TRANSECT_META, "Refly90Degrees") },
         "TurnAroundDistance": remembered(fresh, group, TRANSECT_META, turnaround),
         "version": 2,
     })
@@ -1013,6 +1013,39 @@ mod tests {
         });
         built["TransectStyleComplexItem"]["Items"].as_array_mut().unwrap().iter_mut().for_each(|item| item["doJumpId"] = json!(item["doJumpId"].as_i64().unwrap() + 1));
         assert_eq!(by_value(&built), by_value(&fixture["survey"]));
+    }
+
+    #[test]
+    fn a_new_survey_after_a_terrain_item_drops_the_remembered_refly_and_hover() {
+        let remembered = |key: &str| matches!(key, "Survey/Refly90Degrees" | "Survey/HoverAndCapture").then(|| "true".to_string());
+        let built = fresh(&Fresh { center: (47.0, 8.0), remembered: &remembered, multirotor: true, alternates: false, default_altitude: 50.0, distance_mode: crate::altitudemodes::RELATIVE, previous_mode: Some(crate::altitudemodes::FRAME_CALC_ABOVE_TERRAIN) });
+        let transect = &built["TransectStyleComplexItem"];
+        assert_eq!((transect["Refly90Degrees"].clone(), transect["HoverAndCapture"].clone()), (json!(false), json!(false)), "applyPreviousAltitudeFrame sets the mode, and _distanceModeChanged clears both");
+    }
+
+    #[test]
+    fn a_named_camera_shows_its_spacing_without_letting_it_be_typed() {
+        let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let sony = set(&plan["mission"]["items"][0], "cameraCalc.cameraBrand", &json!("Sony"), &metric()).unwrap();
+        let spacing: Vec<(Value, Value)> = camera(&sony, "p", &metric(), true)["facts"].as_array().unwrap().iter().filter(|f| f["name"].as_str().is_some_and(|n| n.starts_with("AdjustedFootprint"))).map(|f| (f["shortLabel"].clone(), f["readOnly"].clone())).collect();
+        assert_eq!(spacing, [(json!("Trigger distance"), json!(true)), (json!("Spacing"), json!(true))], "CameraCalcGrid shows them as plain rows for any camera but the manual one");
+        assert!(set(&sony, "cameraCalc.adjustedFootprintSide", &json!(40.0), &metric()).is_none(), "a write the camera calc would overwrite is refused rather than reported as taken");
+    }
+
+    #[test]
+    fn a_structure_scan_relayers_when_its_layer_height_changes_and_on_load() {
+        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/structure-inserted-by-qt.json")).unwrap();
+        let mut manual = fixture["structure"].clone();
+        manual["CameraCalc"]["CameraName"] = json!(MANUAL_CAMERA);
+        manual["StructureHeight"] = json!(100.0);
+        manual["ScanBottomAlt"] = json!(50.0);
+        let thinner = set(&manual, "cameraCalc.adjustedFootprintFrontal", &json!(10.0), &metric()).unwrap();
+        assert_eq!(thinner["Layers"], 5, "StructureScanComplexItem::_recalcLayerInfo: ceil((100 - 50) / 10)");
+        let labels: Vec<Value> = camera(&manual, "p", &metric(), true)["facts"].as_array().unwrap().iter().filter(|f| f["name"].as_str().is_some_and(|n| n.starts_with("AdjustedFootprint"))).map(|f| f["shortLabel"].clone()).collect();
+        assert_eq!(labels, [json!("Layer height"), json!("Trigger distance")], "StructureScanEditor names them for CameraCalcGrid");
+        let mut stale = thinner.clone();
+        stale["Layers"] = json!(9);
+        assert_eq!(crate::structurescan::saved_plan(&stale).layers, 5, "a hand-set count saved before layers were derived is not flown");
     }
 
     fn by_value(value: &Value) -> Value {

@@ -109,7 +109,7 @@ pub fn saved_plan(scan: &serde_json::Value) -> Plan {
         entrance_alt: number(scan, "EntranceAltitude").unwrap_or(0.0),
         scan_bottom_alt: number(scan, "ScanBottomAlt").unwrap_or(0.0),
         structure_height: number(scan, "StructureHeight").unwrap_or(0.0),
-        layers: number(scan, "Layers").unwrap_or(1.0) as i64,
+        layers: layer_count(number(scan, "StructureHeight").unwrap_or(0.0), number(scan, "ScanBottomAlt").unwrap_or(0.0), number(&calc, "AdjustedFootprintFrontal").unwrap_or(0.0)),
         start_from_top: scan.get("StartFromTop").and_then(serde_json::Value::as_bool).unwrap_or(true),
         gimbal_pitch: number(scan, "GimbalPitch").unwrap_or(0.0),
         entry_vertex: scan.get(ENTRY_VERTEX).and_then(serde_json::Value::as_u64).unwrap_or(0) as usize,
