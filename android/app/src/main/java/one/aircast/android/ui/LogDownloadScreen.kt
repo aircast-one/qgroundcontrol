@@ -92,7 +92,12 @@ internal data class LogEntry(
     val selected: Boolean,
     val status: String,
     val downloading: Boolean = false,
+    val saved: Boolean = false,
 )
+
+internal fun logSections(entries: List<LogEntry>): List<Pair<String, List<LogEntry>>> =
+    listOf("On the vehicle" to entries.filterNot { it.saved }, "On this phone" to entries.filter { it.saved })
+        .filter { it.second.isNotEmpty() }
 
 internal fun downloadCard(entries: List<LogEntry>): Pair<String, String> =
     entries.firstOrNull { it.downloading }
@@ -138,6 +143,7 @@ internal fun logsView(view: JSONObject?): LogsView? {
                     selected = entry.optBoolean("selected"),
                     status = entry.optText("status"),
                     downloading = entry.optText("statusId") == "downloading",
+                    saved = entry.optText("statusId") == "downloaded",
                 )
             }
         },
@@ -345,9 +351,12 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
                 logs.emptyText.ifBlank { "This vehicle reports no flight logs." },
             )
             else -> LazyColumn(Modifier.weight(1f)) {
-                items(entries, key = { it.index }) { entry ->
-                    LogRow(entry, enabled = !busy) { checked ->
-                        scope.offMain { Qgc.set("$LOG_MODEL.${entry.index}.selected", checked) }
+                logSections(entries).forEach { (title, section) ->
+                    item(key = title) { SectionHeader(title) }
+                    items(section, key = { it.index }) { entry ->
+                        LogRow(entry, enabled = !busy) { checked ->
+                            scope.offMain { Qgc.set("$LOG_MODEL.${entry.index}.selected", checked) }
+                        }
                     }
                 }
                 item(key = "erase") {

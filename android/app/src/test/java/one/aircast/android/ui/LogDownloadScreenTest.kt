@@ -23,6 +23,15 @@ class LogDownloadScreenTest {
     """
 
     @Test
+    fun `logs split into the vehicle's and the phone's by status id`() {
+        val saved = served.replace("\"status\":\"Downloaded\",", "\"status\":\"Downloaded\",\"statusId\":\"downloaded\",")
+        val sections = logSections(logsView(JSONObject(saved))!!.entries)
+
+        assertEquals(listOf("On the vehicle" to listOf(2), "On this phone" to listOf(1)), sections.map { (title, logs) -> title to logs.map { it.id } })
+        assertEquals(listOf("On the vehicle"), logSections(logsView(JSONObject(served))!!.entries).map { it.first })
+    }
+
+    @Test
     fun `the download card names the log being fetched by its status id, not its translated status`() {
         val downloading = served.replace("\"status\":\"Available\",", "\"status\":\"1.2 MB (300 KB/s)\",\"statusId\":\"downloading\",")
         val logs = logsView(JSONObject(downloading))!!
