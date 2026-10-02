@@ -270,6 +270,8 @@ internal fun MapSpikeScreen(
     val profile = remember(terrainView) { terrainProfile(terrainView) }
     val elevationProviderJson by mapPath(ELEVATION_PROVIDER)
     val elevationNotice = elevationProviderJson?.optText("value").orEmpty()
+    val missionStatusJson by mapPath("$SHOW_MISSION_ITEM_STATUS.rawValue")
+    val missionStatusShown = missionItemStatusShown(missionStatusJson)
 
     fun placeAt(): TrackPoint? = when {
         isPlottable(latitude, longitude) -> TrackPoint(latitude, longitude)
@@ -1183,8 +1185,15 @@ internal fun MapSpikeScreen(
                     }
                 }
 
-                TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
-                    allItems.firstOrNull { it.sequence == sequence }?.let { selected = MapHit.Waypoint(it.index) }
+                if (profile.points.isNotEmpty()) {
+                    TextButton(onClick = {
+                        onBridge { setOk(SHOW_MISSION_ITEM_STATUS, settingJson((!missionStatusShown).toString())) }
+                    }) { Text(if (missionStatusShown) "Hide terrain" else "Terrain") }
+                }
+                if (missionStatusShown) {
+                    TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
+                        allItems.firstOrNull { it.sequence == sequence }?.let { selected = MapHit.Waypoint(it.index) }
+                    }
                 }
             }
         }

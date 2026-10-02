@@ -98,6 +98,10 @@ internal fun profileLabel(profile: TerrainProfile): String =
         }
 
 internal const val ELEVATION_PROVIDER = "settings.flightMapSettings.elevationMapProvider.rawValue"
+internal const val SHOW_MISSION_ITEM_STATUS = "settings.planViewSettings.showMissionItemStatus"
+
+internal fun missionItemStatusShown(setting: org.json.JSONObject?): Boolean =
+    setting?.takeIf { it.has("value") && !it.isNull("value") }?.optBoolean("value", true) ?: true
 
 internal fun elevationCredit(notice: String): String? = notice.takeIf { it.isNotBlank() }?.let { "Powered by $it" }
 

@@ -258,4 +258,9 @@ class HeightRangeTest {
             listOf(10f, 590f, 400f, 850f).map { tappedSequence(profile, 1000f, it) },
         )
     }
+
+    @Test
+    fun `the profile follows showMissionItemStatus, shown by default like PlanViewSettings`() {
+        assertEquals(listOf(true, true, false, true), listOf(null, JSONObject("""{"value":null}"""), JSONObject("""{"value":false}"""), JSONObject("""{"value":true}""")).map { missionItemStatusShown(it) })
+    }
 }
