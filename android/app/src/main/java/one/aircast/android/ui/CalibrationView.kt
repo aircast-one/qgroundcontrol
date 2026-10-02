@@ -34,6 +34,7 @@ internal data class CalibrationState(
     val nextEnabled: Boolean,
     val cancelEnabled: Boolean,
     val progress: Double,
+    val waitingForCancel: Boolean = false,
     val helpText: String,
     val statusText: String,
     val accelNeeded: Boolean,
@@ -60,6 +61,7 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
         nextEnabled = view.optBoolean("nextEnabled"),
         cancelEnabled = view.optBoolean("cancelEnabled"),
         progress = view.optDouble("progress", 0.0),
+        waitingForCancel = view.optBoolean("waitingForCancel"),
         helpText = view.optText("helpText"),
         statusText = view.optText("statusText"),
         accelNeeded = view.optBoolean("accelNeeded"),
@@ -96,6 +98,9 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
         },
     )
 }
+
+internal const val CANCEL_WAIT_TITLE = "Calibration Cancel"
+internal const val CANCEL_WAIT_TEXT = "Waiting for Vehicle to response to Cancel. This may take a few seconds."
 
 internal const val COMPASS_ROUTINE = "compass"
 

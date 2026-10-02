@@ -101,4 +101,11 @@ class CalibrationViewTest {
         assertEquals(emptyList<CalibrationSide>(), state.sides)
         assertFalse(state.inProgress)
     }
+
+    @Test
+    fun `a pending cancel says so, like SensorsSetup's Calibration Cancel dialog`() {
+        assertFalse(calibrationState(served)!!.waitingForCancel)
+        assertTrue(calibrationState(JSONObject(served.toString()).put("waitingForCancel", true))!!.waitingForCancel)
+        assertEquals("Waiting for Vehicle to response to Cancel. This may take a few seconds.", CANCEL_WAIT_TEXT)
+    }
 }

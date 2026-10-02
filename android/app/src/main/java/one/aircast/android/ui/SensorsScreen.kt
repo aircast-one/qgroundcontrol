@@ -287,6 +287,10 @@ private fun RunningCalibration(
                 modifier = Modifier.weight(1f),
             ) { Text("Cancel") }
         }
+        if (state.waitingForCancel) {
+            Text(CANCEL_WAIT_TITLE, style = MaterialTheme.typography.titleSmall)
+            Text(CANCEL_WAIT_TEXT, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 
