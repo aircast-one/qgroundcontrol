@@ -1933,6 +1933,11 @@ impl Vehicle {
                 let items = crate::resumemission::resume_items(self.mission_items(), usize::try_from(on_vehicle.max(0)).unwrap_or(0), self.sends_home(), |command| crate::resumemission::shape(&commands, command))
                     .inspect_err(|refusal| { crate::noticeboard::post(crate::noticeboard::MESSAGE, "", refusal); })?;
                 self.resume_failed = None;
+                let placeholder = plantransfer::Item { seq: 0, frame: 0, command: 16, current: false, auto_continue: true, params: [0.0; 7] };
+                let items: Vec<plantransfer::Item> = match self.sends_home() {
+                    true => items,
+                    false => std::iter::once(placeholder).chain(items).collect(),
+                };
                 let sent = self.write_mission(items, now_ms)?;
                 self.resume_upload = Some(index);
                 return Ok(sent);
