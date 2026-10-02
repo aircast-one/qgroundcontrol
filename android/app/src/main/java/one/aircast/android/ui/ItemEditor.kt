@@ -208,6 +208,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(wizard.first(), style = MaterialTheme.typography.bodyMedium)
                     wizard.drop(1).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    fields.firstOrNull { it.path.endsWith(".loiterClockwise") }?.let { clockwise -> FactRow(clockwise) { revision++ } }
                     Button(onClick = {
                         scope.launch {
                             refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(wizardModePath(index), false) }
@@ -235,7 +236,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                     }
                 }
             }
-            altitudesRelative(view)?.let { relative ->
+            altitudesRelative(view)?.takeIf { wizard.isEmpty() }?.let { relative ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Altitudes relative to launch", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     Switch(checked = relative, onCheckedChange = { wanted ->
@@ -266,13 +267,13 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
             refusal?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 20.dp))
             }
-            if (isLandingPattern(view) && connected) {
+            if (isLandingPattern(view) && connected && wizard.isEmpty()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { scope.launch { refusal = withContext(Dispatchers.Default) { setToVehicleHeading(index) }; revision++ } }) { Text("Set to vehicle heading") }
                     TextButton(onClick = { scope.launch { refusal = withContext(Dispatchers.Default) { setToVehicleLocation(index) }; revision++ } }) { Text("Set to vehicle location") }
                 }
             }
-            landingNotes(view).forEach { note ->
+            landingNotes(view).takeIf { wizard.isEmpty() }.orEmpty().forEach { note ->
                 Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 20.dp))
             }
             areaHelp(view)?.let { help ->
