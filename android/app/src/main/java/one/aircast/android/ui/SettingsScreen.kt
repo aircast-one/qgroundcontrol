@@ -324,7 +324,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     } else {
                         Column(Modifier.fillMaxSize()) {
                             PageTopBar(sentenceCase(current.title), "Back") { open = null }
-                            SettingsPageBody(current, Modifier.fillMaxSize())
+                            SettingsPageBody(current, Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH))
                         }
                     }
                 }
@@ -342,6 +342,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
 internal val LIST_DETAIL_MIN_WIDTH = 840.dp
 internal val LIST_PANE_WIDTH = 380.dp
+internal val DETAIL_PANE_MAX_WIDTH = 720.dp
 
 @Composable
 private fun SettingsList(
