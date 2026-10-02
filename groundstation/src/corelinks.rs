@@ -420,6 +420,10 @@ fn connect(index: usize) -> bool {
 }
 
 fn open_entry(entry: &Entry) -> bool {
+    if crate::firmwareflash::suspended() {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &format!("Connect not allowed: {}", crate::firmwareflash::SUSPENDED));
+        return false;
+    }
     let Some((open, _)) = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner) else { return false };
     if state_of(&entry.config.name, &live()).link.is_some() {
         return true;
@@ -478,6 +482,11 @@ pub fn start() {
 
 static SERIAL_AUTO: LazyLock<Mutex<crate::autoconnect::AutoConnect>> = LazyLock::new(|| Mutex::new(crate::autoconnect::AutoConnect::default()));
 static BOARDS: LazyLock<Option<crate::boards::BoardTable>> = LazyLock::new(|| crate::boards::BoardTable::bundled().ok());
+
+pub fn board_type_at(location: &str) -> Option<crate::boards::BoardType> {
+    let boards = BOARDS.as_ref()?;
+    serial_ports().into_iter().find(|p| p.system_location == location).and_then(|p| boards.classify(&p, cfg!(target_os = "android"))).map(|(board, _)| board)
+}
 
 fn autoconnect_setting(name: &str, unset: bool) -> bool {
     crate::settingsstore::raw_setting(&format!("settings.autoConnectSettings.{name}")).and_then(|v| v.as_bool()).unwrap_or(unset)
@@ -635,7 +644,7 @@ pub fn tick(now_ms: u64) {
     if owned() {
         close_if_due(now_ms);
     }
-    if !owned() || !AUTOCONNECTING.load(Ordering::SeqCst) || crate::logreplay::playing() {
+    if !owned() || !AUTOCONNECTING.load(Ordering::SeqCst) || crate::logreplay::playing() || crate::firmwareflash::suspended() {
         return;
     }
     {

@@ -69,6 +69,12 @@ fn image_for(file: &str, contents: &[u8], board: &BoardInfo, report: &mut dyn Fn
 pub const PLUG_IN: &str = "Plug in your device via USB.";
 pub const REPLUG: &str = "Now unplug your device and plug it back in to enter bootloader mode.";
 pub const FIND_BOARD_INTERVAL_MS: u64 = 500;
+pub const SUSPENDED: &str = "Connect not allowed during Firmware Upgrade.";
+
+pub fn suspended() -> bool {
+    job().phase.busy()
+}
+
 const APM_CHIBIOS: &str = "settings.firmwareUpgradeSettings.apmChibiOS";
 pub const FLASH_CANCELLED: &str = "Cancelled. Select a port and press Flash to try again.";
 static CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -447,8 +453,16 @@ fn usb_serial(port: &str, baud: u32, fed: Inbox) -> Result<crate::platformserial
     .map_err(|e| format!("Open failed on port {port}: {e}"))
 }
 
+pub fn for_hardware(chosen: Source, radio: bool) -> Result<Source, String> {
+    match (radio, chosen) {
+        (true, picked) if !picked.sik() => Ok(Source::Sik),
+        (false, picked) if picked.sik() => Err("SiK radio firmware can only be flashed to a SiK radio".to_string()),
+        (_, picked) => Ok(picked),
+    }
+}
+
 pub fn start(port: &str, file: &str) -> Result<(), String> {
-    let chosen = source(file)?;
+    let chosen = for_hardware(source(file)?, crate::corelinks::board_type_at(port) == Some(crate::boards::BoardType::SiKRadio))?;
     if let Source::File(path) = &chosen {
         std::fs::metadata(path).map_err(|e| format!("Unable to open firmware file {path}: {e}"))?;
     }
@@ -459,6 +473,9 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
         }
         CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
         *held = Job { phase: Phase::Connecting, port: Some(port.to_string()), file: Some(file.to_string()), ..Job::default() };
+    }
+    if crate::hub::lock().active().is_none() {
+        crate::corelinks::close_links_at(crate::hub::now_ms(), None, "firmware upgrade");
     }
     let port = port.to_string();
     std::thread::Builder::new()
@@ -672,6 +689,14 @@ mod tests {
         assert_eq!(source("sik:stable"), Ok(Source::Sik));
         assert!(Source::Url("https://x/radio~hb1060.ihx".into()).sik() && !Source::Px4(crate::firmwarecatalog::Build::Stable).sik());
         assert_eq!(sik_url(80).as_deref(), Some("https://px4-travis.s3.amazonaws.com/SiK/stable/radio~hb1060.ihx"));
+    }
+
+    #[test]
+    fn the_hardware_decides_between_a_sik_radio_and_an_autopilot_as_the_upgrade_thread_does() {
+        assert_eq!(for_hardware(Source::Px4(crate::firmwarecatalog::Build::Stable), true), Ok(Source::Sik), "a radio always takes the latest SiK firmware");
+        assert_eq!(for_hardware(Source::File("custom.ihx".into()), true), Ok(Source::File("custom.ihx".into())));
+        assert!(for_hardware(Source::Sik, false).is_err());
+        assert_eq!(for_hardware(Source::Px4(crate::firmwarecatalog::Build::Beta), false), Ok(Source::Px4(crate::firmwarecatalog::Build::Beta)));
     }
 
     #[test]
