@@ -46,19 +46,18 @@ internal fun batteryLevelOf(name: String?): BatteryLevel = when (name) {
     else -> BatteryLevel.Normal
 }
 
-internal fun batteryReading(view: JSONObject?): BatteryReading? {
-    if (view == null || !view.optBoolean("available")) return null
-    val primary = view.optText("text")
-    if (primary.isBlank()) return null
-    val secondary = view.optJSONArray("packs")
-        ?.optJSONObject(0)
-        ?.optText("secondaryText")
-        ?.takeIf { it.isNotBlank() && it != primary }
-    return BatteryReading(
-        text = listOfNotNull(primary, secondary).joinToString(" · "),
-        level = batteryLevelOf(view.optText("level")),
-    )
-}
+internal fun batteryReadings(view: JSONObject?): List<BatteryReading> =
+    view?.takeIf { it.optBoolean("available") }?.optJSONArray("packs")?.let { packs ->
+        (0 until packs.length()).mapNotNull { packs.optJSONObject(it) }.mapNotNull { pack ->
+            val lines = pack.optJSONArray("indicatorLines")?.let { lines -> (0 until lines.length()).map { lines.optString(it) } }.orEmpty().filter { it.isNotBlank() }
+            lines.takeIf { it.isNotEmpty() }?.let {
+                BatteryReading(
+                    text = listOfNotNull(pack.optText("indicatorLabel").ifEmpty { null }, it.joinToString(" · ")).joinToString(" "),
+                    level = batteryLevelOf(pack.optText("level")),
+                )
+            }
+        }
+    }.orEmpty()
 
 
 internal data class RcCell(val text: String, val lost: Boolean)
@@ -114,7 +113,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val live = state?.staleNotice.isNullOrBlank()
 
     val batteryJson by qgcPath(BATTERY)
-    val battery = remember(batteryJson) { batteryReading(batteryJson) }
+    val batteries = remember(batteryJson) { batteryReadings(batteryJson) }
     val linksJson by qgcPath(VEHICLE_LINKS)
     val links = remember(linksJson) { linkCell(vehicleLinks(linksJson)) }
     val gpsJson by qgcPath(GPS_VIEW)
@@ -134,7 +133,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val cells: List<Pair<String, @Composable () -> Unit>> = listOf(
-            "battery" to { battery?.let { InlineCell(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery } } },
+            "battery" to { batteries.forEach { InlineCell(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery } } },
             "gps" to {
                 gps?.let {
                     InlineCell(fix?.let { satsText(it, satellites) } ?: NO_COUNT, fix?.let { gpsColour(it) } ?: Color.Unspecified) { detail = StripDetail.Gps }

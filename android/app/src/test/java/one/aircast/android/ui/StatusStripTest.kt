@@ -80,39 +80,30 @@ class BatteryTextTest {
     }
 
     @Test
-    fun `the reading is the core's text and level`() {
-        val reading = batteryReading(
-            JSONObject("""{"available":true,"level":"caution","text":"70%",
-                "packs":[{"secondaryText":"11.10 V"}]}"""),
-        )!!
+    fun `each pack is a cell with its label and the lines the core chose`() {
+        val readings = batteryReadings(
+            JSONObject("""{"available":true,"level":"warning","packs":[
+                {"level":"caution","indicatorLabel":"B1","indicatorLines":["70%","11.10V"]},
+                {"level":"warning","indicatorLabel":"B2","indicatorLines":["40%"]}]}"""),
+        )
 
-        assertEquals("70% · 11.10 V", reading.text)
-        assertEquals(BatteryLevel.Caution, reading.level)
+        assertEquals(listOf("B1 70% · 11.10V", "B2 40%"), readings.map { it.text })
+        assertEquals(listOf(BatteryLevel.Caution, BatteryLevel.Warning), readings.map { it.level })
+    }
+
+    @Test
+    fun `a single pack carries no label`() {
+        assertEquals(
+            listOf("90%"),
+            batteryReadings(JSONObject("""{"available":true,"packs":[{"level":"normal","indicatorLabel":null,"indicatorLines":["90%"]}]}""")).map { it.text },
+        )
     }
 
     @Test
     fun `no battery is no cell rather than an empty one`() {
-        assertNull(batteryReading(null))
-        assertNull(batteryReading(JSONObject("""{"available":false}""")))
-        assertNull(batteryReading(JSONObject("""{"available":true,"level":"normal","text":""}""")))
-    }
-
-    @Test
-    fun `a pack with nothing to add leaves the primary alone`() {
-        assertEquals(
-            "90%",
-            batteryReading(
-                JSONObject("""{"available":true,"level":"warning","text":"90%",
-                    "packs":[{"secondaryText":""}]}"""),
-            )!!.text,
-        )
-        assertEquals(
-            "12.4 V",
-            batteryReading(
-                JSONObject("""{"available":true,"level":"normal","text":"12.4 V",
-                    "packs":[{"secondaryText":"12.4 V"}]}"""),
-            )!!.text,
-        )
+        assertEquals(emptyList<BatteryReading>(), batteryReadings(null))
+        assertEquals(emptyList<BatteryReading>(), batteryReadings(JSONObject("""{"available":false}""")))
+        assertEquals(emptyList<BatteryReading>(), batteryReadings(JSONObject("""{"available":true,"packs":[{"indicatorLines":[""]}]}""")))
     }
 }
 

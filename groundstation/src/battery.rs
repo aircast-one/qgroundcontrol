@@ -10,6 +10,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.batteries.count",
     "settings.batteryIndicatorSettings.threshold1",
     "settings.batteryIndicatorSettings.threshold2",
+    "settings.batteryIndicatorSettings.valueDisplay",
 ];
 
 const MAX_PACKS: usize = 8;
@@ -81,6 +82,17 @@ pub fn secondary_text(pack: &Pack) -> String {
     }
 }
 
+const SHOW_VOLTAGE: i64 = 1;
+const SHOW_BOTH: i64 = 2;
+
+pub fn indicator_lines(pack: &Pack, value_display: i64) -> Vec<String> {
+    match value_display {
+        SHOW_VOLTAGE => vec![secondary_text(pack)],
+        SHOW_BOTH => vec![text(pack), secondary_text(pack)],
+        _ => vec![text(pack)],
+    }
+}
+
 fn pack_count(backend: &dyn Backend) -> usize {
     let count = value_number(&backend.get("vehicle.batteries.count")).map(|n| n as usize).unwrap_or(0).min(MAX_PACKS);
     PACKS_SEEN.fetch_max(count, Ordering::Relaxed);
@@ -128,6 +140,8 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let packs = packs(backend);
     let threshold1 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0);
     let threshold2 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold2.rawValue")).unwrap_or(60.0);
+    let value_display = value_number(&backend.get("settings.batteryIndicatorSettings.valueDisplay.rawValue")).map(|v| v as i64).unwrap_or(0);
+    let numbered = packs.len() > 1;
     let described: Vec<Value> = packs
         .iter()
         .enumerate()
@@ -142,6 +156,8 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "level": level(p.charge_state, p.percent, threshold1, threshold2),
                 "text": text(p),
                 "secondaryText": secondary_text(p),
+                "indicatorLabel": numbered.then(|| format!("B{}", index + 1)),
+                "indicatorLines": indicator_lines(p, value_display),
                 "voltageText": p.voltage_text,
                 "currentText": p.current_text,
                 "percentText": p.percent_text,
@@ -240,6 +256,14 @@ mod tests {
     }
 
     #[test]
+    fn indicator_lines_follow_value_display_like_battery_indicator() {
+        let pack = Pack { voltage: Some(15.8), current: None, percent: Some(42.0), charge_state: CHARGE_OK, charge_label: "OK".into(), percent_text: "42%".into(), voltage_text: "15.80V".into(), current_text: String::new(), time_remaining_text: Some("00:12:00".into()) };
+        assert_eq!(indicator_lines(&pack, 0), ["42%"]);
+        assert_eq!(indicator_lines(&pack, 1), ["00:12:00"]);
+        assert_eq!(indicator_lines(&pack, 2), ["42%", "00:12:00"]);
+    }
+
+    #[test]
     fn the_view_reports_the_worst_pack() {
         struct Fake;
         impl Backend for Fake {
@@ -251,6 +275,7 @@ mod tests {
                     ("vehicle.batteries.count", _) => json!({ "kind": "value", "value": 2 }),
                     ("settings.batteryIndicatorSettings.threshold1.rawValue", _) => json!({ "kind": "value", "value": 80 }),
                     ("settings.batteryIndicatorSettings.threshold2.rawValue", _) => json!({ "kind": "value", "value": 60 }),
+                    ("settings.batteryIndicatorSettings.valueDisplay.rawValue", _) => json!({ "kind": "value", "value": 2 }),
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
@@ -269,6 +294,8 @@ mod tests {
         assert_eq!(view["packs"][1]["level"], "warning");
         assert_eq!(view["packs"][0]["secondaryText"], "15.80V");
         assert_eq!(view["packs"][0]["currentText"], "12.50A", "the head was formatting this itself as %.2f A, which is locale-independent and prints a full stop where the Fact prints whatever the operator's locale does");
+        assert_eq!((view["packs"][0]["indicatorLabel"].clone(), view["packs"][1]["indicatorLabel"].clone()), (json!("B1"), json!("B2")));
+        assert_eq!(view["packs"][0]["indicatorLines"], json!(["90%", "15.80V"]));
         assert_eq!(view["packs"][0]["percentText"], "90%", "and this was on the struct already and simply never served, so a head had nothing to read and spelled its own");
     }
 

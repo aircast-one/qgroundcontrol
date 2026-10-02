@@ -7151,6 +7151,9 @@
         "view.battery.packs[].facts[].value",
         "view.battery.packs[].facts[].valueString",
         "view.battery.packs[].index",
+        "view.battery.packs[].indicatorLabel",
+        "view.battery.packs[].indicatorLines.#",
+        "view.battery.packs[].indicatorLines[]",
         "view.battery.packs[].level",
         "view.battery.packs[].percent",
         "view.battery.packs[].percentText",
@@ -10331,6 +10334,10 @@
                     }
                 ],
                 "index": "number",
+                "indicatorLabel": "string",
+                "indicatorLines": [
+                    "string"
+                ],
                 "level": "string",
                 "percent": "number",
                 "percentText": "string",
