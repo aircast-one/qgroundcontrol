@@ -48,9 +48,10 @@ def main():
 
     new_plan()
 
-    tap_label("Circle")
+    tap_label("Fence")
+    tap_label("Add circle")
     if len(circles()) != 1:
-        raise SystemExit(f"PRECONDITION: expected one circle after Circle, got {len(circles())}")
+        raise SystemExit(f"PRECONDITION: expected one circle after Add circle, got {len(circles())}")
     tap_label("Fit")
 
     before = circles()
@@ -64,9 +65,10 @@ def main():
                          "indistinguishable from a polygon vertex handle")
 
     tap_label("Fence")
+    tap_label("Add polygon")
     tap_label("Fit")
     if len(polygon_vertices()) < 3:
-        raise SystemExit("PRECONDITION: Fence did not add a polygon")
+        raise SystemExit("PRECONDITION: Add polygon did not add a polygon")
 
     before = polygon_vertices()
     listing = subprocess.run(

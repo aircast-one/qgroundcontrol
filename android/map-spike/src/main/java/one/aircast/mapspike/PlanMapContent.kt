@@ -46,6 +46,9 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Button
@@ -169,6 +172,7 @@ internal fun MapSpikeScreen(
     var fitOnly by remember { mutableStateOf<List<TrackPoint>?>(null) }
     var positioning by remember { mutableStateOf<Pair<MapHit, TrackPoint>?>(null) }
     var loadArmed by remember { mutableStateOf(false) }
+    var layer by remember { mutableStateOf(PlanLayer.Mission) }
     var clearArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var allItems by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
@@ -652,6 +656,15 @@ internal fun MapSpikeScreen(
                             }
                         }
                     }
+                SingleChoiceSegmentedButtonRow(Modifier.padding(bottom = 8.dp)) {
+                    PlanLayer.entries.forEach { option ->
+                        SegmentedButton(
+                            selected = layer == option,
+                            onClick = { layer = option },
+                            shape = SegmentedButtonDefaults.itemShape(option.ordinal, PlanLayer.entries.size),
+                        ) { Text(option.label) }
+                    }
+                }
                 FlowRow(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -707,18 +720,18 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    FilledTonalButton(enabled = support.fence, onClick = {
+                    if (layer == PlanLayer.Fence) FilledTonalButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         onBridge("Adding fence", done = support.reason.ifBlank { null }) {
                             at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionPolygon(topLeft, bottomRight) } ?: false
                         }
-                    }) { Text("Fence") }
+                    }) { Text("Add polygon") }
 
-                    addingAfterText(selected, allItems)?.let {
+                    if (layer == PlanLayer.Mission) addingAfterText(selected, allItems)?.let {
                         PaletteNote(it)
                     }
 
-                    FilledTonalButton(
+                    if (layer == PlanLayer.Mission) FilledTonalButton(
                         enabled = kindAllows(insertable, KIND_SURVEY),
                         onClick = { patternWanted = scanPatterns(insertable) },
                     ) { Text("Pattern") }
@@ -758,14 +771,14 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    FilledTonalButton(enabled = support.fence, onClick = {
+                    if (layer == PlanLayer.Fence) FilledTonalButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         onBridge("Adding circle", done = support.reason.ifBlank { null }) {
                             at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionCircle(topLeft, bottomRight) } ?: false
                         }
-                    }) { Text("Circle") }
+                    }) { Text("Add circle") }
 
-                    FilledTonalButton(enabled = support.fence, onClick = {
+                    if (layer == PlanLayer.Fence) FilledTonalButton(enabled = support.fence, onClick = {
                         if (breach != null) {
                             editingBreach = true
                         } else {
@@ -791,13 +804,13 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    FilledTonalButton(enabled = support.rally, onClick = {
+                    if (layer == PlanLayer.Rally) FilledTonalButton(enabled = support.rally, onClick = {
                         val at = placeAt()
                         onBridge("Adding rally", done = support.reason.ifBlank { null }) {
                             at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
                         }
-                    }) { Text("Rally") }
-                    if (kindOffered(insertable, KIND_TAKEOFF)) FilledTonalButton(
+                    }) { Text("Add rally point") }
+                    if (layer == PlanLayer.Mission && kindOffered(insertable, KIND_TAKEOFF)) FilledTonalButton(
                         enabled = kindAllows(insertable, KIND_TAKEOFF),
                         onClick = {
                             val at = placeAt()
@@ -813,7 +826,7 @@ internal fun MapSpikeScreen(
                             )
                         },
                     ) { Text("Takeoff") }
-                    FilledTonalButton(
+                    if (layer == PlanLayer.Mission) FilledTonalButton(
                         enabled = kindAllows(insertable, KIND_LAND),
                         onClick = {
                             val at = placeAt()
@@ -821,7 +834,7 @@ internal fun MapSpikeScreen(
                         },
                     ) { Text(kindLabel(insertable, KIND_LAND)) }
 
-                    blockedReason(insertable)?.let {
+                    if (layer == PlanLayer.Mission) blockedReason(insertable)?.let {
                         PaletteNote(it)
                     }
 
@@ -1527,3 +1540,5 @@ private fun StatTile(label: String, value: String) {
         }
     }
 }
+
+internal enum class PlanLayer(val label: String) { Mission("Mission"), Fence("Fence"), Rally("Rally") }
