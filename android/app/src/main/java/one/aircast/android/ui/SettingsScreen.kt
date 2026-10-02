@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.android.bridge.qgcPath
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -89,6 +90,13 @@ internal val PAGES_WITHOUT_A_SCREEN = mapOf(
 internal val SECTIONS_WITHOUT_A_SCREEN = mapOf(
     "mavlinkActionsSettings" to "two paths to JSON files that have to be on the device already",
 )
+
+internal const val CONNECTIONS_PAGE = "Connections"
+
+internal fun activeLinkCount(view: JSONObject?): Int =
+    view?.optJSONArray("links")?.let { links -> (0 until links.length()).count { links.optJSONObject(it)?.optBoolean("connected") == true } } ?: 0
+
+internal fun activeLinksText(count: Int): String = if (count > 0) "$count active" else ""
 
 internal val PAGE_NOTES = mapOf(
     "General" to "Appearance, sound, units and the defaults a new mission starts from",
@@ -308,6 +316,8 @@ private fun SettingsList(
     onOpen: (String) -> Unit,
 ) {
     var search by rememberSaveable { mutableStateOf("") }
+    val linksJson by qgcPath("view.links")
+    val activeLinks = remember(linksJson) { activeLinkCount(linksJson) }
     var hits by remember { mutableStateOf(emptyList<SettingsSectionRows>()) }
     var searches by remember { mutableIntStateOf(0) }
 
@@ -342,6 +352,8 @@ private fun SettingsList(
                 items(entries, key = { it.title }) { entry ->
                     SetupRow(
                         title = entry.title,
+                        status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else "",
+                        state = if (activeLinks > 0 && entry.title == CONNECTIONS_PAGE) SetupState.Done else SetupState.Neutral,
                         subtitle = PAGE_NOTES[entry.title].orEmpty(),
                         onClick = { onOpen(entry.title) },
                         icon = pageLook(entry.title).icon,

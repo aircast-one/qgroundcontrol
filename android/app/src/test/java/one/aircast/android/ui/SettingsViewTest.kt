@@ -181,4 +181,13 @@ class SettingsViewTest {
             UNITS_GROUP !in GROUPS_WITH_A_HEAD_EDITOR,
         )
     }
+
+    @Test
+    fun theConnectionsRowCountsConnectedLinks() {
+        val view = org.json.JSONObject("""{"links":[{"connected":true},{"connected":false},{"connected":true}]}""")
+        org.junit.Assert.assertEquals(2, activeLinkCount(view))
+        org.junit.Assert.assertEquals("2 active", activeLinksText(2))
+        org.junit.Assert.assertEquals("", activeLinksText(0))
+        org.junit.Assert.assertEquals(0, activeLinkCount(null))
+    }
 }
