@@ -174,7 +174,6 @@ internal fun MapSpikeScreen(
     var fitOnly by remember { mutableStateOf<List<TrackPoint>?>(null) }
     var positioning by remember { mutableStateOf<Pair<MapHit, TrackPoint>?>(null) }
     var loadArmed by remember { mutableStateOf(false) }
-    var layer by remember { mutableStateOf(PlanLayer.Mission) }
     var clearArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var allItems by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
@@ -195,6 +194,8 @@ internal fun MapSpikeScreen(
     var landingList by remember { mutableStateOf<List<LandingPattern>>(emptyList()) }
     var surveyStatsMap by remember { mutableStateOf<Map<Int, SurveyStats>>(emptyMap()) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
+    var layer by remember { mutableStateOf(PlanLayer.Mission) }
+    LaunchedEffect(selected) { layerOf(selected)?.let { layer = it } }
 
     BackHandler(enabled = selected != null) { selected = null }
     var busy by remember { mutableStateOf<String?>(null) }
@@ -1558,6 +1559,16 @@ private fun StatTile(label: String, value: String) {
 }
 
 internal enum class PlanLayer(val label: String) { Mission("Mission"), Fence("Fence"), Rally("Rally") }
+
+internal fun layerOf(hit: MapHit?): PlanLayer? = when (hit) {
+    null -> null
+    is MapHit.Rally -> PlanLayer.Rally
+    is MapHit.FenceVertex, is MapHit.Circle, is MapHit.CircleCentre, MapHit.BreachReturn -> PlanLayer.Fence
+    is MapHit.ShapeCentre -> if (hit.fence) PlanLayer.Fence else PlanLayer.Mission
+    is MapHit.ShapeRadius -> if (hit.fence) PlanLayer.Fence else PlanLayer.Mission
+    is MapHit.Midpoint -> null
+    else -> PlanLayer.Mission
+}
 
 @Composable
 private fun FenceListRow(row: FenceRow, onRemove: () -> Unit) {

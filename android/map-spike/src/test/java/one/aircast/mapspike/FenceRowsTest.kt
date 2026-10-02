@@ -22,4 +22,14 @@ class FenceRowsTest {
         assertEquals(listOf(FenceRow(1, false, "Rally point 2", "50 m \u00b7 41.715100, 44.827100")), rallyRows(listOf(point)))
         assertEquals("41.715100, 44.827100", rallyRows(listOf(point.copy(altitude = Double.NaN))).single().detail)
     }
+
+    @Test
+    fun `selecting a fence or rally shape opens its layer, a waypoint the mission's`() {
+        assertEquals(PlanLayer.Fence, layerOf(MapHit.Circle(0)))
+        assertEquals(PlanLayer.Fence, layerOf(MapHit.FenceVertex(0, 1)))
+        assertEquals(PlanLayer.Rally, layerOf(MapHit.Rally(0)))
+        assertEquals(PlanLayer.Mission, layerOf(MapHit.Waypoint(2)))
+        assertEquals(PlanLayer.Mission, layerOf(MapHit.ShapeCentre(fence = false, owner = 3)))
+        assertEquals(null, layerOf(null))
+    }
 }
