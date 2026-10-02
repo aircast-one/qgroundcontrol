@@ -226,8 +226,10 @@ fn motor_count(mav_type: u8, sub_frame: Option<f64>) -> Option<i64> {
 }
 
 fn firmware_fields(autopilot: u8, firmware: Option<crate::connect::Firmware>) -> Value {
+    let custom = firmware.as_ref().and_then(|f| f.custom);
     let version = firmware.and_then(|f| f.version);
     let part = |pick: fn((u8, u8, u8, u8)) -> u8| version.map_or(-1, |v| i64::from(pick(v)));
+    let custom_part = |pick: fn((u8, u8, u8)) -> u8| custom.map_or(-1, |c| i64::from(pick(c)));
     json!({
         "firmwareTypeString": match autopilot {
             crate::modes::AUTOPILOT_PX4 => "PX4 Pro",
@@ -237,6 +239,9 @@ fn firmware_fields(autopilot: u8, firmware: Option<crate::connect::Firmware>) ->
         "firmwareMajorVersion": part(|v| v.0),
         "firmwareMinorVersion": part(|v| v.1),
         "firmwarePatchVersion": part(|v| v.2),
+        "firmwareCustomMajorVersion": custom_part(|c| c.0),
+        "firmwareCustomMinorVersion": custom_part(|c| c.1),
+        "firmwareCustomPatchVersion": custom_part(|c| c.2),
         "firmwareVersionTypeString": match version.map(|v| v.3) {
             Some(0) => "dev",
             Some(64) => "alpha",

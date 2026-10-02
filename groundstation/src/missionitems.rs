@@ -559,6 +559,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
         };
         Some(start)
     });
+    let first_landing = doc.items.iter().position(|item| matches!(item, crate::plandoc::Item::Complex { kind, .. } if crate::landingpattern::is_landing(kind)));
     let reads: Vec<Value> = doc
         .items
         .iter()
@@ -588,6 +589,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                     "abbreviation": abbreviation,
                     "commandName": name,
                     "commandDescription": name,
+                    "patternName": if crate::landingpattern::is_landing(kind) && first_landing != Some(i) { "Alternate Landing" } else { name },
                     "isCurrentItem": selected == i as i64 + 1,
                     "coordinate": { "latitude": if v.landing { v.exit.0 } else { v.entry.0 }, "longitude": if v.landing { v.exit.1 } else { v.entry.1 }, "altitude": v.touchdown_altitude, "valid": true },
                     "exitCoordinate": { "latitude": v.exit.0, "longitude": v.exit.1, "altitude": v.touchdown_altitude, "valid": true },
@@ -1171,6 +1173,16 @@ mod from_the_document {
         let shown: Vec<(bool, Value)> = plane.iter().skip(1).map(|r| (r["showLoiterRadius"].as_bool().unwrap(), r["loiterRadius"].clone())).collect();
         assert_eq!(shown, [(false, Value::Null), (true, json!(-80.0)), (true, json!(120.0))], "param3 for turns (negative is counter-clockwise), param2 for loiter-to-altitude, nothing for a waypoint");
         assert!(reads(2).iter().all(|r| r["showLoiterRadius"] != true), "a multirotor never draws the ring");
+    }
+
+    #[test]
+    fn a_second_landing_pattern_is_an_alternate_landing() {
+        let pattern: Value = serde_json::from_str(include_str!("../tests/fixtures/fwland-pattern.json")).unwrap();
+        let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": 1, "plannedHomePosition": [-35.36, 149.16, 0], "items": [pattern.clone(), pattern] } }).to_string();
+        let reads = document_reads(&crate::plandoc::load(&plan, 2).unwrap(), 0).unwrap();
+        let names: Vec<&str> = reads.iter().skip(1).map(|r| r["patternName"].as_str().unwrap()).collect();
+        assert_eq!(names, ["Landing Pattern", "Alternate Landing"], "FixedWingLandingComplexItem::patternName");
+        assert_eq!(reads[2]["commandName"], "Landing Pattern", "the command name stays the canonical one");
     }
 
     fn agrees(plan: &str, terrain_under_home: f64, qt: &str) {

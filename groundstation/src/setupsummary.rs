@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.rover", "vehicle.sub", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion", "vehicle.firmwareVersionTypeString", "vehicle.gitHash"];
+pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.rover", "vehicle.sub", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion", "vehicle.firmwareVersionTypeString", "vehicle.gitHash", "vehicle.firmwareCustomMajorVersion", "vehicle.firmwareCustomMinorVersion", "vehicle.firmwareCustomPatchVersion"];
 const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
 const SETUP_REQUIRED: &str = "Setup required";
 const READY: &str = "Ready";
@@ -29,6 +29,7 @@ pub struct Vehicle {
     pub firmware: String,
     pub firmware_type: String,
     pub git_hash: String,
+    pub custom: Option<String>,
 }
 
 pub type Facts<'a> = &'a dyn Fn(&str) -> Option<Value>;
@@ -365,6 +366,9 @@ fn px4_airframe(facts: Facts, vehicle: &Vehicle) -> Rows {
         row("Vehicle", named(|n| n.1.clone())),
         row("Firmware Version", vehicle.firmware.clone()),
     ]
+    .into_iter()
+    .chain(vehicle.custom.clone().map(|custom| row("Custom Fw. Ver.", custom)))
+    .collect()
 }
 
 pub fn rows(class: &str, facts: Facts, vehicle: &Vehicle) -> Option<Rows> {
@@ -401,7 +405,7 @@ pub fn firmware_text(major: i64, minor: i64, patch: i64, kind: &str) -> String {
 }
 
 pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash"));
+    let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash,firmwareCustomMajorVersion,firmwareCustomMinorVersion,firmwareCustomPatchVersion"));
     let part = |key: &str| read.get(key).and_then(Value::as_i64).unwrap_or(-1);
     let vehicle = Vehicle {
         multi_rotor: flag(&read, "multiRotor"),
@@ -412,6 +416,7 @@ pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
         firmware: firmware_text(part("firmwareMajorVersion"), part("firmwareMinorVersion"), part("firmwarePatchVersion"), &text(&read, "firmwareVersionTypeString")),
         firmware_type: text(&read, "firmwareVersionTypeString"),
         git_hash: read.get("gitHash").map(|h| h.as_str().map_or_else(|| h.to_string(), str::to_string)).unwrap_or_default(),
+        custom: (part("firmwareCustomMajorVersion") != -1).then(|| format!("{}.{}.{}", part("firmwareCustomMajorVersion"), part("firmwareCustomMinorVersion"), part("firmwareCustomPatchVersion"))),
     };
     let facts = |name: &str| Some(object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))).filter(|f| f.get("kind").and_then(Value::as_str) == Some("fact") && !text(f, "name").is_empty());
     let count = object(&backend.get(COMPONENTS)).get("value").and_then(Value::as_array).map_or(0, Vec::len);
@@ -439,7 +444,7 @@ mod tests {
     }
 
     fn copter() -> Vehicle {
-        Vehicle { multi_rotor: true, fixed_wing: false, rover: false, sub: false, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new() }
+        Vehicle { multi_rotor: true, fixed_wing: false, rover: false, sub: false, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new(), custom: None }
     }
 
     #[test]
@@ -448,6 +453,9 @@ mod tests {
         let facts = lookup(&map);
         assert_eq!(rows("APMRadioComponent", &facts, &copter()).unwrap()[..2], [row("Roll", "Channel 1"), row("Pitch", SETUP_REQUIRED)]);
         assert_eq!(rows("APMAirframeComponent", &facts, &copter()).unwrap(), [row("Frame Class", "Quad"), row("Firmware Version", "4.5.7")], "FRAME_TYPE is absent so its row is hidden");
+        let custom = Vehicle { custom: Some("1.2.3".into()), ..copter() };
+        assert_eq!(rows("AirframeComponent", &facts, &custom).unwrap().last(), Some(&row("Custom Fw. Ver.", "1.2.3")), "AirframeComponentSummary shows it once the custom major version is set");
+        assert!(rows("AirframeComponent", &facts, &copter()).unwrap().iter().all(|(label, _)| label != "Custom Fw. Ver."));
         assert!(rows("APMTuningComponent", &facts, &copter()).is_none());
         assert_eq!(firmware_text(-1, 0, 0, ""), "Unknown");
         assert_eq!(firmware_text(1, 15, 2, "beta"), "1.15.2beta");
