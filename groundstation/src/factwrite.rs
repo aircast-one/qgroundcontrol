@@ -143,7 +143,16 @@ fn write_enum_index(backend: &dyn Backend, path: &str, value: &str) -> Value {
     json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The setting was not written.") } })
 }
 
+const UI_SCALING: &str = "settings.appSettings.appFontPointSize.enumIndex";
+
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    if path == UI_SCALING {
+        let size = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64()).and_then(|i| usize::try_from(i).ok()).and_then(crate::settings::scaled_point_size);
+        return match size {
+            Some(size) => write(backend, path.strip_suffix(ENUM_INDEX).unwrap_or(path), &json!({ "value": size }).to_string()),
+            None => json!({ "ok": false, "result": false, "refusal": "notAnOption", "reason": "Choose one of the UI scaling steps." }),
+        };
+    }
     if path.ends_with(ENUM_INDEX) {
         return write_enum_index(backend, path, value);
     }
@@ -246,6 +255,9 @@ mod tests {
         assert_eq!(write(&settings, "settings.appSettings.defaultMissionItemAltitude", r#"{"value":60}"#)["result"], true);
         assert_eq!(write(&settings, "settings.videoSettings", r#"{"value":1}"#)["ok"], true, "a path that is not a fact is the bridge's to answer");
         assert_eq!(settings.0.borrow().as_slice(), &["settings.appSettings.defaultMissionItemAltitude".to_string(), "settings.videoSettings".to_string()]);
+        assert_eq!(write(&settings, "settings.appSettings.appFontPointSize.enumIndex", r#"{"value":4}"#)["ok"], true, "a UI Scaling step is written as its point size");
+        assert_eq!(settings.0.borrow().last().map(String::as_str), Some("settings.appSettings.appFontPointSize"));
+        assert_eq!(write(&settings, "settings.appSettings.appFontPointSize.enumIndex", r#"{"value":9}"#)["refusal"], "notAnOption");
         assert!(owns("settings.appSettings.savePath") && !owns("settings.appSettings.savePath.rawValue") && !owns("vehicle.armed"));
         assert!(owns("vehicle.parameterManager.getParameter(1,RTL_ALT)"), "a parameter is a Fact the vehicle keeps, so a value outside its metadata goes to the autopilot");
         assert!(owns("plan.missionController.visualItems.3.altitude"));
