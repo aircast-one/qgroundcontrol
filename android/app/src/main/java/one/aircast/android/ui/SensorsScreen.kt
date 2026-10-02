@@ -216,6 +216,16 @@ private fun OrientationGrid(sides: List<CalibrationSide>) {
 
 private val CALIBRATION_RING = 180.dp
 
+internal fun routineIcon(id: String): Int = when (id) {
+    "accelerometer" -> R.drawable.ic_vibration
+    "compass", "compassMot" -> R.drawable.ic_explore
+    "levelHorizon" -> R.drawable.ic_straighten
+    "gyro" -> R.drawable.ic_sensors
+    "pressure" -> R.drawable.ic_height
+    "airspeed" -> R.drawable.ic_speed
+    else -> R.drawable.ic_build
+}
+
 @Composable
 private fun RunningCalibration(
     name: String,
@@ -423,6 +433,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
                                 "unhealthy" -> SetupState.NeedsAttention
                                 else -> SetupState.Neutral
                             },
+                            icon = R.drawable.ic_sensors,
                         )
                     }
                 }
@@ -453,16 +464,17 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
                     else -> SetupState.Neutral
                 },
                 onClick = if (routine.enabled) ({ pending = routine }) else null,
+                icon = routineIcon(routine.id),
             )
         }
 
         item(key = "sensorSettings") {
-            SetupRow(title = state.settingsTitle, status = "", state = SetupState.Neutral, onClick = { showSettings = true })
+            SetupRow(title = state.settingsTitle, status = "", state = SetupState.Neutral, onClick = { showSettings = true }, icon = R.drawable.ic_tune)
         }
 
         if (state.px4) {
             item(key = "factoryReset") {
-                SetupRow(title = "Factory reset", status = "", state = SetupState.NeedsAttention, onClick = { confirmFactoryReset = true })
+                SetupRow(title = "Factory reset", status = "", state = SetupState.NeedsAttention, onClick = { confirmFactoryReset = true }, icon = R.drawable.ic_delete)
             }
         }
 
