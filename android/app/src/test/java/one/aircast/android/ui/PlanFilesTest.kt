@@ -130,4 +130,13 @@ class PlanHistoryTest {
         assertEquals(PlanHistory(canUndo = false, canRedo = false), planHistory(null))
         assertEquals(PlanHistory(canUndo = false, canRedo = false), planHistory(JSONObject("{}")))
     }
+
+    @Test
+    fun `the title is the file's base name or Untitled Plan like PlanToolBarIndicators`() {
+        assertEquals("ridge", planTitle("ridge.plan"))
+        assertEquals("a.b", planTitle("a.b.plan"))
+        assertEquals(".plan", planTitle(".plan"))
+        assertEquals("Untitled Plan", planTitle(null))
+        assertEquals("Untitled Plan", planTitle(""))
+    }
 }

@@ -2007,6 +2007,7 @@ pub struct PlanState {
     pub has_mission_items: bool,
     pub file: String,
     pub global_mode: i64,
+    pub item_count: i64,
 }
 
 fn has_entries(section: &Value, key: &str) -> bool {
@@ -2031,6 +2032,7 @@ pub fn plan_state() -> Option<PlanState> {
         has_mission_items,
         file: state.file.clone().unwrap_or_default(),
         global_mode: document.global_altitude_mode,
+        item_count: document.items.len() as i64,
     })
 }
 

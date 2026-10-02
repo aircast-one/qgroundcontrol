@@ -186,7 +186,7 @@ void QGCCoreCTest::_planViewFollowsTheVehicle()
     QCOMPARE(offline.value(QStringLiteral("readiness")).toObject().value(QStringLiteral("ready")).toBool(), true);
     QCOMPARE(offline.value(QStringLiteral("upload")).toObject().value(QStringLiteral("state")).toInt(-1), 1);
     QCOMPARE(offline.value(QStringLiteral("sync")).toObject().value(QStringLiteral("state")).toString(), QStringLiteral("offline"));
-    QCOMPARE(offline.value(QStringLiteral("status")).toString(), QStringLiteral("New plan"));
+    QCOMPARE(offline.value(QStringLiteral("status")).toString(), QStringLiteral("Empty plan"));
 
     qgc_bridge_set_event_handler(onEvent);
     qgc_bridge_watch("view.plan");

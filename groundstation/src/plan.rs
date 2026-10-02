@@ -16,6 +16,7 @@ pub const DEPS: &[&str] = &[
     "plan.missionController.complexMissionItems",
     "plan.missionController.globalAltitudeFrame",
     "plan.missionController.progressPct",
+    "plan.missionController.visualItems.count",
     "vehicles.activeVehicleAvailable",
     "vehicle.armed",
     crate::coreplan::CHANGED,
@@ -140,6 +141,10 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let dirty = core.as_ref().map_or_else(|| flag(&plan, "dirty"), |c| c.dirty);
     let contains_items = core.as_ref().map_or_else(|| flag(&plan, "containsItems"), |c| c.contains_items);
     let has_mission_items = core.as_ref().map_or_else(|| flag(&mission, "containsItems"), |c| c.has_mission_items);
+    let item_count = core.as_ref().map_or_else(
+        || crate::read::integer(&object(&backend.get_fields("plan.missionController.visualItems", "count")), "count").map_or(0, |count| (count - 1).max(0)),
+        |c| c.item_count,
+    );
     let qt_file = plan.get("currentPlanFile").and_then(Value::as_str).unwrap_or("").to_string();
     let file = core.as_ref().map_or(qt_file.as_str(), |c| c.file.as_str());
     let name = file.rsplit('/').next().filter(|n| !n.is_empty());
@@ -187,7 +192,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
             (Some(true), Some(true)) => None,
         },
         "sync": sync_json(offline, syncing, progress),
-        "status": status_text(name, dirty, offline, contains_items),
+        "status": state_line(syncing, contains_items, dirty, item_count),
         "file": name,
         "filePath": (!file.is_empty()).then_some(file),
         "dirty": dirty,
@@ -253,15 +258,16 @@ fn sync_json(offline: bool, syncing: bool, progress: f64) -> Value {
     json!({ "state": state, "refusal": refusal, "progress": if syncing { progress.clamp(0.0, 1.0) } else { 0.0 } })
 }
 
-fn status_text(name: Option<&str>, dirty: bool, offline: bool, has_items: bool) -> String {
-    match (name, dirty, offline, has_items) {
-        (None, _, _, false) => "New plan".to_string(),
-        (None, _, true, true) => "Unsaved plan".to_string(),
-        (None, true, false, true) => "Not uploaded".to_string(),
-        (None, false, false, true) => "Sent to the vehicle".to_string(),
-        (Some(n), false, _, _) => n.to_string(),
-        (Some(n), true, true, _) => format!("{n} \u{b7} unsaved changes"),
-        (Some(n), true, false, _) => format!("{n} \u{b7} not uploaded"),
+fn state_line(syncing: bool, contains_items: bool, dirty: bool, item_count: i64) -> String {
+    let items = match item_count {
+        1 => "1 item".to_string(),
+        n => format!("{n} items"),
+    };
+    match (syncing, contains_items, dirty) {
+        (true, ..) => "Uploading\u{2026}".to_string(),
+        (false, false, _) => "Empty plan".to_string(),
+        (false, true, true) => format!("Edited \u{b7} {items}"),
+        (false, true, false) => format!("Uploaded \u{b7} {items}"),
     }
 }
 
@@ -553,15 +559,12 @@ mod tests {
         assert_eq!(view["actions"]["save"], false);
         assert_eq!(view["actions"]["clearMission"], false);
         assert_eq!(view["sync"]["state"], "offline");
-        assert_eq!(view["status"], "New plan");
+        assert_eq!(view["status"], "Empty plan");
 
-        let unnamed = |dirty: bool, offline: bool, items: bool| status_text(None, dirty, offline, items);
-        assert_eq!(unnamed(false, false, true), "Sent to the vehicle", "with a vehicle connected dirty means not synced rather than not saved, so a plan whose items have just gone up read New plan - the operator's finished work described as though they had not started");
-        assert_eq!(unnamed(true, false, true), "Not uploaded");
-        assert_eq!(unnamed(true, false, false), "New plan", "a plan just cleared to nothing is dirty because clearing is a change, and it read Unsaved plan - the blank canvas claiming work was at risk");
-        assert_eq!(unnamed(false, false, false), "New plan");
-        assert_eq!(unnamed(true, true, true), "Unsaved plan", "offline the flag means what the words say, and this is the case the sentence was written for");
-        assert_eq!(unnamed(true, true, false), "New plan");
+        assert_eq!(state_line(true, true, true, 3), "Uploading\u{2026}");
+        assert_eq!(state_line(false, false, true, 0), "Empty plan");
+        assert_eq!(state_line(false, true, true, 1), "Edited \u{b7} 1 item");
+        assert_eq!(state_line(false, true, false, 4), "Uploaded \u{b7} 4 items", "PlanToolBarIndicators says Uploaded whenever the plan is clean, offline or not");
         assert_eq!(view["file"], Value::Null);
     }
 
@@ -572,7 +575,7 @@ mod tests {
         assert!(terrain["readiness"]["reason"].as_str().unwrap().contains("terrain"));
         let data = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 2 }), json!({ "ok": true, "result": 0 })), &[]);
         assert!(data["readiness"]["reason"].as_str().unwrap().contains("still being drawn"));
-        assert_eq!(data["status"], "field.plan \u{b7} not uploaded");
+        assert_eq!(data["status"], "Edited \u{b7} 0 items");
         assert_eq!(data["actions"]["exportKml"], true);
         assert_eq!(data["sync"]["state"], "ready");
     }

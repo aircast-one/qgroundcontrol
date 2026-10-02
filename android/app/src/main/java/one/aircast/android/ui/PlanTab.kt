@@ -193,7 +193,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), "Back to Fly") }
-                        val title = files.documentName() ?: "New plan"
+                        val title = planTitle(files.documentName())
                         Column(Modifier.weight(1f)) {
                             Text(
                                 title,
