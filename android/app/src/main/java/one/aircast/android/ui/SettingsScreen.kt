@@ -578,6 +578,9 @@ internal fun isSecret(fact: Fact): Boolean = fact.name.endsWith("Password", igno
 internal fun enumLabel(fact: Fact): String =
     fact.enumStrings.getOrNull(fact.enumIndex) ?: fact.valueString
 
+internal fun shownEnumLabel(fact: Fact): String =
+    fact.enumStrings.getOrNull(fact.enumIndex)?.let(::sentenceCase) ?: fact.valueString
+
 internal fun factSubtitle(fact: Fact): String = listOfNotNull(
     when {
         fact.enumStrings.isNotEmpty() || fact.bitmaskStrings.isNotEmpty() || fact.isBool -> ""
@@ -679,7 +682,7 @@ internal fun FactRow(
                     horizontalAlignment = Alignment.End,
                 ) {
                     Text(
-                        text = enumLabel(fact),
+                        text = shownEnumLabel(fact),
                         style = MaterialTheme.typography.bodyMedium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -695,7 +698,7 @@ internal fun FactRow(
                         Switch(checked = fact.boolValue, onCheckedChange = null, enabled = false)
                     } else {
                         Text(
-                            text = listOf(enumLabel(fact), fact.units.takeIf { !fact.isEnum }.orEmpty()).filter { it.isNotBlank() }.joinToString(" "),
+                            text = listOf(shownEnumLabel(fact), fact.units.takeIf { !fact.isEnum }.orEmpty()).filter { it.isNotBlank() }.joinToString(" "),
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -719,7 +722,7 @@ internal fun FactRow(
                 FilterChip(
                     selected = index == fact.enumIndex,
                     onClick = { write { Qgc.set("${fact.path}.enumIndex", index) } },
-                    label = { Text(option) },
+                    label = { Text(sentenceCase(option)) },
                 )
             }
         }
@@ -848,7 +851,7 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit, label: Str
 
 @Composable
 private fun EnumField(fact: Fact, label: String?, write: (() -> Boolean) -> Unit) {
-    ChoiceField(label, enumLabel(fact), fact.enumStrings, enabled = fact.enabled) { index ->
+    ChoiceField(label, shownEnumLabel(fact), fact.enumStrings.map(::sentenceCase), enabled = fact.enabled) { index ->
         // qtpaths: settings.appSettings.indoorPalette.enumIndex, vehicle.parameterManager.getParameter(-1,RTL_TYPE).enumIndex
         write { Qgc.set("${fact.path}.enumIndex", index) }
     }

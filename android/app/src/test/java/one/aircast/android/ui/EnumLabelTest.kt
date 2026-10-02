@@ -34,4 +34,11 @@ class EnumLabelTest {
         assertEquals("99", enumLabel(fact("99", listOf("A", "B"), 7)))
         assertEquals("99", enumLabel(fact("99", listOf("A", "B"), -1)))
     }
+
+    @Test
+    fun `a settings choice reads in sentence case but an unlisted value stays as typed`() {
+        assertEquals("Video stream disabled", shownEnumLabel(fact("0", listOf("Video Stream Disabled", "UDP h.264 Video Stream"), 0)))
+        assertEquals("Fit height", shownEnumLabel(fact("1", listOf("Fit Width", "Fit Height"), 1)))
+        assertEquals("My Value", shownEnumLabel(fact("My Value", emptyList(), -1)))
+    }
 }
