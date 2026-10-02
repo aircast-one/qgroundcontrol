@@ -339,6 +339,7 @@ fun installFenceLayers(style: Style) {
         style.addLayer(
             SymbolLayer(GCS_HEADING_LAYER, GCS_SOURCE).withProperties(
                 PropertyFactory.textField("\u25B2"),
+                PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
                 PropertyFactory.textSize(12f),
                 PropertyFactory.textColor("#1976D2"),
                 PropertyFactory.textOpacity(0.85f),

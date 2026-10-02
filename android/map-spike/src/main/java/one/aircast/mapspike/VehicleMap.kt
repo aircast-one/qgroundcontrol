@@ -90,6 +90,9 @@ data class TrackPoint(val latitude: Double, val longitude: Double)
 object FlightMapPosition {
     @Volatile
     var latest: TrackPoint? = null
+
+    @Volatile
+    var operatorCentred: Boolean = false
 }
 
 fun isPlottable(latitude: Double, longitude: Double): Boolean =

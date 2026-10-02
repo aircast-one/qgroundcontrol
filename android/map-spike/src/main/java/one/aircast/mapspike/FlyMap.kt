@@ -99,7 +99,6 @@ fun FlyMap(
     var centreRequest by remember { mutableIntStateOf(if (saved != null) 1 else 0) }
     var centreOn by remember { mutableStateOf(saved?.centre) }
     var centreZoom by remember { mutableStateOf(saved?.zoom) }
-    var operatorCentred by remember { mutableStateOf(false) }
     val keepCentered by mapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)")
 
     DisposableEffect(Unit) {
@@ -141,8 +140,8 @@ fun FlyMap(
                     )
                 }
                 if (missionArrived(plan.items, next.items, ::shape)) fitRequest++
-                if (centresOnOperator(operatorCentred, next.operator, next.vehiclePlaced)) {
-                    operatorCentred = true
+                if (centresOnOperator(FlightMapPosition.operatorCentred, next.operator, next.vehiclePlaced)) {
+                    FlightMapPosition.operatorCentred = true
                     centreOn = next.operator
                     centreZoom = null
                     centreRequest++

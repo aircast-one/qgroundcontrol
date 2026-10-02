@@ -62,6 +62,7 @@ fun installOrbitLayer(style: Style) {
     style.addLayer(
         SymbolLayer(ORBIT_ARROW_LAYER, ORBIT_ARROW_SOURCE).withProperties(
             PropertyFactory.textField("\u25B2"),
+            PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
             PropertyFactory.textSize(14f),
             PropertyFactory.textColor(ORBIT_COLOUR),
             PropertyFactory.textRotate(org.maplibre.android.style.expressions.Expression.get(ARROW_BEARING)),
