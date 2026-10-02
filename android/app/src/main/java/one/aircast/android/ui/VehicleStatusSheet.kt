@@ -34,8 +34,6 @@ internal fun shownSensors(sensors: List<SensorHealth>, showAll: Boolean): List<S
 internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
     val healthJson by qgcPath(SENSOR_HEALTH)
     val health = remember(healthJson) { sensorHealth(healthJson) }
-    val stateJson by qgcPath(FLY_STATE)
-    val state = remember(stateJson) { flyState(stateJson) }
     var showAll by remember { mutableStateOf(false) }
     val open: (String) -> Unit = { page ->
         AppNavigation.setupPage = page
@@ -44,12 +42,7 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            state?.takeIf { it.summaryDetail.isNotBlank() }?.let { shown ->
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-                    Text(shown.stateText, style = MaterialTheme.typography.titleMedium)
-                    Text(shown.summaryDetail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            StatusSummary()
             health?.takeIf { healthJson?.optBoolean("healthChecksSupported") != true && it.available && it.sensors.isNotEmpty() }?.let { reading ->
                 Text("Sensors", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
                 shownSensors(reading.sensors, showAll).forEach { sensor ->
@@ -74,6 +67,18 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
                     OutlinedButton(onClick = { open(page) }) { Text("Configure") }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun StatusSummary() {
+    val stateJson by qgcPath(FLY_STATE)
+    val lines = remember(stateJson) { flyState(stateJson)?.let { it.stateText to it.summaryDetail } }
+    lines?.takeIf { it.second.isNotBlank() }?.let { (title, detail) ->
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

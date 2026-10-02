@@ -87,8 +87,12 @@ internal data class GuidedAction(
     val confirm: String,
     val destructive: Boolean,
     val option: ConfirmOption? = null,
+    val offerId: String? = null,
     val run: () -> Unit,
 )
+
+internal fun offerWithdrawn(offerId: String?, offers: Map<String, GuidedOffer>): Boolean =
+    offerId != null && offers[offerId]?.shown != true
 
 
 internal data class Instrument(val label: String, val reading: String, val id: String = "", val value: String = reading, val units: String = "", val raw: Double? = null)
@@ -295,11 +299,15 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
 
     LaunchedEffect(offers) {
+        if (offerWithdrawn(pending?.offerId, offers)) pending = null
+        if (speedTarget != null && offerWithdrawn("changeSpeed", offers)) speedTarget = null
+        if (takeoffTarget != null && offerWithdrawn("takeoff", offers)) takeoffTarget = null
+        if (altitudeTarget != null && offerWithdrawn(if (altitudePauses) PAUSE else "changeAltitude", offers)) altitudeTarget = null
         val popup = missionReady?.let { autoMissionPopup(it, offers, automaticMissionPopups) }
         missionReady = AUTO_POPUP_ACTIONS.filter { offers[it]?.ready == true }.toSet()
         if (popup != null && pending == null) {
             guidedCommand(popup.id, resumeFrom)?.let { command ->
-                pending = GuidedAction(name = popup.title, confirm = popup.prompt, destructive = popup.destructive, run = command)
+                pending = GuidedAction(name = popup.title, confirm = popup.prompt, destructive = popup.destructive, offerId = popup.id, run = command)
             }
         }
     }
@@ -381,6 +389,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 warning = armed,
             ) {
                 pending = GuidedAction(
+                    offerId = if (armed) "disarm" else "arm",
                     name = armAction?.title ?: if (armed) "Disarm" else "Arm",
                     confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
                         "Disarm the vehicle"
@@ -417,6 +426,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             }.takeIf { offers[PAUSE]?.shown == true },
             DeckEntry("rtl", "Return", R.drawable.ic_home, offers["rtl"]?.ready == true) {
                 pending = GuidedAction(
+                    offerId = "rtl",
                     name = offers["rtl"]?.title ?: "Return",
                     confirm = offers["rtl"]?.prompt?.ifBlank { null } ?: "Return to the launch position of the vehicle",
                     destructive = false,
@@ -429,6 +439,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             }.takeIf { offers["rtl"]?.shown == true },
             DeckEntry("land", offers["land"]?.title ?: "Land", R.drawable.ic_flight_land, offers["land"]?.ready == true) {
                 pending = GuidedAction(
+                    offerId = "land",
                     name = offers["land"]?.title ?: "Land",
                     confirm = offers["land"]?.prompt?.ifBlank { null }
                         ?: "Land the vehicle at the current position",
@@ -507,9 +518,15 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             },
             onCancel = { speedTarget = null },
         ) {
+            speedRange?.let { range -> guidedBounds(range.minimum, range.maximum)?.let { range to it } }?.let { (range, bounds) ->
+                GuidedStepper(target, range.label, range.unit, bounds.first, bounds.second) { stepped ->
+                    speedTarget = stepped
+                    speedSettled = stepped
+                }
+            }
             Slider(
                 value = target.toFloat(),
-                onValueChange = { speedTarget = it.toDouble() },
+                onValueChange = { speedTarget = guidedRounded(it.toDouble(), speedRange?.unit.orEmpty()) },
                 onValueChangeFinished = { speedSettled = speedTarget },
                 valueRange = (speedRange?.minimum ?: 0.0).toFloat()..
                     (speedRange?.maximum ?: 0.0).toFloat(),
@@ -541,9 +558,15 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             },
             onCancel = { takeoffTarget = null },
         ) {
+            takeoffRange?.let { range -> guidedBounds(range.minimum, range.maximum)?.let { range to it } }?.let { (range, bounds) ->
+                GuidedStepper(target, range.label, range.unit, bounds.first, bounds.second) { stepped ->
+                    takeoffTarget = stepped
+                    takeoffSettled = stepped
+                }
+            }
             Slider(
                 value = target.toFloat(),
-                onValueChange = { takeoffTarget = it.toDouble() },
+                onValueChange = { takeoffTarget = guidedRounded(it.toDouble(), takeoffRange?.unit.orEmpty()) },
                 onValueChangeFinished = { takeoffSettled = takeoffTarget },
                 valueRange = (takeoffRange?.minimum ?: 0.0).toFloat()..
                     (takeoffRange?.maximum ?: 0.0).toFloat(),
@@ -578,9 +601,15 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             },
             onCancel = { altitudeTarget = null },
         ) {
+            altitudeRange?.let { range -> guidedBounds(range.minimum, range.maximum)?.let { range to it } }?.let { (range, bounds) ->
+                GuidedStepper(target, range.label, range.unit, bounds.first, bounds.second) { stepped ->
+                    altitudeTarget = stepped
+                    altitudeSettled = stepped
+                }
+            }
             Slider(
                 value = target.toFloat(),
-                onValueChange = { altitudeTarget = it.toDouble() },
+                onValueChange = { altitudeTarget = guidedRounded(it.toDouble(), altitudeRange?.unit.orEmpty()) },
                 onValueChangeFinished = { altitudeSettled = altitudeTarget },
                 valueRange = (altitudeRange?.minimum ?: 0.0).toFloat()..
                     (altitudeRange?.maximum ?: 0.0).toFloat(),
@@ -610,6 +639,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                         } else {
                             guidedCommand(offer.id, resumeFrom)?.let { command ->
                                 pending = GuidedAction(
+                                    offerId = offer.id,
                                     name = offer.title,
                                     confirm = offer.prompt,
                                     destructive = offer.destructive,

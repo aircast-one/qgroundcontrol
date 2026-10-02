@@ -16,4 +16,10 @@ class GuidedOffersTest {
     fun `the multi-vehicle panel is on unless the setting turns it off`() {
         assertEquals(listOf(true, true, false), listOf(null, JSONObject("""{"value":true}"""), JSONObject("""{"value":false}""")).map { multiVehiclePanelEnabled(it) })
     }
+
+    @Test
+    fun `a confirm closes once its action stops being offered, like GuidedActionConfirm's hideTrigger`() {
+        val offers = guidedOffers(JSONObject("""{"actions":[{"id":"land","offer":"ready"},{"id":"takeoff","offer":"hidden"}]}"""))
+        assertEquals(listOf(false, true, true, false), listOf(offerWithdrawn("land", offers), offerWithdrawn("takeoff", offers), offerWithdrawn("orbit", offers), offerWithdrawn(null, offers)))
+    }
 }
