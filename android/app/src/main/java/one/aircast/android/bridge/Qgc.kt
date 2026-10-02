@@ -12,6 +12,8 @@ import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 import one.aircast.mapspike.optText
 
+data class FactSlider(val from: Float, val to: Float, val step: Float?, val decimals: Int)
+
 data class Fact(
     val path: String,
     val name: String,
@@ -43,6 +45,7 @@ data class Fact(
     val changedFromDefault: Boolean = false,
     val optional: Boolean = false,
     val longDescription: String = "",
+    val slider: FactSlider? = null,
 ) {
     val title: String = description.ifBlank { name }
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()

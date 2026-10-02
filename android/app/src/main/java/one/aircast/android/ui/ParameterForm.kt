@@ -1,6 +1,11 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.fillMaxSize
+import one.aircast.android.bridge.FactSlider
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.Slider
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -88,6 +93,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         maxIsDefaultForType = control.isNull("maximumText"),
         defaultValueString = control.optText("defaultText"),
         qgcRebootRequired = control.optBoolean("applicationRestartRequired"),
+        slider = control.optJSONObject("slider")?.let { factSlider(it) },
         warning = control.optBoolean("warning"),
         optional = control.optBoolean("optional"),
     )
@@ -170,6 +176,8 @@ internal fun ParameterForm(
                         color = if (fact.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                     )
+                } else if (fact.slider != null) {
+                    FactSliderRow(fact, fact.slider) { reloads++ }
                 } else {
                     FactRow(fact) { reloads++ }
                     section.calculators[fact.path]?.let { calculator ->
@@ -212,3 +220,33 @@ internal val KNOWN_CONTROL_KINDS = setOf("toggle", "choice", "bitmask", "text", 
 
 internal fun controlIsUnderstood(kind: String): Boolean =
     kind.isBlank() || kind in KNOWN_CONTROL_KINDS
+
+internal fun factSlider(json: JSONObject): FactSlider? {
+    val from = json.optDouble("from", Double.NaN).takeIf { !it.isNaN() } ?: return null
+    val to = json.optDouble("to", Double.NaN).takeIf { !it.isNaN() && it > from } ?: return null
+    return FactSlider(from.toFloat(), to.toFloat(), json.optDouble("step", Double.NaN).takeIf { !it.isNaN() && it > 0 }?.toFloat(), json.optInt("decimals", 2))
+}
+
+@Composable
+private fun FactSliderRow(fact: Fact, slider: FactSlider, onWrite: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val held = (fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull() ?: slider.from
+    var shown by remember(fact.path, held) { mutableStateOf(held.coerceIn(slider.from, slider.to)) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        Text(fact.title, style = MaterialTheme.typography.bodyMedium)
+        if (fact.description.isNotBlank() && fact.description != fact.title) Text(fact.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Slider(
+            value = shown,
+            onValueChange = { shown = it },
+            valueRange = slider.from..slider.to,
+            enabled = fact.enabled && !fact.readOnly,
+            onValueChangeFinished = {
+                scope.launch {
+                    withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, shown.toDouble()) }
+                    onWrite()
+                }
+            },
+        )
+        Text("%.${slider.decimals}f".format(shown), style = MaterialTheme.typography.labelMedium)
+    }
+}

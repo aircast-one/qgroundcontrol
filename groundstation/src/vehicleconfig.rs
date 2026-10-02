@@ -606,6 +606,9 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
     if !control["label"].is_null() {
         decoded["label"] = control["label"].clone();
     }
+    if let Some((from, to)) = (control["control"] == "factslider").then(|| control["sliderFrom"].as_f64().zip(control["sliderTo"].as_f64())).flatten() {
+        decoded["slider"] = json!({ "from": from, "to": to, "step": control["majorTickStepSize"].as_f64(), "decimals": control["decimalPlaces"].as_i64() });
+    }
     if let Some(description) = control["description"].as_str() {
         decoded["description"] = json!(description);
     }
