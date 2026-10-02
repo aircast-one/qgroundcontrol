@@ -31,11 +31,13 @@ class FenceInclusionTest {
     }
 
     @Test
-    fun `a circle is flipped whether it was named by its edge or its centre`() {
+    fun `a circle is named by its edge or its centre and only described, like GeoFenceEditor`() {
         val circles = listOf(circle(2, false))
 
         assertEquals(false, selectedFence(MapHit.Circle(2), emptyList(), circles)?.keepsIn)
         assertEquals(false, selectedFence(MapHit.CircleCentre(2), emptyList(), circles)?.keepsIn)
+        assertEquals(null, selectedFence(MapHit.Circle(2), emptyList(), circles)?.flip)
+        assertEquals(true, selectedFence(MapHit.FenceVertex(0, 0), listOf(polygon(0, true)), emptyList())?.flip != null)
     }
 
     @Test

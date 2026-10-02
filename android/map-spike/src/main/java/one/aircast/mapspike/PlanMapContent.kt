@@ -837,11 +837,13 @@ internal fun MapSpikeScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         selectedFence(selected, fences, circles)?.let { fence ->
-                            TextButton(onClick = {
-                                onBridge(
-                                    if (fence.keepsIn) "Making it keep-out" else "Making it keep-in",
-                                ) { fence.flip() }
-                            }) { Text(if (fence.keepsIn) "Make keep-out" else "Make keep-in") }
+                            fence.flip?.let { flip ->
+                                TextButton(onClick = {
+                                    onBridge(
+                                        if (fence.keepsIn) "Making it keep-out" else "Making it keep-in",
+                                    ) { flip() }
+                                }) { Text(if (fence.keepsIn) "Make keep-out" else "Make keep-in") }
+                            }
                         }
 
                         fenceDetail(selected, fences, circles)?.let {

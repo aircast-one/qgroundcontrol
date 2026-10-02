@@ -37,7 +37,7 @@ data class SelectedFence(
     val keepsIn: Boolean,
     val kindText: String,
     val detailText: String,
-    val flip: () -> Boolean,
+    val flip: (() -> Boolean)?,
 )
 
 private fun fenceOf(polygon: FencePolygon) = SelectedFence(
@@ -51,7 +51,7 @@ private fun fenceOf(circle: FenceCircle) = SelectedFence(
     keepsIn = circle.inclusion,
     kindText = circle.kindText,
     detailText = circle.detailText,
-    flip = { FenceBridge.setCircleInclusion(circle.index, !circle.inclusion) },
+    flip = null,
 )
 
 // The wording and the keep-in flip both need one answer - which fence does this
