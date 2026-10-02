@@ -1387,7 +1387,9 @@ impl Vehicle {
                         let app = Some(crate::noticeboard::application_name()).filter(|n| !n.is_empty()).unwrap_or_else(|| "QGroundControl".to_string());
                         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &format!("{app} was unable to retrieve the full set of parameters from vehicle {}. This will cause {app} to be unable to display its full user interface. If you are using modified firmware, you may need to resolve any vehicle startup errors to resolve the issue. If you are using standard firmware, you may need to upgrade to a newer version to resolve the issue.", self.id));
                     }
-                    self.step_done(connect::Step::Parameters, now_ms)
+                    let time = Outbound::SystemTime { time_unix_usec: now_us() };
+                    let clock: Vec<Vec<u8>> = [&time, &time].into_iter().filter_map(|send| self.encode(send)).collect();
+                    clock.into_iter().chain(self.step_done(connect::Step::Parameters, now_ms)).collect()
                 }
                 params::Action::NoResponse => {
                     self.note("The vehicle did not respond to the parameter request.".to_string());
@@ -4432,7 +4434,10 @@ mod tests {
         assert!(hub.on_frame(origin(4), &autopilot, &param_value("RTL_ALT", 2, 0, 1500.0), 1_300_000, 1_300).is_empty());
         assert_eq!(hub.snapshot()["vehicle"]["parameters"]["ready"], false);
         let listed = hub.on_frame(origin(4), &autopilot, &param_value("WPNAV_SPEED", 2, 1, 250.0), 1_400_000, 1_400);
-        assert!(matches!(decode(&listed[0].1), MavMessage::MISSION_REQUEST_LIST(_)), "with the parameters in, the mission is read from the vehicle");
+        let clock: Vec<u64> = listed.iter().filter_map(|(_, b)| match decode(b) { MavMessage::SYSTEM_TIME(t) => Some(t.time_unix_usec), _ => None }).collect();
+        assert_eq!(clock.len(), 2, "Vehicle::_parametersReady sends the time twice, for a noisy link");
+        assert!(clock.iter().all(|usec| *usec > 1_600_000_000_000_000), "as wall-clock microseconds since the epoch");
+        assert!(matches!(decode(&listed[2].1), MavMessage::MISSION_REQUEST_LIST(_)), "with the parameters in, the mission is read from the vehicle");
         assert_eq!(hub.snapshot()["vehicle"]["parameters"], json!({ "ready": true, "progress": 1.0, "count": 2 }));
         assert_eq!(hub.snapshot()["vehicle"]["initialConnectComplete"], false);
         use mavlink::dialects::ardupilotmega::{MISSION_COUNT_DATA, MavMissionType};
