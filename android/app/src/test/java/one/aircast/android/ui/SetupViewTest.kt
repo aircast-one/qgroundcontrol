@@ -165,4 +165,10 @@ class SetupFirmwareTest {
         assertEquals("1 component needs setup. Radio", readinessNote(pending, listed = false))
         assertNull(readinessNote(pending.copy(setupComplete = true), listed = false))
     }
+
+    @Test
+    fun `the parameters row counts what the vehicle has, as Penpot`() {
+        assertEquals("1,204 parameters", parameterCountText(1204))
+        assertNull(parameterCountText(0))
+    }
 }

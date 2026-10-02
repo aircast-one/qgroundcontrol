@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -73,6 +74,9 @@ internal fun setupSubtitle(vehicle: String, firmware: String): String =
 
 internal fun readinessNote(readiness: SetupReadiness?, listed: Boolean): String? =
     readiness?.takeIf { it.setupComplete != true && !listed }?.let { listOf(it.headline, it.detail).filter(String::isNotBlank).joinToString(". ") }?.ifBlank { null }
+
+internal fun parameterCountText(count: Int): String? =
+    count.takeIf { it > 0 }?.let { "%,d parameters".format(java.util.Locale.US, it) }
 
 internal fun attentionAction(className: String): String =
     if (listOf("Sensors", "Radio").any { it in className }) "Calibrate" else "Set up"
@@ -338,6 +342,10 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             delay(SETUP_SUMMARY_POLL_MS)
         }
     }
+    val parametersAreReady = remember(setupJson) { parametersReady(setupJson) }
+    val parameterCount by produceState(0, parametersAreReady) {
+        value = if (parametersAreReady) withContext(Dispatchers.Default) { parameterNames().size } else 0
+    }
     LazyColumn(pane.fillMaxSize()) {
         item(key = "verdict") {
             val readiness = setup
@@ -428,7 +436,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             SectionHeader("Advanced")
             SetupRow(
                 title = "Parameters",
-                status = "Every setting the vehicle has",
+                subtitle = parameterCountText(parameterCount) ?: "Every setting the vehicle has",
                 state = SetupState.Neutral,
                 icon = R.drawable.ic_tune,
                 onClick = {

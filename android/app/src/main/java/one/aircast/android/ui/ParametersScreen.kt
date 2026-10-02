@@ -192,7 +192,7 @@ internal fun parameterValueText(fact: Fact): String = when {
 internal fun parameterSubtitle(description: String, units: String): String =
     listOf(description, units).filter { it.isNotBlank() }.joinToString(" · ")
 
-private fun parameterNames(): List<String> {
+internal fun parameterNames(): List<String> {
     fun names(component: Int): List<String> =
         (Qgc.invokeResult("$PARAMETER_MANAGER.parameterNames", component) as? JSONArray)?.let { list -> (0 until list.length()).map { list.optText(it) } }.orEmpty()
     val components = (Qgc.invokeResult("$PARAMETER_MANAGER.componentIds") as? JSONArray)?.let { list -> (0 until list.length()).map { list.optInt(it) } }.orEmpty()
