@@ -275,7 +275,6 @@ impl GcsPosition {
             return (before.error != self.error).then(|| vec![Out::Error(None), Out::Reported]).unwrap_or_default();
         }
         self.last_report_ms = Some(now.0);
-        self.motion = (present(update.direction_deg).map(wrap_heading), present(update.ground_speed_m_s));
 
         let latitude = present(update.latitude);
         let longitude = present(update.longitude).map(wrap_longitude);
@@ -289,6 +288,7 @@ impl GcsPosition {
         (self.latitude, self.longitude, self.stamped_ms, self.stale_announced) = accepted
             .map(|(latitude, longitude)| (Some(latitude), Some(longitude), Some(now.0), false))
             .unwrap_or((self.latitude, self.longitude, self.stamped_ms, self.stale_announced));
+        self.motion = accepted.map_or(self.motion, |_| (present(update.direction_deg).map(wrap_heading), present(update.ground_speed_m_s)));
 
         let reported_vertical = present(update.vertical_accuracy_m);
         self.vertical_accuracy_m = reported_vertical.or(self.vertical_accuracy_m);
@@ -708,6 +708,17 @@ mod tests {
         plugin.select_source(Source::Nmea);
         plugin.on_update(Update { direction_deg: Some(10.0), ..fix(Some(4.0)) }, at(2_000));
         assert_eq!(plugin.heading_deg, None, "QGCPositionManager::_usingPluginSource never clears, so the plugin's unconditional heading trust survives a switch to NMEA; here the trust is the live source's, and switching withdraws it");
+    }
+
+    #[test]
+    fn follow_me_motion_comes_from_the_same_update_as_the_accepted_position() {
+        let mut position = listening(Source::InternalGps);
+        position.on_update(Update { direction_deg: Some(90.0), ground_speed_m_s: Some(2.0), ..fix(Some(4.0)) }, at(1_000));
+        assert_eq!(position.motion, (Some(90.0), Some(2.0)));
+        position.on_update(Update { direction_deg: None, ground_speed_m_s: Some(5.0), ..fix(Some(500.0)) }, at(1_100));
+        assert_eq!(position.motion, (Some(90.0), Some(2.0)), "a fix the accuracy gate refused does not pair its motion with the last accepted position");
+        position.on_update(Update { direction_deg: None, ground_speed_m_s: None, ..fix(Some(4.0)) }, at(1_200));
+        assert_eq!(position.motion, (None, None), "a fresh fix without a bearing says so, rather than repeating the old one");
     }
 
     #[test]

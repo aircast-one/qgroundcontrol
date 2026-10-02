@@ -292,8 +292,8 @@ pub fn follow_target(report: &Report) -> FollowTargetWire {
         latitude_deg_e7: report.latitude_deg_e7,
         longitude_deg_e7: report.longitude_deg_e7,
         altitude_amsl_m: metres(report.altitude_amsl_m),
-        velocity_m_s: [metres(report.velocity_north_m_s), metres(report.velocity_east_m_s), metres(report.velocity_down_m_s)],
-        position_cov: [metres(report.position_std_dev_horizontal_m), metres(report.position_std_dev_horizontal_m), metres(report.position_std_dev_vertical_m)],
+        velocity_m_s: [report.velocity_north_m_s.unwrap_or(0.0) as f32, report.velocity_east_m_s.unwrap_or(0.0) as f32, 0.0],
+        position_cov: [report.position_std_dev_horizontal_m.unwrap_or(0.0) as f32, 0.0, report.position_std_dev_vertical_m.unwrap_or(0.0) as f32],
         estimation: report.estimation,
     }
 }
@@ -444,7 +444,7 @@ pub fn tick(backend: &dyn Backend, now_ms: u64) {
         if last.is_some_and(|last| now_ms.saturating_sub(last) < MOTION_INTERVAL_MS) {
             return;
         }
-        *last = Some(now_ms);
+        *last = Some(last.filter(|last| now_ms.saturating_sub(*last) < 2 * MOTION_INTERVAL_MS).map_or(now_ms, |last| last + MOTION_INTERVAL_MS));
     }
     let mode = Mode::from_setting(value_number(&backend.get(SETTING)));
     let Some(report) = gcs_fix(backend, crate::hub::now_us() / 1000).as_ref().and_then(motion_report) else { return };
@@ -475,7 +475,10 @@ pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {
         latitude: read("latitude").unwrap_or(f64::NAN),
         longitude: read("longitude").unwrap_or(f64::NAN),
         altitude_amsl_m: read("altitude"),
-        heading_deg: value_number(&backend.get(GCS_DIRECTION)).or_else(|| value_number(&backend.get(GCS_HEADING))),
+        heading_deg: match object(&backend.get(GCS_DIRECTION)) {
+            served if served.get("kind").and_then(Value::as_str) == Some("value") => finite(served.get("value").and_then(Value::as_f64)),
+            _ => value_number(&backend.get(GCS_HEADING)),
+        },
         ground_speed_m_s: value_number(&backend.get(GCS_GROUND_SPEED)),
         vertical_speed_down_m_s: None,
         horizontal_accuracy_m: value_number(&backend.get(GCS_HORIZONTAL_ACCURACY)),
@@ -521,7 +524,7 @@ mod tests {
         assert!(data.vel[0].abs() < 1e-5 && (data.vel[1] - 2.0).abs() < 1e-5, "heading east at 2 m/s: {:?}", data.vel);
         let still = motion_report(&Fix { ground_speed_m_s: None, ..fix }).unwrap();
         let crate::mavout::Outbound::FollowTarget { data } = outbound(Stream::FollowTarget, &still, None, 0) else { panic!("follow target") };
-        assert!(data.vel.iter().all(|v| v.is_nan()) && data.est_capabilities & ESTIMATION_VELOCITY == 0);
+        assert_eq!((data.vel, data.est_capabilities & ESTIMATION_VELOCITY), ([0.0, 0.0, 0.0], 0), "FollowMe zero-initialises mavlink_follow_target_t and only fills vel[0..1] when it has a velocity");
         let crate::mavout::Outbound::GlobalPositionInt { data } = outbound(Stream::GlobalPositionInt, &report, Some(500.0), 1234) else { panic!("global position") };
         assert_eq!((data.time_boot_ms, data.alt, data.relative_alt, data.vy, data.hdg), (1234, 500_000, 0, 200, 9000), "APMFirmwarePlugin sends the home altitude and no relative altitude");
         let bytes = crate::mavout::encode(0, &outbound(Stream::FollowTarget, &report, None, 1)).unwrap();
@@ -562,6 +565,9 @@ mod tests {
 
     impl Backend for Fake {
         fn get(&self, path: &str) -> String {
+            if matches!(path, GCS_DIRECTION | GCS_GROUND_SPEED) {
+                return json!({ "kind": "error", "error": "unknown path" }).to_string();
+            }
             let value = match path {
                 SETTING => self.setting.clone(),
                 "vehicles.vehicles.count" => json!(self.count.unwrap_or(self.fleet.len())),
@@ -740,11 +746,11 @@ mod tests {
         assert_eq!(view["vehicles"][0]["sentVelocityZeroed"], json!(true), "so the snapshot says the ArduPilot vehicle is being told the operator is standing still, which is what makes it mispredict the lead");
         assert_eq!(view["vehicles"][1]["sentVelocityZeroed"], json!(false), "the follow target message says unknown in its estimation bits instead, so nothing is faked there");
         let follow = follow_target(&blind);
-        assert!(follow.velocity_m_s.iter().all(|v| v.is_nan()), "an unknown velocity is not a stationary one, and the C++ ships a zero-initialised struct");
-        assert!(follow.position_cov.iter().all(|c| c.is_nan()), "and an unknown covariance is MAVLink's NaN, not the zero that claims a perfect fix");
+        assert_eq!(follow.velocity_m_s, [0.0, 0.0, 0.0], "FirmwarePlugin::sendGCSMotionReport ships a zero-initialised struct; PX4 drops a non-finite velocity");
+        assert_eq!(follow.position_cov, [0.0, 0.0, 0.0]);
         assert_eq!(follow.estimation & ESTIMATION_VELOCITY, 0);
         let known = follow_target(&motion_report(&Fix { horizontal_accuracy_m: Some(2.5), vertical_accuracy_m: Some(4.0), ..fix() }).unwrap());
-        assert_eq!(known.position_cov, [2.5, 2.5, 4.0], "a horizontal accuracy covers both horizontal axes, as FollowMe.cc fills them");
+        assert_eq!(known.position_cov, [2.5, 0.0, 4.0], "sendGCSMotionReport fills position_cov[0] and [2] only");
     }
 
     #[test]
