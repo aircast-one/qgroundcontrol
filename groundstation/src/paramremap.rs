@@ -1,5 +1,5 @@
 const HIGHEST_MINOR: &[(u8, u8)] = &[(4, 7)];
-const NO_REMAP: &str = "noremap.";
+pub const NO_REMAP: &str = "noremap.";
 
 const REMAPS: &[(&str, u8, u8, &str, &str)] = &[
     ("Copter", 4, 0, "TUNE_MIN", "TUNE_LOW"),

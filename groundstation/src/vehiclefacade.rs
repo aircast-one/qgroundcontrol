@@ -1103,7 +1103,7 @@ pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
         };
         (vehicle.id, component, name, raw)
     };
-    Some(json!({ "action": "paramSet", "vehicle": vehicle_id, "component": component, "name": name, "value": raw }))
+    Some(json!({ "action": "paramSet", "vehicle": vehicle_id, "component": component, "name": format!("{}{name}", crate::paramremap::NO_REMAP), "value": raw }))
 }
 
 fn answer_parameter(path: &str) -> Option<Value> {

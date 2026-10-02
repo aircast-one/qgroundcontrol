@@ -1013,7 +1013,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
                     let linked = scope.with(resolved.repeat.clone(), locals);
                     control["linkedParams"].as_object().cloned().unwrap_or_default().iter().try_for_each(|(other, expression)| {
                         let computed = linked.eval_text(expression.as_str().unwrap_or("value")).number().ok_or_else(|| format!("{other} could not be computed"))?;
-                        set_parameter(backend, other, false, computed)
+                        set_parameter(backend, other, true, computed)
                     })
                 }),
             }

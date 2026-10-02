@@ -1303,12 +1303,12 @@ impl Vehicle {
             return Err("Parameters are still loading.".to_string());
         }
         let component = request.get("component").and_then(Value::as_u64).filter(|c| (1..=255).contains(c)).map(|c| c as u8).unwrap_or(self.component);
-        let name = request
+        let name = &request
             .get("name")
             .and_then(Value::as_str)
+            .map(|n| self.parameter_name(n))
             .filter(|n| !n.is_empty() && n.len() <= 16 && n.bytes().all(|b| b.is_ascii_graphic()))
             .ok_or_else(|| "A parameter name of at most sixteen printable characters is required.".to_string())?;
-        let name = &self.parameter_name(name);
         if request.get("refresh").and_then(Value::as_bool).unwrap_or(false) {
             let actions = self.params.refresh(component, name);
             return Ok(self.follow_params(actions, now_ms));
@@ -5175,7 +5175,7 @@ mod tests {
         let refreshed = hub.parameter_request(Some(1), &json!({ "name": "WPNAV_SPEED", "refresh": true }), 12_000).unwrap();
         assert!(matches!(decode(&refreshed[0].1), MavMessage::PARAM_REQUEST_READ(r) if r.param_index == -1 && r.param_id.to_str().unwrap() == "WPNAV_SPEED"));
         assert!(hub.parameter_request(Some(9), &json!({ "name": "X", "value": 1.0 }), 12_000).is_err());
-        let guided = hub.guided(Some(1), &json!({ "action": "paramSet", "vehicle": 1, "component": 1, "name": "WPNAV_SPEED", "value": 300.0 }), 13_000).unwrap();
+        let guided = hub.guided(Some(1), &json!({ "action": "paramSet", "vehicle": 1, "component": 1, "name": "noremap.WPNAV_SPEED", "value": 300.0 }), 13_000).unwrap();
         assert!(matches!(decode(&guided[0].1), MavMessage::PARAM_SET(p) if p.param_id.to_str().unwrap() == "WPNAV_SPEED" && p.param_value == 300.0), "a core-flavor fact write reaches the vehicle through the tracked writer");
     }
 
