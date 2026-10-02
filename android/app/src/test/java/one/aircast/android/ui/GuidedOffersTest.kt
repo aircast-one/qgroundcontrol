@@ -11,4 +11,9 @@ class GuidedOffersTest {
         assertEquals("Smart RTL", offers.getValue("rtl").option)
         assertEquals("", offers.getValue("land").option)
     }
+
+    @Test
+    fun `the multi-vehicle panel is on unless the setting turns it off`() {
+        assertEquals(listOf(true, true, false), listOf(null, JSONObject("""{"value":true}"""), JSONObject("""{"value":false}""")).map { multiVehiclePanelEnabled(it) })
+    }
 }

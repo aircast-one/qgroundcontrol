@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.VehicleChoice
 import org.json.JSONObject
 import one.aircast.mapspike.CHOOSER_TITLE
 import one.aircast.mapspike.VEHICLES_VIEW
@@ -101,6 +102,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val lost = fly?.contactLost == true
     val subtitle = vehicleSubtitle(fly)
     var picking by remember { mutableStateOf(false) }
+    val panelJson by qgcPath(MULTI_VEHICLE_PANEL)
+    val panelEnabled = multiVehiclePanelEnabled(panelJson)
     var offline by remember { mutableStateOf(false) }
     var statusSettings by remember { mutableStateOf(false) }
     var modeMenu by remember { mutableStateOf(false) }
@@ -189,20 +192,21 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
             val distinguishes = linkDistinguishes(choices.choices)
+            val selectionBox: @Composable (VehicleChoice) -> Unit = { choice ->
+                Checkbox(
+                    checked = choice.selected,
+                    onCheckedChange = { wanted ->
+                        scope.launch {
+                            withContext(Dispatchers.Default) { FleetBridge.setSelected(choice.id, wanted) }
+                        }
+                    },
+                )
+            }
             choices.choices.forEach { choice ->
                 ListItem(
                     headlineContent = { Text(choice.name) },
                     supportingContent = { Text(vehicleChoiceLine(choice, distinguishes)) },
-                    leadingContent = {
-                        Checkbox(
-                            checked = choice.selected,
-                            onCheckedChange = { wanted ->
-                                scope.launch {
-                                    withContext(Dispatchers.Default) { FleetBridge.setSelected(choice.id, wanted) }
-                                }
-                            },
-                        )
-                    },
+                    leadingContent = selectionBox.takeIf { panelEnabled }?.let { box -> { box(choice) } },
                     trailingContent = {
                         if (choice.active) {
                             Icon(Icons.Default.Check, contentDescription = "Flying this one")
@@ -233,7 +237,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             FootNote(
                 "Tap a name to fly that aircraft. Arm, Takeoff and every action on the flight screen go to the one you pick.",
             )
-            FleetControls(vehiclesJson, choices) { message -> refusal = message }
+            if (panelEnabled) FleetControls(vehiclesJson, choices) { message -> refusal = message }
         }
     }
 }
@@ -360,6 +364,11 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
         }
     }
 }
+
+internal const val MULTI_VEHICLE_PANEL = "settings.appSettings.enableMultiVehiclePanel.rawValue"
+
+internal fun multiVehiclePanelEnabled(setting: JSONObject?): Boolean =
+    setting?.takeIf { it.has("value") && !it.isNull("value") }?.optBoolean("value", true) ?: true
 
 internal fun activeVehicleId(view: JSONObject?): Int? =
     view?.takeIf { !it.isNull("activeId") }?.optInt("activeId", -1)?.takeIf { it > 0 }

@@ -157,7 +157,6 @@ internal fun settingsPagePath(title: String): String = "$SETTINGS_VIEW($title)"
 
 internal val NOT_BUILT_HERE = mapOf(
     "displayPresetsTabFirst" to "this head has no presets tab",
-    "enableMultiVehiclePanel" to "the vehicle picker is always offered when several vehicles are connected",
     "maxCacheMemorySize" to "the map keeps its own memory cache",
 )
 
