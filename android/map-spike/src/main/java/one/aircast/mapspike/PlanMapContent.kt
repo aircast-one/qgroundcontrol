@@ -701,14 +701,6 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    TextButton(
-                        enabled = kindAllows(insertable, KIND_ROI),
-                        onClick = {
-                            val at = placeAt()
-                            addMissionItem(KIND_ROI, "Adding region of interest", at, insertAfter(selected, allItems))
-                        },
-                    ) { Text("ROI") }
-
                     TextButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         onBridge("Adding circle", done = support.reason.ifBlank { null }) {
@@ -751,7 +743,7 @@ internal fun MapSpikeScreen(
                             at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
                         }
                     }) { Text("Rally") }
-                    TextButton(
+                    if (kindOffered(insertable, KIND_TAKEOFF)) TextButton(
                         enabled = kindAllows(insertable, KIND_TAKEOFF),
                         onClick = {
                             val at = placeAt()

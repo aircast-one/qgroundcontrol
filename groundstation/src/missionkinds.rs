@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{object, refused};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.complexMissionItems", "plan.missionController.homePositionSet", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed", "plan.missionController.hasLandItem", "plan.controllerVehicle.multiRotor", crate::coreplan::CHANGED, "settings.planViewSettings.takeoffItemNotRequired", "settings.planViewSettings.allowMultipleLandingPatterns"];
+pub const DEPS: &[&str] = &["plan.missionController.complexMissionItems", "plan.missionController.homePositionSet", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed", "plan.missionController.hasLandItem", "plan.controllerVehicle.multiRotor", "plan.controllerVehicle.rover", crate::coreplan::CHANGED, "settings.planViewSettings.takeoffItemNotRequired", "settings.planViewSettings.allowMultipleLandingPatterns"];
 const DEFAULT_AREA_METRES: f64 = 150.0;
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -62,11 +62,13 @@ pub struct Insertable {
     pub patterns: Option<Vec<String>>,
     pub has_land: bool,
     pub multi_rotor: bool,
+    pub rover: bool,
 }
 
 impl Insertable {
     pub fn offers(&self, kind: &Kind) -> bool {
         match (kind.complex_name, &self.patterns) {
+            _ if kind.id == "takeoff" && self.rover => false,
             (Some(name), Some(offered)) => offered.iter().any(|held| held == name),
             _ => true,
         }
@@ -147,6 +149,7 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
         fly_through: answered("flyThroughCommandsAllowed", true),
         has_land: answered("hasLandItem", false),
         multi_rotor: crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "multiRotor")), "multiRotor"),
+        rover: crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover"),
         patterns: if crate::coreplan::enabled() { Some(crate::plan::offered_patterns(backend).into_iter().map(str::to_string).collect()) } else { mission.get("complexMissionItems").and_then(Value::as_array).map(|names| {
             names.iter().filter_map(|name| name.as_str().or_else(|| name.get("canonicalName").and_then(Value::as_str))).map(str::to_string).collect()
         }) },
@@ -263,6 +266,15 @@ pub fn seed_view(_backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_rover_is_offered_no_takeoff_like_plan_view_add_menu() {
+        let insertable = |rover: bool| Insertable { at_sequence: None, home_set: true, only_takeoff: false, takeoff: true, land: true, fly_through: true, patterns: None, has_land: false, multi_rotor: false, rover };
+        let takeoff = KINDS.iter().find(|k| k.id == "takeoff").unwrap();
+        assert!(insertable(false).offers(takeoff));
+        assert!(!insertable(true).offers(takeoff));
+        assert!(insertable(true).offers(&KINDS[0]), "every other kind stays");
+    }
 
     #[test]
     fn the_land_button_reads_as_plan_view_labels_it() {

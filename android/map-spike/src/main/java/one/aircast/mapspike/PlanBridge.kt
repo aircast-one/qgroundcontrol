@@ -14,7 +14,6 @@ const val KIND_TAKEOFF = "takeoff"
 const val KIND_SURVEY = "survey"
 const val KIND_CORRIDOR = "corridor"
 const val KIND_STRUCTURE = "structure"
-const val KIND_ROI = "roi"
 
 data class MissionKind(
     val id: String,
@@ -39,6 +38,9 @@ fun missionKinds(view: JSONObject?): List<MissionKind> {
 
 fun scanPatterns(kinds: List<MissionKind>): List<MissionKind> =
     kinds.filter { it.label.isNotBlank() }
+
+fun kindOffered(kinds: List<MissionKind>, id: String): Boolean =
+    kinds.isEmpty() || kinds.any { it.id == id }
 
 fun kindAllows(kinds: List<MissionKind>, id: String): Boolean =
     kinds.firstOrNull { it.id == id }?.enabled ?: true
