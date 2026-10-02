@@ -1,5 +1,5 @@
 #[allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_CLEAR_ALL_DATA, REQUEST_EVENT_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, COMMAND_ACK_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, MavResult, PARAM_EXT_REQUEST_LIST_DATA, PARAM_MAP_RC_DATA, PARAM_EXT_REQUEST_READ_DATA, PARAM_EXT_SET_DATA, MavParamExtType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, RC_CHANNELS_OVERRIDE_DATA, LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA, MANUAL_CONTROL_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SERIAL_CONTROL_DATA, SerialControlDev, SerialControlFlag, SYSTEM_TIME_DATA};
+use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_CLEAR_ALL_DATA, REQUEST_EVENT_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, COMMAND_ACK_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, MavResult, PARAM_EXT_REQUEST_LIST_DATA, PARAM_MAP_RC_DATA, PARAM_EXT_REQUEST_READ_DATA, PARAM_EXT_SET_DATA, MavParamExtType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, RC_CHANNELS_OVERRIDE_DATA, LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA, MANUAL_CONTROL_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SERIAL_CONTROL_DATA, SerialControlDev, SerialControlFlag, SYSTEM_TIME_DATA, PING_DATA};
 use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
 use num_traits::FromPrimitive;
@@ -47,6 +47,7 @@ pub enum Outbound {
     LoggingAck { target: (u8, u8), sequence: u16 },
     AccelCalAck,
     SystemTime { time_unix_usec: u64 },
+    Ping { time_usec: u64, seq: u32, target: (u8, u8) },
     RcOverride { target: (u8, u8), channels: [u16; 18] },
     ManualControl { target: u8, x: i16, y: i16, z: i16, r: i16 },
     JoystickManualControl { target: u8, x: i16, y: i16, z: i16, r: i16, buttons: u16, buttons2: u16, enabled_extensions: u8, extensions: [i16; 8] },
@@ -336,6 +337,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
             mavlink_version: 3,
         })),
         Outbound::LogErase { target } => Some(MavMessage::LOG_ERASE(LOG_ERASE_DATA { target_system: target.0, target_component: target.1 })),
+        Outbound::Ping { time_usec, seq, target } => Some(MavMessage::PING(PING_DATA { time_usec: *time_usec, seq: *seq, target_system: target.0, target_component: target.1 })),
         Outbound::SystemTime { time_unix_usec } => Some(MavMessage::SYSTEM_TIME(SYSTEM_TIME_DATA { time_unix_usec: *time_unix_usec, time_boot_ms: 0 })),
         Outbound::AccelCalAck => Some(MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: ACCEL_CAL_ACK_COMMAND, result: MavResult::MAV_RESULT_TEMPORARILY_REJECTED, progress: 0, result_param2: 0, target_system: 0, target_component: 0 })),
         Outbound::LoggingAck { target, sequence } => Some(MavMessage::LOGGING_ACK(LOGGING_ACK_DATA { sequence: *sequence, target_system: target.0, target_component: target.1 })),

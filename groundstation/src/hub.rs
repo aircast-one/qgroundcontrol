@@ -2719,6 +2719,9 @@ impl Vehicle {
                 let actions = self.calibrate.on_mag_report(r.compass_id, r.cal_status as u8, r.fitness as f64, now_ms);
                 return self.follow_calibration(actions, now_ms);
             }
+            MavMessage::PING(p) if p.target_system == 0 && p.target_component == 0 => {
+                return self.encode(&Outbound::Ping { time_usec: p.time_usec, seq: p.seq, target: (header.system_id, header.component_id) }).into_iter().collect();
+            }
             MavMessage::AUTOPILOT_VERSION(v) => {
                 if self.autopilot == crate::modes::AUTOPILOT_PX4 && !self.version_notified {
                     if let Some(notice) = crate::connectnotices::outdated_px4(v.flight_sw_version) {
@@ -4289,6 +4292,18 @@ mod tests {
         assert!(notices(&answered).is_empty(), "an ack the mavlink crate cannot parse still settles the request");
         (1..=10u64).for_each(|step| { hub.tick(step * crate::mavcmd::ACK_TIMEOUT_MS + 1); });
         assert!(notices(&hub).contains(&"No response to operator control request".to_string()));
+    }
+
+    #[test]
+    fn a_ping_request_is_answered_and_a_ping_response_is_not() {
+        use mavlink::dialects::ardupilotmega::PING_DATA;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let ping = |target_system: u8| MavMessage::PING(PING_DATA { time_usec: 42, seq: 7, target_system, target_component: 0 });
+        let answered = hub.on_frame(origin(0), &header, &ping(0), 1, 1);
+        assert!(matches!(decode(&answered[0].1), MavMessage::PING(p) if (p.time_usec, p.seq, p.target_system, p.target_component) == (42, 7, 1, 1)), "Vehicle::_handlePing echoes the request back to its sender");
+        assert!(hub.on_frame(origin(0), &header, &ping(255), 2, 2).is_empty(), "a response addressed to someone is not a request");
     }
 
     #[test]
