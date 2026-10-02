@@ -59,6 +59,8 @@ internal fun firstRun(view: JSONObject?): FirstRun? =
         )
     }
 
+internal const val WELCOME_NOTE = "Two questions so numbers and controls match your drone."
+
 @Composable
 fun FirstRunDialog() {
     val view by qgcPath(FIRST_RUN_PATH)
@@ -75,7 +77,8 @@ fun FirstRunDialog() {
                     Box(Modifier.size(96.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
                         Icon(painterResource(R.drawable.ic_flight), null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(48.dp))
                     }
-                    Text(prompt.title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+                    Text("Welcome to ${androidx.compose.ui.res.stringResource(R.string.app_name)}", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+                    Text(WELCOME_NOTE, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
                 if (prompt.preferences.isNotEmpty()) {
                     SectionHeader(sentenceCase(prompt.vehicleHeading))
