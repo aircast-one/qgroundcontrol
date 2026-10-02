@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,13 @@ internal fun sentIsStillShowing(name: String?, snapshotAtSend: String?, live: St
 
 internal fun sentText(name: String): String = "Sent · $name"
 
+internal const val LAND_FROM = "view.instruments(altitudeRelative)"
+
+internal fun landFrom(view: org.json.JSONObject?): Pair<String, String>? =
+    view?.optJSONArray("items")?.optJSONObject(0)?.takeIf { !it.optBoolean("missing") }
+        ?.let { it.optString("value") to it.optString("units") }
+        ?.takeIf { it.first.isNotBlank() && it.first != "\u2014" }
+
 internal fun slideLabel(name: String): String = name.ifBlank { null }?.let { "Slide to ${it.lowercase()}" } ?: "Slide to confirm"
 
 @Composable
@@ -39,6 +47,10 @@ internal fun ConfirmTrack(
         Text(action.name, style = MaterialTheme.typography.titleLarge)
         if (action.confirm.isNotBlank()) {
             Text(action.confirm, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (action.offerId == "land") {
+            val fromJson by one.aircast.android.bridge.qgcPath(LAND_FROM)
+            landFrom(fromJson)?.let { (value, units) -> FactTile("FROM", value, units) }
         }
         action.option?.let { option ->
             Row(
@@ -78,4 +90,19 @@ internal fun SentNotice(name: String, onDismiss: () -> Unit, modifier: Modifier 
         color = MaterialTheme.colorScheme.primary,
         modifier = modifier.fillMaxWidth().clickable { onDismiss() },
     )
+}
+
+@Composable
+private fun FactTile(label: String, value: String, units: String) {
+    Column(
+        Modifier
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.medium)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(value, style = MaterialTheme.typography.titleLarge)
+            if (units.isNotBlank()) Text(units, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }

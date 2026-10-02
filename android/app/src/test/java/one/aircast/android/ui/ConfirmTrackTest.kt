@@ -40,4 +40,11 @@ class ConfirmTrackTest {
         assertEquals("Sent · Return", sentText("Return"))
         assertEquals("Sent · Emergency Stop", sentText("Emergency Stop"))
     }
+
+    @org.junit.Test
+    fun `the land confirm reads the height it lands from, and nothing when the vehicle has not said`() {
+        org.junit.Assert.assertEquals("42.0" to "m", landFrom(org.json.JSONObject("""{"items":[{"missing":false,"value":"42.0","units":"m"}]}""")))
+        org.junit.Assert.assertNull(landFrom(org.json.JSONObject("""{"items":[{"missing":true,"value":"\u2014","units":""}]}""")))
+        org.junit.Assert.assertNull(landFrom(null))
+    }
 }
