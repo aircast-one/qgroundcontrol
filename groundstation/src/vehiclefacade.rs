@@ -798,7 +798,8 @@ fn no_vehicle() -> bool {
 
 fn link_fields(known: &Known) -> Option<serde_json::Map<String, Value>> {
     let transports = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let described: Option<Vec<(u32, String, bool)>> = known.links.0.iter().map(|(link, lost)| transports.describe(*link).filter(|(_, kind, high_latency)| matches!(kind.as_str(), "udp" | "tcp") && !high_latency).map(|(name, _, _)| (*link, name, *lost))).collect();
+    let every_kind = !crate::qthost::present();
+    let described: Option<Vec<(u32, String, bool)>> = known.links.0.iter().map(|(link, lost)| transports.describe(*link).filter(|(_, kind, high_latency)| every_kind || (matches!(kind.as_str(), "udp" | "tcp") && !high_latency)).map(|(name, _, _)| (*link, name, *lost))).collect();
     let described = described.filter(|d| !d.is_empty())?;
     let primary = known.links.1.and_then(|id| described.iter().find(|(link, _, _)| *link == id)).map_or_else(String::new, |(_, name, _)| name.clone());
     Some(serde_json::Map::from_iter([
@@ -1794,7 +1795,7 @@ impl<B: Backend> Backend for Facade<B> {
         if path == "vehicle.closeVehicle" && switched_on() {
             let mut hub = crate::hub::lock();
             if let Some(id) = hub.active_id() {
-                hub.remove(id);
+                hub.close_vehicle(id, crate::hub::now_ms(), "the vehicle was closed");
             }
             drop(hub);
             if !crate::qthost::present() {

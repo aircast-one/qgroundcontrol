@@ -27,6 +27,7 @@ static SEQUENCE: AtomicU8 = AtomicU8::new(0);
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outbound {
     CommandLong { target: (u8, u8), command: u16, params: [f64; 7] },
+    CommandLongTry { target: (u8, u8), command: u16, params: [f64; 7], confirmation: u8 },
     CommandInt { target: (u8, u8), command: u16, frame: u8, params: [f64; 7], x: i32, y: i32 },
     SetMode { system: u8, base_mode: u8, custom_mode: u32 },
     RawCommandLong { target: (u8, u8), command: u16, params: [f64; 7] },
@@ -146,6 +147,10 @@ impl MessageData for SetModeBits {
 #[allow(deprecated)]
 pub fn message(send: &Outbound) -> Option<MavMessage> {
     match send {
+        Outbound::CommandLongTry { target, command, params, confirmation } => match message(&Outbound::CommandLong { target: *target, command: *command, params: *params })? {
+            MavMessage::COMMAND_LONG(data) => Some(MavMessage::COMMAND_LONG(COMMAND_LONG_DATA { confirmation: *confirmation, ..data })),
+            other => Some(other),
+        },
         Outbound::CommandLong { target, command, params: p } => Some(MavMessage::COMMAND_LONG(COMMAND_LONG_DATA {
             param1: p[0] as f32,
             param2: p[1] as f32,

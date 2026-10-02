@@ -285,6 +285,7 @@ pub struct Vehicle {
     pub primary_link: Option<LinkId>,
     pub link_kinds: LinkKinds,
     link_frames: Vec<(LinkId, Vec<u8>)>,
+    high_latency_links: [Option<LinkId>; 2],
     pub auto_disconnect: bool,
     pub check_list_state: i64,
     pub mission_last_current: i32,
@@ -475,6 +476,7 @@ impl Vehicle {
             primary_link: None,
             link_kinds: LinkKinds::default(),
             link_frames: Vec::new(),
+            high_latency_links: [None, None],
             auto_disconnect: false,
             check_list_state: 0,
             mission_last_current: -1,
@@ -1380,6 +1382,10 @@ impl Vehicle {
                     self.follow_modes(outs, now_ms)
                 }
                 Action::RefreshParameters if self.replay => self.step_done(connect::Step::Parameters, now_ms),
+                Action::RefreshParameters if self.commands.high_latency => {
+                    self.params.skip_load();
+                    self.step_done(connect::Step::Parameters, now_ms)
+                }
                 Action::RefreshParameters if self.skips_download_flying() => {
                     self.parameter_download_skipped = true;
                     self.step_done(connect::Step::Parameters, now_ms)
@@ -2056,9 +2062,20 @@ impl Vehicle {
         let id = self.id;
         outs.into_iter()
             .flat_map(|out| match out {
+                Out::Send { component, command: CMD_CONTROL_HIGH_LATENCY, params, confirmation, .. } => {
+                    let link = self.high_latency_links[usize::from(params[0] > 0.0)];
+                    let bytes = self.encode(&Outbound::CommandLongTry { target: (id, component), command: CMD_CONTROL_HIGH_LATENCY, params, confirmation });
+                    match link {
+                        Some(link) => {
+                            self.link_frames.extend(bytes.map(|bytes| (link, bytes)));
+                            Vec::new()
+                        }
+                        None => bytes.into_iter().collect(),
+                    }
+                }
                 Out::Send { component, command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params, .. } => self.encode(&Outbound::RawCommandLong { target: (id, component), command: crate::operatorcontrol::REQUEST_OPERATOR_CONTROL, params }).into_iter().collect(),
-                Out::Send { component, command, command_int: false, params, .. } => self.encode(&Outbound::CommandLong { target: (id, component), command, params }).into_iter().collect(),
-                Out::Send { component, command, command_int: true, frame, params, x, y } => self.encode(&Outbound::CommandInt { target: (id, component), command, frame, params, x, y }).into_iter().collect(),
+                Out::Send { component, command, command_int: false, params, confirmation, .. } => self.encode(&Outbound::CommandLongTry { target: (id, component), command, params, confirmation }).into_iter().collect(),
+                Out::Send { component, command, command_int: true, frame, params, x, y, .. } => self.encode(&Outbound::CommandInt { target: (id, component), command, frame, params, x, y }).into_iter().collect(),
                 Out::ShowError(text) => {
                     self.pending_notices.push((crate::noticeboard::MESSAGE, text.clone()));
                     self.note(text);
@@ -2339,7 +2356,7 @@ impl Vehicle {
             .or_else(|| live.iter().copied().find(|link| kinds.high_latency.contains(link)))
     }
 
-    fn update_primary_link(&mut self) -> bool {
+    fn update_primary_link(&mut self, now_ms: u64) -> bool {
         let held = self.primary_link.and_then(|id| self.link_states.iter().find(|(link, _, _)| *link == id)).copied();
         let kinds = &self.link_kinds;
         let keep = held.is_some_and(|(link, _, lost)| !lost && !kinds.high_latency.contains(&link) && !(kinds.cloud.contains(&link) && self.direct_link_alive()));
@@ -2353,9 +2370,12 @@ impl Vehicle {
         let switched = held.is_some() && best != self.primary_link;
         let stop = self.primary_link.filter(|link| self.link_kinds.high_latency.contains(link)).map(|link| (link, 0.0));
         let start = best.filter(|link| self.link_kinds.high_latency.contains(link)).map(|link| (link, 1.0));
-        let target = (self.id, COMP_AUTOPILOT1);
-        let frames: Vec<(LinkId, Vec<u8>)> = stop.into_iter().chain(start).filter_map(|(link, on)| self.encode(&Outbound::CommandLong { target, command: CMD_CONTROL_HIGH_LATENCY, params: [on, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }).map(|bytes| (link, bytes))).collect();
-        self.link_frames.extend(frames);
+        stop.into_iter().chain(start).for_each(|(link, on)| {
+            self.high_latency_links[usize::from(on > 0.0)] = Some(link);
+            let outs = self.commands.send(Command { component: COMP_AUTOPILOT1, command: CMD_CONTROL_HIGH_LATENCY, command_int: false, frame: 0, params: [on, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], show_error: true, tag: 0 }, now_ms);
+            let routed = self.handle(outs, now_ms);
+            self.link_frames.extend(routed.into_iter().map(|bytes| (link, bytes)));
+        });
         self.primary_link = best;
         if let Some(sending) = best {
             self.link = sending;
@@ -2393,14 +2413,14 @@ impl Vehicle {
                     if self.link_states.len() > 1 {
                         self.say_link(&format!("Communication regained on {} link", self.link_role(link)));
                     }
-                    if self.update_primary_link() {
+                    if self.update_primary_link(now_ms) {
                         self.announce_switch("Switching communication to new primary link");
                     }
                 }
             }
             None => {
                 self.link_states.push((link, now_ms, false));
-                self.update_primary_link();
+                self.update_primary_link(now_ms);
             }
         }
     }
@@ -2423,7 +2443,7 @@ impl Vehicle {
         self.link_states.iter_mut().filter(|(link, _, _)| silenced.contains(link)).for_each(|state| state.2 = true);
         self.connection_lost = !self.link_states.is_empty() && self.link_states.iter().all(|(_, _, lost)| *lost);
         let was_relayed = self.primary_link.is_some_and(|link| cloud.contains(&link));
-        if self.update_primary_link() {
+        if self.update_primary_link(now_ms) {
             let back_to_direct = was_relayed && self.primary_link.is_some_and(|link| !cloud.contains(&link));
             let text = if back_to_direct { "Switching communication back to the direct link." } else { "Switching communication to secondary link." };
             self.announce_switch(text);
@@ -3652,7 +3672,7 @@ impl Hub {
     fn keep_vehicles_on(&mut self, still_open: impl Fn(LinkId) -> bool) {
         self.vehicles.values_mut().for_each(|v| {
             v.link_states.retain(|(link, _, _)| still_open(*link));
-            let _ = v.update_primary_link();
+            let _ = v.update_primary_link(crate::hub::now_ms());
             if !still_open(v.link) {
                 if let Some(next) = v.primary_link.or_else(|| v.link_states.first().map(|(link, _, _)| *link)) {
                     v.link = next;
@@ -3937,7 +3957,13 @@ impl Hub {
             v.check_links(now_ms);
         });
         let closed: Vec<u8> = self.vehicles.values().filter(|v| v.connection_lost && v.auto_disconnect).map(|v| v.id).collect();
-        closed.iter().for_each(|id| self.remove(*id));
+        closed.iter().for_each(|id| self.close_vehicle(*id, now_ms, "communication lost"));
+    }
+
+    pub fn close_vehicle(&mut self, id: u8, now_ms: u64, reason: &'static str) {
+        let links: Vec<LinkId> = self.vehicles.get(&id).map(|v| v.link_states.iter().map(|(link, _, _)| *link).collect()).unwrap_or_default();
+        self.remove(id);
+        crate::corelinks::close_vehicle_at(now_ms, id, links, reason);
     }
 
     pub fn links_of_other_vehicles(&self, id: u8) -> Vec<LinkId> {
@@ -4486,6 +4512,10 @@ mod tests {
         hub.check_links(10_000, &kinds);
         assert_eq!(hub.active().unwrap().primary_link, Some(3));
         assert_eq!(control(hub.tick(10_100)), vec![(3, 1.0)], "VehicleLinkManager::_updatePrimaryLink starts transmission on a high-latency primary");
+        assert_eq!(control(hub.tick(10_100 + crate::mavcmd::ACK_TIMEOUT_MS + 600)), Vec::new(), "the high-latency ack timeout is 120 s, so an unanswered start is not resent at once");
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let started = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_CONTROL_HIGH_LATENCY, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
+        hub.on_frame(Origin { link: 3, replay: false, v2: true }, &header, &started, 0, 10_150);
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 10_200);
         assert_eq!(control(hub.tick(10_300)), vec![(3, 0.0)], "and stops it on that link when leaving it");
     }
@@ -5011,6 +5041,16 @@ mod tests {
         assert!(matches!(decode(&acked[0].1), MavMessage::MISSION_ACK(a) if a.mavtype as u8 == 0), "a truncated v2 payload is zero-padded and the read completes");
         let item = hub.active().unwrap().mission_snapshot()["mission"]["items"][0].clone();
         assert_eq!((item["command"].as_u64(), item["params"][0].as_f64(), item["params"][4].as_f64(), item["frame"].as_u64()), (Some(31999), Some(2.5), Some(47.4), Some(3)), "the _INT frame is stored as its float twin");
+    }
+
+    #[test]
+    fn closing_a_vehicle_closes_its_links_as_vehicle_link_manager_does() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &autopilot, &copter_heartbeat(5, false), 1_000_000, 1_000);
+        hub.close_vehicle(1, 2_000, "the vehicle was closed");
+        assert!(hub.active().is_none());
+        assert_eq!(crate::corelinks::pending_close(), Some((2_000, Some(vec![4]))), "a removed vehicle whose link stayed open came straight back on its next heartbeat");
     }
 
     #[test]

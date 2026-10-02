@@ -50,7 +50,7 @@ pub struct Command {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Out {
-    Send { component: u8, command: u16, command_int: bool, frame: u8, params: [f64; 7], x: i32, y: i32 },
+    Send { component: u8, command: u16, command_int: bool, frame: u8, params: [f64; 7], x: i32, y: i32, confirmation: u8 },
     Result { tag: u64, component: u8, command: u16, result: u8, failure: Failure },
     Progress { tag: u64, component: u8, command: u16 },
     ShowError(String),
@@ -83,7 +83,7 @@ pub struct Commands {
 }
 
 fn retries(command: u16) -> bool {
-    matches!(command, CMD_REQUEST_AUTOPILOT_CAPABILITIES | CMD_REQUEST_PROTOCOL_VERSION | CMD_REQUEST_MESSAGE | CMD_PREFLIGHT_STORAGE | CMD_RUN_PREARM_CHECKS)
+    matches!(command, CMD_REQUEST_AUTOPILOT_CAPABILITIES | CMD_REQUEST_MESSAGE | CMD_PREFLIGHT_STORAGE | CMD_RUN_PREARM_CHECKS)
 }
 
 fn can_duplicate(command: u16) -> bool {
@@ -171,7 +171,8 @@ impl Commands {
         }
         let c = &entry.command;
         let scale = |v: f64| if c.frame == FRAME_MISSION { v as i32 } else { (v * 1e7) as i32 };
-        vec![Out::Send { component: c.component, command: c.command, command_int: c.command_int, frame: c.frame, params: c.params, x: scale(c.params[4]), y: scale(c.params[5]) }]
+        let confirmation = u8::try_from(entry.tries - 1).unwrap_or(u8::MAX);
+        vec![Out::Send { component: c.component, command: c.command, command_int: c.command_int, frame: c.frame, params: c.params, x: scale(c.params[4]), y: scale(c.params[5]), confirmation }]
     }
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<Out> {
@@ -279,6 +280,16 @@ impl Commands {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_retry_counts_up_its_confirmation_as_mav_command_queue_does() {
+        let mut commands = Commands::default();
+        let command = Command { component: 1, command: CMD_RUN_PREARM_CHECKS, command_int: false, frame: 0, params: [0.0; 7], show_error: false, tag: 0 };
+        let first = commands.send(command, 0);
+        let retries: Vec<Vec<Out>> = [ACK_TIMEOUT_MS + 1, ACK_TIMEOUT_MS + 501].iter().map(|at| commands.tick(*at)).collect();
+        let confirmation = |outs: &[Out]| outs.iter().find_map(|o| match o { Out::Send { confirmation, .. } => Some(*confirmation), _ => None });
+        assert_eq!((confirmation(&first), confirmation(&retries[0]), confirmation(&retries[1])), (Some(0), Some(1), Some(2)));
+    }
 
     fn arm(tag: u64) -> Command {
         Command { component: 1, command: 400, command_int: false, frame: 0, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], show_error: true, tag }

@@ -290,6 +290,10 @@ impl Params {
         self.missing
     }
 
+    pub fn skip_load(&mut self) {
+        (self.ready, self.missing) = (true, true);
+    }
+
     pub fn ready(&self) -> bool {
         self.ready
     }
