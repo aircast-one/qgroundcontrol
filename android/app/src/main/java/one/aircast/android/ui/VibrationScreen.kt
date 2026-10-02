@@ -1,5 +1,9 @@
 package one.aircast.android.ui
 
+import one.aircast.android.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -109,6 +113,22 @@ internal fun vibrationReading(view: JSONObject?): VibrationReading? {
         },
         clipCounts = (0 until (clips?.length() ?: 0)).map { clips!!.optInt(it) },
     )
+}
+
+internal fun worstSeverity(reading: VibrationReading): String? =
+    listOf("danger", "warning", "normal").firstOrNull { level -> reading.axes.any { it.severity == level } }
+
+internal fun vibrationVerdict(reading: VibrationReading): String {
+    val worst = worstSeverity(reading)
+    val axes = reading.axes.filter { it.severity == worst }.joinToString(" and ") { it.axis }
+    val level = when (worst) {
+        "danger" -> "Vibration on $axes is over the unsafe limit of ${reading.dangerLevel.toInt()}."
+        "warning" -> "Vibration on $axes is above ${reading.warningLevel.toInt()}; watch it."
+        else -> "Vibration is well under the limit."
+    }
+    val clips = reading.clipCounts.sum()
+    val clipping = if (clips == 0) "No clipping." else "The accelerometers clipped $clips times; expect zero in flight."
+    return "$level $clipping"
 }
 
 internal fun severityLabel(severity: String?): String = when (severity) {
@@ -256,6 +276,8 @@ private fun VibrationBody(reading: VibrationReading, modifier: Modifier = Modifi
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        Surface(Modifier.fillMaxWidth().weight(1f), color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = vibrationHeading(reading.units),
             style = MaterialTheme.typography.titleSmall,
@@ -287,27 +309,42 @@ private fun VibrationBody(reading: VibrationReading, modifier: Modifier = Modifi
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-
-        HorizontalDivider()
-
-        Text(
-            text = "Clip count",
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            reading.clipCounts.forEachIndexed { index, count ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = count.toString(), style = MaterialTheme.typography.titleMedium)
-                    Text(text = "Accel ${index + 1}", style = MaterialTheme.typography.labelMedium)
-                }
             }
         }
-        Text(
-            text = "Any clipping in flight means the accelerometer saturated. Expect zero.",
-            style = MaterialTheme.typography.bodySmall,
-        )
+
+        val worst = worstSeverity(reading)
+        Surface(
+            Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.medium,
+            color = when (worst) {
+                "danger" -> MaterialTheme.colorScheme.errorContainer
+                "warning" -> MaterialTheme.aircast.warningContainer
+                else -> MaterialTheme.aircast.successContainer
+            },
+            contentColor = when (worst) {
+                "danger" -> MaterialTheme.colorScheme.onErrorContainer
+                "warning" -> MaterialTheme.aircast.warning
+                else -> MaterialTheme.aircast.success
+            },
+        ) {
+            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    painterResource(
+                        when (worst) {
+                            "danger" -> R.drawable.ic_error
+                            "warning" -> R.drawable.ic_warning
+                            else -> R.drawable.ic_check_circle
+                        },
+                    ),
+                    null,
+                )
+                Text(vibrationVerdict(reading), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Clipping events", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(reading.clipCounts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }

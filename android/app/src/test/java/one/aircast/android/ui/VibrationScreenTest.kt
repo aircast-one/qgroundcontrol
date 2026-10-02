@@ -183,4 +183,17 @@ class SilentStateTest {
 
         assertEquals("No Vehicle Connected", nothing.title)
     }
+
+    private fun reading(vararg severities: String?, clips: List<Int> = listOf(0, 0, 0)) = VibrationReading(
+        units = "m/s/s", scaleMaximum = 90.0, warningLevel = 30.0, dangerLevel = 60.0,
+        axes = severities.mapIndexed { index, severity -> VibrationAxis(listOf("X", "Y", "Z")[index], 1.0, 0.1f, severity) },
+        clipCounts = clips,
+    )
+
+    @Test
+    fun theVerdictNamesTheWorstAxesAndTheClipping() {
+        org.junit.Assert.assertEquals("Vibration on Z is over the unsafe limit of 60. The accelerometers clipped 15 times; expect zero in flight.", vibrationVerdict(reading("normal", "warning", "danger", clips = listOf(0, 3, 12))))
+        org.junit.Assert.assertEquals("Vibration on X and Y is above 30; watch it. No clipping.", vibrationVerdict(reading("warning", "warning", "normal")))
+        org.junit.Assert.assertEquals("Vibration is well under the limit. No clipping.", vibrationVerdict(reading("normal", "normal", "normal")))
+    }
 }
