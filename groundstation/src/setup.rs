@@ -39,9 +39,6 @@ const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
     ("Lights", &["APMLightsComponent"]),
     ("Flight Behavior", &["PX4FlightBehavior"]),
     ("Remote Support", &["APMRemoteSupportComponent"]),
-    // Five pages QGC constructs and this catalogue never offered, so no head could draw them
-    // however willing: a page absent here is not a page a head declined. Keyed on the class the
-    // plugin builds rather than on the name it shows, because the name is tr()-wrapped.
     ("Actuators", &["ActuatorComponent"]),
     ("Heli", &["APMHeliComponent"]),
     ("Follow Me", &["APMFollowComponent"]),
@@ -146,10 +143,6 @@ pub fn readiness(connected: bool, parameters_ready: bool, components: &[(String,
     if !connected {
         return (None, "No vehicle connected".into(), "Connect a vehicle to check what it needs.".into());
     }
-    // needs_attention is parameter-derived, and ParameterManager hands back a default Fact reading
-    // zero for a parameter it does not hold - so with parameters outstanding a component reports
-    // needing setup on evidence the vehicle never sent. The Option exists because no vehicle is no
-    // verdict; parameters not yet answered is the same thing and reached the same false.
     if !parameters_ready {
         return (None, "Waiting for this vehicle's parameters".into(), "Its setup cannot be checked until it has answered.".into());
     }
@@ -181,7 +174,7 @@ pub fn setup_view(backend: &dyn Backend, args: &[String]) -> Value {
     }
 }
 
-const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
+pub const COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
 
 pub struct Component {
     pub name: String,
@@ -243,6 +236,10 @@ fn blocked_by(component: &Value, armed: bool, flying: bool, rover: bool) -> Opti
         (false, true) => Some("flying"),
         (false, false) => None,
     }
+}
+
+pub fn setup_complete(backend: &dyn Backend) -> bool {
+    vehicle_components(backend).iter().all(|component| !component.needs_attention)
 }
 
 fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
@@ -680,9 +677,6 @@ mod components {
 
     #[test]
     fn a_page_qgc_builds_is_a_page_this_catalogue_offers() {
-        // Five pages QGC constructs were absent here, so both heads read as declining to draw
-        // them when nothing had ever offered them. A page missing from the catalogue is invisible
-        // in exactly the direction that looks like head debt.
         for page in ["Actuators", "Heli", "Follow Me", "WiFi Bridge", "Syslink"] {
             assert!(PAGES.iter().any(|(_, pages)| pages.contains(&page)), "{page} is built by a plugin and belongs to no group");
             assert!(PAGE_COMPONENTS.iter().any(|(name, keys)| *name == page && !keys.is_empty()), "{page} names no component, so it can never be backed");

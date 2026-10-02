@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer", "vehicle.healthAndArmingCheckReport.supported", "vehicle.healthAndArmingCheckReport.canArm", "vehicle.readyToFlyAvailable", "vehicle.readyToFly", "vehicle.allSensorsHealthy", crate::setup::COMPONENTS];
 
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
 
@@ -34,7 +34,7 @@ impl State {
     pub fn line(self) -> &'static str {
         match self {
             State::NotConnected => "Not connected",
-            State::ContactLost => "Communication lost",
+            State::ContactLost => "Comms Lost",
             State::Flying => "Flying",
             State::Landing => "Landing",
             State::Armed => "Armed",
@@ -43,22 +43,29 @@ impl State {
     }
 }
 
+pub fn ready_to_fly(report: Option<bool>, ready_to_fly: Option<bool>, sensors_healthy: bool, setup_complete: impl FnOnce() -> bool) -> bool {
+    report.or(ready_to_fly).unwrap_or_else(|| sensors_healthy && setup_complete())
+}
+
+pub fn state_line(state: State, ready: bool) -> &'static str {
+    match (state, ready) {
+        (State::Disarmed, true) => "Ready to Fly",
+        (State::Disarmed, false) => "Not Ready",
+        (other, _) => other.line(),
+    }
+}
+
 pub fn state_of(connected: bool, contact_lost: bool, armed: bool, flying: bool, landing: bool) -> State {
     match (connected, contact_lost, armed, flying, landing) {
         (false, ..) => State::NotConnected,
         (_, true, ..) => State::ContactLost,
         (_, _, false, ..) => State::Disarmed,
-        (_, _, _, true, true) => State::Landing,
-        (_, _, _, true, false) => State::Flying,
+        (_, _, _, true, _) => State::Flying,
+        (_, _, _, false, true) => State::Landing,
         _ => State::Armed,
     }
 }
 
-// QGC reports 255 when the vehicle has not said what the signal strength is, and 0..=100
-// otherwise. The range test excludes the sentinel on its own, so there is no separate
-// constant for it - one would be a branch nothing can reach. Zero stays a READING and the
-// worst one: QGC's own indicator hides at zero, so a total RC loss looks the same there as
-// an aircraft with no transmitter fitted.
 fn rc_signal(vehicle: &Value) -> Option<i64> {
     crate::read::fact_property(vehicle, "rcRSSI").and_then(|fact| fact.get("value")).and_then(Value::as_i64).filter(|rssi| (0..=100).contains(rssi))
 }
@@ -70,10 +77,6 @@ fn flying_to(backend: &dyn Backend) -> Option<i64> {
         .filter(|sequence| *sequence >= 0)
 }
 
-// TelemetryRSSIIndicator.qml:30 hides the whole indicator on telemetryLRSSI == 0, and every SiK
-// field is zero before the first RADIO_STATUS arrives - so zero here is "no radio has spoken",
-// not a reading of zero dBm. Serving the numbers ungated would let a head draw -0 dBm and a
-// healthy-looking link for a radio that has never reported.
 fn telemetry(radio: &Value) -> Value {
     let reading = |name: &str| crate::read::fact_property(radio, name).and_then(|fact| fact.get("value")).and_then(Value::as_i64);
     match reading("lrssi").filter(|local| *local != 0) {
@@ -94,11 +97,6 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive"));
     let radio = object(&backend.get_fields("vehicle.radioStatus", "lrssi,rrssi,lNoise,rNoise,rxErrors,fixed,txBuffer"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
-    // _commLostCheck returns early when the watch is disabled, so communicationLost never updates
-    // and false means "nobody is looking" rather than "every link is fine". view.frame and
-    // view.vehicleLinks both gate on the enabled flag; this one did not, and served a plain bool
-    // that called an unmonitored link healthy. Unknown is not evidence of a loss, so the state and
-    // the notice stay as they are - only the field admits it does not know.
     let links = object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled"));
     let watching = flag(&links, "communicationLostEnabled");
     let reported = connected.then(|| watching.then(|| flag(&links, "communicationLost"))).flatten();
@@ -113,7 +111,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "landing": flag(&vehicle, "landing"),
         "contactLost": reported,
         "state": state.token(),
-        "stateText": state.line(),
+        "stateText": state_line(state, state == State::Disarmed && disarmed_ready(backend)),
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
@@ -123,12 +121,15 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             0 => "No signal".to_string(),
             percent => format!("{percent}%"),
         }),
-        // rcChannelOverrideActive is !_rcChannelOverrides.isEmpty(), so with no vehicle it is not
-        // false but unknown - the same distinction contactLost makes, and the one that decides
-        // whether a head may draw "manual control is not being overridden" or must draw nothing.
         "rcOverride": connected.then(|| flag(&vehicle, "rcChannelOverrideActive")),
         "telemetry": telemetry(&radio),
     })
+}
+
+fn disarmed_ready(backend: &dyn Backend) -> bool {
+    let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm"));
+    let vehicle = object(&backend.get_fields("vehicle", "readyToFlyAvailable,readyToFly,allSensorsHealthy"));
+    ready_to_fly(flag(&report, "supported").then(|| flag(&report, "canArm")), flag(&vehicle, "readyToFlyAvailable").then(|| flag(&vehicle, "readyToFly")), flag(&vehicle, "allSensorsHealthy"), || crate::setup::setup_complete(backend))
 }
 
 fn reboot_refusal(state: &str) -> Option<(&'static str, &'static str)> {
@@ -180,6 +181,15 @@ mod tests {
 
     fn read(vehicle: Value, lost: bool) -> Value {
         fly_state_view(&Fake { vehicle, lost, flying_to: -1 }, &[])
+    }
+
+    #[test]
+    fn a_disarmed_vehicle_reads_ready_or_not_in_main_status_indicator_order() {
+        assert!(ready_to_fly(Some(true), Some(false), false, || false), "the arming check report wins when the vehicle supports it");
+        assert!(!ready_to_fly(None, Some(false), true, || true), "then readyToFly when it is available");
+        assert!(ready_to_fly(None, None, true, || true), "then healthy sensors and a finished setup");
+        assert!(!ready_to_fly(None, None, true, || false));
+        assert_eq!((state_line(State::Disarmed, true), state_line(State::Disarmed, false), state_line(State::Armed, false)), ("Ready to Fly", "Not Ready", "Armed"));
     }
 
     #[test]
@@ -252,7 +262,7 @@ mod tests {
     #[test]
     fn lost_contact_outranks_every_flight_state() {
         let view = read(aloft(true, true, false), true);
-        assert_eq!((view["state"].as_str(), view["stateText"].as_str()), (Some("contactLost"), Some("Communication lost")), "a vehicle that stopped answering is not known to still be flying");
+        assert_eq!((view["state"].as_str(), view["stateText"].as_str()), (Some("contactLost"), Some("Comms Lost")), "a vehicle that stopped answering is not known to still be flying");
         assert_eq!(view["staleNotice"], STALE_NOTICE);
         assert_eq!((view["armed"].as_bool(), view["flying"].as_bool()), (Some(true), Some(true)), "the last known state is still served, it just no longer names the line");
     }
@@ -268,8 +278,8 @@ mod tests {
     fn an_armed_vehicle_reads_as_what_it_is_doing() {
         let line = |armed: bool, flying: bool, landing: bool| read(aloft(armed, flying, landing), false)["state"].as_str().unwrap().to_string();
         assert_eq!(line(true, true, false), "flying");
-        assert_eq!(line(true, true, true), "landing", "landing is only ever set alongside flying, so it has to outrank it or it can never name the line");
-        assert_eq!(line(true, false, true), "armed", "Vehicle::_setLanding is guarded by armed(), so landing latches through an auto-disarm on touchdown; requiring flying makes that latch unreachable");
+        assert_eq!(line(true, true, true), "flying", "MainStatusIndicator asks flying before landing");
+        assert_eq!(line(true, false, true), "landing", "and names Landing only once the vehicle is armed but no longer flying");
         assert_eq!(line(true, false, false), "armed");
         assert_eq!(read(aloft(true, true, false), false)["staleNotice"], "", "a vehicle in contact carries no stale notice");
     }
