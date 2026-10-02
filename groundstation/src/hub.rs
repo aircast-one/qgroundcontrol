@@ -3766,6 +3766,10 @@ impl Hub {
             .collect()
     }
 
+    pub fn remote_inputs_due(&self, now_ms: u64) -> bool {
+        self.remote_inputs.as_ref().is_none_or(|i| now_ms.saturating_sub(i.pushed_ms) >= REMOTE_INPUTS_REFRESH_MS)
+    }
+
     pub fn set_remote_inputs(&mut self, settings: remoteid::Settings, fix: GcsFix, now_ms: u64) {
         self.remote_inputs = Some(RemoteInputs { settings, fix, pushed_ms: now_ms });
     }
@@ -4187,6 +4191,8 @@ pub fn core_mission_view(_backend: &dyn crate::router::Backend, args: &[String])
 pub fn core_calibration_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
     lock().calibration_snapshot(args.first().and_then(|a| a.trim().parse().ok()))
 }
+
+const REMOTE_INPUTS_REFRESH_MS: u64 = 500;
 
 pub fn core_remote_id_view(backend: &dyn crate::router::Backend, args: &[String]) -> Value {
     let (settings, fix) = crate::remoteidview::inputs(backend, now_us() / 1000);
@@ -5768,7 +5774,9 @@ mod tests {
         connect_copter(&mut hub, &autopilot);
         hub.vehicles.get_mut(&1).unwrap().streams_watched_ms = None;
         let settings = remoteid::Settings { region: remoteid::REGION_FAA, operator_id: "FIN87astrdge12k8".into(), operator_id_type: 0, operator_id_valid: false, send_operator_id: true, basic_id: "1234".into(), basic_id_type: 1, basic_id_ua_type: 2, send_basic_id: true, send_self_id: false, self_id_type: 0, self_id_free: "Survey".into(), self_id_emergency: "Emergency".into(), self_id_extended: "Extended".into(), location_type: remoteid::LOCATION_LIVE, classification_type: 0, latitude_fixed: 0.0, longitude_fixed: 0.0, altitude_fixed: 0.0, category_eu: 0, class_eu: 0 };
+        assert!(hub.remote_inputs_due(30_000), "the pump fills the inputs before any view asks for them");
         hub.set_remote_inputs(settings, GcsFix { valid: true, latitude: 47.5, longitude: 8.5, altitude: 400.0, age_ms: 100 }, 30_000);
+        assert!(!hub.remote_inputs_due(30_499) && hub.remote_inputs_due(30_500), "and refreshes them twice a second, inside the one second broadcast");
         let status = MavMessage::OPEN_DRONE_ID_ARM_STATUS(OPEN_DRONE_ID_ARM_STATUS_DATA { status: MavOdidArmStatus::MAV_ODID_ARM_STATUS_GOOD_TO_ARM, error: mavout::chars("") });
         assert!(hub.on_frame(origin(4), &MavHeader { system_id: 1, component_id: 236, sequence: 0 }, &status, (remoteid::EPOCH_2019_S + 60) * 1_000_000, 30_000).is_empty(), "the first broadcast waits one second, as the Qt timer does");
         let remote = hub.remote_snapshot(None)["remoteId"].clone();

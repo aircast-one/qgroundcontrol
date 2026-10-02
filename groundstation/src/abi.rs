@@ -279,6 +279,10 @@ pub(crate) fn start_pump() {
                 crate::applog::flush_to_disk();
                 crate::signingkeys::tick(crate::hub::now_ms());
                 if crate::vehiclefacade::switched_on() {
+                    if crate::hub::lock().remote_inputs_due(crate::hub::now_ms()) {
+                        let (settings, fix) = crate::remoteidview::inputs(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_us() / 1000);
+                        crate::hub::lock().set_remote_inputs(settings, fix, crate::hub::now_ms());
+                    }
                     crate::telemetrylog::vehicles(crate::hub::lock().vehicle_ids().len());
                     crate::mavlinklog::tick();
                     let logged: Vec<crate::csvlog::Logged> = {

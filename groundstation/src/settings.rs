@@ -58,6 +58,7 @@ const HIDDEN: &[&str] = &[
     "audioVolume",
     "uiScalePercent",
     "gstDebugLevel",
+    "operatorIDType",
     "clearSettingsNextBoot",
     "coreLinks",
     "detectionsHttpPort",
@@ -224,6 +225,31 @@ const MANUFACTURER_ROWS: &[(&str, &[i64])] = &[("surveyInAccuracyLimit", &[4]), 
 pub fn shown_for_manufacturer(name: &str, manufacturer: i64) -> bool {
     manufacturer == MANUFACTURER_ALL || MANUFACTURER_ROWS.iter().find(|(row, _)| *row == name).is_none_or(|(_, makers)| makers.contains(&manufacturer))
 }
+
+const REGION_EU: i64 = 1;
+const LOCATION_FIXED: i64 = 2;
+const CLASSIFICATION_EU: i64 = 1;
+
+const SHOWN_WHEN_VALUE: &[(&str, &str, i64, bool)] = &[
+    ("operatorIDEU", "region", REGION_EU, true),
+    ("operatorIDFAA", "region", REGION_EU, false),
+    ("classificationType", "region", REGION_EU, true),
+    ("categoryEU", "region", REGION_EU, true),
+    ("classEU", "region", REGION_EU, true),
+];
+
+const OPERATOR_ID_EU: &str = "The operator ID is always broadcast in the EU.";
+const LOCATION_NOT_FIXED: &str = "Has no effect unless the location type is Fixed.";
+const CLASSIFICATION_NOT_EU: &str = "Has no effect unless the classification type is EU.";
+
+const GATED_VALUE: &[(&str, &str, i64, bool, &str)] = &[
+    ("sendOperatorID", "region", REGION_EU, false, OPERATOR_ID_EU),
+    ("latitudeFixed", "locationType", LOCATION_FIXED, true, LOCATION_NOT_FIXED),
+    ("longitudeFixed", "locationType", LOCATION_FIXED, true, LOCATION_NOT_FIXED),
+    ("altitudeFixed", "locationType", LOCATION_FIXED, true, LOCATION_NOT_FIXED),
+    ("categoryEU", "classificationType", CLASSIFICATION_EU, true, CLASSIFICATION_NOT_EU),
+    ("classEU", "classificationType", CLASSIFICATION_EU, true, CLASSIFICATION_NOT_EU),
+];
 
 const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
     ("surveyInAccuracyLimit", "useFixedBasePosition", true),
@@ -402,6 +428,10 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
                 *hidden == named && facts.iter().find(|other| other.get("name").and_then(Value::as_str) == Some(requires)).and_then(|other| other.get("value")).and_then(crate::read::switch_on) == Some(*when)
             })
         })
+        .filter(|f| {
+            let named = f.get("name").and_then(Value::as_str).unwrap_or_default();
+            SHOWN_WHEN_VALUE.iter().filter(|(shown, _, _, _)| *shown == named).all(|(_, requires, value, equal)| number_of(&facts, requires).is_none_or(|v| (v == *value) == *equal))
+        })
         .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n) && !(MOBILE && n == "savePath")))
         .filter(|f| {
             let maker = facts.iter().find(|other| other.get("name").and_then(Value::as_str) == Some("baseReceiverManufacturers")).and_then(|other| other.get("value")).and_then(Value::as_i64).unwrap_or(MANUFACTURER_ALL);
@@ -434,6 +464,10 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
     })
 }
 
+fn number_of(facts: &[Value], name: &str) -> Option<i64> {
+    facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)).and_then(|f| f.get("value")).and_then(Value::as_f64).map(|v| v as i64)
+}
+
 fn gated(controls: &[Value], facts: &[Value]) -> Vec<Value> {
     let value_of = |name: &str| facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)).and_then(|f| f.get("value").cloned());
     controls
@@ -444,7 +478,14 @@ fn gated(controls: &[Value], facts: &[Value]) -> Vec<Value> {
                 .iter()
                 .filter(|(gated, _, _, _)| *gated == name)
                 .find(|(_, requires, wanted, _)| value_of(requires).as_ref().and_then(Value::as_bool) == Some(!wanted))
-                .map(|(_, _, _, reason)| *reason);
+                .map(|(_, _, _, reason)| *reason)
+                .or_else(|| {
+                    GATED_VALUE
+                        .iter()
+                        .filter(|(gated, _, _, _, _)| *gated == name)
+                        .find(|(_, requires, value, equal, _)| number_of(facts, requires).is_some_and(|v| (v == *value) != *equal))
+                        .map(|(_, _, _, _, reason)| *reason)
+                });
             let mut with_gate = control.clone();
             with_gate["enabled"] = json!(blocked.is_none());
             with_gate["disabledReason"] = blocked.map_or(Value::Null, |reason| json!(reason));
@@ -706,6 +747,8 @@ mod tests {
             .chain(DESKTOP_ONLY.iter().map(|(name, _)| *name))
             .chain(GATED.iter().flat_map(|(gated, requires, _, _)| [*gated, *requires]))
             .chain(HIDDEN_WHEN.iter().flat_map(|(hidden, requires, _)| [*hidden, *requires]))
+            .chain(SHOWN_WHEN_VALUE.iter().flat_map(|(shown, requires, _, _)| [*shown, *requires]))
+            .chain(GATED_VALUE.iter().flat_map(|(gated, requires, _, _, _)| [*gated, *requires]))
             .collect();
 
         keyed.iter().for_each(|name| {
@@ -810,6 +853,48 @@ mod tests {
             6,
             "with no useFixedBasePosition in the payload nothing is hidden. A bridge that cannot answer which mode is selected must not empty the page - the same permissive rule as the visible flag, and the direction that fails safe"
         );
+    }
+
+    #[test]
+    fn remote_id_rows_follow_region_location_and_classification_like_remote_id_settings_qml() {
+        struct Rid(i64, i64, i64);
+        impl Backend for Rid {
+            fn get(&self, path: &str) -> String {
+                let numbers = [("region", self.0), ("locationType", self.1), ("classificationType", self.2)];
+                let facts: Vec<Value> = numbers
+                    .iter()
+                    .map(|(n, v)| json!({ "kind": "fact", "name": n, "value": v }))
+                    .chain(["sendOperatorID", "operatorIDType", "operatorIDEU", "operatorIDFAA", "latitudeFixed", "categoryEU", "classEU"].iter().map(|n| json!({ "kind": "fact", "name": n, "typeIsString": true })))
+                    .collect();
+                match path {
+                    "settings.remoteIDSettings" => json!({ "kind": "object", "facts": facts }),
+                    _ => json!({ "kind": "object", "facts": [] }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let rows = |rid: Rid| -> Vec<(String, bool)> {
+            settings_view(&rid, &["Remote ID".to_string()])["sections"][0]["subsections"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .flat_map(|sub| sub["controls"].as_array().unwrap().clone())
+                .map(|c| (c["name"].as_str().unwrap().to_string(), c["enabled"].as_bool().unwrap()))
+                .collect()
+        };
+        let faa = rows(Rid(0, 2, 1));
+        let names: Vec<&str> = faa.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["region", "sendOperatorID", "operatorIDFAA", "locationType", "latitudeFixed"]);
+        assert!(faa.iter().all(|(_, enabled)| *enabled));
+        let eu = rows(Rid(1, 0, 0));
+        let enabled = |name: &str| eu.iter().find(|(n, _)| n == name).unwrap().1;
+        assert!(eu.iter().any(|(n, _)| n == "operatorIDEU") && !eu.iter().any(|(n, _)| n == "operatorIDFAA"));
+        assert!(!enabled("sendOperatorID") && !enabled("latitudeFixed") && !enabled("categoryEU") && !enabled("classEU") && enabled("classificationType"));
+        assert!(rows(Rid(1, 2, 1)).iter().all(|(n, enabled)| *enabled || n == "sendOperatorID"));
     }
 
     #[test]
