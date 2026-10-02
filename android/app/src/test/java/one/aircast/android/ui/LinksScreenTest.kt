@@ -204,6 +204,15 @@ class LinkEditRulesTest {
     }
 
     @Test
+    fun `each link shows the Penpot icon for its kind`() {
+        assertEquals(one.aircast.android.R.drawable.ic_wifi, linkIcon("udp"))
+        assertEquals(one.aircast.android.R.drawable.ic_usb, linkIcon("serial"))
+        assertEquals(one.aircast.android.R.drawable.ic_bluetooth, linkIcon("bluetooth"))
+        assertEquals(one.aircast.android.R.drawable.ic_link, linkIcon("tcp"))
+        assertEquals("tcp", linkRows(JSONObject("""{"configured":[{"index":0,"type":"tcp"}]}""")).single().type)
+    }
+
+    @Test
     fun `udp writes its own port property and not tcp's`() {
         val writes = editWrites("portOnly", "n", "", 14551, "", 0, false, false)
         assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to false, "highLatency" to false, "localPort" to 14551), writes)

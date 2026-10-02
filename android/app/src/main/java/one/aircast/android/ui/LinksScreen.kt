@@ -90,15 +90,16 @@ data class LinkRow(
     val servers: List<String> = emptyList(),
     val autoConnect: Boolean = false,
     val highLatency: Boolean = false,
+    val type: String = "",
 )
 
-internal data class AutoLink(val name: String, val summary: String, val heard: Boolean)
+internal data class AutoLink(val name: String, val summary: String, val heard: Boolean, val type: String = "")
 
 internal fun autoLinks(view: JSONObject?): List<AutoLink> {
     val links = view?.optJSONArray("links") ?: return emptyList()
     return (0 until links.length()).mapNotNull { links.optJSONObject(it) }
         .filter { it.optBoolean("dynamic") && it.optBoolean("connected") }
-        .map { AutoLink(it.optText("name"), it.optText("displaySummary"), it.optBoolean("heardVehicle")) }
+        .map { AutoLink(it.optText("name"), it.optText("displaySummary"), it.optBoolean("heardVehicle"), it.optText("type")) }
 }
 
 internal fun autoLinkStatus(link: AutoLink): String = if (link.heard) "Vehicle" else "Listening"
@@ -125,9 +126,18 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
                 servers = link.optJSONArray("hostList")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
                 autoConnect = link.optBoolean("autoConnect"),
                 highLatency = link.optBoolean("highLatency"),
+                type = link.optText("type"),
             )
         }
     }
+}
+
+@androidx.annotation.DrawableRes
+internal fun linkIcon(type: String): Int = when (type) {
+    "serial" -> R.drawable.ic_usb
+    "udp" -> R.drawable.ic_wifi
+    BLUETOOTH_LINK -> R.drawable.ic_bluetooth
+    else -> R.drawable.ic_link
 }
 
 internal fun linkIsEditable(row: LinkRow): Boolean =
@@ -277,7 +287,7 @@ private fun AutoLinkItem(link: AutoLink) {
             Modifier.size(40.dp).background(if (link.heard) MaterialTheme.aircast.successContainer else MaterialTheme.colorScheme.secondaryContainer, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(painterResource(R.drawable.ic_link), null, tint = if (link.heard) MaterialTheme.aircast.success else MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(24.dp))
+            Icon(painterResource(linkIcon(link.type)), null, tint = if (link.heard) MaterialTheme.aircast.success else MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(24.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(link.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -317,7 +327,7 @@ private fun LinkRowItem(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    painterResource(if (row.portName.isNotBlank()) R.drawable.ic_usb else R.drawable.ic_link),
+                    painterResource(linkIcon(row.type)),
                     null,
                     tint = if (row.connected) MaterialTheme.aircast.success else MaterialTheme.colorScheme.onSecondaryContainer,
                     modifier = Modifier.size(24.dp),
