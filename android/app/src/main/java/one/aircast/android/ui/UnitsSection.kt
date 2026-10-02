@@ -12,7 +12,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -136,11 +135,7 @@ fun UnitsSection(modifier: Modifier = Modifier) {
         UnitSystemRow(chosen) { picked ->
             offMainDetached { Qgc.invoke("$UNITS_PATH.setUnitSystem", picked) }
         }
-        HorizontalDivider()
         FootNote(unitSystemNote(chosen))
-        unitRowsFor(chosen, facts).forEach { fact ->
-            FactRow(fact)
-            HorizontalDivider()
-        }
+        FactRuns(unitRowsFor(chosen, facts))
     }
 }

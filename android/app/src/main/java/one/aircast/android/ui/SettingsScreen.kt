@@ -423,9 +423,7 @@ private fun SettingsControls(
         }
         section.blocks.forEach { block ->
             blockHeading(page.title, section, block).takeIf { it.isNotBlank() }?.let { SectionHeader(it) }
-            block.facts.forEach { fact ->
-                FactRow(fact, onWrite = onWrite)
-            }
+            FactRuns(block.facts, onWrite)
             if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
         }
         section.note
@@ -437,6 +435,21 @@ private fun SettingsControls(
         if (section.group == MAVLINK_GROUP) SigningKeysSection()
         if (section.group == MAVLINK_GROUP) LinkStatusSection()
         if (section.group == MAVLINK_ACTIONS_GROUP) MavlinkActionsSection(onWrite)
+    }
+}
+
+@Composable
+internal fun FactRuns(facts: List<Fact>, onWrite: () -> Unit = {}) {
+    fieldRuns(facts).forEach { run ->
+        if (run.size == 1) {
+            FactRow(run.first(), onWrite = onWrite)
+        } else {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                run.forEach { fact ->
+                    FactRow(fact, subtitle = factSubtitle(fact), fieldModifier = Modifier.weight(1f).padding(vertical = 8.dp), onWrite = onWrite)
+                }
+            }
+        }
     }
 }
 
@@ -461,6 +474,7 @@ internal fun FactRow(
     title: String = fact.heading,
     subtitle: String = listOf(fact.detail, factSubtitle(fact)).filter { it.isNotBlank() }.joinToString(" · "),
     titleColor: Color = Color.Unspecified,
+    fieldModifier: Modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
     onWrite: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
@@ -468,8 +482,7 @@ internal fun FactRow(
 
     val segmented = !editOnDesktop(fact) && notBuiltHere(fact) == null && !fact.isBitmask &&
         showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings)
-    val asField = !segmented && fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact) &&
-        !fact.isBool && !fact.isBitmask
+    val asField = !segmented && showsAsField(fact)
 
     fun write(block: () -> Boolean) {
         scope.launch {
@@ -480,7 +493,7 @@ internal fun FactRow(
     }
 
     if (asField) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Column(fieldModifier) {
             if (fact.isEnum && !fact.valueIsOffTheEnumList) EnumField(fact, title, ::write) else FactTextField(fact, onWrite, title)
             val note = subtitle.split(" · ").filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
             if (note.isNotBlank()) {
@@ -515,13 +528,20 @@ internal fun FactRow(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (subtitle.isNotBlank()) {
+            if (subtitle.isNotBlank() && !subtitle.equals(title, ignoreCase = true)) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (fact.isBool && !fact.acceptsWrite && notBuiltHere(fact) == null) {
+                Text(
+                    text = inertNote(fact),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -554,7 +574,7 @@ internal fun FactRow(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    if (notBuiltHere(fact) == null) {
+                    if (notBuiltHere(fact) == null && !fact.isBool) {
                         Text(
                             text = inertNote(fact),
                             style = MaterialTheme.typography.labelSmall,
@@ -596,6 +616,21 @@ internal fun FactRow(
 }
 
 internal const val SEGMENT_LABEL_BUDGET = 28
+internal const val PAIRED_LABEL_BUDGET = 16
+
+internal fun showsAsField(fact: Fact): Boolean =
+    fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact) && !fact.isBool && !fact.isBitmask
+
+internal fun pairsAsField(fact: Fact): Boolean =
+    fact.isEnum && !fact.valueIsOffTheEnumList && fact.shortLabel.isNotBlank() && showsAsField(fact) &&
+        !showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings) &&
+        (fact.enumStrings + fact.shortLabel).all { it.length <= PAIRED_LABEL_BUDGET }
+
+internal fun fieldRuns(facts: List<Fact>): List<List<Fact>> =
+    facts.fold(emptyList()) { runs, fact ->
+        val last = runs.lastOrNull()
+        if (last != null && last.size == 1 && pairsAsField(last.first()) && pairsAsField(fact)) runs.dropLast(1) + listOf(last + fact) else runs + listOf(listOf(fact))
+    }
 
 internal fun showsAsSegments(isEnum: Boolean, offList: Boolean, writable: Boolean, options: List<String>): Boolean =
     isEnum && !offList && writable && options.size in 2..4 && options.sumOf { it.length } <= SEGMENT_LABEL_BUDGET
