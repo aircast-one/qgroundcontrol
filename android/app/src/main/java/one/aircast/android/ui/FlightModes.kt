@@ -22,6 +22,7 @@ internal data class FlightModesView(
     val all: List<FlightModeOption>,
     val hidden: List<String>,
     val hiddenSetting: String?,
+    val unknownModeNotice: String = "",
 )
 
 private fun options(view: JSONObject?, key: String): List<FlightModeOption> {
@@ -50,6 +51,7 @@ internal fun flightModesView(view: JSONObject?): FlightModesView? {
         all = options(view, "modes"),
         hidden = view.optJSONArray("hidden")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
         hiddenSetting = view.optText("hiddenSetting").ifBlank { null },
+        unknownModeNotice = view.optText("unknownModeNotice"),
     )
 }
 

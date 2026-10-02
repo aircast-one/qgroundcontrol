@@ -177,6 +177,7 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "canSet": connected && flag(&vehicle, "flightModeSetAvailable"),
         "current": current,
         "currentSummary": description(&current),
+        "unknownModeNotice": unknown_mode_notice(connected, &current, &all),
         "everyday": modes.iter().filter(|m| !folded(m)).cloned().collect::<Vec<_>>(),
         "folded": modes.iter().filter(|m| folded(m)).cloned().collect::<Vec<_>>(),
         "hiddenSetting": hidden_setting,
@@ -184,6 +185,11 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "modes": modes,
         "modeAck": crate::hub::lock().active().and_then(|v| v.mode_ack).map(|(result, serial)| json!({ "serial": serial, "accepted": result == RESULT_ACCEPTED, "wording": rejection_wording(result) })),
     })
+}
+
+pub fn unknown_mode_notice(connected: bool, current: &str, known: &[String]) -> Option<String> {
+    (connected && !current.is_empty() && !known.iter().any(|m| m == current))
+        .then(|| format!("The vehicle is in {current}, which this version of the app doesn't know. Choose a mode below to change it."))
 }
 
 const RESULT_ACCEPTED: u8 = 0;
@@ -238,6 +244,15 @@ pub fn write_mode(backend: &dyn Backend, path: &str, value: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_mode_the_vehicle_reports_but_the_list_lacks_is_named_as_unknown() {
+        let known = ["Hold".to_string(), "Position".to_string()];
+        assert_eq!(unknown_mode_notice(true, "Custom 7", &known).as_deref(), Some("The vehicle is in Custom 7, which this version of the app doesn't know. Choose a mode below to change it."), "FlightModeIndicator's orange line");
+        assert_eq!(unknown_mode_notice(true, "Hold", &known), None);
+        assert_eq!(unknown_mode_notice(true, "", &known), None, "still connecting");
+        assert_eq!(unknown_mode_notice(false, "Custom 7", &known), None);
+    }
 
     #[test]
     fn a_refused_mode_change_reads_like_flight_mode_indicator() {

@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.mapspike.aircast
 import androidx.compose.foundation.rememberScrollState
 
 import androidx.compose.foundation.verticalScroll
@@ -866,6 +867,14 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                     },
                 )
             }
+        }
+        modes.unknownModeNotice.ifBlank { null }?.let { notice ->
+            Text(
+                notice,
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 280.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.aircast.warning,
+            )
         }
         val shown = when {
             editing && setting != null -> emptyList()

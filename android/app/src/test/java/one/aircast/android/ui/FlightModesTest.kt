@@ -62,6 +62,15 @@ class FlightModesTest {
     }
 }
 
+class UnknownModeTest {
+    @Test
+    fun `the core's unknown-mode line is carried to the menu`() {
+        val view = org.json.JSONObject("""{"available":true,"current":"Custom 7","unknownModeNotice":"The vehicle is in Custom 7, which this version of the app doesn't know. Choose a mode below to change it."}""")
+        org.junit.Assert.assertTrue(flightModesView(view)!!.unknownModeNotice.startsWith("The vehicle is in Custom 7"))
+        org.junit.Assert.assertEquals("", flightModesView(org.json.JSONObject("""{"available":true}"""))!!.unknownModeNotice)
+    }
+}
+
 class ModeHeadingTest {
 
     private fun modes(current: String, summary: String) = flightModesView(
