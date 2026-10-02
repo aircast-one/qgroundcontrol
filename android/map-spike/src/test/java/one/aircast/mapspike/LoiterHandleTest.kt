@@ -30,3 +30,13 @@ class LoiterHandleTest {
         assertEquals(-150.0, draggedLoiterRadius(loiter.copy(loiterRadius = -80.0), to), 0.5)
     }
 }
+
+class ClickMarkerTest {
+
+    @Test
+    fun `the marker sits on the tapped point and nowhere once the menu closes`() {
+        assertEquals(1, clickMarkerFeatures(TrackPoint(47.0, 8.0)).features()!!.size)
+        assertEquals(0, clickMarkerFeatures(null).features()!!.size)
+        assertEquals(0, clickMarkerFeatures(TrackPoint(Double.NaN, 8.0)).features()!!.size)
+    }
+}

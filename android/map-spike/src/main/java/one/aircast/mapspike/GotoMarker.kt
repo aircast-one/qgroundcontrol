@@ -81,3 +81,45 @@ fun renderGoto(style: Style, location: GotoLocation?) {
         ),
     )
 }
+
+private const val CLICK_MARKER_SOURCE = "aircast-click-marker"
+private const val CLICK_MARKER_SHADOW_LAYER = "aircast-click-marker-shadow"
+private const val CLICK_MARKER_RING_LAYER = "aircast-click-marker-ring"
+private const val CLICK_MARKER_DOT_LAYER = "aircast-click-marker-dot"
+private const val CLICK_MARKER_RADIUS = 13f
+
+fun installClickMarker(style: Style) {
+    if (style.getSource(CLICK_MARKER_SOURCE) != null) return
+    style.addSource(GeoJsonSource(CLICK_MARKER_SOURCE))
+    style.addLayer(
+        CircleLayer(CLICK_MARKER_SHADOW_LAYER, CLICK_MARKER_SOURCE).withProperties(
+            PropertyFactory.circleRadius(CLICK_MARKER_RADIUS),
+            PropertyFactory.circleOpacity(0f),
+            PropertyFactory.circleStrokeColor("rgba(0, 0, 0, 0.6)"),
+            PropertyFactory.circleStrokeWidth(4f),
+        ),
+    )
+    style.addLayer(
+        CircleLayer(CLICK_MARKER_RING_LAYER, CLICK_MARKER_SOURCE).withProperties(
+            PropertyFactory.circleRadius(CLICK_MARKER_RADIUS - 1f),
+            PropertyFactory.circleOpacity(0f),
+            PropertyFactory.circleStrokeColor("#FFFFFF"),
+            PropertyFactory.circleStrokeWidth(2f),
+        ),
+    )
+    style.addLayer(
+        CircleLayer(CLICK_MARKER_DOT_LAYER, CLICK_MARKER_SOURCE).withProperties(
+            PropertyFactory.circleRadius(2f),
+            PropertyFactory.circleColor("#FFFFFF"),
+        ),
+    )
+}
+
+fun clickMarkerFeatures(at: TrackPoint?): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        listOfNotNull(at?.takeIf { isPlottable(it.latitude, it.longitude) }).map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) },
+    )
+
+fun renderClickMarker(style: Style, at: TrackPoint?) {
+    (style.getSource(CLICK_MARKER_SOURCE) as? GeoJsonSource)?.setGeoJson(clickMarkerFeatures(at))
+}

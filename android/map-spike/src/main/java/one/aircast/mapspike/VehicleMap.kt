@@ -188,6 +188,7 @@ fun VehicleMap(
     roi: TrackPoint? = null,
     onRoiClick: ((TrackPoint) -> Unit)? = null,
     goto: GotoLocation? = null,
+    clickMarker: TrackPoint? = null,
     orbit: OrbitCircle? = null,
     otherMissions: List<OtherMission> = emptyList(),
 ) {
@@ -295,6 +296,7 @@ fun VehicleMap(
                 installTrafficLayer(loadedStyle)
                 installRoiLayer(loadedStyle)
                 installGotoLayer(loadedStyle)
+                installClickMarker(loadedStyle)
                 installOrbitLayer(loadedStyle)
                 if (!editable && onMapClick != null) {
                     loaded.addOnMapClickListener { at ->
@@ -359,6 +361,10 @@ fun VehicleMap(
     LaunchedEffect(style, orbit, goto) {
         val orbitStyle = style ?: return@LaunchedEffect
         renderOrbit(orbitStyle, orbit, gotoShown = goto != null)
+    }
+    LaunchedEffect(style, clickMarker) {
+        val markerStyle = style ?: return@LaunchedEffect
+        renderClickMarker(markerStyle, clickMarker)
     }
     LaunchedEffect(style, goto) {
         val gotoStyle = style ?: return@LaunchedEffect
