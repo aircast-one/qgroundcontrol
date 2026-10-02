@@ -18,7 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 
-private const val MAX_BAR_DP = 140
+private const val MAX_BAR_DP = 100
 
 @Composable
 fun ScaleBarView(latitude: Double, zoom: Double, modifier: Modifier = Modifier) {

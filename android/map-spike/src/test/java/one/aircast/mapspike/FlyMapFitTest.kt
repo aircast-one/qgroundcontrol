@@ -6,10 +6,12 @@ import org.junit.Test
 
 class FlyMapFitTest {
     @Test
-    fun `the fly map fits once a mission arrives from the vehicle, as onNewItemsFromVehicle does`() {
-        assertTrue(missionArrived(emptyList(), listOf(1, 2)))
-        assertFalse("an unchanged mission does not refit and fight the pilot's pan", missionArrived(listOf(1), listOf(1, 2)))
-        assertFalse(missionArrived(listOf(1), emptyList<Int>()))
+    fun `the fly map fits whenever a new mission arrives from the vehicle, as onNewItemsFromVehicle does`() {
+        val same = { it: Int -> it }
+        assertTrue(missionArrived(emptyList(), listOf(1, 2), same))
+        assertTrue("a replaced mission refits, as onNewItemsFromVehicle fits every download with items", missionArrived(listOf(1), listOf(1, 2), same))
+        assertFalse("an unchanged mission does not refit and fight the pilot's pan", missionArrived(listOf(1, 2), listOf(1, 2), same))
+        assertFalse(missionArrived(listOf(1), emptyList<Int>(), same))
     }
 
 

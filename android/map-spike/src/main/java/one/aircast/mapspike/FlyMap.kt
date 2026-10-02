@@ -56,7 +56,9 @@ internal fun otherMissions(view: JSONObject?): List<OtherMission> {
     return (0 until others.length()).mapNotNull { others.optJSONObject(it) }.map { OtherMission(missionItems(it), linksStartToHome(it)) }
 }
 
-internal fun <T> missionArrived(before: List<T>, after: List<T>): Boolean = before.isEmpty() && after.isNotEmpty()
+internal fun <T, K> missionArrived(before: List<T>, after: List<T>, key: (T) -> K): Boolean = after.isNotEmpty() && after.map(key) != before.map(key)
+
+private fun shape(item: MissionItem) = listOf(item.sequence, item.latitude, item.longitude, item.command)
 
 @Composable
 fun FlyMap(
@@ -110,7 +112,7 @@ fun FlyMap(
                         others = otherMissions(raw),
                     )
                 }
-                if (missionArrived(plan.items, next.items)) fitRequest++
+                if (missionArrived(plan.items, next.items, ::shape)) fitRequest++
                 plan = next
                 delay(FLY_POLL_MS)
             }

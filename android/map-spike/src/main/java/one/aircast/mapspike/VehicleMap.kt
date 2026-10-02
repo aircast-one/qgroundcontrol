@@ -58,7 +58,7 @@ private const val HOME_LAYER = "aircast-home-layer"
 private const val HOME_LABEL_LAYER = "aircast-home-label-layer"
 private const val TRAIL_LAYER = "aircast-trail-layer"
 
-private const val DEFAULT_ZOOM = 16.0
+private const val DEFAULT_ZOOM = 17.0
 
 private const val MIN_FIT_SPAN_DEGREES = 1e-5
 private const val FIT_PADDING_PIXELS = 80
@@ -319,12 +319,12 @@ fun VehicleMap(
                         val item = (hitTest(loaded, screen.x, screen.y) as? MapHit.Waypoint)
                             ?.let { hit -> latestItems.firstOrNull { it.index == hit.index } }
                         val itemClick = latestItemClick
-                        if (item != null && itemClick != null) {
-                            itemClick(item.sequence)
-                        } else {
-                            latestMapClick?.invoke(at.latitude, at.longitude)
-                        }
-                        true
+                        if (item != null && itemClick != null) itemClick(item.sequence)
+                        item != null && itemClick != null
+                    }
+                    loaded.addOnMapLongClickListener { at ->
+                        latestMapClick?.invoke(at.latitude, at.longitude)
+                        latestMapClick != null
                     }
                 }
                 if (editable) {
@@ -545,7 +545,7 @@ private fun installLayers(style: Style) {
         style.addSource(GeoJsonSource(TRAIL_SOURCE))
         style.addLayer(
             LineLayer(TRAIL_LAYER, TRAIL_SOURCE).withProperties(
-                PropertyFactory.lineColor("#4FC3F7"),
+                PropertyFactory.lineColor("#FF0000"),
                 PropertyFactory.lineWidth(3f),
             ),
         )

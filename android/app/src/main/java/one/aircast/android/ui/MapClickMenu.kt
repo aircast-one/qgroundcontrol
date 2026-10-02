@@ -118,6 +118,10 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
     val view by qgcPath(MAP_CLICK_PATH)
     val vehicleCoordinate by qgcPath("vehicle.coordinate")
     val actions = remember(view) { mapClickActions(view) }
+    if (view != null && actions.isEmpty()) {
+        LaunchedEffect(point) { onDismiss() }
+        return
+    }
     var confirming by remember(point) { mutableStateOf<MapClickAction?>(null) }
     var refusal by remember(point) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -159,13 +163,6 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             val pending = confirming
             if (pending == null) {
-                if (actions.isEmpty()) {
-                    Text(
-                        "No action is available at this point.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    )
-                }
                 actions.forEach { action ->
                     ListItem(
                         headlineContent = { Text(sentenceCase(action.label)) },

@@ -266,6 +266,7 @@ const val FIRMWARE_FENCE_SOURCE = "aircast-firmware-fence"
 const val FIRMWARE_FENCE_LAYER = "aircast-firmware-fence-line"
 const val RALLY_SOURCE = "aircast-rally"
 const val RALLY_LAYER = "aircast-rally-layer"
+const val RALLY_LABEL_LAYER = "aircast-rally-label-layer"
 
 private fun fenceColour(): Expression = Expression.switchCase(
     Expression.get(KEEPS_IN_PROPERTY), Expression.literal(KEEP_IN_COLOUR),
@@ -366,6 +367,15 @@ fun installFenceLayers(style: Style) {
                 PropertyFactory.circleRadius(10f),
                 PropertyFactory.circleStrokeColor("#1B5E20"),
                 PropertyFactory.circleStrokeWidth(2f),
+            ),
+        )
+        style.addLayer(
+            SymbolLayer(RALLY_LABEL_LAYER, RALLY_SOURCE).withProperties(
+                PropertyFactory.textField("R"),
+                PropertyFactory.textSize(12f),
+                PropertyFactory.textColor("#000000"),
+                PropertyFactory.textAllowOverlap(true),
+                PropertyFactory.textIgnorePlacement(true),
             ),
         )
     }

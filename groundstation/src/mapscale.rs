@@ -45,6 +45,7 @@ pub fn imperial_text(feet: f64) -> String {
 }
 
 pub fn bar(metres_across: f64, imperial: bool) -> Option<(String, f64)> {
+    let metres_across = metres_across.round();
     match imperial {
         true => snapped(metres_across * FEET_PER_METRE, FEET).map(|(v, r)| (imperial_text(v), r)),
         false => snapped(metres_across, METRES).map(|(v, r)| (metric_text(v), r)),
