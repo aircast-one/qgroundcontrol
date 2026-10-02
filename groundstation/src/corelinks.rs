@@ -558,16 +558,11 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
 struct PendingClose {
     due_ms: u64,
     links: Option<Vec<crate::transport::LinkId>>,
+    sparing_others_of: Option<u8>,
     reason: &'static str,
 }
 
-static PENDING_CLOSE: Mutex<Option<PendingClose>> = Mutex::new(None);
-
-pub fn close_links_at(due_ms: u64, links: Option<Vec<crate::transport::LinkId>>, reason: &'static str) {
-    #[cfg(test)]
-    CLOSED_HERE.with(|closed| *closed.borrow_mut() = Some((due_ms, links.clone())));
-    *PENDING_CLOSE.lock().unwrap_or_else(PoisonError::into_inner) = Some(PendingClose { due_ms, links, reason });
-}
+static PENDING_CLOSE: Mutex<Vec<PendingClose>> = Mutex::new(Vec::new());
 
 #[cfg(test)]
 thread_local! {
@@ -579,14 +574,45 @@ pub fn pending_close() -> Option<(u64, Option<Vec<crate::transport::LinkId>>)> {
     CLOSED_HERE.with(|closed| closed.borrow().clone())
 }
 
+pub fn close_links_at(due_ms: u64, links: Option<Vec<crate::transport::LinkId>>, reason: &'static str) {
+    schedule(PendingClose { due_ms, links, sparing_others_of: None, reason });
+}
+
+pub fn close_vehicle_at(due_ms: u64, vehicle: u8, links: Vec<crate::transport::LinkId>, reason: &'static str) {
+    schedule(PendingClose { due_ms, links: Some(links), sparing_others_of: Some(vehicle), reason });
+}
+
+fn schedule(pending: PendingClose) {
+    #[cfg(test)]
+    CLOSED_HERE.with(|closed| *closed.borrow_mut() = Some((pending.due_ms, pending.links.clone())));
+    PENDING_CLOSE.lock().unwrap_or_else(PoisonError::into_inner).push(pending);
+}
+
 fn close_if_due(now_ms: u64) {
-    let due = PENDING_CLOSE.lock().unwrap_or_else(PoisonError::into_inner).take_if(|pending| now_ms >= pending.due_ms);
-    if let Some(pending) = due {
-        let open = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(PoisonError::into_inner).open_ids();
-        open.into_iter().filter(|id| pending.links.as_ref().is_none_or(|links| links.contains(id))).for_each(|id| {
-            crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, pending.reason);
-        });
+    let due: Vec<PendingClose> = {
+        let mut pending = PENDING_CLOSE.lock().unwrap_or_else(PoisonError::into_inner);
+        let (due, later): (Vec<PendingClose>, Vec<PendingClose>) = pending.drain(..).partition(|p| now_ms >= p.due_ms);
+        *pending = later;
+        due
+    };
+    if due.is_empty() {
+        return;
     }
+    let open = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(PoisonError::into_inner).open_ids();
+    let closing: Vec<(crate::transport::LinkId, &'static str)> = due
+        .iter()
+        .flat_map(|pending| {
+            let shared = pending.sparing_others_of.map(|id| crate::hub::lock().links_of_other_vehicles(id)).unwrap_or_default();
+            open.iter()
+                .copied()
+                .filter(|id| pending.links.as_ref().is_none_or(|links| links.contains(id)) && !shared.contains(id))
+                .map(|id| (id, pending.reason))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    closing.into_iter().for_each(|(id, reason)| {
+        crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, reason);
+    });
 }
 
 pub fn tick(now_ms: u64) {

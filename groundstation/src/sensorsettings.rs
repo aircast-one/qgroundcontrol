@@ -7,9 +7,6 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.apmFirmware", "vehicle.px4Firmware", "vehicle.sub"];
 pub const SET_PRIORITY: &str = "sensorSettings.priority";
 pub const FACTORY_RESET: &str = "sensorSettings.factoryReset";
-const CMD_PREFLIGHT_STORAGE: u16 = 245;
-const STORAGE_RESET_FACTORY: f64 = 3.0;
-const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
 const PX4_MAX_MAGS: usize = 50;
 const PX4_ROTATION_NOTE: &str = "ROTATION_NONE indicates component points in direction of flight.";
 const COMPASSES: usize = 3;
@@ -269,8 +266,7 @@ pub fn factory_reset(backend: &dyn Backend) -> Value {
     if !flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware") {
         return json!({ "ok": false, "reason": "Factory reset is offered for PX4 vehicles only." });
     }
-    let params = [STORAGE_RESET_FACTORY, STORAGE_MISSION_UNTOUCHED, 0.0, 0.0, 0.0, 0.0, 0.0];
-    crate::guided::dispatch(backend, Some(json!({ "action": "mavlinkCommand", "command": CMD_PREFLIGHT_STORAGE, "params": params })), crate::guided::active_id(backend), "", "[]")
+    crate::guided::dispatch(backend, Some(json!({ "action": "factoryReset" })), crate::guided::active_id(backend), "", "[]")
 }
 
 #[cfg(test)]

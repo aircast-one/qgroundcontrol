@@ -1462,7 +1462,6 @@ impl Vehicle {
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
             "gripper" => guidedcmd::gripper(number("gripAction")),
             "cancelRoi" => guidedcmd::cancel_roi(&state),
-            "reboot" => guidedcmd::reboot(),
             "resetParameters" => guidedcmd::reset_parameters(),
             "setCurrentMission" => guidedcmd::set_current_mission(&state, number("sequence")),
             "orbit" => guidedcmd::orbit(&state, number("latitude"), number("longitude"), number("radius"), number("altitudeAmsl")),
@@ -1610,7 +1609,7 @@ impl Vehicle {
                 self.airframe_reboot = None;
                 log::info!("Rebooting vehicle {} after the airframe change", self.id);
                 crate::corelinks::close_links_at(now_ms + AIRFRAME_DISCONNECT_AFTER_MS, None, "the vehicle is rebooting after an airframe change");
-                self.start_guided(&json!({ "action": "reboot" }), now_ms).unwrap_or_default()
+                self.send_tagged(guidedcmd::CMD_PREFLIGHT_REBOOT_SHUTDOWN, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], true, 0, now_ms)
             }
             _ => Vec::new(),
         }
@@ -1672,6 +1671,8 @@ impl Vehicle {
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
             Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
+            Some("reboot") => return Ok(self.send_tagged(guidedcmd::CMD_PREFLIGHT_REBOOT_SHUTDOWN, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], false, REBOOT_TAG, now_ms)),
+            Some("factoryReset") => return Ok(self.send_tagged(guidedcmd::CMD_PREFLIGHT_STORAGE, [STORAGE_RESET_FACTORY, STORAGE_MISSION_UNTOUCHED, 0.0, 0.0, 0.0, 0.0, 0.0], true, FACTORY_RESET_TAG, now_ms)),
             Some("changeAutostart") => return self.change_autostart(action, now_ms),
             Some("motorAssignment") => return self.motor_assignment_action(action, now_ms),
             Some("actuatorAction") => {
@@ -1852,6 +1853,11 @@ impl Vehicle {
         bytes
     }
 
+    fn send_tagged(&mut self, command: u16, params: [f64; 7], show_error: bool, tag: u64, now_ms: u64) -> Vec<Vec<u8>> {
+        let outs = self.commands.send(Command { component: self.component, command, command_int: false, frame: guidedcmd::FRAME_GLOBAL, params, show_error, tag }, now_ms);
+        self.handle(outs, now_ms)
+    }
+
     fn carry(&mut self, emits: Vec<Emit>, now_ms: u64) -> Vec<Vec<u8>> {
         let target = (self.id, self.component);
         emits
@@ -1880,9 +1886,15 @@ impl Vehicle {
                     self.note(text);
                     Vec::new()
                 }
-                Out::Result { command: guidedcmd::CMD_PREFLIGHT_REBOOT_SHUTDOWN, result, .. } => {
+                Out::Result { tag: FACTORY_RESET_TAG, result, .. } => {
+                    let reset = result == RESULT_ACCEPTED;
+                    crate::noticeboard::post(crate::noticeboard::MESSAGE, "", if reset { "Reset successful" } else { "Reset failed" });
+                    self.sensor_refresh_due = reset.then_some(now_ms + SENSOR_REFRESH_DELAY_MS);
+                    Vec::new()
+                }
+                Out::Result { tag: REBOOT_TAG, result, .. } => {
                     match result {
-                        RESULT_ACCEPTED => crate::corelinks::close_links_at(now_ms, Some(self.link_states.iter().map(|(link, _, _)| *link).collect()), "the vehicle accepted a reboot"),
+                        RESULT_ACCEPTED => crate::corelinks::close_vehicle_at(now_ms, self.id, self.link_states.iter().map(|(link, _, _)| *link).collect(), "the vehicle accepted a reboot"),
                         _ => self.pending_notices.push((crate::noticeboard::MESSAGE, "Vehicle reboot failed.".to_string())),
                     }
                     Vec::new()
@@ -2644,11 +2656,6 @@ impl Vehicle {
                     if a.command == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_MODE {
                         self.mode_ack = Some((a.result as u8, self.mode_ack.map_or(1, |(_, serial)| serial + 1)));
                     }
-                    if a.command == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_PREFLIGHT_STORAGE && self.autopilot == crate::modes::AUTOPILOT_PX4 {
-                        let reset = a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED;
-                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", if reset { "Reset successful" } else { "Reset failed" });
-                        self.sensor_refresh_due = reset.then_some(now_ms + SENSOR_REFRESH_DELAY_MS);
-                    }
                 }
                 if a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED {
                     match a.command {
@@ -3169,6 +3176,10 @@ pub struct LinkKinds {
 }
 
 const SENSOR_REFRESH_DELAY_MS: u64 = 1000;
+const REBOOT_TAG: u64 = 0x5245_424F_4F54;
+const FACTORY_RESET_TAG: u64 = 0x5245_5345_5446;
+const STORAGE_RESET_FACTORY: f64 = 3.0;
+const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
 
 fn sensor_parameter(name: &str) -> bool {
     name.starts_with("CAL_") || name.starts_with("SENS_")
@@ -3556,6 +3567,10 @@ impl Hub {
         });
         let closed: Vec<u8> = self.vehicles.values().filter(|v| v.connection_lost && v.auto_disconnect).map(|v| v.id).collect();
         closed.iter().for_each(|id| self.remove(*id));
+    }
+
+    pub fn links_of_other_vehicles(&self, id: u8) -> Vec<LinkId> {
+        self.vehicles.values().filter(|v| v.id != id).flat_map(|v| v.link_states.iter().map(|(link, _, _)| *link)).collect()
     }
 
     pub fn remove(&mut self, id: u8) {
@@ -4258,6 +4273,9 @@ mod tests {
             hub.on_frame(origin(0), &header, &param_value(name, 3, *index, 1.0), 0, 10);
         });
         let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_PREFLIGHT_STORAGE, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
+        hub.on_frame(origin(0), &header, &ack, 0, 50);
+        assert!(hub.active().unwrap().sensor_refresh_due.is_none(), "a storage ack nobody asked this page for, a parameter reset say, is not the factory reset");
+        hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "factoryReset" }), 60).unwrap();
         hub.on_frame(origin(0), &header, &ack, 0, 100);
         let reads = |frames: Vec<(LinkId, Vec<u8>)>| -> Vec<String> { frames.iter().filter_map(|(_, b)| match decode(b) { MavMessage::PARAM_REQUEST_READ(r) => Some(r.param_id.to_str().unwrap().to_string()), _ => None }).collect() };
         assert!(reads(hub.tick(1_099)).is_empty(), "SensorsComponentController waits a second before _refreshParams");
@@ -4708,6 +4726,16 @@ mod tests {
     }
 
     #[test]
+    fn a_link_another_vehicle_still_uses_is_not_closed_for_a_reboot() {
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(4), &MavHeader { system_id: 2, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(5), &MavHeader { system_id: 2, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 0, 0);
+        assert_eq!(hub.links_of_other_vehicles(1), [4, 5], "LinkInterface disconnects only once no vehicle holds it");
+        assert_eq!(hub.links_of_other_vehicles(2), [4]);
+    }
+
+    #[test]
     fn a_reboot_closes_the_vehicle_when_accepted_and_says_so_when_not() {
         use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
@@ -4720,6 +4748,9 @@ mod tests {
         hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "reboot" }), 21_000).unwrap();
         hub.on_frame(origin(4), &autopilot, &ack(MavResult::MAV_RESULT_ACCEPTED), 21_100_000, 21_100);
         assert_eq!(crate::corelinks::pending_close(), Some((21_100, Some(vec![4]))), "Vehicle::_rebootCommandResultHandler closes the vehicle's own links");
+        hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "mavlinkCommand", "command": 246, "params": [0.0, 1.0] }), 22_000).unwrap();
+        hub.on_frame(origin(4), &autopilot, &ack(MavResult::MAV_RESULT_ACCEPTED), 22_100_000, 22_100);
+        assert_eq!(crate::corelinks::pending_close(), Some((21_100, Some(vec![4]))), "a companion reboot sent some other way is not the vehicle rebooting");
     }
 
     #[test]

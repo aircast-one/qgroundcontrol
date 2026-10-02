@@ -1730,7 +1730,6 @@ impl<B: Backend> Backend for Facade<B> {
 #[cfg(test)]
 mod tests {
     #[test]
-    #[test]
     fn the_hobbs_meter_reads_lifetime_flight_time_like_the_firmware_plugins() {
         let apm = |name: &str| (name == "STAT_FLTTIME").then_some(3_725.0 + 360_000.0);
         assert_eq!(hobbs_meter(false, apm), "0101:02:05", "APMFirmwarePlugin::getHobbsMeter: STAT_FLTTIME seconds as %04d:%02d:%02d");
@@ -1739,6 +1738,7 @@ mod tests {
         assert_eq!(hobbs_meter(true, |_| None), "0000:00:00", "a vehicle without the parameters reads zero, as both plugins do");
     }
 
+    #[test]
     fn mission_item_index_counts_home_for_px4_like_vehicle_update_mission_item_index() {
         assert_eq!(super::mission_item_index(3, true), 4, "PX4 does not take a home position, so QGC adds one");
         assert_eq!(super::mission_item_index(3, false), 3);
