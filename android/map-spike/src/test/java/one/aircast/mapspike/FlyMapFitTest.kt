@@ -16,6 +16,15 @@ class FlyMapFitTest {
 
 
     @Test
+    fun `the map centres once on the operator when no vehicle has a position, as FlightMap does on the first GCS fix`() {
+        val here = TrackPoint(47.0, 8.0)
+        assertTrue(centresOnOperator(alreadyCentred = false, operator = here, vehiclePlaced = false))
+        assertFalse(centresOnOperator(alreadyCentred = true, operator = here, vehiclePlaced = false))
+        assertFalse(centresOnOperator(alreadyCentred = false, operator = here, vehiclePlaced = true))
+        assertFalse(centresOnOperator(alreadyCentred = false, operator = null, vehiclePlaced = false))
+    }
+
+    @Test
     fun `other vehicles' missions come from the fly view, as FlyViewMap repeats PlanMapItems for every vehicle`() {
         val view = org.json.JSONObject("""{"items":[],"others":[{"linksStartToHome":true,"items":[]},{"items":[]}]}""")
         org.junit.Assert.assertEquals(listOf(true, false), otherMissions(view).map { it.linkStartToHome })

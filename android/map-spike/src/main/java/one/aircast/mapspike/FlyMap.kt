@@ -28,6 +28,24 @@ import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
 private const val FLY_POLL_MS = 2000L
+private const val CAMERA_STORE = "fly-map-camera"
+
+internal data class SavedCamera(val centre: TrackPoint, val zoom: Double)
+
+private fun readCamera(context: android.content.Context): SavedCamera? =
+    context.getSharedPreferences(CAMERA_STORE, android.content.Context.MODE_PRIVATE).let { prefs ->
+        prefs.getString("camera", null)?.split(",")?.mapNotNull { it.toDoubleOrNull() }?.takeIf { it.size == 3 }
+            ?.let { (latitude, longitude, zoom) -> SavedCamera(TrackPoint(latitude, longitude), zoom) }
+            ?.takeIf { isPlottable(it.centre.latitude, it.centre.longitude) && it.zoom > 1.0 }
+    }
+
+private fun writeCamera(context: android.content.Context, camera: SavedCamera) {
+    context.getSharedPreferences(CAMERA_STORE, android.content.Context.MODE_PRIVATE).edit()
+        .putString("camera", "${camera.centre.latitude},${camera.centre.longitude},${camera.zoom}").apply()
+}
+
+internal fun centresOnOperator(alreadyCentred: Boolean, operator: TrackPoint?, vehiclePlaced: Boolean): Boolean =
+    !alreadyCentred && operator != null && !vehiclePlaced
 
 private data class FlownPlan(
     val items: List<MissionItem> = emptyList(),
@@ -48,6 +66,7 @@ private data class FlownPlan(
     val orbit: OrbitCircle? = null,
     val current: Int? = null,
     val others: List<OtherMission> = emptyList(),
+    val vehiclePlaced: Boolean = false,
 )
 
 private const val FLY_MISSION_ITEMS = "view.flyMissionItems(geometry)"
@@ -76,6 +95,11 @@ fun FlyMap(
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableDoubleStateOf(0.0) }
     var fitRequest by remember { mutableIntStateOf(0) }
+    val saved = remember(context) { readCamera(context) }
+    var centreRequest by remember { mutableIntStateOf(if (saved != null) 1 else 0) }
+    var centreOn by remember { mutableStateOf(saved?.centre) }
+    var centreZoom by remember { mutableStateOf(saved?.zoom) }
+    var operatorCentred by remember { mutableStateOf(false) }
     val keepCentered by mapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)")
 
     DisposableEffect(Unit) {
@@ -113,9 +137,16 @@ fun FlyMap(
                         orbit = OrbitBridge.read(),
                         current = raw?.optInt("selected", -1)?.takeIf { it > 0 },
                         others = otherMissions(raw),
+                        vehiclePlaced = vehicleChoices(runCatching { JSONObject(QGCBridge.get(VEHICLES_VIEW)) }.getOrNull()).choices.any { isPlottable(it.latitude, it.longitude) },
                     )
                 }
                 if (missionArrived(plan.items, next.items, ::shape)) fitRequest++
+                if (centresOnOperator(operatorCentred, next.operator, next.vehiclePlaced)) {
+                    operatorCentred = true
+                    centreOn = next.operator
+                    centreZoom = null
+                    centreRequest++
+                }
                 plan = next
                 delay(FLY_POLL_MS)
             }
@@ -155,10 +186,14 @@ fun FlyMap(
             selectedWaypoint = plan.current,
             otherMissions = plan.others,
             fitRequest = fitRequest,
+            centreRequest = centreRequest,
+            centreOn = centreOn,
+            centreZoom = centreZoom,
             onCentreChanged = { at, level ->
                 centre = at
                 zoom = level
                 FlightMapPosition.latest = at
+                if (level > 1.0) writeCamera(context, SavedCamera(at, level))
             },
         )
         centre?.takeIf { zoom > 0.0 }?.let { at ->
