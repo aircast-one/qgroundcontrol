@@ -53,4 +53,13 @@ class MapClickMenuTest {
         assertEquals(80.0, signedLoiterRadius(-80.0, clockwise = true), 0.0)
         assertEquals(null, loiterOffer(JSONObject("""{"loiter":null}""")))
     }
+
+    @Test
+    fun `go here reads how far and which way the point lies, in the operator's unit`() {
+        val from = MapPoint(47.0, 8.0)
+        assertEquals("111 m north", goHereText(from, MapPoint(47.001, 8.0), "m", 1.0))
+        assertEquals("365 ft north", goHereText(from, MapPoint(47.001, 8.0), "ft", 0.3048))
+        assertEquals("76 m east", goHereText(from, MapPoint(47.0, 8.001), "m", 1.0))
+        assertEquals(null, goHereText(from, MapPoint(47.001, 8.0), "", 1.0))
+    }
 }

@@ -44,6 +44,20 @@ internal const val MAP_CLICK_PATH = "view.mapClick"
 internal data class MapPoint(val latitude: Double, val longitude: Double)
 
 internal const val ORBIT_ACTION = "Orbit"
+internal const val GOTO_ACTION = "GoTo"
+
+private val COMPASS_POINTS = listOf("north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west")
+
+internal fun goHereText(from: MapPoint, to: MapPoint, unit: String, metresPerUnit: Double): String? {
+    if (metresPerUnit <= 0.0 || unit.isBlank()) return null
+    val metres = one.aircast.mapspike.metresBetween(one.aircast.mapspike.TrackPoint(from.latitude, from.longitude), one.aircast.mapspike.TrackPoint(to.latitude, to.longitude))
+    val fromLat = Math.toRadians(from.latitude)
+    val toLat = Math.toRadians(to.latitude)
+    val deltaLon = Math.toRadians(to.longitude - from.longitude)
+    val bearing = (Math.toDegrees(Math.atan2(Math.sin(deltaLon) * Math.cos(toLat), Math.cos(fromLat) * Math.sin(toLat) - Math.sin(fromLat) * Math.cos(toLat) * Math.cos(deltaLon))) + 360.0) % 360.0
+    val point = COMPASS_POINTS[(Math.round(bearing / 45.0).toInt()) % COMPASS_POINTS.size]
+    return "${Math.round(metres / metresPerUnit)} $unit $point"
+}
 
 internal data class MapClickAction(
     val id: String,
@@ -102,6 +116,7 @@ private fun send(action: MapClickAction, point: MapPoint, orbit: OrbitChoice?): 
 @Composable
 internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
     val view by qgcPath(MAP_CLICK_PATH)
+    val vehicleCoordinate by qgcPath("vehicle.coordinate")
     val actions = remember(view) { mapClickActions(view) }
     var confirming by remember(point) { mutableStateOf<MapClickAction?>(null) }
     var refusal by remember(point) { mutableStateOf<String?>(null) }
@@ -165,8 +180,10 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
                     Modifier.padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(pending.title, style = MaterialTheme.typography.titleLarge)
-                    Text(pending.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(sentenceCase(pending.title), style = MaterialTheme.typography.titleLarge)
+                    val vehicleAt = geoOf(vehicleCoordinate)?.let { (lat, lon) -> MapPoint(lat, lon) }
+                    val away = vehicleAt?.takeIf { pending.id == GOTO_ACTION }?.let { goHereText(it, point, defaults.unit, defaults.metresPerUnit) }
+                    Text(away ?: pending.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (pending.id == ORBIT_ACTION) {
                         OutlinedTextField(
                             value = radiusText,
