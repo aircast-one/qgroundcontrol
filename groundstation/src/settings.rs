@@ -163,9 +163,21 @@ const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
     ("fixedBasePositionLongitude", "useFixedBasePosition", false),
     ("fixedBasePositionAltitude", "useFixedBasePosition", false),
     ("fixedBasePositionAccuracy", "useFixedBasePosition", false),
+    ("clickAndDrag", "enableOnScreenControl", false),
+    ("cameraHFov", "enableOnScreenControl", false),
+    ("cameraVFov", "enableOnScreenControl", false),
+    ("cameraSlideSpeed", "enableOnScreenControl", false),
+    ("cameraHFov", "clickAndDrag", true),
+    ("cameraVFov", "clickAndDrag", true),
+    ("cameraSlideSpeed", "clickAndDrag", false),
 ];
 
 const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
+    ("gimbalControllerSettings", &[
+        ("On-Screen Control", &["enableOnScreenControl", "clickAndDrag", "cameraHFov", "cameraVFov", "cameraSlideSpeed"]),
+        ("Zoom speed", &["zoomMaxSpeed", "zoomMinSpeed"]),
+        ("", &["joystickButtonsSpeed", "showAzimuthIndicatorOnMap", "toolbarIndicatorShowAzimuth", "toolbarIndicatorShowAcquireReleaseControl"]),
+    ]),
     ("remoteIDSettings", &[
         ("Region", &["region"]),
         ("Basic ID", &["sendBasicID", "basicIDType", "basicIDUaType", "basicID"]),
@@ -401,6 +413,14 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn gimbal_rows_group_as_the_gimbal_indicator_heads_them() {
+        let controls: Vec<Value> = ["zoomMinSpeed", "clickAndDrag", "showAzimuthIndicatorOnMap", "enableOnScreenControl"].iter().map(|n| json!({ "name": n })).collect();
+        let titles: Vec<String> = subsections("gimbalControllerSettings", &controls).iter().map(|s| s["title"].as_str().unwrap().to_string()).collect();
+        assert_eq!(titles, ["On-Screen Control", "Zoom speed", ""]);
+        assert!(HIDDEN_WHEN.contains(&("cameraSlideSpeed", "clickAndDrag", false)), "GimbalIndicator.qml shows the slide speed only for click-and-drag");
+    }
+
+    #[test]
     fn remote_id_fields_have_no_effect_while_their_broadcast_is_off_as_qgc_disables_them() {
         let controls: Vec<Value> = ["basicID", "selfIDFree", "selfIDEmergency"].iter().map(|n| json!({ "name": n, "enabled": true })).collect();
         let facts = |on: bool| ["sendBasicID", "sendSelfID"].iter().map(|n| json!({ "name": n, "value": on })).collect::<Vec<_>>();
@@ -529,6 +549,7 @@ mod tests {
             ("LogManager", include_str!("../../src/Settings/LogManager.SettingsGroup.json")),
             ("PlanView", include_str!("../../src/Settings/PlanView.SettingsGroup.json")),
             ("RemoteID", include_str!("../../src/Settings/RemoteID.SettingsGroup.json")),
+            ("GimbalController", include_str!("../../src/Settings/GimbalController.SettingsGroup.json")),
         ];
         let declares = |name: &str| -> Vec<&str> {
             GROUPS.iter().filter(|(_, body)| body.contains(&format!("\"{name}\""))).map(|(group, _)| *group).collect()
