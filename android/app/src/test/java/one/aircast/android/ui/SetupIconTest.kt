@@ -14,4 +14,12 @@ class SetupIconTest {
         assertEquals(R.drawable.ic_tune, setupIcon(null, "APMAdvancedTuningCopterComponent"))
         assertEquals(R.drawable.ic_build, setupIcon(null, "SomethingNewComponent"))
     }
+
+    @Test
+    fun theNoteFollowsTheMostSpecificClassToken() {
+        assertEquals("Every rate and filter, per axis", setupNote("APMAdvancedTuningCopterComponent"))
+        assertEquals("How it responds to the sticks", setupNote("APMTuningComponent"))
+        assertEquals("Return altitude, landing speed and geofence", setupNote("APMFlightSafetyComponent"))
+        assertEquals("", setupNote("SomethingNewComponent"))
+    }
 }

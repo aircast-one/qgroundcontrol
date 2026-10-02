@@ -68,6 +68,33 @@ internal fun setupIcon(known: String?, className: String = ""): Int = when (know
     else -> COMPONENT_ICONS.entries.firstOrNull { (token, _) -> token in className }?.value ?: R.drawable.ic_build
 }
 
+internal fun setupNote(className: String): String =
+    COMPONENT_NOTES.entries.firstOrNull { (token, _) -> token in className }?.value.orEmpty()
+
+private val COMPONENT_NOTES = linkedMapOf(
+    "Failsafe" to "What it does when the battery, radio or link fails",
+    "FlightSafety" to "Return altitude, landing speed and geofence",
+    "Safety" to "Return altitude, landing speed and geofence",
+    "FlightModes" to "Which mode each switch position selects",
+    "Airframe" to "The frame type the autopilot flies",
+    "SubFrame" to "The frame type the autopilot flies",
+    "Gimbal" to "Camera mount axes and their limits",
+    "Joystick" to "A gamepad as the stick instead of a radio",
+    "Logging" to "What the autopilot records and when",
+    "Motor" to "Spin each motor to check order and direction",
+    "Power" to "Battery monitor, capacity and voltage",
+    "Radio" to "Calibrate the sticks and switches",
+    "RemoteSupport" to "Share telemetry with a support engineer",
+    "Scripting" to "Lua scripts running on the autopilot",
+    "Sensors" to "Compass, accelerometer and level",
+    "AdvancedTuning" to "Every rate and filter, per axis",
+    "Tuning" to "How it responds to the sticks",
+    "Actuator" to "Outputs and what drives them",
+    "Servo" to "Outputs and what drives them",
+    "Follow" to "Follow a target or this phone",
+    "Camera" to "Camera trigger and gimbal",
+)
+
 private val COMPONENT_ICONS = linkedMapOf(
     "Failsafe" to R.drawable.ic_warning,
     "Airframe" to R.drawable.ic_flight,
@@ -347,6 +374,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     selected = component == openComponent,
                     summary = summaries[component.name].orEmpty(),
                     icon = setupIcon(component.known, component.className),
+                    subtitle = setupNote(component.className).takeIf { summaries[component.name].isNullOrEmpty() }.orEmpty(),
                 )
             }
         }
@@ -384,6 +412,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     selected = component == openComponent,
                     summary = summaries[component.name].orEmpty(),
                     icon = setupIcon(component.known, component.className),
+                    subtitle = setupNote(component.className).takeIf { summaries[component.name].isNullOrEmpty() }.orEmpty(),
                 )
             }
         }
