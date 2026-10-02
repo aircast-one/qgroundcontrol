@@ -1528,13 +1528,18 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     Some(match property {
         "altitude" | "command" => return Some(match number {
             Some(n) => {
-                let raw = if property == "altitude" { crate::read::Unit::vertical(backend).meters(n) } else { n };
+                let raw = if property == "altitude" { crate::missionitems::altitude_from_shown(n) } else { n };
                 item_edit(backend, &json!([index, raw]).to_string(), property == "command")
             }
             None => refused("That field takes a number."),
         }),
         "loiterRadius" => answer(number.ok_or_else(|| "A radius is a number.".to_string()).and_then(|v| plandoc::set_loiter_radius(&current, index, v).ok_or_else(|| format!("Item {index} is not a loiter.")))),
-        "speedSection.flightSpeed" => answer(number.ok_or_else(|| "A speed is a number.".to_string()).and_then(|v| plandoc::set_speed(&current, index, Some(v)).ok_or_else(|| format!("Item {index} carries no speed.")))),
+        "speedSection.flightSpeed" => answer(
+            number
+                .map(|shown| crate::units::cooking("m/s").map_or(shown, |c| (c.base)(shown)))
+                .ok_or_else(|| "A speed is a number.".to_string())
+                .and_then(|v| plandoc::set_speed(&current, index, Some(v)).ok_or_else(|| format!("Item {index} carries no speed."))),
+        ),
         "speedSection.specifyFlightSpeed" => {
             let on = given.as_ref().and_then(Value::as_bool).unwrap_or(false);
             let keep = plandoc::specified_speed(&current, index);
@@ -1896,6 +1901,10 @@ mod tests {
         assert_eq!((shown["units"].as_str(), shown["rawUnits"].as_str(), shown["rawValue"].as_f64()), (Some("ft"), Some("m"), Some(30.48)));
         let listed = json!({ "label": "Mode", "units": "m", "enumStrings": "A,B", "enumValues": "0,1" });
         assert_eq!(param_conversion(&listed).map(|c| c.name), None, "an enumerated fact is never translated");
+        let pitch = json!({ "label": "Pitch", "units": "gimbal-degrees" });
+        assert_eq!(param_conversion(&pitch).map(|c| ((c.shown)(10.0), c.name)), Some((-10.0, "deg")), "the built-in translator comes first, as setBuiltInTranslator does");
+        let feet_back = crate::units::cooking_with("m", |_| Some("0".to_string()), 0).map(|c| (c.base)(100.0)).unwrap();
+        assert!((feet_back - 30.48).abs() < 1e-9, "a value typed in feet is written back in metres");
     }
 
     #[test]
@@ -2193,7 +2202,8 @@ fn number_json(value: f64) -> Value {
 }
 
 fn param_conversion(param: &Value) -> Option<crate::units::Conversion> {
-    list(param, "enumStrings").is_empty().then(|| param.get("units").and_then(Value::as_str).and_then(crate::units::cooking)).flatten()
+    let units = param.get("units").and_then(Value::as_str)?;
+    list(param, "enumStrings").is_empty().then(|| crate::units::built_in(units).or_else(|| crate::units::cooking(units))).flatten()
 }
 
 fn param_fact(param: &Value, raw: f64) -> Value {
@@ -2340,11 +2350,12 @@ fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple]
         crate::cmdinfo::VehicleClass::MultiRotor => hover,
         _ => cruise,
     };
+    let speed = crate::units::cooking("m/s");
     json!({
         "available": available,
         "specified": specified.is_some(),
-        "value": specified.unwrap_or(default),
-        "units": "m/s",
+        "value": speed.map_or(specified.unwrap_or(default), |c| (c.shown)(specified.unwrap_or(default))),
+        "units": speed.map_or("m/s", |c| c.name),
         "path": format!("{item}.flightSpeed"),
         "specifyPath": format!("{item}.specifyFlightSpeed"),
     })

@@ -136,6 +136,11 @@ const BUILT_IN: [(&str, Conversion); 6] = [
     ("centi-celsius", Conversion { name: "C", shown: |v| v / 100.0, base: |v| v * 100.0 }),
 ];
 
+pub fn built_in(raw_units: &str) -> Option<Conversion> {
+    let lowered = raw_units.to_lowercase();
+    BUILT_IN.iter().find(|(units, _)| *units == lowered).map(|(_, conversion)| *conversion)
+}
+
 pub fn for_fact(meta: &crate::factmeta::MetaData, preference: impl Fn(&str) -> Option<Conversion>) -> Option<Conversion> {
     let raw_units = meta.units.as_deref().unwrap_or("");
     let lowered = raw_units.to_lowercase();

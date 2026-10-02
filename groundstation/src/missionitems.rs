@@ -510,7 +510,21 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
 }
 
 fn altitude_fact(property: &str, metres: f64) -> Value {
-    json!([{ "property": property, "value": metres, "rawValue": metres, "units": "m" }])
+    let raw_units = if property == "plannedHomePositionAltitude" { LAUNCH_ALTITUDE_RAW_UNITS } else { ALTITUDE_RAW_UNITS };
+    altitude_fact_with(property, metres, crate::units::cooking(raw_units))
+}
+
+const LAUNCH_ALTITUDE_RAW_UNITS: &str = "vertical m";
+
+fn altitude_fact_with(property: &str, metres: f64, cooking: Option<crate::units::Conversion>) -> Value {
+    let shown = cooking.map_or(metres, |c| (c.shown)(metres));
+    json!([{ "property": property, "value": shown, "rawValue": metres, "units": cooking.map_or("m", |c| c.name) }])
+}
+
+pub const ALTITUDE_RAW_UNITS: &str = "m";
+
+pub fn altitude_from_shown(shown: f64) -> f64 {
+    crate::units::cooking(ALTITUDE_RAW_UNITS).map_or(shown, |c| (c.base)(shown))
 }
 
 pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &Unit, speed: &Unit, imperial: bool, rover: bool) -> Result<Value, String> {
@@ -1223,6 +1237,16 @@ mod from_the_document {
         let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json")).unwrap();
         let home_altitude = qt["items"][0]["altitudeMetres"].as_f64().unwrap();
         agrees(include_str!("../tests/fixtures/ardupilot-takeoff-without-coordinate.plan"), home_altitude, include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json"));
+    }
+
+    #[test]
+    fn an_item_altitude_reads_and_writes_in_the_same_units_like_its_fact() {
+        let feet = crate::units::cooking_with(ALTITUDE_RAW_UNITS, |_| Some("0".to_string()), 0);
+        let read = altitude_fact_with("altitude", 50.0, feet);
+        let shown = read[0]["value"].as_f64().unwrap();
+        assert_eq!((read[0]["units"].as_str(), read[0]["rawValue"].as_f64()), (Some("ft"), Some(50.0)));
+        let nudged = feet.map(|c| (c.base)(shown + 10.0)).unwrap();
+        assert!((nudged - (50.0 + 3.048)).abs() < 1e-9, "ten up from what is shown is ten feet, not ten metres or a third of one");
     }
 
     #[test]
