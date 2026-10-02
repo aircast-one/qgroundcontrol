@@ -270,7 +270,7 @@ class ReadOnlyNoteTest {
             JSONObject("""{"class":"Control","control":"choice","label":"Frame Class",
                 "name":"FRAME_CLASS","display":"Quad","value":1,"valueString":"1","units":"",
                 "path":"vehicle.parameterManager.getParameter(-1,FRAME_CLASS)","readOnly":false,
-                "rebootRequired":true,
+                "rebootRequired":true,"vehicleRebootRequired":true,"applicationRestartRequired":false,
                 "options":[{"label":"Undefined","raw":"0"},{"label":"Quad","raw":"1"}]}"""),
         )!!
 
@@ -278,6 +278,20 @@ class ReadOnlyNoteTest {
         assertEquals(listOf("Undefined", "Quad"), fact.enumStrings)
         assertEquals(1, fact.enumIndex)
         assertEquals(true, fact.vehicleRebootRequired)
+    }
+
+    @Test
+    fun `an app setting that needs an app restart does not ask for a vehicle reboot`() {
+        val fact = factFromControl(
+            JSONObject("""{"class":"Control","control":"text","label":"Host name","name":"forwardMavlinkHostName",
+                "display":"localhost:14445","value":"localhost:14445","valueString":"localhost:14445","units":"",
+                "path":"settings.mavlinkSettings.forwardMavlinkHostName","readOnly":false,
+                "rebootRequired":true,"vehicleRebootRequired":false,"applicationRestartRequired":true}"""),
+        )!!
+
+        assertEquals(false, fact.vehicleRebootRequired)
+        assertEquals(true, fact.qgcRebootRequired)
+        assertEquals("Restart Aircast for this to take effect.", factRebootNote(fact))
     }
 
     @Test

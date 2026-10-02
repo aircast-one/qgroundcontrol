@@ -95,7 +95,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         readOnly = control.optBoolean("readOnly"),
         enabled = control.optBoolean("enabled", true),
         disabledReason = control.optText("disabledReason"),
-        vehicleRebootRequired = control.optBoolean("rebootRequired"),
+        vehicleRebootRequired = control.optBoolean("vehicleRebootRequired"),
         minString = control.optText("minimumText"),
         maxString = control.optText("maximumText"),
         minIsDefaultForType = control.isNull("minimumText"),
