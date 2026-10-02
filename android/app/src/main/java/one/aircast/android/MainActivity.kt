@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationBarItem
@@ -258,6 +259,7 @@ fun AircastShell(hostView: android.view.View?) {
     val flyRcControlsLayer = remember { movableContentOf { RcControlsLayer() } }
 
     val snackbars = remember { SnackbarHostState() }
+    val alerts = remember { SnackbarHostState() }
     var acknowledgedThrough by remember { mutableLongStateOf(-1L) }
     val notices by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.hostNoticesPath(acknowledgedThrough))
     val noticeScope = rememberCoroutineScope()
@@ -289,7 +291,7 @@ fun AircastShell(hostView: android.view.View?) {
             banners.filterNot { it == critical && tab == Tab.Fly }.forEach { banner ->
                 when (banner == critical) {
                     true -> {
-                        snackbars.showSnackbar(banner, withDismissAction = true, duration = androidx.compose.material3.SnackbarDuration.Indefinite)
+                        alerts.showSnackbar(banner, withDismissAction = true, duration = androidx.compose.material3.SnackbarDuration.Indefinite)
                         withContext(Dispatchers.Default) { Qgc.invoke(one.aircast.android.ui.RESET_ERROR_LEVEL_MESSAGES) }
                     }
                     false -> snackbars.showSnackbar(banner)
@@ -383,6 +385,7 @@ fun AircastShell(hostView: android.view.View?) {
         Scaffold(
             modifier = Modifier.weight(1f),
             snackbarHost = { SnackbarHost(snackbars) { one.aircast.android.ui.AppSnackbar(it) } },
+            topBar = { SnackbarHost(alerts, Modifier.statusBarsPadding()) { one.aircast.android.ui.AppSnackbar(it) } },
             contentWindowInsets = if (onFly) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
             bottomBar = {
                 Column {
