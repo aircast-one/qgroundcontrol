@@ -25,4 +25,11 @@ class VehicleStatusSheetTest {
         assertEquals(ArmControls("Slide to Arm", false, false, true, false), armControls(state(nominal = false, fault = true, canArm = false), forceOpen = false))
         assertEquals(ArmControls("Slide to Arm", false, false, false, true), armControls(state(canArm = false), forceOpen = true))
     }
+
+    @Test
+    fun `a slide the deck cannot act on says why instead of closing silently`() {
+        val blocked = GuidedOffer(id = "arm", title = "Arm", offer = "disabled", reason = "Complete the preflight checklist first", prompt = "", destructive = false, carriesValue = false)
+        assertEquals("Complete the preflight checklist first", deckRequestRefusal(blocked))
+        assertEquals(ARM_UNAVAILABLE, deckRequestRefusal(null))
+    }
 }

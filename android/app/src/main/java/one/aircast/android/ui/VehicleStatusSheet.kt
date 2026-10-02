@@ -33,6 +33,10 @@ internal object DeckRequest {
 internal const val ARM_REQUEST = "arm"
 internal const val FORCE_ARM_REQUEST = "forceArm"
 
+internal const val ARM_UNAVAILABLE = "Arming is not available right now."
+
+internal fun deckRequestRefusal(offer: GuidedOffer?): String = offer?.reason?.ifBlank { null } ?: ARM_UNAVAILABLE
+
 internal data class ArmControls(
     val sliderText: String,
     val sliderEnabled: Boolean,
