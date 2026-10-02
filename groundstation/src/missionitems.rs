@@ -4,6 +4,7 @@ use crate::read::{Unit, flag, format_measure, integer, object, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
+    crate::terrainservice::TERRAIN_CHANGED,
     "plan.missionController.visualItems.count",
     "plan.missionController.currentPlanViewVIIndex",
     "plan.missionController.containsItems",
@@ -127,6 +128,10 @@ fn amsl_entry(simple: &crate::plandoc::Simple, home_altitude: f64) -> f64 {
     let mode = simple.altitude.as_ref().map_or(match simple.frame { 10 => crate::altitudemodes::TERRAIN_FRAME, 0 => crate::altitudemodes::ABSOLUTE, _ => crate::altitudemodes::RELATIVE }, |a| a.mode);
     match mode {
         crate::altitudemodes::RELATIVE => seventh + home_altitude,
+        crate::altitudemodes::TERRAIN_FRAME => match (simple.params[4], simple.params[5]) {
+            (Some(latitude), Some(longitude)) => crate::terrainservice::height(latitude, longitude).map_or(f64::NAN, |ground| seventh + ground),
+            _ => f64::NAN,
+        },
         _ => seventh,
     }
 }
@@ -432,6 +437,13 @@ pub fn flight_status(doc: &crate::plandoc::Document, speeds: &Speeds) -> Option<
             }
             if !w.past_land {
                 add(&mut w, 0.0, additional_delay(item));
+            }
+            if let crate::plandoc::Item::Simple(s) = item
+                && commands.get(&s.command).is_some_and(|c| c.specifies_coordinate && c.standalone_coordinate)
+            {
+                let amsl = amsl_entry(s, home_alt);
+                w.status.min_amsl = w.status.min_amsl.min(amsl);
+                w.status.max_amsl = w.status.max_amsl.max(amsl);
             }
             if let Some(f) = flight(item, &commands, home_alt) {
                 let (low, high) = f.band;
@@ -1205,6 +1217,18 @@ mod from_the_document {
         let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json")).unwrap();
         let home_altitude = qt["items"][0]["altitudeMetres"].as_f64().unwrap();
         agrees(include_str!("../tests/fixtures/ardupilot-takeoff-without-coordinate.plan"), home_altitude, include_str!("../tests/fixtures/missionitems-ardupilot-takeoff-by-qt.json"));
+    }
+
+    #[test]
+    fn an_roi_above_the_route_widens_the_altitude_band_like_the_flight_status_calculator() {
+        let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "vehicleType": 2, "plannedHomePosition": [47.0, 8.0, 500.0], "items": [
+            { "type": "SimpleItem", "command": 22, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 47.0, 8.0, 30] },
+            { "type": "SimpleItem", "command": 16, "frame": 3, "doJumpId": 2, "params": [0, 0, 0, 0, 47.001, 8.0, 50] },
+            { "type": "SimpleItem", "command": 201, "frame": 3, "doJumpId": 3, "params": [3, 0, 0, 0, 47.002, 8.0, 100] },
+        ] } }).to_string();
+        let doc = crate::plandoc::load(&plan, 2).unwrap();
+        let status = flight_status(&doc, &Speeds { hover: 5.0, cruise: 15.0, ascent: 3.0, descent: 1.0 }).unwrap();
+        assert_eq!((status.min_amsl, status.max_amsl), (500.0, 600.0), "every item that specifies a coordinate counts, standalone ones too");
     }
 
     fn status_matches(plan: &str, home_altitude: f64, qt: &str) {

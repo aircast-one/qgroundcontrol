@@ -4,6 +4,7 @@ use crate::read::{Unit, object, value_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
+    crate::terrainservice::TERRAIN_CHANGED,
     "plan.missionController.containsItems",
     "plan.missionController.missionTotalDistance",
     "plan.missionController.missionPlannedDistance",
