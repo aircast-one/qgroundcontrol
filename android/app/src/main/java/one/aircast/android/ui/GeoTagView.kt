@@ -3,45 +3,57 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import one.aircast.mapspike.optText
 
-internal const val GEOTAG_VIEW = "view.geoTag"
+internal const val GEOTAG_ROOT = "geoTag"
 
-internal data class TelemetryLog(val path: String, val name: String, val bytes: Long)
-
-internal data class GeoTagReading(
-    val readable: Boolean,
-    val bytes: Long,
-    val triggerCount: Int,
-    val refusal: String,
+internal data class GeoTagState(
+    val logFile: String,
+    val imageDirectory: String,
+    val saveDirectory: String,
+    val errorMessage: String,
+    val progress: Double,
+    val inProgress: Boolean,
+    val tagged: Int,
+    val skipped: Int,
+    val failed: Int,
+    val timeOffsetSecs: Double,
+    val previewMode: Boolean,
 )
 
-// view::split separates arguments on a comma at paren depth zero, and view.geoTag's argument
-// mode is "<file path>[,<tolerance seconds>]" - so a comma in the path is genuinely ambiguous
-// and the core cannot guess. A log under a folder like "Flights, 2026" would arrive truncated.
-internal fun geoTagPath(path: String): String? =
-    if (path.contains(',')) null else "$GEOTAG_VIEW($path)"
+internal fun geoTagState(json: JSONObject?): GeoTagState? =
+    json?.takeIf { it.optText("class") == "GeoTagController" }?.let {
+        GeoTagState(
+            logFile = it.optText("logFile"),
+            imageDirectory = it.optText("imageDirectory"),
+            saveDirectory = it.optText("saveDirectory"),
+            errorMessage = it.optText("errorMessage"),
+            progress = it.optDouble("progress", 0.0),
+            inProgress = it.optBoolean("inProgress"),
+            tagged = it.optInt("taggedCount"),
+            skipped = it.optInt("skippedCount"),
+            failed = it.optInt("failedCount"),
+            timeOffsetSecs = it.optDouble("timeOffsetSecs", 0.0),
+            previewMode = it.optBoolean("previewMode"),
+        )
+    }
 
-internal fun commaRefusal(log: TelemetryLog): String? =
-    if (log.path.contains(',')) "This log cannot be read: a comma in its folder name is not something the core can tell from a tolerance." else null
-
-internal fun geoTagReading(view: JSONObject?): GeoTagReading? {
-    if (view == null || view.optText("class") != "GeoTag") return null
-    return GeoTagReading(
-        readable = view.optBoolean("readable"),
-        bytes = view.optLong("bytes"),
-        triggerCount = view.optInt("triggerCount"),
-        refusal = view.optText("refusal"),
-    )
+internal fun geoTagButton(state: GeoTagState): String = when {
+    state.inProgress -> "Cancel"
+    state.previewMode -> "Preview"
+    else -> "Start Tagging"
 }
 
-internal fun triggerSummary(reading: GeoTagReading): String = when {
-    !reading.readable -> "This file could not be read."
-    reading.triggerCount == 0 -> "No camera triggers were recorded, so there is nothing to match photographs against."
-    reading.triggerCount == 1 -> "1 camera trigger recorded."
-    else -> "${reading.triggerCount} camera triggers recorded."
-}
+internal fun geoTagSummary(state: GeoTagState): String? =
+    state.takeIf { !it.inProgress && it.tagged > 0 }?.let {
+        val details = listOfNotNull(
+            "${it.skipped} skipped".takeIf { _ -> it.skipped > 0 },
+            "${it.failed} failed".takeIf { _ -> it.failed > 0 },
+        )
+        "Successfully tagged ${it.tagged} images" + if (details.isEmpty()) "" else " (${details.joinToString(", ")})"
+    }
 
-internal fun logSize(bytes: Long): String = when {
-    bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / 1048576.0)
-    bytes >= 1024 -> "%.0f KB".format(bytes / 1024.0)
-    else -> "$bytes B"
-}
+internal fun geoTagStep(done: Boolean, number: Int): String = if (done) "✓" else "$number"
+
+internal const val GEOTAG_IMAGE_EXTENSIONS = "jpg,jpeg,tiff,tif,dng"
+
+internal fun isGeoTagImage(name: String): Boolean =
+    name.substringAfterLast('.', "").lowercase() in GEOTAG_IMAGE_EXTENSIONS.split(',')
