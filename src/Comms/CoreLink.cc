@@ -109,6 +109,7 @@ QByteArray CoreLink::configJson(const LinkConfiguration *config)
         json.insert(QStringLiteral("parity"), static_cast<int>(serial->parity()));
         json.insert(QStringLiteral("portName"), serial->portName());
         json.insert(QStringLiteral("portDisplayName"), serial->portDisplayName());
+        json.insert(QStringLiteral("usbDirect"), serial->usbDirect());
 #endif
     }
     return QJsonDocument(json).toJson(QJsonDocument::Compact);

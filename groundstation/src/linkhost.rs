@@ -317,10 +317,25 @@ pub fn open(transports: &Mutex<Transports>, config: LinkConfig, reserved_udp_por
     }
 }
 
+static USB_DIRECT_PORTS: Mutex<std::collections::BTreeSet<String>> = Mutex::new(std::collections::BTreeSet::new());
+
+pub fn mark_usb_direct(port: &str, usb_direct: bool) {
+    let mut direct = USB_DIRECT_PORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    if usb_direct { direct.insert(port.to_string()) } else { direct.remove(port) };
+}
+
+pub fn is_usb_direct(port: &str) -> bool {
+    USB_DIRECT_PORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(port)
+}
+
 pub fn open_json(transports: &Mutex<Transports>, json: &str, reserved_udp_ports: &[u16]) -> Result<LinkId, Failure> {
     let value: Value = serde_json::from_str(json).map_err(|e| Failure::retry(format!("not JSON: {e}")))?;
     let via_link_manager = value.get("viaLinkManager").and_then(Value::as_bool).unwrap_or(false);
-    open(transports, linkconfig::from_json(&value).map_err(Failure::retry)?, if via_link_manager { &[] } else { reserved_udp_ports })
+    let config = linkconfig::from_json(&value).map_err(Failure::retry)?;
+    if let linkconfig::Kind::Serial { port_name, .. } = &config.kind {
+        mark_usb_direct(port_name, value.get("usbDirect").and_then(Value::as_bool).unwrap_or(false));
+    }
+    open(transports, config, if via_link_manager { &[] } else { reserved_udp_ports })
 }
 
 pub fn reap(transports: &Mutex<Transports>) {
@@ -381,7 +396,9 @@ pub fn write(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) -> bool {
 pub fn close(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {
     let (owned, shared) = {
         let mut guard = transports.lock().unwrap();
-        guard.configs.remove(&id);
+        if let Some(linkconfig::Kind::Serial { port_name, .. }) = guard.configs.remove(&id).map(|config| config.kind) {
+            mark_usb_direct(&port_name, false);
+        }
         (guard.owned.remove(&id), guard.shared.clone())
     };
     if let Some(link) = owned {

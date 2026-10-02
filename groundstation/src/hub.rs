@@ -602,7 +602,7 @@ impl Vehicle {
     fn refresh_calibration_params(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
         let Some(families) = self.calibrate.take_refresh() else { return Vec::new() };
         let component = self.component;
-        let actions: Vec<params::Action> = self.parameters(component).into_iter().filter(|(name, _)| families.iter().any(|family| name.starts_with(family))).flat_map(|(name, _)| self.params.refresh(component, &name)).collect();
+        let actions: Vec<params::Action> = self.parameters(component).into_iter().filter(|(name, _)| families.iter().any(|family| name.starts_with(family))).flat_map(|(name, _)| self.params.refresh_quietly(component, &name)).collect();
         self.follow_params(actions, now_ms)
     }
 
@@ -3449,7 +3449,7 @@ impl Hub {
         }
         if origin.v2 {
             let counted = self.link_counts.get(&origin.link).cloned().unwrap_or_default().counted(header.system_id, header.component_id, header.sequence);
-            if let (Some(status), Some(vehicle)) = (counted.status(), self.vehicles.get_mut(&header.system_id)) {
+            if let (Some(status), Some(vehicle)) = (counted.status(), self.vehicles.get_mut(&header.system_id).filter(|v| !v.is_standby(origin.link))) {
                 vehicle.link_status = status;
             }
             self.link_counts.insert(origin.link, counted);

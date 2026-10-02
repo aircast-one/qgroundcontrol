@@ -255,7 +255,7 @@ pub(crate) fn start_pump() {
                     let open = transports.open_ids();
                     let cloud: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(c.kind, crate::linkconfig::Kind::AircastCloud { .. }))).collect();
                     let high_latency: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| c.high_latency)).collect();
-                    let usb_direct: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(&c.kind, crate::linkconfig::Kind::Serial { port_name, .. } if crate::corelinks::is_usb_direct(port_name)))).collect();
+                    let usb_direct: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(&c.kind, crate::linkconfig::Kind::Serial { port_name, .. } if crate::linkhost::is_usb_direct(port_name)))).collect();
                     (open, crate::hub::LinkKinds { cloud, high_latency, usb_direct })
                 };
                 let outbound = {

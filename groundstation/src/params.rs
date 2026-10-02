@@ -153,6 +153,7 @@ pub struct Params {
     waiting_read: BTreeMap<u8, BTreeMap<String, u32>>,
     waiting_write: BTreeMap<u8, BTreeMap<String, u32>>,
     pending_write: BTreeMap<u8, BTreeMap<String, ParamValue>>,
+    quiet_reads: BTreeSet<(u8, String)>,
     write_batch: usize,
     read_batch: usize,
     failed_index: BTreeMap<u8, Vec<u16>>,
@@ -361,6 +362,11 @@ impl Params {
         vec![self.progress(), Action::StartWaitingTimer, Action::ReadByName { component, name: name.to_string() }]
     }
 
+    pub fn refresh_quietly(&mut self, component: u8, name: &str) -> Vec<Action> {
+        self.quiet_reads.insert((component, name.to_string()));
+        self.refresh(component, name)
+    }
+
     pub fn write(&mut self, component: u8, name: &str, value: ParamValue) -> Vec<Action> {
         if self.waiting_write.entry(component).or_default().insert(name.to_string(), 0).is_none() {
             self.write_batch += 1;
@@ -419,6 +425,7 @@ impl Params {
             actions.extend(self.fill_batch_queue(false));
         }
         self.waiting_read.entry(component).or_default().remove(name);
+        self.quiet_reads.remove(&(component, name.to_string()));
         let acknowledged = self.pending_write.get(&component).and_then(|written| written.get(name)).is_none_or(|written| acknowledges(*written, value));
         if acknowledged {
             self.waiting_write.entry(component).or_default().remove(name);
@@ -528,7 +535,9 @@ impl Params {
                         }
                     } else {
                         waiting.remove(&name);
-                        actions.push(Action::ReadFailed { component: *component, name });
+                        if !self.quiet_reads.remove(&(*component, name.clone())) {
+                            actions.push(Action::ReadFailed { component: *component, name });
+                        }
                     }
                 }
             }

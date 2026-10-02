@@ -161,7 +161,7 @@ impl Signing {
         }
         let op = Op::Enable { system: target.0, target, due_ms: now_ms + CONFIRM_TIMEOUT_MS, retry_ms: now_ms + RETRANSMIT_MS };
         self.channels.insert(link, Channel::new(name, key, link, false, Policy::Pending, op, seed));
-        Ok(setup_signing(Some(key), target, SystemTime::now(), seed))
+        Ok(setup_signing(Some(key), target, SystemTime::now(), seed.saturating_add(PERSISTED_TIMESTAMP_SAFETY_BUMP_TICKS)))
     }
 
     pub fn begin_disable(&mut self, link: LinkId, target: (u8, u8), now_ms: u64) -> Result<SETUP_SIGNING_DATA, String> {
@@ -194,6 +194,9 @@ impl Signing {
         let pending_enable = matches!(channel.op, Op::Enable { .. });
         let verified = signed && raw_frame(bytes).filter(|raw| channel.data.verify_signature(raw)).map(|raw| channel.streams.insert((raw.system_id(), raw.component_id(), raw.signature_link_id()))).is_some();
         let valid = verified || channel.policy.accepts_unsigned(id);
+        if !valid && !signed {
+            return Inbound { accept: false, notices: Vec::new() };
+        }
         if !valid {
             channel.bad_signatures = channel.bad_signatures.saturating_add(1);
             let notice = (channel.bad_signatures == BAD_SIGNATURE_ALERT).then(|| match pending_enable {
@@ -375,8 +378,8 @@ mod tests {
         let out = signing.outbound(3, &frame(&heartbeat(), None));
         assert!(is_signed(&out) && verifies(KEY, &out));
         assert!(!signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, 30).accept, "once on, unsigned traffic is refused");
-        let alerts: Vec<String> = (31..33).flat_map(|t| signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, t).notices).collect();
-        assert_eq!(alerts.len(), 1, "an unsigned frame is a bad signature to the MAVLink parser, so three in a row raise the alert");
+        let alerts: Vec<String> = (31..40).flat_map(|t| signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, t).notices).collect();
+        assert!(alerts.is_empty(), "unsigned telemetry is dropped quietly: the pinned mavlink_parse_char returns nothing for it, so QGC's bad-signature burst never counts it and enabling raises no false key-mismatch alert");
     }
 
     #[test]
@@ -444,7 +447,7 @@ mod tests {
         let mut signing = Signing::default();
         let ahead = signing_timestamp(SystemTime::now()) + 10_000_000;
         let setup = signing.begin_enable(3, (1, 1), "field", KEY, ahead, 0).unwrap();
-        assert_eq!(setup.initial_timestamp, ahead, "a stored timestamp ahead of the clock seeds SETUP_SIGNING");
+        assert_eq!(setup.initial_timestamp, ahead + PERSISTED_TIMESTAMP_SAFETY_BUMP_TICKS, "a stored timestamp ahead of the clock seeds SETUP_SIGNING with the same bump the channel signs from");
         signing.inbound(3, 1, &frame(&heartbeat(), Some(KEY)), &heartbeat(), &no_keys, 10);
         let out = signing.outbound(3, &frame(&heartbeat(), None));
         let bumped = ahead + PERSISTED_TIMESTAMP_SAFETY_BUMP_TICKS;
