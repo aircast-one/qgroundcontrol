@@ -35,6 +35,15 @@ pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
     ((azimuth.trunc() as i64 + 360) % 360) as f64 + azimuth.fract()
 }
 
+fn hobbs_meter(px4: bool, parameter: impl Fn(&str) -> Option<f64>) -> String {
+    let word = |name: &str| parameter(name).map(|raw| u64::from(raw as i64 as u32));
+    let seconds = match px4 {
+        true => word("LND_FLIGHT_T_HI").zip(word("LND_FLIGHT_T_LO")).map_or(0, |(hi, lo)| (hi << 32 | lo) / 1_000_000),
+        false => word("STAT_FLTTIME").unwrap_or(0),
+    };
+    format!("{:04}:{:02}:{:02}", seconds / 3600, seconds % 3600 / 60, seconds % 60)
+}
+
 const FENCE_SHAPES: std::ops::RangeInclusive<u16> = 5001..=5004;
 
 fn plan_contents(fence: &[crate::plantransfer::Item], rally: &[crate::plantransfer::Item]) -> (bool, bool) {
@@ -535,6 +544,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "headingToHome": crate::vehiclefact::vehicle_fact("headingToHome", &json!(home_facts(v.facts.coordinate, v.home).1)),
         "headingFromHome": crate::vehiclefact::vehicle_fact("headingFromHome", &json!(home_facts(v.facts.coordinate, v.home).2)),
         "flightTime": crate::vehiclefact::vehicle_fact("flightTime", &json!(v.flight_time(crate::hub::now_ms()))),
+        "hobbs": crate::vehiclefact::vehicle_fact("hobbs", &json!(hobbs_meter(v.autopilot == crate::modes::AUTOPILOT_PX4, |name| v.parameter(v.component, name).map(|p| p.as_f64())))),
         "orbitActive": v.orbit_active(crate::hub::now_ms()),
         "rcChannelOverrideActive": !v.rc_override.is_empty(),
         "isROIEnabled": v.roi_enabled,
@@ -1720,6 +1730,15 @@ impl<B: Backend> Backend for Facade<B> {
 #[cfg(test)]
 mod tests {
     #[test]
+    #[test]
+    fn the_hobbs_meter_reads_lifetime_flight_time_like_the_firmware_plugins() {
+        let apm = |name: &str| (name == "STAT_FLTTIME").then_some(3_725.0 + 360_000.0);
+        assert_eq!(hobbs_meter(false, apm), "0101:02:05", "APMFirmwarePlugin::getHobbsMeter: STAT_FLTTIME seconds as %04d:%02d:%02d");
+        let px4 = |name: &str| match name { "LND_FLIGHT_T_HI" => Some(1.0), "LND_FLIGHT_T_LO" => Some(-1.0), _ => None };
+        assert_eq!(hobbs_meter(true, px4), "0002:23:09", "PX4 joins HI and LO as unsigned microseconds");
+        assert_eq!(hobbs_meter(true, |_| None), "0000:00:00", "a vehicle without the parameters reads zero, as both plugins do");
+    }
+
     fn mission_item_index_counts_home_for_px4_like_vehicle_update_mission_item_index() {
         assert_eq!(super::mission_item_index(3, true), 4, "PX4 does not take a home position, so QGC adds one");
         assert_eq!(super::mission_item_index(3, false), 3);
