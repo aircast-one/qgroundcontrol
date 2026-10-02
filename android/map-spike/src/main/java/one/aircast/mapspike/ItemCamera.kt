@@ -96,6 +96,9 @@ internal fun actionLabel(view: JSONObject?): String {
     return choices?.labels?.getOrNull(choices.chosen) ?: namedAction(measureText(view, "cameraAction"))
 }
 
+internal fun itemCameraNote(view: JSONObject?): String? =
+    view?.takeIf { it.optBoolean("available") && !it.isNull("note") }?.optText("note")?.ifBlank { null }
+
 internal fun itemCameraTextBeside(view: JSONObject?, pickerLabel: String?): String? =
     itemCameraText(view)?.takeIf { it != pickerLabel }
 

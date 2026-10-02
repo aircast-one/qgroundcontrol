@@ -893,6 +893,7 @@ internal fun MapSpikeScreen(
                                         cameraRevision += 1
                                     }
                                 }
+                                itemCameraNote(camera)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
                                 GroupBreak()
                             }
                         }

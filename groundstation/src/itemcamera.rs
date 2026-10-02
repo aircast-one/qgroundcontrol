@@ -9,10 +9,17 @@ use crate::router::Backend;
 // this recomputes when the selection moves or the items change, and rides the poll otherwise.
 pub const DEPS: &[&str] = &[
     "plan.missionController.currentPlanViewVIIndex",
+    "plan.controllerVehicle.apmFirmware",
     "plan.missionController@visualItemsReset",
 ];
 
+const NO_CAMERA_ACTION: i64 = 0;
 const TAKE_PHOTOS_TIME: i64 = 1;
+pub const MISSION_START_NOTE: &str = "Camera commands above take effect immediately at mission start.";
+
+pub fn mission_start_camera_shown(index: usize, apm_firmware: bool) -> bool {
+    index != 0 || !apm_firmware
+}
 const TAKE_PHOTOS_DISTANCE: i64 = 2;
 
 fn fact<'a>(section: &'a Value, name: &str) -> Option<&'a Value> {
@@ -43,7 +50,8 @@ pub fn item_camera_view(backend: &dyn Backend, args: &[String]) -> Value {
         return json!({ "kind": "object", "class": "ItemCamera", "available": false, "reason": "A mission item index is required." });
     };
     let section = crate::coreplan::camera_section(index).unwrap_or_else(|| object(&backend.get(&format!("plan.missionController.visualItems.{index}.cameraSection"))));
-    let present = section.get("kind").and_then(Value::as_str) == Some("object");
+    let apm = flag(&object(&backend.get_fields("plan.controllerVehicle", "apmFirmware")), "apmFirmware");
+    let present = section.get("kind").and_then(Value::as_str) == Some("object") && mission_start_camera_shown(index, apm);
     // The angles are Facts and always carry a number, so a head reading them alone is told the
     // gimbal points somewhere for an item that never touches it. specifyGimbal is a plain bool
     // rather than a Fact, so it does not arrive with them through view.control - which is how a
@@ -69,12 +77,20 @@ pub fn item_camera_view(backend: &dyn Backend, args: &[String]) -> Value {
         "commandsMode": present && flag(&section, "specifyCameraMode"),
         "cameraMode": if flag(&section, "cameraModeSupported") { measure(&section, "cameraMode") } else { Value::Null },
         "path": format!("plan.missionController.visualItems.{index}.cameraSection"),
+        "note": (present && index == 0 && (specified || flag(&section, "specifyCameraMode") || action.is_some_and(|a| a != NO_CAMERA_ACTION))).then_some(MISSION_START_NOTE),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_mission_start_camera_section_is_not_offered_for_ardupilot_like_mission_settings_editor() {
+        assert!(!mission_start_camera_shown(0, true));
+        assert!(mission_start_camera_shown(0, false));
+        assert!(mission_start_camera_shown(3, true), "a waypoint's own camera section stays");
+    }
 
     struct Item(Option<bool>);
     impl Backend for Item {
