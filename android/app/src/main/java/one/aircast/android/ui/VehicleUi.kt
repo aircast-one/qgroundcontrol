@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -80,6 +81,8 @@ import one.aircast.android.bridge.qgcStrings
 import one.aircast.mapspike.TelemetryNumber
 import one.aircast.mapspike.optText
 
+private const val MISSION_POPUP_DELAY_MS = 1000L
+private const val CHECKLIST_CLOSE_DELAY_MS = 1000L
 private const val GCS_POSITION = "view.gcsPosition"
 
 
@@ -315,6 +318,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
+    var popupDue by remember { mutableStateOf<GuidedOffer?>(null) }
 
     LaunchedEffect(offers) {
         if (offerWithdrawn(pending?.offerId, offers)) pending = null
@@ -323,10 +327,26 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         if (altitudeTarget != null && offerWithdrawn(if (altitudePauses) PAUSE else "changeAltitude", offers)) altitudeTarget = null
         val popup = missionReady?.let { autoMissionPopup(it, offers, automaticMissionPopups) }
         missionReady = AUTO_POPUP_ACTIONS.filter { offers[it]?.ready == true }.toSet()
-        if (popup != null && (pending == null || popupReplacesOpenConfirm(popup.id))) {
-            guidedCommand(popup.id, resumeFrom)?.let { command ->
-                pending = GuidedAction(name = popup.title, confirm = popup.prompt, destructive = popup.destructive, offerId = popup.id, run = command)
+        if (popup != null) popupDue = popup
+    }
+
+    val latestOffers by rememberUpdatedState(offers)
+    LaunchedEffect(popupDue) {
+        val due = popupDue ?: return@LaunchedEffect
+        delay(MISSION_POPUP_DELAY_MS)
+        popupDue = null
+        val settled = latestOffers[due.id]?.takeIf { it.ready } ?: return@LaunchedEffect
+        if (pending == null || popupReplacesOpenConfirm(settled.id)) {
+            guidedCommand(settled.id, resumeFrom)?.let { command ->
+                pending = GuidedAction(name = settled.title, confirm = settled.prompt, destructive = settled.destructive, offerId = settled.id, run = command)
             }
+        }
+    }
+
+    LaunchedEffect(available) {
+        if (!available) {
+            checklistTicked = emptySet()
+            popupShownFor = null
         }
     }
 
@@ -343,6 +363,12 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         checklistStateSent = null
     }
     val checklistPassed = checklistIsComplete(checks, checklistTicked)
+    LaunchedEffect(checklistPassed, showChecklist) {
+        if (checklistPassed && showChecklist) {
+            delay(CHECKLIST_CLOSE_DELAY_MS)
+            showChecklist = false
+        }
+    }
     LaunchedEffect(checklistPassed, vehicleId) {
         if (vehicleId == null || checklistStateSent == checklistPassed) return@LaunchedEffect
         if (checklistStateSent == null && !checklistPassed) {
@@ -562,8 +588,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             probe = withContext(Dispatchers.Default) { guidedSpeed(Qgc.get(guidedSpeedPath(at))) }
         }
         GuidedValuePanel(
-            title = speedRange?.label ?: "Speed",
-            sentence = probe?.sentence ?: "",
+            title = offers["changeSpeed"]?.title?.ifBlank { null } ?: "Change Max Ground Speed",
+            sentence = listOfNotNull(offers["changeSpeed"]?.prompt, probe?.sentence).filter { it.isNotBlank() }.joinToString("\n"),
             commitLabel = "Set",
             commitEnabled = probe != null,
             onCommit = {
@@ -604,8 +630,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             probe = withContext(Dispatchers.Default) { guidedTakeoff(Qgc.get(guidedTakeoffPath(at))) }
         }
         GuidedValuePanel(
-            title = takeoffRange?.label?.ifBlank { null } ?: "Takeoff",
-            sentence = probe?.sentence ?: "",
+            title = offers["takeoff"]?.title?.ifBlank { null } ?: "Takeoff",
+            sentence = listOfNotNull(offers["takeoff"]?.prompt, probe?.sentence).filter { it.isNotBlank() }.joinToString("\n"),
             commitLabel = "Take off",
             commitEnabled = probe != null,
             onCommit = {

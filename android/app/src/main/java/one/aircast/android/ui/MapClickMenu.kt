@@ -123,6 +123,9 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
         return
     }
     var confirming by remember(point) { mutableStateOf<MapClickAction?>(null) }
+    LaunchedEffect(actions) {
+        if (confirming != null && actions.none { it.id == confirming?.id }) confirming = null
+    }
     var refusal by remember(point) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
