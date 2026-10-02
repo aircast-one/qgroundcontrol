@@ -521,6 +521,11 @@ internal fun FactRuns(facts: List<Fact>, onWrite: () -> Unit = {}) {
 
 internal val LocalBlockRebootNote = compositionLocalOf<String?> { null }
 
+internal val LocalRunInertNote = compositionLocalOf<String?> { null }
+
+internal fun sharedInertNote(run: List<Fact>): String? =
+    run.takeIf { facts -> facts.size > 1 && facts.none { it.enabled } }?.map(::inertNote)?.distinct()?.singleOrNull()
+
 internal fun sharedRebootNote(facts: List<Fact>): String? =
     facts.mapNotNull(::factRebootNote).takeIf { it.size > 1 }?.distinct()?.singleOrNull()
 
@@ -530,10 +535,21 @@ private fun FactRunRows(facts: List<Fact>, onWrite: () -> Unit) {
         if (run.size == 1) {
             FactRow(run.first(), onWrite = onWrite)
         } else {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                run.forEach { fact ->
-                    FactRow(fact, subtitle = factSubtitle(fact), fieldModifier = Modifier.weight(1f).padding(vertical = 8.dp), onWrite = onWrite)
+            val inert = sharedInertNote(run)
+            CompositionLocalProvider(LocalRunInertNote provides inert) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    run.forEach { fact ->
+                        FactRow(fact, subtitle = factSubtitle(fact), fieldModifier = Modifier.weight(1f).padding(vertical = 8.dp), onWrite = onWrite)
+                    }
                 }
+            }
+            inert?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 32.dp, end = 16.dp, bottom = 8.dp),
+                )
             }
         }
     }
@@ -587,7 +603,8 @@ internal fun FactRow(
                 fact.isEnum && !fact.valueIsOffTheEnumList -> EnumField(fact, inside, ::write)
                 else -> FactTextField(fact, onWrite, inside)
             }
-            val note = (subtitle.split(" · ") + listOfNotNull(inertNote(fact).takeIf { !fact.enabled }))
+            val runInert = LocalRunInertNote.current
+            val note = (subtitle.split(" · ") + listOfNotNull(inertNote(fact).takeIf { !fact.enabled && it != runInert }))
                 .filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
             if (note.isNotBlank()) {
                 Text(

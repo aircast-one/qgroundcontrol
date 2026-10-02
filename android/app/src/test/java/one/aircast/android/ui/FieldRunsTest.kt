@@ -95,4 +95,12 @@ class FieldRunsTest {
         val url = text("url").copy(valueString = "rtsp://192.168.144.25:8554/main.264")
         assertEquals(listOf(listOf("url"), listOf("port")), fieldRuns(listOf(url, port)).map { run -> run.map { it.name } })
     }
+
+    @Test
+    fun aPairOffForTheSameReasonSaysItOnce() {
+        val off = text("host").copy(enabled = false, disabledReason = "Has no effect while the ADSB server connection is off.")
+        assertEquals("Has no effect while the ADSB server connection is off.", sharedInertNote(listOf(off, off.copy(name = "port"))))
+        org.junit.Assert.assertNull(sharedInertNote(listOf(off, off.copy(name = "port", enabled = true))))
+        org.junit.Assert.assertNull(sharedInertNote(listOf(off, off.copy(name = "port", disabledReason = "Other"))))
+    }
 }
