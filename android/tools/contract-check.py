@@ -222,6 +222,10 @@ ONLY_IN = {
 }
 
 ACCEPTED = {
+    "slider": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
+    "from": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
+    "to": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
+    "decimals": "view.setup on an ArduPilot page with a factslider row (APMTuningCopter); the rig records a PX4 mock, so no slider is served. Read in ParameterForm.kt",
     "ok": "the invoke envelope, not a view field",
     "onScreen": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "clickAndDrag": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
@@ -409,7 +413,6 @@ ACCEPTED = {
     "invalidText": "view.apmAirframe is ArduPilot copter/rover's frame page and the recording rig is a PX4 multirotor, so it records only available=false; apmairframe.rs apm_airframe_view serves it",
     "orientationTitle": "view.sensorSettings lists only external mags with a settable rotation, and the PX4 SITL rig's mags report CAL_MAGn_ROT -1, so the list records empty; sensorsettings.rs serves it per mag",
     "timestamp": "view.appLog is recorded under Qt, where the core logger holds no entries; applog.rs serves it",
-    "live": "modeslots.rs:92 serves it inside slots[], which the recording did not populate",
     "triggerCount": "geotag.rs:757 serves it, on a structure the recording has no instance of",
 }
 
