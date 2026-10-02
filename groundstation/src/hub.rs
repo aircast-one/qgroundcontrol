@@ -2823,7 +2823,7 @@ impl Vehicle {
                 self.terrain_request = Some(crate::terrainprotocol::Request { lat: r.lat, lon: r.lon, grid_spacing: r.grid_spacing, mask: r.mask });
                 return self.send_terrain(now_ms);
             }
-            MavMessage::CAMERA_TRACKING_IMAGE_STATUS(d) => {
+            MavMessage::CAMERA_TRACKING_IMAGE_STATUS(d) if self.cameras.selected().is_some_and(|camera| camera.compid == header.component_id) => {
                 self.camera_tracking_image = crate::cameratrack::tracking_image(d.tracking_status.bits(), d.tracking_mode as u8, (d.point_x, d.point_y, d.radius), (d.rec_top_x, d.rec_top_y, d.rec_bottom_x, d.rec_bottom_y), self.camera_tracking_enabled);
                 return Vec::new();
             }

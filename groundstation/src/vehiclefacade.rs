@@ -769,7 +769,15 @@ fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, trackin
     ];
     let unthermal = camera.thermal_stream().is_none().then(|| ("thermalStreamInstance", Value::Null));
     let image = tracking_image.filter(|_| tracking);
-    let untracked = [("trackingImageIsActive", json!(image.is_some())), ("trackingImageRect", image.and_then(crate::cameratrack::TrackingImage::rect_json).unwrap_or(Value::Null))].into_iter();
+    let point = image.and_then(crate::cameratrack::TrackingImage::point);
+    let untracked = [
+        ("trackingImageIsActive", json!(image.is_some())),
+        ("trackingImageRect", image.and_then(crate::cameratrack::TrackingImage::rect_json).unwrap_or(Value::Null)),
+        ("trackingImageIsPoint", json!(point.is_some())),
+        ("trackingImagePoint", point.map_or(Value::Null, |(x, y, _)| json!({ "x": x, "y": y }))),
+        ("trackingImageRadius", json!(point.map_or(0.0, |(_, _, radius)| radius))),
+    ]
+    .into_iter();
     plain.into_iter().chain(unthermal).chain(untracked).map(|(k, v)| (k.to_string(), v)).collect()
 }
 
@@ -1469,7 +1477,11 @@ impl<B: Backend> Backend for Facade<B> {
         if path == "vehicle.cameraManager.currentCameraInstance.trackingEnabled" && switched_on() {
             let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
             if let Some(on) = on {
+                let was = crate::hub::lock().active().is_some_and(|v| v.camera_tracking_enabled);
                 crate::hub::lock().set_camera_tracking(on);
+                if was && !on {
+                    let _ = self.real_camera_invoke("stopTracking", "[]");
+                }
             }
             return self.0.set(path, value);
         }

@@ -85,6 +85,13 @@ impl TrackingImage {
             TrackingImage::Point { .. } => None,
         }
     }
+
+    pub fn point(&self) -> Option<(f64, f64, f64)> {
+        match self {
+            TrackingImage::Point { x, y, radius } => Some((*x, *y, *radius)),
+            TrackingImage::Rect { .. } => None,
+        }
+    }
 }
 
 pub fn tracking_image(status: u8, mode: u8, point: (f32, f32, f32), rect: (f32, f32, f32, f32), enabled: bool) -> Option<TrackingImage> {
@@ -207,6 +214,8 @@ mod tests {
         let Some(TrackingImage::Rect { x, y, width, height }) = tracking_image(1, 2, (0.0, 0.0, 0.0), (0.6, 0.7, 0.2, 1.3), true) else { panic!() };
         assert!([(x, 0.2), (y, 0.7), (width, 0.4), (height, 0.3)].iter().all(|(got, want)| (got - want).abs() < 1e-6), "the rectangle is normalized and clamped: {x} {y} {width} {height}");
         assert_eq!(tracking_image(1, 1, (0.5, 1.5, f32::NAN), (0.0, 0.0, 0.0, 0.0), true), Some(TrackingImage::Point { x: 0.5, y: 1.0, radius: 0.05 }), "a missing radius reads as 0.05");
+        assert_eq!(TrackingImage::Point { x: 0.5, y: 1.0, radius: 0.05 }.point(), Some((0.5, 1.0, 0.05)), "served as trackingImagePoint and trackingImageRadius");
+        assert_eq!(TrackingImage::Point { x: 0.5, y: 1.0, radius: 0.05 }.rect_json(), None);
         assert_eq!(tracking_image(0, 2, (0.0, 0.0, 0.0), (0.1, 0.1, 0.2, 0.2), true), None, "not active");
         assert_eq!(tracking_image(1, 2, (0.0, 0.0, 0.0), (0.1, 0.1, 0.2, 0.2), false), None, "tracking switched off in the UI ignores the camera's report");
     }
