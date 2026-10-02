@@ -1431,11 +1431,15 @@ impl Vehicle {
                     clock.into_iter().chain(self.step_done(connect::Step::Parameters, now_ms)).collect()
                 }
                 params::Action::ReadFailed { component, name } => {
-                    self.note(format!("Parameter read failed: {name} on component {component}"));
+                    let text = format!("Parameter read failed: param: {name} {}", self.params.component_label(component)).trim_end().to_string();
+                    crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &text);
+                    self.note(text);
                     Vec::new()
                 }
                 params::Action::WriteFailed { component, name } => {
-                    self.note(format!("Parameter write failed: {name} on component {component}"));
+                    let text = format!("Parameter write failed: param: {name} {}", self.params.component_label(component)).trim_end().to_string();
+                    crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &text);
+                    self.note(text);
                     Vec::new()
                 }
                 params::Action::Added { .. } => Vec::new(),

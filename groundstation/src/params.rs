@@ -170,6 +170,13 @@ pub struct Params {
     hash_check_pending: bool,
 }
 
+fn acknowledges(written: ParamValue, echoed: ParamValue) -> bool {
+    match (written, echoed) {
+        (ParamValue::F32(a), ParamValue::F32(b)) => (a.is_nan() && b.is_nan()) || a == b || (a - b).abs() * 100_000.0 <= a.abs().min(b.abs()),
+        _ => written == echoed,
+    }
+}
+
 pub fn cache_crc(cache: &BTreeMap<String, ParamValue>, volatile: &BTreeSet<String>) -> u32 {
     cache
         .iter()
@@ -263,6 +270,10 @@ impl Params {
 
     pub fn unanswered(&self) -> bool {
         self.unanswered
+    }
+
+    pub fn component_label(&self, component: u8) -> String {
+        if self.facts.len() > 1 { format!("comp: {component}") } else { String::new() }
     }
 
     pub fn pending_writes(&self) -> bool {
@@ -401,8 +412,11 @@ impl Params {
             actions.extend(self.fill_batch_queue(false));
         }
         self.waiting_read.entry(component).or_default().remove(name);
-        self.waiting_write.entry(component).or_default().remove(name);
-        self.pending_write.entry(component).or_default().remove(name);
+        let acknowledged = self.pending_write.get(&component).and_then(|written| written.get(name)).is_none_or(|written| acknowledges(*written, value));
+        if acknowledged {
+            self.waiting_write.entry(component).or_default().remove(name);
+            self.pending_write.entry(component).or_default().remove(name);
+        }
         let total_waiting: usize = self.waiting_index.values().map(BTreeMap::len).sum::<usize>() + self.waiting_read.values().map(BTreeMap::len).sum::<usize>() + self.waiting_write.values().map(BTreeMap::len).sum::<usize>();
         if total_waiting > 0 || !self.facts.contains_key(&self.default_component) {
             actions.push(Action::StartWaitingTimer);
@@ -464,6 +478,7 @@ impl Params {
         self.waiting_for_default = false;
         actions.extend(self.check_initial_load_complete());
         let mut batch = 0usize;
+        let mut failed: Vec<(u8, String)> = Vec::new();
         if !requested {
             'writes: for (component, waiting) in self.waiting_write.iter_mut() {
                 for name in waiting.keys().cloned().collect::<Vec<_>>() {
@@ -481,11 +496,17 @@ impl Params {
                         }
                     } else {
                         waiting.remove(&name);
+                        failed.push((*component, name.clone()));
                         actions.push(Action::WriteFailed { component: *component, name });
                     }
                 }
             }
         }
+        failed.iter().for_each(|(component, name)| {
+            self.pending_write.entry(*component).or_default().remove(name);
+        });
+        let refreshes: Vec<Action> = failed.iter().flat_map(|(component, name)| self.refresh(*component, name)).collect();
+        actions.extend(refreshes);
         if !requested {
             'reads: for (component, waiting) in self.waiting_read.iter_mut() {
                 for name in waiting.keys().cloned().collect::<Vec<_>>() {
@@ -651,6 +672,22 @@ mod tests {
             .filter(|(i, _)| !skip.contains(&(*i as u16)))
             .flat_map(|(i, name)| params.on_param_value(1, name, names.len() as u16, i as u16, ParamValue::I32(i as i32)))
             .collect()
+    }
+
+    #[test]
+    fn a_write_the_vehicle_answers_with_another_value_is_retried_then_failed_and_reread() {
+        let mut params = Params::new(1, false);
+        deliver(&mut params, &["RTL_ALT", "RTL_SPEED"], &[]);
+        params.write(1, "RTL_ALT", ParamValue::I32(3000));
+        params.on_param_value(1, "RTL_ALT", 2, 0, ParamValue::I32(0));
+        assert!(params.writing(1, "RTL_ALT"), "ParameterManager's ack check needs the echoed value to match what was written");
+        let failed: Vec<Action> = (0..=MAX_READ_WRITE_RETRY).flat_map(|_| params.on_waiting_timeout()).collect();
+        assert!(failed.contains(&Action::WriteFailed { component: 1, name: "RTL_ALT".into() }));
+        assert!(failed.contains(&Action::ReadByName { component: 1, name: "RTL_ALT".into() }), "a failed write refreshes the parameter from the vehicle");
+        assert!(acknowledges(ParamValue::F32(0.1), ParamValue::F32(0.100_000_1)), "floats compare fuzzily, as QGC::fuzzyCompare does");
+        params.write(1, "RTL_SPEED", ParamValue::I32(5));
+        params.on_param_value(1, "RTL_SPEED", 2, 1, ParamValue::I32(5));
+        assert!(!params.writing(1, "RTL_SPEED"));
     }
 
     #[test]
