@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -172,7 +173,13 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.weight(1f, fill = false),
             )
+            if (blocker == null && unread.isNotEmpty()) {
+                IconButton(onClick = { offMainDetached { Qgc.invoke("vehicle.resetAllMessages") } }, modifier = Modifier.size(32.dp)) {
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Dismiss messages", modifier = Modifier.size(18.dp))
+                }
+            }
         }
     }
 
