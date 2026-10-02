@@ -1,5 +1,6 @@
 package one.aircast.mapspike
 
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.semantics.semantics
 
 import androidx.compose.ui.semantics.contentDescription
@@ -150,6 +151,7 @@ internal fun MapSpikeScreen(
     itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
     header: (@Composable (PlanUpload) -> Unit)? = null,
     fitKey: Int = 0,
+    overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     var follow by remember { mutableStateOf(true) }
     var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
@@ -532,6 +534,8 @@ internal fun MapSpikeScreen(
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
             ),
         )
+
+        overlay?.invoke(this)
 
         Column(
             Modifier.align(Alignment.TopStart).padding(8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),

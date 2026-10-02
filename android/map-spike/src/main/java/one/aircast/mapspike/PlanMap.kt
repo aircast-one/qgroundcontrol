@@ -1,5 +1,6 @@
 package one.aircast.mapspike
 
+import androidx.compose.foundation.layout.BoxScope
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -31,6 +32,7 @@ fun PlanMapScreen(
     itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
     header: (@Composable (PlanUpload) -> Unit)? = null,
     fitKey: Int = 0,
+    overlay: (@Composable BoxScope.() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
@@ -40,6 +42,6 @@ fun PlanMapScreen(
     }
 
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
-        MapSpikeScreen(style, onClear, onCentre, itemEditor, header, fitKey)
+        MapSpikeScreen(style, onClear, onCentre, itemEditor, header, fitKey, overlay)
     }
 }

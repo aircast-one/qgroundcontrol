@@ -186,6 +186,14 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
             fitKey = files.opened(),
             onCentre = { lat, lon -> centre = lat to lon },
             itemEditor = { index, at, close -> ItemEditor(index, at, centre, close) },
+            overlay = {
+                PlanTemplates(
+                    planStatus = planStatus,
+                    centre = centre,
+                    onRefused = { notice = it },
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 100.dp, start = 16.dp, end = 16.dp),
+                )
+            },
             header = { upload ->
                 Column {
                     Row(
@@ -327,13 +335,5 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                 }
             },
         )
-        PlanTemplates(
-            planStatus = planStatus,
-            centre = centre,
-            onRefused = { notice = it },
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = TEMPLATES_TOP, start = 16.dp, end = 16.dp),
-        )
     }
 }
-
-private val TEMPLATES_TOP = 168.dp
