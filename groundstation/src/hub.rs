@@ -3026,7 +3026,7 @@ impl Vehicle {
                 let outs = self.remote.on_arm_status(self.id, header.system_id, header.component_id, a.status as u8, a.error.to_str().unwrap_or(""));
                 self.follow_remote(outs, now_ms);
             }
-            MavMessage::HOME_POSITION(h) => {
+            MavMessage::HOME_POSITION(h) if header.component_id == self.component => {
                 self.home_altitude = Some(h.altitude as f64 / 1000.0);
                 self.home = Some((h.latitude as f64 / 1e7, h.longitude as f64 / 1e7, h.altitude as f64 / 1000.0));
             }
@@ -3099,7 +3099,8 @@ impl Vehicle {
         self.gps.apply(message);
         self.gps2.apply_second(message);
         self.batteries.apply(message);
-        if self.facts.apply(from, message) && matches!(message, MavMessage::GLOBAL_POSITION_INT(_)) {
+        let before = self.facts.coordinate;
+        if self.facts.apply(from, message) && (self.facts.coordinate != before || matches!(message, MavMessage::GLOBAL_POSITION_INT(_))) {
             crate::track::observe(i64::from(self.id), self.armed(), self.facts.coordinate.map(|(latitude, longitude, _)| (latitude, longitude)));
         }
         self.wind.apply(message);
