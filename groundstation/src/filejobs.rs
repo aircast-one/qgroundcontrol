@@ -92,6 +92,13 @@ impl Job {
         Ok((Job { machine: Machine::Download(download), path: path.to_string() }, outs.into_iter().map(from_download).collect()))
     }
 
+    pub fn stream_to(&mut self, local: &std::path::Path) -> Result<(), String> {
+        match &mut self.machine {
+            Machine::Download(download) => download.stream_to(local),
+            _ => Ok(()),
+        }
+    }
+
     pub fn upload(component: u8, path: &str, data: Vec<u8>, seq: u16) -> Result<(Job, Vec<Step>), String> {
         let (op, outs) = FileOp::upload(component, path, data, seq)?;
         Ok((Job { machine: Machine::Upload(op), path: path.to_string() }, outs.into_iter().map(|o| from_op(o, Outcome::Uploaded)).collect()))

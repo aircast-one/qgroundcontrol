@@ -364,7 +364,6 @@ pub struct Vehicle {
     ftp_due: Option<u64>,
     ftp_seq: u16,
     pub files: crate::filejobs::Files,
-    download_to: Option<String>,
     camera_definition_from: Option<u8>,
     files_for_logs: bool,
     ftp_list_time_unsupported: bool,
@@ -565,7 +564,6 @@ impl Vehicle {
             ftp_due: None,
             ftp_seq: 0,
             files: crate::filejobs::Files::default(),
-            download_to: None,
             camera_definition_from: None,
             files_for_logs: false,
             ftp_list_time_unsupported: false,
@@ -1049,8 +1047,10 @@ impl Vehicle {
             "delete" => crate::filejobs::Job::delete(component, path, seq),
             _ => Err(format!("{op} is not a file operation")),
         }?;
-        let (job, steps) = started;
-        self.download_to = (op == "download" && camera.is_none()).then_some(local);
+        let (mut job, steps) = started;
+        if op == "download" && camera.is_none() {
+            job.stream_to(std::path::Path::new(&local))?;
+        }
         self.camera_definition_from = camera;
         self.files.job = Some(job);
         self.files.progress = 0.0;
@@ -1090,10 +1090,7 @@ impl Vehicle {
                     self.ftp_seq = job.expected_seq();
                     self.ftp_list_time_unsupported = self.ftp_list_time_unsupported || job.list_time_unsupported();
                     let for_logs = std::mem::take(&mut self.files_for_logs);
-                    let result = match (result, self.download_to.take()) {
-                        (Ok(Outcome::Downloaded(bytes)), Some(to)) => std::fs::write(&to, &bytes).map(|_| Outcome::Downloaded(Vec::new())).map_err(|e| format!("Download failed for: {} - {e}", job.path)),
-                        (other, _) => other,
-                    };
+
                     if for_logs {
                         let kind = match &result {
                             Ok(crate::filejobs::Outcome::Listed(_)) => LogFileKind::List,
@@ -2513,11 +2510,12 @@ impl Vehicle {
             (false, LogFileJob::Delete(path)) => crate::filejobs::Job::delete(component, path, seq),
         };
         match started {
-            Ok((job, steps)) => {
-                self.download_to = match &wanted {
-                    LogFileJob::Download(_, local) => Some(local.to_string_lossy().into_owned()),
-                    _ => None,
-                };
+            Ok((mut job, steps)) => {
+                if let LogFileJob::Download(_, local) = &wanted
+                    && let Err(error) = job.stream_to(local)
+                {
+                    return self.log_file_job_done(&wanted.kind(), Err(error), now_ms);
+                }
                 self.files_for_logs = true;
                 self.files.job = Some(job);
                 self.files.progress = 0.0;

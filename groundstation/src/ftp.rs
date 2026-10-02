@@ -147,11 +147,18 @@ pub struct Download {
     written: u32,
     file_size: u32,
     file: Vec<u8>,
+    sink: Option<(std::fs::File, std::path::PathBuf)>,
     missing: Vec<Missing>,
     retries: u32,
 }
 
 impl Download {
+    pub fn stream_to(&mut self, local: &std::path::Path) -> Result<(), String> {
+        let file = std::fs::File::create(local).map_err(|e| format!("Download failed for: {} - {e}", self.path))?;
+        self.sink = Some((file, local.to_path_buf()));
+        Ok(())
+    }
+
     pub fn start(from_component: u8, uri: &str, check_size: bool) -> Result<(Download, Vec<Out>), String> {
         Self::start_from(from_component, uri, check_size, 0)
     }
@@ -180,6 +187,10 @@ impl Download {
 
     fn fail(&mut self, error: &str) -> Vec<Out> {
         self.phase = None;
+        if let Some((file, path)) = self.sink.take() {
+            drop(file);
+            let _ = std::fs::remove_file(path);
+        }
         vec![Out::StopTimer, Out::Complete { ok: false, error: error.to_string(), bytes: Vec::new() }]
     }
 
@@ -218,13 +229,22 @@ impl Download {
         (offset as u64 + len as u64) <= self.file_size as u64
     }
 
-    fn write_at(&mut self, offset: u32, data: &[u8]) {
-        let end = offset as usize + data.len();
-        if self.file.len() < end {
-            self.file.resize(end, 0);
+    fn write_at(&mut self, offset: u32, data: &[u8]) -> Result<(), String> {
+        match self.sink.as_mut() {
+            Some((file, _)) => {
+                use std::io::{Seek, SeekFrom, Write};
+                file.seek(SeekFrom::Start(u64::from(offset))).and_then(|_| file.write_all(data)).map_err(|e| format!("Download failed for: {} - {e}", self.path))?;
+            }
+            None => {
+                let end = offset as usize + data.len();
+                if self.file.len() < end {
+                    self.file.resize(end, 0);
+                }
+                self.file[offset as usize..end].copy_from_slice(data);
+            }
         }
-        self.file[offset as usize..end].copy_from_slice(data);
         self.written += data.len() as u32;
+        Ok(())
     }
 
     fn progress(&self) -> Option<Out> {
@@ -333,7 +353,9 @@ impl Download {
                         return vec![Out::StartTimer];
                     }
                 }
-                self.write_at(reply.offset, &reply.data);
+                if let Err(error) = self.write_at(reply.offset, &reply.data) {
+                    return self.fail(&error);
+                }
                 self.expected_offset = reply.offset + reply.data.len() as u32;
                 let mut out = vec![Out::StopTimer];
                 if reply.burst_complete {
@@ -380,7 +402,9 @@ impl Download {
                 if !self.within_file(reply.offset, reply.data.len()) {
                     return self.fail("Download failed");
                 }
-                self.write_at(reply.offset, &reply.data);
+                if let Err(error) = self.write_at(reply.offset, &reply.data) {
+                    return self.fail(&error);
+                }
                 let done = {
                     let missing = &mut self.missing[0];
                     missing.offset += reply.data.len() as u32;
@@ -753,6 +777,32 @@ mod tests {
         let done = download.on_payload(&ack(reset.seq + 1, 0, CMD_RESET_SESSIONS, 0, &[], false));
         assert!(matches!(done.last(), Some(Out::Complete { ok: true, bytes, .. }) if *bytes == file));
         assert!(!download.in_progress());
+    }
+
+    #[test]
+    fn a_saved_download_is_written_at_each_offset_and_removed_on_failure_as_ftp_manager_does() {
+        let dir = std::env::temp_dir().join(format!("groundstation-ftp-stream-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let local = dir.join("log.bin");
+        let (mut download, _) = Download::start(1, "/fs/log.bin", true).unwrap();
+        download.stream_to(&local).unwrap();
+        let file: Vec<u8> = (0..400u16).map(|i| i as u8).collect();
+        download.on_payload(&ack(2, 7, CMD_OPEN_FILE_RO, 0, &(file.len() as u32).to_le_bytes(), false));
+        download.on_payload(&ack(4, 7, CMD_BURST_READ_FILE, 0, &file[..239], false));
+        assert_eq!(std::fs::metadata(&local).unwrap().len(), 239, "each burst reaches the disk as it arrives, not at the end");
+        let last = download.on_payload(&ack(5, 7, CMD_BURST_READ_FILE, 239, &file[239..], true));
+        let reburst = sent(&last);
+        let eof = download.on_payload(&nak(reburst.seq + 1, 7, CMD_BURST_READ_FILE, ERR_EOF));
+        let reset = sent(&eof);
+        let done = download.on_payload(&ack(reset.seq + 1, 0, CMD_RESET_SESSIONS, 0, &[], false));
+        assert!(matches!(done.last(), Some(Out::Complete { ok: true, bytes, .. }) if bytes.is_empty()), "the bytes are on disk, not held in memory");
+        assert_eq!(std::fs::read(&local).unwrap(), file);
+        let failed = dir.join("missing.bin");
+        let (mut missing, _) = Download::start(1, "/fs/missing", true).unwrap();
+        missing.stream_to(&failed).unwrap();
+        missing.on_payload(&nak(2, 0, CMD_OPEN_FILE_RO, 10));
+        assert!(!failed.exists(), "a failed download leaves no partial file");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

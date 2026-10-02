@@ -124,10 +124,15 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
         val target = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             val staged = File(context.cacheDir, "download-$name")
+            withContext(Dispatchers.IO) { staged.delete() }
             refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(SCRIPTING_DOWNLOAD, name, staged.absolutePath) }
             while (refusal == null && withContext(Dispatchers.Default) { scripting(Qgc.get(SCRIPTING_VIEW))?.busy } == true) delay(BUSY_POLL_MS)
-            if (refusal == null && staged.exists()) {
-                withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(target)?.use { out -> staged.inputStream().use { it.copyTo(out) } } }
+            withContext(Dispatchers.IO) {
+                when (refusal == null && staged.exists()) {
+                    true -> context.contentResolver.openOutputStream(target)?.use { out -> staged.inputStream().use { it.copyTo(out) } }
+                    false -> runCatching { android.provider.DocumentsContract.deleteDocument(context.contentResolver, target) }
+                }
+                staged.delete()
             }
             revision++
         }
