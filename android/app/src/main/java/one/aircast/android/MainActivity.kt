@@ -246,6 +246,7 @@ fun AircastShell(hostView: android.view.View?) {
                 onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
                 onMissionItemClick = { waypointTapped = it },
                 onRoiClick = { roiTapped = it },
+                clickMarker = mapClickAt?.let { TrackPoint(it.latitude, it.longitude) },
             )
         }
     }

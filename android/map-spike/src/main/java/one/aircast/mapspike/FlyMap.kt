@@ -65,6 +65,7 @@ fun FlyMap(
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
     onRoiClick: ((TrackPoint) -> Unit)? = null,
+    clickMarker: TrackPoint? = null,
 ) {
     val context = LocalContext.current
     var style by remember(context) { mutableStateOf(planMapStyle(context)) }
@@ -143,6 +144,7 @@ fun FlyMap(
             roi = plan.roi,
             onRoiClick = onRoiClick,
             goto = plan.goto,
+            clickMarker = clickMarker,
             orbit = plan.orbit,
             selectedWaypoint = plan.current,
             otherMissions = plan.others,
