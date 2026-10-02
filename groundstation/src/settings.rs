@@ -178,7 +178,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Logging", &["showAppLogTimestampAsElapsedTime"]),
     ]),
     ("videoSettings", &[
-        ("Cameras", &["videoSource", "primaryCameraName", "activeVideoSource", "multiViewEnabled"]),
+        ("Cameras", &["videoSource", "primaryCameraName", "multiViewEnabled"]),
         ("Stream", &["udpUrl", "rtspUrl", "tcpUrl", "whepUrl", "rtspTimeout", "streamEnabled", "disableWhenDisarmed", "lowLatencyMode", "forceVideoDecoder"]),
         ("Display", &["videoFit", "aspectRatio", "gridLines", "showRecControl"]),
         ("Local Video Storage", &["videoSavePath", "recordingFormat", "enableStorageLimit", "maxVideoSize"]),
@@ -378,6 +378,12 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_video_page_has_no_active_source_index_row_as_qgc_does_not() {
+        let video = SUBSECTIONS.iter().find(|(group, _)| *group == "videoSettings").map(|(_, sections)| *sections).unwrap_or_default();
+        assert!(video.iter().all(|(_, names)| !names.contains(&"activeVideoSource")), "a bare camera index is meaningless to an operator; the Fly camera sheet switches sources");
+    }
+
     use super::*;
 
     #[test]
