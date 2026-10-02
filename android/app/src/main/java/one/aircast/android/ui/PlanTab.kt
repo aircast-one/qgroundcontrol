@@ -186,6 +186,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
             fitKey = files.opened(),
             onCentre = { lat, lon -> centre = lat to lon },
             itemEditor = { index, at, close -> ItemEditor(index, at, centre, close) },
+            summaryHidden = planTemplates(planStatus)?.show == true,
             overlay = {
                 PlanTemplates(
                     planStatus = planStatus,

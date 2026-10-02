@@ -171,6 +171,7 @@ internal fun MapSpikeScreen(
     header: (@Composable (PlanUpload) -> Unit)? = null,
     fitKey: Int = 0,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
+    summaryHidden: Boolean = false,
 ) {
     var follow by remember { mutableStateOf(true) }
     var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
@@ -561,7 +562,7 @@ internal fun MapSpikeScreen(
 
         overlay?.invoke(this)
 
-        Column(
+        if (busy != null || !summaryHidden) Column(
             Modifier.align(Alignment.TopStart).padding(start = if (sidePanel) SIDE_PANEL_WIDTH + 8.dp else 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),
         ) {
             Surface(

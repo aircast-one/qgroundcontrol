@@ -33,6 +33,7 @@ fun PlanMapScreen(
     header: (@Composable (PlanUpload) -> Unit)? = null,
     fitKey: Int = 0,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
+    summaryHidden: Boolean = false,
 ) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
@@ -42,6 +43,6 @@ fun PlanMapScreen(
     }
 
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
-        MapSpikeScreen(style, onClear, onCentre, itemEditor, header, fitKey, overlay)
+        MapSpikeScreen(style, onClear, onCentre, itemEditor, header, fitKey, overlay, summaryHidden)
     }
 }
