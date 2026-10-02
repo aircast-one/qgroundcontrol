@@ -51,6 +51,8 @@ const HIDDEN: &[&str] = &[
     "batteryPercentRemainingAnnounce",
     "loginAirLink",
     "passAirLink",
+    "videoSavePath",
+    "showRecControl",
     "preferredFirmwareClass",
     "preferredVehicleClass",
     "audioVolume",
@@ -351,6 +353,7 @@ pub fn video_row_shown(name: &str, source: &str, stream_source: bool, auto_confi
     let url_fact = crate::settingsstore::URL_SOURCES.iter().find(|(served, _)| *served == source).map(|(_, fact)| *fact);
     match name {
         "udpUrl" | "rtspUrl" | "tcpUrl" | "whepUrl" => url_fact == Some(name),
+        "forceVideoDecoder" => stream_source,
         _ if STREAM_ONLY.contains(&name) => stream_source && !auto_configured,
         _ => true,
     }

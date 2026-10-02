@@ -33,6 +33,7 @@ import org.mavlink.qgroundcontrol.QGCBridge
 fun VideoSurface(
     modifier: Modifier = Modifier,
     expanded: Boolean = false,
+    fullScreen: Boolean = false,
     onClick: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
 ) {
@@ -81,7 +82,7 @@ fun VideoSurface(
         )
 
         if (video?.decoding == true) {
-            if (showGrid) VideoGrid(Modifier.fillMaxSize())
+            if (showGrid && !fullScreen) VideoGrid(Modifier.fillMaxSize())
             ProximityRadarOverlay(Modifier.fillMaxSize())
             if (expanded) GimbalScreenControl(Modifier.fillMaxSize())
             DetectionOverlay(Modifier.fillMaxSize())

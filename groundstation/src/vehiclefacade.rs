@@ -1675,9 +1675,7 @@ impl<B: Backend> Backend for Facade<B> {
             if let Some((vehicle, inputs)) = simulated_camera() {
                 let trigger = || self.0.core_guided(&json!({ "action": "triggerCamera", "vehicle": vehicle })).is_some_and(|started| started.is_ok());
                 let start = || {
-                    if let Err(Some(message)) = crate::videohost::start_recording() {
-                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", message);
-                    }
+                    let _ = crate::videohost::start_recording();
                 };
                 let recorder = crate::simcamera::Recorder { start: &start, stop: &crate::videohost::stop_recording };
                 if let Some(took) = crate::simcamera::invoke(vehicle, inputs, name, crate::hub::now_ms(), &trigger, &recorder) {

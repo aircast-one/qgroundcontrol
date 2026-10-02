@@ -230,7 +230,7 @@ fun AircastShell(hostView: android.view.View?) {
     val flightActions = remember { movableContentOf<one.aircast.android.ui.FlyDeckLayout> { layout -> FlightActions(layout = layout) } }
     val flyVideo = remember {
         movableContentOf<Modifier, Boolean> { mod, expanded ->
-            VideoSurface(modifier = mod, expanded = expanded, onClick = { flyView = one.aircast.android.ui.flyViewSwapped(flyView) }, onDoubleTap = { videoFullScreen = !videoFullScreen })
+            VideoSurface(modifier = mod, expanded = expanded, fullScreen = videoFullScreen, onClick = { flyView = one.aircast.android.ui.flyViewSwapped(flyView) }, onDoubleTap = { videoFullScreen = !videoFullScreen })
         }
     }
     var mapClickAt by remember { mutableStateOf<MapPoint?>(null) }

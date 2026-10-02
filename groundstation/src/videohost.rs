@@ -112,6 +112,14 @@ fn cleanup_old_videos(folder: &str) {
 }
 
 pub fn start_recording() -> Result<(), Option<&'static str>> {
+    let started = begin_recording();
+    if let Err(Some(message)) = started {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", message);
+    }
+    started
+}
+
+fn begin_recording() -> Result<(), Option<&'static str>> {
     let mut guard = synced();
     let host = guard.as_mut().ok_or(None)?;
     match host.state.record_refusal() {
