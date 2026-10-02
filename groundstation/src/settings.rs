@@ -158,6 +158,12 @@ const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
 ];
 
 const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
+    ("mavlinkSettings", &[
+        ("Ground Station", &["gcsMavlinkSystemID", "sendGCSHeartbeat", "noInitialDownloadWhenFlying"]),
+        ("MAVLink Forwarding", &["forwardMavlink", "forwardMavlinkHostName", "forwardMavlinkAPMSupportHostName"]),
+        ("Logging", &["telemetrySave", "telemetrySaveNotArmed", "saveCsvTelemetry"]),
+        ("Stream Rates (ArduPilot Only)", &["apmStartMavlinkStreams"]),
+    ]),
     ("ntripSettings", &[
         ("Server", &["ntripServerHostAddress", "ntripServerPort", "ntripUsername", "ntripPassword", "ntripUseTls", "ntripAllowSelfSignedCerts"]),
         ("Mountpoint", &["ntripMountpoint"]),
@@ -378,6 +384,24 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_mavlink_page_groups_its_rows_under_qgcs_headings_so_enable_reads_as_forwarding() {
+        let controls: Vec<Value> = ["telemetrySave", "forwardMavlink", "forwardMavlinkHostName", "sendGCSHeartbeat"].iter().map(|n| json!({ "name": n })).collect();
+        let titles: Vec<(String, Vec<String>)> = subsections("mavlinkSettings", &controls)
+            .iter()
+            .map(|s| (s["title"].as_str().unwrap().to_string(), s["controls"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect()))
+            .collect();
+        assert_eq!(
+            titles,
+            vec![
+                ("Ground Station".to_string(), vec!["sendGCSHeartbeat".to_string()]),
+                ("MAVLink Forwarding".to_string(), vec!["forwardMavlink".to_string(), "forwardMavlinkHostName".to_string()]),
+                ("Logging".to_string(), vec!["telemetrySave".to_string()]),
+            ],
+            "TelemetrySettings.qml heads these groups; without them the forwarding switch reads as a bare Enable"
+        );
+    }
+
     #[test]
     fn the_video_page_has_no_active_source_index_row_as_qgc_does_not() {
         let video = SUBSECTIONS.iter().find(|(group, _)| *group == "videoSettings").map(|(_, sections)| *sections).unwrap_or_default();
