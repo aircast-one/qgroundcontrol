@@ -1117,20 +1117,20 @@ struct Tracked {
 }
 
 impl Tracked {
-    fn request(&mut self, now_ms: u64) -> Option<Command> {
+    fn request(&mut self, now_ms: u64, ack_timeout_ms: u64) -> Option<Command> {
         self.due = None;
         self.answer_by = None;
         if self.attempts >= MAX_INFORMATION_ATTEMPTS {
             return None;
         }
-        self.answer_by = Some(now_ms + crate::mavcmd::ACK_TIMEOUT_MS);
+        self.answer_by = Some(now_ms + ack_timeout_ms);
         match self.attempts % 2 {
             0 => Some(request_message(self.compid, MSG_CAMERA_INFORMATION, 0.0)),
             _ => Some(command(self.compid, CMD_REQUEST_CAMERA_INFORMATION, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
         }
     }
 
-    fn retry(&mut self, now_ms: u64) -> Option<Command> {
+    fn retry(&mut self, now_ms: u64, ack_timeout_ms: u64) -> Option<Command> {
         if self.attempts >= MAX_INFORMATION_ATTEMPTS {
             self.due = None;
             return None;
@@ -1142,7 +1142,7 @@ impl Tracked {
                 self.answer_by = None;
                 None
             }
-            false => self.request(now_ms),
+            false => self.request(now_ms, ack_timeout_ms),
         }
     }
 
@@ -1165,6 +1165,10 @@ pub struct Cameras {
 }
 
 impl Cameras {
+    fn ack_timeout_ms(&self) -> u64 {
+        if self.high_latency { crate::mavcmd::ACK_TIMEOUT_HIGH_LATENCY_MS } else { crate::mavcmd::ACK_TIMEOUT_MS }
+    }
+
     pub fn new() -> Cameras {
         Cameras::default()
     }
@@ -1229,6 +1233,7 @@ impl Cameras {
     }
 
     pub fn on_heartbeat(&mut self, compid: u8, now_ms: u64) -> Vec<Command> {
+        let timeout = self.ack_timeout_ms();
         if !is_camera_component(compid) {
             return Vec::new();
         }
@@ -1237,7 +1242,7 @@ impl Cameras {
         }
         let Some(tracked) = self.tracked.iter_mut().find(|tracked| tracked.compid == compid) else {
             self.tracked.push(Tracked { compid, last_heartbeat_ms: now_ms, attempts: 0, due: None, answer_by: None, identified: false });
-            return self.tracked.last_mut().and_then(|tracked| tracked.request(now_ms)).into_iter().collect();
+            return self.tracked.last_mut().and_then(|tracked| tracked.request(now_ms, timeout)).into_iter().collect();
         };
         let silent = now_ms.saturating_sub(tracked.last_heartbeat_ms) > SILENT_TIMEOUT_MS;
         tracked.last_heartbeat_ms = now_ms;
@@ -1246,7 +1251,7 @@ impl Cameras {
         }
         tracked.attempts = 0;
         tracked.due = None;
-        tracked.request(now_ms).into_iter().collect()
+        tracked.request(now_ms, timeout).into_iter().collect()
     }
 
     pub fn on_camera_information(&mut self, compid: u8, info: Info, now_ms: u64) {
@@ -1309,6 +1314,7 @@ impl Cameras {
     }
 
     pub fn on_command_result(&mut self, compid: u8, sent: u16, param1: f64, result: u8, now_ms: u64) -> Vec<Command> {
+        let timeout = self.ack_timeout_ms();
         let asked_for_information = sent == CMD_REQUEST_CAMERA_INFORMATION || (sent == CMD_REQUEST_MESSAGE && param1 as u32 == MSG_CAMERA_INFORMATION);
         let retried = match (asked_for_information, result) {
             (true, RESULT_ACCEPTED | RESULT_IN_PROGRESS) => {
@@ -1321,7 +1327,7 @@ impl Cameras {
                 .tracked
                 .iter_mut()
                 .find(|tracked| tracked.compid == compid && !tracked.identified)
-                .and_then(|tracked| tracked.retry(now_ms)),
+                .and_then(|tracked| tracked.retry(now_ms, timeout)),
             (false, _) => None,
         };
         if let Some(camera) = self.camera_mut(compid) {
@@ -1331,13 +1337,14 @@ impl Cameras {
     }
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<Command> {
+        let timeout = self.ack_timeout_ms();
         let waking: Vec<Command> = self
             .tracked
             .iter_mut()
             .filter(|tracked| !tracked.identified)
             .filter_map(|tracked| match (tracked.due.is_some_and(|due| now_ms >= due), tracked.answer_by.is_some_and(|by| now_ms >= by)) {
-                (true, _) => tracked.request(now_ms),
-                (false, true) => tracked.retry(now_ms),
+                (true, _) => tracked.request(now_ms, timeout),
+                (false, true) => tracked.retry(now_ms, timeout),
                 (false, false) => None,
             })
             .collect();
@@ -1352,7 +1359,7 @@ impl Cameras {
             self.tracked.retain(|tracked| !lost.contains(&tracked.compid));
             self.selected = self.selected.filter(|compid| !lost.contains(compid));
         }
-        let ack_timeout_ms = if self.high_latency { crate::mavcmd::ACK_TIMEOUT_HIGH_LATENCY_MS } else { crate::mavcmd::ACK_TIMEOUT_MS };
+        let ack_timeout_ms = self.ack_timeout_ms();
         let requests: Vec<Command> = self.cameras.iter_mut().flat_map(|camera| camera.tick(now_ms, ack_timeout_ms)).collect();
         waking.into_iter().chain(requests).collect()
     }

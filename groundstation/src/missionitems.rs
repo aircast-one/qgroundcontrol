@@ -140,6 +140,7 @@ fn amsl_entry(simple: &crate::plandoc::Simple, home_altitude: f64) -> f64 {
 
 struct Survey {
     unfinished: bool,
+    incomplete: bool,
     landing: bool,
     touchdown_altitude: Option<f64>,
     entry: (f64, f64),
@@ -159,6 +160,7 @@ fn structure(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     let (top, bottom) = crate::structurescan::top_and_bottom(&plan);
     Ok(Survey {
         unfinished: false,
+        incomplete: false,
         landing: false,
         touchdown_altitude: None,
         entry,
@@ -177,6 +179,7 @@ fn landing(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     let base = if row.relative { home_altitude } else { 0.0 };
     Ok(Survey {
         unfinished: json.get(crate::landingpattern::WIZARD).and_then(Value::as_bool) == Some(true),
+        incomplete: false,
         landing: true,
         touchdown_altitude: Some(row.land_altitude),
         entry: row.approach,
@@ -208,7 +211,7 @@ fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
         .map(|points| points.iter().filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?))).collect())
         .unwrap_or_default();
     let (Some(entry), Some(exit)) = (points.first().copied(), points.last().copied()) else {
-        return Err("A survey without transects has no rows to describe.".to_string());
+        return Ok(Survey { unfinished: true, incomplete: true, landing: false, touchdown_altitude: None, entry: (0.0, 0.0), exit: (0.0, 0.0), amsl: f64::NAN, exit_amsl: f64::NAN, lowest: f64::NAN, highest: f64::NAN, shots: 0, distance: 0.0 });
     };
     let calc = transect.get("CameraCalc").ok_or("A survey has no camera settings.")?;
     let surface = calc.get("DistanceToSurface").and_then(Value::as_f64).ok_or("A survey has no distance to the surface.")?;
@@ -238,6 +241,7 @@ fn survey(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     };
     Ok(Survey {
         unfinished: false,
+        incomplete: false,
         landing: false,
         touchdown_altitude: None,
         entry,
@@ -621,10 +625,11 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                     "commandDescription": name,
                     "patternName": if crate::landingpattern::is_landing(kind) && first_landing != Some(i) { "Alternate Landing" } else { name },
                     "isCurrentItem": selected == i as i64 + 1,
-                    "coordinate": { "latitude": if v.landing { v.exit.0 } else { v.entry.0 }, "longitude": if v.landing { v.exit.1 } else { v.entry.1 }, "altitude": v.touchdown_altitude, "valid": true },
-                    "exitCoordinate": { "latitude": v.exit.0, "longitude": v.exit.1, "altitude": v.touchdown_altitude, "valid": true },
+                    "coordinate": { "latitude": if v.landing { v.exit.0 } else { v.entry.0 }, "longitude": if v.landing { v.exit.1 } else { v.entry.1 }, "altitude": v.touchdown_altitude, "valid": !v.incomplete },
+                    "exitCoordinate": { "latitude": v.exit.0, "longitude": v.exit.1, "altitude": v.touchdown_altitude, "valid": !v.incomplete },
                     "exitCoordinateSameAsEntry": !v.landing && v.entry == v.exit,
                     "isLandCommand": v.landing,
+                    "isIncomplete": v.incomplete,
                     "amslEntryAlt": v.amsl,
                     "amslExitAlt": v.exit_amsl,
                     "minAMSLAltitude": v.lowest,
@@ -637,7 +642,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                     "distance": leg.distance,
                     "distanceFromStart": leg.from_start,
                     "readyForSaveState": if v.unfinished { NOT_READY_FOR_SAVE } else { READY_TO_SAVE },
-                    "readyForSaveMessage": if v.unfinished { "Finish the landing setup" } else { "" },
+                    "readyForSaveMessage": if v.unfinished && v.landing { "Finish the landing setup" } else { "" },
                 });
             };
             let info = commands.get(&s.command);

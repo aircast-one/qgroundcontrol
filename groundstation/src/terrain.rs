@@ -392,7 +392,7 @@ pub fn simple_legs(reads: &[Value], fixed_wing: bool, height: &dyn Fn(f64, f64) 
     let path: Vec<&Value> = home.filter(|_| starts_on_ground).into_iter().chain(flown).chain(home.filter(|_| rtl_sequence.is_some())).collect();
     let to_home = |second: &Value| home.is_some_and(|h| std::ptr::eq(h, second));
     path.windows(2)
-        .filter(|pair| !flag_of(pair[0], "isLandCommand"))
+        .filter(|pair| !flag_of(pair[0], "isLandCommand") || to_home(pair[1]))
         .filter(|pair| !flag_of(pair[0], "isIncomplete") && !flag_of(pair[1], "isIncomplete"))
         .filter(|pair| {
             let terrain_frame = !to_home(pair[1]) && pair[0].get("altitudeFrame").or_else(|| pair[0].get("altitudeMode")).and_then(Value::as_i64) == Some(TERRAIN_FRAME);
@@ -519,6 +519,13 @@ mod tests {
         survey["isIncomplete"] = json!(true);
         let gapped = simple_legs(&[json!({ "homePosition": true }), at(47.0, 600.0), survey, at(47.02, 600.0)], false, &ridge);
         assert!(gapped.is_empty(), "MissionController draws no segment into or out of an incomplete item, so none is checked: {gapped:?}");
+        let home = json!({ "homePosition": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "amslEntryAlt": 600.0 });
+        let mut landing = at(47.02, 600.0);
+        landing["isLandCommand"] = json!(true);
+        landing["sequenceNumber"] = json!(1);
+        let rtl = json!({ "command": 20, "sequenceNumber": 2, "specifiesCoordinate": false });
+        let back = simple_legs(&[home, landing, rtl], false, &ridge);
+        assert_eq!(back.len(), 1, "after an RTL the leg from the last landing back home is a generic segment and is checked: {back:?}");
     }
 
     #[test]
