@@ -88,14 +88,14 @@ internal fun SimpleTiles(modifier: Modifier = Modifier) {
     val classView by qgcPath(INSTRUMENTS_VIEW)
     val vehicleClass = instrumentVehicleClass(classView)
     val chosen = remember(vehicleClass) { readChosen(context, vehicleClass) }
-    val displays = remember { readDisplays(context) }
-    val view by qgcPath(instrumentsPath(chosen))
+    val displays = remember(vehicleClass) { readDisplays(context, vehicleClass) }
+    val view by qgcPath(instrumentsPath(chosen, vehicleClass))
     val shown = remember(view, chosen) { if (showsInstruments(chosen)) instruments(view).take(SIMPLE_TILE_COUNT) else emptyList() }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
         shown.chunked(2).map { pair ->
             Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
                 pair.map { instrument ->
-                    val display = displays[instrument.id] ?: ValueDisplay()
+                    val display = displayFor(displays, instrument)
                     Surface(
                         Modifier.weight(1f),
                         shape = MaterialTheme.shapes.large,

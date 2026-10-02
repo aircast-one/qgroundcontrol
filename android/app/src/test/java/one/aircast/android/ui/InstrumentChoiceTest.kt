@@ -76,6 +76,7 @@ class InstrumentChoiceTest {
     fun `choosing nothing draws nothing, and the core's own fallback is never reached`() {
         assertEquals("view.instruments(lat,hdop)", instrumentsPath(listOf("lat", "hdop")))
         assertEquals("the default selection asks the core, which adds airspeed for a wing as QGCCorePlugin does", "view.instruments", instrumentsPath(DEFAULT_INSTRUMENTS))
+        assertEquals("a wing's default list with airspeed still asks the core, keeping the AirSpd text", "view.instruments", instrumentsPath(defaultInstruments("fixedWing"), "fixedWing"))
         assertTrue(showsInstruments(listOf("lat")))
         assertFalse(
             "instruments_view answers its OWN four defaults for an empty argument list, so a head " +

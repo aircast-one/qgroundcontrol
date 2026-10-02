@@ -103,7 +103,10 @@ internal fun offerWithdrawn(offerId: String?, offers: Map<String, GuidedOffer>):
     offerId != null && offers[offerId]?.shown != true
 
 
-internal data class Instrument(val label: String, val reading: String, val id: String = "", val value: String = reading, val units: String = "", val raw: Double? = null)
+internal data class Instrument(val label: String, val reading: String, val id: String = "", val value: String = reading, val units: String = "", val raw: Double? = null, val defaultIcon: String = "")
+
+internal fun displayFor(displays: Map<String, ValueDisplay>, instrument: Instrument): ValueDisplay =
+    displays[instrument.id] ?: ValueDisplay(icon = instrument.defaultIcon)
 
 internal fun rowWidth(count: Int): Int = when {
     count <= 4 -> count
@@ -139,6 +142,7 @@ internal fun instruments(view: JSONObject?): List<Instrument> {
                     value = if (item.optBoolean("missing")) it else item.optText("value"),
                     units = if (item.optBoolean("missing")) "" else item.optText("units"),
                     raw = if (item.isNull("raw")) null else item.optDouble("raw").takeIf { r -> !r.isNaN() },
+                    defaultIcon = item.optText("defaultIcon"),
                 )
             }
         }
@@ -174,10 +178,10 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
     val vehicleClass = instrumentVehicleClass(classView)
     var chosen by remember(vehicleClass) { mutableStateOf(readChosen(context, vehicleClass)) }
     var choosing by remember { mutableStateOf(false) }
-    var displays by remember { mutableStateOf(readDisplays(context)) }
+    var displays by remember(vehicleClass) { mutableStateOf(readDisplays(context, vehicleClass)) }
     var styling by remember { mutableStateOf<Instrument?>(null) }
-    LaunchedEffect(Unit) { OverlayLayout.valueSize = readValueSize(context) }
-    val view by qgcPath(instrumentsPath(chosen))
+    LaunchedEffect(vehicleClass) { OverlayLayout.valueSize = readValueSize(context, vehicleClass) }
+    val view by qgcPath(instrumentsPath(chosen, vehicleClass))
     val gcsJson by qgcPath(GCS_POSITION)
     val shown = remember(view, gcsJson, chosen) {
         (if (showsInstruments(chosen)) instruments(view) else emptyList()) + operatorDistance(gcsJson)
@@ -200,10 +204,10 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
     styling?.let { instrument ->
         ValueDisplayDialog(
             label = instrument.label,
-            initial = displays[instrument.id] ?: ValueDisplay(),
+            initial = displayFor(displays, instrument),
             onDismiss = { styling = null },
             onDone = { display ->
-                writeDisplay(context, instrument.id, display)
+                writeDisplay(context, vehicleClass, instrument.id, display)
                 displays = displays + (instrument.id to display)
                 styling = null
             },
@@ -230,7 +234,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
         maxItemsInEachRow = columns ?: rowWidth(shown.size + 1),
     ) {
         shown.forEach { instrument ->
-            val display = displays[instrument.id] ?: ValueDisplay()
+            val display = displayFor(displays, instrument)
             Column(
                 Modifier
                     .padding(horizontal = 12.dp, vertical = 6.dp)

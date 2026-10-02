@@ -64,8 +64,8 @@ internal fun vehicleOwnGroup(view: JSONObject?): InstrumentGroup? {
     return listed.takeIf { it.isNotEmpty() }?.let { InstrumentGroup("vehicle", "Vehicle", it) }
 }
 
-internal fun instrumentsPath(chosen: List<String>): String = when {
-    chosen.isEmpty() || chosen == DEFAULT_INSTRUMENTS -> INSTRUMENTS_VIEW
+internal fun instrumentsPath(chosen: List<String>, vehicleClass: String = GENERIC_CLASS): String = when {
+    chosen.isEmpty() || chosen == DEFAULT_INSTRUMENTS || chosen == defaultInstruments(vehicleClass) -> INSTRUMENTS_VIEW
     else -> "$INSTRUMENTS_VIEW(${chosen.joinToString(",")})"
 }
 
@@ -126,11 +126,11 @@ internal fun nextValueSize(size: ValueSize): ValueSize = valueSizeAt((size.ordin
 
 internal fun valueSizePillText(size: ValueSize): String = "Size: ${size.label}"
 
-internal fun readValueSize(context: Context): ValueSize =
-    valueSizeAt(context.getSharedPreferences(STORE, Context.MODE_PRIVATE).getInt(VALUE_SIZE_KEY, 0))
+internal fun readValueSize(context: Context, vehicleClass: String): ValueSize =
+    valueSizeAt(context.getSharedPreferences(STORE, Context.MODE_PRIVATE).getInt("$VALUE_SIZE_KEY-$vehicleClass", 0))
 
-internal fun writeValueSize(context: Context, size: ValueSize) {
-    context.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().putInt(VALUE_SIZE_KEY, size.ordinal).apply()
+internal fun writeValueSize(context: Context, vehicleClass: String, size: ValueSize) {
+    context.getSharedPreferences(STORE, Context.MODE_PRIVATE).edit().putInt("$VALUE_SIZE_KEY-$vehicleClass", size.ordinal).apply()
 }
 
 internal fun shownFirst(groups: List<InstrumentGroup>, shown: List<String>): List<InstrumentGroup> {

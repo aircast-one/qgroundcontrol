@@ -21,6 +21,7 @@ pub const DEPS: &[&str] = &[
 pub const DEFAULTS: &[&str] = &["vehicle/distanceToHome", "vehicle/altitudeRelative", "vehicle/groundSpeed", "vehicle/climbRate"];
 pub const FORWARD_FLIGHT_DEFAULTS: &[&str] = &["vehicle/airSpeed"];
 const DEFAULT_TEXT: &[(&str, &str)] = &[("vehicle/airSpeed", "AirSpd")];
+const DEFAULT_ICONS: &[(&str, &str)] = &[("vehicle/distanceToHome", "home.svg"), ("vehicle/altitudeRelative", "arrow-thick-up.svg"), ("vehicle/groundSpeed", "arrow-simple-right.svg"), ("vehicle/climbRate", "arrow-simple-up.svg")];
 
 const ABSENT: &str = "\u{2014}";
 
@@ -111,6 +112,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
                 "group": group,
                 "name": name,
                 "label": args.is_empty().then(|| DEFAULT_TEXT.iter().find(|(id, _)| *id == format!("{group}/{name}")).map(|(_, text)| text.to_string())).flatten().or(described.map(str::to_string)).unwrap_or_else(|| humanise(name)),
+                "defaultIcon": DEFAULT_ICONS.iter().find(|(id, _)| *id == format!("{group}/{name}")).map_or("", |(_, icon)| icon),
                 "value": value.clone().unwrap_or_else(|| ABSENT.to_string()),
                 "units": if value.is_some() { units } else { "" },
                 "missing": value.is_none(),

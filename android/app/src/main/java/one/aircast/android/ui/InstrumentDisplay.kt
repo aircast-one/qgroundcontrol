@@ -145,11 +145,13 @@ internal fun displayFrom(json: String?): ValueDisplay = runCatching {
     }
 }.getOrDefault(ValueDisplay())
 
-internal fun readDisplays(context: Context): Map<String, ValueDisplay> =
-    context.getSharedPreferences(DISPLAY_STORE, Context.MODE_PRIVATE).all.mapValues { (_, json) -> displayFrom(json as? String) }
+internal fun readDisplays(context: Context, vehicleClass: String): Map<String, ValueDisplay> =
+    context.getSharedPreferences(DISPLAY_STORE, Context.MODE_PRIVATE).all
+        .filterKeys { it.startsWith("$vehicleClass/") }
+        .entries.associate { (key, json) -> key.removePrefix("$vehicleClass/") to displayFrom(json as? String) }
 
-internal fun writeDisplay(context: Context, id: String, display: ValueDisplay) {
-    context.getSharedPreferences(DISPLAY_STORE, Context.MODE_PRIVATE).edit().putString(id, displayJson(display)).apply()
+internal fun writeDisplay(context: Context, vehicleClass: String, id: String, display: ValueDisplay) {
+    context.getSharedPreferences(DISPLAY_STORE, Context.MODE_PRIVATE).edit().putString("$vehicleClass/$id", displayJson(display)).apply()
 }
 
 internal fun iconNames(context: Context): List<String> =

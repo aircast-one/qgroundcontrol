@@ -119,12 +119,14 @@ internal fun Hideable(key: String, content: @Composable () -> Unit) {
 internal fun OverlayEditBar(modifier: Modifier = Modifier) {
     if (!OverlayLayout.editing) return
     val context = LocalContext.current
+    val classView by one.aircast.android.bridge.qgcPath(INSTRUMENTS_VIEW)
+    val vehicleClass = instrumentVehicleClass(classView)
     Surface(modifier, shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh, tonalElevation = 3.dp) {
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Hide or show widgets", style = MaterialTheme.typography.labelMedium)
             TextButton(onClick = {
                 OverlayLayout.valueSize = nextValueSize(OverlayLayout.valueSize)
-                writeValueSize(context, OverlayLayout.valueSize)
+                writeValueSize(context, vehicleClass, OverlayLayout.valueSize)
             }) { Text(valueSizePillText(OverlayLayout.valueSize)) }
             var armed by remember { mutableStateOf(false) }
             LaunchedEffect(armed) {
