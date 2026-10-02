@@ -1,5 +1,9 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import one.aircast.android.R
 
 import androidx.compose.ui.res.painterResource
@@ -15,7 +19,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -25,7 +28,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
@@ -162,61 +164,33 @@ private fun StartDialog(
     )
 }
 
-@Composable
-private fun OrientationTile(label: String, done: Boolean, inProgress: Boolean, rotate: Boolean) {
-    val status = when {
-        inProgress && rotate -> "Rotate"
-        inProgress -> "Hold still"
-        done -> "Done"
-        else -> "Pending"
-    }
-    val tint = when {
-        inProgress -> MaterialTheme.colorScheme.primary
-        done -> MaterialTheme.colorScheme.secondary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (inProgress) {
-                MaterialTheme.colorScheme.primaryContainer
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1.9f),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(8.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(label, style = MaterialTheme.typography.labelLarge)
-            Text(status, style = MaterialTheme.typography.bodySmall, color = tint)
-        }
-    }
+internal fun sideLabel(side: CalibrationSide): String = when {
+    side.stage == "inProgress" && side.rotate -> "${side.title} · rotate"
+    side.stage == "inProgress" -> "${side.title} · hold still"
+    else -> side.title
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun OrientationGrid(sides: List<CalibrationSide>) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        sides.filter { it.visible }.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { side ->
-                    Box(Modifier.weight(1f)) {
-                        OrientationTile(
-                            label = side.title,
-                            done = side.stage == "done",
-                            inProgress = side.stage == "inProgress",
-                            rotate = side.rotate,
-                        )
-                    }
-                }
-                repeat(2 - row.size) { Box(Modifier.weight(1f)) {} }
-            }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        sides.filter { it.visible }.forEach { side ->
+            val done = side.stage == "done"
+            val current = side.stage == "inProgress"
+            FilterChip(
+                selected = done || current,
+                onClick = {},
+                label = { Text(sideLabel(side)) },
+                leadingIcon = if (done) {
+                    { Icon(painterResource(R.drawable.ic_check_circle), null, Modifier.size(18.dp)) }
+                } else {
+                    null
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                    selectedLabelColor = if (current) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                ),
+            )
         }
     }
 }
