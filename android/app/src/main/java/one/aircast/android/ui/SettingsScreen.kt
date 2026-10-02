@@ -118,6 +118,8 @@ private fun pageGlance(title: String): String {
     return glanceText(displays)
 }
 
+internal fun pageSubtitle(title: String, glance: String): String = glance.ifBlank { PAGE_NOTES[title].orEmpty() }
+
 internal fun activeLinkCount(view: JSONObject?): Int =
     view?.optJSONArray("links")?.let { links -> (0 until links.length()).count { links.optJSONObject(it)?.optBoolean("connected") == true } } ?: 0
 
@@ -378,9 +380,9 @@ private fun SettingsList(
                     val glance = pageGlance(entry.title)
                     SetupRow(
                         title = entry.title,
-                        status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else glance,
+                        status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else "",
                         state = if (activeLinks > 0 && entry.title == CONNECTIONS_PAGE) SetupState.Done else SetupState.Neutral,
-                        subtitle = PAGE_NOTES[entry.title].orEmpty(),
+                        subtitle = pageSubtitle(entry.title, glance),
                         onClick = { onOpen(entry.title) },
                         icon = pageLook(entry.title).icon,
                         selected = entry.title == selected,

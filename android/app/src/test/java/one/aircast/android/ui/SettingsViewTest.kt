@@ -196,4 +196,10 @@ class SettingsViewTest {
         org.junit.Assert.assertEquals("Bing · Hybrid", glanceText(listOf("Bing", "Hybrid")))
         org.junit.Assert.assertEquals("", glanceText(listOf("", " ")))
     }
+
+    @Test
+    fun aPageRowReadsItsCurrentStateUnderTheTitleAndFallsBackToWhatThePageHolds() {
+        org.junit.Assert.assertEquals("Bing · Hybrid", pageSubtitle("Maps", "Bing · Hybrid"))
+        org.junit.Assert.assertEquals(PAGE_NOTES["Maps"], pageSubtitle("Maps", ""))
+    }
 }
