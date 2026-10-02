@@ -83,7 +83,10 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
         return
     }
 
-    val shutter = camera?.let { shutterFor(it) } ?: return
+    val shutter = camera?.let { shutterFor(it) } ?: run {
+        RcCameraControls(modifier)
+        return
+    }
 
     Surface(
         modifier = modifier,
@@ -92,6 +95,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
         Column {
+        RcCameraControls()
         Row(
             Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),

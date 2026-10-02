@@ -1,0 +1,118 @@
+package one.aircast.android.ui
+
+import android.os.SystemClock
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.qgcValue
+import one.aircast.android.bridge.settingControl
+
+private const val FLY_VIEW_SETTINGS = "settings.flyViewSettings"
+private const val GIMBAL_VIEW = "view.gimbalIndicator"
+
+internal data class RcCameraChannels(val tilt: Int, val pan: Int, val zoom: Int, val light: Int, val record: Int) {
+    val any: Boolean get() = listOf(tilt, pan, zoom, light, record).any { it > 0 }
+}
+
+internal fun rcCameraChannels(tilt: Int, pan: Int, zoom: Int, light: Int, record: Int): RcCameraChannels =
+    RcCameraChannels(tilt = tilt, pan = if (pan == tilt) 0 else pan, zoom = zoom, light = light, record = record)
+
+private fun send(channel: Int, pwm: Int) {
+    if (channel > 0) offMainDetached { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
+}
+
+@Composable
+private fun channelSetting(name: String): Int {
+    val value by qgcValue(settingControl("$FLY_VIEW_SETTINGS.$name"))
+    return (value as? Number)?.toInt() ?: 0
+}
+
+@Composable
+private fun PwmSlider(label: String, channel: Int, pwm: Int, onPwm: (Int) -> Unit) {
+    var lastSent by remember(channel) { mutableLongStateOf(0L) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(64.dp))
+        Slider(
+            value = pwm.toFloat(),
+            onValueChange = { raw ->
+                val next = raw.toInt()
+                onPwm(next)
+                val now = SystemClock.uptimeMillis()
+                if (rcSendDue(now, lastSent, finished = false)) {
+                    lastSent = now
+                    send(channel, next)
+                }
+            },
+            onValueChangeFinished = { send(channel, pwm) },
+            valueRange = PWM_MIN.toFloat()..PWM_MAX.toFloat(),
+            modifier = Modifier.width(180.dp),
+        )
+    }
+}
+
+@Composable
+fun RcCameraControls(modifier: Modifier = Modifier) {
+    val channels = rcCameraChannels(
+        tilt = channelSetting("gimbalTiltChannel"),
+        pan = channelSetting("gimbalPanChannel"),
+        zoom = channelSetting("cameraZoomChannel"),
+        light = channelSetting("cameraLightChannel"),
+        record = channelSetting("cameraRecordChannel"),
+    )
+    val gimbalJson by qgcPath(GIMBAL_VIEW)
+    val gimbalManager = gimbalJson?.optBoolean("shown") == true
+    var tilt by remember { mutableIntStateOf(PWM_CENTER) }
+    var pan by remember { mutableIntStateOf(PWM_CENTER) }
+    var zoom by remember { mutableIntStateOf(PWM_CENTER) }
+    var lightOn by remember { mutableStateOf(false) }
+    var recording by remember { mutableStateOf(false) }
+    if (!hasVehicle() || !channels.any) return
+    val rcGimbal = !gimbalManager && (channels.tilt > 0 || channels.pan > 0)
+    Column(modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (!gimbalManager && channels.tilt > 0) PwmSlider("Tilt", channels.tilt, tilt) { tilt = it }
+        if (!gimbalManager && channels.pan > 0) PwmSlider("Pan", channels.pan, pan) { pan = it }
+        if (channels.zoom > 0) PwmSlider("Zoom", channels.zoom, zoom) { zoom = it }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (channels.record > 0) {
+                FilterChip(selected = recording, onClick = {
+                    recording = !recording
+                    send(channels.record, if (recording) PWM_MAX else PWM_MIN)
+                }, label = { Text("Record") })
+            }
+            if (channels.light > 0) {
+                FilterChip(selected = lightOn, onClick = {
+                    lightOn = !lightOn
+                    send(channels.light, if (lightOn) PWM_MAX else PWM_MIN)
+                }, label = { Text("Light") })
+            }
+            if (rcGimbal) {
+                TextButton(onClick = {
+                    tilt = PWM_CENTER
+                    pan = PWM_CENTER
+                    send(channels.tilt, PWM_CENTER)
+                    send(channels.pan, PWM_CENTER)
+                }) { Text("Recenter") }
+            }
+        }
+    }
+}
