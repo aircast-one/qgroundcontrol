@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -17,7 +19,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -26,7 +30,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
@@ -36,6 +43,18 @@ import org.json.JSONObject
 
 internal const val REMOTE_ID_STATUS_PATH = "view.remoteIdStatus"
 internal const val REMOTE_ID_SETTINGS_PAGE = "Remote ID"
+private const val SEND_SELF_ID = "sendSelfID"
+private val SELF_ID_FACTS = listOf(SEND_SELF_ID, "selfIDType", "selfIDFree", "selfIDExtended", "selfIDEmergency")
+private val BROADCAST_GATED = setOf("selfIDType", "selfIDFree", "selfIDExtended")
+private const val SELF_ID_NOTE = "If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled."
+
+internal fun selfIdFacts(page: List<Fact>): List<Fact> {
+    val byName = page.associateBy { it.name }
+    val broadcasting = byName[SEND_SELF_ID]?.boolValue == true
+    return SELF_ID_FACTS.mapNotNull { byName[it] }.map { fact ->
+        if (fact.name in BROADCAST_GATED && !broadcasting) fact.copy(enabled = false, disabledReason = "Broadcast is off") else fact
+    }
+}
 
 internal data class RemoteIdStatus(
     val state: String,
@@ -106,7 +125,7 @@ internal fun RemoteIdIndicatorCell() {
     if (open) {
         ModalBottomSheet(onDismissRequest = { open = false }) {
             Column(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("RemoteID Status", style = MaterialTheme.typography.titleMedium)
@@ -153,6 +172,7 @@ internal fun RemoteIdIndicatorCell() {
                         }
                     }
                 }
+                SelfIdSection()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Remote ID", modifier = Modifier.weight(1f))
                     OutlinedButton(onClick = configure) { Text("Configure") }
@@ -160,4 +180,19 @@ internal fun RemoteIdIndicatorCell() {
             }
         }
     }
+}
+
+@Composable
+private fun SelfIdSection() {
+    var reloads by remember { mutableIntStateOf(0) }
+    var facts by remember { mutableStateOf(emptyList<Fact>()) }
+    LaunchedEffect(reloads) {
+        facts = withContext(Dispatchers.Default) {
+            selfIdFacts(settingsSections(Qgc.get(settingsPagePath(REMOTE_ID_SETTINGS_PAGE))).flatMap { section -> section.blocks.flatMap { it.facts } })
+        }
+    }
+    if (facts.isEmpty()) return
+    Text("Self ID", style = MaterialTheme.typography.titleSmall)
+    if (facts.firstOrNull { it.name == SEND_SELF_ID }?.boolValue != true) Text(SELF_ID_NOTE, style = MaterialTheme.typography.bodySmall)
+    facts.forEach { FactRow(it) { reloads++ } }
 }
