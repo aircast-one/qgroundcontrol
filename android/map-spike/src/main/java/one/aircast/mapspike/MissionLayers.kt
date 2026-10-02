@@ -148,8 +148,8 @@ private const val LEG_ARROW_SPACING = 5
 private data class ArrowWalk(val arrows: List<Boolean>, val count: Int)
 
 fun flownRoute(items: List<MissionItem>, linkStartToHome: Boolean): List<MissionItem> {
-    val flown = (if (linkStartToHome) items else items.filterNot { it.index == 0 }).filter { it.routed }
-    val home = items.firstOrNull { it.index == 0 && it.closesRoute }
+    val flown = (if (linkStartToHome) items else items.filterNot { it.index == 0 }).filter { it.routed && (it.index != 0 || it.placed) }
+    val home = items.firstOrNull { it.index == 0 && it.closesRoute && it.placed }
     return if (home != null && flown.any { it.index != 0 }) flown + home.copy(exit = null) else flown
 }
 

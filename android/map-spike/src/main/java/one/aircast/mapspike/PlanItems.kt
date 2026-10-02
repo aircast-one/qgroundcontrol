@@ -1,5 +1,6 @@
 package one.aircast.mapspike
 
+import kotlin.concurrent.withLock
 
 const val NO_POSITION = "no position"
 const val AFTER_THE_ROUTE_ENDS = "after the route ends"
@@ -126,6 +127,22 @@ fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
     }
 }
 
+private val moveWrites = java.util.concurrent.locks.ReentrantLock()
+
+fun writeDragStep(
+    hit: MapHit,
+    latitude: Double,
+    longitude: Double,
+    surveys: List<Survey>,
+    rally: List<RallyPoint>,
+    fences: List<FencePolygon>,
+    items: List<MissionItem>,
+): Boolean = !moveWrites.tryLock() || try {
+    writeMove(hit, latitude, longitude, surveys, rally, fences, items)
+} finally {
+    moveWrites.unlock()
+}
+
 fun writeMove(
     hit: MapHit,
     latitude: Double,
@@ -134,7 +151,7 @@ fun writeMove(
     rally: List<RallyPoint>,
     fences: List<FencePolygon> = emptyList(),
     items: List<MissionItem> = emptyList(),
-): Boolean =
+): Boolean = moveWrites.withLock {
     when (hit) {
         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, latitude, longitude)
         is MapHit.FenceVertex -> FenceBridge.adjustVertex(hit.polygon, hit.vertex, latitude, longitude)
@@ -169,6 +186,7 @@ fun writeMove(
         is MapHit.LandingPlace ->
             moveLandingPlace(hit.index, hit.place, latitude, longitude)
     }
+}
 
 internal fun patternName(index: Int, items: List<MissionItem>): String =
     items.firstOrNull { it.index == index }?.command?.ifBlank { null } ?: "pattern"

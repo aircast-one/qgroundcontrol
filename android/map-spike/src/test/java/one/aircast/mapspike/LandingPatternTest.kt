@@ -189,6 +189,6 @@ class IsLandingPatternTest {
     fun `a structure scan names its entry and exit`() {
         val scan = MissionItem(index = 2, sequence = 2, latitude = 47.0, longitude = 8.0, command = "", selected = false, kind = KIND_STRUCTURE, exit = TrackPoint(47.1, 8.0))
         assertEquals(listOf("Entry", "Exit"), structureScanLabels(listOf(scan)).map { it.text })
-        assertEquals(0, structureScanLabels(listOf(scan.copy(exit = null))).size)
+        assertEquals("exitCoordinateSameAsEntry: the core sends no exit, both labels sit on the entry", listOf(scan.latitude, scan.latitude), structureScanLabels(listOf(scan.copy(exit = null))).map { it.at.latitude })
     }
 }

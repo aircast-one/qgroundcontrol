@@ -445,7 +445,7 @@ internal fun MapSpikeScreen(
                     insertAfter(selected, allItems),
                 )
             },
-            onMove = { hit, lat, lon -> onBridge { writeMove(hit, lat, lon, surveyList, rally, fences, allItems) } },
+            onMove = { hit, lat, lon -> onBridge { writeDragStep(hit, lat, lon, surveyList, rally, fences, allItems) } },
             onWaypointSelected = { hit ->
                 when (hit) {
                     is MapHit.Midpoint -> if (hit.path == MISSION_SPLIT_PATH) {

@@ -327,6 +327,7 @@ fun VehicleMap(
                         onDragging = { draggingVertex = it },
                     )
                 }
+                draggingVertex = null
                 style = loadedStyle
             }
         }

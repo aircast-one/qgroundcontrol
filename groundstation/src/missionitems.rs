@@ -736,9 +736,9 @@ fn with_closed_route(items: Vec<Value>) -> Vec<Value> {
 
 fn ends_at_home(items: &[Value]) -> bool {
     let before_rtl = items.iter().skip(1).take_while(|item| item["command"].as_i64() != Some(RETURN_TO_LAUNCH)).count();
-    items.iter().skip(1).any(|item| item["command"].as_i64() == Some(RETURN_TO_LAUNCH))
+    items.first().is_some_and(|home| !home["coordinate"].is_null())
+        && items.iter().skip(1).any(|item| item["command"].as_i64() == Some(RETURN_TO_LAUNCH))
         && items.iter().skip(1).take(before_rtl).any(|item| item["flownLeg"] == true)
-        && !items.iter().skip(1).take(before_rtl).any(|item| item["endsRoute"] == true)
 }
 
 fn starts_from_the_ground(items: &[Value]) -> bool {
@@ -2116,10 +2116,11 @@ mod reported {
     #[test]
     fn an_rtl_links_the_route_back_to_home_like_mission_controller() {
         let item = |command: i64, flown: bool, ends: bool| json!({ "command": command, "flownLeg": flown, "endsRoute": ends });
-        let home = item(0, false, false);
+        let home = json!({ "command": 0, "coordinate": { "latitude": 47.0, "longitude": 8.0 } });
         assert!(ends_at_home(&[home.clone(), item(16, true, false), item(20, false, true)]), "linkEndToHome after an RTL");
         assert!(!ends_at_home(&[home.clone(), item(16, true, false)]), "no RTL, no return leg");
-        assert!(!ends_at_home(&[home.clone(), item(21, true, true), item(20, false, true)]), "a land before the RTL ends the route there");
+        assert!(ends_at_home(&[home.clone(), item(21, true, true), item(20, false, true)]), "a land before the RTL is the last fly-through item, so it links home");
+        assert!(!ends_at_home(&[item(0, false, false), item(16, true, false), item(20, false, true)]), "MissionController draws no leg to an invalid home");
         assert!(!ends_at_home(&[home.clone(), item(20, false, true)]), "nothing flown before it");
         assert_eq!(with_closed_route(vec![home, item(16, true, false), item(20, false, true)])[0]["closesRoute"], true, "served on the home row, which every map already reads");
     }
