@@ -69,6 +69,16 @@ pub struct Meta {
     pub max: Option<f64>,
 }
 
+const PAGE_LABELS: [(&str, &str); 3] = [("throttleModeCenterZero", "Center stick is zero throttle"), ("throttleSmoothing", "Spring loaded throttle smoothing"), ("negativeThrust", "Negative Thrust")];
+
+fn page_label(fact: &Value) -> &str {
+    let name = fact["name"].as_str().unwrap_or_default();
+    PAGE_LABELS.iter().find(|(setting, _)| *setting == name).map(|(_, label)| *label).unwrap_or_else(|| match name {
+        "exponentialPct" => fact["shortDesc"].as_str().unwrap_or_default(),
+        _ => fact["label"].as_str().or(fact["shortDesc"].as_str()).unwrap_or_default(),
+    })
+}
+
 pub static METADATA: LazyLock<Vec<Meta>> = LazyLock::new(|| {
     let parsed: Value = serde_json::from_str(SETTINGS_JSON).unwrap_or(Value::Null);
     parsed["QGC.MetaData.Facts"]
@@ -80,7 +90,7 @@ pub static METADATA: LazyLock<Vec<Meta>> = LazyLock::new(|| {
                     name: f["name"].as_str().unwrap_or_default().to_string(),
                     kind: f["type"].as_str().unwrap_or_default().to_string(),
                     default: f["default"].clone(),
-                    label: f["label"].as_str().or(f["shortDesc"].as_str()).unwrap_or_default().to_string(),
+                    label: page_label(f).to_string(),
                     units: f["units"].as_str().unwrap_or_default().to_string(),
                     min: f["min"].as_f64(),
                     max: f["max"].as_f64(),
@@ -436,11 +446,10 @@ fn active_vehicle() -> Option<(u8, u32, u8, bool, u8)> {
 const MAV_TYPE_GROUND_ROVER: u8 = 10;
 const MAV_TYPE_SURFACE_BOAT: u8 = 11;
 const MAV_TYPE_SUBMARINE: u8 = 12;
-const ARDUSUB_TRANSMITTER_MODE: u8 = 3;
 
 fn support_for(vehicle: Option<(u8, u8)>) -> Support {
     match vehicle {
-        Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, default_transmitter_mode: ARDUSUB_TRANSMITTER_MODE, ..Support::default() },
+        Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, ..Support::default() },
         Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SURFACE_BOAT)) => Support { negative_thrust: true, ..Support::default() },
         Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, ..Support::default() },
         _ => Support::default(),
@@ -526,21 +535,34 @@ fn devices(text: &str) -> Value {
             Some(Device { name: d["name"].as_str().filter(|n| !n.is_empty())?.to_string(), axes: count("axes")?, buttons: count("buttons")?, hats: count("hats").unwrap_or(0), gamepad: d["gamepad"].as_bool().unwrap_or(false), details: DeviceDetails::from_json(d) })
         })
         .collect();
-    {
+    let broken: Vec<String> = {
         let mut host = host();
         host.joysticks.retain(|name, _| parsed.iter().any(|d| &d.name == name));
         let fresh: Vec<&Device> = parsed.iter().filter(|d| !host.joysticks.contains_key(&d.name)).collect();
-        fresh.iter().for_each(|d| {
-            let mut model = Joystick::new(d.axes, d.buttons, d.hats);
-            let stored = crate::settingsstore::entries_under(&format!("{SETTINGS_PREFIX}/{}", d.name));
-            load_axes(&d.name, &mut model, &stored);
-            load_buttons(&d.name, &mut model, &stored);
-            host.joysticks.insert(d.name.clone(), model);
-        });
+        let broken = fresh
+            .iter()
+            .filter_map(|d| {
+                let mut model = Joystick::new(d.axes, d.buttons, d.hats);
+                let stored = crate::settingsstore::entries_under(&format!("{SETTINGS_PREFIX}/{}", d.name));
+                load_axes(&d.name, &mut model, &stored);
+                load_buttons(&d.name, &mut model, &stored);
+                let invalid = !model.validate(&settings_for(&d.name)).is_empty();
+                host.joysticks.insert(d.name.clone(), model);
+                invalid.then(|| d.name.clone())
+            })
+            .collect();
         if host.calibration.as_ref().is_some_and(|(name, _)| !parsed.iter().any(|d| &d.name == name)) {
             host.calibration = None;
         }
         host.devices = parsed;
+        broken
+    };
+    broken.iter().for_each(|name| {
+        crate::settingsstore::replace_group(&axis_group(name), BTreeMap::new());
+        crate::settingsstore::written(&setting_key(name, "calibrated"), "false");
+    });
+    if !broken.is_empty() {
+        set_enabled_for_active_vehicle(false);
     }
     sync_polling(crate::hub::now_ms());
     json!({ "ok": true })
@@ -581,11 +603,20 @@ fn enable(on: bool) -> Value {
     if on && active.as_deref().is_none_or(|name| !settings_for(name).calibrated) {
         return json!({ "ok": false, "reason": "The joystick must be calibrated before it can be enabled." });
     }
-    let current = enabled_vehicles();
-    let next: Vec<String> = current.iter().filter(|v| **v != id.to_string()).cloned().chain(on.then(|| id.to_string())).collect();
-    crate::settingsstore::written(ENABLED_VEHICLES, &next.join(","));
+    write_enabled(id, on);
     sync_polling(crate::hub::now_ms());
     json!({ "ok": true })
+}
+
+fn write_enabled(id: u8, on: bool) {
+    let next: Vec<String> = enabled_vehicles().into_iter().filter(|v| *v != id.to_string()).chain(on.then(|| id.to_string())).collect();
+    crate::settingsstore::written(ENABLED_VEHICLES, &next.join(","));
+}
+
+fn set_enabled_for_active_vehicle(on: bool) {
+    if let Some((id, ..)) = active_vehicle() {
+        write_enabled(id, on);
+    }
 }
 
 fn set_setting(text: &str) -> Value {
@@ -596,6 +627,9 @@ fn set_setting(text: &str) -> Value {
     match args.get(1).and_then(|v| coerce(meta, v)) {
         Some(text) => {
             crate::settingsstore::written(&setting_key(&active, name), &text);
+            if OPTIONAL_SETTINGS.contains(&name) {
+                crate::settingsstore::written(&setting_key(&active, "calibrated"), "false");
+            }
             if name == "transmitterMode"
                 && let Some(model) = host().joysticks.get_mut(&active)
             {
@@ -762,7 +796,6 @@ mod tests {
         assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).throttle_mode_center_zero, "FirmwarePlugin supports centre-zero throttle and no ArduPilot plugin turns it off");
         assert!(!support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).negative_thrust);
         assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER))).negative_thrust, "ArduRoverFirmwarePlugin");
-        assert_eq!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE))).default_transmitter_mode, 3, "ArduSubFirmwarePlugin");
         assert!(support_for(Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_SUBMARINE))).negative_thrust);
         assert!(!support_for(Some((crate::modes::AUTOPILOT_PX4, 2))).negative_thrust);
     }

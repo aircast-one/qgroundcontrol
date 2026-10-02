@@ -402,12 +402,11 @@ impl Settings {
 pub struct Support {
     pub throttle_mode_center_zero: bool,
     pub negative_thrust: bool,
-    pub default_transmitter_mode: u8,
 }
 
 impl Default for Support {
     fn default() -> Self {
-        Support { throttle_mode_center_zero: true, negative_thrust: false, default_transmitter_mode: TRANSMITTER_MODE_DEFAULT }
+        Support { throttle_mode_center_zero: true, negative_thrust: false }
     }
 }
 
@@ -606,10 +605,11 @@ impl Joystick {
         if button >= self.bindings.len() {
             return false;
         }
+        let repeating = self.bindings[button].as_ref().is_some_and(|binding| binding.repeat);
         self.bindings[button] = action
             .map(str::trim)
             .filter(|name| !name.is_empty() && *name != ACTION_NONE)
-            .map(|name| Binding { action: name.to_string(), repeat: false });
+            .map(|name| Binding { action: name.to_string(), repeat: repeating && can_repeat(name) });
         self.repeat_fired_ms[button] = None;
         true
     }
@@ -934,7 +934,6 @@ impl Joystick {
             "support": {
                 "throttleModeCenterZero": support.throttle_mode_center_zero,
                 "negativeThrust": support.negative_thrust,
-                "defaultTransmitterMode": support.default_transmitter_mode,
             },
             "requestedThrottleMode": settings.throttle_mode.id(),
             "effectiveThrottleMode": settings.effective_throttle_mode(support).id(),
@@ -986,12 +985,11 @@ impl Joystick {
     }
 }
 
-fn setting_meta(name: &str, value_type: &str, default: Value, units: Option<&str>, bounds: Option<(f64, f64)>, enums: &[&str], default_from: Option<&str>) -> Value {
+fn setting_meta(name: &str, value_type: &str, default: Value, units: Option<&str>, bounds: Option<(f64, f64)>, enums: &[&str]) -> Value {
     json!({
         "name": name,
         "type": value_type,
         "default": default,
-        "defaultFrom": default_from,
         "units": units,
         "min": bounds.map(|(low, _)| low),
         "max": bounds.map(|(_, high)| high),
@@ -1001,20 +999,20 @@ fn setting_meta(name: &str, value_type: &str, default: Value, units: Option<&str
 
 fn settings_catalog() -> Vec<Value> {
     [
-        setting_meta("calibrated", "bool", json!(false), None, None, &[], None),
-        setting_meta("circleCorrection", "bool", json!(false), None, None, &[], None),
-        setting_meta("useDeadband", "bool", json!(false), None, None, &[], None),
-        setting_meta("negativeThrust", "bool", json!(false), None, None, &[], None),
-        setting_meta("throttleSmoothing", "bool", json!(false), None, None, &[], None),
-        setting_meta("throttleMode", "uint32", json!(ThrottleMode::default().stored()), None, None, &[ThrottleMode::CenterZero.id(), ThrottleMode::DownZero.id()], None),
-        setting_meta("axisFrequencyHz", "double", json!(AXIS_FREQUENCY_DEFAULT_HZ), Some("Hz"), Some((AXIS_FREQUENCY_MIN_HZ, AXIS_FREQUENCY_MAX_HZ)), &[], None),
-        setting_meta("buttonFrequencyHz", "double", json!(BUTTON_FREQUENCY_DEFAULT_HZ), Some("Hz"), Some((BUTTON_FREQUENCY_MIN_HZ, BUTTON_FREQUENCY_MAX_HZ)), &[], None),
-        setting_meta("transmitterMode", "uint32", Value::Null, None, Some((1.0, 4.0)), &[], Some("support.defaultTransmitterMode")),
-        setting_meta("exponentialPct", "double", json!(EXPONENTIAL_PCT_DEFAULT), Some("%"), Some((EXPONENTIAL_PCT_MIN, EXPONENTIAL_PCT_MAX)), &[], None),
-        setting_meta("additionalAxesFunction", "uint32", json!(AdditionalAxes::default().stored()), None, None, &[AdditionalAxes::ManualControl.id(), AdditionalAxes::RcChannelsOverride.id()], None),
+        setting_meta("calibrated", "bool", json!(false), None, None, &[]),
+        setting_meta("circleCorrection", "bool", json!(false), None, None, &[]),
+        setting_meta("useDeadband", "bool", json!(true), None, None, &[]),
+        setting_meta("negativeThrust", "bool", json!(false), None, None, &[]),
+        setting_meta("throttleSmoothing", "bool", json!(false), None, None, &[]),
+        setting_meta("throttleMode", "uint32", json!(ThrottleMode::default().stored()), None, None, &[ThrottleMode::CenterZero.id(), ThrottleMode::DownZero.id()]),
+        setting_meta("axisFrequencyHz", "double", json!(AXIS_FREQUENCY_DEFAULT_HZ), Some("Hz"), Some((AXIS_FREQUENCY_MIN_HZ, AXIS_FREQUENCY_MAX_HZ)), &[]),
+        setting_meta("buttonFrequencyHz", "double", json!(BUTTON_FREQUENCY_DEFAULT_HZ), Some("Hz"), Some((BUTTON_FREQUENCY_MIN_HZ, BUTTON_FREQUENCY_MAX_HZ)), &[]),
+        setting_meta("transmitterMode", "uint32", json!(TRANSMITTER_MODE_DEFAULT), None, Some((1.0, 4.0)), &[]),
+        setting_meta("exponentialPct", "double", json!(EXPONENTIAL_PCT_DEFAULT), Some("%"), Some((EXPONENTIAL_PCT_MIN, EXPONENTIAL_PCT_MAX)), &[]),
+        setting_meta("additionalAxesFunction", "uint32", json!(AdditionalAxes::default().stored()), None, None, &[AdditionalAxes::ManualControl.id(), AdditionalAxes::RcChannelsOverride.id()]),
     ]
     .into_iter()
-    .chain(OPTIONAL.iter().map(|function| setting_meta(&format!("enable_{}", function.id()), "bool", json!(false), None, None, &[], None)))
+    .chain(OPTIONAL.iter().map(|function| setting_meta(&format!("enable_{}", function.id()), "bool", json!(false), None, None, &[])))
     .collect()
 }
 
@@ -1628,15 +1626,24 @@ mod tests {
     }
 
     #[test]
-    fn the_default_transmitter_mode_is_a_firmware_capability_not_a_flat_constant() {
-        assert_eq!(Support::default().default_transmitter_mode, 2, "the base firmware plugin answers mode 2");
-        let sub = Support { default_transmitter_mode: 3, ..Support::default() };
-        let state = mapped().snapshot(&flying(), sub, 0);
-        assert_eq!(state["support"]["defaultTransmitterMode"], 3, "a sub defaults to mode 3, and picking 2 for it swaps pitch and throttle on the physical sticks");
+    fn changing_a_buttons_action_keeps_repeat_when_the_new_action_can_repeat() {
+        let mut stick = Joystick::new(4, 2, 0);
+        let repeatable = ACTIONS.iter().map(|(_, name, ..)| *name).find(|name| can_repeat(name)).unwrap();
+        let single = ACTIONS.iter().map(|(_, name, ..)| *name).find(|name| !can_repeat(name)).unwrap();
+        stick.set_button_action(0, Some(repeatable));
+        stick.set_button_repeat(0, true, false);
+        stick.set_button_action(0, Some(repeatable));
+        assert!(stick.binding(0).unwrap().repeat, "Joystick::setButtonAction carries repeat over");
+        stick.set_button_action(0, Some(single));
+        assert!(!stick.binding(0).unwrap().repeat);
+    }
+
+    #[test]
+    fn the_catalog_defaults_are_the_joystick_settings_group_json_ones() {
         let catalog = joystick_view(&Nothing, &[]);
-        let entry = catalog["settings"].as_array().unwrap().iter().find(|s| s["name"] == "transmitterMode").unwrap().clone();
-        assert_eq!(entry["default"], Value::Null, "a static catalog cannot know the vehicle, so it must not publish a default that contradicts one");
-        assert_eq!(entry["defaultFrom"], "support.defaultTransmitterMode");
+        let default_of = |name: &str| catalog["settings"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap()["default"].clone();
+        assert_eq!(default_of("transmitterMode"), 2, "Joystick.SettingsGroup.json defaults every vehicle to mode 2; defaultJoystickTXMode is never read");
+        assert_eq!(default_of("useDeadband"), true);
     }
 
     #[test]
@@ -1802,7 +1809,6 @@ mod tests {
         assert_eq!(ThrottleMode::CenterZero.stored(), 0);
         assert_eq!(ThrottleMode::DownZero.stored(), 1, "the old encoding is an int where centre-zero is 0, so a bool named for centre-zero inverts on migration");
         let settings = joystick_view(&Nothing, &[])["settings"].as_array().unwrap().clone();
-        assert_eq!(settings.iter().find(|s| s["name"] == "useDeadband").unwrap()["default"], false);
         let mode = settings.iter().find(|s| s["name"] == "throttleMode").unwrap();
         assert_eq!(mode["default"], 1);
         assert_eq!(mode["enumValues"], json!(["CENTER_ZERO", "DOWN_ZERO"]));

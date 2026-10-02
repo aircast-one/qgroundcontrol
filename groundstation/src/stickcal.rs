@@ -28,8 +28,8 @@ pub const JOYSTICK: Profile = {
         move_delta: 32768 / 2,
         settle_delta: 1000,
         settle_ms: 300,
-        valid_min: min + range * 3 / 10,
-        valid_max: max - range * 3 / 10,
+        valid_min: (min as f32 + range as f32 * 0.3) as i32,
+        valid_max: (max as f32 - range as f32 * 0.3) as i32,
     }
 };
 
