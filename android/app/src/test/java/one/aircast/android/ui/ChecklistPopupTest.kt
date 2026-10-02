@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChecklistPopupTest {
@@ -78,5 +79,18 @@ class ChecklistPopupTest {
             "already done, so opening it would interrupt for nothing",
             checklistPopupIsDue(true, useChecklist = true, enforceChecklist = true, complete = true),
         )
+    }
+
+    @Test
+    fun `groups unlock in order and say when they pass, like PreFlightCheckModel enforceOrder`() {
+        val first = PreflightGroup("Initial checks", listOf(PreflightCheck("hardware", "", "manual", "", false)))
+        val second = PreflightGroup("Please arm the vehicle here", listOf(PreflightCheck("arm", "", "manual", "", false)))
+        val groups = listOf(first, second)
+        assertEquals(listOf(true, false), groups.indices.map { groupEnabled(groups, it, emptySet()) })
+        assertEquals(listOf(true, true), groups.indices.map { groupEnabled(groups, it, setOf("hardware")) })
+        assertEquals("Initial checks (passed)", groupHeading(first, setOf("hardware")))
+        assertEquals("Please arm the vehicle here", groupHeading(second, setOf("hardware")))
+        assertEquals("Pre-Flight Checklist (Passed)", checklistHeading(true))
+        assertEquals("Pre-Flight Checklist In Progress", checklistHeading(false))
     }
 }

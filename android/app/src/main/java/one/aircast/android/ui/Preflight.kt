@@ -78,6 +78,17 @@ internal fun preflightSummary(preflight: Preflight?, ticked: Set<String>): Strin
     }
 }
 
+internal fun groupPassed(group: PreflightGroup, ticked: Set<String>): Boolean =
+    group.checks.all { !it.blocked && (!checkNeedsTicking(it) || it.name in ticked) }
+
+internal fun groupEnabled(groups: List<PreflightGroup>, index: Int, ticked: Set<String>): Boolean =
+    groups.take(index).all { groupPassed(it, ticked) }
+
+internal fun groupHeading(group: PreflightGroup, ticked: Set<String>): String =
+    if (groupPassed(group, ticked)) "${group.name} (passed)" else group.name
+
+internal fun checklistHeading(passed: Boolean): String = "Pre-Flight Checklist ${if (passed) "(Passed)" else "In Progress"}"
+
 internal fun checklistIsComplete(preflight: Preflight?, ticked: Set<String>): Boolean {
     if (preflight == null) return false
     if (preflight.blocked.isNotEmpty()) return false

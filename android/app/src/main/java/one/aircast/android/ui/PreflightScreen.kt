@@ -17,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -43,6 +44,10 @@ fun PreflightScreen(
     }
 
     Column(modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(checklistHeading(checklistIsComplete(checks, ticked)), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = { onTicked(emptySet()) }, enabled = ticked.isNotEmpty()) { Text("Reset") }
+        }
         Text(
             text = preflightSummary(checks, ticked),
             style = MaterialTheme.typography.titleSmall,
@@ -64,12 +69,13 @@ fun PreflightScreen(
         HorizontalDivider(Modifier.padding(top = 8.dp))
 
         LazyColumn(Modifier.fillMaxSize()) {
-            checks.groups.forEach { group ->
+            checks.groups.forEachIndexed { groupIndex, group ->
+                val open = groupEnabled(checks.groups, groupIndex, ticked)
                 item(key = "group:${group.name}") {
                     Text(
-                        text = group.name,
+                        text = groupHeading(group, ticked),
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = if (open) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
                     )
                 }
@@ -86,6 +92,7 @@ fun PreflightScreen(
                         when (checkMark(check)) {
                             CheckMark.TICKABLE -> Checkbox(
                                 checked = isTicked,
+                                enabled = open,
                                 onCheckedChange = { on ->
                                     onTicked(if (on) ticked + check.name else ticked - check.name)
                                 },
