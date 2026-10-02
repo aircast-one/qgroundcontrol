@@ -596,6 +596,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                     "exitCoordinateSameAsEntry": !v.landing && v.entry == v.exit,
                     "isLandCommand": v.landing,
                     "amslEntryAlt": v.amsl,
+                    "amslExitAlt": v.exit_amsl,
                     "minAMSLAltitude": v.lowest,
                     "maxAMSLAltitude": v.highest,
                     "cameraShots": (!v.landing).then_some(v.shots),

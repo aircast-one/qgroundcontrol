@@ -24,6 +24,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -37,7 +39,7 @@ import org.json.JSONObject
 internal const val SYSLINK_SCREEN = "syslink"
 private const val SYSLINK_VIEW = "view.syslink"
 private const val SYSLINK_POLL_MS = 1000L
-private val HEX = Regex("^[0-9A-Fa-f]*$")
+private val HEX = Regex("^[0-9A-Fa-f]{0,10}$")
 
 internal data class Syslink(
     val channel: Int,
@@ -105,9 +107,9 @@ private fun RadioField(label: String, value: String, hint: String, keyboard: Key
                 value = typed,
                 onValueChange = { if (accept(it)) typed = it },
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+                keyboardOptions = KeyboardOptions(keyboardType = keyboard, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { onDone(typed) }),
-                modifier = Modifier.width(180.dp),
+                modifier = Modifier.width(180.dp).onFocusChanged { if (!it.isFocused && typed != value) onDone(typed) },
             )
         }
         Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -3363,6 +3363,10 @@ struct V1Watch {
 
 const MAVLINK_V1_GRACE_MS: u64 = 10_000;
 
+pub fn v1_dropped(v2: bool, message: &MavMessage) -> bool {
+    !v2 && !matches!(message, MavMessage::HEARTBEAT(_) | MavMessage::RADIO_STATUS(_))
+}
+
 pub fn mavlink_v1_notice(link: &str, application: &str) -> String {
     let application = if application.is_empty() { "QGroundControl" } else { application };
     format!("MAVLink v1 traffic detected on link '{link}'. {application} only supports MAVLink v2. Please ensure your vehicle is configured to use MAVLink v2.")
@@ -3390,19 +3394,20 @@ impl Hub {
     }
 
     pub fn on_frame(&mut self, origin: Origin, header: &MavHeader, message: &MavMessage, timestamp_us: u64, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
-        let exempt = matches!(message, MavMessage::HEARTBEAT(_) | MavMessage::RADIO_STATUS(_));
-        if origin.v2 || !exempt {
+        if origin.v2 || v1_dropped(origin.v2, message) {
             let watched = v1_watched(self.v1_links.get(&origin.link).copied().unwrap_or_default(), origin.v2, now_ms);
             self.v1_links.insert(origin.link, watched);
         }
-        if !origin.v2 && !exempt {
+        if v1_dropped(origin.v2, message) {
             return Vec::new();
         }
-        let counted = self.link_counts.get(&origin.link).cloned().unwrap_or_default().counted(header.system_id, header.component_id, header.sequence);
-        if let (Some(status), Some(vehicle)) = (counted.status(), self.vehicles.get_mut(&header.system_id)) {
-            vehicle.link_status = status;
+        if origin.v2 {
+            let counted = self.link_counts.get(&origin.link).cloned().unwrap_or_default().counted(header.system_id, header.component_id, header.sequence);
+            if let (Some(status), Some(vehicle)) = (counted.status(), self.vehicles.get_mut(&header.system_id)) {
+                vehicle.link_status = status;
+            }
+            self.link_counts.insert(origin.link, counted);
         }
-        self.link_counts.insert(origin.link, counted);
         let mut bytes = Vec::new();
         crate::adsb::on_message(message, now_ms);
         if let Some((kind, autopilot)) = heartbeat_info(message) {
@@ -3473,6 +3478,7 @@ impl Hub {
 
     pub fn retain_links(&mut self, open: &[LinkId]) {
         self.link_counts.retain(|link, _| open.contains(link));
+        self.v1_links.retain(|link, _| open.contains(link));
         self.keep_vehicles_on(|candidate| open.contains(&candidate));
     }
 

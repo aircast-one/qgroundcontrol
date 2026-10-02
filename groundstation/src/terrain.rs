@@ -49,6 +49,7 @@ pub fn clearance_complete(profile: &Profile) -> bool {
 }
 
 const TERRAIN_FRAME: i64 = 4;
+const RETURN_TO_LAUNCH: i64 = 20;
 
 fn drawable(item: &Value) -> bool {
     let flag = |key: &str| item.get(key).and_then(Value::as_bool).unwrap_or(false);
@@ -116,15 +117,22 @@ pub fn samples(from: (f64, f64), to: (f64, f64)) -> Vec<(f64, f64)> {
 
 const COLLISION_IGNORE_M: f64 = 10.0;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SegmentKind {
+    Generic,
+    Takeoff,
+    Land,
+}
+
 pub fn segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Value {
-    shaped_segment(from, from_alt, to, to_alt, false, height)
+    shaped_segment(from, from_alt, to, to_alt, SegmentKind::Generic, height)
 }
 
 fn landing_segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Value {
-    shaped_segment(from, from_alt, to, to_alt, true, height)
+    shaped_segment(from, from_alt, to, to_alt, SegmentKind::Land, height)
 }
 
-fn shaped_segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, land: bool, height: &dyn Fn(f64, f64) -> Option<f64>) -> Value {
+pub fn shaped_segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, kind: SegmentKind, height: &dyn Fn(f64, f64) -> Option<f64>) -> Value {
     let points = samples(from, to);
     let between = geodesic_distance(points[0], points[1]);
     let last_between = geodesic_distance(points[points.len() - 2], points[points.len() - 1]);
@@ -138,7 +146,12 @@ fn shaped_segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, 
         .scan(0.0, |x, (i, ground)| {
             let here = *x;
             *x += if i + 2 == heights.len() { last_between } else { between };
-            Some(!(land && here > total - COLLISION_IGNORE_M) && *ground > slope * here + from_alt)
+            let ignored = match kind {
+                SegmentKind::Takeoff => here < COLLISION_IGNORE_M,
+                SegmentKind::Land => here > total - COLLISION_IGNORE_M,
+                SegmentKind::Generic => false,
+            };
+            Some(!ignored && *ground > slope * here + from_alt)
         })
         .any(|hit| hit);
     json!({
@@ -327,8 +340,7 @@ pub fn collides(mission_altitude: f64, ground: Option<f64>, altitude_range: f64)
     altitude_range != 0.0 && ground.is_some_and(|ground| mission_altitude < ground)
 }
 
-fn core_model(backend: &dyn Backend) -> Value {
-    let reads = crate::missionitems::document_reads(&crate::coreplan::current_document(), 0).unwrap_or_default();
+fn core_model(backend: &dyn Backend, reads: &[Value]) -> Value {
     let summary = crate::coreplan::summary_fields(backend).unwrap_or(Value::Null);
     let range = summary.get("maxAMSLAltitude").and_then(Value::as_f64).zip(summary.get("minAMSLAltitude").and_then(Value::as_f64)).map_or(0.0, |(high, low)| high - low);
     let elements: Vec<Value> = reads
@@ -363,27 +375,45 @@ fn leg_json(from: (f64, f64), to: (f64, f64)) -> Value {
     json!({ "from": { "latitude": from.0, "longitude": from.1 }, "to": { "latitude": to.0, "longitude": to.1 } })
 }
 
-pub fn simple_legs(reads: &[Value], height: &dyn Fn(f64, f64) -> Option<f64>) -> Vec<Value> {
-    let flown: Vec<&Value> = reads
-        .iter()
-        .skip(1)
-        .filter(|r| r.get("specifiesCoordinate") == Some(&Value::Bool(true)) && r.get("isStandaloneCoordinate") != Some(&Value::Bool(true)))
+fn flag_of(read: &Value, key: &str) -> bool {
+    read.get(key) == Some(&Value::Bool(true))
+}
+
+pub fn simple_legs(reads: &[Value], fixed_wing: bool, height: &dyn Fn(f64, f64) -> Option<f64>) -> Vec<Value> {
+    let home = reads.first().filter(|h| spot(h.get("coordinate")).is_some());
+    let flown: Vec<&Value> = reads.iter().skip(1).filter(|r| flag_of(r, "specifiesCoordinate") && !flag_of(r, "isStandaloneCoordinate") && !flag_of(r, "isIncomplete")).collect();
+    let before_rtl = reads.iter().skip(1).position(|r| r.get("command").and_then(Value::as_i64) == Some(RETURN_TO_LAUNCH));
+    let rtl_sequence = before_rtl.and_then(|at| reads.get(at + 1)).and_then(|r| r.get("sequenceNumber")).and_then(Value::as_i64);
+    let flown: Vec<&Value> = flown
+        .into_iter()
+        .filter(|r| rtl_sequence.is_none_or(|rtl| r.get("sequenceNumber").and_then(Value::as_i64).is_some_and(|s| s < rtl)))
         .collect();
-    flown
-        .windows(2)
-        .filter(|pair| pair.iter().all(|r| r.get("isSimpleItem") == Some(&Value::Bool(true))))
+    let starts_on_ground = flown.first().is_some_and(|first| flag_of(first, "isTakeoffItem"));
+    let path: Vec<&Value> = home.filter(|_| starts_on_ground).into_iter().chain(flown).chain(home.filter(|_| rtl_sequence.is_some())).collect();
+    path.windows(2)
+        .filter(|pair| !flag_of(pair[0], "isLandCommand"))
+        .filter(|pair| pair[0].get("altitudeFrame").or_else(|| pair[0].get("altitudeMode")).and_then(Value::as_i64) != Some(TERRAIN_FRAME))
         .filter_map(|pair| {
-            let (from, to) = (spot(pair[0].get("coordinate"))?, spot(pair[1].get("coordinate"))?);
-            let (from_alt, to_alt) = (pair[0].get("amslEntryAlt")?.as_f64()?, pair[1].get("amslEntryAlt")?.as_f64()?);
-            (segment(from, from_alt, to, to_alt, height)["terrainCollision"] == true).then(|| leg_json(from, to))
+            let (first, second) = (pair[0], pair[1]);
+            let from = spot(first.get("exitCoordinate")).or_else(|| spot(first.get("coordinate")))?;
+            let to = spot(second.get("coordinate"))?;
+            let to_alt = second.get("amslEntryAlt")?.as_f64()?;
+            let straight_up = flag_of(second, "isTakeoffItem") && !fixed_wing;
+            let from_alt = if straight_up { to_alt } else { first.get("amslExitAlt").or_else(|| first.get("amslEntryAlt"))?.as_f64()? };
+            let kind = match (flag_of(second, "isTakeoffItem"), flag_of(second, "isLandCommand")) {
+                (true, _) => SegmentKind::Takeoff,
+                (_, true) => SegmentKind::Land,
+                _ => SegmentKind::Generic,
+            };
+            (shaped_segment(from, from_alt, to, to_alt, kind, height)["terrainCollision"] == true).then(|| leg_json(from, to))
         })
         .collect()
 }
 
-fn collision_legs(backend: &dyn Backend) -> Vec<Value> {
-    match crate::vehiclefacade::switched_on() && crate::coreplan::enabled() {
-        true => simple_legs(&crate::missionitems::document_reads(&crate::coreplan::current_document(), 0).unwrap_or_default(), &crate::terrainservice::height),
-        false => object(&backend.get_fields("plan.missionController.simpleFlightPathSegments", SEGMENT_FIELDS))
+fn collision_legs(backend: &dyn Backend, core: Option<(&[Value], bool)>) -> Vec<Value> {
+    match core {
+        Some((reads, fixed_wing)) => simple_legs(reads, fixed_wing, &crate::terrainservice::height),
+        None => object(&backend.get_fields("plan.missionController.simpleFlightPathSegments", SEGMENT_FIELDS))
             .get("elements")
             .and_then(Value::as_array)
             .map(|segments| {
@@ -398,9 +428,14 @@ fn collision_legs(backend: &dyn Backend) -> Vec<Value> {
 }
 
 pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let model = match crate::vehiclefacade::switched_on() && crate::coreplan::enabled() {
-        true => core_model(backend),
-        false => object(&backend.get_fields("plan.missionController.visualItems", FIELDS)),
+    let core = (crate::vehiclefacade::switched_on() && crate::coreplan::enabled()).then(|| {
+        let document = crate::coreplan::current_document();
+        let fixed_wing = crate::plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::FixedWing;
+        (crate::missionitems::document_reads(&document, 0).unwrap_or_default(), fixed_wing)
+    });
+    let model = match &core {
+        Some((reads, _)) => core_model(backend, reads),
+        None => object(&backend.get_fields("plan.missionController.visualItems", FIELDS)),
     };
     let entries = points(&model);
     let inside = walked(backend, &model);
@@ -427,7 +462,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "highestText": crate::read::format_measure(vertical.show(profile.max_altitude), &vertical.name),
         "bandText": crate::read::range_text(profile.min_altitude, profile.max_altitude, &vertical),
         "markers": markers(&model),
-        "collisionLegs": collision_legs(backend),
+        "collisionLegs": collision_legs(backend, core.as_ref().map(|(reads, fixed_wing)| (reads.as_slice(), *fixed_wing))),
         "points": profile.points.iter().map(|p| json!({
             "sequence": p.sequence,
             "distance": p.distance,
@@ -448,10 +483,21 @@ mod tests {
         let item = |lat: f64, alt: f64, simple: bool| json!({ "specifiesCoordinate": true, "isSimpleItem": simple, "coordinate": { "latitude": lat, "longitude": 8.0 }, "amslEntryAlt": alt });
         let reads = vec![json!({ "homePosition": true }), item(47.0, 600.0, true), item(47.01, 600.0, true), item(47.02, 800.0, true), item(47.03, 800.0, false)];
         let ridge = |lat: f64, _lon: f64| Some(if lat > 47.004 && lat < 47.006 { 700.0 } else { 500.0 });
-        let legs = simple_legs(&reads, &ridge);
+        let legs = simple_legs(&reads, false, &ridge);
         assert_eq!(legs.len(), 1, "only the first leg crosses the ridge, and a leg into a complex item is left to its own segments");
         assert_eq!(legs[0]["from"]["latitude"], 47.0);
-        assert!(simple_legs(&reads, &|_, _| None).is_empty(), "no terrain known, nothing is red");
+        assert!(simple_legs(&reads, false, &|_, _| None).is_empty(), "no terrain known, nothing is red");
+        let land = json!({ "specifiesCoordinate": true, "isSimpleItem": true, "isLandCommand": true, "coordinate": { "latitude": 47.01, "longitude": 8.0 }, "amslEntryAlt": 500.0 });
+        let after = item(47.02, 300.0, true);
+        let rtl = json!({ "command": 20, "sequenceNumber": 9, "specifiesCoordinate": false });
+        let home = json!({ "homePosition": true, "coordinate": { "latitude": 46.99, "longitude": 8.0 }, "amslEntryAlt": 500.0 });
+        let flat = |_: f64, _: f64| Some(500.0);
+        let sequenced = |mut item: Value, seq: i64| { item["sequenceNumber"] = json!(seq); item };
+        let route = vec![home, sequenced(item(47.0, 600.0, true), 1), sequenced(land, 2), sequenced(after, 3), rtl];
+        let hits = simple_legs(&route, false, &flat);
+        assert!(hits.iter().all(|leg| leg["from"]["latitude"] != 47.01), "no segment is drawn out of a landing");
+        assert!(hits.iter().any(|leg| leg["to"]["latitude"] == 46.99), "after an RTL the last item links home, and that low leg is red");
+        assert!(!hits.iter().any(|leg| leg["to"]["latitude"] == 47.01), "a land leg's last 10 m touching the ground is not a collision");
     }
 
     #[test]

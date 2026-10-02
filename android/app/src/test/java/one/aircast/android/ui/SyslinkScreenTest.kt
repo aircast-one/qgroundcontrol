@@ -22,5 +22,6 @@ class SyslinkScreenTest {
         assertTrue(hexAddress("E7e7"))
         assertTrue(hexAddress(""))
         assertFalse(hexAddress("E7G"))
+        assertFalse("the address is 40 bits, ten hex digits", hexAddress("E7E7E7E7E7E"))
     }
 }

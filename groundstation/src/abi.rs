@@ -267,7 +267,7 @@ pub(crate) fn start_pump() {
                 deliver(outbound);
                 let v1_links = crate::hub::lock().take_v1_reports();
                 v1_links.into_iter().for_each(|link| {
-                    let name = crate::linkhost::TRANSPORTS.lock().unwrap().config(link).map_or_else(|| "unknown".to_string(), |c| c.name);
+                    let name = crate::linkhost::TRANSPORTS.lock().unwrap().describe(link).map_or_else(|| "unknown".to_string(), |(name, _, _)| name);
                     crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::mavlink_v1_notice(&name, &crate::noticeboard::application_name()));
                 });
                 crate::hub::lock().take_notices().iter().for_each(|(kind, body)| {
@@ -405,7 +405,8 @@ fn install_hub_sink() {
                     return;
                 }
             }
-            if crate::vehiclefacade::switched_on() {
+            let dropped = crate::hub::v1_dropped(frame.v2, &frame.message);
+            if crate::vehiclefacade::switched_on() && !dropped {
                 crate::telemetrylog::received(frame);
             }
             let outbound = {
@@ -415,7 +416,7 @@ fn install_hub_sink() {
                 outbound
             };
             deliver(outbound);
-            if crate::vehiclefacade::switched_on() {
+            if crate::vehiclefacade::switched_on() && !dropped {
                 crate::forwarding::forward(frame);
                 let (vehicles, active) = {
                     let hub = crate::hub::lock();

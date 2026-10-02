@@ -162,18 +162,21 @@ fun markerStroke(crowded: Boolean, selected: Boolean): Double = when {
     else -> MARKER_STROKE
 }
 
+private data class Marker(val item: MissionItem, val at: TrackPoint, val sequence: Int, val exit: Boolean)
+
 fun exitMarkers(items: List<MissionItem>): List<Pair<MissionItem, TrackPoint>> =
     items.filter { it.complexPattern }.mapNotNull { item -> item.exit?.let { item to it } }
 
 fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): FeatureCollection {
     val crowded = crowded(items.size)
-    val markers = items.map { item -> Triple(item, TrackPoint(item.latitude, item.longitude), item.sequence) } +
-        exitMarkers(items).map { (item, exit) -> Triple(item, exit, item.sequence + item.foldedCommands) }
-    val features = markers.map { (item, at, sequence) ->
+    val markers = items.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), item.sequence, exit = false) } +
+        exitMarkers(items).map { (item, exit) -> Marker(item, exit, item.sequence + item.foldedCommands, exit = true) }
+    val features = markers.map { (item, at, sequence, exit) ->
+        val lettered = item.abbreviation.takeIf { !exit && !item.complexPattern }.orEmpty()
         Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
-            addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(sequence, crowded, item.abbreviation.takeIf { at == TrackPoint(item.latitude, item.longitude) }.orEmpty()))
-            addStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY, sideLabel(crowded, item.abbreviation.takeIf { at == TrackPoint(item.latitude, item.longitude) }.orEmpty()))
+            addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(sequence, crowded, lettered))
+            addStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY, sideLabel(crowded, lettered))
             addNumberProperty(
                 WAYPOINT_RADIUS_PROPERTY,
                 markerRadius(crowded, item.index == selectedIndex),

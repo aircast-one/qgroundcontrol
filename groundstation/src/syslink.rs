@@ -30,7 +30,7 @@ pub fn address_text(upper: u64, lower: u64) -> String {
 }
 
 pub fn address_words(text: &str) -> Option<(u32, u32)> {
-    let value = if text.trim().is_empty() { 0 } else { u64::from_str_radix(text.trim(), 16).ok()? };
+    let value = if text.trim().is_empty() { 0 } else { u64::from_str_radix(text.trim(), 16).ok().filter(|v| *v < 1 << 40)? };
     Some(((value >> 32) as u32, (value & 0xFFFF_FFFF) as u32))
 }
 
@@ -49,7 +49,7 @@ pub fn syslink_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
-fn write(backend: &dyn Backend, name: &str, value: u64) -> bool {
+fn write(backend: &dyn Backend, name: &str, value: i64) -> bool {
     crate::read::flag(&object(&backend.set(&format!("{}.rawValue", path(name)), &json!({ "value": value }).to_string())), "ok")
 }
 
@@ -61,20 +61,20 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Vec<Value>>(args).unwrap_or_default();
     match action {
         SET_CHANNEL => match given.first().and_then(Value::as_i64).filter(|c| RADIO_CHANNELS.contains(c)) {
-            Some(channel) => answer(write(backend, "SLNK_RADIO_CHAN", channel as u64)),
+            Some(channel) => answer(write(backend, "SLNK_RADIO_CHAN", channel)),
             None => json!({ "ok": false, "reason": "Channel can be between 0 and 125" }),
         },
         SET_ADDRESS => match given.first().and_then(Value::as_str).and_then(address_words) {
-            Some((upper, lower)) => answer(write(backend, "SLNK_RADIO_ADDR1", u64::from(upper)) && write(backend, "SLNK_RADIO_ADDR2", u64::from(lower))),
+            Some((upper, lower)) => answer(write(backend, "SLNK_RADIO_ADDR1", i64::from(upper as i32)) && write(backend, "SLNK_RADIO_ADDR2", i64::from(lower as i32))),
             None => json!({ "ok": false, "reason": "Address in hex. Default is E7E7E7E7E7." }),
         },
         SET_RATE => match given.first().and_then(Value::as_u64).filter(|r| (*r as usize) < RATES.len()) {
             Some(rate) if raw(backend, "SLNK_RADIO_RATE") == Some(rate) => json!({ "ok": true }),
-            Some(rate) => answer(write(backend, "SLNK_RADIO_RATE", rate)),
+            Some(rate) => answer(write(backend, "SLNK_RADIO_RATE", rate as i64)),
             None => json!({ "ok": false, "reason": "Pick one of the listed data rates." }),
         },
         SYSLINK_RESET_DEFAULTS => answer(PARAMETERS.iter().all(|name| {
-            fact(backend, name).and_then(|f| f.get("defaultValue").and_then(Value::as_f64)).is_some_and(|default| write(backend, name, default as i64 as u32 as u64))
+            fact(backend, name).and_then(|f| f.get("defaultValue").and_then(Value::as_f64)).is_some_and(|default| write(backend, name, default as i64))
         })),
         _ => json!({ "ok": false, "reason": format!("{action} is not a Syslink action") }),
     }
@@ -93,6 +93,8 @@ mod tests {
         assert_eq!(address_text(0xE7, 0xE7E7_E7E7), "e7e7e7e7e7");
         assert_eq!(address_words("E7E7E7E7E7"), Some((0xE7, 0xE7E7_E7E7)));
         assert_eq!(address_words("zz"), None);
+        assert_eq!(address_words("1E7E7E7E7E7"), None, "the radio address is 40 bits");
+        assert_eq!(0xE7E7_E7E7u32 as i32, -404232217, "SLNK_RADIO_ADDR2 is an INT32, so the low word is written as its signed value");
         assert_eq!(address_words(""), Some((0, 0)), "QString::toULongLong reads an empty field as zero");
     }
 }
