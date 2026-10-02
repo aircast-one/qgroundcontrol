@@ -10,8 +10,6 @@ const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,fligh
 const WATCHED_PER_VEHICLE: [&str; 6] = ["armed", "flying", "flightMode", "coordinate", "homePosition", "heading"];
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
-// Heading is a Fact whose raw unit is degrees; the raw value is served so a unit setting cannot turn
-// it into something else, and a NaN (no attitude yet) is null rather than north.
 fn proximity(backend: &dyn Backend, index: i64) -> Value {
     let group = object(&backend.get(&format!("vehicles.vehicles.{index}.distanceSensors")));
     match flag(&group, "telemetryAvailable") {
@@ -108,8 +106,6 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "link": text(&link, "primaryLinkName"),
                 "contactLost": flag(&link, "communicationLostEnabled").then(|| flag(&link, "communicationLost")),
                 "coordinate": nested_coordinate(&read).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
-                // The map spike read vehicle.heading and vehicle.homePosition raw, which answer for
-                // the ACTIVE vehicle only, so every other aircraft drew without either.
                 "heading": heading(backend, index),
                 "home": crate::read::nested_coordinate_at(&read, "homePosition").map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
                 "active": id.is_some() && id == active,

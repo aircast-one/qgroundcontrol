@@ -315,7 +315,12 @@ internal fun MapSpikeScreen(
     val selectedSequence = selectionSequence(selected, allItems)
 
     LaunchedEffect(Unit) {
-        PlanFocus.requests.collect { selected = MapHit.Waypoint(it) }
+        PlanFocus.requests.collect { index ->
+            index?.let {
+                selected = MapHit.Waypoint(it)
+                PlanFocus.requests.value = null
+            }
+        }
     }
 
     LaunchedEffect(selectedSequence) {

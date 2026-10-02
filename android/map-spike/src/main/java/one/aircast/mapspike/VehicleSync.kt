@@ -29,10 +29,10 @@ fun notReadyToSend(view: org.json.JSONObject?): String? =
         ?.let { it.optText("reason").ifBlank { "The plan is not ready to send." } }
 
 object PlanFocus {
-    val requests = kotlinx.coroutines.flow.MutableSharedFlow<Int>(extraBufferCapacity = 1)
+    val requests = kotlinx.coroutines.flow.MutableStateFlow<Int?>(null)
 
     fun notReady(view: org.json.JSONObject?) {
-        nextNotReady(view)?.let { requests.tryEmit(it) }
+        nextNotReady(view)?.let { requests.value = it }
     }
 }
 

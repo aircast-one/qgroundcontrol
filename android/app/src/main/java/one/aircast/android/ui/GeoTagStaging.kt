@@ -72,10 +72,15 @@ private fun folderIn(context: Context, tree: Uri, name: String): Uri? {
 internal fun publishTagged(context: Context, staged: File, tree: Uri, subfolder: String?): Int {
     val folder = subfolder?.let { folderIn(context, tree, it) }
         ?: DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+    val present = treeChildren(context, tree, DocumentsContract.getDocumentId(folder)).associate { it.name to DocumentsContract.buildDocumentUriUsingTree(tree, it.documentId) }
     return staged.listFiles().orEmpty().filter { it.isFile && isGeoTagImage(it.name) }.count { file ->
-        runCatching {
-            DocumentsContract.createDocument(context.contentResolver, folder, imageMime(file.name), file.name)
-                ?.let { target -> context.contentResolver.openOutputStream(target)?.use { out -> file.inputStream().use { it.copyTo(out) } } != null } == true
+        val created = present[file.name] == null
+        val target = present[file.name]
+            ?: runCatching { DocumentsContract.createDocument(context.contentResolver, folder, imageMime(file.name), file.name) }.getOrNull()
+        val written = target != null && runCatching {
+            context.contentResolver.openOutputStream(target, "wt")?.use { out -> file.inputStream().use { it.copyTo(out) } } != null
         }.getOrDefault(false)
+        if (!written && created && target != null) runCatching { DocumentsContract.deleteDocument(context.contentResolver, target) }
+        written
     }
 }

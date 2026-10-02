@@ -41,6 +41,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.qgcValue
+import one.aircast.android.bridge.truthy
 import one.aircast.mapspike.VehicleChoice
 import org.json.JSONObject
 import one.aircast.mapspike.CHOOSER_TITLE
@@ -414,8 +416,14 @@ private const val COUNTDOWN_TICK_MS = 100L
 @Composable
 private fun AllowTakeoverBox(holder: ControlStation, onRefusal: (String?) -> Unit, onRead: (Boolean?) -> Unit = {}) {
     val scope = rememberCoroutineScope()
-    var allow by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(Unit) { allow = withContext(Dispatchers.Default) { allowTakeoverSetting() }.also(onRead) }
+    val served by qgcValue(ALLOW_TAKEOVER_SETTING)
+    var typed by remember { mutableStateOf<Boolean?>(null) }
+    val stored = served?.takeIf { it != JSONObject.NULL }?.let(::truthy)
+    val allow = typed ?: stored
+    LaunchedEffect(stored) {
+        typed = null
+        onRead(stored)
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
@@ -425,7 +433,7 @@ private fun AllowTakeoverBox(holder: ControlStation, onRefusal: (String?) -> Uni
             checked = allow == true,
             enabled = allow != null && allowTakeoverEditable(holder),
             onCheckedChange = { wanted ->
-                allow = wanted
+                typed = wanted
                 onRead(wanted)
                 scope.launch { onRefusal(withContext(Dispatchers.Default) { saveAllowTakeover(wanted) }) }
             },

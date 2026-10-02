@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.mapspike.PlanFocus
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -216,7 +217,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
             val view = withContext(Dispatchers.Default) { freshPlanView() }
             val blocked = saveBlockedReason(view)
             if (blocked == null) action() else {
-                one.aircast.mapspike.PlanFocus.notReady(view)
+                PlanFocus.notReady(view)
                 onResult(blocked)
             }
         }

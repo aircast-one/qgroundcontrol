@@ -36,3 +36,20 @@ class GeoTagViewTest {
         assertNull(geoTagState(JSONObject("""{"class":"Something"}""")))
     }
 }
+
+class GeoTagRunTest {
+
+    @Test
+    fun `the count compared is the core's tagged count, which already leaves failures out`() {
+        assertNull(publishedNote(4, 4))
+        assertEquals("Only 3 of the 4 tagged images could be written to the chosen folder.", publishedNote(3, 4))
+    }
+
+    @Test
+    fun `the offset reads with either decimal mark and is shown with a point`() {
+        assertEquals(2.5, parsedOffset("2,5")!!, 0.0)
+        assertEquals(-1.0, parsedOffset(" -1.0 ")!!, 0.0)
+        assertNull(parsedOffset("abc"))
+        assertEquals("-3.5", shownOffset(-3.5))
+    }
+}

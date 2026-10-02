@@ -53,9 +53,6 @@ object FleetBridge {
         }
     }
 
-    // selectedVehicles is addressed by position, and a vehicle dropping off renumbers it. The id
-    // is read again against the path about to be written, so a command cannot land on a vehicle
-    // that moved into the index between the read and the write.
     private fun still(target: Pair<String, Int>, write: (String) -> Boolean): Boolean {
         val (path, id) = target
         return idAt(path) == id && write(path)
@@ -124,8 +121,6 @@ fun vehicleChoices(view: JSONObject?): VehicleChoices {
                     latitude = entry.optJSONObject("coordinate")?.optDouble("latitude") ?: Double.NaN,
                     longitude = entry.optJSONObject("coordinate")?.optDouble("longitude") ?: Double.NaN,
                     selected = entry.optBoolean("selected"),
-                    // view.vehicles serves each aircraft's own heading, null before any attitude,
-                    // and its home, null while QGC holds an invalid one.
                     heading = if (entry.isNull("heading")) Double.NaN else entry.optDouble("heading", Double.NaN),
                     radar = radarReading(entry.optJSONObject("proximity")),
                     home = entry.optJSONObject("home")?.let { at ->
