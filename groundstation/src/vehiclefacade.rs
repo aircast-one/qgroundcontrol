@@ -496,6 +496,9 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
     let class = crate::plandoc::vehicle_class(i64::from(v.vehicle_type));
     use crate::cmdinfo::VehicleClass::{FixedWing, MultiRotor, Rover, Sub, Vtol};
     let fields = json!({
+        "messagesReceived": v.messages,
+        "messagesSent": v.messages_sent,
+        "messagesLost": v.messages_lost,
         "id": v.id,
         "armed": v.armed(),
         "flying": v.flying,
@@ -1050,31 +1053,67 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
     Some(json!({ "kind": "value", "value": value }))
 }
 
-fn answer_parameter(path: &str) -> Option<Value> {
-    let (call, rest) = path.strip_prefix("vehicle.parameterManager.getParameter(")?.split_once(')')?;
+fn parameter_definition_of(vehicle: &crate::hub::Vehicle, name: &str, value_type: crate::factmeta::ValueType) -> Option<crate::factmeta::MetaData> {
+    match vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
+        true => {
+            let version = vehicle.firmware().and_then(|f| f.version).map_or((-1, -1), |(major, minor, _, _)| (i64::from(major), i64::from(minor)));
+            let definitions = crate::apmmeta::load(crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)?, version.0, version.1)?;
+            Some(crate::apmmeta::json_metadata(&definitions, name, value_type))
+        }
+        false => Some(vehicle.parameter_definition(name, value_type)),
+    }
+}
+
+fn parameter_address(vehicle: &crate::hub::Vehicle, call: &str) -> Option<(u8, String)> {
     let (component, name) = call.split_once(',')?;
-    let hub = crate::hub::lock();
-    let vehicle = hub.active()?;
-    let ardupilot = vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
-    (ardupilot || vehicle.autopilot == crate::modes::AUTOPILOT_PX4).then_some(())?;
     let component = match component.trim().parse::<i64>().ok()? {
         -1 => vehicle.component,
         id => u8::try_from(id).ok()?,
     };
-    let name = vehicle.parameter_name(name.trim());
+    Some((component, vehicle.parameter_name(name.trim())))
+}
+
+pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
+    let (call, rest) = path.strip_prefix("vehicle.parameterManager.getParameter(")?.split_once(')')?;
+    let raw_given = match rest {
+        ".rawValue" => true,
+        "" | ".value" => false,
+        _ => return None,
+    };
+    let given = serde_json::from_str::<Value>(value).ok()?;
+    let given = given.get("value").cloned().unwrap_or(given);
+    let number = given.as_f64().or_else(|| given.as_bool().map(f64::from)).or_else(|| given.as_str().and_then(|t| t.trim().parse::<f64>().ok()))?;
+    let (vehicle_id, component, name, raw) = {
+        let hub = crate::hub::lock();
+        let vehicle = hub.active()?;
+        let (component, name) = parameter_address(vehicle, call)?;
+        let known = vehicle.parameter(component, &name)?;
+        let raw = match raw_given {
+            true => number,
+            false => {
+                let value_type = crate::factmeta::ValueType::from_param_type(known.param_type())?;
+                let meta = parameter_definition_of(vehicle, &name, value_type)?;
+                crate::units::for_fact(&meta, crate::units::cooking).map_or(number, |conversion| (conversion.base)(number))
+            }
+        };
+        (vehicle.id, component, name, raw)
+    };
+    Some(json!({ "action": "paramSet", "vehicle": vehicle_id, "component": component, "name": name, "value": raw }))
+}
+
+fn answer_parameter(path: &str) -> Option<Value> {
+    let (call, rest) = path.strip_prefix("vehicle.parameterManager.getParameter(")?.split_once(')')?;
+    let hub = crate::hub::lock();
+    let vehicle = hub.active()?;
+    let ardupilot = vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
+    (ardupilot || vehicle.autopilot == crate::modes::AUTOPILOT_PX4).then_some(())?;
+    let (component, name) = parameter_address(vehicle, call)?;
     let name = name.as_str();
     let Some(value) = vehicle.parameter(component, name) else {
         return vehicle.parameters_ready().then(|| field_of(absent_parameter(), rest)).flatten();
     };
     let value_type = crate::factmeta::ValueType::from_param_type(value.param_type())?;
-    let definition = match ardupilot {
-        true => {
-            let version = vehicle.firmware().and_then(|f| f.version).map_or((-1, -1), |(major, minor, _, _)| (i64::from(major), i64::from(minor)));
-            let definitions = crate::apmmeta::load(crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)?, version.0, version.1)?;
-            crate::apmmeta::json_metadata(&definitions, name, value_type)
-        }
-        false => vehicle.parameter_definition(name, value_type),
-    };
+    let definition = parameter_definition_of(vehicle, name, value_type)?;
     let number = |value: crate::params::ParamValue| match value {
         crate::params::ParamValue::F32(v) => json!(f64::from(v)),
         other => json!(other.as_f64() as i64),
@@ -1486,6 +1525,13 @@ impl<B: Backend> Backend for Facade<B> {
                 return json!({ "ok": held }).to_string();
             }
         }
+        if let Some(action) = (switched_on() && !crate::qthost::present()).then(|| parameter_write(path, value)).flatten() {
+            return match self.0.core_guided(&action) {
+                Some(Ok(())) => json!({ "ok": true }).to_string(),
+                Some(Err(reason)) => json!({ "ok": false, "error": reason }).to_string(),
+                None => self.0.set(path, value),
+            };
+        }
         if path == "vehicle.armed" && switched_on() {
             let truth = |v: &Value| v.as_bool().or_else(|| v.as_i64().map(|n| n != 0));
             let arm = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(truth).or_else(|| truth(&v)));
@@ -1663,7 +1709,8 @@ impl<B: Backend> Backend for Facade<B> {
             return json!({ "ok": true }).to_string();
         }
         if let Some(params) = (switched_on()).then(|| vehicle_command(path, args)).flatten() {
-            if let Some(vehicle) = crate::hub::lock().active_id() {
+            let active = crate::hub::lock().active_id();
+            if let Some(vehicle) = active {
                 let (command, params) = params;
                 let sent = self.0.core_guided(&json!({ "action": "mavlinkCommand", "vehicle": vehicle, "command": command, "params": params }));
                 return json!({ "ok": sent.is_some_and(|s| s.is_ok()) }).to_string();
@@ -1683,6 +1730,9 @@ impl<B: Backend> Backend for Facade<B> {
             hub.active().map(|v| v.firmware_limit(path))
         }).flatten().filter(|_| switched_on()) {
             return json!({ "ok": true, "result": limit }).to_string();
+        }
+        if path == "vehicle.resetCounters" && switched_on() && !crate::qthost::present() {
+            return json!({ "ok": crate::hub::lock().reset_active_counters() }).to_string();
         }
         if path == "vehicle.startTimerRevertAllowTakeover" && inspector_owned() {
             let vehicle = crate::hub::lock().active_id();
@@ -1782,6 +1832,12 @@ impl<B: Backend> Backend for Facade<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_parameter_write_names_its_path_kind_and_refuses_what_is_not_a_write() {
+        assert_eq!(parameter_write("vehicle.parameterManager.getParameter(1,X).enumIndex", "{\"value\":1}"), None, "only the fact, its value and its raw value are written as a parameter");
+        assert_eq!(parameter_write("vehicle.other", "{\"value\":1}"), None);
+    }
+
     #[test]
     fn the_hobbs_meter_reads_lifetime_flight_time_like_the_firmware_plugins() {
         let apm = |name: &str| (name == "STAT_FLTTIME").then_some(3_725.0 + 360_000.0);

@@ -209,6 +209,18 @@ impl StatusBits {
     }
 }
 
+pub fn counted_loss(seq: Option<(u8, u8)>, lost: u64, header: &MavHeader, heartbeat: bool) -> (Option<(u8, u8)>, u64) {
+    let received = header.sequence;
+    match seq {
+        None if heartbeat => (Some((header.component_id, received.wrapping_add(1))), lost),
+        Some((component, expected)) if component == header.component_id => {
+            let missed = if received < expected { u16::from(received) + 255 - u16::from(expected) } else { u16::from(received - expected) };
+            (Some((component, received.wrapping_add(1))), lost + u64::from(missed))
+        }
+        other => (other, lost),
+    }
+}
+
 #[derive(Debug)]
 pub struct Vehicle {
     pub id: u8,
@@ -221,6 +233,9 @@ pub struct Vehicle {
     pub system_status: u8,
     pub heartbeats: u64,
     pub messages: u64,
+    pub messages_sent: u64,
+    pub messages_lost: u64,
+    message_seq: Option<(u8, u8)>,
     pub last_heartbeat_us: u64,
     pub gps: GpsFacts,
     pub gps2: GpsFacts,
@@ -417,6 +432,9 @@ impl Vehicle {
             system_status: 0,
             heartbeats: 0,
             messages: 0,
+            messages_sent: 0,
+            messages_lost: 0,
+            message_seq: None,
             last_heartbeat_us: 0,
             gps: GpsFacts::default(),
             gps2: GpsFacts::default(),
@@ -1828,6 +1846,7 @@ impl Vehicle {
             Some("gimbal") => return self.gimbal_action(action, now_ms),
             Some("ftp") => return self.file_job(action, now_ms),
             Some("camera") => return self.camera_action(action, now_ms),
+            Some("paramSet") => return self.parameter_request(action, now_ms),
             Some("paramSetRaw") => {
                 let component = action.get("component").and_then(Value::as_u64).and_then(|c| u8::try_from(c).ok()).unwrap_or(self.component);
                 let name = action.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).ok_or("A parameter is set by name.")?.to_string();
@@ -1972,10 +1991,15 @@ impl Vehicle {
 
     fn encode(&mut self, send: &Outbound) -> Option<Vec<u8>> {
         let bytes = mavout::encode_next(send);
-        if bytes.is_none() {
-            self.note(format!("Unable to encode {send:?}"));
+        match bytes {
+            Some(_) => self.messages_sent += 1,
+            None => self.note(format!("Unable to encode {send:?}")),
         }
         bytes
+    }
+
+    pub fn reset_counters(&mut self) {
+        (self.messages, self.messages_sent, self.messages_lost, self.message_seq) = (0, 0, 0, None);
     }
 
     fn send_terrain(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
@@ -2835,6 +2859,7 @@ impl Vehicle {
     fn apply(&mut self, header: &MavHeader, message: &MavMessage, timestamp_us: u64, now_ms: u64) -> Vec<Vec<u8>> {
         let was_armed = self.armed_now;
         self.messages += 1;
+        (self.message_seq, self.messages_lost) = counted_loss(self.message_seq, self.messages_lost, header, matches!(message, MavMessage::HEARTBEAT(_)));
         *self.by_name.entry(message.message_name().to_string()).or_insert(0) += 1;
         let from = (header.system_id, header.component_id);
         if let MavMessage::HEARTBEAT(h) = message
@@ -3850,6 +3875,10 @@ impl Hub {
 
     pub fn set_centered_throttle(&mut self, centered: bool) -> bool {
         self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.rccal.set_centered_throttle(centered)).is_some()
+    }
+
+    pub fn reset_active_counters(&mut self) -> bool {
+        self.active.and_then(|id| self.vehicles.get_mut(&id)).map(Vehicle::reset_counters).is_some()
     }
 
     pub fn reset_message_log(&mut self) {
@@ -4985,6 +5014,22 @@ mod tests {
     }
 
     #[test]
+    fn lost_messages_are_counted_from_sequence_gaps_as_vehicle_does() {
+        let at = |component: u8, sequence: u8| MavHeader { system_id: 1, component_id: component, sequence };
+        let (seq, lost) = counted_loss(None, 0, &at(1, 10), false);
+        assert_eq!((seq, lost), (None, 0), "counting starts at the first heartbeat");
+        let (seq, lost) = counted_loss(None, 0, &at(1, 10), true);
+        let (seq, lost) = counted_loss(seq, lost, &at(1, 13), false);
+        assert_eq!(lost, 2);
+        let (seq, lost) = counted_loss(seq, lost, &at(191, 99), false);
+        assert_eq!(lost, 2, "only the heartbeat's component is tracked");
+        let (_, lost) = counted_loss(seq, lost, &at(1, 1), false);
+        assert_eq!(lost, 2 + (1 + 255 - 14), "a wrap is counted with QGC's +255");
+        let (seq, lost) = counted_loss(Some((1, 255)), 0, &at(1, 255), false);
+        assert_eq!(counted_loss(seq, lost, &at(1, 0), false).1, 0, "_messageSeq is a uint8, so 255 is followed by 0 with nothing lost");
+    }
+
+    #[test]
     fn a_new_copter_is_walked_through_the_connect_sequence_down_to_its_parameters() {
         use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, COMMAND_ACK_DATA, MavCmd, MavProtocolCapability, MavResult};
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
@@ -5056,6 +5101,8 @@ mod tests {
         let refreshed = hub.parameter_request(Some(1), &json!({ "name": "WPNAV_SPEED", "refresh": true }), 12_000).unwrap();
         assert!(matches!(decode(&refreshed[0].1), MavMessage::PARAM_REQUEST_READ(r) if r.param_index == -1 && r.param_id.to_str().unwrap() == "WPNAV_SPEED"));
         assert!(hub.parameter_request(Some(9), &json!({ "name": "X", "value": 1.0 }), 12_000).is_err());
+        let guided = hub.guided(Some(1), &json!({ "action": "paramSet", "vehicle": 1, "component": 1, "name": "WPNAV_SPEED", "value": 300.0 }), 13_000).unwrap();
+        assert!(matches!(decode(&guided[0].1), MavMessage::PARAM_SET(p) if p.param_id.to_str().unwrap() == "WPNAV_SPEED" && p.param_value == 300.0), "a core-flavor fact write reaches the vehicle through the tracked writer");
     }
 
     #[test]

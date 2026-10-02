@@ -27,9 +27,14 @@ pub fn write_global(backend: &dyn Backend, value: &str) -> Value {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
     }
     let raw = raw.unwrap_or_default();
-    let answered = flag(&object(&backend.set(FRAME, &json!({ "value": raw }).to_string())), "ok");
-    let held = integer(&object(&backend.get_fields("plan.missionController", "globalAltitudeFrame")), "globalAltitudeFrame");
-    let took = answered && held == Some(raw);
+    let took = match crate::coreplan::enabled() {
+        true => flag(&crate::coreplan::act(backend, crate::coreplan::CORE_SET_ALTITUDE_MODE, &json!([raw]).to_string()), "ok"),
+        false => {
+            let answered = flag(&object(&backend.set(FRAME, &json!({ "value": raw }).to_string())), "ok");
+            let held = integer(&object(&backend.get_fields("plan.missionController", "globalAltitudeFrame")), "globalAltitudeFrame");
+            answered && held == Some(raw)
+        }
+    };
     json!({
         "ok": took,
         "result": took,
