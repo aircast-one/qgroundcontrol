@@ -1,5 +1,6 @@
 #include "QGCVideoC.h"
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -28,6 +29,7 @@ int frameWidth = 0;
 int frameHeight = 0;
 int frameStride = 0;
 int64_t frameCount = 0;
+std::atomic<int64_t> sourceBuffers{0};
 std::string lastError;
 
 #ifdef QGC_GST_STREAMING
@@ -124,6 +126,12 @@ void dropRecording()
         gst_object_unref(recording.teePad);
     }
     recording = Recording{};
+}
+
+GstPadProbeReturn onSourceBuffer(GstPad *, GstPadProbeInfo *, gpointer)
+{
+    sourceBuffers.fetch_add(1, std::memory_order_relaxed);
+    return GST_PAD_PROBE_OK;
 }
 
 GstFlowReturn onNewSample(GstAppSink *appsink, gpointer)
@@ -299,6 +307,14 @@ bool qgc_video_start(const char *pipelineDescription)
         return false;
     }
 
+    if (GstElement *const tee = gst_bin_get_by_name(GST_BIN(pipeline), kRecordingTee)) {
+        if (GstPad *const teeSink = gst_element_get_static_pad(tee, "sink")) {
+            gst_pad_add_probe(teeSink, static_cast<GstPadProbeType>(GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_BUFFER_LIST), onSourceBuffer, nullptr, nullptr);
+            gst_object_unref(teeSink);
+        }
+        gst_object_unref(tee);
+    }
+
     GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, QGC_VIDEO_FORMAT, nullptr);
     gst_app_sink_set_caps(GST_APP_SINK(sink), caps);
     gst_caps_unref(caps);
@@ -451,6 +467,7 @@ void qgc_video_stop(void)
         gst_object_unref(pipeline);
         pipeline = nullptr;
     }
+    sourceBuffers.store(0, std::memory_order_relaxed);
 #endif
     const std::lock_guard<std::mutex> lock(frameMutex);
     latestFrame.clear();
@@ -485,6 +502,15 @@ int64_t qgc_video_frames(void)
 {
     const std::lock_guard<std::mutex> lock(frameMutex);
     return frameCount;
+}
+
+int64_t qgc_video_source_buffers(void)
+{
+#ifdef QGC_GST_STREAMING
+    return sourceBuffers.load(std::memory_order_relaxed);
+#else
+    return 0;
+#endif
 }
 
 const char *qgc_video_last_error(void)

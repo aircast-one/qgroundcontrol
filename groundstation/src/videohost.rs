@@ -20,7 +20,7 @@ struct Host {
     recording_file: Option<String>,
     auto_stream: Option<(u8, u8, String)>,
     timeout_s: u32,
-    progress: Option<(u64, i64)>,
+    progress: Option<Watch>,
 }
 
 const FILE_EXTENSIONS: [&str; 3] = ["mkv", "mov", "mp4"];
@@ -204,7 +204,7 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
                 host.wanted = true;
                 host.restart_at_ms = None;
                 host.timeout_s = timeout_s;
-                host.progress = Some((now_ms, 0));
+                host.progress = Some(Watch::fresh(now_ms));
                 Vec::new()
             }
             Out::StopReceiver { receiver } if receiver == MAIN_RECEIVER => {
@@ -340,18 +340,34 @@ pub fn get(path: &str) -> Option<Value> {
     }
 }
 
-pub fn stalled(progress: Option<(u64, i64)>, frames: i64, timeout_s: u32, now_ms: u64) -> (Option<(u64, i64)>, bool) {
-    let Some((since, seen)) = progress else { return (None, false) };
-    if frames != seen {
-        return (Some((now_ms, frames)), false);
-    }
-    let budget_ms = u64::from(timeout_s) * 1000 * if frames > 0 { 2 } else { 1 };
-    (progress, timeout_s > 0 && now_ms.saturating_sub(since) > budget_ms)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Watch {
+    source: (u64, i64),
+    decoded: (u64, i64),
 }
 
-fn report(host: &mut Host, running: bool, frames: i64, width: u32, height: u32) {
+impl Watch {
+    pub fn fresh(now_ms: u64) -> Watch {
+        Watch { source: (now_ms, 0), decoded: (now_ms, 0) }
+    }
+}
+
+pub fn stalled(watch: Option<Watch>, source: i64, decoded: i64, timeout_s: u32, now_ms: u64) -> (Option<Watch>, bool) {
+    let Some(watch) = watch else { return (None, false) };
+    let moved = |(at, seen): (u64, i64), count: i64| if count != seen { (now_ms, count) } else { (at, seen) };
+    let next = Watch { source: moved(watch.source, source), decoded: moved(watch.decoded, decoded) };
+    let budget_ms = u64::from(timeout_s) * 1000;
+    let quiet = |(at, _): (u64, i64)| now_ms.saturating_sub(at);
+    let stall = timeout_s > 0 && (quiet(next.source) > budget_ms || (decoded > 0 && quiet(next.decoded) > 2 * budget_ms));
+    (Some(next), stall)
+}
+
+fn report(host: &mut Host, running: bool, frames: i64, width: u32, height: u32, source: i64, restarted: bool) {
     let now_ms = crate::hub::now_ms();
-    let (progress, stall) = stalled(host.progress, frames, host.timeout_s, now_ms);
+    if restarted && host.wanted {
+        host.progress = Some(Watch::fresh(now_ms));
+    }
+    let (progress, stall) = stalled(host.progress, source, frames, host.timeout_s, now_ms);
     host.progress = progress;
     if host.wanted && stall {
         host.wanted = false;
@@ -417,6 +433,11 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "video.setNativeRendering" | "video.initNative" => Some(json!({ "ok": true })),
         "video.restart" => {
             RESTART.store(true, std::sync::atomic::Ordering::Relaxed);
+            if !host.wanted {
+                host.restart_at_ms = None;
+                let outs = host.state.start_receiver(MAIN_RECEIVER);
+                apply(host, outs, crate::hub::now_ms());
+            }
             Some(json!({ "ok": true }))
         }
         "video.reportRecording" => {
@@ -431,7 +452,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "video.reportNative" => {
             let number = |i: usize| given.get(i).and_then(Value::as_i64).unwrap_or(0);
             let size = |i: usize| u32::try_from(number(i)).unwrap_or(0);
-            report(host, given.get(0).and_then(Value::as_bool).unwrap_or(false), number(1), size(2), size(3));
+            report(host, given.get(0).and_then(Value::as_bool).unwrap_or(false), number(1), size(2), size(3), number(5), given.get(6).and_then(Value::as_bool).unwrap_or(false));
             Some(json!({ "ok": true }))
         }
         _ => None,
@@ -454,12 +475,16 @@ mod tests {
     }
 
     #[test]
-    fn a_stream_that_stops_delivering_frames_is_a_failure_as_the_receiver_watchdog_says() {
-        assert_eq!(stalled(None, 0, 3, 99_000), (None, false), "nothing started, nothing to watch");
-        assert_eq!(stalled(Some((0, 0)), 0, 3, 3_000), (Some((0, 0)), false));
-        assert_eq!(stalled(Some((0, 0)), 0, 3, 3_001), (Some((0, 0)), true), "no frame inside the start budget");
-        assert_eq!(stalled(Some((0, 0)), 5, 3, 3_001), (Some((3_001, 5)), false), "frames moving reset the clock");
-        assert!(!stalled(Some((0, 5)), 5, 3, 6_000).1 && stalled(Some((0, 5)), 5, 3, 6_001).1, "once decoding, the decoder gets twice the budget");
+    fn a_stream_that_stops_delivering_is_a_failure_as_the_receiver_watchdog_says() {
+        let start = Some(Watch::fresh(0));
+        assert_eq!(stalled(None, 0, 0, 3, 99_000), (None, false), "nothing started, nothing to watch");
+        assert!(!stalled(start, 0, 0, 3, 3_000).1);
+        assert!(stalled(start, 0, 0, 3, 3_001).1, "no source data inside the start budget");
+        let (flowing, stall) = stalled(start, 40, 0, 3, 3_001);
+        assert!(!stall, "data arriving keeps a stream waiting for its first keyframe alive");
+        assert!(!stalled(flowing, 80, 0, 3, 9_000).1, "the decoder is only held to a budget once it has produced a frame");
+        let (decoding, _) = stalled(flowing, 90, 5, 3, 4_000);
+        assert!(!stalled(decoding, 200, 5, 3, 10_000).1 && stalled(decoding, 300, 5, 3, 10_001).1, "once decoding, the decoder gets twice the budget");
     }
 
     #[test]
@@ -492,9 +517,9 @@ mod tests {
         apply(&mut host, outs, 0);
         assert!(host.wanted, "a configured stream starts the main receiver");
         assert_eq!(status_text(host.state.receiver_status(0)), "Connecting\u{2026}");
-        report(&mut host, true, 0, 0, 0);
+        report(&mut host, true, 0, 0, 0, 0, false);
         assert_eq!(status_text(host.state.receiver_status(0)), "Connected, waiting for frames");
-        report(&mut host, true, 12, 640, 360);
+        report(&mut host, true, 12, 640, 360, 12, false);
         assert_eq!((host.state.decoding, host.state.video_size), (true, Some((640, 360))));
         assert_eq!(status_text(host.state.receiver_status(0)), "");
         assert_eq!(status_text(host.state.receiver_status(1)), "No video source", "a camera with no receiver is no video source, as VideoManager::_cameraStatus says");

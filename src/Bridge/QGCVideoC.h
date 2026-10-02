@@ -14,6 +14,7 @@ bool qgc_video_running(void);
 int qgc_video_width(void);
 int qgc_video_height(void);
 int64_t qgc_video_frames(void);
+int64_t qgc_video_source_buffers(void);
 const char *qgc_video_last_error(void);
 bool qgc_video_copy_frame(void *destination, int capacity, int *width, int *height, int *stride);
 bool qgc_video_attach_appsink(void *appsink);

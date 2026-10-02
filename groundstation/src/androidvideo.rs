@@ -23,6 +23,7 @@ pub struct Video {
     pub width: unsafe extern "C" fn() -> c_int,
     pub height: unsafe extern "C" fn() -> c_int,
     pub frames: unsafe extern "C" fn() -> i64,
+    source_buffers: unsafe extern "C" fn() -> i64,
     last_error: unsafe extern "C" fn() -> *const c_char,
     pub copy_frame: unsafe extern "C" fn(*mut c_void, c_int, *mut c_int, *mut c_int, *mut c_int) -> bool,
     start_recording: unsafe extern "C" fn(*const c_char, c_int) -> bool,
@@ -50,6 +51,7 @@ fn load() -> Option<Video> {
         width: symbol(handle, c"qgc_video_width")?,
         height: symbol(handle, c"qgc_video_height")?,
         frames: symbol(handle, c"qgc_video_frames")?,
+        source_buffers: symbol(handle, c"qgc_video_source_buffers")?,
         last_error: symbol(handle, c"qgc_video_last_error")?,
         copy_frame: symbol(handle, c"qgc_video_copy_frame")?,
         start_recording: symbol(handle, c"qgc_video_start_recording")?,
@@ -82,6 +84,7 @@ fn initialise(vm: &JavaVM, video: &Video) -> jni::errors::Result<bool> {
 #[derive(Default)]
 struct Driver {
     driven: Option<String>,
+    restarted: bool,
     error: String,
     recording: Option<serde_json::Value>,
     recording_reported: bool,
@@ -116,6 +119,7 @@ impl Driver {
                 Some(pipeline) => {
                     let text = CString::new(pipeline.as_str()).unwrap_or_default();
                     let started = unsafe { (video.start)(text.as_ptr()) };
+                    self.restarted = true;
                     self.error = if started { String::new() } else { unsafe { CStr::from_ptr((video.last_error)()) }.to_string_lossy().into_owned() };
                 }
                 None => unsafe { (video.stop)() },
@@ -128,7 +132,8 @@ impl Driver {
         }
         let (running, frames, width, height) = unsafe { ((video.running)(), (video.frames)(), (video.width)(), (video.height)()) };
         crate::videostats::sample(running, frames, i64::from(height), crate::hub::now_ms());
-        crate::videohost::invoke("video.reportNative", &serde_json::json!([running, frames, width, height, self.error]).to_string());
+        let source = unsafe { (video.source_buffers)() };
+        crate::videohost::invoke("video.reportNative", &serde_json::json!([running, frames, width, height, self.error, source, std::mem::take(&mut self.restarted)]).to_string());
     }
 }
 
