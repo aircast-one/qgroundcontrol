@@ -22,6 +22,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Switch
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.Alignment
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
 
@@ -30,6 +35,8 @@ import org.mavlink.qgroundcontrol.QGCBridge
 fun MapLayersSheet(onDismiss: () -> Unit) {
     var listed by remember { mutableStateOf<MapTypes?>(null) }
     val scope = rememberCoroutineScope()
+    val obstacleJson by mapPath(OBSTACLE_OVERLAY)
+    val obstacles = obstacleJson?.optBoolean("value") == true
     LaunchedEffect(Unit) {
         listed = withContext(Dispatchers.Default) { mapTypes(runCatching { JSONObject(QGCBridge.get(MAP_TYPES_VIEW)) }.getOrNull()) }
     }
@@ -54,6 +61,20 @@ fun MapLayersSheet(onDismiss: () -> Unit) {
                     )
                 }
             }
+            Row(
+                Modifier.fillMaxWidth().clickable {
+                    scope.launch { withContext(Dispatchers.Default) { setOk(OBSTACLE_OVERLAY, settingJson((!obstacles).toString())) } }
+                }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Obstacle distance", style = MaterialTheme.typography.bodyLarge)
+                    Text("Proximity sensor readings around the vehicle", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = obstacles, onCheckedChange = null)
+            }
         }
     }
 }
+
+private const val OBSTACLE_OVERLAY = "settings.flyViewSettings.showObstacleDistanceOverlay"
