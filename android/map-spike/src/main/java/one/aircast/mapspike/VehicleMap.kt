@@ -494,7 +494,7 @@ fun VehicleMap(
         val currentStyle = style ?: return@LaunchedEffect
         renderSurveys(currentStyle, surveys)
         renderTransectMarks(currentStyle, surveys, selectedWaypoint, legArrows(missionItems, linkStartToHome))
-        renderLandings(currentStyle, landings)
+        renderLandings(currentStyle, landings, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint.takeIf { editable })
         renderMidpoints(currentStyle, fencePolygons, surveys, missionItems.takeIf { editable }.orEmpty(), selectedWaypoint)
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence, breachReturn?.takeIf { isPlottable(it.latitude, it.longitude) })
         (currentStyle.getSource(GCS_SOURCE) as? GeoJsonSource)?.setGeoJson(operatorFeatures(operator))
@@ -619,9 +619,10 @@ private fun headingArrow(): Bitmap {
     return bitmap
 }
 
-private fun renderLandings(style: Style, landings: List<LandingPattern>) {
+private fun renderLandings(style: Style, landings: List<LandingPattern>, items: List<MissionItem>, selected: Int?) {
+    (style.getSource(LANDING_AREA_SOURCE) as? GeoJsonSource)?.setGeoJson(landingAreaFeatures(landings, selected))
     (style.getSource(LANDING_PATH_SOURCE) as? GeoJsonSource)?.setGeoJson(landingPathFeatures(landings))
-    (style.getSource(LANDING_LOITER_SOURCE) as? GeoJsonSource)?.setGeoJson(landingLoiterFeatures(landings))
+    (style.getSource(LANDING_LOITER_SOURCE) as? GeoJsonSource)?.setGeoJson(landingLoiterFeatures(landings, items))
 }
 
 private const val PAN_RECENTER_DELAY_MS = 10_000L

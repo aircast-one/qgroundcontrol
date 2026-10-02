@@ -116,6 +116,7 @@ data class MissionItem(
     val altitudeMode: Int = -1,
     val altitudeEditUnits: String = "",
     val complexPattern: Boolean = false,
+    val loiterRadius: Double = Double.NaN,
 )
 
 fun routeEndsAfter(items: JSONArray?): Int =
@@ -166,6 +167,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             altitudeMode = element.optInt("altitudeMode", -1),
             altitudeEditUnits = element.optText("altitudeEditUnits"),
             complexPattern = !element.optBoolean("simple", true),
+            loiterRadius = element.optDouble("loiterRadius", Double.NaN),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,

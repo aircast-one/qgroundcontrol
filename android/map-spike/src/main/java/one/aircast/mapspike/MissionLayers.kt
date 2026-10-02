@@ -469,6 +469,9 @@ const val SURVEY_TRANSECT_LAYER = "aircast-survey-transect-layer"
 const val LANDING_PATH_SOURCE = "aircast-landing-path"
 const val LANDING_PATH_LAYER = "aircast-landing-path-layer"
 const val LANDING_LOITER_SOURCE = "aircast-landing-loiter"
+const val LANDING_AREA_SOURCE = "aircast-landing-area"
+const val LANDING_AREA_LAYER = "aircast-landing-area-layer"
+const val LANDING_SHAPE_KIND = "kind"
 const val LANDING_LOITER_LAYER = "aircast-landing-loiter-layer"
 
 const val SURVEY_LINE_SOURCE = "aircast-survey-line"
@@ -527,6 +530,16 @@ fun renderMidpoints(style: Style, polygons: List<FencePolygon>, surveys: List<Su
 }
 
 fun installLandingLayers(style: Style) {
+    if (style.getSource(LANDING_AREA_SOURCE) == null) {
+        style.addSource(GeoJsonSource(LANDING_AREA_SOURCE))
+        style.addLayer(
+            FillLayer(LANDING_AREA_LAYER, LANDING_AREA_SOURCE).withProperties(
+                PropertyFactory.fillColor(Expression.match(Expression.get(LANDING_SHAPE_KIND), Expression.literal(LANDING_AREA_KIND), Expression.color(android.graphics.Color.GREEN), Expression.color(android.graphics.Color.rgb(255, 165, 0)))),
+                PropertyFactory.fillOpacity(0.5f),
+                PropertyFactory.fillOutlineColor(android.graphics.Color.BLACK),
+            ),
+        )
+    }
     if (style.getSource(LANDING_LOITER_SOURCE) == null) {
         style.addSource(GeoJsonSource(LANDING_LOITER_SOURCE))
         style.addLayer(

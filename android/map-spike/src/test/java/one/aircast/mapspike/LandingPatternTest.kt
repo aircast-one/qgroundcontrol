@@ -157,4 +157,25 @@ class IsLandingPatternTest {
         assertTrue(isLandingPattern(unplaced))
         assertNull(landingPattern(4, unplaced))
     }
+
+    @Test
+    fun `a loiter item's ring is its radius whichever way it turns`() {
+        val loiter = MissionItem(index = 2, sequence = 2, latitude = 47.0, longitude = 8.0, command = "", selected = false, loiterRadius = -80.0)
+        val waypoint = MissionItem(index = 1, sequence = 1, latitude = 47.1, longitude = 8.0, command = "", selected = false)
+        assertEquals(listOf(TrackPoint(47.0, 8.0) to 80.0), loiterRings(emptyList(), listOf(waypoint, loiter)))
+    }
+
+    @Test
+    fun `the landing area is a 15 by 100 metre box on the touchdown and the glide slope runs to the approach`() {
+        val landing = TrackPoint(47.0, 8.0)
+        val slope = pointAt(landing, 400.0, 90.0)
+        val approach = pointAt(landing, 800.0, 90.0)
+        val straight = LandingPattern(index = 3, landing = landing, slopeStart = slope, finalApproach = approach, loiterRadiusMetres = null, loiterClockwise = true)
+        val area = landingArea(straight)!!
+        assertEquals(4, area.size)
+        assertEquals("corners are the half-diagonal from touchdown", kotlin.math.hypot(7.5, 50.0), metresBetween(landing, area[0]), 0.5)
+        assertEquals("without loiter-to-altitude the slope reaches the final approach", approach, glideSlope(straight)!!.last())
+        assertEquals("with it, the slope start", slope, glideSlope(straight.copy(loiterRadiusMetres = 75.0))!!.last())
+        assertEquals("only the selected pattern draws them", 0, landingAreaFeatures(listOf(straight), selected = 2).features()!!.size)
+    }
 }

@@ -5,6 +5,7 @@ import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
+import org.maplibre.geojson.Polygon
 
 data class LandingPattern(
     val index: Int,
@@ -65,11 +66,46 @@ fun landingPathFeatures(patterns: List<LandingPattern>): FeatureCollection =
             },
     )
 
-fun landingLoiterFeatures(patterns: List<LandingPattern>): FeatureCollection =
+private const val LANDING_WIDTH_M = 15.0
+private const val LANDING_LENGTH_M = 100.0
+const val LANDING_AREA_KIND = "area"
+const val GLIDE_SLOPE_KIND = "slope"
+
+private fun landingCorners(landing: TrackPoint, bearing: Double): List<TrackPoint> {
+    val angle = Math.toDegrees(kotlin.math.atan((LANDING_WIDTH_M / 2) / (LANDING_LENGTH_M / 2)))
+    val hypotenuse = (LANDING_WIDTH_M / 2) / kotlin.math.sin(Math.toRadians(angle))
+    return listOf(bearing - angle, bearing + angle, bearing + (180 - angle), bearing - (180 - angle)).map { pointAt(landing, hypotenuse, it) }
+}
+
+fun landingArea(pattern: LandingPattern): List<TrackPoint>? {
+    val landing = pattern.landing ?: return null
+    val slopeStart = pattern.slopeStart ?: return null
+    return landingCorners(landing, azimuthBetween(landing, slopeStart))
+}
+
+fun glideSlope(pattern: LandingPattern): List<TrackPoint>? {
+    val landing = pattern.landing ?: return null
+    val slopeStart = pattern.slopeStart ?: return null
+    val top = (if (pattern.loiterRadiusMetres != null) slopeStart else pattern.finalApproach) ?: return null
+    return landingCorners(landing, azimuthBetween(landing, slopeStart)).take(2) + top
+}
+
+fun landingAreaFeatures(patterns: List<LandingPattern>, selected: Int?): FeatureCollection =
     FeatureCollection.fromFeatures(
-        patterns.mapNotNull { pattern ->
-            val centre = pattern.finalApproach ?: return@mapNotNull null
-            val radius = pattern.loiterRadiusMetres ?: return@mapNotNull null
+        patterns.filter { it.index == selected }.flatMap { pattern ->
+            listOfNotNull(landingArea(pattern)?.let { LANDING_AREA_KIND to it }, glideSlope(pattern)?.let { GLIDE_SLOPE_KIND to it })
+        }.map { (kind, ring) ->
+            Feature.fromGeometry(Polygon.fromLngLats(listOf((ring + ring.first()).map { Point.fromLngLat(it.longitude, it.latitude) }))).apply { addStringProperty(LANDING_SHAPE_KIND, kind) }
+        },
+    )
+
+fun loiterRings(patterns: List<LandingPattern>, items: List<MissionItem>): List<Pair<TrackPoint, Double>> =
+    patterns.mapNotNull { pattern -> pattern.finalApproach?.let { centre -> pattern.loiterRadiusMetres?.let { centre to it } } } +
+        items.filter { it.loiterRadius.isFinite() && it.loiterRadius != 0.0 }.map { TrackPoint(it.latitude, it.longitude) to kotlin.math.abs(it.loiterRadius) }
+
+fun landingLoiterFeatures(patterns: List<LandingPattern>, items: List<MissionItem> = emptyList()): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        loiterRings(patterns, items).mapNotNull { (centre, radius) ->
             circleRing(centre, radius).takeIf { it.size >= 3 }?.let { ring ->
                 Feature.fromGeometry(
                     LineString.fromLngLats(
