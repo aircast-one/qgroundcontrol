@@ -14,7 +14,7 @@ class CameraCalcSectionTest {
         "camera",
         JSONObject()
             .put("brand", brand).put("manualName", "Manual (no camera specs)").put("custom", custom).put("valueSetIsDistance", byDistance)
-            .put("facts", JSONArray(listOf("cameraCalc.sensorWidth", "cameraCalc.distanceToSurface", "cameraCalc.imageDensity", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap").map(::control))),
+            .put("facts", JSONArray(listOf("cameraCalc.sensorWidth", "cameraCalc.distanceToSurface", "cameraCalc.imageDensity", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap", "cameraCalc.adjustedFootprintFrontal", "cameraCalc.adjustedFootprintSide").map(::control))),
     )
 
     private fun shown(brand: String, custom: Boolean, byDistance: Boolean) =
@@ -25,7 +25,11 @@ class CameraCalcSectionTest {
         assertEquals(listOf("cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap"), shown("Sony", false, true))
         assertEquals(listOf("cameraCalc.imageDensity", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap"), shown("Sony", false, false))
         assertEquals(listOf("cameraCalc.sensorWidth", "cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap"), shown("Custom Camera", true, true))
-        assertEquals(listOf("cameraCalc.distanceToSurface"), shown("Manual (no camera specs)", false, false))
+        assertEquals(
+            "a manual camera sets its trigger distance and spacing by hand",
+            listOf("cameraCalc.distanceToSurface", "cameraCalc.adjustedFootprintFrontal", "cameraCalc.adjustedFootprintSide"),
+            shown("Manual (no camera specs)", false, false),
+        )
     }
 
     @Test

@@ -367,7 +367,10 @@ fn pass(polygon: &[Point], params: &Params, refly: bool, anchor: Option<Point>) 
         xs.into_iter().map(sweep).collect()
     };
 
-    let crossed = intersect_with_polygon(&lines, &closed);
+    let crossed = match intersect_with_polygon(&lines, &closed) {
+        few if few.len() < 2 => intersect_with_polygon(&[sweep(centre.0)], &closed),
+        many => many,
+    };
     let ordered = adjust_line_direction(&crossed);
     let geo: Vec<Vec<Point>> = ordered
         .iter()
@@ -417,6 +420,16 @@ mod tests {
         assert_eq!(shortest_from(anchor, last_nearest)[0][0], (47.3961, 8.5441), "when the last transect starts nearest, the order is reversed");
         let only_last_end: Vec<Vec<Point>> = vec![vec![(47.3990, 8.5490), (47.3991, 8.5491)], vec![(47.3992, 8.5492), (47.3961, 8.5441)]];
         assert_eq!(shortest_from(anchor, only_last_end)[0][0], (47.3990, 8.5490), "Qt computes the distance to the last transect's end and its loop never reads it, so the nearest corner is ignored; matching Qt means ignoring it here too");
+    }
+
+    #[test]
+    fn a_field_narrower_than_the_spacing_is_flown_once_down_its_centre() {
+        let (east, north) = (30.0 / (111_320.0 * 47.0_f64.to_radians().cos()), 200.0 / 111_320.0);
+        let field = [(47.0, 8.0), (47.0 + north, 8.0), (47.0 + north, 8.0 + east), (47.0, 8.0 + east)];
+        let params = Params { grid_angle: 0.0, grid_spacing: 100.0, turnaround: 0.0, refly: false, alternate: false, entry: 0 };
+        let transects = flat_transects(&field, &params);
+        assert_eq!(transects.len(), 1, "SurveyComplexItem lays one line through the bounding centre when fewer than two cross the polygon");
+        assert!(transects[0].iter().all(|(_, lon)| (lon - (8.0 + east / 2.0)).abs() < 1e-7), "and that line runs down the middle");
     }
 
     #[test]

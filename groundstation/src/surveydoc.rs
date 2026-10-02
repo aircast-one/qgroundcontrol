@@ -203,6 +203,36 @@ fn terrain_gated(control: Value, name: &str, follows_terrain: bool) -> Value {
     }
 }
 
+fn spacing_label(survey: &Value, name: &str) -> Option<&'static str> {
+    match (is_structure(survey), name) {
+        (true, "AdjustedFootprintFrontal") => Some("Layer height"),
+        (true, "AdjustedFootprintSide") => Some("Trigger distance"),
+        (false, "AdjustedFootprintFrontal") => Some("Trigger distance"),
+        (false, "AdjustedFootprintSide") => Some("Spacing"),
+        _ => None,
+    }
+}
+
+fn labelled(control: Value, label: &str) -> Value {
+    match control {
+        Value::Object(mut fields) => {
+            fields.insert("label".to_string(), json!(label));
+            Value::Object(fields)
+        }
+        other => other,
+    }
+}
+
+fn read_only(control: Value) -> Value {
+    match control {
+        Value::Object(mut fields) => {
+            fields.insert("readOnly".to_string(), json!(true));
+            Value::Object(fields)
+        }
+        other => other,
+    }
+}
+
 fn disabled(control: Value, reason: &str) -> Value {
     match control {
         Value::Object(mut fields) => {
@@ -265,6 +295,7 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, hover_allowed: bool,
                 "HoverAndCapture" if !fixed_altitude => disabled(shown, HOVER_NEEDS_FIXED_ALTITUDE),
                 "Refly90Degrees" if follows_terrain => disabled(shown, REFLY_NOT_WITH_TERRAIN),
                 "CameraTriggerInTurnAround" if hovering => disabled(shown, TURNAROUND_NOT_WITH_HOVER),
+                "Layers" => read_only(shown),
                 _ => shown,
             })
         })
@@ -273,6 +304,7 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, hover_allowed: bool,
 
 const OPTICS: [(&str, &str); 7] = [("SensorWidth", "sensorWidth"), ("SensorHeight", "sensorHeight"), ("ImageWidth", "imageWidth"), ("ImageHeight", "imageHeight"), ("FocalLength", "focalLength"), ("Landscape", "landscape"), ("MinTriggerInterval", "minTriggerInterval")];
 const FLIGHT: [(&str, &str); 4] = [("DistanceToSurface", "distanceToSurface"), ("ImageDensity", "imageDensity"), ("FrontalOverlap", "frontalOverlap"), ("SideOverlap", "sideOverlap")];
+const MANUAL_SPACING: [(&str, &str); 2] = [("AdjustedFootprintFrontal", "adjustedFootprintFrontal"), ("AdjustedFootprintSide", "adjustedFootprintSide")];
 
 fn cameras() -> Vec<Value> {
     serde_json::from_str::<Value>(CAMERA_LIST).ok().and_then(|v| v.get("cameraMetaData").and_then(Value::as_array).cloned()).unwrap_or_default()
@@ -321,15 +353,20 @@ pub fn camera(survey: &Value, item: &str, units: &Units, terrain_frame: bool) ->
         .chain(known.iter().filter_map(|c| c.get("brand").and_then(Value::as_str).map(str::to_string)))
         .fold(Vec::new(), |seen, b| if seen.contains(&b) { seen } else { seen.into_iter().chain(std::iter::once(b)).collect() });
     let models: Vec<String> = known.iter().filter(|c| c.get("brand").and_then(Value::as_str) == Some(brand.as_str())).filter_map(|c| c.get("model").and_then(Value::as_str).map(str::to_string)).collect();
-    let wanted: Vec<(&str, &str)> = match custom {
-        true => OPTICS.iter().chain(FLIGHT.iter()).copied().collect(),
-        false => FLIGHT.to_vec(),
+    let wanted: Vec<(&str, &str)> = match (custom, name == MANUAL_CAMERA) {
+        (true, _) => OPTICS.iter().chain(FLIGHT.iter()).copied().collect(),
+        (false, true) => FLIGHT.iter().chain(MANUAL_SPACING.iter()).copied().collect(),
+        (false, false) => FLIGHT.to_vec(),
     };
     let facts: Vec<Value> = wanted
         .iter()
         .filter_map(|(name, suffix)| {
             let meta = meta(CAMERA_META, name).or_else(|| meta(CAMERA_SPEC_META, name))?;
-            Some(control(&meta, with_default(calc.get(*name), &meta), item, &format!("cameraCalc.{suffix}"), "Camera", units))
+            let built = control(&meta, with_default(calc.get(*name), &meta), item, &format!("cameraCalc.{suffix}"), "Camera", units);
+            Some(match spacing_label(survey, name) {
+                Some(label) => labelled(built, label),
+                None => built,
+            })
         })
         .collect();
     json!({
@@ -358,12 +395,12 @@ fn target(suffix: &str) -> Option<(&'static str, String)> {
         "gridAngle" => Some(("survey", "angle".to_string())),
         "corridorWidth" => Some(("survey", "CorridorWidth".to_string())),
         "entranceAlt" => Some(("survey", "EntranceAltitude".to_string())),
-        "structureHeight" | "scanBottomAlt" | "layers" | "gimbalPitch" | "startFromTop" => Some(("survey", suffix.chars().next().map(|c| c.to_ascii_uppercase().to_string() + &suffix[1..]).unwrap_or_default())),
+        "structureHeight" | "scanBottomAlt" | "gimbalPitch" | "startFromTop" => Some(("survey", suffix.chars().next().map(|c| c.to_ascii_uppercase().to_string() + &suffix[1..]).unwrap_or_default())),
         "flyAlternateTransects" | "splitConcavePolygons" => Some(("survey", suffix.to_string())),
         _ => match suffix.strip_prefix("cameraCalc.") {
             Some(calc) => {
                 let key = capital(calc);
-                OPTICS.iter().chain(FLIGHT.iter()).any(|(name, _)| *name == key).then_some(("calc", key)).or((calc == "valueSetIsDistance").then(|| ("calc", "ValueSetIsDistance".to_string()))).or((calc == "distanceMode").then(|| ("calc", "DistanceMode".to_string())))
+                OPTICS.iter().chain(FLIGHT.iter()).chain(MANUAL_SPACING.iter()).any(|(name, _)| *name == key).then_some(("calc", key)).or((calc == "valueSetIsDistance").then(|| ("calc", "ValueSetIsDistance".to_string()))).or((calc == "distanceMode").then(|| ("calc", "DistanceMode".to_string())))
             }
             None => transect.iter().find(|name| capital(suffix) == **name).map(|name| ("transect", name.to_string())),
         },
@@ -479,7 +516,12 @@ pub fn set(survey: &Value, suffix: &str, value: &Value, units: &Units) -> Option
                 _ => {
                     let mut edited = calc.clone();
                     edited[key.as_str()] = raw(&key);
-                    with_calc(survey, recalculated(&edited))
+                    let mut changed = with_calc(survey, recalculated(&edited));
+                    if key == "DistanceMode" && raw(&key).as_i64() == Some(crate::altitudemodes::FRAME_CALC_ABOVE_TERRAIN) && changed.get("TransectStyleComplexItem").is_some() {
+                        changed["TransectStyleComplexItem"]["Refly90Degrees"] = json!(false);
+                        changed["TransectStyleComplexItem"]["HoverAndCapture"] = json!(false);
+                    }
+                    changed
                 }
             }
         }
@@ -811,6 +853,24 @@ mod tests {
         let following = set(&survey, "cameraCalc.distanceMode", &json!(3), &units).expect("the frame is a camera calc key the core writes");
         assert_eq!(calc_of(&following)["DistanceMode"], 3);
         assert!(rows(&following).iter().all(|enabled| *enabled != json!(false)));
+        let both = json!({ "complexItemType": "survey", "CameraCalc": { "DistanceMode": 1, "CameraName": MANUAL_CAMERA }, "TransectStyleComplexItem": { "Refly90Degrees": true, "HoverAndCapture": true, "CameraCalc": { "DistanceMode": 1, "CameraName": MANUAL_CAMERA } } });
+        let terrain = set(&both, "cameraCalc.distanceMode", &json!(3), &units).unwrap();
+        assert_eq!((terrain["TransectStyleComplexItem"]["Refly90Degrees"].clone(), terrain["TransectStyleComplexItem"]["HoverAndCapture"].clone()), (json!(false), json!(false)), "TransectStyleComplexItem::_distanceModeChanged clears both, so greyed-out switches cannot still shape the flight");
+    }
+
+    #[test]
+    fn a_structure_scan_derives_its_layers_and_a_manual_camera_sets_its_own_spacing() {
+        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/structure-inserted-by-qt.json")).unwrap();
+        let layers = fields(&fixture["structure"], "p", true, true, &metric()).into_iter().find(|f| f["name"] == "Layers").expect("the layer count is shown");
+        assert_eq!(layers["readOnly"], true, "StructureScanEditor shows layers as a label computed from height, bottom and trigger distance");
+        assert!(set(&fixture["structure"], "layers", &json!(5), &metric()).is_none());
+        let survey = json!({ "complexItemType": "survey", "TransectStyleComplexItem": { "CameraCalc": { "CameraName": MANUAL_CAMERA, "AdjustedFootprintSide": 25.0, "AdjustedFootprintFrontal": 25.0 } } });
+        let suffixes: Vec<String> = camera(&survey, "p", &metric(), true)["facts"].as_array().unwrap().iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
+        assert!(suffixes.contains(&"cameraCalc.adjustedFootprintFrontal".to_string()) && suffixes.contains(&"cameraCalc.adjustedFootprintSide".to_string()), "CameraCalcGrid edits trigger distance and spacing for a manual camera: {suffixes:?}");
+        let wider = set(&survey, "cameraCalc.adjustedFootprintSide", &json!(40.0), &metric()).expect("a manual camera's spacing is writable");
+        assert_eq!(calc_of(&wider)["AdjustedFootprintSide"], 40.0);
+        let labels: Vec<Value> = camera(&survey, "p", &metric(), true)["facts"].as_array().unwrap().iter().filter(|f| f["name"].as_str().is_some_and(|n| n.starts_with("AdjustedFootprint"))).map(|f| f["label"].clone()).collect();
+        assert_eq!(labels, [json!("Trigger distance"), json!("Spacing")], "TransectStyleComplexItemEditor names them for CameraCalcGrid");
     }
 
     static METRES: std::sync::LazyLock<crate::read::Unit> = std::sync::LazyLock::new(|| crate::read::Unit { name: "m".to_string(), factor: 1.0 });
