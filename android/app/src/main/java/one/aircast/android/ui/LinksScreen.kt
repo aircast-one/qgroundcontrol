@@ -69,6 +69,8 @@ import one.aircast.mapspike.optText
 private const val LINKS_VIEW = "view.links"
 private const val LINKS_PATH = "links.linkConfigurations"
 private const val DEFAULT_PORT = "14550"
+private const val DEFAULT_TCP_PORT = "5760"
+private const val UDP_LISTEN_PORT = "settings.autoConnectSettings.udpListenPort"
 
 data class LinkRow(
     val index: Int,
@@ -206,8 +208,8 @@ internal fun autoLinkName(type: String, host: String, port: String): String = wh
 internal fun uniqueLinkName(base: String, taken: List<String>): String =
     (listOf(base) + (2..taken.size + 2).map { "$base ($it)" }).first { it !in taken }
 
-internal fun editedLinkSuggestion(editing: String, host: String, port: String, portName: String): String = when (editing) {
-    "serial" -> autoSerialName(portName)
+internal fun editedLinkSuggestion(editing: String, host: String, port: String, portLabel: String): String = when (editing) {
+    "serial" -> autoSerialName(portLabel)
     "hostAndPort" -> autoLinkName("tcp", host, port)
     else -> autoLinkName("udp", host, port)
 }
@@ -232,7 +234,11 @@ internal fun serialBauds(view: JSONObject?): List<Int> {
     return (0 until rates.length()).mapNotNull { rates.opt(it)?.toString()?.toIntOrNull() }.filter { it > 0 }
 }
 
-internal fun autoSerialName(portName: String): String = "Serial ${portName.substringAfterLast('/')}"
+internal fun autoSerialName(portLabel: String): String = portLabel.ifBlank { "Serial" }
+
+internal fun portLabel(ports: List<SerialPortChoice>, portName: String): String = ports.firstOrNull { it.port == portName }?.label.orEmpty()
+
+internal fun portFor(type: String, udpDefault: String): String = if (type == "tcp") DEFAULT_TCP_PORT else udpDefault
 
 internal fun serialFormError(
     portName: String,
@@ -248,9 +254,10 @@ internal fun serialFormError(
     else -> null
 }
 
-internal fun linkFormError(type: String, host: String, port: String): String? {
-    val parsed = port.toIntOrNull()
+internal fun linkFormError(type: String, host: String, port: String, udpDefault: String = DEFAULT_PORT): String? {
+    val parsed = port.ifBlank { if (type == "udp") udpDefault else port }.toIntOrNull()
     return when {
+        type == "udp" && (parsed == null || parsed !in 1..65535) -> "Enter a port between 1 and 65535, or leave it blank for $udpDefault"
         parsed == null || parsed !in 1..65535 -> "Port must be a number between 1 and 65535."
         type == "tcp" && host.isBlank() -> "A TCP link needs the address of the device to call."
         else -> null
@@ -442,6 +449,8 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
     val scope = rememberCoroutineScope()
     val linksJson by qgcPath(LINKS_VIEW)
     val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
+    val ports = remember(linksJson) { serialPortChoices(linksJson) }
+    var portsOpen by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -465,6 +474,19 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     )
                 }
                 if (row.editing == "serial") {
+                    Box {
+                        OutlinedButton(onClick = { portsOpen = true }) {
+                            Text(portLabel(ports, portName).ifBlank { portName.ifBlank { "Choose a port" } })
+                        }
+                        DropdownMenu(expanded = portsOpen, onDismissRequest = { portsOpen = false }) {
+                            ports.forEach { choice ->
+                                DropdownMenuItem(
+                                    text = { Text(choice.label) },
+                                    onClick = { portName = choice.port; portsOpen = false },
+                                )
+                            }
+                        }
+                    }
                     Box {
                         OutlinedButton(onClick = { baudsOpen = true }) { Text("$baud baud") }
                         DropdownMenu(expanded = baudsOpen, onDismissRequest = { baudsOpen = false }) {
@@ -517,7 +539,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                                 return@launch
                             }
                             val resolved = name.trim().ifBlank {
-                                uniqueLinkName(editedLinkSuggestion(row.editing, host, port, portName), rows.filter { it.index != row.index }.map { it.name })
+                                uniqueLinkName(editedLinkSuggestion(row.editing, host, port, portLabel(ports, portName)), rows.filter { it.index != row.index }.map { it.name })
                             }
                             withContext(Dispatchers.Default) {
                                 editWrites(row.editing, resolved, host, parsed, portName, baud, autoConnect, highLatency, framing)
@@ -553,6 +575,12 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
     val taken = remember(linksJson) { linkRows(linksJson).map { it.name } }
     val offered = remember(linksJson) { addableLinkTypes(linksJson) }
+    val udpListen by one.aircast.android.bridge.qgcValue(UDP_LISTEN_PORT)
+    val udpDefault = (udpListen as? Number)?.toInt()?.takeIf { it in 1..65535 }?.toString() ?: DEFAULT_PORT
+    var typeChosen by remember { mutableStateOf(false) }
+    LaunchedEffect(offered, ports.isNotEmpty()) {
+        if (!typeChosen && "serial" in offered && ports.isNotEmpty()) type = "serial"
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var autoConnect by remember { mutableStateOf(false) }
@@ -578,6 +606,8 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                             selected = type == id,
                             onClick = {
                                 type = id
+                                typeChosen = true
+                                port = portFor(id, udpDefault)
                                 if (id == BLUETOOTH_LINK) askBluetooth.launch(bluetoothPermissions(android.os.Build.VERSION.SDK_INT))
                             },
                             shape = SegmentedButtonDefaults.itemShape(index, choices.size),
@@ -659,8 +689,8 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     label = { Text("Name (optional)") },
                     placeholder = {
                         Text(
-                            if (type == "serial") autoSerialName(portName)
-                            else autoLinkName(type, host, port),
+                            if (type == "serial") autoSerialName(portLabel(ports, portName))
+                            else autoLinkName(type, host, port.ifBlank { udpDefault }),
                         )
                     },
                     singleLine = true,
@@ -683,7 +713,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     } else if (type == "serial") {
                         serialFormError(portName, baud, taken, name, ports.isNotEmpty())
                     } else {
-                        linkFormError(type, host, port)
+                        linkFormError(type, host, port, udpDefault)
                     }
                     error = invalid?.ifBlank { null }
                     if (invalid == null) {
@@ -693,8 +723,8 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                                 when (type) {
                                     AIRCAST_CLOUD_LINK -> AIRCAST_CLOUD_NAME
                                     BLUETOOTH_LINK -> device?.name.orEmpty()
-                                    "serial" -> autoSerialName(portName)
-                                    else -> autoLinkName(type, host, port)
+                                    "serial" -> autoSerialName(portLabel(ports, portName))
+                                    else -> autoLinkName(type, host, port.ifBlank { udpDefault })
                                 },
                                 taken,
                             )
@@ -712,7 +742,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                                         connectNamed(chosen)
                                 } else {
                                     Qgc.invokeResult(
-                                        "links.createAndConnectLink", type, chosen, host, port.toInt(),
+                                        "links.createAndConnectLink", type, chosen, host, port.ifBlank { udpDefault }.toInt(),
                                     ) == true
                                 }.also { created -> if (created) writeNewLinkFlags(chosen, autoConnect, highLatency) }
                             }

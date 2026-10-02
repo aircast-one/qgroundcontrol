@@ -106,9 +106,9 @@ class LinksScreenTest {
 
     @Test
     fun `a port outside the valid range is refused`() {
-        assertEquals("Port must be a number between 1 and 65535.", linkFormError("udp", "", "0"))
-        assertEquals("Port must be a number between 1 and 65535.", linkFormError("udp", "", "70000"))
-        assertEquals("Port must be a number between 1 and 65535.", linkFormError("udp", "", "abc"))
+        assertEquals("Enter a port between 1 and 65535, or leave it blank for 14550", linkFormError("udp", "", "0"))
+        assertEquals("Enter a port between 1 and 65535, or leave it blank for 14550", linkFormError("udp", "", "70000"))
+        assertEquals("Enter a port between 1 and 65535, or leave it blank for 14550", linkFormError("udp", "", "abc"))
     }
 
     @Test
@@ -165,7 +165,11 @@ class SerialLinkFormTest {
 
     @Test
     fun `the automatic name is the port's leaf`() {
-        assertEquals("Serial ttyUSB0", autoSerialName("/dev/ttyUSB0"))
+        assertEquals("Holybro radio (ttyUSB0)", autoSerialName("Holybro radio (ttyUSB0)"))
+        assertEquals("a port with no display name is suggested as plain Serial, as SerialSettings does", "Serial", autoSerialName(""))
+        assertEquals("5760", portFor("tcp", "14550"))
+        assertEquals("14551", portFor("udp", "14551"))
+        assertNull("a blank UDP port means the configured listen port", linkFormError("udp", "", "", "14551"))
     }
 
     @Test

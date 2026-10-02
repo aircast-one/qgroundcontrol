@@ -102,7 +102,7 @@ pub fn owned() -> bool {
 }
 
 pub fn table() -> TypeTable {
-    TypeTable::new(cfg!(not(any(target_os = "ios", target_os = "android"))), cfg!(debug_assertions))
+    TypeTable::new(cfg!(not(target_os = "ios")), cfg!(debug_assertions))
 }
 
 fn defaults() -> Defaults {
@@ -175,7 +175,12 @@ fn create_serial(name: &str, port_name: &str, baud: i64) -> bool {
     if table().code(crate::linkconfig::LinkKind::Serial).is_none() || port_name.is_empty() || baud <= 0 {
         return false;
     }
-    add(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port_name.to_string(), port_display_name: String::new() } })
+    add(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port_name.to_string(), port_display_name: serial_display_name(port_name).unwrap_or_default() } })
+}
+
+fn serial_display_name(location: &str) -> Option<String> {
+    let port = serial_ports().into_iter().find(|p| p.system_location == location)?;
+    Some(if cfg!(target_os = "android") { crate::platformserial::display_name(&port) } else { port.port_name })
 }
 
 fn create_bluetooth(name: &str, device_name: &str, address: &str) -> bool {
@@ -257,7 +262,9 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
         (Kind::Tcp { host, .. }, "port") => Kind::Tcp { host: host.clone(), port: port? },
         (Kind::Udp { hosts, .. }, "localPort") => Kind::Udp { local_port: port?, hosts: hosts.clone() },
         (Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_display_name, .. }, "portName") => {
-            Kind::Serial { baud: *baud, data_bits: *data_bits, flow_control: *flow_control, stop_bits: *stop_bits, parity: *parity, port_name: text?, port_display_name: port_display_name.clone() }
+            let port_name = text?;
+            let shown = serial_display_name(&port_name).unwrap_or_else(|| port_display_name.clone());
+            Kind::Serial { baud: *baud, data_bits: *data_bits, flow_control: *flow_control, stop_bits: *stop_bits, parity: *parity, port_name, port_display_name: shown }
         }
         (Kind::Serial { data_bits, flow_control, stop_bits, parity, port_name, port_display_name, .. }, "baud") => {
             Kind::Serial { baud: value.as_i64()?, data_bits: *data_bits, flow_control: *flow_control, stop_bits: *stop_bits, parity: *parity, port_name: port_name.clone(), port_display_name: port_display_name.clone() }
