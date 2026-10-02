@@ -253,6 +253,7 @@ internal fun MapSpikeScreen(
 
     val planStatus by mapPath("view.plan")
     val planHasItems = remember(planStatus) { planStatus?.optBoolean("containsItems") == true }
+    val globalFrame = remember(planStatus) { planStatus?.takeIf { it.has("globalAltitudeFrame") && !it.isNull("globalAltitudeFrame") }?.optInt("globalAltitudeFrame") }
     val planOffline = remember(planStatus) { planStatus?.optBoolean("offline") == true }
     val planDirty = remember(planStatus) { planStatus?.optBoolean("dirty") == true }
     val planSyncing = remember(planStatus) {
@@ -970,13 +971,14 @@ internal fun MapSpikeScreen(
                                     },
                                 ) { Text("-10") }
 
-                                AltitudeModePicker(
+                                if (itemReferenceShown(globalFrame)) AltitudeModePicker(
                                     item = item,
                                     onPick = { raw ->
                                         onBridge("Setting the altitude frame") {
                                             PlanBridge.setAltitudeMode(item.index, raw)
                                         }
                                     },
+                                    globalFrameMixed = itemReferenceSelectable(globalFrame),
                                 )
                             }
 

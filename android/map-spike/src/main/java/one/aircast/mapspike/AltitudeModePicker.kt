@@ -13,17 +13,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 
+const val GLOBAL_FRAME_MIXED = 0
+const val GLOBAL_FRAME_RELATIVE = 1
+
+fun itemReferenceShown(globalFrame: Int?): Boolean = globalFrame != GLOBAL_FRAME_RELATIVE
+
+fun itemReferenceSelectable(globalFrame: Int?): Boolean = globalFrame == null || globalFrame == GLOBAL_FRAME_MIXED
+
 @Composable
 fun AltitudeModePicker(
     item: MissionItem,
     onPick: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    globalFrameMixed: Boolean = true,
 ) {
     var open by remember(item.index) { mutableStateOf(false) }
     val json by mapPath(altitudeModesPath(MISSION_CONTEXT, item.altitudeMode))
     val view = altitudeModesView(json)
     val picks = choosable(view)
-    val live = offersChoice(view)
+    val live = globalFrameMixed && offersChoice(view)
     val current = picks.firstOrNull { it.current }?.title
         ?: item.altitudeFrameText.ifBlank { FRAME_UNKNOWN }
 
