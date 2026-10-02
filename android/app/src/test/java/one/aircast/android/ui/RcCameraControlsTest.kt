@@ -14,4 +14,11 @@ class RcCameraControlsTest {
         assertFalse(rcCameraChannels(0, 0, 0, 0, 0).any)
         assertTrue(rcCameraChannels(0, 0, 9, 0, 0).any)
     }
+
+    @Test
+    fun `record shows on when either the stream or the record channel records, as _recording does`() {
+        assertTrue(cameraRecording(recordChannel = 0, channelRecording = false, streamRecording = true))
+        assertTrue(cameraRecording(recordChannel = 5, channelRecording = true, streamRecording = false))
+        assertFalse(cameraRecording(recordChannel = 0, channelRecording = true, streamRecording = false))
+    }
 }

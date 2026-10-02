@@ -199,6 +199,7 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
                 Vec::new()
             }
             Out::StopReceiver { receiver } if receiver == MAIN_RECEIVER => {
+                crate::subtitles::stop();
                 host.wanted = false;
                 host.reported = (false, false, 0, 0);
                 host.state.on_stop_complete(MAIN_RECEIVER, Outcome::Ok)
@@ -335,6 +336,19 @@ fn report(host: &mut Host, running: bool, frames: i64, width: u32, height: u32) 
 
 pub fn invoke(path: &str, args: &str) -> Option<Value> {
     served().then_some(())?;
+    match path {
+        "video.startRecording" => {
+            return Some(match start_recording() {
+                Ok(()) => json!({ "ok": true }),
+                Err(reason) => json!({ "ok": false, "reason": reason }),
+            });
+        }
+        "video.stopRecording" => {
+            stop_recording();
+            return Some(json!({ "ok": true }));
+        }
+        _ => {}
+    }
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let mut guard = synced();
     let host = guard.as_mut()?;

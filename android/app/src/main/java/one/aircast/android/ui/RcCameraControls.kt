@@ -12,6 +12,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -23,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.settingControl
@@ -37,6 +40,9 @@ internal data class RcCameraChannels(val tilt: Int, val pan: Int, val zoom: Int,
 internal fun rcCameraChannels(tilt: Int, pan: Int, zoom: Int, light: Int, record: Int): RcCameraChannels =
     RcCameraChannels(tilt = tilt, pan = if (pan == tilt) 0 else pan, zoom = zoom, light = light, record = record)
 
+internal fun cameraRecording(recordChannel: Int, channelRecording: Boolean, streamRecording: Boolean): Boolean =
+    streamRecording || (recordChannel > 0 && channelRecording)
+
 private fun send(channel: Int, pwm: Int) {
     if (channel > 0) offMainDetached { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
 }
@@ -50,6 +56,7 @@ private fun channelSetting(name: String): Int {
 @Composable
 private fun PwmSlider(label: String, channel: Int, pwm: Int, onPwm: (Int) -> Unit) {
     var lastSent by remember(channel) { mutableLongStateOf(0L) }
+    val latest by rememberUpdatedState(pwm)
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(64.dp))
         Slider(
@@ -63,7 +70,7 @@ private fun PwmSlider(label: String, channel: Int, pwm: Int, onPwm: (Int) -> Uni
                     send(channel, next)
                 }
             },
-            onValueChangeFinished = { send(channel, pwm) },
+            onValueChangeFinished = { send(channel, latest) },
             valueRange = PWM_MIN.toFloat()..PWM_MAX.toFloat(),
             modifier = Modifier.width(180.dp),
         )
@@ -81,12 +88,17 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     )
     val gimbalJson by qgcPath(GIMBAL_VIEW)
     val gimbalManager = gimbalJson?.optBoolean("shown") == true
-    var tilt by remember { mutableIntStateOf(PWM_CENTER) }
-    var pan by remember { mutableIntStateOf(PWM_CENTER) }
-    var zoom by remember { mutableIntStateOf(PWM_CENTER) }
-    var lightOn by remember { mutableStateOf(false) }
-    var recording by remember { mutableStateOf(false) }
+    val vehiclesJson by qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    val vehicleId = activeVehicleId(vehiclesJson)
+    val streamRecording by qgcBool("video.recording")
+    var tilt by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
+    var pan by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
+    var zoom by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
+    var lightOn by remember(vehicleId) { mutableStateOf(false) }
+    var channelRecording by remember(vehicleId) { mutableStateOf(false) }
+    DisposableEffect(vehicleId) { onDispose { offMainDetached { Qgc.invoke("vehicle.clearRcChannelOverrides") } } }
     if (!hasVehicle() || !channels.any) return
+    val recording = cameraRecording(channels.record, channelRecording, streamRecording)
     val rcGimbal = !gimbalManager && (channels.tilt > 0 || channels.pan > 0)
     Column(modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         if (!gimbalManager && channels.tilt > 0) PwmSlider("Tilt", channels.tilt, tilt) { tilt = it }
@@ -95,8 +107,10 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (channels.record > 0) {
                 FilterChip(selected = recording, onClick = {
-                    recording = !recording
-                    send(channels.record, if (recording) PWM_MAX else PWM_MIN)
+                    val next = !recording
+                    channelRecording = next
+                    send(channels.record, if (next) PWM_MAX else PWM_MIN)
+                    offMainDetached { Qgc.invoke(if (next) "video.startRecording" else "video.stopRecording") }
                 }, label = { Text("Record") })
             }
             if (channels.light > 0) {

@@ -7,13 +7,17 @@ const CONTROLS: &str = "settings.flyViewSettings.rcControls.rawValue";
 const CHANNELS: std::ops::RangeInclusive<i64> = 1..=18;
 const PWM: std::ops::RangeInclusive<i64> = 800..=2200;
 
+const CAMERA_CHANNELS: [&str; 5] = ["gimbalTiltChannel", "gimbalPanChannel", "cameraZoomChannel", "cameraLightChannel", "cameraRecordChannel"];
+
 fn configured_channels(backend: &dyn Backend) -> Vec<i64> {
     let text = object(&backend.get(CONTROLS)).get("value").and_then(Value::as_str).unwrap_or("[]").to_string();
-    serde_json::from_str::<Value>(&text)
+    let controls: Vec<i64> = serde_json::from_str::<Value>(&text)
         .ok()
         .and_then(|v| v.as_array().cloned())
         .map(|controls| controls.iter().filter_map(|c| c.get("channel")?.as_i64()).collect())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    let camera = CAMERA_CHANNELS.iter().filter_map(|name| crate::read::value_number(&backend.get(&format!("settings.flyViewSettings.{name}.rawValue"))).map(|c| c as i64).filter(|c| *c > 0));
+    controls.into_iter().chain(camera).collect()
 }
 
 fn connected(backend: &dyn Backend) -> bool {

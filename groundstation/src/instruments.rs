@@ -90,7 +90,6 @@ pub fn vehicle_class_key(class: &Value) -> &'static str {
 }
 
 pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
-    crate::subtitles::note_shown(args);
     let class = object(&backend.get_fields("vehicle", "fixedWing,vtol,airship,multiRotor,rover,sub"));
     let forward_flight = ["fixedWing", "vtol", "airship"].iter().any(|key| crate::read::flag(&class, key));
     let items: Vec<Value> = selections(args, forward_flight)

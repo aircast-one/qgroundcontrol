@@ -54,22 +54,32 @@ pub fn events(start_ms: u64, end_ms: u64, rows: &[(String, String)], size: (u32,
 struct Capture {
     file: std::fs::File,
     size: (u32, u32),
+    started_ms: u64,
     written_ms: u64,
-    last_tick_ms: u64,
+    shown: Option<Vec<String>>,
 }
 
 static CAPTURE: Mutex<Option<Capture>> = Mutex::new(None);
-static SHOWN: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-pub fn note_shown(args: &[String]) {
-    *SHOWN.lock().unwrap_or_else(PoisonError::into_inner) = args.to_vec();
+const CHOSEN_KEY: &str = "Subtitles/instruments";
+
+pub const SET_INSTRUMENTS: &str = "subtitles.setInstruments";
+
+pub fn set_instruments(vehicle_class: &str, chosen: &str) {
+    crate::settingsstore::written(&format!("{CHOSEN_KEY}/{vehicle_class}"), chosen);
+}
+
+fn chosen_for(vehicle_class: &str) -> Vec<String> {
+    crate::settingsstore::stored_text(&format!("{CHOSEN_KEY}/{vehicle_class}"))
+        .map(|csv| csv.split(',').filter(|n| !n.is_empty()).map(str::to_string).collect())
+        .unwrap_or_default()
 }
 
 pub fn start(video_file: &str, size: Option<(u32, u32)>, now_ms: u64) {
     let size = size.filter(|(w, h)| *w > 0 && *h > 0).unwrap_or(FALLBACK_SIZE);
     let opened = std::fs::File::create(path_for(video_file)).and_then(|mut file| file.write_all(header(size.0, size.1).as_bytes()).map(|()| file));
     *CAPTURE.lock().unwrap_or_else(PoisonError::into_inner) = match opened {
-        Ok(file) => Some(Capture { file, size, written_ms: 0, last_tick_ms: now_ms }),
+        Ok(file) => Some(Capture { file, size, started_ms: now_ms, written_ms: 0, shown: None }),
         Err(error) => {
             log::warn!("Unable to write subtitle data to file: {error}");
             None
@@ -81,9 +91,8 @@ pub fn stop() {
     *CAPTURE.lock().unwrap_or_else(PoisonError::into_inner) = None;
 }
 
-fn rows(backend: &dyn Backend) -> Vec<(String, String)> {
-    let shown = SHOWN.lock().unwrap_or_else(PoisonError::into_inner).clone();
-    let view = crate::instruments::instruments_view(backend, &shown);
+fn rows(backend: &dyn Backend, shown: &[String]) -> Vec<(String, String)> {
+    let view = crate::instruments::instruments_view(backend, shown);
     view["items"]
         .as_array()
         .into_iter()
@@ -96,16 +105,25 @@ fn rows(backend: &dyn Backend) -> Vec<(String, String)> {
 }
 
 pub fn tick(backend: &dyn Backend, now_ms: u64) {
-    let mut capture = CAPTURE.lock().unwrap_or_else(PoisonError::into_inner);
-    let Some(active) = capture.as_mut() else { return };
-    if now_ms.saturating_sub(active.last_tick_ms) < SAMPLE_MS || !crate::vehiclefacade::switched_on() || crate::hub::lock().active().is_none() {
+    let due = CAPTURE.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(|active| {
+        let elapsed = now_ms.saturating_sub(active.started_ms) / SAMPLE_MS * SAMPLE_MS;
+        (elapsed > active.written_ms).then(|| (active.written_ms, elapsed, active.size, active.shown.clone()))
+    });
+    let Some((start, end, size, chosen)) = due else { return };
+    if !crate::vehiclefacade::switched_on() || crate::hub::lock().active().is_none() {
         return;
     }
-    active.last_tick_ms = now_ms;
-    let (start, end) = (active.written_ms, active.written_ms + SAMPLE_MS);
-    active.written_ms = end;
+    let shown = chosen.unwrap_or_else(|| {
+        let class = crate::instruments::instruments_view(backend, &[])["vehicleClass"].as_str().unwrap_or("generic").to_string();
+        chosen_for(&class)
+    });
     let date = chrono::Local::now().format("%x").to_string();
-    let _ = active.file.write_all(events(start, end, &rows(backend), active.size, &date).as_bytes());
+    let text = events(start, end, &rows(backend, &shown), size, &date);
+    if let Some(active) = CAPTURE.lock().unwrap_or_else(PoisonError::into_inner).as_mut().filter(|active| active.written_ms == start) {
+        active.written_ms = end;
+        active.shown = Some(shown);
+        let _ = active.file.write_all(text.as_bytes());
+    }
 }
 
 #[cfg(test)]
