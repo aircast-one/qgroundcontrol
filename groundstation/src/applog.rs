@@ -147,6 +147,51 @@ fn level_of(level: log::Level) -> usize {
     }
 }
 
+static DISK_PENDING: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
+const DISK_LOG_NAME: &str = "AppLog";
+const DISK_LOG_EXTENSION: &str = "log";
+const BYTES_PER_MB: u64 = 1024 * 1024;
+
+fn disk_log_path(dir: &std::path::Path, backup: Option<u32>) -> std::path::PathBuf {
+    dir.join(match backup {
+        Some(index) => format!("{DISK_LOG_NAME}.{index}.{DISK_LOG_EXTENSION}"),
+        None => format!("{DISK_LOG_NAME}.{DISK_LOG_EXTENSION}"),
+    })
+}
+
+fn rotate(dir: &std::path::Path, backups: u32) {
+    (1..backups).rev().for_each(|index| {
+        let to = disk_log_path(dir, Some(index + 1));
+        let _ = std::fs::remove_file(&to);
+        let _ = std::fs::rename(disk_log_path(dir, Some(index)), to);
+    });
+    let _ = std::fs::rename(disk_log_path(dir, None), disk_log_path(dir, Some(1)));
+}
+
+pub fn write_rotating(dir: &std::path::Path, text: &str, max_bytes: u64, backups: u32) -> std::io::Result<()> {
+    use std::io::Write;
+    std::fs::create_dir_all(dir)?;
+    let path = disk_log_path(dir, None);
+    std::fs::OpenOptions::new().create(true).append(true).open(&path)?.write_all(text.as_bytes())?;
+    if std::fs::metadata(&path)?.len() >= max_bytes {
+        rotate(dir, backups);
+    }
+    Ok(())
+}
+
+pub fn flush_to_disk() {
+    let pending = std::mem::take(&mut *DISK_PENDING.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+    let setting = |path: &str| crate::settingsstore::raw_setting(path);
+    let enabled = setting("settings.logManagerSettings.diskLoggingEnabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    let persisting = !setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
+    let Some(dir) = crate::settingsstore::log_save_path().filter(|_| enabled && persisting && !pending.is_empty()) else { return };
+    let max_bytes = setting("settings.logManagerSettings.diskLoggingMaxFileSizeMB").and_then(|v| v.as_u64()).unwrap_or(10) * BYTES_PER_MB;
+    let backups = setting("settings.logManagerSettings.diskLoggingMaxBackupFiles").and_then(|v| v.as_u64()).and_then(|v| u32::try_from(v).ok()).unwrap_or(5);
+    if let Err(error) = write_rotating(std::path::Path::new(&dir), &as_text(&pending), max_bytes, backups) {
+        eprintln!("app log could not be written to {dir}: {error}");
+    }
+}
+
 pub fn record_entry(level: usize, category: &str, message: &str, file: &str, line: u32) {
     let Ok(mut store) = STORE.lock() else { return };
     let sequence = store.next;
@@ -154,6 +199,11 @@ pub fn record_entry(level: usize, category: &str, message: &str, file: &str, lin
     store.entries.push_back(Entry { sequence, timestamp: Local::now(), elapsed_ms: STARTED.elapsed().as_millis() as u64, level, category: category.to_string(), message: message.to_string(), file: file.to_string(), line });
     if store.entries.len() > MAX_LOG_ENTRIES {
         store.entries.pop_front();
+    }
+    if let (Some(entry), Ok(mut pending)) = (store.entries.back().cloned(), DISK_PENDING.lock()) {
+        if pending.len() < MAX_LOG_ENTRIES {
+            pending.push(entry);
+        }
     }
 }
 
@@ -311,6 +361,20 @@ pub fn log_view(_backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_disk_log_rotates_into_numbered_backups_like_log_manager() {
+        let dir = std::env::temp_dir().join(format!("applog-rotate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        write_rotating(&dir, "first\n", 4, 2).unwrap();
+        write_rotating(&dir, "second\n", 4, 2).unwrap();
+        write_rotating(&dir, "third\n", 4, 2).unwrap();
+        let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap_or_default();
+        assert_eq!((read("AppLog.1.log"), read("AppLog.2.log"), read("AppLog.3.log"), read("AppLog.log")), ("third\n".to_string(), "second\n".to_string(), String::new(), String::new()), "AppLog.log moves to .1, older ones shift up, and only MaxBackupFiles are kept");
+        write_rotating(&dir, "ab", 10, 2).unwrap();
+        assert_eq!(read("AppLog.log"), "ab", "a file under the size limit stays where it is");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn a_log_time_is_the_clock_or_the_seconds_since_start() {

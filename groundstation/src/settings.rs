@@ -19,7 +19,7 @@ struct Page {
 }
 
 const PAGES: &[Page] = &[
-    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings"), ("Save To Disk", "logManagerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("Battery Indicator", "batteryIndicatorSettings"), ("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
@@ -73,6 +73,8 @@ const STREAMS_FROM_VEHICLE: &str = "Stream rates are controlled by the vehicle."
 const ADSB_SERVER_OFF: &str = "Has no effect while the ADSB server connection is off.";
 
 const GATED: &[(&str, &str, bool, &str)] = &[
+    ("diskLoggingMaxFileSizeMB", "diskLoggingEnabled", true, DISK_LOGGING_OFF),
+    ("diskLoggingMaxBackupFiles", "diskLoggingEnabled", true, DISK_LOGGING_OFF),
     ("enforceChecklist", "useChecklist", true, CHECKLIST_OFF),
     ("ntripServerHostAddress", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
     ("ntripServerPort", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
@@ -99,6 +101,8 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("streamRateExtra2", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
     ("streamRateExtra3", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
 ];
+
+const DISK_LOGGING_OFF: &str = "Writing the log to disk is off";
 
 const GATED_FROM: &[(&str, &str)] = &[("apmMavlinkStreamRateSettings", "mavlinkSettings")];
 
@@ -394,6 +398,7 @@ mod tests {
             ("ADSBVehicleManager", include_str!("../../src/Settings/ADSBVehicleManager.SettingsGroup.json")),
             ("APMMavlinkStreamRate", include_str!("../../src/Settings/APMMavlinkStreamRate.SettingsGroup.json")),
             ("AutoConnect", include_str!("../../src/Settings/AutoConnect.SettingsGroup.json")),
+            ("LogManager", include_str!("../../src/Settings/LogManager.SettingsGroup.json")),
         ];
         let declares = |name: &str| -> Vec<&str> {
             GROUPS.iter().filter(|(_, body)| body.contains(&format!("\"{name}\""))).map(|(group, _)| *group).collect()
