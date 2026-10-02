@@ -21,6 +21,12 @@ data class FencePolygon(
     val kindText: String = "",
     val detailText: String = "",
 )
+data class FenceRow(val index: Int, val circle: Boolean, val title: String, val detail: String)
+
+fun fenceRows(polygons: List<FencePolygon>, circles: List<FenceCircle>): List<FenceRow> =
+    polygons.map { FenceRow(it.index, false, it.kindText.ifBlank { if (it.inclusion) "Keep-in polygon" else "Keep-out polygon" }, it.detailText) } +
+        circles.map { FenceRow(it.index, true, it.kindText.ifBlank { if (it.inclusion) "Keep-in circle" else "Keep-out circle" }, it.detailText) }
+
 data class FenceCircle(
     val index: Int,
     val inclusion: Boolean,

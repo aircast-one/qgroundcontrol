@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -663,6 +665,15 @@ internal fun MapSpikeScreen(
                             onClick = { layer = option },
                             shape = SegmentedButtonDefaults.itemShape(option.ordinal, PlanLayer.entries.size),
                         ) { Text(option.label) }
+                    }
+                }
+                if (layer == PlanLayer.Fence) {
+                    fenceRows(fences, circles).forEach { row ->
+                        FenceListRow(row) {
+                            onBridge("Removing ${row.title.lowercase()}") {
+                                if (row.circle) FenceBridge.deleteCircle(row.index) else FenceBridge.deletePolygon(row.index)
+                            }
+                        }
                     }
                 }
                 FlowRow(
@@ -1542,3 +1553,14 @@ private fun StatTile(label: String, value: String) {
 }
 
 internal enum class PlanLayer(val label: String) { Mission("Mission"), Fence("Fence"), Rally("Rally") }
+
+@Composable
+private fun FenceListRow(row: FenceRow, onRemove: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(row.title, style = MaterialTheme.typography.bodyLarge)
+            if (row.detail.isNotBlank()) Text(row.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(onClick = onRemove) { Icon(Icons.Filled.Close, contentDescription = "Remove ${row.title}") }
+    }
+}
