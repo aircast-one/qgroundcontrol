@@ -236,6 +236,7 @@ pub struct Vehicle {
     actuator_action_pending: Option<u64>,
     pub motor_assignment: crate::motorassignment::MotorAssignment,
     autotune_due: Option<u64>,
+    autotune_heard_ms: u64,
     pub cameras: crate::cameraproto::Cameras,
     pub onboard_logs: crate::onboardlogs::OnboardLogs,
     pub shell: crate::shell::Shell,
@@ -463,6 +464,7 @@ impl Vehicle {
             actuator_action_pending: None,
             motor_assignment: crate::motorassignment::MotorAssignment::default(),
             autotune_due: None,
+            autotune_heard_ms: 0,
             rc_due: None,
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
@@ -1653,6 +1655,9 @@ impl Vehicle {
     }
 
     fn tick_autotune(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        if self.autotune.in_progress && now_ms.saturating_sub(self.autotune_heard_ms) > AUTOTUNE_SILENCE_MS {
+            self.autotune.on_ack(crate::autotune::RESULT_FAILED, 0);
+        }
         match self.autotune_due {
             Some(due) if self.autotune.in_progress && now_ms >= due => {
                 self.autotune_due = Some(now_ms + crate::autotune::POLL_MS);
@@ -1777,6 +1782,7 @@ impl Vehicle {
             Some("autotune") => {
                 self.autotune.request();
                 self.autotune_due = Some(now_ms + crate::autotune::POLL_MS);
+                self.autotune_heard_ms = now_ms;
                 return Ok(self.autotune_poll());
             }
             Some("pidTuningMode") => {
@@ -2902,6 +2908,7 @@ impl Vehicle {
                     false => Vec::new(),
                 };
                 if a.command as u32 as u16 == crate::autotune::CMD_DO_AUTOTUNE_ENABLE {
+                    self.autotune_heard_ms = now_ms;
                     if let Some(text) = self.autotune.on_ack(a.result as u8, a.progress) {
                         self.pending_notices.push((crate::noticeboard::MESSAGE, text.to_string()));
                     }
@@ -3390,6 +3397,7 @@ const STORAGE_RESET_FACTORY: f64 = 3.0;
 const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
 
 const GIMBAL_RATE_REPEAT_MS: u64 = 500;
+const AUTOTUNE_SILENCE_MS: u64 = crate::mavcmd::MAX_RETRY as u64 * crate::mavcmd::ACK_TIMEOUT_MS;
 
 fn sensor_parameter(name: &str) -> bool {
     name.starts_with("CAL_") || name.starts_with("SENS_")
@@ -5092,6 +5100,12 @@ mod tests {
         assert_eq!(polls(&vehicle.start_guided(&json!({ "action": "autotune" }), 30_000).unwrap()), 1);
         assert_eq!(polls(&vehicle.pump_with(30_500, None, 0)), 0);
         assert_eq!(polls(&vehicle.pump_with(31_000, None, 0)), 1, "the request repeats every second while it runs");
+        let mut silent = Hub::default();
+        connect_copter(&mut silent, &autopilot);
+        let quiet = silent.vehicles.get_mut(&1).unwrap();
+        quiet.start_guided(&json!({ "action": "autotune" }), 30_000).unwrap();
+        quiet.pump_with(30_000 + AUTOTUNE_SILENCE_MS + 1, None, 0);
+        assert_eq!(quiet.autotune.status, "Autotune: Failed", "a vehicle that never answers ends it as Autotune::handleAckFailure does after the queue gives up");
         let ack = |progress: u8, result: MavResult| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_AUTOTUNE_ENABLE, result, progress, ..Default::default() });
         hub.on_frame(origin(4), &autopilot, &ack(30, MavResult::MAV_RESULT_IN_PROGRESS), 31_100_000, 31_100);
         assert_eq!(hub.vehicles[&1].autotune.status, "Autotune: roll");

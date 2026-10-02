@@ -298,10 +298,11 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let faults: Vec<String> = sensors::sensors(&object(&backend.get("vehicle.sysStatusSensorInfo"))).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
     let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), c.needs_attention)).collect();
     let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);
-    let (ready, headline, detail) = readiness(connected, parameters_ready, &named, &faults);
+    let incomplete = parameters_reason == INCOMPLETE;
+    let counted: &[(String, bool)] = if incomplete { &[] } else { &named };
+    let (ready, headline, detail) = readiness(connected, parameters_ready, counted, &faults);
     let sub_frame = components.iter().any(|c| c.class_name == "APMSubFrameComponent");
     let flow_images = connected && crate::hub::lock().active_id().is_some_and(|id| crate::flowimage::image_index(id) > 0);
-    let incomplete = parameters_reason == INCOMPLETE;
     let components: Vec<Component> = if incomplete { Vec::new() } else { components };
     json!({
         "kind": "object",

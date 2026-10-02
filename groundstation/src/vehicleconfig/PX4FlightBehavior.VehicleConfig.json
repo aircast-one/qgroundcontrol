@@ -24,6 +24,8 @@
                     "param": "SYS_VEHICLE_RESP",
                     "label": "Responsiveness",
                     "control": "slider",
+                    "sliderMin": 0,
+                    "sliderMax": 1,
                     "enableCheckbox": {
                         "checked": "_resp.value >= 0",
                         "onClicked": "{ _resp.value = enableCheckBoxChecked ? (_resp.value < 0 ? -_resp.value : _resp.value) : (_resp.value > 0 ? -_resp.value : _resp.value) }"
@@ -45,6 +47,8 @@
                     "param": "MPC_XY_VEL_ALL",
                     "label": "Horizontal velocity (m/s)",
                     "control": "slider",
+                    "sliderMin": 0.5,
+                    "sliderMax": 20,
                     "enableCheckbox": {
                         "checked": "_xy.value >= 0",
                         "onClicked": "{ _xy.value = enableCheckBoxChecked ? (_xy.value < 0 ? -_xy.value : _xy.value) : (_xy.value > 0 ? -_xy.value : _xy.value) }"
@@ -60,6 +64,8 @@
                     "param": "MPC_Z_VEL_ALL",
                     "label": "Vertical velocity (m/s)",
                     "control": "slider",
+                    "sliderMin": 0.2,
+                    "sliderMax": 8,
                     "enableCheckbox": {
                         "checked": "_z.value >= 0",
                         "onClicked": "{ _z.value = enableCheckBoxChecked ? (_z.value < 0 ? -_z.value : _z.value) : (_z.value > 0 ? -_z.value : _z.value) }"
@@ -74,6 +80,8 @@
                     "param": "NAV_ACC_RAD",
                     "label": "Mission Turning Radius",
                     "control": "slider",
+                    "sliderMin": 2,
+                    "sliderMax": 16,
                     "optional": true
                 }
             ]

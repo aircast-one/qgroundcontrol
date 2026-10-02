@@ -34,6 +34,8 @@ struct Entry {
     flying: bool,
 }
 
+const PX4_COPTER_TYPES: [u8; 6] = [2, 3, 4, 13, 14, 15];
+
 fn entry(name: &'static str, class: &'static str, known: i64, armed: bool, flying: bool) -> Entry {
     Entry { name, class, known, requires_setup: false, setup_complete: true, armed, flying }
 }
@@ -139,7 +141,7 @@ pub fn px4(vehicle: &Vehicle, actuators: Option<Px4Actuators>) -> Vec<Value> {
         Some(outputs),
         Some(entry("Safety", "SafetyComponent", KNOWN_SAFETY, true, true)),
         Some(entry("PID Tuning", "PX4TuningComponent", UNKNOWN, true, true)),
-        exists("SYS_VEHICLE_RESP").then(|| entry("Flight Behavior", "PX4FlightBehavior", UNKNOWN, true, true)),
+        (exists("SYS_VEHICLE_RESP") && PX4_COPTER_TYPES.contains(&vehicle.vehicle_type)).then(|| entry("Flight Behavior", "PX4FlightBehavior", UNKNOWN, true, true)),
         (vehicle.parameter)(UDP_BRIDGE_COMPONENT, "SW_VER").is_some().then(|| entry("WiFi Bridge", "ESP8266Component", UNKNOWN, false, false)),
         Some(entry("Joystick", "JoystickComponent", KNOWN_JOYSTICK, false, false)),
         exists("SLNK_RADIO_CHAN").then(|| entry("Syslink", "SyslinkComponent", UNKNOWN, false, false)),

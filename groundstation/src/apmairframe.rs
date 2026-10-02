@@ -121,7 +121,7 @@ pub fn frame_classes(classes: &[(String, i64)], types: &[(String, i64)], copter:
 }
 
 pub fn type_valid(class: &FrameClass, frame_type: Option<i64>) -> bool {
-    class.default_type.is_none() || class.types.iter().any(|(_, v)| Some(*v) == frame_type)
+    class.default_type.is_none_or(|t| t == ANY_TYPE) || class.types.iter().any(|(_, v)| Some(*v) == frame_type)
 }
 
 fn image(copter: bool, class: i64, frame_type: i64) -> String {
@@ -268,6 +268,8 @@ mod tests {
         let rovers = frame_classes(&pairs(&[("Undefined", 0), ("Rover", 1), ("Boat", 2), ("BalanceBot", 3)]), &[], false);
         assert_eq!(rovers.len(), 3, "rover lists every class including the last");
         assert!(rovers.iter().all(|c| c.default_type.is_none() && type_valid(c, Some(99))));
+        let tri = FrameClass { name: "Tri".into(), value: 7, default_type: Some(ANY_TYPE), types: Vec::new() };
+        assert!(type_valid(&tri, Some(3)), "a class whose layout takes any type hides the type combo (frameTypeSupported false), so no FRAME_TYPE is invalid");
     }
 
     #[test]

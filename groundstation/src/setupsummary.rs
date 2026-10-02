@@ -74,13 +74,27 @@ fn battery_label(index: usize) -> String {
     }
 }
 
+const APM_HELI_FRAME_CLASS: f64 = 6.0;
+
 fn apm_airframe(facts: Facts, vehicle: &Vehicle) -> Rows {
+    if facts("FRAME_CLASS").is_none_or(|class| number(&class) == APM_HELI_FRAME_CLASS) {
+        return Vec::new();
+    }
     [Some(row("Frame Class", enum_of(facts, "FRAME_CLASS"))), facts("FRAME_TYPE").map(|f| row("Frame Type", enum_text(&f))), Some(row("Firmware Version", vehicle.firmware.clone()))].into_iter().flatten().collect()
 }
 
 fn apm_sub_frame(facts: Facts, vehicle: &Vehicle) -> Rows {
-    let frame = facts("FRAME_CONFIG").map(|f| number(&f) as i64);
-    let name = crate::apmsubframe::FRAMES.iter().find(|f| Some(f.value) == frame).map_or("", |f| f.name);
+    let name = match facts("FRAME_CONFIG").map(|f| number(&f) as i64) {
+        Some(0) => "BlueROV1",
+        Some(1) => "Vectored/BlueROV2",
+        Some(2) => "Vectored 6DOF",
+        Some(3) => "Vectored 6DOF 90Degree",
+        Some(4) => "SimpleROV-3",
+        Some(5) => "SimpleROV-4",
+        Some(6) => "SimpleROV-5",
+        Some(7) => "Custom",
+        _ => "Unknown",
+    };
     let (major, minor, patch) = vehicle.version;
     let firmware = match major {
         -1 => "Unknown".to_string(),
