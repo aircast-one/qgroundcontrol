@@ -563,6 +563,7 @@ fn plan_text(text: &str) -> Result<String, String> {
 }
 
 fn open(file: &str) -> Value {
+    let connected = !offline();
     let loaded = std::fs::read_to_string(file).map_err(|e| format!("Could not read {file}: {e}")).and_then(|text| load_plan(&plan_text(&text)?));
     match loaded {
         Ok(document) => {
@@ -576,6 +577,7 @@ fn open(file: &str) -> Value {
                 state.selected = 0;
                 state.file = Some(file.to_string());
                 settle_clean(&mut state);
+                state.dirty = connected;
             }
             settle_home_on_terrain(None);
             changed();
@@ -1284,7 +1286,7 @@ fn step(undoing: bool) -> Value {
         }
         state.last_change_ms = 0;
         state.dirty = state.document.as_ref().map(plandoc::save) != state.clean.as_ref().map(plandoc::save);
-        state.dirty_for_save = true;
+        state.dirty_for_save = state.dirty;
     }
     changed();
     json!({ "ok": true, "reason": null, "refusal": null })
@@ -2256,6 +2258,7 @@ pub struct PlanState {
     pub syncing: bool,
     pub progress: f64,
     pub dirty: bool,
+    pub dirty_for_save: bool,
     pub contains_items: bool,
     pub has_mission_items: bool,
     pub file: String,
@@ -2281,6 +2284,7 @@ pub fn plan_state() -> Option<PlanState> {
         syncing,
         progress,
         dirty: state.dirty,
+        dirty_for_save: state.dirty_for_save,
         contains_items: has_mission_items || has_entries(&document.fence, "polygons") || has_entries(&document.fence, "circles") || has_entries(&document.rally, "points"),
         has_mission_items,
         file: state.file.clone().unwrap_or_default(),

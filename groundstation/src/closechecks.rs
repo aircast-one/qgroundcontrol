@@ -37,7 +37,7 @@ pub fn prompts(state: &State) -> Vec<(&'static str, &'static str)> {
 pub fn close_checks_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
     let (dirty_for_save, dirty_for_upload) = match crate::coreplan::plan_state() {
-        Some(core) => (core.dirty, core.dirty),
+        Some(core) => (core.dirty_for_save, core.dirty),
         None => {
             let plan = object(&backend.get_fields("plan", "dirtyForSave,dirtyForUpload"));
             (flag(&plan, "dirtyForSave"), flag(&plan, "dirtyForUpload"))
