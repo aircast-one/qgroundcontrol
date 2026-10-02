@@ -63,6 +63,46 @@ pub fn start(backend: &dyn Backend, args: &str) -> Value {
     })
 }
 
+pub const CMD_TRACK_POINT: u16 = 2004;
+pub const CMD_TRACK_RECTANGLE: u16 = 2005;
+pub const CMD_STOP_TRACKING: u16 = 2010;
+pub const MSG_TRACKING_IMAGE_STATUS: f64 = 275.0;
+pub const STATUS_INTERVAL_US: f64 = 500_000.0;
+const STATUS_ACTIVE: u8 = 1;
+const MODE_POINT: u8 = 1;
+const DEFAULT_RADIUS: f64 = 0.05;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TrackingImage {
+    Rect { x: f64, y: f64, width: f64, height: f64 },
+    Point { x: f64, y: f64, radius: f64 },
+}
+
+impl TrackingImage {
+    pub fn rect_json(&self) -> Option<Value> {
+        match self {
+            TrackingImage::Rect { x, y, width, height } => Some(json!({ "x": x, "y": y, "width": width, "height": height })),
+            TrackingImage::Point { .. } => None,
+        }
+    }
+}
+
+pub fn tracking_image(status: u8, mode: u8, point: (f32, f32, f32), rect: (f32, f32, f32, f32), enabled: bool) -> Option<TrackingImage> {
+    let clamp = |v: f32| f64::from(v).clamp(0.0, 1.0);
+    match (enabled && status & STATUS_ACTIVE != 0, mode == MODE_POINT) {
+        (false, _) => None,
+        (true, true) => {
+            let radius = f64::from(point.2);
+            Some(TrackingImage::Point { x: clamp(point.0), y: clamp(point.1), radius: if radius.is_nan() || radius <= 0.0 { DEFAULT_RADIUS } else { radius.clamp(0.0, 1.0) } })
+        }
+        (true, false) => {
+            let (left, right) = (clamp(rect.0).min(clamp(rect.2)), clamp(rect.0).max(clamp(rect.2)));
+            let (top, bottom) = (clamp(rect.1).min(clamp(rect.3)), clamp(rect.1).max(clamp(rect.3)));
+            Some(TrackingImage::Rect { x: left, y: top, width: right - left, height: bottom - top })
+        }
+    }
+}
+
 const THERMAL_MODES: std::ops::RangeInclusive<i64> = 0..=3;
 
 fn camera(backend: &dyn Backend) -> Value {
@@ -161,6 +201,15 @@ pub fn select_camera(backend: &dyn Backend, path: &str, value: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tracking_status_reads_like_vehicle_camera_control() {
+        let Some(TrackingImage::Rect { x, y, width, height }) = tracking_image(1, 2, (0.0, 0.0, 0.0), (0.6, 0.7, 0.2, 1.3), true) else { panic!() };
+        assert!([(x, 0.2), (y, 0.7), (width, 0.4), (height, 0.3)].iter().all(|(got, want)| (got - want).abs() < 1e-6), "the rectangle is normalized and clamped: {x} {y} {width} {height}");
+        assert_eq!(tracking_image(1, 1, (0.5, 1.5, f32::NAN), (0.0, 0.0, 0.0, 0.0), true), Some(TrackingImage::Point { x: 0.5, y: 1.0, radius: 0.05 }), "a missing radius reads as 0.05");
+        assert_eq!(tracking_image(0, 2, (0.0, 0.0, 0.0), (0.1, 0.1, 0.2, 0.2), true), None, "not active");
+        assert_eq!(tracking_image(1, 2, (0.0, 0.0, 0.0), (0.1, 0.1, 0.2, 0.2), false), None, "tracking switched off in the UI ignores the camera's report");
+    }
     use std::cell::RefCell;
 
     #[test]

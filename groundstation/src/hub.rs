@@ -248,6 +248,7 @@ pub struct Vehicle {
     pub rccal: crate::rccal::RcCal,
     rccal_loaded: bool,
     pub camera_tracking_enabled: bool,
+    pub camera_tracking_image: Option<crate::cameratrack::TrackingImage>,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
     pub roi_enabled: bool,
@@ -430,6 +431,7 @@ impl Vehicle {
             rccal: crate::rccal::RcCal::default(),
             rccal_loaded: false,
             camera_tracking_enabled: false,
+            camera_tracking_image: None,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
             roi_enabled: false,
@@ -2455,11 +2457,36 @@ impl Vehicle {
                 self.cameras.set_mode(next, now_ms)
             }
             "level" => self.cameras.set_level(axis, action.get("percent").and_then(Value::as_f64).unwrap_or(0.0), now_ms),
+            "trackRect" | "trackPoint" | "stopTracking" => return self.camera_tracking(action),
             "reset" => self.cameras.reset_settings(now_ms),
             "format" => self.cameras.format_storage(action.get("storage").and_then(Value::as_u64).and_then(|s| u8::try_from(s).ok()).unwrap_or(1), now_ms),
             other => return Err(format!("Unknown camera action {other:?}")),
         };
         commands.map(|c| self.camera_commands(c)).map_err(|refusal| format!("The camera refused: {}", refusal.token()))
+    }
+
+    fn camera_tracking(&mut self, action: &Value) -> Result<Vec<Vec<u8>>, String> {
+        use crate::cameraproto::Command;
+        use crate::cameratrack::{CMD_STOP_TRACKING, CMD_TRACK_POINT, CMD_TRACK_RECTANGLE, MSG_TRACKING_IMAGE_STATUS, STATUS_INTERVAL_US};
+        let compid = self.cameras.selected().map(|camera| camera.compid).ok_or("No camera is connected.")?;
+        let number = |object: &Value, key: &str| object.get(key).and_then(Value::as_f64).ok_or(format!("Tracking needs {key}."));
+        let interval = |rate: f64| Command { compid, command: crate::mavcmd::CMD_SET_MESSAGE_INTERVAL, params: [MSG_TRACKING_IMAGE_STATUS, rate, 0.0, 0.0, 0.0, 0.0, 0.0] };
+        let commands = match action.get("op").and_then(Value::as_str) {
+            Some("trackRect") => {
+                let rect = &action["rect"];
+                let (x, y) = (number(rect, "x")?, number(rect, "y")?);
+                vec![Command { compid, command: CMD_TRACK_RECTANGLE, params: [x, y, x + number(rect, "width")?, y + number(rect, "height")?, 0.0, 0.0, 0.0] }, interval(STATUS_INTERVAL_US)]
+            }
+            Some("trackPoint") => {
+                let point = &action["point"];
+                vec![Command { compid, command: CMD_TRACK_POINT, params: [number(point, "x")?, number(point, "y")?, action.get("radius").and_then(Value::as_f64).unwrap_or(0.0), 0.0, 0.0, 0.0, 0.0] }, interval(STATUS_INTERVAL_US)]
+            }
+            _ => {
+                self.camera_tracking_image = None;
+                vec![Command { compid, command: CMD_STOP_TRACKING, params: [0.0; 7] }, interval(-1.0)]
+            }
+        };
+        Ok(self.camera_commands(commands))
     }
 
     fn camera_commands(&mut self, commands: Vec<crate::cameraproto::Command>) -> Vec<Vec<u8>> {
@@ -2790,6 +2817,10 @@ impl Vehicle {
                 }
                 self.terrain_request = Some(crate::terrainprotocol::Request { lat: r.lat, lon: r.lon, grid_spacing: r.grid_spacing, mask: r.mask });
                 return self.send_terrain(now_ms);
+            }
+            MavMessage::CAMERA_TRACKING_IMAGE_STATUS(d) => {
+                self.camera_tracking_image = crate::cameratrack::tracking_image(d.tracking_status.bits(), d.tracking_mode as u8, (d.point_x, d.point_y, d.radius), (d.rec_top_x, d.rec_top_y, d.rec_bottom_x, d.rec_bottom_y), self.camera_tracking_enabled);
+                return Vec::new();
             }
             MavMessage::PING(p) if p.target_system == 0 && p.target_component == 0 => {
                 return self.encode(&Outbound::Ping { time_usec: p.time_usec, seq: p.seq, target: (header.system_id, header.component_id) }).into_iter().collect();

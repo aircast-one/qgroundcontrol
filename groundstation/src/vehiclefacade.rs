@@ -652,6 +652,9 @@ fn real_camera_op(name: &str, args: &str) -> Option<Value> {
         "toggleCameraMode" => json!({ "op": "toggleMode" }),
         "resetSettings" => json!({ "op": "reset" }),
         "formatCard" => json!({ "op": "format", "storage": given.get(0).and_then(Value::as_u64).unwrap_or(1) }),
+        "startTrackingRect" => json!({ "op": "trackRect", "rect": given.get(0).cloned().unwrap_or(Value::Null) }),
+        "startTrackingPoint" => json!({ "op": "trackPoint", "point": given.get(0).cloned().unwrap_or(Value::Null), "radius": given.get(1).cloned().unwrap_or(Value::Null) }),
+        "stopTracking" => json!({ "op": "stopTracking" }),
         _ => return None,
     })
 }
@@ -678,7 +681,7 @@ fn current_camera_fields(recording: impl Fn() -> bool) -> Option<serde_json::Map
     let hub = crate::hub::lock();
     let vehicle = hub.active()?;
     let camera = vehicle.cameras.selected()?;
-    Some(camera_instance(camera, recording, vehicle.camera_tracking_enabled, crate::hub::now_ms()))
+    Some(camera_instance(camera, recording, vehicle.camera_tracking_enabled, vehicle.camera_tracking_image.as_ref(), crate::hub::now_ms()))
 }
 
 fn big_size_mb(size_mb: u64) -> String {
@@ -712,7 +715,7 @@ fn stored_number(key: &str) -> Option<f64> {
     crate::settingsstore::stored_text(key).and_then(|text| text.trim().parse().ok())
 }
 
-fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, tracking_enabled: bool, now_ms: u64) -> serde_json::Map<String, Value> {
+fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, tracking_enabled: bool, tracking_image: Option<&crate::cameratrack::TrackingImage>, now_ms: u64) -> serde_json::Map<String, Value> {
     use crate::cameraproto::{CAP_CAPTURE_IMAGE, CAP_CAPTURE_VIDEO, CAP_HAS_BASIC_ZOOM, CAP_HAS_MODES, CAP_HAS_TRACKING_POINT, CAP_HAS_TRACKING_RECTANGLE, CAP_HAS_VIDEO_STREAM, CAP_IMAGE_IN_VIDEO_MODE, CAP_VIDEO_IN_IMAGE_MODE};
     let info = &camera.info;
     let flag = |bits: u32| info.flags & bits != 0;
@@ -765,7 +768,8 @@ fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, trackin
         ("currentStream", json!(camera.current_stream().and_then(|current| camera.listed_streams().iter().position(|stream| stream.stream_id == current.stream_id)).unwrap_or(0))),
     ];
     let unthermal = camera.thermal_stream().is_none().then(|| ("thermalStreamInstance", Value::Null));
-    let untracked = (!tracking).then(|| [("trackingImageIsActive", json!(false)), ("trackingImageRect", Value::Null)]).into_iter().flatten();
+    let image = tracking_image.filter(|_| tracking);
+    let untracked = [("trackingImageIsActive", json!(image.is_some())), ("trackingImageRect", image.and_then(crate::cameratrack::TrackingImage::rect_json).unwrap_or(Value::Null))].into_iter();
     plain.into_iter().chain(unthermal).chain(untracked).map(|(k, v)| (k.to_string(), v)).collect()
 }
 
@@ -1767,6 +1771,8 @@ mod tests {
         assert_eq!(real_camera_op("toggleVideoRecording", "[]"), Some(json!({ "op": "toggleRecording" })));
         assert_eq!(real_camera_op("setCameraModeVideo", "[]"), Some(json!({ "op": "setMode", "mode": crate::cameraproto::MODE_VIDEO })));
         assert_eq!(real_camera_op("formatCard", "[2]"), Some(json!({ "op": "format", "storage": 2 })), "formatCard takes the storage id, 1 for the first");
+        assert_eq!(real_camera_op("startTrackingRect", r#"[{"x":0.1,"y":0.2,"width":0.3,"height":0.4}]"#), Some(json!({ "op": "trackRect", "rect": { "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4 } })));
+        assert_eq!(real_camera_op("startTrackingPoint", r#"[{"x":0.5,"y":0.5},0.05]"#), Some(json!({ "op": "trackPoint", "point": { "x": 0.5, "y": 0.5 }, "radius": 0.05 })));
         assert_eq!(real_camera_op("startTracking", "[]"), None, "anything else is left to the host");
     }
 
