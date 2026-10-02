@@ -1075,14 +1075,18 @@ fn parameter_address(vehicle: &crate::hub::Vehicle, call: &str) -> Option<(u8, S
 
 pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
     let (call, rest) = path.strip_prefix("vehicle.parameterManager.getParameter(")?.split_once(')')?;
-    let raw_given = match rest {
-        ".rawValue" => true,
-        "" | ".value" => false,
-        _ => return None,
-    };
     let given = serde_json::from_str::<Value>(value).ok()?;
     let given = given.get("value").cloned().unwrap_or(given);
-    let number = given.as_f64().or_else(|| given.as_bool().map(f64::from)).or_else(|| given.as_str().and_then(|t| t.trim().parse::<f64>().ok()))?;
+    let (raw_given, number) = match rest {
+        ".enumIndex" => {
+            let index = usize::try_from(given.as_i64()?).ok()?;
+            let fact = answer_parameter(&format!("vehicle.parameterManager.getParameter({call})"))?;
+            (true, fact.get("enumValues")?.get(index)?.as_f64()?)
+        }
+        ".rawValue" => (true, given.as_f64().or_else(|| given.as_bool().map(f64::from)).or_else(|| given.as_str().and_then(|t| t.trim().parse::<f64>().ok()))?),
+        "" | ".value" => (false, given.as_f64().or_else(|| given.as_bool().map(f64::from)).or_else(|| given.as_str().and_then(|t| t.trim().parse::<f64>().ok()))?),
+        _ => return None,
+    };
     let (vehicle_id, component, name, raw) = {
         let hub = crate::hub::lock();
         let vehicle = hub.active()?;
@@ -1834,7 +1838,7 @@ impl<B: Backend> Backend for Facade<B> {
 mod tests {
     #[test]
     fn a_parameter_write_names_its_path_kind_and_refuses_what_is_not_a_write() {
-        assert_eq!(parameter_write("vehicle.parameterManager.getParameter(1,X).enumIndex", "{\"value\":1}"), None, "only the fact, its value and its raw value are written as a parameter");
+        assert_eq!(parameter_write("vehicle.parameterManager.getParameter(1,X).enumStrings", "{\"value\":1}"), None, "only the fact, its value, raw value and enum index are written as a parameter");
         assert_eq!(parameter_write("vehicle.other", "{\"value\":1}"), None);
     }
 
