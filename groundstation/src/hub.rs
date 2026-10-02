@@ -2259,6 +2259,11 @@ impl Vehicle {
         self.pending_notices.push((crate::noticeboard::MESSAGE, format!("{}{text}", self.speech_prefix)));
     }
 
+    pub fn is_standby(&self, link: LinkId) -> bool {
+        let cloud = &self.link_kinds.cloud;
+        self.primary_link.is_some_and(|primary| primary != link && self.link_states.len() >= 2 && (cloud.contains(&link) || cloud.contains(&primary)))
+    }
+
     pub fn note_link(&mut self, link: LinkId, now_ms: u64) {
         match self.link_states.iter_mut().find(|(id, _, _)| *id == link) {
             Some(state) => {
@@ -3455,6 +3460,10 @@ impl Hub {
         if !matches!(message, MavMessage::RADIO_STATUS(_)) {
             vehicle.note_link(origin.link, now_ms);
         }
+        if vehicle.is_standby(origin.link) {
+            let link = vehicle.link;
+            return bytes.into_iter().map(|bytes| (link, bytes)).collect();
+        }
         if origin.v2 {
             vehicle.max_proto_version = Some(PROTO_MAVLINK2);
         }
@@ -4278,6 +4287,21 @@ mod tests {
         hub.check_links(3_000, &kinds);
         hub.on_frame(Origin { link: 3, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 3_100);
         assert_eq!(hub.active().unwrap().primary_link, Some(2), "a high-latency link never displaces a live normal one");
+    }
+
+    #[test]
+    fn a_message_heard_on_the_standby_cloud_relay_is_not_handled_twice() {
+        use mavlink::dialects::ardupilotmega::{MavSeverity, STATUSTEXT_DATA};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let kinds = LinkKinds { cloud: vec![1], ..LinkKinds::default() };
+        hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
+        hub.check_links(100, &kinds);
+        hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 200);
+        let text = MavMessage::STATUSTEXT(STATUSTEXT_DATA { severity: MavSeverity::MAV_SEVERITY_INFO, text: (*b"Hello once\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0").into(), ..STATUSTEXT_DATA::default() });
+        hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &text, 0, 300);
+        hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &text, 0, 310);
+        assert_eq!(hub.active().unwrap().recent.len(), 1, "VehicleLinkManager::isStandby drops what the relay repeats while the direct link is primary");
     }
 
     #[test]
