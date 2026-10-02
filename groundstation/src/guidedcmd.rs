@@ -296,6 +296,7 @@ pub fn change_altitude(state: &VehicleState, delta: f64, pause_first: bool) -> P
             steps.push(Step::Command { command: CMD_DO_REPOSITION, params: [-1.0, REPOSITION_CHANGE_MODE, 0.0, nan(), nan(), nan(), target], command_int: false, frame: FRAME_GLOBAL, show_error: true });
             Plan::Steps(steps)
         }
+        AUTOPILOT_ARDUPILOT if modes::vehicle_class(state.vehicle_type) == VehicleClass::Rover => Plan::Refused("Change altitude not supported.".into()),
         AUTOPILOT_ARDUPILOT => {
             if state.altitude_relative.is_none_or(|a| !a.is_finite()) {
                 return Plan::Refused("Unable to change altitude, vehicle altitude not known.".into());
@@ -452,6 +453,12 @@ mod tests {
             Step::Command { command, .. } => format!("cmd {command}"),
             other => format!("{other:?}"),
         }).collect()
+    }
+
+    #[test]
+    fn an_ardurover_refuses_an_altitude_change_as_its_plugin_does() {
+        let rover = VehicleState { vehicle_type: 10, ..copter() };
+        assert_eq!(change_altitude(&rover, 10.0, false), Plan::Refused("Change altitude not supported.".into()), "ArduRoverFirmwarePlugin::guidedModeChangeAltitude");
     }
 
     #[test]

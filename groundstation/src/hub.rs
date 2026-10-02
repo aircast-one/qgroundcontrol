@@ -376,6 +376,10 @@ fn sub_video_defaults() {
     }
 }
 
+pub fn transfer_failed_text(plan: &str, error: &str) -> String {
+    transfer_failed(if plan == "fence" { plantransfer::PLAN_FENCE } else { plantransfer::PLAN_RALLY }, error)
+}
+
 fn transfer_failed(kind: u8, error: &str) -> String {
     let name = match kind {
         plantransfer::PLAN_FENCE => "GeoFence",

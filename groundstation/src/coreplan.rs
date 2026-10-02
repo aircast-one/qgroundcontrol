@@ -557,7 +557,7 @@ fn plan_text(text: &str) -> Result<String, String> {
 }
 
 fn open(file: &str) -> Value {
-    let loaded = std::fs::read_to_string(file).map_err(|e| format!("Could not read {file}: {e}")).and_then(|text| plandoc::load(&plan_text(&text)?, offline_type("offlineEditingVehicleClass")));
+    let loaded = std::fs::read_to_string(file).map_err(|e| format!("Could not read {file}: {e}")).and_then(|text| load_plan(&plan_text(&text)?));
     match loaded {
         Ok(document) => {
             let count = document.items.len();
@@ -659,9 +659,11 @@ fn send_after_mission(document: Document) {
         let previous = std::iter::once("mission").chain(wanted.iter().copied()).collect::<Vec<_>>();
         wanted.iter().zip(previous).for_each(|(kind, before)| {
             if settle(before) {
-                let started = crate::hub::lock().mission_request(None, &send_shape(kind, &document), crate::hub::now_ms());
-                if let Ok(outbound) = started {
-                    deliver(outbound);
+                match crate::hub::lock().mission_request(None, &send_shape(kind, &document), crate::hub::now_ms()) {
+                    Ok(outbound) => deliver(outbound),
+                    Err(error) => {
+                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::transfer_failed_text(kind, &error));
+                    }
                 }
             }
         });
@@ -812,7 +814,7 @@ pub fn on_host_event(backend: &dyn Backend, path: &str, value: &str) -> bool {
     let file = host_file();
     let path = file.to_string_lossy().to_string();
     backend.invoke("plan.saveToFile", &json!([path]).to_string());
-    let adopted = std::fs::read_to_string(&file).map_err(|e| e.to_string()).and_then(|text| plandoc::load(&text, offline_type("offlineEditingVehicleClass")));
+    let adopted = std::fs::read_to_string(&file).map_err(|e| e.to_string()).and_then(|text| load_plan(&text));
     {
         let mut state = held();
         state.fetching = false;
@@ -896,6 +898,14 @@ fn fence_from(snapshot: &Value) -> Value {
         Value::Object(fence)
     })
     .unwrap_or(Value::Null)
+}
+
+fn load_plan(text: &str) -> Result<Document, String> {
+    plandoc::load(text, offline_type("offlineEditingVehicleClass")).map(|document| Document {
+        cruise_speed: if document.cruise_speed.is_nan() { remembered_speed("offlineEditingCruiseSpeed", 15.0) } else { document.cruise_speed },
+        hover_speed: if document.hover_speed.is_nan() { remembered_speed("offlineEditingHoverSpeed", 5.0) } else { document.hover_speed },
+        ..document
+    })
 }
 
 fn remembered_speed(name: &str, fallback: f64) -> f64 {
@@ -1355,7 +1365,7 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
     let placed_home = clicked.is_some_and(|(latitude, longitude)| {
         let mut state = held();
         let homeless = state.document.as_ref().is_some_and(|d| d.home.is_none());
-        state.document = state.document.take().map(|d| Document { home: d.home.or(Some([latitude, longitude, 0.0])), ..d });
+        state.document = state.document.take().map(|d| Document { home: d.home.or_else(|| plandoc::home_from_first_coordinate(&d, Some((latitude, longitude)))), ..d });
         homeless
     });
     if placed_home {
@@ -1890,6 +1900,14 @@ mod tests {
         assert_eq!(speed_in_force(&doc(1, vec![]), 0, 5.0, 15.0), 15.0, "a plane at cruise");
         assert_eq!(speed_in_force(&doc(2, vec![simple(178, 10.0)]), 1, 5.0, 15.0), 10.0, "a standalone DO_CHANGE_SPEED counts");
         assert_eq!(speed_in_force(&doc(2, vec![simple(178, -1.0)]), 1, 5.0, 15.0), 5.0, "one leaving the speed alone does not");
+    }
+
+    #[test]
+    fn a_plan_without_speeds_keeps_the_offline_speeds_as_qgc_does() {
+        let text = r#"{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{"version":2,"firmwareType":12,"vehicleType":2,"plannedHomePosition":[47.0,8.0,500],"items":[]},"geoFence":{"version":2,"polygons":[],"circles":[]},"rallyPoints":{"version":2,"points":[]}}"#;
+        assert!(plandoc::load(text, 2).unwrap().cruise_speed.is_nan(), "absent is told apart from zero");
+        let loaded = load_plan(text).unwrap();
+        assert!(loaded.cruise_speed > 0.0 && loaded.hover_speed > 0.0, "MissionController::_loadJsonMissionFileV2 only overwrites the offline speeds when the file carries them");
     }
 
     #[test]

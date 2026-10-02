@@ -121,7 +121,7 @@ pub fn load(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
     validate_plan(&root)?;
     let mission = &root["mission"];
     let number = |key: &str, default: f64| mission.get(key).and_then(Value::as_f64).unwrap_or(default);
-    let integer = |key: &str| mission.get(key).and_then(Value::as_i64).unwrap_or(0);
+    let integer = |key: &str| mission.get(key).and_then(whole).unwrap_or(0);
     let home = mission
         .get("plannedHomePosition")
         .and_then(Value::as_array)
@@ -137,8 +137,8 @@ pub fn load(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
     Ok(Document {
         firmware_type,
         vehicle_type,
-        cruise_speed: number("cruiseSpeed", 0.0),
-        hover_speed: number("hoverSpeed", 0.0),
+        cruise_speed: number("cruiseSpeed", f64::NAN),
+        hover_speed: number("hoverSpeed", f64::NAN),
         global_altitude_mode: integer("globalPlanAltitudeMode"),
         home: Some(home),
         settings_sections,
@@ -159,7 +159,7 @@ fn resolve_jumps(items: Vec<Item>, saved: &[Value]) -> Result<Vec<Item>, String>
         };
         Some(start)
     });
-    let targets: Vec<(i64, i64)> = saved.iter().zip(starts).filter(|(item, _)| item["type"] == "SimpleItem").filter_map(|(item, seq)| item["doJumpId"].as_i64().map(|id| (id, seq))).collect();
+    let targets: Vec<(i64, i64)> = saved.iter().zip(starts).filter(|(item, _)| item["type"] == "SimpleItem").filter_map(|(item, seq)| whole(&item["doJumpId"]).map(|id| (id, seq))).collect();
     items
         .into_iter()
         .map(|item| match item {
@@ -198,13 +198,13 @@ fn load_simple(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo:
         (4, Some(c)) if c.len() >= 3 => saved.iter().chain(c.iter().take(3)).map(Value::as_f64).collect(),
         _ => return Err("A mission item needs seven params, or four and a coordinate.".to_string()),
     };
-    let field = |key: &str| item.get(key).and_then(Value::as_i64).ok_or_else(|| format!("A mission item has no {key}."));
+    let field = |key: &str| item.get(key).and_then(whole).ok_or_else(|| format!("A mission item has no {key}."));
     let (command, frame) = (field("command")?, field("frame")?);
     let specifies_altitude = commands.get(&command).is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
     let saved_altitude = ["AltitudeMode", "Altitude", "AMSLAltAboveTerrain"].iter().any(|key| item.get(*key).is_some());
     let altitude = match (saved_altitude, specifies_altitude) {
         (true, _) => Some(Altitude {
-            mode: item.get("AltitudeMode").and_then(Value::as_i64).ok_or("A mission item's altitude has no mode.")?,
+            mode: item.get("AltitudeMode").and_then(whole).ok_or("A mission item's altitude has no mode.")?,
             altitude: item.get("Altitude").and_then(Value::as_f64).ok_or("A mission item's altitude has no value.")?,
             amsl_above_terrain: item.get("AMSLAltAboveTerrain").and_then(Value::as_f64),
         }),
@@ -240,8 +240,7 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
     let fake_home = items.first().filter(|_| sends_home);
     let home = fake_home
         .filter(|h| h.params[4] != 0.0 || h.params[5] != 0.0)
-        .map(|h| [h.params[4], h.params[5], h.params[6]])
-        .or(template.home);
+        .map(|h| [h.params[4], h.params[5], h.params[6]]);
     let listed = &items[usize::from(fake_home.is_some())..];
     let simple = |item: &Downloaded| {
         let info = commands.get(&item.command);
@@ -270,8 +269,9 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
     };
     let landings = crate::landingpattern::fold(listed.iter().map(simple).collect(), firmware(template.firmware_type) == Firmware::ArduPilot);
     let (settings_sections, items) = fold(landings, vehicle_class(template.vehicle_type));
+    let derived = home.or_else(|| home_from_first_coordinate(&Document { items: items.clone(), ..template.clone() }, None));
     Document {
-        home,
+        home: derived,
         settings_sections,
         items,
         global_altitude_mode: match listed.is_empty() {
@@ -314,6 +314,22 @@ fn previous_altitude(doc: &Document, commands: &std::collections::BTreeMap<i64, 
         Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate) => s.altitude.as_ref().map(|a| (a.altitude, a.mode)),
         _ => None,
     })
+}
+
+pub fn home_from_first_coordinate(doc: &Document, clicked: Option<(f64, f64)>) -> Option<[f64; 3]> {
+    let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
+    let first = doc.items.iter().find_map(|item| match item {
+        Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate) => s.params[4].zip(s.params[5]),
+        _ => None,
+    });
+    first.or(clicked).map(|from| {
+        let (latitude, longitude) = crate::surveygrid::at_distance_and_azimuth(from, PLANNED_HOME_OFFSET_M, 0.0);
+        [latitude, longitude, 0.0]
+    })
+}
+
+fn whole(value: &Value) -> Option<i64> {
+    value.as_i64().or_else(|| value.as_f64().filter(|f| f.is_finite()).map(|f| f as i64))
 }
 
 pub fn previous_coordinate(doc: &Document, visual_index: i64) -> Option<(f64, f64)> {
@@ -409,15 +425,8 @@ pub fn insert_simple(doc: &Document, command: i64, latitude: f64, longitude: f64
     };
     let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
     let items: Vec<Item> = doc.items[..at].iter().cloned().chain(std::iter::once(Item::Simple(placed))).chain(doc.items[at..].iter().cloned()).collect();
-    let first_coordinate = items.iter().find_map(|item| match item {
-        Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate) => Some((s.params[4].unwrap_or(0.0), s.params[5].unwrap_or(0.0))),
-        _ => None,
-    });
-    let home = doc.home.or_else(|| {
-        let (lat, lon) = crate::surveygrid::at_distance_and_azimuth(first_coordinate.unwrap_or((latitude, longitude)), PLANNED_HOME_OFFSET_M, 0.0);
-        Some([lat, lon, 0.0])
-    });
-    Document { items, home, ..doc.clone() }
+    let placed = Document { items, ..doc.clone() };
+    Document { home: doc.home.or_else(|| home_from_first_coordinate(&placed, Some((latitude, longitude)))), ..placed }
 }
 
 pub fn complex_count(kind: &str, item: &Value) -> Result<usize, String> {
@@ -1014,6 +1023,21 @@ mod tests {
     }
 
     const QT_DEFAULTS: EditDefaults = EditDefaults { mission_item_altitude: 75.0, map_center: None, vtol_transition_distance: VTOL_TRANSITION_DISTANCE_DEFAULT };
+
+    #[test]
+    fn whole_numbers_written_as_floats_load_as_qt_reads_them_with_to_int() {
+        let text = r#"{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{"version":2,"firmwareType":12.0,"vehicleType":2,"cruiseSpeed":15,"hoverSpeed":5,"plannedHomePosition":[47.0,8.0,500],"items":[{"type":"SimpleItem","autoContinue":true,"command":16.0,"doJumpId":1.0,"frame":3.0,"params":[0,0,0,null,47.001,8.0,50]}]},"geoFence":{"version":2,"polygons":[],"circles":[]},"rallyPoints":{"version":2,"points":[]}}"#;
+        let doc = load(text, 2).expect("16.0 is a command");
+        assert_eq!(doc.firmware_type, 12, "12.0 is PX4, not the generic firmware a failed integer read falls back to");
+    }
+
+    #[test]
+    fn a_downloaded_px4_mission_puts_home_thirty_metres_north_of_its_first_waypoint() {
+        let waypoint = Downloaded { frame: 3, command: 16, params: [0.0, 0.0, 0.0, 0.0, 47.0, 8.0, 50.0], auto_continue: true };
+        let template = Document { home: Some([-35.36, 149.17, 0.0]), ..section() };
+        let home = from_vehicle(&[waypoint], false, &template).home.expect("MissionController::_setPlannedHomePositionFromFirstCoordinate places one");
+        assert!((home[0] - 47.0 - 30.0 / 111_195.0).abs() < 1e-6 && (home[1] - 8.0).abs() < 1e-9 && home[2] == 0.0, "not the previous plan's home: {home:?}");
+    }
 
     #[test]
     fn a_command_that_gains_a_coordinate_lands_on_the_map_centre_hint() {
