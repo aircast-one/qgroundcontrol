@@ -37,7 +37,7 @@ pub fn bare(value_type: ValueType) -> MetaData {
     }
 }
 
-fn post_processed(meta: MetaData) -> MetaData {
+pub fn post_processed(meta: MetaData) -> MetaData {
     MetaData {
         category: Some(meta.category.clone().filter(|c| !c.is_empty() && c != "Other").unwrap_or_else(|| "Standard".to_string())),
         read_only: meta.read_only || meta.volatile_value,

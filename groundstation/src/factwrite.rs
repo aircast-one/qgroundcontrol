@@ -41,7 +41,7 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
         }
         "text" => match (asked.as_str(), fact["maxStringLength"].as_u64().filter(|longest| *longest > 0)) {
             (None, _) => Some(("notText", "This setting is text.".to_string())),
-            (Some(text), Some(longest)) if text.chars().count() as u64 > longest => Some(("tooLong", format!("Value must be {longest} characters or less"))),
+            (Some(text), Some(longest)) if text.encode_utf16().count() as u64 > longest => Some(("tooLong", format!("Value must be {longest} characters or less"))),
             _ => None,
         },
         "bitmask" => {
@@ -211,7 +211,8 @@ mod tests {
         assert_eq!(check(port, json!(-1)), Some("outOfRange"));
         let id = fact(json!({ "typeIsString": true, "maxStringLength": 20 }));
         assert_eq!(check(id.clone(), json!("12345678901234567890")), None);
-        assert_eq!(check(id, json!("123456789012345678901")), Some("tooLong"), "Value must be 20 characters or less");
+        assert_eq!(check(id.clone(), json!("123456789012345678901")), Some("tooLong"), "Value must be 20 characters or less");
+        assert_eq!(check(id, json!("\u{1F681}".repeat(11))), Some("tooLong"), "QString::length counts UTF-16 units, two per emoji");
         assert_eq!(check(fact(json!({ "readOnly": true })), json!(1)), Some("readOnly"));
         assert_eq!(check(json!({ "kind": "fact", "name": "x" }), json!(1)), None, "a fact that does not say it is read-only is not refused as one");
     }
