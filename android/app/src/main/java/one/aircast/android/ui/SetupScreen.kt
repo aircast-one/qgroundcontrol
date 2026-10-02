@@ -228,8 +228,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     Modifier.weight(1f),
                 )
                 first != null -> androidx.compose.foundation.layout.Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$first first", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 24.dp))
-                    SetupNotice(prerequisiteText(first, open.name))
+                    val firstComponent = setupComponents(setupJson).firstOrNull { it.name == first }
+                    EmptyState(setupIcon(firstComponent?.known), "$first first", prerequisiteText(first, open.name))
                     androidx.compose.material3.Button(onClick = {
                         openComponent = setupComponents(setupJson).firstOrNull { it.name == first }
                     }) { Text("Set Up $first") }
