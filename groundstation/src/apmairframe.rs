@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object, text};
+use crate::read::{enum_label, flag, object, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.apmFirmware", "vehicle.multiRotor", "vehicle.rover", "vehicle.sub"];
@@ -167,12 +167,12 @@ pub fn apm_airframe_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let Some(read) = read(backend) else { return json!({ "kind": "object", "class": "ApmAirframe", "available": false }) };
     let class_value = raw(&read.class_fact);
     let type_value = present(&read.type_fact).then(|| raw(&read.type_fact)).flatten();
-    let type_label = text(&read.type_fact, "enumStringValue");
+    let type_label = enum_label(&read.type_fact);
     json!({
         "kind": "object",
         "class": "ApmAirframe",
         "available": true,
-        "help": help_text(class_value, &text(&read.class_fact, "enumStringValue"), read.copter.then_some(type_label.as_str())),
+        "help": help_text(class_value, &enum_label(&read.class_fact), read.copter.then_some(type_label.as_str())),
         "frameClass": class_value,
         "frameType": type_value,
         "invalidText": INVALID_TYPE,
@@ -233,6 +233,13 @@ pub fn owns(path: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_frame_labels_come_from_whichever_name_the_fact_serialiser_used() {
+        assert_eq!(enum_label(&json!({ "enumStringValue": "Quad" })), "Quad");
+        assert_eq!(enum_label(&json!({ "enumOrValueString": "Quad" })), "Quad", "the core flavor serves enumOrValueString, so the help line read class ''");
+        assert_eq!(enum_label(&json!({ "enumStringValue": "", "enumOrValueString": "X" })), "X");
+    }
+
     use super::*;
 
     fn pairs(list: &[(&str, i64)]) -> Vec<(String, i64)> {

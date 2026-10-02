@@ -35,6 +35,10 @@ pub fn truthy(object: &Value, key: &str) -> bool {
     }
 }
 
+pub fn enum_label(fact: &Value) -> String {
+    Some(text(fact, "enumStringValue")).filter(|label| !label.is_empty()).unwrap_or_else(|| text(fact, "enumOrValueString"))
+}
+
 pub fn text(object: &Value, key: &str) -> String {
     object.get(key).and_then(Value::as_str).unwrap_or("").to_string()
 }

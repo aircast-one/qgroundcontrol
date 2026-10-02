@@ -46,7 +46,7 @@ fn number(fact: &Value) -> f64 {
 }
 
 fn enum_text(fact: &Value) -> String {
-    text(fact, "enumStringValue")
+    crate::read::enum_label(fact)
 }
 
 fn with_units(fact: &Value) -> String {
