@@ -46,6 +46,7 @@ internal data class GimbalIndicatorState(
     val yawText: String,
     val yawLockLabel: String,
     val yawLocked: Boolean,
+    val yawLockOffered: Boolean,
     val retractOffered: Boolean,
     val controlOffered: Boolean,
     val controlLabel: String,
@@ -62,6 +63,7 @@ internal fun gimbalIndicator(view: JSONObject?): GimbalIndicatorState? =
             yawText = it.optText("yawText"),
             yawLockLabel = it.optText("yawLockLabel"),
             yawLocked = it.optBoolean("yawLocked"),
+            yawLockOffered = it.optBoolean("yawLockOffered"),
             retractOffered = it.optBoolean("retractOffered"),
             controlOffered = it.optBoolean("controlOffered"),
             controlLabel = it.optText("controlLabel"),
@@ -120,7 +122,9 @@ internal fun GimbalIndicatorCell() {
                     }
                 }
                 Text(gimbalCellText(state), style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = { act("gimbal.yawLock", !state.yawLocked) }, modifier = Modifier.fillMaxWidth()) { Text(state.yawLockLabel) }
+                if (state.yawLockOffered) {
+                    OutlinedButton(onClick = { act("gimbal.yawLock", !state.yawLocked) }, modifier = Modifier.fillMaxWidth()) { Text(state.yawLockLabel) }
+                }
                 OutlinedButton(onClick = { act("gimbal.center") }, modifier = Modifier.fillMaxWidth()) { Text("Center") }
                 OutlinedButton(onClick = { act("gimbal.tilt90") }, modifier = Modifier.fillMaxWidth()) { Text("Tilt 90") }
                 OutlinedButton(onClick = { act("gimbal.pointHome") }, modifier = Modifier.fillMaxWidth()) { Text("Point Home") }

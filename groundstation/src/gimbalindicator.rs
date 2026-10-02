@@ -61,6 +61,7 @@ pub fn indicator(snapshot: &Value, show_azimuth: bool, show_control: bool, on_sc
         "yawText": yaw,
         "yawLockLabel": if flag(&active, "yawLock") { "Yaw Follow" } else { "Yaw Lock" },
         "yawLocked": flag(&active, "yawLock"),
+        "yawLockOffered": active["supportsYawLock"] == true,
         "retractOffered": active["supportsRetract"] == true,
         "controlOffered": show_control,
         "controlLabel": if active["haveControl"] == true { "Release Control" } else { "Acquire Control" },
@@ -194,6 +195,7 @@ mod tests {
         assert_eq!(azimuth["yawText"], "Az: 185.0", "the toolbar shows azimuth when the setting asks");
         assert_eq!(azimuth["statusText"], "Yaw locked");
         assert_eq!(azimuth["retractOffered"], false);
+        assert_eq!((shown["yawLockOffered"].clone(), indicator(&snapshot(json!({ "active": true, "supportsYawLock": true })), false, false, (false, false))["yawLockOffered"].clone()), (json!(false), json!(true)), "GimbalIndicator.qml shows Yaw Lock only when the gimbal reports the capability");
         assert_eq!(indicator(&snapshot(json!({ "retracted": true, "yawLock": true })), false, false, (false, false))["statusText"], "Retracted");
         assert_eq!(indicator(&json!({ "gimbals": [] }), false, false, (false, false))["shown"], false, "no gimbal, no indicator");
     }

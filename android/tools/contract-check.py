@@ -242,6 +242,7 @@ ACCEPTED = {
     "retractOffered": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "yawLockLabel": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "yawLocked": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
+    "yawLockOffered": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "yawText": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "result": "the invoke envelope, not a view field",
     "otherVehicle": "parameterFile.review's answer, an invoke result rather than a view",
