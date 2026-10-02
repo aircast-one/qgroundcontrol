@@ -1,6 +1,11 @@
 package one.aircast.android.ui
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import one.aircast.android.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -133,16 +138,16 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val cells: List<Pair<String, @Composable () -> Unit>> = listOf(
-            "battery" to { batteries.forEach { InlineCell(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery } } },
+            "battery" to { batteries.forEach { InlineCell(it.text, batteryLevelColour(it.level), R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery } } },
             "gps" to {
                 gps?.let {
-                    InlineCell(fix?.let { satsText(it, satellites) } ?: NO_COUNT, fix?.let { gpsColour(it) } ?: Color.Unspecified) { detail = StripDetail.Gps }
+                    InlineCell(fix?.let { satsText(it, satellites) } ?: NO_COUNT, fix?.let { gpsColour(it) } ?: Color.Unspecified, R.drawable.ic_satellite_alt) { detail = StripDetail.Gps }
                 }
             },
-            "rc" to { rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified) } },
+            "rc" to { rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified, R.drawable.ic_gamepad) } },
             "rcOverride" to { overrideCell(state)?.let { InlineCell(it.text, MaterialTheme.aircast.warning) { offMainDetached { Qgc.invoke(CLEAR_RC_OVERRIDES) } } } },
-            "telemetry" to { telemetryCell(state)?.let { InlineCell(it, Color.Unspecified) { detail = StripDetail.Telemetry } } },
-            "links" to { links?.let { InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified) { detail = StripDetail.Links } } },
+            "telemetry" to { telemetryCell(state)?.let { InlineCell(it, Color.Unspecified, R.drawable.ic_sensors) { detail = StripDetail.Telemetry } } },
+            "links" to { links?.let { InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified, R.drawable.ic_signal_cellular_alt) { detail = StripDetail.Links } } },
             "aircastLink" to { AircastLinkCell() },
             "esc" to { EscIndicatorCell() },
             "joystick" to { JoystickIndicatorCell() },
@@ -237,14 +242,16 @@ private fun InstrumentSheet(title: String, rows: List<DetailRow>, action: (@Comp
 }
 
 @Composable
-private fun InlineCell(text: String, colour: Color, onClick: (() -> Unit)? = null) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelMedium,
-        color = if (colour == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else colour,
-        maxLines = 1,
-        modifier = if (onClick == null) Modifier else Modifier.clickable { onClick() },
-    )
+private fun InlineCell(text: String, colour: Color, @DrawableRes icon: Int? = null, onClick: (() -> Unit)? = null) {
+    val tint = if (colour == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else colour
+    Row(
+        if (onClick == null) Modifier else Modifier.clickable { onClick() },
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        icon?.let { Icon(painterResource(it), null, tint = tint, modifier = Modifier.size(18.dp)) }
+        Text(text, style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1)
+    }
 }
 
 internal data class OverrideCell(val text: String)
