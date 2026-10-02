@@ -489,7 +489,8 @@ internal fun MapSpikeScreen(
                 onBridge { writeDragStep(generation, hit, lat, lon, surveyList, rally, fences, allItems) }
             },
             onWaypointSelected = { hit ->
-                when (hit) {
+                if (hit != null && actsOnTap(hit) && !dragAllowed(hit, selected, layer)) Unit
+                else when (hit) {
                     is MapHit.Midpoint -> if (hit.path == MISSION_SPLIT_PATH) {
                         addMissionItem(KIND_WAYPOINT, "Adding a waypoint", legSplit(allItems.filter { it.placed }, hit.segment), hit.segment)
                     } else onBridge("Adding a corner") {
@@ -1602,6 +1603,8 @@ internal fun dragAllowed(hit: MapHit, selected: MapHit?, layer: PlanLayer): Bool
     MapHit.BreachReturn -> layer == PlanLayer.Fence
     else -> layerOf(hit) == layer && ownerOf(hit) != null && ownerOf(hit) == ownerOf(selected)
 }
+
+internal fun actsOnTap(hit: MapHit): Boolean = hit is MapHit.Midpoint || hit is MapHit.LoiterRotation || hit == MapHit.BreachReturn
 
 internal fun midpointOwner(path: String): String? = when {
     path.startsWith("$FENCE_POLYGONS.") -> "p${path.removePrefix("$FENCE_POLYGONS.").substringBefore('.')}"

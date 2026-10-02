@@ -98,9 +98,6 @@ pub fn create(backend: &dyn Backend, args: &str) -> Value {
             true => crate::coreplan::route_invoke(backend, path, &args.to_string()).unwrap_or_else(|| json!({ "ok": false, "reason": "The core plan did not carry out the template." })),
             false => crate::actions::run(backend, path, &args.to_string()),
         };
-        if core && path == "plan.missionController.insertTakeoffItem" && crate::coreplan::current_document().home.is_none() {
-            crate::coreplan::route_set(backend, "plan.missionController.visualItems.0.coordinate", &json!({ "value": { "latitude": latitude, "longitude": longitude } }).to_string());
-        }
         (!flag(&answer, "ok")).then(|| answer.get("reason").and_then(Value::as_str).unwrap_or("The plan refused the template.").to_string())
     });
     match failed {
