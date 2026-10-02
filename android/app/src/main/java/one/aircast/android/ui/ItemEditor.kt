@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.mapspike.aircast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -78,6 +79,9 @@ internal fun entryPoint(view: JSONObject?): EntryPoint? =
     view?.optJSONObject("entryPoint")?.let { EntryPoint(it.optText("label"), it.optText("value"), it.optText("path")) }?.takeIf { it.path.isNotBlank() }
 
 internal fun isLandingPattern(view: JSONObject?): Boolean = view?.optBoolean("landing") == true
+
+internal fun landingNotes(view: JSONObject?): List<String> =
+    view?.optJSONArray("landingNotes")?.let { notes -> (0 until notes.length()).map { notes.optString(it) }.filter { it.isNotBlank() } }.orEmpty()
 
 internal fun vehicleHeading(fact: JSONObject?): Double? = fact?.optDouble("value")?.takeIf { !it.isNaN() }
 
@@ -266,6 +270,9 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                     TextButton(onClick = { scope.launch { refusal = withContext(Dispatchers.Default) { setToVehicleHeading(index) }; revision++ } }) { Text("Set to vehicle heading") }
                     TextButton(onClick = { scope.launch { refusal = withContext(Dispatchers.Default) { setToVehicleLocation(index) }; revision++ } }) { Text("Set to vehicle location") }
                 }
+            }
+            landingNotes(view).forEach { note ->
+                Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 20.dp))
             }
             areaHelp(view)?.let { help ->
                 Text(help, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))

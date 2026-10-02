@@ -42,4 +42,11 @@ class ItemEditorTest {
         assertEquals(47.0 to 8.0, geoOf(JSONObject("""{"valid":true,"latitude":47.0,"longitude":8.0}""")))
         assertEquals(null, geoOf(JSONObject("""{"valid":false}""")))
     }
+
+    @Test
+    fun `a landing pattern's notes come from the core in order`() {
+        val view = org.json.JSONObject("""{"landing":true,"landingNotes":["* Actual flight path will vary.","* Avoid tailwind on approach to land."]}""")
+        org.junit.Assert.assertEquals(listOf("* Actual flight path will vary.", "* Avoid tailwind on approach to land."), landingNotes(view))
+        org.junit.Assert.assertEquals(emptyList<String>(), landingNotes(org.json.JSONObject("{}")))
+    }
 }

@@ -2380,7 +2380,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
         }
         Some(Some(plandoc::Item::Complex { kind, json: pattern, .. })) if crate::landingpattern::is_landing(kind) => {
             let units = crate::surveydoc::Units { vertical: units.0, horizontal: units.1 };
-            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::landingpattern::fields(pattern, &item, &units), "camera": Value::Null, "speedSection": Value::Null, "altitudeMode": Value::Null, "landing": true, "altitudesAreRelative": pattern.get("altitudesAreRelative").and_then(Value::as_bool).unwrap_or(true) })
+            json!({ "kind": "object", "class": "ItemFacts", "available": true, "index": index, "simple": false, "fields": crate::landingpattern::fields(pattern, &item, &units), "camera": Value::Null, "speedSection": Value::Null, "altitudeMode": Value::Null, "landing": true, "landingNotes": crate::landingpattern::notes(kind == crate::landingpattern::VTOL_PATTERN), "altitudesAreRelative": pattern.get("altitudesAreRelative").and_then(Value::as_bool).unwrap_or(true) })
         }
         Some(Some(plandoc::Item::Complex { kind, .. })) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index, "reason": format!("The core cannot edit a {kind} item yet.") }),
         Some(None) => json!({ "kind": "object", "class": "ItemFacts", "available": false, "index": index }),

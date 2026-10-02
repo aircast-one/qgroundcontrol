@@ -19,6 +19,13 @@ pub fn land_start_has_coordinate(firmware_type: i64, vehicle_type: i64) -> bool 
     firmware != crate::cmdinfo::Firmware::ArduPilot && crate::cmdinfo::tree(firmware, crate::plandoc::vehicle_class(vehicle_type)).get(&i64::from(CMD_DO_LAND_START)).is_some_and(|c| c.specifies_coordinate)
 }
 
+pub fn notes(vtol: bool) -> Vec<&'static str> {
+    match vtol {
+        true => vec!["* Actual flight path will vary.", "* Avoid tailwind on approach to land."],
+        false => vec!["* Approximate glide slope altitudes.", "* Actual flight path will vary.", "* Avoid tailwind on landing."],
+    }
+}
+
 pub fn is_landing(kind: &str) -> bool {
     kind == FIXED_WING_PATTERN || kind == VTOL_PATTERN
 }
@@ -470,6 +477,12 @@ pub fn items(pattern: &Value, land_start_has_coordinate: bool) -> Result<Vec<Ite
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn landing_editors_carry_their_own_notes() {
+        assert_eq!(notes(false), ["* Approximate glide slope altitudes.", "* Actual flight path will vary.", "* Avoid tailwind on landing."], "FWLandingPatternEditor");
+        assert_eq!(notes(true), ["* Actual flight path will vary.", "* Avoid tailwind on approach to land."], "VTOLLandingPatternEditor");
+    }
 
     #[test]
     fn distance_and_glide_slope_are_exclusive_like_the_radio_buttons() {
