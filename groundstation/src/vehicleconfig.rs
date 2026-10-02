@@ -608,7 +608,7 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
     }
     let range = match control["control"].as_str() {
         Some("factslider") => control["sliderFrom"].as_f64().zip(control["sliderTo"].as_f64()),
-        Some("slider") => control["sliderMin"].as_f64().zip(control["sliderMax"].as_f64()),
+        Some("slider") => control["sliderMin"].as_f64().or(decoded["minimum"].as_f64()).zip(control["sliderMax"].as_f64().or(decoded["maximum"].as_f64())),
         _ => None,
     };
     if let Some((from, to)) = range {
@@ -1003,6 +1003,11 @@ mod tests {
         let slider = labelled(json!({}), &json!({ "control": "slider", "sliderMin": 0, "sliderMax": 10 }), true);
         assert_eq!((slider["slider"]["from"].as_f64(), slider["slider"]["to"].as_f64()), (Some(0.0), Some(10.0)), "FactTextFieldSlider draws sliderMin..sliderMax");
         assert_eq!(labelled(json!({}), &json!({ "control": "slider" }), true)["slider"], Value::Null, "with no range there is no slider");
+        let bounded = labelled(json!({ "minimum": 0.0, "maximum": 10000.0 }), &json!({ "control": "slider" }), true);
+        assert_eq!((bounded["slider"]["from"].as_f64(), bounded["slider"]["to"].as_f64()), (Some(0.0), Some(10000.0)), "allowUsingMinMax: a plain slider falls back to the fact's own bounds");
+        let mixed = labelled(json!({ "minimum": -1.0, "maximum": 15.0 }), &json!({ "control": "slider", "sliderMax": 5 }), true);
+        assert_eq!((mixed["slider"]["from"].as_f64(), mixed["slider"]["to"].as_f64()), (Some(-1.0), Some(5.0)), "each end falls back on its own");
+        assert_eq!(labelled(json!({ "minimum": 0.0, "maximum": 1.0 }), &json!({ "control": "factslider" }), true)["slider"], Value::Null, "factslider has no such fallback");
         assert_eq!(labelled(json!({}), &json!({ "control": "bitmask", "firstEntryIsAll": true }), true)["firstEntryIsAll"], true);
         assert_eq!(labelled(json!({}), &json!({ "control": "bitmask" }), true)["firstEntryIsAll"], Value::Null);
     }
