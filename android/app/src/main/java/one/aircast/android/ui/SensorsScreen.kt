@@ -1,5 +1,15 @@
 package one.aircast.android.ui
 
+import one.aircast.android.R
+
+import androidx.compose.ui.res.painterResource
+
+import androidx.compose.material3.Icon
+
+import androidx.compose.foundation.layout.size
+
+import androidx.compose.material3.CircularProgressIndicator
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,7 +28,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -205,6 +214,8 @@ private fun OrientationGrid(sides: List<CalibrationSide>) {
     }
 }
 
+private val CALIBRATION_RING = 180.dp
+
 @Composable
 private fun RunningCalibration(
     name: String,
@@ -222,15 +233,23 @@ private fun RunningCalibration(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(runningTitle(name), style = MaterialTheme.typography.titleMedium)
-
-        LinearProgressIndicator(
-            progress = { progress.toFloat().coerceIn(0f, 1f) },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Text(runningTitle(name), style = MaterialTheme.typography.headlineSmall)
 
         if (helpText.isNotBlank()) {
-            Text(helpText, style = MaterialTheme.typography.bodyMedium)
+            Text(helpText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(
+                progress = { progress.toFloat().coerceIn(0f, 1f) },
+                modifier = Modifier.size(CALIBRATION_RING),
+                strokeWidth = 10.dp,
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(painterResource(R.drawable.ic_sensors), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
+                Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.headlineMedium)
+            }
         }
 
         if (state.showsSides) {
@@ -242,6 +261,7 @@ private fun RunningCalibration(
                 text = statusText,
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
