@@ -78,7 +78,7 @@ internal fun PowerCalcDialog(calculator: PowerCalculator, onDone: () -> Unit) {
     val available = live?.optBoolean("readingAvailable") == true
     AlertDialog(
         onDismissRequest = onDone,
-        title = { Text(calculator.title) },
+        title = { Text(sentenceCase(calculator.title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(calculator.help, style = MaterialTheme.typography.bodySmall)
@@ -104,7 +104,7 @@ internal fun PowerCalcDialog(calculator: PowerCalculator, onDone: () -> Unit) {
                         Qgc.refusalOf(POWER_CALCULATE, calculator.param, calculator.measure, calculator.batteryIndex, measured)
                     }
                 }
-            }) { Text(calculator.button) }
+            }) { Text(sentenceCase(calculator.button)) }
         },
         dismissButton = { TextButton(onClick = onDone) { Text("Close") } },
     )

@@ -212,7 +212,7 @@ internal fun ParameterForm(
                             Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.medium) {
                                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(calculator.title, style = MaterialTheme.typography.bodyLarge)
+                                        Text(sentenceCase(calculator.title), style = MaterialTheme.typography.bodyLarge)
                                         Text("Measure the ${calculator.measure} with a meter", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     FilledTonalButton(onClick = { calculating = calculator }) { Text("Calibrate") }
