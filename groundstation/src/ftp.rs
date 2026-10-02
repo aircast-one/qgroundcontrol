@@ -580,6 +580,7 @@ enum Step {
     Write,
     Reset,
     Remove,
+    Terminate,
 }
 
 #[derive(Debug)]
@@ -626,6 +627,7 @@ impl FileOp {
             Step::Write => CMD_WRITE_FILE,
             Step::Reset => CMD_RESET_SESSIONS,
             Step::Remove => CMD_REMOVE_FILE,
+            Step::Terminate => CMD_TERMINATE_SESSION,
         }
     }
 
@@ -642,6 +644,7 @@ impl FileOp {
                 (self.session, self.sent as u32, self.data[self.sent..self.sent + self.chunk].to_vec())
             }
             Step::Reset => (0, 0, Vec::new()),
+            Step::Terminate => (self.session, 0, Vec::new()),
         };
         let request = Request { seq: self.expected_seq.wrapping_add(1), session, opcode: self.opcode(), offset, data, ..Default::default() };
         self.expected_seq = self.expected_seq.wrapping_add(2);
@@ -669,6 +672,21 @@ impl FileOp {
                 self.request(true)
             }
             Step::Reset | Step::Remove => self.complete(String::new()),
+            Step::Terminate => {
+                let error = format!("Aborted for: {}", self.path);
+                self.complete(error)
+            }
+        }
+    }
+
+    pub fn cancel(&mut self) -> Vec<OpOut> {
+        match self.step {
+            _ if !self.active => Vec::new(),
+            Step::Create | Step::Write | Step::Reset if self.session != 0 => {
+                self.step = Step::Terminate;
+                [vec![OpOut::StopTimer], self.request(true)].concat()
+            }
+            _ => self.complete("Aborted".to_string()),
         }
     }
 
@@ -679,7 +697,7 @@ impl FileOp {
         self.retries += 1;
         match self.step {
             Step::Create => self.upload_failed("no response from vehicle"),
-            Step::Write if self.retries > MAX_RETRY => self.upload_failed("no response from vehicle"),
+            Step::Write | Step::Terminate if self.retries > MAX_RETRY => self.upload_failed("no response from vehicle"),
             Step::Remove if self.retries > MAX_RETRY => self.complete("Delete failed".to_string()),
             Step::Reset => self.complete(String::new()),
             _ => self.request(false),
@@ -711,7 +729,7 @@ impl FileOp {
                 [vec![OpOut::StopTimer, progress], self.advance()].concat()
             }
             (RSP_ACK, _) => [vec![OpOut::StopTimer], self.advance()].concat(),
-            (RSP_NAK, Step::Create | Step::Write) => {
+            (RSP_NAK, Step::Create | Step::Write | Step::Terminate) => {
                 let why = format!("error: {}", reply.nak_error());
                 self.upload_failed(&why)
             }
@@ -909,6 +927,26 @@ mod tests {
         assert_eq!(reset.opcode, CMD_RESET_SESSIONS);
         assert_eq!(op.on_payload(&op_ack(&reset, RSP_ACK, 0, vec![])).last(), Some(&OpOut::Complete { error: String::new() }));
         assert!(!op.in_progress());
+    }
+
+    #[test]
+    fn a_cancelled_upload_terminates_its_session_like_ftp_manager() {
+        let (mut op, out) = FileOp::upload(1, "/APM/scripts/x.lua", vec![1; 300], 0).unwrap();
+        let create = op_sent(&out);
+        let write = op_sent(&op.on_payload(&op_ack(&create, RSP_ACK, 4, vec![])));
+        let terminate = op_sent(&op.cancel());
+        assert_eq!((terminate.opcode, terminate.session), (CMD_TERMINATE_SESSION, 4));
+        assert!(op.on_payload(&op_ack(&write, RSP_ACK, 4, vec![])).is_empty(), "the write ack in flight is ignored");
+        assert_eq!(op.on_payload(&op_ack(&terminate, RSP_ACK, 4, vec![])).last(), Some(&OpOut::Complete { error: "Aborted for: /APM/scripts/x.lua".into() }));
+        let (mut unopened, _) = FileOp::upload(1, "/APM/scripts/x.lua", vec![1; 10], 0).unwrap();
+        assert_eq!(unopened.cancel().last(), Some(&OpOut::Complete { error: "Aborted".into() }));
+        assert!(unopened.cancel().is_empty());
+        let (mut silent, out) = FileOp::upload(1, "/APM/scripts/x.lua", vec![1; 10], 0).unwrap();
+        silent.on_payload(&op_ack(&op_sent(&out), RSP_ACK, 2, vec![]));
+        silent.cancel();
+        let retries: Vec<Vec<OpOut>> = (0..=MAX_RETRY).map(|_| silent.on_timeout()).collect();
+        assert!(matches!(op_sent(&retries[0]), Request { opcode: CMD_TERMINATE_SESSION, session: 2, .. }));
+        assert_eq!(retries.last().unwrap().last(), Some(&OpOut::Complete { error: "Upload failed for: /APM/scripts/x.lua - no response from vehicle".into() }));
     }
 
     #[test]

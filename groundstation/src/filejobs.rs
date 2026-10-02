@@ -146,6 +146,8 @@ impl Job {
     pub fn cancel(&mut self) -> Vec<Step> {
         match &mut self.machine {
             Machine::Download(m) => m.cancel().into_iter().map(from_download).collect(),
+            Machine::Upload(m) => m.cancel().into_iter().map(|o| from_op(o, Outcome::Uploaded)).collect(),
+            Machine::Delete(m) => m.cancel().into_iter().map(|o| from_op(o, Outcome::Deleted)).collect(),
             _ => vec![Step::StopTimer, Step::Done(Err("Aborted".to_string()))],
         }
     }
