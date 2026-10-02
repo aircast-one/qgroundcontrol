@@ -1,5 +1,15 @@
 package one.aircast.android.ui
 
+import one.aircast.mapspike.MapLayersSheet
+
+import androidx.compose.runtime.remember
+
+import androidx.compose.runtime.mutableStateOf
+
+import androidx.compose.runtime.setValue
+
+import androidx.compose.runtime.getValue
+
 import android.content.Context
 import android.content.res.Configuration
 import androidx.annotation.DrawableRes
@@ -126,8 +136,8 @@ internal fun FlyScreen(
         Box(stageModifier) {
             if (view == FlyView.Map) map(Modifier.fillMaxSize()) else video(Modifier.fillMaxSize(), true)
 
-            when (view) {
-                FlyView.Video -> Box(
+            if (view == FlyView.Video) {
+                Box(
                     Modifier
                         .align(Alignment.BottomEnd)
                         .padding(AircastSpace.s3)
@@ -138,7 +148,9 @@ internal fun FlyScreen(
                     map(Modifier.fillMaxSize())
                     Box(Modifier.fillMaxSize().clickable { onView(FlyView.Map) })
                 }
-                FlyView.Map -> video(
+            }
+            if (view == FlyView.Map) {
+                video(
                     Modifier
                         .align(Alignment.TopEnd)
                         .windowInsetsPadding(WindowInsets.statusBars)
@@ -147,7 +159,16 @@ internal fun FlyScreen(
                         .clip(MaterialTheme.shapes.medium),
                     false,
                 )
-                FlyView.Simple -> Unit
+                var layers by remember { mutableStateOf(false) }
+                Surface(
+                    onClick = { layers = true },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3).size(48.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_layers), "Map layers") }
+                }
+                if (layers) MapLayersSheet { layers = false }
             }
 
             Column(
