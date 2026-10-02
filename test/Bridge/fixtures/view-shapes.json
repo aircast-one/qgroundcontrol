@@ -2264,6 +2264,7 @@
         "view.firmware.versionType",
         "view.firmwareUpgrade.board",
         "view.firmwareUpgrade.busy",
+        "view.firmwareUpgrade.cancellable",
         "view.firmwareUpgrade.class",
         "view.firmwareUpgrade.error",
         "view.firmwareUpgrade.file",
@@ -7170,6 +7171,7 @@
         "view.firmware.versionType",
         "view.firmwareUpgrade.board",
         "view.firmwareUpgrade.busy",
+        "view.firmwareUpgrade.cancellable",
         "view.firmwareUpgrade.class",
         "view.firmwareUpgrade.error",
         "view.firmwareUpgrade.file",
@@ -11041,6 +11043,7 @@
     "view.firmwareUpgrade": {
         "board": "null",
         "busy": "bool",
+        "cancellable": "bool",
         "class": "string",
         "error": "null",
         "file": "null",

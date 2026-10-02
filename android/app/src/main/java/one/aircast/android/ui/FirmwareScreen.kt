@@ -46,6 +46,9 @@ import java.io.File
 internal const val FIRMWARE_VIEW = "view.firmwareUpgrade"
 internal const val FIRMWARE_PORTS_VIEW = "view.firmwarePorts"
 internal const val FIRMWARE_FLASH = "firmware.flash"
+internal const val FIRMWARE_CANCEL = "firmware.cancel"
+internal const val FIRMWARE_UPGRADE_SETTINGS = "settings.firmwareUpgradeSettings"
+internal const val APM_CHIBIOS = "apmChibiOS"
 internal const val FIRMWARE_POLL_MS = 500L
 internal val FIRMWARE_EXTENSIONS = listOf("px4", "apj", "bin", "ihx")
 
@@ -54,6 +57,7 @@ internal data class FirmwarePort(val port: String, val description: String, val 
 internal data class FirmwareJob(
     val phase: String,
     val busy: Boolean,
+    val cancellable: Boolean,
     val progress: Float,
     val messages: List<String>,
     val error: String,
@@ -75,6 +79,7 @@ internal fun firmwareJob(view: JSONObject?): FirmwareJob? = view?.takeIf { it.op
     FirmwareJob(
         phase = it.optText("phase").ifBlank { "idle" },
         busy = it.optBoolean("busy"),
+        cancellable = it.optBoolean("cancellable"),
         progress = it.optDouble("progress", 0.0).toFloat(),
         messages = (0 until (messages?.length() ?: 0)).map { index -> messages!!.optString(index) },
         error = it.optText("error"),
@@ -138,6 +143,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
     var file by remember { mutableStateOf<File?>(null) }
     var advanced by remember { mutableStateOf(false) }
     val apmVehicle by qgcBool(APM_FIRMWARE)
+    val upgradeSettings by one.aircast.android.bridge.qgcFacts(FIRMWARE_UPGRADE_SETTINGS)
     var source by remember { mutableStateOf(DEFAULT_FIRMWARE_SOURCE) }
     var refusal by remember { mutableStateOf("") }
 
@@ -204,6 +210,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                     offered.map { it.second },
                     Modifier.fillMaxWidth(),
                 ) { index -> if (!busy) source = offered[index].first }
+                if (source.startsWith("ardupilot:")) upgradeSettings.firstOrNull { it.name == APM_CHIBIOS }?.let { FactRow(it, fieldModifier = Modifier.fillMaxWidth()) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = advanced, enabled = !busy, onCheckedChange = {
                         advanced = it
@@ -232,6 +239,12 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                             }
                         },
                     ) { Text("Flash") }
+                    if (busy) {
+                        OutlinedButton(
+                            enabled = job?.cancellable == true,
+                            onClick = { scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(FIRMWARE_CANCEL) }.orEmpty() } },
+                        ) { Text("Cancel") }
+                    }
                 }
                 job?.let { current ->
                     if (current.busy) LinearProgressIndicator(progress = { current.progress }, modifier = Modifier.fillMaxWidth())

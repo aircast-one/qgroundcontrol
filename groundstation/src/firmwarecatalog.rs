@@ -182,10 +182,10 @@ pub fn parse_manifest(text: &str) -> Result<Vec<Entry>, String> {
     Ok(json.get("firmware").and_then(Value::as_array).map(|listed| listed.iter().filter_map(entry).collect()).unwrap_or_default())
 }
 
-pub fn apm_url(entries: &[Entry], board_id: u32, build: Build, vehicle: Vehicle, board_description: &str) -> Result<String, String> {
+pub fn apm_url(entries: &[Entry], board_id: u32, build: Build, vehicle: Vehicle, chibios: bool, board_description: &str) -> Result<String, String> {
     let raw_board = if board_id == crate::bootloader::BOARD_ID_PX4_FMU_V3 { crate::bootloader::BOARD_ID_PX4_FMU_V2 } else { board_id };
     let fmuv3 = board_id == crate::bootloader::BOARD_ID_PX4_FMU_V3;
-    let matching: Vec<&Entry> = entries.iter().filter(|e| e.build == build && e.chibios && e.vehicle == vehicle && e.board_id == raw_board && !(e.fmuv2 && fmuv3)).collect();
+    let matching: Vec<&Entry> = entries.iter().filter(|e| e.build == build && e.chibios == chibios && e.vehicle == vehicle && e.board_id == raw_board && !(e.fmuv2 && fmuv3)).collect();
     let best = board_description.ends_with("-BL").then(|| matching.iter().find(|e| e.bootloader_strings.iter().any(|s| s == board_description))).flatten();
     match (best, matching.as_slice()) {
         (Some(best), _) => Ok(best.url.clone()),
@@ -218,23 +218,25 @@ mod tests {
         {"mav-type":"Copter","mav-firmware-version-type":"STABLE-4.6.2","format":"apj","platform":"fmuv5","board_id":50,"url":"https://f/pinned.apj","mav-firmware-version":"4.6.2"},
         {"mav-type":"Copter","mav-firmware-version-type":"OFFICIAL","format":"hex","platform":"fmuv5","board_id":50,"url":"https://f/x.hex"},
         {"mav-type":"FIXED_WING","mav-firmware-version-type":"OFFICIAL","format":"apj","platform":"fmuv5-heli","board_id":50,"url":"https://f/plane-heli.apj"},
-        {"mav-type":"FIXED_WING","mav-firmware-version-type":"BETA","format":"apj","platform":"fmuv2","board_id":9,"url":"https://f/plane-fmuv2.apj","mav-firmware-version":"4.6.0"}
+        {"mav-type":"FIXED_WING","mav-firmware-version-type":"BETA","format":"apj","platform":"fmuv2","board_id":9,"url":"https://f/plane-fmuv2.apj","mav-firmware-version":"4.6.0"},
+        {"mav-type":"FIXED_WING","mav-firmware-version-type":"BETA","format":"px4","platform":"px4-v2","board_id":9,"url":"https://f/plane-nuttx.px4","mav-firmware-version":"3.9.0"}
     ]}"#;
 
     #[test]
     fn the_manifest_keeps_what_qts_filter_keeps() {
         let entries = parse_manifest(MANIFEST).unwrap();
-        assert_eq!(entries.iter().map(|e| e.url.as_str()).collect::<Vec<_>>(), ["https://f/copter-fmuv5.apj", "https://f/copter-cuav.apj", "https://f/plane-fmuv2.apj"], "pinned STABLE-x.y.z builds, hex images and a heli platform under another vehicle are dropped");
+        assert_eq!(entries.iter().map(|e| e.url.as_str()).collect::<Vec<_>>(), ["https://f/copter-fmuv5.apj", "https://f/copter-cuav.apj", "https://f/plane-fmuv2.apj", "https://f/plane-nuttx.px4"], "pinned STABLE-x.y.z builds, hex images and a heli platform under another vehicle are dropped");
         assert_eq!(entries[1].name, "CUAVv5 - 4.6.2");
     }
 
     #[test]
     fn a_board_picks_its_build_by_bootloader_string_or_asks() {
         let entries = parse_manifest(MANIFEST).unwrap();
-        assert_eq!(apm_url(&entries, 50, Build::Stable, Vehicle::Copter, "CUAVv5-BL"), Ok("https://f/copter-cuav.apj".to_string()));
-        assert!(apm_url(&entries, 50, Build::Stable, Vehicle::Copter, "PX4 BL FMU v5.x").unwrap_err().starts_with("Several ArduPilot builds fit board 50"));
-        assert_eq!(apm_url(&entries, 9, Build::Beta, Vehicle::Plane, ""), Ok("https://f/plane-fmuv2.apj".to_string()));
-        assert_eq!(apm_url(&entries, crate::bootloader::BOARD_ID_PX4_FMU_V3, Build::Beta, Vehicle::Plane, ""), Err("Unable to find specified firmware for board type".to_string()), "an fmuv2 build is never offered to an fmuv3 board");
+        assert_eq!(apm_url(&entries, 50, Build::Stable, Vehicle::Copter, true, "CUAVv5-BL"), Ok("https://f/copter-cuav.apj".to_string()));
+        assert!(apm_url(&entries, 50, Build::Stable, Vehicle::Copter, true, "PX4 BL FMU v5.x").unwrap_err().starts_with("Several ArduPilot builds fit board 50"));
+        assert_eq!(apm_url(&entries, 9, Build::Beta, Vehicle::Plane, true, ""), Ok("https://f/plane-fmuv2.apj".to_string()));
+        assert_eq!(apm_url(&entries, 9, Build::Beta, Vehicle::Plane, false, ""), Ok("https://f/plane-nuttx.px4".to_string()), "the apmChibiOS setting at NuttX picks the .px4 build");
+        assert_eq!(apm_url(&entries, crate::bootloader::BOARD_ID_PX4_FMU_V3, Build::Beta, Vehicle::Plane, true, ""), Err("Unable to find specified firmware for board type".to_string()), "an fmuv2 build is never offered to an fmuv3 board");
     }
 
     #[test]

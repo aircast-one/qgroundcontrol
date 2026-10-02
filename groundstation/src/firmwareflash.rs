@@ -69,7 +69,13 @@ fn image_for(file: &str, contents: &[u8], board: &BoardInfo, report: &mut dyn Fn
 pub const PLUG_IN: &str = "Plug in your device via USB.";
 pub const REPLUG: &str = "Now unplug your device and plug it back in to enter bootloader mode.";
 pub const FIND_BOARD_INTERVAL_MS: u64 = 500;
-pub const FIND_BOARD_ATTEMPTS: usize = 240;
+const APM_CHIBIOS: &str = "settings.firmwareUpgradeSettings.apmChibiOS";
+pub const FLASH_CANCELLED: &str = "Cancelled. Select a port and press Flash to try again.";
+static CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn cancelled() -> bool {
+    CANCEL.load(std::sync::atomic::Ordering::SeqCst)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sighting {
@@ -82,14 +88,14 @@ pub fn in_bootloader(description: &str) -> bool {
     description.contains("BL") || description.to_ascii_lowercase().contains("bootloader")
 }
 
-pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn FnMut(), report: &mut dyn FnMut(Event)) -> Result<(), String> {
+pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn FnMut(), cancelled: &dyn Fn() -> bool, report: &mut dyn FnMut(Event)) -> Result<(), String> {
     let first = look();
     if first == Sighting::Bootloader {
         return Ok(());
     }
     let mut must_leave = first == Sighting::Running;
     report(Event::Status(if must_leave { REPLUG } else { PLUG_IN }.to_string()));
-    let arrived = (0..FIND_BOARD_ATTEMPTS).any(|_| {
+    let arrived = std::iter::repeat(()).take_while(|()| !cancelled()).any(|()| {
         pause();
         match (must_leave, look()) {
             (true, Sighting::Absent) => {
@@ -100,7 +106,7 @@ pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn F
             (false, _) => true,
         }
     });
-    if arrived { Ok(()) } else { Err("Bootloader not found".to_string()) }
+    if arrived { Ok(()) } else { Err(FLASH_CANCELLED.to_string()) }
 }
 
 pub fn flash<P: Port>(port: P, file: &str, contents: &[u8], report: &mut dyn FnMut(Event)) -> Result<(), String> {
@@ -181,7 +187,8 @@ pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &m
         Source::Sik => sik_url(board.board_id).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
         Source::ArduPilot { vehicle, build } => {
             report(Event::Status("Downloading the ArduPilot firmware list...".into()));
-            crate::firmwarecatalog::apm_url(&manifest()?, board.board_id, *build, *vehicle, description)?
+            let chibios = crate::settingsstore::raw_setting(APM_CHIBIOS).and_then(|v| v.as_i64()).unwrap_or(0) == 0;
+            crate::firmwarecatalog::apm_url(&manifest()?, board.board_id, *build, *vehicle, chibios, description)?
         }
     };
     report(Event::Status(format!("Downloading firmware from {url}")));
@@ -450,25 +457,30 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
         if held.phase.busy() {
             return Err("A firmware upgrade is already running".to_string());
         }
+        CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
         *held = Job { phase: Phase::Connecting, port: Some(port.to_string()), file: Some(file.to_string()), ..Job::default() };
     }
     let port = port.to_string();
     std::thread::Builder::new()
         .name("firmware-flash".into())
         .spawn(move || {
-            let waited = wait_for_bootloader(&mut || look_at(&port), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &mut apply);
+            let waited = wait_for_bootloader(&mut || look_at(&port), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &cancelled, &mut apply);
             let description = description_of(&port);
             let outcome = waited.and_then(|()| open(&port)).and_then(|opened| {
                 if chosen.sik() {
                     std::thread::sleep(std::time::Duration::from_millis(SIK_OPEN_SETTLE_MS));
                 }
-                flash_from(opened, chosen.sik(), &mut |board| resolve(&chosen, board, &description, &mut apply), &mut apply)
+                flash_from(opened, chosen.sik(), &mut |board| resolve(&chosen, board, &description, &mut apply).and_then(|fetched| if cancelled() { Err(FLASH_CANCELLED.to_string()) } else { Ok(fetched) }), &mut apply)
             });
             let mut held = job();
             match outcome {
                 Ok(()) => {
                     held.phase = Phase::Complete;
                     held.messages.push("Upgrade complete".into());
+                }
+                Err(e) if e == FLASH_CANCELLED => {
+                    held.phase = Phase::Idle;
+                    held.messages.push(e);
                 }
                 Err(e) => {
                     held.phase = Phase::Failed;
@@ -488,6 +500,7 @@ pub fn view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
         "class": "FirmwareUpgrade",
         "phase": held.phase.token(),
         "busy": held.phase.busy(),
+        "cancellable": held.phase == Phase::Connecting,
         "progress": held.progress,
         "messages": held.messages,
         "error": held.error,
@@ -502,6 +515,15 @@ pub fn ports_view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Va
 }
 
 pub fn invoke(path: &str, args: &str) -> Option<Value> {
+    if path == "firmware.cancel" {
+        return Some(match job().phase == Phase::Connecting {
+            true => {
+                CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
+                json!({ "ok": true })
+            }
+            false => json!({ "ok": false, "reason": "The upgrade can no longer be cancelled once erasing has started." }),
+        });
+    }
     (path == "firmware.flash").then_some(())?;
     let given: Vec<String> = serde_json::from_str(args).unwrap_or_default();
     let (Some(port), Some(file)) = (given.first(), given.get(1)) else {
@@ -561,14 +583,14 @@ mod tests {
 
     fn watched(sightings: &[Sighting]) -> (Result<(), String>, Vec<String>, usize) {
         let mut queue = sightings.iter().copied();
-        let mut pauses = 0;
+        let pauses = std::cell::Cell::new(0);
         let mut lines = Vec::new();
-        let outcome = wait_for_bootloader(&mut || queue.next().unwrap_or(Sighting::Absent), &mut || pauses += 1, &mut |e| {
+        let outcome = wait_for_bootloader(&mut || queue.next().unwrap_or(Sighting::Absent), &mut || pauses.set(pauses.get() + 1), &|| pauses.get() >= 1000, &mut |e| {
             if let Event::Status(s) = e {
                 lines.push(s);
             }
         });
-        (outcome, lines, pauses)
+        (outcome, lines, pauses.get())
     }
 
     #[test]
@@ -583,11 +605,11 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_board_is_waited_for_and_then_given_up_on() {
+    fn a_missing_board_is_waited_for_until_the_user_cancels() {
         let (outcome, lines, _) = watched(&[Sighting::Absent, Sighting::Absent, Sighting::Bootloader]);
         assert_eq!((outcome, lines), (Ok(()), vec![PLUG_IN.to_string()]));
         let (outcome, _, pauses) = watched(&[]);
-        assert_eq!((outcome, pauses), (Err("Bootloader not found".to_string()), FIND_BOARD_ATTEMPTS));
+        assert_eq!((outcome, pauses), (Err(FLASH_CANCELLED.to_string()), 1000), "the search has no time limit, as the Qt find-board loop runs until cancel");
         assert!(in_bootloader("PX4 BL FMU v5.x") && in_bootloader("ArduPilot Bootloader") && !in_bootloader("PX4 FMU v5.x"));
     }
 
