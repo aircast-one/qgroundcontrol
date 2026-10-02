@@ -593,7 +593,17 @@ impl Vehicle {
                     Vec::new()
                 }
             })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .chain(self.refresh_calibration_params(now_ms))
             .collect()
+    }
+
+    fn refresh_calibration_params(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        let Some(families) = self.calibrate.take_refresh() else { return Vec::new() };
+        let component = self.component;
+        let actions: Vec<params::Action> = self.parameters(component).into_iter().filter(|(name, _)| families.iter().any(|family| name.starts_with(family))).flat_map(|(name, _)| self.params.refresh(component, &name)).collect();
+        self.follow_params(actions, now_ms)
     }
 
     pub fn calibrate_request(&mut self, request: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
@@ -1984,6 +1994,10 @@ impl Vehicle {
                     self.pending_notices.push((crate::noticeboard::MESSAGE, text.to_string()));
                     Vec::new()
                 }
+                Out::Result { command: sensorcal::CMD_DO_CANCEL_MAG_CAL, failure: Failure::NoResponse, result, .. } => {
+                    let calibration = self.calibrate.on_ack(sensorcal::CMD_DO_CANCEL_MAG_CAL, result, now_ms);
+                    self.follow_calibration(calibration, now_ms)
+                }
                 Out::Result { command: CMD_DO_REPOSITION, result, failure: Failure::ResultOnly, .. } => {
                     self.reposition_supported = match result {
                         RESULT_ACCEPTED => Some(true),
@@ -2293,7 +2307,7 @@ impl Vehicle {
 
     pub fn check_links(&mut self, now_ms: u64) {
         self.commands.high_latency = self.primary_link.or(Some(self.link)).is_some_and(|link| self.link_kinds.high_latency.contains(&link));
-        if !self.comm_lost_enabled {
+        if !self.comm_lost_enabled || self.calibrate.mutes_comm_lost() {
             return;
         }
         let high_latency = self.link_kinds.high_latency.clone();

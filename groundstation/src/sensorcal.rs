@@ -142,6 +142,9 @@ pub enum Action {
     Notice(&'static str),
 }
 
+const PX4_CALIBRATION_FAMILIES: &[&str] = &["CAL_", "SENS_"];
+const APM_CALIBRATION_FAMILIES: &[&str] = &["COMPASS_", "INS_"];
+
 pub const FAILED_NOTICE: &str = "Calibration failed. Calibration log will be displayed.";
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -190,6 +193,7 @@ const ACCEL_POSITIONS: [(u32, usize, f64); SIDE_COUNT] = [(1, 0, 0.0), (2, 2, 0.
 pub struct Calibration {
     px4: bool,
     running: Option<Kind>,
+    stopped: bool,
     last: Option<Kind>,
     waiting_for_cancel: bool,
     unknown_firmware: bool,
@@ -218,6 +222,7 @@ impl Calibration {
         Calibration {
             px4,
             running: None,
+            stopped: false,
             last: None,
             waiting_for_cancel: false,
             unknown_firmware: false,
@@ -360,6 +365,7 @@ impl Calibration {
         let learn = (!self.px4 && outcome == Outcome::Success && self.compass_learn).then_some(Action::SetParam { name: COMPASS_LEARN_PARAM, value: 0.0 });
         let cancel = failed_compass.then_some(Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false });
         let notice = (outcome == Outcome::Failed).then_some(Action::Notice(FAILED_NOTICE));
+        self.stopped = true;
         restore.into_iter().chain(learn).chain(cancel).chain(notice).collect()
     }
 
@@ -453,13 +459,21 @@ impl Calibration {
         }
     }
 
+    pub fn take_refresh(&mut self) -> Option<&'static [&'static str]> {
+        std::mem::take(&mut self.stopped).then_some(if self.px4 { PX4_CALIBRATION_FAMILIES } else { APM_CALIBRATION_FAMILIES })
+    }
+
+    pub fn mutes_comm_lost(&self) -> bool {
+        !self.px4 && matches!(self.running, Some(Kind::Accelerometer | Kind::CompassMot | Kind::LevelHorizon | Kind::Pressure | Kind::Gyro))
+    }
+
     pub fn on_ack(&mut self, command: u16, result: u8, now_ms: u64) -> Vec<Action> {
         if self.px4 || self.running.is_none() {
             return Vec::new();
         }
         self.active_ms = Some(now_ms);
         match (self.running, command, result) {
-            (Some(Kind::Compass), CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED) if !self.mag_cal_started => {
+            (Some(Kind::Compass), CMD_DO_CANCEL_MAG_CAL, _) if !self.mag_cal_started => {
                 self.mag_cal_started = true;
                 self.visual = true;
                 self.compasses = std::array::from_fn(|i| if self.compass_mask & (1 << i) != 0 { Compass::default() } else { Compass { complete: true, succeeded: true, ..Compass::default() } });
@@ -855,6 +869,16 @@ mod tests {
         assert_eq!((cal.running, cal.outcome, cal.progress), (None, Some(Outcome::Success), 1.0));
         assert!(Calibration::new(true).start(Kind::CompassMot, Inputs { mag_sides: None, compass_mask: 0, compass_fitness: None, compass_learn: false, north: None }, 0).is_err(), "PX4 has no CompassMot");
         assert_eq!(Kind::Airspeed.params()[5], 2.0, "PX4 deprecated param6 = 1 for airspeed");
+    }
+
+    #[test]
+    fn an_apm_compass_starts_even_when_the_cancel_before_it_is_refused() {
+        let mut cal = Calibration::new(false);
+        let inputs = Inputs { mag_sides: None, compass_mask: 0b1, compass_fitness: None, compass_learn: false, north: None };
+        cal.start(Kind::Compass, inputs, 0).unwrap();
+        let begun = cal.on_ack(CMD_DO_CANCEL_MAG_CAL, 3, 0);
+        assert!(begun.iter().any(|a| matches!(a, Action::Command { command: CMD_DO_START_MAG_CAL, .. })), "APMSensorsComponentController::_mavCommandResult starts on any cancel result, so an unsupported cancel does not hang the page");
+        assert!(!Calibration::new(true).mutes_comm_lost());
     }
 
     #[test]
