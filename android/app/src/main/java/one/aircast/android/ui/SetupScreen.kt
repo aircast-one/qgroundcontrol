@@ -1,5 +1,11 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.BoxWithConstraints
 import one.aircast.android.R
 
 import androidx.activity.compose.BackHandler
@@ -211,17 +217,19 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         return
     }
 
-    if (parametersOpen) {
-        Column(modifier.fillMaxSize()) {
-            PageTopBar("Parameters", "Back to Setup") { parametersOpen = false }
-            ParametersScreen(Modifier.weight(1f), initialSearch = parametersSearch)
+    val parametersPage: (@Composable (Modifier) -> Unit)? = if (parametersOpen) {
+        { pane ->
+            Column(pane.fillMaxSize()) {
+                PageTopBar("Parameters", "Back to Setup") { parametersOpen = false }
+                ParametersScreen(Modifier.weight(1f), initialSearch = parametersSearch)
+            }
         }
-        return
+    } else {
+        null
     }
 
-    val open = openComponent
-    if (open != null && headCanOpen(setupPage(setupJson, open.name), open.name)) {
-        Column(modifier.fillMaxSize()) {
+    val componentPage: (@Composable (Modifier) -> Unit)? = openComponent?.takeIf { headCanOpen(setupPage(setupJson, it.name), it.name) }?.let { open -> { pane ->
+        Column(pane.fillMaxSize()) {
             PageTopBar(open.name, "Back to Setup") { openComponent = null }
             val nativePage = setupPage(setupJson, open.name)
             val blocked = open.blockedReason
@@ -266,13 +274,12 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 )
             }
         }
-        return
-    }
+    } }
 
     val firmware = line.summary
     val needSetup = components.filter { it.needsAttention && setupMatches(it.name, setupSearch) }
 
-    LazyColumn(modifier.fillMaxSize()) {
+    val overview: @Composable (Modifier) -> Unit = { pane -> LazyColumn(pane.fillMaxSize()) {
         item(key = "verdict") {
             val readiness = setup
             ReadinessHeader(
@@ -310,10 +317,11 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                         ?: NEEDS_SETUP_BADGE,
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
                     onClick = if (blocked == null && headCanOpen(page, component.name)) {
-                        { openComponent = component }
+                        { parametersOpen = false; openComponent = component }
                     } else {
                         null
                     },
+                    selected = component == openComponent,
                     summary = summaries[component.name].orEmpty(),
                     icon = setupIcon(component.known),
                 )
@@ -346,10 +354,11 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                         else -> SetupState.Neutral
                     },
                     onClick = if (blocked == null && openable) {
-                        { openComponent = component }
+                        { parametersOpen = false; openComponent = component }
                     } else {
                         null
                     },
+                    selected = component == openComponent,
                     summary = summaries[component.name].orEmpty(),
                     icon = setupIcon(component.known),
                 )
@@ -365,11 +374,27 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 icon = R.drawable.ic_tune,
                 onClick = {
                     parametersSearch = ""
+                    openComponent = null
                     parametersOpen = true
                 },
+                selected = parametersOpen,
             )
         }
 
+    } }
+
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val detail = parametersPage ?: componentPage
+        if (maxWidth >= LIST_DETAIL_MIN_WIDTH) {
+            Row(Modifier.fillMaxSize()) {
+                overview(Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow))
+                Box(Modifier.weight(1f).fillMaxHeight()) {
+                    detail?.invoke(Modifier) ?: EmptyState(R.drawable.ic_build, "Vehicle setup", "Choose a component on the left.")
+                }
+            }
+        } else {
+            (detail ?: overview)(Modifier)
+        }
     }
 }
 
