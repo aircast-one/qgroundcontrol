@@ -23,6 +23,7 @@ struct Plot {
     system: u8,
     component: u8,
     message: u32,
+    instance: String,
     field: String,
     label: String,
     samples: VecDeque<(u64, f64)>,
@@ -42,8 +43,9 @@ fn charts() -> std::sync::MutexGuard<'static, [Chart; CHART_COUNT]> {
 }
 
 pub fn record(system: u8, component: u8, message: u32, payload: &[u8], now_ms: u64) {
+    let instance = crate::mavinspect::instance_value(message, payload);
     let mut held = charts();
-    held.iter_mut().flat_map(|chart| chart.plots.iter_mut()).filter(|p| p.system == system && p.component == component && p.message == message).for_each(|plot| {
+    held.iter_mut().flat_map(|chart| chart.plots.iter_mut()).filter(|p| p.system == system && p.component == component && p.message == message && p.instance == instance).for_each(|plot| {
         if let Some(value) = crate::mavinspect::field_number(message, payload, &plot.field) {
             plot.samples.push_back((now_ms, value));
         }
@@ -53,8 +55,8 @@ pub fn record(system: u8, component: u8, message: u32, payload: &[u8], now_ms: u
     });
 }
 
-fn charted(held: &[Chart; CHART_COUNT], system: u8, component: u8, message: u32, field: &str) -> Option<usize> {
-    held.iter().position(|chart| chart.plots.iter().any(|p| p.system == system && p.component == component && p.message == message && p.field == field))
+fn charted(held: &[Chart; CHART_COUNT], system: u8, component: u8, message: u32, instance: &str, field: &str) -> Option<usize> {
+    held.iter().position(|chart| chart.plots.iter().any(|p| p.system == system && p.component == component && p.message == message && p.instance == instance && p.field == field))
 }
 
 fn args(given: &str) -> (Option<usize>, Value) {
@@ -71,22 +73,22 @@ pub fn run(path: &str, given: &str) -> Value {
     let Some(chart) = chart else { return refused("A chart is 0 or 1.") };
     let selected = {
         let inspector = crate::mavinspect::lock();
-        inspector.selected_target().zip(inspector.selected_name())
+        inspector.selected_target().zip(inspector.selected_name()).zip(inspector.selected_instance())
     };
     let mut held = charts();
     match path {
         CHART_ADD => {
-            let (Some(((system, component, message), name)), Some(field)) = (selected, second.as_str()) else { return refused("Choose a message and one of its fields to chart.") };
+            let (Some((((system, component, message), name), instance)), Some(field)) = (selected, second.as_str()) else { return refused("Choose a message and one of its fields to chart.") };
             if !crate::mavinspect::field_chartable(message, field) {
                 return refused(&format!("{field} is not a number that can be charted."));
             }
-            if charted(&held, system, component, message, field).is_some() {
+            if charted(&held, system, component, message, &instance, field).is_some() {
                 return refused(&format!("{field} is already charted."));
             }
             if held[chart].plots.len() >= CHART_MAX_PLOTS {
                 return refused("This chart is full.");
             }
-            held[chart].plots.push(Plot { system, component, message, field: field.to_string(), label: format!("{name}.{field}"), samples: VecDeque::new() });
+            held[chart].plots.push(Plot { system, component, message, instance, field: field.to_string(), label: format!("{name}.{field}"), samples: VecDeque::new() });
         }
         CHART_REMOVE => {
             let Some(label) = second.as_str() else { return refused("Name the charted field to remove.") };
@@ -140,7 +142,10 @@ fn chart_json(chart: &Chart, now_ms: u64) -> Value {
 
 pub fn charts_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     let now_ms = crate::hub::now_ms();
-    let selected = crate::mavinspect::lock().selected_target();
+    let selected = {
+        let inspector = crate::mavinspect::lock();
+        inspector.selected_target().zip(inspector.selected_instance())
+    };
     let held = charts();
     json!({
         "kind": "object",
@@ -148,8 +153,8 @@ pub fn charts_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         "timeScales": CHART_TIME_SCALES.iter().map(|(label, _)| label).collect::<Vec<_>>(),
         "ranges": CHART_RANGES.iter().map(|(label, _)| label).collect::<Vec<_>>(),
         "charts": held.iter().map(|chart| chart_json(chart, now_ms)).collect::<Vec<_>>(),
-        "selectedCharted": selected.map(|(system, component, message)| {
-            held.iter().enumerate().flat_map(|(index, chart)| chart.plots.iter().filter(move |p| p.system == system && p.component == component && p.message == message).map(move |p| json!({ "field": p.field, "chart": index }))).collect::<Vec<_>>()
+        "selectedCharted": selected.map(|((system, component, message), instance)| {
+            held.iter().enumerate().flat_map(|(index, chart)| chart.plots.iter().filter(|p| p.system == system && p.component == component && p.message == message && p.instance == instance).map(move |p| json!({ "field": p.field, "chart": index }))).collect::<Vec<_>>()
         }).unwrap_or_default(),
     })
 }
@@ -159,7 +164,7 @@ mod tests {
     use super::*;
 
     fn plot(samples: &[(u64, f64)]) -> Plot {
-        Plot { system: 1, component: 1, message: 30, field: "roll".into(), label: "ATTITUDE.roll".into(), samples: samples.iter().copied().collect() }
+        Plot { system: 1, component: 1, message: 30, instance: String::new(), field: "roll".into(), label: "ATTITUDE.roll".into(), samples: samples.iter().copied().collect() }
     }
 
     #[test]

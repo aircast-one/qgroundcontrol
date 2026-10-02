@@ -398,6 +398,11 @@ impl Inspector {
         Some((system.id, message.comp_id, message.id))
     }
 
+    pub fn selected_instance(&self) -> Option<String> {
+        let system = self.active_system()?;
+        system.messages.get(system.selected).map(|m| m.instance.clone())
+    }
+
     pub fn refresh_rates(&mut self) {
         self.systems.iter_mut().flat_map(|s| s.messages.iter_mut()).for_each(|m| {
             m.actual_rate_hz = 0.2 * m.actual_rate_hz + 0.8 * (m.count - m.last_count) as f64;
