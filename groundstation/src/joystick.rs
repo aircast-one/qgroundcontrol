@@ -15,11 +15,11 @@ pub const RC_OVERRIDE_FIRST_CHANNEL: usize = 5;
 pub const RC_OVERRIDE_RELEASE_COUNT: u8 = 3;
 pub const RC_RELEASE: [u16; RC_OVERRIDE_CHANNELS] = [0, 0, 0, 0, u16::MAX - 1, u16::MAX - 1];
 pub const RC_IGNORE: [u16; RC_OVERRIDE_CHANNELS] = [u16::MAX, u16::MAX, u16::MAX, u16::MAX, 0, 0];
-pub const PWM_MIN: f32 = 800.0;
+pub const PWM_MIN: f32 = 1000.0;
 pub const PWM_CENTER: f32 = 1500.0;
-pub const PWM_MAX: f32 = 2200.0;
-pub const PWM_HALF_SPAN: f32 = 700.0;
-pub const PWM_ONE_SIDED_SPAN: f32 = 1400.0;
+pub const PWM_MAX: f32 = 2000.0;
+pub const PWM_HALF_SPAN: f32 = 500.0;
+pub const PWM_ONE_SIDED_SPAN: f32 = 1000.0;
 pub const AXIS_FREQUENCY_DEFAULT_HZ: f64 = 25.0;
 pub const AXIS_FREQUENCY_MIN_HZ: f64 = 0.25;
 pub const AXIS_FREQUENCY_MAX_HZ: f64 = 200.0;
@@ -480,7 +480,7 @@ pub fn adjust_range_to_pwm(value: i32, calibration: &AxisCalibration, with_deadb
     calibration.valid().then(|| {
         let normalized = adjust_range(value, calibration, with_deadband);
         let pwm = match calibration.one_sided() {
-            true => PWM_MIN + normalized.abs().clamp(0.0, 1.0) * PWM_ONE_SIDED_SPAN,
+            true => PWM_MIN + normalized.clamp(0.0, 1.0) * PWM_ONE_SIDED_SPAN,
             false => PWM_CENTER + normalized.clamp(-1.0, 1.0) * PWM_HALF_SPAN,
         };
         pwm.clamp(PWM_MIN, PWM_MAX).round() as u16
@@ -812,7 +812,7 @@ impl Joystick {
     }
 
     fn axis_out(&mut self, settings: &Settings, support: Support, now_ms: u64) -> Vec<Out> {
-        let due = self.axis_sent_ms.is_none_or(|sent| now_ms.saturating_sub(sent) > settings.axis_interval_ms());
+        let due = self.axis_sent_ms.is_none_or(|sent| now_ms.saturating_sub(sent) >= settings.axis_interval_ms());
         if !due {
             return Vec::new();
         }
@@ -1171,11 +1171,11 @@ mod tests {
     fn an_rc_override_axis_maps_to_pwm_over_the_span_the_rest_of_the_app_allows() {
         let two_sided = centered();
         assert_eq!(adjust_range_to_pwm(0, &two_sided, false), Some(1500));
-        assert_eq!(adjust_range_to_pwm(32767, &two_sided, false), Some(2200), "the vehicle bounds overrides to 800..2200, so a joystick that stops at 2000 silently clips a payload");
-        assert_eq!(adjust_range_to_pwm(-32768, &two_sided, false), Some(800));
+        assert_eq!(adjust_range_to_pwm(32767, &two_sided, false), Some(2000), "Joystick::_adjustRangeToRcOverridePwm spans 1000..2000 µs");
+        assert_eq!(adjust_range_to_pwm(-32768, &two_sided, false), Some(1000));
         let trigger = AxisCalibration { min: 0, max: 32767, center: 0, deadband: 0, reversed: false };
-        assert_eq!(adjust_range_to_pwm(0, &trigger, false), Some(800), "a one-sided axis starts at the bottom of the pwm range, not the middle");
-        assert_eq!(adjust_range_to_pwm(32767, &trigger, false), Some(2200));
+        assert_eq!(adjust_range_to_pwm(0, &trigger, false), Some(1000), "a one-sided axis starts at the bottom of the pwm range, not the middle");
+        assert_eq!(adjust_range_to_pwm(32767, &trigger, false), Some(2000));
         assert_eq!(adjust_range_to_pwm(16384, &trigger, false), Some(1500));
         assert_eq!(RC_RELEASE, [0, 0, 0, 0, u16::MAX - 1, u16::MAX - 1], "channels 5-8 release with 0 and the two extension channels with UINT16_MAX-1");
         assert_eq!(RC_IGNORE, [u16::MAX, u16::MAX, u16::MAX, u16::MAX, 0, 0], "leaving a channel alone is UINT16_MAX below channel 9 and 0 above it, which is the opposite encoding");
@@ -1226,10 +1226,10 @@ mod tests {
         let mut stick = mapped();
         stick.set_polling(Polling { vehicle: true, configuration: false }, 1000);
         let input = Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] };
-        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1040)).is_none(), "the period has to be past, not merely reached, exactly as the polled version did");
-        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1041)).is_some());
-        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1081)).is_none(), "the period restarts from the send, so the next one waits again");
-        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1082)).is_some());
+        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1039)).is_none(), "nothing is sent before the period");
+        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1040)).is_some(), "Joystick::_axisUpdateDue sends once the period is reached, so 20 ms samples keep a 25 Hz rate");
+        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1079)).is_none(), "the period restarts from the send, so the next one waits again");
+        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1080)).is_some());
     }
 
     #[test]
@@ -1442,7 +1442,7 @@ mod tests {
         let out = stick.on_input(input, &overriding, Support::default(), 82);
         assert_eq!(
             overrides_of(&out),
-            vec![[2200, u16::MAX, u16::MAX, u16::MAX, 0, 0]],
+            vec![[2000, u16::MAX, u16::MAX, u16::MAX, 0, 0]],
             "the enabled aux axis drives channel 5 and every channel this joystick does not hold is left alone, because the camera layer overrides the same block"
         );
         match control_of(&out).unwrap() {
@@ -1468,7 +1468,7 @@ mod tests {
         settings.additional_axes = AdditionalAxes::RcChannelsOverride;
         settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
         let full = Input { axes: &[0, 0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] };
-        assert_eq!(overrides_of(&stick.on_input(full, &settings, Support::default(), 41)), vec![[2200, u16::MAX, u16::MAX, u16::MAX, 0, 0]]);
+        assert_eq!(overrides_of(&stick.on_input(full, &settings, Support::default(), 41)), vec![[2000, u16::MAX, u16::MAX, u16::MAX, 0, 0]]);
         assert!(stick.rc_override_active());
 
         let short = Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] };
@@ -1749,8 +1749,8 @@ mod tests {
         );
         assert_eq!(view["functions"][11]["rcChannel"], 10, "the override block is channels 5 to 10, not a bare count of six");
         assert_eq!(view["rcOverride"]["firstChannel"], RC_OVERRIDE_FIRST_CHANNEL);
-        assert_eq!(view["rcOverride"]["pwmMin"], 800.0);
-        assert_eq!(view["rcOverride"]["pwmMax"], 2200.0);
+        assert_eq!(view["rcOverride"]["pwmMin"], 1000.0);
+        assert_eq!(view["rcOverride"]["pwmMax"], 2000.0);
         assert_eq!(view["rcOverride"]["releaseFrames"], RC_OVERRIDE_RELEASE_COUNT);
         assert_eq!(view["hatDirections"], json!(["up", "down", "left", "right"]), "four buttons per hat is useless without the order they come in");
         assert_eq!(view["vehicleButtonBits"], 32);
