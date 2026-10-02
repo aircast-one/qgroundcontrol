@@ -40,6 +40,9 @@ fun gridAngleShown(raw: Double): Float =
     if (raw.isNaN()) 0f else Math.round(((raw % 360.0) + 360.0) % 360.0).toFloat().coerceIn(0f, GRID_ANGLE_MAX)
 
 object SurveyBridge {
+    fun removeVertex(survey: Survey, vertex: Int): Boolean =
+        invokeOk("$PLAN_ITEMS.${survey.index}.${survey.property}.removeVertex", "[$vertex]")
+
     fun surveysFrom(json: JSONObject?): List<Survey> {
         val items = planItems(json) ?: return emptyList()
 

@@ -1063,6 +1063,12 @@ internal fun MapSpikeScreen(
                         }
 
                         surveyHit?.let { hit ->
+                            survey?.takeIf { it.editable?.canRemoveVertex == true }?.let { shape ->
+                                TextButton(onClick = {
+                                    onBridge("Removing corner") { SurveyBridge.removeVertex(shape, hit.vertex) }
+                                    selected = null
+                                }) { Text("Remove vertex") }
+                            }
                             var surveyAlt by remember(hit.item) { mutableStateOf("") }
                             var surveyUnit by remember(hit.item) { mutableStateOf("m") }
                             LaunchedEffect(hit.item) {
