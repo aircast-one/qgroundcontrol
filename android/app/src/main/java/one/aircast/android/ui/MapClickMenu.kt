@@ -165,8 +165,8 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
                     Modifier.padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(pending.title, style = MaterialTheme.typography.titleMedium)
-                    Text(pending.message, style = MaterialTheme.typography.bodyMedium)
+                    Text(pending.title, style = MaterialTheme.typography.titleLarge)
+                    Text(pending.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (pending.id == ORBIT_ACTION) {
                         OutlinedTextField(
                             value = radiusText,
@@ -192,10 +192,7 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
                             rangeLabel(reading.minimum, reading.maximum, reading.unit)?.let { RangeHint(it) }
                         }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SlideToConfirm(label = "Slide to confirm", modifier = Modifier.weight(1f)) { run(pending) }
-                        TextButton(onClick = { confirming = null }) { Text("Cancel") }
-                    }
+                    SlideOrCancel(pending.title, onConfirm = { run(pending) }, onCancel = { confirming = null })
                 }
             }
             refusal?.let {
@@ -235,17 +232,14 @@ internal fun SetWaypointSheet(sequence: Int, onDismiss: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Set Waypoint", style = MaterialTheme.typography.titleMedium)
-            Text(setWaypointMessage(sequence), style = MaterialTheme.typography.bodyMedium)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlideToConfirm(label = "Slide to confirm", modifier = Modifier.weight(1f)) {
-                    scope.launch {
-                        val refused = withContext(Dispatchers.Default) { Qgc.refusalOf(SET_WAYPOINT_PATH, waypointTarget(sequence)) }
-                        if (refused == null) onDismiss() else refusal = refused
-                    }
+            Text("Set Waypoint", style = MaterialTheme.typography.titleLarge)
+            Text(setWaypointMessage(sequence), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SlideOrCancel("Set Waypoint", onConfirm = {
+                scope.launch {
+                    val refused = withContext(Dispatchers.Default) { Qgc.refusalOf(SET_WAYPOINT_PATH, waypointTarget(sequence)) }
+                    if (refused == null) onDismiss() else refusal = refused
                 }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
+            }, onCancel = onDismiss)
             refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         }
     }
@@ -290,8 +284,8 @@ internal fun LoiterRadiusSheet(offer: LoiterOffer, units: OrbitDefaults, onDismi
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(offer.title, style = MaterialTheme.typography.titleMedium)
-            Text(offer.message, style = MaterialTheme.typography.bodyMedium)
+            Text(offer.title, style = MaterialTheme.typography.titleLarge)
+            Text(offer.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 value = radiusText,
                 onValueChange = { radiusText = it },
@@ -305,8 +299,7 @@ internal fun LoiterRadiusSheet(offer: LoiterOffer, units: OrbitDefaults, onDismi
                 Text("Clockwise", Modifier.weight(1f))
                 Switch(checked = clockwise, onCheckedChange = { clockwise = it })
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlideToConfirm(label = "Slide to confirm", modifier = Modifier.weight(1f)) {
+            SlideOrCancel(offer.title, onConfirm = {
                     val metres = radiusMetres(radiusText, defaults)
                     if (metres == null) {
                         refusal = "Enter a radius."
@@ -322,9 +315,7 @@ internal fun LoiterRadiusSheet(offer: LoiterOffer, units: OrbitDefaults, onDismi
                             if (refused == null) onDismiss() else refusal = refused
                         }
                     }
-                }
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            }
+                }, onCancel = onDismiss)
             refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         }
     }

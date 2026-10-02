@@ -46,6 +46,14 @@ internal fun ConfirmTrack(
 }
 
 @Composable
+internal fun SlideOrCancel(label: String, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        SlideToConfirm(label = slideLabel(label), modifier = Modifier.padding(top = 8.dp), onConfirm = onConfirm)
+        TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
+    }
+}
+
+@Composable
 internal fun SentNotice(name: String, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
     Text(
         text = sentText(name),
