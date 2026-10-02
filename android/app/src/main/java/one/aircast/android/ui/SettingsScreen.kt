@@ -51,6 +51,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
@@ -903,6 +904,8 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
     val secret = isSecret(fact)
     val scope = rememberCoroutineScope()
 
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     Column {
         OutlinedTextField(
             value = editing ?: fieldText(fact),
@@ -924,6 +927,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
             isError = rejection != null,
             keyboardOptions = KeyboardOptions(keyboardType = factKeyboard(fact)),
             modifier = Modifier.fillMaxWidth(),
+            interactionSource = interaction,
             trailingIcon = {
                 val committed = editing
                 if (committed != null && committed != fieldText(fact)) {
@@ -955,7 +959,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
                 modifier = Modifier.padding(start = 16.dp, top = 4.dp),
             )
         }
-        if (rejection == null) {
+        if (rejection == null && focused) {
             factConstraintNote(fact)?.let {
                 Text(
                     text = it,
