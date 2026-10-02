@@ -9895,6 +9895,7 @@
         "view.setup.parametersReason",
         "view.setup.parametersText",
         "view.setup.ready",
+        "view.setup.setupComplete",
         "view.setupSummary.class",
         "view.setupSummary.components.#",
         "view.setupSummary.components[].name",
@@ -14462,7 +14463,8 @@
         "parametersReady": "bool",
         "parametersReason": "string",
         "parametersText": "string",
-        "ready": "bool|null"
+        "ready": "bool|null",
+        "setupComplete": "bool|null"
     },
     "view.setup(Flight Safety)": {
         "available": "bool",

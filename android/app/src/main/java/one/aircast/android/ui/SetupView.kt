@@ -42,18 +42,24 @@ internal fun setupGroups(view: JSONObject?): List<SetupGroup> {
 
 internal data class SetupReadiness(
     val ready: Boolean?,
+    val setupComplete: Boolean? = null,
     val headline: String,
     val detail: String,
     val connected: Boolean,
     val firmware: String,
 )
 
-internal fun setupNoVehicleText(served: String?): String =
-    served?.ifBlank { null } ?: "Connect a vehicle to set it up."
+internal const val NO_VEHICLE_HEADLINE = "No Vehicle Connected"
+internal const val NO_VEHICLE_TEXT = "Connect a vehicle to see and change its settings."
+internal const val NOTHING_TO_CONFIGURE = "Nothing to Configure"
+internal const val NOTHING_TO_CONFIGURE_TEXT = "Aircast doesn't support setup for this vehicle type. If it is already configured, you can still fly."
+
+internal fun setupPillText(complete: Boolean): String = if (complete) "Setup complete" else "Needs setup"
 
 internal fun setupReadiness(view: JSONObject?): SetupReadiness? = view?.let {
     SetupReadiness(
         ready = if (it.isNull("ready")) null else it.optBoolean("ready"),
+        setupComplete = if (it.isNull("setupComplete") || !it.has("setupComplete")) null else it.optBoolean("setupComplete"),
         headline = it.optText("headline"),
         detail = it.optText("detail"),
         connected = it.optBoolean("connected"),

@@ -145,6 +145,10 @@ pub fn sections_for(page: &str, px4: bool) -> Option<&'static [Section]> {
     }
 }
 
+pub fn setup_complete_of(components: &[(String, bool)]) -> bool {
+    components.iter().all(|(_, needs)| !needs)
+}
+
 pub fn readiness(connected: bool, parameters_ready: bool, components: &[(String, bool)], sensor_faults: &[String]) -> (Option<bool>, String, String) {
     let outstanding: Vec<&str> = components.iter().filter(|(_, needs)| *needs).map(|(n, _)| n.as_str()).collect();
     if !connected {
@@ -307,6 +311,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "parametersText": parameters_text,
         "firmware": if !connected { "none" } else if px4 { "px4" } else { "apm" },
         "ready": ready,
+        "setupComplete": (connected && parameters_ready).then(|| setup_complete_of(&named)),
         "headline": headline,
         "detail": detail,
         "components": components.iter().map(|c| json!({
@@ -361,6 +366,12 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn setup_complete_only_asks_the_components_like_vehicle_summary() {
+        assert!(setup_complete_of(&[("Radio".into(), false)]));
+        assert!(!setup_complete_of(&[("Radio".into(), false), ("Sensors".into(), true)]));
+    }
 
     #[test]
     fn px4_switches_follow_px4_flight_modes_qml() {

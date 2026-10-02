@@ -32,6 +32,8 @@ import org.json.JSONObject
 import one.aircast.android.bridge.qgcPath
 import androidx.compose.ui.Alignment
 import one.aircast.mapspike.optText
+import one.aircast.mapspike.aircast
+import androidx.compose.material3.OutlinedButton
 
 
 internal data class FirmwareLine(val summary: String, val vehicleType: String)
@@ -181,7 +183,10 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     }
 
     if (!hasVehicle) {
-        EmptyState(R.drawable.ic_build, "No vehicle", setupNoVehicleText(setup?.detail), modifier)
+        Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            EmptyState(R.drawable.ic_build, NO_VEHICLE_HEADLINE, NO_VEHICLE_TEXT)
+            OutlinedButton(onClick = { AppNavigation.settingsPage = "Connections" }) { Text("Set Up Connection") }
+        }
         return
     }
 
@@ -268,7 +273,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         item(key = "verdict") {
             val readiness = setup
             ReadinessHeader(
-                ready = readiness?.ready,
+                ready = readiness?.setupComplete,
                 vehicle = vehicleType.ifBlank { "Vehicle" },
                 firmware = firmware,
                 headline = readiness?.headline.orEmpty(),
@@ -294,7 +299,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         }
 
         if (needSetup.isNotEmpty()) {
-            item(key = "attention") { SectionHeader("Needs attention") }
+            item(key = "attention") { SectionHeader("Needs setup") }
             items(needSetup, key = { "a${it.index}" }) { component ->
                 val blocked = component.blockedReason
                 val page = setupPage(setupJson, component.name)
@@ -317,7 +322,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         val remaining = remainingSetup(components).filter { setupMatches(it.name, setupSearch) }
         if (components.isEmpty()) {
             item(key = "empty") {
-                SetupNotice(parametersIncomplete(setupJson) ?: "This vehicle reports no setup components.")
+                parametersIncomplete(setupJson)?.let { SetupNotice(it) } ?: EmptyState(R.drawable.ic_build, NOTHING_TO_CONFIGURE, NOTHING_TO_CONFIGURE_TEXT)
             }
         } else if (remaining.isNotEmpty()) {
             item(key = "allheader") { SectionHeader("Setup") }
@@ -384,13 +389,9 @@ private fun ReadinessHeader(
         Text("Vehicle setup", style = MaterialTheme.typography.headlineMedium)
         ready?.let { verdict ->
             Text(
-                text = if (verdict) "Ready to fly" else "Not ready to fly",
+                text = setupPillText(verdict),
                 style = MaterialTheme.typography.titleMedium,
-                color = if (verdict) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.error
-                },
+                color = if (verdict) MaterialTheme.aircast.success else MaterialTheme.aircast.warning,
             )
         }
         Text(
