@@ -118,7 +118,13 @@ fun AnalyzeScreen(
     onSelect: (AnalyzePage?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    BackHandler(enabled = page != null) { onSelect(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val leave: () -> Unit = {
+        navigationRefusal(AppNavigation.blockedReason, leaving = true)
+            ?.let { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() }
+            ?: onSelect(null)
+    }
+    BackHandler(enabled = page != null) { leave() }
 
     if (page == null) {
         Surface(modifier.fillMaxSize()) { AnalyzePageList(onSelect = onSelect) }
@@ -126,7 +132,7 @@ fun AnalyzeScreen(
     }
 
     Column(modifier.fillMaxSize()) {
-        PageTopBar(page.label, "Back to Analyze") { onSelect(null) }
+        PageTopBar(page.label, "Back to Analyze") { leave() }
         Surface(Modifier.weight(1f)) {
             when (page) {
                 AnalyzePage.LogDownload -> LogDownloadScreen()
