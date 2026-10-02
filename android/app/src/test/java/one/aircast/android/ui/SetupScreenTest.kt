@@ -136,4 +136,12 @@ class SetupScreenTest {
         org.junit.Assert.assertTrue(setupMatches("Radio", ""))
         org.junit.Assert.assertFalse(setupMatches("Radio", "sensor"))
     }
+
+    @Test
+    fun `a vehicle that withheld parameters reads as SetupView's Parameters Incomplete`() {
+        val view = JSONObject("""{"parametersReady":true,"parametersReason":"incomplete","parametersText":"The vehicle didn't return its full parameter list, so some setup options are unavailable."}""")
+        assertEquals("Parameters Incomplete. The vehicle didn't return its full parameter list, so some setup options are unavailable.", parametersIncomplete(view))
+        assertEquals(null, parametersIncomplete(JSONObject("""{"parametersReady":true,"parametersReason":""}""")))
+        assertEquals("ready parameters never block setup", null, parameterWait(view))
+    }
 }

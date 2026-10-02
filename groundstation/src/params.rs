@@ -247,6 +247,10 @@ impl Params {
         self.pending_write.values().any(|names| !names.is_empty())
     }
 
+    pub fn missing(&self) -> bool {
+        self.missing
+    }
+
     pub fn ready(&self) -> bool {
         self.ready
     }

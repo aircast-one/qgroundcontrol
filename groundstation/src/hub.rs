@@ -1163,6 +1163,10 @@ impl Vehicle {
         self.params.unanswered()
     }
 
+    pub fn parameters_missing(&self) -> bool {
+        self.params.missing()
+    }
+
     pub fn firmware(&self) -> Option<Firmware> {
         self.autopilot_version.as_ref().map(|v| connect::firmware_from(v, self.autopilot == crate::modes::AUTOPILOT_PX4))
     }
@@ -1375,6 +1379,8 @@ impl Vehicle {
                     self.params_progress = 1.0;
                     if missing {
                         self.note("Some parameters were not received from the vehicle.".to_string());
+                        let app = Some(crate::noticeboard::application_name()).filter(|n| !n.is_empty()).unwrap_or_else(|| "QGroundControl".to_string());
+                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &format!("{app} was unable to retrieve the full set of parameters from vehicle {}. This will cause {app} to be unable to display its full user interface. If you are using modified firmware, you may need to resolve any vehicle startup errors to resolve the issue. If you are using standard firmware, you may need to upgrade to a newer version to resolve the issue.", self.id));
                     }
                     self.step_done(connect::Step::Parameters, now_ms)
                 }

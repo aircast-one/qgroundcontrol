@@ -5,7 +5,7 @@ use crate::read::{flag, object};
 use crate::router::Backend;
 use crate::sensors;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.parameterManager.missingParameters", "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.px4Firmware", "vehicle.apmFirmware"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
 const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Heli", "Follow Me", "Tuning - Advanced", "Scripting", "Lights", "Remote Support"];
@@ -263,12 +263,16 @@ fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
         .collect()
 }
 
+const INCOMPLETE: &str = "incomplete";
+const INCOMPLETE_PAGES: &[&str] = &["Summary", "Firmware", "Optical Flow", "Parameters"];
+
 fn parameter_state(backend: &dyn Backend, connected: bool) -> (bool, &'static str, &'static str) {
     if !connected {
         return (false, "noVehicle", "");
     }
-    let manager = object(&backend.get_fields("vehicle.parameterManager", "parametersReady,requestUnanswered,parameterDownloadSkipped"));
+    let manager = object(&backend.get_fields("vehicle.parameterManager", "parametersReady,requestUnanswered,parameterDownloadSkipped,missingParameters"));
     match (flag(&manager, "parametersReady"), flag(&manager, "requestUnanswered")) {
+        (true, _) if flag(&manager, "missingParameters") => (true, INCOMPLETE, "The vehicle didn't return its full parameter list, so some setup options are unavailable."),
         (true, _) => (true, "", ""),
         _ if flag(&manager, "parameterDownloadSkipped") => (false, "skipped", "Parameter download was skipped because the vehicle is flying. Configuration pages will be available after parameters are downloaded."),
         (false, true) => (false, "unanswered", "This vehicle has not answered the request for its parameters, and the retries are finished."),
@@ -285,6 +289,8 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let (ready, headline, detail) = readiness(connected, parameters_ready, &named, &faults);
     let sub_frame = components.iter().any(|c| c.class_name == "APMSubFrameComponent");
     let flow_images = connected && crate::hub::lock().active_id().is_some_and(|id| crate::flowimage::image_index(id) > 0);
+    let incomplete = parameters_reason == INCOMPLETE;
+    let components: Vec<Component> = if incomplete { Vec::new() } else { components };
     json!({
         "kind": "object",
         "class": "VehicleSetup",
@@ -307,7 +313,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         })).collect::<Vec<_>>(),
         "groups": PAGES.iter().map(|(title, pages)| json!({
             "title": title,
-            "pages": pages.iter().filter(|p| page_exists(p, px4)).chain((*title == "Setup" && flow_images).then_some(&"Optical Flow")).map(|p| {
+            "pages": pages.iter().filter(|p| page_exists(p, px4) && (!incomplete || INCOMPLETE_PAGES.contains(p))).chain((*title == "Setup" && flow_images).then_some(&"Optical Flow")).map(|p| {
                 let blocked = page_block(p, &components);
                 let screen = match (sub_frame, *p) {
                     (true, "Frame") => Some(crate::apmsubframe::SUB_FRAME_SCREEN),

@@ -84,6 +84,9 @@ internal fun parameterWait(view: JSONObject?): ParameterWait? {
     }
 }
 
+internal fun parametersIncomplete(view: JSONObject?): String? =
+    view?.takeIf { it.optText("parametersReason") == "incomplete" }?.let { "Parameters Incomplete. ${it.optText("parametersText")}" }
+
 internal const val SETUP_PARAMETERS_PAGE = "Parameters"
 internal const val SETUP_OVERVIEW_PAGE = ""
 internal const val SETUP_SUMMARY = "view.setupSummary"
@@ -314,7 +317,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         val remaining = remainingSetup(components).filter { setupMatches(it.name, setupSearch) }
         if (components.isEmpty()) {
             item(key = "empty") {
-                SetupNotice("This vehicle reports no setup components.")
+                SetupNotice(parametersIncomplete(setupJson) ?: "This vehicle reports no setup components.")
             }
         } else if (remaining.isNotEmpty()) {
             item(key = "allheader") { SectionHeader("Setup") }
