@@ -1545,7 +1545,6 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
         { QStringLiteral("userMax"), QStringLiteral("nothing asks yet; max is served and no head lets the user narrow a range") },
         { QStringLiteral("userMaxString"), QStringLiteral("nothing asks yet; maxString is served") },
         { QStringLiteral("maxStringLength"), QStringLiteral("nothing asks yet; no head limits a text field by it") },
-        { QStringLiteral("label"), QStringLiteral("nothing asks yet; the settings pages draw shortDescription") },
         { QStringLiteral("invalidValueString"), QStringLiteral("nothing asks yet; validation sentences come from view.control") },
     };
 
