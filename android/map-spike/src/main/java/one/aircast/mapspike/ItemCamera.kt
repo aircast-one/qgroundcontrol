@@ -47,6 +47,7 @@ internal data class CameraChoices(val labels: List<String>, val chosen: Int)
 internal data class CameraExtras(
     val intervalTime: Double?,
     val intervalDistance: Double?,
+    val distanceUnits: String,
     val modeSupported: Boolean,
     val commandsMode: Boolean,
     val mode: Int,
@@ -63,6 +64,7 @@ internal fun cameraExtras(view: JSONObject?): CameraExtras? =
         CameraExtras(
             intervalTime = it.measured("intervalTime"),
             intervalDistance = it.measured("intervalDistance"),
+            distanceUnits = it.optJSONObject("intervalDistance")?.optText("units").orEmpty().ifBlank { "m" },
             modeSupported = it.optBoolean("cameraModeSupported"),
             commandsMode = it.optBoolean("commandsMode"),
             mode = it.optJSONObject("cameraMode")?.optInt("choice", 0) ?: 0,

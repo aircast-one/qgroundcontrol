@@ -47,7 +47,7 @@ internal fun trimmedNumber(value: Double): String =
 internal fun CameraSectionExtras(extras: CameraExtras, write: (String, Any) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         extras.intervalTime?.let { time -> NumberEntry("Time (s)", time) { write("cameraPhotoIntervalTime", it) } }
-        extras.intervalDistance?.let { distance -> NumberEntry("Distance (m)", distance) { write("cameraPhotoIntervalDistance", it) } }
+        extras.intervalDistance?.let { distance -> NumberEntry("Distance (${extras.distanceUnits})", distance) { write("cameraPhotoIntervalDistance", it) } }
         if (extras.modeSupported) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Mode", style = MaterialTheme.typography.labelMedium)

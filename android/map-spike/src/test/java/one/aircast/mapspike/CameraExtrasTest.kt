@@ -17,4 +17,12 @@ class CameraExtrasTest {
         assertNull(cameraExtras(JSONObject("""{"available":false}""")))
         assertEquals("10", trimmedNumber(10.0))
     }
+
+    @Test
+    fun `the photo distance is labelled in the units its fact is cooked to`() {
+        val feet = cameraExtras(JSONObject("""{"available":true,"intervalDistance":{"value":100.0,"units":"ft"}}"""))!!
+        assertEquals(100.0, feet.intervalDistance!!, 0.0)
+        assertEquals("ft", feet.distanceUnits)
+        assertEquals("m", cameraExtras(JSONObject("""{"available":true,"intervalDistance":{"value":3.0}}"""))!!.distanceUnits)
+    }
 }

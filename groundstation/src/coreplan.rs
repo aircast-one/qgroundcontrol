@@ -1581,6 +1581,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         };
         let wanted = match (name, by_index, number) {
             ("cameraAction", true, Some(i)) => plandoc::camera_action_value(i as usize).map(|v| json!(v)),
+            (CAMERA_INTERVAL_DISTANCE, false, Some(shown)) if !member.ends_with(".rawValue") => Some(json!(crate::units::cooking("m").map_or(shown, |c| (c.base)(shown)))),
             _ => given.clone(),
         };
         return Some(match wanted.and_then(|value| plandoc::set_camera(&current, index, name, &value)) {
@@ -2085,6 +2086,18 @@ mod tests {
         let body = include_str!("coreplan.rs").split("#[cfg(test)]\nmod tests").next().unwrap_or("");
         let held_across: Vec<&str> = body.lines().filter(|line| line.contains("held()") && line.contains("(backend")).collect();
         assert!(held_across.is_empty(), "a held() temporary lives to the end of its statement, and a backend read can route back into controller_fields, which takes the same lock: {held_across:?}");
+    }
+
+    #[test]
+    fn the_photo_distance_is_shown_in_the_horizontal_units_like_qgcs_metre_fact() {
+        let doc = plandoc::set_camera(&plandoc::set_camera(&empty_document(), 0, "cameraAction", &json!(2)).unwrap(), 0, CAMERA_INTERVAL_DISTANCE, &json!(30.48)).unwrap();
+        let section = cooked_camera_distance(plandoc::camera_section(&doc.settings_sections), crate::units::cooking_with("m", |_| None, crate::units::IMPERIAL_US));
+        let distance = section["facts"].as_array().unwrap().iter().find(|f| f["property"] == CAMERA_INTERVAL_DISTANCE).unwrap().clone();
+        assert!((distance["value"].as_f64().unwrap() - 100.0).abs() < 1e-9, "{distance}");
+        assert_eq!(distance["units"], "ft");
+        assert_eq!(distance["valueString"], "100.0");
+        let time = section["facts"].as_array().unwrap().iter().find(|f| f["property"] == "cameraPhotoIntervalTime").unwrap().clone();
+        assert_eq!(time["units"], "secs", "only the distance is a metre fact");
     }
 
     #[test]
@@ -2839,6 +2852,32 @@ pub fn breach_altitude_fact() -> Option<Value> {
     Some(fact)
 }
 
+const CAMERA_INTERVAL_DISTANCE: &str = "cameraPhotoIntervalDistance";
+
+fn cooked_camera_distance(section: Value, cooking: Option<crate::units::Conversion>) -> Value {
+    let Some(conversion) = cooking else { return section };
+    let cook = |fact: &Value| match fact["property"] == CAMERA_INTERVAL_DISTANCE {
+        true => {
+            let shown = fact["value"].as_f64().map(conversion.shown);
+            let text = shown.map(|v| format!("{v:.1}"));
+            Value::Object(fact.as_object().cloned().unwrap_or_default().into_iter().chain([
+                ("value".to_string(), json!(shown)),
+                ("valueString".to_string(), json!(text)),
+                ("enumOrValueString".to_string(), json!(text)),
+                ("units".to_string(), json!(conversion.name)),
+            ]).collect())
+        }
+        false => fact.clone(),
+    };
+    match section {
+        Value::Object(map) => Value::Object(map.into_iter().map(|(key, value)| match (key.as_str(), value) {
+            ("facts", Value::Array(facts)) => (key, Value::Array(facts.iter().map(cook).collect())),
+            (_, value) => (key, value),
+        }).collect()),
+        other => other,
+    }
+}
+
 pub fn camera_section(index: usize) -> Option<Value> {
     if !enabled() {
         return None;
@@ -2852,9 +2891,10 @@ pub fn camera_section(index: usize) -> Option<Value> {
         }
         other => other,
     };
+    let shown = |sections: &[plandoc::Simple]| with_support(cooked_camera_distance(plandoc::camera_section(sections), crate::units::cooking("m")));
     Some(match index.checked_sub(1).map(|at| document.items.get(at)) {
-        None => with_support(plandoc::camera_section(&document.settings_sections)),
-        Some(Some(plandoc::Item::Simple(simple))) if simple.command == plandoc::CMD_NAV_WAYPOINT => with_support(plandoc::camera_section(&simple.sections)),
+        None => shown(&document.settings_sections),
+        Some(Some(plandoc::Item::Simple(simple))) if simple.command == plandoc::CMD_NAV_WAYPOINT => shown(&simple.sections),
         _ => json!({ "kind": "null" }),
     })
 }
