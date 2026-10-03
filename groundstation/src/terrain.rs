@@ -123,6 +123,7 @@ pub enum SegmentKind {
     Generic,
     Takeoff,
     Land,
+    TerrainFrame,
 }
 
 pub fn segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f64, height: &dyn Fn(f64, f64) -> Option<f64>) -> Value {
@@ -150,6 +151,7 @@ pub fn shaped_segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f
             let ignored = match kind {
                 SegmentKind::Takeoff => here < COLLISION_IGNORE_M,
                 SegmentKind::Land => here > total - COLLISION_IGNORE_M,
+                SegmentKind::TerrainFrame => true,
                 SegmentKind::Generic => false,
             };
             Some(!ignored && *ground > slope * here + from_alt)
@@ -164,6 +166,7 @@ pub fn shaped_segment(from: (f64, f64), from_alt: f64, to: (f64, f64), to_alt: f
         "distanceBetween": if heights.is_empty() { 0.0 } else { between },
         "finalDistanceBetween": if heights.is_empty() { 0.0 } else { last_between },
         "terrainCollision": collision,
+        "terrainFrame": kind == SegmentKind::TerrainFrame,
     })
 }
 
@@ -232,9 +235,14 @@ pub fn transect_segments(item: &Value, home_altitude: f64, height: &dyn Fn(f64, 
         crate::altitudemodes::RELATIVE => surface + home_altitude,
         crate::altitudemodes::ABSOLUTE => surface,
         crate::altitudemodes::CALC_ABOVE_TERRAIN => return Some(flown_segments(transect.get("Items")?.as_array()?, height)),
+        TERRAIN_FRAME => f64::NAN,
         _ => return None,
     };
     let points: Vec<(f64, f64)> = transect.get("VisualTransectPoints")?.as_array()?.iter().filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?))).collect();
+    if amsl.is_nan() {
+        let above = |at: (f64, f64)| height(at.0, at.1).map_or(surface, |ground| ground + surface);
+        return Some(points.windows(2).map(|pair| shaped_segment(pair[0], above(pair[0]), pair[1], above(pair[1]), SegmentKind::TerrainFrame, height)).collect());
+    }
     Some(points.windows(2).map(|pair| segment(pair[0], amsl, pair[1], amsl, height)).collect())
 }
 
@@ -273,13 +281,15 @@ fn segment_points(segment: &Value, sequence: i64, from: f64) -> Vec<Point> {
         .map(|heights| heights.iter().map(|h| h.as_f64().filter(|v| v.is_finite())).collect())
         .unwrap_or_default();
     let steps = heights.len().max(2);
+    let above_ground = (segment.get("terrainFrame") == Some(&Value::Bool(true))).then(|| heights.first().copied().flatten().map(|ground| low - ground)).flatten();
     (0..steps)
         .map(|step| {
             let along = sample_at(step, steps, length, spacing);
+            let straight = low + (high - low) * if length > 0.0 { along / length } else { 0.0 };
             Point {
                 sequence,
                 distance: from + along,
-                mission_altitude: low + (high - low) * if length > 0.0 { along / length } else { 0.0 },
+                mission_altitude: above_ground.zip(heights.get(step).copied().flatten()).map_or(straight, |(offset, ground)| ground + offset),
                 terrain_altitude: heights.get(step).copied().flatten(),
                 collision,
             }
@@ -413,10 +423,6 @@ pub fn simple_segments(reads: &[Value], fixed_wing: bool, rover: bool, height: &
     path.windows(2)
         .filter(|pair| !flag_of(pair[0], "isLandCommand") || to_home(pair[1]))
         .filter(|pair| !flag_of(pair[0], "isIncomplete") && !flag_of(pair[1], "isIncomplete"))
-        .filter(|pair| {
-            let terrain_frame = !to_home(pair[1]) && pair[0].get("altitudeFrame").or_else(|| pair[0].get("altitudeMode")).and_then(Value::as_i64) == Some(TERRAIN_FRAME);
-            !terrain_frame || flag_of(pair[1], "isTakeoffItem") || flag_of(pair[1], "isLandCommand")
-        })
         .filter_map(|pair| {
             let (first, second) = (pair[0], pair[1]);
             let from = spot(first.get("exitCoordinate")).or_else(|| spot(first.get("coordinate")))?;
@@ -424,9 +430,11 @@ pub fn simple_segments(reads: &[Value], fixed_wing: bool, rover: bool, height: &
             let to_alt = second.get("amslEntryAlt")?.as_f64()?;
             let straight_up = flag_of(second, "isTakeoffItem") && !fixed_wing;
             let from_alt = if straight_up { to_alt } else { first.get("amslExitAlt").or_else(|| first.get("amslEntryAlt"))?.as_f64()? };
-            let kind = match (flag_of(second, "isTakeoffItem"), flag_of(second, "isLandCommand")) {
-                (true, _) => SegmentKind::Takeoff,
-                (_, true) => SegmentKind::Land,
+            let terrain_frame = first.get("altitudeFrame").or_else(|| first.get("altitudeMode")).and_then(Value::as_i64) == Some(TERRAIN_FRAME);
+            let kind = match (flag_of(second, "isTakeoffItem"), flag_of(second, "isLandCommand"), terrain_frame) {
+                (true, ..) => SegmentKind::Takeoff,
+                (_, true, _) => SegmentKind::Land,
+                (.., true) => SegmentKind::TerrainFrame,
                 _ => SegmentKind::Generic,
             };
             let segment = shaped_segment(from, from_alt, to, to_alt, kind, height);
@@ -738,6 +746,16 @@ mod tests {
     fn a_pattern_that_clips_terrain_is_named_for_the_map_tint() {
         let model = json!({ "elements": [{ "homePosition": true, "isSimpleItem": false, "terrainCollision": true }, { "isSimpleItem": true, "terrainCollision": true }, { "isSimpleItem": false, "terrainCollision": true }, { "isSimpleItem": false, "terrainCollision": false }] });
         assert_eq!(colliding_items(&model), [2], "only complex items, by visual index; simple legs are red through collisionLegs");
+    }
+
+    #[test]
+    fn a_terrain_frame_pattern_follows_the_ground_and_never_collides() {
+        let corridor = json!({ "complexItemType": "CorridorScan", "TransectStyleComplexItem": { "CameraCalc": { "DistanceToSurface": 50.0, "DistanceMode": TERRAIN_FRAME }, "VisualTransectPoints": [[47.0, 8.0], [47.01, 8.0]] } });
+        let ridge = |lat: f64, _lon: f64| Some(if lat > 47.004 && lat < 47.006 { 700.0 } else { 500.0 });
+        let segments = transect_segments(&corridor, 0.0, &ridge).unwrap();
+        assert_eq!((segments.len(), segments[0]["terrainCollision"].clone(), segments[0]["terrainFrame"].clone()), (1, json!(false), json!(true)), "SegmentTypeTerrainFrame skips the collision check");
+        let flown = segment_points(&segments[0], 3, 0.0);
+        assert!(flown.iter().all(|p| p.terrain_altitude.is_some_and(|ground| (p.mission_altitude - ground - 50.0).abs() < 1e-6)), "drawn at the ground plus the distance to the surface, as TerrainProfile::_addFlightPoints does");
     }
 
     #[test]
