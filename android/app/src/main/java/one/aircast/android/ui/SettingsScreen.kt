@@ -223,7 +223,6 @@ internal fun settingsPagePath(title: String): String = "$SETTINGS_VIEW($title)"
 
 internal val NOT_BUILT_HERE = mapOf(
     "displayPresetsTabFirst" to "this head has no presets tab",
-    "maxCacheMemorySize" to "the map keeps its own memory cache",
 )
 
 internal fun notBuiltHere(fact: Fact): String? = NOT_BUILT_HERE[fact.name]

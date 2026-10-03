@@ -235,7 +235,7 @@ pub unsafe extern "C" fn qgc_map_tile_fetch(map_type: *const c_char, x: c_int, y
     std::thread::spawn(move || {
         let cache = crate::terrainservice::cache_path().and_then(|path| crate::tilecache::Cache::open(&path).ok());
         let persist = !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
-        let image = crate::maptiles::fetch(&provider, x, y, zoom, &crate::mapurls::keys_from_settings(), cache.as_ref(), persist, &crate::maptiles::fetch_over_http);
+        let image = crate::maptiles::fetch_remembered(&provider, x, y, zoom, cache.as_ref(), persist);
         match image {
             Some(image) => unsafe { handler(image.as_ptr(), c_int::try_from(image.len()).unwrap_or(0), context as *mut c_void) },
             None => unsafe { handler(std::ptr::null(), 0, context as *mut c_void) },

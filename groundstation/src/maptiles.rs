@@ -1,5 +1,7 @@
-use std::sync::{LazyLock, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
+
+use quick_cache::Weighter;
 
 use crate::mapurls::{Keys, TileRequest, tile_request};
 use crate::tilecache::{Cache, Tile, provider_hash, tile_hash};
@@ -9,6 +11,9 @@ const ELEVATION_PROVIDER: &str = "Copernicus";
 const DISK_LIMIT_PATH: &str = "settings.mapsSettings.maxCacheDiskSize";
 const DEFAULT_DISK_LIMIT_MB: u64 = 1024;
 const LIMIT_CHECK_EVERY: Duration = Duration::from_secs(2);
+const MEMORY_LIMIT_PATH: &str = "settings.mapsSettings.maxCacheMemorySize";
+const MEGABYTE: u64 = 1024 * 1024;
+const TYPICAL_TILE_BYTES: u64 = 20 * 1024;
 
 static LAST_LIMIT_CHECK: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::new(None));
 
@@ -29,6 +34,43 @@ fn keep_within_disk_limit(cache: &Cache) {
     if due {
         let _ = cache.trim_to(disk_limit_bytes());
     }
+}
+
+type TileKey = (String, i32, i32, i32);
+
+#[derive(Clone)]
+struct ImageBytes;
+
+impl Weighter<TileKey, Arc<[u8]>> for ImageBytes {
+    fn weight(&self, _key: &TileKey, image: &Arc<[u8]>) -> u64 {
+        image.len() as u64
+    }
+}
+
+pub struct MemoryCache(quick_cache::sync::Cache<TileKey, Arc<[u8]>, ImageBytes>);
+
+impl MemoryCache {
+    pub fn with_limit_mb(megabytes: u64) -> MemoryCache {
+        let bytes = megabytes.clamp(1, 1024) * MEGABYTE;
+        MemoryCache(quick_cache::sync::Cache::with_weighter((bytes / TYPICAL_TILE_BYTES) as usize, bytes, ImageBytes))
+    }
+
+    pub fn through(&self, provider: &str, x: i32, y: i32, zoom: i32, fetch: impl FnOnce() -> Option<Vec<u8>>) -> Option<Vec<u8>> {
+        let key = (provider.to_string(), x, y, zoom);
+        self.0.get(&key).map(|image| image.to_vec()).or_else(|| {
+            let image = fetch()?;
+            self.0.insert(key, Arc::from(image.as_slice()));
+            Some(image)
+        })
+    }
+}
+
+static MEMORY: LazyLock<MemoryCache> = LazyLock::new(|| {
+    MemoryCache::with_limit_mb(crate::settingsstore::raw_setting(MEMORY_LIMIT_PATH).and_then(|value| value.as_u64()).unwrap_or(0))
+});
+
+pub fn fetch_remembered(provider: &str, x: i32, y: i32, zoom: i32, cache: Option<&Cache>, persist: bool) -> Option<Vec<u8>> {
+    MEMORY.through(provider, x, y, zoom, || fetch(provider, x, y, zoom, &crate::mapurls::keys_from_settings(), cache, persist, &fetch_over_http))
 }
 
 pub fn image_format(image: &[u8]) -> Option<&'static str> {
@@ -71,6 +113,28 @@ mod tests {
     }
 
     const PNG: &[u8] = b"\x89PNG\r\n\x1a\n rest";
+
+    #[test]
+    fn a_tile_held_in_memory_is_served_without_asking_the_disk_or_network_again() {
+        let memory = MemoryCache::with_limit_mb(1);
+        assert_eq!(memory.through("Google Satellite", 1, 2, 3, || Some(PNG.to_vec())), Some(PNG.to_vec()));
+        assert_eq!(memory.through("Google Satellite", 1, 2, 3, || panic!("held tiles never reach the fetch")), Some(PNG.to_vec()));
+        assert_eq!(memory.through("Google Satellite", 1, 2, 4, || None), None);
+        assert_eq!(memory.through("Google Satellite", 1, 2, 4, || Some(PNG.to_vec())), Some(PNG.to_vec()), "a missing tile is not remembered as missing");
+    }
+
+    #[test]
+    fn the_memory_limit_is_clamped_like_qgeofiletilecacheqgc_and_evicts_past_it() {
+        let memory = MemoryCache::with_limit_mb(0);
+        assert_eq!(memory.0.capacity(), MEGABYTE);
+        assert_eq!(MemoryCache::with_limit_mb(5000).0.capacity(), 1024 * MEGABYTE);
+        let tile = vec![0u8; 300 * 1024];
+        (0..8).for_each(|x| {
+            memory.through("Google Satellite", x, 0, 1, || Some(tile.clone()));
+        });
+        assert!(memory.0.weight() <= MEGABYTE);
+        assert!(memory.0.len() < 8);
+    }
 
     #[test]
     fn a_fetched_tile_is_cached_and_the_next_request_never_reaches_the_network() {

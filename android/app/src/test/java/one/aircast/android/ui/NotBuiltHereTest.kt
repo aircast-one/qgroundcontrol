@@ -55,6 +55,7 @@ class NotBuiltHereTest {
         assertNull(notBuiltHere(fact("useChecklist")))
         assertNull(notBuiltHere(fact("rcControls")))
         assertNull(notBuiltHere(fact("elevationMapProvider")))
+        assertNull(notBuiltHere(fact("maxCacheMemorySize")))
         assertEquals("Read-only", inertNote(fact("useChecklist", readOnly = true)))
     }
 
@@ -88,8 +89,8 @@ class NotBuiltHereTest {
         assertEquals(
             "it belongs with the label like the unit does - in the value column it merged with " +
                 "the value and stopped that column being scannable",
-            "MB \u00b7 No effect here - the map keeps its own memory cache",
-            factSubtitle(fact("maxCacheMemorySize", isBool = false).copy(units = "MB")),
+            "MB \u00b7 No effect here - this head has no presets tab",
+            factSubtitle(fact("displayPresetsTabFirst", isBool = false).copy(units = "MB")),
         )
         assertEquals("MB", factSubtitle(fact("someLiveNumber", isBool = false).copy(units = "MB")))
         assertEquals("", factSubtitle(fact("someLiveToggle")))
