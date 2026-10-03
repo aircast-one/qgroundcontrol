@@ -50,7 +50,7 @@ internal data class SetupReadiness(
     val vehicleId: Int? = null,
 )
 
-internal const val NO_VEHICLE_HEADLINE = "No Vehicle Connected"
+internal const val NO_VEHICLE_HEADLINE = "No vehicle connected"
 internal const val NO_VEHICLE_TEXT = "Connect a vehicle to see and change its settings."
 internal const val NOTHING_TO_CONFIGURE = "Nothing to Configure"
 internal const val NOTHING_TO_CONFIGURE_TEXT = "Aircast doesn't support setup for this vehicle type. If it is already configured, you can still fly."

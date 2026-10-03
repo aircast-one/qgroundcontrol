@@ -111,8 +111,8 @@ class VehicleSubtitleTest {
 
     @Test
     fun `no vehicle says so rather than showing an empty line`() {
-        assertEquals("No Vehicle", vehicleSubtitle(null))
-        assertEquals("No Vehicle", vehicleSubtitle(state(connected = false)))
+        assertEquals("No vehicle", vehicleSubtitle(null))
+        assertEquals("No vehicle", vehicleSubtitle(state(connected = false)))
     }
 
     @Test
