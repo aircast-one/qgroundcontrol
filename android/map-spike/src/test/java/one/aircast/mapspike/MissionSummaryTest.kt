@@ -12,7 +12,7 @@ class MissionSummaryTest {
     @Test
     fun `the summary reads the core's words rather than formatting its own`() {
         assertEquals(
-            "4.82 km · 19:37",
+            "Distance 4.82 km · Time 19:37",
             missionSummaryText(view("Distance" to "4.82 km", "Time" to "19:37")),
         )
     }
@@ -20,21 +20,21 @@ class MissionSummaryTest {
     @Test
     fun `imperial units come through untouched, because the core already converted them`() {
         assertEquals(
-            "2.99 miles · 19:37",
+            "Distance 2.99 miles · Time 19:37",
             missionSummaryText(view("Distance" to "2.99 miles", "Time" to "19:37")),
         )
     }
 
     @Test
     fun `a row the core left out is left out here`() {
-        assertEquals("4.82 km", missionSummaryText(view("Distance" to "4.82 km")))
-        assertEquals("19:37", missionSummaryText(view("Time" to "19:37")))
+        assertEquals("Distance 4.82 km", missionSummaryText(view("Distance" to "4.82 km")))
+        assertEquals("Time 19:37", missionSummaryText(view("Time" to "19:37")))
     }
 
     @Test
     fun `rows the summary does not show are ignored`() {
         assertEquals(
-            "4.82 km",
+            "Distance 4.82 km",
             missionSummaryText(view("Cruise" to "3 km", "Distance" to "4.82 km", "Hover" to "1 km")),
         )
     }
@@ -46,9 +46,9 @@ class MissionSummaryTest {
     }
 
     @Test
-    fun `the furthest point from launch reads as QGC's max telem`() {
+    fun `the furthest point from launch reads as QGC's Max telem, each total labelled like PlanToolBarIndicators`() {
         assertEquals(
-            "4.82 km · 19:37 · max telem 1.2 km",
+            "Distance 4.82 km · Time 19:37 · Max telem 1.2 km",
             missionSummaryText(view("Distance" to "4.82 km", "Time" to "19:37", "Furthest from launch" to "1.2 km")),
         )
     }

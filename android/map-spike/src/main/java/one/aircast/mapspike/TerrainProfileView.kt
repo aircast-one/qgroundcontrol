@@ -138,15 +138,6 @@ fun TerrainProfileView(
         return
     }
 
-    if (profile.flat) {
-        Text(
-            profileLabel(profile),
-            modifier.fillMaxWidth().padding(vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-        )
-        return
-    }
-
     Text(profileLabel(profile), Modifier.fillMaxWidth().padding(horizontal = 8.dp), style = MaterialTheme.typography.labelSmall)
     if (profile.heightHeader.isNotBlank()) {
         androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {

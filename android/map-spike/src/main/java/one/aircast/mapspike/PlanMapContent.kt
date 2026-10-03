@@ -1386,14 +1386,14 @@ internal fun MapSpikeScreen(
                     }
                 }
 
-                if (profile.points.isNotEmpty()) {
+                if (profileShown(layer, profile)) {
                     FilterChip(
                         selected = missionStatusShown,
                         onClick = { onBridge { setOk(SHOW_MISSION_ITEM_STATUS, settingJson((!missionStatusShown).toString())) } },
                         label = { Text("Terrain profile") },
                     )
                 }
-                if (missionStatusShown) {
+                if (missionStatusShown && layer == PlanLayer.Mission) {
                     TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
                         allItems.firstOrNull { it.sequence == sequence }?.let { selected = MapHit.Waypoint(it.index) }
                     }
@@ -1651,6 +1651,8 @@ internal fun dragAllowed(hit: MapHit, selected: MapHit?, layer: PlanLayer): Bool
     MapHit.BreachReturn -> layer == PlanLayer.Fence
     else -> layerOf(hit) == layer && ownerOf(hit) != null && ownerOf(hit) == ownerOf(selected)
 }
+
+internal fun profileShown(layer: PlanLayer, profile: TerrainProfile): Boolean = layer == PlanLayer.Mission && profile.points.isNotEmpty()
 
 internal fun actsOnTap(hit: MapHit): Boolean = hit is MapHit.Midpoint || hit is MapHit.LoiterRotation || hit == MapHit.BreachReturn
 

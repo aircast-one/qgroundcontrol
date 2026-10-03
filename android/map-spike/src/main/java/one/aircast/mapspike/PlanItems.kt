@@ -119,15 +119,15 @@ fun legText(item: MissionItem): String? {
     val travelled = !item.distance.isNaN() && item.distance > 0.0
     val climbed = !item.altitudeChange.isNaN() && item.altitudeChange != 0.0
     return listOf(
-        item.distanceText.takeIf { travelled }.orEmpty(),
-        item.azimuthText.takeIf { travelled }.orEmpty(),
-        item.altitudeChangeText.takeIf { climbed }.orEmpty(),
-        item.gradientText.takeIf { travelled && climbed && it.isNotBlank() }?.let { "$it gradient" }.orEmpty(),
-        item.headingText.takeIf { it.isNotBlank() }?.let { "heading $it" }.orEmpty(),
+        "Alt diff" to item.altitudeChangeText.takeIf { climbed },
+        "Azimuth" to item.azimuthText.takeIf { travelled },
+        "Heading" to item.headingText,
+        "Gradient" to item.gradientText.takeIf { travelled && climbed },
+        "Prev WP" to item.distanceText.takeIf { travelled },
     )
-        .filter { it.isNotBlank() }
+        .filter { (_, value) -> !value.isNullOrBlank() }
         .takeIf { it.isNotEmpty() }
-        ?.joinToString(" \u00b7 ")
+        ?.joinToString(" \u00b7 ") { (label, value) -> "$label $value" }
 }
 
 fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {

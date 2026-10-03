@@ -333,13 +333,13 @@ class LegTextTest {
     )
 
     @Test
-    fun `a leg reads as its length and its bearing, both spelled by the core`() {
-        assertEquals("449 m · 47°", legText(item(449.0)))
+    fun `each figure carries the label PlanToolBarIndicators gives it`() {
+        assertEquals("Azimuth 47° · Prev WP 449 m", legText(item(449.0)))
     }
 
     @Test
     fun `the expected vehicle heading closes the line`() {
-        assertEquals("449 m · 47° · heading 90°", legText(item(449.0).copy(headingText = "90°")))
+        assertEquals("Azimuth 47° · Heading 90° · Prev WP 449 m", legText(item(449.0).copy(headingText = "90°")))
     }
 
     @Test
@@ -360,7 +360,7 @@ class LegTextTest {
     @Test
     fun `a climb straight up still says the climb, having no distance to report`() {
         assertEquals(
-            "+10.0 m",
+            "Alt diff +10.0 m",
             legText(item(0.0, altitudeChange = 10.0, altitudeChangeText = "+10.0 m")),
         )
     }
@@ -373,7 +373,7 @@ class LegTextTest {
     @Test
     fun `a climbing leg also gives the gradient QGC's plan stats show`() {
         assertEquals(
-            "449 m · 47° · +12.0 m · 2 deg gradient",
+            "Alt diff +12.0 m · Azimuth 47° · Gradient 2 deg · Prev WP 449 m",
             legText(item(449.0, altitudeChange = 12.0, altitudeChangeText = "+12.0 m").copy(gradientText = "2 deg")),
         )
     }
@@ -381,7 +381,7 @@ class LegTextTest {
     @Test
     fun `a climbing leg says how much it climbs, signed and in the vertical unit`() {
         assertEquals(
-            "449 m · 47° · +12.0 m",
+            "Alt diff +12.0 m · Azimuth 47° · Prev WP 449 m",
             legText(item(449.0, altitudeChange = 12.0, altitudeChangeText = "+12.0 m")),
         )
     }
@@ -389,14 +389,14 @@ class LegTextTest {
     @Test
     fun `a level leg says nothing about climbing rather than plus zero`() {
         assertEquals(
-            "449 m · 47°",
+            "Azimuth 47° · Prev WP 449 m",
             legText(item(449.0, altitudeChange = 0.0, altitudeChangeText = "+0.0 m")),
         )
     }
 
     @Test
     fun `a measured leg with only one of the two still says what it has`() {
-        assertEquals("449 m", legText(item(449.0, azimuthText = "")))
+        assertEquals("Prev WP 449 m", legText(item(449.0, azimuthText = "")))
     }
 }
 

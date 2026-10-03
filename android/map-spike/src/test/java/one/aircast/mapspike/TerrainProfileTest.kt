@@ -289,4 +289,12 @@ class TerrainGapTest {
         org.junit.Assert.assertEquals("a span with no heights yet keeps its points, draws no flight line there", listOf(2, 2), plannedRuns(waiting, 400f, 70f).map { it.size })
         org.junit.Assert.assertEquals(listOf(100f to 100f, 100f to 300f, 300f to 300f), missingSpans(waiting, 400f))
     }
+
+    @Test
+    fun `the profile and its chip belong to the Mission layer, as PlanView shows TerrainStatus only there`() {
+        val drawn = TerrainProfile(points = listOf(ProfilePoint(0.0, null, 10.0)))
+        org.junit.Assert.assertTrue(profileShown(PlanLayer.Mission, drawn))
+        org.junit.Assert.assertFalse(profileShown(PlanLayer.Fence, drawn))
+        org.junit.Assert.assertFalse(profileShown(PlanLayer.Mission, TerrainProfile(points = emptyList())))
+    }
 }
