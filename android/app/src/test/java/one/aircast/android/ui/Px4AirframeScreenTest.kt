@@ -19,4 +19,10 @@ class Px4AirframeScreenTest {
         assertEquals(4001L, read.groups.single().airframes.single().autostartId)
         assertNull(px4Airframes(JSONObject("""{"available":false}""")))
     }
+
+    @org.junit.Test
+    fun `each airframe group shows its QGC picture`() {
+        org.junit.Assert.assertEquals("file:///android_asset/Airframe/QuadRotorX.svg", airframeImageAsset("QuadRotorX"))
+        org.junit.Assert.assertEquals(null, airframeImageAsset(""))
+    }
 }

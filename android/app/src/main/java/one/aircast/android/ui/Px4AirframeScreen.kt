@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,7 +45,10 @@ internal const val PX4_AIRFRAME_APPLY = "px4Airframe.apply"
 internal const val PX4_AIRFRAME_RESET = "px4Airframe.reset"
 
 internal data class AirframeChoice(val name: String, val autostartId: Long)
-internal data class AirframeGroup(val name: String, val airframes: List<AirframeChoice>)
+internal data class AirframeGroup(val name: String, val airframes: List<AirframeChoice>, val image: String = "")
+
+internal fun airframeImageAsset(image: String): String? =
+    image.takeIf { it.isNotBlank() }?.let { "file:///android_asset/Airframe/${it.removeSuffix(".svg")}.svg" }
 internal data class Px4Airframes(
     val autostartId: Long,
     val custom: Boolean,
@@ -74,6 +78,7 @@ internal fun px4Airframes(view: JSONObject?): Px4Airframes? =
                     val frames = type.optJSONArray("airframes")
                     AirframeGroup(
                         name = type.optText("name"),
+                        image = type.optText("image"),
                         airframes = (0 until (frames?.length() ?: 0)).mapNotNull { at ->
                             frames?.optJSONObject(at)?.let { AirframeChoice(it.optText("name"), it.optLong("autostartId")) }
                         },
@@ -160,6 +165,15 @@ private fun AirframeGroupCard(group: AirframeGroup, picked: Boolean, index: Int,
             RadioButton(selected = picked, onClick = { onPick(index) })
             Column(Modifier.weight(1f)) {
                 Text(group.name, style = MaterialTheme.typography.titleSmall)
+                airframeImageAsset(group.image)?.let { asset ->
+                    coil3.compose.AsyncImage(
+                        model = asset,
+                        imageLoader = IconLoader.of(androidx.compose.ui.platform.LocalContext.current),
+                        contentDescription = group.name,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().height(96.dp).padding(vertical = 4.dp),
+                    )
+                }
                 Box {
                     OutlinedButton(onClick = { open = true }) { Text(group.airframes.getOrNull(index)?.name.orEmpty()) }
                     DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
