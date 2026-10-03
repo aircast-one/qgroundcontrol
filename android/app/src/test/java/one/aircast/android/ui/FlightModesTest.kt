@@ -102,4 +102,12 @@ class ModeHeadingTest {
         assertEquals("", hiddenModesAfter(listOf("Manual"), "Manual", hide = false))
         assertEquals("Manual", hiddenModesAfter(listOf("Manual"), "Manual", hide = true))
     }
+
+    @org.junit.Test
+    fun `each mode in the menu carries an icon like the Penpot mode picker`() {
+        org.junit.Assert.assertEquals(
+            listOf(one.aircast.android.R.drawable.ic_gamepad, one.aircast.android.R.drawable.ic_height, one.aircast.android.R.drawable.ic_my_location, one.aircast.android.R.drawable.ic_route, one.aircast.android.R.drawable.ic_home, one.aircast.android.R.drawable.ic_flight),
+            listOf("Stabilize", "Altitude Hold", "Position Hold", "Auto", "Smart RTL", "Circle").map(::flightModeIcon),
+        )
+    }
 }

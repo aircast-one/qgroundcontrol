@@ -970,6 +970,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
         shown.forEach { mode ->
             DropdownMenuItem(
                 modifier = if (mode.current) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
+                leadingIcon = { Icon(painterResource(flightModeIcon(mode.name)), null) },
                 text = {
                     Column(Modifier.widthIn(max = 280.dp)) {
                         Text(mode.name, style = MaterialTheme.typography.titleSmall)
@@ -1066,3 +1067,19 @@ private fun InstrumentSheet(
     }
 }
 
+
+private val FLIGHT_MODE_ICONS = listOf(
+    listOf("rtl", "return", "smart_rtl", "smartrtl") to R.drawable.ic_home,
+    listOf("land", "precland") to R.drawable.ic_flight_land,
+    listOf("takeoff") to R.drawable.ic_flight_takeoff,
+    listOf("auto", "mission") to R.drawable.ic_route,
+    listOf("guided", "offboard", "follow") to R.drawable.ic_location_on,
+    listOf("althold", "altitude", "alt") to R.drawable.ic_height,
+    listOf("loiter", "position", "poshold", "hold", "brake") to R.drawable.ic_my_location,
+    listOf("stabilize", "stabilized", "manual", "acro", "sport", "drift") to R.drawable.ic_gamepad,
+)
+
+internal fun flightModeIcon(name: String): Int =
+    name.lowercase().split(' ', '_', '-').let { words -> words.joinToString("") to words }.let { (joined, words) ->
+        FLIGHT_MODE_ICONS.firstOrNull { (keys, _) -> keys.any { it == joined || it in words } }?.second ?: R.drawable.ic_flight
+    }
