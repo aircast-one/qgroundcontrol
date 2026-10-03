@@ -265,21 +265,24 @@ internal fun factSlider(json: JSONObject, hint: String): FactSlider? {
     return FactSlider(from.toFloat(), to.toFloat(), json.optDouble("step", Double.NaN).takeIf { !it.isNaN() && it > 0 }?.toFloat(), json.optInt("decimals", 2), hint)
 }
 
+private const val MAX_SLIDER_STEPS = 200
+
+internal fun sliderSteps(slider: FactSlider): Int =
+    slider.step?.let { step -> ((slider.to - slider.from) / step).toInt() - 1 }?.takeIf { it in 1..MAX_SLIDER_STEPS } ?: 0
+
 @Composable
 private fun FactSliderRow(fact: Fact, slider: FactSlider, onWrite: () -> Unit) {
     val scope = rememberCoroutineScope()
     val held = (fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull() ?: slider.from
     var shown by remember(fact.path, held) { mutableStateOf(held.coerceIn(slider.from, slider.to)) }
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(sentenceCase(fact.title), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            Text("%.${slider.decimals}f".format(shown), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        }
+    FactRow(fact.copy(slider = null), onWrite = onWrite)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         if (slider.hint.isNotBlank()) Text(slider.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Slider(
             value = shown,
             onValueChange = { shown = it },
             valueRange = slider.from..slider.to,
+            steps = sliderSteps(slider),
             enabled = fact.enabled && !fact.readOnly,
             onValueChangeFinished = {
                 scope.launch {
