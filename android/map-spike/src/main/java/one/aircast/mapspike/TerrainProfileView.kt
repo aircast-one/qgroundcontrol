@@ -132,7 +132,8 @@ fun TerrainProfileView(
         Text(
             "Plan a route with altitudes to see a profile.",
             modifier.fillMaxWidth().padding(vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         return
     }

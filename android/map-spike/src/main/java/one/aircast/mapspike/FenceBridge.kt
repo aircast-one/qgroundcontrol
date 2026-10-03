@@ -53,7 +53,7 @@ internal fun fenceSelectionAfterRemove(row: FenceRow, selected: MapHit?): MapHit
 internal fun rallyAfterRemove(removed: Int, countBefore: Int): MapHit? =
     (countBefore - 2).takeIf { it >= 0 }?.let { last -> MapHit.Rally(minOf(removed, last)) }
 
-internal const val NO_GEOFENCE = "No geofence - keep the vehicle inside a boundary, or out of an area."
+internal const val NO_GEOFENCE = "No geofence \u2013 keep the vehicle inside a boundary, or out of an area."
 internal const val RALLY_HELP = "Rally Points provide alternate landing points when performing a Return to Launch (RTL)."
 
 fun rallyRows(points: List<RallyPoint>): List<FenceRow> = points.map { point ->
