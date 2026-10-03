@@ -114,6 +114,12 @@ fun shapeEditable(target: ShapeTarget, fences: List<FencePolygon>, surveys: List
     fences.firstOrNull { fencePath(it.index) == target.path }?.editable
         ?: surveys.firstOrNull { surveyPath(it) == target.path }?.editable
 
+fun shapeCaption(shape: EditableShape, circled: Boolean): String =
+    shape.circleCaption.takeIf { circled && it.isNotBlank() } ?: shape.caption
+
+fun traceCaption(count: Int, minimum: Int): String =
+    if (count >= minimum) "$count points" else "Click the map to add points \u00B7 $count of $minimum"
+
 fun circleRadiusMetres(typed: String, metresPerUnit: Double): Double? =
     typedNumber(typed)?.takeIf { it > 0 }?.times(metresPerUnit)
 

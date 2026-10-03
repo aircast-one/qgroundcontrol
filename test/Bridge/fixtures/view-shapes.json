@@ -8933,6 +8933,8 @@
         "view.planTransform.verticalUnit",
         "view.polygon(plan.geoFenceController.polygons.0).adjustInvokable",
         "view.polygon(plan.geoFenceController.polygons.0).canRemoveVertex",
+        "view.polygon(plan.geoFenceController.polygons.0).caption",
+        "view.polygon(plan.geoFenceController.polygons.0).circleCaption",
         "view.polygon(plan.geoFenceController.polygons.0).class",
         "view.polygon(plan.geoFenceController.polygons.0).edgeLengths.#",
         "view.polygon(plan.geoFenceController.polygons.0).edgeLengths[]",
@@ -13588,6 +13590,8 @@
     "view.polygon(plan.geoFenceController.polygons.0)": {
         "adjustInvokable": "string",
         "canRemoveVertex": "bool",
+        "caption": "string",
+        "circleCaption": "string",
         "class": "string",
         "edgeLengths": [
             "string"

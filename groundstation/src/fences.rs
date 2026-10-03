@@ -325,9 +325,30 @@ pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
         "vertices": vertices.iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
         "midpoints": midpoints,
         "edgeLengths": edge_lengths(&vertices, segments, &horizontal),
+        "caption": shape_caption(&vertices, ring, &horizontal, &Unit::area(backend)),
+        "circleCaption": circle_caption(&vertices, &horizontal),
         "horizontalMetresPerUnit": horizontal.meters(1.0),
         "horizontalUnit": horizontal.name,
     })
+}
+
+pub fn shape_caption(vertices: &[(f64, f64)], ring: bool, horizontal: &Unit, area: &Unit) -> String {
+    let distance = |metres: f64| crate::read::format_measure(horizontal.show(metres), &horizontal.name);
+    let segments = if ring { vertices.len() } else { vertices.len().saturating_sub(1) };
+    let length: f64 = (0..segments).map(|i| crate::surveygrid::distance_between(vertices[i], vertices[(i + 1) % vertices.len()])).sum();
+    match (ring, vertices.len()) {
+        (true, 0) => "Polygon Tools".to_string(),
+        (true, _) => format!("{} \u{b7} {}", area_text(crate::mappolygon::area(vertices), area), distance(length)),
+        (false, 0 | 1) => "Polyline Tools".to_string(),
+        (false, _) => format!("Length {}", distance(length)),
+    }
+}
+
+pub fn circle_caption(vertices: &[(f64, f64)], horizontal: &Unit) -> Option<String> {
+    let first = vertices.first().filter(|_| vertices.len() >= 3)?;
+    let count = vertices.len() as f64;
+    let centre = (vertices.iter().map(|v| v.0).sum::<f64>() / count, vertices.iter().map(|v| v.1).sum::<f64>() / count);
+    Some(format!("Radius {}", crate::read::format_measure(horizontal.show(crate::surveygrid::distance_between(centre, *first)), &horizontal.name)))
 }
 
 pub fn edge_lengths(vertices: &[(f64, f64)], segments: usize, unit: &Unit) -> Vec<String> {
@@ -561,6 +582,22 @@ mod tests {
         assert_eq!(line["splitInvokable"], "splitSegment");
         assert_eq!(line["canRemoveVertex"], false);
         assert_eq!(polygon_view(&Fake, &["nope".to_string()])["kind"], "null");
+    }
+
+    #[test]
+    fn the_shape_toolbar_caption_reads_like_qgcs() {
+        let metres = Unit { name: "m".to_string(), factor: 1.0 };
+        let feet = Unit { name: "ft".to_string(), factor: 3.2808399 };
+        let square = Unit { name: "m^2".to_string(), factor: 1.0 };
+        assert_eq!(shape_caption(&[], true, &metres, &square), "Polygon Tools");
+        assert_eq!(shape_caption(&[(47.0, 8.0)], false, &metres, &square), "Polyline Tools", "QGC names the tools until a polyline has its two vertices");
+        assert_eq!(shape_caption(&[(47.0, 8.0), (47.0001, 8.0)], false, &feet, &square), "Length 36.5 ft", "11.1 m spelled in the operator's unit, one decimal below 100");
+        let square_ring = [(0.0, 0.0), (0.001, 0.0), (0.001, 0.001), (0.0, 0.001)];
+        let caption = shape_caption(&square_ring, true, &metres, &square);
+        assert!(caption.starts_with("12") && caption.contains(" m\u{b2} \u{b7} 44"), "area then perimeter, as QGCMapPolygonVisuals._shapeCaption: {caption}");
+        let ring: Vec<(f64, f64)> = (0..16).map(|i| crate::surveygrid::at_distance_and_azimuth((47.0, 8.0), 50.0, i as f64 * 22.5)).collect();
+        assert_eq!(circle_caption(&ring, &metres).as_deref(), Some("Radius 50.0 m"));
+        assert_eq!(circle_caption(&ring[..2], &metres), None);
     }
 
     #[test]

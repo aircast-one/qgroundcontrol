@@ -90,4 +90,14 @@ class PolygonToolsTest {
         assertNull(circleRadiusMetres("0", 0.3048))
         assertNull(circleRadiusMetres("wide", 1.0))
     }
+
+    @Test
+    fun `the shape toolbar caption follows QGC's polygon and trace captions`() {
+        val shape = EditableShape("p", emptyList(), "", false, caption = "1.2 ha \u00B7 440 m", circleCaption = "Radius 50.0 m")
+        assertEquals("Radius 50.0 m", shapeCaption(shape, circled = true))
+        assertEquals("1.2 ha \u00B7 440 m", shapeCaption(shape, circled = false))
+        assertEquals("1.2 ha \u00B7 440 m", shapeCaption(shape.copy(circleCaption = ""), circled = true))
+        assertEquals("Click the map to add points \u00B7 2 of 3", traceCaption(2, 3))
+        assertEquals("3 points", traceCaption(3, 3))
+    }
 }

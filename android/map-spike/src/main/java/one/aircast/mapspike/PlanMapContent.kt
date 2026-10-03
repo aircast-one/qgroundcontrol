@@ -980,7 +980,7 @@ internal fun MapSpikeScreen(
 
                 tracing?.let { (target, points) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Click the map to add points \u00B7 ${points.size} of ${target.minimum}", style = MaterialTheme.typography.labelSmall)
+                        Text(traceCaption(points.size, target.minimum), style = MaterialTheme.typography.labelSmall)
                         TextButton(enabled = points.size >= target.minimum, onClick = {
                             tracing = null
                             onBridge("Tracing shape") { replaceShape(target, points) }
@@ -1205,6 +1205,9 @@ internal fun MapSpikeScreen(
                         }
 
                         shapeTarget(fenceHit?.polygon ?: shapeFence, survey?.takeIf { surveyHit != null || selected is MapHit.ShapeCentre || selected is MapHit.ShapeRadius })?.let { target ->
+                            shapeEditable(target, fences, surveyList)?.let { shape ->
+                                Text(shapeCaption(shape, target.path in circled), style = MaterialTheme.typography.labelSmall)
+                            }
                             if (target.line) {
                                 TextButton(enabled = visible.size == 4, onClick = {
                                     onBridge("Drawing line") { replaceShape(target, defaultLine(visible)) }
