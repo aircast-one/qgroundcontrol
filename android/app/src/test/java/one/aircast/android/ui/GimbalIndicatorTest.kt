@@ -16,6 +16,8 @@ class GimbalIndicatorTest {
             ),
         )!!
         assertEquals("Yaw follow · P: -12.3 · Y: 5.0", gimbalCellText(state))
+        val two = state.copy(gimbals = state.gimbals + GimbalChoice("1-155", 1, 155, false))
+        assertEquals("with several gimbals the toolbar names the active one", "Gimbal 1 · Yaw follow · P: -12.3 · Y: 5.0", gimbalCellText(two))
         assertTrue(state.retractOffered)
         assertEquals(154, state.gimbals[0].deviceId)
         assertNull(gimbalIndicator(JSONObject("""{"shown":false}""")))

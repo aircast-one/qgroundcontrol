@@ -94,7 +94,9 @@ internal fun gimbalIndicator(view: JSONObject?): GimbalIndicatorState? =
     }
 
 internal fun gimbalCellText(state: GimbalIndicatorState): String =
-    listOf(state.statusText, state.pitchText, state.yawText).filter { it.isNotBlank() }.joinToString(" · ")
+    listOf(state.gimbals.takeIf { it.size > 1 }?.firstOrNull { it.active }?.name.orEmpty(), state.statusText, state.pitchText, state.yawText)
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
 
 @Composable
 fun GimbalTakeControlDialog() {
