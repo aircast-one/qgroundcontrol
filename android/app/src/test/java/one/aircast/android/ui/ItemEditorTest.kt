@@ -24,6 +24,17 @@ class ItemEditorTest {
     }
 
     @Test
+    fun `landing altitudes carry the pattern's altitude frame like AltitudeFactTextField`() {
+        val fields = itemFields(JSONObject("""{"fields":[
+            {"name":"finalApproachAltitude","label":"Altitude","control":"number","units":"m","path":"plan.missionController.visualItems.4.finalApproachAltitude"},
+            {"name":"landingAltitude","label":"Altitude","control":"number","units":"m","path":"plan.missionController.visualItems.4.landingAltitude"},
+            {"name":"loiterRadius","label":"Radius","control":"number","units":"m","path":"plan.missionController.visualItems.4.loiterRadius"}]}"""))
+        assertEquals(listOf("m Rel", "m Rel", "m"), withLandingFrameUnits(fields, true).map { it.units })
+        assertEquals(listOf("m AMSL", "m AMSL", "m"), withLandingFrameUnits(fields, false).map { it.units })
+        assertEquals(listOf("m", "m", "m"), withLandingFrameUnits(fields, null).map { it.units })
+    }
+
+    @Test
     fun `the speed section is offered only where the item has one`() {
         val speed = speedSection(JSONObject("""{"speedSection":{"available":true,"specified":true,"value":8.5,"units":"m/s","path":"p","specifyPath":"s"}}"""))!!
         assertTrue(speed.specified)

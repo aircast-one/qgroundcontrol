@@ -141,6 +141,15 @@ private fun OptionalFactRow(fact: one.aircast.android.bridge.Fact, onWrite: () -
 internal fun altitudesRelative(view: JSONObject?): Boolean? =
     view?.takeIf { it.optBoolean("landing") && it.has("altitudesAreRelative") && !it.isNull("altitudesAreRelative") }?.optBoolean("altitudesAreRelative")
 
+private val LANDING_ALTITUDES = listOf("finalApproachAltitude", "landingAltitude")
+
+internal fun withLandingFrameUnits(fields: List<one.aircast.android.bridge.Fact>, relative: Boolean?): List<one.aircast.android.bridge.Fact> =
+    relative?.let { if (it) "Rel" else "AMSL" }?.let { frame ->
+        fields.map { fact ->
+            if (LANDING_ALTITUDES.any { fact.path.endsWith(".$it") }) fact.copy(units = listOf(fact.units, frame).filter(String::isNotBlank).joinToString(" ")) else fact
+        }
+    } ?: fields
+
 internal fun altitudeHint(view: JSONObject?): String? =
     view?.takeIf { it.has("altitudeHint") && !it.isNull("altitudeHint") }?.optString("altitudeHint")?.ifBlank { null }
 
@@ -167,7 +176,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
         view = withContext(Dispatchers.Default) { Qgc.get(itemFactsPath(index)) }
     }
 
-    val fields = remember(view) { itemFields(view) }
+    val fields = remember(view) { withLandingFrameUnits(itemFields(view), altitudesRelative(view)) }
     val raw = remember(view) { rawEdit(view) }
     val connected = hasVehicle()
     val camera = remember(view) { cameraCalc(view) }
