@@ -353,7 +353,7 @@
             "controls": [
                 {
                     "control": "label",
-                    "label": "Warning: Skipping arming checks can lead to loss of Vehicle control.",
+                    "label": "Skipping arming checks can lead to loss of vehicle control.",
                     "warning": true
                 },
                 {
