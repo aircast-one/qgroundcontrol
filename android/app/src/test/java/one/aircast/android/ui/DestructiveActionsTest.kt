@@ -15,7 +15,7 @@ class DestructiveActionsTest {
     )
 
     private fun action(id: String, offer: String, reason: String = "", prompt: String = "P") =
-        """{"id":"$id","title":"$id","prompt":"$prompt","offer":"$offer",
+        """{"id":"$id","label":"L$id","button":"B$id","title":"$id","prompt":"$prompt","offer":"$offer",
             "reason":"$reason","destructive":true}"""
 
     @Test
@@ -67,6 +67,25 @@ class DestructiveActionsTest {
                 "destructive action had already disagreed on wording",
             "Put every camera setting back to its factory value. This cannot be undone.",
             reset.prompt,
+        )
+    }
+
+    @Test
+    fun `the row label and button text are the core's, apart from the dialog title`() {
+        val reset = destructiveActions(served(action("resetSettings", "ready"))).single()
+
+        assertEquals(
+            "PhotoVideoControl.qml labels the row, names the button and titles the dialog separately",
+            Triple("LresetSettings", "BresetSettings", "resetSettings"),
+            Triple(reset.label, reset.button, reset.title),
+        )
+    }
+
+    @Test
+    fun `the sheet's video rows carry the camera dialog's own titles`() {
+        assertEquals(
+            listOf("Video Grid Lines", "Video Screen Fit"),
+            CAMERA_SHEET_VIDEO_SETTINGS.values.toList(),
         )
     }
 

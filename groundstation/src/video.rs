@@ -206,9 +206,9 @@ fn tracking_shapes(camera: &Value) -> Vec<&'static str> {
         .collect()
 }
 
-const DESTRUCTIVE_OFFERS: [(&str, &str, &str, bool); 2] = [
-    ("formatStorage", "Format Camera Storage", "Confirm erasing all files?", true),
-    ("resetSettings", "Reset Camera to Factory Settings", "Confirm resetting all settings?", false),
+const DESTRUCTIVE_OFFERS: [(&str, &str, &str, &str, &str, bool); 2] = [
+    ("resetSettings", "Reset Camera Defaults", "Reset", "Reset Camera to Factory Settings", "Confirm resetting all settings?", false),
+    ("formatStorage", "Storage", "Format", "Format Camera Storage", "Confirm erasing all files?", true),
 ];
 
 const CAPTURE_DISABLED: i64 = 0;
@@ -257,11 +257,13 @@ fn photo_video_panel(camera: &Value, present: bool, shots: i64) -> Value {
 fn destructive_offers(present: bool, reports_storage: bool, recording: bool) -> Value {
     DESTRUCTIVE_OFFERS
         .iter()
-        .map(|(id, title, prompt, needs_storage)| {
+        .map(|(id, label, button, title, prompt, needs_storage)| {
             let shown = present && (!needs_storage || reports_storage);
             let busy = shown && *needs_storage && recording;
             json!({
                 "id": id,
+                "label": label,
+                "button": button,
                 "title": title,
                 "prompt": prompt,
                 "offer": match (shown, busy) { (false, _) => "hidden", (true, true) => "blocked", (true, false) => "ready" },
@@ -526,14 +528,23 @@ mod tests {
         let reporting = offers(json!({ "kind": "object", "modelName": "ZR30", "storageStatus": 2 }));
         assert_eq!(
             reporting,
-            vec![("formatStorage".to_string(), "ready".to_string(), true), ("resetSettings".to_string(), "ready".to_string(), true)],
-            "PhotoVideoControl.qml draws both buttons for a camera that reports storage, and both open a confirmation because both are irreversible"
+            vec![("resetSettings".to_string(), "ready".to_string(), true), ("formatStorage".to_string(), "ready".to_string(), true)],
+            "PhotoVideoControl.qml draws both buttons for a camera that reports storage, Reset row above Storage, and both open a confirmation because both are irreversible"
+        );
+        let rows = camera_view(&Fake::new(json!({ "kind": "object" }), json!({ "kind": "object", "modelName": "ZR30", "storageStatus": 2 })), &[])["destructiveActions"].clone();
+        assert_eq!(
+            [&rows[0], &rows[1]].map(|a| (a["label"].clone(), a["button"].clone(), a["title"].clone())),
+            [
+                (json!("Reset Camera Defaults"), json!("Reset"), json!("Reset Camera to Factory Settings")),
+                (json!("Storage"), json!("Format"), json!("Format Camera Storage")),
+            ],
+            "PhotoVideoControl.qml settings dialog labels each row, names the button, and titles the MessageDialog separately"
         );
 
         let no_storage = offers(json!({ "kind": "object", "modelName": "ZR30", "storageStatus": 3 }));
         assert_eq!(
             no_storage.iter().map(|o| o.1.as_str()).collect::<Vec<_>>(),
-            vec!["hidden", "ready"],
+            vec!["ready", "hidden"],
             "PhotoVideoControl.qml:582 gates only Format on _cameraStorageSupported; Reset has no such gate, so hiding both would withhold a control QGC offers"
         );
 
@@ -545,11 +556,11 @@ mod tests {
 
         let recording = camera_view(&Fake::new(json!({ "kind": "object" }), json!({ "kind": "object", "modelName": "ZR30", "storageStatus": 2, "captureVideoState": 2 })), &[])["destructiveActions"].clone();
         assert_eq!(
-            (recording[0]["offer"].clone(), recording[0]["reason"].clone()),
+            (recording[1]["offer"].clone(), recording[1]["reason"].clone()),
             (json!("blocked"), json!("The camera is recording.")),
             "cameraproto.rs:713 refuses FormatStorage with Refusal::Busy while recording, so offering it as ready is a success that never happens - the view has to tell the truth about a gate the core already enforces"
         );
-        assert_eq!(recording[1]["offer"], "ready", "ResetSettings is gated on nothing in either the QML or the protocol, so a recording camera can still be reset");
+        assert_eq!(recording[0]["offer"], "ready", "ResetSettings is gated on nothing in either the QML or the protocol, so a recording camera can still be reset");
     }
 
     #[test]

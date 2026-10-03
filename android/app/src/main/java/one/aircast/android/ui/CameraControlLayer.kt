@@ -385,24 +385,27 @@ private fun CameraDetailsSheet(
         }
 
         if (camera.hasVideoStream) {
-            val facts by produceState(emptyList<Fact>()) {
+            val facts by produceState(emptyList<Pair<Fact, String>>()) {
                 value = withContext(Dispatchers.Default) {
-                    CAMERA_SHEET_VIDEO_SETTINGS.mapNotNull { path -> runCatching { factFromControl(Qgc.get("view.control($path)")) }.getOrNull() }
+                    CAMERA_SHEET_VIDEO_SETTINGS.mapNotNull { (path, title) -> runCatching { factFromControl(Qgc.get("view.control($path)")) }.getOrNull()?.let { it to title } }
                 }
             }
-            facts.forEach { FactRow(it) }
+            facts.forEach { (fact, title) -> FactRow(fact, title = sentenceCase(title)) }
         }
         CameraDefinitionSettings()
 
         destructive.forEach { action ->
             var confirming by remember(action.id) { mutableStateOf(false) }
 
-            TextButton(
-                onClick = { confirming = true },
-                enabled = action.ready,
-                modifier = Modifier.padding(horizontal = 12.dp),
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(action.title, color = MaterialTheme.colorScheme.error)
+                Text(sentenceCase(action.label), style = MaterialTheme.typography.bodyLarge)
+                TextButton(onClick = { confirming = true }, enabled = action.ready) {
+                    Text(action.button, color = MaterialTheme.colorScheme.error)
+                }
             }
             destructiveReasonFor(action)?.let { reason ->
                 Text(
@@ -430,10 +433,10 @@ private fun CameraDetailsSheet(
                                     }
                                 }
                             }
-                        }) { Text("Confirm", color = MaterialTheme.colorScheme.error) }
+                        }) { Text("Yes", color = MaterialTheme.colorScheme.error) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { confirming = false }) { Text("Cancel") }
+                        TextButton(onClick = { confirming = false }) { Text("No") }
                     },
                 )
             }

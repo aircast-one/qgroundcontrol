@@ -242,6 +242,8 @@ internal const val CAMERA_FORMAT = "vehicle.cameraManager.currentCameraInstance.
 
 internal data class DestructiveAction(
     val id: String,
+    val label: String,
+    val button: String,
     val title: String,
     val prompt: String,
     val offer: String,
@@ -258,6 +260,8 @@ internal fun destructiveActions(view: JSONObject?): List<DestructiveAction> {
         listed.optJSONObject(index)?.let { entry ->
             DestructiveAction(
                 id = entry.optText("id").ifBlank { return@mapNotNull null },
+                label = entry.optText("label"),
+                button = entry.optText("button"),
                 title = entry.optText("title"),
                 prompt = entry.optText("prompt"),
                 offer = entry.optText("offer"),
@@ -282,7 +286,10 @@ internal const val PHOTO_LAPSE_MIN_S = 1f
 internal const val PHOTO_LAPSE_MAX_S = 60f
 internal const val CAMERA_CURRENT_STREAM = "vehicle.cameraManager.currentCameraInstance.currentStream"
 internal const val CAMERA_THERMAL_MODE = "vehicle.cameraManager.currentCameraInstance.thermalMode"
-internal val CAMERA_SHEET_VIDEO_SETTINGS = listOf("settings.videoSettings.gridLines", "settings.videoSettings.videoFit")
+internal val CAMERA_SHEET_VIDEO_SETTINGS = mapOf(
+    "settings.videoSettings.gridLines" to "Video Grid Lines",
+    "settings.videoSettings.videoFit" to "Video Screen Fit",
+)
 internal const val CAMERA_THERMAL_OPACITY = "vehicle.cameraManager.currentCameraInstance.thermalOpacity"
 
 internal val THERMAL_MODES = listOf("off", "blend", "full", "picInPic")
