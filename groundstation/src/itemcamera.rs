@@ -3,10 +3,6 @@ use serde_json::{Value, json};
 use crate::read::{enum_choice, enum_labels, flag, object, shown_text};
 use crate::router::Backend;
 
-// currentPlanFile was invented and the bridge has no such property; two guards said so. These are
-// the paths missionitems already watches. The item's own camera facts are behind an indexed path
-// and cannot be watched at all, which is the standing limit on every view keyed by an argument -
-// this recomputes when the selection moves or the items change, and rides the poll otherwise.
 pub const DEPS: &[&str] = &[
     "plan.missionController.currentPlanViewVIIndex",
     "plan.controllerVehicle.apmFirmware",
@@ -17,8 +13,8 @@ const NO_CAMERA_ACTION: i64 = 0;
 const TAKE_PHOTOS_TIME: i64 = 1;
 pub const MISSION_START_NOTE: &str = "Camera commands above take effect immediately at mission start.";
 
-pub fn mission_start_camera_shown(index: usize, apm_firmware: bool) -> bool {
-    index != 0 || !apm_firmware
+pub fn mission_start_camera_shown(index: usize, apm_firmware: bool, advanced: bool) -> bool {
+    index != 0 || (!apm_firmware && advanced)
 }
 const TAKE_PHOTOS_DISTANCE: i64 = 2;
 
@@ -52,11 +48,7 @@ pub fn item_camera_view(backend: &dyn Backend, args: &[String]) -> Value {
     };
     let section = crate::coreplan::camera_section(index).unwrap_or_else(|| object(&backend.get(&format!("plan.missionController.visualItems.{index}.cameraSection"))));
     let apm = flag(&object(&backend.get_fields("plan.controllerVehicle", "apmFirmware")), "apmFirmware");
-    let present = section.get("kind").and_then(Value::as_str) == Some("object") && mission_start_camera_shown(index, apm);
-    // The angles are Facts and always carry a number, so a head reading them alone is told the
-    // gimbal points somewhere for an item that never touches it. specifyGimbal is a plain bool
-    // rather than a Fact, so it does not arrive with them through view.control - which is how a
-    // head ends up with the value and not the thing that says whether it means anything.
+    let present = section.get("kind").and_then(Value::as_str) == Some("object") && mission_start_camera_shown(index, apm, crate::advancedui::shown());
     let specified = flag(&section, "specifyGimbal");
     let action = fact(&section, "cameraAction").and_then(|f| f.get("value")).and_then(Value::as_i64);
     json!({
@@ -88,9 +80,10 @@ mod tests {
 
     #[test]
     fn the_mission_start_camera_section_is_not_offered_for_ardupilot_like_mission_settings_editor() {
-        assert!(!mission_start_camera_shown(0, true));
-        assert!(mission_start_camera_shown(0, false));
-        assert!(mission_start_camera_shown(3, true), "a waypoint's own camera section stays");
+        assert!(!mission_start_camera_shown(0, true, true));
+        assert!(mission_start_camera_shown(0, false, true));
+        assert!(!mission_start_camera_shown(0, false, false), "Advanced Mode off hides it unless missionWaypointsOnly, which is false");
+        assert!(mission_start_camera_shown(3, true, false), "a waypoint's own camera section stays");
     }
 
     struct Item(Option<bool>);

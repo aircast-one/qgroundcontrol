@@ -98,7 +98,7 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
             }
             OverallStatus()
             ParameterForm(STATUS_SETTINGS_PAGE, Modifier.heightIn(max = 360.dp))
-            listOf("Vehicle parameters" to SETUP_PARAMETERS_PAGE, "Vehicle configuration" to SETUP_OVERVIEW_PAGE).forEach { (label, page) ->
+            if (advancedUiShown()) listOf("Vehicle parameters" to SETUP_PARAMETERS_PAGE, "Vehicle configuration" to SETUP_OVERVIEW_PAGE).forEach { (label, page) ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(onClick = { open(page) }) { Text("Configure") }

@@ -174,7 +174,7 @@ internal fun RemoteIdIndicatorCell() {
                     }
                 }
                 SelfIdSection()
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (advancedUiShown()) Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Remote ID", modifier = Modifier.weight(1f))
                     OutlinedButton(onClick = configure) { Text("Configure") }
                 }

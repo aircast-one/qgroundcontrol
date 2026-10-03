@@ -118,6 +118,8 @@ private const val MULTICAST_LOCK_TAG = "Aircast"
 internal fun reselectClearsAnalyze(current: Tab, tapped: Tab): Boolean =
     current == tapped && tapped == Tab.Analyze
 
+internal fun visibleTabs(advanced: Boolean): List<Tab> = Tab.entries.filter { advanced || it != Tab.Analyze }
+
 enum class Tab(val label: String, @DrawableRes val icon: Int) {
     Fly("Fly", R.drawable.ic_flight),
     Plan("Plan", R.drawable.ic_map),
@@ -365,6 +367,7 @@ fun AircastShell(hostView: android.view.View?) {
         val flyStateJson by qgcPath(one.aircast.android.ui.FLY_STATE)
         val armedOnFly = remember(flyStateJson) { one.aircast.android.ui.flyState(flyStateJson)?.armed == true }
         val showNav = !(onFly && armedOnFly)
+        val tabs = visibleTabs(one.aircast.android.ui.advancedUiShown())
         val selectTab: (Tab) -> Unit = { entry ->
             when {
                 refuseNavigation() -> Unit
@@ -378,7 +381,7 @@ fun AircastShell(hostView: android.view.View?) {
         Row(Modifier.fillMaxSize()) {
         if (showNav && landscape) {
             NavigationRail(Modifier.fillMaxHeight()) {
-                Tab.entries.forEach { entry ->
+                tabs.forEach { entry ->
                     NavigationRailItem(
                         selected = tab == entry,
                         onClick = { selectTab(entry) },
@@ -397,7 +400,7 @@ fun AircastShell(hostView: android.view.View?) {
                 Column {
                 LogReplayBar()
                 if (showNav && !landscape) NavigationBar {
-                    Tab.entries.forEach { entry ->
+                    tabs.forEach { entry ->
                         NavigationBarItem(
                             selected = tab == entry,
                             onClick = { selectTab(entry) },

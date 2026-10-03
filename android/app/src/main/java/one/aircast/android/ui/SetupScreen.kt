@@ -225,6 +225,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val openComponent = opened?.first
     val openSection = opened?.second
     var parametersOpen by remember { mutableStateOf(false) }
+    val advanced = advancedUiShown()
     var setupSearch by remember { mutableStateOf("") }
     var parametersSearch by remember { mutableStateOf("") }
 
@@ -391,7 +392,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 placeholder = "Search",
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = {
-                    if (setupSearch.isNotBlank()) {
+                    if (advanced && setupSearch.isNotBlank()) {
                         parametersSearch = setupSearch.trim()
                         parametersOpen = true
                     }
@@ -466,7 +467,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        if (setupMatches("Parameters", setupSearch)) item(key = "parameters") {
+        if (advanced && setupMatches("Parameters", setupSearch)) item(key = "parameters") {
             SectionHeader("Advanced")
             SetupRow(
                 title = "Parameters",

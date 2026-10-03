@@ -28,4 +28,10 @@ class TabReselectTest {
         assertFalse(reselectClearsAnalyze(Tab.Settings, Tab.Analyze))
         assertFalse(reselectClearsAnalyze(Tab.Analyze, Tab.Settings))
     }
+
+    @Test
+    fun `Analyze leaves the navigation while Advanced Mode is off like SelectViewDropdown`() {
+        assertFalse(Tab.Analyze in visibleTabs(advanced = false))
+        assertTrue(visibleTabs(advanced = true) == Tab.entries)
+    }
 }

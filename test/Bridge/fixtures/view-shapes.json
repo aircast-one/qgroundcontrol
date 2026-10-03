@@ -692,6 +692,11 @@
         "view.adsbTraffic.units.velocity",
         "view.adsbTraffic.units.verticalVelocity",
         "view.adsbTraffic.updatedMs",
+        "view.advancedUi.class",
+        "view.advancedUi.confirmation",
+        "view.advancedUi.kind",
+        "view.advancedUi.shown",
+        "view.advancedUi.title",
         "view.aircastLink.bitrateHistory.#",
         "view.aircastLink.bitrateText",
         "view.aircastLink.class",
@@ -6360,6 +6365,11 @@
         "view.adsbTraffic.units.velocity",
         "view.adsbTraffic.units.verticalVelocity",
         "view.adsbTraffic.updatedMs",
+        "view.advancedUi.class",
+        "view.advancedUi.confirmation",
+        "view.advancedUi.kind",
+        "view.advancedUi.shown",
+        "view.advancedUi.title",
         "view.aircastLink.bitrateHistory.#",
         "view.aircastLink.bitrateText",
         "view.aircastLink.class",
@@ -9743,6 +9753,13 @@
         },
         "updatedMs": "null"
     },
+    "view.advancedUi": {
+        "class": "string",
+        "confirmation": "string",
+        "kind": "string",
+        "shown": "bool",
+        "title": "string"
+    },
     "view.aircastLink": {
         "bitrateHistory": [
             "empty"
@@ -10604,6 +10621,7 @@
             "view.attitude",
             "view.mapClick",
             "view.firstRun",
+            "view.advancedUi",
             "view.gpsResilience",
             "view.gcsBattery",
             "view.appLog",

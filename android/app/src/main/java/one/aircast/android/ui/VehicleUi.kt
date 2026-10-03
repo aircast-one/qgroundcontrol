@@ -1031,7 +1031,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                 settings = true
             },
         )
-        if (hasModesPage) {
+        if (hasModesPage && advancedUiShown()) {
             DropdownMenuItem(
                 text = { Text("Configure flight modes") },
                 onClick = {

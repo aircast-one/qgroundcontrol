@@ -194,6 +194,7 @@ pub mod attitude;
 pub mod escview;
 pub mod gcsbattery;
 pub mod firstrun;
+pub mod advancedui;
 pub mod applog;
 pub mod offlinemaps;
 pub mod virtualjoystick;

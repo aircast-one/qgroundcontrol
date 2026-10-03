@@ -111,6 +111,7 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
     var rejected by remember { mutableStateOf(false) }
     var forcedText by remember { mutableStateOf("") }
     var forceRefusal by remember { mutableStateOf<String?>(null) }
+    val forceAllowed = advancedUiShown()
     val scope = rememberCoroutineScope()
     val fact by produceState<Fact?>(null, name, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name) }
@@ -142,17 +143,17 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                     parameterRebootNotes(loaded).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                     if (editable) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
                     val hasChoices = loaded.isEnum || loaded.isBitmask
-                    if (loaded.readOnly || (editable && hasChoices)) {
+                    if ((loaded.readOnly && forceAllowed) || (editable && hasChoices)) {
                         CheckRow("Advanced settings", advanced) { on ->
                             advanced = on
                             forced = forced && on
                             manual = manual && on
                         }
-                        if (advanced && loaded.readOnly) CheckRow("Force edit read-only param", forced) { forced = it }
+                        if (advanced && loaded.readOnly && forceAllowed) CheckRow("Force edit read-only param", forced) { forced = it }
                         if (advanced && editable && hasChoices) CheckRow("Manual entry", manual) { manual = it }
                     }
                     if (forced || (editable && (manual || !hasChoices) && !loaded.isString && !loaded.isBool)) {
-                        if (!forced && rejected) CheckRow("Force save (dangerous!)", forceSave) { forceSave = it }
+                        if (!forced && rejected && forceAllowed) CheckRow("Force save (dangerous!)", forceSave) { forceSave = it }
                         if (forceSave || forced) {
                             OutlinedTextField(value = forcedText, onValueChange = { forcedText = it }, singleLine = true, label = { Text("Value") })
                             forceRefusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
