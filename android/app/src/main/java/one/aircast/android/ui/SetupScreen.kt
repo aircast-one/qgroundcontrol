@@ -376,6 +376,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             ReadinessHeader(
                 vehicle = vehicleType.ifBlank { "Vehicle" },
                 firmware = firmware,
+                vehicleId = readiness?.vehicleId,
                 note = readinessNote(readiness, components.any { it.needsAttention }),
             )
         }
@@ -499,6 +500,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 private fun ReadinessHeader(
     vehicle: String,
     firmware: String,
+    vehicleId: Int?,
     note: String?,
 ) {
     Column(
@@ -513,6 +515,9 @@ private fun ReadinessHeader(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        vehicleId?.let {
+            Text("Vehicle $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         note?.let {
             Text(
                 text = it,

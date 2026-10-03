@@ -5,7 +5,7 @@ use crate::read::{flag, object};
 use crate::router::Backend;
 use crate::sensors;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.parameterManager.missingParameters", "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.vtol", "vehicle.fixedWing", "vehicle.px4Firmware", "vehicle.apmFirmware"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.parameterManager.missingParameters", "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.vtol", "vehicle.fixedWing", "vehicle.px4Firmware", "vehicle.apmFirmware", "vehicle.id"];
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
 const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Heli", "Follow Me", "Tuning - Advanced", "Scripting", "Lights", "Remote Support"];
@@ -315,6 +315,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "parametersReason": parameters_reason,
         "parametersText": parameters_text,
         "firmware": if !connected { "none" } else if px4 { "px4" } else { "apm" },
+        "vehicleId": connected.then(|| object(&backend.get("vehicle.id")).get("value").cloned()).flatten(),
         "ready": ready,
         "setupComplete": (connected && parameters_ready).then(|| incomplete || setup_complete_of(&named)),
         "headline": headline,
