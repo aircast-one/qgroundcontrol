@@ -40,9 +40,34 @@ class Viewer3DTest {
     }
 
     @Test
-    fun `markers, segments and the vehicle all float`() {
-        val view = JSONObject("""{"markers":[{"at":[8.0,47.0,30.0],"name":"W","colour":"black"}],"segments":[],"vehicle":[8.0,47.0,12.0]}""")
-        val slabs = pathSlabs(view)
-        assertEquals(listOf(28.5, 9.5), slabs.map { it.base })
+    fun `markers float at their altitude and the vehicle comes from its own view`() {
+        val view = JSONObject("""{"markers":[{"at":[8.0,47.0,30.0],"name":"W","colour":"black"}],"segments":[]}""")
+        assertEquals(listOf(28.5), pathSlabs(view).map { it.base })
+        val vehicle = vehicleSlabs(JSONObject("""{"at":[8.0,47.0,12.0],"heading":0.0}"""))
+        assertEquals(true, vehicle.isNotEmpty() && vehicle.all { it.base in 11.0..13.0 })
+        assertEquals(emptyList<Slab>(), vehicleSlabs(JSONObject("""{"at":null,"heading":0.0}""")))
+    }
+
+    @Test
+    fun `the quad frame's red front arms point along the heading`() {
+        val at = Point3D(8.0, 47.0, 20.0)
+        val centre = { slabs: List<Slab> -> slabs.flatMap { it.corners }.map { it.first }.average() }
+        val frame = quadFrame(at, 90.0)
+        assertEquals(true, centre(frame.filter { it.colour == "#E53935" }) > at.lon)
+        assertEquals(true, centre(frame.filter { it.colour == "#ECEFF1" && it.top - it.base < 1.0 }) < at.lon)
+    }
+
+    @Test
+    fun `a straight climb is one column from the lower to the higher altitude`() {
+        val column = ribbon(Point3D(8.0, 47.0, 10.0), Point3D(8.0, 47.0, 40.0), "orange")
+        assertEquals(1, column.size)
+        assertEquals(9.5 to 40.5, column.single().base to column.single().top)
+    }
+
+    @Test
+    fun `a steep climb leaves no gaps and a long leg stays capped`() {
+        val steep = ribbon(Point3D(8.0, 47.0, 0.0), Point3D(8.0, 47.0003, 20.0), "orange")
+        assertEquals(true, steep.zipWithNext().all { (a, b) -> b.base <= a.top + 1e-9 })
+        assertEquals(64, ribbon(Point3D(8.0, 47.0, 10.0), Point3D(8.0, 48.0, 10.0), "orange").size)
     }
 }

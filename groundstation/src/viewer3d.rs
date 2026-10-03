@@ -222,11 +222,22 @@ pub fn viewer3d_view(backend: &dyn Backend, _args: &[String]) -> Value {
 
 pub const PATH_DEPS: &[&str] = &[
     "settings.viewer3DSettings.altitudeBias.rawValue",
+    "vehicle.homePosition",
+    crate::terrainservice::TERRAIN_CHANGED,
+    "plan.missionController.visualItems.count",
+    "plan.missionController.containsItems",
+    "plan.missionController@visualItemsReset",
+    "plan.missionController@newItemsFromVehicle",
+    "plan.controllerVehicle.rover",
+    crate::coreplan::CHANGED,
+    "plan.dirty",
+];
+
+pub const VEHICLE_DEPS: &[&str] = &[
+    "settings.viewer3DSettings.altitudeBias.rawValue",
     "vehicle.coordinate",
     "vehicle.altitudeRelative",
-    crate::coreplan::CHANGED,
-    "plan.missionController.visualItems.count",
-    "plan.dirty",
+    "vehicle.heading",
 ];
 
 const WAYPOINT: i64 = 16;
@@ -306,20 +317,27 @@ pub fn path(items: &[PathItem], home: Option<(f64, f64)>) -> (Vec<Marker>, Vec<S
     (markers, segments)
 }
 
-fn path_items(listed: &Value) -> (Vec<PathItem>, Option<(f64, f64)>) {
-    let items: Vec<PathItem> = listed["items"].as_array().cloned().unwrap_or_default().iter().filter_map(|item| {
-        let coordinate = &item["coordinate"];
+fn path_items(listed: &Value, vehicle_home: Option<(f64, f64)>) -> (Vec<PathItem>, Option<(f64, f64)>) {
+    let listed_items = listed["items"].as_array().cloned().unwrap_or_default();
+    let launch = listed_items.iter().find(|item| item["kind"] == "settings").and_then(|item| coordinate(&item["coordinate"]));
+    let home = vehicle_home.or(launch);
+    let items = listed_items.iter().filter_map(|item| {
+        let command = item["command"].as_i64().unwrap_or(0);
+        let at = coordinate(&item["coordinate"]).or(home.filter(|_| command == RETURN_TO_LAUNCH))?;
         Some(PathItem {
             launch: item["kind"] == "settings",
             takeoff: item["kind"] == "takeoff",
-            command: item["command"].as_i64().unwrap_or(0),
+            command,
             specifies_coordinate: item["specifiesCoordinate"].as_bool().unwrap_or(false),
-            at: (coordinate["latitude"].as_f64()?, coordinate["longitude"].as_f64()?),
+            at,
             altitude: item["altitudeMetres"].as_f64().unwrap_or(0.0),
         })
     }).collect();
-    let home = items.iter().find(|i| i.launch).map(|i| i.at);
     (items, home)
+}
+
+fn coordinate(value: &Value) -> Option<(f64, f64)> {
+    value["latitude"].as_f64().zip(value["longitude"].as_f64()).filter(|(lat, lon)| lat.is_finite() && lon.is_finite() && (*lat != 0.0 || *lon != 0.0))
 }
 
 fn lon_lat_alt((lat, lon, alt): (f64, f64, f64), bias: f64) -> [f64; 3] {
@@ -328,17 +346,26 @@ fn lon_lat_alt((lat, lon, alt): (f64, f64, f64), bias: f64) -> [f64; 3] {
 
 pub fn path_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let bias = setting(backend, "altitudeBias").as_f64().unwrap_or(0.0);
-    let (items, home) = path_items(&crate::missionitems::fly_items_view(backend, &["geometry".to_string()]));
+    let vehicle_home = coordinate(&crate::read::object(&backend.get("vehicle.homePosition")));
+    let (items, home) = path_items(&crate::missionitems::fly_items_view(backend, &["geometry".to_string()]), vehicle_home);
     let (markers, segments) = path(&items, home);
-    let vehicle = crate::read::object(&backend.get_fields("vehicle", "coordinate,altitudeRelative"));
-    let at = &vehicle["coordinate"];
-    let relative = vehicle["altitudeRelative"].get("rawValue").or(vehicle["altitudeRelative"].get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
     json!({
         "kind": "object",
         "class": "Viewer3DPath",
         "markers": markers.iter().map(|m| json!({ "at": lon_lat_alt(m.at, bias), "name": m.name, "colour": m.colour })).collect::<Vec<_>>(),
         "segments": segments.iter().map(|s| json!({ "from": lon_lat_alt(s.from, bias), "to": lon_lat_alt(s.to, bias), "colour": if s.rtl { "red" } else { "orange" } })).collect::<Vec<_>>(),
-        "vehicle": at["latitude"].as_f64().zip(at["longitude"].as_f64()).filter(|(lat, lon)| lat.is_finite() && lon.is_finite() && (*lat != 0.0 || *lon != 0.0)).map(|(lat, lon)| json!([lon, lat, relative + bias])),
+    })
+}
+
+pub fn vehicle_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let bias = setting(backend, "altitudeBias").as_f64().unwrap_or(0.0);
+    let vehicle = crate::read::object(&backend.get_fields("vehicle", "coordinate,altitudeRelative,heading"));
+    let fact = |name: &str| vehicle[name].get("rawValue").or(vehicle[name].get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
+    json!({
+        "kind": "object",
+        "class": "Viewer3DVehicle",
+        "at": coordinate(&vehicle["coordinate"]).map(|(lat, lon)| json!([lon, lat, fact("altitudeRelative") + bias])),
+        "heading": fact("heading"),
     })
 }
 
@@ -398,5 +425,23 @@ mod tests {
         assert_eq!(segments.len(), 3, "takeoff to W, W to W (the ROI is skipped), W to home");
         assert_eq!((segments[0].from, segments[0].to), ((47.1, 8.0, 20.0), (47.2, 8.0, 30.0)));
         assert!(segments[2].rtl && !segments[1].rtl);
+    }
+
+    #[test]
+    fn a_return_to_launch_without_a_coordinate_flies_home_to_the_vehicles_home() {
+        let listed = json!({ "items": [
+            { "kind": "settings", "command": 0, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "altitudeMetres": 0.0 },
+            { "kind": "takeoff", "command": 22, "specifiesCoordinate": true, "coordinate": { "latitude": 47.1, "longitude": 8.0 }, "altitudeMetres": 20.0 },
+            { "kind": "simple", "command": 16, "specifiesCoordinate": true, "coordinate": { "latitude": 47.2, "longitude": 8.0 }, "altitudeMetres": 30.0 },
+            { "kind": "simple", "command": 20, "specifiesCoordinate": false, "coordinate": null, "altitudeMetres": 0.0 },
+        ]});
+        let (items, home) = path_items(&listed, Some((46.9, 7.9)));
+        let (markers, segments) = path(&items, home);
+        assert_eq!(markers.last().map(|m| (m.name, m.at)), Some(("L", (46.9, 7.9, 30.0))), "the vehicle's home wins over the plan's launch item, as QGC reads vehicle.homePosition");
+        assert!(segments.last().is_some_and(|s| s.rtl && s.to == (46.9, 7.9, 30.0)));
+        let (fallback, launch) = path_items(&listed, None);
+        assert_eq!(path(&fallback, launch).1.last().map(|s| s.to), Some((47.0, 8.0, 30.0)), "without a vehicle the plan's launch point is home");
+        let (orphan, none) = path_items(&json!({ "items": [listed["items"][3].clone()] }), None);
+        assert!(orphan.is_empty() && none.is_none(), "with no home at all the return leg has nowhere to go");
     }
 }

@@ -6189,6 +6189,9 @@
         "view.viewer3dPath.class",
         "view.viewer3dPath.kind",
         "view.viewer3dPath.segments.#",
+        "view.viewer3dVehicle.class",
+        "view.viewer3dVehicle.heading",
+        "view.viewer3dVehicle.kind",
         "view.virtualJoystick.autoCenterThrottle",
         "view.virtualJoystick.class",
         "view.virtualJoystick.kind",
@@ -9539,9 +9542,12 @@
         "view.viewer3dPath.markers[].colour",
         "view.viewer3dPath.markers[].name",
         "view.viewer3dPath.segments.#",
-        "view.viewer3dPath.vehicle",
-        "view.viewer3dPath.vehicle.#",
-        "view.viewer3dPath.vehicle[]",
+        "view.viewer3dVehicle.at",
+        "view.viewer3dVehicle.at.#",
+        "view.viewer3dVehicle.at[]",
+        "view.viewer3dVehicle.class",
+        "view.viewer3dVehicle.heading",
+        "view.viewer3dVehicle.kind",
         "view.virtualJoystick.autoCenterThrottle",
         "view.virtualJoystick.class",
         "view.virtualJoystick.kind",
@@ -10584,6 +10590,7 @@
             "view.firmwarePorts",
             "view.viewer3d",
             "view.viewer3dPath",
+            "view.viewer3dVehicle",
             "view.mavlinkConsole",
             "view.itemCamera",
             "view.itemFacts",
@@ -14402,10 +14409,15 @@
         ],
         "segments": [
             "empty"
-        ],
-        "vehicle": [
-            "number"
         ]
+    },
+    "view.viewer3dVehicle": {
+        "at": [
+            "number"
+        ],
+        "class": "string",
+        "heading": "number",
+        "kind": "string"
     },
     "view.virtualJoystick": {
         "autoCenterThrottle": "bool",

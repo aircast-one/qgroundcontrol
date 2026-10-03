@@ -40,14 +40,24 @@ import org.maplibre.geojson.Polygon
 
 const val VIEWER3D_VIEW = "view.viewer3d"
 const val VIEWER3D_PATH = "view.viewer3dPath"
+const val VIEWER3D_VEHICLE = "view.viewer3dVehicle"
 private const val V3D_FLOATING_SOURCE = "viewer3d-floating"
 private const val V3D_FLOATING_LAYER = "viewer3d-floating-layer"
+private const val V3D_VEHICLE_SOURCE = "viewer3d-vehicle"
+private const val V3D_VEHICLE_LAYER = "viewer3d-vehicle-layer"
+private const val RIBBON_MAX_PIECES = 64
 private const val METRES_PER_DEGREE = 111_320.0
 private const val RIBBON_WIDTH = 1.5
 private const val RIBBON_THICKNESS = 1.0
 private const val RIBBON_STEP = 8.0
 private const val MARKER_SIZE = 3.0
-private const val VEHICLE_SIZE = 5.0
+private const val ARM_LENGTH = 3.0
+private const val ARM_WIDTH = 0.5
+private const val ROTOR_SIZE = 1.6
+private const val HUB_SIZE = 1.4
+private const val FRONT_ARM_COLOUR = "#E53935"
+private const val REAR_ARM_COLOUR = "#ECEFF1"
+private const val ROTOR_COLOUR = "#37474F"
 
 data class Point3D(val lon: Double, val lat: Double, val alt: Double)
 
@@ -56,27 +66,41 @@ data class Slab(val corners: List<Pair<Double, Double>>, val base: Double, val t
 private fun point3d(array: JSONArray?): Point3D? =
     array?.takeIf { it.length() == 3 }?.let { Point3D(it.optDouble(0), it.optDouble(1), it.optDouble(2)) }
 
-private fun box(at: Point3D, size: Double, colour: String): Slab {
+private fun box(at: Point3D, size: Double, colour: String, height: Double = size): Slab {
     val dLat = size / 2 / METRES_PER_DEGREE
     val dLon = dLat / kotlin.math.cos(Math.toRadians(at.lat))
-    return Slab(listOf(at.lon - dLon to at.lat - dLat, at.lon + dLon to at.lat - dLat, at.lon + dLon to at.lat + dLat, at.lon - dLon to at.lat + dLat), at.alt - size / 2, at.alt + size / 2, colour)
+    return Slab(listOf(at.lon - dLon to at.lat - dLat, at.lon + dLon to at.lat - dLat, at.lon + dLon to at.lat + dLat, at.lon - dLon to at.lat + dLat), at.alt - height / 2, at.alt + height / 2, colour)
 }
 
-internal fun ribbon(from: Point3D, to: Point3D, colour: String): List<Slab> {
+internal fun ribbon(from: Point3D, to: Point3D, colour: String, width: Double = RIBBON_WIDTH, thickness: Double = RIBBON_THICKNESS): List<Slab> {
     val scale = kotlin.math.cos(Math.toRadians((from.lat + to.lat) / 2))
     val dx = (to.lon - from.lon) * METRES_PER_DEGREE * scale
     val dy = (to.lat - from.lat) * METRES_PER_DEGREE
     val length = kotlin.math.hypot(dx, dy)
-    val pieces = kotlin.math.max(1, kotlin.math.ceil(length / RIBBON_STEP).toInt())
-    val (nx, ny) = if (length > 0) -dy / length * RIBBON_WIDTH / 2 to dx / length * RIBBON_WIDTH / 2 else 0.0 to 0.0
+    if (length < width / 2) return listOf(box(from, width, colour, 0.0).copy(base = minOf(from.alt, to.alt) - thickness / 2, top = maxOf(from.alt, to.alt) + thickness / 2))
+    val pieces = kotlin.math.ceil(length / RIBBON_STEP).toInt().coerceIn(1, RIBBON_MAX_PIECES)
+    val climb = kotlin.math.abs(to.alt - from.alt) / pieces
+    val (nx, ny) = -dy / length * width / 2 to dx / length * width / 2
     val toLonLat = { x: Double, y: Double -> from.lon + x / (METRES_PER_DEGREE * scale) to from.lat + y / METRES_PER_DEGREE }
     return (0 until pieces).map { piece ->
         val (t0, t1) = piece.toDouble() / pieces to (piece + 1).toDouble() / pieces
         val alt = from.alt + (to.alt - from.alt) * (t0 + t1) / 2
+        val half = maxOf(thickness, climb) / 2
         val (x0, y0, x1, y1) = listOf(dx * t0, dy * t0, dx * t1, dy * t1)
-        Slab(listOf(toLonLat(x0 + nx, y0 + ny), toLonLat(x1 + nx, y1 + ny), toLonLat(x1 - nx, y1 - ny), toLonLat(x0 - nx, y0 - ny)), alt - RIBBON_THICKNESS / 2, alt + RIBBON_THICKNESS / 2, colour)
+        Slab(listOf(toLonLat(x0 + nx, y0 + ny), toLonLat(x1 + nx, y1 + ny), toLonLat(x1 - nx, y1 - ny), toLonLat(x0 - nx, y0 - ny)), alt - half, alt + half, colour)
     }
 }
+
+private fun offset(at: Point3D, east: Double, north: Double): Point3D =
+    at.copy(lon = at.lon + east / (METRES_PER_DEGREE * kotlin.math.cos(Math.toRadians(at.lat))), lat = at.lat + north / METRES_PER_DEGREE)
+
+internal fun quadFrame(at: Point3D, heading: Double): List<Slab> =
+    listOf(45.0, -45.0, 135.0, -135.0).flatMap { arm ->
+        val bearing = Math.toRadians(heading + arm)
+        val motor = offset(at, kotlin.math.sin(bearing) * ARM_LENGTH, kotlin.math.cos(bearing) * ARM_LENGTH)
+        val colour = if (kotlin.math.abs(arm) < 90) FRONT_ARM_COLOUR else REAR_ARM_COLOUR
+        ribbon(at, motor, colour, ARM_WIDTH, ARM_WIDTH) + box(motor.copy(alt = at.alt + ARM_WIDTH), ROTOR_SIZE, ROTOR_COLOUR, ARM_WIDTH / 2)
+    } + box(at, HUB_SIZE, REAR_ARM_COLOUR, HUB_SIZE / 2)
 
 internal fun pathSlabs(view: JSONObject?): List<Slab> {
     val segments = view?.optJSONArray("segments")
@@ -89,9 +113,11 @@ internal fun pathSlabs(view: JSONObject?): List<Slab> {
     val boxes = (0 until (markers?.length() ?: 0)).mapNotNull { markers?.optJSONObject(it) }.mapNotNull { marker ->
         point3d(marker.optJSONArray("at"))?.let { box(it, MARKER_SIZE, marker.optText("colour")) }
     }
-    val vehicle = point3d(view?.optJSONArray("vehicle"))?.let { box(it, VEHICLE_SIZE, "#E53935") }
-    return ribbons + boxes + listOfNotNull(vehicle)
+    return ribbons + boxes
 }
+
+internal fun vehicleSlabs(view: JSONObject?): List<Slab> =
+    point3d(view?.optJSONArray("at"))?.let { quadFrame(it, view?.optDouble("heading", 0.0) ?: 0.0) }.orEmpty()
 
 internal fun slabFeatures(slabs: List<Slab>): FeatureCollection = FeatureCollection.fromFeatures(
     slabs.map { slab ->
@@ -167,14 +193,16 @@ private fun installScene(style: Style) {
             PropertyFactory.fillExtrusionOpacity(0.85f),
         ),
     )
-    style.addSource(GeoJsonSource(V3D_FLOATING_SOURCE))
-    style.addLayer(
-        FillExtrusionLayer(V3D_FLOATING_LAYER, V3D_FLOATING_SOURCE).withProperties(
-            PropertyFactory.fillExtrusionColor(Expression.get("colour")),
-            PropertyFactory.fillExtrusionBase(Expression.get("base")),
-            PropertyFactory.fillExtrusionHeight(Expression.get("top")),
-        ),
-    )
+    listOf(V3D_FLOATING_SOURCE to V3D_FLOATING_LAYER, V3D_VEHICLE_SOURCE to V3D_VEHICLE_LAYER).forEach { (source, layer) ->
+        style.addSource(GeoJsonSource(source))
+        style.addLayer(
+            FillExtrusionLayer(layer, source).withProperties(
+                PropertyFactory.fillExtrusionColor(Expression.get("colour")),
+                PropertyFactory.fillExtrusionBase(Expression.get("base")),
+                PropertyFactory.fillExtrusionHeight(Expression.get("top")),
+            ),
+        )
+    }
 }
 
 @Composable
@@ -186,6 +214,8 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     val vehicle = remember(vehiclesJson) { vehicleChoices(vehiclesJson).choices.firstOrNull { it.active && isPlottable(it.latitude, it.longitude) } }
     val pathJson by mapPath(VIEWER3D_PATH)
     val slabs = remember(pathJson) { pathSlabs(pathJson) }
+    val vehicleJson by mapPath(VIEWER3D_VEHICLE)
+    val frame = remember(vehicleJson) { vehicleSlabs(vehicleJson) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     var framedOn by remember { mutableStateOf<LatLng?>(null) }
@@ -238,6 +268,9 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     }
     LaunchedEffect(style, slabs) {
         (style?.getSource(V3D_FLOATING_SOURCE) as? GeoJsonSource)?.setGeoJson(slabFeatures(slabs))
+    }
+    LaunchedEffect(style, frame) {
+        (style?.getSource(V3D_VEHICLE_SOURCE) as? GeoJsonSource)?.setGeoJson(slabFeatures(frame))
     }
     LaunchedEffect(map, scene.centre, vehicle != null) {
         val shown = map ?: return@LaunchedEffect
