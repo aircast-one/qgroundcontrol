@@ -74,6 +74,17 @@ internal fun showsInstruments(chosen: List<String>): Boolean = chosen.isNotEmpty
 internal fun withInstrument(chosen: List<String>, name: String): List<String> =
     if (name in chosen) chosen - name else chosen + name
 
+internal fun movedInstrument(chosen: List<String>, index: Int, by: Int): List<String> =
+    (index + by).takeIf { it in chosen.indices && index in chosen.indices }
+        ?.let { to -> chosen.mapIndexed { i, name -> when (i) { index -> chosen[to]; to -> chosen[index]; else -> name } } }
+        ?: chosen
+
+internal fun replacedInstrument(chosen: List<String>, index: Int, path: String): List<String> =
+    chosen.mapIndexed { i, name -> if (i == index) path else name }.filterIndexed { i, name -> i == index || name != path }
+
+internal fun removedInstrument(chosen: List<String>, index: Int): List<String> =
+    chosen.filterIndexed { i, _ -> i != index }
+
 internal fun emptyCatalogueText(connected: Boolean): String = when {
     connected -> "This vehicle reported no readings this screen can ask for."
     else -> "Connect a vehicle to see what it can report."

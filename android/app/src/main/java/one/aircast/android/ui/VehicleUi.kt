@@ -204,11 +204,43 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
         )
     }
 
+    val change: (List<String>) -> Unit = { next ->
+        chosen = next
+        writeChosen(context, vehicleClass, next)
+        styling = null
+    }
+    var replacing by remember { mutableStateOf<Int?>(null) }
+    replacing?.let { index ->
+        InstrumentSheet(
+            chosen = chosen,
+            title = "Change reading",
+            onToggle = { path ->
+                val carried = shown.getOrNull(index)?.let { displays[it.id] }
+                if (carried != null) {
+                    writeDisplay(context, vehicleClass, path, carried)
+                    displays = displays + (path to carried)
+                }
+                change(replacedInstrument(chosen, index, path))
+                replacing = null
+            },
+            onDismiss = { replacing = null },
+        )
+    }
+
     styling?.let { instrument ->
+        val index = shown.indexOf(instrument).takeIf { it in chosen.indices }
         ValueDisplayDialog(
             label = instrument.label,
             initial = displayFor(displays, instrument),
             onDismiss = { styling = null },
+            extra = {
+                if (index != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { replacing = index; styling = null }) { Text("Change reading") }
+                    if (index > 0) TextButton(onClick = { change(movedInstrument(chosen, index, -1)) }) { Text("Move left") }
+                    if (index < chosen.lastIndex) TextButton(onClick = { change(movedInstrument(chosen, index, 1)) }) { Text("Move right") }
+                    TextButton(onClick = { change(removedInstrument(chosen, index)) }) { Text("Remove") }
+                }
+            },
             onDone = { display ->
                 writeDisplay(context, vehicleClass, instrument.id, display)
                 displays = displays + (instrument.id to display)
@@ -986,6 +1018,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
 @Composable
 private fun InstrumentSheet(
     chosen: List<String>,
+    title: String = "Instrument tiles",
     onToggle: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -1000,7 +1033,7 @@ private fun InstrumentSheet(
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text("Instrument tiles", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
         Text(instrumentChoiceNote(chosen), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp))
         if (groups.isEmpty()) {
             FootNote(emptyCatalogueText(connected))

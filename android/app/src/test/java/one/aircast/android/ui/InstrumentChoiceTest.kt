@@ -174,4 +174,14 @@ class InstrumentChoiceTest {
         assertEquals(one.aircast.mapspike.TelemetryNumber.fontSize * 1.5f, large.fontSize)
         assertEquals(one.aircast.mapspike.TelemetryNumber.fontFeatureSettings, large.fontFeatureSettings)
     }
+
+    @Test
+    fun `values move, swap their reading and go away in place`() {
+        val row = listOf("a", "b", "c")
+        assertEquals(listOf("b", "a", "c"), movedInstrument(row, 1, -1))
+        assertEquals(row, movedInstrument(row, 2, 1))
+        assertEquals(listOf("a", "x", "c"), replacedInstrument(row, 1, "x"))
+        assertEquals("a reading already in the row moves rather than doubling", listOf("c", "b"), replacedInstrument(row, 0, "c"))
+        assertEquals(listOf("a", "c"), removedInstrument(row, 1))
+    }
 }

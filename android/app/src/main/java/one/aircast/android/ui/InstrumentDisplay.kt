@@ -210,7 +210,7 @@ private fun IconButtonFor(name: String, onClick: () -> Unit) {
 }
 
 @Composable
-internal fun ValueDisplayDialog(label: String, initial: ValueDisplay, onDismiss: () -> Unit, onDone: (ValueDisplay) -> Unit) {
+internal fun ValueDisplayDialog(label: String, initial: ValueDisplay, onDismiss: () -> Unit, extra: @Composable () -> Unit = {}, onDone: (ValueDisplay) -> Unit) {
     val context = LocalContext.current
     val names = remember { iconNames(context) }
     val firstIcon = names.firstOrNull().orEmpty()
@@ -235,6 +235,7 @@ internal fun ValueDisplayDialog(label: String, initial: ValueDisplay, onDismiss:
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(label, style = MaterialTheme.typography.labelMedium)
+                extra()
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     FilterChip(
                         selected = display.showIcon,
