@@ -647,7 +647,15 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
             crate::plandoc::Item::Simple(_) => Ok(None),
         })
         .collect::<Result<_, _>>()?;
-    let commands = crate::cmdinfo::tree(crate::plandoc::firmware(doc.firmware_type), crate::plandoc::vehicle_class(doc.vehicle_type));
+    let firmware = crate::plandoc::firmware(doc.firmware_type);
+    let commands = crate::cmdinfo::tree(firmware, crate::plandoc::vehicle_class(doc.vehicle_type));
+    let vtol_trees = (crate::plandoc::vehicle_class(doc.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol)
+        .then(|| (crate::cmdinfo::tree(firmware, crate::cmdinfo::VehicleClass::FixedWing), crate::cmdinfo::tree(firmware, crate::cmdinfo::VehicleClass::MultiRotor)));
+    let commands_at = |at: usize| match (crate::plandoc::command_class_at(doc, at), &vtol_trees) {
+        (crate::cmdinfo::VehicleClass::FixedWing, Some((fixed_wing, _))) => fixed_wing,
+        (crate::cmdinfo::VehicleClass::MultiRotor, Some((_, multi_rotor))) => multi_rotor,
+        _ => &commands,
+    };
     let home = doc.home.unwrap_or([0.0, 0.0, 0.0]);
     let settings = json!({
         "homePosition": true,
@@ -733,11 +741,12 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                     "readyForSaveMessage": ready_message,
                 });
             };
-            let info = commands.get(&s.command);
+            let item_commands = commands_at(i);
+            let info = item_commands.get(&s.command);
             let coordinate = info.is_some_and(|c| c.specifies_coordinate);
             let altitude = s.altitude.as_ref();
             let loiter = info.is_some_and(|c| c.is_loiter);
-            let loiter_time_radius = commands.get(&LOITER_TIME).is_some_and(|c| c.params.contains_key(&3) && !c.hidden.contains(&3));
+            let loiter_time_radius = item_commands.get(&LOITER_TIME).is_some_and(|c| c.params.contains_key(&3) && !c.hidden.contains(&3));
             let fixed_wing_like = matches!(crate::plandoc::vehicle_class(doc.vehicle_type), crate::cmdinfo::VehicleClass::FixedWing | crate::cmdinfo::VehicleClass::Vtol);
             json!({
                 "showLoiterRadius": coordinate && fixed_wing_like && loiter && !(s.command == LOITER_TIME && !loiter_time_radius),
@@ -1304,6 +1313,19 @@ mod from_the_document {
         let shown: Vec<(bool, Value)> = plane.iter().skip(1).map(|r| (r["showLoiterRadius"].as_bool().unwrap(), r["loiterRadius"].clone())).collect();
         assert_eq!(shown, [(false, Value::Null), (true, json!(-80.0)), (true, json!(120.0))], "param3 for turns (negative is counter-clockwise), param2 for loiter-to-altitude, nothing for a waypoint");
         assert!(reads(2).iter().all(|r| r["showLoiterRadius"] != true), "a multirotor never draws the ring");
+    }
+
+    #[test]
+    fn a_vtol_loiter_time_reads_the_tree_of_the_mode_it_flies_in_like_previous_vtol_mode() {
+        let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "vehicleType": 22, "plannedHomePosition": [47.0, 8.0, 0], "items": [
+            { "type": "SimpleItem", "command": 84, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 47.01, 8.0, 50] },
+            { "type": "SimpleItem", "command": 19, "frame": 3, "doJumpId": 2, "params": [10, 0, 60, 0, 47.02, 8.0, 50] },
+            { "type": "SimpleItem", "command": 3000, "frame": 2, "doJumpId": 3, "params": [3, 0, 0, 0, 0, 0, 0] },
+            { "type": "SimpleItem", "command": 19, "frame": 3, "doJumpId": 4, "params": [10, 0, 60, 0, 47.03, 8.0, 50] },
+        ] } }).to_string();
+        let reads = document_reads(&crate::plandoc::load(&plan, 2).unwrap(), 0).unwrap();
+        let shown: Vec<bool> = [2, 4].iter().map(|i| reads[*i]["showLoiterRadius"].as_bool().unwrap()).collect();
+        assert_eq!(shown, [true, false], "after the VTOL takeoff it flies fixed wing; after the transition to multicopter the multirotor tree removes LOITER_TIME param3");
     }
 
     #[test]
