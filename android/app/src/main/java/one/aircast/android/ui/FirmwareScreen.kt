@@ -71,6 +71,8 @@ internal data class FirmwareJob(
     val error: String,
     val choices: List<Pair<String, String>> = emptyList(),
     val updateAvailable: String = "",
+    val px4StableVersion: String = "",
+    val px4BetaVersion: String = "",
 )
 
 internal fun firmwarePorts(view: JSONObject?): List<FirmwarePort> {
@@ -97,6 +99,8 @@ internal fun firmwareJob(view: JSONObject?): FirmwareJob? = view?.takeIf { it.op
             (0 until listed.length()).mapNotNull { index -> listed.optJSONObject(index)?.let { c -> c.optText("name") to c.optText("url") } }
         }.orEmpty(),
         updateAvailable = it.optText("updateAvailable"),
+        px4StableVersion = it.optText("px4StableVersion"),
+        px4BetaVersion = it.optText("px4BetaVersion"),
     )
 }
 
@@ -162,6 +166,12 @@ internal fun firmwareWarning(source: String): String? = when {
 
 internal fun flashingLabel(ports: List<FirmwarePort>, port: String): String =
     "Flashing - ${ports.firstOrNull { it.port == port }?.description?.ifBlank { null } ?: port}"
+
+internal fun sourceLabel(source: String, label: String, stable: String, beta: String): String = when {
+    source == "px4:stable" && stable.isNotBlank() -> "PX4 Pro $stable, stable"
+    source == "px4:beta" && beta.isNotBlank() -> "PX4 Pro $beta, beta"
+    else -> label
+}
 
 internal fun firmwareChoice(source: String, file: String?): String? =
     if (source == FIRMWARE_FROM_FILE) file else source
@@ -260,8 +270,8 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                 val offered = firmwareSources(advanced)
                 ChoiceField(
                     "Firmware",
-                    FIRMWARE_SOURCES.firstOrNull { it.first == source }?.second ?: source,
-                    offered.map { it.second },
+                    FIRMWARE_SOURCES.firstOrNull { it.first == source }?.let { sourceLabel(it.first, it.second, job?.px4StableVersion.orEmpty(), job?.px4BetaVersion.orEmpty()) } ?: source,
+                    offered.map { sourceLabel(it.first, it.second, job?.px4StableVersion.orEmpty(), job?.px4BetaVersion.orEmpty()) },
                     Modifier.fillMaxWidth(),
                 ) { index -> if (!busy) chooseSource(offered[index].first) }
                 if (source.startsWith("ardupilot:")) upgradeSettings.firstOrNull { it.name == APM_CHIBIOS }?.let { FactRow(it, fieldModifier = Modifier.fillMaxWidth()) }

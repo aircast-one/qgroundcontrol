@@ -623,6 +623,7 @@ pub fn update_available(backend: &dyn crate::router::Backend) -> Option<String> 
 
 pub fn view(backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
     let held = job();
+    let (px4_stable, px4_beta) = crate::latestfirmware::px4_releases();
     json!({
         "kind": "object",
         "class": "FirmwareUpgrade",
@@ -637,6 +638,8 @@ pub fn view(backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
         "file": held.file,
         "board": held.board.map(|b| json!({ "bootloaderVersion": b.bootloader_version, "boardId": b.board_id, "flashSize": b.flash_size })),
         "updateAvailable": update_available(backend),
+        "px4StableVersion": px4_stable,
+        "px4BetaVersion": px4_beta,
     })
 }
 

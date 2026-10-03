@@ -33,6 +33,10 @@ pub fn update_text(running: &str, latest: &str) -> String {
     format!("Update available: this vehicle is running {running}, latest stable is {latest}.")
 }
 
+fn fetches() -> bool {
+    !cfg!(test) && std::env::var_os("QGC_CORE_OFFLINE").is_none()
+}
+
 fn locked() -> std::sync::MutexGuard<'static, BTreeMap<String, Option<String>>> {
     LATEST.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -42,7 +46,7 @@ pub fn latest(url: &str, px4: bool) -> Option<String> {
         return known.clone();
     }
     locked().insert(url.to_string(), None);
-    if cfg!(test) {
+    if !fetches() {
         return None;
     }
     let url = url.to_string();
@@ -52,6 +56,32 @@ pub fn latest(url: &str, px4: bool) -> Option<String> {
         locked().insert(url, found);
     });
     None
+}
+
+pub fn px4_release_names(releases: &str) -> (Option<String>, Option<String>) {
+    let listed: Vec<serde_json::Value> = serde_json::from_str(releases).unwrap_or_default();
+    let first = |prerelease: bool| listed.iter().find(|r| r["prerelease"].as_bool().unwrap_or(false) == prerelease).and_then(|r| r["name"].as_str()).map(str::to_string);
+    (first(false), first(true))
+}
+
+static PX4_RELEASES_TEXT: Mutex<Option<Option<String>>> = Mutex::new(None);
+
+pub fn px4_releases() -> (Option<String>, Option<String>) {
+    let mut held = PX4_RELEASES_TEXT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    match held.as_ref() {
+        Some(text) => text.as_deref().map(px4_release_names).unwrap_or_default(),
+        None => {
+            *held = Some(None);
+            if fetches() {
+                let _ = std::thread::Builder::new().name("px4-releases".into()).spawn(|| {
+                    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(VERSION_FETCH_TIMEOUT)).build().into();
+                    let body = agent.get(PX4_RELEASES).call().ok().and_then(|mut answer| answer.body_mut().read_to_string().ok());
+                    *PX4_RELEASES_TEXT.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(body);
+                });
+            }
+            (None, None)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -65,6 +95,11 @@ mod tests {
         assert!(older("4.5.6", "4.5.7") && older("1.9.9", "1.15.0") && !older("4.5.7", "4.5.7") && !older("4.6.0", "4.5.7"));
         assert_eq!(version_url(false, Some("Copter")).as_deref(), Some("http://firmware.ardupilot.org/Copter/stable/Pixhawk1/git-version.txt"));
         assert_eq!(version_url(false, None), None);
+        assert_eq!(
+            px4_release_names(r#"[{"name":"v1.16.0-beta2","prerelease":true},{"name":"v1.15.4","prerelease":false},{"name":"v1.15.3","prerelease":false}]"#),
+            (Some("v1.15.4".to_string()), Some("v1.16.0-beta2".to_string())),
+            "FirmwareUpgradeController: the first non-prerelease is stable, the first prerelease is beta"
+        );
         assert_eq!(update_text("4.5.6", "4.5.7"), "Update available: this vehicle is running 4.5.6, latest stable is 4.5.7.");
     }
 }
