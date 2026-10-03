@@ -994,9 +994,8 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRej
             keyboardOptions = KeyboardOptions(keyboardType = factKeyboard(fact)),
             modifier = Modifier.fillMaxWidth(),
             interactionSource = interaction,
-            trailingIcon = {
-                val committed = editing
-                if (committed != null && committed != fieldText(fact)) {
+            trailingIcon = editing?.takeIf { it != fieldText(fact) }?.let { committed ->
+                {
                     TextButton(onClick = {
                         scope.launch {
                             val refused = rejectionFor(fact, committed)
