@@ -287,7 +287,7 @@ fun AircastShell(hostView: android.view.View?) {
         val now = System.currentTimeMillis()
         val banners = one.aircast.android.ui.quietBanners(batch.banners, shownAt, now)
         shownAt = shownAt + banners.associateWith { now }
-        appMessages = appMessages + batch.dialogs
+        appMessages = (appMessages + batch.dialogs).distinct()
         noticeScope.launch {
             withContext(Dispatchers.Default) {
                 Qgc.invoke("host.acknowledgeThrough", batch.through)

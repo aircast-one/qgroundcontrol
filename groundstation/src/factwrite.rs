@@ -140,7 +140,19 @@ fn write_enum_index(backend: &dyn Backend, path: &str, value: &str) -> Value {
         return json!({ "ok": false, "result": false, "refusal": "notAnOption", "reason": reason });
     }
     let answered = flag(&object(&backend.set(path, value)), "ok");
+    if answered && index != fact.get("enumIndex").and_then(Value::as_i64) {
+        announce_reboot(&fact);
+    }
     json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The setting was not written.") } })
+}
+
+fn reboot_flags(fact: &Value, qt_present: bool) -> (bool, bool) {
+    (flag(fact, "vehicleRebootRequired"), flag(fact, "qgcRebootRequired") && !qt_present)
+}
+
+fn announce_reboot(fact: &Value) {
+    let (vehicle, application) = reboot_flags(fact, crate::qthost::present());
+    crate::noticeboard::reboot_notice_after_write(vehicle, application, crate::hub::now_ms() as i64);
 }
 
 const UI_SCALING: &str = "settings.appSettings.appFontPointSize.enumIndex";
@@ -180,6 +192,9 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason, "path": path });
     }
     let answered = flag(&object(&backend.set(path, value)), "ok");
+    if answered && !unchanged(&fact, &asked) {
+        announce_reboot(&fact);
+    }
     json!({ "ok": answered, "result": answered, "refusal": Value::Null, "reason": match answered { true => Value::Null, false => json!("The setting was not written.") } })
 }
 
@@ -187,6 +202,14 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
 mod tests {
     use super::*;
     use std::cell::RefCell;
+
+    #[test]
+    fn reboot_flags_follow_the_fact_and_leave_restart_messages_to_qt_when_it_is_there() {
+        let both = json!({ "kind": "fact", "vehicleRebootRequired": true, "qgcRebootRequired": true });
+        assert_eq!(reboot_flags(&both, false), (true, true));
+        assert_eq!(reboot_flags(&both, true), (true, false), "Qt's Fact::setRawValue already posts showRebootAppMessage");
+        assert_eq!(reboot_flags(&json!({ "kind": "fact" }), false), (false, false));
+    }
 
     fn fact(extra: Value) -> Value {
         let mut base = json!({ "kind": "fact", "name": "x", "readOnly": false });

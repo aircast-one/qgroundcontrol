@@ -618,7 +618,8 @@ pub struct SaveRoots {
 static SAVE_ROOTS: Mutex<Option<SaveRoots>> = Mutex::new(None);
 
 fn usable(dir: &std::path::Path) -> bool {
-    std::fs::create_dir_all(dir).is_ok() && std::fs::metadata(dir).is_ok_and(|m| m.is_dir() && !m.permissions().readonly())
+    let probe = dir.join(".qgc-write-probe");
+    std::fs::create_dir_all(dir).is_ok() && std::fs::write(&probe, b"").is_ok() && std::fs::remove_file(&probe).is_ok()
 }
 
 pub const SD_CARD_WRITE_PROTECTED: &str = "Save to SD card specified for application data. But SD card is write protected. Using internal storage.";
