@@ -10,11 +10,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +35,8 @@ private const val HOST_FACT = "settings.mavlinkSettings.forwardMavlinkAPMSupport
 
 internal const val SUPPORT_HOST_DEBOUNCE_MS = 250L
 
+internal const val FORWARDING_UNTIL_RESTART = "Forwarding traffic: Mavlink traffic will keep being forwarded until application restarts"
+
 internal data class SupportHostVerdict(val valid: Boolean, val error: String)
 
 internal fun supportHostPath(host: String): String = "view.supportHost($host)"
@@ -55,30 +55,9 @@ internal fun supportHostVerdict(view: JSONObject?): SupportHostVerdict? {
 }
 
 @Composable
-private fun StartForwardingDialog(host: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Forward telemetry to $host?") },
-        text = {
-            Text(
-                "This sends your vehicle's live MAVLink telemetry, including its position, " +
-                    "to an ArduPilot support engineer for as long as the link stays up.",
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(); onDismiss() }) { Text("Start forwarding") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
-@Composable
 fun RemoteSupportScreen(modifier: Modifier = Modifier) {
     val linksJson by qgcPath("view.links")
     val forwarding = linksJson?.optBoolean("supportForwarding") == true
-    var confirming by remember { mutableStateOf(false) }
-    // view.control decodes the setting - its bounds, whether it is read-only - with the same rules
-    // the core applies when the row writes it back.
     val json by qgcPath(settingControl(HOST_FACT))
     val host: Fact? = remember(json) { json?.takeIf { it.optText("kind") == "object" }?.let(::factFromControl) }
     var verdict by remember { mutableStateOf<SupportHostVerdict?>(null) }
@@ -95,14 +74,6 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    if (confirming && host != null) {
-        StartForwardingDialog(
-            host = host.valueString,
-            onConfirm = { offMainDetached { Qgc.invoke("links.createMavlinkForwardingSupportLink") } },
-            onDismiss = { confirming = false },
-        )
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -112,7 +83,7 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
         EmptyState(
             R.drawable.ic_link,
             if (forwarding) "Forwarding to support" else "Not forwarding",
-            "Sends live telemetry, including position, to an ArduPilot support engineer for as long as the link stays up.",
+            "Sends live telemetry, including position, to an ArduPilot support engineer.",
         )
 
         if (host == null) {
@@ -133,11 +104,17 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
         }
 
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
-            if (forwarding) {
-                Button(onClick = { offMainDetached { Qgc.invoke("links.endMavlinkForwardingSupportLink") } }) { Text("Stop forwarding") }
-            } else {
-                Button(onClick = { confirming = true }, enabled = verdict?.valid == true) { Text("Start forwarding") }
-            }
+            Button(
+                onClick = { offMainDetached { Qgc.invoke("links.createMavlinkForwardingSupportLink") } },
+                enabled = !forwarding && verdict?.valid == true,
+            ) { Text("Connect") }
+        }
+        if (forwarding) {
+            Text(
+                FORWARDING_UNTIL_RESTART,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
         }
     }
 }
