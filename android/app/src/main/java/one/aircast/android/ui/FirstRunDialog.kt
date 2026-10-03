@@ -33,7 +33,11 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.offMainInOrder
+import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.settingControl
+import androidx.compose.material3.FilterChip
 import one.aircast.mapspike.optText
 import org.json.JSONObject
 
@@ -63,6 +67,48 @@ internal fun firstRun(view: JSONObject?): FirstRun? =
 
 private val FIRST_RUN_WIDTH = 560.dp
 
+internal val FIRST_RUN_SYSTEMS = listOf("Metric System", "Imperial System")
+
+private const val METERS = 1.0
+
+private val FIRST_RUN_UNIT_VALUES = mapOf(
+    "horizontalDistanceUnits" to (1 to 0),
+    "verticalDistanceUnits" to (1 to 0),
+    "areaUnits" to (1 to 0),
+    "speedUnits" to (1 to 0),
+    "temperatureUnits" to (0 to 1),
+)
+
+internal fun firstRunUnitRows(facts: List<Fact>): List<Fact> = facts.filter { it.name in FIRST_RUN_UNIT_VALUES }
+
+internal fun firstRunSystemIndex(horizontalDistanceUnits: Double): Int = if (horizontalDistanceUnits == METERS) 0 else 1
+
+internal fun firstRunSystemWrites(metric: Boolean, rows: List<Fact>): List<Pair<String, Int>> =
+    rows.mapNotNull { fact -> FIRST_RUN_UNIT_VALUES[fact.name]?.let { (meters, feet) -> fact.path to if (metric) meters else feet } }
+
+@Composable
+private fun FirstRunUnits() {
+    val page by qgcPath("view.settings(General)")
+    val rows = remember(page) { firstRunUnitRows(unitFacts(page)) }
+    val horizontal by qgcDouble(settingControl("settings.unitsSettings.horizontalDistanceUnits"))
+    val chosen = firstRunSystemIndex(horizontal)
+    Column(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("System of units", style = MaterialTheme.typography.bodyLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FIRST_RUN_SYSTEMS.forEachIndexed { index, label ->
+                    FilterChip(
+                        selected = index == chosen,
+                        onClick = { offMainInOrder { firstRunSystemWrites(index == 0, rows).forEach { (path, value) -> Qgc.set(path, value) } } },
+                        label = { Text(label) },
+                    )
+                }
+            }
+        }
+        FactRuns(rows)
+    }
+}
+
 internal const val WELCOME_NOTE = "Two questions so numbers and controls match your drone."
 
 @Composable
@@ -86,7 +132,7 @@ fun FirstRunDialog() {
                 }
                 SectionHeader(sentenceCase(prompt.unitsHeading))
                 Text(prompt.unitsDescription, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
-                UnitsSection(Modifier.fillMaxWidth())
+                FirstRunUnits()
                 if (prompt.preferences.isNotEmpty()) {
                     SectionHeader(sentenceCase(prompt.vehicleHeading))
                     Text(prompt.vehicleDescription, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
