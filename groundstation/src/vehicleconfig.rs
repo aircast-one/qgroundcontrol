@@ -736,7 +736,10 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
     let path = row_path(page, id);
     let name = control["param"].as_str().map_or_else(|| format!("{page}.{id}"), |param| scope.full_name(param));
     if kind == "label" {
-        return vec![json!({ "control": "label", "name": name, "label": label, "warning": flag(control, "warning"), "smallFont": flag(control, "smallFont"), "path": path })];
+        return vec![json!({ "control": "label", "name": name, "label": label, "warning": flag(control, "warning"), "smallFont": flag(control, "smallFont"), "enabled": enabled, "path": path })];
+    }
+    if kind == "button" {
+        return vec![json!({ "control": "button", "name": name, "label": label, "enabled": enabled, "path": path })];
     }
     if kind == "dialogButton" && control["dialogButton"]["dialogComponent"] == "ESCCalibrationDialog" {
         return vec![json!({ "control": "dialog", "name": name, "label": control["dialogButton"]["text"], "dialog": "escCalibration", "enabled": enabled, "path": path })];
@@ -1018,6 +1021,8 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
             let locals = BTreeMap::from([("enableCheckBoxChecked".to_string(), Val::Bool(checked))]);
             scope.with(resolved.repeat.clone(), locals).assign(control["enableCheckbox"]["onClicked"].as_str().unwrap_or_default())
         }
+        (_, "button", _) if scope.shown(control, "enableWhen") => scope.assign(control["button"]["onClicked"].as_str().unwrap_or_default()),
+        (_, "button", _) => Err("That button is not available now.".to_string()),
         (_, "toggleCheckbox", _) => scope.assign(control["toggleCheckbox"][if checked { "onChecked" } else { "onUnchecked" }].as_str().unwrap_or_default()),
         (_, "bitmaskCheckbox", _) => {
             let name = scope.full_name(control["param"].as_str().unwrap_or_default());
@@ -1524,11 +1529,17 @@ mod tests {
         let labels: Vec<String> = section(&served, "Configuration")["controls"].as_array().unwrap().iter().map(|c| c["label"].as_str().unwrap().to_string()).collect();
         assert_eq!(labels, ["Output type", "Requires vehicle reboot", "Output PWM min", "DShot ESC type"]);
         let calibrate = section(&served, "Calibration")["controls"].as_array().unwrap().iter().find(|c| c["label"] == "Calibrate").cloned().unwrap();
-        assert_eq!((calibrate["value"].clone(), calibrate["enabled"].clone()), (json!(false), json!(true)));
+        assert_eq!((calibrate["control"].clone(), calibrate["enabled"].clone()), (json!("button"), json!(true)), "APMESCComponent's Calibrate is a one-shot QGCButton, not a switch");
+        let step = |served: &Value| section(served, "Calibration")["controls"].as_array().unwrap().iter().find(|c| c["label"] == "- Connect the battery").cloned().unwrap();
+        assert_eq!(step(&served)["enabled"], false, "the steps are greyed until calibration is armed");
         assert_eq!(write(&fake, calibrate["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
         assert_eq!(fake.params.borrow()["ESC_CALIBRATION"], 3.0);
-        let started = section(&page(&fake, "ESC", false), "Calibration");
-        assert!(started["controls"].as_array().unwrap().iter().any(|c| c["label"] == "Now perform these steps:"));
+        let started = page(&fake, "ESC", false);
+        assert!(section(&started, "Calibration")["controls"].as_array().unwrap().iter().any(|c| c["label"] == "Now perform these steps:"));
+        assert_eq!(step(&started)["enabled"], true);
+        let armed = section(&started, "Calibration")["controls"].as_array().unwrap().iter().find(|c| c["label"] == "Calibrate").cloned().unwrap();
+        assert_eq!(armed["enabled"], false, "enabled only while the parameter reads 0");
+        assert_eq!(write(&fake, armed["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], false);
         let quad = Fake::new(&[("Q_M_PWM_TYPE", 0.0), ("Q_ESC_CAL", 0.0), ("ESC_CALIBRATION", 0.0)]);
         let served = page(&quad, "ESC", false);
         assert_eq!(section(&served, "Configuration")["controls"][0]["name"], "Q_M_PWM_TYPE");

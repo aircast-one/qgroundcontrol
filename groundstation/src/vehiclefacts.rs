@@ -192,13 +192,10 @@ impl VehicleFacts {
                 self.coordinate = Some((d.latitude as f64 / 1e7, d.longitude as f64 / 1e7, f64::from(d.altitude_amsl)));
                 self.altitude_relative = f64::NAN;
                 self.altitude_amsl = d.altitude_amsl as f64;
-                self.air_speed = d.airspeed as f64;
-                self.ground_speed = d.groundspeed as f64;
-                self.climb_rate = d.climb_rate as f64;
-                self.throttle_pct = d.throttle as i16;
-                self.heading = (d.heading as f64 / 100.0).trunc();
-                self.roll = d.roll as f64 / 100.0;
-                self.pitch = d.pitch as f64 / 100.0;
+                self.air_speed = f64::from(d.airspeed) / 5.0;
+                self.ground_speed = f64::from(d.groundspeed) / 5.0;
+                self.climb_rate = f64::from(d.climb_rate) / 10.0;
+                self.heading = f64::from(d.heading) * 2.0;
                 true
             }
             _ => false,
@@ -222,6 +219,20 @@ mod tests {
 
     fn near(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-4
+    }
+
+    #[test]
+    fn high_latency_scales_its_speeds_and_heading_like_vehicle_handle_high_latency() {
+        let mut facts = VehicleFacts::for_vehicle(1, 1);
+        let mut data = mavlink::dialects::ardupilotmega::HIGH_LATENCY_DATA::default();
+        data.airspeed = 50;
+        data.groundspeed = 40;
+        data.climb_rate = 25;
+        data.heading = 90;
+        data.roll = 1000;
+        facts.apply((1, 1), &MavMessage::HIGH_LATENCY(data));
+        assert_eq!((facts.air_speed, facts.ground_speed, facts.climb_rate, facts.heading), (10.0, 8.0, 2.5, 180.0));
+        assert_eq!(facts.roll, 0.0, "Vehicle::_handleHighLatency leaves the attitude alone");
     }
 
     #[test]

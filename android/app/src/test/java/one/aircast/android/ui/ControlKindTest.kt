@@ -10,7 +10,7 @@ class ControlKindTest {
     @Test
     fun `the head knows exactly the kinds the core enumerates`() {
         assertEquals(
-            setOf("toggle", "choice", "bitmask", "text", "number", "label", "dialog"),
+            setOf("toggle", "choice", "bitmask", "text", "number", "label", "dialog", "button"),
             KNOWN_CONTROL_KINDS,
         )
     }

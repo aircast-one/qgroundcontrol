@@ -9268,6 +9268,7 @@
         "view.setup(Flight Safety).sections.#",
         "view.setup(Flight Safety).sections[].controls.#",
         "view.setup(Flight Safety).sections[].controls[].control",
+        "view.setup(Flight Safety).sections[].controls[].enabled",
         "view.setup(Flight Safety).sections[].controls[].label",
         "view.setup(Flight Safety).sections[].controls[].name",
         "view.setup(Flight Safety).sections[].controls[].path",
@@ -14099,6 +14100,7 @@
                 "controls": [
                     {
                         "control": "string",
+                        "enabled": "bool",
                         "label": "string",
                         "name": "string",
                         "path": "string",

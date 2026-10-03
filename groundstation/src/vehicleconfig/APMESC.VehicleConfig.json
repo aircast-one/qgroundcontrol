@@ -130,16 +130,14 @@
                     "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
                 },
                 {
-                    "param": "ESC_CALIBRATION",
+                    "control": "button",
                     "label": "Calibrate",
-                    "control": "toggleCheckbox",
                     "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
                     "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 0",
-                    "toggleCheckbox": {
-                        "checked": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3",
-                        "onChecked": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue = 3",
-                        "onUnchecked": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue = 0"
-                    }
+                    "button": {
+                        "onClicked": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue = 3"
+                    },
+                    "param": "ESC_CALIBRATION"
                 },
                 {
                     "control": "label",
@@ -154,42 +152,50 @@
                 {
                     "control": "label",
                     "label": "- Disconnect USB and battery so flight controller powers down",
-                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- Connect the battery",
-                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- The arming tone will be played (if the vehicle has a buzzer attached)",
-                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- If using a flight controller with a safety button press it until it displays solid red",
-                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- You will hear a musical tone then two beeps",
-                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- A few seconds later you should hear a number of beeps (one for each battery cell you're using)",
-                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- And finally a single long beep indicating the end points have been set and the ESC is calibrated",
-                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- Disconnect the battery and power up again normally",
-                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")"
+                    "showWhen": "!_isQuadPlane && controller.parameterExists(-1, \"ESC_CALIBRATION\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"ESC_CALIBRATION\").rawValue === 3"
                 },
                 {
                     "control": "label",
@@ -198,16 +204,14 @@
                     "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
                 },
                 {
-                    "param": "Q_ESC_CAL",
+                    "control": "button",
                     "label": "Calibrate",
-                    "control": "toggleCheckbox",
                     "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
                     "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 0",
-                    "toggleCheckbox": {
-                        "checked": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3",
-                        "onChecked": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue = 3",
-                        "onUnchecked": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue = 0"
-                    }
+                    "button": {
+                        "onClicked": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue = 3"
+                    },
+                    "param": "Q_ESC_CAL"
                 },
                 {
                     "control": "label",
@@ -222,42 +226,50 @@
                 {
                     "control": "label",
                     "label": "- Disconnect USB and battery so flight controller powers down",
-                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- Connect the battery",
-                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- The arming tone will be played (if the vehicle has a buzzer attached)",
-                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- If using a flight controller with a safety button press it until it displays solid red",
-                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- You will hear a musical tone then two beeps",
-                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- A few seconds later you should hear a number of beeps (one for each battery cell you're using)",
-                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- And finally a single long beep indicating the end points have been set and the ESC is calibrated",
-                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3"
                 },
                 {
                     "control": "label",
                     "label": "- Disconnect the battery and power up again normally",
-                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")"
+                    "showWhen": "_isQuadPlane && controller.parameterExists(-1, \"Q_ESC_CAL\")",
+                    "enableWhen": "controller.getParameterFact(-1, \"Q_ESC_CAL\").rawValue === 3"
                 }
             ]
         }

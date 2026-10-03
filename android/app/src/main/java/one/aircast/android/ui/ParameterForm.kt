@@ -156,6 +156,7 @@ internal fun ParameterForm(
     var rows by remember { mutableStateOf(emptyList<ParameterRows>()) }
     var loaded by remember { mutableStateOf(false) }
     var reloads by remember { mutableIntStateOf(0) }
+    val pressScope = rememberCoroutineScope()
     var calculating by remember { mutableStateOf<PowerCalculator?>(null) }
     var calibratingEscs by remember { mutableStateOf(false) }
 
@@ -193,7 +194,7 @@ internal fun ParameterForm(
                 }
             }
             val runs = fieldRuns(section.facts) { fact ->
-                fact.slider == null && fact.controlKind != DIALOG_CONTROL && fact.controlKind != LABEL_CONTROL &&
+                fact.slider == null && fact.controlKind != DIALOG_CONTROL && fact.controlKind != LABEL_CONTROL && fact.controlKind != BUTTON_CONTROL &&
                     !fact.indent && fact.path !in section.calculators && fact.name !in highlighted
             }
             items(runs.size, key = { runs[it].first().path }) { index ->
@@ -210,11 +211,22 @@ internal fun ParameterForm(
                 Column(Modifier.padding(start = if (fact.indent) INDENT else 0.dp)) {
                     if (fact.controlKind == DIALOG_CONTROL) {
                         OutlinedButton(enabled = fact.enabled, onClick = { calibratingEscs = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Text(fact.title) }
+                    } else if (fact.controlKind == BUTTON_CONTROL) {
+                        OutlinedButton(
+                            enabled = fact.enabled,
+                            onClick = {
+                                pressScope.launch {
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Qgc.set(fact.path, true) }
+                                    reloads++
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+                        ) { Text(fact.title) }
                     } else if (fact.controlKind == LABEL_CONTROL) {
                         Text(
                             text = fact.title,
                             style = if (fact.smallFont) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
-                            color = if (fact.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = (if (fact.warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = if (fact.enabled) 1f else DISABLED_LABEL_ALPHA),
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                         )
                     } else if (fact.slider != null) {
@@ -262,10 +274,13 @@ internal fun bitmaskSummary(fact: Fact): String {
 }
 
 internal const val LABEL_CONTROL = "label"
+internal const val BUTTON_CONTROL = "button"
 
 private val INDENT = 16.dp
 
-internal val KNOWN_CONTROL_KINDS = setOf("toggle", "choice", "bitmask", "text", "number", LABEL_CONTROL, DIALOG_CONTROL)
+private const val DISABLED_LABEL_ALPHA = 0.38f
+
+internal val KNOWN_CONTROL_KINDS = setOf("toggle", "choice", "bitmask", "text", "number", LABEL_CONTROL, DIALOG_CONTROL, BUTTON_CONTROL)
 
 internal fun controlIsUnderstood(kind: String): Boolean =
     kind.isBlank() || kind in KNOWN_CONTROL_KINDS

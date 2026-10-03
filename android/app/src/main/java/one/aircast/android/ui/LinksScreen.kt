@@ -440,13 +440,22 @@ private fun LinkRowItem(
 
 @Composable
 private fun LinkFlagSwitches(autoConnect: Boolean, highLatency: Boolean, onAutoConnect: (Boolean) -> Unit, onHighLatency: (Boolean) -> Unit) {
-    listOf(Triple("Connect automatically", autoConnect, onAutoConnect), Triple("High latency", highLatency, onHighLatency)).forEach { (label, checked, onChange) ->
+    LINK_FLAG_TEXT.zip(listOf(autoConnect to onAutoConnect, highLatency to onHighLatency)).forEach { (text, state) ->
+        val (checked, onChange) = state
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text(text.first)
+                Text(text.second, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Switch(checked = checked, onCheckedChange = onChange)
         }
     }
 }
+
+internal val LINK_FLAG_TEXT = listOf(
+    "Connect on start" to "Open this link when the app launches.",
+    "High latency" to "Tune the link for satellite or cellular round trips.",
+)
 
 internal fun linkFlagWrites(index: Int, autoConnect: Boolean, highLatency: Boolean): List<Pair<String, Boolean>> =
     listOf("$LINKS_PATH.$index.autoConnect" to autoConnect, "$LINKS_PATH.$index.highLatency" to highLatency)
