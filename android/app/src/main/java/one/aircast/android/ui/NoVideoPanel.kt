@@ -47,7 +47,7 @@ internal fun NoVideoPanel(video: VideoReading?) {
             text = when {
                 video == null -> "No video"
                 !video.streamEnabled -> "Video off"
-                prolonged -> "No Video Signal"
+                prolonged -> "No video signal"
                 else -> video.summary
             },
             style = MaterialTheme.typography.bodySmall,

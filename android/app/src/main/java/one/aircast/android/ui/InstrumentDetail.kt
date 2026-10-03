@@ -55,7 +55,7 @@ internal fun factLabel(name: String): String = when (name) {
     "current" -> "Current"
     "instantPower" -> "Power"
     "mahConsumed" -> "Consumed"
-    "timeRemainingStr" -> "Time Remaining"
+    "timeRemainingStr" -> "Time remaining"
     "temperature" -> "Temperature"
     "percentRemaining" -> "Remaining"
     else -> name.replaceFirstChar { it.uppercase() }

@@ -90,8 +90,8 @@ class ChecklistPopupTest {
         assertEquals(listOf(true, true), groups.indices.map { groupEnabled(groups, it, setOf("hardware")) })
         assertEquals("Initial checks (passed)", groupHeading(first, setOf("hardware")))
         assertEquals("Please arm the vehicle here", groupHeading(second, setOf("hardware")))
-        assertEquals("Pre-Flight Checklist (Passed)", checklistHeading(true))
-        assertEquals("Pre-Flight Checklist In Progress", checklistHeading(false))
+        assertEquals("Pre-flight checklist (passed)", checklistHeading(true))
+        assertEquals("Pre-flight checklist in progress", checklistHeading(false))
     }
 
     @Test

@@ -251,7 +251,7 @@ internal fun SetWaypointSheet(sequence: Int, onDismiss: () -> Unit) {
         ) {
             Text("Set waypoint", style = MaterialTheme.typography.titleLarge)
             Text(setWaypointMessage(sequence), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SlideOrCancel("Set Waypoint", onConfirm = {
+            SlideOrCancel("Set waypoint", onConfirm = {
                 scope.launch {
                     val refused = withContext(Dispatchers.Default) { Qgc.refusalOf(SET_WAYPOINT_PATH, waypointTarget(sequence)) }
                     if (refused == null) onDismiss() else refusal = refused

@@ -73,7 +73,7 @@ internal fun geoTagState(json: JSONObject?): GeoTagState? =
 internal fun geoTagButton(state: GeoTagState): String = when {
     state.inProgress -> "Cancel"
     state.previewMode -> "Preview"
-    else -> "Start Tagging"
+    else -> "Start tagging"
 }
 
 internal fun geoTagSummary(state: GeoTagState): String? =

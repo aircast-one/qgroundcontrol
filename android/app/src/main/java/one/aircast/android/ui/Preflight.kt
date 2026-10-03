@@ -92,7 +92,7 @@ internal const val GROUP_COLLAPSE_DELAY_MS = 750L
 internal fun collapsedAfterPass(collapsed: Set<String>, passedBefore: Set<String>, passedNow: Set<String>): Set<String> =
     collapsed + (passedNow - passedBefore)
 
-internal fun checklistHeading(passed: Boolean): String = "Pre-Flight Checklist ${if (passed) "(Passed)" else "In Progress"}"
+internal fun checklistHeading(passed: Boolean): String = "Pre-flight checklist ${if (passed) "(passed)" else "in progress"}"
 
 internal fun checklistIsComplete(preflight: Preflight?, ticked: Set<String>): Boolean {
     if (preflight == null) return false

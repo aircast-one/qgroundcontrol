@@ -705,7 +705,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             }
         }
         GuidedValuePanel(
-            title = if (altitudePauses) "Pause" else "Change Altitude",
+            title = if (altitudePauses) "Pause" else "Change altitude",
             sentence = probe?.sentence ?: "",
             commitLabel = if (altitudePauses) "Pause" else "Change",
             commitEnabled = probe?.sends == true,
@@ -784,7 +784,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     if (showChecklist) {
         AlertDialog(
             onDismissRequest = { showChecklist = false },
-            title = { Text("Pre-Flight Checklist") },
+            title = { Text("Pre-flight checklist") },
             text = {
                 PreflightScreen(
                     modifier = Modifier.fillMaxWidth(),

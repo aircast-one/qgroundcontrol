@@ -508,7 +508,7 @@ internal fun geoOf(view: JSONObject?): Pair<Double, Double>? =
 internal fun EditPositionDialog(
     at: TrackPoint,
     onDismiss: () -> Unit,
-    title: String = "Edit Position",
+    title: String = "Edit position",
     confirm: String = "Move",
     vehicleNote: String = "Move the item to the vehicle's current position.",
     altitudeMode: Int? = null,

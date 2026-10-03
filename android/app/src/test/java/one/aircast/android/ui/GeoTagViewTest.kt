@@ -15,7 +15,7 @@ class GeoTagViewTest {
     fun `the button reads as GeoTagPage's does`() {
         assertEquals("Cancel", geoTagButton(state(""""inProgress":true,"previewMode":true""")))
         assertEquals("Preview", geoTagButton(state(""""inProgress":false,"previewMode":true""")))
-        assertEquals("Start Tagging", geoTagButton(state(""""inProgress":false,"previewMode":false""")))
+        assertEquals("Start tagging", geoTagButton(state(""""inProgress":false,"previewMode":false""")))
     }
 
     @Test

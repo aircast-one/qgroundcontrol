@@ -167,7 +167,7 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
             Text("Enable")
             if (!read.vehicle) Text("Not currently available", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(if (read.calibrated) "Calibrated" else "Requires Calibration", color = if (read.calibrated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+        Text(if (read.calibrated) "Calibrated" else "Requires calibration", color = if (read.calibrated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         if (!read.armed) {
@@ -182,7 +182,7 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
             TransmitterModeRow(read.transmitterMode) { act(JOYSTICK_SETTING, "transmitterMode", it) }
         }
 
-        SectionHeader("Axis Monitor")
+        SectionHeader("Axis monitor")
         read.axes.forEach { axis ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(axis.function.ifBlank { "Axis ${axis.index + 1}" }, modifier = Modifier.width(96.dp))

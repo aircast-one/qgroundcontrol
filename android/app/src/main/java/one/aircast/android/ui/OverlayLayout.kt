@@ -41,7 +41,7 @@ internal data class ResetTap(val reset: Boolean, val armed: Boolean)
 
 internal fun resetTap(armed: Boolean): ResetTap = ResetTap(reset = armed, armed = !armed)
 
-internal fun resetPillText(armed: Boolean): String = if (armed) "Tap again to reset" else "Reset Layout"
+internal fun resetPillText(armed: Boolean): String = if (armed) "Tap again to reset" else "Reset layout"
 
 private const val INDICATOR_ORDER = "FlyViewIndicatorOrder"
 

@@ -149,7 +149,7 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                             manual = manual && on
                         }
                         if (advanced && loaded.readOnly) CheckRow("Force edit read-only param", forced) { forced = it }
-                        if (advanced && editable && hasChoices) CheckRow("Manual Entry", manual) { manual = it }
+                        if (advanced && editable && hasChoices) CheckRow("Manual entry", manual) { manual = it }
                     }
                     if (forced || (editable && (manual || !hasChoices) && !loaded.isString && !loaded.isBool)) {
                         if (!forced && rejected) CheckRow("Force save (dangerous!)", forceSave) { forceSave = it }
