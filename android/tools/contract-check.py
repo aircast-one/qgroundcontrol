@@ -462,6 +462,7 @@ ACCEPTED = {
     "notes": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs outputs_json serves it",
     "channelFunction": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs channel_cells serves it",
     "disabled": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs channel_cells serves it",
+    "unavailable": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs channel_cells serves it",
     "counterClockwise": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs motor_geometry serves it",
     "highlighted": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs outputs_json serves it",
     "motorAssignment": "view.actuatorOutputs is served from the core hub's actuator metadata, which the Qt recording has none of; actuators.rs outputs_json serves it",

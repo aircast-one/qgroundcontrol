@@ -779,7 +779,7 @@ fn channel_cells(backend: &dyn Backend, channel: &MixerChannel, value_of: &dyn F
             let rule = rule_item(channel, cell, value_of);
             let axis_hidden = direction.is_some_and(|d| d != 0) && ["axisx", "axisy", "axisz"].contains(&cell.function.as_str());
             let mut shown = match &cell.source {
-                CellSource::Parameter(name, index) => control(backend, &cell.config, name, *index).unwrap_or(Value::Null),
+                CellSource::Parameter(name, index) => control(backend, &cell.config, name, *index).unwrap_or_else(|| json!({ "unavailable": true, "label": cell.config.label, "advanced": cell.config.advanced })),
                 CellSource::Fixed(value) => json!({ "fixed": true, "label": cell.config.label, "valueString": format!("{value:.4}"), "advanced": cell.config.advanced }),
             };
             if let Value::Object(map) = &mut shown {
@@ -977,6 +977,23 @@ mod tests {
             }
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn a_cell_whose_parameter_is_missing_stays_as_not_available_like_a_null_fact_channel_config_instance() {
+        struct Missing;
+        impl Backend for Missing {
+            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { self.get("") }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let metadata = ruled();
+        let state = mixer_state(&metadata, &|_| None);
+        let cells = channel_cells(&Missing, &state.groups[0].channels[0], &|_| None);
+        assert_eq!(cells.len(), 3, "ActuatorComponent.qml keeps the grid cell and its ActuatorFact shows '(Param not available)'");
+        assert_eq!((cells[1]["unavailable"].clone(), cells[1]["label"].clone(), cells[1]["hidden"].clone()), (json!(true), json!("Roll Torque"), json!(false)));
     }
 
     #[test]

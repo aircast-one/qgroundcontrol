@@ -52,7 +52,10 @@ internal sealed interface GeometryCell {
     data class Editable(val item: ActuatorFact, val param: String, val channelFunction: Int, override val hidden: Boolean, val disabled: Boolean) : GeometryCell
     data class Fixed(val label: String, val valueString: String, val advanced: Boolean, override val hidden: Boolean = false) : GeometryCell
     data class Axis(val options: List<String>, val index: Int, val params: List<String>, val advanced: Boolean, override val hidden: Boolean, val disabled: Boolean) : GeometryCell
+    data class Unavailable(val label: String, val advanced: Boolean, override val hidden: Boolean) : GeometryCell
 }
+
+internal const val PARAM_NOT_AVAILABLE = "(Param not available)"
 
 internal const val ACTUATOR_MIXER_SET = "actuatorMixer.set"
 internal const val ACTUATOR_MIXER_AXIS = "actuatorMixer.setAxis"
@@ -114,6 +117,7 @@ private fun strings(json: JSONObject, key: String): List<String> =
 internal fun geometryCell(json: JSONObject?): GeometryCell? = when {
     json == null -> null
     json.optBoolean("axis") -> GeometryCell.Axis(strings(json, "options"), json.optInt("index"), strings(json, "params"), json.optBoolean("advanced"), json.optBoolean("hidden"), json.optBoolean("disabled"))
+    json.optBoolean("unavailable") -> GeometryCell.Unavailable(json.optText("label"), json.optBoolean("advanced"), json.optBoolean("hidden"))
     json.optBoolean("fixed") -> GeometryCell.Fixed(json.optText("label"), json.optText("valueString"), json.optBoolean("advanced"), json.optBoolean("hidden"))
     else -> actuatorFact(json)?.let { GeometryCell.Editable(it, json.optText("param"), json.optInt("channelFunction"), json.optBoolean("hidden"), json.optBoolean("disabled")) }
 }
@@ -303,8 +307,8 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
                                 Text(channel.label, style = MaterialTheme.typography.labelLarge)
                                 channel.configs.forEachIndexed { index, config ->
                                     val column = subgroup.columns.getOrNull(index)
-                                    if (config != null && column != null && column.visible && (advanced || !column.advanced)) {
-                                        ActuatorFactRow(config.copy(label = column.label), ::write) { revision++ }
+                                    if (column != null && column.visible && (advanced || !column.advanced)) {
+                                        config?.let { ActuatorFactRow(it.copy(label = column.label), ::write) { revision++ } } ?: NotAvailableRow(column.label)
                                     }
                                 }
                             }
@@ -344,6 +348,7 @@ private fun GeometrySection(geometry: Geometry, advanced: Boolean, write: (Strin
                                     Text(cell.valueString)
                                 }
                                 is GeometryCell.Axis -> if (advanced || !cell.advanced) AxisRow(cell, onWrite)
+                                is GeometryCell.Unavailable -> if (advanced || !cell.advanced) NotAvailableRow(cell.label)
                             }
                         }
                     }
@@ -351,6 +356,14 @@ private fun GeometrySection(geometry: Geometry, advanced: Boolean, write: (Strin
             }
             group.params.forEach { if (advanced || !it.advanced) ActuatorFactRow(it, write, onWrite) }
         }
+    }
+}
+
+@Composable
+private fun NotAvailableRow(label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.weight(1f))
+        Text(PARAM_NOT_AVAILABLE)
     }
 }
 

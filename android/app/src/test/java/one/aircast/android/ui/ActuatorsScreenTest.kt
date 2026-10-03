@@ -57,6 +57,12 @@ class ActuatorMixerCellTest {
         val hidden = geometryCell(JSONObject("""{"fixed":true,"label":"Pitch Torque","valueString":"0.0000","advanced":false,"hidden":true}"""))
         assertTrue(hidden!!.hidden)
     }
+
+    @Test
+    fun `a cell with a missing parameter reads as not available`() {
+        val missing = geometryCell(JSONObject("""{"unavailable":true,"label":"Roll Torque","advanced":false,"hidden":false,"disabled":false,"channelFunction":201,"param":"CA_SV_CS0_TRQ_R"}"""))
+        assertEquals(GeometryCell.Unavailable("Roll Torque", false, false), missing)
+    }
 }
 
 class MotorAssignmentHeadTest {
