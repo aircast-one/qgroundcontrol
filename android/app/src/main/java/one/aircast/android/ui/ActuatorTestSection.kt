@@ -125,7 +125,7 @@ internal fun ActuatorTestSection(
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Switch(checked = enabled && !testing.hadFailure, onCheckedChange = ::setEnabled, enabled = !testing.hadFailure && !assigning)
-            Text(if (enabled) "Careful: Actuator sliders are enabled" else "Propellers are removed - Enable sliders")
+            Text(if (enabled) "Careful: actuator sliders are live" else "Propellers are off, so enable the sliders")
         }
         testing.allMotors?.let { motors ->
             TestSlider(motors, allMotors, enabled) { value ->

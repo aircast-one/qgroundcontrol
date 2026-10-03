@@ -123,7 +123,7 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
                 if (!it) throttle = 0f
             })
             Text(
-                if (propsOff) "Careful : Motors are enabled" else "Propellers are removed - Enable slider and motors",
+                if (propsOff) "Careful: motors are live" else "Propellers are off, so enable the motor test",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
