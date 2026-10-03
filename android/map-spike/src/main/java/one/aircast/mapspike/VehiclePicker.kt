@@ -92,7 +92,11 @@ data class VehicleChoice(
     val radar: RadarReading? = null,
     val armed: Boolean = false,
     val telemetry: List<Pair<String, String>> = emptyList(),
+    val index: Int = -1,
+    val flightModes: List<String> = emptyList(),
 )
+
+fun vehicleFlightModePath(choice: VehicleChoice): String = "vehicles.vehicles.${choice.index}.flightMode"
 
 fun vehicleTelemetryLine(choice: VehicleChoice): String? =
     choice.telemetry.takeIf { it.isNotEmpty() }?.joinToString(" \u00b7 ") { (label, value) -> "$label $value" }
@@ -129,6 +133,8 @@ fun vehicleChoices(view: JSONObject?): VehicleChoices {
                     heading = if (entry.isNull("heading")) Double.NaN else entry.optDouble("heading", Double.NaN),
                     radar = radarReading(entry.optJSONObject("proximity")),
                     armed = entry.optBoolean("armed"),
+                    index = entry.optInt("index", -1),
+                    flightModes = entry.optJSONArray("flightModes")?.let { modes -> (0 until modes.length()).map { modes.optString(it) }.filter { it.isNotBlank() } }.orEmpty(),
                     telemetry = entry.optJSONArray("telemetry")?.let { rows -> (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.map { it.optText("label") to it.optText("value") } }.orEmpty(),
                     home = entry.optJSONObject("home")?.let { at ->
                         TrackPoint(at.optDouble("latitude", Double.NaN), at.optDouble("longitude", Double.NaN))

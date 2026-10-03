@@ -1658,9 +1658,13 @@ impl<B: Backend> Backend for Facade<B> {
                 return json!({ "ok": started.is_ok() }).to_string();
             }
         }
-        if path == "vehicle.flightMode" && switched_on() {
+        let listed_mode = fleet_member(path).filter(|(_, tail)| *tail == "flightMode").map(|(index, _)| index);
+        if (path == "vehicle.flightMode" || listed_mode.is_some()) && switched_on() {
             let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_str).or_else(|| v.as_str()).map(str::to_string));
-            let vehicle = crate::hub::lock().active_id();
+            let vehicle = match listed_mode {
+                Some(index) => crate::hub::lock().listed(index).map(|v| v.id),
+                None => crate::hub::lock().active_id(),
+            };
             if let Some(started) = mode.zip(vehicle).and_then(|(mode, vehicle)| self.0.core_guided(&json!({ "action": "setMode", "vehicle": vehicle, "mode": mode }))) {
                 return json!({ "ok": started.is_ok() }).to_string();
             }
@@ -1922,6 +1926,11 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_listed_vehicles_flight_mode_is_a_fleet_member_write() {
+        assert_eq!(fleet_member("vehicles.vehicles.2.flightMode"), Some((2, "flightMode")));
+    }
 
     #[test]
     fn a_fence_contains_items_only_when_it_has_a_shape() {

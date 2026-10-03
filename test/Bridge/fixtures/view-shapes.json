@@ -9471,12 +9471,15 @@
         "view.vehicles.vehicles[].coordinate.longitude",
         "view.vehicles.vehicles[].firmware",
         "view.vehicles.vehicles[].flightMode",
+        "view.vehicles.vehicles[].flightModes.#",
+        "view.vehicles.vehicles[].flightModes[]",
         "view.vehicles.vehicles[].flying",
         "view.vehicles.vehicles[].heading",
         "view.vehicles.vehicles[].home",
         "view.vehicles.vehicles[].home.latitude",
         "view.vehicles.vehicles[].home.longitude",
         "view.vehicles.vehicles[].id",
+        "view.vehicles.vehicles[].index",
         "view.vehicles.vehicles[].link",
         "view.vehicles.vehicles[].missionFlightMode",
         "view.vehicles.vehicles[].name",
@@ -14335,6 +14338,9 @@
                 },
                 "firmware": "string",
                 "flightMode": "string",
+                "flightModes": [
+                    "string"
+                ],
                 "flying": "bool",
                 "heading": "number",
                 "home": {
@@ -14342,6 +14348,7 @@
                     "longitude": "number"
                 },
                 "id": "number",
+                "index": "number",
                 "link": "string",
                 "missionFlightMode": "string",
                 "name": "string",

@@ -390,12 +390,16 @@ pub fn open(path: &std::path::Path) {
     {
         let _ = std::fs::remove_dir_all(cache);
     }
-    let (values, upgraded) = versioned(cleared_on_boot(read));
-    if upgraded && !crate::qthost::present() {
+    let (values, upgraded) = match crate::qthost::present() {
+        true => (cleared_on_boot(read), false),
+        false => versioned(cleared_on_boot(read)),
+    };
+    if upgraded {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &settings_reset_notice(&crate::noticeboard::application_name()));
     }
     *stored() = Some(values);
     *PATH.lock().unwrap_or_else(PoisonError::into_inner) = Some(path.to_path_buf());
+    persist();
 }
 
 pub fn persist() {

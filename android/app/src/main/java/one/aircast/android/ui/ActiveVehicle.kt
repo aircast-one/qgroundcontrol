@@ -59,6 +59,10 @@ import one.aircast.mapspike.lostVehicles
 import one.aircast.mapspike.lostVehiclesText
 import one.aircast.mapspike.linkDistinguishes
 import one.aircast.mapspike.vehicleChoiceLine
+import one.aircast.mapspike.vehicleFlightModePath
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.layout.Box
 import one.aircast.mapspike.vehicleTelemetryLine
 import one.aircast.mapspike.vehicleChoices
 
@@ -209,7 +213,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
-            VehicleRows(choices, selectable = panelEnabled, onRefusal = { refusal = it }) { picking = false }
+            VehicleRows(choices, selectable = panelEnabled, scope = scope, onRefusal = { refusal = it }) { picking = false }
             refusal?.let {
                 Text(
                     text = it,
@@ -304,6 +308,23 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
     }
 }
 
+@Composable
+private fun VehicleModeMenu(choice: VehicleChoice, onRefusal: (String?) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    Box {
+        androidx.compose.material3.TextButton(onClick = { open = true }) { Text("Mode") }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            choice.flightModes.forEach { mode ->
+                DropdownMenuItem(text = { Text(mode) }, onClick = {
+                    open = false
+                    scope.launch { onRefusal(withContext(Dispatchers.Default) { Qgc.writeRefusal(vehicleFlightModePath(choice), mode) }) }
+                })
+            }
+        }
+    }
+}
+
 internal fun fleetPanelShown(vehicleCount: Int, panelEnabled: Boolean): Boolean = vehicleCount >= 2 && panelEnabled
 
 @Composable
@@ -314,15 +335,14 @@ internal fun FleetPanel(modifier: Modifier = Modifier) {
     var refusal by remember { mutableStateOf<String?>(null) }
     if (!fleetPanelShown(choices.choices.size, multiVehiclePanelEnabled(panelJson))) return
     Column(modifier) {
-        VehicleRows(choices, selectable = true, onRefusal = { refusal = it }) {}
+        VehicleRows(choices, selectable = true, scope = rememberCoroutineScope(), onRefusal = { refusal = it }) {}
         FleetControls(vehiclesJson, choices) { refusal = it }
         refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
     }
 }
 
 @Composable
-private fun VehicleRows(choices: VehicleChoices, selectable: Boolean, onRefusal: (String?) -> Unit, onSwitched: () -> Unit) {
-    val scope = rememberCoroutineScope()
+private fun VehicleRows(choices: VehicleChoices, selectable: Boolean, scope: kotlinx.coroutines.CoroutineScope, onRefusal: (String?) -> Unit, onSwitched: () -> Unit) {
     val distinguishes = linkDistinguishes(choices.choices)
     choices.choices.forEach { choice ->
         ListItem(
@@ -341,6 +361,7 @@ private fun VehicleRows(choices: VehicleChoices, selectable: Boolean, onRefusal:
             }) else null,
             trailingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (choice.flightModes.isNotEmpty() && choice.index >= 0) VehicleModeMenu(choice, onRefusal)
                     VehicleRowCompass(choice.heading, choice.armed)
                     if (choice.active) Icon(Icons.Default.Check, contentDescription = "Flying this one")
                 }

@@ -145,8 +145,8 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
     crate::units::set_measurement_system(chosen.measurement_system);
     crate::applog::install();
     unsafe {
-        crate::abi::qgc_core_settings_open(text(&chosen.settings.to_string_lossy()).as_ptr());
         crate::abi::qgc_core_set_application_name(text(&chosen.application).as_ptr());
+        crate::abi::qgc_core_settings_open(text(&chosen.settings.to_string_lossy()).as_ptr());
         crate::abi::qgc_core_gcs_position_source(text(&chosen.position_source).as_ptr());
     }
     crate::settingsstore::establish_save_path(chosen.save_path.as_deref(), chosen.removable_save_path.as_deref(), &chosen.application);

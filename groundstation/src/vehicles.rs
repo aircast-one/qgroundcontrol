@@ -6,7 +6,7 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicles.selectedVehicles.count", "vehicle.id"];
 
-const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,coordinate,homePosition,fixedWing,vtol,airship";
+const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,coordinate,homePosition,fixedWing,vtol,airship,flightModes,flightModeSetAvailable";
 const WATCHED_PER_VEHICLE: [&str; 9] = ["armed", "flying", "flightMode", "coordinate", "homePosition", "heading", "altitudeRelative", "groundSpeed", "airSpeed"];
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
@@ -134,6 +134,8 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "selected": id.is_some_and(|id| chosen_ids.contains(&id)),
                 "proximity": proximity(backend, index),
                 "telemetry": telemetry(&read, &|name| shown_fact(backend, index, name)),
+                "index": index,
+                "flightModes": flag(&read, "flightModeSetAvailable").then(|| read.get("flightModes").cloned()).flatten().filter(Value::is_array).unwrap_or(json!([])),
             })
         })
         .collect();
