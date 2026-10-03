@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import org.json.JSONObject
@@ -21,8 +23,6 @@ internal fun defaultInstruments(vehicleClass: String): List<String> =
     DEFAULT_INSTRUMENTS + listOf("airSpeed").filter { vehicleClass in FORWARD_FLIGHT_CLASSES }
 
 internal const val INSTRUMENTS_VIEW = "view.instruments"
-
-internal const val MOST_INSTRUMENTS = 6
 
 internal data class InstrumentFact(val name: String, val label: String, val path: String)
 
@@ -71,11 +71,8 @@ internal fun instrumentsPath(chosen: List<String>, vehicleClass: String = GENERI
 
 internal fun showsInstruments(chosen: List<String>): Boolean = chosen.isNotEmpty()
 
-internal fun withInstrument(chosen: List<String>, name: String): List<String> = when {
-    name in chosen -> chosen - name
-    chosen.size >= MOST_INSTRUMENTS -> chosen
-    else -> chosen + name
-}
+internal fun withInstrument(chosen: List<String>, name: String): List<String> =
+    if (name in chosen) chosen - name else chosen + name
 
 internal fun emptyCatalogueText(connected: Boolean): String = when {
     connected -> "This vehicle reported no readings this screen can ask for."
@@ -84,8 +81,7 @@ internal fun emptyCatalogueText(connected: Boolean): String = when {
 
 internal fun instrumentChoiceNote(chosen: List<String>): String = when (chosen.size) {
     0 -> "Nothing chosen. The flight screen shows no readings."
-    MOST_INSTRUMENTS -> "$MOST_INSTRUMENTS is as many as the row fits. Remove one to add another."
-    else -> "${chosen.size} of $MOST_INSTRUMENTS chosen."
+    else -> "${chosen.size} chosen."
 }
 
 private const val STORE = "fly-instruments"
@@ -103,7 +99,12 @@ internal fun readChosen(context: Context, vehicleClass: String): List<String> =
         ?.filter { it.isNotBlank() }
         ?: defaultInstruments(vehicleClass)
 
+internal object InstrumentEdits {
+    var version by androidx.compose.runtime.mutableIntStateOf(0)
+}
+
 internal fun writeChosen(context: Context, vehicleClass: String, chosen: List<String>) {
+    InstrumentEdits.version += 1
     context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
         .edit()
         .putString(chosenKey(vehicleClass), chosen.joinToString(","))

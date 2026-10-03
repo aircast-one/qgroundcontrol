@@ -87,8 +87,9 @@ internal fun SimpleTiles(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val classView by qgcPath(INSTRUMENTS_VIEW)
     val vehicleClass = instrumentVehicleClass(classView)
-    val chosen = remember(vehicleClass) { readChosen(context, vehicleClass) }
-    val displays = remember(vehicleClass) { readDisplays(context, vehicleClass) }
+    val edits = InstrumentEdits.version
+    val chosen = remember(vehicleClass, edits) { readChosen(context, vehicleClass) }
+    val displays = remember(vehicleClass, edits) { readDisplays(context, vehicleClass) }
     val view by qgcPath(instrumentsPath(chosen, vehicleClass))
     val shown = remember(view, chosen) { if (showsInstruments(chosen)) instruments(view).take(SIMPLE_TILE_COUNT) else emptyList() }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
@@ -103,7 +104,7 @@ internal fun SimpleTiles(modifier: Modifier = Modifier) {
                         contentColor = MaterialTheme.aircast.outdoorForeground,
                     ) {
                         Column(Modifier.padding(horizontal = AircastSpace.s4 - 2.dp, vertical = AircastSpace.s2)) {
-                            Text(instrument.label.uppercase(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            ValueLabel(display, instrument.raw, instrument.label.uppercase(), MaterialTheme.colorScheme.onSurfaceVariant)
                             Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
                                 Text(
                                     instrument.value,
@@ -111,7 +112,7 @@ internal fun SimpleTiles(modifier: Modifier = Modifier) {
                                     color = displayColour(display, instrument.raw)?.let { Color(it) } ?: Color.Unspecified,
                                     modifier = Modifier.alignByBaseline(),
                                 )
-                                if (instrument.units.isNotBlank()) Text(
+                                if (display.showUnits && instrument.units.isNotBlank()) Text(
                                     instrument.units,
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,

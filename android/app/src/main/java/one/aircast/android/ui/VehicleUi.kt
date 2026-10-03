@@ -212,6 +212,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
             onDone = { display ->
                 writeDisplay(context, vehicleClass, instrument.id, display)
                 displays = displays + (instrument.id to display)
+                InstrumentEdits.version += 1
                 styling = null
             },
         )
@@ -1009,21 +1010,11 @@ private fun InstrumentSheet(
             shownFirst(groups, shownAtOpen).forEach { group ->
                 item(key = "head${group.group}") { SectionHeader(group.title) }
                 items(group.facts, key = { it.path }) { fact ->
-                    val picked = fact.path in chosen
-                    val choosable = picked || chosen.size < MOST_INSTRUMENTS
                     ListItem(
                         headlineContent = { Text(fact.label) },
-                        leadingContent = {
-                            Checkbox(checked = picked, onCheckedChange = null, enabled = choosable)
-                        },
-                        colors = ListItemDefaults.colors(
-                            containerColor = Color.Transparent,
-                            headlineColor = when {
-                                choosable -> MaterialTheme.colorScheme.onSurface
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            },
-                        ),
-                        modifier = Modifier.clickable(enabled = choosable) { onToggle(fact.path) },
+                        leadingContent = { Checkbox(checked = fact.path in chosen, onCheckedChange = null) },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable { onToggle(fact.path) },
                     )
                 }
             }

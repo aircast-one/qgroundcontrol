@@ -88,24 +88,17 @@ class InstrumentChoiceTest {
     }
 
     @Test
-    fun `choosing toggles, and the row has a limit`() {
+    fun `choosing toggles with no limit, the row wraps like TelemetryChipsLayer`() {
         assertEquals(listOf("a", "b"), withInstrument(listOf("a"), "b"))
         assertEquals(listOf("a"), withInstrument(listOf("a", "b"), "b"))
-
-        val full = (1..MOST_INSTRUMENTS).map { "f$it" }
-        assertEquals("a full row refuses another rather than dropping one silently", full, withInstrument(full, "extra"))
-        assertEquals(
-            "removing from a full row still works, or the limit would be a trap",
-            full - "f1",
-            withInstrument(full, "f1"),
-        )
+        val many = (1..9).map { "f$it" }
+        assertEquals(many + "extra", withInstrument(many, "extra"))
     }
 
     @Test
     fun `the note says where the operator stands`() {
         assertTrue(instrumentChoiceNote(emptyList()).contains("no readings"))
-        assertTrue(instrumentChoiceNote(listOf("a", "b")).startsWith("2 of"))
-        assertTrue(instrumentChoiceNote((1..MOST_INSTRUMENTS).map { "f$it" }).contains("Remove one"))
+        assertEquals("2 chosen.", instrumentChoiceNote(listOf("a", "b")))
     }
 
     @Test
