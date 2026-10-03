@@ -192,11 +192,8 @@ fn active_link() -> Option<(LinkId, (u8, u8))> {
 }
 
 fn send_setup(link: LinkId, data: &mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA) {
-    (0..crate::signing::SETUP_COPIES).for_each(|_| {
-        if let Some(bytes) = crate::mavout::encode_next(&crate::mavout::Outbound::SetupSigning { data: data.clone() }) {
-            crate::linkhost::write(&crate::linkhost::TRANSPORTS, link, &bytes);
-        }
-    });
+    let copies: Vec<crate::mavout::Outbound> = (0..crate::signing::SETUP_COPIES).map(|_| crate::mavout::Outbound::SetupSigning { data: data.clone() }).collect();
+    crate::hub::send_for(data.target_system, link, &copies);
 }
 
 

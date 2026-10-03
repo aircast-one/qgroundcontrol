@@ -161,19 +161,11 @@ fn settle(camera: Wanted, bytes: Result<Vec<u8>, String>) {
 }
 
 pub fn request_all(vehicle: u8, compid: u8, link: u32) {
-    if let Some(bytes) = crate::mavout::encode_next(&crate::mavout::Outbound::ParamExtRequestList { target: (vehicle, compid) }) {
-        crate::linkhost::write(&crate::linkhost::TRANSPORTS, link, &bytes);
-    }
+    crate::hub::send_for(vehicle, link, &[Outbound::ParamExtRequestList { target: (vehicle, compid) }]);
 }
 
 pub fn parameter_name(raw: &[u8]) -> String {
     String::from_utf8_lossy(raw).trim_end_matches('\0').to_string()
-}
-
-fn send(link: u32, outbound: &[Outbound]) {
-    outbound.iter().filter_map(crate::mavout::encode_next).for_each(|bytes| {
-        crate::linkhost::write(&crate::linkhost::TRANSPORTS, link, &bytes);
-    });
 }
 
 fn schedule(ready: &mut Ready, outs: &[Out], now_ms: u64) {
@@ -243,7 +235,7 @@ pub fn on_ack(vehicle: u8, compid: u8, name: &str, param_type: u8, raw: &[u8], r
 
 pub fn tick(now_ms: u64) {
     start_ftp_downloads(now_ms);
-    let due: Vec<(u32, Vec<Outbound>)> = STORE
+    let due: Vec<(u8, u32, Vec<Outbound>)> = STORE
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .iter_mut()
@@ -274,10 +266,10 @@ pub fn tick(now_ms: u64) {
                 }
                 false => Vec::new(),
             };
-            (ready.link, resends.into_iter().chain(reads).collect())
+            (target.0, ready.link, resends.into_iter().chain(reads).collect())
         })
         .collect();
-    due.iter().for_each(|(link, outbound)| send(*link, outbound));
+    due.iter().for_each(|(vehicle, link, outbound)| crate::hub::send_for(*vehicle, *link, outbound));
 }
 
 fn refused(reason: &str) -> Value {
@@ -309,7 +301,7 @@ pub fn set_setting(args: &str) -> Value {
         None => refused("The camera's settings are not loaded."),
         Some(Err(reason)) => refused(reason),
         Some(Ok((link, outbound))) => {
-            send(link, &[outbound]);
+            crate::hub::send_for(key.0, link, &[outbound]);
             json!({ "ok": true })
         }
     }

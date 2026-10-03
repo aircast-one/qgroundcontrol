@@ -4019,6 +4019,12 @@ impl Hub {
         self.vehicles.get(&id)
     }
 
+    pub fn count_sent(&mut self, id: u8, frames: usize) {
+        if let Some(vehicle) = self.vehicles.get_mut(&id) {
+            vehicle.messages_sent += frames as u64;
+        }
+    }
+
     pub fn note_cellular(&mut self, system: u8, message: &MavMessage, raw: &[u8]) {
         if let (MavMessage::CELLULAR_STATUS(cellular), Some(vehicle)) = (message, self.vehicles.get_mut(&system)) {
             vehicle.aircast.apply(cellular, crate::vehiclefact::cellular_rx_rate(raw));
@@ -4213,6 +4219,14 @@ pub fn lock() -> MutexGuard<'static, Hub> {
     HUB.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+pub fn send_for(vehicle: u8, link: LinkId, outbound: &[Outbound]) {
+    let frames: Vec<Vec<u8>> = outbound.iter().filter_map(mavout::encode_next).collect();
+    lock().count_sent(vehicle, frames.len());
+    frames.iter().for_each(|bytes| {
+        crate::linkhost::write(&crate::linkhost::TRANSPORTS, link, bytes);
+    });
+}
+
 pub fn core_vehicle_view(_backend: &dyn crate::router::Backend, args: &[String]) -> Value {
     let hub = lock();
     hub.snapshot_of(args.first().and_then(|a| a.trim().parse().ok()))
@@ -4341,6 +4355,17 @@ mod tests {
         assert_eq!(count, 1, "the sample log carries one vehicle");
         hub.remove(vehicle.id);
         assert_eq!(hub.snapshot()["available"], false);
+    }
+
+    #[test]
+    fn frames_sent_outside_the_hub_count_toward_their_vehicle_like_send_message_on_link() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let before = hub.vehicle(1).unwrap().messages_sent;
+        hub.count_sent(1, 3);
+        hub.count_sent(9, 2);
+        assert_eq!(hub.vehicle(1).unwrap().messages_sent, before + 3);
     }
 
     #[test]

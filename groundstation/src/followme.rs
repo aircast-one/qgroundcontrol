@@ -449,20 +449,18 @@ pub fn tick(backend: &dyn Backend, now_ms: u64) {
     let mode = Mode::from_setting(value_number(&backend.get(SETTING)));
     let Some(report) = gcs_fix(backend, crate::hub::now_us() / 1000).as_ref().and_then(motion_report) else { return };
     let fleet = fleet_of(backend);
-    let sends: Vec<(crate::transport::LinkId, Vec<u8>)> = {
+    let sends: Vec<(u8, crate::transport::LinkId, crate::mavout::Outbound)> = {
         let hub = crate::hub::lock();
         fleet
             .iter()
             .filter_map(|target| {
                 let stream = stream(mode, target).ok()?;
-                let link = hub.vehicle_link(u8::try_from(target.id).ok()?)?;
-                Some((link, crate::mavout::encode_next(&outbound(stream, &report, target.home_altitude_amsl_m, now_ms))?))
+                let id = u8::try_from(target.id).ok()?;
+                Some((id, hub.vehicle_link(id)?, outbound(stream, &report, target.home_altitude_amsl_m, now_ms)))
             })
             .collect()
     };
-    sends.iter().for_each(|(link, bytes)| {
-        crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
-    });
+    sends.into_iter().for_each(|(id, link, outbound)| crate::hub::send_for(id, link, &[outbound]));
 }
 
 pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {

@@ -491,7 +491,8 @@ fn send(vehicle: (u8, u32), outs: Vec<Out>) {
     if crate::hub::lock().active().is_some_and(|v| v.id == id && v.on_high_latency_link()) {
         return;
     }
-    outs.into_iter()
+    let outbound: Vec<Outbound> = outs
+        .into_iter()
         .filter_map(|out| match out {
             Out::ManualControl { x, y, z, r, buttons, buttons2, enabled_extensions, extensions } => Some(Outbound::JoystickManualControl { target: id, x, y, z, r, buttons, buttons2, enabled_extensions, extensions }),
             Out::RcChannelsOverride { channels } => {
@@ -505,10 +506,8 @@ fn send(vehicle: (u8, u32), outs: Vec<Out>) {
             }
             _ => None,
         })
-        .filter_map(|outbound| crate::mavout::encode_next(&outbound))
-        .for_each(|bytes| {
-            crate::linkhost::write(&crate::linkhost::TRANSPORTS, link, &bytes);
-        });
+        .collect();
+    crate::hub::send_for(id, link, &outbound);
 }
 
 fn sync_polling(now_ms: u64) {

@@ -25,12 +25,6 @@ fn px4_target() -> Result<((u8, u8), u32), &'static str> {
     Ok(((vehicle.id, crate::hub::COMP_AUTOPILOT1), vehicle.link))
 }
 
-fn send(link: u32, outbound: &[Outbound]) {
-    outbound.iter().filter_map(crate::mavout::encode_next).for_each(|bytes| {
-        crate::linkhost::write(&crate::linkhost::TRANSPORTS, link, &bytes);
-    });
-}
-
 pub fn run(backend: &dyn crate::router::Backend, path: &str, args: &str) -> Value {
     if !crate::vehiclefacade::switched_on() {
         let method = if path == CLEAR_RC_TO_PARAM { "vehicle.clearAllParamMapRC" } else { "vehicle.sendParamMapRC" };
@@ -49,7 +43,7 @@ pub fn run(backend: &dyn crate::router::Backend, path: &str, args: &str) -> Valu
             _ => return json!({ "ok": false, "reason": "Set RC to Param takes a parameter, scale, center value, tuning ID and min/max values." }),
         },
     };
-    send(link, &outbound);
+    crate::hub::send_for(target.0, link, &outbound);
     json!({ "ok": true })
 }
 
