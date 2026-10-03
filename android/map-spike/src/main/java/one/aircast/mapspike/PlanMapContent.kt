@@ -13,6 +13,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -1258,11 +1259,11 @@ internal fun MapSpikeScreen(
                             )
                         }
 
-                        surveyHit?.let { hit ->
+                        (surveyHit?.item ?: (selected as? MapHit.ShapeCentre)?.takeIf { !it.fence }?.owner)?.let { item ->
                             TextButton(onClick = {
-                                onRefusal { PlanBridge.removeItemRefusal(hit.item) }
+                                onRefusal { PlanBridge.removeItemRefusal(item) }
                                 selected = null
-                            }) { Text("Delete ${patternName(hit.item, allItems)}") }
+                            }) { Text("Delete ${patternName(item, allItems)}") }
                         }
 
                         circle?.let { it ->
@@ -1456,10 +1457,11 @@ private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(ITEM_MARKER_SIZE).background(Color(android.graphics.Color.parseColor(row.colour)), CircleShape),
+                if (row.readyForSave) Modifier.size(ITEM_MARKER_SIZE).background(Color(android.graphics.Color.parseColor(row.colour)), CircleShape)
+                else Modifier.size(ITEM_MARKER_SIZE).border(1.dp, MaterialTheme.aircast.warning, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(row.number, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.surface, maxLines = 1)
+                Text(row.number, style = MaterialTheme.typography.labelLarge, color = if (row.readyForSave) MaterialTheme.colorScheme.surface else MaterialTheme.aircast.warning, maxLines = 1)
             }
             Column(Modifier.weight(1f)) {
                 Text(sentenceCase(row.name), style = MaterialTheme.typography.titleMedium, maxLines = 1)

@@ -14,7 +14,10 @@ data class ItemRow(
     val detail: String,
     val colour: String,
     val placed: Boolean,
+    val readyForSave: Boolean = true,
 )
+
+internal const val NOT_READY_SEAL = "?"
 
 
 internal fun altitudeWithFrame(item: MissionItem): String? {
@@ -71,11 +74,12 @@ fun itemRows(
 ): List<ItemRow> = items.map { item ->
     ItemRow(
         index = item.index,
-        number = sequenceLabel(item),
+        number = if (item.readyForSave) sequenceLabel(item) else NOT_READY_SEAL,
         name = item.command.ifBlank { "Item ${item.sequence}" },
         detail = itemDetail(item, stats[item.index]),
         colour = waypointColour(item.kind, item.commandId),
         placed = item.placed,
+        readyForSave = item.readyForSave,
     )
 }
 
