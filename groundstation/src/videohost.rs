@@ -232,7 +232,7 @@ pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String>
         ))
     };
     let source = match uri.split_once("://")? {
-        ("rtsp" | "rtsps", _) => format!("rtspsrc location={} latency={latency_ms} do-rtcp=true do-retransmission={retransmit} drop-on-latency=true", quoted(uri)),
+        (scheme, _) if scheme.starts_with("rtsp") => format!("rtspsrc location={} latency={latency_ms} do-rtcp=true do-retransmission={retransmit} drop-on-latency=true", quoted(uri)),
         ("udp", rest) => rtp("H264", rest)?,
         ("udp265", rest) => rtp("H265", rest)?,
         ("mpegts", rest) => {
@@ -383,6 +383,10 @@ pub fn native_recording() -> Option<Value> {
 
 pub static RESTART: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+pub fn unbuildable_outcome(uri: &str) -> Outcome {
+    if uri.trim().is_empty() { Outcome::InvalidUrl } else { Outcome::Failed }
+}
+
 pub fn native_pipeline() -> Option<String> {
     get("video.nativePipeline")?.get("value")?.as_str().map(str::to_string)
 }
@@ -488,6 +492,17 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             Some(json!({ "ok": true }))
         }
         "video.setNativeRendering" | "video.initNative" => Some(json!({ "ok": true })),
+        "video.reportUnbuildable" => {
+            let uri = host.state.desired_uri(MAIN_RECEIVER);
+            let latency = setting("rtpJitterLatencyMs").as_i64().unwrap_or(80);
+            if host.wanted && host.state.has_video() && pipeline(&uri, latency, host.state.settings.low_latency).is_none() {
+                host.wanted = false;
+                host.progress = None;
+                let outs = host.state.on_start_complete(MAIN_RECEIVER, unbuildable_outcome(&uri), crate::hub::now_ms() / 1000);
+                apply(host, outs, crate::hub::now_ms());
+            }
+            Some(json!({ "ok": true }))
+        }
         "video.restart" => {
             RESTART.store(true, std::sync::atomic::Ordering::Relaxed);
             if !host.wanted {
@@ -519,6 +534,13 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_address_no_pipeline_can_be_built_for_fails_like_gst_source_factory() {
+        assert_eq!(unbuildable_outcome(""), Outcome::InvalidUrl, "an empty address is GstVideoReceiver's Invalid stream URL");
+        assert_eq!(unbuildable_outcome("udp://host-without-port"), Outcome::Failed, "anything else is a failed start, retried");
+        assert!(pipeline("rtspt://cam/main", 80, false).is_some(), "rtspt forces RTSP over TCP and GstSourceFactory accepts any rtsp scheme");
+    }
 
     #[test]
     fn a_grabbed_frame_drops_row_padding_and_lands_as_a_dated_jpeg() {

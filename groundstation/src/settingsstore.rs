@@ -392,7 +392,10 @@ pub fn open(path: &std::path::Path) {
     }
     let (values, upgraded) = match crate::qthost::present() {
         true => (cleared_on_boot(read), false),
-        false => versioned(cleared_on_boot(read)),
+        false => {
+            let (values, upgraded) = versioned(cleared_on_boot(read));
+            (offered_video_source(values), upgraded)
+        }
     };
     if upgraded {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &settings_reset_notice(&crate::noticeboard::application_name()));
@@ -831,8 +834,19 @@ pub const VIDEO_DISABLED: &str = "Video Stream Disabled";
 
 const STREAM_SOURCE_ORDER: [&str; 6] = ["RTSP Video Stream", "UDP h.264 Video Stream", "UDP h.265 Video Stream", "TCP-MPEG2 Video Stream", "MPEG-TS Video Stream", "WebRTC (WHEP) Video Stream"];
 
+const FIXED_SOURCES: [&str; 4] = [crate::videostate::SOURCE_3DR_SOLO, crate::videostate::SOURCE_PARROT_DISCOVERY, crate::videostate::SOURCE_YUNEEC_MANTIS_G, crate::videostate::SOURCE_HERELINK_HOTSPOT];
+
 fn stream_sources() -> Vec<String> {
-    std::iter::once(VIDEO_DISABLED).chain(STREAM_SOURCE_ORDER).map(str::to_string).collect()
+    std::iter::once(VIDEO_DISABLED).chain(STREAM_SOURCE_ORDER).chain(FIXED_SOURCES).map(str::to_string).collect()
+}
+
+pub fn offered_video_source(values: BTreeMap<String, Setting>) -> BTreeMap<String, Setting> {
+    let field = key("Video", "videoSource");
+    let stale = matches!(values.get(&field), Some(Setting::Text(source)) if !stream_sources().contains(source));
+    match stale {
+        true => values.into_iter().chain(std::iter::once((field, Setting::Text(VIDEO_DISABLED.to_string())))).collect(),
+        false => values,
+    }
 }
 pub const URL_SOURCES: [(&str, &str); 6] = [
     ("UDP h.264 Video Stream", "udpUrl"),
@@ -926,8 +940,12 @@ mod tests {
     #[test]
     fn without_qt_the_video_source_offers_qgcs_stream_sources_in_its_order() {
         let qt: serde_json::Map<String, Value> = serde_json::from_str(include_str!("../tests/fixtures/settings-facts-by-qt.json")).unwrap();
-        let listed: Vec<String> = qt["settings.videoSettings.videoSource"]["enumStrings"].as_array().unwrap().iter().filter_map(|v| v.as_str().map(str::to_string)).take(7).collect();
-        assert_eq!(stream_sources(), listed, "the stream sources VideoSettings lists before the platform's cameras");
+        let listed: Vec<String> = qt["settings.videoSettings.videoSource"]["enumStrings"].as_array().unwrap().iter().filter_map(|v| v.as_str().map(str::to_string)).take(11).collect();
+        assert_eq!(stream_sources(), listed, "the stream and fixed-camera sources VideoSettings lists before the platform's cameras");
+        let stale: BTreeMap<String, Setting> = [(key("Video", "videoSource"), Setting::Text("Gone Camera".into()))].into_iter().collect();
+        assert_eq!(offered_video_source(stale).get(&key("Video", "videoSource")), Some(&Setting::Text(VIDEO_DISABLED.into())), "a stored source no longer offered falls back to Disabled, as VideoSettings::videoSource does");
+        let kept: BTreeMap<String, Setting> = [(key("Video", "videoSource"), Setting::Text("Herelink Hotspot".into()))].into_iter().collect();
+        assert_eq!(offered_video_source(kept.clone()), kept);
         assert!(STREAM_SOURCE_ORDER.iter().all(|name| URL_SOURCES.iter().any(|(source, _)| source == name)), "every offered stream has a URL setting");
     }
 
