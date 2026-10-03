@@ -179,4 +179,12 @@ class LogSavePathTest {
         assertNull("a made-up date must not be shown beside a real log", logLocalTime("not a date"))
     }
 
+    @Test
+    fun `a log time reads compactly like the Penpot list`() {
+        val today = java.time.LocalDate.of(2026, 10, 3)
+        assertEquals("Yesterday", compactLogTime(java.time.LocalDateTime.of(2026, 10, 2, 9, 0), today))
+        assertEquals("Sep 8", compactLogTime(java.time.LocalDateTime.of(2026, 9, 8, 2, 20), today))
+        assertEquals("Sep 8, 2025", compactLogTime(java.time.LocalDateTime.of(2025, 9, 8, 2, 20), today))
+        assertFalse(compactLogTime(java.time.LocalDateTime.of(2026, 10, 3, 14, 2), today).contains("Oct"))
+    }
 }

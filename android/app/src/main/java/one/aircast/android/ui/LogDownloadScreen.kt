@@ -69,8 +69,16 @@ private const val LOGS_VIEW = "view.logs"
 internal const val TIME_UNRECEIVED = "unreceived"
 internal const val TIME_UNKNOWN = "unknown"
 
-private val LOCAL_TIME: DateTimeFormatter =
-    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+private val CLOCK: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+private val DAY_THIS_YEAR: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d")
+private val DAY_OTHER_YEAR: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
+
+internal fun compactLogTime(time: LocalDateTime, today: java.time.LocalDate): String = when {
+    time.toLocalDate() == today -> CLOCK.format(time)
+    time.toLocalDate() == today.minusDays(1) -> "Yesterday"
+    time.year == today.year -> DAY_THIS_YEAR.format(time)
+    else -> DAY_OTHER_YEAR.format(time)
+}
 
 internal fun logLocalTime(raw: String): LocalDateTime? =
     runCatching { OffsetDateTime.parse(raw).atZoneSameInstant(ZoneId.systemDefault()).toLocalDateTime() }
@@ -137,7 +145,7 @@ internal fun logsView(view: JSONObject?): LogsView? {
                     time = logTimeText(
                         entry.optText("time"),
                         entry.optText("timeState"),
-                    ) { LOCAL_TIME.format(it) },
+                    ) { compactLogTime(it, java.time.LocalDate.now()) },
                     sizeStr = entry.optText("sizeText"),
                     received = entry.optBoolean("received"),
                     selected = entry.optBoolean("selected"),
