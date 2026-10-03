@@ -220,12 +220,21 @@ private fun CalibrationStart(
     onInvoke: (String, Int?) -> Unit,
 ) {
     var prompting by remember { mutableStateOf(false) }
+    var refusing by remember { mutableStateOf(false) }
     view.startPrompt?.takeIf { prompting }?.let { (title, message) ->
         AlertDialog(
             onDismissRequest = { prompting = false },
             title = { Text(title) },
             text = { Text(message) },
             confirmButton = { TextButton(onClick = { prompting = false; onAction("nextButtonClicked") }) { Text("Ok") } },
+        )
+    }
+    view.notReady?.takeIf { refusing }?.let { (title, message) ->
+        AlertDialog(
+            onDismissRequest = { refusing = false },
+            title = { Text(title) },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { refusing = false }) { Text("Ok") } },
         )
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -236,21 +245,19 @@ private fun CalibrationStart(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Button(
-                onClick = { if (view.startPrompt != null) prompting = true else onAction("nextButtonClicked") },
-                enabled = view.calibration.nextEnabled && view.enoughChannels,
+                onClick = {
+                    when {
+                        view.notReady != null -> refusing = true
+                        view.startPrompt != null -> prompting = true
+                        else -> onAction("nextButtonClicked")
+                    }
+                },
+                enabled = view.calibration.nextEnabled,
             ) { Text(view.calibration.nextText.ifBlank { "Calibrate" }) }
             Text(
-                text = when {
-                    !view.enoughChannels -> view.shortfall.ifBlank {
-                        "Not enough channels to calibrate."
-                    }
-                    else -> view.summary
-                },
+                text = view.summary,
                 style = MaterialTheme.typography.bodySmall,
-                color = when {
-                    view.enoughChannels -> MaterialTheme.colorScheme.onSurfaceVariant
-                    else -> MaterialTheme.colorScheme.error
-                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         AdditionalSetup(onInvoke)

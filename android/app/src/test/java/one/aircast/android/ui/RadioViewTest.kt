@@ -9,7 +9,6 @@ import org.junit.Test
 
 private const val TWO_DEAD = """
 {"class": "Radio", "connected": true, "channelCount": 8, "liveChannels": 6,
- "enoughChannels": true, "shortfall": "",
  "summary": "8 channels reported, 6 carrying a signal.",
  "sticks": [{"key": "yaw", "title": "Yaw", "value": 1173, "valueText": "1173",
              "fraction": 0.173, "mapped": true, "reversed": true}],
@@ -19,7 +18,7 @@ private const val TWO_DEAD = """
 
 private const val MID_CALIBRATION = """
 {"class": "Radio", "connected": true, "channelCount": 8, "liveChannels": 8,
- "enoughChannels": true, "shortfall": "", "summary": "8 channels reported, 8 carrying a signal.",
+ "summary": "8 channels reported, 8 carrying a signal.",
  "calibrating": true, "statusText": "Move the Throttle stick all the way up and hold it there...",
  "nextText": "Next", "nextEnabled": true, "cancelEnabled": true, "skipEnabled": true,
  "sticks": [], "channels": []}
@@ -41,6 +40,13 @@ class RadioViewTest {
         val idle = radioView(JSONObject(TWO_DEAD))!!.calibration
         assertFalse(idle.running)
         assertFalse("nothing is running, so cancel would cancel nothing", idle.cancelEnabled)
+    }
+
+    @Test
+    fun `too few channels carries the dialog QGC shows instead of starting`() {
+        val short = radioView(JSONObject(TWO_DEAD).put("notReady", JSONObject("""{"title": "Not Ready", "message": "Please turn on RC transmitter."}""")))!!
+        assertEquals("Not Ready" to "Please turn on RC transmitter.", short.notReady)
+        assertNull(radioView(JSONObject(TWO_DEAD))!!.notReady)
     }
 
     @Test

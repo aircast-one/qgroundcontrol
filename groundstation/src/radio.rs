@@ -25,10 +25,12 @@ pub fn summary(connected: bool, channel_count: i64, live: usize) -> String {
     }
 }
 
-pub fn shortfall(connected: bool, channel_count: i64, minimum: i64) -> String {
-    match connected && channel_count > 0 && channel_count < minimum {
-        true => format!("At least {minimum} channels are needed to fly; the transmitter reports {channel_count}."),
-        false => String::new(),
+pub fn not_ready(connected: bool, joystick: bool, channel_count: i64, minimum: i64) -> Value {
+    match (connected && channel_count < minimum, joystick, channel_count) {
+        (false, _, _) => Value::Null,
+        (true, true, n) => json!({ "title": "Joystick Not Ready", "message": format!("{minimum} axes or more are needed to fly. Joystick is reporting {n} axes.") }),
+        (true, false, 0) => json!({ "title": "Not Ready", "message": "Please turn on RC transmitter." }),
+        (true, false, _) => json!({ "title": "Not Ready", "message": format!("{minimum} channels or more are needed to fly.") }),
     }
 }
 
@@ -93,10 +95,9 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "connected": connected,
         "channelCount": channel_count,
         "minimumChannels": minimum,
-        "enoughChannels": channel_count >= minimum,
         "liveChannels": live,
         "summary": summary(connected, channel_count, live),
-        "shortfall": shortfall(connected, channel_count, minimum),
+        "notReady": not_ready(connected, truthy(&cal, "joystickMode"), channel_count, minimum),
         "calibrating": cancel_enabled,
         "startPrompt": start_prompt(connected, truthy(&cal, "joystickMode"), px4),
         "statusText": text(&cal, "statusText"),
@@ -148,7 +149,7 @@ fn refusal(action: Action, state: Calibration) -> Option<(&'static str, String)>
         _ if !state.connected => Some(("noVehicle", "No vehicle is connected.".to_string())),
         Action::Cancel if !state.cancel_enabled => Some(("idle", "No radio calibration is running.".to_string())),
         Action::Cancel => None,
-        Action::Next if !state.calibrating && state.channels < state.minimum => Some(("tooFewChannels", format!("Detected {} channels. To operate the vehicle you need at least {}.", state.channels, state.minimum))),
+        Action::Next if !state.calibrating && state.channels < state.minimum => Some(("tooFewChannels", format!("Detected {} channels. To operate vehicle, you need at least {} channels.", state.channels, state.minimum))),
         Action::Next if !state.next_enabled => Some(("waiting", "Follow the instruction on screen before continuing.".to_string())),
         Action::Next => None,
     }
@@ -248,12 +249,15 @@ mod tests {
     }
 
     #[test]
-    fn the_summary_and_shortfall_say_what_the_transmitter_reports() {
+    fn the_summary_and_not_ready_dialog_say_what_the_transmitter_reports() {
         assert_eq!(summary(false, 8, 8), "No vehicle is connected.");
         assert_eq!(summary(true, 0, 0), "No transmitter is being heard.");
         assert_eq!(summary(true, 1, 1), "1 channel reported, 1 carrying a signal.");
-        assert_eq!(shortfall(true, 4, 5), "At least 5 channels are needed to fly; the transmitter reports 4.");
-        assert_eq!(shortfall(true, 8, 5), "");
+        assert_eq!(not_ready(true, false, 4, 5), json!({ "title": "Not Ready", "message": "5 channels or more are needed to fly." }));
+        assert_eq!(not_ready(true, false, 0, 4), json!({ "title": "Not Ready", "message": "Please turn on RC transmitter." }));
+        assert_eq!(not_ready(true, true, 2, 4), json!({ "title": "Joystick Not Ready", "message": "4 axes or more are needed to fly. Joystick is reporting 2 axes." }));
+        assert_eq!(not_ready(true, false, 8, 5), Value::Null);
+        assert_eq!(not_ready(false, false, 0, 4), Value::Null);
     }
 
     #[test]
@@ -270,10 +274,7 @@ mod tests {
         assert_eq!(view["sticks"][0]["reversed"], true);
         assert_eq!(view["sticks"][3]["valueText"], "Not mapped");
         assert_eq!(view["calibrating"], true);
-        assert_eq!(view["enoughChannels"], false);
-        assert!(view["shortfall"].as_str().unwrap().starts_with("At least 5"));
-        // The same view against the declaration upstream would have written if the typo in
-        // RadioComponentController were corrected: bools where it currently sends numbers.
+        assert_eq!(view["notReady"]["message"], "5 channels or more are needed to fly.");
         let declared_bool = radio_view(&Fake(json!({
             "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
             "rollChannelMapped": true, "rollChannelRCValue": 1500, "rollChannelReversed": true,
@@ -283,7 +284,6 @@ mod tests {
         assert_eq!(declared_bool["sticks"][3]["valueText"], "Not mapped");
         assert_eq!(declared_bool["calibrating"], true);
 
-        // And the mapped flags read the same whichever way they are declared.
         let mapped_as_number = radio_view(&Fake(json!({
             "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
             "rollChannelMapped": 1, "rollChannelRCValue": 1500, "rollChannelReversed": 0,
