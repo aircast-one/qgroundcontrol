@@ -760,7 +760,8 @@ internal fun MapSpikeScreen(
                 }
                 if (layer == PlanLayer.Rally) {
                     if (!support.rally && support.reason.isNotBlank()) PaletteNote(support.reason)
-                    if (rally.isEmpty()) PaletteNote(RALLY_HELP)
+                    if (rally.isEmpty() && !support.rallyRefused) PaletteNote(NO_RALLY_POINTS)
+                    if (rally.isNotEmpty()) FenceHeading("Rally points")
                     rallyRows(rally).forEach { row ->
                         FenceListRow(
                             row,
@@ -774,7 +775,7 @@ internal fun MapSpikeScreen(
                 }
                 if (layer == PlanLayer.Fence) {
                     if (!support.fence && support.reason.isNotBlank()) PaletteNote(support.reason)
-                    if (fences.isEmpty() && circles.isEmpty()) PaletteNote(NO_GEOFENCE)
+                    if (fences.isEmpty() && circles.isEmpty() && !support.fenceRefused) PaletteNote(NO_GEOFENCE)
                     val listed = fenceRows(fences, circles)
                     listed.forEachIndexed { at, row ->
                         fenceHeading(row, listed.getOrNull(at - 1))?.let { FenceHeading(it) }
@@ -1433,7 +1434,7 @@ internal fun MapSpikeScreen(
                             TextButton(onClick = {
                                 val count = rally.size
                                 onBridge(then = { selected = rallyAfterRemove(hit.index, count) }) { FenceBridge.removeRallyPoint(hit.index) }
-                            }) { Text("Delete rally") }
+                            }) { Text("Delete rally point") }
                         }
 
                     }

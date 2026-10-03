@@ -65,10 +65,7 @@ fun uploadStep(gate: UploadGate?, notReady: String? = null): UploadStep = when {
     else -> UploadStep.Refuse(gate.refusal.ifBlank { "This plan cannot be uploaded." })
 }
 
-// Read at the moment of the attempt, not from a watched copy. The precheck answers "should
-// this plan go to this vehicle right now", and a vehicle can begin flying the mission between
-// one poll and the operator's tap - which is exactly the case that must pause first.
-data class PlanSupport(val fence: Boolean, val rally: Boolean, val reason: String)
+data class PlanSupport(val fence: Boolean, val rally: Boolean, val reason: String, val fenceRefused: Boolean = false, val rallyRefused: Boolean = false)
 
 fun planSupport(view: org.json.JSONObject?): PlanSupport {
     val actions = view?.optJSONObject("actions")
@@ -76,6 +73,8 @@ fun planSupport(view: org.json.JSONObject?): PlanSupport {
         fence = actions?.optBoolean("addFence") == true,
         rally = actions?.optBoolean("addRally") == true,
         reason = view?.optText("unsupportedReason").orEmpty(),
+        fenceRefused = view?.opt("fenceSupported") == false,
+        rallyRefused = view?.opt("rallySupported") == false,
     )
 }
 

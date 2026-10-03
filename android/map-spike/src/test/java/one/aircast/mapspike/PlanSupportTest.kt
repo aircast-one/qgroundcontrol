@@ -45,4 +45,15 @@ class PlanSupportTest {
         assertFalse(planSupport(null).rally)
         assertFalse(view("""{"kind":"null"}""").fence)
     }
+
+    @Test
+    fun `only an explicit refusal hides the empty-layer hint, like RallyPointEditor and GeoFenceEditor`() {
+        val rallyOnlyRefused = view("""{"kind":"object","actions":{"addFence":true,"addRally":false},"fenceSupported":true,"rallySupported":false}""")
+        val unasked = view("""{"kind":"object","actions":{"addFence":true,"addRally":true},"fenceSupported":null,"rallySupported":null}""")
+
+        assertTrue(rallyOnlyRefused.rallyRefused)
+        assertFalse(rallyOnlyRefused.fenceRefused)
+        assertFalse(unasked.rallyRefused)
+        assertFalse(unasked.fenceRefused)
+    }
 }

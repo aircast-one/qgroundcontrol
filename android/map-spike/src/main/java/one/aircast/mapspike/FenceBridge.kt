@@ -59,12 +59,12 @@ internal fun rallyAfterRemove(removed: Int, countBefore: Int): MapHit? =
     (countBefore - 2).takeIf { it >= 0 }?.let { last -> MapHit.Rally(minOf(removed, last)) }
 
 internal const val NO_GEOFENCE = "No geofence \u2013 keep the vehicle inside a boundary, or out of an area."
-internal const val RALLY_HELP = "Rally Points provide alternate landing points when performing a Return to Launch (RTL)."
+internal const val NO_RALLY_POINTS = "No rally points \u2013 alternate landing points for Return to Launch. Tap the map to place one."
 
 fun rallyRows(points: List<RallyPoint>): List<FenceRow> = points.map { point ->
     val height = point.altitude.takeIf { it.isFinite() }?.let { "${plainAltitude(it)} ${point.altitudeUnits.ifBlank { "m" }}" }
     val where = String.format(java.util.Locale.US, "%.6f, %.6f", point.latitude, point.longitude)
-    FenceRow(point.index, false, "Rally point ${point.index + 1}", listOfNotNull(height, where).joinToString(" \u00b7 "))
+    FenceRow(point.index, false, "Rally ${point.index + 1}", listOfNotNull(height, where).joinToString(" \u00b7 "))
 }
 
 private fun plainAltitude(value: Double): String =
