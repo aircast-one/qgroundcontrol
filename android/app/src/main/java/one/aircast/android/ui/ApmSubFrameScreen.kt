@@ -60,7 +60,7 @@ internal fun subFrames(view: JSONObject?): SubFrames? = view?.takeIf { it.optBoo
     )
 }
 
-private fun frameImage(value: Int): ImageBitmap? =
+internal fun frameImage(value: Int): ImageBitmap? =
     Qgc.get("view.apmSubFrameImage($value)")?.optText("png")?.takeIf { it.isNotBlank() }?.let { png ->
         val bytes = Base64.decode(png, Base64.DEFAULT)
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()

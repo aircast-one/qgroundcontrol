@@ -17,4 +17,15 @@ class ApmSubMotorsScreenTest {
         assertEquals("Thruster 1 ok\n", read.detectionMessages)
         assertNull(subMotors(JSONObject("""{"available":false}""")))
     }
+
+    @Test
+    fun `the frame picture shows only for frames APMSubMotorDisplay draws`() {
+        val frames = { selected: Int? -> SubFrames(emptyList(), selected, false, false, "") }
+        assertEquals(1, motorDisplayFrame(frames(1)))
+        assertEquals(5, motorDisplayFrame(frames(5)))
+        assertNull(motorDisplayFrame(frames(6)))
+        assertNull(motorDisplayFrame(frames(3)))
+        assertNull(motorDisplayFrame(frames(null)))
+        assertNull(motorDisplayFrame(null))
+    }
 }

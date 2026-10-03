@@ -1,9 +1,11 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -20,11 +22,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -40,6 +45,10 @@ private const val SUB_MOTORS_POLL_MS = 500L
 private const val SUB_MOTOR_TEST_MS = 50L
 private const val SUB_COOL_DOWN_MS = 11_000L
 internal const val SUB_NEUTRAL = 50f
+
+internal val MOTOR_DISPLAY_FRAMES = setOf(0, 1, 2, 4, 5)
+
+internal fun motorDisplayFrame(frames: SubFrames?): Int? = frames?.selected?.takeIf { it in MOTOR_DISPLAY_FRAMES }
 
 internal data class SubMotor(val motor: Int, val reversed: Boolean)
 
@@ -78,6 +87,9 @@ fun ApmSubMotorsScreen(modifier: Modifier = Modifier) {
     var lastIndex by remember { mutableIntStateOf(0) }
     val sliders = remember { mutableStateMapOf<Int, Float>() }
     val scope = rememberCoroutineScope()
+    val frameDisplay by produceState<ImageBitmap?>(null) {
+        value = withContext(Dispatchers.Default) { motorDisplayFrame(subFrames(Qgc.get(APM_SUB_FRAME_VIEW)))?.let(::frameImage) }
+    }
     LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke("apmSubMotors.arm", false) } }
     LaunchedEffect(revision) {
         read = withContext(Dispatchers.Default) { subMotors(Qgc.get(APM_SUB_MOTORS_VIEW)) }
@@ -110,6 +122,7 @@ fun ApmSubMotorsScreen(modifier: Modifier = Modifier) {
         return
     }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        frameDisplay?.let { Image(it, contentDescription = "Frame", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) }
         state.motors.forEachIndexed { index, motor ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("${motor.motor}", modifier = Modifier.width(24.dp))
