@@ -82,7 +82,68 @@ fn validate_plan(root: &Value) -> Result<(), String> {
     crate::qtjson::validate_keys(&root["mission"], &[("plannedHomePosition", "Array", true), ("items", "Array", true), ("firmwareType", "Double", true), ("vehicleType", "Double", false), ("cruiseSpeed", "Double", false), ("hoverSpeed", "Double", false), ("globalPlanAltitudeMode", "Double", false)])
         .map_err(|e| format!("Mission: {e}"))?;
     validate_section(&root["geoFence"], FENCE_VERSION, &[("circles", "Array", true), ("polygons", "Array", true), ("breachReturn", "Array", false)], "GeoFence supports version", true)?;
-    validate_section(&root["rallyPoints"], RALLY_VERSION, &[("points", "Array", true)], "Rally Points supports version", false)
+    if is_current(&root["geoFence"], FENCE_VERSION) {
+        validate_fence(&root["geoFence"])?;
+    }
+    validate_section(&root["rallyPoints"], RALLY_VERSION, &[("points", "Array", true)], "Rally Points supports version", false)?;
+    if is_current(&root["rallyPoints"], RALLY_VERSION) {
+        coordinates(&root["rallyPoints"]["points"], true).map_err(|e| format!("Rally: {e}"))?;
+    }
+    Ok(())
+}
+
+fn is_current(section: &Value, version: i64) -> bool {
+    section.get("version").map(|v| i64::from(crate::qtjson::to_int(v, 0))) == Some(version)
+}
+
+fn validate_fence(fence: &Value) -> Result<(), String> {
+    let listed = |key: &str| fence[key].as_array().map(Vec::as_slice).unwrap_or_default();
+    listed("polygons").iter().try_for_each(|polygon| {
+        fence_shape(polygon, "Polygon")?;
+        polygon.get("polygon").ok_or_else(|| "The following required keys are missing: polygon".to_string()).and_then(|path| coordinates(path, false))
+    })?;
+    listed("circles").iter().try_for_each(|circle| {
+        fence_shape(circle, "Circle")?;
+        crate::qtjson::validate_keys(circle, &[("circle", "Object", true)])?;
+        crate::qtjson::validate_keys(&circle["circle"], &[("center", "Array", true), ("radius", "Double", true)])?;
+        coordinate(&circle["circle"]["center"], false)
+    })?;
+    fence.get("breachReturn").map_or(Ok(()), |point| coordinate(point, true))
+}
+
+fn fence_shape(shape: &Value, kind: &str) -> Result<(), String> {
+    if !shape.is_object() {
+        return Err(format!("GeoFence {} not stored as object", kind.to_lowercase()));
+    }
+    crate::qtjson::validate_keys(shape, &[("version", "Double", true), ("inclusion", "Bool", true)])?;
+    is_current(shape, 1).then_some(()).ok_or_else(|| format!("GeoFence {kind} only supports version 1"))
+}
+
+fn coordinates(value: &Value, altitude: bool) -> Result<(), String> {
+    value.as_array().ok_or_else(|| "value for coordinate array is not array".to_string())?.iter().try_for_each(|point| coordinate(point, altitude))
+}
+
+fn coordinate(value: &Value, altitude: bool) -> Result<(), String> {
+    let values = value.as_array().ok_or_else(|| "value for coordinate is not array".to_string())?;
+    let count = if altitude { 3 } else { 2 };
+    if values.len() != count {
+        return Err(format!("Coordinate array must contain {count} values"));
+    }
+    values
+        .iter()
+        .find(|v| !(v.is_number() || v.is_null()))
+        .map_or(Ok(()), |v| Err(format!("Coordinate array may only contain double values, found: {}", qt_json_type(v))))
+}
+
+fn qt_json_type(value: &Value) -> u8 {
+    match value {
+        Value::Null => 0,
+        Value::Bool(_) => 1,
+        Value::Number(_) => 2,
+        Value::String(_) => 3,
+        Value::Array(_) => 4,
+        Value::Object(_) => 5,
+    }
 }
 
 fn validate_section(section: &Value, version: i64, keys: &[(&str, &str, bool)], refusal: &str, unversioned_is_old: bool) -> Result<(), String> {
@@ -1415,5 +1476,31 @@ mod tests {
         assert!(with(&["geoFence"], json!({})).is_ok(), "an unversioned fence is old data QGC ignores");
         assert_eq!(with(&["rallyPoints"], json!({})).unwrap_err(), "The following required keys are missing: version, points", "while an unversioned rally section is not");
         assert_eq!(with(&["mission", "firmwareType"], json!(3)).unwrap().vehicle_type, 2, "no vehicleType takes the offline vehicle class");
+    }
+
+    #[test]
+    fn fence_shapes_and_rally_points_are_checked_like_geofence_and_rally_controllers() {
+        let plan = |fence: Value, rally: Value| {
+            json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "mission": {"firmwareType": 12, "plannedHomePosition": [47.0, 8.0, 500], "items": []}, "geoFence": fence, "rallyPoints": rally}).to_string()
+        };
+        let fence = |polygons: Value, circles: Value| plan(json!({"version": 2, "polygons": polygons, "circles": circles}), json!({"version": 2, "points": []}));
+        let error = |text: String| load(&text, 2).unwrap_err();
+        let polygon = json!({"version": 1, "inclusion": true, "polygon": [[47.0, 8.0], [47.1, 8.0], [47.1, 8.1]]});
+        let circle = json!({"version": 1, "inclusion": false, "circle": {"center": [47.0, 8.0], "radius": 30}});
+        assert!(load(&fence(json!([polygon]), json!([circle])), 2).is_ok());
+        assert_eq!(error(fence(json!([1]), json!([]))), "GeoFence polygon not stored as object");
+        assert_eq!(error(fence(json!([]), json!(["x"]))), "GeoFence circle not stored as object");
+        assert_eq!(error(fence(json!([{"version": 1}]), json!([]))), "The following required keys are missing: inclusion");
+        assert_eq!(error(fence(json!([{"version": 2, "inclusion": true, "polygon": []}]), json!([]))), "GeoFence Polygon only supports version 1");
+        assert_eq!(error(fence(json!([{"version": 1, "inclusion": true}]), json!([]))), "The following required keys are missing: polygon");
+        assert_eq!(error(fence(json!([{"version": 1, "inclusion": true, "polygon": [[47.0, 8.0, 5.0]]}]), json!([]))), "Coordinate array must contain 2 values");
+        assert_eq!(error(fence(json!([{"version": 1, "inclusion": true, "polygon": {}}]), json!([]))), "value for coordinate array is not array");
+        assert_eq!(error(fence(json!([]), json!([{"version": 3, "inclusion": true}]))), "GeoFence Circle only supports version 1");
+        assert_eq!(error(fence(json!([]), json!([{"version": 1, "inclusion": true, "circle": {"center": [47.0, 8.0]}}]))), "The following required keys are missing: radius");
+        assert_eq!(error(fence(json!([]), json!([{"version": 1, "inclusion": true, "circle": {"center": ["47", 8.0], "radius": 1}}]))), "Coordinate array may only contain double values, found: 3");
+        assert_eq!(error(plan(json!({"version": 2, "polygons": [], "circles": [], "breachReturn": [47.0, 8.0]}), json!({"version": 2, "points": []}))), "Coordinate array must contain 3 values");
+        assert_eq!(error(plan(json!({"version": 2, "polygons": [], "circles": []}), json!({"version": 2, "points": [[47.0, 8.0]]}))), "Rally: Coordinate array must contain 3 values");
+        assert!(load(&plan(json!({"version": 1, "polygons": [1]}), json!({"version": 1, "points": [1]})), 2).is_ok(), "old version 1 sections are ignored, not checked");
+        assert!(load(&plan(json!({"version": 2, "polygons": [{"version": 1, "inclusion": true, "polygon": [[null, 8.0]]}], "circles": []}), json!({"version": 2, "points": [[47.0, 8.0, null]]})), 2).is_ok(), "null is a NaN coordinate");
     }
 }
