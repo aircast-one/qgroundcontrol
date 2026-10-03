@@ -200,12 +200,24 @@ impl DeviceDetails {
         }
     }
 
+    fn motion(&self) -> Vec<&'static str> {
+        [(self.gyroscope, "Gyro"), (self.accelerometer, "Accel")].into_iter().filter(|(has, _)| *has).map(|(_, name)| name).collect()
+    }
+
+    fn features(&self) -> Vec<&'static str> {
+        [(self.rumble, "Rumble"), (self.led, "LED")].into_iter().filter(|(has, _)| *has).map(|(_, name)| name).chain(self.motion()).collect()
+    }
+
+    fn battery_text(&self, percent: i64) -> String {
+        if self.power_state.is_empty() { format!("{percent}%") } else { format!("{percent}% ({})", self.power_state) }
+    }
+
     fn rows(&self) -> Vec<Value> {
         let row = |label: &str, value: String, warn: bool| json!({ "label": label, "value": value, "warn": warn });
-        let features: Vec<&str> = [(self.rumble, "Rumble"), (self.led, "LED"), (self.gyroscope, "Gyroscope"), (self.accelerometer, "Accelerometer")].into_iter().filter(|(has, _)| *has).map(|(_, name)| name).collect();
-        let motion: Vec<&str> = [(self.gyroscope, "Gyroscope"), (self.accelerometer, "Accelerometer")].into_iter().filter(|(has, _)| *has).map(|(_, name)| name).collect();
+        let features = self.features();
+        let motion = self.motion();
         [
-            self.battery_percent.map(|p| row("Battery:", if self.power_state.is_empty() { format!("{p}%") } else { format!("{p}% ({})", self.power_state) }, p < LOW_JOYSTICK_BATTERY)),
+            self.battery_percent.map(|p| row("Battery:", self.battery_text(p), p < LOW_JOYSTICK_BATTERY)),
             (!features.is_empty()).then(|| row("Features:", features.join(", "), false)),
             self.player_index.map(|p| row("Player:", (p + 1).to_string(), false)),
             (self.vendor_id > 0).then(|| row("Vendor/Product:", format!("0x{:04X} / 0x{:04X}", self.vendor_id, self.product_id), false)),
@@ -731,6 +743,42 @@ pub fn tick(now_ms: u64) {
     sync_polling(now_ms);
 }
 
+fn type_text(device: &Device) -> &'static str {
+    if device.gamepad { "Gamepad" } else { "Joystick" }
+}
+
+pub fn summary_rows(device: Option<&Device>, calibrated: bool) -> Vec<(String, String)> {
+    let row = |label: &str, value: String| (label.to_string(), value);
+    let Some(device) = device else { return vec![row("Status", "No joystick detected".into())] };
+    let status = match (device.axes, device.gamepad, calibrated) {
+        (0, ..) => "Buttons only",
+        (_, true, _) => "Ready",
+        (_, false, true) => "Calibrated",
+        (_, false, false) => "Needs calibration",
+    };
+    let inputs: Vec<String> = [(device.axes, "axes"), (device.buttons, "buttons")].into_iter().filter(|(count, _)| *count > 0).map(|(count, what)| format!("{count} {what}")).collect();
+    let details = &device.details;
+    let features = details.features();
+    [
+        Some(row("Status", status.into())),
+        Some(row("Type", type_text(device).into())),
+        Some(row("Inputs", inputs.join(", "))),
+        details.battery_percent.map(|p| row("Battery", details.battery_text(p))),
+        (!features.is_empty()).then(|| row("Features", features.join(", "))),
+        (details.vendor_id > 0).then(|| row("Device ID", format!("0x{:04X}:0x{:04X}", details.vendor_id, details.product_id))),
+        details.player_index.map(|p| row("Player", (p + 1).to_string())),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+pub fn summary() -> Vec<(String, String)> {
+    let host = host();
+    let device = active_name(&host.devices).and_then(|name| host.devices.iter().find(|d| d.name == name));
+    summary_rows(device, device.is_some_and(|d| settings_for(&d.name).calibrated))
+}
+
 pub fn indicator(device: Option<&Device>, vehicle: bool, enabled: bool) -> Value {
     let Some(device) = device else { return Value::Null };
     json!({
@@ -741,7 +789,7 @@ pub fn indicator(device: Option<&Device>, vehicle: bool, enabled: bool) -> Value
             (true, false) => "No",
         },
         "warn": vehicle && !enabled,
-        "typeText": if device.gamepad { "Gamepad" } else { "Joystick" },
+        "typeText": type_text(device),
         "inputsText": format!("{} axes, {} buttons", device.axes, device.buttons),
         "details": device.details.rows(),
     })
@@ -848,6 +896,20 @@ mod tests {
         assert_eq!((rows[0]["value"].as_str(), rows[0]["warn"].as_bool()), (Some("15% (Discharging)"), Some(true)), "JoystickIndicator paints a battery under twenty percent red");
         assert_eq!(rows[3]["value"], "0x045E / 0x0B13");
         assert_eq!(rows[2]["value"], "1");
+        assert_eq!((rows[1]["value"].as_str(), rows[5]["value"].as_str()), (Some("Rumble, Gyro"), Some("Gyro")), "JoystickIndicator says Gyro and Accel");
+    }
+
+    #[test]
+    fn the_setup_summary_reads_like_joystick_component_summary_qml() {
+        let text = |rows: Vec<(String, String)>| rows.into_iter().map(|(label, value)| format!("{label}={value}")).collect::<Vec<_>>();
+        assert_eq!(text(summary_rows(None, false)), ["Status=No joystick detected"]);
+        let details = DeviceDetails { battery_percent: Some(80), power_state: "Charging".into(), rumble: true, gyroscope: true, accelerometer: true, player_index: Some(0), vendor_id: 0x045E, product_id: 0x0B13, ..DeviceDetails::default() };
+        let pad = Device { name: "Xbox".into(), axes: 6, buttons: 15, hats: 1, gamepad: true, details };
+        assert_eq!(text(summary_rows(Some(&pad), false)), ["Status=Ready", "Type=Gamepad", "Inputs=6 axes, 15 buttons", "Battery=80% (Charging)", "Features=Rumble, Gyro, Accel", "Device ID=0x045E:0x0B13", "Player=1"], "a gamepad needs no calibration");
+        let stick = Device { name: "Stick".into(), axes: 4, buttons: 0, ..Device::default() };
+        assert_eq!(text(summary_rows(Some(&stick), false)), ["Status=Needs calibration", "Type=Joystick", "Inputs=4 axes"], "zero counts are left out of Inputs");
+        assert_eq!(summary_rows(Some(&stick), true)[0].1, "Calibrated");
+        assert_eq!(summary_rows(Some(&Device { axes: 0, buttons: 8, ..stick }), false)[0].1, "Buttons only");
     }
 
     #[test]

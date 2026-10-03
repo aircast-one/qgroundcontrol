@@ -424,6 +424,7 @@ pub fn rows(class: &str, facts: Facts, vehicle: &Vehicle) -> Option<Rows> {
         "SafetyComponent" => px4_safety(facts),
         "SensorsComponent" => px4_sensors(facts, vehicle),
         "AirframeComponent" => px4_airframe(facts, vehicle),
+        "JoystickComponent" => crate::joystickhost::summary(),
         _ => return None,
     })
 }
