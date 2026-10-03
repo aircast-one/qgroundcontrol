@@ -8,6 +8,8 @@ import androidx.compose.ui.res.painterResource
 import one.aircast.android.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import one.aircast.android.bridge.Fact
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -131,6 +133,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val satellites = gps?.satellites?.toString() ?: ""
     var detail by remember { mutableStateOf<StripDetail?>(null) }
     var batterySettings by remember { mutableStateOf(false) }
+    var batteryDisplay by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) { loadIndicatorOrder(context) }
     val setupJson by qgcPath(SETUP)
@@ -190,6 +193,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
             {
                 if (batteryReturnOffered(batteryJson)) BatteryReturnButton { detail = null }
                 TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery failsafes") }
+                TextButton(onClick = { detail = null; batteryDisplay = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery display") }
                 if (hasPowerSetup) TextButton(onClick = { detail = null; AppNavigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle power: configure") }
             }
         } else {
@@ -202,9 +206,29 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
             ParameterForm(BATTERY_SETTINGS_PAGE)
         }
     }
+
+    if (batteryDisplay) {
+        ModalBottomSheet(onDismissRequest = { batteryDisplay = false }) {
+            BatteryDisplaySettings()
+        }
+    }
 }
 
 internal const val BATTERY_SETTINGS_PAGE = "Battery Settings"
+private const val BATTERY_INDICATOR_SETTINGS = "settings.batteryIndicatorSettings"
+internal val BATTERY_DISPLAY_FACTS = listOf("valueDisplay", "threshold1", "threshold2")
+
+internal fun batteryDisplayFacts(facts: List<Fact>): List<Fact> =
+    BATTERY_DISPLAY_FACTS.mapNotNull { name -> facts.firstOrNull { it.name == name } }
+
+@Composable
+private fun BatteryDisplaySettings() {
+    val facts by one.aircast.android.bridge.qgcFacts(BATTERY_INDICATOR_SETTINGS)
+    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Text("Battery display", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+        batteryDisplayFacts(facts).forEach { FactRow(it) }
+    }
+}
 internal const val CLEAR_RC_OVERRIDES = "vehicle.clearRcChannelOverrides"
 internal const val POWER_SETUP_PAGE = "Power"
 
