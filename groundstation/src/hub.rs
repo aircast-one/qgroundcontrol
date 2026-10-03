@@ -4048,6 +4048,9 @@ impl Hub {
             if let Some(vehicle) = id.and_then(|id| self.vehicles.get_mut(&id)) {
                 vehicle.shell = crate::shell::Shell::default();
             }
+            if let Some(left) = self.active.and_then(|was| self.vehicles.get_mut(&was)) {
+                left.clear_rc_overrides();
+            }
         }
         self.active = id;
     }
@@ -4467,6 +4470,21 @@ mod tests {
         assert_eq!(released, vec![(0, u16::MAX); 3], "Qt repeats the release three ticks and then forgets the channels");
         assert!(vehicle.rc_override.is_empty() && vehicle.rc_due.is_none());
         assert!(vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 19, "pwm": 1500 }), 3_000).is_err());
+    }
+
+    #[test]
+    fn a_vehicle_that_stops_being_active_gives_its_rc_channels_back() {
+        let mut hub = Hub::default();
+        let header = |system_id| MavHeader { system_id, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header(1), &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(0), &header(2), &copter_heartbeat(0, false), 0, 0);
+        hub.set_active(Some(1));
+        hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "rcOverride", "channel": 9, "pwm": 2000 }), 1_000).unwrap();
+        hub.set_active(Some(2));
+        assert_eq!(hub.vehicles[&1].rc_override.get(&9), Some(&0), "the on-screen controls now drive vehicle 2, so nothing would ever release vehicle 1's switch");
+        let released: Vec<_> = [1_200, 1_400, 1_600, 1_800].into_iter().flat_map(|t| hub.vehicles.get_mut(&1).unwrap().tick_rc_override(t)).collect();
+        assert_eq!(released.len(), 3);
+        assert!(hub.vehicles[&1].rc_override.is_empty());
     }
 
     #[test]

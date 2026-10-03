@@ -224,6 +224,8 @@ void MultiVehicleManager::setActiveVehicle(Vehicle *vehicle)
 
     if (vehicle != _activeVehicle) {
         if (_activeVehicle) {
+            _activeVehicle->clearRcChannelOverrides();
+
             // The sequence of signals is very important in order to not leave Qml elements connected
             // to a non-existent vehicle.
 
