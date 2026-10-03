@@ -16,6 +16,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import org.json.JSONArray
@@ -153,6 +154,19 @@ private fun suffixed(context: Context, uri: Uri, extension: String): Uri = runCa
     val wanted = withExtension(shown, extension)
     if (wanted == shown) uri else DocumentsContract.renameDocument(context.contentResolver, uri, wanted) ?: uri
 }.getOrDefault(uri)
+
+private const val DOWNLOAD_POLL_MS = 200L
+private const val DOWNLOAD_POLLS = 300
+
+internal fun planSyncState(view: JSONObject?): String? = view?.optJSONObject("sync")?.optString("state")
+
+private suspend fun downloadSettled(sawBusy: Boolean = false, left: Int = DOWNLOAD_POLLS): Boolean {
+    if (left == 0) return false
+    val state = withContext(Dispatchers.Default) { planSyncState(Qgc.get(PLAN_VIEW)) }
+    if (sawBusy && state == "ready") return true
+    delay(DOWNLOAD_POLL_MS)
+    return downloadSettled(sawBusy || state == "busy", left - 1)
+}
 
 @Composable
 fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
@@ -347,7 +361,10 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                     "The clear could not be sent to the vehicle.",
                 )
             },
-            download = { discard("loadFromVehicle", "Loading the plan from the vehicle.", "The plan could not be loaded from the vehicle.") },
+            download = {
+                discard("loadFromVehicle", "Loading the plan from the vehicle.", "The plan could not be loaded from the vehicle.")
+                scope.launch { if (downloadSettled()) opened.intValue += 1 }
+            },
             documentName = { name.value },
             opened = { opened.intValue },
         )
