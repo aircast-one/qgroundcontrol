@@ -8,6 +8,15 @@ import org.junit.Test
 
 class ItemEditorTest {
     @Test
+    fun `vehicle position mode shows the vehicle's coordinate and frame altitude like EditPositionDialog`() {
+        val shown = vehiclePositionOf(JSONObject("""{"valid":true,"latitude":47.3977419,"longitude":8.5455938}"""), JSONObject("""{"kind":"fact","value":12.3,"valueString":"12.3","units":"m"}"""))
+        assertEquals(VehiclePosition("47.3977419", "8.5455938", "12.3 m"), shown)
+        assertEquals("", vehiclePositionOf(JSONObject("""{"valid":true,"latitude":1.0,"longitude":2.0}"""), null)?.altitude)
+        assertEquals(null, vehiclePositionOf(JSONObject("""{"valid":false}"""), null))
+        assertEquals(listOf("Alt (Rel)", "Alt (AMSL)", "Alt (AGL)", "Alt (AGL)", null), listOf(1, 2, 3, 4, 0).map(::vehicleAltitudeLabel))
+    }
+
+    @Test
     fun `commands and categories read from the command tree`() {
         val commands = commandChoices(JSONArray("""[{"command":16,"friendlyName":"Waypoint","description":"Travel to a position in 3D space."},{"command":19,"friendlyName":"Loiter (time)","description":"d"}]"""))
         assertEquals(listOf(16, 19), commands.map { it.id })

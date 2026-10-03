@@ -106,7 +106,7 @@ fun PlanTransformDialog(onDismiss: () -> Unit) {
             onDismiss = { repositioning = false },
             title = "Reposition mission",
             confirm = "Move to Position",
-            vehicleNote = "Move to Vehicle Position",
+            vehicleConfirm = "Move to Vehicle Position",
         ) { latitude, longitude ->
             repositioning = false
             apply(REPOSITION_MISSION, listOf(JSONObject().put("latitude", latitude).put("longitude", longitude)))

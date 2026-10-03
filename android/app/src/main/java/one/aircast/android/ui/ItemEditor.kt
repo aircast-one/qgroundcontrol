@@ -41,6 +41,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
@@ -576,7 +577,7 @@ internal fun EditPositionDialog(
     onDismiss: () -> Unit,
     title: String = "Edit position",
     confirm: String = "Move",
-    vehicleNote: String = "Move the item to the vehicle's current position.",
+    vehicleConfirm: String? = null,
     altitudeMode: Int? = null,
     onAltitude: ((Double) -> Unit)? = null,
     onMove: (Double, Double) -> Unit,
@@ -594,7 +595,15 @@ internal fun EditPositionDialog(
     var northing by remember { mutableStateOf("") }
     var mgrs by remember { mutableStateOf("") }
     var problem by remember { mutableStateOf<String?>(null) }
+    var vehicleShown by remember { mutableStateOf<VehiclePosition?>(null) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(system, altitudePath) {
+        while (system == CoordinateSystem.Vehicle && vehicleConfirm == null) {
+            vehicleShown = withContext(Dispatchers.Default) { vehiclePositionOf(Qgc.get("vehicle.coordinate"), altitudePath?.let { Qgc.get(it) }) }
+            delay(VEHICLE_POSITION_POLL_MS)
+        }
+    }
 
     LaunchedEffect(at) {
         forms = withContext(Dispatchers.Default) { positionForms(Qgc.get(positionFormsPath(at))) }
@@ -663,8 +672,10 @@ internal fun EditPositionDialog(
                         PositionField("Northing", northing) { northing = it }
                     }
                     CoordinateSystem.Mgrs -> PositionField("MGRS", mgrs, KeyboardType.Text) { mgrs = it }
-                    CoordinateSystem.Vehicle -> {
-                        Text(vehicleNote)
+                    CoordinateSystem.Vehicle -> if (vehicleConfirm == null) {
+                        PositionRow("Latitude", vehicleShown?.latitude.orEmpty())
+                        PositionRow("Longitude", vehicleShown?.longitude.orEmpty())
+                        vehicleAltitudeLabel(altitudeMode)?.takeIf { altitudePath != null }?.let { PositionRow(it, vehicleShown?.altitude.orEmpty()) }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = setPosition, onCheckedChange = { setPosition = it })
                             Text("Set position from vehicle")
@@ -680,9 +691,37 @@ internal fun EditPositionDialog(
                 problem?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
-        confirmButton = { TextButton(onClick = { move() }) { Text(confirm) } },
+        confirmButton = { TextButton(onClick = { move() }) { Text(vehicleConfirm?.takeIf { system == CoordinateSystem.Vehicle } ?: confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+private const val VEHICLE_POSITION_POLL_MS = 500L
+
+internal data class VehiclePosition(val latitude: String, val longitude: String, val altitude: String)
+
+internal fun vehiclePositionOf(coordinate: JSONObject?, altitude: JSONObject?): VehiclePosition? =
+    geoOf(coordinate)?.let { (latitude, longitude) ->
+        VehiclePosition(
+            String.format(java.util.Locale.US, "%.7f", latitude),
+            String.format(java.util.Locale.US, "%.7f", longitude),
+            altitude?.optText("valueString")?.takeIf { it.isNotEmpty() }?.let { "$it ${altitude.optText("units")}".trim() }.orEmpty(),
+        )
+    }
+
+internal fun vehicleAltitudeLabel(altitudeMode: Int?): String? = when (altitudeMode) {
+    1 -> "Alt (Rel)"
+    2 -> "Alt (AMSL)"
+    3, 4 -> "Alt (AGL)"
+    else -> null
+}
+
+@Composable
+private fun PositionRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label, Modifier.weight(1f))
+        Text(value)
+    }
 }
 
 internal fun vehicleAltitudePath(altitudeMode: Int?): String? = when (altitudeMode) {

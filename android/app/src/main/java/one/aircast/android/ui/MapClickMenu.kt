@@ -410,7 +410,7 @@ internal fun RoiSheet(at: TrackPoint, onDismiss: () -> Unit) {
         }
     }
     if (editing) {
-        EditPositionDialog(at, onDismiss = { editing = false }, title = "Edit ROI Position", vehicleNote = "Move the ROI to the vehicle's current position.") { latitude, longitude ->
+        EditPositionDialog(at, onDismiss = { editing = false }, title = "Edit ROI Position") { latitude, longitude ->
             editing = false
             run(SET_ROI_PATH, arrayOf(JSONObject().put("latitude", latitude).put("longitude", longitude)))
         }
