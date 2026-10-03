@@ -184,7 +184,7 @@ fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null, landin
         Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
             addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(sequence, crowded, lettered))
-            addStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY, side ?: sideLabel(crowded, lettered))
+            addStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY, side?.takeUnless { crowded } ?: sideLabel(crowded, lettered))
             addNumberProperty(
                 WAYPOINT_RADIUS_PROPERTY,
                 markerRadius(crowded, item.index == selectedIndex),

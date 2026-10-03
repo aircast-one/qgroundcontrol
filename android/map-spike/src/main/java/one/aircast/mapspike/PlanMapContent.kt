@@ -715,7 +715,7 @@ internal fun MapSpikeScreen(
                             onSelect = { selected = fenceRowHit(row) },
                             onInclusion = row.inclusion?.let { { keep: Boolean -> onBridge("Changing ${row.title.lowercase()}") { FenceBridge.setPolygonInclusion(row.index, keep) } } },
                         ) {
-                            onBridge("Removing ${row.title.lowercase()}", then = { if (rowSelected(row, selected)) selected = null }) {
+                            onBridge("Removing ${row.title.lowercase()}", then = { selected = fenceSelectionAfterRemove(row, selected) }) {
                                 if (row.circle) FenceBridge.deleteCircle(row.index) else FenceBridge.deletePolygon(row.index)
                             }
                         }

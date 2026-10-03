@@ -36,6 +36,20 @@ internal fun rowSelected(row: FenceRow, selected: MapHit?): Boolean = when (sele
     else -> false
 }
 
+internal fun fenceSelectionAfterRemove(row: FenceRow, selected: MapHit?): MapHit? {
+    fun moved(index: Int, rebuild: (Int) -> MapHit): MapHit? = when {
+        index == row.index -> null
+        index > row.index -> rebuild(index - 1)
+        else -> selected
+    }
+    return when (selected) {
+        is MapHit.FenceVertex -> if (row.circle) selected else moved(selected.polygon) { MapHit.FenceVertex(it, selected.vertex) }
+        is MapHit.Circle -> if (!row.circle) selected else moved(selected.index) { MapHit.Circle(it) }
+        is MapHit.CircleCentre -> if (!row.circle) selected else moved(selected.index) { MapHit.CircleCentre(it) }
+        else -> selected
+    }
+}
+
 internal fun rallyAfterRemove(removed: Int, countBefore: Int): MapHit? =
     (countBefore - 2).takeIf { it >= 0 }?.let { last -> MapHit.Rally(minOf(removed, last)) }
 
@@ -310,7 +324,7 @@ fun pointAt(centre: TrackPoint, metres: Double, bearingDegrees: Double): TrackPo
 
 fun circlesAsPolygons(circles: List<FenceCircle>): List<FencePolygon> =
     circles.mapNotNull { circle ->
-        val ring = circleRing(circle.centre, circle.radius)
+        val ring = circleRing(circle.centre, circle.radiusMetres)
         if (ring.size < 3) {
             null
         } else {

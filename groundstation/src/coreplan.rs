@@ -1736,17 +1736,16 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
 }
 
 fn qt_number(value: f64) -> String {
-    let exponent = if value == 0.0 { 0 } else { value.abs().log10().floor() as i32 };
-    let trimmed = |text: String| match text.contains('.') {
+    let scientific = format!("{value:.5e}");
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((scientific.as_str(), "0"));
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let trimmed = |text: &str| match text.contains('.') {
         true => text.trim_end_matches('0').trim_end_matches('.').to_string(),
-        false => text,
+        false => text.to_string(),
     };
     match (-4..6).contains(&exponent) {
-        true => trimmed(format!("{:.*}", (5 - exponent).max(0) as usize, value)),
-        false => {
-            let mantissa = value / 10f64.powi(exponent);
-            format!("{}e{}{:02}", trimmed(format!("{mantissa:.5}")), if exponent < 0 { '-' } else { '+' }, exponent.abs())
-        }
+        true => trimmed(&format!("{:.*}", (5 - exponent).max(0) as usize, value)),
+        false => format!("{}e{}{:02}", trimmed(mantissa), if exponent < 0 { '-' } else { '+' }, exponent.abs()),
     }
 }
 
@@ -2273,6 +2272,7 @@ mod tests {
     fn range_limits_print_as_qstring_arg_does() {
         assert_eq!((qt_number(0.0), qt_number(3600.0), qt_number(f64::MAX), qt_number(-f64::MAX), qt_number(0.5), qt_number(123456.0)), ("0".into(), "3600".into(), "1.79769e+308".into(), "-1.79769e+308".into(), "0.5".into(), "123456".into()));
         assert_eq!(qt_number(1_234_567.0), "1.23457e+06");
+        assert_eq!((qt_number(999_999.5), qt_number(9_999_999.0), qt_number(0.000_099_999_99)), ("1e+06".into(), "1e+07".into(), "0.0001".into()), "the exponent is read after rounding, as %g does");
     }
 
     #[test]
