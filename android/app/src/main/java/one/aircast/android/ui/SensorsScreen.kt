@@ -453,7 +453,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         items(state.routines, key = { it.id }) { routine ->
             val status = routine.status
             SetupRow(
-                title = routine.title,
+                title = sentenceCase(routine.title),
                 status = if (routine.spinsPropeller) "Spins the motors" else status,
                 state = when (status) {
                     "Not calibrated" -> SetupState.NeedsAttention
@@ -466,7 +466,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
         }
 
         item(key = "sensorSettings") {
-            SetupRow(title = state.settingsTitle, status = "", state = SetupState.Neutral, onClick = { showSettings = true }, icon = R.drawable.ic_tune)
+            SetupRow(title = sentenceCase(state.settingsTitle), status = "", state = SetupState.Neutral, onClick = { showSettings = true }, icon = R.drawable.ic_tune)
         }
 
         if (state.px4) {
