@@ -37,6 +37,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainInOrder
 import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
 import org.json.JSONObject
@@ -93,6 +94,11 @@ internal fun logSizeText(size: Long): String = NumberFormat.getIntegerInstance()
 
 internal fun logListIdle(log: MavlinkLog): Boolean = !log.uploading && !log.running
 
+internal fun uploadEmail(settings: JSONObject, drafts: Map<String, String>): String = drafts["emailAddress"] ?: settings.optText("emailAddress")
+
+internal fun unsavedTexts(settings: JSONObject, drafts: Map<String, String>): List<Pair<String, String>> =
+    drafts.filter { (field, typed) -> typed != settings.optText(field) }.toList()
+
 internal data class LogConfirm(val title: String, val question: String, val run: () -> Unit)
 
 internal const val MAVLINK_LOGGING_TITLE = "MAVLink Logging"
@@ -106,6 +112,7 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
     var selected by remember { mutableStateOf(emptySet<String>()) }
     var confirming by remember { mutableStateOf<LogConfirm?>(null) }
     var refusal by remember { mutableStateOf<String?>(null) }
+    var drafts by remember { mutableStateOf(emptyMap<String, String>()) }
 
     LaunchedEffect(polls) {
         while (isActive) {
@@ -114,12 +121,18 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
         }
     }
 
-    fun act(path: String, vararg args: Any) {
+    fun act(calls: List<Pair<String, List<Any>>>) = offMainInOrder {
+        val refused = calls.mapNotNull { (path, args) -> Qgc.refusalOf(path, *args.toTypedArray()) }.firstOrNull()
         scope.launch {
-            refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(path, *args) }
+            refused?.let { refusal = it }
             polls++
         }
     }
+
+    fun act(path: String, vararg args: Any) = act(listOf(path to args.toList()))
+
+    val draft = { field: String -> { typed: String -> drafts = drafts + (field to typed) } }
+    val save = { field: String -> { typed: String -> act("mavlinkLog.set", field, typed) } }
 
     val log = read ?: return
     if (!log.px4) {
@@ -138,13 +151,13 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
         LogFlag("Start logging automatically", log.settings.optBoolean("enableAutoStart"), editable) { act("mavlinkLog.set", "enableAutoStart", it) }
 
         SectionHeader("Log Upload")
-        LogText("Email Address", log.settings.optText("emailAddress"), editable) { act("mavlinkLog.set", "emailAddress", it) }
-        LogText("Default Description", log.settings.optText("description"), editable) { act("mavlinkLog.set", "description", it) }
-        LogText("Upload URL", log.settings.optText("uploadURL"), editable) { act("mavlinkLog.set", "uploadURL", it) }
-        LogText("Video URL", log.settings.optText("videoURL"), editable) { act("mavlinkLog.set", "videoURL", it) }
+        LogText("Email Address", log.settings.optText("emailAddress"), editable, draft("emailAddress"), save("emailAddress"))
+        LogText("Default Description", log.settings.optText("description"), editable, draft("description"), save("description"))
+        LogText("Upload URL", log.settings.optText("uploadURL"), editable, draft("uploadURL"), save("uploadURL"))
+        LogText("Video URL", log.settings.optText("videoURL"), editable, draft("videoURL"), save("videoURL"))
         LogChoice("Wind Speed", WIND_SPEEDS, log.settings.optText("windSpeed"), editable) { act("mavlinkLog.set", "windSpeed", it) }
         LogChoice("Flight Rating", FLIGHT_RATINGS, log.settings.optText("rating"), editable) { act("mavlinkLog.set", "rating", it) }
-        LogText("Additional Feedback", log.settings.optText("feedback"), editable) { act("mavlinkLog.set", "feedback", it) }
+        LogText("Additional Feedback", log.settings.optText("feedback"), editable, draft("feedback"), save("feedback"))
         LogFlag("Make logs public", log.settings.optBoolean("publicLog"), editable) { act("mavlinkLog.set", "publicLog", it) }
         LogFlag("Upload logs automatically", log.settings.optBoolean("enableAutoUpload"), editable) { act("mavlinkLog.set", "enableAutoUpload", it) }
         LogFlag("Delete logs after upload", log.settings.optBoolean("deleteAfterUpload"), editable && log.settings.optBoolean("enableAutoUpload")) {
@@ -189,7 +202,8 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
                 TextButton(onClick = { confirming = LogConfirm("Cancel Upload", "Cancel the upload in progress?") { act("mavlinkLog.cancelUpload") } }) { Text("Cancel Upload…") }
             } else {
                 TextButton(enabled = selected.isNotEmpty() && idle && !uploadedSelected, onClick = {
-                    if (log.settings.optText("emailAddress").isBlank()) {
+                    act(unsavedTexts(log.settings, drafts).map { (field, typed) -> "mavlinkLog.set" to listOf(field, typed) })
+                    if (uploadEmail(log.settings, drafts).isBlank()) {
                         refusal = "Please enter an email address before uploading MAVLink log files."
                     } else {
                         confirming = LogConfirm("Upload Selected Log Files", "Upload the selected log files?") { act("mavlinkLog.upload", *selected.toTypedArray()) }
@@ -228,9 +242,10 @@ private fun LogFlag(label: String, checked: Boolean, enabled: Boolean, onChange:
 }
 
 @Composable
-private fun LogText(label: String, value: String, enabled: Boolean, onSave: (String) -> Unit) {
+private fun LogText(label: String, value: String, enabled: Boolean, onType: (String) -> Unit, onSave: (String) -> Unit) {
     var typed by remember(value) { mutableStateOf(value) }
     LaunchedEffect(typed) {
+        onType(typed)
         if (typed != value) {
             delay(TEXT_SAVE_DELAY_MS)
             onSave(typed)

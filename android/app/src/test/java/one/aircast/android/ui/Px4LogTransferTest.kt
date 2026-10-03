@@ -29,4 +29,19 @@ class Px4LogTransferTest {
         assertFalse(idle(true, false))
         assertFalse(idle(false, true))
     }
+
+    @Test
+    fun `upload uses the email typed but not yet saved and saves it first like saveItems`() {
+        val settings = JSONObject("""{"emailAddress":"","description":"d"}""")
+        val drafts = mapOf("emailAddress" to "a@b.c", "description" to "d")
+        assertEquals("a@b.c", uploadEmail(settings, drafts))
+        assertEquals(listOf("emailAddress" to "a@b.c"), unsavedTexts(settings, drafts))
+    }
+
+    @Test
+    fun `upload falls back to the saved email when nothing was typed`() {
+        val settings = JSONObject("""{"emailAddress":"a@b.c"}""")
+        assertEquals("a@b.c", uploadEmail(settings, emptyMap()))
+        assertEquals(emptyList<Pair<String, String>>(), unsavedTexts(settings, emptyMap()))
+    }
 }
