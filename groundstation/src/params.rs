@@ -155,6 +155,7 @@ pub struct Params {
     waiting_write: BTreeMap<u8, BTreeMap<String, u32>>,
     pending_write: BTreeMap<u8, BTreeMap<String, ParamValue>>,
     quiet_reads: BTreeSet<(u8, String)>,
+    updates_awaited: BTreeSet<(u8, String)>,
     write_batch: usize,
     read_batch: usize,
     failed_index: BTreeMap<u8, Vec<u16>>,
@@ -302,8 +303,8 @@ impl Params {
         self.waiting_write.get(&component).is_some_and(|waiting| waiting.contains_key(name))
     }
 
-    pub fn reading(&self, component: u8, name: &str) -> bool {
-        self.waiting_read.get(&component).is_some_and(|waiting| waiting.contains_key(name))
+    pub fn awaiting_update(&self, component: u8, name: &str) -> bool {
+        self.updates_awaited.contains(&(component, name.to_string()))
     }
 
     pub fn value(&self, component: u8, name: &str) -> Option<ParamValue> {
@@ -364,6 +365,7 @@ impl Params {
     }
 
     pub fn refresh(&mut self, component: u8, name: &str) -> Vec<Action> {
+        self.updates_awaited.insert((component, name.to_string()));
         let waiting = self.waiting_read.entry(component).or_default();
         if waiting.insert(name.to_string(), 0).is_none() {
             self.read_batch += 1;
@@ -435,6 +437,7 @@ impl Params {
         }
         self.waiting_read.entry(component).or_default().remove(name);
         self.quiet_reads.remove(&(component, name.to_string()));
+        self.updates_awaited.remove(&(component, name.to_string()));
         let acknowledged = self.pending_write.get(&component).and_then(|written| written.get(name)).is_none_or(|written| acknowledges(*written, value));
         if acknowledged {
             self.waiting_write.entry(component).or_default().remove(name);
@@ -815,15 +818,21 @@ mod tests {
     }
 
     #[test]
-    fn a_named_refresh_is_reading_until_the_vehicle_answers_like_fact_vehicle_updated() {
+    fn a_named_refresh_awaits_the_vehicle_update_even_after_the_read_gives_up_like_fact_vehicle_updated() {
         let mut params = Params::new(1, false);
         params.start();
         deliver(&mut params, &["A"], &[]);
-        assert!(!params.reading(1, "A"));
+        assert!(!params.awaiting_update(1, "A"));
         params.refresh(1, "A");
-        assert!(params.reading(1, "A"), "RCToParamDialogController stays not ready until the refreshed value comes back");
+        assert!(params.awaiting_update(1, "A"), "RCToParamDialogController stays not ready until the refreshed value comes back");
         params.on_param_value(1, "A", 1, 0, ParamValue::I32(0));
-        assert!(!params.reading(1, "A"), "an unchanged value still counts as the update");
+        assert!(!params.awaiting_update(1, "A"), "an unchanged value still counts as the update");
+        params.refresh(1, "A");
+        let gave_up: Vec<Action> = (0..3).flat_map(|_| params.on_waiting_timeout()).collect();
+        assert!(gave_up.contains(&Action::ReadFailed { component: 1, name: "A".into() }));
+        assert!(params.awaiting_update(1, "A"), "_ready is set only by Fact::vehicleUpdated, so a failed re-read leaves the dialog disabled");
+        params.on_param_value(1, "A", 1, 0, ParamValue::I32(0));
+        assert!(!params.awaiting_update(1, "A"), "a late value still enables it");
     }
 
     #[test]

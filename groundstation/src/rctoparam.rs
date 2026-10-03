@@ -49,7 +49,7 @@ fn open(name: &str) -> Value {
 }
 
 fn ready(name: &str) -> Value {
-    let waiting = crate::hub::lock().active().is_some_and(|v| v.parameter_reading(name));
+    let waiting = crate::hub::lock().active().is_some_and(|v| v.parameter_awaiting_update(name));
     json!({ "ok": true, "result": !waiting })
 }
 
