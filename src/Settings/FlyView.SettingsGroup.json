@@ -92,7 +92,7 @@
             "units": "m",
             "default": 80,
             "min": 25,
-            "label": "Loiter Radius in Forward Flight Guided Mode",
+            "label": "Go-to loiter radius (fixed-wing)",
             "keywords": "loiter radius,guided"
         },
         {
@@ -100,7 +100,7 @@
             "shortDesc": "Require explicit confirmation for go-to-location commands while in Guided mode.",
             "type": "bool",
             "default": true,
-            "label": "Require Confirmation for Go To Location in Guided Mode",
+            "label": "Confirm each go-to",
             "keywords": "goto,go to,guided"
         },
         {
@@ -108,7 +108,7 @@
             "shortDesc": "Automatically update the vehicle return-to-home position from the GCS GPS location.",
             "type": "bool",
             "default": false,
-            "label": "Update return to home position based on device location",
+            "label": "Home follows this device",
             "keywords": "home position"
         },
         {
