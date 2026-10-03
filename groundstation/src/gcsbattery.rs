@@ -14,6 +14,10 @@ pub fn state(level: i64, charging: bool) -> &'static str {
     }
 }
 
+fn title(charging: bool) -> &'static str {
+    if charging { "Ground station battery — charging" } else { "Ground station battery" }
+}
+
 pub fn gcs_battery_view(_backend: &dyn Backend, args: &[String]) -> Value {
     let level = args.first().and_then(|a| a.parse::<i64>().ok()).filter(|l| (0..=100).contains(l));
     let charging = args.get(1).is_some_and(|a| a == "true" || a == "1");
@@ -26,6 +30,7 @@ pub fn gcs_battery_view(_backend: &dyn Backend, args: &[String]) -> Value {
             "levelText": format!("{level}%"),
             "stateText": if charging { "Charging" } else { "On battery" },
             "heading": "Ground Station",
+            "title": title(charging),
         }),
     }
 }
@@ -40,5 +45,11 @@ mod tests {
         assert_eq!(state(10, false), "critical");
         assert_eq!(state(25, false), "low");
         assert_eq!(state(26, false), "normal");
+    }
+
+    #[test]
+    fn title_is_the_toolbar_tooltip() {
+        assert_eq!(title(true), "Ground station battery — charging");
+        assert_eq!(title(false), "Ground station battery");
     }
 }

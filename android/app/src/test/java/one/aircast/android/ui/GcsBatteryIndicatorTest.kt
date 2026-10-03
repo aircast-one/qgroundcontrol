@@ -12,6 +12,8 @@ class GcsBatteryIndicatorTest {
         assertEquals(PhoneBattery(50, true), phoneBattery(128, 256, 2))
         assertNull(phoneBattery(-1, 100, 2))
         assertEquals("view.gcsBattery(54,false)", gcsBatteryPath(PhoneBattery(54, false)))
-        assertEquals("low", gcsBatteryReading(JSONObject("""{"state":"low","levelText":"20%","stateText":"On battery","heading":"Ground Station"}"""))!!.state)
+        val reading = gcsBatteryReading(JSONObject("""{"state":"low","levelText":"20%","stateText":"On battery","heading":"Ground Station","title":"Ground station battery"}"""))!!
+        assertEquals("low", reading.state)
+        assertEquals("Ground station battery", reading.title)
     }
 }

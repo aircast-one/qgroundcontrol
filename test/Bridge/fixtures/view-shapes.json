@@ -2433,6 +2433,7 @@
         "view.gcsBattery(54,false).levelText",
         "view.gcsBattery(54,false).state",
         "view.gcsBattery(54,false).stateText",
+        "view.gcsBattery(54,false).title",
         "view.gcsPosition.accuracyUnits",
         "view.gcsPosition.ageMs",
         "view.gcsPosition.altitude",
@@ -7267,6 +7268,7 @@
         "view.gcsBattery(54,false).levelText",
         "view.gcsBattery(54,false).state",
         "view.gcsBattery(54,false).stateText",
+        "view.gcsBattery(54,false).title",
         "view.gcsPosition.accuracyUnits",
         "view.gcsPosition.ageMs",
         "view.gcsPosition.altitude",
@@ -11420,7 +11422,8 @@
         "kind": "string",
         "levelText": "string",
         "state": "string",
-        "stateText": "string"
+        "stateText": "string",
+        "title": "string"
     },
     "view.gcsPosition": {
         "accuracyUnits": "string",

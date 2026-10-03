@@ -6,11 +6,11 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -24,6 +24,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,11 +48,11 @@ internal fun phoneBattery(level: Int, scale: Int, status: Int): PhoneBattery? =
 
 internal fun gcsBatteryPath(battery: PhoneBattery): String = "view.gcsBattery(${battery.percent},${battery.charging})"
 
-internal data class GcsBatteryReading(val state: String, val levelText: String, val stateText: String, val heading: String)
+internal data class GcsBatteryReading(val state: String, val levelText: String, val stateText: String, val heading: String, val title: String)
 
 internal fun gcsBatteryReading(view: JSONObject?): GcsBatteryReading? =
     view?.takeIf { it.has("state") }?.let {
-        GcsBatteryReading(it.optText("state"), it.optText("levelText"), it.optText("stateText"), it.optText("heading"))
+        GcsBatteryReading(it.optText("state"), it.optText("levelText"), it.optText("stateText"), it.optText("heading"), it.optText("title"))
     }
 
 @Composable
@@ -98,18 +100,17 @@ internal fun GcsBatteryCell(reading: GcsBatteryReading?) {
         style = MaterialTheme.typography.labelMedium,
         color = batteryColour(shown.state),
         maxLines = 1,
-        modifier = Modifier.clickable { open = true },
+        modifier = Modifier
+            .clickable(onClickLabel = shown.heading) { open = true }
+            .semantics { contentDescription = "${shown.title} ${shown.levelText}" },
     )
 
     if (open) {
         ModalBottomSheet(onDismissRequest = { open = false }) {
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(shown.heading, style = MaterialTheme.typography.titleMedium)
-                Text("Charge  ${shown.levelText}", style = MaterialTheme.typography.bodyMedium)
-                Text("State  ${shown.stateText}", style = MaterialTheme.typography.bodyMedium)
+            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                Text(shown.heading, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                ListItem(headlineContent = { Text("Charge") }, trailingContent = { Text(shown.levelText) })
+                ListItem(headlineContent = { Text("State") }, trailingContent = { Text(shown.stateText) })
             }
         }
     }
