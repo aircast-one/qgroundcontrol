@@ -20,6 +20,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,8 @@ internal const val GIMBAL_INDICATOR_PATH = "view.gimbalIndicator"
 internal const val OTHERS_HAVE_CONTROL = "othersHaveControl"
 
 internal val gimbalAsksForControl = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+internal fun serialAsks(seen: Long?, serial: Long): Boolean = seen != null && serial > seen
 
 internal fun gimbalRefusal(answer: JSONObject?): String? {
     if (answer?.optText("refusal") == OTHERS_HAVE_CONTROL) {
@@ -102,6 +105,13 @@ internal fun gimbalCellText(state: GimbalIndicatorState): String =
 fun GimbalTakeControlDialog() {
     val asking by gimbalAsksForControl.collectAsState()
     val scope = rememberCoroutineScope()
+    val view by qgcPath(GIMBAL_INDICATOR_PATH)
+    val serial = view?.optLong("askSerial", -1L) ?: -1L
+    var seen by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(serial) {
+        if (serialAsks(seen, serial)) gimbalAsksForControl.value = true
+        if (serial >= 0) seen = serial
+    }
     if (asking) {
         AlertDialog(
             onDismissRequest = { gimbalAsksForControl.value = false },

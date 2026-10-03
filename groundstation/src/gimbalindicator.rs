@@ -74,12 +74,14 @@ pub fn indicator(snapshot: &Value, show_azimuth: bool, show_control: bool, on_sc
 
 pub fn indicator_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let snapshot = crate::gimbal::lock().snapshot(crate::hub::now_ms());
-    indicator(
+    let mut shown = indicator(
         &snapshot,
         setting(backend, "toolbarIndicatorShowAzimuth"),
         setting(backend, "toolbarIndicatorShowAcquireReleaseControl"),
         (setting(backend, "enableOnScreenControl"), setting(backend, "clickAndDrag")),
-    )
+    );
+    shown["askSerial"] = json!(crate::gimbal::asked());
+    shown
 }
 
 pub const AZIMUTH_DEPS: &[&str] = &["settings.gimbalControllerSettings.showAzimuthIndicatorOnMap"];

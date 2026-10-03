@@ -316,6 +316,7 @@ fn guided(id: u8, action: Value) {
         Ok(frames) => frames.iter().for_each(|(link, bytes)| {
             crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
         }),
+        Err(reason) if reason == crate::gimbal::REASON_OTHERS_HAVE_CONTROL => crate::gimbal::ask_to_take_control(),
         Err(reason) => log::warn!("joystick action {action} was refused: {reason}"),
     }
 }

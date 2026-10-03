@@ -57,6 +57,16 @@ pub const REASON_ATTITUDE_UNKNOWN: &str = "attitudeUnknown";
 pub const REASON_HEADING_UNKNOWN: &str = "headingUnknownWhileYawLocked";
 pub const REASON_UNSUPPORTED: &str = "unsupported";
 
+static ASKED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn ask_to_take_control() {
+    ASKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn asked() -> u64 {
+    ASKED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub fn reason_text(token: &str) -> Option<&'static str> {
     match token {
         REASON_NOT_READY => Some("The gimbal is not ready yet."),

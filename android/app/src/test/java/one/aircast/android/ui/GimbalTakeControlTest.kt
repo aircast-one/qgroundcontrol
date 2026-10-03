@@ -15,4 +15,11 @@ class GimbalTakeControlTest {
         assertEquals("The gimbal is not ready yet.", gimbalRefusal(JSONObject("""{"ok":false,"refusal":"notReady","reason":"The gimbal is not ready yet."}""")))
         gimbalAsksForControl.value = false
     }
+
+    @Test
+    fun `a joystick refusal raised in the core asks once the serial moves, never on the first read`() {
+        assertEquals(false, serialAsks(null, 3))
+        assertEquals(false, serialAsks(3, 3))
+        assertEquals(true, serialAsks(3, 4))
+    }
 }
