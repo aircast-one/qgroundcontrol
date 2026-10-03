@@ -174,6 +174,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
     val stats by androidx.compose.runtime.produceState<one.aircast.mapspike.SurveyStats?>(null, index, revision, camera != null) {
         value = if (camera == null) null else withContext(Dispatchers.Default) { one.aircast.mapspike.surveyStats(Qgc.get("view.surveyStats($index)")) }
     }
+    val positionStart = at ?: (mapCentre ?: previousCoordinate(view))?.let { (latitude, longitude) -> TrackPoint(latitude, longitude) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             Row(
@@ -198,7 +199,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         DropdownMenu(expanded = positionMenu, onDismissRequest = { positionMenu = false }) {
                             DropdownMenuItem(text = { Text("Move to Vehicle Position") }, enabled = connected, onClick = { moveTo(null) })
                             DropdownMenuItem(text = { Text("Move to Previous Item") }, enabled = previous != null, onClick = { moveTo(previous) })
-                            DropdownMenuItem(text = { Text("Edit position…") }, onClick = { positionMenu = false; editingPosition = true })
+                            DropdownMenuItem(text = { Text("Edit position…") }, enabled = positionStart != null, onClick = { positionMenu = false; editingPosition = true })
                         }
                     }
                 }
@@ -346,7 +347,6 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
         }
     }
 
-    val positionStart = at ?: (mapCentre ?: previousCoordinate(view))?.let { (latitude, longitude) -> TrackPoint(latitude, longitude) }
     if (editingPosition && positionStart != null) {
         EditPositionDialog(
             at = positionStart,

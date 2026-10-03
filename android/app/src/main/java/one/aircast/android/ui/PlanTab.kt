@@ -233,7 +233,8 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                 else -> MaterialTheme.colorScheme.surfaceContainerHighest
                             },
                             contentColor = when {
-                                upload.done || upload.emphasised -> MaterialTheme.colorScheme.onPrimary
+                                upload.done -> MaterialTheme.aircast.onSuccess
+                                upload.emphasised -> MaterialTheme.colorScheme.onPrimary
                                 else -> MaterialTheme.colorScheme.onSurface
                             },
                         ) {

@@ -268,7 +268,11 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
                         host.progress = Some(Watch::fresh(now_ms));
                         Vec::new()
                     }
-                    false => host.state.on_start_complete(MAIN_RECEIVER, unbuildable_outcome(&uri), now_ms / 1000),
+                    false => {
+                        host.wanted = false;
+                        host.progress = None;
+                        host.state.on_start_complete(MAIN_RECEIVER, unbuildable_outcome(&uri), now_ms / 1000)
+                    }
                 }
             }
             Out::StopReceiver { receiver } if receiver == MAIN_RECEIVER => {
@@ -308,16 +312,25 @@ pub fn stream_switches(was: Option<u8>, now: Option<u8>, outs: &[Out]) -> Vec<(u
         .collect()
 }
 
+static STREAM_SWITCHES: std::sync::LazyLock<Mutex<std::sync::mpsc::Sender<(u8, bool)>>> = std::sync::LazyLock::new(|| {
+    let (sender, receiver) = std::sync::mpsc::channel::<(u8, bool)>();
+    std::thread::spawn(move || {
+        receiver.iter().for_each(|(vehicle, start)| {
+            let op = if start { "resumeStream" } else { "stopStream" };
+            let frames = crate::hub::lock().guided(Some(vehicle), &json!({ "action": "camera", "op": op }), crate::hub::now_ms()).unwrap_or_default();
+            frames.iter().for_each(|(link, bytes)| { crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes); });
+        });
+    });
+    Mutex::new(sender)
+});
+
 fn send_stream_switches(switches: Vec<(u8, bool)>) {
     if switches.is_empty() {
         return;
     }
-    std::thread::spawn(move || {
-        switches.iter().for_each(|(vehicle, start)| {
-            let op = if *start { "resumeStream" } else { "stopStream" };
-            let frames = crate::hub::lock().guided(Some(*vehicle), &json!({ "action": "camera", "op": op }), crate::hub::now_ms()).unwrap_or_default();
-            frames.iter().for_each(|(link, bytes)| { crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes); });
-        });
+    let sender = STREAM_SWITCHES.lock().unwrap_or_else(PoisonError::into_inner);
+    switches.into_iter().for_each(|switch| {
+        let _ = sender.send(switch);
     });
 }
 

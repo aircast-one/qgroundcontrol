@@ -158,14 +158,11 @@ private fun suffixed(context: Context, uri: Uri, extension: String): Uri = runCa
 private const val DOWNLOAD_POLL_MS = 200L
 private const val DOWNLOAD_POLLS = 300
 
-internal fun planSyncState(view: JSONObject?): String? = view?.optJSONObject("sync")?.optString("state")
-
-private suspend fun downloadSettled(sawBusy: Boolean = false, left: Int = DOWNLOAD_POLLS): Boolean {
+private suspend fun downloadSettled(left: Int = DOWNLOAD_POLLS): Boolean {
     if (left == 0) return false
-    val state = withContext(Dispatchers.Default) { planSyncState(Qgc.get(PLAN_VIEW)) }
-    if (sawBusy && state == "ready") return true
+    if (!withContext(Dispatchers.Default) { planIsSyncing(Qgc.get(PLAN_VIEW)) }) return true
     delay(DOWNLOAD_POLL_MS)
-    return downloadSettled(sawBusy || state == "busy", left - 1)
+    return downloadSettled(left - 1)
 }
 
 @Composable
@@ -189,13 +186,14 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
         name.value = null
     }
 
-    fun discard(method: String, success: String, failure: String) {
+    fun discard(method: String, success: String, failure: String, then: suspend () -> Unit = {}) {
         scope.launch {
             // qtpaths: plan.removeAll, plan.removeAllFromVehicle, plan.loadFromVehicle
             val ok = withContext(Dispatchers.Default) { Qgc.invoke("$PLAN_ROOT.$method") }
             if (ok) {
                 forget()
                 onResult(success)
+                then()
             } else {
                 onResult(failure)
             }
@@ -362,8 +360,9 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 )
             },
             download = {
-                discard("loadFromVehicle", "Loading the plan from the vehicle.", "The plan could not be loaded from the vehicle.")
-                scope.launch { if (downloadSettled()) opened.intValue += 1 }
+                discard("loadFromVehicle", "Loading the plan from the vehicle.", "The plan could not be loaded from the vehicle.") {
+                    if (downloadSettled()) opened.intValue += 1
+                }
             },
             documentName = { name.value },
             opened = { opened.intValue },
