@@ -98,4 +98,18 @@ class PlanDefaultsTest {
         assertEquals(one.aircast.android.bridge.FactSlider(1f, 30f, 1, ""), facts.last().slider)
         assertEquals(null, facts.first().slider)
     }
+
+    @Test
+    fun `a specified mission flight speed disables the cruise and hover defaults like MissionDefaultsEditor`() {
+        val defaults = { specified: Boolean ->
+            """{"altitude":${control("defaultMissionItemAltitude", 50.0, "m")},
+                "cruise":${control("offlineEditingCruiseSpeed", 15.0, "m/s")},
+                "hover":${control("offlineEditingHoverSpeed", 5.0, "m/s")},
+                "ascent":${control("offlineEditingAscentSpeed", 5.0, "m/s")},
+                "flightSpeed":{"available":true,"specified":$specified,"value":7.5}}"""
+        }
+
+        assertEquals(listOf(true, false, false, true), planDefaults(plan(defaults(true))).map { it.acceptsWrite })
+        assertEquals(listOf(true, true, true, true), planDefaults(plan(defaults(false))).map { it.acceptsWrite })
+    }
 }

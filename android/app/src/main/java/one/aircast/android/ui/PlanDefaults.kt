@@ -22,10 +22,19 @@ import org.json.JSONObject
 
 internal val PLAN_DEFAULT_KEYS = listOf("altitude", "cruise", "hover", "ascent", "descent")
 
+private val SPEEDS_SET_BY_FLIGHT_SPEED = setOf("cruise", "hover")
+
 internal fun planDefaults(view: JSONObject?): List<Fact> {
     val served = view?.optJSONObject("defaults") ?: return emptyList()
+    val flightSpeedSpecified = served.optJSONObject("flightSpeed")?.optBoolean("specified") == true
     return PLAN_DEFAULT_KEYS.mapNotNull { key ->
-        served.optJSONObject(key)?.let(::factFromControl)
+        served.optJSONObject(key)?.let(::factFromControl)?.let { fact ->
+            if (flightSpeedSpecified && key in SPEEDS_SET_BY_FLIGHT_SPEED) {
+                fact.copy(enabled = false, disabledReason = "The mission flight speed is used instead")
+            } else {
+                fact
+            }
+        }
     }
 }
 
