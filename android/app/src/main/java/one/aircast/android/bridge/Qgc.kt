@@ -7,6 +7,7 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
@@ -84,7 +85,7 @@ object Qgc {
 
     fun start() {
         QGCBridge.setEventListener(CLIENT) { path, json ->
-            _values.value = _values.value + (path to runCatching { JSONObject(json) }.getOrDefault(JSONObject()))
+            _values.update { it + (path to runCatching { JSONObject(json) }.getOrDefault(JSONObject())) }
         }
     }
 
@@ -151,7 +152,7 @@ object Qgc {
         val previous = watched
         watched = next
         if (resend()) {
-            _values.value = _values.value - dropped
+            _values.update { it - dropped }
         } else {
             watched = previous
             Log.w(TAG, "unwatch failed for $paths, still watching them")

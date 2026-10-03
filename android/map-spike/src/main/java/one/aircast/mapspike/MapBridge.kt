@@ -1,6 +1,7 @@
 package one.aircast.mapspike
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
@@ -18,7 +19,7 @@ import org.mavlink.qgroundcontrol.QGCBridge
 
 object MapBridge {
     private const val CLIENT = "map"
-    private val watched = linkedSetOf<String>()
+    private var watched: Map<String, Int> = emptyMap()
     private val _values = MutableStateFlow<Map<String, JSONObject>>(emptyMap())
 
     val values: StateFlow<Map<String, JSONObject>> = _values.asStateFlow()
@@ -26,35 +27,50 @@ object MapBridge {
     private val _bridgeReady = MutableStateFlow(false)
     val bridgeReady: StateFlow<Boolean> = _bridgeReady.asStateFlow()
 
+    internal var sendWatch: (String) -> Unit = { QGCBridge.watch(CLIENT, it) }
+
     fun start() {
         runCatching {
             QGCBridge.setEventListener(CLIENT) { path, json ->
-                _values.value = _values.value +
-                    (path to runCatching { JSONObject(json) }.getOrDefault(JSONObject()))
+                _values.update { it + (path to runCatching { JSONObject(json) }.getOrDefault(JSONObject())) }
             }
             _bridgeReady.value = true
         }
     }
 
     @Synchronized
-    fun release() {
-        watched.clear()
-        _values.value = emptyMap()
-        runCatching { QGCBridge.watch(CLIENT, "") }
+    fun watch(path: String) {
+        val held = watched[path] ?: 0
+        watched = watched + (path to held + 1)
+        if (held == 0 && !resend()) {
+            watched = watched - path
+            _bridgeReady.value = false
+        }
     }
 
     @Synchronized
-    fun watch(path: String) {
-        if (!watched.add(path)) {
-            return
-        }
-        runCatching { QGCBridge.watch(CLIENT, watched.joinToString(",")) }
-            .onSuccess { _bridgeReady.value = true }
-            .onFailure {
-                watched.remove(path)
-                _bridgeReady.value = false
+    fun unwatch(path: String) {
+        when (val held = watched[path]) {
+            null -> return
+            1 -> {
+                watched = watched - path
+                resend()
+                _values.update { it - path }
             }
+            else -> watched = watched + (path to held - 1)
+        }
     }
+
+    internal fun watchedPathsForTest(): Set<String> = watched.keys
+
+    internal fun forgetWatchesForTest() {
+        watched = emptyMap()
+    }
+
+    private fun resend(): Boolean =
+        runCatching { sendWatch(watched.keys.joinToString(",")) }
+            .onSuccess { _bridgeReady.value = true }
+            .isSuccess
 
     fun seed(path: String) {
         if (_values.value.containsKey(path)) {
@@ -71,8 +87,11 @@ object MapBridge {
 
 @Composable
 fun mapPath(path: String): State<JSONObject?> {
-    LaunchedEffect(path) {
+    DisposableEffect(path) {
         MapBridge.watch(path)
+        onDispose { MapBridge.unwatch(path) }
+    }
+    LaunchedEffect(path) {
         withContext(Dispatchers.Default) { MapBridge.seed(path) }
     }
     val values by MapBridge.values.collectAsState()

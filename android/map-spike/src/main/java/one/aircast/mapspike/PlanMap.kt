@@ -3,7 +3,6 @@ package one.aircast.mapspike
 import androidx.compose.foundation.layout.BoxScope
 import android.content.Context
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -37,10 +36,6 @@ fun PlanMapScreen(
 ) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
-
-    DisposableEffect(Unit) {
-        onDispose { MapBridge.release() }
-    }
 
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
         MapSpikeScreen(style, onClear, onCentre, itemEditor, header, fitKey, overlay, summaryHidden)

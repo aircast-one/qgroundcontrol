@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
@@ -103,10 +102,6 @@ fun FlyMap(
     var centreOn by remember { mutableStateOf(saved?.centre) }
     var centreZoom by remember { mutableStateOf(saved?.zoom) }
     val keepCentered by mapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)")
-
-    DisposableEffect(Unit) {
-        onDispose { MapBridge.release() }
-    }
 
     var mainZoom by remember { mutableDoubleStateOf(saved?.zoom ?: 0.0) }
     var zoomedForPip by remember { mutableStateOf(false) }

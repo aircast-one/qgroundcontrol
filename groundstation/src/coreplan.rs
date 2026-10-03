@@ -1356,7 +1356,8 @@ fn remove_all_from_vehicle(backend: &dyn Backend) -> Value {
             Err(reason) => (sent, [refusals, vec![reason]].concat()),
         }
     });
-    let fresh = held().document.is_none().then(|| fresh_document(backend));
+    let unopened = held().document.is_none();
+    let fresh = unopened.then(|| fresh_document(backend));
     {
         let mut state = held();
         state.dirty = false;
@@ -1384,7 +1385,8 @@ fn removed_on(id: u8, kind: &str) -> bool {
 }
 
 fn clear(backend: &dyn Backend) -> Value {
-    let fresh = held().document.is_none().then(|| fresh_document(backend));
+    let unopened = held().document.is_none();
+    let fresh = unopened.then(|| fresh_document(backend));
     clear_kinds(fresh, &["mission", "fence", "rally"]);
     json!({ "ok": true })
 }
@@ -2076,6 +2078,13 @@ pub fn route_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_statement_holds_the_plan_lock_while_it_calls_into_the_backend() {
+        let body = include_str!("coreplan.rs").split("#[cfg(test)]\nmod tests").next().unwrap_or("");
+        let held_across: Vec<&str> = body.lines().filter(|line| line.contains("held()") && line.contains("(backend")).collect();
+        assert!(held_across.is_empty(), "a held() temporary lives to the end of its statement, and a backend read can route back into controller_fields, which takes the same lock: {held_across:?}");
+    }
 
     #[test]
     fn the_speed_for_time_between_shots_follows_the_flight_status_calculator() {

@@ -50,6 +50,7 @@ const ALREADY_TAKES_OFF: &str = "The mission already takes off before this point
 const NEEDS_HOME_FIRST: &str = "Set the home position before adding anything to the mission.";
 const LAND_COMES_LAST: &str = "A landing goes after the takeoff and after every place the vehicle flies through.";
 const NOT_AFTER_LANDING: &str = "The vehicle has already landed at this point in the mission.";
+const NOT_BEFORE_TAKEOFF: &str = "The vehicle has not taken off yet at this point in the mission.";
 const NOT_FOR_THIS_VEHICLE: &str = "This kind of vehicle does not fly that pattern.";
 
 pub struct Insertable {
@@ -166,14 +167,18 @@ pub fn refusal(kind: &Kind, insertable: &Insertable) -> Option<&'static str> {
     match kind.id {
         "takeoff" if !insertable.takeoff => Some(ALREADY_TAKES_OFF),
         "takeoff" => None,
-        "waypoint" => (!insertable.only_takeoff && !insertable.fly_through).then_some(NOT_AFTER_LANDING),
+        "waypoint" => (!insertable.only_takeoff && !insertable.fly_through).then(|| grounded(insertable)),
         _ if insertable.only_takeoff => Some(NEEDS_TAKEOFF_FIRST),
         "land" if !insertable.land => Some(LAND_COMES_LAST),
         "land" => None,
         "roi" => None,
-        _ if !insertable.fly_through => Some(NOT_AFTER_LANDING),
+        _ if !insertable.fly_through => Some(grounded(insertable)),
         _ => None,
     }
+}
+
+fn grounded(insertable: &Insertable) -> &'static str {
+    if insertable.has_land { NOT_AFTER_LANDING } else { NOT_BEFORE_TAKEOFF }
 }
 
 fn kind_json(kind: &Kind) -> Value {
@@ -467,6 +472,11 @@ mod offering {
         })
     }
 
+    fn landing(mut state: Value) -> Value {
+        state["hasLandItem"] = json!(true);
+        state
+    }
+
     fn flying(mut state: Value, patterns: &[&str]) -> Value {
         state["complexMissionItems"] = json!(patterns);
         state
@@ -523,11 +533,19 @@ mod offering {
 
     #[test]
     fn nothing_the_vehicle_would_fly_through_is_offered_after_it_has_landed() {
-        let offered = offering(state(false, false, false, false));
+        let offered = offering(landing(state(false, false, false, false)));
         assert_eq!(named(&offered, "waypoint").1, Some(false));
         assert_eq!(named(&offered, "waypoint").2, NOT_AFTER_LANDING);
         assert_eq!(named(&offered, "survey").1, Some(false));
         assert_eq!(named(&offered, "roi").1, Some(true), "a region of interest is a camera instruction rather than a place to fly, so it is still allowed");
+    }
+
+    #[test]
+    fn a_point_ahead_of_the_takeoff_is_refused_as_before_takeoff_rather_than_after_a_landing() {
+        let offered = offering(state(false, false, false, false));
+        assert_eq!(named(&offered, "waypoint").1, Some(false));
+        assert_eq!(named(&offered, "waypoint").2, NOT_BEFORE_TAKEOFF, "with no landing in the mission the only place nothing flies is ahead of the takeoff");
+        assert_eq!(named(&offered, "survey").2, NOT_BEFORE_TAKEOFF);
     }
 
     #[test]
