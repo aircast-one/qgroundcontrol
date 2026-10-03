@@ -109,13 +109,13 @@ internal data class RadioPrompt(
 
 internal val RADIO_PROMPTS = listOf(
     RadioPrompt(
-        title = "Spektrum Bind",
+        title = "Spektrum bind",
         body = "Click Ok to place your Spektrum receiver in the bind mode.\n\nSelect the specific receiver type below:",
         action = "spektrumBindMode",
         choices = listOf("DSM2", "DSMX (7 channels or less)", "DSMX (8 channels or more)"),
     ),
     RadioPrompt(
-        title = "CRSF Bind",
+        title = "CRSF bind",
         body = "Click Ok to place your CRSF receiver in the bind mode.",
         action = "crsfBindMode",
         choices = emptyList(),

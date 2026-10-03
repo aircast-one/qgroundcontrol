@@ -306,19 +306,19 @@ fun RadioScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        item(key = "attitudeheader") { SectionHeader("Attitude Controls") }
+        item(key = "attitudeheader") { SectionHeader("Attitude controls") }
         items(view.sticks.size, key = { "att${view.sticks[it].title}" }) { index ->
             AttitudeRow(view.sticks[index])
         }
 
         switches.forEach { section ->
-            item(key = "switches:${section.title}") { SectionHeader(section.title) }
+            item(key = "switches:${section.title}") { SectionHeader(sentenceCase(section.title)) }
             items(section.facts.size, key = { "switch:${section.facts[it].path}" }) { index ->
                 FactRow(section.facts[index]) { switchReads++ }
             }
         }
 
-        item(key = "monitorheader") { SectionHeader("Channel Monitor") }
+        item(key = "monitorheader") { SectionHeader("Channel monitor") }
         items(view.channels.size, key = { "ch${view.channels[it].label}" }) { index ->
             val channel = view.channels[index]
             Row(
