@@ -826,17 +826,19 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
                 None => vec![row],
                 Some(toggle) => {
                     let checked = scope.eval_text(toggle["checked"].as_str().unwrap_or("false")).truthy();
+                    let switch_label = toggle.get("label").unwrap_or(&label).clone();
                     let gated = match checked {
                         true => row,
                         false => {
                             let mut off = labelled(row, control, false);
                             if enabled {
-                                off["disabledReason"] = json!(format!("Turn on {} to edit", label.as_str().unwrap_or("the switch above")));
+                                let named = toggle.get("label").is_none().then(|| label.as_str()).flatten();
+                                off["disabledReason"] = json!(format!("Turn on {} to edit", named.unwrap_or("the switch above")));
                             }
                             off
                         }
                     };
-                    vec![json!({ "control": "toggle", "name": format!("{name}.enable"), "label": label, "value": checked, "enabled": enabled, "path": format!("{path}.enable") }), gated]
+                    vec![json!({ "control": "toggle", "name": format!("{name}.enable"), "label": switch_label, "value": checked, "enabled": enabled, "path": format!("{path}.enable") }), gated]
                 }
             }
         }
@@ -1480,10 +1482,12 @@ mod tests {
         let fake = Fake { px4: true, ..Fake::new(&[("SYS_VEHICLE_RESP", 0.9), ("MPC_XY_VEL_ALL", -5.0), ("MPC_Z_VEL_ALL", 2.0), ("NAV_ACC_RAD", 3.0)]) };
         let rows: Vec<Value> = page(&fake, "Flight Behavior", true)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect();
         assert!(rows.iter().any(|r| r["control"] == "label" && r["label"].as_str().unwrap_or_default().starts_with("Warning: a high responsiveness")), "PX4FlightBehaviorCopter warns above 0.8");
-        let horizontal = rows.iter().find(|r| r["control"] == "toggle" && r["label"] == "Horizontal velocity (m/s)").unwrap().clone();
+        let horizontal = rows.iter().find(|r| r["control"] == "toggle" && r["name"] == "MPC_XY_VEL_ALL.enable").unwrap().clone();
+        assert_eq!(horizontal["label"], "Enable horizontal velocity slider (if enabled, individual velocity limit parameters are automatically set)", "xyVelCheckbox text");
         assert_eq!(horizontal["value"], false, "a negative MPC_XY_VEL_ALL is the slider switched off");
         let gated = rows.iter().find(|r| r["control"] != "toggle" && r["label"] == "Horizontal velocity (m/s)").unwrap();
-        assert_eq!(gated["disabledReason"], "Turn on Horizontal velocity (m/s) to edit");
+        assert_eq!(gated["disabledReason"], "Turn on the switch above to edit");
+        assert_eq!(gated["description"], "Limit the horizonal velocity (applies to all modes).", "SettingsGroupLayout headingDescription, QGC typo included");
         assert_eq!(write(&fake, horizontal["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
         assert_eq!(fake.params.borrow()["MPC_XY_VEL_ALL"], 5.0, "switching it on keeps the magnitude");
         assert!(rows.iter().any(|r| r["label"] == "Mission Turning Radius"));

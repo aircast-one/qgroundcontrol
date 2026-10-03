@@ -23,10 +23,12 @@
                 {
                     "param": "SYS_VEHICLE_RESP",
                     "label": "Responsiveness",
+                    "description": "A higher value makes the vehicle react faster. Be aware that this affects braking as well, and a combination of slow responsiveness with high maximum velocity will lead to long braking distances.",
                     "control": "slider",
                     "sliderMin": 0,
                     "sliderMax": 1,
                     "enableCheckbox": {
+                        "label": "Enable responsiveness slider (if enabled, acceleration limit parameters and others are automatically set)",
                         "checked": "_resp.value >= 0",
                         "onClicked": "{ _resp.value = enableCheckBoxChecked ? (_resp.value < 0 ? -_resp.value : _resp.value) : (_resp.value > 0 ? -_resp.value : _resp.value) }"
                     }
@@ -46,10 +48,12 @@
                 {
                     "param": "MPC_XY_VEL_ALL",
                     "label": "Horizontal velocity (m/s)",
+                    "description": "Limit the horizonal velocity (applies to all modes).",
                     "control": "slider",
                     "sliderMin": 0.5,
                     "sliderMax": 20,
                     "enableCheckbox": {
+                        "label": "Enable horizontal velocity slider (if enabled, individual velocity limit parameters are automatically set)",
                         "checked": "_xy.value >= 0",
                         "onClicked": "{ _xy.value = enableCheckBoxChecked ? (_xy.value < 0 ? -_xy.value : _xy.value) : (_xy.value > 0 ? -_xy.value : _xy.value) }"
                     }
@@ -63,10 +67,12 @@
                 {
                     "param": "MPC_Z_VEL_ALL",
                     "label": "Vertical velocity (m/s)",
+                    "description": "Limit the vertical velocity (applies to all modes).",
                     "control": "slider",
                     "sliderMin": 0.2,
                     "sliderMax": 8,
                     "enableCheckbox": {
+                        "label": "Enable vertical velocity slider (if enabled, individual velocity limit parameters are automatically set)",
                         "checked": "_z.value >= 0",
                         "onClicked": "{ _z.value = enableCheckBoxChecked ? (_z.value < 0 ? -_z.value : _z.value) : (_z.value > 0 ? -_z.value : _z.value) }"
                     }
@@ -79,6 +85,7 @@
                 {
                     "param": "NAV_ACC_RAD",
                     "label": "Mission Turning Radius",
+                    "description": "Increasing this leads to rounder turns in missions (corner cutting). Use the minimum value for accurate corner tracking.",
                     "control": "slider",
                     "sliderMin": 2,
                     "sliderMax": 16,
