@@ -13,6 +13,28 @@ pub fn outdated_px4(flight_sw_version: u32) -> Option<&'static str> {
     (flight_sw_version == 0 || (byte(24), byte(16), byte(8)) < SUPPORTED_PX4).then_some(OUTDATED_PX4)
 }
 
+pub const BAD_CUBE_BLACK: &str = "WARNING: The flight board you are using has a critical service bulletin against it which advises against flying. For details see: https://discuss.cubepilot.org/t/sb-0000002-critical-service-bulletin-for-cubes-purchased-between-january-2019-to-present-do-not-fly/406";
+
+pub struct ParametersAnnounce {
+    pub px4: bool,
+    pub hitl: bool,
+    pub cube_black_link: Option<crate::transport::LinkId>,
+}
+
+pub fn bad_cube_black_params(acc3: Option<i64>, gyr3: Option<i64>, enable_mask: Option<i64>) -> bool {
+    acc3 == Some(0) && gyr3 == Some(0) && enable_mask.is_some_and(|mask| mask >= 7)
+}
+
+pub fn is_cube_black(port_description: &str) -> bool {
+    port_description.contains("CubeBlack")
+}
+
+fn serial_port_description(link: crate::transport::LinkId) -> Option<String> {
+    let config = crate::linkhost::TRANSPORTS.lock().unwrap().config(link)?;
+    let crate::linkconfig::Kind::Serial { port_name, .. } = config.kind else { return None };
+    crate::corelinks::port_infos().into_iter().find(|port| port.system_location == port_name).map(|port| port.description)
+}
+
 pub fn parameters_ready_notices(setup_ready: bool, px4: bool, hitl: bool) -> Vec<&'static str> {
     [(!setup_ready, SETUP_INCOMPLETE), (px4 && hitl, HITL_ENABLED)].into_iter().filter(|(due, _)| *due).map(|(_, text)| text).collect()
 }
@@ -21,9 +43,10 @@ pub fn announce(backend: &dyn Backend) {
     if crate::qthost::present() {
         return;
     }
-    let Some((px4, hitl)) = crate::hub::lock().take_parameters_announce() else { return };
+    let Some(announce) = crate::hub::lock().take_parameters_announce() else { return };
     let setup_ready = crate::setup::setup_view(backend, &[]).get("ready").and_then(Value::as_bool).unwrap_or(true);
-    parameters_ready_notices(setup_ready, px4, hitl).into_iter().for_each(|text| {
+    let bad_cube = announce.cube_black_link.and_then(serial_port_description).is_some_and(|description| is_cube_black(&description));
+    parameters_ready_notices(setup_ready, announce.px4, announce.hitl).into_iter().chain(bad_cube.then_some(BAD_CUBE_BLACK)).for_each(|text| {
         crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, text);
     });
 }
@@ -38,6 +61,18 @@ mod tests {
         assert_eq!(outdated_px4(0x01_04_01_00), None);
         assert_eq!(outdated_px4(0x01_0F_00_FF), None);
         assert_eq!(outdated_px4(0), Some(OUTDATED_PX4), "a vehicle that reports no version is warned too");
+    }
+
+    #[test]
+    fn a_cube_black_with_the_bulletin_imu_setup_is_warned_like_check_for_bad_cube_black() {
+        assert!(bad_cube_black_params(Some(0), Some(0), Some(7)));
+        assert!(bad_cube_black_params(Some(0), Some(0), Some(127)));
+        assert!(!bad_cube_black_params(Some(0), Some(0), Some(6)), "INS_ENABLE_MASK below 7 has the third IMU off");
+        assert!(!bad_cube_black_params(Some(1), Some(0), Some(7)), "a detected third accelerometer is a fixed board");
+        assert!(!bad_cube_black_params(None, Some(0), Some(7)), "every parameter must exist");
+        assert!(is_cube_black("CubeBlack"));
+        assert!(is_cube_black("CubeBlack+"));
+        assert!(!is_cube_black("CubeOrange"));
     }
 
     #[test]

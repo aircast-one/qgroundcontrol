@@ -4004,11 +4004,16 @@ impl Hub {
         self.active
     }
 
-    pub fn take_parameters_announce(&mut self) -> Option<(bool, bool)> {
+    pub fn take_parameters_announce(&mut self) -> Option<crate::connectnotices::ParametersAnnounce> {
         let vehicle = self.active.and_then(|id| self.vehicles.get_mut(&id)).filter(|v| v.parameters_announce_due)?;
         vehicle.parameters_announce_due = false;
-        let hitl = vehicle.parameter(vehicle.component, "SYS_HITL").is_some_and(|p| p.as_f64() != 0.0);
-        Some((vehicle.autopilot == crate::modes::AUTOPILOT_PX4, hitl))
+        let value = |name: &str| vehicle.parameter(vehicle.component, name).map(|p| p.as_f64() as i64);
+        Some(crate::connectnotices::ParametersAnnounce {
+            px4: vehicle.autopilot == crate::modes::AUTOPILOT_PX4,
+            hitl: value("SYS_HITL").is_some_and(|v| v != 0),
+            cube_black_link: (vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT && crate::connectnotices::bad_cube_black_params(value("INS_ACC3_ID"), value("INS_GYR3_ID"), value("INS_ENABLE_MASK")))
+                .then(|| vehicle.primary_link.unwrap_or(vehicle.link)),
+        })
     }
 
     pub fn active(&self) -> Option<&Vehicle> {
