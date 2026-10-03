@@ -80,13 +80,24 @@ internal fun changeTakeover(allow: Boolean): String? =
 internal fun allowTakeoverEditable(station: ControlStation?): Boolean =
     station?.inControl == true || station?.takeoverAllowed == true
 
+internal fun controlSectionTitle(station: ControlStation): String? = when (station.inControl) {
+    true -> "Change takeover condition"
+    false -> "Send control request"
+    null -> null
+}
+
+internal fun requestTimeoutEditable(station: ControlStation): Boolean =
+    station.inControl == false && station.takeoverAllowed != true
+
 internal fun requestTimeoutSeconds(station: ControlStation, setting: Int): Int =
     if (station.takeoverAllowed == true) 0 else setting
 
 internal const val REQUEST_CONTROL = "vehicle.requestOperatorControl"
 internal const val ALLOW_TAKEOVER_PATH = "settings.flyViewSettings.requestControlAllowTakeover"
 internal val ALLOW_TAKEOVER_SETTING = settingControl(ALLOW_TAKEOVER_PATH)
-internal val REQUEST_TIMEOUT_SETTING = settingControl("settings.flyViewSettings.requestControlTimeout")
+internal const val REQUEST_TIMEOUT_PATH = "settings.flyViewSettings.requestControlTimeout"
+internal val REQUEST_TIMEOUT_SETTING = settingControl(REQUEST_TIMEOUT_PATH)
+internal const val GCS_SYSTEM_ID_PATH = "settings.mavlinkSettings.gcsMavlinkSystemID"
 
 internal data class ControlAsk(val refusal: String?, val timeoutSeconds: Int)
 

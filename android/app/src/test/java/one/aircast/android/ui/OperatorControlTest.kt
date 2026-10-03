@@ -139,4 +139,17 @@ class OperatorControlTest {
         assertNull(acquireLabel(waiting))
         assertEquals("Waiting for the other station to answer", controlWaitLine(waiting))
     }
+
+    @Test
+    fun theSheetTitlesAndTimeoutFieldFollowGcsControlIndicator() {
+        val asking = controlStation(elsewhere(takeover = false))!!
+        val taking = controlStation(elsewhere(takeover = true))!!
+        val holding = controlStation(ours)!!
+        assertEquals("Send control request", controlSectionTitle(asking))
+        assertEquals("Change takeover condition", controlSectionTitle(holding))
+        assertNull(controlSectionTitle(controlStation(silent)!!))
+        assertTrue(requestTimeoutEditable(asking))
+        assertFalse(requestTimeoutEditable(taking))
+        assertFalse(requestTimeoutEditable(holding))
+    }
 }

@@ -12,6 +12,7 @@ import one.aircast.mapspike.aircast
 import androidx.compose.foundation.layout.width
 import kotlinx.coroutines.isActive
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -47,6 +48,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.truthy
 import one.aircast.mapspike.VehicleChoice
@@ -424,6 +426,7 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
             modifier = Modifier.padding(horizontal = 24.dp),
         )
     }
+    ControlSectionTitle(holder)
     requestEndsAt?.let { endsAt ->
         RequestCountdown(endsAt) {
             requestEndsAt = null
@@ -459,6 +462,26 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
             )
         }
     }
+    if (requestTimeoutEditable(holder)) SettingFactRow(REQUEST_TIMEOUT_PATH, "Request timeout (sec)")
+    SettingFactRow(GCS_SYSTEM_ID_PATH, "This GCS MAVLink system ID")
+}
+
+@Composable
+private fun ControlSectionTitle(holder: ControlStation) {
+    controlSectionTitle(holder)?.let { title ->
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun SettingFactRow(path: String, title: String) {
+    val control by qgcPath(settingControl(path))
+    val fact = remember(control) { control?.takeIf { it.optText("kind") == "object" }?.let(::factFromControl) } ?: return
+    FactRow(fact, title = title, subtitle = factSubtitle(fact), fieldModifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp))
 }
 
 @Composable
@@ -533,6 +556,7 @@ private fun InControlNote(holder: ControlStation, onRefusal: (String?) -> Unit) 
             modifier = Modifier.padding(horizontal = 24.dp),
         )
     }
+    ControlSectionTitle(holder)
     AllowTakeoverBox(holder, onRefusal) { allow = it }
     TextButton(
         enabled = takeoverChangeable(holder, allow),
@@ -542,6 +566,7 @@ private fun InControlNote(holder: ControlStation, onRefusal: (String?) -> Unit) 
         },
         modifier = Modifier.padding(horizontal = 16.dp),
     ) { Text("Change") }
+    SettingFactRow(GCS_SYSTEM_ID_PATH, "This GCS MAVLink system ID")
 }
 
 internal const val MULTI_VEHICLE_PANEL_SETTING = "settings.appSettings.enableMultiVehiclePanel"
