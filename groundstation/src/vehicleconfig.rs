@@ -1081,7 +1081,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         (_, "factslider", _) => {
             let name = scope.full_name(control["param"].as_str().unwrap_or_default());
             match number {
-                None => Err("This setting is a number.".to_string()),
+                None => Err(crate::factwrite::INVALID_NUMBER.to_string()),
                 Some(v) => write_parameter(backend, &name, false, v).and_then(|()| {
                     let locals = BTreeMap::from([("value".to_string(), Val::Num(v))]);
                     let linked = scope.with(resolved.repeat.clone(), locals);

@@ -78,10 +78,9 @@ class FactKeyboardTest {
     @Test
     fun `a fraction typed into a whole-number setting is refused, not silently truncated`() {
         assertEquals(
-            "FactMetaData::convertAndValidateRaw does QVariant(3.7).toInt() for an int fact and " +
-                "reports convertOk, and setRawValue passes convertOnly so the range check never " +
-                "runs - Fact.validate accepts 3.7, the vehicle gets 3, and nothing says so",
-            "This setting takes whole numbers only.",
+            "FactTextField validates the typed text, and QString(\"3.7\").toInt fails, so " +
+                "FactMetaData::convertAndValidateCooked answers Invalid number",
+            "Invalid number",
             truncationRefusal(fact("0", whole = true), "3.7"),
         )
     }

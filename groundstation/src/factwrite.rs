@@ -22,6 +22,8 @@ fn raw_text(value: &Value) -> String {
     }
 }
 
+pub const INVALID_NUMBER: &str = "Invalid number";
+
 pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static str, String)> {
     if fact.get("readOnly").and_then(Value::as_bool) == Some(true) {
         return Some(("readOnly", "This setting cannot be changed.".to_string()));
@@ -54,19 +56,16 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
         }
         _ => {
             let Some(value) = number(asked) else {
-                return Some(("notANumber", "This setting is a number.".to_string()));
+                return Some(("notANumber", INVALID_NUMBER.to_string()));
             };
+            let whole = control["wholeNumbersOnly"] == true;
             let (minimum, maximum) = (control["minimum"].as_f64().or(fact["min"].as_f64()), control["maximum"].as_f64().or(fact["max"].as_f64()));
+            let shown = |bound: f64| if whole { format!("{}", bound.trunc() as i64) } else { crate::coreplan::qt_number(bound) };
             match () {
-                _ if control["wholeNumbersOnly"] == true && value.fract() != 0.0 => Some(("notWhole", "This setting takes whole numbers only.".to_string())),
-                _ if minimum.is_some_and(|m| value < m) || maximum.is_some_and(|m| value > m) => Some((
-                    "outOfRange",
-                    format!(
-                        "This setting runs from {} to {}.",
-                        control["minimumText"].as_str().or(fact["minString"].as_str()).map(str::to_string).or(minimum.map(|m| m.to_string())).unwrap_or_else(|| "its lowest".to_string()),
-                        control["maximumText"].as_str().or(fact["maxString"].as_str()).map(str::to_string).or(maximum.map(|m| m.to_string())).unwrap_or_else(|| "its highest".to_string())
-                    ),
-                )),
+                _ if whole && value.fract() != 0.0 => Some(("notWhole", INVALID_NUMBER.to_string())),
+                _ if minimum.is_some_and(|m| value < m) || maximum.is_some_and(|m| value > m) => {
+                    Some(("outOfRange", format!("Value must be within {} and {}", shown(minimum.unwrap_or(f64::MIN)), shown(maximum.unwrap_or(f64::MAX)))))
+                }
                 _ => None,
             }
         }
@@ -284,7 +283,8 @@ mod tests {
         assert_eq!(check(vendor, json!(-2147483643 | 8)), Some("unknownBits"));
         let port = fact(json!({ "typeIsInteger": true, "min": 0, "max": 65535, "minIsDefaultForType": true, "maxIsDefaultForType": true, "minString": "0", "maxString": "65535" }));
         assert_eq!(check(port.clone(), json!(70000)), Some("outOfRange"), "FactMetaData min/max default to the type range and are always checked");
-        assert_eq!(check(port, json!(-1)), Some("outOfRange"));
+        assert_eq!(check(port.clone(), json!(-1)), Some("outOfRange"));
+        assert_eq!(refusal(&decode(&port, "settings.x"), &port, &json!(70000)).map(|r| r.1).as_deref(), Some("Value must be within 0 and 65535"), "cookedMin/cookedMax are the type range when the metadata has none");
         let id = fact(json!({ "typeIsString": true, "maxStringLength": 20 }));
         assert_eq!(check(id.clone(), json!("12345678901234567890")), None);
         assert_eq!(check(id.clone(), json!("123456789012345678901")), Some("tooLong"), "Value must be 20 characters or less");
@@ -350,6 +350,8 @@ mod tests {
         let path = "vehicle.parameterManager.getParameter(1,SERVO_RATE)";
         assert_eq!(write(&vehicle, path, r#"{"value":50.5}"#)["refusal"], "notWhole", "NATIVE_MACOS_REWRITE's open item: an integer parameter accepted a fractional entry and the vehicle was sent the truncation");
         assert_eq!(write(&vehicle, path, r#"{"value":900}"#)["refusal"], "outOfRange");
+        assert_eq!(write(&vehicle, path, r#"{"value":900}"#)["reason"], "Value must be within 25 and 400", "an int fact's bounds are shown through toInt");
+        assert_eq!(write(&vehicle, path, r#"{"value":50.5}"#)["reason"], "Invalid number", "QString(\"50.5\").toInt fails, so FactTextField says Invalid number");
         assert_eq!(write(&vehicle, path, r#"{"value":900,"force":true}"#)["result"], true, "ParameterEditorDialog's Force save validates with convertOnly, so the range is not checked");
         assert_eq!(write(&vehicle, path, r#"{"value":50.5,"force":true}"#)["refusal"], "notWhole", "but the value must still convert");
         assert_eq!(write(&vehicle, path, r#"{"value":50}"#)["result"], true);
@@ -437,7 +439,9 @@ mod tests {
         let asked = |text: &str, convert_only: bool| validate(&units, altitude, &json!([text, convert_only]).to_string());
         assert_eq!((&asked("60", false)["ok"], &asked("60", false)["result"]), (&json!(true), &json!("")), "Qt's shape: an empty result is a valid entry");
         assert_eq!(asked("5000", false)["refusal"], "outOfRange");
-        assert_eq!(asked("5000", false)["result"], "This setting runs from 1 to 1000.", "the same sentence the write gives");
+        assert_eq!(asked("5000", false)["result"], "Value must be within 1 and 1000", "FactMetaData::convertAndValidateCooked's sentence, the one FactTextField shows");
+        assert_eq!(asked("tall", false)["result"], "Invalid number");
+        assert_eq!(asked("0.5", false)["result"], "Value must be within 1 and 1000");
         assert_eq!(asked("5000", true)["result"], "", "convertOnly asks only whether the text is a number");
         assert_eq!(asked("tall", true)["refusal"], "notANumber");
         let palette = validate(&units, "settings.appSettings.indoorPaletteName.validate", r#"["1.5",false]"#);

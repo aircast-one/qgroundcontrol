@@ -1752,7 +1752,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     })
 }
 
-fn qt_number(value: f64) -> String {
+pub(crate) fn qt_number(value: f64) -> String {
     let scientific = format!("{value:.5e}");
     let (mantissa, exponent) = scientific.split_once('e').unwrap_or((scientific.as_str(), "0"));
     let exponent: i32 = exponent.parse().unwrap_or(0);
