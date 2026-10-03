@@ -24,9 +24,9 @@ class PlanItemsTest {
     @Test
     fun `a survey's area and photos move from the sheet line into tiles`() {
         val survey = item(4, 4, "Survey").copy(cameraShots = 1043)
-        val stats = SurveyStats(areaText = "90049 m\u00b2", warning = "", intervalText = "2.0 s")
+        val stats = SurveyStats(areaText = "90049 m\u00b2", warning = "", intervalText = "2.0 s", distanceText = "4.1 km")
 
-        assertEquals(listOf("AREA" to "90049 m\u00b2", "PHOTOS" to "1043", "INTERVAL" to "2.0 s"), surveyTiles(survey, stats))
+        assertEquals(listOf("AREA" to "90049 m\u00b2", "DISTANCE" to "4.1 km", "PHOTOS" to "1043", "INTERVAL" to "2.0 s"), surveyTiles(survey, stats))
         assertEquals("50 m", sheetDetail(survey, stats))
         assertEquals(emptyList<Pair<String, String>>(), surveyTiles(survey, null))
         assertEquals("50 m \u00b7 1043 photos", sheetDetail(survey, null))

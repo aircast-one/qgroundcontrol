@@ -54,6 +54,7 @@ internal fun itemPlace(item: MissionItem, items: List<MissionItem>): String? {
 internal fun surveyTiles(item: MissionItem, stats: SurveyStats?): List<Pair<String, String>> =
     if (stats == null) emptyList() else listOf(
         "AREA" to stats.areaText,
+        "DISTANCE" to stats.distanceText,
         "PHOTOS" to item.cameraShots.takeIf { it > 0 }?.toString().orEmpty(),
         "INTERVAL" to stats.intervalText,
     ).filter { it.second.isNotBlank() }

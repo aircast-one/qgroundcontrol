@@ -31,9 +31,9 @@ pub fn interval_text(seconds: f64) -> String {
     }
 }
 
-pub fn warning(minimum_interval: f64, seconds_between_shots: f64) -> String {
-    match minimum_interval > 0.0 && seconds_between_shots > 0.0 && seconds_between_shots < minimum_interval {
-        true => format!("The camera needs {minimum_interval:.2} s between shots but the survey asks for {seconds_between_shots:.2} s."),
+pub fn warning(shots: i64, minimum_interval: f64, seconds_between_shots: f64) -> String {
+    match shots > 0 && minimum_interval != 0.0 && minimum_interval > seconds_between_shots {
+        true => format!("Photo interval too short: the camera needs at least {minimum_interval:.1} s between photos"),
         false => String::new(),
     }
 }
@@ -76,8 +76,8 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
         "surfaceDistanceMetres": surface,
         "surfaceDistanceText": surface.map(|metres| crate::read::format_measure(distance_unit.show(metres), &distance_unit.name)),
         "minimumInterval": minimum_interval,
-        "tooFast": !warning(minimum_interval, seconds).is_empty(),
-        "warning": warning(minimum_interval, seconds),
+        "tooFast": !warning(shots, minimum_interval, seconds).is_empty(),
+        "warning": warning(shots, minimum_interval, seconds),
     })
 }
 
@@ -87,9 +87,10 @@ mod tests {
 
     #[test]
     fn a_survey_that_shoots_faster_than_the_camera_allows_is_warned() {
-        assert_eq!(warning(1.5, 1.0), "The camera needs 1.50 s between shots but the survey asks for 1.00 s.");
-        assert_eq!(warning(1.5, 2.0), "");
-        assert_eq!(warning(0.0, 0.5), "");
+        assert_eq!(warning(10, 1.5, 1.0), "Photo interval too short: the camera needs at least 1.5 s between photos");
+        assert_eq!(warning(10, 1.5, 2.0), "");
+        assert_eq!(warning(10, 0.0, 0.5), "");
+        assert_eq!(warning(0, 1.5, 1.0), "", "TransectStyleComplexItemEditor shows it only when the pattern takes photos");
         assert_eq!(interval_text(0.0), "\u{2014}");
         assert_eq!(interval_text(2.25), "2.2 s");
     }

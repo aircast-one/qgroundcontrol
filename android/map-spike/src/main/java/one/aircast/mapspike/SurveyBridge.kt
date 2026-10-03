@@ -117,6 +117,7 @@ data class SurveyStats(
     val intervalText: String = "",
     val footprintText: String = "",
     val surfaceDistanceText: String = "",
+    val distanceText: String = "",
 )
 
 private fun stated(view: org.json.JSONObject, key: String): String =
@@ -132,6 +133,7 @@ fun surveyStats(view: org.json.JSONObject?): SurveyStats? {
         intervalText = stated(view, "intervalText"),
         footprintText = stated(view, "footprintText"),
         surfaceDistanceText = stated(view, "surfaceDistanceText"),
+        distanceText = stated(view, "distanceText"),
     )
 }
 
