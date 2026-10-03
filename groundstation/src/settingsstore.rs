@@ -370,6 +370,19 @@ pub fn cleared_on_boot(values: BTreeMap<String, Setting>) -> BTreeMap<String, Se
     if clear_asked(&values) { BTreeMap::new() } else { values }
 }
 
+pub const SETTINGS_VERSION: &str = "9";
+const SETTINGS_VERSION_KEY: &str = "SettingsVersion";
+
+pub fn versioned(values: BTreeMap<String, Setting>) -> (BTreeMap<String, Setting>, bool) {
+    let upgraded = matches!(values.get(SETTINGS_VERSION_KEY), Some(Setting::Text(version)) if version.trim() != SETTINGS_VERSION);
+    let kept = if upgraded { BTreeMap::new() } else { values };
+    (kept.into_iter().chain(std::iter::once((SETTINGS_VERSION_KEY.to_string(), Setting::Text(SETTINGS_VERSION.to_string())))).collect(), upgraded)
+}
+
+pub fn settings_reset_notice(application: &str) -> String {
+    format!("The format for {application} saved settings has been modified. Your saved settings have been reset to defaults.")
+}
+
 pub fn open(path: &std::path::Path) {
     let read = crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default());
     if clear_asked(&read)
@@ -377,7 +390,11 @@ pub fn open(path: &std::path::Path) {
     {
         let _ = std::fs::remove_dir_all(cache);
     }
-    *stored() = Some(cleared_on_boot(read));
+    let (values, upgraded) = versioned(cleared_on_boot(read));
+    if upgraded && !crate::qthost::present() {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &settings_reset_notice(&crate::noticeboard::application_name()));
+    }
+    *stored() = Some(values);
     *PATH.lock().unwrap_or_else(PoisonError::into_inner) = Some(path.to_path_buf());
 }
 
@@ -882,6 +899,20 @@ impl<B: Backend> Backend for Owner<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_settings_file_from_another_format_is_reset_and_stamped_like_qgc_application() {
+        let old: BTreeMap<String, Setting> = [("SettingsVersion".to_string(), Setting::Text("7".into())), ("Units/verticalDistanceUnits".to_string(), Setting::Text("1".into()))].into_iter().collect();
+        let (kept, upgraded) = versioned(old);
+        assert!(upgraded);
+        assert_eq!(kept.keys().collect::<Vec<_>>(), vec!["SettingsVersion"]);
+        let current: BTreeMap<String, Setting> = [("SettingsVersion".to_string(), Setting::Text(SETTINGS_VERSION.into())), ("Units/verticalDistanceUnits".to_string(), Setting::Text("1".into()))].into_iter().collect();
+        assert_eq!(versioned(current).1, false);
+        let (fresh, fresh_upgraded) = versioned(BTreeMap::new());
+        assert!(!fresh_upgraded, "a first run is not an upgrade");
+        assert_eq!(fresh.get("SettingsVersion"), Some(&Setting::Text(SETTINGS_VERSION.into())));
+        assert!(include_str!("../../cmake/CustomOptions.cmake").contains(&format!("set(QGC_SETTINGS_VERSION \"{SETTINGS_VERSION}\"")), "the core stamps the same schema version the Qt build does");
+    }
+
     #[test]
     fn without_qt_the_video_source_offers_qgcs_stream_sources_in_its_order() {
         let qt: serde_json::Map<String, Value> = serde_json::from_str(include_str!("../tests/fixtures/settings-facts-by-qt.json")).unwrap();
