@@ -6,12 +6,13 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &[crate::noticeboard::NOTICES_CHANGED];
 const NAVIGATION_NOTICE: &str = "navigation";
 
-fn banner(title: &str, text: &str) -> String {
-    [title, text].iter().filter(|part| !part.trim().is_empty()).copied().collect::<Vec<_>>().join(" \u{b7} ")
+fn banner(title: &str, text: &str, app: &str) -> String {
+    [title, text].iter().filter(|part| !part.trim().is_empty() && part.trim() != app).copied().collect::<Vec<_>>().join(" \u{b7} ")
 }
 
 pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
     let host = object(&backend.get_fields("host", "notices,dropped"));
+    let app = crate::noticeboard::application_name();
     let through = args.first().and_then(|a| a.trim().parse::<i64>().ok()).unwrap_or(-1);
     let notices: Vec<Value> = host
         .get("notices")
@@ -29,7 +30,7 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
                         "known": crate::contract::NOTICE_KINDS.contains(&kind.as_str()),
                         "title": text("title"),
                         "text": text("text"),
-                        "banner": banner(&text("title"), &text("text")),
+                        "banner": banner(&text("title"), &text("text"), &app),
                     }))
                 })
                 .collect()
@@ -43,7 +44,6 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
         .filter_map(|n| n["banner"].as_str())
         .filter(|line| !line.is_empty())
         .fold(Vec::new(), |kept, line| if kept.iter().any(|k: &String| k == line) { kept } else { kept.into_iter().chain(std::iter::once(line.to_string())).collect() });
-    let app = crate::noticeboard::application_name();
     let dialogs: Vec<Value> = after
         .iter()
         .filter(|n| n["kind"] == crate::noticeboard::MESSAGE)
@@ -100,6 +100,7 @@ mod tests {
         assert_eq!(unseen, vec![4, 5, 6, 7], "only notices after the acknowledged id, and a notice without an id is dropped");
         assert_eq!(view["destination"], "plan");
         assert_eq!(view["banners"], json!(["Battery \u{b7} Low voltage", "Unrecognised kinds are shown, not guessed at"]), "one banner per distinct line, and navigation is a destination rather than a banner");
+        assert_eq!(banner("Aircast QGC", "EKF variance", "Aircast QGC"), "EKF variance", "the application's own name says nothing about which vehicle or part spoke");
         assert_eq!((&view["latestId"], &view["dropped"]), (&json!(7), &json!(2)));
         assert_eq!(view["notices"][4]["known"], false);
         let fresh = host_notices_view(&host, &[]);
