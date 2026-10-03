@@ -4,6 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -153,6 +154,28 @@ internal val AircastShapes = Shapes(
     extraLarge = RoundedCornerShape(28.dp),
 )
 
+private fun TextStyle.unspaced() = copy(letterSpacing = 0.sp)
+
+val AircastTypography = Typography().let {
+    Typography(
+        displayLarge = it.displayLarge.unspaced(),
+        displayMedium = it.displayMedium.unspaced(),
+        displaySmall = it.displaySmall.unspaced(),
+        headlineLarge = it.headlineLarge.unspaced(),
+        headlineMedium = it.headlineMedium.unspaced(),
+        headlineSmall = it.headlineSmall.unspaced(),
+        titleLarge = it.titleLarge.unspaced(),
+        titleMedium = it.titleMedium.unspaced(),
+        titleSmall = it.titleSmall.unspaced(),
+        bodyLarge = it.bodyLarge.unspaced(),
+        bodyMedium = it.bodyMedium.unspaced(),
+        bodySmall = it.bodySmall.unspaced(),
+        labelLarge = it.labelLarge.unspaced(),
+        labelMedium = it.labelMedium.unspaced(),
+        labelSmall = it.labelSmall.unspaced(),
+    )
+}
+
 val TelemetryNumber = TextStyle(
     fontFamily = FontFamily.Default,
     fontWeight = FontWeight.Medium,
@@ -186,6 +209,7 @@ fun AircastTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () 
         MaterialTheme(
             colorScheme = if (dark) AircastDark else AircastLight,
             shapes = AircastShapes,
+            typography = AircastTypography,
             content = content,
         )
     }
