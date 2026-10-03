@@ -157,6 +157,7 @@ internal fun mainShapeExtension(names: List<String>): String? {
 fun importShapeFiles(context: Context, uris: List<Uri>, target: ShapeTarget): String? {
     val named = uris.map { it to extensionOf(fileName(context, it)) }
     val extension = mainShapeExtension(named.map { "x.${it.second}" }) ?: return "That file could not be read."
+    context.cacheDir.listFiles { file -> file.name.startsWith("shape.") }?.forEach { it.delete() }
     val copied = named.all { (uri, ext) ->
         runCatching {
             context.contentResolver.openInputStream(uri)?.use { source -> File(context.cacheDir, "shape.$ext").outputStream().use { source.copyTo(it) } } != null

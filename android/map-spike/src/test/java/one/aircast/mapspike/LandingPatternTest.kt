@@ -200,4 +200,11 @@ class IsLandingPatternTest {
         val loiter = MissionItem(4, 4, 47.0, 8.0, "Loiter", false, 50.0, loiterRadius = 80.0, terrainCollision = true)
         assertEquals(true, landingLoiterFeatures(emptyList(), listOf(loiter)).features()!!.single().getBooleanProperty(TERRAIN_COLLISION))
     }
+
+    @org.junit.Test
+    fun `a VTOL landing pattern draws no landing area or glide slope, as VTOLLandingPatternMapVisual`() {
+        val vtol = LandingPattern(index = 3, landing = TrackPoint(47.0, 8.0), slopeStart = TrackPoint(47.01, 8.0), finalApproach = TrackPoint(47.02, 8.0), loiterRadiusMetres = 80.0, loiterClockwise = true, glideSlopeShown = false, heights = GlideSlopeHeights("1", "2", "3"))
+        assertEquals(0, landingAreaFeatures(listOf(vtol)).features()!!.size)
+        assertEquals(emptyList<LandingLabel>(), landingLabels(vtol))
+    }
 }

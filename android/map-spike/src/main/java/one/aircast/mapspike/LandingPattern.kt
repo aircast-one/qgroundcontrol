@@ -18,6 +18,7 @@ data class LandingPattern(
     val loiterToAltitude: Boolean = false,
     val heights: GlideSlopeHeights? = null,
     val collides: Boolean = false,
+    val glideSlopeShown: Boolean = true,
 )
 
 private fun place(view: JSONObject?, key: String): TrackPoint? =
@@ -35,6 +36,7 @@ data class GlideSlopeHeights(val transition: String, val midSlope: String, val a
 data class LandingLabel(val at: TrackPoint, val text: String)
 
 fun landingLabels(pattern: LandingPattern): List<LandingLabel> {
+    if (!pattern.glideSlopeShown) return emptyList()
     val landing = pattern.landing ?: return emptyList()
     val slopeStart = pattern.slopeStart ?: return emptyList()
     val bearing = azimuthBetween(landing, slopeStart)
@@ -81,6 +83,7 @@ fun landingPattern(index: Int, view: JSONObject?): LandingPattern? {
         loiterRadiusText = view.optText("loiterRadiusText"),
         loiterToAltitude = view.optBoolean("loiterToAltitude"),
         heights = view.optJSONObject("heights")?.let { GlideSlopeHeights(it.optText("transition"), it.optText("midSlope"), it.optText("approach")) },
+        glideSlopeShown = view.optBoolean("glideSlopeShown", true),
     )
     return pattern.takeIf { it.landing != null || it.slopeStart != null || it.finalApproach != null }
 }
@@ -131,7 +134,7 @@ fun glideSlope(pattern: LandingPattern): List<TrackPoint>? {
 
 fun landingAreaFeatures(patterns: List<LandingPattern>): FeatureCollection =
     FeatureCollection.fromFeatures(
-        patterns.flatMap { pattern ->
+        patterns.filter { it.glideSlopeShown }.flatMap { pattern ->
             listOfNotNull(landingArea(pattern)?.let { Triple(LANDING_AREA_KIND, it, false) }, glideSlope(pattern)?.let { Triple(GLIDE_SLOPE_KIND, it, pattern.collides) })
         }.map { (kind, ring, collides) ->
             Feature.fromGeometry(Polygon.fromLngLats(listOf((ring + ring.first()).map { Point.fromLngLat(it.longitude, it.latitude) }))).apply {

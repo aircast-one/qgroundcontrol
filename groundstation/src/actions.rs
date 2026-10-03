@@ -724,9 +724,9 @@ fn shape_refusal(pattern: &str, file: &str) -> Option<(&'static str, String)> {
     let found = match () {
         _ if lower.ends_with(".kml") => match std::fs::read_to_string(file) {
             Err(_) => return Some(("unreadable", format!("{file} could not be read."))),
-            Ok(text) => crate::kml::parse(&text).map(|shape| matches!(shape, crate::kml::Shape::Polyline(_))),
+            Ok(text) => crate::kml::parse_wanted(&text, wants_line).map(|_| wants_line).or_else(|wanted| crate::kml::parse(&text).map(|shape| matches!(shape, crate::kml::Shape::Polyline(_))).map_err(|_| wanted)),
         },
-        _ if lower.ends_with(".shp") => crate::shp::parse(file).map(|(kind, _, _)| kind == "polyline"),
+        _ if lower.ends_with(".shp") => crate::shp::parse_wanted(file, Some(wants_line)).map(|_| wants_line),
         _ => return Some(("notAShape", "A pattern is drawn from a .kml or .shp file.".to_string())),
     };
     match found {

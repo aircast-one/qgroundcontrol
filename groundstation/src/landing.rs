@@ -11,7 +11,7 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.verticalDistanceUnits",
 ];
 
-const FIELDS: &str = "isSimpleItem,landingCoordinate,slopeStartCoordinate,finalApproachCoordinate";
+const FIELDS: &str = "isSimpleItem,landingCoordinate,slopeStartCoordinate,finalApproachCoordinate,mapVisualQML";
 
 fn place(item: &Value, key: &str) -> Option<Value> {
     let at = item.get(key)?;
@@ -88,6 +88,7 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
         "landingHeadingDegrees": fact("landingHeading"),
         "landingDistanceMetres": fact("landingDistance"),
         "heights": heights,
+        "glideSlopeShown": item.get("mapVisualQML").and_then(Value::as_str) != Some("VTOLLandingPatternMapVisual.qml"),
     })
 }
 

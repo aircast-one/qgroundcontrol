@@ -31,26 +31,6 @@ private val PATTERN_COLOUR = Color.Green.copy(alpha = 0.5f)
 private const val MARKER_TAP_SLOP_PX = 48f
 private const val FULL_TERRAIN = 0.98
 
-internal fun profileOffsets(
-    profile: TerrainProfile,
-    width: Float,
-    height: Float,
-    value: (ProfilePoint) -> Double?,
-): List<Offset> {
-    if (!profile.drawable || width <= 0f || height <= 0f) {
-        return emptyList()
-    }
-    val span = profile.span
-    val distance = profile.distance.takeIf { it > 0.0 } ?: return emptyList()
-
-    return profile.points.mapNotNull { point ->
-        val height1 = value(point) ?: return@mapNotNull null
-        val x = (point.distance / distance * width).toFloat()
-        val y = height - ((height1 - profile.lowest) / span * height).toFloat()
-        Offset(x, y)
-    }
-}
-
 internal fun terrainRuns(profile: TerrainProfile, width: Float, height: Float): List<List<Offset>> =
     profileRuns(profile, width, height) { it.terrain }
 
@@ -193,8 +173,6 @@ fun TerrainProfileView(
                     detectTapGestures { tap -> tappedSequence(profile, size.width.toFloat(), tap.x)?.let(onSelect) }
                 },
             ) {
-
-
                 terrainRuns(profile, size.width, size.height).forEach { run ->
                     drawPath(pathOf(groundOutline(run, size.height)).apply { close() }, TERRAIN_COLOUR.copy(alpha = 0.45f))
                     drawPath(pathOf(run), TERRAIN_COLOUR, style = Stroke(3f))

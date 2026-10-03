@@ -62,7 +62,8 @@ fn without_closing_vertex(points: Vec<(f64, f64)>) -> Vec<(f64, f64)> {
 }
 
 fn shape(text: &str, wanted: Option<bool>) -> Result<Shape, String> {
-    let document = Document::parse(text).map_err(|e| format!("Unable to parse KML: {e}"))?;
+    let failed = |detail: &str| format!("KML file load failed. {detail}");
+    let document = Document::parse(text).map_err(|e| failed(&format!("Unable to parse KML file: {e}")))?;
     let root = document.root();
     let named = |name: &'static str| root.descendants().filter(move |n| n.is_element() && n.tag_name().name() == name);
     let polygon = || {
@@ -79,10 +80,11 @@ fn shape(text: &str, wanted: Option<bool>) -> Result<Shape, String> {
             .find(|points| points.len() >= 2)
             .map(|points| Shape::Polyline(filter_vertices(points, 2)))
     };
+    let missing = |node: &'static str, plural: &str| failed(&if named(node).next().is_none() { format!("Unable to find {node} node in KML") } else { format!("No valid {plural} found in KML file") });
     match wanted {
-        Some(true) => line().ok_or_else(|| "No polyline found in the file.".to_string()),
-        Some(false) => polygon().ok_or_else(|| "No polygon found in the file.".to_string()),
-        None => polygon().or_else(line).ok_or_else(|| "No supported type found in KML file.".to_string()),
+        Some(true) => line().ok_or_else(|| missing("LineString", "polylines")),
+        Some(false) => polygon().ok_or_else(|| missing("Polygon", "polygons")),
+        None => polygon().or_else(line).ok_or_else(|| failed("No supported type found in KML file.")),
     }
 }
 
@@ -143,8 +145,8 @@ mod tests {
     fn the_good_polygon_parses_and_the_three_bad_ones_are_refused_like_qgc_map_polygon_test() {
         let Shape::Polygon(points) = parse(&fixture("PolygonGood.kml")).unwrap() else { panic!("not a polygon") };
         assert!(points.len() >= 4);
-        assert!(parse(&fixture("PolygonBadXml.kml")).unwrap_err().starts_with("Unable to parse KML"));
-        assert_eq!(parse(&fixture("PolygonMissingNode.kml")).unwrap_err(), "No supported type found in KML file.");
+        assert!(parse(&fixture("PolygonBadXml.kml")).unwrap_err().starts_with("KML file load failed. Unable to parse KML file"));
+        assert_eq!(parse(&fixture("PolygonMissingNode.kml")).unwrap_err(), "KML file load failed. No supported type found in KML file.");
         assert!(parse(&fixture("PolygonBadCoordinatesNode.kml")).is_err());
     }
 

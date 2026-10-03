@@ -453,7 +453,8 @@ pub fn view_inputs(pattern: &Value) -> Option<(Value, Value)> {
     let loiters_down = flag(pattern, "useLoiterToAlt") && slope_start(pattern).is_some_and(|s| s != (approach.latitude, approach.longitude));
     let (slope_latitude, slope_longitude) = slope_start(pattern)?;
     let slope = Point3 { latitude: slope_latitude, longitude: slope_longitude, altitude: if loiters_down { land.altitude } else { approach.altitude } };
-    let item = json!({ "kind": "object", "isSimpleItem": false, "landingCoordinate": place(&land), "slopeStartCoordinate": place(&slope), "finalApproachCoordinate": place(&approach) });
+    let visual = if pattern.get("complexItemType").and_then(Value::as_str) == Some(VTOL_PATTERN) { "VTOLLandingPatternMapVisual.qml" } else { "FWLandingPatternMapVisual.qml" };
+    let item = json!({ "kind": "object", "isSimpleItem": false, "landingCoordinate": place(&land), "slopeStartCoordinate": place(&slope), "finalApproachCoordinate": place(&approach), "mapVisualQML": visual });
     let facts: Vec<Value> = field_values(pattern).into_iter().map(|(_, property, value)| json!({ "property": property, "value": value })).collect();
     Some((item, json!({ "kind": "object", "facts": facts })))
 }

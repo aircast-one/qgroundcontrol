@@ -1,5 +1,5 @@
 use serde_json::{Value, json};
-use shapefile::Shape;
+use shapefile::{Shape, ShapeType};
 
 use crate::router::Backend;
 
@@ -72,22 +72,22 @@ pub fn parse(shp_path: &str) -> Result<(String, usize, Vec<(f64, f64)>), String>
     parse_wanted(shp_path, None)
 }
 
-fn type_name(shape: &Shape) -> &'static str {
-    match shape {
-        Shape::NullShape => "NullShape",
-        Shape::Point(_) => "Point",
-        Shape::Polyline(_) => "Arc",
-        Shape::Polygon(_) => "Polygon",
-        Shape::Multipoint(_) => "MultiPoint",
-        Shape::PointZ(_) => "PointZ",
-        Shape::PolylineZ(_) => "ArcZ",
-        Shape::PolygonZ(_) => "PolygonZ",
-        Shape::MultipointZ(_) => "MultiPointZ",
-        Shape::PointM(_) => "PointM",
-        Shape::PolylineM(_) => "ArcM",
-        Shape::PolygonM(_) => "PolygonM",
-        Shape::MultipointM(_) => "MultiPointM",
-        Shape::Multipatch(_) => "MultiPatch",
+fn type_name(kind: ShapeType) -> &'static str {
+    match kind {
+        ShapeType::NullShape => "NullShape",
+        ShapeType::Point => "Point",
+        ShapeType::Polyline => "Arc",
+        ShapeType::Polygon => "Polygon",
+        ShapeType::Multipoint => "MultiPoint",
+        ShapeType::PointZ => "PointZ",
+        ShapeType::PolylineZ => "ArcZ",
+        ShapeType::PolygonZ => "PolygonZ",
+        ShapeType::MultipointZ => "MultiPointZ",
+        ShapeType::PointM => "PointM",
+        ShapeType::PolylineM => "ArcM",
+        ShapeType::PolygonM => "PolygonM",
+        ShapeType::MultipointM => "MultiPointM",
+        ShapeType::Multipatch => "MultiPatch",
     }
 }
 
@@ -109,16 +109,23 @@ pub fn parse_wanted(shp_path: &str, polyline: Option<bool>) -> Result<(String, u
     let prj_path = format!("{}.prj", &shp_path[..shp_path.len() - 4]);
     let prj = std::fs::read_to_string(&prj_path).map_err(|_| failed(format!("File not found: {prj_path}")))?;
     let projection = projection(&prj).map_err(failed)?;
+    let kind = shapefile::ShapeReader::from_path(shp_path).map_err(|_| failed("SHPOpen failed.".to_string()))?.header().shape_type;
     let shapes = shapefile::read_shapes(shp_path).map_err(|_| failed("SHPOpen failed.".to_string()))?;
     let entities = shapes.len();
-    let Some(first) = shapes.first() else { return Err(failed("No entities found.".to_string())) };
-    let file_is_line = match outline(first) {
-        Some((line, _)) => line,
-        None => return Err(failed("No supported types found.".to_string())),
-    };
-    if let Some(wanted) = polyline.filter(|wanted| *wanted != file_is_line) {
-        return Err(failed(format!("File contains {}, expected {}.", type_name(first), if wanted { "Arc" } else { "Polygon" })));
+    if entities == 0 {
+        return Err(failed("No entities found.".to_string()));
     }
+    let file_kind = match kind {
+        ShapeType::Polygon | ShapeType::PolygonZ => Some(false),
+        ShapeType::Polyline | ShapeType::PolylineZ => Some(true),
+        _ => None,
+    };
+    let file_is_line = match (file_kind, polyline) {
+        (Some(found), Some(wanted)) if found == wanted => found,
+        (_, Some(wanted)) => return Err(failed(format!("File contains {}, expected {}.", type_name(kind), if wanted { "Arc" } else { "Polygon" }))),
+        (Some(found), None) => found,
+        (None, None) => return Err(failed("No supported types found.".to_string())),
+    };
     let minimum = if file_is_line { 2 } else { 3 };
     let points = shapes
         .iter()

@@ -1395,6 +1395,8 @@ QList<QByteArray> viewPathsWithFixtures()
              Fixture { "view.missionFile", "../MissionManager/100Waypoints.mission" },
              Fixture { "view.kmlFile", "../MissionManager/PolygonGood.kml" },
              Fixture { "view.shapeFile", "../Utilities/Geo/polygon.shp" },
+             Fixture { "view.areaFile", "../MissionManager/PolygonGood.kml" },
+             Fixture { "view.lineFile", "../Utilities/Geo/pline.shp" },
              Fixture { "view.cameraDefinition", "../../src/Camera/camera_definition_example.xml" },
          }) {
         paths.append(QStringLiteral("%1(%2)").arg(QString::fromUtf8(fixture.view), QDir::cleanPath(bridgeDir.filePath(QString::fromUtf8(fixture.relative)))).toUtf8());

@@ -1189,6 +1189,7 @@ pub fn controller_fields(path: &str) -> Option<Value> {
                 crate::cmdinfo::Firmware::Generic => "Generic",
             },
             "vehicleTypeString": u8::try_from(vehicle_type).map_or("", crate::vehiclefacade::mav_type_text),
+            "homePosition": crate::hub::lock().active().and_then(|v| v.home).map(|(latitude, longitude, _)| json!({ "valid": true, "latitude": latitude, "longitude": longitude })),
         })),
         "plan.missionController.visualItems" => Some(json!({ "kind": "object", "count": visual_spans(&document).len() })),
         _ if camera_calc_index(path).is_some() => camera_calc_index(path)
@@ -2145,7 +2146,7 @@ mod tests {
         std::fs::write(&kml, "<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>8.0,47.0,0 8.01,47.0,0 8.01,47.01,0 8.0,47.0,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>").unwrap();
         let path = kml.to_string_lossy().to_string();
         assert_eq!(shape_points(&path, false).map(|p| p.len()), Ok(3), "the repeated closing vertex is dropped");
-        assert_eq!(shape_points(&path, true), Err("No polyline found in the file.".to_string()), "a corridor needs a polyline");
+        assert_eq!(shape_points(&path, true), Err("KML file load failed. Unable to find LineString node in KML".to_string()), "a corridor needs a polyline");
         assert!(shape_points("area.gpx", false).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
