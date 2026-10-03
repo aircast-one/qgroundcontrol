@@ -50,6 +50,7 @@ class FieldRunsTest {
         assertEquals("", multiplier.detail)
         assertEquals("", multiplier.copy(shortLabel = "Battery monitoring", description = "Battery monitor").detail)
         assertEquals("Minimum arming voltage", multiplier.copy(shortLabel = "Required arming voltage", description = "Minimum arming voltage").detail)
+        assertEquals("", multiplier.copy(shortLabel = "ArduPilot support host", description = "Ardupilot Support Host name").detail)
     }
 
     @Test

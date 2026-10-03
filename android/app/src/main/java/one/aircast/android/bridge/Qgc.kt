@@ -69,7 +69,7 @@ data class Fact(
 }
 
 private fun restates(note: String, label: String): Boolean =
-    note.trimEnd('.').lowercase().let { it.isNotEmpty() && label.lowercase().startsWith(it) }
+    note.trimEnd('.').lowercase().let { it.isNotEmpty() && label.isNotEmpty() && (label.lowercase().startsWith(it) || it.startsWith(label.lowercase())) }
 
 object Qgc {
     private const val TAG = "QgcBridge"
