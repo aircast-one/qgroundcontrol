@@ -210,7 +210,7 @@ const GATED: &[(&str, &str, bool, &str)] = &[
 
 const MOBILE: bool = cfg!(any(target_os = "android", target_os = "ios"));
 const LOGGING_ROWS: [&str; 3] = ["telemetrySave", "telemetrySaveNotArmed", "saveCsvTelemetry"];
-const VIRTUAL_JOYSTICK_OFF: &str = "Has no effect while the virtual joystick is off.";
+const VIRTUAL_JOYSTICK_OFF: &str = "Has no effect while on-screen sticks are off.";
 
 const DISK_LOGGING_OFF: &str = "Writing the log to disk is off";
 
@@ -320,7 +320,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Appearance", &["indoorPalette", "appFontPointSize", "overlayGlassFrost", "qLocaleLanguage"]),
         ("Sound", &["audioMuted", "batteryPercentRemainingAnnounce"]),
         ("Preflight checklist", &["useChecklist", "enforceChecklist"]),
-        ("Virtual Joystick", &["virtualJoystick", "virtualJoystickAutoCenterThrottle", "virtualJoystickLeftHandedMode"]),
+        ("On-screen sticks", &["virtualJoystick", "virtualJoystickAutoCenterThrottle", "virtualJoystickLeftHandedMode"]),
         ("Planning defaults", &["defaultMissionItemAltitude", "offlineEditingFirmwareClass", "offlineEditingVehicleClass", "offlineEditingCruiseSpeed", "offlineEditingHoverSpeed", "offlineEditingAscentSpeed", "offlineEditingDescentSpeed"]),
         ("AirLink", &["loginAirLink", "passAirLink"]),
         ("Ground station position", &["followTarget"]),

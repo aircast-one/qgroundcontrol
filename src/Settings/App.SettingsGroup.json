@@ -148,8 +148,8 @@
             "longDesc": "If this option is enabled the virtual joystick will be shown on the Fly view.",
             "type": "bool",
             "default": false,
-            "label": "Virtual Joystick",
-            "keywords": "joystick,virtual stick"
+            "label": "On-screen sticks",
+            "keywords": "joystick,virtual stick,virtual joystick,on-screen sticks,sticks"
         },
         {
             "name": "virtualJoystickAutoCenterThrottle",
