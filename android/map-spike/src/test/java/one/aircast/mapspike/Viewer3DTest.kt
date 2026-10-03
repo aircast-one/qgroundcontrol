@@ -73,4 +73,17 @@ class Viewer3DTest {
         assertEquals(true, steep.zipWithNext().all { (a, b) -> b.base <= a.top + 1e-9 })
         assertEquals(64, ribbon(Point3D(8.0, 47.0, 10.0), Point3D(8.0, 48.0, 10.0), "orange").size)
     }
+
+    @Test
+    fun `every marker carries its label three metres above it like Viewer3DVehicleItems`() {
+        val labels = pathLabels(JSONObject("""{"markers":[{"at":[8.0,47.0,30.0],"name":"W","label":"3","colour":"black"},{"at":[8.1,47.1,0.0],"name":"","label":"","colour":"black"}]}"""))
+        assertEquals(listOf(Label3D(Point3D(8.0, 47.0, 33.0), "3")), labels)
+    }
+
+    @Test
+    fun `a label rises on screen by its height foreshortened by the camera tilt`() {
+        assertEquals(100f to 200f, lifted(100f to 200f, 2.0, 0.0, 50.0))
+        assertEquals(100f to 150f, lifted(100f to 200f, 2.0, 30.0, 50.0))
+        assertEquals(100f to 200f, lifted(100f to 200f, 2.0, 30.0, -5.0))
+    }
 }

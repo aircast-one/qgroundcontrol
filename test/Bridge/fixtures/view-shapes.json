@@ -9646,6 +9646,7 @@
         "view.viewer3dPath.markers[].at.#",
         "view.viewer3dPath.markers[].at[]",
         "view.viewer3dPath.markers[].colour",
+        "view.viewer3dPath.markers[].label",
         "view.viewer3dPath.markers[].name",
         "view.viewer3dPath.segments.#",
         "view.viewer3dVehicle.class",
@@ -14606,6 +14607,7 @@
                     "number"
                 ],
                 "colour": "string",
+                "label": "string",
                 "name": "string"
             }
         ],

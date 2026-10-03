@@ -257,6 +257,7 @@ pub struct PathItem {
     pub specifies_coordinate: bool,
     pub at: (f64, f64),
     pub altitude: f64,
+    pub sequence: i64,
 }
 
 fn item_name(item: &PathItem) -> &'static str {
@@ -282,6 +283,7 @@ fn marker_colour(name: &str) -> &'static str {
 pub struct Marker {
     pub at: (f64, f64, f64),
     pub name: &'static str,
+    pub label: String,
     pub colour: &'static str,
 }
 
@@ -304,7 +306,7 @@ pub fn path(items: &[PathItem], home: Option<(f64, f64)>) -> (Vec<Marker>, Vec<S
             (true, None) => None,
             (true, Some(before)) => Some(end(item, before)),
             (false, _) => Some((item.at.0, item.at.1, item.altitude)),
-        }).flatten().map(|at| Marker { at, name, colour: marker_colour(name) });
+        }).flatten().map(|at| Marker { at, name, label: if name == "W" { item.sequence.to_string() } else { name.to_string() }, colour: marker_colour(name) });
         let next = if name == "L" || name == "W" { Some(*item) } else { previous };
         (markers.into_iter().chain(marker).collect(), next)
     });
@@ -334,6 +336,7 @@ fn path_items(listed: &Value, vehicle_home: Option<(f64, f64)>) -> (Vec<PathItem
             specifies_coordinate: item["specifiesCoordinate"].as_bool().unwrap_or(false),
             at,
             altitude: item["altitudeMetres"].as_f64().unwrap_or(0.0),
+            sequence: item["sequence"].as_i64().unwrap_or(0),
         })
     }).collect();
     (items, home)
@@ -359,7 +362,7 @@ pub fn path_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "Viewer3DPath",
-        "markers": markers.iter().map(|m| json!({ "at": lon_lat_alt(m.at, bias), "name": m.name, "colour": m.colour })).collect::<Vec<_>>(),
+        "markers": markers.iter().map(|m| json!({ "at": lon_lat_alt(m.at, bias), "name": m.name, "label": m.label, "colour": m.colour })).collect::<Vec<_>>(),
         "segments": segments.iter().map(|s| json!({ "from": lon_lat_alt(s.from, bias), "to": lon_lat_alt(s.to, bias), "colour": if s.rtl { "red" } else { "orange" } })).collect::<Vec<_>>(),
     })
 }
@@ -420,7 +423,7 @@ mod tests {
     }
 
     fn at(launch: bool, takeoff: bool, command: i64, lat: f64, alt: f64) -> PathItem {
-        PathItem { launch, takeoff, command, specifies_coordinate: true, at: (lat, 8.0), altitude: alt }
+        PathItem { launch, takeoff, command, specifies_coordinate: true, at: (lat, 8.0), altitude: alt, sequence: (lat * 100.0).round() as i64 - 4700 }
     }
 
     #[test]
@@ -429,6 +432,7 @@ mod tests {
         let (markers, segments) = path(&items, Some((47.0, 8.0)));
         assert_eq!(markers.iter().map(|m| m.name).collect::<Vec<_>>(), vec!["T", "W", "R", "W", "L"], "the launch item draws nothing; return-to-launch is an L at home");
         assert_eq!(markers.last().unwrap().at, (47.0, 8.0, 40.0), "RTL sits at home at the last waypoint's altitude");
+        assert_eq!(markers.iter().map(|m| m.label.as_str()).collect::<Vec<_>>(), vec!["T", "20", "R", "30", "L"], "waypoints are labelled by sequence number, the rest by letter");
         assert_eq!(segments.len(), 3, "takeoff to W, W to W (the ROI is skipped), W to home");
         assert_eq!((segments[0].from, segments[0].to), ((47.1, 8.0, 20.0), (47.2, 8.0, 30.0)));
         assert!(segments[2].rtl && !segments[1].rtl);
@@ -439,13 +443,14 @@ mod tests {
         let listed = json!({ "items": [
             { "kind": "settings", "command": 0, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "altitudeMetres": 0.0 },
             { "kind": "takeoff", "command": 22, "specifiesCoordinate": true, "coordinate": { "latitude": 47.1, "longitude": 8.0 }, "altitudeMetres": 20.0 },
-            { "kind": "simple", "command": 16, "specifiesCoordinate": true, "coordinate": { "latitude": 47.2, "longitude": 8.0 }, "altitudeMetres": 30.0 },
+            { "kind": "simple", "command": 16, "sequence": 2, "specifiesCoordinate": true, "coordinate": { "latitude": 47.2, "longitude": 8.0 }, "altitudeMetres": 30.0 },
             { "kind": "simple", "command": 20, "specifiesCoordinate": false, "coordinate": null, "altitudeMetres": 0.0 },
         ]});
         let (items, home) = path_items(&listed, Some((46.9, 7.9)));
         let (markers, segments) = path(&items, home);
         assert_eq!(markers.last().map(|m| (m.name, m.at)), Some(("L", (46.9, 7.9, 30.0))), "the vehicle's home wins over the plan's launch item, as QGC reads vehicle.homePosition");
         assert!(segments.last().is_some_and(|s| s.rtl && s.to == (46.9, 7.9, 30.0)));
+        assert_eq!(markers.iter().map(|m| m.label.as_str()).collect::<Vec<_>>(), vec!["T", "2", "L"], "the waypoint label is the listed sequence number");
         let (fallback, launch) = path_items(&listed, None);
         assert_eq!(path(&fallback, launch).1.last().map(|s| s.to), Some((47.0, 8.0, 30.0)), "without a vehicle the plan's launch point is home");
         let (orphan, none) = path_items(&json!({ "items": [listed["items"][3].clone()] }), None);

@@ -1,6 +1,7 @@
 package one.aircast.mapspike
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -9,11 +10,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -51,6 +56,7 @@ private const val RIBBON_WIDTH = 1.5
 private const val RIBBON_THICKNESS = 1.0
 private const val RIBBON_STEP = 8.0
 private const val MARKER_SIZE = 3.0
+private const val LABEL_LIFT = 3.0
 private const val ARM_LENGTH = 3.0
 private const val ARM_WIDTH = 0.5
 private const val ROTOR_SIZE = 1.6
@@ -115,6 +121,26 @@ internal fun pathSlabs(view: JSONObject?): List<Slab> {
         point3d(marker.optJSONArray("at"))?.let { box(it, MARKER_SIZE, marker.optText("colour")) }
     }
     return ribbons + boxes
+}
+
+data class Label3D(val at: Point3D, val text: String)
+
+internal fun pathLabels(view: JSONObject?): List<Label3D> {
+    val markers = view?.optJSONArray("markers")
+    return (0 until (markers?.length() ?: 0)).mapNotNull { markers?.optJSONObject(it) }.mapNotNull { marker ->
+        point3d(marker.optJSONArray("at"))?.let { Label3D(it.copy(alt = it.alt + LABEL_LIFT), marker.optText("label")) }
+    }.filter { it.text.isNotBlank() }
+}
+
+internal fun lifted(ground: Pair<Float, Float>, pixelsPerMetre: Double, tilt: Double, height: Double): Pair<Float, Float> =
+    ground.first to (ground.second - height.coerceAtLeast(0.0) * pixelsPerMetre * kotlin.math.sin(Math.toRadians(tilt))).toFloat()
+
+private fun onScreen(map: MapLibreMap, label: Label3D): Pair<Float, Float> {
+    val across = Math.toRadians(map.cameraPosition.bearing + 90)
+    val ground = map.projection.toScreenLocation(LatLng(label.at.lat, label.at.lon))
+    val beside = offset(label.at, kotlin.math.sin(across), kotlin.math.cos(across)).let { map.projection.toScreenLocation(LatLng(it.lat, it.lon)) }
+    val pixelsPerMetre = kotlin.math.hypot((beside.x - ground.x).toDouble(), (beside.y - ground.y).toDouble())
+    return lifted(ground.x to ground.y, pixelsPerMetre, map.cameraPosition.tilt, label.at.alt)
 }
 
 internal fun vehicleSlabs(view: JSONObject?): List<Slab> {
@@ -222,6 +248,8 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     val vehicle = remember(vehiclesJson) { vehicleChoices(vehiclesJson).choices.firstOrNull { it.active && isPlottable(it.latitude, it.longitude) } }
     val pathJson by mapPath(VIEWER3D_PATH)
     val slabs = remember(pathJson) { pathSlabs(pathJson) }
+    val labels = remember(pathJson) { pathLabels(pathJson) }
+    var cameraMoves by remember { mutableIntStateOf(0) }
     val vehicleJson by mapPath(VIEWER3D_VEHICLE)
     val frame = remember(vehicleJson) { vehicleSlabs(vehicleJson) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -260,6 +288,8 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     DisposableEffect(mapView) {
         mapView.getMapAsync { loaded ->
             map = loaded
+            loaded.addOnCameraMoveListener { cameraMoves++ }
+            loaded.addOnCameraIdleListener { cameraMoves++ }
             loaded.uiSettings.isRotateGesturesEnabled = true
             loaded.uiSettings.isTiltGesturesEnabled = true
             val mapStyle = planMapStyle(context)
@@ -287,8 +317,12 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
         framedOn = target
         shown.cameraPosition = CameraPosition.Builder().target(target).zoom(SCENE_ZOOM).tilt(SCENE_PITCH).build()
     }
-    Box(modifier) {
+    val placed = remember(map, style, labels, cameraMoves) { map?.takeIf { style != null }?.let { shown -> labels.map { onScreen(shown, it) to it.text } }.orEmpty() }
+    Box(modifier.clipToBounds()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+        placed.forEach { (at, text) ->
+            Text(text, color = Color.Black, style = MaterialTheme.typography.labelLarge, modifier = Modifier.offset { IntOffset(at.first.toInt(), at.second.toInt()) })
+        }
         if (!scene.available && scene.reason.isNotBlank()) {
             androidx.compose.material3.Surface(
                 shape = MaterialTheme.shapes.medium,
