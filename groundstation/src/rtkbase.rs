@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use crate::gpsrtk::{Driver, Fault, INITIAL_BAUD, Out, RECEIVE_TIMEOUT_MS, Session, Settings};
 use crate::router::Backend;
+use crate::ashtechbase::AshtechBase;
 use crate::femtobase::FemtoBase;
 use crate::sbfbase::SbfBase;
 use crate::ubxbase::{BaseDriver, Event, Transport, UbxBase};
@@ -193,12 +194,12 @@ fn stream(base: &mut dyn BaseDriver, stop: &AtomicBool) -> Result<(), Fault> {
     Ok(())
 }
 
-fn driver_for<T: Transport + 'static>(driver: Driver, transport: T, plan: crate::gpsrtk::BasePlan) -> Option<Box<dyn BaseDriver>> {
+fn driver_for<T: Transport + 'static>(driver: Driver, transport: T, plan: crate::gpsrtk::BasePlan) -> Box<dyn BaseDriver> {
     match driver {
-        Driver::UBlox => Some(Box::new(UbxBase::new(transport, plan))),
-        Driver::Septentrio => Some(Box::new(SbfBase::new(transport, plan))),
-        Driver::Femtomes => Some(Box::new(FemtoBase::new(transport, plan))),
-        Driver::Trimble => None,
+        Driver::UBlox => Box::new(UbxBase::new(transport, plan)),
+        Driver::Septentrio => Box::new(SbfBase::new(transport, plan)),
+        Driver::Femtomes => Box::new(FemtoBase::new(transport, plan)),
+        Driver::Trimble => Box::new(AshtechBase::new(transport, plan)),
     }
 }
 
@@ -221,7 +222,7 @@ pub fn run<T: Transport + 'static>(transport: T, stop: &AtomicBool) {
     if let Some((driver, _)) = configure.as_ref() {
         crate::settingsstore::set_raw(MANUFACTURER_SETTING, &json!(manufacturer_id(*driver)));
     }
-    let Some(mut base) = configure.and_then(|(driver, plan)| driver_for(driver, transport, plan)) else {
+    let Some(mut base) = configure.map(|(driver, plan)| driver_for(driver, transport, plan)) else {
         owned(stop, |held| held.serial_failed(Fault::ConfigureFailed));
         return;
     };

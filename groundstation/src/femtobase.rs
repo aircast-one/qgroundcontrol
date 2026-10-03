@@ -14,7 +14,7 @@ const LOG_GGA: (&str, &str) = ("LOG GPGGA 1 \r\n", "<LOG OK");
 const LOG_RTCM: (&str, &str) = ("LOG RTCM 1\r\n", "<LOG OK");
 const FIX_OK: &str = "FIX OK";
 
-enum Message {
+pub(crate) enum Message {
     Nmea(String),
     Rtcm(Vec<u8>),
 }
@@ -58,7 +58,18 @@ fn cut(buffer: &[u8]) -> Cut {
     }
 }
 
-fn nmea_degrees(ddmm: f64) -> f64 {
+pub(crate) fn take_messages(buffer: &mut Vec<u8>) -> Vec<Message> {
+    let steps: Vec<(Option<Message>, usize)> = std::iter::successors(Some((None, 0usize)), |(_, at)| match cut(&buffer[*at..]) {
+        Cut::Take(message, used) => Some((message, at + used)),
+        Cut::Wait => None,
+    })
+    .collect();
+    let consumed = steps.last().map_or(0, |(_, at)| *at);
+    buffer.drain(..consumed);
+    steps.into_iter().filter_map(|(message, _)| message).collect()
+}
+
+pub(crate) fn nmea_degrees(ddmm: f64) -> f64 {
     let degrees = (ddmm * 0.01).trunc();
     degrees + (ddmm * 0.01 - degrees) * 100.0 / 60.0
 }
@@ -151,17 +162,6 @@ impl<T: Transport> FemtoBase<T> {
             }
         }
     }
-
-    fn messages(&mut self) -> Vec<Message> {
-        let steps: Vec<(Option<Message>, usize)> = std::iter::successors(Some((None, 0usize)), |(_, at)| match cut(&self.buffer[*at..]) {
-            Cut::Take(message, used) => Some((message, at + used)),
-            Cut::Wait => None,
-        })
-        .collect();
-        let consumed = steps.last().map_or(0, |(_, at)| *at);
-        self.buffer.drain(..consumed);
-        steps.into_iter().filter_map(|(message, _)| message).collect()
-    }
 }
 
 impl<T: Transport> BaseDriver for FemtoBase<T> {
@@ -192,7 +192,7 @@ impl<T: Transport> BaseDriver for FemtoBase<T> {
         }
         self.buffer.extend_from_slice(&bytes);
         let before = self.events.len();
-        self.messages().into_iter().for_each(|message| match message {
+        take_messages(&mut self.buffer).into_iter().for_each(|message| match message {
             Message::Nmea(sentence) => self.sentence(&sentence),
             Message::Rtcm(frame) => self.events.push(Event::Rtcm(frame)),
         });
