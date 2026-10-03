@@ -78,11 +78,10 @@ class LogDownloadScreenTest {
     }
 
     @Test
-    fun `the auto refresh only fires for a connected vehicle with nothing listed`() {
-        assertTrue(shouldAutoRefreshLogs(hasVehicle = true, hasEntries = false, busy = false))
-        assertFalse(shouldAutoRefreshLogs(hasVehicle = true, hasEntries = true, busy = false))
-        assertFalse(shouldAutoRefreshLogs(hasVehicle = true, hasEntries = false, busy = true))
-        assertFalse(shouldAutoRefreshLogs(hasVehicle = false, hasEntries = false, busy = false))
+    fun `opening the page refreshes the list of a connected vehicle unless a transfer is running`() {
+        assertTrue(shouldAutoRefreshLogs(hasVehicle = true, busy = false))
+        assertFalse(shouldAutoRefreshLogs(hasVehicle = true, busy = true))
+        assertFalse(shouldAutoRefreshLogs(hasVehicle = false, busy = false))
     }
 }
 

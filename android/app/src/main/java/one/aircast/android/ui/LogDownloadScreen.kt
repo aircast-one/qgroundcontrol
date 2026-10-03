@@ -246,8 +246,8 @@ internal fun savedToText(logs: LogsView?): String? {
     }
 }
 
-internal fun shouldAutoRefreshLogs(hasVehicle: Boolean, hasEntries: Boolean, busy: Boolean) =
-    hasVehicle && !hasEntries && !busy
+internal fun shouldAutoRefreshLogs(hasVehicle: Boolean, busy: Boolean) =
+    hasVehicle && !busy
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -277,7 +277,7 @@ fun LogDownloadScreen(modifier: Modifier = Modifier) {
     }
 
     LaunchedEffect(logs.connected) {
-        if (shouldAutoRefreshLogs(logs.connected, entries.isNotEmpty(), busy)) {
+        if (shouldAutoRefreshLogs(logs.connected, busy)) {
             offMain { Qgc.invoke("$LOG_ROOT.refresh") }
         }
     }
