@@ -30,6 +30,7 @@ class RemoteIdIndicatorTest {
         val off = selfIdFacts(page)
         assertEquals(listOf("sendSelfID", "selfIDType", "selfIDFree", "selfIDEmergency"), off.map { it.name })
         assertEquals(listOf(true, false, false, true), off.map { it.acceptsWrite })
+        assertEquals("RemoteIDIndicatorPage names the switch and the combo itself", listOf("Broadcast", "Broadcast message"), off.take(2).map { it.title })
         assertEquals(listOf(true, true, true, true), selfIdFacts(page.map { if (it.name == "sendSelfID") it.copy(valueString = "true", value = true) else it }).map { it.acceptsWrite })
     }
 }

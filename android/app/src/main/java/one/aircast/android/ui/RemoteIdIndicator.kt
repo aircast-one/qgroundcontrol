@@ -46,14 +46,15 @@ internal const val REMOTE_ID_SETTINGS_PAGE = "Remote ID"
 private const val SEND_SELF_ID = "sendSelfID"
 private val SELF_ID_FACTS = listOf(SEND_SELF_ID, "selfIDType", "selfIDFree", "selfIDExtended", "selfIDEmergency")
 private val BROADCAST_GATED = setOf("selfIDType", "selfIDFree", "selfIDExtended")
+private val SELF_ID_LABELS = mapOf(SEND_SELF_ID to "Broadcast", "selfIDType" to "Broadcast message")
 private const val SELF_ID_NOTE = "If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled."
 
 internal fun selfIdFacts(page: List<Fact>): List<Fact> {
     val byName = page.associateBy { it.name }
     val broadcasting = byName[SEND_SELF_ID]?.boolValue == true
-    return SELF_ID_FACTS.mapNotNull { byName[it] }.map { fact ->
-        if (fact.name in BROADCAST_GATED && !broadcasting) fact.copy(enabled = false, disabledReason = "Broadcast is off") else fact
-    }
+    return SELF_ID_FACTS.mapNotNull { byName[it] }
+        .map { fact -> SELF_ID_LABELS[fact.name]?.let { fact.copy(description = it) } ?: fact }
+        .map { fact -> if (fact.name in BROADCAST_GATED && !broadcasting) fact.copy(enabled = false, disabledReason = "Broadcast is off") else fact }
 }
 
 internal data class RemoteIdStatus(

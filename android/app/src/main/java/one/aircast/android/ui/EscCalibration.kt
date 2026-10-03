@@ -30,11 +30,10 @@ internal const val DIALOG_CONTROL = "dialog"
 private const val ESC_CAL_VIEW = "view.escCalibration"
 private const val ESC_CAL_POLL_MS = 500L
 
-internal data class EscCalibrationState(val highlight: String, val text: String, val warnings: List<String>, val running: Boolean = false)
+internal data class EscCalibrationState(val highlight: String, val text: String, val running: Boolean = false)
 
 internal fun escCalibration(view: JSONObject?): EscCalibrationState? = view?.takeIf { it.optBoolean("open") }?.let {
-    val warnings = it.optJSONArray("warnings")
-    EscCalibrationState(it.optText("highlight"), it.optText("text"), (0 until (warnings?.length() ?: 0)).map { index -> warnings!!.optString(index) }, it.optBoolean("running"))
+    EscCalibrationState(it.optText("highlight"), it.optText("text"), it.optBoolean("running"))
 }
 
 @Composable
@@ -60,14 +59,13 @@ internal fun EscCalibrationDialog(onClose: () -> Unit) {
                         append(shown?.text ?: "Starting ESC calibration...")
                     },
                 )
-                shown?.warnings?.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         },
         confirmButton = {
-            TextButton(enabled = state?.running != true, onClick = {
+            TextButton(enabled = state?.running == false, onClick = {
                 offMainDetached { Qgc.invoke("escCalibration.close") }
                 onClose()
-            }) { Text("Close") }
+            }) { Text("OK") }
         },
     )
 }

@@ -7,9 +7,9 @@ import org.junit.Test
 
 class EscCalibrationTest {
     @Test
-    fun `the dialog shows the core's highlighted prefix, text and config warnings`() {
-        val state = escCalibration(JSONObject("""{"open":true,"highlight":"ESC Calibration failed. ","text":"timeout","warnings":["ESC 3 not responding"]}"""))!!
-        assertEquals(EscCalibrationState("ESC Calibration failed. ", "timeout", listOf("ESC 3 not responding")), state)
+    fun `the dialog shows the core's highlighted prefix and text`() {
+        val state = escCalibration(JSONObject("""{"open":true,"highlight":"ESC Calibration failed. ","text":"timeout","running":false}"""))!!
+        assertEquals(EscCalibrationState("ESC Calibration failed. ", "timeout", running = false), state)
         assertNull(escCalibration(JSONObject("""{"open":false}""")))
     }
 }
