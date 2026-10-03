@@ -221,18 +221,10 @@ internal data class SettingsSectionRows(
 
 internal fun settingsPagePath(title: String): String = "$SETTINGS_VIEW($title)"
 
-internal val NOT_BUILT_HERE = mapOf(
-    "displayPresetsTabFirst" to "this head has no presets tab",
-)
-
-internal fun notBuiltHere(fact: Fact): String? = NOT_BUILT_HERE[fact.name]
-
-internal fun editOnDesktop(fact: Fact): Boolean =
-    !controlIsUnderstood(fact.controlKind) && notBuiltHere(fact) == null
+internal fun editOnDesktop(fact: Fact): Boolean = !controlIsUnderstood(fact.controlKind)
 
 internal fun inertNote(fact: Fact): String = when {
     !fact.enabled -> fact.disabledReason.ifBlank { "Has no effect yet" }
-    notBuiltHere(fact) != null -> "No effect here - ${notBuiltHere(fact)}"
     else -> "Read-only"
 }
 
@@ -628,13 +620,10 @@ internal fun enumLabel(fact: Fact): String =
 internal fun shownEnumLabel(fact: Fact): String =
     fact.enumStrings.getOrNull(fact.enumIndex)?.let(::sentenceCase) ?: fact.valueString
 
-internal fun factSubtitle(fact: Fact): String = listOfNotNull(
-    when {
-        fact.enumStrings.isNotEmpty() || fact.bitmaskStrings.isNotEmpty() || fact.isBool -> ""
-        else -> fact.units
-    }.ifBlank { null },
-    notBuiltHere(fact)?.let { "No effect here - $it" },
-).joinToString(" · ")
+internal fun factSubtitle(fact: Fact): String = when {
+    fact.enumStrings.isNotEmpty() || fact.bitmaskStrings.isNotEmpty() || fact.isBool -> ""
+    else -> fact.units
+}
 
 @Composable
 internal fun FieldSlider(value: Float?, slider: FactSlider, enabled: Boolean, onWrite: (Double) -> Unit) {
@@ -666,7 +655,7 @@ internal fun FactRow(
     val scope = rememberCoroutineScope()
     var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
 
-    val segmented = !editOnDesktop(fact) && notBuiltHere(fact) == null && !fact.isBitmask &&
+    val segmented = !editOnDesktop(fact) && !fact.isBitmask &&
         showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings)
     val asField = !segmented && showsAsField(fact)
 
@@ -706,7 +695,7 @@ internal fun FactRow(
         return
     }
 
-    val rowToggles = !segmented && fact.isBool && fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact)
+    val rowToggles = !segmented && fact.isBool && fact.acceptsWrite && !editOnDesktop(fact)
     Column {
     Row(
         Modifier
@@ -735,7 +724,7 @@ internal fun FactRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (!fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact)) {
+            if (!fact.acceptsWrite && !editOnDesktop(fact)) {
                 Text(
                     text = inertNote(fact),
                     style = MaterialTheme.typography.bodySmall,
@@ -761,7 +750,7 @@ internal fun FactRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                !fact.acceptsWrite || notBuiltHere(fact) != null -> Column(horizontalAlignment = Alignment.End) {
+                !fact.acceptsWrite -> Column(horizontalAlignment = Alignment.End) {
                     if (fact.isBool) {
                         Switch(checked = fact.boolValue, onCheckedChange = null, enabled = false)
                     } else {
@@ -816,7 +805,7 @@ private val SECONDS = setOf("s", "sec", "secs", "second", "seconds")
 internal fun shownUnits(units: String): String = if (units.lowercase() in SECONDS) "s" else units
 
 internal fun showsAsField(fact: Fact): Boolean =
-    !fact.readOnly && notBuiltHere(fact) == null && !editOnDesktop(fact) && !fact.isBool
+    !fact.readOnly && !editOnDesktop(fact) && !fact.isBool
 
 internal fun pairsAsField(fact: Fact): Boolean =
     fact.shortLabel.length in 1..PAIRED_LABEL_BUDGET && showsAsField(fact) && when {

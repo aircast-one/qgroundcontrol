@@ -56,6 +56,10 @@ internal fun itemCommandPath(index: Int): String = "plan.missionController.visua
 
 internal fun itemRawEditPath(index: Int): String = "plan.missionController.visualItems.$index.rawEdit"
 
+internal const val PRESETS_FIRST_SETTING = "settings.planViewSettings.displayPresetsTabFirst.rawValue"
+
+internal fun presetsShownFirst(setting: JSONObject?): Boolean = setting?.optBoolean("value") == true
+
 internal const val RAW_EDIT_NOTE = "Provides advanced access to all commands/parameters. Be very careful!"
 
 internal fun itemNote(view: JSONObject?, rawOn: Boolean): String? =
@@ -183,6 +187,9 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
     val stats by androidx.compose.runtime.produceState<one.aircast.mapspike.SurveyStats?>(null, index, revision, camera != null) {
         value = if (camera == null) null else withContext(Dispatchers.Default) { one.aircast.mapspike.surveyStats(Qgc.get("view.surveyStats($index)")) }
     }
+    val presetsFirst by androidx.compose.runtime.produceState<Boolean?>(null, index) {
+        value = withContext(Dispatchers.Default) { presetsShownFirst(Qgc.get(PRESETS_FIRST_SETTING)) }
+    }
     val positionStart = at ?: (mapCentre ?: previousCoordinate(view))?.let { (latitude, longitude) -> TrackPoint(latitude, longitude) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -292,7 +299,9 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
             areaHelp(view)?.let { help ->
                 Text(help, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
             }
-            if (areaHelp(view) == null && wizard.isEmpty()) LazyColumn(Modifier.heightIn(max = 480.dp)) {
+            if (areaHelp(view) == null && wizard.isEmpty() && presetsFirst != null) LazyColumn(Modifier.heightIn(max = 480.dp)) {
+                val presets = { presetKind(view)?.let { kind -> item(key = "presets") { PatternPresets(index, kind) { revision++ } } } }
+                if (presetsFirst == true) presets()
                 items(fields, key = { it.path }) { fact ->
                     if (fact.optional) OptionalFactRow(fact) { revision++ } else FactRow(fact) { revision++ }
                 }
@@ -339,9 +348,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         }
                     }
                 }
-                presetKind(view)?.let { kind ->
-                    item(key = "presets") { PatternPresets(index, kind) { revision++ } }
-                }
+                if (presetsFirst == false) presets()
                 speedSection(view)?.let { speed ->
                     item(key = "speed") {
                         SpeedSectionRow(speed) { written ->
