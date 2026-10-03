@@ -512,7 +512,6 @@ ACCEPTED = {
     "enabledText": "view.joystick indicator is served only while a joystick is attached, and the desktop recording rig has none; joystickhost.rs indicator() serves it",
     "inputsText": "view.joystick indicator is served only while a joystick is attached, and the desktop recording rig has none; joystickhost.rs indicator() serves it",
     "typeText": "view.joystick indicator is served only while a joystick is attached, and the desktop recording rig has none; joystickhost.rs indicator() serves it",
-    "warn": "view.joystick indicator is served only while a joystick is attached, and the desktop recording rig has none; joystickhost.rs indicator() serves it",
     "presetKind": "view.itemFacts is recorded under the Qt plan, and presetKind is served only by the core plan's pattern editor (coreplan.rs item facts for survey/corridor), which is what offers presets",
     "data": "view.opticalFlow image is served once a PX4Flow-style sensor has sent DATA_TRANSMISSION_HANDSHAKE/ENCAPSULATED_DATA, which the SITL rig never does; flowimage.rs serves it",
     "signedIn": "the account object is the core flavor's AircastAccount port (account.rs object()), served only without a Qt host, so the Qt-hosted recording rig never sees it",

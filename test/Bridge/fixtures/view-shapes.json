@@ -9387,6 +9387,7 @@
         "view.setupSummary.components[].rows.#",
         "view.setupSummary.components[].rows[].label",
         "view.setupSummary.components[].rows[].value",
+        "view.setupSummary.components[].rows[].warn",
         "view.setupSummary.kind",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).class",
         "view.shapeFile(<checkout>/test/Utilities/Geo/polygon.shp).count",
@@ -14252,7 +14253,8 @@
                 "rows": [
                     {
                         "label": "string",
-                        "value": "string"
+                        "value": "string",
+                        "warn": "bool"
                     }
                 ]
             }

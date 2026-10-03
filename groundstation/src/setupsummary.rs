@@ -36,10 +36,17 @@ pub struct Vehicle {
 }
 
 pub type Facts<'a> = &'a dyn Fn(&str) -> Option<Value>;
-type Rows = Vec<(String, String)>;
+type Rows = Vec<SummaryRow>;
 
-fn row(label: &str, value: impl Into<String>) -> (String, String) {
-    (label.to_string(), value.into())
+#[derive(Debug, Clone, PartialEq)]
+pub struct SummaryRow {
+    pub label: String,
+    pub value: String,
+    pub warn: bool,
+}
+
+pub fn row(label: &str, value: impl Into<String>) -> SummaryRow {
+    SummaryRow { label: label.to_string(), value: value.into(), warn: false }
 }
 
 fn number(fact: &Value) -> f64 {
@@ -372,7 +379,7 @@ fn px4_sensors(facts: Facts, vehicle: &Vehicle) -> Rows {
 
 const AIRSPEED_CHECK_CIRCUIT_BREAKER: i64 = 162_128;
 
-fn px4_airspeed_row(facts: Facts, vehicle: &Vehicle) -> Option<(String, String)> {
+fn px4_airspeed_row(facts: Facts, vehicle: &Vehicle) -> Option<SummaryRow> {
     let value = |name: &str| facts(name).map(|f| number(&f)).unwrap_or(0.0);
     let (major, minor, _) = vehicle.version;
     let supported = match major > 1 || (major == 1 && minor > 14) {
@@ -459,7 +466,7 @@ pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .iter()
         .filter_map(|component| {
             let found = rows(&text(component, "class"), &facts, &vehicle)?;
-            Some(json!({ "name": text(component, "name"), "rows": found.iter().map(|(label, value)| json!({ "label": label, "value": value })).collect::<Vec<_>>() }))
+            Some(json!({ "name": text(component, "name"), "rows": found.iter().map(|r| json!({ "label": r.label, "value": r.value, "warn": r.warn })).collect::<Vec<_>>() }))
         })
         .collect();
     json!({ "kind": "object", "class": "SetupSummary", "components": components })
@@ -483,7 +490,7 @@ mod tests {
         let map: HashMap<&str, Value> = [("CAL_MAG0_ID", json!({ "kind": "fact", "name": "CAL_MAG0_ID", "value": 1 })), ("SYS_HAS_NUM_ASPD", json!({ "kind": "fact", "name": "SYS_HAS_NUM_ASPD", "value": 1 })), ("SENS_DPRES_OFF", json!({ "kind": "fact", "name": "SENS_DPRES_OFF", "value": 0 }))].into_iter().collect();
         let vtol = Vehicle { multi_rotor: false, forward_flight: true, version: (1, 15, 0), ..copter() };
         let rows = px4_sensors(&lookup(&map), &vtol);
-        assert_eq!(rows[0].0, "Compass", "SensorsComponent picks the fixed-wing summary for fixed wing, VTOL and airship");
+        assert_eq!(rows[0].label, "Compass", "SensorsComponent picks the fixed-wing summary for fixed wing, VTOL and airship");
         assert!(rows.contains(&row("Airspeed", SETUP_REQUIRED)), "with an airspeed sensor and no offset, the Airspeed row asks for setup: {rows:?}");
     }
 
@@ -499,7 +506,7 @@ mod tests {
         assert_eq!(rows("APMAirframeComponent", &facts, &copter()).unwrap(), [row("Frame Class", "Quad"), row("Firmware Version", "4.5.7")], "FRAME_TYPE is absent so its row is hidden");
         let custom = Vehicle { custom: Some("1.2.3".into()), ..copter() };
         assert_eq!(rows("AirframeComponent", &facts, &custom).unwrap().last(), Some(&row("Custom Fw. Ver.", "1.2.3")), "AirframeComponentSummary shows it once the custom major version is set");
-        assert!(rows("AirframeComponent", &facts, &copter()).unwrap().iter().all(|(label, _)| label != "Custom Fw. Ver."));
+        assert!(rows("AirframeComponent", &facts, &copter()).unwrap().iter().all(|r| r.label != "Custom Fw. Ver."));
         assert!(rows("APMTuningComponent", &facts, &copter()).is_none());
         assert_eq!(firmware_text(-1, 0, 0, ""), "Unknown");
         assert_eq!(firmware_text(1, 15, 2, "beta"), "1.15.2beta");
@@ -531,7 +538,7 @@ mod tests {
         assert_eq!(shown[..3], [row("Low Battery Failsafe", ""), row("  Critical Level", "Return"), row("  Emergency Level", "Land")]);
         assert!(shown.contains(&row("RTL, Then", "Loiter and do not land")));
         assert!(shown.contains(&row("Loiter Alt", "30 m")));
-        assert!(!shown.iter().any(|(label, _)| label == "Land Delay"), "a negative delay never lands");
+        assert!(!shown.iter().any(|r| r.label == "Land Delay"), "a negative delay never lands");
         assert_eq!(clean_behavior("Warning"), "Warning");
     }
 

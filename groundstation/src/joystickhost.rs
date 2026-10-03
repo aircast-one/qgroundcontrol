@@ -8,6 +8,7 @@ use crate::settingsini::Setting;
 use crate::stickcal::{Outcome as CalOutcome, StickCal};
 use crate::mavout::Outbound;
 use crate::router::Backend;
+use crate::setupsummary::{SummaryRow, row};
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable"];
 pub const DEVICES: &str = "joystick.devices";
@@ -747,9 +748,8 @@ fn type_text(device: &Device) -> &'static str {
     if device.gamepad { "Gamepad" } else { "Joystick" }
 }
 
-pub fn summary_rows(device: Option<&Device>, calibrated: bool) -> Vec<(String, String)> {
-    let row = |label: &str, value: String| (label.to_string(), value);
-    let Some(device) = device else { return vec![row("Status", "No joystick detected".into())] };
+pub fn summary_rows(device: Option<&Device>, calibrated: bool) -> Vec<SummaryRow> {
+    let Some(device) = device else { return vec![row("Status", "No joystick detected")] };
     let status = match (device.axes, device.gamepad, calibrated) {
         (0, ..) => "Buttons only",
         (_, true, _) => "Ready",
@@ -760,10 +760,10 @@ pub fn summary_rows(device: Option<&Device>, calibrated: bool) -> Vec<(String, S
     let details = &device.details;
     let features = details.features();
     [
-        Some(row("Status", status.into())),
-        Some(row("Type", type_text(device).into())),
+        Some(row("Status", status)),
+        Some(row("Type", type_text(device))),
         Some(row("Inputs", inputs.join(", "))),
-        details.battery_percent.map(|p| row("Battery", details.battery_text(p))),
+        details.battery_percent.map(|p| SummaryRow { warn: p < LOW_JOYSTICK_BATTERY, ..row("Battery", details.battery_text(p)) }),
         (!features.is_empty()).then(|| row("Features", features.join(", "))),
         (details.vendor_id > 0).then(|| row("Device ID", format!("0x{:04X}:0x{:04X}", details.vendor_id, details.product_id))),
         details.player_index.map(|p| row("Player", (p + 1).to_string())),
@@ -773,7 +773,7 @@ pub fn summary_rows(device: Option<&Device>, calibrated: bool) -> Vec<(String, S
     .collect()
 }
 
-pub fn summary() -> Vec<(String, String)> {
+pub fn summary() -> Vec<SummaryRow> {
     let host = host();
     let device = active_name(&host.devices).and_then(|name| host.devices.iter().find(|d| d.name == name));
     summary_rows(device, device.is_some_and(|d| settings_for(&d.name).calibrated))
@@ -901,15 +901,18 @@ mod tests {
 
     #[test]
     fn the_setup_summary_reads_like_joystick_component_summary_qml() {
-        let text = |rows: Vec<(String, String)>| rows.into_iter().map(|(label, value)| format!("{label}={value}")).collect::<Vec<_>>();
+        let text = |rows: Vec<SummaryRow>| rows.into_iter().map(|r| format!("{}={}", r.label, r.value)).collect::<Vec<_>>();
         assert_eq!(text(summary_rows(None, false)), ["Status=No joystick detected"]);
         let details = DeviceDetails { battery_percent: Some(80), power_state: "Charging".into(), rumble: true, gyroscope: true, accelerometer: true, player_index: Some(0), vendor_id: 0x045E, product_id: 0x0B13, ..DeviceDetails::default() };
         let pad = Device { name: "Xbox".into(), axes: 6, buttons: 15, hats: 1, gamepad: true, details };
         assert_eq!(text(summary_rows(Some(&pad), false)), ["Status=Ready", "Type=Gamepad", "Inputs=6 axes, 15 buttons", "Battery=80% (Charging)", "Features=Rumble, Gyro, Accel", "Device ID=0x045E:0x0B13", "Player=1"], "a gamepad needs no calibration");
         let stick = Device { name: "Stick".into(), axes: 4, buttons: 0, ..Device::default() };
+        let low = Device { details: DeviceDetails { battery_percent: Some(19), ..DeviceDetails::default() }, ..pad.clone() };
+        assert_eq!(summary_rows(Some(&low), false).iter().map(|r| (r.label.as_str(), r.warn)).filter(|(_, warn)| *warn).collect::<Vec<_>>(), [("Battery", true)], "JoystickComponentSummary paints a battery under twenty percent red");
+        assert!(summary_rows(Some(&pad), false).iter().all(|r| !r.warn));
         assert_eq!(text(summary_rows(Some(&stick), false)), ["Status=Needs calibration", "Type=Joystick", "Inputs=4 axes"], "zero counts are left out of Inputs");
-        assert_eq!(summary_rows(Some(&stick), true)[0].1, "Calibrated");
-        assert_eq!(summary_rows(Some(&Device { axes: 0, buttons: 8, ..stick }), false)[0].1, "Buttons only");
+        assert_eq!(summary_rows(Some(&stick), true)[0].value, "Calibrated");
+        assert_eq!(summary_rows(Some(&Device { axes: 0, buttons: 8, ..stick }), false)[0].value, "Buttons only");
     }
 
     #[test]

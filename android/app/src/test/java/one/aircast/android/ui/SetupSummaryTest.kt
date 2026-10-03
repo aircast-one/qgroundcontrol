@@ -11,6 +11,15 @@ class SetupSummaryTest {
         assertEquals(listOf(SummaryLine("Roll", "Channel 1"), SummaryLine("Pitch", "Setup required")), read["Radio"])
         assertEquals(emptyList<SummaryLine>(), read["Frame"])
         assertEquals(emptyMap<String, List<SummaryLine>>(), setupSummaries(null))
+        val joystick = setupSummaries(JSONObject("""{"components":[{"name":"Joystick","rows":[{"label":"Battery","value":"15%","warn":true}]}]}"""))
+        assertEquals(listOf(SummaryLine("Battery", "15%", warn = true)), joystick["Joystick"])
+    }
+
+    @Test
+    fun `a warned summary value keeps its warning in the glance, as JoystickComponentSummary paints a low battery red`() {
+        val parts = summaryGlanceParts(listOf(SummaryLine("Status", "Ready"), SummaryLine("Battery", "15% (Discharging)", warn = true)))
+        assertEquals(listOf(false, true), parts.map { it.warn })
+        assertEquals("Ready \u00b7 15% (discharging)", summaryGlance(listOf(SummaryLine("Status", "Ready"), SummaryLine("Battery", "15% (Discharging)", warn = true))))
     }
 
     @org.junit.Test

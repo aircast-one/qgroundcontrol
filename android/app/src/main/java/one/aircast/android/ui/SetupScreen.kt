@@ -46,8 +46,6 @@ import androidx.compose.material3.OutlinedButton
 
 internal data class FirmwareLine(val summary: String, val vehicleType: String)
 
-// view.firmware spells the line - "PX4 1.15.0 beta" - and knows that a major version of -1 is
-// Vehicle's versionNotSetValue rather than a version.
 internal fun firmwareLine(view: JSONObject?): FirmwareLine =
     FirmwareLine(view?.optText("summary").orEmpty(), view?.optText("vehicleType").orEmpty())
 
@@ -166,7 +164,7 @@ internal fun setupSummaries(view: JSONObject?): Map<String, List<SummaryLine>> {
     val listed = view?.optJSONArray("components") ?: return emptyMap()
     return (0 until listed.length()).mapNotNull { listed.optJSONObject(it) }.associate { component ->
         val rows = component.optJSONArray("rows")
-        component.optText("name") to (0 until (rows?.length() ?: 0)).mapNotNull { rows?.optJSONObject(it) }.map { SummaryLine(it.optText("label"), it.optText("value")) }
+        component.optText("name") to (0 until (rows?.length() ?: 0)).mapNotNull { rows?.optJSONObject(it) }.map { SummaryLine(it.optText("label"), it.optText("value"), it.optBoolean("warn")) }
     }
 }
 

@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -123,8 +125,8 @@ internal fun SetupRow(
         if (subtitle.isNotBlank()) {
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        summaryGlance(summary)?.let {
-            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        summaryGlanceParts(summary).takeIf { it.isNotEmpty() }?.let {
+            Text(glanceText(it, MaterialTheme.colorScheme.error), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
     if (status.isNotBlank()) {
@@ -178,16 +180,24 @@ internal fun EmptyState(@DrawableRes icon: Int, title: String, text: String, mod
     }
 }
 
-internal data class SummaryLine(val label: String, val value: String)
+internal data class SummaryLine(val label: String, val value: String, val warn: Boolean = false)
 
 private val UNREAD_VALUES = setOf("Unknown", "--", "")
+private const val GLANCE_SEPARATOR = " \u00b7 "
 
-internal fun summaryGlance(summary: List<SummaryLine>): String? {
-    val read = summary.map { SummaryLine(it.label.trimEnd(':', ' '), it.value.trim().replace(Regex("(\\S)\\("), "$1 (")) }.filterNot { it.value in UNREAD_VALUES }
+internal fun summaryGlanceParts(summary: List<SummaryLine>): List<SummaryLine> {
+    val read = summary.map { it.copy(label = it.label.trimEnd(':', ' '), value = it.value.trim().replace(Regex("(\\S)\\("), "$1 (")) }.filterNot { it.value in UNREAD_VALUES }
     val shared = read.map { it.value.substringBefore(' ', "") }.distinct().singleOrNull()?.takeIf { it.isNotEmpty() && read.size > 1 }
-    val parts = shared?.let { prefix -> read.map { "${it.label} ${it.value.removePrefix(prefix).trim()}" } } ?: read.map { it.value }.distinct()
-    return parts.takeIf { it.isNotEmpty() }?.joinToString(" \u00b7 ", transform = ::sentenceCase)
+    val parts = shared?.let { prefix -> read.map { it.copy(value = "${it.label} ${it.value.removePrefix(prefix).trim()}") } } ?: read.distinctBy { it.value }
+    return parts.map { it.copy(value = sentenceCase(it.value)) }
 }
+
+internal fun summaryGlance(summary: List<SummaryLine>): String? =
+    summaryGlanceParts(summary).takeIf { it.isNotEmpty() }?.joinToString(GLANCE_SEPARATOR) { it.value }
+
+private fun glanceText(parts: List<SummaryLine>, warn: Color): AnnotatedString =
+    parts.map { AnnotatedString(it.value, if (it.warn) SpanStyle(color = warn) else SpanStyle()) }
+        .reduce { line, part -> line + AnnotatedString(GLANCE_SEPARATOR) + part }
 
 @Composable
 internal fun FootNote(text: String) {
