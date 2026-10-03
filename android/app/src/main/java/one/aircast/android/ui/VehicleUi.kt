@@ -1053,10 +1053,10 @@ private fun InstrumentSheet(
         }
         LazyColumn(Modifier.fillMaxWidth()) {
             shownFirst(groups, shownAtOpen).forEach { group ->
-                item(key = "head${group.group}") { SectionHeader(group.title) }
+                item(key = "head${group.group}") { SectionHeader(sentenceCase(group.title)) }
                 items(group.facts, key = { it.path }) { fact ->
                     ListItem(
-                        headlineContent = { Text(fact.label) },
+                        headlineContent = { Text(sentenceCase(fact.label)) },
                         leadingContent = { Checkbox(checked = fact.path in chosen, onCheckedChange = null) },
                         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                         modifier = Modifier.clickable { onToggle(fact.path) },
