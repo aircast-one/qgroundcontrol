@@ -213,6 +213,7 @@ const INVERTED: &[(&str, &str)] = &[("apmStartMavlinkStreams", "Controlled by Ve
 const QML_LABELS: &[(&str, &str, &str)] = &[
     ("appSettings", "audioMuted", "Mute all audio output"),
     ("appSettings", "enableMultiVehiclePanel", "Show multi-vehicle panel"),
+    ("appSettings", "virtualJoystick", "Enabled"),
     ("appSettings", "virtualJoystickLeftHandedMode", "Left-handed mode (swap sticks)"),
     ("flyViewSettings", "updateHomePosition", "Update return to home position based on device location"),
     ("flyViewSettings", "forwardFlightGoToLocationLoiterRad", "Loiter Radius in Forward Flight Guided Mode"),
@@ -221,6 +222,14 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
     ("viewer3DSettings", "osmFilePath", "3D Map File"),
     ("viewer3DSettings", "buildingLevelHeight", "Average Building Level Height"),
     ("viewer3DSettings", "altitudeBias", "Vehicles Altitude Bias"),
+    ("autoConnectSettings", "autoConnectPixhawk", "Pixhawk"),
+    ("autoConnectSettings", "autoConnectSiKRadio", "SiK Radio"),
+    ("autoConnectSettings", "autoConnectLibrePilot", "LibrePilot"),
+    ("autoConnectSettings", "autoConnectUDP", "UDP"),
+    ("autoConnectSettings", "autoConnectRTKGPS", "RTK"),
+    ("autoConnectSettings", "nmeaSource", "Source"),
+    ("autoConnectSettings", "autoConnectNmeaPort", "Device"),
+    ("autoConnectSettings", "autoConnectNmeaBaud", "Baudrate"),
     ("autoConnectSettings", "nmeaUdpPort", "NMEA stream UDP port"),
     ("videoSettings", "multiViewEnabled", "Show all cameras"),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
@@ -344,6 +353,10 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("On-Screen Control", &["enableOnScreenControl", "clickAndDrag", "cameraHFov", "cameraVFov", "cameraSlideSpeed"]),
         ("Zoom speed", &["zoomMaxSpeed", "zoomMinSpeed"]),
         ("", &["joystickButtonsSpeed", "showAzimuthIndicatorOnMap", "toolbarIndicatorShowAzimuth", "toolbarIndicatorShowAcquireReleaseControl"]),
+    ]),
+    ("autoConnectSettings", &[
+        ("", &["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectLibrePilot", "autoConnectUDP", "autoConnectRTKGPS"]),
+        ("NMEA GPS", &["nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud", "nmeaUdpPort"]),
     ]),
     ("remoteIDSettings", &[
         ("Region", &["region"]),
@@ -750,6 +763,24 @@ mod tests {
         let titles: Vec<String> = subsections("gimbalControllerSettings", &controls).iter().map(|s| s["title"].as_str().unwrap().to_string()).collect();
         assert_eq!(titles, ["On-Screen Control", "Zoom speed", ""]);
         assert!(HIDDEN_WHEN.contains(&("cameraSlideSpeed", "clickAndDrag", false)), "GimbalIndicator.qml shows the slide speed only for click-and-drag");
+    }
+
+    #[test]
+    fn nmea_rows_sit_under_their_own_heading_with_link_settings_labels() {
+        let controls: Vec<Value> = ["nmeaUdpPort", "autoConnectUDP", "nmeaSource", "autoConnectPixhawk"].iter().map(|n| json!({ "name": n })).collect();
+        let titled: Vec<(String, Vec<String>)> = subsections("autoConnectSettings", &controls)
+            .iter()
+            .map(|s| (s["title"].as_str().unwrap().to_string(), s["controls"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect()))
+            .collect();
+        assert_eq!(
+            titled,
+            vec![("".to_string(), vec!["autoConnectPixhawk".to_string(), "autoConnectUDP".to_string()]), ("NMEA GPS".to_string(), vec!["nmeaSource".to_string(), "nmeaUdpPort".to_string()])]
+        );
+        let label = |group: &str, name: &str| qml_labelled(group, json!({ "name": name, "label": "fact json" }))["label"].as_str().unwrap().to_string();
+        assert_eq!(
+            [label("autoConnectSettings", "nmeaSource"), label("autoConnectSettings", "autoConnectSiKRadio"), label("appSettings", "virtualJoystick")],
+            ["Source", "SiK Radio", "Enabled"]
+        );
     }
 
     #[test]
