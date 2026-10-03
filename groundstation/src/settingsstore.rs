@@ -720,12 +720,13 @@ pub fn get_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Str
 }
 
 fn store_raw(at: &Addressed, raw_given: &Value) {
-    if let Some(new) = typed(&at.meta.value_type, raw_given) {
+    if let Some(given) = typed(&at.meta.value_type, raw_given) {
+        let before = raw(at.group, &at.fact, &at.meta);
+        let new = if before == given { given } else { validated(at.group, &at.fact, given) };
         let spelled = match &new {
             Value::String(text) => text.clone(),
             other => other.to_string(),
         };
-        let before = raw(at.group, &at.fact, &at.meta);
         if let Some(values) = stored().as_mut() {
             values.insert(key(at.group, &at.fact), Setting::Text(spelled));
             follow_ups(at.group, &at.fact, &new).into_iter().filter(|_| before != new).for_each(|(fact, value)| {
@@ -800,6 +801,36 @@ fn refused_write(group: &str, fact: &str, raw: &Value) -> Option<&'static str> {
     let stored = raw_setting(&format!("settings.remoteIDSettings.{fact}")).and_then(|v| v.as_str().map(str::to_string));
     let legal = candidate.is_empty() || stored.as_deref() == Some(candidate) || crate::remoteid::eu_operator_id_valid(candidate);
     (group == "RemoteID" && fact == "operatorIDEU" && !legal).then_some(INVALID_EU_OPERATOR_ID)
+}
+
+fn validated(group: &str, fact: &str, new: Value) -> Value {
+    let other = |name: &str| raw_setting(&format!("settings.batteryIndicatorSettings.{name}")).and_then(|v| v.as_i64());
+    match (group, fact, new.as_i64()) {
+        ("BatteryIndicator", "threshold1", Some(given)) => other("threshold2").map_or(new, |threshold2| json!(battery_threshold1(given, threshold2))),
+        ("BatteryIndicator", "threshold2", Some(given)) => other("threshold1").map_or(new, |threshold1| json!(battery_threshold2(given, threshold1))),
+        _ => new,
+    }
+}
+
+fn settled(step: impl Fn(i64) -> i64, given: i64) -> i64 {
+    std::iter::successors(Some(given), |&value| Some(step(value))).take(8).find(|&value| step(value) == value).unwrap_or_else(|| step(given))
+}
+
+fn battery_threshold1(given: i64, threshold2: i64) -> i64 {
+    settled(|value| match value {
+        v if v < 16 => 17,
+        v if v > 99 => 99,
+        v if v > threshold2 => v,
+        _ => threshold2 + 1,
+    }, given)
+}
+
+fn battery_threshold2(given: i64, threshold1: i64) -> i64 {
+    settled(|value| match value {
+        v if v <= 15 => 16,
+        v if v < threshold1 => v,
+        _ => threshold1 - 1,
+    }, given)
 }
 
 fn follow_ups(group: &str, fact: &str, new: &Value) -> Vec<(&'static str, String)> {
@@ -925,6 +956,20 @@ impl<B: Backend> Backend for Owner<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn battery_thresholds_settle_like_battery_indicator_settings_validators() {
+        assert_eq!(battery_threshold1(85, 60), 85);
+        assert_eq!(battery_threshold1(120, 60), 99);
+        assert_eq!(battery_threshold1(50, 60), 61, "threshold 1 stays above threshold 2");
+        assert_eq!(battery_threshold1(10, 60), 61, "17 is revalidated by the next rawValueChanged and lifted above threshold 2");
+        assert_eq!(battery_threshold1(10, 5), 17);
+        assert_eq!(battery_threshold2(40, 80), 40);
+        assert_eq!(battery_threshold2(90, 80), 79, "threshold 2 stays below threshold 1");
+        assert_eq!(battery_threshold2(3, 80), 16);
+        assert_eq!(battery_threshold1(80, 99), 100, "QGC's validator never settles above a threshold 2 of 99; one step is taken");
+        assert_eq!(validated("BatteryIndicator", "valueDisplay", json!(2)), json!(2));
+    }
+
     #[test]
     fn a_settings_file_from_another_format_is_reset_and_stamped_like_qgc_application() {
         let old: BTreeMap<String, Setting> = [("SettingsVersion".to_string(), Setting::Text("7".into())), ("Units/verticalDistanceUnits".to_string(), Setting::Text("1".into()))].into_iter().collect();
