@@ -270,6 +270,7 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
             Kind::Serial { baud: value.as_i64()?, data_bits: *data_bits, flow_control: *flow_control, stop_bits: *stop_bits, parity: *parity, port_name: port_name.clone(), port_display_name: port_display_name.clone() }
         }
         (Kind::Serial { .. }, "dataBits" | "stopBits" | "parity" | "flowControl") => serial_framing(&config.kind, field, value.as_i64()?)?,
+        (Kind::LogReplay { .. }, "filename") => Kind::LogReplay { file: text.filter(|t| !t.is_empty())? },
         (Kind::Udp { local_port, hosts }, "addHost") => {
             let (host, port) = udp_target(text.as_deref()?, *local_port)?;
             let known = hosts.iter().any(|(h, p)| *h == host && *p == port);
@@ -764,6 +765,8 @@ mod tests {
         assert_eq!(edited(&tcp, "port", &json!(5761)).unwrap().kind, Kind::Tcp { host: "10.0.0.5".into(), port: 5761 });
         assert_eq!(edited(&tcp, "name", &json!("Bench 2")).unwrap().name, "Bench 2");
         assert_eq!(edited(&tcp, "localPort", &json!(1)), None, "a field the kind does not carry is not written");
+        let replay = LinkConfig { name: "Replay".into(), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: "/a.tlog".into() } };
+        assert_eq!(edited(&replay, "filename", &json!("/b.tlog")).map(|c| c.kind), Some(Kind::LogReplay { file: "/b.tlog".into() }), "LogReplaySettings picks another log for a saved replay link");
         assert!(edited(&tcp, "autoConnect", &json!(true)).is_some_and(|c| c.auto_connect), "Automatically Connect on Start");
         assert!(cloud_settings_valid("https://api.aircast.one", "drone-1"));
         assert!(cloud_settings_valid(" http://10.0.0.2:8080 ", "d"), "AircastCloudSettings.qml accepts http or https with a host");

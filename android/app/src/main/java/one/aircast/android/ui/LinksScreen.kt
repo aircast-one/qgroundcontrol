@@ -91,6 +91,7 @@ data class LinkRow(
     val autoConnect: Boolean = false,
     val highLatency: Boolean = false,
     val type: String = "",
+    val filename: String = "",
 )
 
 internal data class AutoLink(val name: String, val summary: String, val heard: Boolean, val type: String = "")
@@ -127,6 +128,7 @@ internal fun linkRows(view: JSONObject?): List<LinkRow> {
                 autoConnect = link.optBoolean("autoConnect"),
                 highLatency = link.optBoolean("highLatency"),
                 type = link.optText("type"),
+                filename = link.optText("filename"),
             )
         }
     }
@@ -140,8 +142,19 @@ internal fun linkIcon(type: String): Int = when (type) {
     else -> R.drawable.ic_link
 }
 
+private const val REPLAY_LINK_FOLDER = "replay-links"
+
+internal fun stagedReplayLog(context: android.content.Context, link: String, uri: android.net.Uri): String? {
+    val shown = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0) else null
+    } ?: "replay.tlog"
+    val folder = java.io.File(java.io.File(context.filesDir, REPLAY_LINK_FOLDER), link.replace(Regex("[^A-Za-z0-9._-]"), "_")).apply { mkdirs() }
+    val staged = java.io.File(folder, shown.replace(Regex("[/\\\\]"), "_"))
+    return context.contentResolver.openInputStream(uri)?.use { source -> staged.outputStream().use { source.copyTo(it) } }?.let { staged.absolutePath }
+}
+
 internal fun linkIsEditable(row: LinkRow): Boolean =
-    !row.connected && row.editing in setOf("hostAndPort", "portOnly", "serial")
+    !row.connected && row.editing in setOf("hostAndPort", "portOnly", "serial", "logFile")
 
 internal val CREATABLE_LINK_TYPES = listOf("udp", "tcp", "serial")
 internal const val BLUETOOTH_LINK = "bluetooth"
@@ -195,9 +208,11 @@ internal fun editWrites(
     autoConnect: Boolean,
     highLatency: Boolean,
     framing: SerialFraming = SerialFraming(),
+    logFile: String = "",
 ): List<Pair<String, Any>> = listOf<Pair<String, Any>>("name" to name, "autoConnect" to autoConnect, "highLatency" to highLatency) + when (editing) {
     "hostAndPort" -> listOf("host" to host, "port" to port)
     "portOnly" -> listOf("localPort" to port)
+    "logFile" -> listOf("filename" to logFile)
     "serial" -> listOf(
         "portName" to portName,
         "baud" to baud,
@@ -471,7 +486,15 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
     var highLatency by remember { mutableStateOf(row.highLatency) }
     var framing by remember { mutableStateOf(row.framing) }
     var advanced by remember { mutableStateOf(false) }
+    var logFile by remember { mutableStateOf(row.filename) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val logPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        val chosen = uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            logFile = withContext(Dispatchers.IO) { stagedReplayLog(context, row.name, chosen) } ?: logFile
+        }
+    }
     val linksJson by qgcPath(LINKS_VIEW)
     val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
     val ports = remember(linksJson) { serialPortChoices(linksJson) }
@@ -500,7 +523,10 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                         singleLine = true,
                     )
                 }
-                if (row.editing == "serial") {
+                if (row.editing == "logFile") {
+                    Text(logFile.substringAfterLast('/').ifBlank { "No log file chosen" }, style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = { logPicker.launch(arrayOf("*/*")) }) { Text("Choose log file") }
+                } else if (row.editing == "serial") {
                     Box {
                         OutlinedButton(onClick = { portsOpen = true }) {
                             Text(portLabel(ports, portName).ifBlank { portName.ifBlank { "Choose a port" } })
@@ -551,6 +577,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     val parsed = port.ifBlank { if (udp) udpDefault else port }.toIntOrNull() ?: 0
                     val invalid = when {
                         row.editing == "serial" -> null
+                        row.editing == "logFile" -> "Choose a log file.".takeIf { logFile.isBlank() }
                         udp -> linkFormError("udp", "", port, udpDefault)
                         parsed !in 1..65535 -> "Port must be a number between 1 and 65535."
                         else -> null
@@ -558,9 +585,6 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     error = invalid
                     if (invalid == null) {
                         scope.launch {
-                            // The menu gated on a watched row. A link can connect between that
-                            // poll and this tap, and writing a port or baud underneath a live
-                            // link changes the configuration without changing the connection.
                             val rows = withContext(Dispatchers.Default) { currentRows() }
                             val live = rows.firstOrNull { it.index == row.index }
                             if (live == null || live.connected) {
@@ -571,9 +595,9 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                                 uniqueLinkName(editedLinkSuggestion(row.editing, host, port, portLabel(ports, portName)), rows.filter { it.index != row.index }.map { it.name })
                             }
                             withContext(Dispatchers.Default) {
-                                editWrites(row.editing, resolved, host, parsed, portName, baud, autoConnect, highLatency, framing)
+                                editWrites(row.editing, resolved, host, parsed, portName, baud, autoConnect, highLatency, framing, logFile)
                                     .forEach { (field, value) ->
-                                        // qtpaths: links.linkConfigurations.0.name, links.linkConfigurations.0.autoConnect, links.linkConfigurations.0.highLatency, links.linkConfigurations.0.host, links.linkConfigurations.0.port, links.linkConfigurations.0.localPort, links.linkConfigurations.0.portName, links.linkConfigurations.0.baud, links.linkConfigurations.0.dataBits, links.linkConfigurations.0.stopBits, links.linkConfigurations.0.parity, links.linkConfigurations.0.flowControl
+                                        // qtpaths: links.linkConfigurations.0.name, links.linkConfigurations.0.autoConnect, links.linkConfigurations.0.highLatency, links.linkConfigurations.0.host, links.linkConfigurations.0.port, links.linkConfigurations.0.localPort, links.linkConfigurations.0.portName, links.linkConfigurations.0.baud, links.linkConfigurations.0.dataBits, links.linkConfigurations.0.stopBits, links.linkConfigurations.0.parity, links.linkConfigurations.0.flowControl, links.linkConfigurations.0.filename
                                         Qgc.set("$LINKS_PATH.${row.index}.$field", value)
                                     }
                                 Qgc.invoke("links.commitLinkConfigurations")

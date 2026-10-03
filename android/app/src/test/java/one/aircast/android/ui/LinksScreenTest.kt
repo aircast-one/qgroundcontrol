@@ -200,7 +200,6 @@ class LinkEditRulesTest {
     @Test
     fun `a kind the core has no form for is not editable`() {
         assertFalse(linkIsEditable(row(editing = "none")))
-        assertFalse(linkIsEditable(row(editing = "logFile")))
     }
 
     @Test
@@ -257,6 +256,15 @@ class LinkEditRulesTest {
         org.junit.Assert.assertEquals(
             listOf("links.linkConfigurations.2.dataBits" to 7, "links.linkConfigurations.2.stopBits" to 2, "links.linkConfigurations.2.parity" to 2, "links.linkConfigurations.2.flowControl" to 1),
             framingWrites(2, SerialFraming(dataBits = 7, stopBits = 2, parity = 2, flowControl = 1)),
+        )
+    }
+
+    @org.junit.Test
+    fun `a saved log replay link is edited by choosing another log, as LogReplaySettings does`() {
+        org.junit.Assert.assertTrue(linkIsEditable(LinkRow(index = 0, name = "Replay", statusLine = "", connected = false, heard = false, lastError = "", editing = "logFile")))
+        org.junit.Assert.assertEquals(
+            listOf("name" to "Replay", "autoConnect" to false, "highLatency" to false, "filename" to "/data/r.tlog"),
+            editWrites("logFile", "Replay", "", 0, "", 0, false, false, logFile = "/data/r.tlog"),
         )
     }
 }
