@@ -56,7 +56,7 @@ data class Fact(
 ) {
     val title: String = description.ifBlank { name }.trimEnd(':', ' ')
     val heading: String = shortLabel.trimEnd(':', ' ').ifBlank { title }
-    val detail: String = description.takeIf { shortLabel.isNotBlank() && it !in enumStrings && !restates(it, heading) }.orEmpty()
+    val detail: String = description.takeIf { shortLabel.isNotBlank() && it !in enumStrings && !restates(it, heading) }?.let(::labelCase).orEmpty()
     val isEnum: Boolean = enumStrings.isNotEmpty() && bitmaskStrings.isEmpty()
     val isBitmask: Boolean = bitmaskStrings.isNotEmpty() && bitmaskStrings.size == bitmaskValues.size
     val valueIsOffTheEnumList: Boolean =
@@ -67,6 +67,9 @@ data class Fact(
     val acceptsWrite: Boolean = !readOnly && enabled
     val optionalSet: Boolean = (value as? Number)?.toDouble()?.isNaN() == false
 }
+
+internal fun labelCase(note: String): String =
+    if (!note.trimEnd().endsWith('.') && note.split(' ').size <= 4) one.aircast.mapspike.sentenceCase(note) else note
 
 private fun restates(note: String, label: String): Boolean =
     note.trimEnd('.').lowercase().let { it.isNotEmpty() && label.isNotEmpty() && (label.lowercase().startsWith(it) || it.startsWith(label.lowercase()) || it.endsWith(" " + label.lowercase())) }
