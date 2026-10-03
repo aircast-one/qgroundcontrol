@@ -21,11 +21,6 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.speedUnits",
 ];
 
-// Distance, altitude and speed follow the operator's setting, so serving raw SI beside a hardcoded
-// "m" spells metres at an operator configured in feet. Bearing and heading are degrees and convert
-// for nobody, which is why they stay literal. Same three-field treatment as distanceToVehicle:
-// the raw number keeps its *Metres name, the converted one takes the bare name, and the text is
-// the core's spelling so two heads cannot disagree about it.
 #[derive(Clone)]
 pub struct Units {
     pub horizontal: crate::read::Unit,
@@ -48,11 +43,6 @@ impl Units {
     }
 }
 
-// The push runs on the thread that receives traffic, which cannot read the backend - the bridge
-// C ABI has to be called on Qt's thread - so snapshot() had no units to convert with and spelled
-// everything metric. A head watching this view was served metres with an "m" label while the same
-// read through get came back in feet, and the push arrives every frame, so the wrong one wins.
-// The view's compute runs on Qt's thread; it leaves what it read here for the push to use.
 #[cfg(not(test))]
 static LAST_UNITS: Mutex<Option<Units>> = Mutex::new(None);
 
@@ -456,13 +446,14 @@ impl Traffic {
         true
     }
 
-    pub fn failed(&mut self, generation: u64, token: &'static str, detail: String) -> bool {
+    pub fn failed(&mut self, generation: u64, token: &'static str, detail: String) -> Option<bool> {
         if generation != self.generation {
-            return false;
+            return None;
         }
+        let first = self.failure.is_none();
         self.connected = false;
         self.failure = Some(Failure { token, detail });
-        true
+        Some(first)
     }
 
     pub fn receive(&mut self, report: &Report, now_ms: u64) -> bool {
@@ -544,9 +535,6 @@ impl Traffic {
         self.snapshot_in(now_ms, &Units::metric())
     }
 
-    // Only the push calls this. Making it a separate entry point rather than teaching snapshot()
-    // to consult the static keeps every test that does not care about units off a process-wide
-    // value another test can be writing at the same time.
     pub fn announced(&self, now_ms: u64) -> Value {
         self.snapshot_in(now_ms, &remembered_units())
     }
@@ -604,15 +592,39 @@ pub fn pump(now_ms: u64) {
     }
 }
 
+pub const HOST_NOT_FOUND: &str = "Host not found";
+pub const REMOTE_HOST_CLOSED: &str = "The remote host closed the connection";
+
+pub fn socket_error_text(error: &std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::ConnectionRefused => "Connection refused".to_string(),
+        std::io::ErrorKind::TimedOut => "Socket operation timed out".to_string(),
+        std::io::ErrorKind::NetworkUnreachable => "Network unreachable".to_string(),
+        std::io::ErrorKind::HostUnreachable => "Host unreachable".to_string(),
+        _ => error.to_string(),
+    }
+}
+
+pub fn server_error_text(detail: &str) -> String {
+    format!("ADSB Server Error: {detail}")
+}
+
+fn report_failure(generation: u64, token: &'static str, detail: String) {
+    let Some(first) = lock().failed(generation, token, detail.clone()) else { return };
+    if first && !crate::qthost::present() {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &server_error_text(&detail));
+    }
+    changed();
+}
+
 fn follow(source: Source, generation: u64) {
     while lock().generation == generation {
-        let opened = source.address().ok_or_else(|| format!("{} does not resolve", source.host)).and_then(|address| TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|error| error.to_string()));
+        let opened = source
+            .address()
+            .ok_or_else(|| HOST_NOT_FOUND.to_string())
+            .and_then(|address| TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|error| socket_error_text(&error)));
         match opened {
-            Err(detail) => {
-                if lock().failed(generation, CONNECT_FAILED, detail) {
-                    changed();
-                }
-            }
+            Err(detail) => report_failure(generation, CONNECT_FAILED, detail),
             Ok(stream) => {
                 if lock().attached(generation) {
                     changed();
@@ -626,9 +638,7 @@ fn follow(source: Source, generation: u64) {
                             changed();
                         }
                     });
-                if lock().failed(generation, LINK_LOST, "the ADS-B server closed the connection".to_string()) {
-                    changed();
-                }
+                report_failure(generation, LINK_LOST, REMOTE_HOST_CLOSED.to_string());
             }
         }
         std::thread::sleep(RETRY);
@@ -646,9 +656,6 @@ pub fn adsb_traffic_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let host = value_string(&backend.get(DEPS[1])).trim().to_string();
     let source = port_number(&backend.get(DEPS[2])).filter(|_| !host.is_empty()).map(|port| Source { host, port });
     let now_ms = crate::hub::now_ms();
-    // Read everything the backend owes before taking the guard. Off the Qt thread a backend call
-    // blocks until Qt services it, and Qt reaches this same view through Watcher::_notified, so a
-    // guard held across one wedges every bridge read for the life of the process.
     let own_report = own(&backend.get(DEPS[3]));
     let units = Units::read(backend);
     let mut traffic = lock();
@@ -1026,9 +1033,10 @@ mod tests {
         assert!(!traffic.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 })), "the same setting does not restart the link");
 
         let generation = traffic.generation();
-        assert!(traffic.failed(generation, CONNECT_FAILED, "connection refused".into()));
-        assert_eq!(traffic.snapshot(0)["error"], json!({ "token": CONNECT_FAILED, "detail": "connection refused" }), "the token is what a head keys on and the detail is the untranslated reason, as the C++ link put in its app message");
-        assert!(!traffic.failed(generation - 1, CONNECT_FAILED, "stale".into()), "a failure from a superseded link is dropped");
+        assert_eq!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()), Some(true));
+        assert_eq!(traffic.snapshot(0)["error"], json!({ "token": CONNECT_FAILED, "detail": "Connection refused" }), "the token is what a head keys on and the detail is the untranslated reason, as the C++ link put in its app message");
+        assert_eq!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()), Some(false), "a retry failing again is not a new error, so ADSBVehicleManager::_linkError's one message is not repeated every second");
+        assert_eq!(traffic.failed(generation - 1, CONNECT_FAILED, "stale".into()), None, "a failure from a superseded link is dropped");
 
         assert!(traffic.attached(generation));
         let up = traffic.snapshot(0);
@@ -1039,6 +1047,22 @@ mod tests {
         let heard = mavlink_only.snapshot(1_000);
         assert_eq!((heard["receiving"].clone(), heard["mavlinkAgeMs"].clone()), (json!(true), json!(0)), "a vehicle relaying ADSB is a live source with the server switched off");
         assert_eq!(mavlink_only.snapshot(1_000 + EXPIRATION_MS + 1)["receiving"], json!(false), "and once it has said nothing for longer than a contact lives, the list is unknown again rather than clear");
+    }
+
+    #[test]
+    fn a_server_error_is_new_once_per_connection_and_spelled_like_qtcpsocket() {
+        let mut traffic = Traffic::default();
+        traffic.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 }));
+        let generation = traffic.generation();
+        assert_eq!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()), Some(true));
+        assert!(traffic.attached(generation));
+        assert_eq!(traffic.failed(generation, LINK_LOST, REMOTE_HOST_CLOSED.into()), Some(true), "losing a feed that was up is a new error");
+        traffic.retarget(false, None);
+        traffic.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 }));
+        assert_eq!(traffic.failed(traffic.generation(), CONNECT_FAILED, "Connection refused".into()), Some(true), "switching the server back on starts over");
+        assert_eq!(server_error_text("Connection refused"), "ADSB Server Error: Connection refused");
+        assert_eq!(socket_error_text(&std::io::Error::from(std::io::ErrorKind::ConnectionRefused)), "Connection refused");
+        assert_eq!(socket_error_text(&std::io::Error::from(std::io::ErrorKind::TimedOut)), "Socket operation timed out");
     }
 
     #[test]
@@ -1127,8 +1151,6 @@ mod tests {
         struct Imperial;
         impl Backend for Imperial {
             fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            // Unit::read asks units.<conversion> for a factor and units for the name property, so
-            // a fake serving the raw settings value tests nothing about the conversion.
             fn get_fields(&self, path: &str, fields: &str) -> String {
                 match path {
                     "units" => json!({ "kind": "object", fields: match fields {
