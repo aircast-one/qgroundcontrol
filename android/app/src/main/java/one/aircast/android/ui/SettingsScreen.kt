@@ -48,6 +48,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -371,17 +376,24 @@ private fun SettingsList(
     val linksJson by qgcPath("view.links")
     val activeLinks = remember(linksJson) { activeLinkCount(linksJson) }
     var hits by remember { mutableStateOf(emptyList<SettingsSectionRows>()) }
-    var searches by remember { mutableIntStateOf(0) }
+    val searching = search.isNotBlank()
+    val pagePaths = remember(pages) { pages.map { settingsPagePath(it.title) } }
+    DisposableEffect(pagePaths, searching) {
+        if (searching) Qgc.watch(pagePaths)
+        onDispose { if (searching) Qgc.unwatch(pagePaths) }
+    }
+    val values by Qgc.values.collectAsState()
+    val served by remember(pagePaths) { derivedStateOf { pagePaths.map { values[it] } } }
 
-    LaunchedEffect(search, pages, searches) {
-        if (search.isBlank()) {
+    LaunchedEffect(search, pages, served) {
+        if (!searching) {
             hits = emptyList()
             return@LaunchedEffect
         }
         delay(SEARCH_SETTLE_MS)
         hits = withContext(Dispatchers.Default) {
-            pages.flatMap { page ->
-                matchesIn(page.title, settingsSections(Qgc.get(settingsPagePath(page.title))), search)
+            pages.zip(served).flatMap { (page, json) ->
+                matchesIn(page.title, settingsSections(json ?: Qgc.get(settingsPagePath(page.title))), search)
             }
         }
     }
@@ -439,7 +451,7 @@ private fun SettingsList(
         hits.forEach { section ->
             item(key = "head${section.title}") { SectionHeader(shownBreadcrumb(section.title)) }
             items(section.blocks.flatMap { it.facts }, key = { it.path }) { fact ->
-                FactRow(fact) { searches++ }
+                FactRow(fact)
             }
         }
     }
@@ -671,10 +683,12 @@ internal fun FactRow(
         return
     }
 
+    val rowToggles = !segmented && fact.isBool && fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact)
     Column {
     Row(
         Modifier
             .fillMaxWidth()
+            .then(if (rowToggles) Modifier.toggleable(value = fact.boolValue, role = Role.Switch) { checked -> write { Qgc.set(fact.path, checked) } } else Modifier)
             .heightIn(min = 64.dp)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -736,10 +750,7 @@ internal fun FactRow(
                         )
                     }
                 }
-                fact.isBool -> Switch(
-                    checked = fact.boolValue,
-                    onCheckedChange = { checked -> write { Qgc.set(fact.path, checked) } },
-                )
+                fact.isBool -> Switch(checked = fact.boolValue, onCheckedChange = null)
                 else -> BitmaskPicker(fact, ::write)
             }
         }
