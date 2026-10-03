@@ -63,6 +63,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.TextButton
@@ -270,11 +271,12 @@ internal fun MapSpikeScreen(
         }
     }
 
-    fun onBridge(label: String? = null, done: String? = null, work: () -> Boolean) {
+    fun onBridge(label: String? = null, done: String? = null, then: () -> Unit = {}, work: () -> Boolean) {
         busy = label
         scope.launch {
             val ok = withContext(Dispatchers.Default) { work() }
             if (ok) {
+                then()
                 busy = done
                 if (done != null) {
                     delay(FAILURE_MESSAGE_MS)
@@ -483,7 +485,8 @@ internal fun MapSpikeScreen(
                         insertAfter(selected, allItems),
                     )
                     PlanLayer.Rally -> if (support.rally) {
-                        onBridge("Adding rally", done = support.reason.ifBlank { null }) { FenceBridge.addRallyPoint(lat, lon) }
+                        val next = rally.size
+                        onBridge("Adding rally", then = { selected = MapHit.Rally(next) }) { FenceBridge.addRallyPoint(lat, lon) }
                     }
                     PlanLayer.Fence -> Unit
                 }
@@ -689,14 +692,30 @@ internal fun MapSpikeScreen(
                     }
                 }
                 if (layer == PlanLayer.Rally) {
+                    if (!support.rally && support.reason.isNotBlank()) PaletteNote(support.reason)
+                    if (rally.isEmpty()) PaletteNote(RALLY_HELP)
                     rallyRows(rally).forEach { row ->
-                        FenceListRow(row) { onBridge("Removing ${row.title.lowercase()}") { FenceBridge.removeRallyPoint(row.index) } }
+                        FenceListRow(
+                            row,
+                            chosen = (selected as? MapHit.Rally)?.index == row.index,
+                            onSelect = { selected = MapHit.Rally(row.index) },
+                        ) {
+                            val count = rally.size
+                            onBridge("Removing ${row.title.lowercase()}", then = { selected = rallyAfterRemove(row.index, count) }) { FenceBridge.removeRallyPoint(row.index) }
+                        }
                     }
                 }
                 if (layer == PlanLayer.Fence) {
+                    if (!support.fence && support.reason.isNotBlank()) PaletteNote(support.reason)
+                    if (fences.isEmpty() && circles.isEmpty()) PaletteNote(NO_GEOFENCE)
                     fenceRows(fences, circles).forEach { row ->
-                        FenceListRow(row) {
-                            onBridge("Removing ${row.title.lowercase()}") {
+                        FenceListRow(
+                            row,
+                            chosen = rowSelected(row, selected),
+                            onSelect = { selected = fenceRowHit(row) },
+                            onInclusion = row.inclusion?.let { { keep: Boolean -> onBridge("Changing ${row.title.lowercase()}") { FenceBridge.setPolygonInclusion(row.index, keep) } } },
+                        ) {
+                            onBridge("Removing ${row.title.lowercase()}", then = { if (rowSelected(row, selected)) selected = null }) {
                                 if (row.circle) FenceBridge.deleteCircle(row.index) else FenceBridge.deletePolygon(row.index)
                             }
                         }
@@ -769,7 +788,8 @@ internal fun MapSpikeScreen(
 
                     if (layer == PlanLayer.Fence) FilledTonalButton(enabled = support.fence, onClick = {
                         val at = placeAt()
-                        onBridge("Adding fence", done = support.reason.ifBlank { null }) {
+                        val next = fences.size
+                        onBridge("Adding fence", then = { selected = MapHit.FenceVertex(next, 0) }) {
                             at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionPolygon(topLeft, bottomRight) } ?: false
                         }
                     }) { Text("Add polygon") }
@@ -820,7 +840,8 @@ internal fun MapSpikeScreen(
 
                     if (layer == PlanLayer.Fence) FilledTonalButton(enabled = support.fence, onClick = {
                         val at = placeAt()
-                        onBridge("Adding circle", done = support.reason.ifBlank { null }) {
+                        val next = circles.size
+                        onBridge("Adding circle", then = { selected = MapHit.Circle(next) }) {
                             at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionCircle(topLeft, bottomRight) } ?: false
                         }
                     }) { Text("Add circle") }
@@ -830,7 +851,7 @@ internal fun MapSpikeScreen(
                             editingBreach = true
                         } else {
                             val at = placeAt()
-                            onBridge("Adding breach return point", done = support.reason.ifBlank { null }) {
+                            onBridge("Adding breach return point") {
                                 at != null && FenceBridge.setBreachReturn(at)
                             }
                         }
@@ -853,7 +874,8 @@ internal fun MapSpikeScreen(
 
                     if (layer == PlanLayer.Rally) FilledTonalButton(enabled = support.rally, onClick = {
                         val at = placeAt()
-                        onBridge("Adding rally", done = support.reason.ifBlank { null }) {
+                        val next = rally.size
+                        onBridge("Adding rally", then = { selected = MapHit.Rally(next) }) {
                             at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
                         }
                     }) { Text("Add rally point") }
@@ -1246,6 +1268,7 @@ internal fun MapSpikeScreen(
                                 value = typedCircleRadius,
                                 onValueChange = { typedCircleRadius = it },
                                 label = { Text("Radius") },
+                                suffix = { Text(it.radiusUnits) },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Decimal,
@@ -1349,8 +1372,8 @@ internal fun MapSpikeScreen(
                                 }
 
                             TextButton(onClick = {
-                                onBridge { FenceBridge.removeRallyPoint(hit.index) }
-                                selected = null
+                                val count = rally.size
+                                onBridge(then = { selected = rallyAfterRemove(hit.index, count) }) { FenceBridge.removeRallyPoint(hit.index) }
                             }) { Text("Delete rally") }
                         }
 
@@ -1645,11 +1668,27 @@ internal fun layerOf(hit: MapHit?): PlanLayer? = when (hit) {
 }
 
 @Composable
-private fun FenceListRow(row: FenceRow, onRemove: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun FenceListRow(
+    row: FenceRow,
+    chosen: Boolean,
+    onSelect: () -> Unit,
+    onInclusion: ((Boolean) -> Unit)? = null,
+    onRemove: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .background(if (chosen) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent, MaterialTheme.shapes.small)
+            .clickable(onClick = onSelect)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(Modifier.weight(1f)) {
             Text(row.title, style = MaterialTheme.typography.bodyLarge)
             if (row.detail.isNotBlank()) Text(row.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (onInclusion != null && row.inclusion != null) {
+            Text("Inclusion", style = MaterialTheme.typography.labelMedium)
+            Switch(checked = row.inclusion, onCheckedChange = onInclusion, modifier = Modifier.padding(horizontal = 8.dp))
         }
         IconButton(onClick = onRemove) { Icon(Icons.Filled.Close, contentDescription = "Remove ${row.title}") }
     }

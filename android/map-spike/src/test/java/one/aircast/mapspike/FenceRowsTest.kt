@@ -10,7 +10,7 @@ class FenceRowsTest {
         val circle = FenceCircle(0, inclusion = true, centre = TrackPoint(0.0, 0.0), radius = 137.0, detailText = "137 m radius", kindText = "Keep-in circle")
 
         assertEquals(
-            listOf(FenceRow(0, false, "Keep-out polygon", "4 corners"), FenceRow(0, true, "Keep-in circle", "137 m radius")),
+            listOf(FenceRow(0, false, "Keep-out polygon", "4 corners", inclusion = false), FenceRow(0, true, "Keep-in circle", "137 m radius")),
             fenceRows(listOf(polygon), listOf(circle)),
         )
     }

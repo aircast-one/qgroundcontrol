@@ -21,11 +21,26 @@ data class FencePolygon(
     val kindText: String = "",
     val detailText: String = "",
 )
-data class FenceRow(val index: Int, val circle: Boolean, val title: String, val detail: String)
+data class FenceRow(val index: Int, val circle: Boolean, val title: String, val detail: String, val inclusion: Boolean? = null)
 
 fun fenceRows(polygons: List<FencePolygon>, circles: List<FenceCircle>): List<FenceRow> =
-    polygons.map { FenceRow(it.index, false, it.kindText.ifBlank { if (it.inclusion) "Keep-in polygon" else "Keep-out polygon" }, it.detailText) } +
+    polygons.map { FenceRow(it.index, false, it.kindText.ifBlank { if (it.inclusion) "Keep-in polygon" else "Keep-out polygon" }, it.detailText, it.inclusion) } +
         circles.map { FenceRow(it.index, true, it.kindText.ifBlank { if (it.inclusion) "Keep-in circle" else "Keep-out circle" }, it.detailText) }
+
+internal fun fenceRowHit(row: FenceRow): MapHit = if (row.circle) MapHit.Circle(row.index) else MapHit.FenceVertex(row.index, 0)
+
+internal fun rowSelected(row: FenceRow, selected: MapHit?): Boolean = when (selected) {
+    is MapHit.Circle -> row.circle && selected.index == row.index
+    is MapHit.CircleCentre -> row.circle && selected.index == row.index
+    is MapHit.FenceVertex -> !row.circle && selected.polygon == row.index
+    else -> false
+}
+
+internal fun rallyAfterRemove(removed: Int, countBefore: Int): MapHit? =
+    (countBefore - 2).takeIf { it >= 0 }?.let { last -> MapHit.Rally(minOf(removed, last)) }
+
+internal const val NO_GEOFENCE = "No geofence - keep the vehicle inside a boundary, or out of an area."
+internal const val RALLY_HELP = "Rally Points provide alternate landing points when performing a Return to Launch (RTL)."
 
 fun rallyRows(points: List<RallyPoint>): List<FenceRow> = points.map { point ->
     val height = point.altitude.takeIf { it.isFinite() }?.let { "${plainAltitude(it)} ${point.altitudeUnits.ifBlank { "m" }}" }
@@ -46,6 +61,7 @@ data class FenceCircle(
     val radiusMinimum: Double? = null,
     val radiusMaximum: Double? = null,
     val radiusMetres: Double = 0.0,
+    val radiusUnits: String = "",
 )
 data class RallyPoint(
     val index: Int,
@@ -146,6 +162,7 @@ fun fenceCircles(json: JSONObject?): List<FenceCircle> {
             element.bound("radiusMinimum"),
             element.bound("radiusMaximum"),
             element.optDouble("radiusMetres", radius).takeIf { it.isFinite() } ?: radius,
+            element.optText("radiusUnits"),
         )
     }
 }

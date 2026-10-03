@@ -1851,7 +1851,11 @@ fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                 return Some(match member.as_str() {
                     "inclusion" => fence_edit(|f, r| Some((crate::fencedoc::set_inclusion(f, "circles", index, given.as_bool()?)?, r.clone())), "A circle is an inclusion (true) or an exclusion (false)."),
                     "center" => fence_edit(|f, r| Some((crate::fencedoc::set_circle(f, index, Some(point_of(Some(&given))?), None)?, r.clone())), "A circle's centre needs a latitude and a longitude."),
-                    "radius" => fence_edit(|f, r| Some((crate::fencedoc::set_circle(f, index, None, Some(given.as_f64().filter(|v| *v >= 0.1)?))?, r.clone())), "A circle's radius is at least 0.1 m."),
+                    "radius" => {
+                        let horizontal = crate::read::Unit::horizontal(backend);
+                        let metres = given.as_f64().map(|shown| horizontal.meters(shown));
+                        fence_edit(|f, r| Some((crate::fencedoc::set_circle(f, index, None, Some(metres.filter(|v| *v >= 0.1)?))?, r.clone())), "A circle's radius is at least 0.1 m.")
+                    }
                     _ => return None,
                 });
             }
@@ -1862,7 +1866,7 @@ fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                     |f, r| {
                         let point = r["points"].get(index)?;
                         let at = (point.get(0)?.as_f64()?, point.get(1)?.as_f64()?);
-                        Some((f.clone(), crate::fencedoc::move_rally(r, index, at, given.as_f64())?))
+                        Some((f.clone(), crate::fencedoc::move_rally(r, index, at, given.as_f64().map(|shown| crate::read::Unit::vertical(backend).meters(shown)))?))
                     },
                     "A rally point's altitude is a number.",
                 ),
