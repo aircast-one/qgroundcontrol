@@ -1316,10 +1316,10 @@
 "defaultValueAvailable": true,
 "defaultValueString": "1",
 "enumIndex": 1,
-"enumOrValueString": "Outdoor",
+"enumOrValueString": "Light",
 "enumStrings": [
-"Indoor",
-"Outdoor",
+"Dark",
+"Light",
 "System"
 ],
 "enumValues": [

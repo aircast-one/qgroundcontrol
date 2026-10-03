@@ -1053,8 +1053,8 @@ mod tests {
         let palette = address("settings.appSettings.indoorPalette.enumIndex").unwrap();
         assert_eq!(palette.field.as_deref(), Some("enumIndex"));
         let labels: Vec<_> = palette.meta.enums.iter().map(|e| (e.label.clone(), e.value.clone())).collect();
-        let outdoor = labels.iter().position(|(label, _)| label == "Outdoor").unwrap();
-        assert_eq!(enum_index_raw(&palette.meta, &json!(outdoor)), Some(labels[outdoor].1.clone()), "the index names a choice; its raw value is what the setting holds");
+        let light = labels.iter().position(|(label, _)| label == "Light").unwrap();
+        assert_eq!(enum_index_raw(&palette.meta, &json!(light)), Some(labels[light].1.clone()), "the index names a choice; its raw value is what the setting holds");
         assert_eq!(enum_index_raw(&palette.meta, &json!(labels.len())), None, "past the list is not a choice");
         assert_eq!(enum_index_raw(&palette.meta, &json!(-1)), None);
     }
