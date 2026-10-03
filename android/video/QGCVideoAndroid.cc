@@ -109,10 +109,12 @@ GstGLDisplay *sharedGlDisplay()
 {
     static GstGLDisplay *const display = [] {
         GstGLDisplayEGL *const egl = gst_gl_display_egl_new();
-        if (egl) {
-            gst_gl_display_egl_set_foreign(egl, TRUE);
+        if (!egl) {
+            __android_log_print(ANDROID_LOG_ERROR, "qgc_video", "no shared EGL display: GL elements will make and terminate their own");
+            return static_cast<GstGLDisplay *>(nullptr);
         }
-        return egl ? GST_GL_DISPLAY(egl) : nullptr;
+        gst_gl_display_egl_set_foreign(egl, TRUE);
+        return GST_GL_DISPLAY(egl);
     }();
     return display;
 }
