@@ -1699,9 +1699,9 @@ impl<B: Backend> Backend for Facade<B> {
             }
         }
         let listed_mode = fleet_member(path).filter(|(_, tail)| *tail == "flightMode").map(|(index, _)| index);
-        let named_vehicle = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("vehicle")?.as_u64()).and_then(|id| u8::try_from(id).ok());
         if (path == "vehicle.flightMode" || listed_mode.is_some()) && switched_on() {
             let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_str).or_else(|| v.as_str()).map(str::to_string));
+            let named_vehicle = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("vehicle")?.as_u64()).and_then(|id| u8::try_from(id).ok());
             let vehicle = match (named_vehicle, listed_mode) {
                 (Some(id), Some(_)) => Some(id),
                 (None, Some(index)) => crate::hub::lock().listed(index).map(|v| v.id),

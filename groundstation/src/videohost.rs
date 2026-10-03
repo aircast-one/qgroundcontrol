@@ -233,7 +233,7 @@ pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String>
         ))
     };
     let source = match uri.split_once("://")? {
-        (scheme, _) if scheme.starts_with("rtsp") => format!("rtspsrc location={} latency={latency_ms} do-rtcp=true do-retransmission={retransmit} drop-on-latency=true", quoted(uri)),
+        (scheme, _) if scheme.to_ascii_lowercase().starts_with("rtsp") => format!("rtspsrc location={} latency={latency_ms} do-rtcp=true do-retransmission={retransmit} drop-on-latency=true", quoted(uri)),
         ("udp", rest) => rtp("H264", rest)?,
         ("udp265", rest) => rtp("H265", rest)?,
         ("mpegts", rest) => {
@@ -258,12 +258,18 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
     let follow_ups: Vec<Out> = outs
         .into_iter()
         .flat_map(|out| match out {
-            Out::StartReceiver { receiver, timeout_s, .. } if receiver == MAIN_RECEIVER => {
-                host.wanted = true;
+            Out::StartReceiver { receiver, timeout_s, low_latency } if receiver == MAIN_RECEIVER => {
                 host.restart_at_ms = None;
                 host.timeout_s = timeout_s;
-                host.progress = Some(Watch::fresh(now_ms));
-                Vec::new()
+                let uri = host.state.desired_uri(MAIN_RECEIVER);
+                match pipeline(&uri, setting("rtpJitterLatencyMs").as_i64().unwrap_or(80), low_latency).is_some() {
+                    true => {
+                        host.wanted = true;
+                        host.progress = Some(Watch::fresh(now_ms));
+                        Vec::new()
+                    }
+                    false => host.state.on_start_complete(MAIN_RECEIVER, unbuildable_outcome(&uri), now_ms / 1000),
+                }
             }
             Out::StopReceiver { receiver } if receiver == MAIN_RECEIVER => {
                 crate::subtitles::stop();
@@ -525,17 +531,6 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             Some(json!({ "ok": true }))
         }
         "video.setNativeRendering" | "video.initNative" => Some(json!({ "ok": true })),
-        "video.reportUnbuildable" => {
-            let uri = host.state.desired_uri(MAIN_RECEIVER);
-            let latency = setting("rtpJitterLatencyMs").as_i64().unwrap_or(80);
-            if host.wanted && host.state.has_video() && pipeline(&uri, latency, host.state.settings.low_latency).is_none() {
-                host.wanted = false;
-                host.progress = None;
-                let outs = host.state.on_start_complete(MAIN_RECEIVER, unbuildable_outcome(&uri), crate::hub::now_ms() / 1000);
-                apply(host, outs, crate::hub::now_ms());
-            }
-            Some(json!({ "ok": true }))
-        }
         "video.restart" => {
             RESTART.store(true, std::sync::atomic::Ordering::Relaxed);
             if !host.wanted {

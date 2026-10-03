@@ -474,7 +474,7 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
 fn photo_refusal(view: &Value) -> String {
     match view.get("isTakingPhoto").and_then(Value::as_bool) {
         Some(true) => "The camera is still taking the last photo.".to_string(),
-        _ => "This camera cannot take a photo in the mode it is in.".to_string(),
+        _ => "This camera cannot take a photo.".to_string(),
     }
 }
 

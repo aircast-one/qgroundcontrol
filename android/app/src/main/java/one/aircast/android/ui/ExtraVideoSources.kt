@@ -17,6 +17,8 @@ private val URL_SOURCES = setOf(
     "WebRTC (WHEP) Video Stream",
 )
 
+private const val RTSP_SOURCE = "RTSP Video Stream"
+
 private val SCHEME_ADDED_SOURCES = setOf(
     "UDP h.264 Video Stream",
     "UDP h.265 Video Stream",
@@ -100,6 +102,7 @@ internal fun sourceNeedsUrl(source: String): Boolean = source in URL_SOURCES
 internal fun extraSourceProblem(source: String, url: String): String? = when {
     source.isBlank() || source == VIDEO_DISABLED -> "Pick the kind of stream this camera sends."
     sourceNeedsUrl(source) && url.isBlank() -> "This kind of stream needs an address."
+    source == RTSP_SOURCE && !url.contains("://") -> "An RTSP address starts with rtsp://."
     url.contains("://") && source in SCHEME_ADDED_SOURCES ->
         "Leave the scheme off - QGroundControl adds it, and a doubled one fails to resolve."
     else -> null

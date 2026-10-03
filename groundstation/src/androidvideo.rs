@@ -133,9 +133,6 @@ impl Driver {
             }
             self.driven = wanted;
         }
-        if self.driven.is_none() {
-            crate::videohost::invoke("video.reportUnbuildable", "[]");
-        }
         self.record(video);
         if self.driven.is_none() {
             return;

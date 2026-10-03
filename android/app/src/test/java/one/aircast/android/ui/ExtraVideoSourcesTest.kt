@@ -48,7 +48,7 @@ class ExtraVideoSourcesTest {
     fun `a stream that needs an address is not saved without one`() {
         assertEquals("This kind of stream needs an address.",
             extraSourceProblem("RTSP Video Stream", ""))
-        assertNull(extraSourceProblem("RTSP Video Stream", "10.0.0.4:8554/front"))
+        assertEquals("An RTSP address starts with rtsp://.", extraSourceProblem("RTSP Video Stream", "10.0.0.4:8554/front"))
     }
 
     @Test

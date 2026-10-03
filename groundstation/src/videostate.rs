@@ -657,7 +657,11 @@ impl VideoState {
             Outcome::InvalidState => Vec::new(),
             Outcome::Failed => {
                 self.receivers.entry(receiver.to_string()).and_modify(|state| state.failing_since_s = state.failing_since_s.or(Some(at_s)));
-                self.set_status(receiver, Status::ConnectionFailed, true).into_iter().chain(self.restart_receiver(receiver)).collect()
+                let retry = match self.receivers.get(receiver).is_some_and(|state| state.started) {
+                    true => self.restart_receiver(receiver),
+                    false => vec![Out::RestartAfter { receiver: receiver.to_string(), delay_ms: RESTART_DELAY_MS }],
+                };
+                self.set_status(receiver, Status::ConnectionFailed, true).into_iter().chain(retry).collect()
             }
         }
     }
@@ -1236,8 +1240,10 @@ mod tests {
         assert_eq!(first["cameras"][0]["attempts"], 1, "the start the registration made is an attempt, and the head has nothing else to count with");
         assert_eq!(first["cameras"][0]["startTimeoutSeconds"], 12, "the budget the start was given is what turns connecting into wait-or-go-check-the-cable");
         assert_eq!(first["cameras"][0]["failingSeconds"], Value::Null, "a first connect is not yet a failure");
-        state.on_start_complete(MAIN_RECEIVER, Outcome::Failed, 10);
+        assert!(state.on_start_complete(MAIN_RECEIVER, Outcome::Failed, 10).contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: RESTART_DELAY_MS }), "a start that never ran retries a second later, as VideoManager's singleShot(1000) does, rather than at once");
+        state.start_receiver(MAIN_RECEIVER);
         state.on_start_complete(MAIN_RECEIVER, Outcome::Failed, 20);
+        state.start_receiver(MAIN_RECEIVER);
         let failing = state.snapshot(50);
         assert_eq!(failing["cameras"][0]["attempts"], 3, "a retry loop that counts nothing is indistinguishable from a first negotiation");
         assert_eq!(failing["cameras"][0]["failingSeconds"], 40, "the failure is dated from when it started, not from the latest retry");

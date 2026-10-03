@@ -308,6 +308,7 @@ private fun CameraDetailsSheet(
         if (camera.hasZoom) {
             SectionHeader("Zoom")
             var dragging by remember { mutableStateOf<Float?>(null) }
+            LaunchedEffect(camera.zoomLevel) { dragging = null }
             val zoomWrites = remember { Channel<Double>(Channel.CONFLATED) }
             LaunchedEffect(zoomWrites) {
                 zoomWrites.consumeAsFlow().collect { level -> withContext(Dispatchers.Default) { Qgc.set(CAMERA_ZOOM, level) } }
@@ -318,10 +319,7 @@ private fun CameraDetailsSheet(
                     dragging = level
                     zoomWrites.trySend(level.toDouble())
                 },
-                onValueChangeFinished = {
-                    dragging?.let { zoomWrites.trySend(it.toDouble()) }
-                    dragging = null
-                },
+
                 valueRange = ZOOM_LOWEST.toFloat()..ZOOM_HIGHEST.toFloat(),
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
