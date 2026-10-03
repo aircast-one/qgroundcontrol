@@ -42,6 +42,16 @@ class InstrumentChoiceTest {
     }
 
     @Test
+    fun `each battery pack is offered after the vehicle's groups, like the battery0 fact group QGC's value editor lists`() {
+        val withPacks = JSONObject(served.toString()).put(
+            "packGroups",
+            org.json.JSONArray("""[{"group":"batteries.0","title":"Battery 1","facts":[{"name":"voltage","label":"Voltage","selection":"batteries.0/voltage"}]}]"""),
+        )
+        assertEquals(listOf("gps", "wind", "batteries.0"), instrumentGroups(withPacks).map { it.group })
+        assertEquals(listOf("batteries.0/voltage"), instrumentGroups(withPacks).last().facts.map { it.path })
+    }
+
+    @Test
     fun `a fact is asked for by the selection the core spells`() {
         val gps = instrumentGroups(served).first()
         assertEquals(

@@ -28,8 +28,11 @@ internal data class InstrumentFact(val name: String, val label: String, val path
 
 internal data class InstrumentGroup(val group: String, val title: String, val facts: List<InstrumentFact>)
 
-internal fun instrumentGroups(view: JSONObject?): List<InstrumentGroup> {
-    val listed = view?.takeIf { it.optBoolean("available") }?.optJSONArray("groups") ?: return emptyList()
+internal fun instrumentGroups(view: JSONObject?): List<InstrumentGroup> =
+    listedGroups(view, "groups") + listedGroups(view, "packGroups")
+
+private fun listedGroups(view: JSONObject?, key: String): List<InstrumentGroup> {
+    val listed = view?.takeIf { it.optBoolean("available") }?.optJSONArray(key) ?: return emptyList()
     return (0 until listed.length()).mapNotNull { index ->
         listed.optJSONObject(index)?.let { entry ->
             val facts = entry.optJSONArray("facts")
