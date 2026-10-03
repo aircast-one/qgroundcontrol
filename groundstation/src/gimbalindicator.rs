@@ -9,6 +9,7 @@ pub const DEPS: &[&str] = &[
     "settings.gimbalControllerSettings.enableOnScreenControl",
     "settings.gimbalControllerSettings.clickAndDrag",
     "vehicle.homePosition",
+    crate::gimbal::GIMBAL_CHANGED,
 ];
 
 pub const GIMBAL_CENTER: &str = "gimbal.center";
@@ -129,9 +130,9 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         GIMBAL_TILT_90 => crate::guided::dispatch(backend, Some(op("tilt90", Value::Null)), vehicle, &qt_path("sendPitchBodyYaw"), "[-90, 0]"),
         GIMBAL_PITCH => match given.get(0).and_then(Value::as_f64).filter(|v| v.is_finite()) {
             Some(pitch) => {
-                let snapshot = crate::gimbal::lock().snapshot(crate::hub::now_ms());
-                let body_yaw = snapshot["gimbals"].as_array().and_then(|list| list.iter().find(|g| flag(g, "active"))).and_then(|g| g["bodyYaw"].as_f64()).unwrap_or(0.0);
-                crate::guided::dispatch(backend, Some(op("pitch", json!({ "pitch": pitch }))), vehicle, &qt_path("sendPitchBodyYaw"), &json!([pitch, body_yaw, false]).to_string())
+                let qt_body_yaw = crate::read::value_number(&backend.get(&qt_path("activeGimbal.bodyYaw"))).filter(|v| v.is_finite());
+                let qt_args = qt_body_yaw.map_or_else(|| "[]".to_string(), |yaw| json!([pitch, yaw, false]).to_string());
+                crate::guided::dispatch(backend, Some(op("pitch", json!({ "pitch": pitch }))), vehicle, &qt_path("sendPitchBodyYaw"), &qt_args)
             }
             None => json!({ "ok": false, "refusal": "badPitch", "reason": "A tilt is a number of degrees." }),
         },

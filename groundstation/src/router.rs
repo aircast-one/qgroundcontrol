@@ -134,7 +134,7 @@ impl<B: Backend> Core<B> {
                 Some(v) => v.deps_for(&view::split(path).1),
                 None => vec![path.clone()],
             })
-            .filter(|dep| dep != crate::coreplan::CHANGED && dep != crate::terrainservice::TERRAIN_CHANGED && dep != crate::mavinspect::INSPECTOR_CHANGED && dep != crate::noticeboard::NOTICES_CHANGED)
+            .filter(|dep| dep != crate::coreplan::CHANGED && dep != crate::terrainservice::TERRAIN_CHANGED && dep != crate::mavinspect::INSPECTOR_CHANGED && dep != crate::noticeboard::NOTICES_CHANGED && dep != crate::gimbal::GIMBAL_CHANGED)
             .chain(crate::coreplan::host_watches())
             .collect::<BTreeSet<_>>()
             .into_iter()

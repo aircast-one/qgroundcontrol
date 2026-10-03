@@ -299,6 +299,10 @@ pub(crate) fn start_pump() {
                     crate::camsettings::tick(crate::hub::now_ms());
                     crate::gcsheartbeat::tick(crate::hub::now_ms());
                     crate::followme::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
+                    let gimbals_live = crate::gimbal::lock().any();
+                    if crate::gimbal::announce_due(crate::hub::now_ms(), gimbals_live) {
+                        CORE.on_event(crate::gimbal::GIMBAL_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                    }
                     if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
                         CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
                     }

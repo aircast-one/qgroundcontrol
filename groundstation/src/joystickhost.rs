@@ -310,13 +310,19 @@ fn settable_modes() -> Vec<String> {
     }).unwrap_or_default()
 }
 
+fn stops_rates(action: &Value) -> bool {
+    let still = |key: &str| action.get(key).and_then(Value::as_f64).is_none_or(|rate| rate == 0.0);
+    action.get("op").and_then(Value::as_str) == Some("rates") && still("pitch") && still("yaw")
+}
+
 fn guided(id: u8, action: Value) {
     let sent = crate::hub::lock().guided(Some(id), &action, crate::hub::now_ms());
     match sent {
         Ok(frames) => frames.iter().for_each(|(link, bytes)| {
             crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
         }),
-        Err(reason) if reason == crate::gimbal::REASON_OTHERS_HAVE_CONTROL => crate::gimbal::ask_to_take_control(),
+        Err(reason) if reason == crate::gimbal::REASON_OTHERS_HAVE_CONTROL && !stops_rates(&action) => crate::gimbal::ask_to_take_control(),
+        Err(reason) if reason == crate::gimbal::REASON_OTHERS_HAVE_CONTROL => {}
         Err(reason) => log::warn!("joystick action {action} was refused: {reason}"),
     }
 }

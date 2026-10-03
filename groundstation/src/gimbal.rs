@@ -58,6 +58,19 @@ pub const REASON_HEADING_UNKNOWN: &str = "headingUnknownWhileYawLocked";
 pub const REASON_UNSUPPORTED: &str = "unsupported";
 
 static ASKED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub const GIMBAL_CHANGED: &str = "core.gimbal@changed";
+pub const ANNOUNCE_INTERVAL_MS: u64 = 250;
+static ANNOUNCED: std::sync::Mutex<(u64, u64)> = std::sync::Mutex::new((0, 0));
+
+pub fn announce_due(now_ms: u64, live: bool) -> bool {
+    let mut last = ANNOUNCED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (serial, at) = *last;
+    let due = asked() != serial || (live && now_ms.saturating_sub(at) >= ANNOUNCE_INTERVAL_MS);
+    if due {
+        *last = (asked(), now_ms);
+    }
+    due
+}
 
 pub fn ask_to_take_control() {
     ASKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -624,6 +637,10 @@ impl Gimbals {
             (true, None) => vec![Out::Refused { pair: self.active, reason: REASON_HEADING_UNKNOWN }],
             (false, _) => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
         }
+    }
+
+    pub fn any(&self) -> bool {
+        !self.gimbals.is_empty()
     }
 
     pub fn snapshot(&self, now_ms: u64) -> Value {
