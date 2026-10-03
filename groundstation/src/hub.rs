@@ -2461,10 +2461,18 @@ impl Vehicle {
         });
         self.primary_link = best;
         if let Some(sending) = best {
-            self.link = sending;
+            self.send_on(sending);
         }
         self.commands.high_latency = best.is_some_and(|link| self.link_kinds.high_latency.contains(&link));
         switched
+    }
+
+    fn send_on(&mut self, link: LinkId) {
+        if link != self.link {
+            let cancelled = crate::signing::lock().cancel_pending(self.link);
+            self.pending_notices.extend(cancelled.into_iter().map(|text| (crate::noticeboard::MESSAGE, text)));
+            self.link = link;
+        }
     }
 
     fn say_link(&self, text: &str) {
@@ -3751,8 +3759,8 @@ impl Hub {
     }
 
     pub fn link_closed(&mut self, link: LinkId) {
-        crate::signing::lock().closed(link);
         self.keep_vehicles_on(|candidate| candidate != link);
+        crate::signing::lock().closed(link);
     }
 
     pub fn retain_links(&mut self, open: &[LinkId]) {
@@ -3767,7 +3775,7 @@ impl Hub {
             let _ = v.update_primary_link(crate::hub::now_ms());
             if !still_open(v.link) {
                 if let Some(next) = v.primary_link.or_else(|| v.link_states.first().map(|(link, _, _)| *link)) {
-                    v.link = next;
+                    v.send_on(next);
                 }
             }
         });
@@ -4639,6 +4647,19 @@ mod tests {
         assert_eq!((vehicle.link, vehicle.primary_link), (2, Some(2)), "it is now reached on the link that is still open");
         hub.retain_links(&[]);
         assert!(hub.active().is_none(), "with no link left it goes");
+    }
+
+    #[test]
+    fn closing_the_link_a_signing_change_waits_on_cancels_it_like_on_primary_link_changed() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(Origin { link: 9101, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(Origin { link: 9102, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 100);
+        hub.take_notices();
+        crate::signing::lock().begin_enable(9101, (1, 1), "field", [7; 32], 0, 0).unwrap();
+        hub.link_closed(9101);
+        assert!(hub.take_notices().iter().any(|(_, text)| text == "Signing operation cancelled — primary link changed before vehicle confirmation"));
+        assert_eq!(crate::signing::lock().status(9101).state, "off");
     }
 
     #[test]

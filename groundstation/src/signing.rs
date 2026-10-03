@@ -263,6 +263,10 @@ impl Signing {
         }
     }
 
+    pub fn cancel_pending(&mut self, link: LinkId) -> Vec<String> {
+        self.fail(link, "Signing operation cancelled — primary link changed before vehicle confirmation")
+    }
+
     pub fn tick(&mut self, now_ms: u64) -> (Vec<(LinkId, SETUP_SIGNING_DATA)>, Vec<String>) {
         let expired: Vec<(LinkId, bool)> = self
             .channels
@@ -422,6 +426,22 @@ mod tests {
         signing.begin_disable(3, (1, 1), 6000).unwrap();
         signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, 6100);
         assert_eq!(signing.status(3).state, "off");
+    }
+
+    #[test]
+    fn a_primary_link_change_cancels_the_pending_change_like_cancel_pending() {
+        let mut signing = Signing::default();
+        assert!(signing.cancel_pending(3).is_empty(), "nothing pending, nothing to say");
+        signing.begin_enable(3, (1, 1), "field", KEY, 0, 0).unwrap();
+        assert_eq!(signing.cancel_pending(3), ["Signing operation cancelled — primary link changed before vehicle confirmation"]);
+        assert_eq!(signing.status(3).state, "off");
+        signing.begin_enable(3, (1, 1), "field", KEY, 0, 0).unwrap();
+        signing.inbound(3, 1, &frame(&heartbeat(), Some(KEY)), &heartbeat(), &no_keys, 10);
+        signing.begin_disable(3, (1, 1), 100).unwrap();
+        let cancelled = signing.cancel_pending(3);
+        assert!(cancelled[0].starts_with("Signing disable not confirmed"), "a cancelled disable keeps signing on");
+        assert_eq!(signing.status(3).state, "on");
+        assert!(signing.tick(10_000).1.is_empty());
     }
 
     #[test]
