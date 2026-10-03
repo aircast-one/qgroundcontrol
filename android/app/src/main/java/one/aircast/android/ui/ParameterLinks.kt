@@ -102,7 +102,7 @@ internal fun parameterRebootNotes(fact: Fact): List<String> = listOfNotNull(
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
+internal fun ParameterEditDialog(name: String, title: String = name, onDismiss: () -> Unit) {
     var revision by remember { mutableIntStateOf(0) }
     var advanced by remember { mutableStateOf(false) }
     var forced by remember { mutableStateOf(false) }
@@ -124,7 +124,7 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(name, style = MaterialTheme.typography.titleLarge)
+                Text(title, style = MaterialTheme.typography.titleLarge)
                 fact?.let { loaded ->
                     loaded.longDescription.ifBlank { loaded.description }.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -183,6 +183,8 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
 }
 
 internal const val VALUE_DETAILS_TITLE = "Value Details"
+
+internal const val EDIT_PARAMETER_TITLE = "Edit parameter"
 
 internal fun valueDetailsNotes(fact: Fact): List<String> = listOfNotNull(
     fact.longDescription.ifBlank { fact.valueDetails }.takeIf { it.isNotBlank() },

@@ -226,7 +226,7 @@ private fun VehicleMessageLog(
     val lines = remember(messages) { messages.asReversed() }
     var editing by remember { mutableStateOf<String?>(null) }
 
-    editing?.let { name -> ParameterEditDialog(name) { editing = null } }
+    editing?.let { name -> ParameterEditDialog(name, EDIT_PARAMETER_TITLE) { editing = null } }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {

@@ -160,7 +160,7 @@ private fun OverallStatus() {
     var expanded by remember(checks) { mutableStateOf(emptySet<Int>()) }
     var editing by remember { mutableStateOf<String?>(null) }
     if (checks.isEmpty()) return
-    editing?.let { name -> ParameterEditDialog(name) { editing = null } }
+    editing?.let { name -> ParameterEditDialog(name, EDIT_PARAMETER_TITLE) { editing = null } }
     Text("Overall status", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
     checks.forEachIndexed { index, check ->
         Column(
