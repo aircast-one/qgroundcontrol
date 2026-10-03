@@ -434,6 +434,7 @@ fun AircastShell(hostView: android.view.View?) {
                         keyRowEnd = { PinnedEmergencyStop() },
                         overlays = {
                             one.aircast.android.ui.VehicleMessageBanner()
+                            one.aircast.android.ui.FleetCard()
                             one.aircast.android.ui.MissionProgressCard()
                             flyAttitude()
                             ObstacleReadout()
