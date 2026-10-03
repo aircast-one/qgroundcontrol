@@ -239,6 +239,7 @@ pub fn row_label(vtol_landing: bool, property: &str) -> Option<&'static str> {
         (_, "loiterRadius") => Some("Radius"),
         (_, "loiterClockwise") => Some("Loiter clockwise"),
         (_, "landingHeading") => Some("Heading"),
+        (_, "finalApproachAltitude" | "landingAltitude") => Some("Altitude"),
         (false, "useDoChangeSpeed") => Some("Flight Speed"),
         (false, "landingDistance") => Some("Distance"),
         (true, "landingDistance") => Some("Landing Dist"),

@@ -1025,10 +1025,10 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     ExtendedFloatingActionButton(
         onClick = { adding = true },
         icon = { Icon(painterResource(R.drawable.ic_add), null) },
-        text = { Text("Add link") },
+        text = { Text("Add link\u2026") },
         containerColor = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { contentDescription = "Add link" },
+        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { contentDescription = "Add link\u2026" },
     )
     }
 

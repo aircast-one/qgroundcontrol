@@ -17,4 +17,14 @@ class FenceListTest {
         assertEquals("or the new last one", MapHit.Rally(1), rallyAfterRemove(2, 3))
         assertNull(rallyAfterRemove(0, 1))
     }
+
+    @Test
+    fun `polygon and circle rows sit under GeoFenceEditor section labels`() {
+        val polygons = listOf(FenceRow(0, false, "a", ""), FenceRow(1, false, "b", ""))
+        val circle = FenceRow(0, true, "c", "")
+        assertEquals("Polygon fences", fenceHeading(polygons[0], null))
+        assertNull(fenceHeading(polygons[1], polygons[0]))
+        assertEquals("Circular fences", fenceHeading(circle, polygons[1]))
+        assertEquals("Circular fences", fenceHeading(circle, null))
+    }
 }

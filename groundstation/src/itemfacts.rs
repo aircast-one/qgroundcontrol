@@ -84,8 +84,11 @@ fn qt_entry_point(item: &str, read: &Value) -> Option<Value> {
 }
 
 fn owned(read: &Value, item: &str) -> Vec<Value> {
-    let vtol_landing = read.get("class").and_then(Value::as_str) == Some("VTOLLandingComplexItem");
-    read.get("facts")
+    let class = read.get("class").and_then(Value::as_str);
+    let vtol_landing = class == Some("VTOLLandingComplexItem");
+    let landing = vtol_landing || class == Some("FixedWingLandingComplexItem");
+    let mut rows: Vec<(&str, Value)> = read
+        .get("facts")
         .and_then(Value::as_array)
         .map(|facts| {
             facts
@@ -93,11 +96,16 @@ fn owned(read: &Value, item: &str) -> Vec<Value> {
                 .filter(|fact| named(fact))
                 .filter_map(|fact| {
                     let property = fact.get("property").and_then(Value::as_str).filter(|p| !p.is_empty() && *p != LAUNCH_ALTITUDE)?;
-                    Some(crate::surveydoc::row_labelled(field(fact, item, property, "Settings"), vtol_landing, property))
+                    let control = field(fact, item, property, "Settings");
+                    Some((property, if landing { crate::landingpattern::editor_row(control, vtol_landing, property) } else { crate::surveydoc::row_labelled(control, vtol_landing, property) }))
                 })
                 .collect()
         })
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if landing {
+        rows.sort_by_key(|(property, _)| crate::landingpattern::editor_rank(property));
+    }
+    rows.into_iter().map(|(_, row)| row).collect()
 }
 
 fn strings(read: &Value, key: &str) -> Vec<String> {

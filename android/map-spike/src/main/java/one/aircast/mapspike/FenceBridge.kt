@@ -27,6 +27,9 @@ fun fenceRows(polygons: List<FencePolygon>, circles: List<FenceCircle>): List<Fe
     polygons.map { FenceRow(it.index, false, it.kindText.ifBlank { if (it.inclusion) "Keep-in polygon" else "Keep-out polygon" }, it.detailText, it.inclusion) } +
         circles.map { FenceRow(it.index, true, it.kindText.ifBlank { if (it.inclusion) "Keep-in circle" else "Keep-out circle" }, it.detailText) }
 
+internal fun fenceHeading(row: FenceRow, previous: FenceRow?): String? =
+    (if (row.circle) "Circular fences" else "Polygon fences").takeIf { previous == null || previous.circle != row.circle }
+
 internal fun fenceRowHit(row: FenceRow): MapHit = if (row.circle) MapHit.Circle(row.index) else MapHit.FenceVertex(row.index, 0)
 
 internal fun rowSelected(row: FenceRow, selected: MapHit?): Boolean = when (selected) {

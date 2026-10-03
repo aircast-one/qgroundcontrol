@@ -202,20 +202,43 @@ fn glide_slope(pattern: &Value, distance: f64) -> f64 {
 }
 
 const FIELDS: [(&str, &str); 13] = [
+    ("UseLoiterToAlt", "useLoiterToAlt"),
     ("FinalApproachAltitude", "finalApproachAltitude"),
     ("UseDoChangeSpeed", "useDoChangeSpeed"),
     ("FinalApproachSpeed", "finalApproachSpeed"),
     ("LoiterRadius", "loiterRadius"),
-    ("LandingAltitude", "landingAltitude"),
-    ("LandingHeading", "landingHeading"),
-    ("LandingDistance", "landingDistance"),
     ("LoiterClockwise", "loiterClockwise"),
-    ("UseLoiterToAlt", "useLoiterToAlt"),
+    ("LandingHeading", "landingHeading"),
+    ("LandingAltitude", "landingAltitude"),
+    ("ValueSetIsDistance", "valueSetIsDistance"),
+    ("LandingDistance", "landingDistance"),
+    ("GlideSlope", "glideSlope"),
     ("StopTakingPhotos", "stopTakingPhotos"),
     ("StopTakingVideo", "stopTakingVideo"),
-    ("ValueSetIsDistance", "valueSetIsDistance"),
-    ("GlideSlope", "glideSlope"),
 ];
+
+pub fn editor_rank(property: &str) -> usize {
+    FIELDS.iter().position(|(_, suffix)| *suffix == property).unwrap_or(FIELDS.len())
+}
+
+pub fn section(property: &str) -> Option<&'static str> {
+    match property {
+        "useLoiterToAlt" | "finalApproachAltitude" | "useDoChangeSpeed" | "finalApproachSpeed" | "loiterRadius" | "loiterClockwise" => Some("Final approach"),
+        "landingHeading" | "landingAltitude" | "valueSetIsDistance" | "landingDistance" | "glideSlope" => Some("Landing point"),
+        "stopTakingPhotos" | "stopTakingVideo" => Some("Camera"),
+        _ => None,
+    }
+}
+
+pub fn editor_row(control: Value, vtol: bool, property: &str) -> Value {
+    match (crate::surveydoc::row_labelled(control, vtol, property), section(property)) {
+        (Value::Object(mut fields), Some(heading)) => {
+            fields.insert("section".to_string(), json!(heading));
+            Value::Object(fields)
+        }
+        (control, _) => control,
+    }
+}
 
 fn field_values(pattern: &Value) -> Vec<(&'static str, &'static str, Value)> {
     let Some(g) = geometry(pattern) else { return Vec::new() };
@@ -245,7 +268,7 @@ pub fn fields(pattern: &Value, item: &str, units: &crate::surveydoc::Units) -> V
     let by_distance = pattern.get("valueSetIsDistance").and_then(Value::as_bool).unwrap_or(true);
     field_values(pattern)
         .into_iter()
-        .filter_map(|(name, suffix, value)| crate::surveydoc::fact_control(file, name, value, item, suffix, units).map(|control| (suffix, crate::surveydoc::row_labelled(control, is_vtol(pattern), suffix))))
+        .filter_map(|(name, suffix, value)| crate::surveydoc::fact_control(file, name, value, item, suffix, units).map(|control| (suffix, editor_row(control, is_vtol(pattern), suffix))))
         .map(|(suffix, control)| match (suffix, control) {
             ("landingDistance", Value::Object(map)) if !is_vtol(pattern) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(by_distance))]).collect()),
             ("glideSlope", Value::Object(map)) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(!by_distance))]).collect()),
@@ -558,6 +581,19 @@ mod tests {
         assert_eq!(label(false, "glideSlope"), Some(json!("Glide Slope")));
         assert_eq!(label(true, "landingDistance"), Some(json!("Landing Dist")), "VTOLLandingPatternEditor");
         assert_eq!(label(true, "landingHeading"), Some(json!("Heading")));
+        assert_eq!(label(false, "finalApproachAltitude"), Some(json!("Altitude")));
+        assert_eq!(label(true, "landingAltitude"), Some(json!("Altitude")));
+    }
+
+    #[test]
+    fn landing_rows_sit_under_the_editor_section_headers_in_editor_order() {
+        let units = crate::surveydoc::Units { vertical: &crate::read::Unit { name: "m".into(), factor: 1.0 }, horizontal: &crate::read::Unit { name: "m".into(), factor: 1.0 } };
+        let built = fresh(&Fresh { vtol: false, land: (-35.37, 149.172), ardupilot: true, relative: true, transition_distance: None });
+        let rows: Vec<(String, String)> = fields(&built, "item", &units).into_iter().map(|f| (f["pathSuffix"].as_str().unwrap_or("").to_string(), f["section"].as_str().unwrap_or("").to_string())).collect();
+        let sections: Vec<&str> = rows.iter().map(|(_, s)| s.as_str()).fold(Vec::new(), |seen, s| if seen.last() == Some(&s) { seen } else { [seen, vec![s]].concat() });
+        assert_eq!(sections, ["Final approach", "Landing point", "Camera"], "FWLandingPatternEditor SectionHeaders, each heading once");
+        assert_eq!(rows.first().map(|(p, _)| p.as_str()), Some("useLoiterToAlt"));
+        assert_eq!(rows.iter().find(|(p, _)| p == "landingAltitude").map(|(_, s)| s.as_str()), Some("Landing point"), "the second Altitude row is the touchdown one");
     }
 
     #[test]

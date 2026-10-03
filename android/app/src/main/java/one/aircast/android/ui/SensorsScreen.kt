@@ -138,7 +138,7 @@ private fun StartDialog(
     val orientationFirst = calibration.id == ACCEL_ROUTINE || calibration.id == COMPASS_ROUTINE
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Calibrate ${calibration.title}?") },
+        title = { Text(calibration.dialogTitle.ifBlank { calibration.title }) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (orientationFirst) {
@@ -168,7 +168,7 @@ private fun StartDialog(
                     else -> onConfirm(calibration.invocation, calibration.arguments)
                 }
                 onDismiss()
-            }) { Text("Start") }
+            }) { Text("OK") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -366,9 +366,9 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
     if (showSettings) {
         AlertDialog(
             onDismissRequest = { showSettings = false },
-            title = { Text(state.settingsTitle) },
+            title = { Text(state.settingsDialogTitle.ifBlank { state.settingsTitle }) },
             text = { Column(Modifier.verticalScroll(rememberScrollState())) { SensorSettingsBlock(calibrating = false, showCompasses = true) } },
-            confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { showSettings = false }) { Text("OK") } },
         )
     }
 

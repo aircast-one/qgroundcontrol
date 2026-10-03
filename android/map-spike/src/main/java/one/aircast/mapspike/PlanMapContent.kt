@@ -146,6 +146,15 @@ private fun sendPlan(
 }
 
 @Composable
+private fun FenceHeading(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+    )
+}
+
+@Composable
 private fun PaletteNote(text: String) {
     Text(
         text,
@@ -754,7 +763,9 @@ internal fun MapSpikeScreen(
                 if (layer == PlanLayer.Fence) {
                     if (!support.fence && support.reason.isNotBlank()) PaletteNote(support.reason)
                     if (fences.isEmpty() && circles.isEmpty()) PaletteNote(NO_GEOFENCE)
-                    fenceRows(fences, circles).forEach { row ->
+                    val listed = fenceRows(fences, circles)
+                    listed.forEachIndexed { at, row ->
+                        fenceHeading(row, listed.getOrNull(at - 1))?.let { FenceHeading(it) }
                         FenceListRow(
                             row,
                             chosen = rowSelected(row, selected),
@@ -838,7 +849,7 @@ internal fun MapSpikeScreen(
                         onBridge("Adding fence", then = { selected = MapHit.FenceVertex(next, 0) }) {
                             at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionPolygon(topLeft, bottomRight) } ?: false
                         }
-                    }) { Text("Add polygon") }
+                    }) { Text("Polygon fence") }
 
                     if (layer == PlanLayer.Mission) addingAfterText(selected, allItems)?.let {
                         PaletteNote(it)
@@ -890,7 +901,7 @@ internal fun MapSpikeScreen(
                         onBridge("Adding circle", then = { selected = MapHit.Circle(next) }) {
                             at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionCircle(topLeft, bottomRight) } ?: false
                         }
-                    }) { Text("Add circle") }
+                    }) { Text("Circular fence") }
 
                     if (layer == PlanLayer.Fence) FilledTonalButton(enabled = support.fence, onClick = {
                         if (breach != null) {
@@ -901,7 +912,7 @@ internal fun MapSpikeScreen(
                                 at != null && FenceBridge.setBreachReturn(at)
                             }
                         }
-                    }) { Text("Breach") }
+                    }) { Text(if (breach == null) "Add breach return point" else "Breach return point") }
 
                     breach?.takeIf { editingBreach }?.let { current ->
                         BreachReturnDialog(

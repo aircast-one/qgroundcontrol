@@ -25,6 +25,7 @@ internal data class CalibrationRoutine(
     val status: String,
     val warning: String,
     val spinsPropeller: Boolean,
+    val dialogTitle: String = "",
 )
 
 internal data class CalibrationState(
@@ -42,6 +43,7 @@ internal data class CalibrationState(
     val needsAttention: String,
     val px4: Boolean,
     val settingsTitle: String,
+    val settingsDialogTitle: String = "",
     val fastCompass: FastCompass?,
     val sides: List<CalibrationSide>,
     val routines: List<CalibrationRoutine>,
@@ -72,6 +74,7 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
         needsAttention = view.optText("needsAttention"),
         px4 = view.optBoolean("px4"),
         settingsTitle = view.optText("settingsTitle"),
+        settingsDialogTitle = view.optText("settingsDialogTitle"),
         fastCompass = fastCompass(view.optJSONObject("fastCompass")),
         compassResults = view.list("compassResults") {
             CompassResult(it.optInt("compass"), it.optDouble("green"), it.optDouble("yellow"), it.optDouble("range"), it.optDouble("position"))
@@ -100,6 +103,7 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
                 status = it.optText("status"),
                 warning = it.optText("warning"),
                 spinsPropeller = it.optBoolean("spinsPropeller"),
+                dialogTitle = it.optText("dialogTitle"),
             )
         },
     )

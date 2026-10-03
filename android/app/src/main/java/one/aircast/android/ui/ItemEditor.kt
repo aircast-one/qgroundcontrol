@@ -160,6 +160,12 @@ internal fun altitudeHint(view: JSONObject?): String? =
 internal fun previousCoordinate(view: JSONObject?): Pair<Double, Double>? =
     view?.optJSONObject("previousCoordinate")?.let { it.optDouble("latitude") to it.optDouble("longitude") }?.takeIf { !it.first.isNaN() && !it.second.isNaN() }
 
+internal fun sectionStarts(view: JSONObject?): Map<String, String> {
+    val listed = view?.optJSONArray("fields") ?: return emptyMap()
+    val rows = (0 until listed.length()).mapNotNull { listed.optJSONObject(it) }.map { it.optString("path") to it.optString("section") }
+    return rows.filterIndexed { at, (_, section) -> section.isNotBlank() && section != rows.getOrNull(at - 1)?.second }.toMap()
+}
+
 internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact> {
     val listed = view?.optJSONArray("fields") ?: return emptyList()
     return (0 until listed.length()).mapNotNull { listed.optJSONObject(it)?.let(::factFromControl) }
@@ -181,6 +187,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
     }
 
     val fields = remember(view) { withLandingFrameUnits(itemFields(view), altitudesRelative(view)) }
+    val sections = remember(view) { sectionStarts(view) }
     val raw = remember(view) { rawEdit(view) }
     val connected = hasVehicle()
     val camera = remember(view) { cameraCalc(view) }
@@ -303,7 +310,10 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                 val presets = { presetKind(view)?.let { kind -> item(key = "presets") { PatternPresets(index, kind) { revision++ } } } }
                 if (presetsFirst == true) presets()
                 items(fields, key = { it.path }) { fact ->
-                    if (fact.optional) OptionalFactRow(fact) { revision++ } else FactRow(fact) { revision++ }
+                    Column {
+                        sections[fact.path]?.let { SectionHeader(it) }
+                        if (fact.optional) OptionalFactRow(fact) { revision++ } else FactRow(fact) { revision++ }
+                    }
                 }
                 item(key = "itemCamera") {
                     one.aircast.mapspike.ItemCameraSection(index, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { revision++ }

@@ -35,6 +35,15 @@ class ItemEditorTest {
     }
 
     @Test
+    fun `a section header sits above the first row of each landing editor section`() {
+        val view = JSONObject("""{"fields":[
+            {"path":"a","section":"Final approach"},{"path":"b","section":"Final approach"},
+            {"path":"c","section":"Landing point"},{"path":"d","section":"Landing point"},{"path":"e"}]}""")
+        assertEquals(mapOf("a" to "Final approach", "c" to "Landing point"), sectionStarts(view))
+        assertTrue(sectionStarts(JSONObject("""{"fields":[{"path":"a"}]}""")).isEmpty())
+    }
+
+    @Test
     fun `the speed section is offered only where the item has one`() {
         val speed = speedSection(JSONObject("""{"speedSection":{"available":true,"specified":true,"value":8.5,"units":"m/s","path":"p","specifyPath":"s"}}"""))!!
         assertTrue(speed.specified)
