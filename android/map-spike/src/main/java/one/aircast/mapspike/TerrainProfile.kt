@@ -50,10 +50,10 @@ data class TerrainProfile(
     val distance: Double get() = points.lastOrNull()?.distance ?: 0.0
 
     val lowest: Double
-        get() = band?.first ?: points.minOfOrNull { min(it.terrain ?: it.planned, it.planned) } ?: 0.0
+        get() = band?.first ?: points.filter { it.planned.isFinite() }.minOfOrNull { min(it.terrain ?: it.planned, it.planned) } ?: 0.0
 
     val highest: Double
-        get() = band?.second ?: points.maxOfOrNull { max(it.terrain ?: it.planned, it.planned) } ?: 0.0
+        get() = band?.second ?: points.filter { it.planned.isFinite() }.maxOfOrNull { max(it.terrain ?: it.planned, it.planned) } ?: 0.0
 
     val hasTerrain: Boolean get() = points.count { it.terrain != null } >= 2
 
@@ -116,7 +116,6 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
         points = (0 until points.length()).mapNotNull { index ->
             val point = points.optJSONObject(index) ?: return@mapNotNull null
             val planned = point.optDouble("missionAltitude", Double.NaN)
-            if (planned.isNaN()) return@mapNotNull null
             ProfilePoint(
                 distance = point.optDouble("distance", 0.0),
                 terrain = point.optDouble("terrainAltitude", Double.NaN).takeIf { !it.isNaN() },

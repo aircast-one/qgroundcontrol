@@ -196,10 +196,11 @@ class TerrainViewTest {
     }
 
     @Test
-    fun `a point with no planned altitude is not a point on the profile`() {
+    fun `a point with no planned altitude stays on the distance axis but draws no flight line`() {
         val profile = terrainProfile(view("""{"distance":10.0,"terrainAltitude":900.0}"""))
 
-        assertEquals(0, profile.points.size)
+        assertEquals(1, profile.points.size)
+        assertTrue(profile.points.single().planned.isNaN())
     }
 
     @Test
@@ -250,8 +251,7 @@ class HeightRangeTest {
             "markers":[{"sequence":0,"distance":0,"label":"T"},{"sequence":2,"distance":200,"label":"2","complex":{"endDistance":600,"lastSequence":7,"pattern":"Survey"}}]}"""))
         assertEquals(listOf("T", "2"), profile.markers.map { it.label })
         assertEquals(7, profile.markers[1].lastSequence)
-        val planned = profileOffsets(profile, 1000f, 100f) { it.planned }
-        assertEquals(1, collisionSegments(profile, planned).size)
+        assertEquals(1, collisionSegments(profile, 1000f, 100f).size)
         assertEquals(
             "the exit line and the band between belong to the pattern; open ground selects nothing",
             listOf(0, 2, 2, null),
@@ -282,5 +282,11 @@ class TerrainGapTest {
         org.junit.Assert.assertEquals(listOf(2, 2), terrainRuns(profile, 400f, 70f).map { it.size })
         org.junit.Assert.assertEquals(listOf(100f to 200f, 200f to 300f), missingSpans(profile, 400f))
         org.junit.Assert.assertEquals("the chart uses the core's padded band", 90.0, profile.lowest, 0.0)
+        val waiting = terrainProfile(org.json.JSONObject("""{"minAltitudeMeters":90,"maxAltitudeMeters":160,"points":[
+            {"distance":0,"missionAltitude":150,"terrainAltitude":100},{"distance":100,"missionAltitude":150,"terrainAltitude":110},
+            {"distance":100,"missionAltitude":null},{"distance":300,"missionAltitude":null},
+            {"distance":300,"missionAltitude":150,"terrainAltitude":120},{"distance":400,"missionAltitude":150,"terrainAltitude":130}]}"""))
+        org.junit.Assert.assertEquals("a span with no heights yet keeps its points, draws no flight line there", listOf(2, 2), plannedRuns(waiting, 400f, 70f).map { it.size })
+        org.junit.Assert.assertEquals(listOf(100f to 100f, 100f to 300f, 300f to 300f), missingSpans(waiting, 400f))
     }
 }

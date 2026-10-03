@@ -51,15 +51,21 @@ internal fun profileOffsets(
     }
 }
 
-internal fun terrainRuns(profile: TerrainProfile, width: Float, height: Float): List<List<Offset>> {
+internal fun terrainRuns(profile: TerrainProfile, width: Float, height: Float): List<List<Offset>> =
+    profileRuns(profile, width, height) { it.terrain }
+
+internal fun plannedRuns(profile: TerrainProfile, width: Float, height: Float): List<List<Offset>> =
+    profileRuns(profile, width, height) { it.planned.takeIf(Double::isFinite) }
+
+private fun profileRuns(profile: TerrainProfile, width: Float, height: Float, value: (ProfilePoint) -> Double?): List<List<Offset>> {
     val distance = profile.distance.takeIf { it > 0.0 && profile.drawable } ?: return emptyList()
     return profile.points
         .fold(listOf(emptyList<Offset>())) { runs, point ->
-            val ground = point.terrain
-            if (ground == null) {
+            val altitude = value(point)
+            if (altitude == null) {
                 if (runs.last().isEmpty()) runs else runs + listOf(emptyList())
             } else {
-                val at = Offset((point.distance / distance * width).toFloat(), height - ((ground - profile.lowest) / profile.span * height).toFloat())
+                val at = Offset((point.distance / distance * width).toFloat(), height - ((altitude - profile.lowest) / profile.span * height).toFloat())
                 runs.dropLast(1) + listOf(runs.last() + at)
             }
         }
@@ -73,10 +79,13 @@ internal fun missingSpans(profile: TerrainProfile, width: Float): List<Pair<Floa
         .map { (from, to) -> (from.distance / distance * width).toFloat() to (to.distance / distance * width).toFloat() }
 }
 
-internal fun collisionSegments(profile: TerrainProfile, planned: List<Offset>): List<Pair<Offset, Offset>> =
-    profile.points.zip(planned).zipWithNext()
-        .filter { (from, to) -> from.first.collision && to.first.collision }
-        .map { (from, to) -> from.second to to.second }
+internal fun collisionSegments(profile: TerrainProfile, width: Float, height: Float): List<Pair<Offset, Offset>> {
+    val distance = profile.distance.takeIf { it > 0.0 } ?: return emptyList()
+    fun at(point: ProfilePoint) = Offset((point.distance / distance * width).toFloat(), height - ((point.planned - profile.lowest) / profile.span * height).toFloat())
+    return profile.points.zipWithNext()
+        .filter { (from, to) -> from.collision && to.collision && from.planned.isFinite() && to.planned.isFinite() }
+        .map { (from, to) -> at(from) to at(to) }
+}
 
 internal fun markerX(distance: Double, profile: TerrainProfile, width: Float): Float =
     profile.distance.takeIf { it > 0.0 }?.let { (distance / it * width).toFloat() } ?: 0f
@@ -184,7 +193,7 @@ fun TerrainProfileView(
                     detectTapGestures { tap -> tappedSequence(profile, size.width.toFloat(), tap.x)?.let(onSelect) }
                 },
             ) {
-                val planned = profileOffsets(profile, size.width, size.height) { it.planned }
+
 
                 terrainRuns(profile, size.width, size.height).forEach { run ->
                     drawPath(pathOf(groundOutline(run, size.height)).apply { close() }, TERRAIN_COLOUR.copy(alpha = 0.45f))
@@ -204,10 +213,10 @@ fun TerrainProfileView(
                     val x = size.width * index / (profile.distanceTicks.size - 1).coerceAtLeast(1)
                     drawText(measured, ink, Offset((x - measured.size.width / 2f).coerceIn(0f, (size.width - measured.size.width).coerceAtLeast(0f)), size.height))
                 }
-                if (planned.size >= 2) {
-                    drawPath(pathOf(planned), PLANNED_COLOUR, style = Stroke(3f))
+                plannedRuns(profile, size.width, size.height).forEach { run ->
+                    drawPath(pathOf(run), PLANNED_COLOUR, style = Stroke(3f))
                 }
-                collisionSegments(profile, planned).forEach { (from, to) -> drawLine(COLLISION_COLOUR, from, to, strokeWidth = 9f) }
+                collisionSegments(profile, size.width, size.height).forEach { (from, to) -> drawLine(COLLISION_COLOUR, from, to, strokeWidth = 9f) }
 
                 profile.markers.forEach { marker ->
                     val start = markerX(marker.distance, profile, size.width)

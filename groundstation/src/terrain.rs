@@ -289,7 +289,8 @@ fn segment_points(segment: &Value, sequence: i64, from: f64) -> Vec<Point> {
     let terrain_frame = segment.get("terrainFrame") == Some(&Value::Bool(true)) || segment.get("segmentType").and_then(Value::as_i64) == Some(SEGMENT_TYPE_TERRAIN_FRAME);
     let above_ground = terrain_frame.then(|| heights.first().copied().flatten().map(|ground| low - ground)).flatten();
     if terrain_frame && above_ground.is_none() {
-        return Vec::new();
+        let unknown = |distance: f64| Point { sequence, distance, mission_altitude: f64::NAN, terrain_altitude: None, collision: false };
+        return vec![unknown(from), unknown(from + length)];
     }
     (0..steps)
         .map(|step| {
@@ -773,6 +774,9 @@ mod tests {
         let flown = segment_points(&segments[0], 3, 0.0);
         assert!(flown.iter().all(|p| p.terrain_altitude.is_some_and(|ground| (p.mission_altitude - ground - 50.0).abs() < 1e-6)), "drawn at the ground plus the distance to the surface, as TerrainProfile::_addFlightPoints does");
         assert!(transect_segments(&corridor, 0.0, &|_, _| None).unwrap().is_empty(), "no ground, no terrain-frame segments, as _buildFlightPathCoordInfoFromPathHeightInfoForTerrainFrame returns early");
+        let waiting = json!({ "coord1AMSLAlt": 550.0, "coord2AMSLAlt": 550.0, "totalDistance": 300.0, "amslTerrainHeights": [], "segmentType": 3 });
+        let gap = segment_points(&waiting, 4, 100.0);
+        assert_eq!(gap.iter().map(|p| (p.distance, p.terrain_altitude, p.mission_altitude.is_nan())).collect::<Vec<_>>(), vec![(100.0, None, true), (400.0, None, true)], "a Qt terrain-frame segment still waiting for heights is missing terrain with no flight line, as TerrainProfile draws it");
         let home = json!({ "homePosition": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "amslEntryAlt": 500.0 });
         let terrain_wp = json!({ "specifiesCoordinate": true, "altitudeFrame": TERRAIN_FRAME, "coordinate": { "latitude": 47.01, "longitude": 8.0 }, "amslEntryAlt": 550.0, "sequenceNumber": 1, "isTakeoffItem": true });
         let back = simple_segments(&[home, terrain_wp, json!({ "command": 20, "sequenceNumber": 2 })], false, false, &ridge);
