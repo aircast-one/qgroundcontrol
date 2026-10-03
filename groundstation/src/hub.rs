@@ -1497,6 +1497,9 @@ impl Vehicle {
                 }
                 params::Action::NoResponse => {
                     self.note("The vehicle did not respond to the parameter request.".to_string());
+                    if let Some(text) = no_parameters_notice(self.id, self.autopilot, &crate::noticeboard::application_name()) {
+                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &text);
+                    }
                     let clock = self.send_clock();
                     clock.into_iter().chain(self.step_done(connect::Step::Parameters, now_ms)).collect()
                 }
@@ -4156,6 +4159,12 @@ pub fn now_us() -> u64 {
 
 static STARTED: LazyLock<std::time::Instant> = LazyLock::new(std::time::Instant::now);
 
+pub fn no_parameters_notice(id: u8, autopilot: u8, app: &str) -> Option<String> {
+    let generic = autopilot != crate::modes::AUTOPILOT_PX4 && autopilot != crate::modes::AUTOPILOT_ARDUPILOT;
+    let app = Some(app).filter(|n| !n.is_empty()).unwrap_or("QGroundControl");
+    (!generic).then(|| format!("Vehicle {id} did not respond to request for parameters. This will cause {app} to be unable to display its full user interface."))
+}
+
 pub fn skips_download(autopilot: u8, armed: bool, skip_when_flying: bool) -> bool {
     skip_when_flying && armed && autopilot != crate::modes::AUTOPILOT_PX4
 }
@@ -4247,6 +4256,13 @@ pub fn core_parameter_view(_backend: &dyn crate::router::Backend, args: &[String
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_unanswered_parameter_request_is_reported_unless_the_firmware_is_generic() {
+        assert_eq!(no_parameters_notice(3, crate::modes::AUTOPILOT_PX4, "Aircast QGC").as_deref(), Some("Vehicle 3 did not respond to request for parameters. This will cause Aircast QGC to be unable to display its full user interface."));
+        assert!(no_parameters_notice(3, crate::modes::AUTOPILOT_ARDUPILOT, "").is_some());
+        assert!(no_parameters_notice(3, 0, "Aircast QGC").is_none(), "ParameterManager skips it for generic firmware");
+    }
+
     use super::*;
 
     #[test]

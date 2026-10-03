@@ -604,6 +604,12 @@ fn usable(dir: &std::path::Path) -> bool {
     std::fs::create_dir_all(dir).is_ok() && std::fs::metadata(dir).is_ok_and(|m| m.is_dir() && !m.permissions().readonly())
 }
 
+pub const SD_CARD_WRITE_PROTECTED: &str = "Save to SD card specified for application data. But SD card is write protected. Using internal storage.";
+
+pub fn sd_card_refusal(roots: &SaveRoots, dont_save_to_sd_card: bool) -> Option<&'static str> {
+    roots.removable.as_ref().filter(|sd| !dont_save_to_sd_card && sd.is_dir() && !usable(sd)).map(|_| SD_CARD_WRITE_PROTECTED)
+}
+
 pub fn chosen_save_root(roots: &SaveRoots, dont_save_to_sd_card: bool) -> std::path::PathBuf {
     roots.removable.clone().filter(|sd| !dont_save_to_sd_card && usable(sd)).unwrap_or_else(|| roots.internal.clone())
 }
@@ -622,6 +628,9 @@ pub fn establish_save_path(given: Option<&str>, removable: Option<&str>, applica
     };
     let roots = root.clone().map(|internal| SaveRoots { internal, removable: removable.map(std::path::PathBuf::from) });
     *SAVE_ROOTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = roots.clone();
+    if let Some(refusal) = roots.as_ref().and_then(|roots| sd_card_refusal(roots, dont_save_to_sd_card())) {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", refusal);
+    }
     if let Some(chosen) = roots.map(|roots| chosen_save_root(&roots, dont_save_to_sd_card())).or(root) {
         written(&key("App", "savePath"), &chosen.to_string_lossy());
     }
@@ -940,7 +949,17 @@ mod tests {
         let blocked = base.join("file");
         std::fs::create_dir_all(&base).unwrap();
         std::fs::write(&blocked, b"").unwrap();
-        assert_eq!(chosen_save_root(&SaveRoots { removable: Some(blocked.join("sd")), ..roots }, false), base.join("internal"), "a card that cannot be written falls back to internal storage");
+        assert_eq!(chosen_save_root(&SaveRoots { removable: Some(blocked.join("sd")), ..roots.clone() }, false), base.join("internal"), "a card that cannot be written falls back to internal storage");
+        assert_eq!(sd_card_refusal(&SaveRoots { removable: Some(blocked.join("sd")), ..roots.clone() }, false), None, "no card present is silent, as AppSettings only logs it");
+        let locked = base.join("locked");
+        std::fs::create_dir_all(&locked).unwrap();
+        let mut permissions = std::fs::metadata(&locked).unwrap().permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&locked, permissions.clone()).unwrap();
+        assert_eq!(sd_card_refusal(&SaveRoots { removable: Some(locked.clone()), ..roots.clone() }, false), Some(SD_CARD_WRITE_PROTECTED), "a write-protected card is reported");
+        assert_eq!(sd_card_refusal(&SaveRoots { removable: Some(locked.clone()), ..roots }, true), None, "unless the operator chose internal storage");
+        permissions.set_readonly(false);
+        std::fs::set_permissions(&locked, permissions).ok();
         std::fs::remove_dir_all(&base).ok();
     }
 
