@@ -216,7 +216,7 @@ internal fun SigningKeysSection() {
     exported?.let { name ->
         AlertDialog(
             onDismissRequest = { exported = null },
-            title = { Text("Export Key: $name") },
+            title = { Text("Export key: $name") },
             text = { Text("Key copied to clipboard. Store it securely — it will be cleared from the clipboard in 30 seconds.") },
             confirmButton = { TextButton(onClick = { exported = null }) { Text("OK") } },
         )

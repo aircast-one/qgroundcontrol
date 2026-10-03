@@ -83,8 +83,8 @@ internal fun TileSetTransfer(sets: List<OfflineSet>, onRefusal: (String?) -> Uni
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        ActionLine("Import Map Tiles", "Import…", running == null) { choosingMode = true }
-        ActionLine("Export Map Tiles", "Export…", running == null) {
+        ActionLine("Import map tiles", "Import…", running == null) { choosingMode = true }
+        ActionLine("Export map tiles", "Export…", running == null) {
             chosen = emptySet()
             choosingSets = true
         }
@@ -121,7 +121,7 @@ internal fun TileSetTransfer(sets: List<OfflineSet>, onRefusal: (String?) -> Uni
     if (choosingMode) {
         AlertDialog(
             onDismissRequest = { choosingMode = false },
-            title = { Text("Import TileSets") },
+            title = { Text("Import tile sets") },
             text = {
                 Column {
                     listOf(false to "Append to existing sets", true to "Replace existing sets").forEach { (mode, label) ->

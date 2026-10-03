@@ -82,7 +82,7 @@ fun MissionCompleteDialog() {
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Resume Mission From Waypoint $waypoint") }
+                    ) { Text("Resume mission from waypoint $waypoint") }
                     Text(
                         "Resume Mission will rebuild the current mission from the last flown waypoint and upload it to the vehicle for the next flight.",
                         style = MaterialTheme.typography.bodySmall,

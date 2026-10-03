@@ -418,8 +418,8 @@ private fun OfflineSetEditor(
                         steps = (SLIDER_MAX_ZOOM - SLIDER_MIN_ZOOM).toInt() - 1,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text("Min Zoom: $minZoom")
-                        Text("Max Zoom: $maxZoom")
+                        Text("Min zoom: $minZoom")
+                        Text("Max zoom: $maxZoom")
                     }
                     val previewAt = region?.let(::regionCentre)
                     if (previewAt == null || !showPreview) {

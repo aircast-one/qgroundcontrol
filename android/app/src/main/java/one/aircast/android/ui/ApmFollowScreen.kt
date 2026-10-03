@@ -128,7 +128,7 @@ fun ApmFollowScreen(modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = follow.enabled, onCheckedChange = { act(APM_FOLLOW_ENABLE, it) })
-            Text("Enable Follow Me")
+            Text("Enable Follow me")
         }
         if (follow.waiting) Text("Waiting for Vehicle to update", style = MaterialTheme.typography.bodyMedium)
         if (!follow.supported) {
