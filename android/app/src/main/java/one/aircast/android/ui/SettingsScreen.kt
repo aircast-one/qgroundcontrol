@@ -649,8 +649,8 @@ internal fun FactRow(
     subtitle: String = listOf(fact.detail, factSubtitle(fact)).filter { it.isNotBlank() }.joinToString(" · "),
     titleColor: Color = Color.Unspecified,
     fieldModifier: Modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-    onWrite: () -> Unit = {},
     onRejected: () -> Unit = {},
+    onWrite: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var refusal by remember(fact.path) { mutableStateOf<String?>(null) }

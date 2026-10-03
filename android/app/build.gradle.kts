@@ -174,4 +174,5 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-svg:3.1.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
+    testImplementation("org.jetbrains.kotlin:kotlin-metadata-jvm:2.0.21")
 }
