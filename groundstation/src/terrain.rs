@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{Unit, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile", "plan.missionController.simpleFlightPathSegments.count",
+pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile", "plan.missionController.simpleFlightPathSegments.count", "plan.missionController.minAMSLAltitude", "plan.missionController.maxAMSLAltitude",
     "settings.unitsSettings.verticalDistanceUnits", "settings.unitsSettings.horizontalDistanceUnits", crate::coreplan::CHANGED, crate::terrainservice::TERRAIN_CHANGED,
 ];
 
@@ -29,9 +29,13 @@ pub struct Profile {
 }
 
 pub fn profile(points: Vec<Point>) -> Profile {
+    banded(points, None)
+}
+
+pub fn banded(points: Vec<Point>, mission: Option<(f64, f64)>) -> Profile {
     let unknown_terrain = points.iter().filter(|p| p.terrain_altitude.is_none()).count();
     let total_distance = points.iter().map(|p| p.distance).fold(0.0, f64::max);
-    let altitudes: Vec<f64> = points.iter().map(|p| p.mission_altitude).chain(points.iter().filter_map(|p| p.terrain_altitude)).collect();
+    let altitudes: Vec<f64> = points.iter().map(|p| p.mission_altitude).chain(points.iter().filter_map(|p| p.terrain_altitude)).chain(mission.into_iter().flat_map(|(low, high)| [low, high]).filter(|v| v.is_finite())).collect();
     let low = altitudes.iter().copied().fold(f64::INFINITY, f64::min);
     let high = altitudes.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let (low, high) = if altitudes.is_empty() { (0.0, 0.0) } else { (low, high) };
@@ -503,7 +507,12 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let legs = core.as_ref().map(|(reads, fixed_wing, rover)| simple_segments(reads, *fixed_wing, *rover, &crate::terrainservice::height)).unwrap_or_default();
     let mut all: Vec<Point> = entries.into_iter().chain(inside).chain(simple_points(&legs)).collect();
     all.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
-    let profile = profile(all);
+    let summary = match &core {
+        Some(_) => crate::coreplan::summary_fields(backend).unwrap_or(Value::Null),
+        None => object(&backend.get_fields("plan.missionController", "minAMSLAltitude,maxAMSLAltitude")),
+    };
+    let mission = summary.get("minAMSLAltitude").and_then(Value::as_f64).zip(summary.get("maxAMSLAltitude").and_then(Value::as_f64));
+    let profile = banded(all, mission);
     let vertical = Unit::vertical(backend);
     let usable = profile.points.len() > 1 && profile.max_altitude > profile.min_altitude;
     json!({
@@ -775,6 +784,12 @@ mod tests {
         assert_eq!(axis_ticks(0.0, 1000.0, 4), ["0.0", "250.0", "500.0", "750.0", "1000.0"], "tickInterval max / 4, one decimal");
         assert_eq!(axis_ticks(380.0, 620.0, 3), ["380.0", "460.0", "540.0", "620.0"]);
         assert_eq!(axis_ticks(0.0, 0.0, 4), ["0.0"], "an empty axis keeps the interval of 1 and shows its single tick");
+    }
+
+    #[test]
+    fn the_band_folds_in_the_missions_own_altitudes_like_terrain_profile() {
+        let band = banded(vec![point(0.0, 100.0, Some(50.0)), point(200.0, 100.0, Some(50.0))], Some((40.0, 160.0)));
+        assert_eq!((band.min_altitude, band.max_altitude), (28.0, 172.0), "fmin/fmax with minAMSLAltitude and maxAMSLAltitude before the 10% pad");
     }
 
     #[test]
