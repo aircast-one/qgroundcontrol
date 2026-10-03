@@ -104,7 +104,7 @@ internal fun extraSourceProblem(source: String, url: String): String? = when {
     sourceNeedsUrl(source) && url.isBlank() -> "This kind of stream needs an address."
     source == RTSP_SOURCE && !url.trim().lowercase().startsWith("rtsp") -> "An RTSP address starts with rtsp://."
     url.contains("://") && source in SCHEME_ADDED_SOURCES ->
-        "Leave the scheme off - QGroundControl adds it, and a doubled one fails to resolve."
+        "Leave the scheme off. The app adds it, and a doubled one fails to resolve."
     else -> null
 }
 
