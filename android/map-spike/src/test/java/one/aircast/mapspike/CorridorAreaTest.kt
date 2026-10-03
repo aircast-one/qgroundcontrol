@@ -13,5 +13,8 @@ class CorridorAreaTest {
         assertEquals(corridor.outline, shadedArea(corridor))
         assertEquals(survey.area, shadedArea(survey))
         assertEquals(2, surveyAreaFeatures(listOf(corridor, survey)).features()!!.size)
+        val tinted = surveyAreaFeatures(listOf(survey.copy(collides = true))).features()!!.single()
+        assertEquals("a pattern that clips terrain is drawn in surveyPolygonTerrainCollision", true, tinted.getBooleanProperty(SURVEY_COLLISION))
+        assertEquals(setOf(2), collidingItems(org.json.JSONObject("""{"collidingItems":[2]}""")))
     }
 }

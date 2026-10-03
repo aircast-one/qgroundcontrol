@@ -10,7 +10,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -27,6 +26,7 @@ private val TERRAIN_COLOUR = Color(0xFF8D6E63)
 private val PLANNED_COLOUR = Color(0xFF4FC3F7)
 private val COLLISION_COLOUR = Color.Red
 private val MISSING_COLOUR = Color.Yellow
+private val HEIGHT_LABEL_MARGIN = 44.dp
 private val PATTERN_COLOUR = Color.Green.copy(alpha = 0.5f)
 private const val MARKER_TAP_SLOP_PX = 48f
 private const val FULL_TERRAIN = 0.98
@@ -157,6 +157,7 @@ fun TerrainProfileView(
         return
     }
 
+    Text(profileLabel(profile), Modifier.fillMaxWidth().padding(horizontal = 8.dp), style = MaterialTheme.typography.labelSmall)
     if (profile.heightHeader.isNotBlank()) {
         androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
             Text("Elevation", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
@@ -178,7 +179,7 @@ fun TerrainProfileView(
             val onAccent = MaterialTheme.colorScheme.onPrimary
             val paper = MaterialTheme.colorScheme.surface
             Canvas(
-                Modifier.fillMaxWidth().height(110.dp).padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 16.dp).pointerInput(profile) {
+                Modifier.fillMaxWidth().height(110.dp).padding(start = HEIGHT_LABEL_MARGIN, end = 8.dp, top = 8.dp, bottom = 16.dp).pointerInput(profile) {
                     detectTapGestures { tap -> tappedSequence(profile, size.width.toFloat(), tap.x)?.let(onSelect) }
                 },
             ) {
@@ -195,7 +196,7 @@ fun TerrainProfileView(
                     val y = size.height - size.height * index / (profile.heightTicks.size - 1).coerceAtLeast(1)
                     drawLine(ink.copy(alpha = 0.3f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
                     val measured = measurer.measure(tick, labelStyle)
-                    drawText(measured, ink, Offset(0f, (y - measured.size.height).coerceAtLeast(0f)))
+                    drawText(measured, ink, Offset(-measured.size.width - 4f, y - measured.size.height / 2f))
                 }
                 profile.distanceTicks.forEachIndexed { index, tick ->
                     val measured = measurer.measure(tick, labelStyle)
@@ -228,11 +229,6 @@ fun TerrainProfileView(
                 }
             }
 
-            Text(
-                profileLabel(profile),
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
-            )
         }
     }
 }

@@ -23,6 +23,7 @@ data class Survey(
     val layerSpanText: String = "",
     val turnaround: Boolean = false,
     val outline: List<TrackPoint> = emptyList(),
+    val collides: Boolean = false,
 )
 
 private fun points(array: JSONArray?): List<TrackPoint> {

@@ -459,6 +459,17 @@ fn collision_legs(backend: &dyn Backend) -> Vec<Value> {
         .unwrap_or_default()
 }
 
+fn colliding_items(model: &Value) -> Vec<usize> {
+    model.get("elements").and_then(Value::as_array).map_or_else(Vec::new, |elements| {
+        elements
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.get("isSimpleItem") == Some(&Value::Bool(false)) && e.get("homePosition") != Some(&Value::Bool(true)) && e.get("terrainCollision") == Some(&Value::Bool(true)))
+            .map(|(index, _)| index)
+            .collect()
+    })
+}
+
 fn axis_ticks(min: f64, max: f64, intervals: usize) -> Vec<String> {
     let step = if max - min > 0.0 { (max - min) / intervals as f64 } else { 1.0 };
     (0..=intervals).map(|i| min + step * i as f64).take_while(|v| *v <= max + step * 1e-9).map(|v| format!("{v:.1}")).collect()
@@ -503,6 +514,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "distanceTicks": axis_ticks(0.0, Unit::horizontal(backend).show(profile.total_distance), 4),
         "heightTicks": axis_ticks(vertical.show(profile.min_altitude), vertical.show(profile.max_altitude), 3),
         "markers": markers(&model),
+        "collidingItems": colliding_items(&model),
         "collisionLegs": match core {
             Some(_) => legs.iter().filter(|leg| leg.segment["terrainCollision"] == true).map(|leg| leg.line.clone()).collect(),
             None => collision_legs(backend),
@@ -720,6 +732,12 @@ mod tests {
         assert_eq!(flat.max_altitude, 105.0);
         assert_eq!(flat.total_distance, 200.0);
         assert_eq!(flat.unknown_terrain, 0);
+    }
+
+    #[test]
+    fn a_pattern_that_clips_terrain_is_named_for_the_map_tint() {
+        let model = json!({ "elements": [{ "homePosition": true, "isSimpleItem": false, "terrainCollision": true }, { "isSimpleItem": true, "terrainCollision": true }, { "isSimpleItem": false, "terrainCollision": true }, { "isSimpleItem": false, "terrainCollision": false }] });
+        assert_eq!(colliding_items(&model), [2], "only complex items, by visual index; simple legs are red through collisionLegs");
     }
 
     #[test]

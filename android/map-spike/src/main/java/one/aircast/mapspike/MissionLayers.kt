@@ -619,6 +619,7 @@ fun centreHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>): L
 
 const val SURVEY_AREA_SOURCE = "aircast-survey-area"
 const val SURVEY_AREA_LAYER = "aircast-survey-area-layer"
+const val SURVEY_COLLISION = "collision"
 const val SURVEY_TRANSECT_SOURCE = "aircast-survey-transects"
 const val SURVEY_TRANSECT_LAYER = "aircast-survey-transect-layer"
 const val LANDING_PATH_SOURCE = "aircast-landing-path"
@@ -755,7 +756,7 @@ fun installSurveyLayers(style: Style) {
         style.addSource(GeoJsonSource(SURVEY_AREA_SOURCE))
         style.addLayer(
             FillLayer(SURVEY_AREA_LAYER, SURVEY_AREA_SOURCE).withProperties(
-                PropertyFactory.fillColor("#AB47BC"),
+                PropertyFactory.fillColor(Expression.switchCase(Expression.get(SURVEY_COLLISION), Expression.color(android.graphics.Color.RED), Expression.color(android.graphics.Color.parseColor("#AB47BC")))),
                 PropertyFactory.fillOpacity(0.18f),
                 PropertyFactory.fillOutlineColor("#7B1FA2"),
             ),
@@ -786,11 +787,12 @@ fun installSurveyLayers(style: Style) {
 internal fun shadedArea(survey: Survey): List<TrackPoint> = if (survey.shape == SHAPE_AREA) survey.area else survey.outline
 
 fun surveyAreaFeatures(surveys: List<Survey>): FeatureCollection {
-    val features = surveys.map(::shadedArea).mapNotNull { area ->
+    val features = surveys.mapNotNull { survey ->
+        val area = shadedArea(survey)
         if (area.size < 3) return@mapNotNull null
         val ring = area.map { Point.fromLngLat(it.longitude, it.latitude) }
         val closed = if (ring.first() == ring.last()) ring else ring + ring.first()
-        Feature.fromGeometry(Polygon.fromLngLats(listOf(closed)))
+        Feature.fromGeometry(Polygon.fromLngLats(listOf(closed))).apply { addBooleanProperty(SURVEY_COLLISION, survey.collides) }
     }
     return FeatureCollection.fromFeatures(features)
 }

@@ -150,6 +150,9 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
     )
 }
 
+fun collidingItems(view: JSONObject?): Set<Int> =
+    view?.optJSONArray("collidingItems")?.let { list -> (0 until list.length()).map { list.optInt(it, -1) }.filter { it >= 0 }.toSet() }.orEmpty()
+
 fun collisionLegs(view: JSONObject?): List<Pair<TrackPoint, TrackPoint>> {
     val legs = view?.optJSONArray("collisionLegs") ?: return emptyList()
     fun spot(json: JSONObject?) = json?.let { TrackPoint(it.optDouble("latitude", Double.NaN), it.optDouble("longitude", Double.NaN)) }?.takeIf { isPlottable(it.latitude, it.longitude) }

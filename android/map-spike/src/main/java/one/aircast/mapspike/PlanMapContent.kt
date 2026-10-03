@@ -307,6 +307,7 @@ internal fun MapSpikeScreen(
     val terrainView by mapPath(TERRAIN_VIEW)
     val profile = remember(terrainView) { terrainProfile(terrainView) }
     val terrainHits = remember(terrainView) { collisionLegs(terrainView) }
+    val collidingPatterns = remember(terrainView) { collidingItems(terrainView) }
     val elevationProviderJson by mapPath(ELEVATION_PROVIDER)
     val elevationNotice = elevationProviderJson?.optText("value").orEmpty()
     val missionStatusJson by mapPath("$SHOW_MISSION_ITEM_STATUS.rawValue")
@@ -465,7 +466,7 @@ internal fun MapSpikeScreen(
             breachReturn = breach?.point,
             rallyPoints = rally,
             operator = operator,
-            surveys = surveyList.map { if (ownerOf(selected) == "m${it.index}") it else it.copy(editable = null) },
+            surveys = surveyList.map { if (ownerOf(selected) == "m${it.index}") it else it.copy(editable = null) }.map { it.copy(collides = it.index in collidingPatterns) },
             landings = landingList,
             editable = true,
             circledShapes = circled,
