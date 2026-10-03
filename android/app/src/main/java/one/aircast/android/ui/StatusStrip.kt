@@ -10,6 +10,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import one.aircast.android.bridge.Fact
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.layout.layout
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Surface
 import androidx.compose.ui.text.font.FontWeight
@@ -123,8 +125,16 @@ fun StatusPill(modifier: Modifier = Modifier) {
         color = Color.Black.copy(alpha = 0.45f),
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
-        StatusReadingsInline(rtk, gcsBattery, Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+        StatusReadingsInline(rtk, gcsBattery, Modifier.padding(end = STRIP_GAP, top = 6.dp, bottom = 6.dp))
     }
+}
+
+private val STRIP_GAP = 14.dp
+
+private fun Modifier.leadingGap(gap: androidx.compose.ui.unit.Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val offset = if (placeable.width > 0) gap.roundToPx() else 0
+    layout(placeable.width + offset, placeable.height) { placeable.place(offset, 0) }
 }
 
 internal fun statusPillShown(vehicle: Boolean, rtk: Boolean, gcsBattery: Boolean): Boolean = vehicle || rtk || gcsBattery
@@ -134,9 +144,9 @@ internal fun statusPillShown(vehicle: Boolean, rtk: Boolean, gcsBattery: Boolean
 internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading?, modifier: Modifier = Modifier) {
     val available = hasVehicle()
     if (!available) {
-        Row(modifier, horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            RtkIndicatorCell(rtk)
-            GcsBatteryCell(gcsBattery)
+        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.leadingGap(STRIP_GAP)) { RtkIndicatorCell(rtk) }
+            Box(Modifier.leadingGap(STRIP_GAP)) { GcsBatteryCell(gcsBattery) }
         }
         return
     }
@@ -164,7 +174,6 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
 
     Row(
         modifier.alpha(if (live) 1f else 0.45f).horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val cells: List<Pair<String, @Composable () -> Unit>> = listOf(
@@ -192,7 +201,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
         val keys = orderedKeys(cells.map { it.first }, OverlayLayout.indicatorOrder)
         keys.forEach { key ->
             Hideable("indicator-$key") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.leadingGap(STRIP_GAP), verticalAlignment = Alignment.CenterVertically) {
                     if (OverlayLayout.editing) TextButton(onClick = { movedKey(keys, key, -1)?.let { saveIndicatorOrder(context, it) } }) { Text("\u2039") }
                     byKey[key]?.invoke()
                     if (OverlayLayout.editing) TextButton(onClick = { movedKey(keys, key, 1)?.let { saveIndicatorOrder(context, it) } }) { Text("\u203A") }
