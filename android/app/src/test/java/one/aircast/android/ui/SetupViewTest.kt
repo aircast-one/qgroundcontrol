@@ -80,6 +80,7 @@ class SetupViewTest {
     fun `every native screen the setup page routes to also opens from the list`() {
         assertTrue(headCanOpen(SetupPage("Frame", parameterSections = false, screen = APM_AIRFRAME_SCREEN), "Frame"))
         assertTrue(headCanOpen(SetupPage("Syslink", parameterSections = false, screen = SYSLINK_SCREEN), "Syslink"))
+        assertTrue(headCanOpen(SetupPage("Failsafes", parameterSections = false, screen = NOT_SUPPORTED_SCREEN), "Failsafes"))
     }
 
     @Test

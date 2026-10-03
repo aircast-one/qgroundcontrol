@@ -5,7 +5,15 @@ use crate::read::{flag, object};
 use crate::router::Backend;
 use crate::sensors;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.parameterManager.missingParameters", "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.vtol", "vehicle.fixedWing", "vehicle.px4Firmware", "vehicle.apmFirmware", "vehicle.id"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.parameterManager.parametersReady", "vehicle.parameterManager.requestUnanswered", "vehicle.parameterManager.parameterDownloadSkipped", "vehicle.parameterManager.missingParameters", "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorStatus", "vehicle.armed", "vehicle.flying", "vehicle.rover", "vehicle.vtol", "vehicle.fixedWing", "vehicle.px4Firmware", "vehicle.apmFirmware", "vehicle.id", "vehicle.vehicleTypeString"];
+
+const SAFETY_PAGES: [&str; 2] = ["Flight Safety", "Failsafes"];
+const SAFETY_MAV_TYPES: [u8; 9] = [1, 2, 3, 4, 10, 12, 13, 14, 15];
+pub const NOT_SUPPORTED_SCREEN: &str = "notSupported";
+
+pub fn apm_safety_supported(vehicle_type: &str) -> bool {
+    SAFETY_MAV_TYPES.iter().any(|t| crate::vehiclefacade::mav_type_text(*t) == vehicle_type)
+}
 
 const PX4_ONLY: &[&str] = &["Flight Behavior", "Safety"];
 const APM_ONLY: &[&str] = &["Flight Safety", "Failsafes", "Logging", "Gimbal", "Airspeed", "ESC", "Servo Outputs", "Heli", "Follow Me", "Tuning - Advanced", "Scripting", "Lights", "Remote Support"];
@@ -305,6 +313,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         false => readiness(connected, parameters_ready, &named, &faults),
     };
     let sub_frame = components.iter().any(|c| c.class_name == "APMSubFrameComponent");
+    let safety_unsupported = connected && !px4 && !apm_safety_supported(&crate::read::text(&object(&backend.get_fields("vehicle", "vehicleTypeString")), "vehicleTypeString"));
     let flow_images = connected && crate::hub::lock().active_id().is_some_and(|id| crate::flowimage::image_index(id) > 0);
     let components: Vec<Component> = if incomplete { Vec::new() } else { components };
     json!({
@@ -334,6 +343,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
             "pages": pages.iter().filter(|p| page_exists(p, px4) && (!incomplete || INCOMPLETE_PAGES.contains(p))).chain((*title == "Setup" && flow_images).then_some(&"Optical Flow")).map(|p| {
                 let blocked = page_block(p, &components);
                 let screen = match (sub_frame, *p) {
+                    (_, page) if safety_unsupported && SAFETY_PAGES.contains(&page) => Some(NOT_SUPPORTED_SCREEN),
                     (true, "Frame") => Some(crate::apmsubframe::SUB_FRAME_SCREEN),
                     (true, "Motors") => Some(crate::apmsubmotors::SUB_MOTORS_SCREEN),
                     (_, "Optical Flow") => Some(crate::flowimage::OPTICAL_FLOW_SCREEN),
@@ -822,5 +832,38 @@ mod components {
         let titles: Vec<&str> = sections_for("Heli", false).unwrap().iter().map(|s| s.title).collect();
         assert_eq!(titles[..8], ["Servo 1", "Servo 2", "Servo 3", "Servo 4", "Servo 5", "Servo 6", "Servo 7", "Servo 8"]);
         assert_eq!(titles[8..], ["Swashplate Setup", "Throttle Settings", "Governor Settings", "Stabilize Collective Curve", "Tail & Gyros"]);
+    }
+
+    struct Typed(&'static str);
+
+    impl Backend for Typed {
+        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            match path {
+                "vehicle" => json!({ "kind": "object", "px4Firmware": false, "apmFirmware": true, "vehicleTypeString": self.0 }).to_string(),
+                "vehicle.parameterManager" => json!({ "kind": "object", "parametersReady": true, "requestUnanswered": false }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn screen_of(view: &Value, name: &str) -> Value {
+        view["groups"].as_array().unwrap().iter().flat_map(|g| g["pages"].as_array().unwrap().clone()).find(|p| p["name"] == name).map(|p| p["screen"].clone()).unwrap_or(Value::Null)
+    }
+
+    #[test]
+    fn apm_safety_pages_are_not_supported_on_a_vehicle_type_qgc_leaves_out() {
+        let boat = setup_view(&Typed("Surface vessel, boat, ship"), &[]);
+        assert_eq!(screen_of(&boat, "Flight Safety"), NOT_SUPPORTED_SCREEN, "APMFlightSafetyComponent::setupSource falls back to APMNotSupported.qml");
+        assert_eq!(screen_of(&boat, "Failsafes"), NOT_SUPPORTED_SCREEN);
+        assert_eq!(screen_of(&boat, "Power"), Value::Null, "only the two pages with a vehicle type switch");
+        let quadplane = setup_view(&Typed("VTOL Fixedrotor"), &[]);
+        assert_eq!(screen_of(&quadplane, "Failsafes"), NOT_SUPPORTED_SCREEN);
+        ["Quadrotor", "Fixed wing aircraft", "Ground rover", "Submarine", "trirotor"].iter().for_each(|kind| {
+            assert_eq!(screen_of(&setup_view(&Typed(kind), &[]), "Flight Safety"), Value::Null, "{kind} has the generated page");
+        });
     }
 }

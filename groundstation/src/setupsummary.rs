@@ -27,6 +27,7 @@ pub struct Vehicle {
     pub helicopter: bool,
     pub rover: bool,
     pub sub: bool,
+    pub safety_supported: bool,
     pub version: (i64, i64, i64),
     pub firmware: String,
     pub firmware_type: String,
@@ -413,6 +414,8 @@ pub fn rows(class: &str, facts: Facts, vehicle: &Vehicle) -> Option<Rows> {
         "APMSensorsComponent" => apm_sensors(facts),
         "APMAirspeedComponent" => apm_airspeed(facts),
         "APMFollowComponent" => apm_follow(facts),
+        "APMFailsafesComponent" if !vehicle.safety_supported => return None,
+        "APMFlightSafetyComponent" if !vehicle.safety_supported => vec![row("", "Not supported")],
         "APMFailsafesComponent" if vehicle.sub => sub_failsafes(facts, vehicle),
         "APMFailsafesComponent" => apm_failsafes(facts, vehicle),
         "APMFlightSafetyComponent" if vehicle.sub => vec![row("Arming Checks:", arming_checks(facts))],
@@ -442,6 +445,7 @@ pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
         helicopter: text(&read, "vehicleTypeString") == crate::vehiclefacade::mav_type_text(MAV_TYPE_HELICOPTER),
         rover: flag(&read, "rover") && flag(&read, "apmFirmware"),
         sub: flag(&read, "sub"),
+        safety_supported: crate::setup::apm_safety_supported(&text(&read, "vehicleTypeString")),
         version: (part("firmwareMajorVersion"), part("firmwareMinorVersion"), part("firmwarePatchVersion")),
         firmware: firmware_text(part("firmwareMajorVersion"), part("firmwareMinorVersion"), part("firmwarePatchVersion"), &text(&read, "firmwareVersionTypeString")),
         firmware_type: text(&read, "firmwareVersionTypeString"),
@@ -483,7 +487,7 @@ mod tests {
     }
 
     fn copter() -> Vehicle {
-        Vehicle { multi_rotor: true, fixed_wing: false, forward_flight: false, helicopter: false, rover: false, sub: false, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new(), custom: None }
+        Vehicle { multi_rotor: true, fixed_wing: false, forward_flight: false, helicopter: false, rover: false, sub: false, safety_supported: true, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new(), custom: None }
     }
 
     #[test]
@@ -581,7 +585,7 @@ mod tests {
                 }
             }
             fn get_fields(&self, path: &str, _fields: &str) -> String {
-                if path == "vehicle" { json!({ "kind": "object", "multiRotor": true, "apmFirmware": true }).to_string() } else { json!({ "kind": "null" }).to_string() }
+                if path == "vehicle" { json!({ "kind": "object", "multiRotor": true, "apmFirmware": true, "vehicleTypeString": "Quadrotor" }).to_string() } else { json!({ "kind": "null" }).to_string() }
             }
             fn set(&self, _p: &str, _v: &str) -> String { String::new() }
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
@@ -589,5 +593,14 @@ mod tests {
         }
         let names: Vec<String> = setup_summary_view(&ListOnly, &[])["components"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect();
         assert_eq!(names, ["Failsafes", "Frame"], "the Android core answers vehicleComponents whole and null for vehicleComponents.N");
+    }
+
+    #[test]
+    fn a_vehicle_type_without_safety_pages_summarises_like_apm_not_supported() {
+        let boat = Vehicle { rover: true, safety_supported: false, ..copter() };
+        let map: HashMap<&str, Value> = HashMap::new();
+        assert_eq!(rows("APMFlightSafetyComponent", &lookup(&map), &boat), Some(vec![row("", "Not supported")]));
+        assert_eq!(rows("APMFailsafesComponent", &lookup(&map), &boat), None, "its summaryQmlSource is an empty QUrl");
+        assert!(crate::setup::apm_safety_supported("Submarine") && !crate::setup::apm_safety_supported("Surface vessel, boat, ship"));
     }
 }

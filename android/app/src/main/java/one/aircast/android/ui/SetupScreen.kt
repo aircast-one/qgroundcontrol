@@ -348,6 +348,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 nativePage?.screen == APM_SUB_FRAME_SCREEN -> ApmSubFrameScreen(Modifier.weight(1f))
                 nativePage?.screen == APM_AIRFRAME_SCREEN -> ApmAirframeScreen(Modifier.weight(1f))
                 nativePage?.screen == OPTICAL_FLOW_SCREEN -> OpticalFlowScreen(Modifier.weight(1f))
+                nativePage?.screen == NOT_SUPPORTED_SCREEN -> SetupNotice("Not supported", Modifier.weight(1f))
                 nativePage?.parameterSections == true -> {
                     if (open.known == "power") PowerLiveCard()
                     ParameterForm(open.name, Modifier.weight(1f), section = openSection)
