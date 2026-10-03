@@ -113,10 +113,28 @@ internal fun quadFrame(at: Point3D, heading: Double): List<Slab> =
         ribbon(at, motor, colour, ARM_WIDTH, ARM_WIDTH) + box(motor.copy(alt = at.alt + ARM_WIDTH), ROTOR_SIZE, ROTOR_COLOUR, ARM_WIDTH / 2)
     } + box(at, HUB_SIZE, HUB_COLOUR, HUB_SIZE / 2)
 
-internal fun markerPoints(view: JSONObject?): List<Point3D?> {
+data class PathMarker(val mission: Int, val at: Point3D?)
+
+internal fun pathMarkers(view: JSONObject?): List<PathMarker> {
     val markers = view?.optJSONArray("markers")
-    return (0 until (markers?.length() ?: 0)).map { point3d(markers?.optJSONObject(it)?.optJSONArray("at")) }
+    return (0 until (markers?.length() ?: 0)).map { markers?.optJSONObject(it) }.map { PathMarker(it?.optInt("mission", 0) ?: 0, point3d(it?.optJSONArray("at"))) }
 }
+
+internal fun selectedAfterTap(selected: Set<Int>, markers: List<PathMarker>, hit: Int?): Set<Int> =
+    hit?.let { picked -> selected.filter { markers.getOrNull(it)?.mission != markers[picked].mission }.toSet() + picked } ?: emptySet()
+
+private fun missionMarkers(markers: List<PathMarker>, mission: Int): List<IndexedValue<PathMarker>> =
+    markers.withIndex().filter { it.value.mission == mission }
+
+internal fun selectionKept(selected: Set<Int>, before: List<PathMarker>, after: List<PathMarker>): Set<Int> =
+    selected.mapNotNull { index ->
+        before.getOrNull(index)?.mission?.let { mission ->
+            val was = missionMarkers(before, mission)
+            val now = missionMarkers(after, mission)
+            now.takeIf { it.map { marker -> marker.value } == was.map { marker -> marker.value } }
+                ?.getOrNull(was.indexOfFirst { it.index == index })?.index
+        }
+    }.toSet()
 
 internal fun pickedMarker(tap: Pair<Float, Float>, onScreen: List<Pair<Float, Float>?>, radius: Float): Int? =
     onScreen.withIndex()
@@ -125,7 +143,7 @@ internal fun pickedMarker(tap: Pair<Float, Float>, onScreen: List<Pair<Float, Fl
         .minByOrNull { it.second }
         ?.first
 
-internal fun pathSlabs(view: JSONObject?, selected: Int? = null): List<Slab> {
+internal fun pathSlabs(view: JSONObject?, selected: Set<Int> = emptySet()): List<Slab> {
     val segments = view?.optJSONArray("segments")
     val markers = view?.optJSONArray("markers")
     val ribbons = (0 until (segments?.length() ?: 0)).mapNotNull { segments?.optJSONObject(it) }.flatMap { segment ->
@@ -134,7 +152,7 @@ internal fun pathSlabs(view: JSONObject?, selected: Int? = null): List<Slab> {
         if (from == null || to == null) emptyList() else ribbon(from, to, segment.optText("colour"))
     }
     val boxes = (0 until (markers?.length() ?: 0)).mapNotNull { index -> markers?.optJSONObject(index)?.let { index to it } }.mapNotNull { (index, marker) ->
-        point3d(marker.optJSONArray("at"))?.let { box(it, MARKER_SIZE, if (index == selected) SELECTED_MARKER_COLOUR else marker.optText("colour")) }
+        point3d(marker.optJSONArray("at"))?.let { box(it, MARKER_SIZE, if (index in selected) SELECTED_MARKER_COLOUR else marker.optText("colour")) }
     }
     return ribbons + boxes
 }
@@ -263,10 +281,14 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     val vehiclesJson by mapPath(VEHICLES_VIEW)
     val vehicle = remember(vehiclesJson) { vehicleChoices(vehiclesJson).choices.firstOrNull { it.active && isPlottable(it.latitude, it.longitude) } }
     val pathJson by mapPath(VIEWER3D_PATH)
-    val markerList = remember(pathJson) { markerPoints(pathJson) }
-    var selectedMarker by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(markerList) { selectedMarker = null }
-    val slabs = remember(pathJson, selectedMarker) { pathSlabs(pathJson, selectedMarker) }
+    val markerList = remember(pathJson) { pathMarkers(pathJson) }
+    var selectedMarkers by remember { mutableStateOf(emptySet<Int>()) }
+    var selectedAmong by remember { mutableStateOf(markerList) }
+    LaunchedEffect(markerList) {
+        selectedMarkers = selectionKept(selectedMarkers, selectedAmong, markerList)
+        selectedAmong = markerList
+    }
+    val slabs = remember(pathJson, selectedMarkers) { pathSlabs(pathJson, selectedMarkers) }
     val markers by rememberUpdatedState(markerList)
     val pickRadius = with(LocalDensity.current) { MARKER_PICK_DP.dp.toPx() }
     val labels = remember(pathJson) { pathLabels(pathJson) }
@@ -313,7 +335,8 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
             loaded.addOnCameraIdleListener { cameraMoves++ }
             loaded.addOnMapClickListener { tapped ->
                 val tap = loaded.projection.toScreenLocation(tapped)
-                selectedMarker = pickedMarker(tap.x to tap.y, markers.map { at -> at?.let { onScreen(loaded, it) } }, pickRadius)
+                val hit = pickedMarker(tap.x to tap.y, markers.map { marker -> marker.at?.let { onScreen(loaded, it) } }, pickRadius)
+                selectedMarkers = selectedAfterTap(selectedMarkers, markers, hit)
                 false
             }
             loaded.uiSettings.isRotateGesturesEnabled = true

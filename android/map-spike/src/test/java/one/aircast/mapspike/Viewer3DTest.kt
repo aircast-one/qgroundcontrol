@@ -90,11 +90,33 @@ class Viewer3DTest {
     @Test
     fun `a tapped marker turns yellow like Viewer3DInstancing's highlight and a miss picks nothing`() {
         val view = JSONObject("""{"markers":[{"at":[8.0,47.0,30.0],"colour":"black"},{"at":[8.001,47.0,30.0],"colour":"green"}],"segments":[]}""")
-        assertEquals(listOf("black", "#FFFF00"), pathSlabs(view, selected = 1).map { it.colour })
-        assertEquals(2, markerPoints(view).size)
+        assertEquals(listOf("black", "#FFFF00"), pathSlabs(view, selected = setOf(1)).map { it.colour })
+        assertEquals(2, pathMarkers(view).size)
         val onScreen = listOf(10f to 10f, null, 100f to 100f)
         assertEquals(2, pickedMarker(95f to 104f, onScreen, 24f))
         assertEquals(null, pickedMarker(50f to 50f, onScreen, 24f))
         assertEquals(0, pickedMarker(20f to 10f, onScreen, 24f))
+    }
+
+    @Test
+    fun `each vehicle keeps its own selected marker like Viewer3DModel's per-vehicle waypointInstancing`() {
+        val a = Point3D(8.0, 47.0, 30.0)
+        val b = Point3D(8.001, 47.0, 30.0)
+        val c = Point3D(8.002, 47.0, 30.0)
+        val markers = listOf(PathMarker(0, a), PathMarker(0, b), PathMarker(1, c), PathMarker(1, a))
+        val first = selectedAfterTap(emptySet(), markers, 1)
+        val both = selectedAfterTap(first, markers, 3)
+        assertEquals(setOf(1, 3), both)
+        assertEquals(setOf(0, 3), selectedAfterTap(both, markers, 0))
+        assertEquals(emptySet<Int>(), selectedAfterTap(both, markers, null))
+        val firstMissionChanged = listOf(PathMarker(0, a), PathMarker(1, c), PathMarker(1, a))
+        assertEquals(setOf(2), selectionKept(both, markers, firstMissionChanged))
+        assertEquals(setOf(1, 3), selectionKept(both, markers, markers))
+    }
+
+    @Test
+    fun `markers carry the mission they belong to`() {
+        val view = JSONObject("""{"markers":[{"at":[8.0,47.0,30.0],"mission":0},{"at":[8.0,47.0,30.0],"mission":2}]}""")
+        assertEquals(listOf(0, 2), pathMarkers(view).map { it.mission })
     }
 }

@@ -355,14 +355,15 @@ pub fn path_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle_home = coordinate(&crate::read::object(&backend.get("vehicle.homePosition")));
     let flown = crate::missionitems::fly_items_view(backend, &["geometry".to_string()]);
     let missions = std::iter::once((&flown, vehicle_home)).chain(flown["others"].as_array().into_iter().flatten().map(|other| (other, None)));
-    let (markers, segments): (Vec<Marker>, Vec<Segment>) = missions.map(|(listed, home)| {
+    let (markers, segments): (Vec<(usize, Marker)>, Vec<Segment>) = missions.enumerate().map(|(mission, (listed, home))| {
         let (items, home) = path_items(listed, home);
-        path(&items, home)
+        let (markers, segments) = path(&items, home);
+        (markers.into_iter().map(|m| (mission, m)).collect::<Vec<_>>(), segments)
     }).fold((Vec::new(), Vec::new()), |(markers, segments), (more_markers, more_segments)| (markers.into_iter().chain(more_markers).collect(), segments.into_iter().chain(more_segments).collect()));
     json!({
         "kind": "object",
         "class": "Viewer3DPath",
-        "markers": markers.iter().map(|m| json!({ "at": lon_lat_alt(m.at, bias), "name": m.name, "label": m.label, "colour": m.colour })).collect::<Vec<_>>(),
+        "markers": markers.iter().map(|(mission, m)| json!({ "at": lon_lat_alt(m.at, bias), "name": m.name, "label": m.label, "colour": m.colour, "mission": mission })).collect::<Vec<_>>(),
         "segments": segments.iter().map(|s| json!({ "from": lon_lat_alt(s.from, bias), "to": lon_lat_alt(s.to, bias), "colour": if s.rtl { "red" } else { "orange" } })).collect::<Vec<_>>(),
     })
 }
