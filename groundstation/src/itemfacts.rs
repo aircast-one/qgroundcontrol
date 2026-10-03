@@ -107,8 +107,9 @@ fn owned(read: &Value, item: &str, vehicle: crate::cmdinfo::VehicleClass) -> Vec
             }
         })
         .collect();
-    if landing {
-        rows.sort_by_key(|(property, _)| crate::landingpattern::editor_rank(property));
+    match landing {
+        true => rows.sort_by_key(|(property, _)| crate::landingpattern::editor_rank(property)),
+        false => rows.sort_by_key(|(property, _)| crate::surveydoc::editor_rank(property)),
     }
     rows.into_iter().map(|(_, row)| row).collect()
 }

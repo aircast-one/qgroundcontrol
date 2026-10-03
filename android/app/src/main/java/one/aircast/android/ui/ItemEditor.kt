@@ -50,6 +50,9 @@ import one.aircast.mapspike.optText
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.Icon
 
 internal fun itemFactsPath(index: Int): String = "view.itemFacts($index)"
 
@@ -357,14 +360,22 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                 }
                 entryPoint(view)?.let { entry ->
                     item(key = "entry") {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("${entry.label}: ${entry.value}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                            TextButton(onClick = {
-                                scope.launch {
-                                    refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(entry.path) }
-                                    revision++
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    scope.launch {
+                                        refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(entry.path) }
+                                        revision++
+                                    }
                                 }
-                            }) { Text("Rotate") }
+                                .heightIn(min = 48.dp)
+                                .padding(horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(entry.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            Text(entry.value, style = MaterialTheme.typography.bodyMedium)
+                            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
                         }
                     }
                 }

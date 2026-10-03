@@ -773,9 +773,10 @@ internal fun FactRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             fact.enumStrings.forEachIndexed { index, option ->
+                val boolOption = fact.enumValues.getOrNull(index)?.toBooleanStrictOrNull()?.takeIf { fact.isBool }
                 FilterChip(
-                    selected = index == fact.enumIndex,
-                    onClick = { write { Qgc.set("${fact.path}.enumIndex", index) } },
+                    selected = boolOption?.let { it == fact.boolValue } ?: (index == fact.enumIndex),
+                    onClick = { write { boolOption?.let { Qgc.set(fact.path, it != fact.inverted) } ?: Qgc.set("${fact.path}.enumIndex", index) } },
                     label = { Text(sentenceCase(option)) },
                 )
             }

@@ -234,7 +234,7 @@ pub fn row_label(vtol_landing: bool, property: &str) -> Option<&'static str> {
         (_, "scanBottomAlt") => Some("Scan bottom altitude"),
         (_, "entranceAlt") => Some("Entrance and exit altitude"),
         (_, "gimbalPitch") => Some("Gimbal pitch"),
-        (_, "layers") => Some("Layers"),
+        (_, "startFromTop") => Some("Start from"),
         (_, "useLoiterToAlt") => Some("Use loiter to altitude"),
         (_, "loiterRadius") => Some("Radius"),
         (_, "loiterClockwise") => Some("Loiter clockwise"),
@@ -249,10 +249,23 @@ pub fn row_label(vtol_landing: bool, property: &str) -> Option<&'static str> {
 }
 
 pub fn row_labelled(control: Value, vtol_landing: bool, property: &str) -> Value {
-    match row_label(vtol_landing, property) {
+    let shown = match row_label(vtol_landing, property) {
         Some(label) => labelled(control, label),
         None => control,
+    };
+    match (property, shown) {
+        ("startFromTop", Value::Object(mut fields)) => {
+            fields.insert("options".to_string(), json!([{ "label": "Bottom", "raw": "false" }, { "label": "Top", "raw": "true" }]));
+            Value::Object(fields)
+        }
+        (_, other) => other,
     }
+}
+
+const STRUCTURE_ROWS: [(&str, &str); 5] = [("StartFromTop", "startFromTop"), ("StructureHeight", "structureHeight"), ("ScanBottomAlt", "scanBottomAlt"), ("EntranceAltitude", "entranceAlt"), ("GimbalPitch", "gimbalPitch")];
+
+pub fn editor_rank(property: &str) -> usize {
+    STRUCTURE_ROWS.iter().position(|(_, suffix)| *suffix == property).unwrap_or(STRUCTURE_ROWS.len())
 }
 
 pub fn labelled(control: Value, label: &str) -> Value {
@@ -294,7 +307,7 @@ const TURNAROUND_NOT_WITH_HOVER: &str = "Not while hovering to capture each imag
 pub fn editor_shows(name: &str, class: crate::cmdinfo::VehicleClass) -> bool {
     use crate::cmdinfo::VehicleClass::{FixedWing, Vtol};
     match name {
-        "SplitConcavePolygons" => false,
+        "SplitConcavePolygons" | "Layers" => false,
         "FlyAlternateTransects" => matches!(class, FixedWing | Vtol),
         _ => true,
     }
@@ -324,7 +337,7 @@ pub fn fields(survey: &Value, item: &str, class: crate::cmdinfo::VehicleClass, u
         ],
     };
     let manual_camera = survey.pointer("/CameraCalc/CameraName").and_then(Value::as_str).is_none_or(|name| name == MANUAL_CAMERA);
-    let structure: Vec<(&str, &str, &str, &Value, &str)> = [("EntranceAltitude", "entranceAlt"), ("StructureHeight", "structureHeight"), ("ScanBottomAlt", "scanBottomAlt"), ("Layers", "layers"), ("GimbalPitch", "gimbalPitch"), ("StartFromTop", "startFromTop")]
+    let structure: Vec<(&str, &str, &str, &Value, &str)> = STRUCTURE_ROWS
         .iter()
         .filter(|(name, _)| *name != "GimbalPitch" || manual_camera)
         .map(|(name, suffix)| (STRUCTURE_META, *name, *suffix, survey, *name))
@@ -350,7 +363,6 @@ pub fn fields(survey: &Value, item: &str, class: crate::cmdinfo::VehicleClass, u
                 "HoverAndCapture" if !fixed_altitude => disabled(shown, HOVER_NEEDS_FIXED_ALTITUDE),
                 "Refly90Degrees" if follows_terrain => disabled(shown, REFLY_NOT_WITH_TERRAIN),
                 "CameraTriggerInTurnAround" if hovering => disabled(shown, TURNAROUND_NOT_WITH_HOVER),
-                "Layers" => read_only(shown),
                 _ => shown,
             })
         })
@@ -953,8 +965,10 @@ mod tests {
     #[test]
     fn a_structure_scan_derives_its_layers_and_a_manual_camera_sets_its_own_spacing() {
         let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/structure-inserted-by-qt.json")).unwrap();
-        let layers = fields(&fixture["structure"], "p", crate::cmdinfo::VehicleClass::MultiRotor, &metric()).into_iter().find(|f| f["name"] == "Layers").expect("the layer count is shown");
-        assert_eq!(layers["readOnly"], true, "StructureScanEditor shows layers as a label computed from height, bottom and trigger distance");
+        let rows = fields(&fixture["structure"], "p", crate::cmdinfo::VehicleClass::MultiRotor, &metric());
+        let labels: Vec<Value> = rows.iter().map(|f| f["label"].clone()).collect();
+        assert_eq!(labels, [json!("Start from"), json!("Structure height"), json!("Scan bottom altitude"), json!("Entrance and exit altitude"), json!("Gimbal pitch")], "StructureScanEditor SCAN card; Layers is only a STATISTICS row");
+        assert_eq!(rows[0]["options"], json!([{ "label": "Bottom", "raw": "false" }, { "label": "Top", "raw": "true" }]), "Start from is a Bottom/Top segmented control over startFromTop");
         assert!(set(&fixture["structure"], "layers", &json!(5), &metric()).is_none());
         let survey = json!({ "complexItemType": "survey", "TransectStyleComplexItem": { "CameraCalc": { "CameraName": MANUAL_CAMERA, "AdjustedFootprintSide": 25.0, "AdjustedFootprintFrontal": 25.0 } } });
         let suffixes: Vec<String> = camera(&survey, "p", &metric(), true)["facts"].as_array().unwrap().iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
