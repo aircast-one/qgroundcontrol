@@ -109,8 +109,11 @@ fun FlyMap(
     }
 
     var mainZoom by remember { mutableDoubleStateOf(saved?.zoom ?: 0.0) }
-    LaunchedEffect(pip) {
+    var zoomedForPip by remember { mutableStateOf(false) }
+    LaunchedEffect(pip, centre != null) {
         val at = centre ?: return@LaunchedEffect
+        if (pip == zoomedForPip) return@LaunchedEffect
+        zoomedForPip = pip
         pipZoom(mainZoom, pip)?.let { level ->
             centreOn = at
             centreZoom = level

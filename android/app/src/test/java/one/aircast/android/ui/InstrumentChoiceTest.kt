@@ -184,4 +184,10 @@ class InstrumentChoiceTest {
         assertEquals("a reading already in the row moves rather than doubling", listOf("c", "b"), replacedInstrument(row, 0, "c"))
         assertEquals(listOf("a", "c"), removedInstrument(row, 1))
     }
+
+    @Test
+    fun `a bare vehicle selection and its served id agree`() {
+        assertEquals("vehicle/altitudeRelative", selectionId("altitudeRelative"))
+        assertEquals("gps/lock", selectionId("gps/lock"))
+    }
 }

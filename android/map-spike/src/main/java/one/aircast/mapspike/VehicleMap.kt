@@ -262,14 +262,16 @@ fun VehicleMap(
         }
     }
 
+    val latestCentreChanged by rememberUpdatedState(onCentreChanged)
+    val latestViewChanged by rememberUpdatedState(onViewChanged)
     DisposableEffect(mapView, mapStyle) {
         mapView.getMapAsync { loaded ->
             map = loaded
             fun reportCentre() {
                 val target = loaded.cameraPosition.target ?: return
-                onCentreChanged(TrackPoint(target.latitude, target.longitude), loaded.cameraPosition.zoom)
+                latestCentreChanged(TrackPoint(target.latitude, target.longitude), loaded.cameraPosition.zoom)
                 val seen = loaded.projection.visibleRegion.latLngBounds
-                onViewChanged(
+                latestViewChanged(
                     listOf(
                         TrackPoint(seen.latitudeNorth, seen.longitudeWest),
                         TrackPoint(seen.latitudeNorth, seen.longitudeEast),
@@ -415,7 +417,7 @@ fun VehicleMap(
             val at = LatLng(latitude, longitude)
             val zoomed = shown.cameraPosition.zoom > 1.0
             val point = shown.projection.toScreenLocation(at)
-            val lift = clearAreaLift(topInsetPx.toFloat(), bottomInsetPx.toFloat())
+            val lift = clearAreaLift(topInsetPx.toFloat(), bottomInsetPx.toFloat()).coerceIn(-mapView.height / 4f, mapView.height / 4f)
             val centred = if (zoomed && lift != 0f) shown.projection.fromScreenLocation(android.graphics.PointF(point.x, point.y - lift)) else at
             when {
                 keepCentered || !zoomed -> shown.cameraPosition = CameraPosition.Builder()
@@ -595,9 +597,13 @@ private fun applyPip(style: Style, pip: Boolean) {
     val scale = if (pip) PIP_ICON_SCALE else 1f
     style.getLayer(VEHICLE_LAYER)?.setProperties(
         PropertyFactory.circleRadius(Expression.switchCase(Expression.get(ACTIVE_PROPERTY), Expression.literal(9f * scale), Expression.literal(6f * scale))),
+        PropertyFactory.circleStrokeWidth(2f * scale),
     )
     style.getLayer(VEHICLE_HEADING_LAYER)?.setProperties(PropertyFactory.iconSize(scale))
-    style.getLayer(TRAFFIC_LAYER)?.setProperties(PropertyFactory.iconSize(if (pip) PIP_TRAFFIC_SCALE else 1f))
+    style.getLayer(TRAFFIC_LAYER)?.setProperties(
+        PropertyFactory.iconSize(if (pip) PIP_TRAFFIC_SCALE else 1f),
+        PropertyFactory.textSize(if (pip) 11f * PIP_TRAFFIC_SCALE else 11f),
+    )
 }
 
 private fun installVehicleLayer(style: Style) {

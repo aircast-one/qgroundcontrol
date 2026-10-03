@@ -257,7 +257,7 @@ internal fun FlyScreen(
             Column(
                 Modifier
                     .align(Alignment.TopStart)
-                    .onGloballyPositioned { if (view == FlyView.Map) FlyChrome.topPx = it.boundsInParent().bottom.toInt() }
+                    .onGloballyPositioned { FlyChrome.topPx = it.boundsInParent().bottom.toInt() }
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
                 verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),

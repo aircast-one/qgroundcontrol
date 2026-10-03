@@ -209,16 +209,16 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
         writeChosen(context, vehicleClass, next)
         styling = null
     }
-    var replacing by remember { mutableStateOf<Int?>(null) }
-    replacing?.let { index ->
+    var replacing by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    replacing?.let { (index, fromId) ->
         InstrumentSheet(
             chosen = chosen,
             title = "Change reading",
             onToggle = { path ->
-                val carried = shown.getOrNull(index)?.let { displays[it.id] }
-                if (carried != null) {
-                    writeDisplay(context, vehicleClass, path, carried)
-                    displays = displays + (path to carried)
+                val carried = displays[fromId]
+                if (carried != null && selectionId(path) !in displays) {
+                    writeDisplay(context, vehicleClass, selectionId(path), carried)
+                    displays = displays + (selectionId(path) to carried)
                 }
                 change(replacedInstrument(chosen, index, path))
                 replacing = null
@@ -228,14 +228,14 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
     }
 
     styling?.let { instrument ->
-        val index = shown.indexOf(instrument).takeIf { it in chosen.indices }
+        val index = chosen.indexOfFirst { selectionId(it) == instrument.id }.takeIf { it >= 0 }
         ValueDisplayDialog(
             label = instrument.label,
             initial = displayFor(displays, instrument),
             onDismiss = { styling = null },
             extra = {
                 if (index != null) FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { replacing = index; styling = null }) { Text("Change reading") }
+                    TextButton(onClick = { replacing = index to instrument.id; styling = null }) { Text("Change reading") }
                     if (index > 0) TextButton(onClick = { change(movedInstrument(chosen, index, -1)) }) { Text("Move left") }
                     if (index < chosen.lastIndex) TextButton(onClick = { change(movedInstrument(chosen, index, 1)) }) { Text("Move right") }
                     TextButton(onClick = { change(removedInstrument(chosen, index)) }) { Text("Remove") }
