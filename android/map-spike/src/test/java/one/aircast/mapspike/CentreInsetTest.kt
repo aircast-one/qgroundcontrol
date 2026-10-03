@@ -13,4 +13,10 @@ class CentreInsetTest {
     }
 
     private fun assertTrue(condition: Boolean, message: String) = org.junit.Assert.assertTrue(message, condition)
+
+    @Test
+    fun theVehicleSitsInTheMiddleOfTheClearArea() {
+        org.junit.Assert.assertEquals("chrome 300 px on top and 100 px below puts the vehicle 100 px under the map centre", 100f, clearAreaLift(300f, 100f), 0f)
+        org.junit.Assert.assertEquals(0f, clearAreaLift(0f, 0f), 0f)
+    }
 }

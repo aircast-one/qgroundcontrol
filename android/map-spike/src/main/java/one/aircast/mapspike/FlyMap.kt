@@ -84,6 +84,8 @@ private fun shape(item: MissionItem) = listOf(item.sequence, item.latitude, item
 fun FlyMap(
     modifier: Modifier = Modifier,
     cameraBottomPx: Int = 0,
+    topInsetPx: Int = 0,
+    bottomInsetPx: Int = 0,
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
     onRoiClick: ((TrackPoint) -> Unit)? = null,
@@ -162,6 +164,8 @@ fun FlyMap(
             gimbals = plan.gimbals,
             proximityRadar = true,
             cameraBottomPx = cameraBottomPx,
+            topInsetPx = topInsetPx,
+            bottomInsetPx = bottomInsetPx,
             missionItems = plan.items,
             linkStartToHome = plan.linkStartToHome,
             fencePolygons = plan.fences,

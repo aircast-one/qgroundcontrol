@@ -414,13 +414,15 @@ fun VehicleMap(
             val at = LatLng(latitude, longitude)
             val zoomed = shown.cameraPosition.zoom > 1.0
             val point = shown.projection.toScreenLocation(at)
+            val lift = clearAreaLift(topInsetPx.toFloat(), bottomInsetPx.toFloat())
+            val centred = if (zoomed && lift != 0f) shown.projection.fromScreenLocation(android.graphics.PointF(point.x, point.y - lift)) else at
             when {
                 keepCentered || !zoomed -> shown.cameraPosition = CameraPosition.Builder()
-                    .target(at)
+                    .target(centred)
                     .zoom(shown.cameraPosition.zoom.takeIf { zoomed } ?: DEFAULT_ZOOM)
                     .build()
                 outsideCentreInset(point.x, point.y, mapView.width.toFloat(), mapView.height.toFloat(), topInsetPx.toFloat(), (bottomInsetPx + cameraBottomPx).toFloat()) ->
-                    shown.animateCamera(CameraUpdateFactory.newLatLng(at), RECENTER_ANIMATION_MS)
+                    shown.animateCamera(CameraUpdateFactory.newLatLng(centred), RECENTER_ANIMATION_MS)
             }
         }
     }
@@ -669,6 +671,8 @@ private fun renderLandings(style: Style, landings: List<LandingPattern>, items: 
 private const val PAN_RECENTER_DELAY_MS = 10_000L
 private const val RECENTER_ANIMATION_MS = 1000
 private const val CENTRE_INSET_FRACTION = 0.15f
+
+fun clearAreaLift(topInset: Float, bottomInset: Float): Float = (topInset - bottomInset) / 2f
 
 fun outsideCentreInset(x: Float, y: Float, width: Float, height: Float, topInset: Float, bottomInset: Float): Boolean {
     val side = width * CENTRE_INSET_FRACTION

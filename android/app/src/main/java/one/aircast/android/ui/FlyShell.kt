@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 
 import androidx.compose.runtime.mutableStateOf
 
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 
 import androidx.compose.runtime.getValue
@@ -19,6 +20,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -151,6 +154,11 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
     }
 }
 
+internal object FlyChrome {
+    var topPx by mutableIntStateOf(0)
+    var bottomPx by mutableIntStateOf(0)
+}
+
 @Composable
 internal fun FlyScreen(
     view: FlyView,
@@ -249,6 +257,7 @@ internal fun FlyScreen(
             Column(
                 Modifier
                     .align(Alignment.TopStart)
+                    .onGloballyPositioned { if (view == FlyView.Map) FlyChrome.topPx = it.boundsInParent().bottom.toInt() }
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
                 verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
@@ -281,11 +290,12 @@ internal fun FlyScreen(
             }
 
             if (simple) {
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth()) { actions(FlyDeckLayout.Simple) }
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onGloballyPositioned { FlyChrome.bottomPx = it.size.height }) { actions(FlyDeckLayout.Simple) }
             } else {
                 Box(
                     Modifier
                         .align(Alignment.BottomStart)
+                        .onGloballyPositioned { FlyChrome.bottomPx = it.size.height }
                         .padding(AircastSpace.s3),
                 ) { keyRowEnd() }
             }
