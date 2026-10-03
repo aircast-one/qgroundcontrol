@@ -251,4 +251,12 @@ class LinkEditRulesTest {
         val rows = linkRows(org.json.JSONObject("""{"configured":[{"index":0,"name":"n","autoConnect":true,"highLatency":true}]}"""))
         assertEquals(true to true, rows[0].autoConnect to rows[0].highLatency)
     }
+
+    @org.junit.Test
+    fun `a new serial link gets its framing written before it connects, as SerialSettings does on add`() {
+        org.junit.Assert.assertEquals(
+            listOf("links.linkConfigurations.2.dataBits" to 7, "links.linkConfigurations.2.stopBits" to 2, "links.linkConfigurations.2.parity" to 2, "links.linkConfigurations.2.flowControl" to 1),
+            framingWrites(2, SerialFraming(dataBits = 7, stopBits = 2, parity = 2, flowControl = 1)),
+        )
+    }
 }

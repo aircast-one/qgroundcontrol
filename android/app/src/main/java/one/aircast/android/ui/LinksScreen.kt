@@ -411,6 +411,21 @@ private fun LinkFlagSwitches(autoConnect: Boolean, highLatency: Boolean, onAutoC
 internal fun linkFlagWrites(index: Int, autoConnect: Boolean, highLatency: Boolean): List<Pair<String, Boolean>> =
     listOf("$LINKS_PATH.$index.autoConnect" to autoConnect, "$LINKS_PATH.$index.highLatency" to highLatency)
 
+internal fun framingWrites(index: Int, framing: SerialFraming): List<Pair<String, Int>> = listOf(
+    "dataBits" to framing.dataBits,
+    "stopBits" to framing.stopBits,
+    "parity" to framing.parity,
+    "flowControl" to framing.flowControl,
+).map { (field, value) -> "$LINKS_PATH.$index.$field" to value }
+
+private fun writeNewLinkFraming(name: String, framing: SerialFraming): Boolean {
+    if (framing == SerialFraming()) return true
+    val row = currentRows().firstOrNull { it.name == name } ?: return false
+    framingWrites(row.index, framing).forEach { (path, value) -> Qgc.set(path, value) }
+    Qgc.invoke("links.commitLinkConfigurations")
+    return true
+}
+
 private fun writeNewLinkFlags(name: String, autoConnect: Boolean, highLatency: Boolean) {
     if (!autoConnect && !highLatency) return
     val row = currentRows().firstOrNull { it.name == name } ?: return
@@ -582,6 +597,8 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     var port by remember { mutableStateOf("") }
     var portName by remember { mutableStateOf("") }
     var baud by remember { mutableIntStateOf(DEFAULT_BAUD) }
+    var advancedSerial by remember { mutableStateOf(false) }
+    var newFraming by remember { mutableStateOf(SerialFraming()) }
     var portsOpen by remember { mutableStateOf(false) }
     var baudsOpen by remember { mutableStateOf(false) }
     val linksJson by qgcPath(LINKS_VIEW)
@@ -690,6 +707,11 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                             }
                         }
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = advancedSerial, onCheckedChange = { advancedSerial = it })
+                        Text("Advanced settings")
+                    }
+                    if (advancedSerial) SerialFramingControls(newFraming) { newFraming = it }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedTextField(
@@ -754,6 +776,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                                     Qgc.invokeResult("links.createBluetoothLink", chosen, picked.name, picked.address) == true
                                 } else if (type == "serial") {
                                     Qgc.invokeResult("links.createSerialConfiguration", chosen, portName, baud) == true &&
+                                        writeNewLinkFraming(chosen, newFraming) &&
                                         connectNamed(chosen)
                                 } else {
                                     Qgc.invokeResult(
