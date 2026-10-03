@@ -198,11 +198,7 @@ private fun AdditionalSetup(onInvoke: (String, Int?) -> Unit) {
         )
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp)) {
-        Text(
-            "Additional radio setup",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
+        HorizontalDivider(Modifier.padding(bottom = 8.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             RADIO_PROMPTS.forEach { entry ->
                 OutlinedButton(onClick = { prompt = entry }) { Text(entry.title) }
