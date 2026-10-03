@@ -181,7 +181,7 @@ internal fun summaryGlance(summary: List<SummaryLine>): String? {
     val read = summary.map { SummaryLine(it.label.trimEnd(':', ' '), it.value.trim()) }.filterNot { it.value in UNREAD_VALUES }
     val shared = read.map { it.value.substringBefore(' ', "") }.distinct().singleOrNull()?.takeIf { it.isNotEmpty() && read.size > 1 }
     val parts = shared?.let { prefix -> read.map { "${it.label} ${it.value.removePrefix(prefix).trim()}" } } ?: read.map { it.value }.distinct()
-    return parts.takeIf { it.isNotEmpty() }?.joinToString(" \u00b7 ")
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" \u00b7 ", transform = ::sentenceCase)
 }
 
 @Composable

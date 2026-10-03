@@ -19,6 +19,7 @@ class SetupSummaryTest {
         org.junit.Assert.assertEquals("Quad \u00b7 X", summaryGlance(frame))
         org.junit.Assert.assertEquals("RTL \u00b7 Land", summaryGlance(listOf(SummaryLine("a", "RTL"), SummaryLine("b", "Land"), SummaryLine("c", "RTL"))))
         org.junit.Assert.assertNull(summaryGlance(emptyList()))
+        org.junit.Assert.assertEquals("Analog voltage and current \u00b7 5000 mAh", summaryGlance(listOf(SummaryLine("Battery monitor", "Analog Voltage and Current"), SummaryLine("Capacity", "5000 mAh"))))
         val radio = listOf(SummaryLine("Roll", "Channel 1"), SummaryLine("Pitch", "Channel 2"), SummaryLine("Throttle", "Channel 3"))
         org.junit.Assert.assertEquals("Roll 1 \u00b7 Pitch 2 \u00b7 Throttle 3", summaryGlance(radio))
     }
