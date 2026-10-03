@@ -10,7 +10,6 @@ pub const DEPS: &[&str] = &[
     "vehicle.armed",
     "vehicle.flightMode",
     "vehicle.cameraTriggerPoints.count",
-    "vehicle.vehicleLinkManager.communicationLost",
     "planFly.missionController.containsItems",
     "planFly.geoFenceController.containsItems",
     "planFly.rallyPointController.containsItems",
@@ -55,7 +54,7 @@ fn contains(backend: &dyn Backend, controller: &str) -> bool {
     flag(&object(&backend.get_fields(&format!("planFly.{controller}"), "containsItems")), "containsItems")
 }
 
-fn reading(backend: &dyn Backend) -> (Reading, i64, bool) {
+fn reading(backend: &dyn Backend) -> (Reading, i64) {
     let vehicle = object(&backend.get_fields("vehicle", "armed,flightMode,missionFlightMode"));
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let in_mission = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("missionFlightMode");
@@ -65,12 +64,11 @@ fn reading(backend: &dyn Backend) -> (Reading, i64, bool) {
         None => contains(backend, "missionController"),
     };
     let has_plan = mission || contains(backend, "geoFenceController") || contains(backend, "rallyPointController") || images != 0;
-    let lost = flag(&object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost")), "communicationLost");
-    (Reading { connected, armed: flag(&vehicle, "armed"), in_mission, has_plan }, images, lost)
+    (Reading { connected, armed: flag(&vehicle, "armed"), in_mission, has_plan }, images)
 }
 
 pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let (now, images, lost) = reading(backend);
+    let (now, images) = reading(backend);
     let latch = {
         let mut held = LATCH.lock().unwrap_or_else(PoisonError::into_inner);
         *held = step(*held, &now);
@@ -83,8 +81,7 @@ pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "open": latch.open,
         "id": latch.shown,
         "imagesTaken": images,
-        "removeOffered": !lost,
-        "resumeFromWaypoint": resume.filter(|_| !lost),
+        "resumeFromWaypoint": resume,
         "batteryWarning": resume.is_some(),
     })
 }

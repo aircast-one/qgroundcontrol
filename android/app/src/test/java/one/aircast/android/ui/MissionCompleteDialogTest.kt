@@ -10,7 +10,7 @@ class MissionCompleteDialogTest {
     @Test
     fun `an open notice carries what the dialog offers`() {
         val notice = missionComplete(
-            JSONObject("""{"open":true,"id":3,"imagesTaken":12,"removeOffered":true,"resumeFromWaypoint":4,"batteryWarning":true}"""),
+            JSONObject("""{"open":true,"id":3,"imagesTaken":12,"resumeFromWaypoint":4,"batteryWarning":true}"""),
         )!!
         assertEquals(3L, notice.id)
         assertEquals(4, notice.resumeFromWaypoint)

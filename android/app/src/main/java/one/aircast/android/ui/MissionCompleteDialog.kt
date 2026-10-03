@@ -27,7 +27,6 @@ internal const val MISSION_COMPLETE_PATH = "view.missionComplete"
 internal data class MissionComplete(
     val id: Long,
     val imagesTaken: Int,
-    val removeOffered: Boolean,
     val resumeFromWaypoint: Int?,
     val batteryWarning: Boolean,
 )
@@ -37,7 +36,6 @@ internal fun missionComplete(view: JSONObject?): MissionComplete? =
         MissionComplete(
             id = it.optLong("id"),
             imagesTaken = it.optInt("imagesTaken"),
-            removeOffered = it.optBoolean("removeOffered"),
             resumeFromWaypoint = if (it.isNull("resumeFromWaypoint")) null else it.optInt("resumeFromWaypoint"),
             batteryWarning = it.optBoolean("batteryWarning"),
         )
@@ -60,17 +58,15 @@ fun MissionCompleteDialog() {
                 imagesTakenText(notice.imagesTaken)?.let {
                     Text(it, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 }
-                if (notice.removeOffered) {
-                    Button(
-                        onClick = {
-                            offMainDetached {
-                                Qgc.invoke("plan.removeAllFromVehicle")
-                                Qgc.invoke("missionComplete.dismiss", notice.id)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Remove plan from vehicle") }
-                }
+                Button(
+                    onClick = {
+                        offMainDetached {
+                            Qgc.invoke("plan.removeAllFromVehicle")
+                            Qgc.invoke("missionComplete.dismiss", notice.id)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Remove plan from vehicle") }
                 OutlinedButton(onClick = close, modifier = Modifier.fillMaxWidth()) { Text("Leave plan on vehicle") }
                 notice.resumeFromWaypoint?.let { waypoint ->
                     HorizontalDivider()

@@ -3789,7 +3789,6 @@
         "view.missionComplete.imagesTaken",
         "view.missionComplete.kind",
         "view.missionComplete.open",
-        "view.missionComplete.removeOffered",
         "view.missionComplete.resumeFromWaypoint",
         "view.missionFile(<checkout>/test/MissionManager/100Waypoints.mission).firmwareType",
         "view.missionFile(<checkout>/test/MissionManager/100Waypoints.mission).home.altitude",
@@ -8150,7 +8149,6 @@
         "view.missionComplete.imagesTaken",
         "view.missionComplete.kind",
         "view.missionComplete.open",
-        "view.missionComplete.removeOffered",
         "view.missionComplete.resumeFromWaypoint",
         "view.missionFile(<checkout>/test/MissionManager/100Waypoints.mission).firmwareType",
         "view.missionFile(<checkout>/test/MissionManager/100Waypoints.mission).home.altitude",
@@ -12606,7 +12604,6 @@
         "imagesTaken": "number",
         "kind": "string",
         "open": "bool",
-        "removeOffered": "bool",
         "resumeFromWaypoint": "null"
     },
     "view.missionFile(<checkout>/test/MissionManager/100Waypoints.mission)": {
