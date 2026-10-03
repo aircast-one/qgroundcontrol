@@ -11,6 +11,7 @@ internal data class FlightModeOption(
     val current: Boolean,
     val needsConfirm: Boolean,
     val hidden: Boolean,
+    val section: String = "normal",
 )
 
 internal data class FlightModesView(
@@ -35,6 +36,7 @@ private fun options(view: JSONObject?, key: String): List<FlightModeOption> {
                 current = mode.optBoolean("current"),
                 needsConfirm = mode.optBoolean("needsConfirm"),
                 hidden = mode.optBoolean("hidden"),
+                section = mode.optText("section").ifBlank { "normal" },
             )
         }
     }
@@ -78,6 +80,11 @@ internal fun modeOutcome(mode: String, before: ModeAck?, now: ModeAck?, reached:
 
 internal fun hiddenModesAfter(hidden: List<String>, mode: String, hide: Boolean): String =
     (hidden.filter { it != mode } + listOfNotNull(mode.takeIf { hide })).joinToString(",")
+
+internal fun startsSection(shown: List<FlightModeOption>, index: Int): Boolean =
+    index > 0 && shown[index - 1].section != shown[index].section
+
+internal const val HIDDEN_MODE_ALPHA = 0.55f
 
 internal fun modeHeading(modes: FlightModesView?): String? {
     val summary = modes?.currentSummary?.ifBlank { null } ?: return null

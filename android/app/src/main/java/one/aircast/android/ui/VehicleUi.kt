@@ -58,6 +58,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -861,6 +867,18 @@ internal object FlyRefusal {
     var text by mutableStateOf<String?>(null)
 }
 
+private fun Modifier.longPress(key: Any?, action: () -> Unit): Modifier =
+    if (key == null) this else pointerInput(key) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation(PointerEventPass.Initial); true }
+            if (released == null) {
+                action()
+                waitForUpOrCancellation(PointerEventPass.Initial)?.consume()
+            }
+        }
+    }
+
 internal object FlightModePending {
     var mode by mutableStateOf<String?>(null)
 }
@@ -902,6 +920,13 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                 delay(MODE_REJECTION_MS)
                 onWithdraw(rejected.text)
             }
+        }
+    }
+
+    fun toggleHidden(name: String) {
+        val setting = modes.hiddenSetting ?: return
+        scope.launch(Dispatchers.Default) {
+            flightModesView(Qgc.get(FLIGHT_MODES))?.let { now -> Qgc.set(setting, hiddenModesAfter(now.hidden, name, name !in now.hidden)) }
         }
     }
 
@@ -970,9 +995,12 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
             showFolded -> modes.all
             else -> modes.everyday
         }
-        shown.forEach { mode ->
+        shown.forEachIndexed { index, mode ->
+            if (startsSection(shown, index)) HorizontalDivider()
             DropdownMenuItem(
-                modifier = if (mode.current) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
+                modifier = (if (mode.current) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
+                    .alpha(if (mode.hidden) HIDDEN_MODE_ALPHA else 1f)
+                    .longPress(modes.hiddenSetting?.let { setting -> mode.name to setting }) { toggleHidden(mode.name) },
                 leadingIcon = { Icon(painterResource(flightModeIcon(mode.name)), null) },
                 text = {
                     Column(Modifier.widthIn(max = 280.dp)) {

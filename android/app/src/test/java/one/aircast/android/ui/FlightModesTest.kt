@@ -110,4 +110,15 @@ class ModeHeadingTest {
             listOf("Stabilize", "Altitude Hold", "Position Hold", "Auto", "Smart RTL", "Circle").map(::flightModeIcon),
         )
     }
+
+    @Test
+    fun `a divider starts the return modes like the QGC mode sections`() {
+        val modes = flightModesView(
+            JSONObject("""{"available":true,"modes":[
+                {"name":"Loiter","section":"normal"},{"name":"Guided"},
+                {"name":"RTL","section":"return"},{"name":"Land","section":"return"}]}"""),
+        )!!.all
+
+        assertEquals(listOf(false, false, true, false), modes.indices.map { startsSection(modes, it) })
+    }
 }

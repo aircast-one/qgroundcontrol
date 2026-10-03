@@ -212,7 +212,6 @@ ACCEPTED_ON = {
     ("view.firstRun", "promptId"): "the core's key for the dismissed-prompt store; the head acts on show",
     ("view.firstRun", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",
     ("view.firstRun", "valueMeters"): "the geometry half of value; FactRow round-trips the cooked value through Qgc.set",
-    ("view.flightModes", "section"): "the core's grouping it sorts by and derives needsConfirm from; FlightModeIndicator lists modes flat",
     ("view.flyMissionItems", "altitudeFrame"): "the head reads altitudeFrameText, as for view.missionItems",
     ("view.frame", "apmFirmware"): "MotorsScreen reads motorCount and the safety gate; the firmware branch is taken in the core",
     ("view.gpsRtk", "accuracyUnit"): "GPSIndicatorPage.qml's RTK GPS Status shows only active, numSatellites, currentDuration, currentAccuracy and valid, which RtkIndicator.kt reads; the rest is core survey/driver diagnostics QGC never shows",
