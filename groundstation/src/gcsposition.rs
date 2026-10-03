@@ -460,6 +460,17 @@ pub fn report(update: Update) {
     }
 }
 
+pub fn report_error(code: i64) {
+    let mut position = lock();
+    if position.source != Source::Nmea {
+        position.on_error(code);
+    }
+}
+
+pub fn positioning_failed() -> bool {
+    lock().error.is_some_and(|error| error != Error::UpdateTimeout)
+}
+
 pub fn report_nmea(update: Update) {
     if lock().source == Source::Nmea {
         deliver(update);

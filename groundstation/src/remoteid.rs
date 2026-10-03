@@ -101,6 +101,7 @@ pub struct GcsFix {
     pub longitude: f64,
     pub altitude: f64,
     pub age_ms: u64,
+    pub positioning_error: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -201,7 +202,7 @@ impl RemoteId {
                 let inside = (-90.0..=90.0).contains(&settings.latitude_fixed) && (-180.0..=180.0).contains(&settings.longitude_fixed);
                 if inside { ((settings.latitude_fixed, settings.longitude_fixed, settings.altitude_fixed), true) } else { ((0.0, 0.0, 0.0), false) }
             }
-            _ if !gcs.valid => ((gcs.latitude, gcs.longitude, gcs.altitude), false),
+            _ if !gcs.valid || gcs.positioning_error => ((gcs.latitude, gcs.longitude, gcs.altitude), false),
             _ if settings.region == REGION_FAA && !gcs.altitude.is_finite() => ((gcs.latitude, gcs.longitude, gcs.altitude), false),
             _ => ((gcs.latitude, gcs.longitude, gcs.altitude), gcs.age_ms <= ALLOWED_GPS_DELAY_MS),
         };
@@ -275,7 +276,7 @@ mod tests {
     #[test]
     fn the_message_set_follows_the_settings_the_fix_and_the_emergency() {
         let mut remote = RemoteId::default();
-        let fresh = GcsFix { valid: true, latitude: 47.5, longitude: 8.5, altitude: 400.0, age_ms: 100 };
+        let fresh = GcsFix { valid: true, latitude: 47.5, longitude: 8.5, altitude: 400.0, age_ms: 100, positioning_error: false };
         let (messages, out) = remote.messages(&settings(), fresh, EPOCH_2019_S + 60);
         assert_eq!(out, vec![Out::GcsGpsGood(true)]);
         assert!(matches!(messages[0], Message::System { latitude: 475000000, longitude: 85000000, timestamp_2019: 60, gps_good: true, .. }));
@@ -292,6 +293,9 @@ mod tests {
         let fixed = Settings { location_type: LOCATION_FIXED, latitude_fixed: 10.0, longitude_fixed: 200.0, ..settings() };
         let (messages, _) = remote.messages(&fixed, GcsFix { valid: false, ..fresh }, EPOCH_2019_S);
         assert!(matches!(messages[0], Message::System { gps_good: false, .. }));
+        let mut failing = RemoteId { gcs_gps_good: true, ..Default::default() };
+        let (messages, out) = failing.messages(&settings(), GcsFix { positioning_error: true, ..fresh }, EPOCH_2019_S);
+        assert!(matches!(messages[0], Message::System { gps_good: false, latitude: UNKNOWN_LAT, .. }) && out == vec![Out::GcsGpsGood(false)], "a positioning error other than a timeout makes the last fix unusable, as RemoteIDManager::_sendMessages checks gcsPositioningError");
         let mut faa = RemoteId { gcs_gps_good: true, ..Default::default() };
         let (messages, out) = faa.messages(&settings(), GcsFix { altitude: f64::NAN, ..fresh }, EPOCH_2019_S);
         assert!(matches!(messages[0], Message::System { gps_good: false, latitude: UNKNOWN_LAT, .. }) && out == vec![Out::GcsGpsGood(false)], "RemoteIDManager::_sendMessages always sends SYSTEM, with an unknown position when the FAA fix has no altitude");

@@ -128,7 +128,7 @@ pub fn fix(backend: &dyn Backend, wall_ms: u64) -> GcsFix {
     let valid = coordinate.get("valid").and_then(Value::as_bool).unwrap_or(false);
     let read = |key: &str| coordinate.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
     let stamp = value_number(&backend.get(GCS_TIMESTAMP)).filter(|t| *t > 0.0).map(|t| t as u64);
-    GcsFix { valid: valid && stamp.is_some(), latitude: read("latitude"), longitude: read("longitude"), altitude: read("altitude"), age_ms: stamp.map(|t| wall_ms.saturating_sub(t)).unwrap_or(u64::MAX) }
+    GcsFix { valid: valid && stamp.is_some(), latitude: read("latitude"), longitude: read("longitude"), altitude: read("altitude"), age_ms: stamp.map(|t| wall_ms.saturating_sub(t)).unwrap_or(u64::MAX), positioning_error: crate::gcsposition::positioning_failed() }
 }
 
 pub fn inputs(backend: &dyn Backend, wall_ms: u64) -> (Settings, GcsFix) {

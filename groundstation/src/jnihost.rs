@@ -432,6 +432,11 @@ pub extern "system" fn Java_one_aircast_android_GcsLocation_nativeSource(mut env
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_one_aircast_android_GcsLocation_nativeError(_env: JNIEnv, _class: JClass, code: jint) {
+    crate::gcsposition::report_error(i64::from(code));
+}
+
+#[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub extern "system" fn Java_one_aircast_android_GcsLocation_nativeUpdate(
     _env: JNIEnv,

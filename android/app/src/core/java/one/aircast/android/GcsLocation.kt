@@ -8,6 +8,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 
@@ -16,13 +17,27 @@ object GcsLocation {
     private const val UPDATE_INTERVAL_MS = 1000L
     private const val PERMISSION_RETRY_MS = 2000L
     private const val PERMISSION_REQUEST = 4317
+    private const val ACCESS_ERROR = 0
+    private const val CLOSED_ERROR = 1
     private val PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
 
     private val handler = Handler(Looper.getMainLooper())
     private var manager: LocationManager? = null
     private var listening = false
+    private var chosenProvider: String? = null
 
-    private val listener = LocationListener { location -> report(location) }
+    private val listener = object : LocationListener {
+        override fun onLocationChanged(location: Location) = report(location)
+
+        override fun onProviderEnabled(provider: String) = Unit
+
+        @Deprecated("Abstract below API 30, minSdk is 28")
+        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+
+        override fun onProviderDisabled(provider: String) {
+            if (provider == chosenProvider) nativeError(CLOSED_ERROR)
+        }
+    }
 
     private fun report(location: Location) {
         nativeUpdate(
@@ -50,15 +65,18 @@ object GcsLocation {
     private fun listen(activity: Activity) {
         if (listening) return
         if (!granted(activity)) {
+            nativeError(ACCESS_ERROR)
             handler.postDelayed({ listen(activity) }, PERMISSION_RETRY_MS)
             return
         }
         val locations = activity.getSystemService(LocationManager::class.java) ?: return
         val chosen = provider(locations) ?: run {
+            nativeError(CLOSED_ERROR)
             handler.postDelayed({ listen(activity) }, PERMISSION_RETRY_MS)
             return
         }
         manager = locations
+        chosenProvider = chosen
         listening = true
         nativeSource(SOURCE_TOKEN)
         locations.getLastKnownLocation(chosen)?.let(::report)
@@ -74,8 +92,12 @@ object GcsLocation {
         handler.removeCallbacksAndMessages(null)
         manager?.removeUpdates(listener)
         manager = null
+        chosenProvider = null
         listening = false
     }
+
+    @JvmStatic
+    private external fun nativeError(code: Int)
 
     @JvmStatic
     private external fun nativeSource(token: String)
