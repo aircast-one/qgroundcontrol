@@ -1,5 +1,8 @@
 package one.aircast.mapspike
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import org.json.JSONObject
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
@@ -24,6 +27,8 @@ private const val ORBIT_COLOUR = "#FFFFFF"
 private const val ORBIT_ARROW_SOURCE = "aircast-orbit-arrows"
 private const val ORBIT_ARROW_LAYER = "aircast-orbit-arrow-layer"
 private const val ARROW_BEARING = "bearing"
+private const val ORBIT_HANDLE_SOURCE = "aircast-orbit-handles"
+private const val ORBIT_HANDLE_LAYER = "aircast-orbit-handle-layer"
 
 data class OrbitCircle(val centre: TrackPoint, val radiusMetres: Double, val clockwise: Boolean = true)
 
@@ -44,6 +49,17 @@ fun orbitCircle(view: JSONObject?): OrbitCircle? {
 fun orbitRing(orbit: OrbitCircle?): List<TrackPoint> =
     orbit?.let { circleRing(it.centre, it.radiusMetres) }?.takeIf { it.isNotEmpty() }?.let { it + it.first() }.orEmpty()
 
+object OrbitPreview {
+    var circle by mutableStateOf<OrbitCircle?>(null)
+}
+
+fun orbitRadiusHandle(orbit: OrbitCircle?): TrackPoint? = orbit?.let { pointAt(it.centre, it.radiusMetres, 90.0) }
+
+fun orbitHandles(preview: OrbitCircle?): List<TrackPoint> = listOfNotNull(preview?.centre, orbitRadiusHandle(preview))
+
+fun draggedOrbitRadius(orbit: OrbitCircle, to: TrackPoint): Double =
+    metresBetween(orbit.centre, to).coerceAtLeast(MINIMUM_CIRCLE_RADIUS_METRES)
+
 object OrbitBridge {
     fun read(): OrbitCircle? = orbitCircle(runCatching { JSONObject(QGCBridge.get(ORBIT_VIEW)) }.getOrNull())
 }
@@ -53,6 +69,7 @@ fun installOrbitLayer(style: Style) {
     style.addSource(GeoJsonSource(ORBIT_SOURCE))
     style.addSource(GeoJsonSource(ORBIT_RING_SOURCE))
     style.addSource(GeoJsonSource(ORBIT_ARROW_SOURCE))
+    style.addSource(GeoJsonSource(ORBIT_HANDLE_SOURCE))
     style.addLayer(
         LineLayer(ORBIT_RING_LAYER, ORBIT_RING_SOURCE).withProperties(
             PropertyFactory.lineColor(ORBIT_COLOUR),
@@ -88,11 +105,23 @@ fun installOrbitLayer(style: Style) {
             PropertyFactory.textIgnorePlacement(true),
         ),
     )
+    style.addLayer(
+        CircleLayer(ORBIT_HANDLE_LAYER, ORBIT_HANDLE_SOURCE).withProperties(
+            PropertyFactory.circleColor("#FFFFFF"),
+            PropertyFactory.circleRadius(9f),
+            PropertyFactory.circleStrokeColor("#000000"),
+            PropertyFactory.circleStrokeWidth(2f),
+        ),
+    )
 }
 
-fun renderOrbit(style: Style, orbit: OrbitCircle?, gotoShown: Boolean) {
+fun renderOrbit(style: Style, active: OrbitCircle?, gotoShown: Boolean, preview: OrbitCircle? = null) {
+    val orbit = preview ?: active
+    (style.getSource(ORBIT_HANDLE_SOURCE) as? GeoJsonSource)?.setGeoJson(
+        FeatureCollection.fromFeatures(orbitHandles(preview).map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) }),
+    )
     (style.getSource(ORBIT_SOURCE) as? GeoJsonSource)?.setGeoJson(
-        FeatureCollection.fromFeatures(listOfNotNull(orbit?.takeIf { !gotoShown }).map { Feature.fromGeometry(Point.fromLngLat(it.centre.longitude, it.centre.latitude)) }),
+        FeatureCollection.fromFeatures(listOfNotNull(orbit?.takeIf { preview != null || !gotoShown }).map { Feature.fromGeometry(Point.fromLngLat(it.centre.longitude, it.centre.latitude)) }),
     )
     (style.getSource(ORBIT_ARROW_SOURCE) as? GeoJsonSource)?.setGeoJson(
         FeatureCollection.fromFeatures(

@@ -80,47 +80,72 @@ fun gotoRadiusHandle(location: GotoLocation?): TrackPoint? =
 fun draggedGotoRadius(location: GotoLocation, to: TrackPoint): Double =
     metresBetween(location.at, to).coerceAtLeast(MINIMUM_CIRCLE_RADIUS_METRES)
 
+private enum class CircleGrab { None, GotoRadius, GotoFlip, OrbitRadius, OrbitCentre, OrbitFlip }
+
 @SuppressLint("ClickableViewAccessibility")
 fun attachGotoRadiusDrag(mapView: MapView, map: MapLibreMap, shown: () -> GotoLocation?) {
-    var dragging = false
-    var flipping = false
+    var grab = CircleGrab.None
     var downX = 0f
     var downY = 0f
-    fun near(at: TrackPoint, x: Float, y: Float): Boolean =
-        map.projection.toScreenLocation(LatLng(at.latitude, at.longitude)).let { withinHit(it.x - x, it.y - y) }
-    mapView.setOnTouchListener { _, event ->
+    fun near(at: TrackPoint?, x: Float, y: Float): Boolean =
+        at != null && map.projection.toScreenLocation(LatLng(at.latitude, at.longitude)).let { withinHit(it.x - x, it.y - y) }
+    fun nearArrow(arrows: List<Pair<TrackPoint, Double>>, x: Float, y: Float): Boolean = arrows.any { (at, _) -> near(at, x, y) }
+    fun grabbed(x: Float, y: Float): CircleGrab {
+        val orbit = OrbitPreview.circle
+        val goto = shown().takeIf { GotoLoiterEdit.edit != null }
+        return when {
+            near(orbitRadiusHandle(orbit), x, y) -> CircleGrab.OrbitRadius
+            near(orbit?.centre, x, y) -> CircleGrab.OrbitCentre
+            nearArrow(orbitArrows(orbit), x, y) -> CircleGrab.OrbitFlip
+            near(gotoRadiusHandle(goto), x, y) -> CircleGrab.GotoRadius
+            nearArrow(gotoArrows(goto), x, y) -> CircleGrab.GotoFlip
+            else -> CircleGrab.None
+        }
+    }
+    fun dragTo(x: Float, y: Float) {
+        val to = map.projection.fromScreenLocation(android.graphics.PointF(x, y)).let { TrackPoint(it.latitude, it.longitude) }
+        val orbit = OrbitPreview.circle
         val edit = GotoLoiterEdit.edit
-        val goto = shown().takeIf { edit != null }
+        val goto = shown()
+        when {
+            grab == CircleGrab.OrbitRadius && orbit != null -> OrbitPreview.circle = orbit.copy(radiusMetres = draggedOrbitRadius(orbit, to))
+            grab == CircleGrab.OrbitCentre && orbit != null -> OrbitPreview.circle = orbit.copy(centre = to)
+            grab == CircleGrab.GotoRadius && edit != null && goto != null -> GotoLoiterEdit.edit = edit.copy(radiusMetres = draggedGotoRadius(goto, to))
+        }
+    }
+    fun flip() {
+        val orbit = OrbitPreview.circle
+        val edit = GotoLoiterEdit.edit
+        when {
+            grab == CircleGrab.OrbitFlip && orbit != null -> OrbitPreview.circle = orbit.copy(clockwise = !orbit.clockwise)
+            grab == CircleGrab.GotoFlip && edit != null -> GotoLoiterEdit.edit = edit.copy(clockwise = !edit.clockwise)
+        }
+    }
+    val dragging = { grab in setOf(CircleGrab.GotoRadius, CircleGrab.OrbitRadius, CircleGrab.OrbitCentre) }
+    mapView.setOnTouchListener { _, event ->
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.x
                 downY = event.y
-                dragging = gotoRadiusHandle(goto)?.let { near(it, event.x, event.y) } == true
-                flipping = !dragging && gotoArrows(goto).any { (at, _) -> near(at, event.x, event.y) }
-                if (dragging) map.uiSettings.setAllGesturesEnabled(false)
-                dragging || flipping
+                grab = grabbed(event.x, event.y)
+                if (dragging()) map.uiSettings.setAllGesturesEnabled(false)
+                grab != CircleGrab.None
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (dragging && goto != null && edit != null) {
-                    val to = map.projection.fromScreenLocation(android.graphics.PointF(event.x, event.y))
-                    GotoLoiterEdit.edit = edit.copy(radiusMetres = draggedGotoRadius(goto, TrackPoint(to.latitude, to.longitude)))
-                }
-                dragging || flipping
+                if (dragging()) dragTo(event.x, event.y)
+                grab != CircleGrab.None
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                val consumed = dragging || flipping
-                if (flipping && edit != null && event.actionMasked == MotionEvent.ACTION_UP && withinTap(event.x - downX, event.y - downY)) {
-                    GotoLoiterEdit.edit = edit.copy(clockwise = !edit.clockwise)
-                }
-                if (dragging) map.uiSettings.setAllGesturesEnabled(true)
-                dragging = false
-                flipping = false
+                val consumed = grab != CircleGrab.None
+                if (event.actionMasked == MotionEvent.ACTION_UP && withinTap(event.x - downX, event.y - downY)) flip()
+                if (dragging()) map.uiSettings.setAllGesturesEnabled(true)
+                grab = CircleGrab.None
                 consumed
             }
 
-            else -> dragging || flipping
+            else -> grab != CircleGrab.None
         }
     }
 }

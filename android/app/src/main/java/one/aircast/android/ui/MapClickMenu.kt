@@ -2,10 +2,14 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -37,6 +41,9 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.GotoLoiterEdit
 import one.aircast.mapspike.LoiterEdit
+import one.aircast.mapspike.MINIMUM_CIRCLE_RADIUS_METRES
+import one.aircast.mapspike.OrbitCircle
+import one.aircast.mapspike.OrbitPreview
 import one.aircast.mapspike.loiterEditNumber
 import one.aircast.mapspike.optText
 import one.aircast.mapspike.TrackPoint
@@ -102,6 +109,12 @@ internal fun orbitDefaults(view: JSONObject?): OrbitDefaults = OrbitDefaults(
 internal fun radiusMetres(entered: String, defaults: OrbitDefaults): Double? =
     one.aircast.mapspike.typedNumber(entered.ifBlank { defaults.radius.toString() })?.let { it * defaults.metresPerUnit }
 
+internal fun orbitOpened(point: MapPoint, defaults: OrbitDefaults): OrbitCircle =
+    OrbitCircle(TrackPoint(point.latitude, point.longitude), (radiusMetres("", defaults) ?: 0.0).coerceAtLeast(MINIMUM_CIRCLE_RADIUS_METRES), defaults.clockwise)
+
+internal fun orbitEdit(circle: OrbitCircle, defaults: OrbitDefaults): LoiterEdit =
+    LoiterEdit(circle.radiusMetres, circle.clockwise, defaults.unit, defaults.metresPerUnit)
+
 internal fun orbitArgs(point: MapPoint, choice: OrbitChoice): Array<Any> =
     arrayOf(point.latitude, point.longitude, choice.radiusMetres, choice.clockwise, choice.aboveHomeMetres)
 
@@ -128,42 +141,24 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
     }
     var confirming by remember(point) { mutableStateOf<MapClickAction?>(null) }
     LaunchedEffect(actions) {
-        if (confirming != null && actions.none { it.id == confirming?.id }) confirming = null
+        val gone = confirming?.takeIf { pending -> actions.none { it.id == pending.id } }
+        if (gone?.id == ORBIT_ACTION) onDismiss() else if (gone != null) confirming = null
     }
     var refusal by remember(point) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     val defaults = remember(view) { orbitDefaults(view) }
-    var radiusText by remember(point) { mutableStateOf("") }
-    var clockwise by remember(point) { mutableStateOf<Boolean?>(null) }
-    var height by remember(point) { mutableStateOf<GuidedAltitude?>(null) }
-    var target by remember(point) { mutableStateOf<Double?>(null) }
-    var settled by remember(point) { mutableStateOf<Double?>(null) }
-
-    LaunchedEffect(confirming, settled) {
-        if (confirming?.id != ORBIT_ACTION) return@LaunchedEffect
-        height = withContext(Dispatchers.Default) {
-            guidedAltitude(Qgc.get(settled?.let { guidedAltitudePath(it) } ?: GUIDED_ALTITUDE))
-        }
-        if (target == null) target = height?.current
-    }
-
-    fun orbitChoice(): OrbitChoice? {
-        val radius = radiusMetres(radiusText, defaults) ?: return null
-        val above = height?.targetMeters ?: height?.currentMeters ?: return null
-        return OrbitChoice(radius, clockwise ?: defaults.clockwise, above)
-    }
 
     fun run(action: MapClickAction) {
-        val orbit = if (action.id == ORBIT_ACTION) orbitChoice() else null
-        if (action.id == ORBIT_ACTION && orbit == null) {
-            refusal = "Choose a radius and a height for the orbit."
-            return
-        }
         scope.launch {
-            val refused = withContext(Dispatchers.Default) { send(action, point, orbit) }
+            val refused = withContext(Dispatchers.Default) { send(action, point, null) }
             if (refused == null) onDismiss() else refusal = refused
         }
+    }
+
+    confirming?.takeIf { it.id == ORBIT_ACTION }?.let { orbit ->
+        OrbitPanel(point, orbit, defaults, onDone = onDismiss)
+        return
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -188,31 +183,6 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
                     val vehicleAt = geoOf(vehicleCoordinate)?.let { (lat, lon) -> MapPoint(lat, lon) }
                     val away = vehicleAt?.takeIf { pending.id == GOTO_ACTION }?.let { goHereText(it, point, defaults.unit, defaults.metresPerUnit) }
                     Text(away ?: pending.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (pending.id == ORBIT_ACTION) {
-                        OutlinedTextField(
-                            value = radiusText,
-                            onValueChange = { radiusText = it },
-                            label = { Text(listOf("Radius", defaults.unit).filter { it.isNotBlank() }.joinToString(" ")) },
-                            placeholder = { Text(defaults.radius.toString()) },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Clockwise", Modifier.weight(1f))
-                            Switch(checked = clockwise ?: defaults.clockwise, onCheckedChange = { clockwise = it })
-                        }
-                        height?.let { reading ->
-                            Text(reading.label, style = MaterialTheme.typography.bodySmall)
-                            Slider(
-                                value = (target ?: reading.current ?: 0.0).toFloat(),
-                                onValueChange = { target = it.toDouble() },
-                                onValueChangeFinished = { settled = target },
-                                valueRange = (reading.minimum ?: 0.0).toFloat()..(reading.maximum ?: 0.0).toFloat(),
-                            )
-                            rangeLabel(reading.minimum, reading.maximum, reading.unit)?.let { RangeHint(it) }
-                        }
-                    }
                     SlideOrCancel(pending.title, onConfirm = { run(pending) }, onCancel = { confirming = null })
                 }
             }
@@ -233,6 +203,80 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
                     modifier = Modifier.align(Alignment.CenterHorizontally),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitDefaults, onDone: () -> Unit) {
+    val opened = remember(point) { orbitOpened(point, defaults) }
+    DisposableEffect(opened) {
+        OrbitPreview.circle = opened
+        onDispose { OrbitPreview.circle = null }
+    }
+    val circle = OrbitPreview.circle ?: opened
+    val edit = orbitEdit(circle, defaults)
+    var typed by remember(opened) { mutableStateOf<String?>(null) }
+    var height by remember(opened) { mutableStateOf<GuidedAltitude?>(null) }
+    var target by remember(opened) { mutableStateOf<Double?>(null) }
+    var settled by remember(opened) { mutableStateOf<Double?>(null) }
+    var refusal by remember(opened) { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(settled) {
+        height = withContext(Dispatchers.Default) {
+            guidedAltitude(Qgc.get(settled?.let { guidedAltitudePath(it) } ?: GUIDED_ALTITUDE))
+        }
+        if (target == null) target = height?.current
+    }
+
+    Box(Modifier.fillMaxSize().navigationBarsPadding().padding(12.dp), contentAlignment = Alignment.BottomCenter) {
+        GuidedValuePanel(
+            title = sentenceCase(action.title),
+            sentence = action.message,
+            commitLabel = action.title,
+            commitEnabled = height != null,
+            onCommit = {
+                val above = height?.targetMeters ?: height?.currentMeters
+                if (above == null) {
+                    refusal = "Choose a radius and a height for the orbit."
+                } else {
+                    val centre = MapPoint(circle.centre.latitude, circle.centre.longitude)
+                    scope.launch {
+                        val refused = withContext(Dispatchers.Default) { send(action, centre, OrbitChoice(circle.radiusMetres, circle.clockwise, above)) }
+                        if (refused == null) onDone() else refusal = refused
+                    }
+                }
+            },
+            onCancel = onDone,
+            modifier = Modifier.widthIn(max = 560.dp),
+        ) {
+            OutlinedTextField(
+                value = loiterRadiusField(typed, edit),
+                onValueChange = { text ->
+                    typed = text
+                    OrbitPreview.circle = circle.copy(radiusMetres = loiterTyped(text, edit).radiusMetres)
+                },
+                label = { Text(listOf("Radius", defaults.unit).filter { it.isNotBlank() }.joinToString(" ")) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Clockwise", Modifier.weight(1f))
+                Switch(checked = circle.clockwise, onCheckedChange = { OrbitPreview.circle = circle.copy(clockwise = it) })
+            }
+            height?.let { reading ->
+                Text(reading.label, style = MaterialTheme.typography.bodySmall)
+                Slider(
+                    value = (target ?: reading.current ?: 0.0).toFloat(),
+                    onValueChange = { target = it.toDouble() },
+                    onValueChangeFinished = { settled = target },
+                    valueRange = (reading.minimum ?: 0.0).toFloat()..(reading.maximum ?: 0.0).toFloat(),
+                )
+                rangeLabel(reading.minimum, reading.maximum, reading.unit)?.let { RangeHint(it) }
+            }
+            refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }

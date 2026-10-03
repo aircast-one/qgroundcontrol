@@ -381,17 +381,18 @@ fun VehicleMap(
         renderProximityRadars(radarStyle, radars)
     }
 
-    LaunchedEffect(style, orbit, shownGoto) {
+    val orbitPreview = OrbitPreview.circle
+    LaunchedEffect(style, orbit, shownGoto, orbitPreview) {
         val orbitStyle = style ?: return@LaunchedEffect
-        renderOrbit(orbitStyle, orbit, gotoShown = shownGoto != null)
+        renderOrbit(orbitStyle, orbit, gotoShown = shownGoto != null, preview = orbitPreview)
     }
     LaunchedEffect(style, collisionLegs) {
         val legStyle = style ?: return@LaunchedEffect
         renderCollisionLegs(legStyle, collisionLegs)
     }
-    LaunchedEffect(style, clickMarker) {
+    LaunchedEffect(style, clickMarker, orbitPreview) {
         val markerStyle = style ?: return@LaunchedEffect
-        renderClickMarker(markerStyle, clickMarker)
+        renderClickMarker(markerStyle, clickMarker.takeIf { orbitPreview == null })
     }
     LaunchedEffect(style, shownGoto, gotoEditing) {
         val gotoStyle = style ?: return@LaunchedEffect
