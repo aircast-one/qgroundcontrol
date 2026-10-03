@@ -384,7 +384,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     }
 
     if (!available) {
-        Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp))
+        Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
 
