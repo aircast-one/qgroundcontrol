@@ -233,6 +233,10 @@ const CAPTURE_SINGLE_PHOTO: i64 = 2;
 const CAPTURE_MULTIPLE_PHOTOS: i64 = 3;
 const STORAGE_READY: i64 = 2;
 
+fn photo_count_text(shots: i64) -> String {
+    format!("{:05}", shots.rem_euclid(100_000))
+}
+
 fn photo_video_panel(camera: &Value, present: bool, shots: i64) -> Value {
     let raw_video = integer(camera, "captureVideoState").unwrap_or(CAPTURE_DISABLED);
     let raw_photo = integer(camera, "capturePhotosState").unwrap_or(CAPTURE_DISABLED);
@@ -258,7 +262,7 @@ fn photo_video_panel(camera: &Value, present: bool, shots: i64) -> Value {
             "capturing": matches!(raw_photo, CAPTURE_SINGLE_PHOTO | CAPTURE_MULTIPLE_PHOTOS),
             "idle": raw_photo == CAPTURE_IDLE,
             "press": match raw_photo { CAPTURE_MULTIPLE_PHOTOS => Some("stop"), CAPTURE_IDLE => Some("take"), _ => None },
-            "count": format!("{:05}", shots.rem_euclid(100_000)),
+            "count": photo_count_text(shots),
         })),
         "freeText": (integer(camera, "storageStatus") == Some(STORAGE_READY)).then(|| format!("Free: {}", text(camera, "storageFreeStr"))),
         "batteryText": (battery >= 0).then(|| format!("Battery: {battery} %")),
@@ -376,7 +380,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // VehicleCameraControl.cc:351 and :~300 refuse on terms this gate did not carry, so it was
         // wrong in both directions: a camera that shoots stills in video mode had a working shutter
         // greyed out, and a camera mid-capture had a live button whose tap returns false in silence.
-        "canRecord": present && captures_video && (!has_modes || mode != PHOTO_MODE || flag(&camera, "videoInPhotoMode")),
+        "canRecord": present && integer(&camera, "captureVideoState").is_some_and(|state| state != CAPTURE_DISABLED),
         "canPhoto": present && captures_photos && (!has_modes || mode != VIDEO_MODE || flag(&camera, "photosInVideoMode")) && photo_status == PHOTO_CAPTURE_IDLE,
         // takePhoto sends `_photoMode == PHOTO_CAPTURE_SINGLE ? 0 : _photoLapse` and
         // `? 1 : _photoLapseCount`, so the same shutter press either takes one photo or starts an
@@ -725,9 +729,9 @@ mod tests {
         assert_eq!(cam(json!({ "cameraMode": 0, "capturePhotosState": 3 }))["canStopPhoto"], true);
         assert_eq!(cam(json!({ "cameraMode": 0, "capturePhotosState": 2 }))["canStopPhoto"], false, "a single shot in progress is not an interval and stopTakePhoto refuses it");
 
-        assert_eq!(cam(json!({ "cameraMode": 0 }))["canRecord"], false);
-        assert_eq!(cam(json!({ "cameraMode": 0, "videoInPhotoMode": true }))["canRecord"], true,
-            "startVideoRecording refuses on photo mode only when videoInPhotoMode is false, the same missing term the other way round");
+        assert_eq!(cam(json!({ "cameraMode": 0, "captureVideoState": 0, "videoInPhotoMode": true }))["canRecord"], false,
+            "the record button follows captureVideoState, which VehicleCameraControl reports Disabled in photo mode whatever videoInPhotoMode says");
+        assert_eq!(cam(json!({ "cameraMode": 1, "captureVideoState": 1 }))["canRecord"], true);
         assert_eq!(cam(json!({ "cameraMode": 1, "captureVideoState": 2 }))["canRecord"], true,
             "a running recording is not a refusal, because the toggle is what stops it - which is why record takes no busy term and photo does");
     }
@@ -747,6 +751,7 @@ mod tests {
         assert_eq!((disabled["video"]["enabled"].as_bool(), disabled["video"]["clock"].as_str()), (Some(false), Some("00:00:07")));
         assert_eq!(panel(json!({ "hasTracking": true }))["visible"], true, "a tracking-only camera still gets the panel");
         assert_eq!(panel(json!({}))["visible"], false);
+        assert_eq!((photo_count_text(7), photo_count_text(112_345)), ("00007".to_string(), "12345".to_string()), "('00000' + count).slice(-5)");
     }
 
     #[test]

@@ -425,7 +425,11 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
         RECORD => (gate("canRecord"), "This camera cannot record video in the mode it is in.".to_string(), "toggleVideoRecording".to_string()),
         STOP_PHOTO => (gate("canStopPhoto"), "The camera is not taking an interval capture.".to_string(), "stopTakePhoto".to_string()),
         MODE => match mode {
-            Some(wanted) => (gate("canChangeMode"), mode_refusal(&view), format!("setCameraMode{wanted}")),
+            Some(wanted) => (
+                gate("hasModes") && view["panel"][if wanted == "Video" { "selectVideoEnabled" } else { "selectPhotoEnabled" }] == true,
+                mode_refusal(&view),
+                format!("setCameraMode{wanted}"),
+            ),
             None => return json!({ "ok": false, "result": false, "reason": "camera.setMode takes photo or video" }),
         },
         _ => return json!({ "ok": false, "reason": format!("{path} is not a camera action") }),
@@ -1095,10 +1099,15 @@ mod tests {
         assert!(answer["reason"].as_str().unwrap().contains("recording"), "{answer}");
         assert!(held.fired.borrow().is_empty());
 
-        let switchable = cam(json!({ "cameraMode": 1 }));
+        let switchable = cam(json!({ "cameraMode": 1, "captureVideoState": 1 }));
         assert_eq!(run(&switchable, MODE, "[\"photo\"]")["ok"], true);
         assert_eq!(*switchable.fired.borrow(), vec![format!("{CAMERA}.setCameraModePhoto")]);
         assert_eq!(*cam(json!({ "cameraMode": 0 })).fired.borrow(), Vec::<String>::new());
+        let shooting_in_video = cam(json!({ "cameraMode": 1, "captureVideoState": 0, "capturePhotosState": 2, "photosInVideoMode": true }));
+        assert_eq!(run(&shooting_in_video, MODE, "[\"photo\"]")["ok"], false, "PhotoVideoControl enables the photo selector only while captureVideoState is Idle, and setCameraMode itself checks nothing");
+        let survey_shooting = cam(json!({ "cameraMode": 2, "capturePhotosState": 2 }));
+        assert_eq!(run(&survey_shooting, MODE, "[\"video\"]")["ok"], false, "survey waits for its photo capture like photo mode");
+        assert_eq!(run(&cam(json!({ "cameraMode": 2, "capturePhotosState": 1 })), MODE, "[\"photo\"]")["ok"], true, "and survey can be switched to photo");
 
         let fixed = cam(json!({ "cameraMode": 1, "hasModes": false }));
         let answer = run(&fixed, MODE, "[\"video\"]");

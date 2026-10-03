@@ -144,7 +144,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                         val selected = panel.inPhotoMode != video
                         Surface(
                             onClick = {
-                                if (!selected) offMainDetached {
+                                if (modeTapSwitches(camera, video)) offMainDetached {
                                     refused = Qgc.refusalOf(CAMERA_SET_MODE, if (video) "video" else "photo")
                                 }
                             },

@@ -39,6 +39,14 @@ class CameraControlTest {
     }
 
     @Test
+    fun `a survey camera can still be switched to photo, because survey is not photo`() {
+        val survey = camera("""{"present":true,"mode":2}""")!!
+        assertTrue(modeTapSwitches(survey, video = false))
+        assertTrue(modeTapSwitches(survey, video = true))
+        assertFalse(modeTapSwitches(camera("""{"present":true,"mode":0}""")!!, video = false))
+    }
+
+    @Test
     fun `no camera present is no controls`() {
         assertEquals(1, camera("""{"present":true,"labels":["Sony","Thermal"],"selected":1}""")?.selected)
         assertNull(camera("""{"present":true,"labels":[],"selected":null}""")?.selected)

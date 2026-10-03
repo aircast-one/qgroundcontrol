@@ -3,15 +3,9 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import one.aircast.mapspike.optText
 
-internal const val CAM_MODE_UNDEFINED = -1
 internal const val CAM_MODE_PHOTO = 0
 internal const val CAM_MODE_VIDEO = 1
 
-internal const val VIDEO_CAPTURE_STOPPED = 0
-internal const val VIDEO_CAPTURE_RUNNING = 1
-
-internal const val PHOTO_CAPTURE_IDLE = 0
-internal const val PHOTO_CAPTURE_IN_PROGRESS = 1
 
 data class CameraShutter(
     val label: String,
@@ -74,6 +68,9 @@ internal fun cameraPanel(panel: JSONObject?): CameraPanel? = panel?.let {
     )
 }
 
+internal fun modeTapSwitches(camera: CameraReading, video: Boolean): Boolean =
+    camera.mode != if (video) CAM_MODE_VIDEO else CAM_MODE_PHOTO
+
 internal fun shutterCaption(panel: CameraPanel, shutter: CameraShutter): String? =
     (if (shutter.video) "Video" else "Photo").takeIf { panel.bothShown }
 
@@ -89,6 +86,7 @@ internal data class CameraReading(
     val canRecord: Boolean,
     val isTakingPhoto: Boolean,
     val capturesPhotos: Boolean,
+    val mode: Int,
     val timelapse: Boolean,
     val lapseSeconds: Double?,
     val lapseCount: Int?,
@@ -119,6 +117,7 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         canRecord = view.optBoolean("canRecord"),
         isTakingPhoto = view.optBoolean("isTakingPhoto"),
         capturesPhotos = view.optBoolean("capturesPhotos"),
+        mode = view.optInt("mode", -1),
         timelapse = view.optText("photoMode") == "timelapse",
         lapseSeconds = view.optDouble("lapseSeconds").takeIf { it.isFinite() },
         lapseCount = if (view.isNull("lapseCount")) null else view.optInt("lapseCount"),
