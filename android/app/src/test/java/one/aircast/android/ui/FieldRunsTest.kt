@@ -52,6 +52,8 @@ class FieldRunsTest {
         assertEquals("Minimum arming voltage", multiplier.copy(shortLabel = "Required arming voltage", description = "Minimum arming voltage").detail)
         assertEquals("", multiplier.copy(shortLabel = "ArduPilot support host", description = "Ardupilot Support Host name").detail)
         assertEquals("", multiplier.copy(shortLabel = "Color scheme", description = "Application color scheme").detail)
+        assertEquals("", multiplier.copy(shortLabel = "RTL loiter time", description = "Loiter time").detail)
+        assertEquals("Final land stage altitude", multiplier.copy(shortLabel = "RTL final altitude", description = "Final land stage altitude").detail)
         assertEquals("RC Roll/Pitch feel", multiplier.copy(shortLabel = "Attitude control input time constant", description = "RC Roll/Pitch Feel").detail)
         assertEquals("Only while in Guided mode.", multiplier.copy(shortLabel = "Confirm", description = "Only while in Guided mode.").detail)
     }

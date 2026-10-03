@@ -45,7 +45,7 @@
             "controls": [
                 {
                     "param": "RTL_ALT_M",
-                    "label": "Return at specified altitude:",
+                    "label": "Altitude on return",
                     "control": "radiogroup",
                     "options": [
                         {

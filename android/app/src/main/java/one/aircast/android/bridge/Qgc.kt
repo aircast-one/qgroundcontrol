@@ -73,7 +73,7 @@ internal fun labelCase(note: String): String =
     if (!note.trimEnd().endsWith('.') && note.split(' ').size <= 4) one.aircast.mapspike.sentenceCase(note) else note
 
 private fun restates(note: String, label: String): Boolean =
-    note.trimEnd('.').lowercase().let { it.isNotEmpty() && label.isNotEmpty() && (label.lowercase().startsWith(it) || it.startsWith(label.lowercase()) || it.endsWith(" " + label.lowercase())) }
+    note.trimEnd('.').lowercase().let { it.isNotEmpty() && label.isNotEmpty() && (label.lowercase().startsWith(it) || it.startsWith(label.lowercase()) || it.endsWith(" " + label.lowercase()) || label.lowercase().endsWith(" $it")) }
 
 object Qgc {
     private const val TAG = "QgcBridge"
