@@ -264,11 +264,11 @@ private fun AppLogFilterBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val levels = read?.levels.orEmpty()
-            Picker(levels.getOrElse(filter.levelIndex) { "All Levels" }, levels) { index ->
+            Picker(sentenceCase(levels.getOrElse(filter.levelIndex) { "All Levels" }), levels.map(::sentenceCase)) { index ->
                 onFilter(filter.copy(levelIndex = index))
             }
             val categories = read?.categories.orEmpty()
-            Picker(filter.category.ifEmpty { "All Categories" }, categories) { index ->
+            Picker(sentenceCase(filter.category.ifEmpty { "All Categories" }), categories.map(::sentenceCase)) { index ->
                 onFilter(filter.copy(category = if (index == 0) "" else categories[index]))
             }
             OutlinedButton(onClick = onCategories) { Text("Categories") }
