@@ -144,13 +144,22 @@ internal fun linkIcon(type: String): Int = when (type) {
 
 private const val REPLAY_LINK_FOLDER = "replay-links"
 
-internal fun stagedReplayLog(context: android.content.Context, link: String, uri: android.net.Uri): String? {
+private fun replayFolder(context: android.content.Context, link: String): java.io.File =
+    java.io.File(java.io.File(context.filesDir, REPLAY_LINK_FOLDER), link.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+
+internal fun stagedReplayLog(context: android.content.Context, link: String, uri: android.net.Uri): String? = runCatching {
     val shown = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) cursor.getString(0) else null
-    } ?: "replay.tlog"
-    val folder = java.io.File(java.io.File(context.filesDir, REPLAY_LINK_FOLDER), link.replace(Regex("[^A-Za-z0-9._-]"), "_")).apply { mkdirs() }
-    val staged = java.io.File(folder, shown.replace(Regex("[/\\\\]"), "_"))
-    return context.contentResolver.openInputStream(uri)?.use { source -> staged.outputStream().use { source.copyTo(it) } }?.let { staged.absolutePath }
+    }?.replace(Regex("[/\\\\]"), "_")?.ifBlank { null } ?: "replay.tlog"
+    val folder = replayFolder(context, link).apply { mkdirs() }
+    val incoming = java.io.File(folder, ".incoming")
+    val copied = context.contentResolver.openInputStream(uri)?.use { source -> incoming.outputStream().use { source.copyTo(it) } } != null
+    val staged = java.io.File(folder, shown)
+    staged.takeIf { copied && incoming.renameTo(it) }?.absolutePath
+}.getOrNull()
+
+internal fun pruneReplayFolder(context: android.content.Context, link: String, keep: String) {
+    replayFolder(context, link).listFiles()?.filter { it.absolutePath != keep }?.forEach { it.delete() }
 }
 
 internal fun linkIsEditable(row: LinkRow): Boolean =
@@ -489,10 +498,15 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
     var logFile by remember { mutableStateOf(row.filename) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val cancel: () -> Unit = {
+        if (row.editing == "logFile") one.aircast.android.bridge.offMainDetached { pruneReplayFolder(context, row.name, row.filename) }
+        onDismiss()
+    }
     val logPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         val chosen = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            logFile = withContext(Dispatchers.IO) { stagedReplayLog(context, row.name, chosen) } ?: logFile
+            val staged = withContext(Dispatchers.IO) { stagedReplayLog(context, row.name, chosen) }
+            if (staged == null) error = "That file could not be read." else logFile = staged
         }
     }
     val linksJson by qgcPath(LINKS_VIEW)
@@ -503,7 +517,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
     val udpDefault = (udpListen as? Number)?.toInt()?.takeIf { it in 1..65535 }?.toString() ?: DEFAULT_PORT
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = cancel,
         title = { Text("Edit ${row.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -603,13 +617,14 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                                 Qgc.invoke("links.commitLinkConfigurations")
                                 Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")
                             }
+                            if (row.editing == "logFile") withContext(Dispatchers.IO) { pruneReplayFolder(context, row.name, logFile) }
                             onSaved()
                         }
                     }
                 },
             ) { Text("Save & Connect") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = cancel) { Text("Cancel") } },
     )
 }
 
