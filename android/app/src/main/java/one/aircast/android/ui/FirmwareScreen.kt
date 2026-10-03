@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.mapspike.aircast
 import androidx.compose.material3.Surface
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -53,7 +54,12 @@ internal const val APM_CHIBIOS = "apmChibiOS"
 internal const val FIRMWARE_POLL_MS = 500L
 internal val FIRMWARE_EXTENSIONS = listOf("px4", "apj", "bin", "ihx")
 
-internal data class FirmwarePort(val port: String, val description: String, val bootloader: Boolean)
+internal data class FirmwarePort(val port: String, val description: String, val bootloader: Boolean, val boardType: String = "")
+
+internal const val MULTIPLE_DEVICES = "Multiple devices detected. Make sure to select the correct one from the list."
+
+internal fun preselectedPort(ports: List<FirmwarePort>): String? =
+    (ports.firstOrNull { it.bootloader } ?: ports.firstOrNull { it.boardType == "Pixhawk" } ?: ports.firstOrNull { it.boardType == "SiK Radio" })?.port
 
 internal data class FirmwareJob(
     val phase: String,
@@ -70,7 +76,7 @@ internal fun firmwarePorts(view: JSONObject?): List<FirmwarePort> {
     return (0 until listed.length()).mapNotNull { index ->
         listed.optJSONObject(index)?.let { entry ->
             entry.optText("port").takeIf { it.isNotBlank() }?.let { port ->
-                FirmwarePort(port, entry.optText("description"), entry.optBoolean("bootloader"))
+                FirmwarePort(port, entry.optText("description"), entry.optBoolean("bootloader"), entry.optText("boardType"))
             }
         }
     }
@@ -194,7 +200,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
             }
             job = readJob
             ports = readPorts
-            if (port.isBlank()) readPorts.firstOrNull { it.bootloader }?.let { port = it.port }
+            if (port.isBlank()) preselectedPort(readPorts)?.let { port = it }
             delay(FIRMWARE_POLL_MS)
         }
     }
@@ -232,11 +238,14 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                 }
             }
         }
+        if (!busy && ports.count { it.boardType.isNotBlank() } > 1) item(key = "multiple") {
+            Text(MULTIPLE_DEVICES, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 16.dp))
+        }
         items(ports.size, key = { ports[it].port }) { index ->
             val entry = ports[index]
             ListItem(
                 headlineContent = { Text(entry.description.ifBlank { entry.port }) },
-                supportingContent = { Text(if (entry.bootloader) "In its bootloader" else entry.port) },
+                supportingContent = { Text(if (entry.bootloader) "In its bootloader" else listOf(entry.boardType, entry.port).filter { it.isNotBlank() }.joinToString(" \u00b7 ")) },
                 leadingContent = { RadioButton(selected = entry.port == port, onClick = null, enabled = !busy) },
                 modifier = Modifier.selectable(selected = entry.port == port, enabled = !busy) { port = entry.port },
             )

@@ -81,4 +81,15 @@ class FirmwareScreenTest {
         org.junit.Assert.assertEquals("Flashing - Pixhawk 6C", flashingLabel(listOf(FirmwarePort("/dev/bus/usb/1", "Pixhawk 6C", true)), "/dev/bus/usb/1"))
         org.junit.Assert.assertEquals("Flashing - /dev/x", flashingLabel(emptyList(), "/dev/x"))
     }
+
+    @Test
+    fun `a board in its bootloader wins, then the first Pixhawk, then a SiK radio`() {
+        val radio = FirmwarePort("r", "SiK", false, "SiK Radio")
+        val fmu = FirmwarePort("p", "Pixhawk 6C", false, "Pixhawk")
+        val other = FirmwarePort("o", "FTDI", false)
+        org.junit.Assert.assertEquals("p", preselectedPort(listOf(other, radio, fmu)))
+        org.junit.Assert.assertEquals("r", preselectedPort(listOf(other, radio)))
+        org.junit.Assert.assertEquals(null, preselectedPort(listOf(other)))
+        org.junit.Assert.assertEquals("b", preselectedPort(listOf(fmu, FirmwarePort("b", "PX4 BL", true))))
+    }
 }

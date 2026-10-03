@@ -90,6 +90,11 @@ fn image_for(file: &str, contents: &[u8], board: &BoardInfo, report: &mut dyn Fn
 
 pub const PLUG_IN: &str = "Plug in your device via USB.";
 pub const REPLUG: &str = "Now unplug your device and plug it back in to enter bootloader mode.";
+pub const BOARD_GONE: &str = "Device disconnected \u{2014} waiting for it to reappear in bootloader mode...";
+
+pub fn found_device(description: &str, port: &str) -> String {
+    format!("Found device: {} ({port})", if description.is_empty() { "Unknown" } else { description })
+}
 pub const FIND_BOARD_INTERVAL_MS: u64 = 500;
 pub const SUSPENDED: &str = "Connect not allowed during Firmware Upgrade.";
 
@@ -154,6 +159,10 @@ impl Target {
     }
 }
 
+pub fn recognized_board(port: &crate::boards::PortInfo) -> Option<&'static str> {
+    crate::corelinks::board_type_of(port).filter(|b| matches!(b, crate::boards::BoardType::Pixhawk | crate::boards::BoardType::SiKRadio)).map(crate::boards::BoardType::name)
+}
+
 fn flashable(port: &crate::boards::PortInfo) -> bool {
     matches!(crate::corelinks::board_type_of(port), Some(crate::boards::BoardType::Pixhawk | crate::boards::BoardType::SiKRadio))
 }
@@ -170,6 +179,7 @@ pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn F
         match (must_leave, look()) {
             (true, Sighting::Absent) => {
                 must_leave = false;
+                report(Event::Status(BOARD_GONE.to_string()));
                 false
             }
             (true, _) | (false, Sighting::Absent) => false,
@@ -425,7 +435,7 @@ fn ports() -> Vec<Value> {
 fn ports() -> Vec<Value> {
     crate::platformserial::ports()
         .into_iter()
-        .map(|p| json!({ "port": p.system_location, "bootloader": in_bootloader(&p.description), "description": crate::platformserial::display_name(&p) }))
+        .map(|p| json!({ "port": p.system_location, "bootloader": in_bootloader(&p.description), "description": crate::platformserial::display_name(&p), "boardType": recognized_board(&p) }))
         .collect()
 }
 
@@ -553,6 +563,9 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
                 let waited = wait_for_bootloader(&mut || target.find(&crate::corelinks::port_infos(), &flashable), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &cancelled, &mut apply);
                 let port = target.location.clone();
                 let description = description_of(&port);
+                if waited.is_ok() {
+                    apply(Event::Status(found_device(&description, &port)));
+                }
                 waited.and_then(|()| open(&port)).and_then(|opened| {
                     if chosen.sik() {
                         std::thread::sleep(std::time::Duration::from_millis(SIK_OPEN_SETTLE_MS));
@@ -705,7 +718,8 @@ mod tests {
     #[test]
     fn a_running_board_must_be_replugged_and_its_return_is_taken() {
         let (outcome, lines, pauses) = watched(&[Sighting::Running, Sighting::Running, Sighting::Absent, Sighting::Absent, Sighting::Running]);
-        assert_eq!((outcome, lines, pauses), (Ok(()), vec![REPLUG.to_string()], 4), "back after the unplug counts even before its description says BL, as Qt's found-board loop does");
+        assert_eq!((outcome, lines, pauses), (Ok(()), vec![REPLUG.to_string(), BOARD_GONE.to_string()], 4), "back after the unplug counts even before its description says BL, as Qt's found-board loop does; the unplug is reported as FirmwareUpgrade.qml's onBoardGone");
+        assert_eq!(found_device("PX4 BL FMU v5.x", "/dev/ttyACM0"), "Found device: PX4 BL FMU v5.x (/dev/ttyACM0)");
     }
 
     #[test]
