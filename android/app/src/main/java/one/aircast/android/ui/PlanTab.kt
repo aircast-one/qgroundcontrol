@@ -108,12 +108,12 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
     vehicleChangePrompt(planStatus)?.let { prompt ->
         AlertDialog(
             onDismissRequest = {},
-            title = { Text(prompt.title) },
+            title = { Text(sentenceCase(prompt.title)) },
             text = {
                 androidx.compose.foundation.layout.Column {
                     Text(prompt.text)
-                    TextButton(onClick = { offMainDetached { Qgc.invoke(LOAD_VEHICLE_PLAN) } }) { Text(prompt.loadText) }
-                    TextButton(onClick = { offMainDetached { Qgc.invoke(KEEP_CURRENT_PLAN) } }) { Text(prompt.keepText) }
+                    TextButton(onClick = { offMainDetached { Qgc.invoke(LOAD_VEHICLE_PLAN) } }) { Text(sentenceCase(prompt.loadText)) }
+                    TextButton(onClick = { offMainDetached { Qgc.invoke(KEEP_CURRENT_PLAN) } }) { Text(sentenceCase(prompt.keepText)) }
                 }
             },
             confirmButton = {},
@@ -123,7 +123,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
     applyAltitudePrompt(planStatus)?.let { prompt ->
         AlertDialog(
             onDismissRequest = { offMainDetached { Qgc.invoke(DISMISS_ALTITUDE_PROMPT) } },
-            title = { Text(prompt.title) },
+            title = { Text(sentenceCase(prompt.title)) },
             text = { Text(prompt.text) },
             confirmButton = { TextButton(onClick = { offMainDetached { Qgc.invoke(APPLY_DEFAULT_ALTITUDE) } }) { Text("Yes") } },
             dismissButton = { TextButton(onClick = { offMainDetached { Qgc.invoke(DISMISS_ALTITUDE_PROMPT) } }) { Text("No") } },
