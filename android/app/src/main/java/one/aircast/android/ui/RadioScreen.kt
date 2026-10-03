@@ -341,7 +341,7 @@ fun RadioScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        item(key = "monitorheader") { SectionHeader("Channel monitor") }
+        item(key = "monitorheader") { SectionHeader("Raw channel monitor") }
         items(view.channels.size, key = { "ch${view.channels[it].label}" }) { index ->
             val channel = view.channels[index]
             Row(

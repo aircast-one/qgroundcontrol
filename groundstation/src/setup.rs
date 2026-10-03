@@ -95,8 +95,7 @@ pub struct Section {
 }
 
 const FLIGHT_MODES_APM: &[Section] = &[
-    Section { title: "Mode switch channel", note: "", parameters: &["FLTMODE_CH", "MODE_CH"] },
-    Section { title: "Mode slots", note: "", parameters: &["FLTMODE1", "FLTMODE2", "FLTMODE3", "FLTMODE4", "FLTMODE5", "FLTMODE6", "MODE1", "MODE2", "MODE3", "MODE4", "MODE5", "MODE6"] },
+    Section { title: "Flight Mode Settings", note: "", parameters: &["FLTMODE_CH", "MODE_CH", "FLTMODE1", "FLTMODE2", "FLTMODE3", "FLTMODE4", "FLTMODE5", "FLTMODE6", "MODE1", "MODE2", "MODE3", "MODE4", "MODE5", "MODE6"] },
     Section { title: "Options", note: "", parameters: &["INITIAL_MODE"] },
     Section { title: "Switch Options", note: "", parameters: &["RC6_OPTION", "RC7_OPTION", "RC8_OPTION", "RC9_OPTION", "RC10_OPTION", "RC11_OPTION", "RC12_OPTION", "RC13_OPTION", "RC14_OPTION", "RC15_OPTION", "RC16_OPTION"] },
 ];
@@ -371,9 +370,12 @@ fn apm_mode_row(name: &str, mut row: Value, px4: bool) -> Value {
             row["shortLabel"] = json!(format!("Channel option {channel}"));
         }
         (None, Some(slot)) => {
-            let heading = row["shortLabel"].as_str().filter(|l| !l.is_empty()).or_else(|| row["label"].as_str()).unwrap_or_default().to_string();
-            row["shortLabel"] = json!(heading);
+            row["shortLabel"] = json!(format!("Flight Mode {slot}"));
             row["label"] = json!(APM_SLOT_PWM[slot - 1]);
+        }
+        _ if name == "FLTMODE_CH" || name == "MODE_CH" => {
+            row["label"] = json!("Flight mode channel");
+            row["shortLabel"] = json!("Flight mode channel");
         }
         _ => {}
     }
@@ -402,8 +404,8 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
         .collect();
     let fixed_channel = page == "Flight Modes" && !px4 && read("FLTMODE_CH").is_none() && read("MODE_CH").is_none();
     let listed: Vec<Value> = listed.into_iter().map(|mut section| {
-        if fixed_channel && section["title"] == "Mode slots" {
-            section["title"] = json!("Mode slots (Channel 5)");
+        if fixed_channel && section["title"] == "Flight Mode Settings" {
+            section["title"] = json!("Flight Mode Settings (Channel 5)");
         }
         section
     }).collect();
@@ -418,8 +420,10 @@ mod tests {
     fn apm_mode_rows_carry_qgc_channel_labels_and_pwm_ranges() {
         let option = apm_mode_row("RC9_OPTION", json!({ "label": "RC input option", "shortLabel": "" }), false);
         assert_eq!((option["label"].as_str(), option["shortLabel"].as_str()), (Some("Channel option 9"), Some("Channel option 9")), "APMFlightModesComponent titles each row by its channel");
-        let slot = apm_mode_row("FLTMODE6", json!({ "label": "Flight Mode 6", "shortLabel": "" }), false);
-        assert_eq!((slot["shortLabel"].as_str(), slot["label"].as_str()), (Some("Flight Mode 6"), Some("PWM 1750 +")));
+        let slot = apm_mode_row("MODE6", json!({ "label": "Mode6", "shortLabel": "" }), false);
+        assert_eq!((slot["shortLabel"].as_str(), slot["label"].as_str()), (Some("Flight Mode 6"), Some("PWM 1750 +")), "every firmware's slot reads Flight Mode N");
+        let channel = apm_mode_row("MODE_CH", json!({ "label": "Mode channel", "shortLabel": "" }), false);
+        assert_eq!(channel["label"], "Flight mode channel", "APMFlightModesComponent labels the channel combo");
         assert_eq!(apm_mode_row("FLTMODE1", json!({ "label": "x" }), true)["label"], "x", "PX4's page shows no PWM ranges");
     }
 
