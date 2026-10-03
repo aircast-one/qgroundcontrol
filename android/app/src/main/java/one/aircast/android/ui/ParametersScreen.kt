@@ -57,7 +57,7 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
     var names by remember { mutableStateOf<List<String>>(emptyList()) }
     var descriptions by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var modified by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var modifiedOnly by remember { mutableStateOf(false) }
+    var modifiedChosen by remember { mutableStateOf(false) }
     var placement by remember { mutableStateOf<Map<String, Pair<String, String>>>(emptyMap()) }
     var chosenCategory by remember { mutableStateOf<String?>(null) }
     var chosenGroup by remember { mutableStateOf<String?>(null) }
@@ -76,6 +76,7 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
         }
     }
 
+    val modifiedOnly = modifiedFilterOn(modifiedChosen, px4)
     val tree = remember(names, placement) { parameterTree(names, placement) }
     val browsing = search.isBlank() && !modifiedOnly
     val category = tree.firstOrNull { it.name == chosenCategory } ?: tree.firstOrNull()
@@ -102,9 +103,11 @@ fun ParametersScreen(modifier: Modifier = Modifier, initialSearch: String = "") 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !modifiedOnly, onClick = { modifiedOnly = false }, label = { Text("All") })
-                FilterChip(selected = modifiedOnly, onClick = { modifiedOnly = true }, label = { Text("Changed") })
+            if (px4) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !modifiedOnly, onClick = { modifiedChosen = false }, label = { Text("All") })
+                    FilterChip(selected = modifiedOnly, onClick = { modifiedChosen = true }, label = { Text("Changed") })
+                }
             }
             ParameterToolsMenu(onRefreshed = { reads++ })
         }
@@ -173,6 +176,8 @@ private fun ParameterRow(name: String, offersRcToParam: Boolean) {
         }
     }
 }
+
+internal fun modifiedFilterOn(chosen: Boolean, px4: Boolean): Boolean = chosen && px4
 
 internal fun parameterShown(name: String, descriptions: List<String>, search: String, modifiedOnly: Boolean, modified: Set<String>): Boolean =
     parameterMatches(name, descriptions, search) && (!modifiedOnly || name in modified)

@@ -30,6 +30,13 @@ class ParameterToolsTest {
     }
 
     @Test
+    fun `the modified filter only applies to PX4 like ParameterEditor`() {
+        assertTrue(modifiedFilterOn(chosen = true, px4 = true))
+        assertFalse(modifiedFilterOn(chosen = true, px4 = false))
+        assertFalse(modifiedFilterOn(chosen = false, px4 = true))
+    }
+
+    @Test
     fun `a review lists the rows and warns about another vehicle`() {
         val review = parameterReview(
             JSONObject(
