@@ -6190,7 +6190,6 @@
         "view.viewer3dPath.kind",
         "view.viewer3dPath.segments.#",
         "view.viewer3dVehicle.class",
-        "view.viewer3dVehicle.heading",
         "view.viewer3dVehicle.kind",
         "view.virtualJoystick.autoCenterThrottle",
         "view.virtualJoystick.class",
@@ -9542,12 +9541,12 @@
         "view.viewer3dPath.markers[].colour",
         "view.viewer3dPath.markers[].name",
         "view.viewer3dPath.segments.#",
-        "view.viewer3dVehicle.at",
-        "view.viewer3dVehicle.at.#",
-        "view.viewer3dVehicle.at[]",
         "view.viewer3dVehicle.class",
-        "view.viewer3dVehicle.heading",
         "view.viewer3dVehicle.kind",
+        "view.viewer3dVehicle.vehicles.#",
+        "view.viewer3dVehicle.vehicles[].at.#",
+        "view.viewer3dVehicle.vehicles[].at[]",
+        "view.viewer3dVehicle.vehicles[].heading",
         "view.virtualJoystick.autoCenterThrottle",
         "view.virtualJoystick.class",
         "view.virtualJoystick.kind",
@@ -14412,12 +14411,16 @@
         ]
     },
     "view.viewer3dVehicle": {
-        "at": [
-            "number"
-        ],
         "class": "string",
-        "heading": "number",
-        "kind": "string"
+        "kind": "string",
+        "vehicles": [
+            {
+                "at": [
+                    "number"
+                ],
+                "heading": "number"
+            }
+        ]
     },
     "view.virtualJoystick": {
         "autoCenterThrottle": "bool",

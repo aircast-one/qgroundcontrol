@@ -233,12 +233,15 @@ pub const PATH_DEPS: &[&str] = &[
     "plan.dirty",
 ];
 
-pub const VEHICLE_DEPS: &[&str] = &[
-    "settings.viewer3DSettings.altitudeBias.rawValue",
-    "vehicle.coordinate",
-    "vehicle.altitudeRelative",
-    "vehicle.heading",
-];
+pub const VEHICLE_DEPS: &[&str] = &["settings.viewer3DSettings.altitudeBias.rawValue", "vehicles.vehicles.count"];
+const WATCHED_IN_3D: [&str; 3] = ["coordinate", "altitudeRelative", "heading"];
+static VEHICLES_SEEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub fn vehicle_deps() -> Vec<String> {
+    VEHICLE_DEPS.iter().map(|d| d.to_string())
+        .chain((0..VEHICLES_SEEN.load(std::sync::atomic::Ordering::Relaxed)).flat_map(|index| WATCHED_IN_3D.map(move |name| format!("vehicles.vehicles.{index}.{name}"))))
+        .collect()
+}
 
 const WAYPOINT: i64 = 16;
 const RETURN_TO_LAUNCH: i64 = 20;
@@ -359,14 +362,14 @@ pub fn path_view(backend: &dyn Backend, _args: &[String]) -> Value {
 
 pub fn vehicle_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let bias = setting(backend, "altitudeBias").as_f64().unwrap_or(0.0);
-    let vehicle = crate::read::object(&backend.get_fields("vehicle", "coordinate,altitudeRelative,heading"));
-    let fact = |name: &str| vehicle[name].get("rawValue").or(vehicle[name].get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
-    json!({
-        "kind": "object",
-        "class": "Viewer3DVehicle",
-        "at": coordinate(&vehicle["coordinate"]).map(|(lat, lon)| json!([lon, lat, fact("altitudeRelative") + bias])),
-        "heading": fact("heading"),
-    })
+    let count = crate::read::integer(&crate::read::object(&backend.get("vehicles.vehicles.count")), "value").unwrap_or(0).max(0);
+    VEHICLES_SEEN.store(usize::try_from(count).unwrap_or(0), std::sync::atomic::Ordering::Relaxed);
+    let vehicles: Vec<Value> = (0..count).filter_map(|index| {
+        let vehicle = crate::read::object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), &WATCHED_IN_3D.join(",")));
+        let fact = |name: &str| vehicle[name].get("rawValue").or(vehicle[name].get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
+        coordinate(&vehicle["coordinate"]).map(|(lat, lon)| json!({ "at": [lon, lat, fact("altitudeRelative") + bias], "heading": fact("heading") }))
+    }).collect();
+    json!({ "kind": "object", "class": "Viewer3DVehicles", "vehicles": vehicles })
 }
 
 #[cfg(test)]

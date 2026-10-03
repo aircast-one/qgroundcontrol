@@ -43,9 +43,10 @@ class Viewer3DTest {
     fun `markers float at their altitude and the vehicle comes from its own view`() {
         val view = JSONObject("""{"markers":[{"at":[8.0,47.0,30.0],"name":"W","colour":"black"}],"segments":[]}""")
         assertEquals(listOf(28.5), pathSlabs(view).map { it.base })
-        val vehicle = vehicleSlabs(JSONObject("""{"at":[8.0,47.0,12.0],"heading":0.0}"""))
-        assertEquals(true, vehicle.isNotEmpty() && vehicle.all { it.base in 11.0..13.0 })
-        assertEquals(emptyList<Slab>(), vehicleSlabs(JSONObject("""{"at":null,"heading":0.0}""")))
+        val one = vehicleSlabs(JSONObject("""{"vehicles":[{"at":[8.0,47.0,12.0],"heading":0.0}]}"""))
+        assertEquals(true, one.isNotEmpty() && one.all { it.base in 11.0..13.0 })
+        assertEquals(2 * one.size, vehicleSlabs(JSONObject("""{"vehicles":[{"at":[8.0,47.0,12.0],"heading":0.0},{"at":[8.001,47.0,30.0],"heading":90.0}]}""")).size)
+        assertEquals(emptyList<Slab>(), vehicleSlabs(JSONObject("""{"vehicles":[]}""")))
     }
 
     @Test

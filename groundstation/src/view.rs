@@ -433,6 +433,7 @@ impl View {
             "view.vehicles" => vehicles::deps(),
             "view.followMe" => followme::deps(),
             "view.closeChecks" => closechecks::deps(),
+            "view.viewer3dVehicle" => crate::viewer3d::vehicle_deps(),
             _ => self.deps.iter().map(|d| d.to_string()).collect(),
         }
     }

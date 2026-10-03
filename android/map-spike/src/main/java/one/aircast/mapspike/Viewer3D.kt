@@ -116,8 +116,12 @@ internal fun pathSlabs(view: JSONObject?): List<Slab> {
     return ribbons + boxes
 }
 
-internal fun vehicleSlabs(view: JSONObject?): List<Slab> =
-    point3d(view?.optJSONArray("at"))?.let { quadFrame(it, view?.optDouble("heading", 0.0) ?: 0.0) }.orEmpty()
+internal fun vehicleSlabs(view: JSONObject?): List<Slab> {
+    val vehicles = view?.optJSONArray("vehicles")
+    return (0 until (vehicles?.length() ?: 0)).mapNotNull { vehicles?.optJSONObject(it) }.flatMap { vehicle ->
+        point3d(vehicle.optJSONArray("at"))?.let { quadFrame(it, vehicle.optDouble("heading", 0.0)) }.orEmpty()
+    }
+}
 
 internal fun slabFeatures(slabs: List<Slab>): FeatureCollection = FeatureCollection.fromFeatures(
     slabs.map { slab ->
