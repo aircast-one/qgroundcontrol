@@ -87,11 +87,6 @@ class FleetActionsTest {
     }
 
     @Test
-    fun `the confirm names the vehicles it commands`() {
-        assertEquals("This commands vehicles 1, 4.", fleetConfirm(listOf(1, 4)))
-    }
-
-    @Test
     fun `pause is the one fleet action that is not destructive`() {
         val destructive = listOf("mvArm", "mvDisarm", "mvStartMission", "mvPause")
             .map { MvAction(id = it, title = it, confirmTitle = it, prompt = "", offer = "ready", reason = "") }

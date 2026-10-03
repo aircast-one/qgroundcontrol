@@ -58,8 +58,8 @@ fn per_vehicle_paths() -> Vec<String> {
 const MV_ACTIONS: [(&str, &str, &str, &str); 4] = [
     ("mvArm", "Arm", "Arm (MV)", "Arm selected vehicles."),
     ("mvDisarm", "Disarm", "Disarm (MV)", "Disarm selected vehicles."),
-    ("mvStartMission", "Start", "Start Mission (MV)", "Takeoff from ground and start the current mission for selected vehicles."),
-    ("mvPause", "Pause", "Pause (MV)", "Pause selected vehicles at their current position."),
+    ("mvStartMission", "Start", "Start Mission (MV)", "Takeoff and start the current mission for selected vehicles"),
+    ("mvPause", "Pause", "Pause (MV)", "Pause selected vehicles at their current position"),
 ];
 
 fn selected_ids(backend: &dyn Backend) -> Vec<i64> {
@@ -303,6 +303,20 @@ mod tests {
                 "QGC has no arm-all: every multi-vehicle action reads QGroundControl.multiVehicleManager.selectedVehicles and acts on nothing when it is empty, so an empty selection has to refuse rather than reach the whole fleet"
             );
         });
+    }
+
+    #[test]
+    fn multi_vehicle_prompts_are_the_guided_controller_messages() {
+        let prompts: Vec<&str> = MV_ACTIONS.iter().map(|(_, _, _, prompt)| *prompt).collect();
+        assert_eq!(
+            prompts,
+            vec![
+                "Arm selected vehicles.",
+                "Disarm selected vehicles.",
+                "Takeoff and start the current mission for selected vehicles",
+                "Pause selected vehicles at their current position",
+            ]
+        );
     }
 
     #[test]

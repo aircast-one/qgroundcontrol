@@ -953,10 +953,10 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     confirming?.let { mode ->
         AlertDialog(
             onDismissRequest = { confirming = null },
-            title = { Text("Switch to ${mode.name}?") },
-            text = { Text(mode.summary.ifBlank { "This mode changes how the aircraft responds." }) },
+            title = { Text("Set flight mode") },
+            text = { Text("Set the vehicle flight mode to ${mode.name}") },
             confirmButton = {
-                TextButton(onClick = { confirming = null; send(mode) }) { Text("Switch") }
+                TextButton(onClick = { confirming = null; send(mode) }) { Text("Confirm") }
             },
             dismissButton = {
                 TextButton(onClick = { confirming = null }) { Text("Cancel") }

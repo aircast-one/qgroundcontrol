@@ -281,6 +281,11 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
             onClick = { scope.launch { withContext(Dispatchers.Default) { FleetBridge.deselectAll() } } },
         ) { Text("Deselect all") }
     }
+    Text(
+        text = "Multi vehicle actions",
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+    )
     actions.forEach { action ->
         ListItem(
             headlineContent = {
@@ -292,14 +297,14 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
                     },
                 )
             },
-            supportingContent = { Text(fleetActionLine(action)) },
+            supportingContent = { if (confirming?.id != action.id) Text(fleetActionLine(action)) },
             modifier = Modifier.clickable(enabled = action.ready) { confirming = action },
         )
         if (confirming?.id == action.id) {
             ConfirmTrack(
                 action = GuidedAction(
                     name = action.confirmTitle,
-                    confirm = fleetConfirm(selectedIds(choices)),
+                    confirm = action.prompt,
                     destructive = fleetIsDestructive(action),
                     run = {
                         val confirmed = choices.choices.filter { it.selected }.map { it.id }.toSet()
@@ -394,8 +399,6 @@ internal fun fleetHeading(selectedIds: List<Int>): String = "Vehicles Selected: 
 
 internal fun fleetActionLine(action: MvAction): String =
     mvReasonFor(action) ?: action.prompt.ifBlank { action.title }
-
-internal fun fleetConfirm(selectedIds: List<Int>): String = "This commands vehicles ${selectedIds.joinToString(", ")}."
 
 internal fun fleetIsDestructive(action: MvAction): Boolean = action.id != "mvPause"
 
