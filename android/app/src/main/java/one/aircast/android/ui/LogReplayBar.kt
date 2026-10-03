@@ -2,17 +2,18 @@ package one.aircast.android.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -65,6 +66,11 @@ internal data class LogReplay(
     val loadRefusal: String,
     val error: String,
 )
+
+internal fun replayProgress(replay: LogReplay): String =
+    listOf(replay.playheadTime, replay.totalTime).filter { it.isNotBlank() }.joinToString(" of ")
+
+internal fun speedLabel(label: String): String = label.removeSuffix("x") + "×"
 
 internal fun logReplay(view: JSONObject?): LogReplay? = view?.takeIf { it.optBoolean("available") }?.let {
     val speeds = it.optJSONArray("speeds")
@@ -128,32 +134,35 @@ fun LogReplayBar() {
     val replay = read ?: return
     if (!replay.shown) return
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = replay.loaded, onClick = { act(LOG_REPLAY_TOGGLE) }) { Text(if (replay.playing) "Pause" else "Play") }
-                SpeedPicker(replay) { act(LOG_REPLAY_SPEED, it) }
-                Text(replay.playheadTime, style = MaterialTheme.typography.bodySmall)
-                Slider(
-                    value = if (dragging) dragged else replay.percent,
-                    onValueChange = {
-                        dragging = true
-                        dragged = it
-                    },
-                    onValueChangeFinished = {
-                        dragging = false
-                        act(LOG_REPLAY_SEEK, dragged.toDouble())
-                    },
-                    valueRange = 0f..100f,
-                    enabled = replay.loaded,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(replay.totalTime, style = MaterialTheme.typography.bodySmall)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(replayProgress(replay), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text("${replay.percent.toInt()}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (!replay.loaded) {
-                    TextButton(onClick = { if (replay.canLoad) picker.launch(arrayOf("*/*")) else message = replay.loadRefusal }) { Text("Load telemetry log") }
+            Slider(
+                value = if (dragging) dragged else replay.percent,
+                onValueChange = {
+                    dragging = true
+                    dragged = it
+                },
+                onValueChangeFinished = {
+                    dragging = false
+                    act(LOG_REPLAY_SEEK, dragged.toDouble())
+                },
+                valueRange = 0f..100f,
+                enabled = replay.loaded,
+            )
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                replay.speeds.forEachIndexed { index, label ->
+                    FilterChip(selected = index == replay.speedIndex, onClick = { act(LOG_REPLAY_SPEED, index) }, label = { Text(speedLabel(label)) })
                 }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 TextButton(onClick = { act(LOG_REPLAY_CLOSE) }) { Text("Close") }
+                if (!replay.loaded) {
+                    FilledTonalButton(onClick = { if (replay.canLoad) picker.launch(arrayOf("*/*")) else message = replay.loadRefusal }) { Text("Load telemetry log") }
+                }
+                Button(enabled = replay.loaded, onClick = { act(LOG_REPLAY_TOGGLE) }) { Text(if (replay.playing) "Pause" else "Play") }
             }
         }
     }
@@ -164,21 +173,5 @@ fun LogReplayBar() {
             text = { Text(it) },
             confirmButton = { TextButton(onClick = { message = null }) { Text("OK") } },
         )
-    }
-}
-
-@Composable
-private fun SpeedPicker(replay: LogReplay, onPick: (Int) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        TextButton(onClick = { open = true }) { Text(replay.speeds.getOrElse(replay.speedIndex) { "1x" }) }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            replay.speeds.forEachIndexed { index, label ->
-                DropdownMenuItem(text = { Text(label) }, onClick = {
-                    open = false
-                    onPick(index)
-                })
-            }
-        }
     }
 }

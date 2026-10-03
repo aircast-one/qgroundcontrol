@@ -15,4 +15,12 @@ class LogReplayBarTest {
         assertEquals(12.5f, replay.percent)
         assertFalse(replay.playing)
     }
+
+    @Test
+    fun the_bar_reads_its_position_and_speeds_like_the_design() {
+        val replay = logReplay(JSONObject("""{"available":true,"shown":true,"playheadTime":"01m:15s","totalTime":"10m:00s","speeds":["0.25","2x"]}"""))!!
+        assertEquals("01m:15s of 10m:00s", replayProgress(replay))
+        assertEquals("", replayProgress(replay.copy(playheadTime = "", totalTime = "")))
+        assertEquals(listOf("0.25×", "2×"), replay.speeds.map(::speedLabel))
+    }
 }
