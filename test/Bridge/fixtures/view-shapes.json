@@ -4399,6 +4399,15 @@
         "view.plan.defaults.descent.valueString",
         "view.plan.defaults.descent.vehicleRebootRequired",
         "view.plan.defaults.descent.wholeNumbersOnly",
+        "view.plan.defaults.flightSpeed.available",
+        "view.plan.defaults.flightSpeed.path",
+        "view.plan.defaults.flightSpeed.slider.decimals",
+        "view.plan.defaults.flightSpeed.slider.from",
+        "view.plan.defaults.flightSpeed.slider.to",
+        "view.plan.defaults.flightSpeed.specified",
+        "view.plan.defaults.flightSpeed.specifyPath",
+        "view.plan.defaults.flightSpeed.units",
+        "view.plan.defaults.flightSpeed.value",
         "view.plan.defaults.hover.applicationRestartRequired",
         "view.plan.defaults.hover.bits.#",
         "view.plan.defaults.hover.changedFromDefault",
@@ -7632,6 +7641,7 @@
         "view.itemCamera(1).cameraAction.choice",
         "view.itemCamera(1).cameraAction.choices.#",
         "view.itemCamera(1).cameraAction.choices[]",
+        "view.itemCamera(1).cameraAction.slider",
         "view.itemCamera(1).cameraAction.text",
         "view.itemCamera(1).cameraAction.units",
         "view.itemCamera(1).cameraAction.value",
@@ -7639,6 +7649,7 @@
         "view.itemCamera(1).cameraMode.choice",
         "view.itemCamera(1).cameraMode.choices.#",
         "view.itemCamera(1).cameraMode.choices[]",
+        "view.itemCamera(1).cameraMode.slider",
         "view.itemCamera(1).cameraMode.text",
         "view.itemCamera(1).cameraMode.units",
         "view.itemCamera(1).cameraMode.value",
@@ -7681,6 +7692,9 @@
         "view.itemFacts(1).speedSection",
         "view.itemFacts(1).speedSection.available",
         "view.itemFacts(1).speedSection.path",
+        "view.itemFacts(1).speedSection.slider.decimals",
+        "view.itemFacts(1).speedSection.slider.from",
+        "view.itemFacts(1).speedSection.slider.to",
         "view.itemFacts(1).speedSection.specified",
         "view.itemFacts(1).speedSection.specifyPath",
         "view.itemFacts(1).speedSection.units",
@@ -8834,6 +8848,15 @@
         "view.plan.defaults.descent.valueString",
         "view.plan.defaults.descent.vehicleRebootRequired",
         "view.plan.defaults.descent.wholeNumbersOnly",
+        "view.plan.defaults.flightSpeed.available",
+        "view.plan.defaults.flightSpeed.path",
+        "view.plan.defaults.flightSpeed.slider.decimals",
+        "view.plan.defaults.flightSpeed.slider.from",
+        "view.plan.defaults.flightSpeed.slider.to",
+        "view.plan.defaults.flightSpeed.specified",
+        "view.plan.defaults.flightSpeed.specifyPath",
+        "view.plan.defaults.flightSpeed.units",
+        "view.plan.defaults.flightSpeed.value",
         "view.plan.defaults.hover.applicationRestartRequired",
         "view.plan.defaults.hover.bits.#",
         "view.plan.defaults.hover.changedFromDefault",
@@ -11901,6 +11924,7 @@
             "choices": [
                 "string"
             ],
+            "slider": "null",
             "text": "string",
             "units": "string",
             "value": "number"
@@ -11910,6 +11934,7 @@
             "choices": [
                 "string"
             ],
+            "slider": "null",
             "text": "string",
             "units": "string",
             "value": "number"
@@ -11957,6 +11982,11 @@
         "speedSection": {
             "available": "bool",
             "path": "string",
+            "slider": {
+                "decimals": "number",
+                "from": "number",
+                "to": "number"
+            },
             "specified": "bool",
             "specifyPath": "string",
             "units": "string",
@@ -13471,6 +13501,19 @@
                 "valueString": "string",
                 "vehicleRebootRequired": "bool",
                 "wholeNumbersOnly": "bool"
+            },
+            "flightSpeed": {
+                "available": "bool",
+                "path": "string",
+                "slider": {
+                    "decimals": "number",
+                    "from": "number",
+                    "to": "number"
+                },
+                "specified": "bool",
+                "specifyPath": "string",
+                "units": "string",
+                "value": "number"
             },
             "hover": {
                 "applicationRestartRequired": "bool",

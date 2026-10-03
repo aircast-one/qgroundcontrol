@@ -67,6 +67,7 @@ pub struct Meta {
     pub units: String,
     pub min: Option<f64>,
     pub max: Option<f64>,
+    pub slider: Value,
 }
 
 const PAGE_LABELS: [(&str, &str); 7] = [
@@ -99,6 +100,7 @@ pub static METADATA: LazyLock<Vec<Meta>> = LazyLock::new(|| {
                     units: f["units"].as_str().unwrap_or_default().to_string(),
                     min: f["min"].as_f64(),
                     max: f["max"].as_f64(),
+                    slider: crate::read::user_slider(f),
                 })
                 .collect()
         })
@@ -774,6 +776,7 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "units": m.units,
             "min": m.min,
             "max": m.max,
+            "slider": m.slider,
             "value": setting_value(name, &m.name),
             "visible": setting_visible(&m.name, &setting_value(name, "throttleModeCenterZero"), support),
         })).collect::<Vec<_>>()).unwrap_or_default(),
@@ -821,6 +824,11 @@ mod tests {
         let rate = METADATA.iter().find(|m| m.name == "axisFrequencyHz").unwrap();
         assert_eq!((coerce(rate, &json!(30.0)), coerce(rate, &json!(500.0))), (Some("30".to_string()), None));
         assert_eq!(OPTIONAL_SETTINGS.len(), OPTIONAL.len());
+        let slider = |name: &str| METADATA.iter().find(|m| m.name == name).unwrap().slider.clone();
+        assert_eq!(slider("exponentialPct"), json!({ "from": 0.0, "to": 50.0, "decimals": 1 }), "JoystickComponentSettings draws these three as FactTextFieldSlider over userMin..userMax");
+        assert_eq!(slider("axisFrequencyHz"), json!({ "from": 0.25, "to": 200.0, "decimals": 2 }));
+        assert_eq!(slider("buttonFrequencyHz"), json!({ "from": 0.25, "to": 50.0, "decimals": 2 }));
+        assert_eq!(slider("transmitterMode"), Value::Null);
     }
 
     #[test]

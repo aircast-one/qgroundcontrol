@@ -56,5 +56,7 @@ class JoystickScreenTest {
     fun a_setting_the_core_hides_is_not_listed() {
         val page = joystickPage(JSONObject("""{"available":true,"names":["Pad"],"active":"Pad","settings":[{"name":"negativeThrust","type":"bool","label":"Negative thrust","units":"","value":false,"visible":false},{"name":"exponentialPct","type":"double","label":"Exponential","units":"%","value":0}]}"""))!!
         assertEquals(listOf("exponentialPct"), page.settings.map { it.name })
+        val ranged = joystickPage(JSONObject("""{"available":true,"names":["Pad"],"active":"Pad","settings":[{"name":"exponentialPct","type":"double","label":"Stick Exponential","units":"%","value":0,"slider":{"from":0.0,"to":50.0,"decimals":1}}]}"""))!!
+        assertEquals(one.aircast.android.bridge.FactSlider(0f, 50f, 1, ""), ranged.settings.single().slider)
     }
 }

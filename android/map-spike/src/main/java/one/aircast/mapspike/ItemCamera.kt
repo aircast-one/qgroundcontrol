@@ -54,10 +54,18 @@ internal data class CameraExtras(
     val commandsGimbal: Boolean,
     val pitch: Double,
     val yaw: Double,
+    val pitchRange: ClosedFloatingPointRange<Double>? = null,
+    val yawRange: ClosedFloatingPointRange<Double>? = null,
 )
 
 private fun JSONObject.measured(key: String): Double? =
     optJSONObject(key)?.optDouble("value")?.takeIf { !it.isNaN() }
+
+private fun JSONObject.userRange(key: String): ClosedFloatingPointRange<Double>? =
+    optJSONObject(key)?.optJSONObject("slider")?.let { slider ->
+        val (from, to) = slider.optDouble("from") to slider.optDouble("to")
+        if (from.isNaN() || to.isNaN() || from == to) null else minOf(from, to)..maxOf(from, to)
+    }
 
 internal fun cameraExtras(view: JSONObject?): CameraExtras? =
     view?.takeIf { it.optBoolean("available") }?.let {
@@ -71,6 +79,8 @@ internal fun cameraExtras(view: JSONObject?): CameraExtras? =
             commandsGimbal = it.optBoolean("commandsGimbal"),
             pitch = it.measured("gimbalPitch") ?: 0.0,
             yaw = it.measured("gimbalYaw") ?: 0.0,
+            pitchRange = it.userRange("gimbalPitch"),
+            yawRange = it.userRange("gimbalYaw"),
         )
     }
 

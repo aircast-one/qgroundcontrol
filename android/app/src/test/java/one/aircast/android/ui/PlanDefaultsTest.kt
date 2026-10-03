@@ -81,6 +81,16 @@ class PlanDefaultsTest {
     }
 
     @Test
+    fun `the mission flight speed is the settings item's speed section with SpeedSection's user range`() {
+        val view = plan("""{"flightSpeed":{"available":true,"specified":true,"value":7.5,"units":"m/s","slider":{"from":0.0,"to":30.0,"decimals":1},
+            "path":"plan.missionController.visualItems.0.speedSection.flightSpeed","specifyPath":"plan.missionController.visualItems.0.speedSection.specifyFlightSpeed"}}""")
+        val speed = speedSectionOf(view.optJSONObject("defaults")?.optJSONObject("flightSpeed"))!!
+        assertEquals(one.aircast.android.bridge.FactSlider(0f, 30f, 1, ""), speed.slider)
+        assertEquals(7.5, speed.value!!, 0.0)
+        assertEquals(null, speedSectionOf(JSONObject("""{"available":false}""")))
+    }
+
+    @Test
     fun `a default carrying the user range gets the slider MissionDefaultsEditor draws under its field`() {
         val ranged = control("offlineEditingCruiseSpeed", 15.0, "m/s").replace("\"bits\":[]", "\"bits\":[],\"slider\":{\"from\":1.0,\"to\":30.0,\"decimals\":1}")
         val facts = planDefaults(plan("""{"cruise":$ranged,"altitude":${control("defaultMissionItemAltitude", 50.0, "m")}}"""))

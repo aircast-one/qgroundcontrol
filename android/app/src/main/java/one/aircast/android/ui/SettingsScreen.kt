@@ -638,14 +638,14 @@ internal fun factSubtitle(fact: Fact): String = listOfNotNull(
 ).joinToString(" · ")
 
 @Composable
-private fun FieldSlider(fact: Fact, slider: FactSlider, onWrite: (Double) -> Unit) {
-    val held = (fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull() ?: slider.from
-    var shown by remember(fact.path, held) { mutableStateOf(held.coerceIn(slider.from, slider.to)) }
+internal fun FieldSlider(value: Float?, slider: FactSlider, enabled: Boolean, onWrite: (Double) -> Unit) {
+    val held = value ?: slider.from
+    var shown by remember(slider, held) { mutableStateOf(held.coerceIn(slider.from, slider.to)) }
     Slider(
         value = shown,
         onValueChange = { shown = it },
         valueRange = slider.from..slider.to,
-        enabled = fact.acceptsWrite,
+        enabled = enabled,
         onValueChangeFinished = { onWrite(shown.toDouble()) },
     )
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -688,7 +688,7 @@ internal fun FactRow(
                 fact.isEnum && !fact.valueIsOffTheEnumList -> EnumField(fact, inside, ::write)
                 else -> FactTextField(fact, onWrite, inside, onRejected)
             }
-            fact.slider?.takeIf { !fact.isEnum && !fact.isBitmask }?.let { slider -> FieldSlider(fact, slider) { value -> write { Qgc.set(fact.path, value) } } }
+            fact.slider?.takeIf { !fact.isEnum && !fact.isBitmask }?.let { slider -> FieldSlider((fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull(), slider, fact.acceptsWrite) { value -> write { Qgc.set(fact.path, value) } } }
             val runInert = LocalRunInertNote.current
             val note = (subtitle.split(" · ") + listOfNotNull(inertNote(fact).takeIf { !fact.enabled && it != runInert }))
                 .filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")

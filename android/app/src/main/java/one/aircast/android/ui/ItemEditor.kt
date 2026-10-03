@@ -436,21 +436,24 @@ private fun CommandPicker(itemCategory: String?, onDismiss: () -> Unit, onChosen
     )
 }
 
-internal data class SpeedSection(val specified: Boolean, val value: Double?, val units: String, val path: String, val specifyPath: String)
+internal data class SpeedSection(val specified: Boolean, val value: Double?, val units: String, val path: String, val specifyPath: String, val slider: one.aircast.android.bridge.FactSlider? = null)
 
-internal fun speedSection(view: JSONObject?): SpeedSection? =
-    view?.optJSONObject("speedSection")?.takeIf { it.optBoolean("available") }?.let {
+internal fun speedSection(view: JSONObject?): SpeedSection? = speedSectionOf(view?.optJSONObject("speedSection"))
+
+internal fun speedSectionOf(served: JSONObject?): SpeedSection? =
+    served?.takeIf { it.optBoolean("available") }?.let {
         SpeedSection(
             specified = it.optBoolean("specified"),
             value = if (it.isNull("value")) null else it.optDouble("value"),
             units = it.optText("units"),
             path = it.optText("path"),
             specifyPath = it.optText("specifyPath"),
+            slider = it.optJSONObject("slider")?.let { range -> factSlider(range, "") },
         )
     }
 
 @Composable
-private fun SpeedSectionRow(speed: SpeedSection, onWrite: (() -> String?) -> Unit) {
+internal fun SpeedSectionRow(speed: SpeedSection, withSlider: Boolean = false, onWrite: (() -> String?) -> Unit) {
     var typed by remember(speed.value) { mutableStateOf(speed.value?.toString().orEmpty()) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -472,6 +475,7 @@ private fun SpeedSectionRow(speed: SpeedSection, onWrite: (() -> String?) -> Uni
                     onClick = { one.aircast.mapspike.typedNumber(typed)?.let { value -> onWrite { Qgc.writeRefusal(speed.path, value) } } },
                 ) { Text("Set") }
             }
+            speed.slider?.takeIf { withSlider }?.let { slider -> FieldSlider(speed.value?.toFloat(), slider, enabled = true) { value -> onWrite { Qgc.writeRefusal(speed.path, value) } } }
         }
     }
 }

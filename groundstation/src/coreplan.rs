@@ -2110,6 +2110,7 @@ mod tests {
         assert_eq!(speed_in_force(&doc(2, vec![simple(178, -1.0)]), 1, 5.0, 15.0), 5.0, "one leaving the speed alone does not");
         let later = doc(2, vec![simple(178, 10.0), simple(16, 0.0)]);
         assert_eq!(speed_section(&later, 2, &[], true, 5.0, 15.0)["value"], 10.0, "SimpleMissionItem::setMissionFlightStatus seeds an unset, available speed with the speed in force there");
+        assert_eq!(speed_section(&later, 2, &[], true, 5.0, 15.0)["slider"], json!({ "from": 0.0, "to": 30.0, "decimals": 1 }), "SpeedSection.FactMetaData.json FlightSpeed userMin 0, userMax 30");
         assert_eq!(speed_section(&doc(22, vec![simple(16, 0.0)]), 1, &[], true, 5.0, 15.0)["available"], false, "SpeedSection::setAvailable only takes multirotors and fixed wings, so a VTOL never offers Flight Speed");
     }
 
@@ -2669,6 +2670,8 @@ fn hold_field(simple: &plandoc::Simple, info: Option<&crate::cmdinfo::Command>, 
     }
 }
 
+const FLIGHT_SPEED_USER_RANGE: (f64, f64) = (0.0, 30.0);
+
 fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple], offered: bool, hover: f64, cruise: f64) -> Value {
     let available = offered && matches!(plandoc::vehicle_class(document.vehicle_type), crate::cmdinfo::VehicleClass::MultiRotor | crate::cmdinfo::VehicleClass::FixedWing);
     let item = format!("{ITEM_ROOT}.{index}.speedSection");
@@ -2684,6 +2687,7 @@ fn speed_section(document: &Document, index: usize, sections: &[plandoc::Simple]
         "specified": specified.is_some(),
         "value": speed.map_or(specified.unwrap_or(default), |c| (c.shown)(specified.unwrap_or(default))),
         "units": speed.map_or("m/s", |c| c.name),
+        "slider": crate::read::user_slider(&json!({ "userMin": speed.map_or(FLIGHT_SPEED_USER_RANGE.0, |c| (c.shown)(FLIGHT_SPEED_USER_RANGE.0)), "userMax": speed.map_or(FLIGHT_SPEED_USER_RANGE.1, |c| (c.shown)(FLIGHT_SPEED_USER_RANGE.1)), "decimalPlaces": 1 })),
         "path": format!("{item}.flightSpeed"),
         "specifyPath": format!("{item}.specifyFlightSpeed"),
     })
@@ -2698,6 +2702,12 @@ pub fn launch_altitude_field(shown: f64, units: &str, path: &str) -> Value {
 
 fn vehicle_has_home(backend: &dyn Backend) -> bool {
     crate::read::flag(&crate::read::object(&backend.get("vehicle.homePosition")), "valid")
+}
+
+pub fn mission_speed_section(backend: &dyn Backend) -> Value {
+    let document = held().document.clone().unwrap_or_else(empty_document);
+    let speed = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
+    speed_section(&document, 0, &document.settings_sections, true, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0))
 }
 
 pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {

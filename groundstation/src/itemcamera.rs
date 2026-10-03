@@ -39,6 +39,7 @@ fn measure(section: &Value, name: &str) -> Value {
                 "units": found.get("units").cloned().unwrap_or(Value::Null),
                 "choices": (!labels.is_empty()).then_some(labels),
                 "choice": enum_choice(found),
+                "slider": crate::read::user_slider(found),
             })
         }
         None => Value::Null,
@@ -97,7 +98,7 @@ mod tests {
         fn get(&self, path: &str) -> String {
             match (path.ends_with(".cameraSection"), self.0) {
                 (true, Some(specify)) => json!({ "kind": "object", "specifyGimbal": specify, "facts": [
-                    { "property": "gimbalPitch", "value": -90.0, "valueString": "-90", "enumOrValueString": "-90", "units": "deg" },
+                    { "property": "gimbalPitch", "value": -90.0, "valueString": "-90", "enumOrValueString": "-90", "units": "deg", "userMin": -90.0, "userMax": 0.0, "decimalPlaces": 0 },
                     { "property": "gimbalYaw", "value": 45.0, "valueString": "45", "enumOrValueString": "45", "units": "deg" },
                     { "property": "cameraAction", "value": 6, "valueString": "6", "enumOrValueString": "Take photo",
                       "enumStrings": ["No change", "Take photo", "Take photos (time)", "Take photos (distance)", "Stop taking photos", "Start recording video", "Stop recording video"],
@@ -136,6 +137,13 @@ mod tests {
     }
 
     #[test]
+    fn the_core_section_angles_carry_camera_section_fact_metadata_user_ranges() {
+        let section = crate::plandoc::camera_section(&[]);
+        assert_eq!(crate::read::user_slider(fact(&section, "gimbalPitch").unwrap()), json!({ "from": -90.0, "to": 0.0, "decimals": 0 }));
+        assert_eq!(crate::read::user_slider(fact(&section, "gimbalYaw").unwrap()), json!({ "from": -180.0, "to": 180.0, "decimals": 0 }));
+    }
+
+    #[test]
     fn a_timed_photo_action_carries_its_interval_and_the_mode_choice() {
         let view = item_camera_view(&Timed, &["2".into()]);
         assert_eq!(view["intervalTime"]["value"], 4.0, "CameraSection shows Time only for Take photos (time)");
@@ -152,6 +160,8 @@ mod tests {
         assert_eq!(commanding["commandsGimbal"], true);
         assert_eq!(commanding["gimbalPitch"]["value"], -90.0);
         assert_eq!(commanding["gimbalPitch"]["text"], "-90");
+        assert_eq!(commanding["gimbalPitch"]["slider"], json!({ "from": -90.0, "to": 0.0, "decimals": 0 }), "CameraSection draws Pitch as a FactTextFieldSlider over the fact's userMin..userMax");
+        assert_eq!(commanding["gimbalYaw"]["slider"], Value::Null, "a fact without a user range gets no slider");
 
         let untouched = item_camera_view(&Item(Some(false)), &["3".into()]);
         assert_eq!(untouched["commandsGimbal"], false);

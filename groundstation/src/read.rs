@@ -10,6 +10,14 @@ pub fn switch_on(value: &Value) -> Option<bool> {
     value.as_bool().or_else(|| value.as_f64().map(|number| number != 0.0))
 }
 
+pub fn user_slider(fact: &Value) -> Value {
+    let bound = |key: &str| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
+    match (bound("userMin"), bound("userMax")) {
+        (Some(from), Some(to)) if to != from => json!({ "from": from, "to": to, "decimals": fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(0) }),
+        _ => Value::Null,
+    }
+}
+
 pub fn flag(object: &Value, key: &str) -> bool {
     object.get(key).and_then(Value::as_bool).unwrap_or(false)
 }

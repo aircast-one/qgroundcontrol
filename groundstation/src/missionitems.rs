@@ -1006,6 +1006,7 @@ pub(crate) fn speed_section(backend: &dyn Backend, index: i64) -> Value {
         "specified": flag(&section, "specifyFlightSpeed"),
         "value": is_fact.then(|| speed.get("value").and_then(Value::as_f64).filter(|v| v.is_finite())).flatten(),
         "units": is_fact.then(|| speed.get("units").and_then(Value::as_str).filter(|u| !u.is_empty()).map(str::to_string)).flatten(),
+        "slider": crate::read::user_slider(&speed),
         "path": value_path,
         "specifyPath": format!("{path}.specifyFlightSpeed"),
     })

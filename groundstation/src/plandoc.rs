@@ -771,7 +771,7 @@ pub fn camera_section(sections: &[Simple]) -> Value {
         }
     });
     let action = action.unwrap_or(0);
-    let degrees = |property: &str, value: f64| json!({ "property": property, "value": value, "valueString": format!("{value:.0}"), "enumOrValueString": format!("{value:.0}"), "units": "deg" });
+    let degrees = |property: &str, value: f64, (user_min, user_max): (f64, f64)| json!({ "property": property, "value": value, "valueString": format!("{value:.0}"), "enumOrValueString": format!("{value:.0}"), "units": "deg", "userMin": user_min, "userMax": user_max, "decimalPlaces": 0 });
     let chosen = CAMERA_ACTIONS.iter().position(|(_, v)| *v == action).unwrap_or(0);
     let state_mode = sections.iter().find(|s| s.command == CMD_SET_CAMERA_MODE).map(|m| p(m, 1));
     let start = sections.iter().find(|s| s.command == CMD_IMAGE_START_CAPTURE).map(|s| p(s, 1)).filter(|t| *t >= 1.0).unwrap_or(DEFAULT_INTERVAL_TIME);
@@ -797,8 +797,8 @@ pub fn camera_section(sections: &[Simple]) -> Value {
                 "enumIndex": mode_value as i64,
                 "units": "",
             },
-            degrees("gimbalPitch", gimbal.map_or(0.0, |g| p(g, 0))),
-            degrees("gimbalYaw", gimbal.map_or(0.0, |g| p(g, 2))),
+            degrees("gimbalPitch", gimbal.map_or(0.0, |g| p(g, 0)), GIMBAL_PITCH_USER_RANGE),
+            degrees("gimbalYaw", gimbal.map_or(0.0, |g| p(g, 2)), GIMBAL_YAW_USER_RANGE),
             {
                 "property": "cameraAction",
                 "value": action,
@@ -813,6 +813,8 @@ pub fn camera_section(sections: &[Simple]) -> Value {
     })
 }
 
+const GIMBAL_PITCH_USER_RANGE: (f64, f64) = (-90.0, 0.0);
+const GIMBAL_YAW_USER_RANGE: (f64, f64) = (-180.0, 180.0);
 const DEFAULT_INTERVAL_TIME: f64 = 10.0;
 const DEFAULT_INTERVAL_DISTANCE: f64 = 1.0;
 const CAMERA_COMMANDS: [i64; 7] = [CMD_SET_CAMERA_MODE, CMD_DO_MOUNT_CONTROL, CMD_IMAGE_START_CAPTURE, CMD_IMAGE_STOP_CAPTURE, CMD_DO_SET_CAM_TRIGG_DIST, CMD_VIDEO_START_CAPTURE, CMD_VIDEO_STOP_CAPTURE];

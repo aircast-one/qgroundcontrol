@@ -55,7 +55,7 @@ internal const val NO_ACTION = "No Action"
 private const val JOYSTICK_POLL_MS = 100L
 private const val AXIS_RANGE = 32767f
 
-internal data class JoystickSetting(val name: String, val type: String, val label: String, val units: String, val value: Any?)
+internal data class JoystickSetting(val name: String, val type: String, val label: String, val units: String, val value: Any?, val slider: one.aircast.android.bridge.FactSlider? = null)
 
 internal data class JoystickAxis(val index: Int, val raw: Int?, val function: String)
 
@@ -111,7 +111,7 @@ internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.
         enabled = it.optBoolean("enabled"),
         calibrated = it.optBoolean("calibrated"),
         settings = (0 until (settings?.length() ?: 0)).mapNotNull { at ->
-            settings!!.optJSONObject(at)?.takeIf { s -> s.optBoolean("visible", true) }?.let { s -> JoystickSetting(s.optText("name"), s.optText("type"), s.optText("label"), s.optText("units"), s.opt("value")) }
+            settings!!.optJSONObject(at)?.takeIf { s -> s.optBoolean("visible", true) }?.let { s -> JoystickSetting(s.optText("name"), s.optText("type"), s.optText("label"), s.optText("units"), s.opt("value"), s.optJSONObject("slider")?.let { range -> factSlider(range, "") }) }
         },
         axes = (0 until (axes?.length() ?: 0)).mapNotNull { at ->
             axes!!.optJSONObject(at)?.let { a -> JoystickAxis(a.optInt("index"), if (a.isNull("raw")) null else a.optInt("raw"), a.optText("function")) }
@@ -313,6 +313,14 @@ private fun JoystickPicker(page: JoystickPage, onPick: (String) -> Unit) {
 
 @Composable
 private fun SettingRow(setting: JoystickSetting, onChange: (Any) -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        SettingField(setting, onChange)
+        setting.slider?.takeIf { setting.type != "bool" }?.let { slider -> FieldSlider((setting.value as? Number)?.toFloat(), slider, enabled = true) { onChange(it) } }
+    }
+}
+
+@Composable
+private fun SettingField(setting: JoystickSetting, onChange: (Any) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(setting.label, modifier = Modifier.weight(1f))
         when (setting.type) {

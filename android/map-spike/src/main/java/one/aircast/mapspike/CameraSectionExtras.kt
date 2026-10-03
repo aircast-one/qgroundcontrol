@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,8 +61,22 @@ internal fun CameraSectionExtras(extras: CameraExtras, write: (String, Any) -> U
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Gimbal", style = MaterialTheme.typography.labelMedium)
             Switch(checked = extras.commandsGimbal, onCheckedChange = { write("specifyGimbal", it) })
-            NumberEntry("Pitch", extras.pitch, enabled = extras.commandsGimbal) { write("gimbalPitch", it.coerceIn(-90.0, 0.0)) }
-            NumberEntry("Yaw", extras.yaw, enabled = extras.commandsGimbal) { write("gimbalYaw", it.coerceIn(-180.0, 180.0)) }
+            NumberEntry("Pitch", extras.pitch, enabled = extras.commandsGimbal) { write("gimbalPitch", extras.pitchRange?.let(it::coerceIn) ?: it) }
+            NumberEntry("Yaw", extras.yaw, enabled = extras.commandsGimbal) { write("gimbalYaw", extras.yawRange?.let(it::coerceIn) ?: it) }
         }
+        extras.pitchRange?.let { range -> AngleSlider(extras.pitch, range, extras.commandsGimbal) { write("gimbalPitch", it) } }
+        extras.yawRange?.let { range -> AngleSlider(extras.yaw, range, extras.commandsGimbal) { write("gimbalYaw", it) } }
     }
+}
+
+@Composable
+private fun AngleSlider(value: Double, range: ClosedFloatingPointRange<Double>, enabled: Boolean, onDone: (Double) -> Unit) {
+    var shown by remember(value, range) { mutableStateOf(value.coerceIn(range).toFloat()) }
+    Slider(
+        value = shown,
+        onValueChange = { shown = it },
+        valueRange = range.start.toFloat()..range.endInclusive.toFloat(),
+        enabled = enabled,
+        onValueChangeFinished = { onDone(Math.round(shown).toDouble()) },
+    )
 }

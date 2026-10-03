@@ -19,6 +19,14 @@ class CameraExtrasTest {
     }
 
     @Test
+    fun `the gimbal angles slide over the fact's user range like CameraSection's FactTextFieldSlider`() {
+        val extras = cameraExtras(JSONObject("""{"available":true,"commandsGimbal":true,"gimbalPitch":{"value":45.0,"slider":{"from":90.0,"to":0.0,"decimals":0}},"gimbalYaw":{"value":0.0,"slider":{"from":-180.0,"to":180.0,"decimals":0}}}"""))!!
+        assertEquals(0.0..90.0, extras.pitchRange)
+        assertEquals(-180.0..180.0, extras.yawRange)
+        assertNull(cameraExtras(JSONObject("""{"available":true,"gimbalPitch":{"value":-45.0}}"""))!!.pitchRange)
+    }
+
+    @Test
     fun `the photo distance is labelled in the units its fact is cooked to`() {
         val feet = cameraExtras(JSONObject("""{"available":true,"intervalDistance":{"value":100.0,"units":"ft"}}"""))!!
         assertEquals(100.0, feet.intervalDistance!!, 0.0)

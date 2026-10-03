@@ -95,18 +95,21 @@ fn plan_default(backend: &dyn Backend, name: &str) -> Value {
     let fact = object(&backend.get(&path));
     match crate::control::decode(&fact, &path) {
         Value::Object(mut fields) => {
-            fields.insert("slider".to_string(), user_slider(&fact));
+            fields.insert("slider".to_string(), crate::read::user_slider(&fact));
             Value::Object(fields)
         }
         other => other,
     }
 }
 
-fn user_slider(fact: &Value) -> Value {
-    let bound = |key: &str| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
-    match (bound("userMin"), bound("userMax")) {
-        (Some(from), Some(to)) if to > from => json!({ "from": from, "to": to, "decimals": fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(0) }),
-        _ => Value::Null,
+fn mission_flight_speed(backend: &dyn Backend) -> Value {
+    let section = match crate::coreplan::enabled() {
+        true => crate::coreplan::mission_speed_section(backend),
+        false => crate::missionitems::speed_section(backend, 0),
+    };
+    match flag(&section, "available") {
+        true => section,
+        false => Value::Null,
     }
 }
 
@@ -137,6 +140,7 @@ fn defaults_json(backend: &dyn Backend) -> Value {
     };
     json!({
         "altitude": altitude,
+        "flightSpeed": mission_flight_speed(backend),
         "cruise": if shows_cruise { named(cruise, "FW - Flight speed", "Flight speed") } else { Value::Null },
         "hover": if shows_hover { named(hover, "MR - Flight speed", "Flight speed") } else { Value::Null },
         "ascent": named(vertical("offlineEditingAscentSpeed"), "MR - Ascent speed", "Ascent speed"),
@@ -463,6 +467,8 @@ mod tests {
                     "settings.appSettings.defaultMissionItemAltitude" => declared("defaultMissionItemAltitude", 50.0, "50.0", "m").to_string(),
                     "settings.appSettings.offlineEditingCruiseSpeed" => speed(self.0).to_string(),
                     "settings.appSettings.offlineEditingHoverSpeed" => speed(self.1).to_string(),
+                    "plan.missionController.visualItems.0.speedSection" => json!({ "kind": "object", "available": self.0 == "m/s", "specifyFlightSpeed": false }).to_string(),
+                    "plan.missionController.visualItems.0.speedSection.flightSpeed" => json!({ "kind": "fact", "value": 5.0, "units": "m/s", "userMin": 0.0, "userMax": 30.0, "decimalPlaces": 1 }).to_string(),
                     _ => json!({ "kind": "null" }).to_string(),
                 }
             }
@@ -486,6 +492,9 @@ mod tests {
 
         assert_eq!(agreed["cruise"]["slider"], json!({ "from": 1.0, "to": 30.0, "decimals": 1 }), "MissionDefaultsEditor draws each default as a FactTextFieldSlider ranging userMin..userMax");
         assert_eq!(agreed["altitude"]["slider"]["to"], 121.92);
+        assert_eq!(agreed["flightSpeed"]["slider"], json!({ "from": 0.0, "to": 30.0, "decimals": 1 }), "MissionDefaultsEditor's Flight Speed is the mission settings item's speed section, drawn as a FactTextFieldSlider over SpeedSection's userMin..userMax");
+        assert_eq!(agreed["flightSpeed"]["specifyPath"], "plan.missionController.visualItems.0.speedSection.specifyFlightSpeed");
+        assert_eq!(defaults_json(&Defaults("", ""))["flightSpeed"], Value::Null, "the row is visible only while speedSection.available");
 
         let disagreeing = defaults_json(&Defaults("m/s", "ft/s"));
         assert_eq!(disagreeing["speedUnits"], Value::Null, "two speeds in different units have no shared unit, and picking the first would draw one of them wrong");
