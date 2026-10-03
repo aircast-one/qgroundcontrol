@@ -298,6 +298,7 @@ pub struct Vehicle {
     image_captured_seen: bool,
     rc_releasing: BTreeMap<u8, u8>,
     calibration_left_behind: bool,
+    logs_left_behind: bool,
     rc_due: Option<u64>,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
@@ -490,6 +491,7 @@ impl Vehicle {
             image_captured_seen: false,
             rc_releasing: BTreeMap::new(),
             calibration_left_behind: false,
+            logs_left_behind: false,
             airframe_reboot: None,
             stream: crate::streamconfig::StreamConfig::default(),
             autotune: crate::autotune::Autotune::default(),
@@ -2204,6 +2206,9 @@ impl Vehicle {
         }
         bytes.extend(self.tick_rc_override(now_ms));
         bytes.extend(self.cancel_calibration_left_behind(now_ms));
+        if std::mem::take(&mut self.logs_left_behind) {
+            bytes.extend(self.onboard_log_action("logCancel", None, now_ms));
+        }
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_stream_rates(now_ms));
         bytes.extend(self.tick_autotune(now_ms));
@@ -4062,9 +4067,7 @@ impl Hub {
             }
             if let Some(left) = self.active.and_then(|was| self.vehicles.get_mut(&was)) {
                 left.clear_rc_overrides();
-                if left.onboard_logs.busy() {
-                    left.onboard_logs.cancel();
-                }
+                left.logs_left_behind = left.onboard_logs.busy();
                 left.calibration_left_behind = left.calibrate.running() || left.rccal.running();
             }
         }
@@ -4495,10 +4498,12 @@ mod tests {
         hub.on_frame(origin(0), &header(1), &copter_heartbeat(0, false), 0, 0);
         hub.on_frame(origin(0), &header(2), &copter_heartbeat(0, false), 0, 0);
         hub.set_active(Some(1));
-        hub.vehicles.get_mut(&1).unwrap().onboard_logs.refresh(0);
-        assert!(hub.vehicles[&1].onboard_logs.busy());
+        hub.vehicles.get_mut(&1).unwrap().onboard_log_action("logRefresh", None, 0);
+        assert!(hub.vehicles[&1].onboard_logs.busy() && !hub.vehicles[&1].comm_lost_enabled, "a listing turns link-loss detection off, as _setListing does");
         hub.set_active(Some(2));
+        hub.vehicles.get_mut(&1).unwrap().pump_with(100, None, 0);
         assert!(!hub.vehicles[&1].onboard_logs.busy(), "_setActiveVehicle stops the listing or download of the vehicle it leaves; nothing on screen could cancel it any more");
+        assert!(hub.vehicles[&1].comm_lost_enabled, "and _setDownloading(false) turns link-loss detection back on for it");
     }
 
     #[test]
