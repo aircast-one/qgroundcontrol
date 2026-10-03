@@ -318,7 +318,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     // storage, and PhotoVideoControl.qml:423 hides the whole storage row on that value.
     let storage_status = integer(&camera, "storageStatus");
     let storage_free = text(&camera, "storageFreeStr");
-    let (captures_photos, captures_video, has_modes) = (flag(&camera, "capturesPhotos"), flag(&camera, "capturesVideo"), flag(&camera, "hasModes"));
+    let (captures_photos, has_modes) = (flag(&camera, "capturesPhotos"), flag(&camera, "hasModes"));
     let battery = integer(&camera, "batteryRemaining").unwrap_or(-1);
     let is_recording = video_status == VIDEO_CAPTURE_RUNNING;
     let timelapse = integer(&camera, "photoCaptureMode") == Some(TIMELAPSE);

@@ -193,6 +193,18 @@ fn landing(json: &Value, home_altitude: f64) -> Result<Survey, String> {
     })
 }
 
+fn ready_for_save(kind: &str, json: &Value, pattern: &Survey) -> (i64, &'static str) {
+    let points = |key: &str| json.get(key).and_then(Value::as_array).map_or(0, Vec::len);
+    match kind {
+        _ if pattern.landing => if pattern.unfinished { (NOT_READY_FOR_SAVE, "Finish the landing setup") } else { (READY_TO_SAVE, "") },
+        "CorridorScan" if points("polyline") < 2 => (NOT_READY_FOR_SAVE, "Draw the corridor path"),
+        "survey" if points("polygon") < 3 => (NOT_READY_FOR_SAVE, "Draw the area"),
+        _ if crate::plandoc::TRANSECT_STYLE.contains(&kind) && crate::surveydoc::waiting_for_terrain(json) => (AWAITING_TERRAIN, "Waiting for terrain"),
+        _ if pattern.unfinished => (NOT_READY_FOR_SAVE, "Needs setup"),
+        _ => (READY_TO_SAVE, ""),
+    }
+}
+
 pub(crate) fn complex_entry(json: &Value) -> Option<(f64, f64)> {
     survey(json, 0.0).ok().filter(|pattern| !pattern.incomplete).map(|pattern| pattern.entry)
 }
@@ -616,7 +628,8 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
         .enumerate()
         .map(|(i, (((item, seq), leg), pattern))| {
             let crate::plandoc::Item::Simple(s) = item else {
-                let (Some(v), crate::plandoc::Item::Complex { item_count, kind, .. }) = (pattern, item) else { return Value::Null };
+                let (Some(v), crate::plandoc::Item::Complex { item_count, kind, json }) = (pattern, item) else { return Value::Null };
+                let (ready_state, ready_message) = ready_for_save(kind, json, &v);
                 let (class, name, abbreviation) = match kind.as_str() {
                     "CorridorScan" => ("CorridorScanComplexItem", "Corridor Scan", "C"),
                     "StructureScan" => ("StructureScanComplexItem", "Structure Scan", "S"),
@@ -654,8 +667,8 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                     "azimuth": leg.azimuth,
                     "distance": leg.distance,
                     "distanceFromStart": leg.from_start,
-                    "readyForSaveState": if v.unfinished { NOT_READY_FOR_SAVE } else { READY_TO_SAVE },
-                    "readyForSaveMessage": if v.unfinished && v.landing { "Finish the landing setup" } else { "" },
+                    "readyForSaveState": ready_state,
+                    "readyForSaveMessage": ready_message,
                 });
             };
             let info = commands.get(&s.command);
@@ -1338,6 +1351,16 @@ mod from_the_document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complex_items_say_why_they_cannot_be_saved_like_their_qgc_items() {
+        let ready = Survey { unfinished: false, incomplete: false, landing: false, touchdown_altitude: None, entry: (0.0, 0.0), exit: (0.0, 0.0), amsl: 0.0, exit_amsl: 0.0, lowest: 0.0, highest: 0.0, shots: 0, distance: 0.0 };
+        assert_eq!(ready_for_save("CorridorScan", &json!({ "polyline": [[47.0, 8.0]] }), &ready), (NOT_READY_FOR_SAVE, "Draw the corridor path"));
+        assert_eq!(ready_for_save("survey", &json!({ "polygon": [[47.0, 8.0], [47.1, 8.0]] }), &ready), (NOT_READY_FOR_SAVE, "Draw the area"));
+        let terrain = json!({ "polyline": [[47.0, 8.0], [47.1, 8.0]], "TransectStyleComplexItem": { "CameraCalc": { "DistanceMode": crate::altitudemodes::CALC_ABOVE_TERRAIN }, "VisualTransectPoints": [[47.0, 8.0]], "Items": [] } });
+        assert_eq!(ready_for_save("CorridorScan", &terrain, &ready), (AWAITING_TERRAIN, "Waiting for terrain"));
+        assert_eq!(ready_for_save("CorridorScan", &json!({ "polyline": [[47.0, 8.0], [47.1, 8.0]] }), &ready), (READY_TO_SAVE, ""));
+    }
 
     #[test]
     fn a_leg_gradient_is_the_climb_angle_qgc_shows_and_needs_a_leg() {

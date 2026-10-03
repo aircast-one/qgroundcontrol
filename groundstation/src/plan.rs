@@ -171,6 +171,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let (offers_fence, offers_rally) = (fences.unwrap_or(true), rally.unwrap_or(true));
     let readiness = match core {
         Some(_) if crate::coreplan::drawing() => Some(2),
+        Some(_) if crate::coreplan::awaiting_terrain() => Some(1),
         Some(_) => Some(0),
         None => result_integer(&backend.invoke("plan.readyForSaveState", "[]")),
     };

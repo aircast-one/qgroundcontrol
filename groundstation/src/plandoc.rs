@@ -5,7 +5,7 @@ use crate::cmdinfo::{self, Firmware, VehicleClass};
 const FRAME_GLOBAL: i64 = 0;
 const FRAME_GLOBAL_RELATIVE_ALT: i64 = 3;
 const FRAME_GLOBAL_TERRAIN_ALT: i64 = 10;
-const TRANSECT_STYLE: &[&str] = &["survey", "CorridorScan"];
+pub const TRANSECT_STYLE: &[&str] = &["survey", "CorridorScan"];
 const FENCE_VERSION: i64 = 2;
 const RALLY_VERSION: i64 = 2;
 const MISSION_VERSION: i64 = 2;

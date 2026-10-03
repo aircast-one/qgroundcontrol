@@ -1952,6 +1952,10 @@ pub fn wizard_item() -> Option<usize> {
     enabled().then(|| live_wizard(&held())).flatten()
 }
 
+pub fn awaiting_terrain() -> bool {
+    held().document.as_ref().is_some_and(waiting_on_terrain)
+}
+
 pub fn drawing() -> bool {
     let state = held();
     live_wizard(&state).is_some()
