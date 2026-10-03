@@ -171,6 +171,7 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("diskLoggingMaxFileSizeMB", "diskLoggingEnabled", true, DISK_LOGGING_OFF),
     ("diskLoggingMaxBackupFiles", "diskLoggingEnabled", true, DISK_LOGGING_OFF),
     ("enforceChecklist", "useChecklist", true, CHECKLIST_OFF),
+
     ("virtualJoystickAutoCenterThrottle", "virtualJoystick", true, VIRTUAL_JOYSTICK_OFF),
     ("virtualJoystickLeftHandedMode", "virtualJoystick", true, VIRTUAL_JOYSTICK_OFF),
     ("ntripServerHostAddress", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
@@ -236,6 +237,19 @@ const SHOWN_WHEN_VALUE: &[(&str, &str, i64, bool)] = &[
     ("classificationType", "region", REGION_EU, true),
     ("categoryEU", "region", REGION_EU, true),
     ("classEU", "region", REGION_EU, true),
+    ("autoConnectNmeaPort", "nmeaSource", NMEA_SOURCE_SERIAL, true),
+    ("autoConnectNmeaBaud", "nmeaSource", NMEA_SOURCE_SERIAL, true),
+    ("nmeaUdpPort", "nmeaSource", NMEA_SOURCE_UDP, true),
+];
+
+const NMEA_SOURCE_UDP: i64 = 1;
+const NMEA_SOURCE_SERIAL: i64 = 2;
+const VIEWER_3D_OFF: &str = "Has no effect while the 3D view is off.";
+
+const GATED_IN_GROUP: &[(&str, &str, &str, &str)] = &[
+    ("viewer3DSettings", "osmFilePath", "enabled", VIEWER_3D_OFF),
+    ("viewer3DSettings", "buildingLevelHeight", "enabled", VIEWER_3D_OFF),
+    ("viewer3DSettings", "altitudeBias", "enabled", VIEWER_3D_OFF),
 ];
 
 const OPERATOR_ID_EU: &str = "The operator ID is always broadcast in the EU.";
@@ -317,6 +331,10 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Stream", &["udpUrl", "rtspUrl", "tcpUrl", "whepUrl", "rtspTimeout", "streamEnabled", "disableWhenDisarmed", "lowLatencyMode", "forceVideoDecoder"]),
         ("Display", &["videoFit", "aspectRatio", "gridLines", "showRecControl"]),
         ("Local Video Storage", &["videoSavePath", "recordingFormat", "enableStorageLimit", "maxVideoSize"]),
+    ]),
+    ("viewer3DSettings", &[
+        ("General", &["enabled", "mapProvider", "keepSceneAlive"]),
+        ("Data", &["osmFilePath", "buildingLevelHeight", "altitudeBias"]),
     ]),
     ("flyViewSettings", &[
         ("Guided Commands", &["guidedMinimumAltitude", "guidedMaximumAltitude", "maxGoToLocationDistance", "forwardFlightGoToLocationLoiterRad", "goToLocationRequiresConfirmInGuided", "updateHomePosition"]),
@@ -445,7 +463,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .filter(|(gated_group, _)| *gated_group == group)
         .flat_map(|(_, from)| object(&backend.get(&format!("settings.{from}"))).get("facts").and_then(Value::as_array).cloned().unwrap_or_default())
         .collect();
-    let shown = gated(&shown, &[facts.clone(), borrowed].concat());
+    let shown = gated(group, &shown, &[facts.clone(), borrowed].concat());
     let shown = match video.as_ref().is_some_and(|(_, _, auto)| *auto) {
         true => shown.into_iter().map(auto_locked).collect(),
         false => shown,
@@ -468,7 +486,7 @@ fn number_of(facts: &[Value], name: &str) -> Option<i64> {
     facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)).and_then(|f| f.get("value")).and_then(Value::as_f64).map(|v| v as i64)
 }
 
-fn gated(controls: &[Value], facts: &[Value]) -> Vec<Value> {
+fn gated(group: &str, controls: &[Value], facts: &[Value]) -> Vec<Value> {
     let value_of = |name: &str| facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)).and_then(|f| f.get("value").cloned());
     controls
         .iter()
@@ -485,6 +503,12 @@ fn gated(controls: &[Value], facts: &[Value]) -> Vec<Value> {
                         .filter(|(gated, _, _, _, _)| *gated == name)
                         .find(|(_, requires, value, equal, _)| number_of(facts, requires).is_some_and(|v| (v == *value) != *equal))
                         .map(|(_, _, _, _, reason)| *reason)
+                })
+                .or_else(|| {
+                    GATED_IN_GROUP
+                        .iter()
+                        .find(|(in_group, gated, requires, _)| *in_group == group && *gated == name && value_of(requires).as_ref().and_then(Value::as_bool) == Some(false))
+                        .map(|(_, _, _, reason)| *reason)
                 });
             let mut with_gate = control.clone();
             with_gate["enabled"] = json!(blocked.is_none());
@@ -607,7 +631,7 @@ mod tests {
     fn remote_id_fields_have_no_effect_while_their_broadcast_is_off_as_qgc_disables_them() {
         let controls: Vec<Value> = ["basicID", "selfIDFree", "selfIDEmergency"].iter().map(|n| json!({ "name": n, "enabled": true })).collect();
         let facts = |on: bool| ["sendBasicID", "sendSelfID"].iter().map(|n| json!({ "name": n, "value": on })).collect::<Vec<_>>();
-        let enabled = |on: bool| gated(&controls, &facts(on)).iter().map(|c| c["enabled"].as_bool().unwrap_or(true)).collect::<Vec<_>>();
+        let enabled = |on: bool| gated("", &controls, &facts(on)).iter().map(|c| c["enabled"].as_bool().unwrap_or(true)).collect::<Vec<_>>();
         assert_eq!(enabled(false), [false, false, true], "RemoteIDSettings.qml enables the ID fields on their switch, but never gates the emergency text");
         assert_eq!(enabled(true), [true, true, true]);
     }
@@ -689,8 +713,8 @@ mod tests {
     fn telemetry_and_adsb_rows_follow_their_switches_like_the_qml_pages() {
         let controls: Vec<Value> = ["forwardMavlinkHostName", "telemetrySaveNotArmed", "adsbServerHostAddress", "adsbServerPort", "streamRateRawSensors", "streamRateExtra3"].iter().map(|n| json!({ "name": n })).collect();
         let facts = |on: bool| ["forwardMavlink", "telemetrySave", "adsbServerConnectEnabled", "apmStartMavlinkStreams"].iter().map(|n| json!({ "name": n, "value": on })).collect::<Vec<_>>();
-        assert!(gated(&controls, &facts(false)).iter().all(|c| c["enabled"] == false && c["disabledReason"].is_string()));
-        assert!(gated(&controls, &facts(true)).iter().all(|c| c["enabled"] == true));
+        assert!(gated("", &controls, &facts(false)).iter().all(|c| c["enabled"] == false && c["disabledReason"].is_string()));
+        assert!(gated("", &controls, &facts(true)).iter().all(|c| c["enabled"] == true));
     }
 
     struct Fake;
@@ -941,6 +965,58 @@ mod tests {
         );
 
         assert_eq!(names(vec![fact("savePath", Some(true))]), vec!["savePath"], "and a fact QGC does show is shown");
+    }
+
+    struct Group(&'static str, Vec<Value>);
+    impl Backend for Group {
+        fn get(&self, path: &str) -> String {
+            match path.strip_prefix("settings.") == Some(self.0) {
+                true => json!({ "kind": "object", "facts": self.1 }),
+                false => json!({ "kind": "object", "facts": [] }),
+            }
+            .to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn page_rows(backend: &dyn Backend, page: &str) -> Vec<Value> {
+        settings_view(backend, &[page.to_string()])["sections"].as_array().unwrap().iter()
+            .flat_map(|s| s["subsections"].as_array().cloned().unwrap_or_default())
+            .flat_map(|sub| sub["controls"].as_array().cloned().unwrap_or_default())
+            .collect()
+    }
+
+    #[test]
+    fn nmea_rows_follow_the_source_like_nmea_gps_settings_qml() {
+        let names = |source: i64| -> Vec<String> {
+            let facts = vec![
+                json!({ "kind": "fact", "name": "nmeaSource", "value": source }),
+                json!({ "kind": "fact", "name": "autoConnectNmeaPort", "value": "", "typeIsString": true }),
+                json!({ "kind": "fact", "name": "autoConnectNmeaBaud", "value": 4800 }),
+                json!({ "kind": "fact", "name": "nmeaUdpPort", "value": 10110 }),
+            ];
+            page_rows(&Group("autoConnectSettings", facts), "Connections").iter().filter_map(|c| c["name"].as_str().map(str::to_string)).collect()
+        };
+        assert_eq!(names(0), vec!["nmeaSource"]);
+        assert_eq!(names(1), vec!["nmeaSource", "nmeaUdpPort"]);
+        assert_eq!(names(2), vec!["nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud"]);
+    }
+
+    #[test]
+    fn the_3d_data_rows_are_greyed_while_the_3d_view_is_off() {
+        let rows = |on: bool| {
+            let facts = ["enabled", "osmFilePath", "buildingLevelHeight", "altitudeBias"].iter()
+                .map(|n| json!({ "kind": "fact", "name": n, "typeIsBool": *n == "enabled", "value": if *n == "enabled" { json!(on) } else { json!(1) } }))
+                .collect();
+            page_rows(&Group("viewer3DSettings", facts), "3D Viewer")
+        };
+        let off = rows(false);
+        let data = off.iter().find(|c| c["name"] == "altitudeBias").unwrap();
+        assert_eq!((data["enabled"].as_bool(), data["disabledReason"].as_str()), (Some(false), Some(VIEWER_3D_OFF)));
+        assert!(rows(true).iter().all(|c| c["enabled"] != false));
     }
 
     #[test]
