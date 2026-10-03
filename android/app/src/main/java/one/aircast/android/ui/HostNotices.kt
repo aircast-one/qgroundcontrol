@@ -1,12 +1,12 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
 import org.json.JSONObject
 import one.aircast.mapspike.optText
 
-// view.hostNotices applies the notice rules - which notices come after the id this head has
-// acknowledged, where the last navigation notice sends the operator, and one banner per distinct
-// title and text for every kind but navigation. What stays here is the repeat window, because it is
-// about what this head last drew.
 internal fun hostNoticesPath(acknowledgedThrough: Long): String = "view.hostNotices($acknowledgedThrough)"
 
 internal data class NoticeBatch(
@@ -15,7 +15,10 @@ internal data class NoticeBatch(
     val banners: List<String>,
     val unknownKinds: List<String>,
     val errorBanners: List<String>,
+    val dialogs: List<AppMessage> = emptyList(),
 )
+
+internal data class AppMessage(val title: String, val text: String)
 
 internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
     val unseen = view?.optJSONArray("unseen") ?: return null
@@ -28,6 +31,7 @@ internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
         banners = (0 until (banners?.length() ?: 0)).mapNotNull { banners?.optString(it)?.ifBlank { null } },
         unknownKinds = notices.filter { !it.optBoolean("known", true) }.map { it.optText("kind") },
         errorBanners = notices.filter { it.optText("kind") == VEHICLE_ERROR_KIND }.map { it.optText("banner") }.filter { it.isNotBlank() }.distinct(),
+        dialogs = view.optJSONArray("dialogs")?.let { listed -> (0 until listed.length()).mapNotNull { listed.optJSONObject(it) }.map { AppMessage(it.optText("title"), it.optText("text")) } }.orEmpty(),
     )
 }
 
@@ -35,7 +39,20 @@ const val REPEAT_QUIET_MS = 30_000L
 internal const val VEHICLE_ERROR_KIND = "vehicleError"
 internal const val RESET_ERROR_LEVEL_MESSAGES = "vehicle.resetErrorLevelMessages"
 
-internal fun criticalBanner(batch: NoticeBatch): String? = batch.errorBanners.singleOrNull()
+internal const val ADDITIONAL_ERRORS = "Additional errors received"
+
+internal fun criticalBanner(errors: List<String>): String? =
+    errors.firstOrNull()?.let { first -> if (errors.size > 1) "$first \u00b7 $ADDITIONAL_ERRORS" else first }
+
+@Composable
+internal fun AppMessageDialog(message: AppMessage, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(message.title) },
+        text = { Text(message.text) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
+    )
+}
 
 internal fun quietBanners(banners: List<String>, shownAt: Map<String, Long>, now: Long): List<String> =
     banners.distinct().filter { banner -> shownAt[banner]?.let { now - it < REPEAT_QUIET_MS } != true }

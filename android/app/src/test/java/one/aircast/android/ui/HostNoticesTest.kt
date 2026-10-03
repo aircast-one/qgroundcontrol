@@ -42,4 +42,17 @@ class HostNoticesTest {
             quietBanners(listOf("Battery · Low voltage"), shownAt, 1_000L + REPEAT_QUIET_MS),
         )
     }
+
+    @Test
+    fun `app messages arrive as OK dialogs, as showAppMessage opens one`() {
+        val batch = noticeBatch(JSONObject("""{"unseen":[{"id":4,"kind":"message"}],"banners":[],"dialogs":[{"title":"Aircast QGC","text":"Parameters missing"}]}"""))
+        assertEquals(listOf(AppMessage("Aircast QGC", "Parameters missing")), batch?.dialogs)
+    }
+
+    @Test
+    fun `a second error in one batch is still critical and says more arrived`() {
+        assertEquals(null, criticalBanner(emptyList()))
+        assertEquals("EKF failure", criticalBanner(listOf("EKF failure")))
+        assertEquals("EKF failure \u00b7 $ADDITIONAL_ERRORS", criticalBanner(listOf("EKF failure", "GPS glitch")))
+    }
 }

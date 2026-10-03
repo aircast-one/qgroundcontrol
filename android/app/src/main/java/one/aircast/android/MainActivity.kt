@@ -267,6 +267,8 @@ fun AircastShell(hostView: android.view.View?) {
     val notices by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.hostNoticesPath(acknowledgedThrough))
     val noticeScope = rememberCoroutineScope()
     var shownAt by remember { mutableStateOf(emptyMap<String, Long>()) }
+    var appMessages by remember { mutableStateOf(emptyList<one.aircast.android.ui.AppMessage>()) }
+    appMessages.firstOrNull()?.let { shown -> one.aircast.android.ui.AppMessageDialog(shown) { appMessages = appMessages.drop(1) } }
 
     val refusalScope = rememberCoroutineScope()
     val refuseNavigation: () -> Boolean = {
@@ -286,20 +288,19 @@ fun AircastShell(hostView: android.view.View?) {
         val now = System.currentTimeMillis()
         val banners = one.aircast.android.ui.quietBanners(batch.banners, shownAt, now)
         shownAt = shownAt + banners.associateWith { now }
+        appMessages = appMessages + batch.dialogs
         noticeScope.launch {
             withContext(Dispatchers.Default) {
                 Qgc.invoke("host.acknowledgeThrough", batch.through)
             }
-            val critical = one.aircast.android.ui.criticalBanner(batch)
-            banners.filterNot { it == critical && tab == Tab.Fly }.forEach { banner ->
-                when (banner == critical) {
-                    true -> {
-                        alerts.showSnackbar(banner, withDismissAction = true, duration = androidx.compose.material3.SnackbarDuration.Indefinite)
-                        withContext(Dispatchers.Default) { Qgc.invoke(one.aircast.android.ui.RESET_ERROR_LEVEL_MESSAGES) }
-                    }
-                    false -> snackbars.showSnackbar(banner)
+            val errors = banners.filter { it in batch.errorBanners }
+            one.aircast.android.ui.criticalBanner(errors)?.takeIf { tab != Tab.Fly }?.let { critical ->
+                launch {
+                    alerts.showSnackbar(critical, withDismissAction = true, duration = androidx.compose.material3.SnackbarDuration.Indefinite)
+                    withContext(Dispatchers.Default) { Qgc.invoke(one.aircast.android.ui.RESET_ERROR_LEVEL_MESSAGES) }
                 }
             }
+            banners.filterNot { it in batch.errorBanners }.forEach { banner -> snackbars.showSnackbar(banner) }
         }
     }
 

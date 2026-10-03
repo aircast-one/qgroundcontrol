@@ -3,10 +3,6 @@ use serde_json::{Value, json};
 use crate::read::{integer, object};
 use crate::router::Backend;
 
-// MainActivity.kt read the host notice list raw and applied four rules of its own: notices after the
-// id it had acknowledged, the destination the last navigation notice names, which notices become a
-// banner (every kind but navigation), and one banner per distinct line. The rules are served here;
-// the thirty-second repeat window stays with the head, because it is about what the head last drew.
 pub const DEPS: &[&str] = &[crate::noticeboard::NOTICES_CHANGED];
 const NAVIGATION_NOTICE: &str = "navigation";
 
@@ -41,12 +37,22 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
         .unwrap_or_default();
     let after: Vec<&Value> = notices.iter().filter(|n| n["id"].as_i64().unwrap_or(-1) > through).collect();
     let destination = after.iter().rev().find(|n| n["kind"] == NAVIGATION_NOTICE).and_then(|n| n["title"].as_str()).filter(|t| !t.trim().is_empty());
-    let mut banners: Vec<String> = Vec::new();
-    after.iter().filter(|n| n["kind"] != NAVIGATION_NOTICE).filter_map(|n| n["banner"].as_str()).for_each(|line| {
-        if !line.is_empty() && !banners.iter().any(|kept| kept == line) {
-            banners.push(line.to_string());
-        }
-    });
+    let banners: Vec<String> = after
+        .iter()
+        .filter(|n| n["kind"] != NAVIGATION_NOTICE && n["kind"] != crate::noticeboard::MESSAGE)
+        .filter_map(|n| n["banner"].as_str())
+        .filter(|line| !line.is_empty())
+        .fold(Vec::new(), |kept, line| if kept.iter().any(|k: &String| k == line) { kept } else { kept.into_iter().chain(std::iter::once(line.to_string())).collect() });
+    let app = crate::noticeboard::application_name();
+    let dialogs: Vec<Value> = after
+        .iter()
+        .filter(|n| n["kind"] == crate::noticeboard::MESSAGE)
+        .map(|n| {
+            let title = n["title"].as_str().filter(|t| !t.trim().is_empty()).map(str::to_string).unwrap_or_else(|| app.clone());
+            json!({ "title": title, "text": n["text"].as_str().unwrap_or_default() })
+        })
+        .filter(|d| !d["text"].as_str().unwrap_or_default().is_empty())
+        .fold(Vec::new(), |kept, dialog| if kept.contains(&dialog) { kept } else { kept.into_iter().chain(std::iter::once(dialog)).collect() });
     json!({
         "kind": "object",
         "class": "HostNotices",
@@ -58,6 +64,7 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
         "unseen": after,
         "destination": destination,
         "banners": banners,
+        "dialogs": dialogs,
     })
 }
 
@@ -93,6 +100,21 @@ mod tests {
         assert_eq!(view["notices"][4]["known"], false);
         let fresh = host_notices_view(&host, &[]);
         assert_eq!(fresh["unseen"].as_array().unwrap().len(), 5, "no argument means nothing has been acknowledged yet");
+        assert_eq!(fresh["banners"].as_array().unwrap().iter().any(|b| b == "Old"), false, "an app message is a dialog, not a banner");
         assert_eq!(host_notices_view(&Host(json!({ "kind": "null" })), &[])["available"], false);
+    }
+
+    #[test]
+    fn app_messages_become_ok_dialogs_titled_with_the_app_name_like_show_app_message() {
+        let host = Host(json!({ "kind": "object", "dropped": 0, "notices": [
+            { "id": 1, "kind": "message", "title": "", "text": "Parameters could not be loaded" },
+            { "id": 2, "kind": "message", "title": "", "text": "Parameters could not be loaded" },
+            { "id": 3, "kind": "message", "title": "Links", "text": "Connect not allowed" },
+            { "id": 4, "kind": "vehicleError", "title": "", "text": "EKF failure" },
+        ] }));
+        let view = host_notices_view(&host, &[]);
+        let app = crate::noticeboard::application_name();
+        assert_eq!(view["dialogs"], json!([{ "title": app, "text": "Parameters could not be loaded" }, { "title": "Links", "text": "Connect not allowed" }]));
+        assert_eq!(view["banners"], json!(["EKF failure"]));
     }
 }
