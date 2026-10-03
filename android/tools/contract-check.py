@@ -369,6 +369,8 @@ ACCEPTED = {
     "result": "the invoke envelope, not a view field",
     "otherVehicle": "parameterFile.review's answer, an invoke result rather than a view",
     "multipleComponents": "parameterFile.review's answer, an invoke result rather than a view",
+    "parsed": "parameterFile.review's answer (ParameterDiffDialog diffParsedCount), an invoke result rather than a view",
+    "unchanged": "parameterFile.review's answer (ParameterDiffDialog diffUnchangedCount), an invoke result rather than a view",
     "fileValue": "a parameterFile.review row, an invoke result rather than a view",
     "vehicleValue": "a parameterFile.review row, an invoke result rather than a view",
     "cannotSend": "a parameterFile.review row, an invoke result rather than a view",

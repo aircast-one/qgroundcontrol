@@ -48,7 +48,34 @@ class ParameterToolsTest {
         assertEquals(listOf("RTL_ALT", "MP_ONLY"), review.rows.map { it.name })
         assertEquals(listOf("The parameters in the file are from a different vehicle."), reviewWarnings(review))
         assertEquals("Vehicle 1500 · File 2000 · cm", diffLine(review.rows[0]))
-        assertTrue(diffLine(review.rows[1]).contains("cannot send"))
+        assertEquals("Vehicle N/A — not on Vehicle · File 4", diffLine(review.rows[1]))
+    }
+
+    @Test
+    fun `the summary counts every clause like ParameterDiffDialog`() {
+        val review = parameterReview(
+            JSONObject(
+                """{"parsed":9,"unchanged":3,"readOnly":1,"rows":[""" +
+                    """{"name":"A","cannotSend":false},{"name":"B","cannotSend":false,"noVehicleValue":true},""" +
+                    """{"name":"C","cannotSend":true,"noVehicleValue":true}]}""",
+            ),
+        )!!
+        assertEquals(
+            "Loaded 9 parameters from file: 2 will be changed (including 1 not currently on the Vehicle), 3 already match the Vehicle, " +
+                "1 read-only parameter will not be sent, 1 not found on the Vehicle and cannot be sent.",
+            reviewSummary(review),
+        )
+        assertEquals(2, sendableCount(review))
+        assertEquals("Loaded 1 parameter from file: 1 already matches the Vehicle.", reviewSummary(ParameterReview(emptyList(), false, false, parsed = 1, unchanged = 1)))
+        assertEquals("Loaded 2 parameters from file: 2 read-only parameters will not be sent.", reviewSummary(ParameterReview(emptyList(), false, false, parsed = 2, readOnly = 2)))
+        assertEquals("Loaded 0 parameters from file.", reviewSummary(ParameterReview(emptyList(), false, false, parsed = 0)))
+    }
+
+    @Test
+    fun `check all toggles only the rows that can be sent`() {
+        val review = parameterReview(JSONObject("""{"rows":[{"name":"A","cannotSend":false},{"name":"C","cannotSend":true}]}"""))!!
+        assertEquals(emptySet<String>(), checkedAll(review, setOf("1:A"), on = false))
+        assertEquals(setOf("1:A"), checkedAll(review, emptySet(), on = true))
     }
 
     @Test

@@ -59,6 +59,9 @@ internal data class ParameterReview(
     val rows: List<ParameterDiffRow>,
     val otherVehicle: Boolean,
     val multipleComponents: Boolean,
+    val parsed: Int = rows.size,
+    val unchanged: Int = 0,
+    val readOnly: Int = 0,
 )
 
 internal fun parameterReview(result: JSONObject?): ParameterReview? = result?.let { review ->
@@ -71,8 +74,45 @@ internal fun parameterReview(result: JSONObject?): ParameterReview? = result?.le
         },
         otherVehicle = review.optBoolean("otherVehicle"),
         multipleComponents = review.optBoolean("multipleComponents"),
+        parsed = review.optInt("parsed"),
+        unchanged = review.optInt("unchanged"),
+        readOnly = review.optInt("readOnly"),
     )
 }
+
+internal fun sendableCount(review: ParameterReview): Int = review.rows.count { !it.cannotSend }
+
+internal fun reviewSummary(review: ParameterReview): String {
+    val sendable = sendableCount(review)
+    val newToVehicle = review.rows.count { it.noVehicleValue && !it.cannotSend }
+    val missing = review.rows.count { it.cannotSend }
+    val clauses = listOfNotNull(
+        when {
+            sendable == 0 -> null
+            newToVehicle > 0 -> "$sendable will be changed (including $newToVehicle not currently on the Vehicle)"
+            else -> "$sendable will be changed"
+        },
+        when {
+            review.unchanged == 1 -> "1 already matches the Vehicle"
+            review.unchanged > 1 -> "${review.unchanged} already match the Vehicle"
+            else -> null
+        },
+        when {
+            review.readOnly == 1 -> "1 read-only parameter will not be sent"
+            review.readOnly > 1 -> "${review.readOnly} read-only parameters will not be sent"
+            else -> null
+        },
+        "$missing not found on the Vehicle and cannot be sent".takeIf { missing > 0 },
+    )
+    val loaded = if (review.parsed == 1) "Loaded 1 parameter from file" else "Loaded ${review.parsed} parameters from file"
+    return if (clauses.isEmpty()) "$loaded." else "$loaded: ${clauses.joinToString(", ")}."
+}
+
+internal const val SEND_HINT = "Click 'Ok' to update the parameters below on the Vehicle."
+internal const val CANNOT_SEND_HINT = "Parameters marked 'not on Vehicle' cannot be sent since the file does not include type information. They may only exist after another parameter is changed and the Vehicle is rebooted, after which you can load this file again."
+
+internal fun checkedAll(review: ParameterReview, chosen: Set<String>, on: Boolean): Set<String> =
+    review.rows.filterNot { it.cannotSend }.map { it.key }.toSet().let { sendable -> if (on) chosen + sendable else chosen - sendable }
 
 internal fun reviewWarnings(review: ParameterReview): List<String> = listOfNotNull(
     "The parameters in the file are from a different vehicle.".takeIf { review.otherVehicle },
@@ -105,7 +145,7 @@ internal fun parameterTools(view: JSONObject?): List<ParameterTool> {
 internal const val NEW_TO_VEHICLE_HINT = "Parameters marked 'new to Vehicle' have not been reported by the Vehicle. They may only become visible after they are sent and the Vehicle is rebooted."
 
 internal fun diffLine(row: ParameterDiffRow): String = when {
-    row.cannotSend -> "File ${row.fileValue} · not on vehicle, cannot send"
+    row.cannotSend -> listOf("Vehicle N/A — not on Vehicle", "File ${row.fileValue}").joinToString(" · ")
     row.noVehicleValue -> listOf("Vehicle N/A — new to Vehicle", "File ${row.fileValue}", row.units).filter { it.isNotBlank() }.joinToString(" · ")
     else -> listOf("Vehicle ${row.vehicleValue}", "File ${row.fileValue}", row.units).filter { it.isNotBlank() }.joinToString(" · ")
 }
@@ -199,12 +239,20 @@ internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
     review?.let { shown ->
         AlertDialog(
             onDismissRequest = { review = null },
-            title = { Text("Load parameters") },
+            title = { Text("Load Parameters") },
             text = {
                 Column {
                     reviewWarnings(shown).forEach { Text(it, color = MaterialTheme.aircast.warning) }
-                    if (shown.rows.isEmpty()) Text("No differences between vehicle and file.")
-                    if (shown.rows.any { it.noVehicleValue && !it.cannotSend }) Text(NEW_TO_VEHICLE_HINT, style = MaterialTheme.typography.bodySmall)
+                    Text(reviewSummary(shown))
+                    if (sendableCount(shown) > 0) Text(SEND_HINT)
+                    if (shown.rows.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+                        var all by remember(shown) { mutableStateOf(true) }
+                        Checkbox(checked = all, onCheckedChange = { on ->
+                            all = on
+                            chosen = checkedAll(shown, chosen, on)
+                        })
+                        Text("Name", style = MaterialTheme.typography.labelLarge)
+                    }
                     LazyColumn(Modifier.heightIn(max = 360.dp)) {
                         items(shown.rows, key = { it.key }) { row ->
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -224,10 +272,12 @@ internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
                             }
                         }
                     }
+                    if (shown.rows.any { it.noVehicleValue && !it.cannotSend }) Text(NEW_TO_VEHICLE_HINT, style = MaterialTheme.typography.bodySmall)
+                    if (shown.rows.any { it.cannotSend }) Text(CANNOT_SEND_HINT, style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = {
-                TextButton(
+                if (sendableCount(shown) > 0) TextButton(
                     enabled = chosen.isNotEmpty(),
                     onClick = {
                         val rows = shown.rows.filter { it.key in chosen }.map { it.json }
@@ -237,7 +287,7 @@ internal fun ParameterToolsMenu(onRefreshed: () -> Unit) {
                             onRefreshed()
                         }
                     },
-                ) { Text("Send to vehicle") }
+                ) { Text("Ok") }
             },
             dismissButton = { TextButton(onClick = { review = null }) { Text("Cancel") } },
         )
