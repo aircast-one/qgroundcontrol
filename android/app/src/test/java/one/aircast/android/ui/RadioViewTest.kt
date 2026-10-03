@@ -105,4 +105,11 @@ class CalibrationStepTest {
         org.junit.Assert.assertEquals("Zero Trims" to "Before calibrating", view?.startPrompt)
         org.junit.Assert.assertNull(radioView(org.json.JSONObject("""{"class":"Radio","startPrompt":null}"""))?.startPrompt)
     }
+
+    @org.junit.Test
+    fun `a stick reading carries its pulse unit like the Penpot radio rows`() {
+        org.junit.Assert.assertEquals("1605 \u00b5s", stickReading(RadioStick("Roll", "1605", 0.6f, mapped = true, reversed = false)))
+        org.junit.Assert.assertEquals("1595 \u00b5s \u00b7 reversed", stickReading(RadioStick("Yaw", "1595", 0.6f, mapped = true, reversed = true)))
+        org.junit.Assert.assertEquals("Not mapped", stickReading(RadioStick("Yaw", "", 0f, mapped = false, reversed = false)))
+    }
 }

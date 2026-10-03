@@ -81,7 +81,7 @@ private fun AttitudeRow(stick: RadioStick) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stick.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Text(
-                text = if (!stick.mapped) "Not mapped" else listOfNotNull(stick.valueText, "reversed".takeIf { stick.reversed }).joinToString(" · "),
+                text = stickReading(stick),
                 style = MaterialTheme.typography.labelMedium,
                 color = if (stick.mapped) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
             )
@@ -353,3 +353,7 @@ fun RadioScreen(modifier: Modifier = Modifier) {
         }
     }
 }
+
+internal fun stickReading(stick: RadioStick): String =
+    if (!stick.mapped) "Not mapped"
+    else listOfNotNull(stick.valueText.takeIf { it.isNotBlank() }?.let { "$it \u00b5s" }, "reversed".takeIf { stick.reversed }).joinToString(" \u00b7 ")
