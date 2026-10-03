@@ -3,7 +3,7 @@
     "version": 1,
     "sections": [
         {
-            "title": "Light Settings",
+            "title": "Light Output Channels",
             "controls": [
                 {
                     "control": "channelFunction",
