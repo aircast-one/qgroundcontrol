@@ -674,7 +674,7 @@ internal fun FactRow(
             if (!fact.acceptsWrite && notBuiltHere(fact) == null && !editOnDesktop(fact)) {
                 Text(
                     text = inertNote(fact),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
