@@ -84,9 +84,8 @@ enum class AnalyzePage(
 
 internal fun analyzeStatus(page: AnalyzePage, unread: Int, vibration: String?): Pair<String, SetupState> = when {
     page == AnalyzePage.Messages && unread > 0 -> "$unread" to SetupState.NeedsAttention
-    page == AnalyzePage.Vibration && vibration == "danger" -> "High" to SetupState.NeedsAttention
-    page == AnalyzePage.Vibration && vibration == "warning" -> "Caution" to SetupState.NeedsAttention
-    page == AnalyzePage.Vibration && vibration == "normal" -> "OK" to SetupState.Done
+    page == AnalyzePage.Vibration && vibration in listOf("danger", "warning") -> severityLabel(vibration) to SetupState.NeedsAttention
+    page == AnalyzePage.Vibration && vibration == "normal" -> severityLabel(vibration) to SetupState.Done
     else -> "" to SetupState.Neutral
 }
 

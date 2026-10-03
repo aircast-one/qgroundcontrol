@@ -137,9 +137,9 @@ internal fun vibrationVerdict(reading: VibrationReading): String {
 }
 
 internal fun severityLabel(severity: String?): String = when (severity) {
-    "danger" -> "High"
-    "warning" -> "Caution"
-    "normal" -> "OK"
+    "danger" -> "Unsafe"
+    "warning" -> "Watch"
+    "normal" -> "Healthy"
     else -> ""
 }
 

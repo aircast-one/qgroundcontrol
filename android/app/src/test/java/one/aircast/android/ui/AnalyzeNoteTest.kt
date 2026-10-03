@@ -67,8 +67,8 @@ class AnalyzeNoteTest {
     fun theListShowsUnreadMessagesAndTheVibrationVerdict() {
         assertEquals("3" to SetupState.NeedsAttention, analyzeStatus(AnalyzePage.Messages, 3, null))
         assertEquals("" to SetupState.Neutral, analyzeStatus(AnalyzePage.Messages, 0, null))
-        assertEquals("High" to SetupState.NeedsAttention, analyzeStatus(AnalyzePage.Vibration, 0, "danger"))
-        assertEquals("OK" to SetupState.Done, analyzeStatus(AnalyzePage.Vibration, 0, "normal"))
+        assertEquals("Unsafe" to SetupState.NeedsAttention, analyzeStatus(AnalyzePage.Vibration, 0, "danger"))
+        assertEquals("Healthy" to SetupState.Done, analyzeStatus(AnalyzePage.Vibration, 0, "normal"))
         assertEquals("" to SetupState.Neutral, analyzeStatus(AnalyzePage.Console, 5, "danger"))
     }
 

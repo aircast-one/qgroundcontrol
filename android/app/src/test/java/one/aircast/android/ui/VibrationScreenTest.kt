@@ -20,9 +20,9 @@ class VibrationScreenTest {
 
     @Test
     fun `each severity keeps the word this screen has always shown`() {
-        assertEquals("OK", severityLabel("normal"))
-        assertEquals("Caution", severityLabel("warning"))
-        assertEquals("High", severityLabel("danger"))
+        assertEquals("Healthy", severityLabel("normal"))
+        assertEquals("Watch", severityLabel("warning"))
+        assertEquals("Unsafe", severityLabel("danger"))
     }
 
     @Test
