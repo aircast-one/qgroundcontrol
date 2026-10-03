@@ -9755,10 +9755,8 @@
     },
     "view.advancedUi": {
         "class": "string",
-        "confirmation": "string",
         "kind": "string",
-        "shown": "bool",
-        "title": "string"
+        "shown": "bool"
     },
     "view.aircastLink": {
         "bitrateHistory": [

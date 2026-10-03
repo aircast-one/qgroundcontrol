@@ -5,9 +5,6 @@ use serde_json::{Value, json};
 use crate::router::Backend;
 
 pub const SET_ADVANCED_UI: &str = "advancedUi.set";
-const TITLE: &str = "Advanced Mode";
-const TURN_ON_TEXT: &str = "WARNING: You are about to enter Advanced Mode. If used incorrectly, this may cause your vehicle to malfunction thus voiding your warranty. You should do so only if instructed by customer support. Are you sure you want to enable Advanced Mode?";
-const TURN_OFF_TEXT: &str = "Turn off Advanced Mode?";
 
 static SHOWN: AtomicBool = AtomicBool::new(true);
 
@@ -34,8 +31,6 @@ pub fn view_of(shown: bool) -> Value {
         "kind": "object",
         "class": "AdvancedUi",
         "shown": shown,
-        "title": TITLE,
-        "confirmation": if shown { TURN_OFF_TEXT } else { TURN_ON_TEXT },
     })
 }
 
@@ -48,10 +43,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_confirmation_asks_for_the_opposite_of_the_current_mode_like_main_window() {
-        assert_eq!(view_of(true)["confirmation"], TURN_OFF_TEXT);
-        assert!(view_of(false)["confirmation"].as_str().unwrap().starts_with("WARNING: You are about to enter Advanced Mode."));
-        assert_eq!(view_of(false)["title"], "Advanced Mode");
+    fn the_view_serves_only_the_flag_since_help_settings_toggles_without_asking() {
+        assert_eq!(view_of(false), json!({ "kind": "object", "class": "AdvancedUi", "shown": false }));
     }
 
     #[test]
