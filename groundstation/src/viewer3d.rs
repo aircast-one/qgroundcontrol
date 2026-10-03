@@ -5,7 +5,16 @@ use serde_json::{Value, json};
 
 use crate::router::Backend;
 
+pub const VIEWER3D_CHANGED: &str = "core.viewer3d@changed";
+
+static PARSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn take_parsed() -> bool {
+    PARSED.swap(false, std::sync::atomic::Ordering::SeqCst)
+}
+
 pub const DEPS: &[&str] = &[
+    VIEWER3D_CHANGED,
     "settings.viewer3DSettings.enabled.rawValue",
     "settings.viewer3DSettings.osmFilePath.rawValue",
     "settings.viewer3DSettings.buildingLevelHeight.rawValue",
@@ -146,6 +155,7 @@ fn loaded(path: &str) -> Option<(std::time::SystemTime, Option<std::sync::Arc<Ci
                 let mut held = locked(&LOADED);
                 if held.as_ref().is_some_and(|(known, at, _)| *known == owned && *at == modified) {
                     *held = Some((owned, modified, Load::Done(map)));
+                    PARSED.store(true, std::sync::atomic::Ordering::SeqCst);
                 }
             });
             None

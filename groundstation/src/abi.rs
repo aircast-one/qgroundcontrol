@@ -308,6 +308,9 @@ pub(crate) fn start_pump() {
                     }
                 }
                 announce_guided();
+                if crate::viewer3d::take_parsed() {
+                    CORE.on_event(crate::viewer3d::VIEWER3D_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                }
                 crate::adsb::pump(crate::hub::now_ms());
                 if !crate::qthost::present() && poll_due() {
                     CORE.poll().iter().for_each(|(path, json)| announce(path, json));
