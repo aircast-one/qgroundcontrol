@@ -1459,6 +1459,12 @@ impl Cameras {
         Ok(vec![command(camera.compid, CMD_STORAGE_FORMAT, [f64::from(storage_id), 1.0, 0.0, 0.0, 0.0, 0.0, 0.0])])
     }
 
+    pub fn stream_command(&self, start: bool) -> Option<Command> {
+        let camera = self.selected()?;
+        let stream = camera.current_stream()?.stream_id;
+        Some(command(camera.compid, if start { CMD_VIDEO_START_STREAMING } else { CMD_VIDEO_STOP_STREAMING }, [f64::from(stream), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]))
+    }
+
     pub fn select_stream(&mut self, stream_id: u8, now_ms: u64) -> Result<Vec<Command>, Refusal> {
         let camera = self.act(Action::SelectStream)?;
         if !camera.listed_streams().iter().any(|stream| stream.stream_id == stream_id) {

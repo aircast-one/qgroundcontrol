@@ -2629,6 +2629,7 @@ impl Vehicle {
                     _ => Err("No camera is connected.".to_string()),
                 };
             }
+            "stopStream" | "resumeStream" => Ok(self.cameras.stream_command(action.get("op").and_then(Value::as_str) == Some("resumeStream")).into_iter().collect()),
             "selectStream" => {
                 let index = action.get("stream").and_then(Value::as_u64).and_then(|i| usize::try_from(i).ok());
                 let chosen = self.cameras.selected().zip(index).and_then(|(camera, i)| camera.listed_streams().get(i).map(|stream| stream.stream_id));

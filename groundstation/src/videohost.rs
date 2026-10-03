@@ -19,6 +19,7 @@ struct Host {
     reported: (bool, bool, u32, u32),
     recording_file: Option<String>,
     auto_stream: Option<(u8, u8, String)>,
+    vehicle: Option<u8>,
     timeout_s: u32,
     progress: Option<Watch>,
 }
@@ -291,11 +292,43 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
     }
 }
 
+pub fn stream_switches(was: Option<u8>, now: Option<u8>, outs: &[Out]) -> Vec<(u8, bool)> {
+    outs.iter()
+        .filter_map(|out| match out {
+            Out::StopCameraStream => was.map(|id| (id, false)),
+            Out::StartCameraStream => now.map(|id| (id, true)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn send_stream_switches(switches: Vec<(u8, bool)>) {
+    if switches.is_empty() {
+        return;
+    }
+    std::thread::spawn(move || {
+        switches.iter().for_each(|(vehicle, start)| {
+            let op = if *start { "resumeStream" } else { "stopStream" };
+            let frames = crate::hub::lock().guided(Some(*vehicle), &json!({ "action": "camera", "op": op }), crate::hub::now_ms()).unwrap_or_default();
+            frames.iter().for_each(|(link, bytes)| { crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes); });
+        });
+    });
+}
+
 fn synced() -> MutexGuard<'static, Option<Host>> {
-    let auto_stream = crate::hub::lock().active().and_then(crate::hub::Vehicle::auto_stream);
+    let (auto_stream, active) = {
+        let hub = crate::hub::lock();
+        (hub.active().and_then(crate::hub::Vehicle::auto_stream), hub.active_id())
+    };
     let mut guard = HOST.lock().unwrap_or_else(PoisonError::into_inner);
     let host = guard.get_or_insert_with(Host::default);
     let now_ms = crate::hub::now_ms();
+    if active != host.vehicle {
+        let was = std::mem::replace(&mut host.vehicle, active);
+        let outs = host.state.on_vehicle(active.is_some());
+        send_stream_switches(stream_switches(was, active, &outs));
+        apply(host, outs, now_ms);
+    }
     if auto_stream != host.auto_stream {
         host.auto_stream = auto_stream.clone();
         let outs = match auto_stream {
@@ -534,6 +567,13 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn switching_vehicles_stops_the_old_cameras_stream_and_resumes_the_new_one_like_video_manager() {
+        assert_eq!(stream_switches(Some(1), Some(2), &[Out::StopCameraStream, Out::StartCameraStream]), vec![(1, false), (2, true)]);
+        assert_eq!(stream_switches(None, Some(2), &[Out::StartCameraStream]), vec![(2, true)]);
+        assert_eq!(stream_switches(Some(1), None, &[Out::StopCameraStream]), vec![(1, false)]);
+    }
 
     #[test]
     fn an_address_no_pipeline_can_be_built_for_fails_like_gst_source_factory() {
