@@ -336,9 +336,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     if (current == null) {
                         EmptyState(R.drawable.ic_settings, "Settings", "Choose a group on the left.")
                     } else {
-                        Column(Modifier.fillMaxSize()) {
-                            PageTopBar(pageTitle(current.title), "Back") { open = null }
-                            SettingsPageBody(current, Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH))
+                        CompositionLocalProvider(LocalTwoPane provides true) {
+                            Column(Modifier.fillMaxSize()) {
+                                PageTopBar(pageTitle(current.title), "Back") { open = null }
+                                SettingsPageBody(current, Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH))
+                            }
                         }
                     }
                 }

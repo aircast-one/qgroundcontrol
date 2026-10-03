@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -174,7 +175,7 @@ fun AnalyzeScreen(
             wide -> Row(Modifier.fillMaxSize()) {
                 AnalyzePageList(onSelect = switchTo, modifier = Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow), selected = page)
                 Surface(Modifier.weight(1f).fillMaxHeight()) {
-                    if (page == null) EmptyState(R.drawable.ic_analytics, "Analyze", "Choose a tool on the left.") else AnalyzePageBody(page, leave, Modifier.wrapContentWidth(Alignment.Start).widthIn(max = DETAIL_PANE_MAX_WIDTH))
+                    if (page == null) EmptyState(R.drawable.ic_analytics, "Analyze", "Choose a tool on the left.") else CompositionLocalProvider(LocalTwoPane provides true) { AnalyzePageBody(page, leave, Modifier.wrapContentWidth(Alignment.Start).widthIn(max = DETAIL_PANE_MAX_WIDTH)) }
                 }
             }
             page == null -> Surface(Modifier.fillMaxSize()) { AnalyzePageList(onSelect = onSelect) }

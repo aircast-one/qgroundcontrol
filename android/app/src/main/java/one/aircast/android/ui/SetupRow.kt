@@ -26,6 +26,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -141,6 +144,8 @@ internal fun SetupRow(
     }
 }
 
+internal val LocalTwoPane = staticCompositionLocalOf { false }
+
 @Composable
 internal fun PageTopBar(title: String, backLabel: String, onBack: () -> Unit) {
     Row(
@@ -148,7 +153,7 @@ internal fun PageTopBar(title: String, backLabel: String, onBack: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), backLabel) }
+        if (LocalTwoPane.current) Spacer(Modifier.width(12.dp)) else IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), backLabel) }
         Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1)
     }
 }

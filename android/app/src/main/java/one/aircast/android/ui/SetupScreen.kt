@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
@@ -490,7 +491,9 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             Row(Modifier.fillMaxSize()) {
                 overview(Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow))
                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                    detail?.invoke(Modifier.widthIn(max = DETAIL_PANE_MAX_WIDTH)) ?: EmptyState(R.drawable.ic_build, "Vehicle setup", "Choose a component on the left.")
+                    CompositionLocalProvider(LocalTwoPane provides true) {
+                        detail?.invoke(Modifier.widthIn(max = DETAIL_PANE_MAX_WIDTH)) ?: EmptyState(R.drawable.ic_build, "Vehicle setup", "Choose a component on the left.")
+                    }
                 }
             }
         } else {
