@@ -21,15 +21,19 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.AltitudeModesView
 import one.aircast.mapspike.MISSION_CONTEXT
 import one.aircast.mapspike.altitudeModesPath
 import one.aircast.mapspike.altitudeModesView
-import one.aircast.mapspike.choosable
 import one.aircast.mapspike.refusalFor
 import org.json.JSONObject
 
 private const val PLAN_VIEW_PATH = "view.plan"
 private const val GLOBAL_ALTITUDE_MODE = "plan.missionController.globalAltitudeMode"
+
+internal fun missionFramePicks(view: AltitudeModesView?) = view?.offers.orEmpty()
+
+internal fun missionFrameChoice(view: AltitudeModesView?): Boolean = missionFramePicks(view).count { it.enabled } > 1
 
 internal fun globalAltitudeFrame(plan: JSONObject?): Int? =
     plan?.takeIf { it.has("globalAltitudeFrame") && !it.isNull("globalAltitudeFrame") }?.optInt("globalAltitudeFrame")
@@ -40,12 +44,12 @@ internal fun MissionAltitudeFrame() {
     val current = globalAltitudeFrame(plan) ?: return
     val json by qgcPath(altitudeModesPath(MISSION_CONTEXT, current))
     val view = altitudeModesView(json)
-    val picks = choosable(view)
+    val picks = missionFramePicks(view)
     var open by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("Altitude frame", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         Box {
-            TextButton(onClick = { open = true }, enabled = picks.size > 1) { Text(picks.firstOrNull { it.current }?.title ?: "Frame") }
+            TextButton(onClick = { open = true }, enabled = missionFrameChoice(view)) { Text(picks.firstOrNull { it.current }?.title ?: "Frame") }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                 picks.forEach { offer ->
                     DropdownMenuItem(

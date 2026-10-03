@@ -3,6 +3,7 @@ package one.aircast.mapspike
 import org.json.JSONObject
 
 const val MISSION_CONTEXT = "mission"
+const val ITEM_CONTEXT = "item"
 const val ALT_MODE_MIXED = 0
 const val FRAME_UNKNOWN = "Frame"
 

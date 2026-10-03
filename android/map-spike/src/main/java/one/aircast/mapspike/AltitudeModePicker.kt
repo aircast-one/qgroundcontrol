@@ -27,7 +27,7 @@ fun AltitudeModePicker(
     modifier: Modifier = Modifier,
     globalFrameMixed: Boolean = true,
 ) {
-    val json by mapPath(altitudeModesPath(MISSION_CONTEXT, item.altitudeMode))
+    val json by mapPath(altitudeModesPath(ITEM_CONTEXT, item.altitudeMode))
     val view = altitudeModesView(json)
     val picks = choosable(view)
     val live = globalFrameMixed && offersChoice(view)

@@ -101,6 +101,7 @@ class AltitudeModesTest {
     @Test
     fun `the path carries the context and the current mode, which is what the core keys off`() {
         assertEquals("view.altitudeModes(mission,2)", altitudeModesPath(MISSION_CONTEXT, 2))
+        assertEquals("view.altitudeModes(item,3)", altitudeModesPath(ITEM_CONTEXT, 3))
         assertEquals("plan.missionController.visualItems.3.altitudeMode", altitudeModePath(3))
     }
 
