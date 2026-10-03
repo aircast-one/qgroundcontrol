@@ -4050,6 +4050,9 @@ impl Hub {
             }
             if let Some(left) = self.active.and_then(|was| self.vehicles.get_mut(&was)) {
                 left.clear_rc_overrides();
+                if left.onboard_logs.busy() {
+                    left.onboard_logs.cancel();
+                }
             }
         }
         self.active = id;
@@ -4470,6 +4473,19 @@ mod tests {
         assert_eq!(released, vec![(0, u16::MAX); 3], "Qt repeats the release three ticks and then forgets the channels");
         assert!(vehicle.rc_override.is_empty() && vehicle.rc_due.is_none());
         assert!(vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 19, "pwm": 1500 }), 3_000).is_err());
+    }
+
+    #[test]
+    fn a_log_download_ends_when_its_vehicle_stops_being_active_like_onboardlogcontroller() {
+        let mut hub = Hub::default();
+        let header = |system_id| MavHeader { system_id, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header(1), &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(0), &header(2), &copter_heartbeat(0, false), 0, 0);
+        hub.set_active(Some(1));
+        hub.vehicles.get_mut(&1).unwrap().onboard_logs.refresh(0);
+        assert!(hub.vehicles[&1].onboard_logs.busy());
+        hub.set_active(Some(2));
+        assert!(!hub.vehicles[&1].onboard_logs.busy(), "_setActiveVehicle stops the listing or download of the vehicle it leaves; nothing on screen could cancel it any more");
     }
 
     #[test]
