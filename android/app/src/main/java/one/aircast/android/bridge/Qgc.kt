@@ -198,6 +198,12 @@ object Qgc {
         }.getOrNull(),
     )
 
+    fun writeForVehicleRefusal(path: String, value: Any?, vehicle: Int): String? = refusal(
+        runCatching {
+            JSONObject(timed("set $path") { QGCBridge.set(path, JSONObject().put("value", value).put("vehicle", vehicle).toString()) })
+        }.getOrNull(),
+    )
+
     fun writeForcedRefusal(path: String, value: Any?): String? = refusal(
         runCatching {
             JSONObject(timed("set $path") { QGCBridge.set(path, JSONObject().put("value", value).put("force", true).toString()) })

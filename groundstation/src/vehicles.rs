@@ -162,9 +162,59 @@ fn name_of(read: &Value, id: Option<i64>) -> String {
     }
 }
 
+pub fn fleet_mode_target(path: &str) -> Option<usize> {
+    path.strip_prefix("vehicles.vehicles.")?.strip_suffix(".flightMode")?.parse().ok()
+}
+
+pub fn fleet_mode_refusal(listed: &Value, wanted_vehicle: Option<i64>, asked: Option<&str>) -> Option<(&'static str, &'static str)> {
+    let modes: Vec<&str> = listed.get("flightModes").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
+    match (listed.get("id").and_then(Value::as_i64), asked) {
+        (id, _) if id.is_none() || id != wanted_vehicle => Some(("vehicleMoved", "That vehicle is no longer in that row. Pick it again.")),
+        (_, None) => Some(("notAMode", "Choose a flight mode.")),
+        _ if !flag(listed, "flightModeSetAvailable") => Some(("cannotSet", "This vehicle cannot change flight mode.")),
+        (_, Some(mode)) if !modes.contains(&mode) => Some(("notAMode", "That is not one of this vehicle's flight modes.")),
+        _ => None,
+    }
+}
+
+pub fn write_fleet_mode(backend: &dyn Backend, path: &str, value: &str) -> Value {
+    let given = serde_json::from_str::<Value>(value).unwrap_or(Value::Null);
+    let asked = given.get("value").and_then(Value::as_str).map(str::to_string);
+    let index = fleet_mode_target(path).unwrap_or_default();
+    let listed = object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), "id,flightMode,flightModes,flightModeSetAvailable"));
+    if let Some((token, reason)) = fleet_mode_refusal(&listed, given.get("vehicle").and_then(Value::as_i64), asked.as_deref()) {
+        return json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
+    }
+    let asked = asked.unwrap_or_default();
+    if text(&listed, "flightMode") == asked {
+        return json!({ "ok": true, "result": true, "refusal": Value::Null, "unchanged": true, "reason": Value::Null });
+    }
+    let answer = object(&backend.set(path, &json!({ "value": asked }).to_string()));
+    let answered = flag(&answer, "ok");
+    json!({
+        "ok": answered,
+        "result": answered,
+        "refusal": Value::Null,
+        "unchanged": false,
+        "reason": match answered { true => Value::Null, false => answer.get("reason").cloned().filter(|r| r.is_string()).unwrap_or(json!("The vehicle was not asked to change mode.")) },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fleet_mode_write_goes_only_to_the_vehicle_the_row_showed() {
+        let row = json!({ "id": 2, "flightMode": "Loiter", "flightModes": ["Loiter", "RTL"], "flightModeSetAvailable": true });
+        assert_eq!(fleet_mode_refusal(&row, Some(3), Some("RTL")).map(|r| r.0), Some("vehicleMoved"), "a row that now holds another vehicle is refused, unlike the index alone");
+        assert_eq!(fleet_mode_refusal(&row, Some(2), Some("RTL")), None);
+        assert_eq!(fleet_mode_refusal(&row, Some(2), Some("Acro")).map(|r| r.0), Some("notAMode"));
+        assert_eq!(fleet_mode_refusal(&json!({ "id": 2, "flightModeSetAvailable": false }), Some(2), Some("RTL")).map(|r| r.0), Some("cannotSet"));
+        assert_eq!(fleet_mode_target("vehicles.vehicles.4.flightMode"), Some(4));
+        assert_eq!(fleet_mode_target("vehicle.flightMode"), None);
+    }
+
 
     #[test]
     fn each_row_carries_altitude_and_ground_or_air_speed_like_the_multi_vehicle_telemetry_bar() {

@@ -132,7 +132,7 @@ pub fn owns(path: &str) -> bool {
 pub const OWNED_WRITES: &[&str] = &[ZOOM, CURRENT_CAMERA, TRANSMITTER_MODE, CENTERED_THROTTLE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED, BREACH_ALTITUDE];
 
 pub fn owns_write(path: &str) -> bool {
-    OWNED_WRITES.contains(&path) || crate::vehicleselect::fleet_arm_index(path).is_some() || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some() || crate::fenceedit::owns_member_write(path) || crate::vehicleconfig::owns(path)
+    OWNED_WRITES.contains(&path) || crate::vehicles::fleet_mode_target(path).is_some() || crate::vehicleselect::fleet_arm_index(path).is_some() || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some() || crate::fenceedit::owns_member_write(path) || crate::vehicleconfig::owns(path)
 }
 
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -157,6 +157,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         THERMAL_MODE | THERMAL_OPACITY | TRACKING_ENABLED => crate::cameratrack::write(backend, path, value),
         GLOBAL_ALTITUDE_MODE => crate::altitudeedit::write_global(backend, value),
         FLIGHT_MODE => crate::flightmodes::write_mode(backend, path, value),
+        _ if crate::vehicles::fleet_mode_target(path).is_some() => crate::vehicles::write_fleet_mode(backend, path, value),
         VTOL_FORWARD => crate::guided::write_vtol(backend, path, value),
         BREACH_RETURN => crate::fenceedit::write_breach_return(backend, path, value),
         GEOTAG_LOG => crate::geotagjob::write(backend, crate::geotagjob::Field::LogFile, path, value),

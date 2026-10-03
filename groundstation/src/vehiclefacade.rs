@@ -1666,7 +1666,10 @@ impl<B: Backend> Backend for Facade<B> {
                 None => crate::hub::lock().active_id(),
             };
             if let Some(started) = mode.zip(vehicle).and_then(|(mode, vehicle)| self.0.core_guided(&json!({ "action": "setMode", "vehicle": vehicle, "mode": mode }))) {
-                return json!({ "ok": started.is_ok() }).to_string();
+                return match started {
+                    Ok(_) => json!({ "ok": true }).to_string(),
+                    Err(reason) => json!({ "ok": false, "reason": reason }).to_string(),
+                };
             }
         }
         fell_through("set", path);
@@ -1926,11 +1929,6 @@ mod tests {
     }
 
     use super::*;
-
-    #[test]
-    fn a_listed_vehicles_flight_mode_is_a_fleet_member_write() {
-        assert_eq!(fleet_member("vehicles.vehicles.2.flightMode"), Some((2, "flightMode")));
-    }
 
     #[test]
     fn a_fence_contains_items_only_when_it_has_a_shape() {

@@ -35,6 +35,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.CoroutineScope
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.key
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
@@ -309,16 +312,15 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
 }
 
 @Composable
-private fun VehicleModeMenu(choice: VehicleChoice, onRefusal: (String?) -> Unit) {
+private fun VehicleModeMenu(choice: VehicleChoice, scope: CoroutineScope, onRefusal: (String?) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
     Box {
-        androidx.compose.material3.TextButton(onClick = { open = true }) { Text("Mode") }
+        TextButton(onClick = { open = true }) { Text("Mode") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             choice.flightModes.forEach { mode ->
                 DropdownMenuItem(text = { Text(mode) }, onClick = {
                     open = false
-                    scope.launch { onRefusal(withContext(Dispatchers.Default) { Qgc.writeRefusal(vehicleFlightModePath(choice), mode) }) }
+                    scope.launch { onRefusal(withContext(Dispatchers.Default) { Qgc.writeForVehicleRefusal(vehicleFlightModePath(choice), mode, choice.id) }) }
                 })
             }
         }
@@ -342,15 +344,15 @@ internal fun FleetPanel(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun VehicleRows(choices: VehicleChoices, selectable: Boolean, scope: kotlinx.coroutines.CoroutineScope, onRefusal: (String?) -> Unit, onSwitched: () -> Unit) {
+private fun VehicleRows(choices: VehicleChoices, selectable: Boolean, scope: CoroutineScope, onRefusal: (String?) -> Unit, onSwitched: () -> Unit) {
     val distinguishes = linkDistinguishes(choices.choices)
-    choices.choices.forEach { choice ->
+    choices.choices.forEach { choice -> key(choice.id) {
         ListItem(
-            headlineContent = { Text(choice.name) },
+            headlineContent = { Text(choice.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             supportingContent = {
                 Column {
-                    Text(vehicleChoiceLine(choice, distinguishes))
-                    vehicleTelemetryLine(choice)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    Text(vehicleChoiceLine(choice, distinguishes), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    vehicleTelemetryLine(choice)?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                 }
             },
             leadingContent = if (selectable) ({
@@ -361,7 +363,7 @@ private fun VehicleRows(choices: VehicleChoices, selectable: Boolean, scope: kot
             }) else null,
             trailingContent = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (choice.flightModes.isNotEmpty() && choice.index >= 0) VehicleModeMenu(choice, onRefusal)
+                    if (choice.flightModes.isNotEmpty() && choice.index >= 0) VehicleModeMenu(choice, scope, onRefusal)
                     VehicleRowCompass(choice.heading, choice.armed)
                     if (choice.active) Icon(Icons.Default.Check, contentDescription = "Flying this one")
                 }
@@ -375,7 +377,7 @@ private fun VehicleRows(choices: VehicleChoices, selectable: Boolean, scope: kot
             },
         )
         HorizontalDivider()
-    }
+    } }
 }
 
 internal fun selectedIds(choices: VehicleChoices): List<Int> = choices.choices.filter { it.selected }.map { it.id }.sorted()
