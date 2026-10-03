@@ -84,14 +84,14 @@ fun FirstRunDialog() {
                     Text("Welcome to ${androidx.compose.ui.res.stringResource(R.string.app_name)}", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
                     Text(WELCOME_NOTE, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
+                SectionHeader(sentenceCase(prompt.unitsHeading))
+                Text(prompt.unitsDescription, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
+                UnitsSection(Modifier.fillMaxWidth())
                 if (prompt.preferences.isNotEmpty()) {
                     SectionHeader(sentenceCase(prompt.vehicleHeading))
                     Text(prompt.vehicleDescription, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
                     prompt.preferences.forEach { fact -> FactRow(fact) }
                 }
-                SectionHeader(sentenceCase(prompt.unitsHeading))
-                Text(prompt.unitsDescription, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp))
-                UnitsSection(Modifier.fillMaxWidth())
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
                     Button(onClick = close) { Text("Continue") }
                 }
