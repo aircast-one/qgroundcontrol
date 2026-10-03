@@ -91,7 +91,11 @@ data class VehicleChoice(
     val home: TrackPoint? = null,
     val radar: RadarReading? = null,
     val armed: Boolean = false,
+    val telemetry: List<Pair<String, String>> = emptyList(),
 )
+
+fun vehicleTelemetryLine(choice: VehicleChoice): String? =
+    choice.telemetry.takeIf { it.isNotEmpty() }?.joinToString(" \u00b7 ") { (label, value) -> "$label $value" }
 
 data class VehicleChoices(
     val ambiguous: Boolean,
@@ -125,6 +129,7 @@ fun vehicleChoices(view: JSONObject?): VehicleChoices {
                     heading = if (entry.isNull("heading")) Double.NaN else entry.optDouble("heading", Double.NaN),
                     radar = radarReading(entry.optJSONObject("proximity")),
                     armed = entry.optBoolean("armed"),
+                    telemetry = entry.optJSONArray("telemetry")?.let { rows -> (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.map { it.optText("label") to it.optText("value") } }.orEmpty(),
                     home = entry.optJSONObject("home")?.let { at ->
                         TrackPoint(at.optDouble("latitude", Double.NaN), at.optDouble("longitude", Double.NaN))
                             .takeIf { isPlottable(it.latitude, it.longitude) }

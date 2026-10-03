@@ -57,10 +57,16 @@ class FleetActionsTest {
     }
 
     @Test
-    fun `the heading says what the block commands, not just how many are ticked`() {
-        assertEquals("Select aircraft to command together", fleetHeading(0))
-        assertEquals("Command 1 aircraft together", fleetHeading(1))
-        assertEquals("Command 3 aircraft together", fleetHeading(3))
+    fun `the heading lists the selected vehicle ids like FlyViewTopRightPanel`() {
+        assertEquals("Vehicles Selected: -", fleetHeading(emptyList()))
+        assertEquals("Vehicles Selected: 1, 3", fleetHeading(listOf(1, 3)))
+    }
+
+    @Test
+    fun `the panel shows for two or more vehicles with the setting on`() {
+        assertEquals(false, fleetPanelShown(1, true))
+        assertEquals(false, fleetPanelShown(2, false))
+        assertEquals(true, fleetPanelShown(2, true))
     }
 
     @Test
@@ -77,19 +83,18 @@ class FleetActionsTest {
 
     @Test
     fun `an action the core sent no prompt for falls back to its title`() {
-        assertEquals("Arm", fleetActionLine(MvAction(id = "mvArm", title = "Arm", prompt = "", offer = "ready", reason = "")))
+        assertEquals("Arm", fleetActionLine(MvAction(id = "mvArm", title = "Arm", confirmTitle = "Arm (MV)", prompt = "", offer = "ready", reason = "")))
     }
 
     @Test
-    fun `the confirm carries the count, which is what the row does not say`() {
-        assertEquals("This commands 1 aircraft.", fleetConfirm(1))
-        assertEquals("This commands 4 aircraft.", fleetConfirm(4))
+    fun `the confirm names the vehicles it commands`() {
+        assertEquals("This commands vehicles 1, 4.", fleetConfirm(listOf(1, 4)))
     }
 
     @Test
     fun `pause is the one fleet action that is not destructive`() {
         val destructive = listOf("mvArm", "mvDisarm", "mvStartMission", "mvPause")
-            .map { MvAction(id = it, title = it, prompt = "", offer = "ready", reason = "") }
+            .map { MvAction(id = it, title = it, confirmTitle = it, prompt = "", offer = "ready", reason = "") }
             .filter(::fleetIsDestructive)
             .map { it.id }
         assertEquals(listOf("mvArm", "mvDisarm", "mvStartMission"), destructive)

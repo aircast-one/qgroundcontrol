@@ -6,8 +6,8 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicles.selectedVehicles.count", "vehicle.id"];
 
-const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,coordinate,homePosition";
-const WATCHED_PER_VEHICLE: [&str; 6] = ["armed", "flying", "flightMode", "coordinate", "homePosition", "heading"];
+const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,coordinate,homePosition,fixedWing,vtol,airship";
+const WATCHED_PER_VEHICLE: [&str; 9] = ["armed", "flying", "flightMode", "coordinate", "homePosition", "heading", "altitudeRelative", "groundSpeed", "airSpeed"];
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
 fn proximity(backend: &dyn Backend, index: i64) -> Value {
@@ -16,6 +16,22 @@ fn proximity(backend: &dyn Backend, index: i64) -> Value {
         true => json!({ "shown": true, "maxMeters": crate::proximity::max_meters(&group), "sectors": crate::proximity::sectors(&group) }),
         false => Value::Null,
     }
+}
+
+fn shown_fact(backend: &dyn Backend, index: i64, name: &str) -> Option<String> {
+    let fact = object(&backend.get(&format!("vehicles.vehicles.{index}.{name}")));
+    let spelled = fact.get("valueString").and_then(Value::as_str).filter(|s| !s.trim().is_empty() && !s.starts_with("--"))?;
+    let units = fact.get("units").and_then(Value::as_str).unwrap_or_default();
+    Some([spelled, crate::instruments::display_units(units)].iter().filter(|part| !part.is_empty()).copied().collect::<Vec<_>>().join(" "))
+}
+
+pub fn telemetry(read: &Value, value_of: &dyn Fn(&str) -> Option<String>) -> Vec<Value> {
+    let forward_flight = ["fixedWing", "vtol", "airship"].iter().any(|class| flag(read, class));
+    let speed = if forward_flight { ("AirSpd", "airSpeed") } else { ("Ground Speed", "groundSpeed") };
+    [("Alt (Rel)", "altitudeRelative"), speed]
+        .iter()
+        .filter_map(|(label, name)| value_of(name).map(|value| json!({ "label": label, "value": value })))
+        .collect()
 }
 
 fn heading(backend: &dyn Backend, index: i64) -> Option<f64> {
@@ -39,11 +55,11 @@ fn per_vehicle_paths() -> Vec<String> {
         .collect()
 }
 
-const MV_ACTIONS: [(&str, &str, &str); 4] = [
-    ("mvArm", "Arm", "Arm selected vehicles."),
-    ("mvDisarm", "Disarm", "Disarm selected vehicles."),
-    ("mvStartMission", "Start", "Takeoff from ground and start the current mission for selected vehicles."),
-    ("mvPause", "Pause", "Pause selected vehicles at their current position."),
+const MV_ACTIONS: [(&str, &str, &str, &str); 4] = [
+    ("mvArm", "Arm", "Arm (MV)", "Arm selected vehicles."),
+    ("mvDisarm", "Disarm", "Disarm (MV)", "Disarm selected vehicles."),
+    ("mvStartMission", "Start", "Start Mission (MV)", "Takeoff from ground and start the current mission for selected vehicles."),
+    ("mvPause", "Pause", "Pause (MV)", "Pause selected vehicles at their current position."),
 ];
 
 fn selected_ids(backend: &dyn Backend) -> Vec<i64> {
@@ -73,11 +89,12 @@ fn mv_actions(listed: &[Value]) -> Value {
     let chosen: Vec<&Value> = listed.iter().filter(|v| v["selected"] == json!(true)).collect();
     MV_ACTIONS
         .iter()
-        .map(|(id, title, prompt)| {
+        .map(|(id, title, confirm_title, prompt)| {
             let refusal = mv_refusal(id, &chosen);
             json!({
                 "id": id,
                 "title": title,
+                "confirmTitle": confirm_title,
                 "prompt": prompt,
                 "offer": match refusal { Some(_) => "blocked", None => "ready" },
                 "reason": refusal.unwrap_or(""),
@@ -116,6 +133,7 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "pauseSupported": flag(&supports, "pauseVehicle"),
                 "selected": id.is_some_and(|id| chosen_ids.contains(&id)),
                 "proximity": proximity(backend, index),
+                "telemetry": telemetry(&read, &|name| shown_fact(backend, index, name)),
             })
         })
         .collect();
@@ -145,6 +163,14 @@ fn name_of(read: &Value, id: Option<i64>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_row_carries_altitude_and_ground_or_air_speed_like_the_multi_vehicle_telemetry_bar() {
+        let values = |name: &str| match name { "altitudeRelative" => Some("12.3 m".to_string()), "groundSpeed" => Some("5.4 m/s".to_string()), "airSpeed" => Some("18.0 m/s".to_string()), _ => None };
+        assert_eq!(telemetry(&json!({ "fixedWing": false }), &values), vec![json!({ "label": "Alt (Rel)", "value": "12.3 m" }), json!({ "label": "Ground Speed", "value": "5.4 m/s" })]);
+        assert_eq!(telemetry(&json!({ "vtol": true }), &values)[1], json!({ "label": "AirSpd", "value": "18.0 m/s" }), "fixed wing, VTOL and airships show airspeed");
+        assert!(telemetry(&json!({}), &|_| None).is_empty());
+    }
     static FLEET_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     fn fleet_guard() -> std::sync::MutexGuard<'static, ()> {
         FLEET_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -218,7 +244,7 @@ mod tests {
         assert_eq!(view["selectedCount"], json!(0));
         assert_eq!((view["canSelectAll"].clone(), view["canDeselectAll"].clone()), (json!(true), json!(false)));
         assert!(view["vehicles"].as_array().unwrap().iter().all(|v| v["selected"] == json!(false)));
-        MV_ACTIONS.iter().for_each(|(id, _, _)| {
+        MV_ACTIONS.iter().for_each(|(id, _, _, _)| {
             assert_eq!(
                 offer_of(&view, id),
                 ("blocked".to_string(), "No vehicles are selected.".to_string()),

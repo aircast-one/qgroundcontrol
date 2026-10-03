@@ -6106,16 +6106,20 @@
         "view.vehicleLinks.class",
         "view.vehicleLinks.kind",
         "view.vehicles.actions.#",
+        "view.vehicles.actions.0.confirmTitle",
         "view.vehicles.actions.0.id",
         "view.vehicles.actions.0.offer",
         "view.vehicles.actions.0.prompt",
         "view.vehicles.actions.0.title",
+        "view.vehicles.actions.1.confirmTitle",
         "view.vehicles.actions.1.id",
         "view.vehicles.actions.1.prompt",
         "view.vehicles.actions.1.title",
+        "view.vehicles.actions.2.confirmTitle",
         "view.vehicles.actions.2.id",
         "view.vehicles.actions.2.prompt",
         "view.vehicles.actions.2.title",
+        "view.vehicles.actions.3.confirmTitle",
         "view.vehicles.actions.3.id",
         "view.vehicles.actions.3.prompt",
         "view.vehicles.actions.3.title",
@@ -9445,6 +9449,7 @@
         "view.vehicleLinks.reason",
         "view.vehicleLinks.watching",
         "view.vehicles.actions.#",
+        "view.vehicles.actions[].confirmTitle",
         "view.vehicles.actions[].id",
         "view.vehicles.actions[].offer",
         "view.vehicles.actions[].prompt",
@@ -9478,6 +9483,9 @@
         "view.vehicles.vehicles[].pauseSupported",
         "view.vehicles.vehicles[].proximity",
         "view.vehicles.vehicles[].selected",
+        "view.vehicles.vehicles[].telemetry.#",
+        "view.vehicles.vehicles[].telemetry[].label",
+        "view.vehicles.vehicles[].telemetry[].value",
         "view.vehicles.vehicles[].type",
         "view.vibration.available",
         "view.vibration.axes.#",
@@ -14300,6 +14308,7 @@
     "view.vehicles": {
         "actions": [
             {
+                "confirmTitle": "string",
                 "id": "string",
                 "offer": "string",
                 "prompt": "string",
@@ -14339,6 +14348,12 @@
                 "pauseSupported": "bool",
                 "proximity": "null",
                 "selected": "bool",
+                "telemetry": [
+                    {
+                        "label": "string",
+                        "value": "string"
+                    }
+                ],
                 "type": "string"
             }
         ]

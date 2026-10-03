@@ -59,11 +59,13 @@ import one.aircast.mapspike.lostVehicles
 import one.aircast.mapspike.lostVehiclesText
 import one.aircast.mapspike.linkDistinguishes
 import one.aircast.mapspike.vehicleChoiceLine
+import one.aircast.mapspike.vehicleTelemetryLine
 import one.aircast.mapspike.vehicleChoices
 
 internal data class MvAction(
     val id: String,
     val title: String,
+    val confirmTitle: String,
     val prompt: String,
     val offer: String,
     val reason: String,
@@ -78,6 +80,7 @@ internal fun mvActions(view: JSONObject?): List<MvAction> {
             MvAction(
                 id = entry.optText("id").ifBlank { return@mapNotNull null },
                 title = entry.optText("title"),
+                confirmTitle = entry.optText("confirmTitle").ifBlank { entry.optText("title") },
                 prompt = entry.optText("prompt"),
                 offer = entry.optText("offer"),
                 reason = entry.optText("reason"),
@@ -206,43 +209,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
-            val distinguishes = linkDistinguishes(choices.choices)
-            val selectionBox: @Composable (VehicleChoice) -> Unit = { choice ->
-                Checkbox(
-                    checked = choice.selected,
-                    onCheckedChange = { wanted ->
-                        scope.launch {
-                            withContext(Dispatchers.Default) { FleetBridge.setSelected(choice.id, wanted) }
-                        }
-                    },
-                )
-            }
-            choices.choices.forEach { choice ->
-                ListItem(
-                    headlineContent = { Text(choice.name) },
-                    supportingContent = { Text(vehicleChoiceLine(choice, distinguishes)) },
-                    leadingContent = selectionBox.takeIf { panelEnabled }?.let { box -> { box(choice) } },
-                    trailingContent = {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            VehicleRowCompass(choice.heading, choice.armed)
-                            if (choice.active) {
-                                Icon(Icons.Default.Check, contentDescription = "Flying this one")
-                            }
-                        }
-                    },
-                    modifier = Modifier.clickable(enabled = !choice.active) {
-                        scope.launch {
-                            val switched = withContext(Dispatchers.Default) {
-                                VehicleBridge.askFor(choice.id)
-                            }
-                            refusal = if (switched) null else VehicleBridge.lastRefusal
-                                ?: "That vehicle did not take control."
-                            if (switched) picking = false
-                        }
-                    },
-                )
-                HorizontalDivider()
-            }
+            VehicleRows(choices, selectable = panelEnabled, onRefusal = { refusal = it }) { picking = false }
             refusal?.let {
                 Text(
                     text = it,
@@ -282,7 +249,7 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
     val scope = rememberCoroutineScope()
     var confirming by remember { mutableStateOf<MvAction?>(null) }
     Text(
-        text = fleetHeading(choices.selectedCount),
+        text = fleetHeading(selectedIds(choices)),
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
     )
@@ -316,8 +283,8 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
         if (confirming?.id == action.id) {
             ConfirmTrack(
                 action = GuidedAction(
-                    name = action.title,
-                    confirm = fleetConfirm(choices.selectedCount),
+                    name = action.confirmTitle,
+                    confirm = fleetConfirm(selectedIds(choices)),
                     destructive = fleetIsDestructive(action),
                     run = {
                         val confirmed = choices.choices.filter { it.selected }.map { it.id }.toSet()
@@ -337,20 +304,67 @@ private fun FleetControls(view: JSONObject?, choices: VehicleChoices, onRefusal:
     }
 }
 
-internal fun fleetTargetText(selectedCount: Int): String = when (selectedCount) {
-    1 -> "1 aircraft"
-    else -> "$selectedCount aircraft"
+internal fun fleetPanelShown(vehicleCount: Int, panelEnabled: Boolean): Boolean = vehicleCount >= 2 && panelEnabled
+
+@Composable
+internal fun FleetPanel(modifier: Modifier = Modifier) {
+    val vehiclesJson by qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    val choices = remember(vehiclesJson) { vehicleChoices(vehiclesJson) }
+    val panelJson by qgcPath(MULTI_VEHICLE_PANEL)
+    var refusal by remember { mutableStateOf<String?>(null) }
+    if (!fleetPanelShown(choices.choices.size, multiVehiclePanelEnabled(panelJson))) return
+    Column(modifier) {
+        VehicleRows(choices, selectable = true, onRefusal = { refusal = it }) {}
+        FleetControls(vehiclesJson, choices) { refusal = it }
+        refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
+    }
 }
 
-internal fun fleetHeading(selectedCount: Int): String = when (selectedCount) {
-    0 -> "Select aircraft to command together"
-    else -> "Command ${fleetTargetText(selectedCount)} together"
+@Composable
+private fun VehicleRows(choices: VehicleChoices, selectable: Boolean, onRefusal: (String?) -> Unit, onSwitched: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val distinguishes = linkDistinguishes(choices.choices)
+    choices.choices.forEach { choice ->
+        ListItem(
+            headlineContent = { Text(choice.name) },
+            supportingContent = {
+                Column {
+                    Text(vehicleChoiceLine(choice, distinguishes))
+                    vehicleTelemetryLine(choice)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+            },
+            leadingContent = if (selectable) ({
+                Checkbox(
+                    checked = choice.selected,
+                    onCheckedChange = { wanted -> scope.launch { withContext(Dispatchers.Default) { FleetBridge.setSelected(choice.id, wanted) } } },
+                )
+            }) else null,
+            trailingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    VehicleRowCompass(choice.heading, choice.armed)
+                    if (choice.active) Icon(Icons.Default.Check, contentDescription = "Flying this one")
+                }
+            },
+            modifier = Modifier.clickable(enabled = !choice.active) {
+                scope.launch {
+                    val switched = withContext(Dispatchers.Default) { VehicleBridge.askFor(choice.id) }
+                    onRefusal(if (switched) null else VehicleBridge.lastRefusal ?: "That vehicle did not take control.")
+                    if (switched) onSwitched()
+                }
+            },
+        )
+        HorizontalDivider()
+    }
 }
+
+internal fun selectedIds(choices: VehicleChoices): List<Int> = choices.choices.filter { it.selected }.map { it.id }.sorted()
+
+internal fun fleetHeading(selectedIds: List<Int>): String = "Vehicles Selected: ${selectedIds.joinToString(", ").ifEmpty { "-" }}"
 
 internal fun fleetActionLine(action: MvAction): String =
     mvReasonFor(action) ?: action.prompt.ifBlank { action.title }
 
-internal fun fleetConfirm(selectedCount: Int): String = "This commands ${fleetTargetText(selectedCount)}."
+internal fun fleetConfirm(selectedIds: List<Int>): String = "This commands vehicles ${selectedIds.joinToString(", ")}."
 
 internal fun fleetIsDestructive(action: MvAction): Boolean = action.id != "mvPause"
 
