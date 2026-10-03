@@ -22,5 +22,6 @@ class SetupSummaryTest {
         org.junit.Assert.assertEquals("Analog voltage and current \u00b7 5000 mAh", summaryGlance(listOf(SummaryLine("Battery monitor", "Analog Voltage and Current"), SummaryLine("Capacity", "5000 mAh"))))
         val radio = listOf(SummaryLine("Roll", "Channel 1"), SummaryLine("Pitch", "Channel 2"), SummaryLine("Throttle", "Channel 3"))
         org.junit.Assert.assertEquals("Roll 1 \u00b7 Pitch 2 \u00b7 Throttle 3", summaryGlance(radio))
+        org.junit.Assert.assertEquals("Ready \u00b7 Not supported (over APM 4.1)", summaryGlance(listOf(SummaryLine("Compass", "Ready"), SummaryLine("Airspeed", "Not Supported(Over APM 4.1)"))))
     }
 }

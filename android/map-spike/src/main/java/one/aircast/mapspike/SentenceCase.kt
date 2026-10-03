@@ -10,6 +10,8 @@ private val PROPER_PHRASES = setOf("PX4 Pro")
 fun sentenceCase(label: String): String =
     if (label in PROPER_PHRASES) label else label.split(" ").mapIndexed { at, word ->
         word.split("-").mapIndexed { part, piece ->
-            if ((at == 0 && part == 0) || keepsCase(piece)) piece else piece.replaceFirstChar(Char::lowercaseChar)
+            val lead = piece.takeWhile { !it.isLetterOrDigit() }
+            val body = piece.drop(lead.length)
+            if ((at == 0 && part == 0) || keepsCase(body)) piece else lead + body.replaceFirstChar(Char::lowercaseChar)
         }.joinToString("-")
     }.joinToString(" ")
