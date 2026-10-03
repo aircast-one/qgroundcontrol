@@ -37,6 +37,7 @@ fn auto_connect(backend: &dyn Backend, name: &str) -> bool {
 
 pub struct Offline {
     pub title: String,
+    pub main_status: String,
     pub footnote: String,
     pub busy: bool,
     pub no_links: bool,
@@ -58,6 +59,12 @@ pub fn offline(links: &[Value], watched: &[&str], stalled_for: impl FnOnce(&str)
         (true, false) => "Connection Failed",
         (true, true) => "Not Connected",
     };
+    let main_status = match (connecting.is_empty(), failed_name.is_empty(), no_links) {
+        (false, ..) => "Connecting…",
+        (true, false, _) => "Can't Connect",
+        (true, true, true) => "Connect a Vehicle",
+        (true, true, false) => "Not Connected",
+    };
     let footnote = match () {
         _ if !connecting.is_empty() && stalled => format!("No telemetry from {connecting} yet. Check the port is the drone's MAVLink port."),
         _ if !connecting.is_empty() => format!("Connecting to {connecting}…"),
@@ -69,6 +76,7 @@ pub fn offline(links: &[Value], watched: &[&str], stalled_for: impl FnOnce(&str)
     };
     Offline {
         title: title.to_string(),
+        main_status: main_status.to_string(),
         footnote,
         busy: (!connecting.is_empty() && !stalled) || (no_links && watching),
         no_links,
@@ -89,6 +97,7 @@ pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "kind": "object",
         "class": "OfflineStatus",
         "title": shown.title,
+        "mainStatus": shown.main_status,
         "footnote": shown.footnote,
         "busy": shown.busy,
         "noLinks": shown.no_links,
@@ -137,6 +146,17 @@ mod tests {
         assert!(retry.footnote.ends_with("then tap it to retry."));
         let dynamic = offline(&[json!({ "name": "UDP", "dynamic": true, "connected": true })], &all, |_| false);
         assert!(dynamic.no_links, "auto-connect links are not the operator's links");
+    }
+
+    #[test]
+    fn the_toolbar_status_follows_main_status_indicator() {
+        let status = |links: &[Value]| offline(links, &["USB"], |_| false).main_status;
+        assert_eq!(status(&[]), "Connect a Vehicle");
+        assert_eq!(status(&[json!({ "name": "UDP", "dynamic": true, "connected": true })]), "Connect a Vehicle", "dynamic links are not user links");
+        assert_eq!(status(&[link("Drone", false, "", "")]), "Not Connected");
+        assert_eq!(status(&[link("Drone", true, "", "")]), "Connecting…");
+        assert_eq!(status(&[link("Drone", false, "timeout", "retry")]), "Can't Connect");
+        assert_eq!(status(&[link("Drone", true, "", ""), link("Other", false, "timeout", "retry")]), "Connecting…", "a connecting link outranks a failed one");
     }
 
     #[test]

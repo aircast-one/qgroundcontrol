@@ -120,7 +120,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val station = remember(controlJson) { controlStation(controlJson) }
     val taken = controlIsElsewhere(station)
     val lost = fly?.contactLost == true
-    val subtitle = vehicleSubtitle(fly)
+    val offlineJson by qgcPath(OFFLINE_STATUS_VIEW)
+    val subtitle = vehicleSubtitle(fly, remember(offlineJson) { offlineMainStatus(offlineJson) })
     var picking by remember { mutableStateOf(false) }
     val panelJson by qgcPath(MULTI_VEHICLE_PANEL)
     val panelEnabled = multiVehiclePanelEnabled(panelJson)

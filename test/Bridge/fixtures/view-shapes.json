@@ -8531,6 +8531,7 @@
         "view.offlineStatus.links[].index",
         "view.offlineStatus.links[].retry",
         "view.offlineStatus.links[].text",
+        "view.offlineStatus.mainStatus",
         "view.offlineStatus.noLinks",
         "view.offlineStatus.title",
         "view.operatorControl.available",
@@ -13105,6 +13106,7 @@
                 "text": "string"
             }
         ],
+        "mainStatus": "string",
         "noLinks": "bool",
         "title": "string"
     },

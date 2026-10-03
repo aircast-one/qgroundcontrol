@@ -117,6 +117,15 @@ class VehicleSubtitleTest {
     }
 
     @Test
+    fun `with no vehicle the header shows the link state like MainStatusIndicator`() {
+        val offline = offlineMainStatus(JSONObject("""{"kind":"object","title":"Connection Failed","mainStatus":"Can't Connect"}"""))
+        assertEquals("Can't connect", vehicleSubtitle(state(connected = false), offline))
+        assertEquals("Connect a vehicle", vehicleSubtitle(null, offlineMainStatus(JSONObject("""{"mainStatus":"Connect a Vehicle"}"""))))
+        assertEquals("a connected vehicle ignores the link state", "Stabilize · Disarmed", vehicleSubtitle(state(), offline))
+        assertNull(offlineMainStatus(JSONObject("""{"mainStatus":""}""")))
+    }
+
+    @Test
     fun `a blank mode does not leave a dangling separator`() {
         assertEquals("Armed", vehicleSubtitle(state(stateText = "Armed", mode = "")))
     }
