@@ -413,7 +413,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     }
 
     val deciding = pending != null || speedTarget != null ||
-        takeoffTarget != null || altitudeTarget != null
+        takeoffTarget != null || altitudeTarget != null || editingLoiter != null
 
     LaunchedEffect(vehicleId, deciding) {
         val id = vehicleId ?: return@LaunchedEffect
@@ -745,8 +745,11 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         }
     }
 
+    LaunchedEffect(loiter == null) {
+        if (loiter == null) editingLoiter = null
+    }
     editingLoiter?.let { offer ->
-        LoiterRadiusSheet(offer, mapClickUnits(mapClickJson)) { editingLoiter = null }
+        LoiterRadiusPanel(offer, mapClickUnits(mapClickJson), onRefused = { refusal = it }) { editingLoiter = null }
     }
 
     if (showMore) {

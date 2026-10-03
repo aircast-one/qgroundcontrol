@@ -1,6 +1,14 @@
 package one.aircast.mapspike
 
+import android.annotation.SuppressLint
+import android.view.MotionEvent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import org.json.JSONObject
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
@@ -26,6 +34,8 @@ private const val RADIUS_TEXT = "text"
 private const val GOTO_ARROW_SOURCE = "aircast-goto-arrows"
 private const val GOTO_ARROW_LAYER = "aircast-goto-arrow-layer"
 private const val ARROW_BEARING = "bearing"
+private const val GOTO_HANDLE_SOURCE = "aircast-goto-handle"
+private const val GOTO_HANDLE_LAYER = "aircast-goto-handle-layer"
 private const val GOTO_COLOUR = "#2E7D32"
 
 data class GotoLocation(val at: TrackPoint, val loiterRadiusMetres: Double?, val loiterRadiusText: String = "", val loiterClockwise: Boolean = true)
@@ -46,6 +56,75 @@ fun gotoRing(location: GotoLocation?): List<TrackPoint> =
 fun gotoArrows(location: GotoLocation?): List<Pair<TrackPoint, Double>> =
     orbitArrows(location?.loiterRadiusMetres?.let { OrbitCircle(location.at, it, location.loiterClockwise) })
 
+data class LoiterEdit(val radiusMetres: Double, val clockwise: Boolean, val unit: String, val metresPerUnit: Double)
+
+object GotoLoiterEdit {
+    var edit by mutableStateOf<LoiterEdit?>(null)
+}
+
+fun loiterEditNumber(edit: LoiterEdit): String =
+    String.format(java.util.Locale.US, "%.1f", edit.radiusMetres / edit.metresPerUnit).removeSuffix(".0")
+
+fun editedGoto(location: GotoLocation?, edit: LoiterEdit?): GotoLocation? =
+    edit?.let { changing ->
+        location?.takeIf { it.loiterRadiusMetres != null }?.copy(
+            loiterRadiusMetres = changing.radiusMetres,
+            loiterClockwise = changing.clockwise,
+            loiterRadiusText = listOf(loiterEditNumber(changing), changing.unit).filter { it.isNotBlank() }.joinToString(" "),
+        )
+    } ?: location
+
+fun gotoRadiusHandle(location: GotoLocation?): TrackPoint? =
+    location?.loiterRadiusMetres?.let { pointAt(location.at, it, 90.0) }
+
+fun draggedGotoRadius(location: GotoLocation, to: TrackPoint): Double =
+    metresBetween(location.at, to).coerceAtLeast(MINIMUM_CIRCLE_RADIUS_METRES)
+
+@SuppressLint("ClickableViewAccessibility")
+fun attachGotoRadiusDrag(mapView: MapView, map: MapLibreMap, shown: () -> GotoLocation?) {
+    var dragging = false
+    var flipping = false
+    var downX = 0f
+    var downY = 0f
+    fun near(at: TrackPoint, x: Float, y: Float): Boolean =
+        map.projection.toScreenLocation(LatLng(at.latitude, at.longitude)).let { withinHit(it.x - x, it.y - y) }
+    mapView.setOnTouchListener { _, event ->
+        val edit = GotoLoiterEdit.edit
+        val goto = shown().takeIf { edit != null }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+                dragging = gotoRadiusHandle(goto)?.let { near(it, event.x, event.y) } == true
+                flipping = !dragging && gotoArrows(goto).any { (at, _) -> near(at, event.x, event.y) }
+                if (dragging) map.uiSettings.setAllGesturesEnabled(false)
+                dragging || flipping
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                if (dragging && goto != null && edit != null) {
+                    val to = map.projection.fromScreenLocation(android.graphics.PointF(event.x, event.y))
+                    GotoLoiterEdit.edit = edit.copy(radiusMetres = draggedGotoRadius(goto, TrackPoint(to.latitude, to.longitude)))
+                }
+                dragging || flipping
+            }
+
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val consumed = dragging || flipping
+                if (flipping && edit != null && event.actionMasked == MotionEvent.ACTION_UP && withinTap(event.x - downX, event.y - downY)) {
+                    GotoLoiterEdit.edit = edit.copy(clockwise = !edit.clockwise)
+                }
+                if (dragging) map.uiSettings.setAllGesturesEnabled(true)
+                dragging = false
+                flipping = false
+                consumed
+            }
+
+            else -> dragging || flipping
+        }
+    }
+}
+
 object GotoBridge {
     fun read(): GotoLocation? = gotoLocation(runCatching { JSONObject(QGCBridge.get(GOTO_MAP_CLICK_VIEW)) }.getOrNull())
 }
@@ -56,6 +135,7 @@ fun installGotoLayer(style: Style) {
     style.addSource(GeoJsonSource(GOTO_RING_SOURCE))
     style.addSource(GeoJsonSource(GOTO_RADIUS_SOURCE))
     style.addSource(GeoJsonSource(GOTO_ARROW_SOURCE))
+    style.addSource(GeoJsonSource(GOTO_HANDLE_SOURCE))
     style.addLayer(
         LineLayer(GOTO_RING_LAYER, GOTO_RING_SOURCE).withProperties(
             PropertyFactory.lineColor(GOTO_COLOUR),
@@ -95,6 +175,14 @@ fun installGotoLayer(style: Style) {
         ),
     )
     style.addLayer(
+        CircleLayer(GOTO_HANDLE_LAYER, GOTO_HANDLE_SOURCE).withProperties(
+            PropertyFactory.circleColor("#FFFFFF"),
+            PropertyFactory.circleRadius(9f),
+            PropertyFactory.circleStrokeColor(GOTO_COLOUR),
+            PropertyFactory.circleStrokeWidth(3f),
+        ),
+    )
+    style.addLayer(
         SymbolLayer(GOTO_LABEL_LAYER, GOTO_SOURCE).withProperties(
             PropertyFactory.textField("Go here"),
             PropertyFactory.textSize(12f),
@@ -107,7 +195,12 @@ fun installGotoLayer(style: Style) {
     )
 }
 
-fun renderGoto(style: Style, location: GotoLocation?) {
+fun renderGoto(style: Style, location: GotoLocation?, editing: Boolean = false) {
+    (style.getSource(GOTO_HANDLE_SOURCE) as? GeoJsonSource)?.setGeoJson(
+        FeatureCollection.fromFeatures(
+            listOfNotNull(gotoRadiusHandle(location.takeIf { editing })).map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) },
+        ),
+    )
     (style.getSource(GOTO_SOURCE) as? GeoJsonSource)?.setGeoJson(
         FeatureCollection.fromFeatures(listOfNotNull(location).map { Feature.fromGeometry(Point.fromLngLat(it.at.longitude, it.at.latitude)) }),
     )

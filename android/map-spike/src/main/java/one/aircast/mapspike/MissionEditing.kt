@@ -121,6 +121,9 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
         ?.let { MapHit.Waypoint(it) }
 }
 
+internal fun withinHit(dx: Float, dy: Float): Boolean =
+    kotlin.math.abs(dx) <= HIT_RADIUS_PX && kotlin.math.abs(dy) <= HIT_RADIUS_PX
+
 internal fun withinTap(dx: Float, dy: Float): Boolean =
     kotlin.math.abs(dx) <= TAP_SLOP_PX && kotlin.math.abs(dy) <= TAP_SLOP_PX
 

@@ -55,6 +55,22 @@ class MapClickMenuTest {
     }
 
     @Test
+    fun `the loiter radius field follows the map drag but keeps what the operator is typing`() {
+        val offer = loiterOffer(JSONObject("""{"loiter":{"latitude":47.4,"longitude":8.5,"title":"t","message":"m","defaultRadius":250,"clockwise":false}}"""))!!
+        val opened = loiterEditOpened(offer, OrbitDefaults(0.0, "ft", 0.3048, true))
+        assertEquals(76.2, opened.radiusMetres, 1e-9)
+        assertFalse(opened.clockwise)
+        assertEquals("250", loiterRadiusField(null, opened))
+        assertEquals("250.", loiterRadiusField("250.", opened))
+        assertEquals("", loiterRadiusField("", opened))
+        val dragged = opened.copy(radiusMetres = 100 * 0.3048)
+        assertEquals("100", loiterRadiusField("250", dragged))
+        assertEquals(30.48, loiterTyped("100", opened).radiusMetres, 1e-9)
+        assertEquals(opened, loiterTyped("abc", opened))
+        assertEquals(opened, loiterTyped("0", opened))
+    }
+
+    @Test
     fun `go here reads how far and which way the point lies, in the operator's unit`() {
         val from = MapPoint(47.0, 8.0)
         assertEquals("111 m north", goHereText(from, MapPoint(47.001, 8.0), "m", 1.0))

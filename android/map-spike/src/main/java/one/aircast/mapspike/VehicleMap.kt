@@ -207,6 +207,9 @@ fun VehicleMap(
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
     val latestRoi by rememberUpdatedState(roi)
     val latestRoiClick by rememberUpdatedState(onRoiClick)
+    val shownGoto = editedGoto(goto, GotoLoiterEdit.edit)
+    val gotoEditing = GotoLoiterEdit.edit != null && shownGoto?.loiterRadiusMetres != null
+    val latestGoto by rememberUpdatedState(shownGoto)
     val latestItems by rememberUpdatedState(missionItems)
     val latestOnAdd by rememberUpdatedState(onAdd)
     val latestOnMove by rememberUpdatedState(onMove)
@@ -336,6 +339,7 @@ fun VehicleMap(
                         latestMapClick?.invoke(at.latitude, at.longitude)
                         latestMapClick != null
                     }
+                    attachGotoRadiusDrag(mapView, loaded) { latestGoto }
                 }
                 if (editable) {
                     attachMissionEditing(
@@ -377,9 +381,9 @@ fun VehicleMap(
         renderProximityRadars(radarStyle, radars)
     }
 
-    LaunchedEffect(style, orbit, goto) {
+    LaunchedEffect(style, orbit, shownGoto) {
         val orbitStyle = style ?: return@LaunchedEffect
-        renderOrbit(orbitStyle, orbit, gotoShown = goto != null)
+        renderOrbit(orbitStyle, orbit, gotoShown = shownGoto != null)
     }
     LaunchedEffect(style, collisionLegs) {
         val legStyle = style ?: return@LaunchedEffect
@@ -389,9 +393,9 @@ fun VehicleMap(
         val markerStyle = style ?: return@LaunchedEffect
         renderClickMarker(markerStyle, clickMarker)
     }
-    LaunchedEffect(style, goto) {
+    LaunchedEffect(style, shownGoto, gotoEditing) {
         val gotoStyle = style ?: return@LaunchedEffect
-        renderGoto(gotoStyle, goto)
+        renderGoto(gotoStyle, shownGoto, gotoEditing)
     }
     LaunchedEffect(style, roi) {
         val roiStyle = style ?: return@LaunchedEffect

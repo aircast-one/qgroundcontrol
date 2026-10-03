@@ -19,6 +19,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.GotoLoiterEdit
+import one.aircast.mapspike.LoiterEdit
+import one.aircast.mapspike.loiterEditNumber
 import one.aircast.mapspike.optText
 import one.aircast.mapspike.TrackPoint
 import org.json.JSONObject
@@ -288,52 +292,60 @@ internal fun mapClickUnits(view: JSONObject?): OrbitDefaults = orbitDefaults(vie
 internal fun signedLoiterRadius(metres: Double, clockwise: Boolean): Double =
     if (clockwise) kotlin.math.abs(metres) else -kotlin.math.abs(metres)
 
-@OptIn(ExperimentalMaterial3Api::class)
+internal fun loiterEditOpened(offer: LoiterOffer, units: OrbitDefaults): LoiterEdit =
+    LoiterEdit(kotlin.math.abs(offer.defaultRadius) * units.metresPerUnit, offer.clockwise, units.unit, units.metresPerUnit)
+
+internal fun loiterRadiusField(typed: String?, edit: LoiterEdit): String =
+    typed?.takeIf { it.isBlank() || one.aircast.mapspike.typedNumber(it)?.times(edit.metresPerUnit) == edit.radiusMetres } ?: loiterEditNumber(edit)
+
+internal fun loiterTyped(text: String, edit: LoiterEdit): LoiterEdit =
+    one.aircast.mapspike.typedNumber(text)?.takeIf { it > 0.0 }?.let { edit.copy(radiusMetres = it * edit.metresPerUnit) } ?: edit
+
 @Composable
-internal fun LoiterRadiusSheet(offer: LoiterOffer, units: OrbitDefaults, onDismiss: () -> Unit) {
-    var radiusText by remember(offer) { mutableStateOf("") }
-    var clockwise by remember(offer) { mutableStateOf(offer.clockwise) }
-    var refusal by remember(offer) { mutableStateOf<String?>(null) }
+internal fun LoiterRadiusPanel(offer: LoiterOffer, units: OrbitDefaults, onRefused: (String) -> Unit, onDone: () -> Unit) {
+    val opened = remember(offer) { loiterEditOpened(offer, units) }
+    DisposableEffect(opened) {
+        GotoLoiterEdit.edit = opened
+        onDispose { GotoLoiterEdit.edit = null }
+    }
+    val edit = GotoLoiterEdit.edit ?: opened
+    var typed by remember(opened) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val defaults = units.copy(radius = offer.defaultRadius)
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(offer.title, style = MaterialTheme.typography.titleLarge)
-            Text(offer.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(
-                value = radiusText,
-                onValueChange = { radiusText = it },
-                label = { Text(listOf("Radius", defaults.unit).filter { it.isNotBlank() }.joinToString(" ")) },
-                placeholder = { Text(defaults.radius.toString()) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Clockwise", Modifier.weight(1f))
-                Switch(checked = clockwise, onCheckedChange = { clockwise = it })
+    GuidedValuePanel(
+        title = offer.title,
+        sentence = offer.message,
+        commitLabel = offer.title,
+        commitEnabled = true,
+        onCommit = {
+            val sent = signedLoiterRadius(edit.radiusMetres, edit.clockwise)
+            scope.launch {
+                val refused = withContext(Dispatchers.Default) {
+                    Qgc.refusalOf(
+                        "vehicle.guidedModeGotoLocation",
+                        JSONObject().put("latitude", offer.latitude).put("longitude", offer.longitude),
+                        sent,
+                    )
+                }
+                refused?.let(onRefused)
+                onDone()
             }
-            SlideOrCancel(offer.title, onConfirm = {
-                    val metres = radiusMetres(radiusText, defaults)
-                    if (metres == null) {
-                        refusal = "Enter a radius."
-                    } else {
-                        scope.launch {
-                            val refused = withContext(Dispatchers.Default) {
-                                Qgc.refusalOf(
-                                    "vehicle.guidedModeGotoLocation",
-                                    JSONObject().put("latitude", offer.latitude).put("longitude", offer.longitude),
-                                    signedLoiterRadius(metres, clockwise),
-                                )
-                            }
-                            if (refused == null) onDismiss() else refusal = refused
-                        }
-                    }
-                }, onCancel = onDismiss)
-            refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+        },
+        onCancel = onDone,
+    ) {
+        OutlinedTextField(
+            value = loiterRadiusField(typed, edit),
+            onValueChange = { text ->
+                typed = text
+                GotoLoiterEdit.edit = loiterTyped(text, edit)
+            },
+            label = { Text(listOf("Radius", edit.unit).filter { it.isNotBlank() }.joinToString(" ")) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Clockwise", Modifier.weight(1f))
+            Switch(checked = edit.clockwise, onCheckedChange = { GotoLoiterEdit.edit = edit.copy(clockwise = it) })
         }
     }
 }

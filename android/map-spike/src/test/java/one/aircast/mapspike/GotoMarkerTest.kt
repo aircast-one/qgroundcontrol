@@ -27,4 +27,21 @@ class GotoMarkerTest {
         assertEquals(listOf(90.0, 270.0), gotoArrows(anticlockwise?.copy(loiterClockwise = true)).map { it.second })
         assertTrue(gotoArrows(anticlockwise?.copy(loiterRadiusMetres = null)).isEmpty())
     }
+
+    @Test
+    fun `a radius edit redraws the loiter ring with a drag handle due east, never below the circle minimum`() {
+        val committed = GotoLocation(TrackPoint(47.4, 8.5), 80.0, "80 m", loiterClockwise = true)
+        val edit = LoiterEdit(152.4, clockwise = false, unit = "ft", metresPerUnit = 0.3048)
+        val shown = editedGoto(committed, edit)
+        assertEquals(GotoLocation(TrackPoint(47.4, 8.5), 152.4, "500 ft", loiterClockwise = false), shown)
+        assertEquals(committed, editedGoto(committed, null))
+        assertEquals(committed.copy(loiterRadiusMetres = null), editedGoto(committed.copy(loiterRadiusMetres = null), edit))
+        val handle = gotoRadiusHandle(shown)!!
+        assertEquals(152.4, metresBetween(committed.at, handle), 0.5)
+        assertTrue(handle.longitude > committed.at.longitude)
+        assertEquals(47.4, handle.latitude, 1e-4)
+        assertEquals(152.4, draggedGotoRadius(committed, handle), 0.5)
+        assertEquals(MINIMUM_CIRCLE_RADIUS_METRES, draggedGotoRadius(committed, committed.at), 0.0)
+        assertNull(gotoRadiusHandle(committed.copy(loiterRadiusMetres = null)))
+    }
 }
