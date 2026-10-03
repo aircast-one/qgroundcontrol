@@ -208,9 +208,10 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("streamRateExtra3", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
 ];
 
-const INVERTED: &[(&str, &str)] = &[("apmStartMavlinkStreams", "Controlled by Vehicle")];
+const INVERTED: &[(&str, &str)] = &[("apmStartMavlinkStreams", "Controlled by Vehicle"), ("androidDontSaveToSDCard", "Save application data to SD Card")];
 
 const QML_LABELS: &[(&str, &str, &str)] = &[
+    ("appSettings", "audioMuted", "Mute all audio output"),
     ("videoSettings", "multiViewEnabled", "Show all cameras"),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
     ("videoSettings", "disableWhenDisarmed", "Stop recording when disarmed"),
@@ -828,6 +829,13 @@ mod tests {
         let shown = inverted(json!({ "name": "apmStartMavlinkStreams", "label": "Request start", "value": true }));
         assert_eq!((shown["label"].clone(), shown["shortLabel"].clone(), shown["inverted"].clone(), shown["value"].clone()), (json!("Controlled by Vehicle"), json!("Controlled by Vehicle"), json!(true), json!(true)), "TelemetrySettings.qml checked: !rawValue, the raw value stays as stored");
         assert!(inverted(json!({ "name": "telemetrySave" })).get("inverted").is_none());
+    }
+
+    #[test]
+    fn the_sd_card_switch_reads_save_to_sd_card_and_flips_like_general_settings() {
+        let shown = inverted(json!({ "name": "androidDontSaveToSDCard", "label": "Don't save to SD card, even if available", "value": false }));
+        assert_eq!((shown["label"].clone(), shown["inverted"].clone(), shown["value"].clone()), (json!("Save application data to SD Card"), json!(true), json!(false)), "GeneralSettings.qml checkedValue: false, uncheckedValue: true");
+        assert_eq!(qml_labelled("appSettings", json!({ "name": "audioMuted", "label": "Mute Audio Output" }))["label"], "Mute all audio output");
     }
 
     #[test]
