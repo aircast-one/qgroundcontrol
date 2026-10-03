@@ -389,6 +389,13 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
         .chain(simple_modes)
         .filter(|s| !s["controls"].as_array().is_none_or(Vec::is_empty))
         .collect();
+    let fixed_channel = page == "Flight Modes" && !px4 && read("FLTMODE_CH").is_none() && read("MODE_CH").is_none();
+    let listed: Vec<Value> = listed.into_iter().map(|mut section| {
+        if fixed_channel && section["title"] == "Mode slots" {
+            section["title"] = json!("Mode slots (Channel 5)");
+        }
+        section
+    }).collect();
     json!({ "kind": "object", "class": "SetupPage", "page": page, "firmware": if px4 { "px4" } else { "apm" }, "available": !listed.is_empty(), "sections": listed })
 }
 

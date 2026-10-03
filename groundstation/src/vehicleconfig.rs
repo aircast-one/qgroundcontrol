@@ -319,6 +319,9 @@ impl<'a> Scope<'a> {
         if let Some(local) = self.locals.get(name) {
             return local.clone();
         }
+        if let Some(initial) = self.config["state"].get(name) {
+            return Val::Bool(page_state().get(name).copied().unwrap_or_else(|| initial.as_bool().unwrap_or(false)));
+        }
         if let Some(constant) = self.config["constants"].get(name) {
             return from_json(constant);
         }
@@ -450,11 +453,24 @@ impl<'a> Scope<'a> {
             .map(|(i, _)| i)
             .ok_or_else(|| format!("{statement} is not an assignment"))?;
         let target = parse(body[..at].trim()).ok_or_else(|| format!("{statement} has no target"))?;
+        if let Expr::Name(state) = &target {
+            if self.config["state"].get(state).is_some() {
+                let value = self.eval_text(body[at + 1..].trim()).truthy();
+                page_state().insert(state.clone(), value);
+                return Ok(());
+            }
+        }
         let Expr::Member(fact, property) = target else { return Err(format!("{statement} does not write a parameter")) };
         let Val::Fact(name) = self.eval(&fact) else { return Err("That parameter is not on this vehicle.".to_string()) };
         let value = self.eval_text(body[at + 1..].trim()).number().ok_or_else(|| format!("{statement} does not compute a number"))?;
         set_parameter(self.backend, &name, property == "rawValue", value)
     }
+}
+
+static PAGE_STATE: std::sync::Mutex<BTreeMap<String, bool>> = std::sync::Mutex::new(BTreeMap::new());
+
+fn page_state() -> std::sync::MutexGuard<'static, BTreeMap<String, bool>> {
+    PAGE_STATE.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn strict_equal(a: &Val, b: &Val) -> bool {
@@ -1305,6 +1321,15 @@ mod tests {
         assert_eq!(custom.len(), 13);
         let third = custom.iter().find(|r| r["label"] == "Flight Mode 3 Super-Simple").unwrap();
         assert_eq!(third["value"], true);
+
+        let fake = Fake::new(&[("SIMPLE", 63.0), ("SUPER_SIMPLE", 0.0)]);
+        let mode = rows(&fake)[0].clone();
+        assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", mode["path"].as_str().unwrap()), r#"{"value":3}"#)["ok"], true);
+        assert_eq!((fake.params.borrow()["SIMPLE"], fake.params.borrow()["SUPER_SIMPLE"]), (0.0, 0.0), "_updateSimpleParamsFromSimpleMode writes 0 and 0 for Custom, never Simple on slot 1");
+        let custom = rows(&fake);
+        assert_eq!((custom[0]["display"].as_str(), custom.len()), (Some("Custom"), 13), "and the page stays in Custom with every box unchecked");
+        assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", mode["path"].as_str().unwrap()), r#"{"value":0}"#)["ok"], true);
+        assert_eq!(rows(&fake)[0]["display"], "Off");
     }
 
     #[test]

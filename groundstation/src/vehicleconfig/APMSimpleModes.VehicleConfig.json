@@ -4,6 +4,9 @@
     "constants": {
         "_allSimpleBits": 63
     },
+    "state": {
+        "_customSimple": false
+    },
     "params": {
         "_simple": "SIMPLE",
         "_superSimple": "SUPER_SIMPLE"
@@ -20,23 +23,23 @@
                     "options": [
                         {
                             "label": "Off",
-                            "checked": "_simple.rawValue === 0 && _superSimple.rawValue === 0",
-                            "onSelected": "{ _simple.rawValue = 0; _superSimple.rawValue = 0 }"
+                            "checked": "!_customSimple && _simple.rawValue === 0 && _superSimple.rawValue === 0",
+                            "onSelected": "{ _customSimple = false; _simple.rawValue = 0; _superSimple.rawValue = 0 }"
                         },
                         {
                             "label": "Simple",
-                            "checked": "_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0",
-                            "onSelected": "{ _simple.rawValue = _allSimpleBits; _superSimple.rawValue = 0 }"
+                            "checked": "!_customSimple && _simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0",
+                            "onSelected": "{ _customSimple = false; _simple.rawValue = _allSimpleBits; _superSimple.rawValue = 0 }"
                         },
                         {
                             "label": "Super-Simple",
-                            "checked": "_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits",
-                            "onSelected": "{ _simple.rawValue = 0; _superSimple.rawValue = _allSimpleBits }"
+                            "checked": "!_customSimple && _simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits",
+                            "onSelected": "{ _customSimple = false; _simple.rawValue = 0; _superSimple.rawValue = _allSimpleBits }"
                         },
                         {
                             "label": "Custom",
-                            "checked": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)",
-                            "onSelected": "{ _simple.rawValue = 1; _superSimple.rawValue = 0 }"
+                            "checked": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))",
+                            "onSelected": "{ _customSimple = true; _simple.rawValue = 0; _superSimple.rawValue = 0 }"
                         }
                     ]
                 },
@@ -45,84 +48,84 @@
                     "label": "Flight Mode 1 Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 1,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SIMPLE",
                     "label": "Flight Mode 2 Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 2,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SIMPLE",
                     "label": "Flight Mode 3 Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 4,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SIMPLE",
                     "label": "Flight Mode 4 Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 8,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SIMPLE",
                     "label": "Flight Mode 5 Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 16,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SIMPLE",
                     "label": "Flight Mode 6 Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 32,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SUPER_SIMPLE",
                     "label": "Flight Mode 1 Super-Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 1,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SUPER_SIMPLE",
                     "label": "Flight Mode 2 Super-Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 2,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SUPER_SIMPLE",
                     "label": "Flight Mode 3 Super-Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 4,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SUPER_SIMPLE",
                     "label": "Flight Mode 4 Super-Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 8,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SUPER_SIMPLE",
                     "label": "Flight Mode 5 Super-Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 16,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 },
                 {
                     "param": "SUPER_SIMPLE",
                     "label": "Flight Mode 6 Super-Simple",
                     "control": "bitmaskCheckbox",
                     "bitMask": 32,
-                    "showWhen": "!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits)"
+                    "showWhen": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))"
                 }
             ]
         }
