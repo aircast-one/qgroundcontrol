@@ -136,6 +136,85 @@ fn detail_facts(backend: &dyn Backend, index: usize) -> Value {
         .collect()
 }
 
+pub fn severity(charge_state: i64) -> i64 {
+    match charge_state {
+        4..=6 => 3,
+        3 => 2,
+        CHARGE_LOW => 1,
+        _ => 0,
+    }
+}
+
+pub fn duration_text(seconds: f64) -> String {
+    if !seconds.is_finite() || seconds < 0.0 {
+        return String::new();
+    }
+    let total = seconds.round() as i64;
+    let (hours, minutes, secs) = (total / 3600, (total % 3600) / 60, total % 60);
+    match (total < 60, hours > 0) {
+        (true, _) => format!("{total} sec"),
+        (false, true) => format!("{hours}:{minutes:02}:{secs:02}"),
+        (false, false) => format!("{minutes}:{secs:02}"),
+    }
+}
+
+pub struct PopupPack {
+    pub charge_state: i64,
+    pub charge_label: String,
+    pub percent: Option<f64>,
+    pub time_remaining: Option<f64>,
+    pub voltage: Option<String>,
+    pub consumed: Option<String>,
+    pub temperature: Option<String>,
+    pub function: Option<String>,
+}
+
+pub fn headline(packs: &[PopupPack]) -> Option<Value> {
+    let worst = packs.iter().reduce(|worst, pack| if severity(pack.charge_state) > severity(worst.charge_state) { pack } else { worst })?;
+    let alarming = severity(worst.charge_state) > 0;
+    let percent = worst.percent.map(|p| format!("{}%", p.round() as i64));
+    let left = worst.time_remaining.map(duration_text).filter(|t| !t.is_empty()).map(|t| format!("{t} left"));
+    let detail = left.into_iter().chain(percent.clone().filter(|_| alarming)).collect::<Vec<_>>().join("  \u{00b7}  ");
+    Some(json!({
+        "text": if alarming || percent.is_none() { worst.charge_label.clone() } else { percent.unwrap_or_default() },
+        "detail": detail,
+        "severity": severity(worst.charge_state),
+    }))
+}
+
+pub fn popup_rows(pack: &PopupPack) -> Vec<Value> {
+    let level = severity(pack.charge_state);
+    [
+        pack.time_remaining.map(|t| ("Time left", duration_text(t), true)),
+        pack.percent.map(|p| ("Charge", format!("{}%", p.round() as i64), true)),
+        pack.voltage.clone().map(|v| ("Voltage", format!("{v} V"), false)),
+        pack.consumed.clone().map(|c| ("Consumed", format!("{c} mAh"), false)),
+        pack.temperature.clone().map(|t| ("Temperature", format!("{t}\u{00b0}C"), false)),
+        pack.function.clone().map(|f| ("Function", f, false)),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|(label, value, coloured)| json!({ "label": label, "value": value, "severity": if coloured { level } else { -1 } }))
+    .collect()
+}
+
+fn popup_pack(backend: &dyn Backend, index: usize) -> PopupPack {
+    let fact = |name: &str| object(&backend.get(&pack_fact_path(index, name)));
+    let raw = |name: &str| { let f = fact(name); f.get("rawValue").or(f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()) };
+    let spelled = |name: &str| raw(name).and_then(|_| fact(name).get("valueString").and_then(Value::as_str).map(str::to_string));
+    let function = raw("function").filter(|f| *f != FUNCTION_UNKNOWN && *f != FUNCTION_ALL).and_then(|_| fact("function").get("enumOrValueString").and_then(Value::as_str).map(str::to_string));
+    PopupPack {
+        charge_state: fact("chargeState").get("value").and_then(Value::as_i64).unwrap_or(CHARGE_UNDEFINED),
+        charge_label: fact("chargeState").get("enumOrValueString").and_then(Value::as_str).unwrap_or_default().to_string(),
+        percent: raw("percentRemaining"),
+        time_remaining: raw("timeRemaining"),
+        voltage: spelled("voltage"),
+        consumed: spelled("mahConsumed"),
+        temperature: spelled("temperature"),
+        function,
+    }
+}
+
 pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let packs = packs(backend);
     let threshold1 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0);
@@ -162,9 +241,11 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "currentText": p.current_text,
                 "percentText": p.percent_text,
                 "facts": detail_facts(backend, index),
+                "rows": popup_rows(&popup_pack(backend, index)),
             })
         })
         .collect();
+    let popup_packs: Vec<PopupPack> = (0..packs.len()).map(|index| popup_pack(backend, index)).collect();
     let worst = ["critical", "warning", "caution", "normal"]
         .into_iter()
         .find(|l| described.iter().any(|p| p["level"] == *l))
@@ -176,12 +257,39 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "level": worst,
         "text": described.first().map(|p| p["text"].clone()).unwrap_or(Value::String(String::new())),
         "packs": described,
+        "headline": headline(&popup_packs),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn popup(state: i64, label: &str, percent: Option<f64>, left: Option<f64>) -> PopupPack {
+        PopupPack { charge_state: state, charge_label: label.into(), percent, time_remaining: left, voltage: Some("15.80".into()), consumed: None, temperature: None, function: None }
+    }
+
+    #[test]
+    fn durations_read_like_battery_indicator() {
+        assert_eq!((duration_text(42.4), duration_text(125.0), duration_text(3725.0), duration_text(-1.0)), ("42 sec".to_string(), "2:05".to_string(), "1:02:05".to_string(), String::new()));
+    }
+
+    #[test]
+    fn the_headline_follows_the_worst_pack_like_battery_indicator() {
+        let calm = headline(&[popup(1, "Ok", Some(72.6), Some(600.0))]).unwrap();
+        assert_eq!((calm["text"].as_str(), calm["detail"].as_str(), calm["severity"].as_i64()), (Some("73%"), Some("10:00 left"), Some(0)), "a healthy pack leads with its charge");
+        let mixed = headline(&[popup(1, "Ok", Some(80.0), None), popup(3, "Critical", Some(12.0), Some(90.0))]).unwrap();
+        assert_eq!((mixed["text"].as_str(), mixed["detail"].as_str(), mixed["severity"].as_i64()), (Some("Critical"), Some("1:30 left  \u{00b7}  12%"), Some(2)), "an alarming pack leads with its state and adds its charge");
+        assert!(headline(&[]).is_none());
+    }
+
+    #[test]
+    fn pack_rows_follow_the_popup_order_and_colour_only_time_and_charge() {
+        let rows = popup_rows(&popup(2, "Low", Some(30.0), Some(65.0)));
+        let labels: Vec<&str> = rows.iter().filter_map(|r| r["label"].as_str()).collect();
+        assert_eq!(labels, vec!["Time left", "Charge", "Voltage"]);
+        assert_eq!((rows[0]["severity"].as_i64(), rows[2]["severity"].as_i64(), rows[2]["value"].as_str()), (Some(1), Some(-1), Some("15.80 V")));
+    }
 
     fn pack_facts(percent: Option<f64>, state: i64, label: &str) -> Vec<(String, Value)> {
         [

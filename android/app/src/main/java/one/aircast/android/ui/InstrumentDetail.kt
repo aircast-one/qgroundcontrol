@@ -3,26 +3,25 @@ package one.aircast.android.ui
 import one.aircast.mapspike.optText
 import org.json.JSONObject
 
-internal data class DetailRow(val label: String, val value: String)
+internal const val SEVERITY_SECONDARY = -1
+
+internal data class DetailRow(val label: String, val value: String, val severity: Int = 0)
+
+internal data class BatteryHeadline(val text: String, val detail: String, val severity: Int)
+
+internal fun batteryHeadline(view: JSONObject?): BatteryHeadline? =
+    view?.takeIf { it.optBoolean("available") }?.optJSONObject("headline")
+        ?.let { BatteryHeadline(it.optText("text"), it.optText("detail"), it.optInt("severity")) }
 
 internal fun batteryDetail(view: JSONObject?): List<DetailRow> {
     val packs = view?.takeIf { it.optBoolean("available") }?.optJSONArray("packs") ?: return emptyList()
     val many = packs.length() > 1
     return (0 until packs.length()).flatMap { index ->
-        val pack = packs.optJSONObject(index) ?: return@flatMap emptyList()
+        val rows = packs.optJSONObject(index)?.optJSONArray("rows") ?: return@flatMap emptyList()
         val prefix = if (many) "Battery ${index + 1} " else ""
-        val facts = pack.optJSONArray("facts")
-        val charge = pack.optText("chargeLabel").takeIf { it.isNotBlank() && it != "n/a" }
-        (0 until (facts?.length() ?: 0)).mapNotNull { at ->
-            facts?.optJSONObject(at)?.let { fact ->
-                val value = fact.optText("valueString")
-                if (notYetComputed(value)) return@let null
-                DetailRow(
-                    label = prefix + factLabel(fact.optText("name")),
-                    value = listOf(value, fact.optText("units")).filter { it.isNotBlank() }.joinToString(" "),
-                )
-            }
-        } + listOfNotNull(charge?.let { DetailRow("${prefix}State", it) })
+        (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.map { row ->
+            DetailRow(prefix + row.optText("label"), row.optText("value"), row.optInt("severity", SEVERITY_SECONDARY))
+        }
     }
 }
 

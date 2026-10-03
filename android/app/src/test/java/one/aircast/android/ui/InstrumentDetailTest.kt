@@ -8,15 +8,14 @@ import org.junit.Test
 
 class InstrumentDetailTest {
 
-    private fun fact(name: String, value: String, units: String = "") =
-        """{"name":"$name","units":"$units","valueString":"$value"}"""
+    private fun row(label: String, value: String, severity: Int = SEVERITY_SECONDARY) =
+        """{"label":"$label","value":"$value","severity":$severity}"""
 
-    private fun battery(vararg packs: String) = JSONObject(
-        """{"kind":"object","class":"Battery","available":true,"packs":[${packs.joinToString(",")}]}""",
+    private fun battery(vararg packs: String, headline: String = "null") = JSONObject(
+        """{"kind":"object","class":"Battery","available":true,"packs":[${packs.joinToString(",")}],"headline":$headline}""",
     )
 
-    private fun pack(charge: String, vararg facts: String) =
-        """{"chargeLabel":"$charge","facts":[${facts.joinToString(",")}]}"""
+    private fun pack(vararg rows: String) = """{"rows":[${rows.joinToString(",")}]}"""
 
     @Test
     fun `a battery that is not there has no detail`() {
@@ -25,53 +24,34 @@ class InstrumentDetailTest {
             emptyList<DetailRow>(),
             batteryDetail(JSONObject("""{"kind":"object","available":false,"packs":[]}""")),
         )
+        assertEquals(null, batteryHeadline(null))
     }
 
     @Test
-    fun `every reported fact is named and carries its units`() {
-        val rows = batteryDetail(battery(pack("n/a", fact("voltage", "11.10", "v"), fact("mahConsumed", "1800", "mAh"))))
-        assertEquals(listOf("Voltage", "Consumed"), rows.map { it.label })
-        assertEquals(listOf("11.10 v", "1800 mAh"), rows.map { it.value })
+    fun `the core's popup rows are shown in its order with their colouring`() {
+        val rows = batteryDetail(battery(pack(row("Time left", "4:10", 1), row("Charge", "30%", 1), row("Voltage", "11.10 V"))))
+        assertEquals(listOf("Time left", "Charge", "Voltage"), rows.map { it.label })
+        assertEquals(listOf(1, 1, SEVERITY_SECONDARY), rows.map { it.severity })
     }
 
     @Test
-    fun `a fact the vehicle has not filled in is left out rather than shown blank`() {
-        val rows = batteryDetail(battery(pack("n/a", fact("voltage", "11.10", "v"), fact("temperature", "--.--", "F"))))
-        assertEquals(listOf("Voltage"), rows.map { it.label })
+    fun `a second pack is labelled so two voltages cannot be read as one`() {
+        val rows = batteryDetail(battery(pack(row("Voltage", "11.10 V")), pack(row("Voltage", "12.30 V"))))
+        assertEquals(listOf("Battery 1 Voltage", "Battery 2 Voltage"), rows.map { it.label })
+    }
+
+    @Test
+    fun `the headline is the worst pack the core picked`() {
+        val view = battery(pack(), headline = """{"text":"Critical","detail":"1:30 left","severity":2}""")
+        assertEquals(BatteryHeadline("Critical", "1:30 left", 2), batteryHeadline(view))
     }
 
     @Test
     fun `every placeholder QGC prints for an uncomputed fact is treated as one`() {
         assertTrue(notYetComputed("--.--"))
         assertTrue(notYetComputed("--:--:--"))
-        assertTrue(notYetComputed("--"))
         assertTrue(notYetComputed(" "))
-        assertFalse(notYetComputed("0"))
         assertFalse(notYetComputed("11.10"))
-        val rows = batteryDetail(
-            battery(pack("n/a", fact("voltage", "11.10", "v"), fact("timeRemainingStr", "--:--:--"))),
-        )
-        assertEquals(listOf("Voltage"), rows.map { it.label })
-    }
-
-    @Test
-    fun `a second pack is labelled so two voltages cannot be read as one`() {
-        val rows = batteryDetail(
-            battery(pack("n/a", fact("voltage", "11.10", "v")), pack("n/a", fact("voltage", "12.30", "v"))),
-        )
-        assertEquals(listOf("Battery 1 Voltage", "Battery 2 Voltage"), rows.map { it.label })
-    }
-
-    @Test
-    fun `a charge state is shown only when the vehicle names one`() {
-        assertEquals(
-            listOf("Voltage"),
-            batteryDetail(battery(pack("n/a", fact("voltage", "11.10", "v")))).map { it.label },
-        )
-        assertEquals(
-            listOf("Voltage", "State"),
-            batteryDetail(battery(pack("Charging", fact("voltage", "11.10", "v")))).map { it.label },
-        )
     }
 
     @Test

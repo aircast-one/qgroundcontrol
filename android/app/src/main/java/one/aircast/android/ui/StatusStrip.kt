@@ -8,6 +8,7 @@ import androidx.compose.ui.res.painterResource
 import one.aircast.android.R
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -185,7 +186,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
                 linksJson?.optText("primary"),
             )
         }
-        InstrumentSheet(instrumentTitle(shown), rows, action = if (shown == StripDetail.Battery) {
+        InstrumentSheet(instrumentTitle(shown), rows, headline = if (shown == StripDetail.Battery) batteryHeadline(batteryJson) else null, action = if (shown == StripDetail.Battery) {
             {
                 if (batteryReturnOffered(batteryJson)) BatteryReturnButton { detail = null }
                 TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery failsafes") }
@@ -218,13 +219,19 @@ internal fun instrumentTitle(instrument: StripDetail): String = when (instrument
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InstrumentSheet(title: String, rows: List<DetailRow>, action: (@Composable () -> Unit)? = null, onDismiss: () -> Unit) {
+private fun InstrumentSheet(title: String, rows: List<DetailRow>, headline: BatteryHeadline? = null, action: (@Composable () -> Unit)? = null, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
         )
+        headline?.let { worst ->
+            Column(Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+                Text(worst.text, style = MaterialTheme.typography.headlineMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = severityColour(worst.severity))
+                if (worst.detail.isNotBlank()) Text(worst.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         action?.invoke()
         when {
             rows.isEmpty() -> Text(
@@ -235,13 +242,21 @@ private fun InstrumentSheet(title: String, rows: List<DetailRow>, action: (@Comp
             )
             else -> rows.forEach { row ->
                 ListItem(
-                    headlineContent = { Text(row.label) },
-                    trailingContent = { Text(row.value) },
+                    headlineContent = { Text(row.label, color = if (row.severity == SEVERITY_SECONDARY) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified) },
+                    trailingContent = { Text(row.value, color = severityColour(row.severity)) },
                 )
             }
         }
         FootNote("Readings come from the aircraft and stop updating when it stops answering.")
     }
+}
+
+@Composable
+private fun severityColour(severity: Int): Color = when {
+    severity >= 2 -> MaterialTheme.colorScheme.error
+    severity == 1 -> MaterialTheme.aircast.warning
+    severity == SEVERITY_SECONDARY -> MaterialTheme.colorScheme.onSurfaceVariant
+    else -> MaterialTheme.colorScheme.onSurface
 }
 
 @Composable

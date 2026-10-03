@@ -6428,6 +6428,10 @@
         "view.autotune.warning",
         "view.battery.available",
         "view.battery.class",
+        "view.battery.headline",
+        "view.battery.headline.detail",
+        "view.battery.headline.severity",
+        "view.battery.headline.text",
         "view.battery.kind",
         "view.battery.level",
         "view.battery.packs.#",
@@ -6447,6 +6451,10 @@
         "view.battery.packs[].level",
         "view.battery.packs[].percent",
         "view.battery.packs[].percentText",
+        "view.battery.packs[].rows.#",
+        "view.battery.packs[].rows[].label",
+        "view.battery.packs[].rows[].severity",
+        "view.battery.packs[].rows[].value",
         "view.battery.packs[].secondaryText",
         "view.battery.packs[].text",
         "view.battery.packs[].voltage",
@@ -9791,6 +9799,11 @@
     "view.battery": {
         "available": "bool",
         "class": "string",
+        "headline": {
+            "detail": "string",
+            "severity": "number",
+            "text": "string"
+        },
         "kind": "string",
         "level": "string",
         "packs": [
@@ -9815,6 +9828,13 @@
                 "level": "string",
                 "percent": "number",
                 "percentText": "string",
+                "rows": [
+                    {
+                        "label": "string",
+                        "severity": "number",
+                        "value": "string"
+                    }
+                ],
                 "secondaryText": "string",
                 "text": "string",
                 "voltage": "null|number",
