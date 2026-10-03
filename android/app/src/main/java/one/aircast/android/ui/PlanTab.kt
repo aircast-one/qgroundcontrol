@@ -260,6 +260,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("Open plan…") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_description), null) },
                                     enabled = can.open,
                                     onClick = {
                                         menuOpen = false
@@ -268,11 +269,13 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Save") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_download), null) },
                                     enabled = can.save,
                                     onClick = { menuOpen = false; files.save() },
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Save as…") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_edit), null) },
                                     enabled = can.save,
                                     onClick = { menuOpen = false; files.saveAs() },
                                 )
@@ -307,6 +310,7 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Load from vehicle") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_upload), null) },
                                     enabled = can.download,
                                     onClick = {
                                         menuOpen = false
@@ -315,8 +319,9 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Clear mission") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_delete), null) },
                                     enabled = can.clearFromVehicle,
-                                    colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error),
+                                    colors = MenuDefaults.itemColors(textColor = MaterialTheme.colorScheme.error, leadingIconColor = MaterialTheme.colorScheme.error),
                                     onClick = { menuOpen = false; pending = PlanConfirm.ClearMission },
                                 )
                             }
