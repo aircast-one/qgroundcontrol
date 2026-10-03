@@ -48,7 +48,7 @@ internal fun modeSlotsView(view: JSONObject?): ModeSlotsView? {
 internal fun liveSlotText(view: ModeSlotsView?): String? {
     val slots = view?.slots?.takeIf { it.isNotEmpty() } ?: return null
     val live = slots.firstOrNull { it.live }
-        ?: return "The switch on channel ${view.channel} is not on any mode slot."
+        ?: return view.reason.ifBlank { "The switch on channel ${view.channel} is not on any mode slot." }
     return "The switch on channel ${view.channel} is on slot ${live.slot}, ${live.mode}."
 }
 

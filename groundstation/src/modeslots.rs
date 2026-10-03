@@ -195,12 +195,13 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "activeParams": active_params,
         "activeSwitches": active_switches,
         "channelMonitor": channel_name == "RC_MAP_FLTMODE",
-        "channel": channel_index + 1,
+        "channel": (channel_index >= 0).then_some(channel_index + 1),
         "channelPwm": pwm.get(channel_index as usize).copied(),
         "liveSlot": live,
         "slots": slots,
         "channelOptions": options,
         "reason": match (reachable, live) {
+            _ if channel_index < 0 => "No mode channel is assigned.",
             (false, _) => "The transmitter is not sending on the mode channel.",
             (_, 0) => "No mode is selected on the transmitter.",
             _ => "",
@@ -380,7 +381,7 @@ mod tests {
         let below = slots_view(&copter(0.0, channels(1500, 8)), &[]);
         assert_eq!(below["channelPwm"], Value::Null, "a mode channel of zero names no channel, so there is no reading rather than the last one");
         assert_eq!(below["liveSlot"], 0);
-        assert!(below["reason"].as_str().unwrap().contains("not sending"));
+        assert_eq!((below["reason"].as_str(), below["channel"].clone()), (Some("No mode channel is assigned."), Value::Null), "an unassigned channel is said so, never named channel 0");
     }
 
     #[test]

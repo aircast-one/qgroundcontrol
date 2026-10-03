@@ -37,6 +37,12 @@ class ModeSlotsTest {
     }
 
     @Test
+    fun `an unassigned mode channel says so instead of naming channel 0`() {
+        val unassigned = JSONObject(view().toString().replace("\"reason\":\"\"", "\"reason\":\"No mode channel is assigned.\""))
+        assertEquals("No mode channel is assigned.", liveSlotText(modeSlotsView(unassigned)))
+    }
+
+    @Test
     fun `a vehicle that does not pick modes from a channel has nothing to show`() {
         val unavailable = JSONObject("""{"available": false, "slots": [], "liveSlot": 0}""")
         assertNull(modeSlotsView(unavailable))

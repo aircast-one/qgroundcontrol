@@ -345,6 +345,30 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     })
 }
 
+const APM_SLOT_PWM: [&str; 6] = ["PWM 0 - 1230", "PWM 1231 - 1360", "PWM 1361 - 1490", "PWM 1491 - 1620", "PWM 1621 - 1749", "PWM 1750 +"];
+
+fn apm_mode_row(name: &str, mut row: Value, px4: bool) -> Value {
+    if px4 {
+        return row;
+    }
+    let numbered = |prefix: &str| name.strip_prefix(prefix).and_then(|rest| rest.parse::<usize>().ok());
+    let option = name.strip_prefix("RC").and_then(|rest| rest.strip_suffix("_OPTION")).and_then(|n| n.parse::<usize>().ok());
+    let slot = numbered("FLTMODE").or_else(|| numbered("MODE")).filter(|n| (1..=6).contains(n));
+    match (option, slot) {
+        (Some(channel), _) => {
+            row["label"] = json!(format!("Channel option {channel}"));
+            row["shortLabel"] = json!(format!("Channel option {channel}"));
+        }
+        (None, Some(slot)) => {
+            let heading = row["shortLabel"].as_str().filter(|l| !l.is_empty()).or_else(|| row["label"].as_str()).unwrap_or_default().to_string();
+            row["shortLabel"] = json!(heading);
+            row["label"] = json!(APM_SLOT_PWM[slot - 1]);
+        }
+        _ => {}
+    }
+    row
+}
+
 fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
     let Some(sections) = sections_for(page, px4) else { return crate::read::refused(&format!("no setup page is called {page} for this firmware; the pages a vehicle offers depend on which plugin built them")) };
     let read = |name: &str| {
@@ -361,7 +385,7 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
     let (vtol, fixed_wing) = (crate::read::flag(&shape, "vtol"), crate::read::flag(&shape, "fixedWing"));
     let listed: Vec<Value> = sections
         .iter()
-        .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter(|p| switch_applies(p, vtol, fixed_wing)).filter_map(|p| read(p)).collect::<Vec<_>>() }))
+        .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter(|p| switch_applies(p, vtol, fixed_wing)).filter_map(|p| read(p).map(|row| apm_mode_row(p, row, px4))).collect::<Vec<_>>() }))
         .chain(simple_modes)
         .filter(|s| !s["controls"].as_array().is_none_or(Vec::is_empty))
         .collect();
@@ -371,6 +395,15 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apm_mode_rows_carry_qgc_channel_labels_and_pwm_ranges() {
+        let option = apm_mode_row("RC9_OPTION", json!({ "label": "RC input option", "shortLabel": "" }), false);
+        assert_eq!((option["label"].as_str(), option["shortLabel"].as_str()), (Some("Channel option 9"), Some("Channel option 9")), "APMFlightModesComponent titles each row by its channel");
+        let slot = apm_mode_row("FLTMODE6", json!({ "label": "Flight Mode 6", "shortLabel": "" }), false);
+        assert_eq!((slot["shortLabel"].as_str(), slot["label"].as_str()), (Some("Flight Mode 6"), Some("PWM 1750 +")));
+        assert_eq!(apm_mode_row("FLTMODE1", json!({ "label": "x" }), true)["label"], "x", "PX4's page shows no PWM ranges");
+    }
 
     #[test]
     fn setup_complete_only_asks_the_components_like_vehicle_summary() {
