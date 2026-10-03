@@ -38,6 +38,7 @@ fn editing(kind: &str) -> &'static str {
         "udp" => "portOnly",
         "serial" => "serial",
         "logReplay" => "logFile",
+        "bluetooth" => "device",
         _ => "none",
     }
 }

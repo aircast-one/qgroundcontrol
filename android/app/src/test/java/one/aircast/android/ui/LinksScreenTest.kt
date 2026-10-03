@@ -260,6 +260,16 @@ class LinkEditRulesTest {
     }
 
     @org.junit.Test
+    fun `a saved bluetooth link is edited by picking another device, as BluetoothSettings does`() {
+        org.junit.Assert.assertTrue(linkIsEditable(LinkRow(index = 0, name = "HC-05", statusLine = "", connected = false, heard = false, lastError = "", editing = "device")))
+        org.junit.Assert.assertEquals(
+            "the device is set by address through setDeviceByAddress, not written as a field",
+            listOf("name" to "HC-05", "autoConnect" to false, "highLatency" to false),
+            editWrites("device", "HC-05", "", 0, "", 0, false, false),
+        )
+    }
+
+    @org.junit.Test
     fun `a saved log replay link is edited by choosing another log, as LogReplaySettings does`() {
         org.junit.Assert.assertTrue(linkIsEditable(LinkRow(index = 0, name = "Replay", statusLine = "", connected = false, heard = false, lastError = "", editing = "logFile")))
         org.junit.Assert.assertEquals(

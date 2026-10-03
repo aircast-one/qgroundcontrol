@@ -255,6 +255,10 @@ fn serial_framing(kind: &Kind, field: &str, value: i64) -> Option<Kind> {
     })
 }
 
+fn scanned_device(scanned: Vec<(String, String)>, address: &str) -> Option<(String, String)> {
+    scanned.into_iter().find(|(_, known)| known.eq_ignore_ascii_case(address))
+}
+
 pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkConfig> {
     let text = value.as_str().map(|t| t.trim().to_string());
     let port = value.as_u64().and_then(|p| u16::try_from(p).ok());
@@ -264,6 +268,10 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
         (_, "highLatency") => return value.as_bool().map(|high_latency| LinkConfig { high_latency, ..config.clone() }),
         (Kind::Tcp { port, .. }, "host") => Kind::Tcp { host: text?, port: *port },
         (Kind::Tcp { host, .. }, "port") => Kind::Tcp { host: host.clone(), port: port? },
+        (Kind::Bluetooth { .. }, "setDeviceByAddress") => {
+            let (device_name, address) = scanned_device(crate::platformbluetooth::devices(), &text?)?;
+            Kind::Bluetooth { device_name, address }
+        }
         (Kind::Udp { hosts, .. }, "localPort") => Kind::Udp { local_port: port?, hosts: hosts.clone() },
         (Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_display_name, .. }, "portName") => {
             let port_name = text?;
@@ -711,7 +719,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             save();
             Value::Null
         }
-        hosts if hosts.starts_with(MODEL) && (hosts.ends_with(".addHost") || hosts.ends_with(".removeHost")) => {
+        hosts if hosts.starts_with(MODEL) && (hosts.ends_with(".addHost") || hosts.ends_with(".removeHost") || hosts.ends_with(".setDeviceByAddress")) => {
             return set(hosts, &json!({ "value": text(0) }).to_string());
         }
         _ => json!(disconnect(path.strip_prefix(MODEL)?.strip_prefix('.')?.strip_suffix(".link.disconnect")?.parse().ok()?)),
@@ -773,6 +781,9 @@ mod tests {
         assert_eq!(edited(&tcp, "port", &json!(5761)).unwrap().kind, Kind::Tcp { host: "10.0.0.5".into(), port: 5761 });
         assert_eq!(edited(&tcp, "name", &json!("Bench 2")).unwrap().name, "Bench 2");
         assert_eq!(edited(&tcp, "localPort", &json!(1)), None, "a field the kind does not carry is not written");
+        let scanned = vec![("HC-05".to_string(), "98:D3:31:F6:12:34".to_string())];
+        assert_eq!(scanned_device(scanned.clone(), "98:d3:31:f6:12:34"), Some(("HC-05".to_string(), "98:D3:31:F6:12:34".to_string())), "BluetoothConfiguration::setDeviceByAddress compares QBluetoothAddress values, which ignore case");
+        assert_eq!(scanned_device(scanned, "00:00:00:00:00:01"), None, "an address the scan never saw leaves the link as it was, as setDeviceByAddress does");
         let replay = LinkConfig { name: "Replay".into(), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: "/a.tlog".into() } };
         assert_eq!(edited(&replay, "filename", &json!("/b.tlog")).map(|c| c.kind), Some(Kind::LogReplay { file: "/b.tlog".into() }), "LogReplaySettings picks another log for a saved replay link");
         assert!(edited(&tcp, "autoConnect", &json!(true)).is_some_and(|c| c.auto_connect), "Automatically Connect on Start");

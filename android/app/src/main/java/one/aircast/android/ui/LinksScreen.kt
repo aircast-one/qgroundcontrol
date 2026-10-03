@@ -163,7 +163,7 @@ internal fun pruneReplayFolder(context: android.content.Context, link: String, k
 }
 
 internal fun linkIsEditable(row: LinkRow): Boolean =
-    !row.connected && row.editing in setOf("hostAndPort", "portOnly", "serial", "logFile")
+    !row.connected && row.editing in setOf("hostAndPort", "portOnly", "serial", "logFile", "device")
 
 internal val CREATABLE_LINK_TYPES = listOf("udp", "tcp", "serial")
 internal const val BLUETOOTH_LINK = "bluetooth"
@@ -514,6 +514,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
     var framing by remember { mutableStateOf(row.framing) }
     var advanced by remember { mutableStateOf(false) }
     var logFile by remember { mutableStateOf(row.filename) }
+    var device by remember { mutableStateOf<BluetoothDeviceChoice?>(null) }
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val cancel: () -> Unit = {
@@ -555,7 +556,9 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                         singleLine = true,
                     )
                 }
-                if (row.editing == "logFile") {
+                if (row.editing == "device") {
+                    BluetoothPicker(device) { device = it }
+                } else if (row.editing == "logFile") {
                     Text(logFile.substringAfterLast('/').ifBlank { "No log file chosen" }, style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(onClick = { logPicker.launch(arrayOf("*/*")) }) { Text("Choose log file") }
                 } else if (row.editing == "serial") {
@@ -608,7 +611,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     val udp = row.editing == "portOnly"
                     val parsed = port.ifBlank { if (udp) udpDefault else port }.toIntOrNull() ?: 0
                     val invalid = when {
-                        row.editing == "serial" -> null
+                        row.editing == "serial" || row.editing == "device" -> null
                         row.editing == "logFile" -> "Choose a log file.".takeIf { logFile.isBlank() }
                         udp -> linkFormError("udp", "", port, udpDefault)
                         parsed !in 1..65535 -> "Port must be a number between 1 and 65535."
@@ -624,7 +627,10 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                                 return@launch
                             }
                             val resolved = name.trim().ifBlank {
-                                uniqueLinkName(editedLinkSuggestion(row.editing, host, port, portLabel(ports, portName)), rows.filter { it.index != row.index }.map { it.name })
+                                uniqueLinkName(
+                                    if (row.editing == "device") device?.name ?: row.name else editedLinkSuggestion(row.editing, host, port, portLabel(ports, portName)),
+                                    rows.filter { it.index != row.index }.map { it.name },
+                                )
                             }
                             withContext(Dispatchers.Default) {
                                 editWrites(row.editing, resolved, host, parsed, portName, baud, autoConnect, highLatency, framing, logFile)
@@ -632,6 +638,8 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                                         // qtpaths: links.linkConfigurations.0.name, links.linkConfigurations.0.autoConnect, links.linkConfigurations.0.highLatency, links.linkConfigurations.0.host, links.linkConfigurations.0.port, links.linkConfigurations.0.localPort, links.linkConfigurations.0.portName, links.linkConfigurations.0.baud, links.linkConfigurations.0.dataBits, links.linkConfigurations.0.stopBits, links.linkConfigurations.0.parity, links.linkConfigurations.0.flowControl, links.linkConfigurations.0.filename
                                         Qgc.set("$LINKS_PATH.${row.index}.$field", value)
                                     }
+                                // qtpaths: links.linkConfigurations.0.setDeviceByAddress
+                                device?.let { Qgc.invoke("$LINKS_PATH.${row.index}.setDeviceByAddress", it.address) }
                                 Qgc.invoke("links.commitLinkConfigurations")
                                 Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")
                             }
