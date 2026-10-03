@@ -5,10 +5,10 @@ private val PROPER_NOUNS = setOf("Android", "ArduPilot", "Pixhawk", "Herelink", 
 private fun keepsCase(word: String): Boolean =
     word in PROPER_NOUNS || word.drop(1).any(Char::isUpperCase) || word.none(Char::isLowerCase)
 
-private val PROPER_PHRASES = setOf("PX4 Pro")
+private val PROPER_PHRASES = setOf("PX4 Pro", "3DR Solo", "Parrot Discovery", "Yuneec Mantis G", "Herelink AirUnit", "Herelink Hotspot")
 
 fun sentenceCase(label: String): String =
-    if (label in PROPER_PHRASES) label else label.split(" ").mapIndexed { at, word ->
+    PROPER_PHRASES.firstOrNull { label.startsWith(it) }?.let { it + sentenceCase(label.removePrefix(it)).replaceFirstChar(Char::lowercaseChar) } ?: label.split(" ").mapIndexed { at, word ->
         word.split("-").mapIndexed { part, piece ->
             val lead = piece.takeWhile { !it.isLetterOrDigit() }
             val body = piece.drop(lead.length)
