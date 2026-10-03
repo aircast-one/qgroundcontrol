@@ -777,7 +777,11 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
                     let checked = scope.eval_text(toggle["checked"].as_str().unwrap_or("false")).truthy();
                     let gated = match checked {
                         true => row,
-                        false => labelled(row, control, false),
+                        false => {
+                            let mut off = labelled(row, control, false);
+                            off["disabledReason"] = json!(format!("Turn on {label} to edit"));
+                            off
+                        }
                     };
                     vec![json!({ "control": "toggle", "name": format!("{name}.enable"), "label": label, "value": checked, "enabled": enabled, "path": format!("{path}.enable") }), gated]
                 }
@@ -855,7 +859,7 @@ pub fn page(backend: &dyn Backend, page: &str, px4: bool) -> Value {
                     .collect();
             shown.into_iter().chain(disabled_companion(&base, page, section_index, section))
         })
-        .filter(|s| s["controls"].as_array().is_some_and(|c| c.iter().any(|row| row["control"] != "label")))
+        .filter(|s| s["controls"].as_array().is_some_and(|c| !c.is_empty()))
         .collect();
     json!({ "kind": "object", "class": "SetupPage", "page": page, "firmware": if px4 { "px4" } else { "apm" }, "available": !sections.is_empty(), "sections": sections })
 }
@@ -1226,6 +1230,14 @@ mod tests {
         let circle = fence["sections"].as_array().unwrap().iter().find(|s| s["title"] == "GeoFence").unwrap()["controls"].as_array().unwrap().iter().find(|c| c["label"] == "Circle centered on Home").unwrap().clone();
         assert_eq!(write(&fake, circle["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
         assert_eq!(fake.params.borrow()["FENCE_TYPE"], 2.0, "a bitmask checkbox sets only its own bit");
+    }
+
+    #[test]
+    fn a_section_of_only_labels_is_still_shown_like_the_generated_qml() {
+        let fake = Fake::new(&[("FS_GCS_ENABLE", 1.0), ("FS_GCS_TIMEOUT", 5.0), ("FS_THR_ENABLE", 1.0), ("FS_THR_VALUE", 975.0)]);
+        let failsafes = page(&fake, "Failsafes", false);
+        let rc = failsafes["sections"].as_array().unwrap().iter().find(|s| s["title"].as_str().is_some_and(|t| t.contains("RC"))).cloned();
+        assert!(rc.is_some(), "the RC failsafe section stays with only its label when FS_OPTIONS is missing: {failsafes}");
     }
 
     #[test]
