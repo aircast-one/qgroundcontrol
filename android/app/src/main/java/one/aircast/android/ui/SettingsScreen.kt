@@ -333,6 +333,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     BackHandler(enabled = open != null) { open = null }
 
     val current = pages.firstOrNull { it.title == open }
+    val body = remember(current) {
+        current?.let { shown -> androidx.compose.runtime.movableContentOf { at: Modifier -> SettingsPageBody(shown, at) } }
+    }
     BoxWithConstraints(modifier.fillMaxSize()) {
         if (maxWidth >= LIST_DETAIL_MIN_WIDTH) {
             Row(Modifier.fillMaxSize()) {
@@ -344,7 +347,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         CompositionLocalProvider(LocalTwoPane provides true) {
                             Column(Modifier.fillMaxSize()) {
                                 PageTopBar(pageTitle(current.title), "Back") { open = null }
-                                SettingsPageBody(current, Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH))
+                                body?.invoke(Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH))
                             }
                         }
                     }
@@ -355,7 +358,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         } else {
             Column(Modifier.fillMaxSize()) {
                 PageTopBar(pageTitle(current.title), "Back") { open = null }
-                SettingsPageBody(current, Modifier.fillMaxSize())
+                body?.invoke(Modifier.fillMaxSize())
             }
         }
     }
