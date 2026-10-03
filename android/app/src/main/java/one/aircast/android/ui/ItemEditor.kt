@@ -414,7 +414,7 @@ private fun CommandPicker(itemCategory: String?, onDismiss: () -> Unit, onChosen
                         FilterChip(
                             selected = name == category,
                             onClick = { category = name },
-                            label = { Text(name) },
+                            label = { Text(sentenceCase(name)) },
                             modifier = Modifier.padding(end = 4.dp),
                         )
                     }
@@ -422,7 +422,7 @@ private fun CommandPicker(itemCategory: String?, onDismiss: () -> Unit, onChosen
                 LazyColumn(Modifier.heightIn(max = 360.dp)) {
                     items(commands, key = { it.id }) { command ->
                         ListItem(
-                            headlineContent = { Text(command.name) },
+                            headlineContent = { Text(sentenceCase(command.name)) },
                             supportingContent = { Text(command.description, style = MaterialTheme.typography.bodySmall) },
                             modifier = Modifier.clickable { onChosen(command.id) },
                         )

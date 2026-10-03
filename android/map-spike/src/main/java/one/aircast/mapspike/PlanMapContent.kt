@@ -669,7 +669,7 @@ internal fun MapSpikeScreen(
                         ) {
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    "${item.command.ifBlank { "Item" }} ${sequenceLabel(item)}",
+                                    "${sentenceCase(item.command.ifBlank { "Item" })} ${sequenceLabel(item)}",
                                     style = MaterialTheme.typography.titleLarge,
                                 )
                                 listOfNotNull(itemPlace(item, allItems), sheetDetail(item, surveyStatsMap[item.index]).ifBlank { null }).joinToString(" \u00b7 ").ifBlank { null }?.let {
@@ -1462,7 +1462,7 @@ private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
                 Text(row.number, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.surface, maxLines = 1)
             }
             Column(Modifier.weight(1f)) {
-                Text(row.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                Text(sentenceCase(row.name), style = MaterialTheme.typography.titleMedium, maxLines = 1)
                 row.detail.ifBlank { null }?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                 }
