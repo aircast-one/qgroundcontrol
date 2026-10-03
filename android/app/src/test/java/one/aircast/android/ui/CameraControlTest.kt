@@ -19,65 +19,23 @@ class CameraControlTest {
     }
 
     @Test
-    fun `a photo camera offers a photo shutter`() {
-        val shutter = shutterFor(
-            camera("""{"present":true,"hasModes":true,"modeText":"Photo","mode":0,
-                "modeKnown":true,"canPhoto":true,"canRecord":true,
-                "isRecording":false,"isTakingPhoto":false}""")!!,
-        )!!
-
-        assertEquals("Take Photo", shutter.label)
-        assertTrue(shutter.enabled)
-        assertFalse(shutter.recording)
-    }
-
-    @Test
-    fun `a photo already in progress disables the shutter rather than queueing another`() {
-        val shutter = shutterFor(
-            camera("""{"present":true,"hasModes":true,"modeText":"Photo","mode":0,
-                "modeKnown":true,"canPhoto":true,"canRecord":true,
-                "isRecording":false,"isTakingPhoto":true}""")!!,
-        )!!
-
-        assertFalse(shutter.enabled)
-    }
-
-    @Test
-    fun `video mode records and then stops`() {
-        val idle = shutterFor(
-            camera("""{"present":true,"hasModes":true,"modeText":"Video","mode":1,
-                "modeKnown":true,"canPhoto":true,"canRecord":true,
-                "isRecording":false,"isTakingPhoto":false}""")!!,
-        )!!
-        val running = shutterFor(
-            camera("""{"present":true,"hasModes":true,"modeText":"Video","mode":1,
-                "modeKnown":true,"canPhoto":true,"canRecord":true,
-                "isRecording":true,"isTakingPhoto":false}""")!!,
-        )!!
-
-        assertEquals("Record", idle.label)
-        assertEquals("Stop", running.label)
-        assertTrue(running.recording)
-    }
-
-    @Test
-    fun `a camera in a mode it cannot do offers no shutter`() {
-        assertNull(
-            shutterFor(
-                camera("""{"present":true,"hasModes":true,"modeText":"Video","mode":1,
-                    "modeKnown":true,"canPhoto":true,"canRecord":false,
-                    "isRecording":false,"isTakingPhoto":false}""")!!,
-            ),
-        )
-    }
-
-    @Test
-    fun `an unknown mode is not treated as photo`() {
-        val unknown = camera("""{"present":true,"hasModes":true,"modeText":"Not set","mode":1,
-            "modeKnown":false,"canPhoto":true,"canRecord":true,
-            "isRecording":false,"isTakingPhoto":false}""")!!
-
-        assertFalse(unknown.isVideoMode)
+    fun `the panel offers the shutters the core serves, each with its readout`() {
+        val panel = camera("""{"present":true,"panel":{"visible":true,"inPhotoMode":false,"selectVideoEnabled":true,"selectPhotoEnabled":false,"bothShown":true,
+            "video":{"enabled":true,"capturing":true,"idle":false,"clock":"00:01:05"},
+            "photo":{"enabled":true,"capturing":true,"idle":false,"press":null,"count":"00042"},
+            "freeText":"Free: 12.0 GB","batteryText":null}}""")!!.panel!!
+        val (video, photo) = panel.shutters
+        assertEquals(CAMERA_RECORD, video.action)
+        assertTrue(video.recording && video.readoutActive)
+        assertEquals("00:01:05", video.readout)
+        assertNull("a single shot in progress has no press", photo.action)
+        assertEquals("00042", photo.readout)
+        assertEquals("Video", shutterCaption(panel, video))
+        assertEquals("Free: 12.0 GB", panel.freeText)
+        assertNull(panel.batteryText)
+        val lapse = camera("""{"present":true,"panel":{"visible":true,"bothShown":false,"photo":{"enabled":true,"capturing":true,"press":"stop","count":"00003"}}}""")!!.panel!!
+        assertEquals(CAMERA_STOP_PHOTO, lapse.shutters.single().action)
+        assertNull(shutterCaption(lapse, lapse.shutters.single()))
     }
 
     @Test
@@ -134,15 +92,12 @@ class CameraTimelapseTest {
         val single = cameraReading(view(photoMode = "\"single\"", lapseSeconds = "null", lapseCount = "null"))!!
 
         assertNull(lapsePlan(single))
-        assertEquals("Take Photo", shutterFor(single)!!.label)
-        assertEquals(CAMERA_PHOTO, shutterFor(single)!!.action)
     }
 
     @Test
     fun `a shutter that starts ten shots does not say Take Photo`() {
         val lapsing = cameraReading(view())!!
 
-        assertEquals("Start lapse", shutterFor(lapsing)!!.label)
         assertEquals("every 5 s, 10 shots", lapsePlan(lapsing))
     }
 
@@ -151,23 +106,6 @@ class CameraTimelapseTest {
         val forever = cameraReading(view(lapseCount = "0", lapseUnlimited = true))!!
 
         assertEquals("every 5 s, until stopped", lapsePlan(forever))
-    }
-
-    @Test
-    fun `a running interval capture offers the only control that ends it`() {
-        val running = cameraReading(view(canStopPhoto = true, lapseUnlimited = true, lapseCount = "0"))!!
-        val shutter = shutterFor(running)!!
-
-        assertEquals("Stop lapse", shutter.label)
-        assertEquals(CAMERA_STOP_PHOTO, shutter.action)
-        assertEquals(true, shutter.enabled)
-    }
-
-    @Test
-    fun `stopping outranks recording, because a lapse runs in photo mode and cannot wait`() {
-        val muddled = cameraReading(view(canStopPhoto = true, mode = CAM_MODE_VIDEO))!!
-
-        assertEquals(CAMERA_STOP_PHOTO, shutterFor(muddled)!!.action)
     }
 
     @Test

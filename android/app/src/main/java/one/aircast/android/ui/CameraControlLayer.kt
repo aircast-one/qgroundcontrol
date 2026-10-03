@@ -83,7 +83,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
         return
     }
 
-    val shutter = camera?.let { shutterFor(it) } ?: run {
+    val panel = camera?.panel?.takeIf { it.visible } ?: run {
         RcCameraControls(modifier)
         return
     }
@@ -101,27 +101,39 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                onClick = { offMainDetached { refused = Qgc.refusalOf(shutter.action) } },
-                enabled = shutter.enabled,
-                modifier = Modifier.size(SHUTTER_SIZE).semantics { contentDescription = shutter.label },
-                shape = CircleShape,
-                color = Color.Transparent,
-                border = BorderStroke(3.dp, MaterialTheme.aircast.outdoorForeground),
-            ) {
-                Box(Modifier.padding(5.dp), contentAlignment = Alignment.Center) {
-                    Box(
-                        Modifier
-                            .size(if (shutter.recording) 14.dp else SHUTTER_SIZE)
-                            .background(
-                                if (shutter.recording || camera.isVideoMode) MaterialTheme.colorScheme.error else MaterialTheme.aircast.outdoorForeground,
-                                if (shutter.recording) MaterialTheme.shapes.extraSmall else CircleShape,
-                            ),
+            panel.shutters.forEach { shutter ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Surface(
+                        onClick = { shutter.action?.let { action -> offMainDetached { refused = Qgc.refusalOf(action) } } },
+                        enabled = shutter.enabled,
+                        modifier = Modifier.size(SHUTTER_SIZE).semantics { contentDescription = shutter.label },
+                        shape = CircleShape,
+                        color = Color.Transparent,
+                        border = BorderStroke(3.dp, MaterialTheme.aircast.outdoorForeground),
+                    ) {
+                        Box(Modifier.padding(5.dp), contentAlignment = Alignment.Center) {
+                            Box(
+                                Modifier
+                                    .size(if (shutter.recording) 14.dp else SHUTTER_SIZE)
+                                    .background(
+                                        if (shutter.video) MaterialTheme.colorScheme.error else MaterialTheme.aircast.outdoorForeground,
+                                        if (shutter.recording) MaterialTheme.shapes.extraSmall else CircleShape,
+                                    ),
+                            )
+                        }
+                    }
+                    shutterCaption(panel, shutter)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+                    Text(
+                        shutter.readout,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = if (shutter.readoutActive) {
+                            Modifier.background(if (shutter.video) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, MaterialTheme.shapes.extraSmall).padding(horizontal = 4.dp)
+                        } else {
+                            Modifier.padding(horizontal = 4.dp)
+                        },
                     )
                 }
             }
-
-            if (!camera.isVideoMode && camera.canPhoto) PhotoCount()
 
             if (camera.hasModes) {
                 Row(
@@ -129,14 +141,14 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     listOf(false to R.drawable.ic_photo_camera, true to R.drawable.ic_videocam).map { (video, icon) ->
-                        val selected = camera.isVideoMode == video
+                        val selected = panel.inPhotoMode != video
                         Surface(
                             onClick = {
                                 if (!selected) offMainDetached {
                                     refused = Qgc.refusalOf(CAMERA_SET_MODE, if (video) "video" else "photo")
                                 }
                             },
-                            enabled = camera.canChangeMode,
+                            enabled = if (video) panel.selectVideoEnabled else panel.selectPhotoEnabled,
                             shape = CircleShape,
                             color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
                             contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.aircast.outdoorForeground,
@@ -183,6 +195,11 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
 
             lapsePlan(camera)?.let { plan ->
                 Text(text = plan, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        listOfNotNull(panel.freeText, panel.batteryText).takeIf { it.isNotEmpty() }?.let { lines ->
+            Column(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                lines.forEach { Text(it, style = MaterialTheme.typography.labelMedium) }
             }
         }
 
@@ -263,7 +280,18 @@ private fun CameraDetailsSheet(
                 SheetRadioRow(label, index == camera.currentStream) { offMainDetached { Qgc.set(CAMERA_CURRENT_STREAM, index) } }
             }
         }
-        if (camera.canPhoto) {
+        if (camera.hasZoom) {
+            SectionHeader("Zoom")
+            var zoom by remember(camera.zoomLevel) { mutableFloatStateOf(camera.zoomLevel.toFloat()) }
+            Slider(
+                value = zoom,
+                onValueChange = { zoom = it },
+                onValueChangeFinished = { offMainDetached { Qgc.set(CAMERA_ZOOM, zoom.toDouble()) } },
+                valueRange = ZOOM_LOWEST.toFloat()..ZOOM_HIGHEST.toFloat(),
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+        }
+        if (camera.capturesPhotos) {
             SectionHeader("Photo mode")
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Single" to false, "Time lapse" to true).forEachIndexed { index, (label, lapse) ->
@@ -383,21 +411,4 @@ private fun CameraDetailsSheet(
 
         Spacer(Modifier.padding(bottom = 24.dp))
     }
-}
-
-private const val TRIGGER_COUNT = "vehicle.cameraTriggerPoints.count"
-private const val TRIGGER_POLL_MS = 1000L
-
-internal fun photoCountText(count: Int): String = ("00000$count").takeLast(5)
-
-@Composable
-private fun PhotoCount() {
-    var count by remember { mutableStateOf(0) }
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            count = withContext(Dispatchers.Default) { Qgc.get(TRIGGER_COUNT)?.optInt("value") ?: 0 }
-            delay(TRIGGER_POLL_MS)
-        }
-    }
-    Text(photoCountText(count), style = MaterialTheme.typography.labelMedium)
 }

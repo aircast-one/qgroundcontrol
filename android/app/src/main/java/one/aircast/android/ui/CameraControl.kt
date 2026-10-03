@@ -17,8 +17,65 @@ data class CameraShutter(
     val label: String,
     val recording: Boolean,
     val enabled: Boolean,
-    val action: String,
+    val action: String?,
+    val video: Boolean,
+    val readout: String,
+    val readoutActive: Boolean,
 )
+
+internal data class CameraPanel(
+    val visible: Boolean,
+    val inPhotoMode: Boolean,
+    val selectVideoEnabled: Boolean,
+    val selectPhotoEnabled: Boolean,
+    val bothShown: Boolean,
+    val shutters: List<CameraShutter>,
+    val freeText: String?,
+    val batteryText: String?,
+)
+
+internal fun cameraPanel(panel: JSONObject?): CameraPanel? = panel?.let {
+    val video = it.optJSONObject("video")?.let { v ->
+        CameraShutter(
+            label = if (v.optBoolean("capturing")) "Stop recording" else "Start recording",
+            recording = v.optBoolean("capturing"),
+            enabled = v.optBoolean("enabled"),
+            action = CAMERA_RECORD,
+            video = true,
+            readout = v.optText("clock"),
+            readoutActive = !v.optBoolean("idle"),
+        )
+    }
+    val photo = it.optJSONObject("photo")?.let { p ->
+        val press = p.optText("press")
+        CameraShutter(
+            label = if (press == "stop") "Stop photos" else "Take photo",
+            recording = p.optBoolean("capturing"),
+            enabled = p.optBoolean("enabled"),
+            action = when (press) {
+                "stop" -> CAMERA_STOP_PHOTO
+                "take" -> CAMERA_PHOTO
+                else -> null
+            },
+            video = false,
+            readout = p.optText("count"),
+            readoutActive = !p.optBoolean("idle"),
+        )
+    }
+    CameraPanel(
+        visible = it.optBoolean("visible"),
+        inPhotoMode = it.optBoolean("inPhotoMode"),
+        selectVideoEnabled = it.optBoolean("selectVideoEnabled"),
+        selectPhotoEnabled = it.optBoolean("selectPhotoEnabled"),
+        bothShown = it.optBoolean("bothShown"),
+        shutters = listOfNotNull(video, photo),
+        freeText = it.optText("freeText").ifBlank { null },
+        batteryText = it.optText("batteryText").ifBlank { null },
+    )
+}
+
+internal fun shutterCaption(panel: CameraPanel, shutter: CameraShutter): String? =
+    (if (shutter.video) "Video" else "Photo").takeIf { panel.bothShown }
 
 
 internal const val CAMERA_VIEW = "view.camera"
@@ -31,9 +88,8 @@ internal data class CameraReading(
     val canPhoto: Boolean,
     val canRecord: Boolean,
     val isTakingPhoto: Boolean,
-    val isVideoMode: Boolean,
+    val capturesPhotos: Boolean,
     val timelapse: Boolean,
-    val canStopPhoto: Boolean,
     val lapseSeconds: Double?,
     val lapseCount: Int?,
     val lapseUnlimited: Boolean,
@@ -49,6 +105,7 @@ internal data class CameraReading(
     val selected: Int? = null,
     val streamLabels: List<String> = emptyList(),
     val currentStream: Int = 0,
+    val panel: CameraPanel? = null,
 )
 
 internal fun cameraReading(view: JSONObject?): CameraReading? {
@@ -61,10 +118,8 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         canPhoto = view.optBoolean("canPhoto"),
         canRecord = view.optBoolean("canRecord"),
         isTakingPhoto = view.optBoolean("isTakingPhoto"),
-        isVideoMode = view.optInt("mode", CAM_MODE_UNDEFINED) == CAM_MODE_VIDEO &&
-            view.optBoolean("modeKnown"),
+        capturesPhotos = view.optBoolean("capturesPhotos"),
         timelapse = view.optText("photoMode") == "timelapse",
-        canStopPhoto = view.optBoolean("canStopPhoto"),
         lapseSeconds = view.optDouble("lapseSeconds").takeIf { it.isFinite() },
         lapseCount = if (view.isNull("lapseCount")) null else view.optInt("lapseCount"),
         lapseUnlimited = view.optBoolean("lapseUnlimited"),
@@ -84,6 +139,7 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
             (0 until (listed?.length() ?: 0)).map { listed?.optText(it).orEmpty() }
         },
         currentStream = view.optInt("currentStream"),
+        panel = cameraPanel(view.optJSONObject("panel")),
     )
 }
 
@@ -253,11 +309,6 @@ internal fun thermalOpacityIsOffered(reading: ThermalReading?): Boolean =
 
 internal const val CAMERA_RESET = "vehicle.cameraManager.currentCameraInstance.resetSettings"
 
-internal const val RESET_TITLE = "Reset Camera to Factory Settings"
-internal const val RESET_PROMPT = "Confirm resetting all settings?"
-
-internal fun cameraCanReset(camera: CameraReading?): Boolean = camera != null
-
 internal fun zoomStep(camera: CameraReading, by: Double): Double? {
     if (!camera.hasZoom) return null
     val wanted = (camera.zoomLevel + by).coerceIn(ZOOM_LOWEST, ZOOM_HIGHEST)
@@ -291,25 +342,3 @@ internal fun lapsePlan(camera: CameraReading): String? {
 
 private fun trimmed(value: Double): String =
     if (value == value.toLong().toDouble()) value.toLong().toString() else "%.1f".format(value)
-
-internal fun shutterFor(camera: CameraReading): CameraShutter? = when {
-    camera.canStopPhoto -> CameraShutter(
-        label = "Stop lapse",
-        recording = true,
-        enabled = true,
-        action = CAMERA_STOP_PHOTO,
-    )
-    camera.isVideoMode && camera.canRecord -> CameraShutter(
-        label = if (camera.isRecording) "Stop" else "Record",
-        recording = camera.isRecording,
-        enabled = true,
-        action = CAMERA_RECORD,
-    )
-    !camera.isVideoMode && camera.canPhoto -> CameraShutter(
-        label = if (camera.timelapse) "Start lapse" else "Take Photo",
-        recording = false,
-        enabled = !camera.isTakingPhoto,
-        action = CAMERA_PHOTO,
-    )
-    else -> null
-}

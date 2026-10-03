@@ -778,6 +778,7 @@ fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, trackin
         ("storageFreeStr", json!(big_size_mb(camera.free_mib.unwrap_or(0.0).max(0.0) as u64))),
         ("capturesPhotos", json!(streams_or(CAP_CAPTURE_IMAGE))),
         ("capturesVideo", json!(streams_or(CAP_CAPTURE_VIDEO))),
+        ("hasVideoStream", json!(flag(CAP_HAS_VIDEO_STREAM))),
         ("hasModes", json!(has_modes)),
         ("photosInVideoMode", json!(flag(CAP_IMAGE_IN_VIDEO_MODE))),
         ("videoInPhotoMode", json!(flag(CAP_VIDEO_IN_IMAGE_MODE))),

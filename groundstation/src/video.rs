@@ -19,7 +19,7 @@ pub fn no_video_text(source: &str, udp: &str, rtsp: &str, tcp: &str, whep: &str)
     };
     format!("No video from {}", if url.is_empty() { source } else { url })
 }
-pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,supportsTrackingRect,supportsTrackingPoint,streamLabels,currentStream";
+pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasVideoStream,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,supportsTrackingRect,supportsTrackingPoint,streamLabels,currentStream";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.cameraManager.cameraLabels",
@@ -38,6 +38,7 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCameraInstance.photoLapseCount",
     "vehicle.cameraManager.currentCameraInstance.videoInPhotoMode",
     "vehicle.cameraManager.currentCameraInstance.capturesVideo",
+    "vehicle.cameraManager.currentCameraInstance.hasVideoStream",
     "vehicle.cameraManager.currentCameraInstance.hasModes",
     "vehicle.cameraManager.currentCameraInstance.batteryRemaining",
     "vehicle.cameraManager.currentCameraInstance.hasZoom",
@@ -72,7 +73,7 @@ pub(crate) fn slot_flag(backend: &dyn Backend, path: &str, slot: usize) -> bool 
 
 pub fn can_change_mode(mode: i64, photo_status: i64, video_status: i64) -> bool {
     match mode {
-        PHOTO_MODE => matches!(photo_status, PHOTO_CAPTURE_IDLE | PHOTO_CAPTURE_INTERVAL_IDLE),
+        PHOTO_MODE | SURVEY_MODE => matches!(photo_status, PHOTO_CAPTURE_IDLE | PHOTO_CAPTURE_INTERVAL_IDLE),
         _ => video_status == VIDEO_CAPTURE_STOPPED,
     }
 }
@@ -221,9 +222,48 @@ fn tracking_shapes(camera: &Value) -> Vec<&'static str> {
 }
 
 const DESTRUCTIVE_OFFERS: [(&str, &str, &str, bool); 2] = [
-    ("formatStorage", "Format", "Erase every file on the camera's storage. This cannot be undone.", true),
-    ("resetSettings", "Reset", "Put every camera setting back to its factory value. This cannot be undone.", false),
+    ("formatStorage", "Format Camera Storage", "Confirm erasing all files?", true),
+    ("resetSettings", "Reset Camera to Factory Settings", "Confirm resetting all settings?", false),
 ];
+
+const CAPTURE_DISABLED: i64 = 0;
+const CAPTURE_IDLE: i64 = 1;
+const CAPTURE_VIDEO: i64 = 2;
+const CAPTURE_SINGLE_PHOTO: i64 = 2;
+const CAPTURE_MULTIPLE_PHOTOS: i64 = 3;
+const STORAGE_READY: i64 = 2;
+
+fn photo_video_panel(camera: &Value, present: bool, shots: i64) -> Value {
+    let raw_video = integer(camera, "captureVideoState").unwrap_or(CAPTURE_DISABLED);
+    let raw_photo = integer(camera, "capturePhotosState").unwrap_or(CAPTURE_DISABLED);
+    let in_photo = matches!(integer(camera, "cameraMode"), Some(PHOTO_MODE | SURVEY_MODE));
+    let (has_modes, stream) = (flag(camera, "hasModes"), flag(camera, "hasVideoStream"));
+    let video_shown = present && if has_modes { !in_photo } else { flag(camera, "capturesVideo") };
+    let photo_shown = present && if has_modes { in_photo } else { stream || flag(camera, "capturesPhotos") };
+    let battery = integer(camera, "batteryRemaining").unwrap_or(-1);
+    json!({
+        "visible": present && (flag(camera, "capturesVideo") || flag(camera, "capturesPhotos") || flag(camera, "hasTracking") || stream),
+        "inPhotoMode": in_photo,
+        "selectVideoEnabled": !in_photo || raw_photo == CAPTURE_IDLE,
+        "selectPhotoEnabled": in_photo || raw_video == CAPTURE_IDLE,
+        "bothShown": video_shown && photo_shown,
+        "video": video_shown.then(|| json!({
+            "enabled": raw_video != CAPTURE_DISABLED,
+            "capturing": raw_video == CAPTURE_VIDEO,
+            "idle": raw_video == CAPTURE_IDLE,
+            "clock": if raw_video == CAPTURE_IDLE { IDLE_CLOCK.to_string() } else { text(camera, "recordTimeStr") },
+        })),
+        "photo": photo_shown.then(|| json!({
+            "enabled": raw_photo != CAPTURE_DISABLED,
+            "capturing": matches!(raw_photo, CAPTURE_SINGLE_PHOTO | CAPTURE_MULTIPLE_PHOTOS),
+            "idle": raw_photo == CAPTURE_IDLE,
+            "press": match raw_photo { CAPTURE_MULTIPLE_PHOTOS => Some("stop"), CAPTURE_IDLE => Some("take"), _ => None },
+            "count": format!("{:05}", shots.rem_euclid(100_000)),
+        })),
+        "freeText": (integer(camera, "storageStatus") == Some(STORAGE_READY)).then(|| format!("Free: {}", text(camera, "storageFreeStr"))),
+        "batteryText": (battery >= 0).then(|| format!("Battery: {battery} %")),
+    })
+}
 
 fn destructive_offers(present: bool, reports_storage: bool, recording: bool) -> Value {
     DESTRUCTIVE_OFFERS
@@ -352,6 +392,8 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // stopTakePhoto refuses unless the status is one of the two interval states, and nothing in
         // QGC's QML calls it - so a head that starts a timelapse today cannot end it.
         "canStopPhoto": present && matches!(photo_status, PHOTO_CAPTURE_INTERVAL_IDLE | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS),
+        "capturesPhotos": present && captures_photos,
+        "panel": photo_video_panel(&camera, present, shots),
         "hasModes": has_modes,
         "canChangeMode": present && has_modes && can_change_mode(mode, photo_status, video_status),
         "destructiveActions": destructive_offers(present, storage_status != Some(STORAGE_NOT_SUPPORTED), is_recording),
@@ -691,6 +733,23 @@ mod tests {
     }
 
     #[test]
+    fn the_panel_shows_the_buttons_photo_video_control_shows() {
+        let panel = |camera: Value| camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "C1" }).as_object().unwrap().clone().into_iter().chain(camera.as_object().unwrap().clone()).collect::<serde_json::Map<_, _>>().into()), &[])["panel"].clone();
+        let modeless = panel(json!({ "hasModes": false, "capturesVideo": true, "capturesPhotos": true, "captureVideoState": 1, "capturePhotosState": 2, "storageStatus": 2, "storageFreeStr": "12.0 GB", "batteryRemaining": 80 }));
+        assert!(modeless["bothShown"].as_bool().unwrap(), "a camera without modes offers record and photo side by side");
+        assert_eq!((modeless["video"]["clock"].as_str(), modeless["video"]["enabled"].as_bool()), (Some("00:00:00"), Some(true)));
+        assert_eq!((modeless["photo"]["capturing"].as_bool(), modeless["photo"]["press"].clone(), modeless["photo"]["count"].as_str()), (Some(true), Value::Null, Some("00042")), "a single shot in progress keeps the button, drawn capturing, and a press does nothing");
+        assert_eq!((modeless["freeText"].as_str(), modeless["batteryText"].as_str()), (Some("Free: 12.0 GB"), Some("Battery: 80 %")));
+        let survey = panel(json!({ "hasModes": true, "cameraMode": 2, "capturesPhotos": true, "capturePhotosState": 3, "captureVideoState": 1 }));
+        assert!(survey["video"].is_null() && survey["photo"]["press"] == "stop", "survey is photo mode, and an interval capture is stopped by the same button");
+        assert_eq!((survey["selectVideoEnabled"].as_bool(), survey["selectPhotoEnabled"].as_bool()), (Some(false), Some(true)));
+        let disabled = panel(json!({ "hasModes": true, "cameraMode": 1, "capturesVideo": true, "captureVideoState": 0, "recordTimeStr": "00:00:07" }));
+        assert_eq!((disabled["video"]["enabled"].as_bool(), disabled["video"]["clock"].as_str()), (Some(false), Some("00:00:07")));
+        assert_eq!(panel(json!({ "hasTracking": true }))["visible"], true, "a tracking-only camera still gets the panel");
+        assert_eq!(panel(json!({}))["visible"], false);
+    }
+
+    #[test]
     fn a_camera_mid_capture_cannot_be_switched_out_of_its_mode() {
         assert!(can_change_mode(PHOTO_MODE, 0, 0));
         assert!(can_change_mode(PHOTO_MODE, 2, 0), "status 2 is the wait between interval shots, which is idle enough to leave photo mode");
@@ -698,7 +757,7 @@ mod tests {
         assert!(!can_change_mode(PHOTO_MODE, 3, 0), "status 3 is an interval shot in progress, not the wait before one");
         assert!(can_change_mode(VIDEO_MODE, 1, 0));
         assert!(!can_change_mode(VIDEO_MODE, 0, 1), "a running recording holds the camera in video mode");
-        assert!(!can_change_mode(SURVEY_MODE, 0, 1), "the Qt control treats every mode that is not photo as video mode, so a recording holds survey too");
+        assert!(can_change_mode(SURVEY_MODE, 0, 1) && !can_change_mode(SURVEY_MODE, 1, 0), "PhotoVideoControl.qml counts survey as photo mode, so it waits for the photo capture, not the recording");
         let recording = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "cameraMode": 1, "captureVideoState": 2, "capturesPhotos": true, "capturesVideo": true, "hasModes": true })), &[]);
         assert_eq!(recording["canChangeMode"], false);
         assert_eq!(recording["canRecord"], true, "the record control stays live while recording, because it is what stops it");
