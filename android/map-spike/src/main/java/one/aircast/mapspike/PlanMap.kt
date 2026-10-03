@@ -28,7 +28,7 @@ fun PlanMapScreen(
     modifier: Modifier = Modifier,
     onClear: (() -> Unit)? = null,
     onCentre: ((Double, Double) -> Unit)? = null,
-    itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
+    itemEditor: (@Composable (Int, TrackPoint?, () -> Unit, () -> Unit) -> Unit)? = null,
     header: (@Composable (PlanUpload) -> Unit)? = null,
     fitKey: Int = 0,
     overlay: (@Composable BoxScope.() -> Unit)? = null,

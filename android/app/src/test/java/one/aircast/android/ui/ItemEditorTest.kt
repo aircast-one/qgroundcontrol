@@ -8,6 +8,20 @@ import org.junit.Test
 
 class ItemEditorTest {
     @Test
+    fun `structure scan note comes from the core and blank means none like StructureScanEditor`() {
+        assertEquals("The polygon outlines the structure's surface, not the flight path.", gridNote(JSONObject("""{"gridNote":"The polygon outlines the structure's surface, not the flight path."}""")))
+        assertEquals(null, gridNote(JSONObject("""{"gridNote":null}""")))
+        assertEquals(null, gridNote(null))
+    }
+
+    @Test
+    fun `every item but mission settings offers Delete waypoint like the MissionItemEditor menu`() {
+        assertEquals("Delete waypoint", DELETE_ITEM_LABEL)
+        assertEquals(false, itemDeletable(0))
+        assertTrue(itemDeletable(1))
+    }
+
+    @Test
     fun `vehicle position mode shows the vehicle's coordinate and frame altitude like EditPositionDialog`() {
         val shown = vehiclePositionOf(JSONObject("""{"valid":true,"latitude":47.3977419,"longitude":8.5455938}"""), JSONObject("""{"kind":"fact","value":12.3,"valueString":"12.3","units":"m"}"""))
         assertEquals(VehiclePosition("47.3977419", "8.5455938", "12.3 m"), shown)

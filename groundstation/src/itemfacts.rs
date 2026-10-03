@@ -65,6 +65,10 @@ pub fn area_help(kind: &str, complete: bool) -> Option<&'static str> {
     })
 }
 
+pub fn grid_note(kind: &str) -> Option<&'static str> {
+    (kind == "StructureScan").then_some("The polygon outlines the structure's surface, not the flight path.")
+}
+
 fn qt_area_help(backend: &dyn Backend, item: &str, read: &Value) -> Option<&'static str> {
     let (kind, shape) = [("SurveyComplexItem", "survey", "surveyAreaPolygon"), ("CorridorScanComplexItem", "CorridorScan", "corridorPolyline"), ("StructureScanComplexItem", "StructureScan", "structurePolygon")]
         .into_iter()
@@ -258,6 +262,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         "simple": simple,
         "fields": fields,
         "areaHelp": (available && !simple).then(|| qt_area_help(backend, &item, &read)).flatten(),
+        "gridNote": (read.get("class").and_then(Value::as_str) == Some("StructureScanComplexItem")).then(|| grid_note("StructureScan")).flatten(),
         "entryPoint": qt_entry_point(&item, &read),
         "landing": matches!(read.get("class").and_then(Value::as_str), Some("FixedWingLandingComplexItem" | "VTOLLandingComplexItem")),
         "landingNotes": match read.get("class").and_then(Value::as_str) {
@@ -351,6 +356,13 @@ mod tests {
         assert!(area_help("CorridorScan", false).unwrap().contains("Polyline Tools"));
         assert!(area_help("StructureScan", false).unwrap().starts_with("Draw the structure outline"));
         assert_eq!(area_help("survey", true), None);
+    }
+
+    #[test]
+    fn only_a_structure_scan_says_its_polygon_is_the_surface_not_the_path() {
+        assert_eq!(grid_note("StructureScan"), Some("The polygon outlines the structure's surface, not the flight path."));
+        assert_eq!(grid_note("survey"), None);
+        assert_eq!(grid_note("CorridorScan"), None);
     }
 
     #[test]

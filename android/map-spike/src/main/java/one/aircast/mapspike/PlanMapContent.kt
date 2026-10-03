@@ -180,7 +180,7 @@ internal fun MapSpikeScreen(
     mapStyle: String,
     onClear: (() -> Unit)? = null,
     onCentre: ((Double, Double) -> Unit)? = null,
-    itemEditor: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
+    itemEditor: (@Composable (Int, TrackPoint?, () -> Unit, () -> Unit) -> Unit)? = null,
     header: (@Composable (PlanUpload) -> Unit)? = null,
     fitKey: Int = 0,
     overlay: (@Composable BoxScope.() -> Unit)? = null,
@@ -220,6 +220,18 @@ internal fun MapSpikeScreen(
     BackHandler(enabled = selected != null) { selected = null }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val removeItem: (MissionItem) -> Unit = { item ->
+        scope.launch {
+            busy = "Removing #${item.sequence}"
+            val outcome = withContext(Dispatchers.Default) { removeMissionItem(item.index) }
+            selected = if (outcome.ok) selectionAfterRemove(item.index, allItems.size) else null
+            busy = outcome.reason.takeIf { !outcome.ok }
+            if (!outcome.ok) {
+                delay(FAILURE_MESSAGE_MS)
+                busy = null
+            }
+        }
+    }
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableDoubleStateOf(0.0) }
     var controlsHeightPx by remember { mutableIntStateOf(0) }
@@ -1197,22 +1209,7 @@ internal fun MapSpikeScreen(
                                 itemCameraNote(camera)?.let { PaletteNote(it) }
                             }
                             if (item.index > HOME_ITEM) {
-                                TextButton(onClick = {
-                                    scope.launch {
-                                        busy = "Removing #${item.sequence}"
-                                        val outcome = withContext(Dispatchers.Default) {
-                                            removeMissionItem(item.index)
-                                        }
-                                        selected = if (outcome.ok) selectionAfterRemove(item.index, allItems.size) else null
-                                        if (outcome.ok) {
-                                            busy = null
-                                        } else {
-                                            busy = outcome.reason
-                                            delay(FAILURE_MESSAGE_MS)
-                                            busy = null
-                                        }
-                                    }
-                                }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(deleteLabel(item)) }
+                                TextButton(onClick = { removeItem(item) }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(deleteLabel(item)) }
                             }
                         }
 
@@ -1474,7 +1471,10 @@ internal fun MapSpikeScreen(
     }
     }
     editingItem?.let { item ->
-        itemEditor?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }) { editingItem = null }
+        itemEditor?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, { editingItem = null }) {
+            editingItem = null
+            removeItem(item)
+        }
     }
 }
 

@@ -51,6 +51,7 @@ import one.aircast.mapspike.optText
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
@@ -107,6 +108,12 @@ private fun setToVehicleLocation(index: Int): String? =
         ?.let { Qgc.writeRefusal("plan.missionController.visualItems.$index.landingCoordinate", it) } ?: "The vehicle has no position yet."
 
 internal fun areaHelp(view: JSONObject?): String? = view?.optText("areaHelp")?.takeIf { it.isNotBlank() }
+
+internal fun gridNote(view: JSONObject?): String? = view?.optText("gridNote")?.takeIf { it.isNotBlank() }
+
+internal const val DELETE_ITEM_LABEL = "Delete waypoint"
+
+internal fun itemDeletable(index: Int): Boolean = index > 0
 
 internal data class RawEdit(val on: Boolean, val friendlyAllowed: Boolean)
 
@@ -187,7 +194,7 @@ internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, onDismiss: () -> Unit) {
+fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, onDismiss: () -> Unit, onRemove: () -> Unit) {
     var revision by remember(index) { mutableIntStateOf(0) }
     var view by remember(index) { mutableStateOf<JSONObject?>(null) }
     var choosing by remember(index) { mutableStateOf(false) }
@@ -367,6 +374,11 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         FactRow(fact) { revision++ }
                     }
                 }
+                gridNote(view)?.let { note ->
+                    item(key = "gridNote") {
+                        Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+                    }
+                }
                 entryPoint(view)?.let { entry ->
                     item(key = "entry") {
                         Row(
@@ -413,6 +425,13 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         }
                     }
                 }
+            }
+            if (itemDeletable(index)) {
+                TextButton(
+                    onClick = onRemove,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                ) { Text(DELETE_ITEM_LABEL) }
             }
         }
     }
