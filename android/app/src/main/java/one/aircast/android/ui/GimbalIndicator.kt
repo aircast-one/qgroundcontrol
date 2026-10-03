@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
@@ -201,7 +202,9 @@ internal data class OnScreenGimbal(val enabled: Boolean, val clickAndDrag: Boole
 internal fun onScreenGimbal(view: JSONObject?): OnScreenGimbal? =
     view?.takeIf { it.optBoolean("shown") }?.optJSONObject("onScreen")?.let {
         OnScreenGimbal(it.optBoolean("enabled"), it.optBoolean("clickAndDrag"))
-    }?.takeIf { it.enabled }
+    }
+
+internal fun aimFraction(delta: Float, width: Int): Float = delta / (maxOf(width, 1) / 2f)
 
 @Composable
 internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
@@ -211,6 +214,17 @@ internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
     val send = { pan: Float, tilt: Float, point: Boolean ->
         scope.launch(Dispatchers.Default) { gimbalRefusal(Qgc.call("gimbal.onScreen", pan.toDouble(), tilt.toDouble(), point)) }
         Unit
+    }
+    if (!control.enabled) {
+        Box(
+            modifier.pointerInput(Unit) {
+                detectDragGestures { change, drag ->
+                    change.consume()
+                    send(aimFraction(drag.x, size.width), -aimFraction(drag.y, size.width), false)
+                }
+            },
+        )
+        return
     }
     Box(
         modifier.pointerInput(control) {

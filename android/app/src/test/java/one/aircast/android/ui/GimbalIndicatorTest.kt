@@ -33,6 +33,6 @@ class GimbalIndicatorTest {
         assertEquals(1f, corner.second, 0f)
         assertEquals(-1f, screenFraction(0f, 100f, 100, 100).second, 0f)
         assertEquals(OnScreenGimbal(true, true), onScreenGimbal(JSONObject("""{"shown":true,"onScreen":{"enabled":true,"clickAndDrag":true}}""")))
-        assertNull(onScreenGimbal(JSONObject("""{"shown":true,"onScreen":{"enabled":false,"clickAndDrag":true}}""")))
+        assertEquals("with on-screen control off the video still aims by drag, as CameraAimArea", OnScreenGimbal(false, true), onScreenGimbal(JSONObject("""{"shown":true,"onScreen":{"enabled":false,"clickAndDrag":true}}""")))
     }
 }

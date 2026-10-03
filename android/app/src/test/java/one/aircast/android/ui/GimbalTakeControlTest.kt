@@ -22,4 +22,10 @@ class GimbalTakeControlTest {
         assertEquals(false, serialAsks(3, 3))
         assertEquals(true, serialAsks(3, 4))
     }
+
+    @Test
+    fun `a drag aims by its move over half the view width, as CameraAimArea's sensitivity`() {
+        assertEquals(0.5f, aimFraction(100f, 400), 0f)
+        assertEquals(-0.25f, aimFraction(-50f, 400), 0f)
+    }
 }
