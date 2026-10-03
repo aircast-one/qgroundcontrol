@@ -29,7 +29,7 @@ fn setting(backend: &dyn Backend, name: &str) -> bool {
 }
 
 pub fn heading_text(heading: f64) -> String {
-    format!("{:03}", heading.round() as i64)
+    format!("{}\u{b0}", heading.round() as i64)
 }
 
 pub fn attitude_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -86,7 +86,7 @@ mod tests {
     fn serves_the_angles_qgc_draws() {
         let view = attitude_view(&vehicle(&[]), &[]);
         assert_eq!((view["roll"].as_f64(), view["pitch"].as_f64(), view["heading"].as_f64()), (Some(-12.5), Some(4.0), Some(7.4)));
-        assert_eq!(view["headingText"], "007", "QGCAttitudeWidget pads the heading to three digits and draws no degree sign");
+        assert_eq!(view["headingText"], "7\u{b0}", "QGCCompassWidget writes heading.toFixed(0) + \"\u{b0}\"; the attitude widget's padded label is never shown");
         assert_eq!(view["courseOverGround"], Value::Null, "the extra pointers are off until showAdditionalIndicatorsCompass is set");
     }
 
@@ -104,6 +104,6 @@ mod tests {
     #[test]
     fn no_vehicle_is_unavailable() {
         assert_eq!(attitude_view(&Fake(BTreeMap::new()), &[])["available"], false);
-        assert_eq!(heading_text(359.6), "360", "QGC rounds with toFixed(0) and never wraps");
+        assert_eq!(heading_text(359.6), "360\u{b0}", "QGC rounds with toFixed(0) and never wraps");
     }
 }

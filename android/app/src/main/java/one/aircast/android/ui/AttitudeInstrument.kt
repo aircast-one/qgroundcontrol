@@ -54,6 +54,12 @@ private const val PITCH_SPAN_DEGREES = 45f
 private const val LADDER_STEP_DEGREES = 5
 private const val HOME_LETTER = "L"
 private val CARDINALS = listOf(0 to "N", 90 to "E", 180 to "S", 270 to "W")
+private val HEADING_COLOUR = Color(0xFFEE3424)
+private val COURSE_COLOUR = Color(0xFF24D3EE)
+private val ROLL_POINTER_COLOUR = Color(0xFFEE3424)
+private val HORIZON_SKY = Color.hsl(216f, 0.5f, 0.55f)
+private val HORIZON_GROUND = Color.hsl(90f, 0.75f, 0.25f)
+internal val ROLL_TICKS = listOf(-60, -45, -30, -15, 0, 15, 30, 45, 60)
 
 internal data class Attitude(
     val roll: Float,
@@ -68,6 +74,8 @@ internal data class Attitude(
 
 private fun JSONObject.optAngle(key: String): Float? =
     if (isNull(key)) null else optDouble(key).takeIf { !it.isNaN() }?.toFloat()
+
+internal val NO_VEHICLE_ATTITUDE = Attitude(0f, 0f, 0f, "", null, null, null, false)
 
 internal fun attitude(view: JSONObject?): Attitude? =
     view?.takeIf { it.optBoolean("available") }?.let {
@@ -110,7 +118,7 @@ internal fun instrumentStyle(file: String?): InstrumentStyle = when {
 @Composable
 fun AttitudeInstrument(modifier: Modifier = Modifier) {
     val view by qgcPath(ATTITUDE_PATH)
-    val reading = remember(view) { attitude(view) } ?: return
+    val reading = remember(view) { attitude(view) ?: NO_VEHICLE_ATTITUDE }
     var style by remember { mutableStateOf(InstrumentStyle.Integrated) }
 
     LaunchedEffect(Unit) {
@@ -121,7 +129,7 @@ fun AttitudeInstrument(modifier: Modifier = Modifier) {
     }
 
     when (style) {
-        InstrumentStyle.Integrated -> InstrumentDial(reading, horizon = true, compass = true, size = INSTRUMENT_SIZE, modifier = modifier)
+        InstrumentStyle.Integrated -> InstrumentDial(reading, horizon = false, compass = true, size = INSTRUMENT_SIZE, modifier = modifier)
         InstrumentStyle.Horizontal -> Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             InstrumentDial(reading, horizon = true, compass = false, size = SPLIT_SIZE)
             InstrumentDial(reading, horizon = false, compass = true, size = SPLIT_SIZE)
@@ -136,11 +144,10 @@ fun AttitudeInstrument(modifier: Modifier = Modifier) {
 @Composable
 private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     val measurer = rememberTextMeasurer()
-    val sky = MaterialTheme.aircast.mapWater
-    val ground = MaterialTheme.aircast.mapLand
+    val sky = HORIZON_SKY
+    val ground = HORIZON_GROUND
     val ink = MaterialTheme.colorScheme.onSurface
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val accent = MaterialTheme.colorScheme.primary
     val mission = MaterialTheme.aircast.mission
     val home = MaterialTheme.aircast.success
     val label = TextStyle(color = ink, fontSize = 10.sp)
@@ -178,7 +185,7 @@ private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean
                         drawText(text, topLeft = at - Offset(text.size.width / 2f, text.size.height / 2f))
                     }
                 }
-                reading.courseOverGround?.let { drawBearing(it, outer, accent, dashed = false) }
+                reading.courseOverGround?.let { drawBearing(it, outer, COURSE_COLOUR, dashed = false) }
                 reading.headingToNextWaypoint?.let { drawBearing(it, outer, mission, dashed = true) }
                 reading.headingToHome?.let {
                     val at = pointOnRing(center, outer - 7.dp.toPx(), it)
@@ -197,7 +204,7 @@ private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean
                             lineTo(tip.x + 6.dp.toPx(), tip.y)
                             close()
                         },
-                        accent,
+                        HEADING_COLOUR,
                     )
                 }
             }
@@ -250,6 +257,26 @@ private fun DrawScope.drawHorizon(
         }
     }
     drawCircle(ink.copy(alpha = 0.5f), radius = radius, center = center, style = Stroke(1.dp.toPx()))
+    rotate(-reading.roll) {
+        ROLL_TICKS.forEach { degrees ->
+            drawLine(
+                ink,
+                pointOnRing(center, radius - 1.dp.toPx(), degrees.toFloat()),
+                pointOnRing(center, radius - (if (degrees % 30 == 0) 7.dp else 4.dp).toPx(), degrees.toFloat()),
+                strokeWidth = 1.5f.dp.toPx(),
+            )
+        }
+    }
+    val pointerTip = Offset(center.x, center.y - radius + 8.dp.toPx())
+    drawPath(
+        Path().apply {
+            moveTo(pointerTip.x, pointerTip.y)
+            lineTo(pointerTip.x - 4.dp.toPx(), pointerTip.y + 6.dp.toPx())
+            lineTo(pointerTip.x + 4.dp.toPx(), pointerTip.y + 6.dp.toPx())
+            close()
+        },
+        ROLL_POINTER_COLOUR,
+    )
     drawLine(ink, Offset(center.x - radius * 0.45f, center.y), Offset(center.x - radius * 0.15f, center.y), strokeWidth = 3.dp.toPx())
     drawLine(ink, Offset(center.x + radius * 0.15f, center.y), Offset(center.x + radius * 0.45f, center.y), strokeWidth = 3.dp.toPx())
     drawCircle(ink, radius = 2.dp.toPx(), center = center)
