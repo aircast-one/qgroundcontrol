@@ -622,6 +622,7 @@ internal fun FactRow(
     titleColor: Color = Color.Unspecified,
     fieldModifier: Modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
     onWrite: () -> Unit = {},
+    onRejected: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
@@ -645,7 +646,7 @@ internal fun FactRow(
             when {
                 fact.isBitmask -> BitmaskPicker(fact, ::write, inside)
                 fact.isEnum && !fact.valueIsOffTheEnumList -> EnumField(fact, inside, ::write)
-                else -> FactTextField(fact, onWrite, inside)
+                else -> FactTextField(fact, onWrite, inside, onRejected)
             }
             val runInert = LocalRunInertNote.current
             val note = (subtitle.split(" · ") + listOfNotNull(inertNote(fact).takeIf { !fact.enabled && it != runInert }))
@@ -972,7 +973,7 @@ private suspend fun rejectionFor(fact: Fact, text: String): String? =
     }
 
 @Composable
-private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
+private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRejected: () -> Unit = {}) {
     var editing by remember(fact.path) { mutableStateOf<String?>(null) }
     var rejection by remember(fact.path) { mutableStateOf<String?>(null) }
     var revealed by remember(fact.path) { mutableStateOf(false) }
@@ -1011,12 +1012,14 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
                             val refused = rejectionFor(fact, committed)
                             if (refused != null) {
                                 rejection = refused
+                                onRejected()
                                 return@launch
                             }
                             val refusal = withContext(Dispatchers.Default) {
                                 Qgc.writeRefusal(fact.path, committed)
                             }
                             rejection = refusal
+                            if (refusal != null) onRejected()
                             if (refusal == null) {
                                 editing = null
                                 onWrite()
