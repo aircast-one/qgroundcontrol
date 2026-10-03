@@ -35,6 +35,17 @@ class CircleModeTest {
         assertEquals(ring, shapeVertices(ShapeTarget(fencePath(0), line = false), listOf(fence), emptyList()))
         assertEquals(emptyList<TrackPoint>(), shapeVertices(ShapeTarget(fencePath(3), line = false), listOf(fence), emptyList()))
     }
+
+    @Test
+    fun `a circle's centre is edited as its shape centre, like Edit Center Position`() {
+        val (hit, at) = shapeCentreHit(ShapeTarget(fencePath(0), line = false), listOf(fence), emptyList())!!
+        assertEquals(MapHit.ShapeCentre(fence = true, owner = 0), hit)
+        assertEquals(centre.latitude, at.latitude, 1e-6)
+        assertEquals(centre.longitude, at.longitude, 1e-6)
+        assertEquals("Edit center position", positionTitle(hit))
+        assertEquals("Edit vertex position", positionTitle(MapHit.FenceVertex(0, 1)))
+        assertNull(shapeCentreHit(ShapeTarget(fencePath(3), line = false), listOf(fence), emptyList()))
+    }
 }
 
 class DragStepTest {

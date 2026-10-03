@@ -586,7 +586,7 @@ internal fun MapSpikeScreen(
         }
 
         positioning?.let { (hit, at) ->
-            PositionDialog(at, onDismiss = { positioning = null }) { moved ->
+            PositionDialog(at, positionTitle(hit), onDismiss = { positioning = null }) { moved ->
                 positioning = null
                 onBridge(done = movedText(hit, allItems)) { writeMove(hit, moved.latitude, moved.longitude, surveyList, rally, fences, allItems, circles) }
             }
@@ -1241,6 +1241,9 @@ internal fun MapSpikeScreen(
                                 }) { Text("Circle") }
                                 if (target.path in circled) {
                                     TextButton(onClick = { radiusFor = target }) { Text("Set radius\u2026") }
+                                    shapeCentreHit(target, fences, surveyList)?.let { centre ->
+                                        TextButton(onClick = { positioning = centre }) { Text("Edit position\u2026") }
+                                    }
                                 }
                             }
                             TextButton(onClick = { tracing = target to emptyList() }) { Text("Trace") }
@@ -1601,13 +1604,13 @@ private fun RadiusDialog(radius: Double, unit: String, metresPerUnit: Double, on
 }
 
 @Composable
-private fun PositionDialog(at: TrackPoint, onDismiss: () -> Unit, onMove: (TrackPoint) -> Unit) {
+private fun PositionDialog(at: TrackPoint, title: String, onDismiss: () -> Unit, onMove: (TrackPoint) -> Unit) {
     var latitude by remember(at) { mutableStateOf(String.format(java.util.Locale.US, "%.7f", at.latitude)) }
     var longitude by remember(at) { mutableStateOf(String.format(java.util.Locale.US, "%.7f", at.longitude)) }
     val parsed = parsedCoordinate(latitude, longitude)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit position") },
+        title = { Text(title) },
         text = {
             Column {
                 OutlinedTextField(value = latitude, onValueChange = { latitude = it }, label = { Text("Latitude") }, singleLine = true)

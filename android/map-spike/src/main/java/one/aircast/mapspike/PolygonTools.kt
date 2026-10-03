@@ -110,6 +110,16 @@ fun shapeVertices(target: ShapeTarget, fences: List<FencePolygon>, surveys: List
         ?: surveys.firstOrNull { surveyPath(it) == target.path }?.area
         ?: emptyList()
 
+fun shapeCentreHit(target: ShapeTarget, fences: List<FencePolygon>, surveys: List<Survey>): Pair<MapHit, TrackPoint>? =
+    polygonCentre(shapeVertices(target, fences, surveys))?.let { centre ->
+        (
+            fences.firstOrNull { fencePath(it.index) == target.path }?.let { MapHit.ShapeCentre(fence = true, owner = it.index) }
+                ?: surveys.firstOrNull { surveyPath(it) == target.path }?.let { MapHit.ShapeCentre(fence = false, owner = it.index) }
+        )?.let { it to centre }
+    }
+
+fun positionTitle(hit: MapHit): String = if (hit is MapHit.ShapeCentre) "Edit center position" else "Edit vertex position"
+
 fun shapeEditable(target: ShapeTarget, fences: List<FencePolygon>, surveys: List<Survey>): EditableShape? =
     fences.firstOrNull { fencePath(it.index) == target.path }?.editable
         ?: surveys.firstOrNull { surveyPath(it) == target.path }?.editable
