@@ -1,11 +1,18 @@
 use serde_json::{Value, json};
 
 use crate::plandoc::{Document, Item, Simple};
-use crate::read::object;
+use crate::read::{Unit, object};
 use crate::router::Backend;
 use crate::surveygrid::{at_distance_and_azimuth, azimuth_to, distance_between};
 
-pub const DEPS: &[&str] = &["plan.missionController.plannedHomePosition", "vehicle.coordinate", "vehicles.activeVehicleAvailable", crate::coreplan::CHANGED];
+pub const DEPS: &[&str] = &[
+    "plan.missionController.plannedHomePosition",
+    "vehicle.coordinate",
+    "vehicles.activeVehicleAvailable",
+    crate::coreplan::CHANGED,
+    "settings.unitsSettings.horizontalDistanceUnits",
+    "settings.unitsSettings.verticalDistanceUnits",
+];
 
 pub const OFFSET: &str = "plan.missionController.offsetMission";
 pub const REPOSITION: &str = "plan.missionController.repositionMission";
@@ -254,9 +261,14 @@ pub fn transform_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let connected = crate::read::flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
     let vehicle = connected.then(|| point(object(&backend.get_fields("vehicle", "coordinate")).get("coordinate"))).flatten();
     let home = home_of(backend);
+    let (horizontal, vertical) = (Unit::horizontal(backend), Unit::vertical(backend));
     json!({
         "kind": "object",
         "class": "PlanTransform",
+        "horizontalUnit": horizontal.name,
+        "horizontalMetresPerUnit": horizontal.meters(1.0),
+        "verticalUnit": vertical.name,
+        "verticalMetresPerUnit": vertical.meters(1.0),
         "hasHome": home.is_some(),
         "home": home.map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
         "vehicle": vehicle.map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
@@ -343,6 +355,34 @@ mod tests {
         let with_landing = transform(&base, north, Scope { takeoff: false, landing: true }).unwrap();
         let land = |json: &Value| (json["landCoordinate"][0].as_f64().unwrap(), json["landCoordinate"][1].as_f64().unwrap());
         assert!((distance_between(land(&landing), land(&json_of(&with_landing.items[1]))) - 100.0).abs() < 0.5, "a landing moves by its touchdown point");
+    }
+
+    struct Feet;
+    impl Backend for Feet {
+        fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+        fn get_fields(&self, path: &str, _f: &str) -> String {
+            match path {
+                "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": "ft", "appSettingsVerticalDistanceUnitsString": "ft" }).to_string(),
+                _ => self.get(path),
+            }
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, path: &str, _a: &str) -> String {
+            match path.starts_with("units.metersToAppSettings") {
+                true => json!({ "ok": true, "result": 3.280_839_895 }).to_string(),
+                false => String::new(),
+            }
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn offsets_are_typed_in_the_app_distance_units_as_the_metre_facts_cook_them() {
+        let view = transform_view(&Feet, &[]);
+        assert_eq!(view["horizontalUnit"], "ft", "offsetEast/offsetNorth carry units m");
+        assert_eq!(view["verticalUnit"], "ft", "offsetUp carries units vertical m");
+        assert!((view["horizontalMetresPerUnit"].as_f64().unwrap() - 0.3048).abs() < 1e-9);
+        assert!((view["verticalMetresPerUnit"].as_f64().unwrap() - 0.3048).abs() < 1e-9);
     }
 
     #[test]

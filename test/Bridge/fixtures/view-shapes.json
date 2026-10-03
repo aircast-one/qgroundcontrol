@@ -4525,7 +4525,11 @@
         "view.planTransform.coordinateSystems.0",
         "view.planTransform.coordinateSystems.1",
         "view.planTransform.coordinateSystems.2",
+        "view.planTransform.horizontalMetresPerUnit",
+        "view.planTransform.horizontalUnit",
         "view.planTransform.kind",
+        "view.planTransform.verticalMetresPerUnit",
+        "view.planTransform.verticalUnit",
         "view.positionForms(47.397,8.546).class",
         "view.positionForms(47.397,8.546).kind",
         "view.positionForms(47.397,8.546).latitude",
@@ -8919,10 +8923,14 @@
         "view.planTransform.home",
         "view.planTransform.home.latitude",
         "view.planTransform.home.longitude",
+        "view.planTransform.horizontalMetresPerUnit",
+        "view.planTransform.horizontalUnit",
         "view.planTransform.kind",
         "view.planTransform.vehicle",
         "view.planTransform.vehicle.latitude",
         "view.planTransform.vehicle.longitude",
+        "view.planTransform.verticalMetresPerUnit",
+        "view.planTransform.verticalUnit",
         "view.polygon(plan.geoFenceController.polygons.0).adjustInvokable",
         "view.polygon(plan.geoFenceController.polygons.0).canRemoveVertex",
         "view.polygon(plan.geoFenceController.polygons.0).class",
@@ -13565,11 +13573,15 @@
             "latitude": "number",
             "longitude": "number"
         },
+        "horizontalMetresPerUnit": "number",
+        "horizontalUnit": "string",
         "kind": "string",
         "vehicle": {
             "latitude": "number",
             "longitude": "number"
-        }
+        },
+        "verticalMetresPerUnit": "number",
+        "verticalUnit": "string"
     },
     "view.polygon(plan.geoFenceController.polygons.0)": {
         "adjustInvokable": "string",

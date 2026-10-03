@@ -41,8 +41,16 @@ internal const val ROTATE_MISSION = "plan.missionController.rotateMission"
 internal fun transformHome(view: JSONObject?): TrackPoint? =
     view?.optJSONObject("home")?.let { TrackPoint(it.optDouble("latitude"), it.optDouble("longitude")) }
 
-internal fun offsetArgs(east: String, north: String, up: String, takeoff: Boolean, landing: Boolean): List<Any>? {
-    val values = listOf(east, north, up).map { one.aircast.mapspike.typedNumber(it.ifBlank { "0" }) }
+internal data class DistanceUnit(val name: String, val metresPerUnit: Double)
+
+private val METRES = DistanceUnit("m", 1.0)
+
+internal fun transformUnit(view: JSONObject?, axis: String): DistanceUnit =
+    view?.let { DistanceUnit(it.optString("${axis}Unit").ifBlank { "m" }, it.optDouble("${axis}MetresPerUnit")) }
+        ?.takeIf { it.metresPerUnit.isFinite() && it.metresPerUnit > 0 } ?: METRES
+
+internal fun offsetArgs(east: String, north: String, up: String, horizontal: DistanceUnit, vertical: DistanceUnit, takeoff: Boolean, landing: Boolean): List<Any>? {
+    val values = listOf(east to horizontal, north to horizontal, up to vertical).map { (typed, unit) -> one.aircast.mapspike.typedNumber(typed.ifBlank { "0" })?.times(unit.metresPerUnit) }
     return values.takeIf { list -> list.all { it != null && it.isFinite() } }?.let { list -> list.map { it!! } + listOf(takeoff, landing) }
 }
 
@@ -71,6 +79,8 @@ private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Uni
 fun PlanTransformDialog(onDismiss: () -> Unit) {
     val view by qgcPath(PLAN_TRANSFORM_VIEW)
     val home = transformHome(view)
+    val horizontal = transformUnit(view, "horizontal")
+    val vertical = transformUnit(view, "vertical")
     val scope = rememberCoroutineScope()
     var east by remember { mutableStateOf("0") }
     var north by remember { mutableStateOf("0") }
@@ -110,13 +120,13 @@ fun PlanTransformDialog(onDismiss: () -> Unit) {
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Offset mission", style = MaterialTheme.typography.titleSmall)
-                NumberField("East (m)", east) { east = it }
-                NumberField("North (m)", north) { north = it }
-                NumberField("Up (m)", up) { up = it }
+                NumberField("East (${horizontal.name})", east) { east = it }
+                NumberField("North (${horizontal.name})", north) { north = it }
+                NumberField("Up (${vertical.name})", up) { up = it }
                 CheckRow("Also move takeoff items", offsetTakeoff) { offsetTakeoff = it }
                 CheckRow("Also move landing items", offsetLanding) { offsetLanding = it }
                 Text("Note: Home altitude is not modified.", style = note)
-                val offset = offsetArgs(east, north, up, offsetTakeoff, offsetLanding)
+                val offset = offsetArgs(east, north, up, horizontal, vertical, offsetTakeoff, offsetLanding)
                 OutlinedButton(onClick = { offset?.let { apply(OFFSET_MISSION, it) } }, enabled = offset != null) { Text("Apply offset") }
 
                 HorizontalDivider()
