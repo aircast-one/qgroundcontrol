@@ -34,7 +34,7 @@ private fun NumberEntry(label: String, value: Double, enabled: Boolean = true, o
         enabled = enabled,
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { typed.trim().toDoubleOrNull()?.let(onDone) }),
+        keyboardActions = KeyboardActions(onDone = { typedNumber(typed)?.let(onDone) }),
         modifier = Modifier.width(110.dp),
         textStyle = MaterialTheme.typography.bodySmall,
     )

@@ -36,11 +36,9 @@ sealed interface SpeedEntry {
     data object Invalid : SpeedEntry
 }
 
-fun speedEntry(text: String): SpeedEntry = text.trim().replace(',', '.').let { typed ->
-    when {
-        typed.isEmpty() -> SpeedEntry.Clear
-        else -> typed.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0.0 }?.let { SpeedEntry.Set(it) } ?: SpeedEntry.Invalid
-    }
+fun speedEntry(text: String): SpeedEntry = when {
+    text.isBlank() -> SpeedEntry.Clear
+    else -> typedNumber(text)?.takeIf { it > 0.0 }?.let { SpeedEntry.Set(it) } ?: SpeedEntry.Invalid
 }
 
 fun speedFieldText(speed: WaypointSpeed): String =
@@ -81,7 +79,7 @@ fun waypointHold(view: JSONObject?): WaypointHold? =
     view?.optJSONObject("hold")?.let { WaypointHold(it.optDouble("value", 0.0), it.optText("units"), it.optText("path")) }?.takeIf { it.path.isNotBlank() }
 
 fun holdEntry(text: String): Double? =
-    text.trim().replace(',', '.').ifEmpty { "0" }.toDoubleOrNull()?.takeIf { it.isFinite() && it >= 0.0 }
+    typedNumber(text.ifBlank { "0" })?.takeIf { it >= 0.0 }
 
 @Composable
 fun WaypointHoldField(index: Int, onWrite: (label: String, work: () -> Boolean) -> Unit, onRefused: (String) -> Unit) {

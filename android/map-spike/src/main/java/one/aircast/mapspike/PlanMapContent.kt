@@ -1074,7 +1074,6 @@ internal fun MapSpikeScreen(
                                 }) { Text("+10") }
 
                                 FilledTonalButton(
-                                    enabled = item.altitude >= 10.0,
                                     onClick = {
                                         onBridge { PlanBridge.setAltitude(item.index, item.altitude - 10.0) }
                                     },
@@ -1244,7 +1243,7 @@ internal fun MapSpikeScreen(
                                 ),
                                 keyboardActions = KeyboardActions(
                                     onDone = {
-                                        val shown = parsedSurfaceDistance(surveyAlt)
+                                        val shown = parsedSurfaceDistance(surveyAlt, metresPerUnit(surveyUnit))
                                         if (shown == null) {
                                             say("Not an altitude")
                                         } else {
@@ -1535,7 +1534,7 @@ fun cornerPosition(hit: MapHit, fences: List<FencePolygon>, surveys: List<Survey
 @Composable
 private fun RadiusDialog(radius: Double, onDismiss: () -> Unit, onSet: (Double) -> Unit) {
     var text by remember(radius) { mutableStateOf(String.format(java.util.Locale.US, "%.1f", radius)) }
-    val parsed = text.toDoubleOrNull()?.takeIf { it > 0 }
+    val parsed = typedNumber(text)?.takeIf { it > 0 }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Set radius") },

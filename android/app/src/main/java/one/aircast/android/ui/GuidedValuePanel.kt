@@ -84,7 +84,7 @@ internal fun guidedStepped(value: Double, delta: Int, minimum: Double, maximum: 
     guidedRounded((value + delta).coerceIn(minimum, maximum), unit)
 
 internal fun guidedTyped(text: String, minimum: Double, maximum: Double, unit: String): Double? =
-    text.trim().replace(',', '.').toDoubleOrNull()?.takeIf { it.isFinite() }?.let { guidedRounded(it.coerceIn(minimum, maximum), unit) }
+    one.aircast.mapspike.typedNumber(text)?.let { guidedRounded(it.coerceIn(minimum, maximum), unit) }
 
 internal fun guidedValueText(value: Double, unit: String): String =
     String.format(Locale.US, "%.${guidedDecimals(unit)}f", value)

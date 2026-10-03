@@ -467,8 +467,8 @@ private fun SpeedSectionRow(speed: SpeedSection, onWrite: (() -> String?) -> Uni
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(
-                    enabled = typed.toDoubleOrNull() != null,
-                    onClick = { typed.toDoubleOrNull()?.let { value -> onWrite { Qgc.writeRefusal(speed.path, value) } } },
+                    enabled = one.aircast.mapspike.typedNumber(typed) != null,
+                    onClick = { one.aircast.mapspike.typedNumber(typed)?.let { value -> onWrite { Qgc.writeRefusal(speed.path, value) } } },
                 ) { Text("Set") }
             }
         }
@@ -561,7 +561,7 @@ internal fun EditPositionDialog(
         scope.launch {
             val target = withContext(Dispatchers.Default) {
                 when (system) {
-                    CoordinateSystem.Geographic -> latitude.toDoubleOrNull()?.let { lat -> longitude.toDoubleOrNull()?.let { lat to it } }
+                    CoordinateSystem.Geographic -> one.aircast.mapspike.typedNumber(latitude)?.let { lat -> one.aircast.mapspike.typedNumber(longitude)?.let { lat to it } }
                     CoordinateSystem.Utm -> geoOf(Qgc.get(utmToGeoPath(easting, northing, zone, southern)))
                     CoordinateSystem.Mgrs -> geoOf(Qgc.get("view.mgrsToGeo(${mgrs.replace(" ", "")})"))
                     CoordinateSystem.Vehicle -> geoOf(Qgc.get("vehicle.coordinate"))
@@ -627,7 +627,7 @@ internal fun vehicleAltitudePath(altitudeMode: Int?): String? = when (altitudeMo
 }
 
 @Composable
-private fun PositionField(label: String, value: String, keyboard: KeyboardType = KeyboardType.Decimal, onChange: (String) -> Unit) {
+private fun PositionField(label: String, value: String, keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,

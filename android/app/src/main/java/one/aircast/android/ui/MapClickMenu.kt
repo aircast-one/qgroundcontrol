@@ -96,7 +96,7 @@ internal fun orbitDefaults(view: JSONObject?): OrbitDefaults = OrbitDefaults(
 )
 
 internal fun radiusMetres(entered: String, defaults: OrbitDefaults): Double? =
-    entered.ifBlank { defaults.radius.toString() }.toDoubleOrNull()?.let { it * defaults.metresPerUnit }
+    one.aircast.mapspike.typedNumber(entered.ifBlank { defaults.radius.toString() })?.let { it * defaults.metresPerUnit }
 
 internal fun orbitArgs(point: MapPoint, choice: OrbitChoice): Array<Any> =
     arrayOf(point.latitude, point.longitude, choice.radiusMetres, choice.clockwise, choice.aboveHomeMetres)

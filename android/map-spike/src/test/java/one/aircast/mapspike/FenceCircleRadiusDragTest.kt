@@ -29,5 +29,7 @@ class FenceCircleRadiusDragTest {
         val bounded = FenceCircle(0, true, centre, 100.0, radiusMinimum = 10.0, radiusMaximum = 500.0)
         assertEquals(10.0, draggedCircleRadius(bounded, pointAt(centre, 1.0, 90.0)), 1e-9)
         assertEquals(500.0, draggedCircleRadius(bounded, pointAt(centre, 900.0, 90.0)), 1e-9)
+        val unbounded = FenceCircle(0, true, centre, 100.0)
+        assertEquals("a drag onto the centre keeps QGCMapCircle's 0.1 m so the circle is not dropped", 0.1, draggedCircleRadius(unbounded, centre), 1e-9)
     }
 }

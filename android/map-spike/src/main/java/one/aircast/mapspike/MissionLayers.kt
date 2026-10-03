@@ -579,12 +579,14 @@ fun renderVertexHandles(
         ?.setGeoJson(FeatureCollection.fromFeatures(vertexHandleFeatures(cornered, cornerSurveys, circles, landings).features().orEmpty() + centreHandleFeatures(polygons, surveys) + radiusHandleFeatures(polygons, surveys, circled) + loiterHandles))
 }
 
+const val MINIMUM_CIRCLE_RADIUS_METRES = 0.1
+
 fun circleEdge(circle: FenceCircle): TrackPoint = pointAt(circle.centre, circle.radiusMetres, 90.0)
 
 fun draggedCircleRadius(circle: FenceCircle, to: TrackPoint): Double {
     val shownPerMetre = if (circle.radiusMetres > 0.0) circle.radius / circle.radiusMetres else 1.0
     val wanted = metresBetween(circle.centre, to) * shownPerMetre
-    return wanted.coerceAtLeast(circle.radiusMinimum ?: 0.0).coerceAtMost(circle.radiusMaximum ?: Double.MAX_VALUE)
+    return wanted.coerceAtLeast(circle.radiusMinimum ?: (MINIMUM_CIRCLE_RADIUS_METRES * shownPerMetre)).coerceAtMost(circle.radiusMaximum ?: Double.MAX_VALUE)
 }
 
 fun radiusHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>, circled: Set<String>): List<Feature> {

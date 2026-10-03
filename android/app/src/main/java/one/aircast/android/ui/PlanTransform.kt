@@ -42,7 +42,7 @@ internal fun transformHome(view: JSONObject?): TrackPoint? =
     view?.optJSONObject("home")?.let { TrackPoint(it.optDouble("latitude"), it.optDouble("longitude")) }
 
 internal fun offsetArgs(east: String, north: String, up: String, takeoff: Boolean, landing: Boolean): List<Any>? {
-    val values = listOf(east, north, up).map { it.trim().ifEmpty { "0" }.toDoubleOrNull() }
+    val values = listOf(east, north, up).map { one.aircast.mapspike.typedNumber(it.ifBlank { "0" }) }
     return values.takeIf { list -> list.all { it != null && it.isFinite() } }?.let { list -> list.map { it!! } + listOf(takeoff, landing) }
 }
 
@@ -53,8 +53,8 @@ private fun NumberField(label: String, value: String, onChange: (String) -> Unit
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
-        isError = value.isNotBlank() && value.trim().toDoubleOrNull() == null,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        isError = value.isNotBlank() && one.aircast.mapspike.typedNumber(value) == null,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -131,7 +131,7 @@ fun PlanTransformDialog(onDismiss: () -> Unit) {
                 CheckRow("Also move takeoff items", rotateTakeoff) { rotateTakeoff = it }
                 CheckRow("Also move landing items", rotateLanding) { rotateLanding = it }
                 Text("Note: Complex items are rotated by moving their reference coordinate: their geometry and orientation are not changed.", style = note)
-                val rotation = degrees.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
+                val rotation = one.aircast.mapspike.typedNumber(degrees)
                 OutlinedButton(
                     onClick = { rotation?.let { apply(ROTATE_MISSION, listOf(it, rotateTakeoff, rotateLanding)) } },
                     enabled = home != null && rotation != null,
