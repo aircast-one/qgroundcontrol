@@ -137,6 +137,12 @@ pub fn locate(path: &str) -> Option<(&'static str, &str)> {
     Some((group, fact))
 }
 
+pub fn objects_json() -> impl Iterator<Item = (&'static str, &'static str)> {
+    OBJECTS.iter().filter_map(|(object, group)| {
+        crate::settingsgroups::group(group).map(|g| g.json).or_else(|| EXTRA_GROUPS.iter().find(|(name, _)| name == group).map(|(_, json)| *json)).map(|json| (*object, json))
+    })
+}
+
 pub fn metadata(group: &str, fact: &str) -> Option<MetaData> {
     if let Some(units) = (group == "Units").then(|| crate::units::fact_metadata(fact)).flatten() {
         return Some(units);

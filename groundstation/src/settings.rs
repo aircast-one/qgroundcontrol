@@ -360,8 +360,8 @@ const SETTINGS_PAGES_MODEL: &str = include_str!("../../src/AppSettings/SettingsP
 const QGC_PAGE_NAMES: &[(&str, &[&str])] = &[("3D Viewer", &["3D View"]), ("MAVLink", &["Telemetry"]), ("About", &["Help"])];
 
 fn qstr<'a>(element: &'a str, field: &str) -> Option<&'a str> {
-    let start = element.find(&format!("{field}: qsTr(\""))? + field.len() + 8;
-    element[start..].find("\")").map(|end| &element[start..start + end])
+    let opening = format!("{field}: qsTr(\"");
+    element.lines().map(str::trim_start).find_map(|line| line.strip_prefix(opening.as_str())).and_then(|rest| rest.strip_suffix("\")"))
 }
 
 pub fn page_keywords(title: &str) -> String {
@@ -377,19 +377,47 @@ pub fn page_keywords(title: &str) -> String {
         .to_lowercase()
 }
 
-fn fact_keywords(name: &str) -> String {
-    static KEYWORDS: std::sync::OnceLock<std::collections::BTreeMap<String, String>> = std::sync::OnceLock::new();
+const SETTINGS_UI_PAGES: [&str; 3] = [
+    include_str!("../../src/AppSettings/pages/Logging.SettingsUI.json"),
+    include_str!("../../src/AppSettings/pages/NTRIP.SettingsUI.json"),
+    include_str!("../../src/AppSettings/pages/Viewer3D.SettingsUI.json"),
+];
+
+fn fact_keywords(group: &str, name: &str) -> String {
+    static KEYWORDS: std::sync::OnceLock<std::collections::BTreeMap<(String, String), Vec<String>>> = std::sync::OnceLock::new();
+    let from_facts = || {
+        crate::settingsstore::objects_json()
+            .filter_map(|(object, json)| Some((object, serde_json::from_str::<Value>(json).ok()?)))
+            .flat_map(|(object, json)| {
+                json["QGC.MetaData.Facts"].as_array().cloned().unwrap_or_default().into_iter().filter_map(move |fact| {
+                    Some(((object.to_string(), fact["name"].as_str()?.to_string()), vec![fact["keywords"].as_str()?.to_lowercase()]))
+                })
+            })
+            .collect::<Vec<_>>()
+    };
+    let from_pages = || {
+        SETTINGS_UI_PAGES
+            .iter()
+            .filter_map(|page| serde_json::from_str::<Value>(page).ok())
+            .flat_map(|page| page["groups"].as_array().cloned().unwrap_or_default())
+            .flat_map(|ui_group| {
+                let words: Vec<String> = std::iter::once(&ui_group["heading"]).chain(ui_group["keywords"].as_array().into_iter().flatten()).filter_map(Value::as_str).map(str::to_lowercase).collect();
+                ui_group["controls"].as_array().cloned().unwrap_or_default().into_iter().filter_map(move |control| {
+                    let (object, fact) = control["setting"].as_str()?.split_once('.')?;
+                    Some(((object.to_string(), fact.to_string()), words.clone()))
+                })
+            })
+            .collect::<Vec<_>>()
+    };
     KEYWORDS
         .get_or_init(|| {
-            crate::settingsgroups::GROUPS
-                .iter()
-                .filter_map(|group| serde_json::from_str::<Value>(group.json).ok())
-                .flat_map(|json| json["QGC.MetaData.Facts"].as_array().cloned().unwrap_or_default())
-                .filter_map(|fact| Some((fact["name"].as_str()?.to_string(), fact["keywords"].as_str()?.to_lowercase())))
-                .collect()
+            from_facts().into_iter().chain(from_pages()).fold(std::collections::BTreeMap::new(), |mut all, (key, words)| {
+                all.entry(key).or_insert_with(Vec::new).extend(words);
+                all
+            })
         })
-        .get(name)
-        .cloned()
+        .get(&(group.to_string(), name.to_string()))
+        .map(|words| words.join(", "))
         .unwrap_or_default()
 }
 
@@ -499,7 +527,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .map(|f| with_choices(backend, f))
         .map(|f| decode(&f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .map(|mut control| {
-            control["keywords"] = json!(fact_keywords(control.get("name").and_then(Value::as_str).unwrap_or_default()));
+            control["keywords"] = json!(fact_keywords(group, control.get("name").and_then(Value::as_str).unwrap_or_default()));
             control
         })
         .collect();
@@ -1044,6 +1072,9 @@ mod tests {
         let facts = vec![json!({ "kind": "fact", "name": "enabled", "typeIsBool": true, "value": true })];
         let row = page_rows(&Group("viewer3DSettings", facts), "3D Viewer").into_iter().find(|c| c["name"] == "enabled").unwrap();
         assert!(row["keywords"].as_str().unwrap().contains("3d"));
+        assert!(!fact_keywords("packetRadioSettings", "enabled").contains("3d"), "keywords belong to the group that declares the fact");
+        assert!(fact_keywords("logManagerSettings", "diskLoggingEnabled").contains("rotation"), "Logging.SettingsUI.json section keywords reach its controls");
+        assert!(fact_keywords("viewer3DSettings", "buildingLevelHeight").contains("openstreetmap"));
     }
 
     #[test]
