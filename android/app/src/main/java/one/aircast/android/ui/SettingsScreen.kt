@@ -161,8 +161,8 @@ internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: In
 
 internal val PAGE_LOOKS = mapOf(
     "Connections" to PageLook(SettingsGroup.Connection, R.drawable.ic_link),
-    "MAVLink" to PageLook(SettingsGroup.Connection, R.drawable.ic_swap_horiz),
     "Video" to PageLook(SettingsGroup.Connection, R.drawable.ic_videocam),
+    "MAVLink" to PageLook(SettingsGroup.Connection, R.drawable.ic_swap_horiz),
     "Packet Radio" to PageLook(SettingsGroup.Connection, R.drawable.ic_wifi),
     "ADSB Server" to PageLook(SettingsGroup.Connection, R.drawable.ic_navigation),
     "RTK GPS" to PageLook(SettingsGroup.Connection, R.drawable.ic_satellite_alt),
@@ -185,6 +185,7 @@ internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(S
 
 internal fun groupedPages(pages: List<SettingsPageEntry>): List<Pair<SettingsGroup, List<SettingsPageEntry>>> =
     pages.groupBy { pageLook(it.title).group }.toList().sortedBy { it.first.ordinal }
+        .map { (group, entries) -> group to entries.sortedBy { PAGE_LOOKS.keys.indexOf(it.title).takeIf { at -> at >= 0 } ?: Int.MAX_VALUE } }
 
 internal data class HelpLink(val name: String, val url: String, val host: String)
 
