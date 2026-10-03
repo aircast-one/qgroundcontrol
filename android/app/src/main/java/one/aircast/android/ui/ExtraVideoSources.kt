@@ -14,7 +14,14 @@ private val URL_SOURCES = setOf(
     "MPEG-TS Video Stream",
     "RTSP Video Stream",
     "TCP-MPEG2 Video Stream",
-    "WebRTC Video Stream",
+    "WebRTC (WHEP) Video Stream",
+)
+
+private val SCHEME_ADDED_SOURCES = setOf(
+    "UDP h.264 Video Stream",
+    "UDP h.265 Video Stream",
+    "MPEG-TS Video Stream",
+    "TCP-MPEG2 Video Stream",
 )
 
 internal data class ExtraVideoSource(val name: String, val source: String, val url: String)
@@ -93,7 +100,7 @@ internal fun sourceNeedsUrl(source: String): Boolean = source in URL_SOURCES
 internal fun extraSourceProblem(source: String, url: String): String? = when {
     source.isBlank() || source == VIDEO_DISABLED -> "Pick the kind of stream this camera sends."
     sourceNeedsUrl(source) && url.isBlank() -> "This kind of stream needs an address."
-    url.contains("://") && sourceNeedsUrl(source) ->
+    url.contains("://") && source in SCHEME_ADDED_SOURCES ->
         "Leave the scheme off - QGroundControl adds it, and a doubled one fails to resolve."
     else -> null
 }

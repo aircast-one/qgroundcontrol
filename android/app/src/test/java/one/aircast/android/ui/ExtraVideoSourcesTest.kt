@@ -60,6 +60,13 @@ class ExtraVideoSourcesTest {
     }
 
     @Test
+    fun `rtsp and whep addresses keep their scheme because the core uses them as typed`() {
+        assertNull(extraSourceProblem("RTSP Video Stream", "rtsp://10.0.0.4:8554/front"))
+        assertNull(extraSourceProblem("WebRTC (WHEP) Video Stream", "https://cam.local/whep"))
+        assertTrue(sourceNeedsUrl("WebRTC (WHEP) Video Stream"))
+    }
+
+    @Test
     fun `a camera with no kind chosen is not saved`() {
         assertEquals("Pick the kind of stream this camera sends.",
             extraSourceProblem("Video Stream Disabled", "anything"))
