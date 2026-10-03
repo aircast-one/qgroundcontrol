@@ -51,6 +51,8 @@ getrandom = "0.4.3"
 crc = "3.4.0"
 fs4 = { version = "0.13", features = ["sync"] }
 jpeg-encoder = "0.7.1"
+x509-parser = { version = "0.18.1", features = ["verify"] }
+rustls-webpki = "0.103"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 serialport = "4.10.1"
