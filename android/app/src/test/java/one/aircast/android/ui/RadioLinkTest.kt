@@ -30,7 +30,7 @@ class RadioLinkTest {
         )
         assertEquals("-71 dBm", telemetryCell(reading))
         assertEquals(
-            listOf("Local RSSI:", "Remote RSSI:", "Local Noise:", "Remote Noise:", "RX Errors:", "Errors Fixed:", "TX Buffer:"),
+            listOf("Local RSSI:", "Remote RSSI:", "RX Errors:", "Errors Fixed:", "TX Buffer:", "Local Noise:", "Remote Noise:"),
             telemetryDetail(reading?.telemetry).map { it.label },
         )
     }

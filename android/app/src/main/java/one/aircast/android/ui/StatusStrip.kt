@@ -293,9 +293,9 @@ internal fun rcDetail(state: FlyState?): List<DetailRow> =
 
 internal fun instrumentTitle(instrument: StripDetail): String = when (instrument) {
     StripDetail.Battery -> "Battery"
-    StripDetail.Gps -> "GPS"
+    StripDetail.Gps -> "Vehicle GPS status"
     StripDetail.Links -> "Links to this aircraft"
-    StripDetail.Telemetry -> "Telemetry radio"
+    StripDetail.Telemetry -> "Telemetry RSSI status"
     StripDetail.Rc -> "RC RSSI status"
 }
 
@@ -367,11 +367,11 @@ internal fun telemetryDetail(link: TelemetryLink?): List<DetailRow> = when (link
     else -> listOfNotNull(
         DetailRow("Local RSSI:", "${link.localRssiDbm} dBm"),
         link.remoteRssiDbm?.let { DetailRow("Remote RSSI:", "$it dBm") },
-        link.localNoise?.let { DetailRow("Local Noise:", "$it") },
-        link.remoteNoise?.let { DetailRow("Remote Noise:", "$it") },
         link.receiveErrors?.let { DetailRow("RX Errors:", "$it") },
         link.errorsFixed?.let { DetailRow("Errors Fixed:", "$it") },
         link.txBuffer?.let { DetailRow("TX Buffer:", "$it") },
+        link.localNoise?.let { DetailRow("Local Noise:", "$it") },
+        link.remoteNoise?.let { DetailRow("Remote Noise:", "$it") },
     )
 }
 
