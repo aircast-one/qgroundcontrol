@@ -162,21 +162,29 @@ fun markerStroke(crowded: Boolean, selected: Boolean): Double = when {
     else -> MARKER_STROKE
 }
 
-private data class Marker(val item: MissionItem, val at: TrackPoint, val sequence: Int, val exit: Boolean)
+private data class Marker(val item: MissionItem, val at: TrackPoint, val sequence: Int, val exit: Boolean, val side: String? = null)
 
 fun exitMarkers(items: List<MissionItem>): List<Pair<MissionItem, TrackPoint>> =
     items.filter { it.complexPattern }.mapNotNull { item -> item.exit?.let { item to it } }
 
-fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null): FeatureCollection {
+private fun landingMarkers(item: MissionItem, pattern: LandingPattern): List<Marker> = listOfNotNull(
+    pattern.finalApproach?.let { Marker(item, it, item.sequence, exit = false, side = if (pattern.loiterToAltitude) "Loiter" else "Approach") },
+    pattern.landing?.let { Marker(item, it, item.sequence + item.foldedCommands, exit = true, side = "Land") },
+)
+
+fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null, landings: List<LandingPattern> = emptyList()): FeatureCollection {
     val crowded = crowded(items.size)
-    val markers = items.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), item.sequence, exit = false) } +
-        exitMarkers(items).map { (item, exit) -> Marker(item, exit, item.sequence + item.foldedCommands, exit = true) }
-    val features = markers.map { (item, at, sequence, exit) ->
+    val patterns = landings.associateBy { it.index }
+    val plain = items.filter { it.index !in patterns }
+    val markers = plain.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), item.sequence, exit = false) } +
+        exitMarkers(plain).map { (item, exit) -> Marker(item, exit, item.sequence + item.foldedCommands, exit = true) } +
+        items.flatMap { item -> patterns[item.index]?.let { landingMarkers(item, it) }.orEmpty() }
+    val features = markers.map { (item, at, sequence, exit, side) ->
         val lettered = item.abbreviation.takeIf { !exit && !item.complexPattern }.orEmpty()
         Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
             addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(sequence, crowded, lettered))
-            addStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY, sideLabel(crowded, lettered))
+            addStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY, side ?: sideLabel(crowded, lettered))
             addNumberProperty(
                 WAYPOINT_RADIUS_PROPERTY,
                 markerRadius(crowded, item.index == selectedIndex),
@@ -248,12 +256,13 @@ fun renderMission(
     linkStartToHome: Boolean,
     selectedIndex: Int? = null,
     others: List<OtherMission> = emptyList(),
+    landings: List<LandingPattern> = emptyList(),
 ) {
     val otherMarkers = others.flatMap { other ->
         missionFeatures(other.items).features().orEmpty().onEach { it.addNumberProperty(WAYPOINT_ID_PROPERTY, OTHER_VEHICLE_WAYPOINT) }
     }
     (style.getSource(MISSION_SOURCE) as? GeoJsonSource)
-        ?.setGeoJson(FeatureCollection.fromFeatures(missionFeatures(items, selectedIndex).features().orEmpty() + otherMarkers))
+        ?.setGeoJson(FeatureCollection.fromFeatures(missionFeatures(items, selectedIndex, landings).features().orEmpty() + otherMarkers))
 
     val paths = listOfNotNull(missionPath(items, linkStartToHome)) + others.mapNotNull { missionPath(it.items, it.linkStartToHome) }
     (style.getSource(MISSION_PATH_SOURCE) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(paths))

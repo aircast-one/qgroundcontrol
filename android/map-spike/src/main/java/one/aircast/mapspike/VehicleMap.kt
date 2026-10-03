@@ -539,7 +539,7 @@ fun VehicleMap(
         renderFences(currentStyle, fencePolygons, rallyPoints, circlesAsPolygons(fenceCircles), firmwareFence, breachReturn?.takeIf { isPlottable(it.latitude, it.longitude) })
         (currentStyle.getSource(GCS_SOURCE) as? GeoJsonSource)?.setGeoJson(operatorFeatures(operator, operatorHeading))
         renderVertexHandles(currentStyle, fencePolygons, surveys, fenceCircles, landings, circledShapes, loiterHandleFeatures(missionItems.takeIf { editable }.orEmpty(), selectedWaypoint))
-        renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint, otherMissions)
+        renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint, otherMissions, landings)
     }
 
     AndroidView(factory = { mapView }, modifier = modifier)
