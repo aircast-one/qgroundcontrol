@@ -1,8 +1,5 @@
 package one.aircast.android.ui
 
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
@@ -233,6 +230,14 @@ internal fun editWrites(
         "flowControl" to framing.flowControl,
     )
     else -> emptyList()
+}
+
+internal fun linkTypeLabel(id: String): String = when (id) {
+    "serial" -> "Serial"
+    BLUETOOTH_LINK -> "Bluetooth"
+    AIRCAST_CLOUD_LINK -> "Aircast Cloud"
+    REPLAY_LINK -> "Log replay"
+    else -> id.uppercase()
 }
 
 internal fun autoLinkName(type: String, host: String, port: String): String = when {
@@ -547,7 +552,6 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     singleLine = true,
                 )
                 LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
-                if (row.editing == "portOnly") UdpServers(row.index, row.servers)
                 if (row.editing == "hostAndPort") {
                     OutlinedTextField(
                         value = host,
@@ -600,6 +604,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
                 }
+                if (row.editing == "portOnly") UdpServers(row.index, row.servers)
                 error?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
@@ -654,6 +659,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
     )
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     var type by remember { mutableStateOf("udp") }
@@ -702,9 +708,9 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
         title = { Text("Add link") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    choices.forEachIndexed { index, id ->
-                        SegmentedButton(
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    choices.forEach { id ->
+                        FilterChip(
                             selected = type == id,
                             onClick = {
                                 type = id
@@ -712,9 +718,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                                 port = ""
                                 if (id == BLUETOOTH_LINK) askBluetooth.launch(bluetoothPermissions(android.os.Build.VERSION.SDK_INT))
                             },
-                            shape = SegmentedButtonDefaults.itemShape(index, choices.size),
-                            icon = {},
-                            label = { Text(when (id) { "serial" -> "Serial"; BLUETOOTH_LINK -> "BT"; AIRCAST_CLOUD_LINK -> "Cloud"; REPLAY_LINK -> "Log"; else -> id.uppercase() }, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) },
+                            label = { Text(linkTypeLabel(id)) },
                         )
                     }
                 }

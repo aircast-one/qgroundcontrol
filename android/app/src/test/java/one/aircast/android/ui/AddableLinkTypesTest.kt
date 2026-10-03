@@ -53,4 +53,12 @@ class AddableLinkTypesTest {
             addableLinkTypes(links("""["serial","udp","tcp","logReplay"]""")),
         )
     }
+
+    @Test
+    fun `each type is named in full, as LinkManager's type strings are`() {
+        assertEquals(
+            listOf("UDP", "TCP", "Serial", "Bluetooth", "Log replay", "Aircast Cloud"),
+            listOf("udp", "tcp", "serial", BLUETOOTH_LINK, REPLAY_LINK, AIRCAST_CLOUD_LINK).map(::linkTypeLabel),
+        )
+    }
 }
