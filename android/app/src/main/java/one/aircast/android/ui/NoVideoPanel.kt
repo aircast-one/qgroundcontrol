@@ -28,6 +28,9 @@ internal fun elapsedText(seconds: Int): String = when {
     else -> "${seconds / 3600} h ${(seconds % 3600) / 60} min"
 }
 
+internal fun activeCameraStatus(video: VideoReading): String? =
+    video.cameras.firstOrNull { it.slot == video.activeSource }?.status?.ifBlank { null }
+
 internal fun noVideoDetail(video: VideoReading, seconds: Int): String =
     "${if (video.streaming) "Receiving data \u2014 waiting for video" else video.noVideoText} for ${elapsedText(seconds)}"
 
@@ -48,7 +51,7 @@ internal fun NoVideoPanel(video: VideoReading?) {
                 video == null -> "No video"
                 !video.streamEnabled -> "Video off"
                 prolonged -> "No video signal"
-                else -> video.summary
+                else -> activeCameraStatus(video) ?: video.summary
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
