@@ -45,9 +45,7 @@ internal fun rcCameraChannels(tilt: Int, pan: Int, zoom: Int, light: Int, record
 internal fun cameraRecording(recordChannel: Int, channelRecording: Boolean, streamRecording: Boolean): Boolean =
     streamRecording || (recordChannel > 0 && channelRecording)
 
-private fun send(channel: Int, pwm: Int) {
-    if (channel > 0) offMainDetached { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
-}
+private fun send(channel: Int, pwm: Int) = sendRcOverride(channel, pwm)
 
 @Composable
 private fun channelSetting(name: String): Int {

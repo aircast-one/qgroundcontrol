@@ -186,7 +186,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                 }
             },
             "rc" to { rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified, R.drawable.ic_gamepad) { detail = StripDetail.Rc } } },
-            "rcOverride" to { overrideCell(state)?.let { InlineCell(it.text, MaterialTheme.aircast.warning) { offMainDetached { Qgc.invoke(CLEAR_RC_OVERRIDES) } } } },
+            "rcOverride" to { overrideCell(state)?.let { InlineCell(it.text, MaterialTheme.aircast.warning) { rcCall { Qgc.invoke(CLEAR_RC_OVERRIDES) } } } },
             "telemetry" to { telemetryCell(state)?.let { InlineCell(it, Color.Unspecified, R.drawable.ic_sensors) { detail = StripDetail.Telemetry } } },
             "links" to { links?.let { InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified, R.drawable.ic_signal_cellular_alt) { detail = StripDetail.Links } } },
             "aircastLink" to { AircastLinkCell() },

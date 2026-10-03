@@ -29,24 +29,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.settingControl
 
 private const val RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
 
-private fun sendOverride(channel: Int, pwm: Int) {
-    offMainDetached { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
+private val rcCalls = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+internal fun rcCall(block: () -> Unit) = rcCalls.execute(block)
+
+internal fun sendRcOverride(channel: Int, pwm: Int) {
+    if (channel > 0) rcCall { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
 }
 
 private fun releaseOverrides() {
-    offMainDetached { Qgc.invoke("vehicle.clearRcChannelOverrides") }
+    rcCall { Qgc.invoke("vehicle.clearRcChannelOverrides") }
 }
 
 internal fun releaseRcChannels(channels: List<Int>) {
     val held = channels.filter { it > 0 }.distinct()
-    if (held.isNotEmpty()) offMainDetached { held.forEach { Qgc.invoke("vehicle.releaseRcChannelOverride", it) } }
+    if (held.isNotEmpty()) rcCall { held.forEach { Qgc.invoke("vehicle.releaseRcChannelOverride", it) } }
 }
 
 @Composable
@@ -67,7 +70,7 @@ private fun RcSlider(control: RcControl) {
         val now = SystemClock.uptimeMillis()
         if (rcSendDue(now, lastSent, finished)) {
             lastSent = now
-            sendOverride(control.channel, value)
+            sendRcOverride(control.channel, value)
         }
     }
 
@@ -97,7 +100,7 @@ private fun RcButton(control: RcControl) {
         selected = on,
         onClick = {
             on = !on
-            sendOverride(control.channel, if (on) PWM_MAX else PWM_MIN)
+            sendRcOverride(control.channel, if (on) PWM_MAX else PWM_MIN)
         },
         label = { Text(control.label) },
     )
@@ -115,7 +118,7 @@ private fun RcSwitch3(control: RcControl) {
                     selected = position == index,
                     onClick = {
                         position = index
-                        sendOverride(control.channel, value)
+                        sendRcOverride(control.channel, value)
                     },
                     label = { Text(listOf("Low", "Mid", "High")[index]) },
                 )
@@ -134,9 +137,9 @@ private fun RcMomentary(control: RcControl) {
         when {
             pressed -> {
                 everPressed = true
-                sendOverride(control.channel, PWM_MAX)
+                sendRcOverride(control.channel, PWM_MAX)
             }
-            everPressed -> sendOverride(control.channel, PWM_MIN)
+            everPressed -> sendRcOverride(control.channel, PWM_MIN)
         }
     }
 
