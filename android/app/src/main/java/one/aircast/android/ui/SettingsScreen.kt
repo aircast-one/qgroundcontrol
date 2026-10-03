@@ -125,7 +125,9 @@ private fun pageGlance(title: String): String {
     return glanceText(displays)
 }
 
-internal fun pageTitle(title: String): String = if (title == CONNECTIONS_PAGE) "Links" else sentenceCase(title)
+private val PAGE_TITLES = mapOf(CONNECTIONS_PAGE to "Links", "ADSB Server" to "ADS-B server")
+
+internal fun pageTitle(title: String): String = PAGE_TITLES[title] ?: sentenceCase(title)
 
 internal fun pageSubtitle(title: String, glance: String): String = glance.ifBlank { PAGE_NOTES[title].orEmpty() }
 

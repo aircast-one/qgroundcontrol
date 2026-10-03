@@ -200,6 +200,7 @@ class SettingsViewTest {
     fun theConnectionsPageReadsAsLinksLikePenpot() {
         org.junit.Assert.assertEquals("Links", pageTitle(CONNECTIONS_PAGE))
         org.junit.Assert.assertEquals("Fly view", pageTitle("Fly View"))
+        org.junit.Assert.assertEquals("ADS-B server", pageTitle("ADSB Server"))
     }
 
     @Test

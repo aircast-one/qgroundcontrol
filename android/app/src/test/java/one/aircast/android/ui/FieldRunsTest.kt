@@ -17,7 +17,7 @@ class FieldRunsTest {
 
     @Test
     fun aSettingWithNoEffectYetStillDrawsAsAFieldAndPairs() {
-        val host = text("host", isString = false).copy(enabled = false, disabledReason = "Has no effect while the ADSB server connection is off.")
+        val host = text("host", isString = false).copy(enabled = false, disabledReason = "Has no effect while the ADS-B server connection is off.")
         assertEquals(true, showsAsField(host))
         assertEquals(listOf(listOf("host", "port")), fieldRuns(listOf(host, host.copy(name = "port"))).map { run -> run.map { it.name } })
         assertEquals(false, showsAsField(host.copy(readOnly = true)))
@@ -107,8 +107,8 @@ class FieldRunsTest {
 
     @Test
     fun aPairOffForTheSameReasonSaysItOnce() {
-        val off = text("host").copy(enabled = false, disabledReason = "Has no effect while the ADSB server connection is off.")
-        assertEquals("Has no effect while the ADSB server connection is off.", sharedInertNote(listOf(off, off.copy(name = "port"))))
+        val off = text("host").copy(enabled = false, disabledReason = "Has no effect while the ADS-B server connection is off.")
+        assertEquals("Has no effect while the ADS-B server connection is off.", sharedInertNote(listOf(off, off.copy(name = "port"))))
         org.junit.Assert.assertNull(sharedInertNote(listOf(off, off.copy(name = "port", enabled = true))))
         org.junit.Assert.assertNull(sharedInertNote(listOf(off, off.copy(name = "port", disabledReason = "Other"))))
     }

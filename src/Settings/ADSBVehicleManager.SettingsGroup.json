@@ -5,10 +5,10 @@
         {
             "name": "adsbServerConnectEnabled",
             "shortDesc": "Enable connection to an ADS-B SBS-1 server to receive nearby aircraft tracking data.",
-            "longDesc": "Connect to ADSB SBS-1 server using specified address/port",
+            "longDesc": "Connect to ADS-B SBS-1 server using specified address/port",
             "type": "bool",
             "default": false,
-            "label": "Connect to ADSB SBS server",
+            "label": "Connect to ADS-B SBS server",
             "keywords": "adsb,ads-b,traffic,aircraft,tracking"
         },
         {

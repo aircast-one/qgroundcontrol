@@ -626,7 +626,7 @@ fn follow(source: Source, generation: u64) {
                             changed();
                         }
                     });
-                if lock().failed(generation, LINK_LOST, "the ADSB server closed the connection".to_string()) {
+                if lock().failed(generation, LINK_LOST, "the ADS-B server closed the connection".to_string()) {
                     changed();
                 }
             }

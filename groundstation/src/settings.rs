@@ -165,7 +165,7 @@ const FORWARDING_OFF: &str = "Has no effect while MAVLink forwarding is off.";
 const TELEMETRY_SAVE_OFF: &str = "Has no effect while saving telemetry logs is off.";
 const STORAGE_LIMIT_OFF: &str = "Has no effect while the storage limit is off.";
 const STREAMS_FROM_VEHICLE: &str = "Stream rates are controlled by the vehicle.";
-const ADSB_SERVER_OFF: &str = "Has no effect while the ADSB server connection is off.";
+const ADSB_SERVER_OFF: &str = "Has no effect while the ADS-B server connection is off.";
 const BASIC_ID_OFF: &str = "Has no effect while Basic ID broadcast is off.";
 const SELF_ID_OFF: &str = "Has no effect while Self ID broadcast is off.";
 

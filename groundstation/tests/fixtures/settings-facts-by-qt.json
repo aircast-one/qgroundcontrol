@@ -11,7 +11,7 @@
 "enumStrings": [],
 "enumValues": [],
 "kind": "fact",
-"longDescription": "Connect to ADSB SBS-1 server using specified address/port",
+"longDescription": "Connect to ADS-B SBS-1 server using specified address/port",
 "max": 1,
 "maxIsDefaultForType": true,
 "maxString": "true",
