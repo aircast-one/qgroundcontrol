@@ -315,6 +315,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.firmwareUpgrade", deps: &[], compute: crate::firmwareflash::view },
     View { path: "view.firmwarePorts", deps: &[], compute: crate::firmwareflash::ports_view },
     View { path: "view.viewer3d", deps: crate::viewer3d::DEPS, compute: crate::viewer3d::viewer3d_view },
+    View { path: "view.viewer3dPath", deps: crate::viewer3d::PATH_DEPS, compute: crate::viewer3d::path_view },
     View { path: "view.mavlinkConsole", deps: console::DEPS, compute: console::console_view },
     View { path: "view.itemCamera", deps: itemcamera::DEPS, compute: itemcamera::item_camera_view },
     View { path: "view.itemFacts", deps: itemfacts::DEPS, compute: itemfacts::item_facts_view },

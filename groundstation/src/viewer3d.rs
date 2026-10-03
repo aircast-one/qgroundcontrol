@@ -220,6 +220,128 @@ pub fn viewer3d_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+pub const PATH_DEPS: &[&str] = &[
+    "settings.viewer3DSettings.altitudeBias.rawValue",
+    "vehicle.coordinate",
+    "vehicle.altitudeRelative",
+    crate::coreplan::CHANGED,
+    "plan.missionController.visualItems.count",
+    "plan.dirty",
+];
+
+const WAYPOINT: i64 = 16;
+const RETURN_TO_LAUNCH: i64 = 20;
+const TAKEOFF: i64 = 22;
+const ROI: i64 = 195;
+const ROI_DEPRECATED: i64 = 201;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PathItem {
+    pub launch: bool,
+    pub takeoff: bool,
+    pub command: i64,
+    pub specifies_coordinate: bool,
+    pub at: (f64, f64),
+    pub altitude: f64,
+}
+
+fn item_name(item: &PathItem) -> &'static str {
+    match () {
+        _ if item.launch || item.command == RETURN_TO_LAUNCH => "L",
+        _ if item.takeoff => "T",
+        _ if item.specifies_coordinate && item.command == WAYPOINT => "W",
+        _ if item.specifies_coordinate && item.command == TAKEOFF => "T",
+        _ if item.specifies_coordinate && (item.command == ROI || item.command == ROI_DEPRECATED) => "R",
+        _ => "",
+    }
+}
+
+fn marker_colour(name: &str) -> &'static str {
+    match name {
+        "T" => "green",
+        "R" => "red",
+        "L" => "orange",
+        _ => "black",
+    }
+}
+
+pub struct Marker {
+    pub at: (f64, f64, f64),
+    pub name: &'static str,
+    pub colour: &'static str,
+}
+
+pub struct Segment {
+    pub from: (f64, f64, f64),
+    pub to: (f64, f64, f64),
+    pub rtl: bool,
+}
+
+pub fn path(items: &[PathItem], home: Option<(f64, f64)>) -> (Vec<Marker>, Vec<Segment>) {
+    let flown: Vec<&PathItem> = items.iter().filter(|i| !i.launch).collect();
+    let end = |item: &PathItem, previous: &PathItem| match item.command == RETURN_TO_LAUNCH {
+        true => { let (lat, lon) = home.unwrap_or(item.at); (lat, lon, previous.altitude) }
+        false => (item.at.0, item.at.1, item.altitude),
+    };
+    let acceptable = |item: &PathItem| [WAYPOINT, RETURN_TO_LAUNCH, TAKEOFF, ROI, ROI_DEPRECATED].contains(&item.command);
+    let (markers, _) = flown.iter().fold((Vec::new(), None::<&PathItem>), |(markers, previous), item| {
+        let name = item_name(item);
+        let marker = acceptable(item).then(|| match (item.command == RETURN_TO_LAUNCH, previous) {
+            (true, None) => None,
+            (true, Some(before)) => Some(end(item, before)),
+            (false, _) => Some((item.at.0, item.at.1, item.altitude)),
+        }).flatten().map(|at| Marker { at, name, colour: marker_colour(name) });
+        let next = if name == "L" || name == "W" { Some(*item) } else { previous };
+        (markers.into_iter().chain(marker).collect(), next)
+    });
+    let (segments, _) = flown.iter().fold((Vec::new(), None::<&PathItem>), |(segments, previous), item| match (item.takeoff, previous) {
+        (true, _) => (segments, Some(*item)),
+        (false, None) => (segments, None),
+        (false, Some(before)) if matches!(item_name(item), "L" | "W") => {
+            let segment = Segment { from: (before.at.0, before.at.1, before.altitude), to: end(item, before), rtl: item.command == RETURN_TO_LAUNCH };
+            (segments.into_iter().chain(std::iter::once(segment)).collect(), Some(*item))
+        }
+        (false, kept) => (segments, kept),
+    });
+    (markers, segments)
+}
+
+fn path_items(listed: &Value) -> (Vec<PathItem>, Option<(f64, f64)>) {
+    let items: Vec<PathItem> = listed["items"].as_array().cloned().unwrap_or_default().iter().filter_map(|item| {
+        let coordinate = &item["coordinate"];
+        Some(PathItem {
+            launch: item["kind"] == "settings",
+            takeoff: item["kind"] == "takeoff",
+            command: item["command"].as_i64().unwrap_or(0),
+            specifies_coordinate: item["specifiesCoordinate"].as_bool().unwrap_or(false),
+            at: (coordinate["latitude"].as_f64()?, coordinate["longitude"].as_f64()?),
+            altitude: item["altitudeMetres"].as_f64().unwrap_or(0.0),
+        })
+    }).collect();
+    let home = items.iter().find(|i| i.launch).map(|i| i.at);
+    (items, home)
+}
+
+fn lon_lat_alt((lat, lon, alt): (f64, f64, f64), bias: f64) -> [f64; 3] {
+    [lon, lat, alt + bias]
+}
+
+pub fn path_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let bias = setting(backend, "altitudeBias").as_f64().unwrap_or(0.0);
+    let (items, home) = path_items(&crate::missionitems::fly_items_view(backend, &["geometry".to_string()]));
+    let (markers, segments) = path(&items, home);
+    let vehicle = crate::read::object(&backend.get_fields("vehicle", "coordinate,altitudeRelative"));
+    let at = &vehicle["coordinate"];
+    let relative = vehicle["altitudeRelative"].get("rawValue").or(vehicle["altitudeRelative"].get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
+    json!({
+        "kind": "object",
+        "class": "Viewer3DPath",
+        "markers": markers.iter().map(|m| json!({ "at": lon_lat_alt(m.at, bias), "name": m.name, "colour": m.colour })).collect::<Vec<_>>(),
+        "segments": segments.iter().map(|s| json!({ "from": lon_lat_alt(s.from, bias), "to": lon_lat_alt(s.to, bias), "colour": if s.rtl { "red" } else { "orange" } })).collect::<Vec<_>>(),
+        "vehicle": at["latitude"].as_f64().zip(at["longitude"].as_f64()).filter(|(lat, lon)| lat.is_finite() && lon.is_finite() && (*lat != 0.0 || *lon != 0.0)).map(|(lat, lon)| json!([lon, lat, relative + bias])),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +383,20 @@ mod tests {
     fn a_file_without_bounds_takes_them_from_its_nodes() {
         let map = parse(&CITY.replace(r#"<bounds minlat="47.0" minlon="8.0" maxlat="47.1" maxlon="8.1"/>"#, "")).unwrap();
         assert_eq!((map.south_west, map.north_east), ((47.01, 8.01), (47.04, 8.04)));
+    }
+
+    fn at(launch: bool, takeoff: bool, command: i64, lat: f64, alt: f64) -> PathItem {
+        PathItem { launch, takeoff, command, specifies_coordinate: true, at: (lat, 8.0), altitude: alt }
+    }
+
+    #[test]
+    fn the_path_follows_viewer3d_vehicle_items() {
+        let items = vec![at(true, false, 0, 47.0, 0.0), at(false, true, 22, 47.1, 20.0), at(false, false, 16, 47.2, 30.0), at(false, false, 195, 47.25, 0.0), at(false, false, 16, 47.3, 40.0), at(false, false, 20, 0.0, 0.0)];
+        let (markers, segments) = path(&items, Some((47.0, 8.0)));
+        assert_eq!(markers.iter().map(|m| m.name).collect::<Vec<_>>(), vec!["T", "W", "R", "W", "L"], "the launch item draws nothing; return-to-launch is an L at home");
+        assert_eq!(markers.last().unwrap().at, (47.0, 8.0, 40.0), "RTL sits at home at the last waypoint's altitude");
+        assert_eq!(segments.len(), 3, "takeoff to W, W to W (the ROI is skipped), W to home");
+        assert_eq!((segments[0].from, segments[0].to), ((47.1, 8.0, 20.0), (47.2, 8.0, 30.0)));
+        assert!(segments[2].rtl && !segments[1].rtl);
     }
 }

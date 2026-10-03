@@ -30,25 +30,81 @@ import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
-import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.FillExtrusionLayer
-import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
-import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
 
 const val VIEWER3D_VIEW = "view.viewer3d"
-private const val VIEWER3D_MISSION = "view.flyMissionItems(geometry)"
+const val VIEWER3D_PATH = "view.viewer3dPath"
+private const val V3D_FLOATING_SOURCE = "viewer3d-floating"
+private const val V3D_FLOATING_LAYER = "viewer3d-floating-layer"
+private const val METRES_PER_DEGREE = 111_320.0
+private const val RIBBON_WIDTH = 1.5
+private const val RIBBON_THICKNESS = 1.0
+private const val RIBBON_STEP = 8.0
+private const val MARKER_SIZE = 3.0
+private const val VEHICLE_SIZE = 5.0
+
+data class Point3D(val lon: Double, val lat: Double, val alt: Double)
+
+data class Slab(val corners: List<Pair<Double, Double>>, val base: Double, val top: Double, val colour: String)
+
+private fun point3d(array: JSONArray?): Point3D? =
+    array?.takeIf { it.length() == 3 }?.let { Point3D(it.optDouble(0), it.optDouble(1), it.optDouble(2)) }
+
+private fun box(at: Point3D, size: Double, colour: String): Slab {
+    val dLat = size / 2 / METRES_PER_DEGREE
+    val dLon = dLat / kotlin.math.cos(Math.toRadians(at.lat))
+    return Slab(listOf(at.lon - dLon to at.lat - dLat, at.lon + dLon to at.lat - dLat, at.lon + dLon to at.lat + dLat, at.lon - dLon to at.lat + dLat), at.alt - size / 2, at.alt + size / 2, colour)
+}
+
+internal fun ribbon(from: Point3D, to: Point3D, colour: String): List<Slab> {
+    val scale = kotlin.math.cos(Math.toRadians((from.lat + to.lat) / 2))
+    val dx = (to.lon - from.lon) * METRES_PER_DEGREE * scale
+    val dy = (to.lat - from.lat) * METRES_PER_DEGREE
+    val length = kotlin.math.hypot(dx, dy)
+    val pieces = kotlin.math.max(1, kotlin.math.ceil(length / RIBBON_STEP).toInt())
+    val (nx, ny) = if (length > 0) -dy / length * RIBBON_WIDTH / 2 to dx / length * RIBBON_WIDTH / 2 else 0.0 to 0.0
+    val toLonLat = { x: Double, y: Double -> from.lon + x / (METRES_PER_DEGREE * scale) to from.lat + y / METRES_PER_DEGREE }
+    return (0 until pieces).map { piece ->
+        val (t0, t1) = piece.toDouble() / pieces to (piece + 1).toDouble() / pieces
+        val alt = from.alt + (to.alt - from.alt) * (t0 + t1) / 2
+        val (x0, y0, x1, y1) = listOf(dx * t0, dy * t0, dx * t1, dy * t1)
+        Slab(listOf(toLonLat(x0 + nx, y0 + ny), toLonLat(x1 + nx, y1 + ny), toLonLat(x1 - nx, y1 - ny), toLonLat(x0 - nx, y0 - ny)), alt - RIBBON_THICKNESS / 2, alt + RIBBON_THICKNESS / 2, colour)
+    }
+}
+
+internal fun pathSlabs(view: JSONObject?): List<Slab> {
+    val segments = view?.optJSONArray("segments")
+    val markers = view?.optJSONArray("markers")
+    val ribbons = (0 until (segments?.length() ?: 0)).mapNotNull { segments?.optJSONObject(it) }.flatMap { segment ->
+        val from = point3d(segment.optJSONArray("from"))
+        val to = point3d(segment.optJSONArray("to"))
+        if (from == null || to == null) emptyList() else ribbon(from, to, segment.optText("colour"))
+    }
+    val boxes = (0 until (markers?.length() ?: 0)).mapNotNull { markers?.optJSONObject(it) }.mapNotNull { marker ->
+        point3d(marker.optJSONArray("at"))?.let { box(it, MARKER_SIZE, marker.optText("colour")) }
+    }
+    val vehicle = point3d(view?.optJSONArray("vehicle"))?.let { box(it, VEHICLE_SIZE, "#E53935") }
+    return ribbons + boxes + listOfNotNull(vehicle)
+}
+
+internal fun slabFeatures(slabs: List<Slab>): FeatureCollection = FeatureCollection.fromFeatures(
+    slabs.map { slab ->
+        val ring = (slab.corners + slab.corners.first()).map { (lon, lat) -> Point.fromLngLat(lon, lat) }
+        Feature.fromGeometry(Polygon.fromLngLats(listOf(ring))).also {
+            it.addNumberProperty("base", slab.base.coerceAtLeast(0.0))
+            it.addNumberProperty("top", slab.top.coerceAtLeast(0.1))
+            it.addStringProperty("colour", slab.colour)
+        }
+    },
+)
 private const val V3D_BUILDING_SOURCE = "viewer3d-buildings"
 private const val V3D_BUILDING_LAYER = "viewer3d-buildings-layer"
-private const val V3D_MISSION_SOURCE = "viewer3d-mission"
-private const val V3D_MISSION_LAYER = "viewer3d-mission-layer"
-private const val V3D_VEHICLE_SOURCE = "viewer3d-vehicle"
-private const val V3D_VEHICLE_LAYER = "viewer3d-vehicle-layer"
 private const val SCENE_PITCH = 60.0
 private const val SCENE_ZOOM = 16.0
 
@@ -111,16 +167,12 @@ private fun installScene(style: Style) {
             PropertyFactory.fillExtrusionOpacity(0.85f),
         ),
     )
-    style.addSource(GeoJsonSource(V3D_MISSION_SOURCE))
-    style.addLayer(LineLayer(V3D_MISSION_LAYER, V3D_MISSION_SOURCE).withProperties(PropertyFactory.lineColor("#FFD54F"), PropertyFactory.lineWidth(3f)))
-    style.addSource(GeoJsonSource(V3D_VEHICLE_SOURCE))
+    style.addSource(GeoJsonSource(V3D_FLOATING_SOURCE))
     style.addLayer(
-        CircleLayer(V3D_VEHICLE_LAYER, V3D_VEHICLE_SOURCE).withProperties(
-            PropertyFactory.circleColor("#E53935"),
-            PropertyFactory.circleRadius(8f),
-            PropertyFactory.circleStrokeColor("#FFFFFF"),
-            PropertyFactory.circleStrokeWidth(2f),
-            PropertyFactory.circlePitchAlignment("map"),
+        FillExtrusionLayer(V3D_FLOATING_LAYER, V3D_FLOATING_SOURCE).withProperties(
+            PropertyFactory.fillExtrusionColor(Expression.get("colour")),
+            PropertyFactory.fillExtrusionBase(Expression.get("base")),
+            PropertyFactory.fillExtrusionHeight(Expression.get("top")),
         ),
     )
 }
@@ -132,8 +184,8 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     val scene = remember(viewJson) { scene3d(viewJson) }
     val vehiclesJson by mapPath(VEHICLES_VIEW)
     val vehicle = remember(vehiclesJson) { vehicleChoices(vehiclesJson).choices.firstOrNull { it.active && isPlottable(it.latitude, it.longitude) } }
-    val missionJson by mapPath(VIEWER3D_MISSION)
-    val mission = remember(missionJson) { missionItems(missionJson) }
+    val pathJson by mapPath(VIEWER3D_PATH)
+    val slabs = remember(pathJson) { pathSlabs(pathJson) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
     var framedOn by remember { mutableStateOf<LatLng?>(null) }
@@ -184,16 +236,8 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     LaunchedEffect(style, scene) {
         (style?.getSource(V3D_BUILDING_SOURCE) as? GeoJsonSource)?.setGeoJson(buildingFeatures(scene.buildings))
     }
-    LaunchedEffect(style, mission) {
-        val points = mission.map { Point.fromLngLat(it.longitude, it.latitude) }
-        (style?.getSource(V3D_MISSION_SOURCE) as? GeoJsonSource)?.setGeoJson(
-            FeatureCollection.fromFeatures(listOfNotNull(points.takeIf { it.size > 1 }?.let { Feature.fromGeometry(LineString.fromLngLats(it)) })),
-        )
-    }
-    LaunchedEffect(style, vehicle) {
-        (style?.getSource(V3D_VEHICLE_SOURCE) as? GeoJsonSource)?.setGeoJson(
-            FeatureCollection.fromFeatures(listOfNotNull(vehicle?.let { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) })),
-        )
+    LaunchedEffect(style, slabs) {
+        (style?.getSource(V3D_FLOATING_SOURCE) as? GeoJsonSource)?.setGeoJson(slabFeatures(slabs))
     }
     LaunchedEffect(map, scene.centre, vehicle != null) {
         val shown = map ?: return@LaunchedEffect

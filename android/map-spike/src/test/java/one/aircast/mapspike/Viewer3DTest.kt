@@ -30,4 +30,19 @@ class Viewer3DTest {
         assertEquals(true, signedArea(wound(square, counterClockwise = false)) < 0)
         assertEquals(wound(square, true).first(), wound(square, true).last())
     }
+
+    @Test
+    fun `a climbing segment floats as stepped slabs at its altitude`() {
+        val pieces = ribbon(Point3D(8.0, 47.0, 20.0), Point3D(8.0, 47.0003, 40.0), "orange")
+        assertEquals(5, pieces.size)
+        assertEquals(true, pieces.first().base < pieces.last().base)
+        assertEquals(22.0, (pieces.first().base + pieces.first().top) / 2, 1e-9)
+    }
+
+    @Test
+    fun `markers, segments and the vehicle all float`() {
+        val view = JSONObject("""{"markers":[{"at":[8.0,47.0,30.0],"name":"W","colour":"black"}],"segments":[],"vehicle":[8.0,47.0,12.0]}""")
+        val slabs = pathSlabs(view)
+        assertEquals(listOf(28.5, 9.5), slabs.map { it.base })
+    }
 }
