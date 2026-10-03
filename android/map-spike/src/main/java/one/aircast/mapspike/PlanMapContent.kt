@@ -180,6 +180,7 @@ internal fun MapSpikeScreen(
     var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
     var editingItem by remember { mutableStateOf<MissionItem?>(null) }
     var fitRequest by remember { mutableIntStateOf(0) }
+    var edits by remember { mutableIntStateOf(0) }
     var fitOnly by remember { mutableStateOf<List<TrackPoint>?>(null) }
     var positioning by remember { mutableStateOf<Pair<MapHit, TrackPoint>?>(null) }
     var loadArmed by remember { mutableStateOf(false) }
@@ -276,6 +277,7 @@ internal fun MapSpikeScreen(
         scope.launch {
             val ok = withContext(Dispatchers.Default) { work() }
             if (ok) {
+                edits += 1
                 then()
                 busy = done
                 if (done != null) {
@@ -361,6 +363,7 @@ internal fun MapSpikeScreen(
     }
 
     suspend fun refresh() {
+        val readAt = edits
         withContext(Dispatchers.Default) {
             val plan = PlanBridge.rawItems()
             if (plan != null) {
@@ -383,6 +386,7 @@ internal fun MapSpikeScreen(
             val nextStats = surveyStatsFor(nextAll)
             val drawn = planIsDrawn(nextItems, nextSurveys, nextFences, nextCircles, nextRally)
             withContext(Dispatchers.Main) {
+                if (readAt != edits) return@withContext
                 if (fitsPlanOnEntry(firstRead, plan != null, drawn)) {
                     follow = false
                     fitRequest += 1
