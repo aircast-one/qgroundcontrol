@@ -86,6 +86,7 @@ internal data class CameraReading(
     val canRecord: Boolean,
     val isTakingPhoto: Boolean,
     val capturesPhotos: Boolean,
+    val hasVideoStream: Boolean = false,
     val mode: Int,
     val timelapse: Boolean,
     val lapseSeconds: Double?,
@@ -117,6 +118,7 @@ internal fun cameraReading(view: JSONObject?): CameraReading? {
         canRecord = view.optBoolean("canRecord"),
         isTakingPhoto = view.optBoolean("isTakingPhoto"),
         capturesPhotos = view.optBoolean("capturesPhotos"),
+        hasVideoStream = view.optBoolean("hasVideoStream"),
         mode = view.optInt("mode", -1),
         timelapse = view.optText("photoMode") == "timelapse",
         lapseSeconds = view.optDouble("lapseSeconds").takeIf { it.isFinite() },
@@ -280,6 +282,7 @@ internal const val PHOTO_LAPSE_MIN_S = 1f
 internal const val PHOTO_LAPSE_MAX_S = 60f
 internal const val CAMERA_CURRENT_STREAM = "vehicle.cameraManager.currentCameraInstance.currentStream"
 internal const val CAMERA_THERMAL_MODE = "vehicle.cameraManager.currentCameraInstance.thermalMode"
+internal val CAMERA_SHEET_VIDEO_SETTINGS = listOf("settings.videoSettings.gridLines", "settings.videoSettings.videoFit")
 internal const val CAMERA_THERMAL_OPACITY = "vehicle.cameraManager.currentCameraInstance.thermalOpacity"
 
 internal val THERMAL_MODES = listOf("off", "blend", "full", "picInPic")

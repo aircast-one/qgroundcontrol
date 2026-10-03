@@ -53,6 +53,8 @@ import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.settingControl
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import one.aircast.android.bridge.Fact
 
 private const val REFUSAL_MS = 4000L
 private const val ZOOM_TICK = 10.0
@@ -362,6 +364,14 @@ private fun CameraDetailsSheet(
             }
         }
 
+        if (camera.hasVideoStream) {
+            val facts by produceState(emptyList<Fact>()) {
+                value = withContext(Dispatchers.Default) {
+                    CAMERA_SHEET_VIDEO_SETTINGS.mapNotNull { path -> runCatching { factFromControl(Qgc.get("view.control($path)")) }.getOrNull() }
+                }
+            }
+            facts.forEach { FactRow(it) }
+        }
         CameraDefinitionSettings()
 
         destructive.forEach { action ->

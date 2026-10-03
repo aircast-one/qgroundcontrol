@@ -390,6 +390,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // QGC's QML calls it - so a head that starts a timelapse today cannot end it.
         "canStopPhoto": present && matches!(photo_status, PHOTO_CAPTURE_INTERVAL_IDLE | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS),
         "capturesPhotos": present && captures_photos,
+        "hasVideoStream": present && flag(&camera, "hasVideoStream"),
         "panel": photo_video_panel(&camera, present, shots),
         "hasModes": has_modes,
         "canChangeMode": present && has_modes && match mode {

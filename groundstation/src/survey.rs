@@ -68,7 +68,7 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
         "areaSquareMetres": area_m2,
         "areaText": if area_m2 > 0.0 { crate::read::format_measure(area.show(area_m2), &area.name) } else { ABSENT.to_string() },
         "distanceMetres": distance_m,
-        "distanceText": if distance_m > 0.0 { crate::missionsummary::distance_text(distance_m, crate::missionsummary::imperial(backend)) } else { ABSENT.to_string() },
+        "distanceText": if distance_m > 0.0 { crate::read::format_measure(distance_unit.show(distance_m), &distance_unit.name) } else { ABSENT.to_string() },
         "footprintSide": side,
         "footprintFrontal": frontal,
         "footprintUnits": footprint_units,
