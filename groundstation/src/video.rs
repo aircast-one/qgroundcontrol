@@ -756,7 +756,7 @@ mod tests {
         assert_eq!(view(json!({ "cameraMode": 0, "capturePhotosState": 1 })), true);
         assert_eq!(view(json!({ "cameraMode": 0, "capturePhotosState": 3 })), false, "an interval capture holds photo mode, as the video selector waits for CapturePhotosStateIdle");
         assert_eq!(view(json!({ "cameraMode": 2, "capturePhotosState": 2, "captureVideoState": 1 })), false, "survey waits for its photo, not the recording");
-        assert_eq!(view(json!({ "cameraMode": 1, "captureVideoState": 0, "capturePhotosState": 2 })), false, "a still taken in video mode leaves the photo selector disabled");
+        assert_eq!(view(json!({ "cameraMode": 1, "captureVideoState": 0, "capturePhotosState": 2 })), false, "with video capture Disabled the photo selector is disabled, whatever the photo capture is doing");
         let recording = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "object", "modelName": "ZR30", "cameraMode": 1, "captureVideoState": 2, "capturesPhotos": true, "capturesVideo": true, "hasModes": true })), &[]);
         assert_eq!(recording["canChangeMode"], false);
         assert_eq!(recording["canRecord"], true, "the record control stays live while recording, because it is what stops it");

@@ -751,6 +751,20 @@ pub fn rotated_entry(kind: &str, item: &Value) -> Option<Value> {
     Some(regenerate_item(&moved))
 }
 
+pub fn corridor_shots(corridor: &Value) -> i64 {
+    let transect = corridor.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
+    let calc = transect.get("CameraCalc").cloned().unwrap_or(Value::Null);
+    let trigger_distance = number(&calc, "AdjustedFootprintFrontal").unwrap_or(0.0);
+    let points = |key: &str, from: &Value| -> Vec<Point> { from.get(key).and_then(Value::as_array).map(|p| p.iter().filter_map(|v| Some((v.get(0)?.as_f64()?, v.get(1)?.as_f64()?))).collect()).unwrap_or_default() };
+    let length = |line: &[Point]| -> f64 { line.windows(2).map(|pair| surveygrid::distance_between(pair[0], pair[1])).sum() };
+    let transects = crate::corridorscan::transect_count(number(corridor, "CorridorWidth").unwrap_or(0.0), number(&calc, "AdjustedFootprintSide").unwrap_or(0.0));
+    match (trigger_distance == 0.0, flag(&transect, "CameraTriggerInTurnAround")) {
+        (true, _) => 0,
+        (false, true) => (length(&points("VisualTransectPoints", &transect)) / trigger_distance).ceil() as i64,
+        (false, false) => (length(&points("polyline", corridor)) / trigger_distance).ceil() as i64 * transects as i64,
+    }
+}
+
 pub fn regenerate_corridor(corridor: &Value) -> Value {
     let transect = corridor.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
     let calc = transect.get("CameraCalc").cloned().unwrap_or(Value::Null);

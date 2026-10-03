@@ -26,7 +26,15 @@ pub fn loaded(kind: &str, item: &Value) -> Result<Value, String> {
     };
     validate_keys(item, &[(TRANSECT_STYLE_KEY, "Object", true)])?;
     let inner = transect_style(&item[TRANSECT_STYLE_KEY])?;
-    Ok(with(item.clone(), TRANSECT_STYLE_KEY, inner))
+    let loaded = with(item.clone(), TRANSECT_STYLE_KEY, inner);
+    Ok(match kind == CORRIDOR && to_int(&loaded[TRANSECT_STYLE_KEY]["CameraShots"], 0) == 0 {
+        true => {
+            let shots = crate::surveydoc::corridor_shots(&loaded);
+            let inner = with(loaded[TRANSECT_STYLE_KEY].clone(), "CameraShots", json!(shots));
+            with(loaded, TRANSECT_STYLE_KEY, inner)
+        }
+        false => loaded,
+    })
 }
 
 fn with(mut object: Value, key: &str, value: Value) -> Value {
@@ -172,6 +180,14 @@ mod tests {
         assert!(followed[TRANSECT_STYLE_KEY].get("FollowTerrain").is_none());
         inner.remove("version");
         assert_eq!(loaded(CORRIDOR, &corridor(Value::Object(inner))), Err("The following required keys are missing: version".to_string()), "an unstamped section upgrades in a local, so TransectStyleComplexItem::_load still finds no version key");
+    }
+
+    #[test]
+    fn a_corridor_saved_with_no_shots_recounts_them() {
+        let unshot = with(transect(manual_calc()), "CameraShots", json!(0));
+        let counted = loaded(CORRIDOR, &corridor(with(unshot, "CameraTriggerInTurnAround", json!(false)))).unwrap();
+        assert_eq!(counted[TRANSECT_STYLE_KEY]["CameraShots"], json!(10), "CorridorScanComplexItem::_loadWorker recounts a zero: 111 m of polyline at 25 m per photo is 5, on each of 2 transects");
+        assert_eq!(loaded(CORRIDOR, &corridor(transect(manual_calc()))).unwrap()[TRANSECT_STYLE_KEY]["CameraShots"], json!(4), "a saved count is kept");
     }
 
     #[test]
