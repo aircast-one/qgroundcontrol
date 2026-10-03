@@ -681,6 +681,7 @@ def main():
                     print("MAG CAL started", flush=True)
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG" and message.command == apm.MAV_CMD_DO_CANCEL_MAG_CAL:
+                    print("MAG CAL cancelled", flush=True)
                     magcal_started[0] = None
                     link.command_ack_send(message.command, mavlink.MAV_RESULT_ACCEPTED)
                 elif kind == "COMMAND_LONG" and message.command in TRACKING_COMMANDS:

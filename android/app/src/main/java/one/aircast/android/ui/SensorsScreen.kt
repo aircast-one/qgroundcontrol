@@ -49,6 +49,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -418,9 +419,10 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
 
     val running = state.inProgress
     BlocksNavigation(running && state.px4, CALIBRATION_BLOCK)
-    DisposableEffect(running) {
+    val stillRunning by rememberUpdatedState(running)
+    DisposableEffect(Unit) {
         onDispose {
-            if (running) {
+            if (stillRunning) {
                 offMainDetached { Qgc.invoke("$CAL.cancelCalibration") }
             }
         }
