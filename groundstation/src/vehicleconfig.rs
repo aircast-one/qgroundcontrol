@@ -795,7 +795,9 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
                         true => row,
                         false => {
                             let mut off = labelled(row, control, false);
-                            off["disabledReason"] = json!(format!("Turn on {label} to edit"));
+                            if enabled {
+                                off["disabledReason"] = json!(format!("Turn on {} to edit", label.as_str().unwrap_or("the switch above")));
+                            }
                             off
                         }
                     };
@@ -1384,6 +1386,8 @@ mod tests {
         assert!(rows.iter().any(|r| r["control"] == "label" && r["label"].as_str().unwrap_or_default().starts_with("Warning: a high responsiveness")), "PX4FlightBehaviorCopter warns above 0.8");
         let horizontal = rows.iter().find(|r| r["control"] == "toggle" && r["label"] == "Horizontal velocity (m/s)").unwrap().clone();
         assert_eq!(horizontal["value"], false, "a negative MPC_XY_VEL_ALL is the slider switched off");
+        let gated = rows.iter().find(|r| r["control"] != "toggle" && r["label"] == "Horizontal velocity (m/s)").unwrap();
+        assert_eq!(gated["disabledReason"], "Turn on Horizontal velocity (m/s) to edit");
         assert_eq!(write(&fake, horizontal["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
         assert_eq!(fake.params.borrow()["MPC_XY_VEL_ALL"], 5.0, "switching it on keeps the magnitude");
         assert!(rows.iter().any(|r| r["label"] == "Mission Turning Radius"));
