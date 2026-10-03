@@ -99,4 +99,14 @@ class FirmwareScreenTest {
         org.junit.Assert.assertEquals("PX4 Pro, beta", sourceLabel("px4:beta", "PX4 Pro, beta", "v1.15.4", ""))
         org.junit.Assert.assertEquals("ArduPilot Copter, stable", sourceLabel("ardupilot:copter:stable", "ArduPilot Copter, stable", "v1.15.4", "x"))
     }
+
+    @org.junit.Test
+    fun `leaving the page drops a board search but never interrupts a write`() {
+        org.junit.Assert.assertEquals(
+            "FirmwareUpgradeController's destructor allows connections again, which ends the bootloader search",
+            listOf(true, true, false, false, false, false),
+            listOf("connecting", "choosing", "erasing", "programming", "verifying", "idle").map(::cancelledOnLeave),
+        )
+        org.junit.Assert.assertFalse(cancelledOnLeave(null))
+    }
 }

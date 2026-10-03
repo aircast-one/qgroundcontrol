@@ -106,6 +106,8 @@ internal fun firmwareJob(view: JSONObject?): FirmwareJob? = view?.takeIf { it.op
     )
 }
 
+internal fun cancelledOnLeave(phase: String?): Boolean = phase == "connecting" || phase == "choosing"
+
 internal fun firmwarePhaseText(phase: String): String = when (phase) {
     "connecting" -> "Waiting for the bootloader"
     "choosing" -> "Choose the firmware build"
@@ -240,6 +242,10 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
     }
 
     val busy = job?.busy == true
+    val phase by androidx.compose.runtime.rememberUpdatedState(job?.phase)
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { if (cancelledOnLeave(phase)) one.aircast.android.bridge.offMainInOrder { Qgc.invoke(FIRMWARE_CANCEL) } }
+    }
     LazyColumn(modifier.fillMaxSize()) {
         item(key = "note") {
             Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
