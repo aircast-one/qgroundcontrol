@@ -92,7 +92,7 @@ internal const val VIEWER_3D_GROUP = "viewer3DSettings"
 internal val GROUPS_WITH_A_HEAD_EDITOR = setOf(VIDEO_GROUP, FLY_VIEW_GROUP)
 
 internal val PAGES_WITHOUT_A_SCREEN = mapOf(
-    "Firmware Upgrade" to "flashing firmware needs a USB host and a bootloader dance this head does not do",
+    "Firmware Upgrade" to "QGC has no such settings page; the firmware screen reads these settings itself",
     "Flight Modes" to "twelve comma-separated lists of hidden mode names, one per airframe. The mode " +
         "picker reads what they produce; the raw lists are worse than nothing",
 )
