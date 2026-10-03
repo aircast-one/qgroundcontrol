@@ -338,6 +338,24 @@ pub fn open_json(transports: &Mutex<Transports>, json: &str, reserved_udp_ports:
     open(transports, config, if via_link_manager { &[] } else { reserved_udp_ports })
 }
 
+pub fn reconfigure(transports: &Mutex<Transports>, config: &LinkConfig) {
+    let live: Vec<Arc<Owned>> = {
+        let mut guard = transports.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let ids: Vec<LinkId> = guard.configs.iter().filter(|(_, c)| c.name == config.name).map(|(id, _)| *id).collect();
+        ids.iter().for_each(|id| {
+            guard.configs.insert(*id, config.clone());
+        });
+        ids.iter().filter_map(|id| guard.owned.get(id).cloned()).collect()
+    };
+    if let Kind::Udp { hosts, .. } = &config.kind {
+        live.iter().for_each(|link| {
+            if let Owned::Udp(udp) = &**link {
+                udp.retarget(hosts);
+            }
+        });
+    }
+}
+
 pub fn reap(transports: &Mutex<Transports>) {
     let dead = transports.lock().unwrap().take_dead();
     dead.iter().for_each(|l| l.close());

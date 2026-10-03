@@ -298,6 +298,9 @@ pub fn set(path: &str, value: &str) -> Option<Value> {
         Some(())
     });
     let renamed = saved().into_iter().nth(index).map(|e| e.config.name).unwrap_or_else(|| name.clone());
+    if let Some(config) = changed.and_then(|_| saved().into_iter().nth(index)).map(|e| e.config).filter(|config| config.name == name) {
+        crate::linkhost::reconfigure(&crate::linkhost::TRANSPORTS, &config);
+    }
     if changed.is_some() && renamed != name {
         let mut runtime = RUNTIME.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(run) = runtime.remove(&name) {

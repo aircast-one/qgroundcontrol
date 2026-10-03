@@ -268,3 +268,26 @@ class LinkEditRulesTest {
         )
     }
 }
+
+class UdpServerFormTest {
+
+    @Test
+    fun `a bare address sends to the listening port like UDPConfiguration addHost`() {
+        assertEquals("10.0.0.2:14550", udpServer("10.0.0.2", "14550"))
+        assertEquals("10.0.0.2:14555", udpServer(" 10.0.0.2:14555 ", "14550"))
+    }
+
+    @Test
+    fun `an address the configuration would refuse is not listed`() {
+        assertNull(udpServer("a:b:c", "14550"))
+        assertNull(udpServer(":14550", "14550"))
+        assertNull(udpServer("10.0.0.2:70000", "14550"))
+    }
+
+    @Test
+    fun `a server already listed is not added twice`() {
+        val once = withServer(emptyList(), "10.0.0.2", "14550")
+        assertEquals(listOf("10.0.0.2:14550"), withServer(once, "10.0.0.2:14550", "14550"))
+        assertEquals(once, withServer(once, "bad:host:name", "14550"))
+    }
+}

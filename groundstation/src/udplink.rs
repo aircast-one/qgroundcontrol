@@ -23,7 +23,7 @@ pub struct UdpConfig {
 
 pub struct UdpLink {
     socket: UdpSocket,
-    configured: Vec<SocketAddr>,
+    configured: Mutex<Vec<SocketAddr>>,
     session: Arc<Mutex<BTreeSet<SocketAddr>>>,
     stop: Arc<AtomicBool>,
     reader: Mutex<Option<JoinHandle<()>>>,
@@ -31,6 +31,10 @@ pub struct UdpLink {
 
 fn resolve(host: &str, port: u16) -> Option<SocketAddr> {
     (host, port).to_socket_addrs().ok()?.find(|a| a.is_ipv4())
+}
+
+fn resolved(targets: &[(String, u16)]) -> Vec<SocketAddr> {
+    targets.iter().filter_map(|(h, p)| resolve(h, *p)).collect()
 }
 
 fn normalise(sender: SocketAddr, local: &BTreeSet<Ipv4Addr>) -> SocketAddr {
@@ -54,7 +58,7 @@ fn bind_shared(port: u16) -> io::Result<UdpSocket> {
 impl UdpLink {
     pub fn open(config: &UdpConfig, local_addresses: BTreeSet<Ipv4Addr>, mut sink: impl FnMut(&[u8]) + Send + 'static) -> io::Result<UdpLink> {
         let socket = bind_shared(config.local_port)?;
-        let configured: Vec<SocketAddr> = config.targets.iter().filter_map(|(h, p)| resolve(h, *p)).collect();
+        let configured = Mutex::new(resolved(&config.targets));
         let session = Arc::new(Mutex::new(BTreeSet::new()));
         let stop = Arc::new(AtomicBool::new(false));
         let reader = {
@@ -83,9 +87,15 @@ impl UdpLink {
         self.socket.local_addr().map(|a| a.port()).unwrap_or(0)
     }
 
+    pub fn retarget(&self, targets: &[(String, u16)]) {
+        let addresses = resolved(targets);
+        *self.configured.lock().unwrap() = addresses;
+    }
+
     pub fn targets(&self) -> Vec<SocketAddr> {
+        let configured = self.configured.lock().unwrap().clone();
         let session = self.session.lock().unwrap();
-        self.configured.iter().filter(|c| !session.contains(c)).copied().chain(session.iter().copied()).collect()
+        configured.iter().filter(|c| !session.contains(c)).copied().chain(session.iter().copied()).collect()
     }
 
     pub fn write(&self, bytes: &[u8]) -> usize {
@@ -133,6 +143,22 @@ mod tests {
         let mut back = [0u8; 64];
         let (len, from) = peer.recv_from(&mut back).unwrap();
         assert_eq!((&back[..len], from.port()), (frame.as_slice(), port));
+        link.close();
+    }
+
+    #[test]
+    fn a_server_added_to_an_open_link_is_written_to_like_udplink_reading_its_configuration_live() {
+        let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let peer_port = peer.local_addr().unwrap().port();
+        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), |_| {}).unwrap();
+        assert_eq!(link.write(&heartbeat()), 0);
+        link.retarget(&[("127.0.0.1".into(), peer_port)]);
+        assert_eq!(link.write(&heartbeat()), 1);
+        let mut back = [0u8; 64];
+        assert!(peer.recv_from(&mut back).is_ok());
+        link.retarget(&[]);
+        assert_eq!(link.targets(), vec![], "a removed server is no longer written to");
         link.close();
     }
 

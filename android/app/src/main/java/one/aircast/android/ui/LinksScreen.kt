@@ -252,8 +252,6 @@ internal const val DEFAULT_BAUD = 57600
 
 internal data class SerialPortChoice(val port: String, val label: String)
 
-// view.links pairs each port with its label before dropping blank ports; pairing after the filter
-// shifted every label after a blank entry onto the wrong port.
 internal fun serialPortChoices(view: JSONObject?): List<SerialPortChoice> {
     val ports = view?.optJSONArray("serialPorts") ?: return emptyList()
     return (0 until ports.length()).mapNotNull { index ->
@@ -287,6 +285,16 @@ internal fun serialFormError(
     name.isNotBlank() && name.trim() in taken -> "A link with that name already exists."
     else -> null
 }
+
+internal fun udpServer(typed: String, localPort: String): String? {
+    val parts = typed.trim().split(":")
+    val host = parts.first().trim()
+    val port = (parts.getOrNull(1) ?: localPort).trim().toIntOrNull()
+    return if (parts.size > 2 || host.isEmpty() || port == null || port !in 1..65535) null else "$host:$port"
+}
+
+internal fun withServer(servers: List<String>, typed: String, localPort: String): List<String> =
+    udpServer(typed, localPort)?.takeIf { it !in servers }?.let { servers + it } ?: servers
 
 internal fun linkFormError(type: String, host: String, port: String, udpDefault: String = DEFAULT_PORT): String? {
     val parsed = port.ifBlank { if (type == "udp") udpDefault else port }.toIntOrNull()
@@ -446,6 +454,14 @@ private fun writeNewLinkFraming(name: String, framing: SerialFraming): Boolean {
     if (framing == SerialFraming()) return true
     val row = currentRows().firstOrNull { it.name == name } ?: return false
     framingWrites(row.index, framing).forEach { (path, value) -> Qgc.set(path, value) }
+    Qgc.invoke("links.commitLinkConfigurations")
+    return true
+}
+
+private fun addServers(name: String, servers: List<String>): Boolean {
+    if (servers.isEmpty()) return true
+    val row = currentRows().firstOrNull { it.name == name } ?: return false
+    servers.forEach { Qgc.invoke("$LINKS_PATH.${row.index}.addHost", it) }
     Qgc.invoke("links.commitLinkConfigurations")
     return true
 }
@@ -634,6 +650,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("") }
+    var servers by remember { mutableStateOf(emptyList<String>()) }
     var portName by remember { mutableStateOf("") }
     var baud by remember { mutableIntStateOf(DEFAULT_BAUD) }
     var advancedSerial by remember { mutableStateOf(false) }
@@ -688,8 +705,8 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                 }
                 Text(
                     text = when (type) {
-                        "udp" -> "Listens on a port. Leave the address blank unless you need to " +
-                            "reach a specific device."
+                        "udp" -> "Listens on a port. Add a server address only to send to a " +
+                            "specific device."
                         "serial" -> "A radio plugged into this device over USB."
                         BLUETOOTH_LINK -> "A radio paired with or near this device over Bluetooth."
                         AIRCAST_CLOUD_LINK -> "A backup link to the aircraft through your Aircast account."
@@ -751,6 +768,24 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                         Text("Advanced settings")
                     }
                     if (advancedSerial) SerialFramingControls(newFraming) { newFraming = it }
+                } else if (type == "udp") {
+                    OutlinedTextField(
+                        value = port,
+                        onValueChange = { port = it },
+                        label = { Text("Port") },
+                        placeholder = { Text(udpDefault) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    ServerList(
+                        servers,
+                        onAdd = { typed ->
+                            val local = port.ifBlank { udpDefault }
+                            error = if (udpServer(typed, local) == null) "Enter a server as an address, or address:port." else null
+                            servers = withServer(servers, typed, local)
+                        },
+                        onRemove = { gone -> servers = servers.filterNot { it == gone } },
+                    )
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedTextField(
@@ -817,6 +852,10 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                                     Qgc.invokeResult("links.createSerialConfiguration", chosen, portName, baud) == true &&
                                         writeNewLinkFraming(chosen, newFraming) &&
                                         connectNamed(chosen)
+                                } else if (type == "udp") {
+                                    Qgc.invokeResult(
+                                        "links.createAndConnectLink", type, chosen, "", port.ifBlank { udpDefault }.toInt(),
+                                    ) == true && addServers(chosen, servers)
                                 } else {
                                     Qgc.invokeResult(
                                         "links.createAndConnectLink", type, chosen, host, port.ifBlank { portFor(type, udpDefault) }.toInt(),
@@ -1056,7 +1095,6 @@ private fun FramingPicker(label: String, shown: String, choices: List<String>, o
 private fun UdpServers(index: Int, initial: List<String>) {
     val scope = rememberCoroutineScope()
     var servers by remember { mutableStateOf(initial) }
-    var typed by remember { mutableStateOf("") }
 
     fun change(action: String, host: String) {
         scope.launch {
@@ -1068,12 +1106,18 @@ private fun UdpServers(index: Int, initial: List<String>) {
         }
     }
 
+    ServerList(servers, onAdd = { change("addHost", it) }, onRemove = { change("removeHost", it) })
+}
+
+@Composable
+private fun ServerList(servers: List<String>, onAdd: (String) -> Unit, onRemove: (String) -> Unit) {
+    var typed by remember { mutableStateOf("") }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("Server addresses (optional)", style = MaterialTheme.typography.labelLarge)
         servers.forEach { server ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(server, modifier = Modifier.weight(1f))
-                TextButton(onClick = { change("removeHost", server) }) { Text("Remove") }
+                TextButton(onClick = { onRemove(server) }) { Text("Remove") }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1085,7 +1129,7 @@ private fun UdpServers(index: Int, initial: List<String>) {
                 modifier = Modifier.weight(1f),
             )
             TextButton(enabled = typed.isNotBlank(), onClick = {
-                change("addHost", typed.trim())
+                onAdd(typed.trim())
                 typed = ""
             }) { Text("Add server") }
         }
