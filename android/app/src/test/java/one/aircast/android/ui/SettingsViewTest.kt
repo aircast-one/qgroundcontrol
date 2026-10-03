@@ -221,4 +221,13 @@ class SettingsViewTest {
         org.junit.Assert.assertEquals("UDP port 14550 \u00b7 TCP 127.0.0.1:5771", activeLinksGlance(view))
         org.junit.Assert.assertEquals("", activeLinksGlance(null))
     }
+
+    @Test
+    fun `pages match on their QGC keywords and settings on theirs`() {
+        val telemetry = SettingsPageEntry("MAVLink", false, false, 0, keywords = "ground, station, signing, forwarding")
+        assertTrue(pageMatches(telemetry, "Signing"))
+        assertTrue(pageMatches(telemetry, "mav"))
+        assertTrue(!pageMatches(telemetry, "offline"))
+        assertTrue(!pageMatches(telemetry, " "))
+    }
 }

@@ -113,6 +113,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         indent = control.optBoolean("indent"),
         smallFont = control.optBoolean("smallFont"),
         shortLabel = control.optText("shortLabel"),
+        keywords = control.optText("keywords"),
     )
 }
 

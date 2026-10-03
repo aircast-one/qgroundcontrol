@@ -196,6 +196,7 @@ internal data class SettingsPageEntry(
     val showsPx4Logs: Boolean = false,
     val showsPacketRadio: Boolean = false,
     val helpLinks: List<HelpLink> = emptyList(),
+    val keywords: String = "",
 )
 
 internal data class SettingsBlock(val title: String, val facts: List<Fact>)
@@ -239,6 +240,7 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
                 showsNtrip = page.optBoolean("showsNtrip"),
                 showsPx4Logs = page.optBoolean("showsPx4Logs"),
                 showsPacketRadio = page.optBoolean("showsPacketRadio"),
+                keywords = page.optText("keywords"),
                 helpLinks = page.optJSONArray("helpLinks")?.let { links ->
                     (0 until links.length()).mapNotNull { i ->
                         links.optJSONObject(i)?.let { HelpLink(it.optText("name"), it.optText("url"), it.optText("host")) }
@@ -283,13 +285,16 @@ internal fun blockHeading(pageTitle: String, section: SettingsSectionRows, block
 internal fun shownBreadcrumb(title: String): String =
     title.split(" \u203a ").joinToString(" \u203a ", transform = ::sentenceCase)
 
+internal fun pageMatches(page: SettingsPageEntry, needle: String): Boolean =
+    needle.trim().lowercase().let { wanted -> wanted.isNotEmpty() && (page.title.lowercase().contains(wanted) || page.keywords.contains(wanted)) }
+
 internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, needle: String):
     List<SettingsSectionRows> {
     val wanted = needle.trim().lowercase()
     if (wanted.isBlank()) return emptyList()
     return sections.filterNot { it.group == UNITS_GROUP }.mapNotNull { section ->
         val hits = section.blocks.flatMap { it.facts }.filter {
-            it.title.lowercase().contains(wanted) || it.name.lowercase().contains(wanted)
+            it.title.lowercase().contains(wanted) || it.name.lowercase().contains(wanted) || it.keywords.contains(wanted)
         }
         hits.takeIf { it.isNotEmpty() }?.let {
             section.copy(
@@ -406,9 +411,23 @@ private fun SettingsList(
             return@LazyColumn
         }
 
-        if (hits.isEmpty()) {
+        val pageHits = pages.filter { pageMatches(it, search) }
+        if (hits.isEmpty() && pageHits.isEmpty()) {
             item(key = "none") { FootNote("No setting matches \"$search\".") }
             return@LazyColumn
+        }
+
+        if (pageHits.isNotEmpty()) item(key = "pagesHead") { SectionHeader("Pages") }
+        items(pageHits, key = { "page${it.title}" }) { entry ->
+            SetupRow(
+                title = pageTitle(entry.title),
+                status = "",
+                state = SetupState.Neutral,
+                subtitle = "",
+                onClick = { onOpen(entry.title) },
+                icon = pageLook(entry.title).icon,
+                selected = entry.title == selected,
+            )
         }
 
         hits.forEach { section ->

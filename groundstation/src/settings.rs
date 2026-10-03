@@ -356,6 +356,43 @@ fn link_host(url: &str) -> &str {
     url.split_once("://").map_or(url, |(_, rest)| rest).split('/').next().unwrap_or(url)
 }
 
+const SETTINGS_PAGES_MODEL: &str = include_str!("../../src/AppSettings/SettingsPagesModel.qml");
+const QGC_PAGE_NAMES: &[(&str, &[&str])] = &[("General", &["General", "App Logging"]), ("3D Viewer", &["3D View"]), ("MAVLink", &["Telemetry"]), ("About", &["Help"])];
+
+fn qstr<'a>(element: &'a str, field: &str) -> Option<&'a str> {
+    let start = element.find(&format!("{field}: qsTr(\""))? + field.len() + 8;
+    element[start..].find("\")").map(|end| &element[start..start + end])
+}
+
+pub fn page_keywords(title: &str) -> String {
+    let names = QGC_PAGE_NAMES.iter().find(|(ours, _)| *ours == title).map_or_else(|| vec![title], |(_, theirs)| theirs.to_vec());
+    SETTINGS_PAGES_MODEL
+        .split("ListElement {")
+        .skip(1)
+        .filter(|element| qstr(element, "name").is_some_and(|name| names.contains(&name)))
+        .flat_map(|element| [qstr(element, "summary"), qstr(element, "keywords")])
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(", ")
+        .to_lowercase()
+}
+
+fn fact_keywords(name: &str) -> String {
+    static KEYWORDS: std::sync::OnceLock<std::collections::BTreeMap<String, String>> = std::sync::OnceLock::new();
+    KEYWORDS
+        .get_or_init(|| {
+            crate::settingsgroups::GROUPS
+                .iter()
+                .filter_map(|group| serde_json::from_str::<Value>(group.json).ok())
+                .flat_map(|json| json["QGC.MetaData.Facts"].as_array().cloned().unwrap_or_default())
+                .filter_map(|fact| Some((fact["name"].as_str()?.to_string(), fact["keywords"].as_str()?.to_lowercase())))
+                .collect()
+        })
+        .get(name)
+        .cloned()
+        .unwrap_or_default()
+}
+
 fn page_json(page: &Page, with_controls: Option<&dyn Backend>) -> Value {
     json!({
         "helpLinks": match page.shows_about {
@@ -363,6 +400,7 @@ fn page_json(page: &Page, with_controls: Option<&dyn Backend>) -> Value {
             false => Vec::new(),
         },
         "title": page.title,
+        "keywords": page_keywords(page.title),
         "showsLinks": page.shows_links,
         "showsAbout": page.shows_about,
         "showsVideoSources": page.shows_video_sources,
@@ -457,6 +495,10 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         })
         .map(|f| with_choices(backend, f))
         .map(|f| decode(&f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
+        .map(|mut control| {
+            control["keywords"] = json!(fact_keywords(control.get("name").and_then(Value::as_str).unwrap_or_default()));
+            control
+        })
         .collect();
     let borrowed: Vec<Value> = GATED_FROM
         .iter()
@@ -987,6 +1029,18 @@ mod tests {
             .flat_map(|s| s["subsections"].as_array().cloned().unwrap_or_default())
             .flat_map(|sub| sub["controls"].as_array().cloned().unwrap_or_default())
             .collect()
+    }
+
+    #[test]
+    fn pages_and_settings_carry_qgc_search_keywords() {
+        assert!(page_keywords("General").contains("imperial"), "SettingsPagesModel General keywords");
+        assert!(page_keywords("General").contains("appearance"), "the summary is searched too");
+        assert!(page_keywords("MAVLink").contains("forwarding"), "Telemetry is QGC's name for this page");
+        assert!(page_keywords("3D Viewer").contains("osm"));
+        assert_eq!(page_keywords("RTK GPS"), "", "a page QGC does not list has no keywords");
+        let facts = vec![json!({ "kind": "fact", "name": "enabled", "typeIsBool": true, "value": true })];
+        let row = page_rows(&Group("viewer3DSettings", facts), "3D Viewer").into_iter().find(|c| c["name"] == "enabled").unwrap();
+        assert!(row["keywords"].as_str().unwrap().contains("3d"));
     }
 
     #[test]
