@@ -20,13 +20,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 
 private val TERRAIN_COLOUR = Color(0xFF8D6E63)
 private val PLANNED_COLOUR = Color(0xFF4FC3F7)
 private val COLLISION_COLOUR = Color.Red
 private val MISSING_COLOUR = Color.Yellow
-private val HEIGHT_LABEL_MARGIN = 44.dp
 private val PATTERN_COLOUR = Color.Green.copy(alpha = 0.5f)
 private const val MARKER_TAP_SLOP_PX = 48f
 private const val FULL_TERRAIN = 0.98
@@ -174,12 +174,13 @@ fun TerrainProfileView(
         Box {
             val measurer = rememberTextMeasurer()
             val labelStyle = MaterialTheme.typography.labelSmall
+            val labelMargin = with(LocalDensity.current) { (profile.heightTicks.maxOfOrNull { measurer.measure(it, labelStyle).size.width } ?: 0).toDp() } + 8.dp
             val ink = MaterialTheme.colorScheme.onSurface
             val accent = MaterialTheme.colorScheme.primary
             val onAccent = MaterialTheme.colorScheme.onPrimary
             val paper = MaterialTheme.colorScheme.surface
             Canvas(
-                Modifier.fillMaxWidth().height(110.dp).padding(start = HEIGHT_LABEL_MARGIN, end = 8.dp, top = 8.dp, bottom = 16.dp).pointerInput(profile) {
+                Modifier.fillMaxWidth().height(110.dp).padding(start = labelMargin, end = 8.dp, top = 8.dp, bottom = 16.dp).pointerInput(profile) {
                     detectTapGestures { tap -> tappedSequence(profile, size.width.toFloat(), tap.x)?.let(onSelect) }
                 },
             ) {

@@ -6165,6 +6165,7 @@
         "view.terrainDownload.total",
         "view.terrainProfile.class",
         "view.terrainProfile.collidingItems.#",
+        "view.terrainProfile.collidingSimpleItems.#",
         "view.terrainProfile.collisionLegs.#",
         "view.terrainProfile.distanceTicks.0",
         "view.terrainProfile.hasCollision",
@@ -9388,6 +9389,7 @@
         "view.terrainProfile.clearanceComplete",
         "view.terrainProfile.clearanceText",
         "view.terrainProfile.collidingItems.#",
+        "view.terrainProfile.collidingSimpleItems.#",
         "view.terrainProfile.collisionLegs.#",
         "view.terrainProfile.distanceText",
         "view.terrainProfile.distanceTicks.#",
@@ -14093,6 +14095,9 @@
         "clearanceComplete": "bool",
         "clearanceText": "null|string",
         "collidingItems": [
+            "empty"
+        ],
+        "collidingSimpleItems": [
             "empty"
         ],
         "collisionLegs": [

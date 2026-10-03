@@ -117,6 +117,7 @@ pub fn samples(from: (f64, f64), to: (f64, f64)) -> Vec<(f64, f64)> {
 }
 
 const COLLISION_IGNORE_M: f64 = 10.0;
+const SEGMENT_TYPE_TERRAIN_FRAME: i64 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SegmentKind {
@@ -240,8 +241,8 @@ pub fn transect_segments(item: &Value, home_altitude: f64, height: &dyn Fn(f64, 
     };
     let points: Vec<(f64, f64)> = transect.get("VisualTransectPoints")?.as_array()?.iter().filter_map(|p| Some((p.get(0)?.as_f64()?, p.get(1)?.as_f64()?))).collect();
     if amsl.is_nan() {
-        let above = |at: (f64, f64)| height(at.0, at.1).map_or(surface, |ground| ground + surface);
-        return Some(points.windows(2).map(|pair| shaped_segment(pair[0], above(pair[0]), pair[1], above(pair[1]), SegmentKind::TerrainFrame, height)).collect());
+        let above = |at: (f64, f64)| height(at.0, at.1).map(|ground| ground + surface);
+        return Some(points.windows(2).filter_map(|pair| Some(shaped_segment(pair[0], above(pair[0])?, pair[1], above(pair[1])?, SegmentKind::TerrainFrame, height))).collect());
     }
     Some(points.windows(2).map(|pair| segment(pair[0], amsl, pair[1], amsl, height)).collect())
 }
@@ -255,7 +256,7 @@ fn core_segments(index: usize) -> Option<Vec<Value>> {
 
 pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start: f64) -> Vec<Point> {
     let listed = core_segments(index).unwrap_or_else(|| {
-        let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,distanceBetween,terrainCollision"));
+        let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,distanceBetween,terrainCollision,segmentType"));
         segments.get("elements").and_then(Value::as_array).cloned().unwrap_or_default()
     });
     listed
@@ -281,7 +282,11 @@ fn segment_points(segment: &Value, sequence: i64, from: f64) -> Vec<Point> {
         .map(|heights| heights.iter().map(|h| h.as_f64().filter(|v| v.is_finite())).collect())
         .unwrap_or_default();
     let steps = heights.len().max(2);
-    let above_ground = (segment.get("terrainFrame") == Some(&Value::Bool(true))).then(|| heights.first().copied().flatten().map(|ground| low - ground)).flatten();
+    let terrain_frame = segment.get("terrainFrame") == Some(&Value::Bool(true)) || segment.get("segmentType").and_then(Value::as_i64) == Some(SEGMENT_TYPE_TERRAIN_FRAME);
+    let above_ground = terrain_frame.then(|| heights.first().copied().flatten().map(|ground| low - ground)).flatten();
+    if terrain_frame && above_ground.is_none() {
+        return Vec::new();
+    }
     (0..steps)
         .map(|step| {
             let along = sample_at(step, steps, length, spacing);
@@ -430,7 +435,7 @@ pub fn simple_segments(reads: &[Value], fixed_wing: bool, rover: bool, height: &
             let to_alt = second.get("amslEntryAlt")?.as_f64()?;
             let straight_up = flag_of(second, "isTakeoffItem") && !fixed_wing;
             let from_alt = if straight_up { to_alt } else { first.get("amslExitAlt").or_else(|| first.get("amslEntryAlt"))?.as_f64()? };
-            let terrain_frame = first.get("altitudeFrame").or_else(|| first.get("altitudeMode")).and_then(Value::as_i64) == Some(TERRAIN_FRAME);
+            let terrain_frame = !to_home(second) && first.get("altitudeFrame").or_else(|| first.get("altitudeMode")).and_then(Value::as_i64) == Some(TERRAIN_FRAME);
             let kind = match (flag_of(second, "isTakeoffItem"), flag_of(second, "isLandCommand"), terrain_frame) {
                 (true, ..) => SegmentKind::Takeoff,
                 (_, true, _) => SegmentKind::Land,
@@ -467,12 +472,12 @@ fn collision_legs(backend: &dyn Backend) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-fn colliding_items(model: &Value) -> Vec<usize> {
+fn colliding_items(model: &Value, simple: bool) -> Vec<usize> {
     model.get("elements").and_then(Value::as_array).map_or_else(Vec::new, |elements| {
         elements
             .iter()
             .enumerate()
-            .filter(|(_, e)| e.get("isSimpleItem") == Some(&Value::Bool(false)) && e.get("homePosition") != Some(&Value::Bool(true)) && e.get("terrainCollision") == Some(&Value::Bool(true)))
+            .filter(|(_, e)| e.get("isSimpleItem") == Some(&Value::Bool(simple)) && e.get("homePosition") != Some(&Value::Bool(true)) && e.get("terrainCollision") == Some(&Value::Bool(true)))
             .map(|(index, _)| index)
             .collect()
     })
@@ -522,7 +527,8 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "distanceTicks": axis_ticks(0.0, Unit::horizontal(backend).show(profile.total_distance), 4),
         "heightTicks": axis_ticks(vertical.show(profile.min_altitude), vertical.show(profile.max_altitude), 3),
         "markers": markers(&model),
-        "collidingItems": colliding_items(&model),
+        "collidingItems": colliding_items(&model, false),
+        "collidingSimpleItems": colliding_items(&model, true),
         "collisionLegs": match core {
             Some(_) => legs.iter().filter(|leg| leg.segment["terrainCollision"] == true).map(|leg| leg.line.clone()).collect(),
             None => collision_legs(backend),
@@ -745,7 +751,8 @@ mod tests {
     #[test]
     fn a_pattern_that_clips_terrain_is_named_for_the_map_tint() {
         let model = json!({ "elements": [{ "homePosition": true, "isSimpleItem": false, "terrainCollision": true }, { "isSimpleItem": true, "terrainCollision": true }, { "isSimpleItem": false, "terrainCollision": true }, { "isSimpleItem": false, "terrainCollision": false }] });
-        assert_eq!(colliding_items(&model), [2], "only complex items, by visual index; simple legs are red through collisionLegs");
+        assert_eq!(colliding_items(&model, false), [2], "complex items by visual index");
+        assert_eq!(colliding_items(&model, true), [1], "and simple items apart, for SimpleItemMapVisual's loiter border");
     }
 
     #[test]
@@ -756,6 +763,11 @@ mod tests {
         assert_eq!((segments.len(), segments[0]["terrainCollision"].clone(), segments[0]["terrainFrame"].clone()), (1, json!(false), json!(true)), "SegmentTypeTerrainFrame skips the collision check");
         let flown = segment_points(&segments[0], 3, 0.0);
         assert!(flown.iter().all(|p| p.terrain_altitude.is_some_and(|ground| (p.mission_altitude - ground - 50.0).abs() < 1e-6)), "drawn at the ground plus the distance to the surface, as TerrainProfile::_addFlightPoints does");
+        assert!(transect_segments(&corridor, 0.0, &|_, _| None).unwrap().is_empty(), "no ground, no terrain-frame segments, as _buildFlightPathCoordInfoFromPathHeightInfoForTerrainFrame returns early");
+        let home = json!({ "homePosition": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "amslEntryAlt": 500.0 });
+        let terrain_wp = json!({ "specifiesCoordinate": true, "altitudeFrame": TERRAIN_FRAME, "coordinate": { "latitude": 47.01, "longitude": 8.0 }, "amslEntryAlt": 550.0, "sequenceNumber": 1, "isTakeoffItem": true });
+        let back = simple_segments(&[home, terrain_wp, json!({ "command": 20, "sequenceNumber": 2 })], false, false, &ridge);
+        assert_eq!(back.last().unwrap().segment["terrainFrame"], json!(false), "the leg home is always generic, so it is still checked for collision");
     }
 
     #[test]

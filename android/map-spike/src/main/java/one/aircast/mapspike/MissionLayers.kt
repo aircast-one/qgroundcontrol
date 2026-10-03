@@ -620,6 +620,7 @@ fun centreHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>): L
 const val SURVEY_AREA_SOURCE = "aircast-survey-area"
 const val SURVEY_AREA_LAYER = "aircast-survey-area-layer"
 const val SURVEY_COLLISION = "collision"
+const val TERRAIN_COLLISION = "terrainCollision"
 const val SURVEY_TRANSECT_SOURCE = "aircast-survey-transects"
 const val SURVEY_TRANSECT_LAYER = "aircast-survey-transect-layer"
 const val LANDING_PATH_SOURCE = "aircast-landing-path"
@@ -723,7 +724,7 @@ fun installLandingLayers(style: Style) {
         style.addSource(GeoJsonSource(LANDING_AREA_SOURCE))
         style.addLayer(
             FillLayer(LANDING_AREA_LAYER, LANDING_AREA_SOURCE).withProperties(
-                PropertyFactory.fillColor(Expression.match(Expression.get(LANDING_SHAPE_KIND), Expression.literal(LANDING_AREA_KIND), Expression.color(android.graphics.Color.GREEN), Expression.color(android.graphics.Color.rgb(255, 165, 0)))),
+                PropertyFactory.fillColor(Expression.switchCase(Expression.get(TERRAIN_COLLISION), Expression.color(android.graphics.Color.RED), Expression.match(Expression.get(LANDING_SHAPE_KIND), Expression.literal(LANDING_AREA_KIND), Expression.color(android.graphics.Color.GREEN), Expression.color(android.graphics.Color.rgb(255, 165, 0))))),
                 PropertyFactory.fillOpacity(0.5f),
                 PropertyFactory.fillOutlineColor(android.graphics.Color.BLACK),
             ),
@@ -733,7 +734,7 @@ fun installLandingLayers(style: Style) {
         style.addSource(GeoJsonSource(LANDING_LOITER_SOURCE))
         style.addLayer(
             LineLayer(LANDING_LOITER_LAYER, LANDING_LOITER_SOURCE).withProperties(
-                PropertyFactory.lineColor("#26C6DA"),
+                PropertyFactory.lineColor(Expression.switchCase(Expression.get(TERRAIN_COLLISION), Expression.color(android.graphics.Color.RED), Expression.color(android.graphics.Color.parseColor("#26C6DA")))),
                 PropertyFactory.lineWidth(2.5f),
             ),
         )

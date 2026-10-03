@@ -191,4 +191,13 @@ class IsLandingPatternTest {
         assertEquals(listOf("Entry", "Exit"), structureScanLabels(listOf(scan)).map { it.text })
         assertEquals("exitCoordinateSameAsEntry: the core sends no exit, both labels sit on the entry", listOf(scan.latitude, scan.latitude), structureScanLabels(listOf(scan.copy(exit = null))).map { it.at.latitude })
     }
+
+    @org.junit.Test
+    fun `a colliding glide slope and loiter circle turn red like their QGC visuals`() {
+        val slope = LandingPattern(index = 3, landing = TrackPoint(47.0, 8.0), slopeStart = TrackPoint(47.01, 8.0), finalApproach = TrackPoint(47.02, 8.0), loiterRadiusMetres = 80.0, loiterClockwise = true, collides = true)
+        val shapes = landingAreaFeatures(listOf(slope)).features()!!.associate { it.getStringProperty(LANDING_SHAPE_KIND) to it.getBooleanProperty(TERRAIN_COLLISION) }
+        assertEquals("only the glide slope takes the collision colour", mapOf(LANDING_AREA_KIND to false, GLIDE_SLOPE_KIND to true), shapes)
+        val loiter = MissionItem(4, 4, 47.0, 8.0, "Loiter", false, 50.0, loiterRadius = 80.0, terrainCollision = true)
+        assertEquals(true, landingLoiterFeatures(emptyList(), listOf(loiter)).features()!!.single().getBooleanProperty(TERRAIN_COLLISION))
+    }
 }

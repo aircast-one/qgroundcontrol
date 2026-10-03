@@ -17,6 +17,7 @@ data class LandingPattern(
     val loiterRadiusText: String = "",
     val loiterToAltitude: Boolean = false,
     val heights: GlideSlopeHeights? = null,
+    val collides: Boolean = false,
 )
 
 private fun place(view: JSONObject?, key: String): TrackPoint? =
@@ -131,25 +132,31 @@ fun glideSlope(pattern: LandingPattern): List<TrackPoint>? {
 fun landingAreaFeatures(patterns: List<LandingPattern>): FeatureCollection =
     FeatureCollection.fromFeatures(
         patterns.flatMap { pattern ->
-            listOfNotNull(landingArea(pattern)?.let { LANDING_AREA_KIND to it }, glideSlope(pattern)?.let { GLIDE_SLOPE_KIND to it })
-        }.map { (kind, ring) ->
-            Feature.fromGeometry(Polygon.fromLngLats(listOf((ring + ring.first()).map { Point.fromLngLat(it.longitude, it.latitude) }))).apply { addStringProperty(LANDING_SHAPE_KIND, kind) }
+            listOfNotNull(landingArea(pattern)?.let { Triple(LANDING_AREA_KIND, it, false) }, glideSlope(pattern)?.let { Triple(GLIDE_SLOPE_KIND, it, pattern.collides) })
+        }.map { (kind, ring, collides) ->
+            Feature.fromGeometry(Polygon.fromLngLats(listOf((ring + ring.first()).map { Point.fromLngLat(it.longitude, it.latitude) }))).apply {
+                addStringProperty(LANDING_SHAPE_KIND, kind)
+                addBooleanProperty(TERRAIN_COLLISION, collides)
+            }
         },
     )
 
 fun loiterRings(patterns: List<LandingPattern>, items: List<MissionItem>): List<Pair<TrackPoint, Double>> =
-    patterns.filter { it.loiterToAltitude }.mapNotNull { pattern -> pattern.finalApproach?.let { centre -> pattern.loiterRadiusMetres?.let { centre to it } } } +
-        items.filter { it.loiterRadius.isFinite() && it.loiterRadius != 0.0 }.map { TrackPoint(it.latitude, it.longitude) to kotlin.math.abs(it.loiterRadius) }
+    loiterCircles(patterns, items).map { (centre, radius, _) -> centre to radius }
+
+private fun loiterCircles(patterns: List<LandingPattern>, items: List<MissionItem>): List<Triple<TrackPoint, Double, Boolean>> =
+    patterns.filter { it.loiterToAltitude }.mapNotNull { pattern -> pattern.finalApproach?.let { centre -> pattern.loiterRadiusMetres?.let { Triple(centre, it, false) } } } +
+        items.filter { it.loiterRadius.isFinite() && it.loiterRadius != 0.0 }.map { Triple(TrackPoint(it.latitude, it.longitude), kotlin.math.abs(it.loiterRadius), it.terrainCollision) }
 
 fun landingLoiterFeatures(patterns: List<LandingPattern>, items: List<MissionItem> = emptyList()): FeatureCollection =
     FeatureCollection.fromFeatures(
-        loiterRings(patterns, items).mapNotNull { (centre, radius) ->
+        loiterCircles(patterns, items).mapNotNull { (centre, radius, collides) ->
             circleRing(centre, radius).takeIf { it.size >= 3 }?.let { ring ->
                 Feature.fromGeometry(
                     LineString.fromLngLats(
                         (ring + ring.first()).map { Point.fromLngLat(it.longitude, it.latitude) },
                     ),
-                )
+                ).apply { addBooleanProperty(TERRAIN_COLLISION, collides) }
             }
         },
     )

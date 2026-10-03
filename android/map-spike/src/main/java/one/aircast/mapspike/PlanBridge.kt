@@ -117,6 +117,7 @@ data class MissionItem(
     val altitudeEditUnits: String = "",
     val complexPattern: Boolean = false,
     val loiterRadius: Double = Double.NaN,
+    val terrainCollision: Boolean = false,
     val heading: Double = Double.NaN,
     val gimbalYaw: Double = Double.NaN,
     val closesRoute: Boolean = false,

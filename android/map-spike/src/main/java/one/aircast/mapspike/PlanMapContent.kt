@@ -308,6 +308,7 @@ internal fun MapSpikeScreen(
     val profile = remember(terrainView) { terrainProfile(terrainView) }
     val terrainHits = remember(terrainView) { collisionLegs(terrainView) }
     val collidingPatterns = remember(terrainView) { collidingItems(terrainView) }
+    val collidingSimple = remember(terrainView) { collidingItems(terrainView, "collidingSimpleItems") }
     val elevationProviderJson by mapPath(ELEVATION_PROVIDER)
     val elevationNotice = elevationProviderJson?.optText("value").orEmpty()
     val missionStatusJson by mapPath("$SHOW_MISSION_ITEM_STATUS.rawValue")
@@ -458,7 +459,7 @@ internal fun MapSpikeScreen(
             modifier = Modifier.fillMaxSize(),
             mapStyle = shownStyle,
             follow = follow,
-            missionItems = items,
+            missionItems = items.map { it.copy(terrainCollision = it.index in collidingSimple) },
             linkStartToHome = linkStartToHome,
             fencePolygons = fences.map { if (ownerOf(selected) == "p${it.index}") it else it.copy(editable = null) },
             fenceCircles = circles,
@@ -467,7 +468,7 @@ internal fun MapSpikeScreen(
             rallyPoints = rally,
             operator = operator,
             surveys = surveyList.map { if (ownerOf(selected) == "m${it.index}") it else it.copy(editable = null) }.map { it.copy(collides = it.index in collidingPatterns) },
-            landings = landingList,
+            landings = landingList.map { it.copy(collides = it.index in collidingPatterns) },
             editable = true,
             circledShapes = circled,
             collisionLegs = terrainHits,
