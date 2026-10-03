@@ -42,14 +42,18 @@ data class TerrainProfile(
     val distanceText: String = "",
     val bandText: String = "",
     val markers: List<ProfileMarker> = emptyList(),
+    val band: Pair<Double, Double>? = null,
+    val heightHeader: String = "",
+    val distanceTicks: List<String> = emptyList(),
+    val heightTicks: List<String> = emptyList(),
 ) {
     val distance: Double get() = points.lastOrNull()?.distance ?: 0.0
 
     val lowest: Double
-        get() = points.minOfOrNull { min(it.terrain ?: it.planned, it.planned) } ?: 0.0
+        get() = band?.first ?: points.minOfOrNull { min(it.terrain ?: it.planned, it.planned) } ?: 0.0
 
     val highest: Double
-        get() = points.maxOfOrNull { max(it.terrain ?: it.planned, it.planned) } ?: 0.0
+        get() = band?.second ?: points.maxOfOrNull { max(it.terrain ?: it.planned, it.planned) } ?: 0.0
 
     val hasTerrain: Boolean get() = points.count { it.terrain != null } >= 2
 
@@ -138,6 +142,11 @@ fun terrainProfile(view: JSONObject?): TerrainProfile {
         highestText = view.optText("highestText"),
         distanceText = view.optText("distanceText"),
         bandText = view.optText("bandText"),
+        band = view.optDouble("minAltitudeMeters", Double.NaN).takeIf { it.isFinite() }
+            ?.let { low -> view.optDouble("maxAltitudeMeters", Double.NaN).takeIf { it.isFinite() }?.let { low to it } },
+        heightHeader = view.optText("heightHeader"),
+        distanceTicks = view.optJSONArray("distanceTicks")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
+        heightTicks = view.optJSONArray("heightTicks")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
     )
 }
 

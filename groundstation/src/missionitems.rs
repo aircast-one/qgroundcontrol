@@ -714,6 +714,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                     "isCurrentItem": selected == i as i64 + 1,
                     "coordinate": { "latitude": if v.landing { v.exit.0 } else { v.entry.0 }, "longitude": if v.landing { v.exit.1 } else { v.entry.1 }, "altitude": v.touchdown_altitude, "valid": !v.incomplete },
                     "exitCoordinate": { "latitude": v.exit.0, "longitude": v.exit.1, "altitude": v.touchdown_altitude, "valid": !v.incomplete },
+                    "entryCoordinate": { "latitude": v.entry.0, "longitude": v.entry.1, "valid": !v.incomplete },
                     "exitCoordinateSameAsEntry": !v.landing && v.entry == v.exit,
                     "isLandCommand": v.landing,
                     "isIncomplete": v.incomplete,

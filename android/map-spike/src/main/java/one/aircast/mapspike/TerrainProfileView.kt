@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 private val TERRAIN_COLOUR = Color(0xFF8D6E63)
 private val PLANNED_COLOUR = Color(0xFF4FC3F7)
 private val COLLISION_COLOUR = Color.Red
+private val MISSING_COLOUR = Color.Yellow
 private val PATTERN_COLOUR = Color.Green.copy(alpha = 0.5f)
 private const val MARKER_TAP_SLOP_PX = 48f
 private const val FULL_TERRAIN = 0.98
@@ -48,6 +49,28 @@ internal fun profileOffsets(
         val y = height - ((height1 - profile.lowest) / span * height).toFloat()
         Offset(x, y)
     }
+}
+
+internal fun terrainRuns(profile: TerrainProfile, width: Float, height: Float): List<List<Offset>> {
+    val distance = profile.distance.takeIf { it > 0.0 && profile.drawable } ?: return emptyList()
+    return profile.points
+        .fold(listOf(emptyList<Offset>())) { runs, point ->
+            val ground = point.terrain
+            if (ground == null) {
+                if (runs.last().isEmpty()) runs else runs + listOf(emptyList())
+            } else {
+                val at = Offset((point.distance / distance * width).toFloat(), height - ((ground - profile.lowest) / profile.span * height).toFloat())
+                runs.dropLast(1) + listOf(runs.last() + at)
+            }
+        }
+        .filter { it.size >= 2 }
+}
+
+internal fun missingSpans(profile: TerrainProfile, width: Float): List<Pair<Float, Float>> {
+    val distance = profile.distance.takeIf { it > 0.0 } ?: return emptyList()
+    return profile.points.zipWithNext()
+        .filter { (from, to) -> from.terrain == null || to.terrain == null }
+        .map { (from, to) -> (from.distance / distance * width).toFloat() to (to.distance / distance * width).toFloat() }
 }
 
 internal fun collisionSegments(profile: TerrainProfile, planned: List<Offset>): List<Pair<Offset, Offset>> =
@@ -125,7 +148,7 @@ fun TerrainProfileView(
         return
     }
 
-    if (profile.flat || !profile.hasTerrain) {
+    if (profile.flat) {
         Text(
             profileLabel(profile),
             modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -134,11 +157,17 @@ fun TerrainProfileView(
         return
     }
 
+    if (profile.heightHeader.isNotBlank()) {
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            Text("Elevation", Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+            Text(profile.heightHeader, style = MaterialTheme.typography.labelSmall)
+        }
+    }
     elevationCredit(notice)?.let {
         Text(it, Modifier.fillMaxWidth(), style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
     }
     Surface(
-        modifier.fillMaxWidth().height(110.dp),
+        modifier.fillMaxWidth().height(126.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
     ) {
         Box {
@@ -149,17 +178,29 @@ fun TerrainProfileView(
             val onAccent = MaterialTheme.colorScheme.onPrimary
             val paper = MaterialTheme.colorScheme.surface
             Canvas(
-                Modifier.fillMaxWidth().height(110.dp).padding(8.dp).pointerInput(profile) {
+                Modifier.fillMaxWidth().height(110.dp).padding(start = 8.dp, end = 8.dp, top = 8.dp, bottom = 16.dp).pointerInput(profile) {
                     detectTapGestures { tap -> tappedSequence(profile, size.width.toFloat(), tap.x)?.let(onSelect) }
                 },
             ) {
-                val terrain = profileOffsets(profile, size.width, size.height) { it.terrain }
                 val planned = profileOffsets(profile, size.width, size.height) { it.planned }
 
-                if (terrain.size >= 2) {
-                    val ground = pathOf(groundOutline(terrain, size.height)).apply { close() }
-                    drawPath(ground, TERRAIN_COLOUR.copy(alpha = 0.45f))
-                    drawPath(pathOf(terrain), TERRAIN_COLOUR, style = Stroke(3f))
+                terrainRuns(profile, size.width, size.height).forEach { run ->
+                    drawPath(pathOf(groundOutline(run, size.height)).apply { close() }, TERRAIN_COLOUR.copy(alpha = 0.45f))
+                    drawPath(pathOf(run), TERRAIN_COLOUR, style = Stroke(3f))
+                }
+                missingSpans(profile, size.width).forEach { (from, to) ->
+                    drawLine(MISSING_COLOUR, Offset(from, size.height), Offset(to, size.height), strokeWidth = 9f)
+                }
+                profile.heightTicks.forEachIndexed { index, tick ->
+                    val y = size.height - size.height * index / (profile.heightTicks.size - 1).coerceAtLeast(1)
+                    drawLine(ink.copy(alpha = 0.3f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+                    val measured = measurer.measure(tick, labelStyle)
+                    drawText(measured, ink, Offset(0f, (y - measured.size.height).coerceAtLeast(0f)))
+                }
+                profile.distanceTicks.forEachIndexed { index, tick ->
+                    val measured = measurer.measure(tick, labelStyle)
+                    val x = size.width * index / (profile.distanceTicks.size - 1).coerceAtLeast(1)
+                    drawText(measured, ink, Offset((x - measured.size.width / 2f).coerceIn(0f, (size.width - measured.size.width).coerceAtLeast(0f)), size.height))
                 }
                 if (planned.size >= 2) {
                     drawPath(pathOf(planned), PLANNED_COLOUR, style = Stroke(3f))

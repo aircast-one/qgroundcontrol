@@ -4,7 +4,7 @@ use crate::read::{Unit, object};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile", "plan.missionController.simpleFlightPathSegments.count",
-    "settings.unitsSettings.verticalDistanceUnits", crate::coreplan::CHANGED, crate::terrainservice::TERRAIN_CHANGED,
+    "settings.unitsSettings.verticalDistanceUnits", "settings.unitsSettings.horizontalDistanceUnits", crate::coreplan::CHANGED, crate::terrainservice::TERRAIN_CHANGED,
 ];
 
 const FIELDS: &str = "specifiesCoordinate,specifiesAltitudeOnly,altitudeFrame,distanceFromStart,amslEntryAlt,terrainAltitude,terrainCollision,sequenceNumber,complexDistance,isStandaloneCoordinate,isSimpleItem,abbreviation,lastSequenceNumber,patternName,commandName,isSingleItem,homePosition";
@@ -389,7 +389,7 @@ pub struct SimpleSegment {
     pub line: Value,
     pub segment: Value,
     pub sequence: i64,
-    pub end_distance: f64,
+    pub start_distance: Option<f64>,
 }
 
 pub fn simple_segments(reads: &[Value], fixed_wing: bool, rover: bool, height: &dyn Fn(f64, f64) -> Option<f64>) -> Vec<SimpleSegment> {
@@ -420,7 +420,7 @@ pub fn simple_segments(reads: &[Value], fixed_wing: bool, rover: bool, height: &
         .filter_map(|pair| {
             let (first, second) = (pair[0], pair[1]);
             let from = spot(first.get("exitCoordinate")).or_else(|| spot(first.get("coordinate")))?;
-            let to = spot(second.get("coordinate"))?;
+            let to = spot(second.get("entryCoordinate")).or_else(|| spot(second.get("coordinate")))?;
             let to_alt = second.get("amslEntryAlt")?.as_f64()?;
             let straight_up = flag_of(second, "isTakeoffItem") && !fixed_wing;
             let from_alt = if straight_up { to_alt } else { first.get("amslExitAlt").or_else(|| first.get("amslEntryAlt"))?.as_f64()? };
@@ -430,23 +430,19 @@ pub fn simple_segments(reads: &[Value], fixed_wing: bool, rover: bool, height: &
                 _ => SegmentKind::Generic,
             };
             let segment = shaped_segment(from, from_alt, to, to_alt, kind, height);
-            let total = segment["totalDistance"].as_f64().unwrap_or(0.0);
-            let end_distance = second.get("distanceFromStart").and_then(Value::as_f64).filter(|d| d.is_finite()).unwrap_or(total);
-            Some(SimpleSegment { line: leg_json(from, to), segment, sequence: second.get("sequenceNumber").and_then(Value::as_i64).unwrap_or(-1), end_distance: if to_home(second) { f64::NAN } else { end_distance } })
+            let number = |read: &Value, key: &str| read.get(key).and_then(Value::as_f64).filter(|d| d.is_finite());
+            let counted_from_home = number(second, "distanceFromStart").is_some_and(|d| d > 0.0);
+            let start_distance = match flag_of(first, "homePosition") && !to_home(second) {
+                true => counted_from_home.then_some(0.0),
+                false => Some(number(first, "distanceFromStart").unwrap_or(0.0) + number(first, "complexDistance").unwrap_or(0.0)),
+            };
+            Some(SimpleSegment { line: leg_json(from, to), segment, sequence: first.get("sequenceNumber").and_then(Value::as_i64).unwrap_or(-1), start_distance })
         })
         .collect()
 }
 
 fn simple_points(legs: &[SimpleSegment]) -> Vec<Point> {
-    legs.iter()
-        .scan(0.0, |walked: &mut f64, leg| {
-            let total = leg.segment["totalDistance"].as_f64().unwrap_or(0.0);
-            let start = if leg.end_distance.is_finite() { leg.end_distance - total } else { *walked };
-            *walked = start + total;
-            Some(segment_points(&leg.segment, leg.sequence, start))
-        })
-        .flatten()
-        .collect()
+    legs.iter().filter_map(|leg| leg.start_distance.map(|start| segment_points(&leg.segment, leg.sequence, start))).flatten().collect()
 }
 
 fn collision_legs(backend: &dyn Backend) -> Vec<Value> {
@@ -461,6 +457,11 @@ fn collision_legs(backend: &dyn Backend) -> Vec<Value> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn axis_ticks(min: f64, max: f64, intervals: usize) -> Vec<String> {
+    let step = if max - min > 0.0 { (max - min) / intervals as f64 } else { 1.0 };
+    (0..=intervals).map(|i| min + step * i as f64).take_while(|v| *v <= max + step * 1e-9).map(|v| format!("{v:.1}")).collect()
 }
 
 pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -498,6 +499,9 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "lowestText": crate::read::format_measure(vertical.show(profile.min_altitude), &vertical.name),
         "highestText": crate::read::format_measure(vertical.show(profile.max_altitude), &vertical.name),
         "bandText": crate::read::range_text(profile.min_altitude, profile.max_altitude, &vertical),
+        "heightHeader": format!("Height AMSL ({})", vertical.name),
+        "distanceTicks": axis_ticks(0.0, Unit::horizontal(backend).show(profile.total_distance), 4),
+        "heightTicks": axis_ticks(vertical.show(profile.min_altitude), vertical.show(profile.max_altitude), 3),
         "markers": markers(&model),
         "collisionLegs": match core {
             Some(_) => legs.iter().filter(|leg| leg.segment["terrainCollision"] == true).map(|leg| leg.line.clone()).collect(),
@@ -547,6 +551,14 @@ mod tests {
         assert!(walked.len() > 30, "sampled every 30 m between the two waypoints, not just at them: {}", walked.len());
         assert!(walked.iter().any(|p| p.terrain_altitude == Some(700.0) && p.collision), "the ridge between the waypoints is on the profile and red");
         assert!(walked.first().unwrap().distance.abs() < 1.0 && (walked.last().unwrap().distance - 1112.0).abs() < 1.0, "placed on the mission's distance axis");
+        assert!(walked.iter().all(|p| p.sequence == 1), "a leg belongs to the item it leaves, as setSimpleFlighPathSegment does, so labels stay on their waypoint");
+        let home = json!({ "homePosition": true, "coordinate": { "latitude": 46.99, "longitude": 8.0 }, "amslEntryAlt": 500.0 });
+        let rover = simple_segments(&[home.clone(), item(47.0, 600.0, 1, 0.0), item(47.01, 600.0, 2, 1112.0)], false, true, &ridge);
+        assert_eq!((rover.len(), rover[0].start_distance), (2, None), "a rover's home leg is red on the map but not counted in the mission distance, so it is not on the profile");
+        let survey = json!({ "specifiesCoordinate": true, "isSimpleItem": false, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "exitCoordinate": { "latitude": 47.01, "longitude": 8.0 }, "amslEntryAlt": 600.0, "amslExitAlt": 600.0, "sequenceNumber": 1, "distanceFromStart": 0.0, "complexDistance": 2500.0 });
+        let rtl = json!({ "command": 20, "sequenceNumber": 9 });
+        let back = simple_segments(&[home, survey, rtl], false, false, &ridge);
+        assert_eq!(back.last().unwrap().start_distance, Some(2500.0), "the leg home starts where the pattern ends, not at its entry");
     }
 
     #[test]
@@ -708,6 +720,13 @@ mod tests {
         assert_eq!(flat.max_altitude, 105.0);
         assert_eq!(flat.total_distance, 200.0);
         assert_eq!(flat.unknown_terrain, 0);
+    }
+
+    #[test]
+    fn the_axes_tick_like_terrain_status() {
+        assert_eq!(axis_ticks(0.0, 1000.0, 4), ["0.0", "250.0", "500.0", "750.0", "1000.0"], "tickInterval max / 4, one decimal");
+        assert_eq!(axis_ticks(380.0, 620.0, 3), ["380.0", "460.0", "540.0", "620.0"]);
+        assert_eq!(axis_ticks(0.0, 0.0, 4), ["0.0"], "an empty axis keeps the interval of 1 and shows its single tick");
     }
 
     #[test]

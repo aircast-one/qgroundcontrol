@@ -264,3 +264,23 @@ class HeightRangeTest {
         assertEquals(listOf(true, true, false, true), listOf(null, JSONObject("""{"value":null}"""), JSONObject("""{"value":false}"""), JSONObject("""{"value":true}""")).map { missionItemStatusShown(it) })
     }
 }
+
+class TerrainGapTest {
+    private val profile = TerrainProfile(
+        points = listOf(
+            ProfilePoint(0.0, 100.0, 150.0),
+            ProfilePoint(100.0, 110.0, 150.0),
+            ProfilePoint(200.0, null, 150.0),
+            ProfilePoint(300.0, 120.0, 150.0),
+            ProfilePoint(400.0, 130.0, 150.0),
+        ),
+        band = 90.0 to 160.0,
+    )
+
+    @org.junit.Test
+    fun `missing ground breaks the terrain line and is marked along the bottom like TerrainProfile`() {
+        org.junit.Assert.assertEquals(listOf(2, 2), terrainRuns(profile, 400f, 70f).map { it.size })
+        org.junit.Assert.assertEquals(listOf(100f to 200f, 200f to 300f), missingSpans(profile, 400f))
+        org.junit.Assert.assertEquals("the chart uses the core's padded band", 90.0, profile.lowest, 0.0)
+    }
+}
