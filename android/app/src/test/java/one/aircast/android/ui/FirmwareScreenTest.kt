@@ -65,4 +65,20 @@ class FirmwareScreenTest {
         assertFalse(bootloaderOffered(advanced = false, apmVehicle = true))
         assertFalse(bootloaderOffered(advanced = true, apmVehicle = false))
     }
+
+    @Test
+    fun `the last stack and ArduPilot vehicle are remembered like FirmwareUpgrade qml`() {
+        org.junit.Assert.assertEquals("px4:stable", rememberedSource(12, 2))
+        org.junit.Assert.assertEquals("ardupilot:plane:stable", rememberedSource(3, 2))
+        org.junit.Assert.assertEquals("ardupilot:copter:stable", rememberedSource(3, null))
+        org.junit.Assert.assertEquals(listOf("defaultFirmwareType" to 3, "apmVehicleType" to 4), sourceSettings("ardupilot:sub:beta"))
+        org.junit.Assert.assertEquals(listOf("defaultFirmwareType" to 12), sourceSettings("px4:dev"))
+        org.junit.Assert.assertEquals(emptyList<Pair<String, Int>>(), sourceSettings("sik:stable"))
+    }
+
+    @Test
+    fun `flashing names the board like FirmwareUpgrade qml`() {
+        org.junit.Assert.assertEquals("Flashing - Pixhawk 6C", flashingLabel(listOf(FirmwarePort("/dev/bus/usb/1", "Pixhawk 6C", true)), "/dev/bus/usb/1"))
+        org.junit.Assert.assertEquals("Flashing - /dev/x", flashingLabel(emptyList(), "/dev/x"))
+    }
 }

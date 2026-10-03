@@ -114,6 +114,23 @@ internal val FIRMWARE_SOURCES: List<Pair<String, String>> =
         }
 
 internal const val DEFAULT_FIRMWARE_SOURCE = "px4:stable"
+private const val FIRMWARE_TYPE_PX4 = 12
+private const val FIRMWARE_TYPE_APM = 3
+private val APM_VEHICLES = listOf("copter", "heli", "plane", "rover", "sub")
+private const val DEFAULT_FIRMWARE_TYPE = "defaultFirmwareType"
+private const val APM_VEHICLE_TYPE = "apmVehicleType"
+
+internal fun rememberedSource(firmwareType: Int?, apmVehicleType: Int?): String =
+    if (firmwareType == FIRMWARE_TYPE_APM) "ardupilot:${APM_VEHICLES.getOrElse(apmVehicleType ?: 0) { APM_VEHICLES.first() }}:stable" else DEFAULT_FIRMWARE_SOURCE
+
+internal fun sourceSettings(source: String): List<Pair<String, Int>> {
+    val parts = source.split(':')
+    return when (parts.first()) {
+        "px4" -> listOf(DEFAULT_FIRMWARE_TYPE to FIRMWARE_TYPE_PX4)
+        "ardupilot" -> listOf(DEFAULT_FIRMWARE_TYPE to FIRMWARE_TYPE_APM) + listOfNotNull(APM_VEHICLES.indexOf(parts.getOrNull(1)).takeIf { it >= 0 }?.let { APM_VEHICLE_TYPE to it })
+        else -> emptyList()
+    }
+}
 internal const val APM_FIRMWARE = "vehicle.apmFirmware"
 internal const val FLASH_BOOTLOADER = "vehicle.flashBootloader"
 
@@ -134,6 +151,9 @@ internal fun firmwareWarning(source: String): String? = when {
     else -> null
 }
 
+internal fun flashingLabel(ports: List<FirmwarePort>, port: String): String =
+    "Flashing - ${ports.firstOrNull { it.port == port }?.description?.ifBlank { null } ?: port}"
+
 internal fun firmwareChoice(source: String, file: String?): String? =
     if (source == FIRMWARE_FROM_FILE) file else source
 
@@ -151,6 +171,20 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
     val apmVehicle by qgcBool(APM_FIRMWARE)
     val upgradeSettings by one.aircast.android.bridge.qgcFacts(FIRMWARE_UPGRADE_SETTINGS)
     var source by remember { mutableStateOf(DEFAULT_FIRMWARE_SOURCE) }
+    var sourceRestored by remember { mutableStateOf(false) }
+    LaunchedEffect(upgradeSettings) {
+        if (sourceRestored || upgradeSettings.isEmpty()) return@LaunchedEffect
+        val setting = { name: String -> (upgradeSettings.firstOrNull { it.name == name }?.value as? Number)?.toInt() }
+        source = rememberedSource(setting(DEFAULT_FIRMWARE_TYPE), setting(APM_VEHICLE_TYPE))
+        sourceRestored = true
+    }
+    val chooseSource: (String) -> Unit = { chosen ->
+        source = chosen
+        sourceRestored = true
+        one.aircast.android.bridge.offMainDetached {
+            sourceSettings(chosen).forEach { (name, value) -> Qgc.writeRefusal("$FIRMWARE_UPGRADE_SETTINGS.$name", value) }
+        }
+    }
     var refusal by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
@@ -215,7 +249,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                     FIRMWARE_SOURCES.firstOrNull { it.first == source }?.second ?: source,
                     offered.map { it.second },
                     Modifier.fillMaxWidth(),
-                ) { index -> if (!busy) source = offered[index].first }
+                ) { index -> if (!busy) chooseSource(offered[index].first) }
                 if (source.startsWith("ardupilot:")) upgradeSettings.firstOrNull { it.name == APM_CHIBIOS }?.let { FactRow(it, fieldModifier = Modifier.fillMaxWidth()) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = advanced, enabled = !busy, onCheckedChange = {
@@ -232,6 +266,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                 }
                 firmwareWarning(source)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
                 val choice = firmwareChoice(source, file?.absolutePath)
+                if (busy) Text(flashingLabel(ports, port), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                     if (source == FIRMWARE_FROM_FILE) {
                         OutlinedButton(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Choose file") }
