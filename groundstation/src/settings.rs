@@ -47,6 +47,7 @@ const PAGES: &[Page] = &[
 // Same shape as extraVideoSources: when a bespoke block owns a fact, the fact leaves the list.
 const HIDDEN: &[&str] = &[
     "androidUsePosixSerial",
+    "keepSceneAlive",
     "qLocaleLanguage",
     "overlayGlassFrost",
     "batteryPercentRemainingAnnounce",
@@ -333,7 +334,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Local Video Storage", &["videoSavePath", "recordingFormat", "enableStorageLimit", "maxVideoSize"]),
     ]),
     ("viewer3DSettings", &[
-        ("General", &["enabled", "mapProvider", "keepSceneAlive"]),
+        ("General", &["enabled", "mapProvider"]),
         ("Data", &["osmFilePath", "buildingLevelHeight", "altitudeBias"]),
     ]),
     ("flyViewSettings", &[

@@ -9,7 +9,6 @@ pub const DEPS: &[&str] = &[
     "settings.viewer3DSettings.enabled.rawValue",
     "settings.viewer3DSettings.osmFilePath.rawValue",
     "settings.viewer3DSettings.buildingLevelHeight.rawValue",
-    "settings.viewer3DSettings.altitudeBias.rawValue",
 ];
 
 const SINGLE_STOREY: [&str; 4] = ["bungalow", "shed", "kiosk", "cabin"];
@@ -17,8 +16,8 @@ const DOUBLE_STOREY_LEISURE: [&str; 3] = ["stadium", "sports_hall", "sauna"];
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Building {
-    pub outer: Vec<(f64, f64)>,
-    pub inner: Vec<(f64, f64)>,
+    pub outer: Vec<Vec<(f64, f64)>>,
+    pub inner: Vec<Vec<(f64, f64)>>,
     pub levels: f64,
     pub height: f64,
 }
@@ -41,7 +40,7 @@ impl Building {
 }
 
 fn number(text: &str) -> f64 {
-    text.trim().split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')).next().and_then(|n| n.parse().ok()).unwrap_or(0.0)
+    text.trim().parse().unwrap_or(0.0)
 }
 
 fn way_building(way: roxmltree::Node, nodes: &BTreeMap<i64, (f64, f64)>) -> Building {
@@ -54,7 +53,7 @@ fn way_building(way: roxmltree::Node, nodes: &BTreeMap<i64, (f64, f64)>) -> Buil
         "leisure" if levels == 0.0 && height == 0.0 && DOUBLE_STOREY_LEISURE.contains(&value) => (2.0, height),
         _ => (levels, height),
     });
-    Building { outer, inner: Vec::new(), levels, height }
+    Building { outer: vec![outer], inner: Vec::new(), levels, height }
 }
 
 pub fn parse(text: &str) -> Option<CityMap> {
@@ -69,7 +68,7 @@ pub fn parse(text: &str) -> Option<CityMap> {
         .children()
         .filter(|c| c.has_tag_name("way"))
         .filter_map(|w| Some((w.attribute("id")?.parse::<i64>().ok().filter(|id| *id != 0)?, way_building(w, &nodes))))
-        .filter(|(_, b)| b.outer.len() > 2)
+        .filter(|(_, b)| b.outer.first().is_some_and(|ring| ring.len() > 2))
         .collect();
     let merged = root.children().filter(|c| c.has_tag_name("relation")).fold(ways, |ways, relation| {
         let tags: Vec<(&str, &str)> = relation.children().filter(|c| c.has_tag_name("tag")).filter_map(|t| Some((t.attribute("k")?, t.attribute("v")?))).collect();
@@ -84,8 +83,8 @@ pub fn parse(text: &str) -> Option<CityMap> {
         let combined = members.iter().fold(Building::default(), |acc, (id, inner)| {
             let part = &ways[id];
             let (outer, inner_points) = match inner {
-                true => (acc.outer, [acc.inner, part.outer.clone()].concat()),
-                false => ([acc.outer, part.outer.clone()].concat(), acc.inner),
+                true => (acc.outer, acc.inner.into_iter().chain(part.outer.clone()).collect()),
+                false => (acc.outer.into_iter().chain(part.outer.clone()).collect(), acc.inner),
             };
             Building { outer, inner: inner_points, levels: acc.levels.max(part.levels), height: acc.height.max(part.height) }
         });
@@ -98,9 +97,12 @@ pub fn parse(text: &str) -> Option<CityMap> {
             _ => ways,
         }
     });
+    let extruded: Vec<(f64, f64)> = merged.values().filter(|b| b.levels > 0.0 || b.height > 0.0).flat_map(|b| b.outer.iter().flatten().copied()).collect();
     let bounds = root.children().find(|c| c.has_tag_name("bounds")).and_then(|b| {
         let at = |key: &str| b.attribute(key)?.parse::<f64>().ok();
         Some(((at("minlat")?, at("minlon")?), (at("maxlat")?, at("maxlon")?)))
+    }).map(|((south, west), (north, east))| {
+        extruded.iter().fold(((south, west), (north, east)), |((s, w), (n, e)), (lat, lon)| ((s.min(*lat), w.min(*lon)), (n.max(*lat), e.max(*lon))))
     });
     let (south_west, north_east) = bounds.or_else(|| {
         let all: Vec<&(f64, f64)> = nodes.values().collect();
@@ -113,21 +115,40 @@ pub fn parse(text: &str) -> Option<CityMap> {
     Some(CityMap { buildings: merged.into_values().collect(), south_west, north_east })
 }
 
-static LOADED: Mutex<Option<(String, std::time::SystemTime, Option<CityMap>)>> = Mutex::new(None);
+enum Load {
+    Parsing,
+    Done(Option<std::sync::Arc<CityMap>>),
+}
 
-fn loaded(path: &str) -> Option<CityMap> {
+static LOADED: Mutex<Option<(String, std::time::SystemTime, Load)>> = Mutex::new(None);
+static RENDERED: Mutex<Option<((String, std::time::SystemTime, u64), Value)>> = Mutex::new(None);
+
+fn locked<T>(held: &'static Mutex<T>) -> std::sync::MutexGuard<'static, T> {
+    held.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn accepted(path: &str) -> bool {
     let lower = path.to_lowercase();
-    if !(lower.ends_with(".osm") || lower.ends_with(".xml")) {
-        return None;
-    }
+    lower.ends_with(".osm") || lower.ends_with(".xml")
+}
+
+fn loaded(path: &str) -> Option<(std::time::SystemTime, Option<std::sync::Arc<CityMap>>)> {
     let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
-    let mut held = LOADED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut held = locked(&LOADED);
     match held.as_ref() {
-        Some((known, at, map)) if known == path && *at == modified => map.clone(),
+        Some((known, at, Load::Done(map))) if known == path && *at == modified => Some((modified, map.clone())),
+        Some((known, at, Load::Parsing)) if known == path && *at == modified => None,
         _ => {
-            let map = std::fs::read_to_string(path).ok().and_then(|text| parse(&text));
-            *held = Some((path.to_string(), modified, map.clone()));
-            map
+            *held = Some((path.to_string(), modified, Load::Parsing));
+            let owned = path.to_string();
+            let _ = std::thread::Builder::new().name("osm-parse".into()).spawn(move || {
+                let map = std::fs::read_to_string(&owned).ok().and_then(|text| parse(&text)).map(std::sync::Arc::new);
+                let mut held = locked(&LOADED);
+                if held.as_ref().is_some_and(|(known, at, _)| *known == owned && *at == modified) {
+                    *held = Some((owned, modified, Load::Done(map)));
+                }
+            });
+            None
         }
     }
 }
@@ -140,27 +161,52 @@ fn ring(points: &[(f64, f64)]) -> Vec<[f64; 2]> {
     points.iter().map(|(lat, lon)| [*lon, *lat]).collect()
 }
 
+fn scene(map: &CityMap, level_height: f64) -> Value {
+    json!({
+        "bounds": { "south": map.south_west.0, "west": map.south_west.1, "north": map.north_east.0, "east": map.north_east.1 },
+        "buildings": map.buildings.iter().filter_map(|b| b.extruded_height(level_height).map(|height| json!({
+            "outer": b.outer.iter().map(|r| ring(r)).collect::<Vec<_>>(),
+            "inner": b.inner.iter().map(|r| ring(r)).collect::<Vec<_>>(),
+            "height": height,
+        }))).collect::<Vec<_>>(),
+    })
+}
+
 pub fn viewer3d_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let enabled = setting(backend, "enabled").as_bool().unwrap_or(false);
     let path = setting(backend, "osmFilePath").as_str().unwrap_or_default().to_string();
     let level_height = setting(backend, "buildingLevelHeight").as_f64().unwrap_or(3.0);
-    let bias = setting(backend, "altitudeBias").as_f64().unwrap_or(0.0);
-    let map = (enabled && !path.is_empty()).then(|| loaded(&path)).flatten();
-    let reason = match (enabled, path.is_empty(), map.is_some()) {
+    let state = (enabled && accepted(&path)).then(|| loaded(&path));
+    let reason = match (enabled, path.is_empty(), &state) {
         (false, _, _) => Some("Turn on the 3D view in Settings."),
         (true, true, _) => Some("Choose an OpenStreetMap file in Settings."),
-        (true, false, false) => Some("That OpenStreetMap file could not be read."),
-        (true, false, true) => None,
+        (true, false, None) | (true, false, Some(Some((_, None)))) => Some("That OpenStreetMap file could not be read."),
+        (true, false, Some(None)) => Some("Loading the OpenStreetMap file..."),
+        (true, false, Some(Some((_, Some(_))))) => None,
+    };
+    let rendered = match &state {
+        Some(Some((modified, Some(map)))) => {
+            let key = (path.clone(), *modified, level_height.to_bits());
+            let mut cache = locked(&RENDERED);
+            match cache.as_ref() {
+                Some((known, value)) if *known == key => value.clone(),
+                _ => {
+                    let value = scene(map, level_height);
+                    *cache = Some((key, value.clone()));
+                    value
+                }
+            }
+        }
+        _ => json!({ "bounds": Value::Null, "buildings": [] }),
     };
     json!({
         "kind": "object",
         "class": "Viewer3D",
         "enabled": enabled,
-        "available": map.is_some(),
+        "available": reason.is_none(),
         "reason": reason,
-        "altitudeBias": bias,
-        "bounds": map.as_ref().map(|m| json!({ "south": m.south_west.0, "west": m.south_west.1, "north": m.north_east.0, "east": m.north_east.1 })),
-        "buildings": map.as_ref().map(|m| m.buildings.iter().filter_map(|b| b.extruded_height(level_height).map(|height| json!({ "outer": ring(&b.outer), "inner": ring(&b.inner), "height": height }))).collect::<Vec<_>>()).unwrap_or_default(),
+        "bounds": rendered["bounds"],
+        "buildings": rendered["buildings"],
     })
 }
 
@@ -174,7 +220,7 @@ mod tests {
   <node id="1" lat="47.01" lon="8.01"/><node id="2" lat="47.01" lon="8.02"/><node id="3" lat="47.02" lon="8.02"/><node id="4" lat="47.02" lon="8.01"/>
   <node id="5" lat="47.03" lon="8.03"/><node id="6" lat="47.03" lon="8.04"/><node id="7" lat="47.04" lon="8.04"/>
   <way id="10"><nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="4"/><nd ref="1"/><tag k="building" v="shed"/></way>
-  <way id="11"><nd ref="5"/><nd ref="6"/><nd ref="7"/><nd ref="5"/><tag k="building" v="yes"/><tag k="height" v="12 m"/></way>
+  <way id="11"><nd ref="5"/><nd ref="6"/><nd ref="7"/><nd ref="5"/><tag k="building" v="yes"/><tag k="height" v="12"/></way>
   <way id="12"><nd ref="1"/><nd ref="2"/><nd ref="3"/><tag k="highway" v="service"/></way>
   <way id="13"><nd ref="5"/><nd ref="6"/><nd ref="7"/><tag k="leisure" v="stadium"/></way>
 </osm>"#;
@@ -188,6 +234,8 @@ mod tests {
         assert_eq!(height_of(12, 3.0), 1, "an explicit height wins over storeys");
         assert_eq!(height_of(6, 3.0), 1, "a stadium is two storeys");
         assert_eq!(map.buildings.iter().filter(|b| b.extruded_height(3.0).is_none()).count(), 1, "a way that is no building is kept but never extruded, as buildingToMesh skips it");
+        let unit = parse(&CITY.replace(r#"v="12""#, r#"v="12 m""#)).unwrap();
+        assert!(unit.buildings.iter().any(|b| b.extruded_height(3.0) == Some(6.0)), "QString::toFloat reads '12 m' as 0, so the building falls back to two storeys");
     }
 
     #[test]
@@ -195,7 +243,7 @@ mod tests {
         let text = CITY.replace("</osm>", r#"<relation id="20"><member type="way" ref="10" role="outer"/><member type="way" ref="12" role="inner"/><tag k="type" v="multipolygon"/><tag k="building" v="yes"/></relation></osm>"#);
         let map = parse(&text).unwrap();
         let merged = map.buildings.iter().find(|b| !b.inner.is_empty()).unwrap();
-        assert_eq!((merged.outer.len(), merged.inner.len(), merged.levels), (5, 3, 1.0), "inner members become holes and the parts' storeys are kept");
+        assert_eq!((merged.outer.len(), merged.outer[0].len(), merged.inner.len(), merged.inner[0].len(), merged.levels), (1, 5, 1, 3, 1.0), "each member way stays its own ring, inner members become holes and the parts' storeys are kept");
         assert_eq!(map.buildings.len(), 3, "the member ways are replaced by the one merged building");
     }
 

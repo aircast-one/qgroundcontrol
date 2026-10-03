@@ -6179,7 +6179,6 @@
         "view.videoStats.class",
         "view.videoStats.kind",
         "view.videoStats.text",
-        "view.viewer3d.altitudeBias",
         "view.viewer3d.available",
         "view.viewer3d.bounds",
         "view.viewer3d.buildings.#",
@@ -9522,7 +9521,6 @@
         "view.videoStats.class",
         "view.videoStats.kind",
         "view.videoStats.text",
-        "view.viewer3d.altitudeBias",
         "view.viewer3d.available",
         "view.viewer3d.bounds",
         "view.viewer3d.buildings.#",
@@ -14365,7 +14363,6 @@
         "text": "string"
     },
     "view.viewer3d": {
-        "altitudeBias": "number",
         "available": "bool",
         "bounds": "null",
         "buildings": [

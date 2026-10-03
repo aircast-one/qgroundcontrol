@@ -20,10 +20,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.maplibre.android.MapLibre
@@ -44,7 +40,6 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
-import org.mavlink.qgroundcontrol.QGCBridge
 
 const val VIEWER3D_VIEW = "view.viewer3d"
 private const val VIEWER3D_MISSION = "view.flyMissionItems(geometry)"
@@ -56,9 +51,8 @@ private const val V3D_VEHICLE_SOURCE = "viewer3d-vehicle"
 private const val V3D_VEHICLE_LAYER = "viewer3d-vehicle-layer"
 private const val SCENE_PITCH = 60.0
 private const val SCENE_ZOOM = 16.0
-private const val MISSION_POLL_MS = 1000L
 
-data class Building3D(val outer: List<Pair<Double, Double>>, val inner: List<Pair<Double, Double>>, val height: Double)
+data class Building3D(val outer: List<List<Pair<Double, Double>>>, val inner: List<List<Pair<Double, Double>>>, val height: Double)
 
 data class Scene3D(
     val available: Boolean,
@@ -70,6 +64,17 @@ data class Scene3D(
 private fun lonLats(array: JSONArray?): List<Pair<Double, Double>> =
     (0 until (array?.length() ?: 0)).mapNotNull { array?.optJSONArray(it) }.map { it.optDouble(0) to it.optDouble(1) }
 
+private fun rings(array: JSONArray?): List<List<Pair<Double, Double>>> =
+    (0 until (array?.length() ?: 0)).mapNotNull { array?.optJSONArray(it) }.map(::lonLats).filter { it.size > 2 }
+
+internal fun signedArea(ring: List<Pair<Double, Double>>): Double =
+    ring.zip(ring.drop(1) + ring.take(1)).sumOf { (a, b) -> a.first * b.second - b.first * a.second } / 2.0
+
+internal fun wound(ring: List<Pair<Double, Double>>, counterClockwise: Boolean): List<Pair<Double, Double>> {
+    val closed = if (ring.first() == ring.last()) ring else ring + ring.first()
+    return if ((signedArea(closed) > 0) == counterClockwise) closed else closed.reversed()
+}
+
 fun scene3d(view: JSONObject?): Scene3D {
     val listed = view?.optJSONArray("buildings")
     val bounds = view?.optJSONObject("bounds")
@@ -77,17 +82,22 @@ fun scene3d(view: JSONObject?): Scene3D {
         available = view?.optBoolean("available") == true,
         reason = view?.optText("reason").orEmpty(),
         buildings = (0 until (listed?.length() ?: 0)).mapNotNull { listed?.optJSONObject(it) }.map {
-            Building3D(lonLats(it.optJSONArray("outer")), lonLats(it.optJSONArray("inner")), it.optDouble("height", 0.0))
-        }.filter { it.outer.size > 2 && it.height > 0.0 },
+            Building3D(rings(it.optJSONArray("outer")), rings(it.optJSONArray("inner")), it.optDouble("height", 0.0))
+        }.filter { it.outer.isNotEmpty() && it.height > 0.0 },
         centre = bounds?.let { (it.optDouble("west") + it.optDouble("east")) / 2 to (it.optDouble("south") + it.optDouble("north")) / 2 },
     )
 }
 
 internal fun buildingFeatures(buildings: List<Building3D>): FeatureCollection = FeatureCollection.fromFeatures(
     buildings.map { building ->
-        val ring = { points: List<Pair<Double, Double>> -> points.map { (lon, lat) -> Point.fromLngLat(lon, lat) } }
-        val rings = listOf(ring(building.outer)) + listOfNotNull(ring(building.inner).takeIf { it.size > 2 })
-        Feature.fromGeometry(Polygon.fromLngLats(rings)).also { it.addNumberProperty("height", building.height) }
+        val points = { ring: List<Pair<Double, Double>> -> ring.map { (lon, lat) -> Point.fromLngLat(lon, lat) } }
+        val outers = building.outer.map { points(wound(it, counterClockwise = true)) }
+        val holes = building.inner.map { points(wound(it, counterClockwise = false)) }
+        val geometry = when (outers.size) {
+            1 -> Polygon.fromLngLats(outers + holes)
+            else -> org.maplibre.geojson.MultiPolygon.fromLngLats(outers.map { listOf(it) })
+        }
+        Feature.fromGeometry(geometry).also { it.addNumberProperty("height", building.height) }
     },
 )
 
@@ -122,10 +132,11 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     val scene = remember(viewJson) { scene3d(viewJson) }
     val vehiclesJson by mapPath(VEHICLES_VIEW)
     val vehicle = remember(vehiclesJson) { vehicleChoices(vehiclesJson).choices.firstOrNull { it.active && isPlottable(it.latitude, it.longitude) } }
-    var mission by remember { mutableStateOf(emptyList<MissionItem>()) }
+    val missionJson by mapPath(VIEWER3D_MISSION)
+    val mission = remember(missionJson) { missionItems(missionJson) }
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
-    var framed by remember { mutableStateOf(false) }
+    var framedOn by remember { mutableStateOf<LatLng?>(null) }
     val mapView = remember {
         MapLibre.getInstance(context)
         MapView(context, MapLibreMapOptions.createFromAttributes(context).textureMode(true))
@@ -170,12 +181,6 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
         }
         onDispose { }
     }
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            mission = withContext(Dispatchers.Default) { missionItems(runCatching { JSONObject(QGCBridge.get(VIEWER3D_MISSION)) }.getOrNull()) }
-            delay(MISSION_POLL_MS)
-        }
-    }
     LaunchedEffect(style, scene) {
         (style?.getSource(V3D_BUILDING_SOURCE) as? GeoJsonSource)?.setGeoJson(buildingFeatures(scene.buildings))
     }
@@ -193,8 +198,8 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     LaunchedEffect(map, scene.centre, vehicle != null) {
         val shown = map ?: return@LaunchedEffect
         val target = scene.centre?.let { (lon, lat) -> LatLng(lat, lon) } ?: vehicle?.let { LatLng(it.latitude, it.longitude) } ?: return@LaunchedEffect
-        if (framed) return@LaunchedEffect
-        framed = true
+        if (framedOn == target || (framedOn != null && scene.centre == null)) return@LaunchedEffect
+        framedOn = target
         shown.cameraPosition = CameraPosition.Builder().target(target).zoom(SCENE_ZOOM).tilt(SCENE_PITCH).build()
     }
     Box(modifier) {

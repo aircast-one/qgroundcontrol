@@ -27,35 +27,53 @@ import one.aircast.android.bridge.Qgc
 
 private const val OSM_FILE_SETTING = "settings.viewer3DSettings.osmFilePath"
 private const val OSM_FOLDER = "osm"
+private const val OSM_ENABLED_SETTING = "settings.viewer3DSettings.enabled"
 
 internal fun osmFileAccepted(name: String): Boolean = name.lowercase().let { it.endsWith(".osm") || it.endsWith(".xml") }
 
-private fun stagedOsm(context: Context, uri: Uri): String? = runCatching {
+private sealed interface Staged {
+    data class Copied(val path: String) : Staged
+    data object NotOsm : Staged
+    data object Unreadable : Staged
+}
+
+private fun stagedOsm(context: Context, uri: Uri): Staged = runCatching {
     val shown = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (cursor.moveToFirst()) cursor.getString(0) else null
     }?.replace(Regex("[/\\\\]"), "_").orEmpty()
-    if (!osmFileAccepted(shown)) return@runCatching null
-    val folder = File(context.filesDir, OSM_FOLDER).apply { deleteRecursively(); mkdirs() }
+    if (!osmFileAccepted(shown)) return@runCatching Staged.NotOsm
+    val folder = File(context.filesDir, OSM_FOLDER).apply { mkdirs() }
+    val incoming = File(folder, ".incoming")
+    val copied = context.contentResolver.openInputStream(uri)?.use { source -> incoming.outputStream().use { source.copyTo(it) } } != null
     val staged = File(folder, shown)
-    context.contentResolver.openInputStream(uri)?.use { source -> staged.outputStream().use { source.copyTo(it) } }?.let { staged.absolutePath }
-}.getOrNull()
+    if (copied && incoming.renameTo(staged)) Staged.Copied(staged.absolutePath) else Staged.Unreadable
+}.getOrDefault(Staged.Unreadable)
+
+private fun keepOnly(context: Context, path: String) {
+    File(context.filesDir, OSM_FOLDER).listFiles()?.filter { it.absolutePath != path }?.forEach { it.delete() }
+}
 
 @Composable
 internal fun OsmFilePicker(onWrite: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var refusal by remember { mutableStateOf<String?>(null) }
+    val enabled by one.aircast.android.bridge.qgcBool(one.aircast.android.bridge.settingControl(OSM_ENABLED_SETTING))
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val chosen = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             refusal = withContext(Dispatchers.IO) {
-                stagedOsm(context, chosen)?.let { path -> Qgc.writeRefusal(OSM_FILE_SETTING, path) } ?: "Choose an OpenStreetMap file (.osm or .xml)."
+                when (val staged = stagedOsm(context, chosen)) {
+                    is Staged.Copied -> Qgc.writeRefusal(OSM_FILE_SETTING, staged.path).also { if (it == null) keepOnly(context, staged.path) }
+                    Staged.NotOsm -> "Choose an OpenStreetMap file (.osm or .xml)."
+                    Staged.Unreadable -> "That file could not be read."
+                }
             }
             onWrite()
         }
     }
     Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-        OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Choose OpenStreetMap file") }
+        OutlinedButton(enabled = enabled, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Choose OpenStreetMap file") }
         refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
 }
