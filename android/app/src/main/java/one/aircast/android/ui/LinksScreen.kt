@@ -69,6 +69,7 @@ private const val LINKS_PATH = "links.linkConfigurations"
 private const val DEFAULT_PORT = "14550"
 private const val DEFAULT_TCP_PORT = "5760"
 private const val UDP_LISTEN_PORT = "settings.autoConnectSettings.udpListenPort"
+private const val AUTO_CONNECT_UDP = "settings.autoConnectSettings.autoConnectUDP"
 
 data class LinkRow(
     val index: Int,
@@ -614,7 +615,10 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
                 }
-                if (row.editing == "portOnly") UdpServers(row.index, row.servers)
+                if (row.editing == "portOnly") {
+                    UdpAutoConnectSwitch()
+                    UdpServers(row.index, row.servers)
+                }
                 error?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
@@ -814,6 +818,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
+                    UdpAutoConnectSwitch()
                     ServerList(
                         servers,
                         onAdd = { typed ->
@@ -1133,6 +1138,18 @@ private fun FramingPicker(label: String, shown: String, choices: List<String>, o
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun UdpAutoConnectSwitch() {
+    val checked by one.aircast.android.bridge.qgcBool(one.aircast.android.bridge.settingControl(AUTO_CONNECT_UDP))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Auto connect to UDP devices")
+            Text("Turn this off for best performance with this link.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = { on -> offMainInOrder { Qgc.set(AUTO_CONNECT_UDP, on) } })
     }
 }
 
