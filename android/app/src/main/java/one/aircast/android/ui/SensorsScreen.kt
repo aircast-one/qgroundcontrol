@@ -1,5 +1,12 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -324,6 +331,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(prompt)
+                    if (!state.px4 && ranRoutine == COMPASS_ROUTINE) state.compassResults.forEach { CompassFitnessBar(it) }
                     if (state.px4 && ranRoutine == COMPASS_ROUTINE) CompassOrientations()
                 }
             },
@@ -494,6 +502,28 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
                 "Calibrate where the aircraft will fly, away from metal, with the " +
                     "propellers off. CompassMot is the exception and says so when you " +
                     "open it: it runs the motors, with the propellers inverted.",
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompassFitnessBar(result: CompassResult) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text("Compass ${result.compass}", style = MaterialTheme.typography.labelMedium)
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().height(16.dp)) {
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight((result.green / result.range).toFloat()).fillMaxHeight().background(Color(0xFF008000)))
+                Box(Modifier.weight(((result.yellow - result.green) / result.range).toFloat()).fillMaxHeight().background(Color.Yellow))
+                Box(Modifier.weight(((result.range - result.yellow) / result.range).toFloat()).fillMaxHeight().background(Color.Red))
+            }
+            val dot = 11.dp
+            Box(
+                Modifier
+                    .offset(x = maxWidth * result.position.toFloat() - dot / 2, y = (16.dp - dot) / 2)
+                    .size(dot)
+                    .background(Color.White, CircleShape)
+                    .border(1.dp, Color.Black, CircleShape),
             )
         }
     }

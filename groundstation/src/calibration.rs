@@ -72,6 +72,38 @@ fn coordinate(backend: &dyn Backend, path: &str) -> Value {
     json!({ "valid": valid, "latitude": if valid { point["latitude"].clone() } else { Value::Null }, "longitude": if valid { point["longitude"].clone() } else { Value::Null } })
 }
 
+const COMPASS_PARAMS: [(&str, &str, &str); 3] = [
+    ("COMPASS_DEV_ID", "COMPASS_USE", "COMPASS_EXTERNAL"),
+    ("COMPASS_DEV_ID2", "COMPASS_USE2", "COMPASS_EXTERN2"),
+    ("COMPASS_DEV_ID3", "COMPASS_USE3", "COMPASS_EXTERN3"),
+];
+
+fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
+    let fact = object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")));
+    (fact.get("kind").and_then(Value::as_str) == Some("fact")).then(|| fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64)).flatten()
+}
+
+pub fn fitness_bands(external: bool) -> (f64, f64, f64) {
+    let scale = if external { 1.0 } else { 2.0 };
+    (8.0 * scale, 15.0 * scale, 25.0 * scale)
+}
+
+fn compass_results(backend: &dyn Backend, cal: &Value) -> Vec<Value> {
+    if flag(cal, "px4") {
+        return Vec::new();
+    }
+    COMPASS_PARAMS
+        .iter()
+        .enumerate()
+        .filter(|(_, (id, using, _))| parameter(backend, id).is_some_and(|v| v > 0.0) && parameter(backend, using).is_some_and(|v| v != 0.0))
+        .map(|(index, (_, _, external))| {
+            let (green, yellow, range) = fitness_bands(parameter(backend, external).is_some_and(|v| v != 0.0));
+            let fitness = cal.get(format!("compass{}CalFitness", index + 1)).and_then(Value::as_f64).unwrap_or(0.0);
+            json!({ "compass": index + 1, "fitness": fitness, "green": green, "yellow": yellow, "range": range, "position": fitness.clamp(0.0, range) / range })
+        })
+        .collect()
+}
+
 fn fast_compass(backend: &dyn Backend, cal: &Value) -> Value {
     if flag(cal, "px4") {
         return Value::Null;
@@ -211,6 +243,7 @@ pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "settingsTitle": if flag(&cal, "px4") { "Orientations" } else { "Sensor Settings" },
         "routines": routines(&cal, connected, busy, classes.as_ref()),
         "fastCompass": fast_compass(backend, &cal),
+        "compassResults": compass_results(backend, &cal),
     })
 }
 
@@ -325,6 +358,31 @@ mod tests {
             .iter()
             .map(|r| (r["id"].as_str().unwrap().to_string(), r["title"].as_str().unwrap().to_string()))
             .collect()
+    }
+
+    struct Compasses(Value, Vec<(&'static str, f64)>);
+    impl Backend for Compasses {
+        fn get(&self, p: &str) -> String {
+            match p.strip_prefix("vehicle.parameterManager.getParameter(-1,").and_then(|n| n.strip_suffix(')')) {
+                Some(name) => self.1.iter().find(|(n, _)| *n == name).map_or(json!({ "kind": "null" }), |(_, v)| json!({ "kind": "fact", "rawValue": v })),
+                None => self.0.clone(),
+            }
+            .to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn compass_results_show_each_used_compass_on_qgcs_fitness_bands() {
+        let cal = json!({ "kind": "object", "compass1CalFitness": 30.0, "compass2CalFitness": 5.0, "compass3CalFitness": 9.0 });
+        let params = vec![("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 1.0), ("COMPASS_EXTERNAL", 1.0), ("COMPASS_DEV_ID2", 131874.0), ("COMPASS_USE2", 1.0), ("COMPASS_EXTERN2", 0.0), ("COMPASS_DEV_ID3", 0.0), ("COMPASS_USE3", 1.0)];
+        let results = calibration_view(&Compasses(cal, params), &[])["compassResults"].as_array().unwrap().clone();
+        assert_eq!(results.len(), 2, "APMSensorsComponent draws a bar only for a compass that exists and is in use");
+        assert_eq!((results[0]["green"].as_f64(), results[0]["range"].as_f64(), results[0]["position"].as_f64()), (Some(8.0), Some(25.0), Some(1.0)), "external: 8/15/25, fitness past the range pins the dot at the end");
+        assert_eq!((results[1]["green"].as_f64(), results[1]["yellow"].as_f64(), results[1]["range"].as_f64()), (Some(16.0), Some(30.0), Some(50.0)), "internal compasses get twice the room");
     }
 
     #[test]

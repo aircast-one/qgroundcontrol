@@ -45,7 +45,10 @@ internal data class CalibrationState(
     val fastCompass: FastCompass?,
     val sides: List<CalibrationSide>,
     val routines: List<CalibrationRoutine>,
+    val compassResults: List<CompassResult> = emptyList(),
 )
+
+internal data class CompassResult(val compass: Int, val green: Double, val yellow: Double, val range: Double, val position: Double)
 
 private fun <T> JSONObject.list(key: String, item: (JSONObject) -> T): List<T> =
     optJSONArray(key)?.let { array ->
@@ -70,6 +73,9 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
         px4 = view.optBoolean("px4"),
         settingsTitle = view.optText("settingsTitle"),
         fastCompass = fastCompass(view.optJSONObject("fastCompass")),
+        compassResults = view.list("compassResults") {
+            CompassResult(it.optInt("compass"), it.optDouble("green"), it.optDouble("yellow"), it.optDouble("range"), it.optDouble("position"))
+        },
         sides = view.list("sides") {
             CalibrationSide(
                 key = it.optText("key"),

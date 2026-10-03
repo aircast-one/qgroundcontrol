@@ -222,6 +222,9 @@ ONLY_IN = {
 }
 
 ACCEPTED = {
+    "compass": "view.calibration compassResults lists APM compasses after an onboard compass calibration, and the rig records with no compass calibrated, so the list records empty; calibration.rs compass_results serves it",
+    "green": "view.calibration compassResults lists APM compasses after an onboard compass calibration, and the rig records with no compass calibrated, so the list records empty; calibration.rs compass_results serves it",
+    "yellow": "view.calibration compassResults lists APM compasses after an onboard compass calibration, and the rig records with no compass calibrated, so the list records empty; calibration.rs compass_results serves it",
     "keywords": "two search fields not yet in the recorded contract: view.setup(page).sections[].keywords (vehicleconfig.rs search_terms; the rig records setup pages per-section only as counts) and view.settings pages[].keywords / controls[].keywords (settings.rs page_keywords, fact_keywords). Read in ParameterForm.kt and SettingsScreen.kt",
     "indent": "view.setup rows from a VehicleConfig control marked indent (ArduPilot help labels); the rig's PX4 mock pages carry none. Read in ParameterForm.kt",
     "smallFont": "view.setup label rows from a VehicleConfig control marked smallFont (ArduPilot help labels); the rig's PX4 mock pages carry none. Read in ParameterForm.kt",
