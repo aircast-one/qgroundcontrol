@@ -146,16 +146,6 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        if (lines.isEmpty()) {
-            Text(
-                text = consoleEmptyText(sentAnything, consoleConnected, emptyReason),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            )
-        }
-
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -165,6 +155,15 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            if (lines.isEmpty()) {
+                item {
+                    Text(
+                        text = consoleEmptyText(sentAnything, consoleConnected, emptyReason),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             items(lines) { line ->
                 val warning = MaterialTheme.aircast.warning
                 val error = MaterialTheme.colorScheme.error
