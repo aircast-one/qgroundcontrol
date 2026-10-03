@@ -19,7 +19,11 @@ pub fn projection(prj: &str) -> Result<Projection, String> {
         return Ok(Projection::Wgs84);
     }
     let Some(rest) = line.strip_prefix("PROJCS[\"WGS_1984_UTM_Zone_") else {
-        return Err("Only WGS84 or UTM projections are supported.".to_string());
+        let named = ["GEOGCS[\"", "PROJCS[\""].iter().find_map(|prefix| line.strip_prefix(prefix)).and_then(|rest| rest.split('"').next()).filter(|name| !name.is_empty());
+        return Err(match named {
+            Some(name) => format!("Unsupported projection: {name}. Supported projections are: WGS84 (GEOGCS[\"GCS_WGS_1984\"]) and UTM (PROJCS[\"WGS_1984_UTM_Zone_##N/S\"]). Convert your shapefile to WGS84 using QGIS or ogr2ogr."),
+            None => "Unable to parse projection from PRJ file. Supported projections are: WGS84 (GEOGCS[\"GCS_WGS_1984\"]) and UTM (PROJCS[\"WGS_1984_UTM_Zone_##N/S\"]).".to_string(),
+        });
     };
     let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
     let hemisphere = rest.chars().nth(digits.len());
@@ -65,33 +69,91 @@ pub fn filtered(points: Vec<(f64, f64)>, closed: bool) -> Vec<(f64, f64)> {
 }
 
 pub fn parse(shp_path: &str) -> Result<(String, usize, Vec<(f64, f64)>), String> {
-    if !shp_path.to_lowercase().ends_with(".shp") {
-        return Err(format!("File is not a .shp file: {shp_path}"));
-    }
-    let prj_path = format!("{}.prj", &shp_path[..shp_path.len() - 4]);
-    let prj = std::fs::read_to_string(&prj_path).map_err(|_| format!("File not found: {prj_path}"))?;
-    let projection = projection(&prj)?;
-    let shapes = shapefile::read_shapes(shp_path).map_err(|e| format!("SHPOpen failed: {e}"))?;
-    let entities = shapes.len();
-    let Some(first) = shapes.into_iter().next() else { return Err("Failed to read polygon object.".to_string()) };
-    match first {
-        Shape::Polygon(polygon) => {
-            let Some(outer) = polygon.rings().first() else { return Err("Failed to read polygon object.".to_string()) };
-            let points: Vec<(f64, f64)> = outer.points().iter().map(|p| to_geo(&projection, p.x, p.y)).collect();
-            Ok(("polygon".to_string(), entities, filtered(crate::kml::clockwise(points), true)))
-        }
-        Shape::Polyline(line) => {
-            let Some(first_part) = line.parts().first() else { return Err("Failed to read polyline object.".to_string()) };
-            let points: Vec<(f64, f64)> = first_part.iter().map(|p| to_geo(&projection, p.x, p.y)).collect();
-            Ok(("polyline".to_string(), entities, filtered(points, false)))
-        }
-        _ => Err("No supported types found.".to_string()),
+    parse_wanted(shp_path, None)
+}
+
+fn type_name(shape: &Shape) -> &'static str {
+    match shape {
+        Shape::NullShape => "NullShape",
+        Shape::Point(_) => "Point",
+        Shape::Polyline(_) => "Arc",
+        Shape::Polygon(_) => "Polygon",
+        Shape::Multipoint(_) => "MultiPoint",
+        Shape::PointZ(_) => "PointZ",
+        Shape::PolylineZ(_) => "ArcZ",
+        Shape::PolygonZ(_) => "PolygonZ",
+        Shape::MultipointZ(_) => "MultiPointZ",
+        Shape::PointM(_) => "PointM",
+        Shape::PolylineM(_) => "ArcM",
+        Shape::PolygonM(_) => "PolygonM",
+        Shape::MultipointM(_) => "MultiPointM",
+        Shape::Multipatch(_) => "MultiPatch",
     }
 }
 
+fn outline(shape: &Shape) -> Option<(bool, Vec<(f64, f64)>)> {
+    match shape {
+        Shape::Polygon(p) => Some((false, p.rings().first()?.points().iter().map(|v| (v.x, v.y)).collect())),
+        Shape::PolygonZ(p) => Some((false, p.rings().first()?.points().iter().map(|v| (v.x, v.y)).collect())),
+        Shape::Polyline(l) => Some((true, l.parts().first()?.iter().map(|v| (v.x, v.y)).collect())),
+        Shape::PolylineZ(l) => Some((true, l.parts().first()?.iter().map(|v| (v.x, v.y)).collect())),
+        _ => None,
+    }
+}
+
+pub fn parse_wanted(shp_path: &str, polyline: Option<bool>) -> Result<(String, usize, Vec<(f64, f64)>), String> {
+    let failed = |detail: String| format!("SHP file load failed. {detail}");
+    if !shp_path.to_lowercase().ends_with(".shp") {
+        return Err(failed(format!("File is not a .shp file: {shp_path}")));
+    }
+    let prj_path = format!("{}.prj", &shp_path[..shp_path.len() - 4]);
+    let prj = std::fs::read_to_string(&prj_path).map_err(|_| failed(format!("File not found: {prj_path}")))?;
+    let projection = projection(&prj).map_err(failed)?;
+    let shapes = shapefile::read_shapes(shp_path).map_err(|_| failed("SHPOpen failed.".to_string()))?;
+    let entities = shapes.len();
+    let Some(first) = shapes.first() else { return Err(failed("No entities found.".to_string())) };
+    let file_is_line = match outline(first) {
+        Some((line, _)) => line,
+        None => return Err(failed("No supported types found.".to_string())),
+    };
+    if let Some(wanted) = polyline.filter(|wanted| *wanted != file_is_line) {
+        return Err(failed(format!("File contains {}, expected {}.", type_name(first), if wanted { "Arc" } else { "Polygon" })));
+    }
+    let minimum = if file_is_line { 2 } else { 3 };
+    let points = shapes
+        .iter()
+        .filter_map(outline)
+        .map(|(_, raw)| raw.into_iter().map(|(x, y)| to_geo(&projection, x, y)).collect::<Vec<_>>())
+        .find(|points| points.len() >= minimum)
+        .ok_or_else(|| failed(format!("No valid {} found.", if file_is_line { "polylines" } else { "polygons" })))?;
+    Ok(match file_is_line {
+        true => ("polyline".to_string(), entities, filtered(points, false)),
+        false => ("polygon".to_string(), entities, filtered(crate::kml::clockwise(points), true)),
+    })
+}
+
 pub fn shp_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    shp_shape_view(args, None)
+}
+
+fn shape_file_view(args: &[String], polyline: bool) -> Value {
+    match args.first().is_some_and(|path| path.to_lowercase().ends_with(".shp")) {
+        true => shp_shape_view(args, Some(polyline)),
+        false => crate::kml::kml_shape_view(args, Some(polyline)),
+    }
+}
+
+pub fn area_file_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    shape_file_view(args, false)
+}
+
+pub fn line_file_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    shape_file_view(args, true)
+}
+
+fn shp_shape_view(args: &[String], wanted: Option<bool>) -> Value {
     let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a shapefile to read, and none was given") };
-    match parse(path) {
+    match parse_wanted(path, wanted) {
         Err(error) => json!({ "kind": "object", "class": "ShapeFile", "path": path, "valid": false, "error": error }),
         Ok((shape, entities, points)) => json!({
             "kind": "object",
@@ -121,7 +183,8 @@ mod tests {
         assert_eq!(projection("PROJCS[\"WGS_1984_UTM_Zone_33N\",GEOGCS[...]]").unwrap(), Projection::Utm { zone: 33, southern: false });
         assert_eq!(projection("PROJCS[\"WGS_1984_UTM_Zone_5S\"").unwrap(), Projection::Utm { zone: 5, southern: true });
         assert!(projection("PROJCS[\"WGS_1984_UTM_Zone_99N\"").unwrap_err().starts_with("UTM projection is not"));
-        assert_eq!(projection("PROJCS[\"Something_Else\"").unwrap_err(), "Only WGS84 or UTM projections are supported.");
+        assert!(projection("PROJCS[\"Something_Else\"").unwrap_err().starts_with("Unsupported projection: Something_Else. Supported projections are"));
+        assert!(projection("garbage").unwrap_err().starts_with("Unable to parse projection from PRJ file."));
     }
 
     #[test]
@@ -134,8 +197,10 @@ mod tests {
         let (shape, _, line) = parse(&fixture("pline.shp")).expect("pline.shp");
         assert_eq!(shape, "polyline");
         assert!(line.len() >= 2);
-        assert!(parse(&fixture("polygon.kml")).unwrap_err().starts_with("File is not a .shp file"));
-        assert!(parse(&fixture("missing.shp")).unwrap_err().starts_with("File not found"));
+        assert!(parse(&fixture("polygon.kml")).unwrap_err().starts_with("SHP file load failed. File is not a .shp file"));
+        assert!(parse(&fixture("missing.shp")).unwrap_err().starts_with("SHP file load failed. File not found"));
+        assert_eq!(parse_wanted(&fixture("polygon.shp"), Some(true)).unwrap_err(), "SHP file load failed. File contains Polygon, expected Arc.");
+        assert_eq!(parse_wanted(&fixture("pline.shp"), Some(false)).unwrap_err(), "SHP file load failed. File contains Arc, expected Polygon.");
     }
 
     #[test]

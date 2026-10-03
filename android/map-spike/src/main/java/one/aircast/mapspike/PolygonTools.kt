@@ -163,7 +163,7 @@ fun importShapeFiles(context: Context, uris: List<Uri>, target: ShapeTarget): St
         }.getOrDefault(false)
     }
     val staged = File(context.cacheDir, "shape.$extension")
-    val view = "view.${if (extension == "shp") "shapeFile" else "kmlFile"}(${staged.absolutePath})"
+    val view = "view.${if (target.line) "lineFile" else "areaFile"}(${staged.absolutePath})"
     val (vertices, error) = when {
         !copied -> emptyList<TrackPoint>() to "That file could not be read."
         else -> fileShape(runCatching { JSONObject(QGCBridge.get(view)) }.getOrNull(), target)

@@ -39,7 +39,10 @@ pub const DEPS: &[&str] = &[
 ];
 
 pub fn offered_patterns(backend: &dyn Backend) -> Vec<&'static str> {
-    let vehicle = offline_vehicle(backend);
+    let vehicle = match crate::coreplan::enabled() {
+        true => crate::coreplan::controller_fields("plan.controllerVehicle").unwrap_or(Value::Null),
+        false => offline_vehicle(backend),
+    };
     let hovers = flag(&vehicle, "multiRotor") || flag(&vehicle, "vtol");
     ["Survey", "Corridor Scan"].into_iter().chain(hovers.then_some("Structure Scan")).collect()
 }
@@ -63,10 +66,10 @@ fn offline_vehicle(backend: &dyn Backend) -> Value {
 }
 
 fn planning_for(backend: &dyn Backend) -> Value {
-    if crate::coreplan::enabled() {
-        return offline_vehicle(backend);
-    }
-    let read = object(&backend.get_fields("plan.controllerVehicle", "vehicleTypeString,firmwareTypeString,multiRotor,vtol,apmFirmware,homePosition"));
+    let read = match crate::coreplan::enabled() {
+        true => crate::coreplan::controller_fields("plan.controllerVehicle").unwrap_or(Value::Null),
+        false => object(&backend.get_fields("plan.controllerVehicle", "vehicleTypeString,firmwareTypeString,multiRotor,vtol,apmFirmware,homePosition")),
+    };
     let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_string);
     match text("vehicleTypeString").zip(text("firmwareTypeString")) {
         Some((kind, firmware)) => json!({

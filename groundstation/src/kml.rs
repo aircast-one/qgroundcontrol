@@ -16,18 +16,15 @@ fn child<'a>(node: Node<'a, 'a>, name: &str) -> Option<Node<'a, 'a>> {
     node.children().find(|n| n.is_element() && n.tag_name().name() == name)
 }
 
-fn coordinates(node: Node) -> Result<Vec<(f64, f64)>, String> {
+fn coordinates(node: Node) -> Vec<(f64, f64)> {
     node.text()
         .unwrap_or("")
         .split_whitespace()
-        .map(|triple| {
+        .filter_map(|triple| {
             let mut parts = triple.split(',');
-            let lon = parts.next().and_then(|v| v.parse::<f64>().ok());
-            let lat = parts.next().and_then(|v| v.parse::<f64>().ok());
-            match (lat, lon) {
-                (Some(lat), Some(lon)) => Ok((lat, lon)),
-                _ => Err(format!("bad coordinate: {triple}")),
-            }
+            let lon = parts.next()?.parse::<f64>().ok()?;
+            let lat = parts.next()?.parse::<f64>().ok()?;
+            ((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)).then_some((lat, lon))
         })
         .collect()
 }
@@ -71,14 +68,14 @@ fn shape(text: &str, wanted: Option<bool>) -> Result<Shape, String> {
     let polygon = || {
         named("Polygon")
             .filter_map(|polygon| child(polygon, "outerBoundaryIs").and_then(|b| child(b, "LinearRing")).and_then(|r| child(r, "coordinates")))
-            .filter_map(|node| coordinates(node).ok())
+            .map(coordinates)
             .find(|points| points.len() >= 3)
             .map(|points| Shape::Polygon(filter_vertices(clockwise(without_closing_vertex(points)), 3)))
     };
     let line = || {
         named("LineString")
             .filter_map(|line| child(line, "coordinates"))
-            .filter_map(|node| coordinates(node).ok())
+            .map(coordinates)
             .find(|points| points.len() >= 2)
             .map(|points| Shape::Polyline(filter_vertices(points, 2)))
     };
@@ -98,13 +95,21 @@ pub fn parse_wanted(text: &str, polyline: bool) -> Result<Shape, String> {
 }
 
 pub fn kml_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    kml_shape_view(args, None)
+}
+
+pub fn kml_shape_view(args: &[String], polyline: Option<bool>) -> Value {
     let Some(path) = args.first().filter(|p| !p.is_empty()) else { return refused("view.kmlFile needs the path of a kml or kmz file to read, as view.kmlFile(/Users/you/area.kml)") };
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => return json!({ "kind": "object", "class": "KmlFile", "path": path, "readable": false, "error": e.to_string() }),
     };
     let points = |p: &[(f64, f64)]| p.iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>();
-    match parse(&text) {
+    let parsed = match polyline {
+        Some(line) => parse_wanted(&text, line),
+        None => parse(&text),
+    };
+    match parsed {
         Err(error) => json!({ "kind": "object", "class": "KmlFile", "path": path, "readable": true, "valid": false, "error": error }),
         Ok(Shape::Polygon(p)) => json!({ "kind": "object", "class": "KmlFile", "path": path, "readable": true, "valid": true, "error": "", "shape": "polygon", "count": p.len(), "points": points(&p) }),
         Ok(Shape::Polyline(p)) => json!({ "kind": "object", "class": "KmlFile", "path": path, "readable": true, "valid": true, "error": "", "shape": "polyline", "count": p.len(), "points": points(&p) }),
@@ -117,6 +122,13 @@ mod tests {
 
     fn fixture(name: &str) -> String {
         std::fs::read_to_string(format!("{}/../test/MissionManager/{name}", env!("CARGO_MANIFEST_DIR"))).or_else(|_| std::fs::read_to_string(format!("{}/../test/Utilities/Geo/{name}", env!("CARGO_MANIFEST_DIR")))).unwrap()
+    }
+
+    #[test]
+    fn a_bad_or_out_of_range_coordinate_is_skipped_like_kml_helper() {
+        let kml = "<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>8.0,47.0,0 nonsense 8.1,47.0,0 200,47.1,0 8.1,47.1,0 8.0,47.1,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>";
+        let Ok(Shape::Polygon(points)) = parse(kml) else { panic!("the ring survives its bad triples") };
+        assert_eq!(points.len(), 4, "the malformed triple and the longitude of 200 are dropped, the rest kept: {points:?}");
     }
 
     #[test]

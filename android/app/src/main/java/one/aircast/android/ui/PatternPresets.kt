@@ -107,10 +107,11 @@ internal fun PatternPresets(index: Int, kind: String, onApplied: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Save the current settings as a named preset.")
                     OutlinedTextField(value = typed, onValueChange = { typed = it }, label = { Text("Preset name") }, placeholder = { Text("Enter preset name") }, singleLine = true)
+                    presetNameError(typed)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
                 }
             },
             confirmButton = {
-                TextButton(enabled = typed.isNotBlank(), onClick = {
+                TextButton(enabled = presetNameError(typed) == null, onClick = {
                     saving = false
                     act(SAVE_PRESET, index, typed.trim()) { chosen = typed.trim() }
                 }) { Text("Save") }
@@ -118,4 +119,10 @@ internal fun PatternPresets(index: Int, kind: String, onApplied: () -> Unit) {
             dismissButton = { TextButton(onClick = { saving = false }) { Text("Cancel") } },
         )
     }
+}
+
+internal fun presetNameError(typed: String): String? = when {
+    typed.trim().isEmpty() -> "Preset name cannot be blank."
+    typed.contains('/') -> "Preset name cannot include the \"/\" character."
+    else -> null
 }

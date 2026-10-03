@@ -1418,7 +1418,7 @@ fn shape_points(file: &str, polyline: bool) -> Result<Vec<(f64, f64)>, String> {
             crate::kml::Shape::Polygon(points) => (points, false),
             crate::kml::Shape::Polyline(points) => (points, true),
         },
-        _ if lower.ends_with(".shp") => crate::shp::parse(file).map(|(kind, _, points)| (points, kind == "polyline"))?,
+        _ if lower.ends_with(".shp") => crate::shp::parse_wanted(file, Some(polyline)).map(|(kind, _, points)| (points, kind == "polyline"))?,
         _ => return Err("Unsupported file type. Only .kml and .shp are supported.".to_string()),
     };
     match found_polyline == polyline {
