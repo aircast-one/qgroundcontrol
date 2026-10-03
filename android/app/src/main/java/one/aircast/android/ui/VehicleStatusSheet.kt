@@ -13,7 +13,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -26,6 +29,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import one.aircast.android.R
+import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.aircast
 
@@ -60,6 +65,8 @@ internal fun armControls(state: FlyState, forceOpen: Boolean): ArmControls = Arm
 )
 
 internal const val SENSOR_HEALTHY_STATE = "healthy"
+
+internal fun messagesToggleText(shown: Boolean): String = if (shown) "Hide messages" else "Show messages"
 
 internal fun shownSensors(sensors: List<SensorHealth>, showAll: Boolean): List<SensorHealth> =
     if (showAll) sensors else sensors.filter { it.state != SENSOR_HEALTHY_STATE }
@@ -96,12 +103,37 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
                     Text(if (showAll) "Show less" else "Show $normal more")
                 }
             }
+            StatusMessages()
             OverallStatus()
+            TextButton(onClick = { open(SETUP_OVERVIEW_PAGE) }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle setup") }
             ParameterForm(STATUS_SETTINGS_PAGE, Modifier.heightIn(max = 360.dp))
             if (advancedUiShown()) listOf("Vehicle parameters" to SETUP_PARAMETERS_PAGE, "Vehicle configuration" to SETUP_OVERVIEW_PAGE).forEach { (label, page) ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     OutlinedButton(onClick = { open(page) }) { Text("Configure") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusMessages() {
+    val messagesJson by qgcPath(MESSAGES)
+    val lines = remember(messagesJson) { vehicleMessages(messagesJson).asReversed() }
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { offMainDetached { Qgc.invoke("vehicle.resetAllMessages") } }
+    if (lines.isEmpty()) return
+    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("Messages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        if (shown) TextButton(onClick = { offMainDetached { Qgc.invoke("vehicle.clearMessages") } }) { Text("Clear") }
+    }
+    TextButton(onClick = { shown = !shown }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(messagesToggleText(shown)) }
+    if (shown) {
+        LazyColumn(Modifier.heightIn(max = 320.dp).padding(horizontal = 20.dp)) {
+            items(lines) { message ->
+                MessageLine(level = message.level, time = message.time) {
+                    Text(message.text, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }

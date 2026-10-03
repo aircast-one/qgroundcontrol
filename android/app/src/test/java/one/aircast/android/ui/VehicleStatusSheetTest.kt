@@ -18,6 +18,12 @@ class VehicleStatusSheetTest {
     )
 
     @Test
+    fun `the messages card starts collapsed and toggles like the MainStatusIndicator disclosure`() {
+        assertEquals("Show messages", messagesToggleText(shown = false))
+        assertEquals("Hide messages", messagesToggleText(shown = true))
+    }
+
+    @Test
     fun `the status drawer's arm controls follow MainStatusIndicator`() {
         assertEquals(ArmControls("Slide to Arm", true, false, false, false), armControls(state(), forceOpen = false))
         assertEquals(ArmControls("Slide to Disarm", true, false, false, false), armControls(state(armed = true), forceOpen = false))

@@ -295,7 +295,7 @@ internal fun VehicleMessagesPage(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun MessageLine(level: MessageSeverity, time: String, content: @Composable () -> Unit) {
+internal fun MessageLine(level: MessageSeverity, time: String, content: @Composable () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Icon(
             painterResource(
