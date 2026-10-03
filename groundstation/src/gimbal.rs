@@ -57,6 +57,18 @@ pub const REASON_ATTITUDE_UNKNOWN: &str = "attitudeUnknown";
 pub const REASON_HEADING_UNKNOWN: &str = "headingUnknownWhileYawLocked";
 pub const REASON_UNSUPPORTED: &str = "unsupported";
 
+pub fn reason_text(token: &str) -> Option<&'static str> {
+    match token {
+        REASON_NOT_READY => Some("The gimbal is not ready yet."),
+        REASON_NO_ACTIVE_GIMBAL => Some("No gimbal is selected."),
+        REASON_OTHERS_HAVE_CONTROL => Some("Command not sent. Another user has control of the gimbal."),
+        REASON_ATTITUDE_UNKNOWN => Some("The gimbal has not reported its attitude yet."),
+        REASON_HEADING_UNKNOWN => Some("The vehicle heading is unknown, so a yaw-locked gimbal cannot be pointed."),
+        REASON_UNSUPPORTED => Some("This gimbal does not support that."),
+        _ => None,
+    }
+}
+
 pub const DISCOVERY_IDLE: &str = "idle";
 pub const DISCOVERY_SEARCHING: &str = "searching";
 pub const DISCOVERY_FOUND: &str = "found";
@@ -155,6 +167,7 @@ pub enum Out {
     RequestMessage { component: u8, message: u32 },
     MessageInterval { component: u8, message: u32, interval_us: f64 },
     Command { component: u8, command: u16, params: [f64; 7], show_error: bool },
+    SetAttitudeRates { component: u8, flags: u32, device_id: u8, pitch_rate: f32, yaw_rate: f32 },
     StartRateRepeat,
     StopRateRepeat,
     ActiveGimbal(PairId),
@@ -722,12 +735,7 @@ impl Gimbals {
     }
 
     fn rate_command(&self, pair: PairId, flags: u32, pitch_rate: f32, yaw_rate: f32) -> Out {
-        Out::Command {
-            component: pair.manager_compid,
-            command: CMD_DO_GIMBAL_MANAGER_PITCHYAW,
-            params: [f64::NAN, f64::NAN, pitch_rate as f64, yaw_rate as f64, flags as f64, 0.0, pair.device_id as f64],
-            show_error: false,
-        }
+        Out::SetAttitudeRates { component: pair.manager_compid, flags, device_id: pair.device_id, pitch_rate: pitch_rate.to_radians(), yaw_rate: yaw_rate.to_radians() }
     }
 
     fn request_information(&mut self, compid: u8, now_ms: u64) -> Vec<Out> {
@@ -1389,28 +1397,20 @@ mod tests {
     }
 
     #[test]
-    fn rates_go_out_as_the_acked_command_in_degrees_per_second() {
+    fn rates_go_out_as_gimbal_manager_set_attitude_in_radians_per_second() {
         let mut gimbals = discovered();
         let started = gimbals.set_rates(Some(30.0), None, 2000);
-        let sent = match started.first() {
-            Some(Out::Command { params, command: CMD_DO_GIMBAL_MANAGER_PITCHYAW, component: MANAGER, show_error: false }) => *params,
-            _ => panic!("an acked pitch/yaw command, not a fire-and-forget stream message this GCS has never shipped a sender for"),
+        let (flags, pitch, yaw) = match started.first() {
+            Some(Out::SetAttitudeRates { component: MANAGER, flags, device_id: DEVICE, pitch_rate, yaw_rate }) => (*flags, *pitch_rate, *yaw_rate),
+            other => panic!("GimbalController::_sendGimbalAttitudeRates streams GIMBAL_MANAGER_SET_ATTITUDE, got {other:?}"),
         };
-        assert!(sent[0].is_nan() && sent[1].is_nan(), "a rate command leaves both angles unset, which is what NaN means in these two parameters");
-        assert_eq!(
-            (sent[2], sent[3], sent[4], sent[5], sent[6]),
-            (30.0, 0.0, 44.0, 0.0, DEVICE as f64),
-            "the rate rides in parameters three and four in degrees per second, under roll lock, pitch lock and the vehicle frame GimbalController::_sendGimbalAttitudeRates sets"
-        );
+        assert_eq!((flags, pitch, yaw), (44, 30f32.to_radians(), 0.0), "roll lock, pitch lock and the vehicle frame, with qDegreesToRadians rates");
         assert_eq!(started.last(), Some(&Out::StartRateRepeat));
         assert!(gimbals.set_rates(None, Some(-15.0), 3000).contains(&Out::StartRateRepeat), "one axis still moving keeps the repeat alive");
         assert!(gimbals.set_rates(Some(0.0), Some(0.0), 4000).contains(&Out::StopRateRepeat));
         gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, level()), 5000);
         let locked = gimbals.set_rates(Some(5.0), None, 5000);
-        assert!(
-            matches!(locked.first(), Some(Out::Command { params, .. }) if params[4] == 60.0),
-            "a rate carries roll lock, pitch lock, the vehicle frame and the yaw lock the gimbal is already in, as GimbalController::_sendGimbalAttitudeRates sends them, though the MAVLink spec reads yaw lock and vehicle frame as contradictory"
-        );
+        assert!(matches!(locked.first(), Some(Out::SetAttitudeRates { flags: 60, .. })), "the yaw lock the gimbal is already in is kept");
     }
 
     #[test]
@@ -1431,7 +1431,7 @@ mod tests {
         gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 3000);
         let resumed = gimbals.set_rates(None, None, 3000);
         assert!(
-            matches!(resumed.first(), Some(Out::Command { params, .. }) if params[2] == 0.0 && params[3] == 0.0),
+            matches!(resumed.first(), Some(Out::SetAttitudeRates { pitch_rate, yaw_rate, .. }) if *pitch_rate == 0.0 && *yaw_rate == 0.0),
             "with control back the stored rate is the stop the operator asked for, not the slew they abandoned"
         );
         assert!(resumed.contains(&Out::StopRateRepeat));

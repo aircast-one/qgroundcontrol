@@ -3371,6 +3371,7 @@ impl Vehicle {
         const MAV_CMD_SET_MESSAGE_INTERVAL: u16 = 511;
         if let Some(reason) = outs.iter().find_map(|out| match out {
             Out::Refused { reason, .. } => Some(*reason),
+            Out::AskToTakeControl(_) => Some(crate::gimbal::REASON_OTHERS_HAVE_CONTROL),
             _ => None,
         }) {
             return Err(reason.to_string());
@@ -3380,6 +3381,7 @@ impl Vehicle {
             .into_iter()
             .filter_map(|out| match out {
                 Out::Command { component, command, params, .. } => Some(Outbound::CommandLong { target: (target, component), command, params }),
+                Out::SetAttitudeRates { component, flags, device_id, pitch_rate, yaw_rate } => Some(Outbound::GimbalAttitudeRates { target: (target, component), flags, device_id, pitch_rate, yaw_rate }),
                 Out::RequestMessage { component, message } => Some(Outbound::CommandLong { target: (target, component), command: MAV_CMD_REQUEST_MESSAGE, params: [f64::from(message), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }),
                 Out::MessageInterval { component, message, interval_us } => Some(Outbound::CommandLong { target: (target, component), command: MAV_CMD_SET_MESSAGE_INTERVAL, params: [f64::from(message), interval_us, 0.0, 0.0, 0.0, 0.0, 0.0] }),
                 _ => None,

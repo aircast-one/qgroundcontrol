@@ -10,7 +10,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +20,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,11 +35,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.refusal
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.optText
 import org.json.JSONObject
 
 internal const val GIMBAL_INDICATOR_PATH = "view.gimbalIndicator"
+internal const val OTHERS_HAVE_CONTROL = "othersHaveControl"
+
+internal val gimbalAsksForControl = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+internal fun gimbalRefusal(answer: JSONObject?): String? {
+    if (answer?.optText("refusal") == OTHERS_HAVE_CONTROL) {
+        gimbalAsksForControl.value = true
+        return null
+    }
+    return refusal(answer)
+}
 
 internal data class GimbalChoice(val name: String, val managerCompid: Int, val deviceId: Int, val active: Boolean)
 
@@ -90,9 +105,26 @@ internal fun GimbalIndicatorCell() {
 
     fun act(path: String, vararg args: Any?) {
         scope.launch {
-            refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(path, *args) }
+            val answer = withContext(Dispatchers.Default) { Qgc.call(path, *args) }
+            refusal = gimbalRefusal(answer)
             if (refusal == null) open = false
         }
+    }
+
+    val asking by gimbalAsksForControl.collectAsState()
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { gimbalAsksForControl.value = false },
+            title = { Text("Request Gimbal Control?") },
+            text = { Text("Command not sent. Another user has control of the gimbal.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    gimbalAsksForControl.value = false
+                    scope.launch(Dispatchers.Default) { Qgc.refusalOf("gimbal.control", true) }
+                }) { Text("Yes") }
+            },
+            dismissButton = { TextButton(onClick = { gimbalAsksForControl.value = false }) { Text("No") } },
+        )
     }
 
     Text(
@@ -158,7 +190,7 @@ internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
     val control = remember(view) { onScreenGimbal(view) } ?: return
     val scope = rememberCoroutineScope()
     val send = { pan: Float, tilt: Float, point: Boolean ->
-        scope.launch(Dispatchers.Default) { Qgc.refusalOf("gimbal.onScreen", pan.toDouble(), tilt.toDouble(), point) }
+        scope.launch(Dispatchers.Default) { gimbalRefusal(Qgc.call("gimbal.onScreen", pan.toDouble(), tilt.toDouble(), point)) }
         Unit
     }
     Box(

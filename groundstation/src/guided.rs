@@ -520,7 +520,10 @@ pub fn dispatch(backend: &dyn Backend, core: Option<Value>, vehicle: Option<i64>
     });
     let (dispatched, reason) = match on_core {
         Some(Ok(())) => (true, Value::Null),
-        Some(Err(reason)) => (false, json!(reason)),
+        Some(Err(reason)) => match crate::gimbal::reason_text(&reason) {
+            Some(text) => return json!({ "ok": false, "refusal": reason, "reason": text }),
+            None => (false, json!(reason)),
+        },
         None => {
             let answered = object(&backend.invoke(path, args));
             match flag(&answered, "ok") {
