@@ -1,5 +1,5 @@
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crate::read::{flag, integer, object, text, value_number};
 use crate::router::Backend;
@@ -437,6 +437,12 @@ pub fn outbound(stream: Stream, report: &Report, home_altitude_amsl_m: Option<f6
 }
 
 static LAST_SENT_MS: std::sync::Mutex<Option<u64>> = std::sync::Mutex::new(None);
+static HOME_NOT_SET_POSTED: AtomicBool = AtomicBool::new(false);
+pub const HOME_NOT_SET: &str = "Follow failed: Home position not set.";
+
+pub fn home_not_set(mode: Option<Mode>, fleet: &[Target]) -> bool {
+    fleet.iter().any(|target| stream(mode, target) == Err(Refusal::HomePositionUnknown))
+}
 
 pub fn tick(backend: &dyn Backend, now_ms: u64) {
     {
@@ -449,6 +455,9 @@ pub fn tick(backend: &dyn Backend, now_ms: u64) {
     let mode = Mode::from_setting(value_number(&backend.get(SETTING)));
     let Some(report) = gcs_fix(backend, crate::hub::now_us() / 1000).as_ref().and_then(motion_report) else { return };
     let fleet = fleet_of(backend);
+    if !crate::qthost::present() && home_not_set(mode, &fleet) && !HOME_NOT_SET_POSTED.swap(true, Ordering::Relaxed) {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", HOME_NOT_SET);
+    }
     let sends: Vec<(u8, crate::transport::LinkId, crate::mavout::Outbound)> = {
         let hub = crate::hub::lock();
         fleet
@@ -720,6 +729,18 @@ mod tests {
         assert_eq!(global_position(&report, 500.0).altitude_amsl_mm, 500_000, "the metres a head shows and the millimetres on the wire are the same altitude");
         let px4_only = snapshot(FOLLOW_ME, &[follower("Follow Me", false)], Some(&Fix { altitude_amsl_m: None, ..fix() }));
         assert_eq!(px4_only["vehicles"][0]["sentAltitudeAmsl"], Value::Null, "an altitude the fix never carried is not an altitude the vehicle is told");
+    }
+
+    #[test]
+    fn only_an_ardupilot_follower_without_home_raises_the_home_not_set_message() {
+        let homeless = Target { home_altitude_amsl_m: None, ..follower("Follow Me", true) };
+        let px4_homeless = Target { home_altitude_amsl_m: None, ..follower("Follow Me", false) };
+        let idle_homeless = Target { home_altitude_amsl_m: None, ..follower("Loiter", true) };
+        assert!(home_not_set(Some(Mode::FollowMe), &[follower("Follow Me", true), homeless.clone()]), "APMFirmwarePlugin::sendGCSMotionReport refuses without a valid home");
+        assert!(!home_not_set(Some(Mode::FollowMe), &[px4_homeless]), "the PX4 FOLLOW_TARGET path needs no home");
+        assert!(!home_not_set(Some(Mode::FollowMe), &[idle_homeless.clone()]), "a vehicle outside Follow Me is never sent to");
+        assert!(home_not_set(Some(Mode::Always), &[idle_homeless.clone()]), "Always sends to every vehicle");
+        assert!(!home_not_set(Some(Mode::Never), &[homeless]));
     }
 
     #[test]
