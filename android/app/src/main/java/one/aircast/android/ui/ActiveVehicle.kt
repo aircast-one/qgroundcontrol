@@ -42,6 +42,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.truthy
@@ -249,6 +250,15 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
             }
+            ListItem(
+                headlineContent = { Text("Enable multi-vehicle panel") },
+                trailingContent = {
+                    androidx.compose.material3.Switch(
+                        checked = panelEnabled,
+                        onCheckedChange = { wanted -> offMainDetached { Qgc.writeRefusal(MULTI_VEHICLE_PANEL_SETTING, wanted) } },
+                    )
+                },
+            )
             if (!disconnected && !taken) {
                 Row(Modifier.padding(horizontal = 16.dp)) {
                     androidx.compose.material3.TextButton(onClick = { picking = false; modeMenu = true }) { Text("Flight mode") }
@@ -491,7 +501,8 @@ private fun InControlNote(holder: ControlStation, onRefusal: (String?) -> Unit) 
     ) { Text("Change") }
 }
 
-internal const val MULTI_VEHICLE_PANEL = "settings.appSettings.enableMultiVehiclePanel.rawValue"
+internal const val MULTI_VEHICLE_PANEL_SETTING = "settings.appSettings.enableMultiVehiclePanel"
+internal const val MULTI_VEHICLE_PANEL = "$MULTI_VEHICLE_PANEL_SETTING.rawValue"
 
 internal fun multiVehiclePanelEnabled(setting: JSONObject?): Boolean =
     setting?.takeIf { it.has("value") && !it.isNull("value") }?.optBoolean("value", true) ?: true

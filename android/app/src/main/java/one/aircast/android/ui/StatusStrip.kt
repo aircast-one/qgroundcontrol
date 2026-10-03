@@ -152,7 +152,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
                     InlineCell(fix?.let { satsText(it, satellites) } ?: NO_COUNT, fix?.let { gpsColour(it) } ?: Color.Unspecified, R.drawable.ic_satellite_alt) { detail = StripDetail.Gps }
                 }
             },
-            "rc" to { rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified, R.drawable.ic_gamepad) } },
+            "rc" to { rcCell(state)?.let { InlineCell(it.text, if (it.lost) MaterialTheme.colorScheme.error else Color.Unspecified, R.drawable.ic_gamepad) { detail = StripDetail.Rc } } },
             "rcOverride" to { overrideCell(state)?.let { InlineCell(it.text, MaterialTheme.aircast.warning) { offMainDetached { Qgc.invoke(CLEAR_RC_OVERRIDES) } } } },
             "telemetry" to { telemetryCell(state)?.let { InlineCell(it, Color.Unspecified, R.drawable.ic_sensors) { detail = StripDetail.Telemetry } } },
             "links" to { links?.let { InlineCell(it.text, if (it.degraded) MaterialTheme.aircast.warning else Color.Unspecified, R.drawable.ic_signal_cellular_alt) { detail = StripDetail.Links } } },
@@ -184,6 +184,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
             StripDetail.Battery -> listOfNotNull(totalDraw(batteryJson)?.let { DetailRow("Total draw", it) }) + batteryDetail(batteryJson)
             StripDetail.Gps -> gpsDetail(gps)
             StripDetail.Telemetry -> telemetryDetail(state?.telemetry)
+            StripDetail.Rc -> rcDetail(state)
             StripDetail.Links -> linkDetail(
                 vehicleLinks(linksJson),
                 linkNames(linksJson),
@@ -243,13 +244,17 @@ private fun BatteryDisplaySettings() {
 internal const val CLEAR_RC_OVERRIDES = "vehicle.clearRcChannelOverrides"
 internal const val POWER_SETUP_PAGE = "Power"
 
-internal enum class StripDetail { Battery, Gps, Links, Telemetry }
+internal enum class StripDetail { Battery, Gps, Links, Telemetry, Rc }
+
+internal fun rcDetail(state: FlyState?): List<DetailRow> =
+    listOfNotNull(state?.rcSignal?.let { DetailRow("RSSI", "$it%") })
 
 internal fun instrumentTitle(instrument: StripDetail): String = when (instrument) {
     StripDetail.Battery -> "Battery"
     StripDetail.Gps -> "GPS"
     StripDetail.Links -> "Links to this aircraft"
     StripDetail.Telemetry -> "Telemetry radio"
+    StripDetail.Rc -> "RC RSSI status"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
