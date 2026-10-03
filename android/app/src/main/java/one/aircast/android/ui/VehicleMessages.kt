@@ -118,7 +118,7 @@ internal fun vehicleMessages(view: JSONObject?): List<VehicleMessage> {
 }
 
 
-private const val WARNINGS = "view.warnings"
+internal const val WARNINGS = "view.warnings"
 
 internal fun armingBlocker(view: JSONObject?): String? =
     view?.takeIf { !it.isNull("armingBlocker") }

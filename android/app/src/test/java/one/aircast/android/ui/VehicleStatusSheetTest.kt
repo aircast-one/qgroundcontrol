@@ -32,4 +32,13 @@ class VehicleStatusSheetTest {
         assertEquals("Complete the preflight checklist first", deckRequestRefusal(blocked))
         assertEquals(ARM_UNAVAILABLE, deckRequestRefusal(null))
     }
+
+    @Test
+    fun `a check with a description toggles open and shut, one without stays shut, like the Overall Status delegate`() {
+        val detailed = ArmingCheck("GPS not ready", "Wait for a fix", "error")
+        val bare = ArmingCheck("Battery low", "", "warning")
+        org.junit.Assert.assertEquals(setOf(0), expandedAfterTap(emptySet(), 0, detailed))
+        org.junit.Assert.assertEquals(emptySet<Int>(), expandedAfterTap(setOf(0), 0, detailed))
+        org.junit.Assert.assertEquals(emptySet<Int>(), expandedAfterTap(emptySet(), 1, bare))
+    }
 }

@@ -21,7 +21,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import one.aircast.android.R
 import one.aircast.android.bridge.qgcPath
+import one.aircast.mapspike.aircast
 
 private const val SENSOR_FAULT_STATE = "unhealthy"
 private const val SENSORS_SETUP_PAGE = "Sensors"
@@ -90,6 +96,7 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
                     Text(if (showAll) "Show less" else "Show $normal more")
                 }
             }
+            OverallStatus()
             ParameterForm(STATUS_SETTINGS_PAGE, Modifier.heightIn(max = 360.dp))
             listOf("Vehicle parameters" to SETUP_PARAMETERS_PAGE, "Vehicle configuration" to SETUP_OVERVIEW_PAGE).forEach { (label, page) ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -97,6 +104,42 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
                     OutlinedButton(onClick = { open(page) }) { Text("Configure") }
                 }
             }
+        }
+    }
+}
+
+internal fun expandedAfterTap(expanded: Set<Int>, index: Int, check: ArmingCheck): Set<Int> = when {
+    check.description.isBlank() -> expanded
+    index in expanded -> expanded - index
+    else -> expanded + index
+}
+
+@Composable
+private fun checkColour(severity: String): Color = when (severity) {
+    "error" -> MaterialTheme.colorScheme.error
+    "warning" -> MaterialTheme.aircast.warning
+    else -> MaterialTheme.colorScheme.onSurface
+}
+
+@Composable
+private fun OverallStatus() {
+    val warnings by qgcPath(WARNINGS)
+    val checks = remember(warnings) { armingChecks(warnings).orEmpty() }
+    var expanded by remember(checks) { mutableStateOf(emptySet<Int>()) }
+    var editing by remember { mutableStateOf<String?>(null) }
+    if (checks.isEmpty()) return
+    editing?.let { name -> ParameterEditDialog(name) { editing = null } }
+    Text("Overall status", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
+    checks.forEachIndexed { index, check ->
+        Column(
+            Modifier.fillMaxWidth().clickable(enabled = check.description.isNotBlank()) { expanded = expandedAfterTap(expanded, index, check) }.padding(horizontal = 20.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                LinkedText(check.message, MaterialTheme.typography.bodyMedium, checkColour(check.severity), onParameter = { editing = it }, modifier = Modifier.weight(1f))
+                if (check.description.isNotBlank()) Icon(painterResource(R.drawable.ic_arrow_drop_down), contentDescription = if (index in expanded) "Hide details" else "Show details", modifier = Modifier.size(24.dp))
+            }
+            if (index in expanded) LinkedText(check.description, MaterialTheme.typography.bodySmall, MaterialTheme.colorScheme.onSurfaceVariant, onParameter = { editing = it })
         }
     }
 }
