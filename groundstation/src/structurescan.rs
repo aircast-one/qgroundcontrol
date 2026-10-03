@@ -101,6 +101,15 @@ pub fn saved_flight(scan: &serde_json::Value) -> Result<Vec<Point>, String> {
     flight_polygon(&structure, number(calc, "DistanceToSurface").unwrap_or(0.0)).ok_or_else(|| "The structure scan's flight path could not be laid around its structure.".to_string())
 }
 
+pub fn flight_alts(plan: &Plan) -> (f64, f64) {
+    let half = plan.adjusted_frontal / 2.0;
+    let all = half + (plan.layers - 1).max(0) as f64 * plan.adjusted_frontal;
+    match plan.start_from_top {
+        true => (plan.structure_height - all, plan.structure_height - half),
+        false => (plan.scan_bottom_alt + half, plan.scan_bottom_alt + all),
+    }
+}
+
 pub fn saved_plan(scan: &serde_json::Value) -> Plan {
     let calc = scan.get("CameraCalc").cloned().unwrap_or(serde_json::Value::Null);
     Plan {
@@ -446,5 +455,12 @@ mod upload {
                 (None, None) => true,
                 _ => false,
             })
+    }
+
+    #[test]
+    fn layers_sit_half_a_layer_inside_the_scanned_span_like_structure_scan_complex_item() {
+        let plan = Plan { adjusted_frontal: 10.0, scan_bottom_alt: 5.0, structure_height: 45.0, layers: 3, ..Plan::default() };
+        assert_eq!(flight_alts(&Plan { start_from_top: false, ..plan }), (10.0, 30.0));
+        assert_eq!(flight_alts(&Plan { start_from_top: true, ..plan }), (20.0, 40.0));
     }
 }

@@ -119,7 +119,16 @@ data class SurveyStats(
     val footprintText: String = "",
     val surfaceDistanceText: String = "",
     val distanceText: String = "",
+    val photosText: String = "",
+    val structure: StructureStats? = null,
 )
+
+data class StructureStats(val layers: String, val layerHeight: String, val top: String, val bottom: String)
+
+fun statisticsRows(stats: SurveyStats): List<Pair<String, String>> = (
+    stats.structure?.let { listOf("Layers" to it.layers, "Layer height" to it.layerHeight, "Top layer altitude" to it.top, "Bottom layer altitude" to it.bottom) }
+        ?: listOf("Area" to stats.areaText, "Distance" to stats.distanceText)
+    ) + listOf("Photos" to stats.photosText, "Photo interval" to stats.intervalText)
 
 private fun stated(view: org.json.JSONObject, key: String): String =
     view.optText(key).takeIf { it != ABSENT }.orEmpty()
@@ -135,6 +144,8 @@ fun surveyStats(view: org.json.JSONObject?): SurveyStats? {
         footprintText = stated(view, "footprintText"),
         surfaceDistanceText = stated(view, "surfaceDistanceText"),
         distanceText = stated(view, "distanceText"),
+        photosText = view.optText("shotsText"),
+        structure = view.optJSONObject("structure")?.let { StructureStats(it.optText("layers"), it.optText("layerHeight"), it.optText("top"), it.optText("bottom")) },
     )
 }
 

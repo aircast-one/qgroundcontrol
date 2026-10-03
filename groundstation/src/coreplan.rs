@@ -2898,7 +2898,12 @@ pub fn survey_stats_inputs(backend: &dyn Backend, index: usize) -> Option<(Value
             let flight = crate::structurescan::saved_flight(item).unwrap_or_default();
             let plan = crate::structurescan::saved_plan(item);
             let shots = crate::structurescan::camera_shots(&flight, plan.adjusted_side, plan.layers) as f64;
-            (stats(shots, per_second(plan.adjusted_side), 0.0, crate::structurescan::scan_distance(&flight, &plan)), calc_facts(&item["CameraCalc"]))
+            let (bottom, top) = crate::structurescan::flight_alts(&plan);
+            let mut structure = stats(shots, per_second(plan.adjusted_side), 0.0, crate::structurescan::scan_distance(&flight, &plan));
+            structure["layers"] = json!(plan.layers);
+            structure["bottomFlightAlt"] = json!(bottom);
+            structure["topFlightAlt"] = json!(top);
+            (structure, calc_facts(&item["CameraCalc"]))
         }
         _ => {
             let row = crate::landingpattern::row(item);

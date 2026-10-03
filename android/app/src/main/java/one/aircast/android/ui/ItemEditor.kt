@@ -171,6 +171,9 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
     val raw = remember(view) { rawEdit(view) }
     val connected = hasVehicle()
     val camera = remember(view) { cameraCalc(view) }
+    val stats by androidx.compose.runtime.produceState<one.aircast.mapspike.SurveyStats?>(null, index, revision, camera) {
+        value = if (camera == null) null else withContext(Dispatchers.Default) { one.aircast.mapspike.surveyStats(Qgc.get("view.surveyStats($index)")) }
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             Row(
@@ -309,6 +312,20 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                                     revision++
                                 }
                             }) { Text("Rotate") }
+                        }
+                    }
+                }
+                stats?.let { known ->
+                    item(key = "statistics") {
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            known.warning.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning) }
+                            Text("Statistics", style = MaterialTheme.typography.titleSmall)
+                            one.aircast.mapspike.statisticsRows(known).forEach { (label, value) ->
+                                Row(Modifier.fillMaxWidth()) {
+                                    Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                    Text(value.ifBlank { "\u2014" }, style = MaterialTheme.typography.bodyMedium)
+                                }
+                            }
                         }
                     }
                 }
