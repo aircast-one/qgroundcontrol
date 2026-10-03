@@ -34,6 +34,14 @@ class CameraCalcSectionTest {
     }
 
     @Test
+    fun `Set by names the distance the way the editor does`() {
+        val scan = control("cameraCalc.distanceToSurface").put("shortLabel", "Scan distance")
+        val block = cameraCalc(JSONObject().put("camera", JSONObject().put("brand", "Sony").put("facts", JSONArray(listOf(scan)))))!!
+        assertEquals("Scan distance", distanceLabel(block))
+        assertEquals("Altitude", distanceLabel(block.copy(facts = emptyList())))
+    }
+
+    @Test
     fun `the transect altitude frame reads from the core and hides where it does not apply`() {
         val block = cameraCalc(JSONObject("""{"camera":{"brand":"Manual (no camera specs)","manualName":"Manual (no camera specs)","distanceMode":3,"distanceModePath":"p.cameraCalc.distanceMode",
             "distanceModes":[{"raw":1,"title":"Relative (Rel)"},{"raw":3,"title":"Above Terrain Calced (AGLC)"}],"facts":[]}}"""))!!

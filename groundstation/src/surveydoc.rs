@@ -203,17 +203,22 @@ fn terrain_gated(control: Value, name: &str, follows_terrain: bool) -> Value {
     }
 }
 
-fn spacing_label(survey: &Value, name: &str) -> Option<&'static str> {
-    match (is_structure(survey), name) {
-        (true, "AdjustedFootprintFrontal") => Some("Layer height"),
-        (true, "AdjustedFootprintSide") => Some("Trigger distance"),
-        (false, "AdjustedFootprintFrontal") => Some("Trigger distance"),
-        (false, "AdjustedFootprintSide") => Some("Spacing"),
+pub fn grid_label(structure: bool, property: &str) -> Option<&'static str> {
+    match (structure, property) {
+        (true, "distanceToSurface") => Some("Scan distance"),
+        (false, "distanceToSurface") => Some("Altitude"),
+        (_, "imageDensity") => Some("Ground resolution"),
+        (_, "frontalOverlap") => Some("Front overlap"),
+        (_, "sideOverlap") => Some("Side overlap"),
+        (true, "adjustedFootprintFrontal") => Some("Layer height"),
+        (true, "adjustedFootprintSide") => Some("Trigger distance"),
+        (false, "adjustedFootprintFrontal") => Some("Trigger distance"),
+        (false, "adjustedFootprintSide") => Some("Spacing"),
         _ => None,
     }
 }
 
-fn labelled(control: Value, label: &str) -> Value {
+pub fn labelled(control: Value, label: &str) -> Value {
     match control {
         Value::Object(mut fields) => {
             fields.insert("label".to_string(), json!(label));
@@ -369,11 +374,14 @@ pub fn camera(survey: &Value, item: &str, units: &Units, terrain_frame: bool) ->
         .filter_map(|(name, suffix)| {
             let meta = meta(CAMERA_META, name).or_else(|| meta(CAMERA_SPEC_META, name))?;
             let built = control(&meta, with_default(calc.get(*name), &meta), item, &format!("cameraCalc.{suffix}"), "Camera", units);
-            Some(match (spacing_label(survey, name), name_is_manual) {
-                (Some(label), true) => labelled(built, label),
-                (Some(label), false) => read_only(labelled(built, label)),
-                (None, _) if sensor_read_only(name) => read_only(built),
-                (None, _) => built,
+            let shown = match grid_label(is_structure(survey), suffix) {
+                Some(label) => labelled(built, label),
+                None => built,
+            };
+            let spacing = MANUAL_SPACING.iter().any(|(spacing, _)| spacing == name);
+            Some(match (spacing && !name_is_manual) || sensor_read_only(name) {
+                true => read_only(shown),
+                false => shown,
             })
         })
         .collect();
@@ -1094,6 +1102,8 @@ mod tests {
         assert_eq!(thinner["Layers"], 5, "StructureScanComplexItem::_recalcLayerInfo: ceil((100 - 50) / 10)");
         let labels: Vec<Value> = camera(&manual, "p", &metric(), true)["facts"].as_array().unwrap().iter().filter(|f| f["name"].as_str().is_some_and(|n| n.starts_with("AdjustedFootprint"))).map(|f| f["shortLabel"].clone()).collect();
         assert_eq!(labels, [json!("Layer height"), json!("Trigger distance")], "StructureScanEditor names them for CameraCalcGrid");
+        let distance = camera(&manual, "p", &metric(), true)["facts"].as_array().unwrap().iter().find(|f| f["name"] == "DistanceToSurface").map(|f| f["shortLabel"].clone());
+        assert_eq!(distance, Some(json!("Scan distance")), "StructureScanEditor calls the distance Scan distance");
         let mut stale = thinner.clone();
         stale["Layers"] = json!(9);
         assert_eq!(crate::structurescan::saved_plan(&stale).layers, 5, "a hand-set count saved before layers were derived is not flown");

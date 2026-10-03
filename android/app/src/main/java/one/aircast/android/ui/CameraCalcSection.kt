@@ -78,6 +78,9 @@ internal fun cameraCalc(view: JSONObject?): CameraCalcBlock? =
         )
     }
 
+internal fun distanceLabel(block: CameraCalcBlock): String =
+    block.facts.firstOrNull { (suffix, _) -> suffix == DISTANCE_SUFFIX }?.second?.shortLabel?.ifBlank { null } ?: "Altitude"
+
 internal fun shownCameraFacts(block: CameraCalcBlock): List<Fact> =
     block.facts
         .filter { (suffix, _) ->
@@ -112,7 +115,7 @@ internal fun CameraCalcHeader(block: CameraCalcBlock, onWrite: (String, Any) -> 
         if (!block.manual) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Set by", style = MaterialTheme.typography.bodyMedium)
-                FilterChip(selected = block.valueSetIsDistance, onClick = { onWrite(block.valueSetIsDistancePath, true) }, label = { Text("Altitude") })
+                FilterChip(selected = block.valueSetIsDistance, onClick = { onWrite(block.valueSetIsDistancePath, true) }, label = { Text(distanceLabel(block)) })
                 FilterChip(selected = !block.valueSetIsDistance, onClick = { onWrite(block.valueSetIsDistancePath, false) }, label = { Text("Ground res") })
             }
         }

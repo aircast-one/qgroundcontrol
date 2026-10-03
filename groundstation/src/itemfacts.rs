@@ -20,6 +20,7 @@ const ITEM_ROOT: &str = "plan.missionController.visualItems";
 const LISTS: [&str; 3] = ["comboboxFacts", "textFieldFacts", "nanFacts"];
 const LAUNCH_ALTITUDE: &str = "plannedHomePositionAltitude";
 const SURVEY_PROPERTIES: [&str; 4] = ["distanceToSurface", "imageDensity", "frontalOverlap", "sideOverlap"];
+const SPACING_PROPERTIES: [&str; 2] = ["adjustedFootprintFrontal", "adjustedFootprintSide"];
 const SENSOR_PROPERTIES: [&str; 5] = ["sensorWidth", "sensorHeight", "imageWidth", "imageHeight", "focalLength"];
 const OPTICS_PROPERTIES: [&str; 7] = ["sensorWidth", "sensorHeight", "imageWidth", "imageHeight", "focalLength", "landscape", "minTriggerInterval"];
 
@@ -102,7 +103,7 @@ fn strings(read: &Value, key: &str) -> Vec<String> {
     read.get(key).and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
 }
 
-fn camera(backend: &dyn Backend, item: &str) -> Value {
+fn camera(backend: &dyn Backend, item: &str, structure: bool) -> Value {
     let read = object(&backend.get(&format!("{item}.cameraCalc")));
     if read.get("kind").and_then(Value::as_str) != Some("object") {
         return Value::Null;
@@ -112,7 +113,8 @@ fn camera(backend: &dyn Backend, item: &str) -> Value {
     let facts = read.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
     let by_property = |property: &str| facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(property));
     let fixed_orientation = by_property("fixedOrientation").and_then(|fact| fact.get("value")).is_some_and(|value| value.as_bool().unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0)));
-    let optics: Vec<&str> = match (custom, flag(&read, "isManualCamera")) {
+    let manual = flag(&read, "isManualCamera");
+    let optics: Vec<&str> = match (custom, manual) {
         (true, _) => OPTICS_PROPERTIES.to_vec(),
         (false, true) => Vec::new(),
         (false, false) => SENSOR_PROPERTIES.iter().copied().chain((!fixed_orientation).then_some("landscape")).collect(),
@@ -120,12 +122,17 @@ fn camera(backend: &dyn Backend, item: &str) -> Value {
     let shown: Vec<Value> = optics
         .iter()
         .chain(SURVEY_PROPERTIES.iter())
+        .chain(SPACING_PROPERTIES.iter())
         .filter_map(|property| by_property(property))
         .filter(|fact| named(fact))
         .map(|fact| {
             let property = fact.get("property").and_then(Value::as_str).unwrap_or_default();
-            let control = field(fact, item, &format!("cameraCalc.{property}"), "Camera");
-            match (control, !custom && SENSOR_PROPERTIES.contains(&property)) {
+            let built = field(fact, item, &format!("cameraCalc.{property}"), "Camera");
+            let control = match crate::surveydoc::grid_label(structure, property) {
+                Some(label) => crate::surveydoc::labelled(built, label),
+                None => built,
+            };
+            match (control, (!custom && SENSOR_PROPERTIES.contains(&property)) || (!manual && SPACING_PROPERTIES.contains(&property))) {
                 (Value::Object(mut map), true) => {
                     map.insert("readOnly".to_string(), json!(true));
                     Value::Object(map)
@@ -143,7 +150,7 @@ fn camera(backend: &dyn Backend, item: &str) -> Value {
         "customName": text("xlatCustomCameraName"),
         "custom": custom,
         "distanceMode": read.get("distanceMode").cloned().unwrap_or(Value::Null),
-        "distanceModes": crate::altitudemodes::transect_distance_modes(flag(&read, "isManualCamera"), flag(&object(&backend.get_fields("plan.controllerVehicle.supports", "terrainFrame")), "terrainFrame")),
+        "distanceModes": crate::altitudemodes::transect_distance_modes(manual, flag(&object(&backend.get_fields("plan.controllerVehicle.supports", "terrainFrame")), "terrainFrame")),
         "distanceModePath": format!("{item}.cameraCalc.distanceMode"),
         "valueSetIsDistance": facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some("valueSetIsDistance")).and_then(|fact| fact.get("value")).map_or(true, |value| value.as_bool().unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0))),
         "valueSetIsDistancePath": format!("{item}.cameraCalc.valueSetIsDistance"),
@@ -236,7 +243,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         },
         "altitudesAreRelative": matches!(read.get("class").and_then(Value::as_str), Some("FixedWingLandingComplexItem" | "VTOLLandingComplexItem")).then(|| read.get("altitudesAreRelative").and_then(Value::as_bool)).flatten(),
         "camera": match available && !simple {
-            true => camera(backend, &item),
+            true => camera(backend, &item, read.get("class").and_then(Value::as_str) == Some("StructureScanComplexItem")),
             false => Value::Null,
         },
         "speedSection": match available {
@@ -381,6 +388,7 @@ mod tests {
         let shown: Vec<&str> = camera["facts"].as_array().unwrap().iter().map(|f| f["pathSuffix"].as_str().unwrap()).collect();
         assert_eq!(shown, ["cameraCalc.sensorWidth", "cameraCalc.landscape", "cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap"], "a catalogue camera shows its sensor and Orientation like CameraCalcCamera, then the survey figures");
         assert_eq!((&camera["facts"][0]["readOnly"], &camera["facts"][1]["readOnly"]), (&json!(true), &json!(false)), "the SENSOR card is disabled unless the camera is custom; Orientation stays editable");
+        assert_eq!((&camera["facts"][2]["shortLabel"], &camera["facts"][3]["shortLabel"]), (&json!("Altitude"), &json!("Front overlap")), "CameraCalcGrid names the survey figures");
         let fixed = item_facts_view(&Plan { simple: false, lists: false, custom: false, fixed: true }, &["2".to_string()]);
         assert!(fixed["camera"]["facts"].as_array().unwrap().iter().all(|f| f["pathSuffix"] != "cameraCalc.landscape"), "a fixed-orientation camera offers no Orientation choice");
         assert_eq!(camera["facts"][0]["group"], "Camera");
