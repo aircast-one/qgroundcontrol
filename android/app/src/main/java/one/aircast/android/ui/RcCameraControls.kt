@@ -77,6 +77,36 @@ private fun PwmSlider(label: String, channel: Int, pwm: Int, onPwm: (Int) -> Uni
     }
 }
 
+internal const val GIMBAL_TILT_MIN = -90f
+internal const val GIMBAL_TILT_MAX = 30f
+
+@Composable
+private fun GimbalTiltSlider(pitch: Double?) {
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    var lastSent by remember { mutableLongStateOf(0L) }
+    val shown = dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("${kotlin.math.round(shown).toInt()}\u00b0", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(64.dp))
+        Slider(
+            value = shown,
+            onValueChange = { next ->
+                dragging = next
+                val now = SystemClock.uptimeMillis()
+                if (rcSendDue(now, lastSent, finished = false)) {
+                    lastSent = now
+                    offMainDetached { gimbalRefusal(Qgc.call("gimbal.pitch", next.toDouble())) }
+                }
+            },
+            onValueChangeFinished = {
+                dragging?.let { last -> offMainDetached { gimbalRefusal(Qgc.call("gimbal.pitch", last.toDouble())) } }
+                dragging = null
+            },
+            valueRange = GIMBAL_TILT_MIN..GIMBAL_TILT_MAX,
+            modifier = Modifier.width(180.dp),
+        )
+    }
+}
+
 @Composable
 fun RcCameraControls(modifier: Modifier = Modifier) {
     val channels = rcCameraChannels(
@@ -97,10 +127,12 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     var lightOn by remember(vehicleId) { mutableStateOf(false) }
     var channelRecording by remember(vehicleId) { mutableStateOf(false) }
     DisposableEffect(vehicleId) { onDispose { offMainDetached { Qgc.invoke("vehicle.clearRcChannelOverrides") } } }
-    if (!hasVehicle() || !channels.any) return
+    if (!hasVehicle() || (!channels.any && !gimbalManager)) return
+    val gimbal = remember(gimbalJson) { gimbalIndicator(gimbalJson) }
     val recording = cameraRecording(channels.record, channelRecording, streamRecording)
     val rcGimbal = !gimbalManager && (channels.tilt > 0 || channels.pan > 0)
     Column(modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (gimbal != null) GimbalTiltSlider(gimbal.pitchDegrees)
         if (!gimbalManager && channels.tilt > 0) PwmSlider("Tilt", channels.tilt, tilt) { tilt = it }
         if (!gimbalManager && channels.pan > 0) PwmSlider("Pan", channels.pan, pan) { pan = it }
         if (channels.zoom > 0) PwmSlider("Zoom", channels.zoom, zoom) { zoom = it }
@@ -118,6 +150,14 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
                     lightOn = !lightOn
                     send(channels.light, if (lightOn) PWM_MAX else PWM_MIN)
                 }, label = { Text("Light") })
+            }
+            if (gimbal != null && gimbal.yawLockOffered) {
+                FilterChip(selected = gimbal.yawLocked, onClick = {
+                    offMainDetached { gimbalRefusal(Qgc.call("gimbal.yawLock", !gimbal.yawLocked)) }
+                }, label = { Text(gimbal.yawLockLabel) })
+            }
+            if (gimbal != null) {
+                TextButton(onClick = { offMainDetached { gimbalRefusal(Qgc.call("gimbal.center")) } }) { Text("Recenter") }
             }
             if (rcGimbal) {
                 TextButton(onClick = {

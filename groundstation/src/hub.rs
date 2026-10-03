@@ -3397,6 +3397,10 @@ impl Vehicle {
             match action.get("op").and_then(Value::as_str).unwrap_or("") {
                 "center" => gimbals.center(now_ms),
                 "tilt90" => gimbals.send_pitch_body_yaw(-90.0, 0.0, true, now_ms),
+                "pitch" => {
+                    let body_yaw = gimbals.active().and_then(|pair| gimbals.get(pair)).and_then(|g| g.attitude).and_then(|a| a.body_yaw).unwrap_or(0.0);
+                    gimbals.send_pitch_body_yaw(action.get("pitch").and_then(Value::as_f64).unwrap_or(0.0) as f32, body_yaw, false, now_ms)
+                }
                 "retract" => gimbals.set_retract(true, now_ms),
                 "yawLock" => gimbals.set_yaw_lock(flag("lock"), now_ms),
                 "rates" => {

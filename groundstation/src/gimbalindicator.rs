@@ -19,6 +19,7 @@ pub const GIMBAL_YAW_LOCK: &str = "gimbal.yawLock";
 pub const GIMBAL_CONTROL: &str = "gimbal.control";
 pub const GIMBAL_SELECT: &str = "gimbal.select";
 pub const GIMBAL_ON_SCREEN: &str = "gimbal.onScreen";
+pub const GIMBAL_PITCH: &str = "gimbal.pitch";
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
     let fact = object(&backend.get(&format!("settings.gimbalControllerSettings.{name}")));
@@ -58,6 +59,7 @@ pub fn indicator(snapshot: &Value, show_azimuth: bool, show_control: bool, on_sc
         "gimbals": gimbals.iter().map(|g| json!({ "name": format!("Gimbal {}-{}", g["managerCompid"].as_i64().unwrap_or(0), g["deviceId"].as_i64().unwrap_or(0)), "managerCompid": g["managerCompid"], "deviceId": g["deviceId"], "active": flag(g, "active") })).collect::<Vec<_>>(),
         "statusText": status_text(&active),
         "pitchText": angle(&active["pitch"]).map(|v| format!("P: {v}")),
+        "pitchDegrees": active["pitch"].as_f64(),
         "yawText": yaw,
         "yawLockLabel": if flag(&active, "yawLock") { "Yaw Follow" } else { "Yaw Lock" },
         "yawLocked": flag(&active, "yawLock"),
@@ -99,7 +101,7 @@ pub fn azimuth_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [GIMBAL_CENTER, GIMBAL_TILT_90, GIMBAL_POINT_HOME, GIMBAL_RETRACT, GIMBAL_YAW_LOCK, GIMBAL_CONTROL, GIMBAL_SELECT, GIMBAL_ON_SCREEN].contains(&path)
+    [GIMBAL_CENTER, GIMBAL_TILT_90, GIMBAL_POINT_HOME, GIMBAL_RETRACT, GIMBAL_YAW_LOCK, GIMBAL_CONTROL, GIMBAL_SELECT, GIMBAL_ON_SCREEN, GIMBAL_PITCH].contains(&path)
 }
 
 fn qt_path(method: &str) -> String {
@@ -123,6 +125,10 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
     match path {
         GIMBAL_CENTER => crate::guided::dispatch(backend, Some(op("center", Value::Null)), vehicle, &qt_path("centerGimbal"), "[]"),
         GIMBAL_TILT_90 => crate::guided::dispatch(backend, Some(op("tilt90", Value::Null)), vehicle, &qt_path("sendPitchBodyYaw"), "[-90, 0]"),
+        GIMBAL_PITCH => match given.get(0).and_then(Value::as_f64).filter(|v| v.is_finite()) {
+            Some(pitch) => crate::guided::dispatch(backend, Some(op("pitch", json!({ "pitch": pitch }))), vehicle, &qt_path("sendPitchBodyYaw"), &json!([pitch, Value::Null, false]).to_string()),
+            None => json!({ "ok": false, "refusal": "badPitch", "reason": "A tilt is a number of degrees." }),
+        },
         GIMBAL_RETRACT => crate::guided::dispatch(backend, Some(op("retract", Value::Null)), vehicle, &qt_path("setGimbalRetract"), "[true]"),
         GIMBAL_YAW_LOCK => crate::guided::dispatch(backend, Some(op("yawLock", json!({ "lock": on }))), vehicle, &qt_path("setGimbalYawLock"), &json!([on]).to_string()),
         GIMBAL_CONTROL => match on {
