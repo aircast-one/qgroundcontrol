@@ -40,7 +40,7 @@ import org.json.JSONObject
 internal const val ESP_BRIDGE_VIEW = "view.espBridge"
 internal const val ESP_BRIDGE_SCREEN = "espBridge"
 private const val ESP_POLL_MS = 1000L
-private val WIFI_MODES = listOf("Access Point Mode", "Station Mode")
+private val WIFI_MODES = listOf("Access point mode", "Station mode")
 
 internal data class LinkCounts(val received: String, val lost: String, val sent: String)
 
@@ -111,34 +111,34 @@ fun EspBridgeScreen(modifier: Modifier = Modifier) {
         return
     }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionHeader("ESP WiFi Bridge Settings")
-        bridge.modeIndex?.let { mode -> Choice("WiFi Mode", WIFI_MODES, mode) { set("${bridge.modePath}.rawValue", it) } }
-        Choice("WiFi Channel", (1..11).map { it.toString() }, bridge.channel - 1, enabled = (bridge.modeIndex ?: 0) == 0) { set("${bridge.channelPath}.rawValue", it + 1) }
-        TextSetting("WiFi AP SSID", bridge.ssid) { act("espBridge.setText", "ssid", it) }
-        TextSetting("WiFi AP Password", bridge.password) { act("espBridge.setText", "password", it) }
-        bridge.ssidSta?.let { value -> TextSetting("WiFi STA SSID", value) { act("espBridge.setText", "ssidSta", it) } }
-        bridge.passwordSta?.let { value -> TextSetting("WiFi STA Password", value) { act("espBridge.setText", "passwordSta", it) } }
-        Choice("UART Baud Rate", bridge.baudRates.map { it.toString() }, bridge.baudIndex) { act("espBridge.baud", it) }
-        StatusRow("QGC UDP Port", bridge.hostPort)
+        SectionHeader("ESP Wi-Fi bridge settings")
+        bridge.modeIndex?.let { mode -> Choice("Wi-Fi mode", WIFI_MODES, mode) { set("${bridge.modePath}.rawValue", it) } }
+        Choice("Wi-Fi channel", (1..11).map { it.toString() }, bridge.channel - 1, enabled = (bridge.modeIndex ?: 0) == 0) { set("${bridge.channelPath}.rawValue", it + 1) }
+        TextSetting("Wi-Fi AP SSID", bridge.ssid) { act("espBridge.setText", "ssid", it) }
+        TextSetting("Wi-Fi AP password", bridge.password) { act("espBridge.setText", "password", it) }
+        bridge.ssidSta?.let { value -> TextSetting("Wi-Fi STA SSID", value) { act("espBridge.setText", "ssidSta", it) } }
+        bridge.passwordSta?.let { value -> TextSetting("Wi-Fi STA password", value) { act("espBridge.setText", "passwordSta", it) } }
+        Choice("UART baud rate", bridge.baudRates.map { it.toString() }, bridge.baudIndex) { act("espBridge.baud", it) }
+        StatusRow("QGC UDP port", bridge.hostPort)
 
-        SectionHeader("ESP WiFi Bridge Status")
-        listOf("Bridge/Vehicle Link" to bridge.vehicle, "Bridge/QGC Link" to bridge.bridge, "QGC/Bridge Link" to bridge.qgc).forEach { (title, link) ->
+        SectionHeader("ESP Wi-Fi bridge status")
+        listOf("Bridge to vehicle link" to bridge.vehicle, "Bridge to QGC link" to bridge.bridge, "QGC to bridge link" to bridge.qgc).forEach { (title, link) ->
             Text(title, style = MaterialTheme.typography.titleSmall)
-            StatusRow("Messages Received", link.received)
-            StatusRow("Messages Lost", link.lost)
-            StatusRow("Messages Sent", link.sent)
+            StatusRow("Messages received", link.received)
+            StatusRow("Messages lost", link.lost)
+            StatusRow("Messages sent", link.sent)
         }
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { act("espBridge.restoreDefaults") }) { Text("Restore defaults") }
-            OutlinedButton(onClick = { confirmReboot = true }) { Text("Restart WiFi bridge") }
+            OutlinedButton(onClick = { confirmReboot = true }) { Text("Restart Wi-Fi bridge") }
             OutlinedButton(onClick = { act("espBridge.resetCounters") }) { Text("Reset counters") }
         }
     }
     if (confirmReboot) {
         AlertDialog(
             onDismissRequest = { confirmReboot = false },
-            title = { Text("Reboot WiFi bridge") },
+            title = { Text("Reboot Wi-Fi bridge") },
             text = { Text(bridge.rebootPrompt) },
             confirmButton = {
                 TextButton(onClick = {

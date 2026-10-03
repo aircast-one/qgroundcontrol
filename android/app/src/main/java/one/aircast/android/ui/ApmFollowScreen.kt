@@ -128,7 +128,7 @@ fun ApmFollowScreen(modifier: Modifier = Modifier) {
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = follow.enabled, onCheckedChange = { act(APM_FOLLOW_ENABLE, it) })
-            Text("Enable Follow me")
+            Text("Enable follow me")
         }
         if (follow.waiting) Text("Waiting for Vehicle to update", style = MaterialTheme.typography.bodyMedium)
         if (!follow.supported) {
@@ -136,9 +136,9 @@ fun ApmFollowScreen(modifier: Modifier = Modifier) {
             Button(onClick = { act(APM_FOLLOW_RESET) }) { Text("Reset to supported settings") }
         }
         if (follow.showSettings) {
-            SectionHeader("Follow Me Settings")
-            Choice("Vehicle Position", follow.positionOptions, follow.positionIndex) { act(APM_FOLLOW_POSITION, it) }
-            if (!follow.rover) Choice("Point Vehicle", follow.pointOptions, follow.pointIndex) { act(APM_FOLLOW_POINT, it) }
+            SectionHeader("Follow me settings")
+            Choice("Vehicle position", follow.positionOptions, follow.positionIndex) { act(APM_FOLLOW_POSITION, it) }
+            if (!follow.rover) Choice("Point vehicle", follow.pointOptions, follow.pointIndex) { act(APM_FOLLOW_POINT, it) }
             if (follow.positionIndex == 1) {
                 Text("Vehicle offsets", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
                 androidx.compose.foundation.layout.Row {

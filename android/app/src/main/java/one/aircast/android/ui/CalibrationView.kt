@@ -105,7 +105,7 @@ internal fun calibrationState(view: JSONObject?): CalibrationState? {
     )
 }
 
-internal const val CANCEL_WAIT_TITLE = "Calibration Cancel"
+internal const val CANCEL_WAIT_TITLE = "Cancelling calibration"
 internal const val CANCEL_WAIT_TEXT = "Waiting for Vehicle to response to Cancel. This may take a few seconds."
 
 internal const val COMPASS_ROUTINE = "compass"

@@ -107,7 +107,7 @@ private const val COMPASS_QUALITY = "Shown in the indicator bars is the quality 
     "- Yellow indicates a questionable compass or calibration.\n" +
     "- Red indicates a compass which should not be used.\n\n"
 
-internal const val PX4_COMPASS_COMPLETE = "Compass Calibration Complete"
+internal const val PX4_COMPASS_COMPLETE = "Compass calibration complete"
 internal const val PX4_REBOOT = "Reboot the vehicle prior to flight."
 
 internal fun postCalibrationTitle(routine: String?, px4: Boolean): String =
