@@ -28,6 +28,9 @@ bool qgc_video_recording(void);
 typedef void (*qgc_video_frame_callback)(const uint8_t *pixels, int width, int height, int stride);
 void qgc_video_set_frame_callback(qgc_video_frame_callback callback);
 
+typedef void (*qgc_video_pipeline_callback)(void *pipeline);
+void qgc_video_set_pipeline_callback(qgc_video_pipeline_callback callback);
+
 #ifdef __cplusplus
 }
 #endif

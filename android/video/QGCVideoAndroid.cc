@@ -3,6 +3,8 @@
 #include <android/log.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
+#include <gst/gl/egl/gstgldisplay_egl.h>
+#include <gst/gl/gl.h>
 #include <gst/gst.h>
 #include <jni.h>
 
@@ -103,6 +105,30 @@ void setDirectory(const char *name, const std::string &value)
     }
 }
 
+GstGLDisplay *sharedGlDisplay()
+{
+    static GstGLDisplay *const display = [] {
+        GstGLDisplayEGL *const egl = gst_gl_display_egl_new();
+        if (egl) {
+            gst_gl_display_egl_set_foreign(egl, TRUE);
+        }
+        return egl ? GST_GL_DISPLAY(egl) : nullptr;
+    }();
+    return display;
+}
+
+void shareGlDisplay(void *pipeline)
+{
+    GstGLDisplay *const display = sharedGlDisplay();
+    if (!display) {
+        return;
+    }
+    GstContext *const context = gst_context_new(GST_GL_DISPLAY_CONTEXT_TYPE, TRUE);
+    gst_context_set_gl_display(context, display);
+    gst_element_set_context(GST_ELEMENT(pipeline), context);
+    gst_context_unref(context);
+}
+
 } // namespace
 
 extern "C" {
@@ -143,6 +169,7 @@ __attribute__((visibility("default"))) bool qgc_video_android_init(JavaVM *vm, j
         gst_init_static_plugins();
         preferHardwareDecoders();
         qgc_video_set_frame_callback(drawFrame);
+        qgc_video_set_pipeline_callback(shareGlDisplay);
     });
     return gst_is_initialized();
 }

@@ -24,6 +24,7 @@ namespace {
 
 std::mutex frameMutex;
 qgc_video_frame_callback frameCallback = nullptr;
+qgc_video_pipeline_callback pipelineCallback = nullptr;
 std::mutex overlayMutex;
 void *overlayWindow = nullptr;
 std::vector<uint8_t> latestFrame;
@@ -301,6 +302,11 @@ void qgc_video_set_frame_callback(qgc_video_frame_callback callback)
     frameCallback = callback;
 }
 
+void qgc_video_set_pipeline_callback(qgc_video_pipeline_callback callback)
+{
+    pipelineCallback = callback;
+}
+
 bool qgc_video_set_window(void *native_window)
 {
 #ifdef QGC_GST_STREAMING
@@ -454,6 +460,10 @@ bool qgc_video_start(const char *pipelineDescription)
     GstAppSinkCallbacks callbacks = {};
     callbacks.new_sample = onNewSample;
     gst_app_sink_set_callbacks(GST_APP_SINK(sink), &callbacks, nullptr, nullptr);
+
+    if (pipelineCallback) {
+        pipelineCallback(pipeline);
+    }
 
     if (gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
         lastError = "the pipeline refused to play";
