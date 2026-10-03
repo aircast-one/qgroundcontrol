@@ -345,6 +345,14 @@ internal fun MapSpikeScreen(
     var listOpen by remember { mutableStateOf(false) }
     var centreRequest by remember { mutableIntStateOf(0) }
     var centreOn by remember { mutableStateOf<TrackPoint?>(null) }
+    fun pickRow(row: ItemRow) {
+        selected = MapHit.Waypoint(row.index)
+        items.firstOrNull { it.index == row.index }?.let { placed ->
+            centreOn = TrackPoint(placed.latitude, placed.longitude)
+            centreRequest += 1
+            follow = false
+        }
+    }
     var centredOnEntry by remember { mutableStateOf(false) }
     LaunchedEffect(isPlottable(latitude, longitude)) {
         if (centersOnVehicleAtEntry(centredOnEntry, isPlottable(latitude, longitude), fitRequest)) {
@@ -588,14 +596,15 @@ internal fun MapSpikeScreen(
             Box(Modifier.fillMaxSize().padding(start = if (sidePanel) SIDE_PANEL_WIDTH else 0.dp, bottom = if (sidePanel) 0.dp else inset), content = content)
         }
 
+        val listedInPanel = sidePanel && layer == PlanLayer.Mission && worthListing(allItems)
         if (busy != null || !summaryHidden) Column(
             Modifier.align(Alignment.TopStart).padding(start = if (sidePanel) SIDE_PANEL_WIDTH + 8.dp else 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),
         ) {
-            Surface(
+            if (busy != null || !listedInPanel) Surface(
                 color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
                 shape = MaterialTheme.shapes.extraLarge,
                 onClick = { listOpen = true },
-                enabled = worthListing(allItems),
+                enabled = worthListing(allItems) && !sidePanel,
             ) {
                 val ready by MapBridge.bridgeReady.collectAsState()
                 Row(
@@ -617,7 +626,7 @@ internal fun MapSpikeScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (worthListing(allItems)) {
+                    if (worthListing(allItems) && !sidePanel) {
                         Icon(
                             Icons.AutoMirrored.Filled.List,
                             contentDescription = "Show the plan as a list",
@@ -705,6 +714,13 @@ internal fun MapSpikeScreen(
                             onClick = { layer = option },
                             shape = SegmentedButtonDefaults.itemShape(option.ordinal, PlanLayer.entries.size),
                         ) { Text(option.label) }
+                    }
+                }
+                if (listedInPanel) {
+                    val rows = itemRows(allItems, surveyStatsMap)
+                    ItemListHeading(rows, missionSummaryText(missionSummaryView), Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                    rows.forEach { row ->
+                        ItemRowView(row, selected = (selected as? MapHit.Waypoint)?.index == row.index) { pickRow(row) }
                     }
                 }
                 if (layer == PlanLayer.Rally) {
@@ -1413,21 +1429,11 @@ internal fun MapSpikeScreen(
         if (listOpen) {
             ModalBottomSheet(onDismissRequest = { listOpen = false }) {
                 val rows = itemRows(allItems, surveyStatsMap)
-                Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                    Text(itemCountText(rows.count { it.index != HOME_ITEM }), style = MaterialTheme.typography.titleMedium)
-                    missionSummaryText(missionSummaryView).ifBlank { null }?.let {
-                        Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
+                ItemListHeading(rows, missionSummaryText(missionSummaryView), Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                     items(rows, key = { it.index }) { row ->
                         ItemRowView(row, selected = (selected as? MapHit.Waypoint)?.index == row.index) {
-                            selected = MapHit.Waypoint(row.index)
-                            items.firstOrNull { it.index == row.index }?.let { placed ->
-                                centreOn = TrackPoint(placed.latitude, placed.longitude)
-                                centreRequest += 1
-                                follow = false
-                            }
+                            pickRow(row)
                             listOpen = false
                         }
                     }
@@ -1451,6 +1457,16 @@ private fun altitudeFieldWidth(item: MissionItem) =
     if (altitudeFieldLabel(item).length > SHORT_ALTITUDE_LABEL) 180.dp else 120.dp
 
 private val ITEM_MARKER_SIZE = 40.dp
+
+@Composable
+private fun ItemListHeading(rows: List<ItemRow>, summary: String, modifier: Modifier) {
+    Column(modifier) {
+        Text(itemCountText(rows.count { it.index != HOME_ITEM }), style = MaterialTheme.typography.titleMedium)
+        summary.ifBlank { null }?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
 
 @Composable
 private fun ItemRowView(row: ItemRow, selected: Boolean, onClick: () -> Unit) {
