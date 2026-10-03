@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import one.aircast.android.R
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -154,7 +156,7 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
 
     val read = page ?: return
     if (read.names.isEmpty() || read.active == null) {
-        Text("No joysticks or gamepads detected.", modifier.padding(16.dp))
+        EmptyState(R.drawable.ic_gamepad, "No joystick", "No joysticks or gamepads detected. Pair one over Bluetooth or plug it in over USB.", modifier)
         return
     }
     val setting = { name: String -> read.settings.find { it.name == name } }
