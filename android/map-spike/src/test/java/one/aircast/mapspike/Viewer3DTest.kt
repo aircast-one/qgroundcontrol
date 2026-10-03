@@ -86,4 +86,15 @@ class Viewer3DTest {
         assertEquals(100f to 150f, lifted(100f to 200f, 2.0, 30.0, 50.0))
         assertEquals(100f to 200f, lifted(100f to 200f, 2.0, 30.0, -5.0))
     }
+
+    @Test
+    fun `a tapped marker turns yellow like Viewer3DInstancing's highlight and a miss picks nothing`() {
+        val view = JSONObject("""{"markers":[{"at":[8.0,47.0,30.0],"colour":"black"},{"at":[8.001,47.0,30.0],"colour":"green"}],"segments":[]}""")
+        assertEquals(listOf("black", "#FFFF00"), pathSlabs(view, selected = 1).map { it.colour })
+        assertEquals(2, markerPoints(view).size)
+        val onScreen = listOf(10f to 10f, null, 100f to 100f)
+        assertEquals(2, pickedMarker(95f to 104f, onScreen, 24f))
+        assertEquals(null, pickedMarker(50f to 50f, onScreen, 24f))
+        assertEquals(0, pickedMarker(20f to 10f, onScreen, 24f))
+    }
 }

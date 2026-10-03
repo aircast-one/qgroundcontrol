@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,6 +21,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
@@ -65,6 +67,8 @@ private const val FRONT_ARM_COLOUR = "#E53935"
 private const val REAR_ARM_COLOUR = "#ECEFF1"
 private const val ROTOR_COLOUR = "#37474F"
 private const val HUB_COLOUR = "#90A4AE"
+private const val SELECTED_MARKER_COLOUR = "#FFFF00"
+private const val MARKER_PICK_DP = 24f
 
 data class Point3D(val lon: Double, val lat: Double, val alt: Double)
 
@@ -109,7 +113,19 @@ internal fun quadFrame(at: Point3D, heading: Double): List<Slab> =
         ribbon(at, motor, colour, ARM_WIDTH, ARM_WIDTH) + box(motor.copy(alt = at.alt + ARM_WIDTH), ROTOR_SIZE, ROTOR_COLOUR, ARM_WIDTH / 2)
     } + box(at, HUB_SIZE, HUB_COLOUR, HUB_SIZE / 2)
 
-internal fun pathSlabs(view: JSONObject?): List<Slab> {
+internal fun markerPoints(view: JSONObject?): List<Point3D?> {
+    val markers = view?.optJSONArray("markers")
+    return (0 until (markers?.length() ?: 0)).map { point3d(markers?.optJSONObject(it)?.optJSONArray("at")) }
+}
+
+internal fun pickedMarker(tap: Pair<Float, Float>, onScreen: List<Pair<Float, Float>?>, radius: Float): Int? =
+    onScreen.withIndex()
+        .mapNotNull { (index, at) -> at?.let { index to kotlin.math.hypot(it.first - tap.first, it.second - tap.second) } }
+        .filter { it.second <= radius }
+        .minByOrNull { it.second }
+        ?.first
+
+internal fun pathSlabs(view: JSONObject?, selected: Int? = null): List<Slab> {
     val segments = view?.optJSONArray("segments")
     val markers = view?.optJSONArray("markers")
     val ribbons = (0 until (segments?.length() ?: 0)).mapNotNull { segments?.optJSONObject(it) }.flatMap { segment ->
@@ -117,8 +133,8 @@ internal fun pathSlabs(view: JSONObject?): List<Slab> {
         val to = point3d(segment.optJSONArray("to"))
         if (from == null || to == null) emptyList() else ribbon(from, to, segment.optText("colour"))
     }
-    val boxes = (0 until (markers?.length() ?: 0)).mapNotNull { markers?.optJSONObject(it) }.mapNotNull { marker ->
-        point3d(marker.optJSONArray("at"))?.let { box(it, MARKER_SIZE, marker.optText("colour")) }
+    val boxes = (0 until (markers?.length() ?: 0)).mapNotNull { index -> markers?.optJSONObject(index)?.let { index to it } }.mapNotNull { (index, marker) ->
+        point3d(marker.optJSONArray("at"))?.let { box(it, MARKER_SIZE, if (index == selected) SELECTED_MARKER_COLOUR else marker.optText("colour")) }
     }
     return ribbons + boxes
 }
@@ -135,12 +151,12 @@ internal fun pathLabels(view: JSONObject?): List<Label3D> {
 internal fun lifted(ground: Pair<Float, Float>, pixelsPerMetre: Double, tilt: Double, height: Double): Pair<Float, Float> =
     ground.first to (ground.second - height.coerceAtLeast(0.0) * pixelsPerMetre * kotlin.math.sin(Math.toRadians(tilt))).toFloat()
 
-private fun onScreen(map: MapLibreMap, label: Label3D): Pair<Float, Float> {
+private fun onScreen(map: MapLibreMap, at: Point3D): Pair<Float, Float> {
     val across = Math.toRadians(map.cameraPosition.bearing + 90)
-    val ground = map.projection.toScreenLocation(LatLng(label.at.lat, label.at.lon))
-    val beside = offset(label.at, kotlin.math.sin(across), kotlin.math.cos(across)).let { map.projection.toScreenLocation(LatLng(it.lat, it.lon)) }
+    val ground = map.projection.toScreenLocation(LatLng(at.lat, at.lon))
+    val beside = offset(at, kotlin.math.sin(across), kotlin.math.cos(across)).let { map.projection.toScreenLocation(LatLng(it.lat, it.lon)) }
     val pixelsPerMetre = kotlin.math.hypot((beside.x - ground.x).toDouble(), (beside.y - ground.y).toDouble())
-    return lifted(ground.x to ground.y, pixelsPerMetre, map.cameraPosition.tilt, label.at.alt)
+    return lifted(ground.x to ground.y, pixelsPerMetre, map.cameraPosition.tilt, at.alt)
 }
 
 internal fun vehicleSlabs(view: JSONObject?): List<Slab> {
@@ -247,7 +263,12 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     val vehiclesJson by mapPath(VEHICLES_VIEW)
     val vehicle = remember(vehiclesJson) { vehicleChoices(vehiclesJson).choices.firstOrNull { it.active && isPlottable(it.latitude, it.longitude) } }
     val pathJson by mapPath(VIEWER3D_PATH)
-    val slabs = remember(pathJson) { pathSlabs(pathJson) }
+    val markerList = remember(pathJson) { markerPoints(pathJson) }
+    var selectedMarker by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(markerList) { selectedMarker = null }
+    val slabs = remember(pathJson, selectedMarker) { pathSlabs(pathJson, selectedMarker) }
+    val markers by rememberUpdatedState(markerList)
+    val pickRadius = with(LocalDensity.current) { MARKER_PICK_DP.dp.toPx() }
     val labels = remember(pathJson) { pathLabels(pathJson) }
     var cameraMoves by remember { mutableIntStateOf(0) }
     val vehicleJson by mapPath(VIEWER3D_VEHICLE)
@@ -290,6 +311,11 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
             map = loaded
             loaded.addOnCameraMoveListener { cameraMoves++ }
             loaded.addOnCameraIdleListener { cameraMoves++ }
+            loaded.addOnMapClickListener { tapped ->
+                val tap = loaded.projection.toScreenLocation(tapped)
+                selectedMarker = pickedMarker(tap.x to tap.y, markers.map { at -> at?.let { onScreen(loaded, it) } }, pickRadius)
+                false
+            }
             loaded.uiSettings.isRotateGesturesEnabled = true
             loaded.uiSettings.isTiltGesturesEnabled = true
             val mapStyle = planMapStyle(context)
@@ -317,7 +343,7 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
         framedOn = target
         shown.cameraPosition = CameraPosition.Builder().target(target).zoom(SCENE_ZOOM).tilt(SCENE_PITCH).build()
     }
-    val placed = remember(map, style, labels, cameraMoves) { map?.takeIf { style != null }?.let { shown -> labels.map { onScreen(shown, it) to it.text } }.orEmpty() }
+    val placed = remember(map, style, labels, cameraMoves) { map?.takeIf { style != null }?.let { shown -> labels.map { onScreen(shown, it.at) to it.text } }.orEmpty() }
     Box(modifier.clipToBounds()) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
         placed.forEach { (at, text) ->
