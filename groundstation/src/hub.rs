@@ -297,6 +297,7 @@ pub struct Vehicle {
     pub trigger_points_appended: bool,
     image_captured_seen: bool,
     rc_releasing: BTreeMap<u8, u8>,
+    calibration_left_behind: bool,
     rc_due: Option<u64>,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
@@ -488,6 +489,7 @@ impl Vehicle {
             trigger_points_appended: false,
             image_captured_seen: false,
             rc_releasing: BTreeMap::new(),
+            calibration_left_behind: false,
             airframe_reboot: None,
             stream: crate::streamconfig::StreamConfig::default(),
             autotune: crate::autotune::Autotune::default(),
@@ -655,6 +657,13 @@ impl Vehicle {
             other => return Err(format!("Unknown calibration action {other:?}")),
         };
         Ok(self.follow_calibration(actions, now_ms))
+    }
+
+    fn cancel_calibration_left_behind(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        if !std::mem::take(&mut self.calibration_left_behind) {
+            return Vec::new();
+        }
+        self.calibrate.cancel().map(|actions| self.follow_calibration(actions, now_ms)).unwrap_or_default()
     }
 
     pub fn calibration_snapshot(&self) -> Value {
@@ -2192,6 +2201,7 @@ impl Vehicle {
             bytes.extend(self.encode(&revert));
         }
         bytes.extend(self.tick_rc_override(now_ms));
+        bytes.extend(self.cancel_calibration_left_behind(now_ms));
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_stream_rates(now_ms));
         bytes.extend(self.tick_autotune(now_ms));
@@ -4053,6 +4063,7 @@ impl Hub {
                 if left.onboard_logs.busy() {
                     left.onboard_logs.cancel();
                 }
+                left.calibration_left_behind = left.calibrate.running();
             }
         }
         self.active = id;
@@ -5982,6 +5993,27 @@ mod tests {
         assert_eq!(hub.snapshot_of(Some(3))["vehicle"]["log"]["running"], false);
         let _ = std::fs::remove_dir_all(&dir);
     }
+    #[test]
+    fn a_calibration_left_on_a_vehicle_that_stops_being_active_is_stopped_by_that_vehicle() {
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavType};
+        let heard = |id: u8| MavHeader { system_id: id, component_id: 1, sequence: 0 };
+        let mut px4 = HEARTBEAT_DATA::default();
+        px4.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        px4.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &heard(3), &MavMessage::HEARTBEAT(px4.clone()), 0, 0);
+        hub.on_frame(origin(4), &heard(4), &MavMessage::HEARTBEAT(px4), 0, 0);
+        hub.set_active(Some(3));
+        hub.calibrate_request(Some(3), &json!({ "action": "start", "type": "accelerometer" }), 1_000).unwrap();
+        hub.set_active(Some(4));
+        let sent: Vec<_> = hub.vehicles.get_mut(&3).unwrap().pump_with(1_100, None, 0).iter().filter_map(|b| match decode(b) {
+            MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION => Some(c.param5),
+            _ => None,
+        }).collect();
+        assert_eq!(sent, vec![0.0], "SetupView rebuilds on a vehicle change and the calibration it left is stopped; nothing on screen can reach it any more");
+        assert!(hub.vehicles.get_mut(&3).unwrap().pump_with(1_200, None, 0).iter().all(|b| !matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION)), "and only once");
+    }
+
     #[test]
     fn a_px4_accel_calibration_runs_from_the_status_texts_through_the_view() {
         use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavType, STATUSTEXT_DATA};
