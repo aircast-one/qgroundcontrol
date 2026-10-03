@@ -20,7 +20,7 @@ struct Page {
 }
 
 const PAGES: &[Page] = &[
-    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings"), ("Save To Disk", "logManagerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("Battery Indicator", "batteryIndicatorSettings"), ("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
@@ -38,6 +38,7 @@ const PAGES: &[Page] = &[
     Page { title: "3D Viewer", sections: &[("3D Viewer", "viewer3DSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "About", sections: &[], shows_links: false, shows_about: true, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Console", sections: &[], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: true, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: "App Logging", sections: &[("Save To Disk", "logManagerSettings"), ("Log Viewer", APP_LOG_VIEWER)], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
 ];
 
 // deviceName is drawn by the Packet Radio page's own block as a picker over the adapters the
@@ -324,7 +325,6 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Ground station position", &["followTarget"]),
         ("Multiple vehicles", &["enableMultiVehiclePanel"]),
         ("Files", &["savePath", "androidDontSaveToSDCard", "disableAllPersistence"]),
-        ("Logging", &["showAppLogTimestampAsElapsedTime"]),
     ]),
     ("videoSettings", &[
         ("Cameras", &["videoSource", "primaryCameraName", "multiViewEnabled"]),
@@ -357,7 +357,7 @@ fn link_host(url: &str) -> &str {
 }
 
 const SETTINGS_PAGES_MODEL: &str = include_str!("../../src/AppSettings/SettingsPagesModel.qml");
-const QGC_PAGE_NAMES: &[(&str, &[&str])] = &[("General", &["General", "App Logging"]), ("3D Viewer", &["3D View"]), ("MAVLink", &["Telemetry"]), ("About", &["Help"])];
+const QGC_PAGE_NAMES: &[(&str, &[&str])] = &[("3D Viewer", &["3D View"]), ("MAVLink", &["Telemetry"]), ("About", &["Help"])];
 
 fn qstr<'a>(element: &'a str, field: &str) -> Option<&'a str> {
     let start = element.find(&format!("{field}: qsTr(\""))? + field.len() + 8;
@@ -449,12 +449,15 @@ pub fn video_row_shown(name: &str, source: &str, stream_source: bool, auto_confi
 }
 
 const MAP_PROVIDERS: &str = "appSettings#mapProviders";
+const APP_LOG_VIEWER: &str = "appSettings#logViewer";
+const APP_LOG_VIEWER_ROWS: [&str; 1] = ["showAppLogTimestampAsElapsedTime"];
 const MAP_PROVIDER_ROWS: [&str; 8] = ["mapboxToken", "esriToken", "vworldToken", "tiandituToken", "openaipToken", "mapboxAccount", "mapboxStyle", "customURL"];
 
 pub fn slice_shows(slice: &str, name: &str) -> bool {
     match slice {
         MAP_PROVIDERS => MAP_PROVIDER_ROWS.contains(&name),
-        "appSettings" => !MAP_PROVIDER_ROWS.contains(&name),
+        APP_LOG_VIEWER => APP_LOG_VIEWER_ROWS.contains(&name),
+        "appSettings" => !MAP_PROVIDER_ROWS.contains(&name) && !APP_LOG_VIEWER_ROWS.contains(&name),
         _ => true,
     }
 }
@@ -1135,9 +1138,10 @@ mod tests {
     #[test]
     fn the_page_list_carries_no_controls_and_the_page_carries_decoded_ones() {
         let list = settings_view(&Fake, &[]);
-        assert_eq!(list["pages"].as_array().unwrap().len(), 18);
+        assert_eq!(list["pages"].as_array().unwrap().len(), 19);
         assert_eq!(list["pages"][11]["showsPx4Logs"], true, "PX4 Log Transfer follows Remote ID as in SettingsPagesModel");
-        assert_eq!(list["pages"][17]["showsConsole"], true, "Console closes the list, under Diagnostics as in SettingsPagesModel");
+        assert_eq!(list["pages"][17]["showsConsole"], true, "Console sits under Diagnostics as in SettingsPagesModel");
+        assert_eq!(list["pages"][18]["title"], "App Logging", "and App Logging follows it there");
         assert!(list["pages"][0]["sections"][0].get("subsections").is_none());
         let general = settings_view(&Fake, &["General".to_string()]);
         let app = &general["sections"][0];

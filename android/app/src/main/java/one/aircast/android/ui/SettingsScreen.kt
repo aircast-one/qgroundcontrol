@@ -150,6 +150,7 @@ internal val PAGE_NOTES = mapOf(
     "NTRIP / RTK" to "Correction stream from a caster for centimetre GPS",
     "PX4 Log Transfer" to "Stream the vehicle's log to this device while it flies",
     "About" to "Version and where to get help",
+    "App Logging" to "Writing the app's log to disk, and how the log viewer shows time",
     "Console" to "The app's own log, for diagnosing a problem",
 )
 
@@ -174,6 +175,7 @@ internal val PAGE_LOOKS = mapOf(
     "General" to PageLook(SettingsGroup.App, R.drawable.ic_tune),
     "PX4 Log Transfer" to PageLook(SettingsGroup.App, R.drawable.ic_download),
     "Firmware Upgrade" to PageLook(SettingsGroup.App, R.drawable.ic_developer_board),
+    "App Logging" to PageLook(SettingsGroup.App, R.drawable.ic_description),
     "Console" to PageLook(SettingsGroup.App, R.drawable.ic_terminal),
     "About" to PageLook(SettingsGroup.App, R.drawable.ic_description),
 )
