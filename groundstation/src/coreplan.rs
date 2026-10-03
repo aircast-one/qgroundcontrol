@@ -232,6 +232,7 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
         match change(current) {
             Ok(changed) => {
                 let count = changed.items.len();
+                shift_raw_edits(&current.items, &changed.items);
                 let previous = state.document.replace(changed);
                 remember(&mut state, previous, crate::hub::now_ms());
                 state.dirty = true;
@@ -476,13 +477,18 @@ fn item_edit(backend: &dyn Backend, args: &str, command: bool) -> Value {
     let Some(defaults) = edit_defaults(backend) else {
         return refused("The default mission item altitude is not known.");
     };
-    edit(|doc| {
+    let answer = edit(|doc| {
         let changed = match command {
             true => plandoc::set_command(doc, index, value as i64, &defaults),
             false => plandoc::set_altitude(doc, index, value),
         };
         changed.ok_or_else(|| format!("Item {index} cannot take that edit."))
-    })
+    });
+    if command && answer["ok"] == true {
+        raw_edits().remove(&index);
+        changed();
+    }
+    answer
 }
 
 pub fn offline_types_changed() {
@@ -588,6 +594,7 @@ fn plan_text(text: &str) -> Result<String, String> {
 }
 
 fn open(file: &str) -> Value {
+    forget_raw_edits();
     let connected = !offline();
     let loaded = std::fs::read_to_string(file).map_err(|e| format!("Could not read {file}: {e}")).and_then(|text| load_plan(&plan_text(&text)?));
     match loaded {
@@ -775,6 +782,7 @@ fn host_syncing(backend: &dyn Backend) -> bool {
 }
 
 fn follow_vehicle() {
+    forget_raw_edits();
     if !enabled() {
         return;
     }
@@ -968,6 +976,7 @@ fn remembered_speed(name: &str, fallback: f64) -> f64 {
 }
 
 fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool, types: (i64, i64), vehicle_home: Option<[f64; 3]>) {
+    forget_raw_edits();
     let downloaded: Vec<Downloaded> = snapshot["mission"]["items"]
         .as_array()
         .map(|items| {
@@ -1307,6 +1316,7 @@ fn step(undoing: bool) -> Value {
         let Some(restored) = taken else {
             return json!({ "ok": false, "reason": format!("Nothing to {word}."), "refusal": "nothingTo" });
         };
+        forget_raw_edits();
         let current = state.document.replace(restored);
         match undoing {
             true => state.redo.extend(current),
@@ -1379,6 +1389,7 @@ fn clear(backend: &dyn Backend) -> Value {
 }
 
 fn clear_kinds(fresh: Option<Document>, kinds: &[&str]) {
+    forget_raw_edits();
     {
         let mut state = held();
         let template = state.document.clone().or(fresh).unwrap_or_else(empty_document);
@@ -1618,7 +1629,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     let raw = simple.is_some_and(|s| raw_edit(s, commands.get(&s.command), index));
     if property == "rawEdit" {
         let on = given.as_ref().and_then(Value::as_bool).unwrap_or(false);
-        let mut chosen = RAW_EDIT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut chosen = raw_edits();
         if on { chosen.insert(index) } else { chosen.remove(&index) };
         drop(chosen);
         changed();
@@ -1639,6 +1650,13 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         }
     };
     let unknown = || Err(format!("Item {index} has no such field."));
+    let out_of_range = |param: usize, value: f64| -> Option<String> {
+        let info = simple.and_then(|s| commands.get(&s.command)).and_then(|info| info.params.get(&u8::try_from(param).ok()?))?;
+        let limit = |key: &str| info.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
+        let (min, max) = (limit("min"), limit("max"));
+        (!raw && value.is_finite() && (min.is_some_and(|m| value < m) || max.is_some_and(|m| value > m)))
+            .then(|| format!("Value must be within {} and {}", min.unwrap_or(f64::MIN), max.unwrap_or(f64::MAX)))
+    };
     let raw_of = |param: usize, shown: f64| match raw {
         true => shown,
         false => simple
@@ -1698,11 +1716,17 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             answer(plandoc::set_speed(&current, index, speed).ok_or_else(|| format!("Item {index} carries no speed.")))
         }
         _ if property.starts_with("nanFacts.") => match field("nanFacts.") {
-            Some(param) => answer(plandoc::set_param(&current, index, param, number.map_or(f64::NAN, |v| raw_of(param, v))).ok_or_else(|| format!("Item {index} has no such field."))),
+            Some(param) => match number.and_then(|v| out_of_range(param, raw_of(param, v))) {
+                Some(reason) => refused(reason),
+                None => answer(plandoc::set_param(&current, index, param, number.map_or(f64::NAN, |v| raw_of(param, v))).ok_or_else(|| format!("Item {index} has no such field."))),
+            },
             None => answer(unknown()),
         },
         _ => match (field("textFieldFacts.").or_else(|| field("comboboxFacts.")), number) {
-            (Some(param), Some(v)) => answer(plandoc::set_param(&current, index, param, raw_of(param, v)).ok_or_else(|| format!("Item {index} has no such field."))),
+            (Some(param), Some(v)) => match out_of_range(param, raw_of(param, v)) {
+                Some(reason) => refused(reason),
+                None => answer(plandoc::set_param(&current, index, param, raw_of(param, v)).ok_or_else(|| format!("Item {index} has no such field."))),
+            },
             (Some(_), None) => refused("That field takes a number."),
             (None, _) => answer(unknown()),
         },
@@ -2225,6 +2249,20 @@ mod tests {
     }
 
     #[test]
+    fn show_all_values_moves_with_its_item() {
+        let at = |lat: f64| plandoc::Item::Simple(plandoc::Simple { command: 16, frame: 3, params: [Some(0.0), Some(0.0), Some(0.0), None, Some(lat), Some(8.0), Some(30.0)], auto_continue: true, altitude: None, sections: vec![] });
+        let (a, b, c) = (at(47.0), at(47.1), at(47.2));
+        *raw_edits() = [3].into();
+        shift_raw_edits(&[a.clone(), b.clone(), c.clone()], &[a.clone(), c.clone()]);
+        assert_eq!(*raw_edits(), [2].into(), "deleting item 2 moves item 3's raw view to 2");
+        shift_raw_edits(&[a.clone(), c.clone()], &[b.clone(), a.clone(), c.clone()]);
+        assert_eq!(*raw_edits(), [3].into(), "an insert in front shifts it back");
+        *raw_edits() = [2].into();
+        shift_raw_edits(&[a.clone(), b.clone(), c.clone()], &[a, c]);
+        assert!(raw_edits().is_empty(), "the deleted item's raw view goes with it");
+    }
+
+    #[test]
     fn an_item_qgc_cannot_show_friendly_is_edited_raw() {
         let doc = plandoc::load(include_str!("../tests/fixtures/commands.plan"), 2).unwrap();
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
@@ -2241,10 +2279,10 @@ mod tests {
         assert_eq!((raw["rawEdit"].clone(), raw["friendlyEditAllowed"].clone()), (json!(true), json!(false)), "autoContinue off cannot be shown in simple mode");
         let fields = raw["fields"].as_array().unwrap();
         let names: Vec<&str> = fields.iter().map(|f| f["name"].as_str().unwrap_or_default()).collect();
-        assert_eq!(names, ["Param1", "Param2", "Param3", "Param4", "Lat/X", "Lon/Y", "Alt/Z", "Command", "Frame"]);
-        assert_eq!(fields[8]["pathSuffix"], "comboboxFacts.1");
-        assert_eq!((fields[7]["control"].clone(), fields[7]["display"].clone()), (json!("choice"), json!("MAV_CMD_NAV_WAYPOINT")));
-        assert!(fields[8]["options"].as_array().unwrap().iter().any(|o| o["label"] == "MAV_FRAME_GLOBAL_TERRAIN_ALT" && o["raw"] == "10"));
+        assert_eq!(names, ["Command", "Frame", "Param1", "Param2", "Param3", "Param4", "Lat/X", "Lon/Y", "Alt/Z"], "SimpleItemEditor lists comboboxFacts before textFieldFacts");
+        assert_eq!(fields[1]["pathSuffix"], "comboboxFacts.1");
+        assert_eq!((fields[0]["control"].clone(), fields[0]["display"].clone()), (json!("choice"), json!("MAV_CMD_NAV_WAYPOINT")));
+        assert!(fields[1]["options"].as_array().unwrap().iter().any(|o| o["label"] == "MAV_FRAME_GLOBAL_TERRAIN_ALT" && o["raw"] == "10"));
     }
 
     #[test]
@@ -2497,8 +2535,28 @@ const MAV_FRAMES: [(&str, i64); 12] = [
 ];
 const FRIENDLY_FRAMES: [i64; 3] = [0, 3, 10];
 
+fn raw_edits() -> std::sync::MutexGuard<'static, std::collections::BTreeSet<usize>> {
+    RAW_EDIT.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn forget_raw_edits() {
+    raw_edits().clear();
+}
+
+fn shift_raw_edits(before: &[plandoc::Item], after: &[plandoc::Item]) {
+    let shared = before.iter().zip(after).take_while(|(old, new)| old == new).count();
+    let (gone, added) = (before.len().saturating_sub(after.len()), after.len().saturating_sub(before.len()));
+    let mut chosen = raw_edits();
+    let moved: std::collections::BTreeSet<usize> = chosen
+        .iter()
+        .filter(|index| **index <= shared || **index > shared + gone)
+        .map(|index| if *index <= shared { *index } else { *index + added - gone })
+        .collect();
+    *chosen = moved;
+}
+
 fn raw_edit_chosen(index: usize) -> bool {
-    RAW_EDIT.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&index)
+    raw_edits().contains(&index)
 }
 
 fn friendly_edit_allowed(simple: &plandoc::Simple, info: Option<&crate::cmdinfo::Command>) -> bool {
@@ -2522,7 +2580,7 @@ fn raw_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap<i6
     let text = RAW_LABELS.iter().enumerate().map(|(i, label)| control(json!({ "label": label, "decimalPlaces": RAW_DECIMAL_PLACES }), simple.params[i].unwrap_or(f64::NAN), format!("textFieldFacts.{i}")));
     let command = choice("Command", commands.values().map(|c| (c.raw_name.clone(), c.id)));
     let frame = choice("Frame", MAV_FRAMES.iter().map(|(name, value)| ((*name).to_string(), *value)));
-    text.chain([control(command, simple.command as f64, "comboboxFacts.0".to_string()), control(frame, simple.frame as f64, "comboboxFacts.1".to_string())]).collect()
+    [control(command, simple.command as f64, "comboboxFacts.0".to_string()), control(frame, simple.frame as f64, "comboboxFacts.1".to_string())].into_iter().chain(text).collect()
 }
 
 fn simple_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap<i64, crate::cmdinfo::Command>, item: &str) -> Vec<Value> {
