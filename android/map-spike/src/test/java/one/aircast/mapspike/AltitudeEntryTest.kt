@@ -20,18 +20,28 @@ class AltitudeEntryTest {
     }
 
     @Test
-    fun `below the ground is not an altitude`() {
-        assertNull(parsedAltitude("-5"))
+    fun `below the launch point and a comma decimal are altitudes, as SimpleMissionItem sets no minimum`() {
+        assertEquals(-5.0, parsedAltitude("-5")!!, 1e-9)
+        assertEquals(45.5, parsedAltitude("45,5")!!, 1e-9)
     }
 
     @Test
-    fun `the field starts from the altitude the item has`() {
-        assertEquals("75", altitudeFieldText(75.0))
-        assertEquals("", altitudeFieldText(Double.NaN))
+    fun `the field keeps the decimals QGC shows, so Done on an untouched field writes the same height back`() {
+        assertEquals("75", altitudeFieldText(75.0, WAYPOINT_ALTITUDE_DECIMALS))
+        assertEquals("45.5", altitudeFieldText(45.5, WAYPOINT_ALTITUDE_DECIMALS))
+        assertEquals("164.04", altitudeFieldText(164.0420, RALLY_ALTITUDE_DECIMALS))
+        assertEquals("", altitudeFieldText(Double.NaN, WAYPOINT_ALTITUDE_DECIMALS))
+    }
+
+    @Test
+    fun `a survey keeps CameraCalc's 0_1 m floor above the surface`() {
+        assertNull(parsedSurfaceDistance("0"))
+        assertEquals(0.1, parsedSurfaceDistance("0,1")!!, 1e-9)
     }
 
     @Test
     fun `a rally coordinate is typed within the globe, like RallyPoint's textFieldFacts`() {
         assertEquals(listOf(47.39, null, -180.0, null), listOf(parsedCoordinate("47.39", LATITUDE_LIMIT), parsedCoordinate("91", LATITUDE_LIMIT), parsedCoordinate("-180", LONGITUDE_LIMIT), parsedCoordinate("x", LONGITUDE_LIMIT)))
+        assertEquals(-33.87, parsedCoordinate("-33,87", LATITUDE_LIMIT)!!, 1e-9)
     }
 }

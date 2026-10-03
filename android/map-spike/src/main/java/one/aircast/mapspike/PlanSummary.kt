@@ -57,6 +57,7 @@ internal fun selectionText(
             ?.let { item -> altitudeWithFrame(item)?.let { "#${item.sequence} at $it" } }
     is MapHit.Circle -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
     is MapHit.CircleCentre -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
+    is MapHit.CircleRadius -> circles.firstOrNull { it.index == selected.index }?.let(::circleText)
     is MapHit.FenceVertex -> polygons.firstOrNull { it.index == selected.polygon }
         ?.let { "corner ${selected.vertex + 1} of ${it.vertices.size}" }
     is MapHit.SurveyVertex -> null

@@ -148,8 +148,8 @@ internal fun trimmedRadius(radius: Double): String =
     String.format(java.util.Locale.US, "%.1f", radius).trimEnd('0').trimEnd('.')
 
 internal fun typedRadius(text: String, circle: FenceCircle): Double? =
-    text.trim().toDoubleOrNull()
-        ?.takeIf { it.isFinite() && it > 0.0 }
+    typedNumber(text)
+        ?.takeIf { it > 0.0 }
         ?.takeIf { wanted -> circle.radiusMinimum?.let { wanted >= it } ?: true }
         ?.takeIf { wanted -> circle.radiusMaximum?.let { wanted <= it } ?: true }
 

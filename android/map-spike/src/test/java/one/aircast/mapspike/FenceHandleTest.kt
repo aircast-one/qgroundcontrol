@@ -50,7 +50,7 @@ class FenceHandleTest {
             (it.geometry() as Point).let { at -> at.latitude() to at.longitude() }
         }
 
-        assertEquals(listOf(41.0 to 44.0, 42.0 to 45.0, 43.0 to 46.0), placed)
+        assertEquals(listOf(41.0 to 44.0, 42.0 to 45.0, 43.0 to 46.0), placed.take(3))
     }
 
     @Test
@@ -98,15 +98,14 @@ class FenceHandleTest {
     }
 
     @Test
-    fun `a circle gets one handle at its centre`() {
+    fun `a circle gets a centre handle and an edge handle`() {
         val features = vertexHandleFeatures(
             emptyList(),
             emptyList(),
             listOf(FenceCircle(2, true, TrackPoint(41.0, 44.0), 150.0)),
         )
-        val handle = features.features()!!.single()
-
-        assertEquals(HANDLE_KIND_CIRCLE, handle.getStringProperty(HANDLE_KIND_PROPERTY))
+        assertEquals(listOf(HANDLE_KIND_CIRCLE, HANDLE_KIND_FENCE_CIRCLE_RADIUS), features.features()!!.map { it.getStringProperty(HANDLE_KIND_PROPERTY) })
+        val handle = features.features()!!.first()
         assertEquals(2, handle.getNumberProperty(POLYGON_INDEX_PROPERTY).toInt())
         assertEquals(0, handle.getNumberProperty(VERTEX_INDEX_PROPERTY).toInt())
     }
@@ -120,9 +119,10 @@ class FenceHandleTest {
         )
         val kinds = features.features()!!.map { it.getStringProperty(HANDLE_KIND_PROPERTY) }
 
-        assertEquals(7, features.features()?.size)
+        assertEquals(8, features.features()?.size)
         assertEquals(3, kinds.count { it == HANDLE_KIND_FENCE })
         assertEquals(3, kinds.count { it == HANDLE_KIND_SURVEY })
         assertEquals(1, kinds.count { it == HANDLE_KIND_CIRCLE })
+        assertEquals(1, kinds.count { it == HANDLE_KIND_FENCE_CIRCLE_RADIUS })
     }
 }

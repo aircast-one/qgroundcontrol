@@ -500,7 +500,7 @@ internal fun MapSpikeScreen(
             canDrag = { hit -> dragAllowed(hit, selected, layer) },
             onMove = { hit, lat, lon ->
                 val generation = moveGeneration()
-                onBridge { writeDragStep(generation, hit, lat, lon, surveyList, rally, fences, allItems) }
+                onBridge { writeDragStep(generation, hit, lat, lon, surveyList, rally, fences, allItems, circles) }
             },
             onWaypointSelected = { hit ->
                 if (hit != null && actsOnTap(hit) && !dragAllowed(hit, selected, layer)) Unit
@@ -516,11 +516,12 @@ internal fun MapSpikeScreen(
                         onBridge(done = movedText(hit, allItems)) { PlanBridge.setLoiterRadius(item.index, -item.loiterRadius) }
                     }
                     is MapHit.LoiterRadius -> selected = MapHit.Waypoint(hit.index)
+                    is MapHit.CircleRadius -> selected = MapHit.Circle(hit.index)
                     else -> selected = hit
                 }
             },
             onMoved = { hit, lat, lon ->
-                onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList, rally, fences, allItems) }
+                onBridge(done = movedText(hit, allItems)) { writeMove(hit, lat, lon, surveyList, rally, fences, allItems, circles) }
             },
             selectedWaypoint = (selected as? MapHit.Waypoint)?.index,
             onViewChanged = { visible = it },
@@ -554,7 +555,7 @@ internal fun MapSpikeScreen(
         positioning?.let { (hit, at) ->
             PositionDialog(at, onDismiss = { positioning = null }) { moved ->
                 positioning = null
-                onBridge(done = movedText(hit, allItems)) { writeMove(hit, moved.latitude, moved.longitude, surveyList, rally, fences, allItems) }
+                onBridge(done = movedText(hit, allItems)) { writeMove(hit, moved.latitude, moved.longitude, surveyList, rally, fences, allItems, circles) }
             }
         }
 
@@ -1041,7 +1042,7 @@ internal fun MapSpikeScreen(
                         waypoint?.let { item ->
                             if (!item.altitude.isNaN()) {
                                 var typed by remember(item.index, item.altitude) {
-                                    mutableStateOf(altitudeFieldText(item.altitude))
+                                    mutableStateOf(altitudeFieldText(item.altitude, WAYPOINT_ALTITUDE_DECIMALS))
                                 }
                                 OutlinedTextField(
                                     value = typed,
@@ -1049,7 +1050,7 @@ internal fun MapSpikeScreen(
                                     label = { Text(altitudeFieldLabel(item)) },
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Number,
+                                        keyboardType = KeyboardType.Text,
                                         imeAction = ImeAction.Done,
                                     ),
                                     keyboardActions = KeyboardActions(
@@ -1229,7 +1230,7 @@ internal fun MapSpikeScreen(
                                 val unit = withContext(Dispatchers.Default) {
                                     SurveyBridge.altitudeUnits(hit.item)
                                 }
-                                surveyAlt = altitudeFieldText(shown)
+                                surveyAlt = altitudeFieldText(shown, SURFACE_DISTANCE_DECIMALS)
                                 surveyUnit = unit.ifBlank { "m" }
                             }
                             OutlinedTextField(
@@ -1238,12 +1239,12 @@ internal fun MapSpikeScreen(
                                 label = { Text("Above surface $surveyUnit") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Number,
+                                    keyboardType = KeyboardType.Decimal,
                                     imeAction = ImeAction.Done,
                                 ),
                                 keyboardActions = KeyboardActions(
                                     onDone = {
-                                        val shown = parsedAltitude(surveyAlt)
+                                        val shown = parsedSurfaceDistance(surveyAlt)
                                         if (shown == null) {
                                             say("Not an altitude")
                                         } else {
@@ -1326,7 +1327,7 @@ internal fun MapSpikeScreen(
                                         onValueChange = { typed = it },
                                         label = { Text(label) },
                                         singleLine = true,
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
                                         keyboardActions = KeyboardActions(
                                             onDone = {
                                                 val entered = parsedCoordinate(typed, limit)
@@ -1349,7 +1350,7 @@ internal fun MapSpikeScreen(
                                 ?.takeIf { rallyAltitudeIsEditable(it) }
                                 ?.let { point ->
                                     var typed by remember(point.index, point.altitude) {
-                                        mutableStateOf(altitudeFieldText(point.altitude))
+                                        mutableStateOf(altitudeFieldText(point.altitude, RALLY_ALTITUDE_DECIMALS))
                                     }
                                     OutlinedTextField(
                                         value = typed,
@@ -1357,7 +1358,7 @@ internal fun MapSpikeScreen(
                                         label = { Text(rallyAltitudeLabel(point)) },
                                         singleLine = true,
                                         keyboardOptions = KeyboardOptions(
-                                            keyboardType = KeyboardType.Number,
+                                            keyboardType = KeyboardType.Text,
                                             imeAction = ImeAction.Done,
                                         ),
                                         keyboardActions = KeyboardActions(
@@ -1520,8 +1521,8 @@ fun missionFitPoints(items: List<MissionItem>): List<TrackPoint> =
     items.filter { isPlottable(it.latitude, it.longitude) }.map { TrackPoint(it.latitude, it.longitude) }
 
 fun parsedCoordinate(latitude: String, longitude: String): TrackPoint? {
-    val lat = latitude.trim().toDoubleOrNull()?.takeIf { it in -90.0..90.0 } ?: return null
-    val lon = longitude.trim().toDoubleOrNull()?.takeIf { it in -180.0..180.0 } ?: return null
+    val lat = parsedCoordinate(latitude, LATITUDE_LIMIT) ?: return null
+    val lon = parsedCoordinate(longitude, LONGITUDE_LIMIT) ?: return null
     return TrackPoint(lat, lon)
 }
 
@@ -1640,6 +1641,7 @@ internal fun ownerOf(hit: MapHit?): String? = when (hit) {
     is MapHit.FenceVertex -> "p${hit.polygon}"
     is MapHit.Circle -> "c${hit.index}"
     is MapHit.CircleCentre -> "c${hit.index}"
+    is MapHit.CircleRadius -> "c${hit.index}"
     is MapHit.Rally -> "r${hit.index}"
     MapHit.BreachReturn -> "breach"
     else -> null
@@ -1662,7 +1664,7 @@ internal fun midpointOwner(path: String): String? = when {
 internal fun layerOf(hit: MapHit?): PlanLayer? = when (hit) {
     null -> null
     is MapHit.Rally -> PlanLayer.Rally
-    is MapHit.FenceVertex, is MapHit.Circle, is MapHit.CircleCentre, MapHit.BreachReturn -> PlanLayer.Fence
+    is MapHit.FenceVertex, is MapHit.Circle, is MapHit.CircleCentre, is MapHit.CircleRadius, MapHit.BreachReturn -> PlanLayer.Fence
     is MapHit.ShapeCentre -> if (hit.fence) PlanLayer.Fence else PlanLayer.Mission
     is MapHit.ShapeRadius -> if (hit.fence) PlanLayer.Fence else PlanLayer.Mission
     is MapHit.Midpoint -> null

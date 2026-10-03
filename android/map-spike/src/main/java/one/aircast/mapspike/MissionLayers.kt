@@ -498,6 +498,7 @@ const val HANDLE_KIND_LANDING = "landing"
 const val HANDLE_KIND_FENCE_CENTRE = "fenceCentre"
 const val HANDLE_KIND_SURVEY_CENTRE = "surveyCentre"
 const val HANDLE_KIND_CIRCLE_RADIUS = "circleRadius"
+const val HANDLE_KIND_FENCE_CIRCLE_RADIUS = "fenceCircleRadius"
 const val HANDLE_KIND_LOITER_RADIUS = "loiterRadius"
 const val HANDLE_KIND_LOITER_ROTATION = "loiterRotation"
 
@@ -547,8 +548,9 @@ fun vertexHandleFeatures(
     val fence = polygons.flatMap { handleFeatures(HANDLE_KIND_FENCE, it.index, it.vertices) }
     val survey = surveys.flatMap { handleFeatures(HANDLE_KIND_SURVEY, it.index, it.area) }
     val centres = circles.flatMap { handleFeatures(HANDLE_KIND_CIRCLE, it.index, listOf(it.centre)) }
+    val edges = circles.flatMap { handleFeatures(HANDLE_KIND_FENCE_CIRCLE_RADIUS, it.index, listOf(circleEdge(it))) }
     val places = landings.flatMap { landingHandleFeatures(it) }
-    return FeatureCollection.fromFeatures(fence + survey + centres + places)
+    return FeatureCollection.fromFeatures(fence + survey + centres + edges + places)
 }
 
 private fun landingHandleFeatures(pattern: LandingPattern) = listOfNotNull(
@@ -575,6 +577,14 @@ fun renderVertexHandles(
     val cornerSurveys = surveys.map { if (surveyPath(it) in circled) it.copy(area = emptyList()) else it }
     (style.getSource(FENCE_HANDLE_SOURCE) as? GeoJsonSource)
         ?.setGeoJson(FeatureCollection.fromFeatures(vertexHandleFeatures(cornered, cornerSurveys, circles, landings).features().orEmpty() + centreHandleFeatures(polygons, surveys) + radiusHandleFeatures(polygons, surveys, circled) + loiterHandles))
+}
+
+fun circleEdge(circle: FenceCircle): TrackPoint = pointAt(circle.centre, circle.radiusMetres, 90.0)
+
+fun draggedCircleRadius(circle: FenceCircle, to: TrackPoint): Double {
+    val shownPerMetre = if (circle.radiusMetres > 0.0) circle.radius / circle.radiusMetres else 1.0
+    val wanted = metresBetween(circle.centre, to) * shownPerMetre
+    return wanted.coerceAtLeast(circle.radiusMinimum ?: 0.0).coerceAtMost(circle.radiusMaximum ?: Double.MAX_VALUE)
 }
 
 fun radiusHandleFeatures(polygons: List<FencePolygon>, surveys: List<Survey>, circled: Set<String>): List<Feature> {

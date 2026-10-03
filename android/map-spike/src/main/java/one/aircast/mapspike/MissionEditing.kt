@@ -27,6 +27,8 @@ sealed interface MapHit {
 
     data class CircleCentre(val index: Int) : MapHit
 
+    data class CircleRadius(val index: Int) : MapHit
+
     data class LandingPlace(val index: Int, val place: Int) : MapHit
 
     data class Midpoint(val path: String, val invokable: String, val segment: Int) : MapHit
@@ -70,6 +72,7 @@ internal fun handleHit(kind: String?, owner: Int, vertex: Int): MapHit? = when (
     HANDLE_KIND_FENCE -> MapHit.FenceVertex(owner, vertex)
     HANDLE_KIND_SURVEY -> MapHit.SurveyVertex(owner, vertex)
     HANDLE_KIND_CIRCLE -> MapHit.CircleCentre(owner)
+    HANDLE_KIND_FENCE_CIRCLE_RADIUS -> MapHit.CircleRadius(owner)
     HANDLE_KIND_LANDING -> MapHit.LandingPlace(owner, vertex)
     HANDLE_KIND_FENCE_CENTRE -> MapHit.ShapeCentre(fence = true, owner = owner)
     HANDLE_KIND_SURVEY_CENTRE -> MapHit.ShapeCentre(fence = false, owner = owner)

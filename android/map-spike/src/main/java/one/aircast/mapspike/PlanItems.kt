@@ -138,6 +138,7 @@ fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
     is MapHit.Rally -> "Moved a rally point"
     MapHit.BreachReturn -> "Moved the breach return point"
     is MapHit.CircleCentre -> "Moved a fence circle"
+    is MapHit.CircleRadius -> "Changed a fence radius"
     is MapHit.ShapeCentre -> if (hit.fence) "Moved a fence" else "Moved a survey area"
     is MapHit.ShapeRadius -> "Changed the circle radius"
     is MapHit.LoiterRadius -> "Changed the loiter radius"
@@ -164,8 +165,9 @@ fun writeDragStep(
     rally: List<RallyPoint>,
     fences: List<FencePolygon>,
     items: List<MissionItem>,
+    circles: List<FenceCircle> = emptyList(),
 ): Boolean = !moveWrites.tryLock() || try {
-    generation != committedMoves.get() || applyMove(hit, latitude, longitude, surveys, rally, fences, items)
+    generation != committedMoves.get() || applyMove(hit, latitude, longitude, surveys, rally, fences, items, circles)
 } finally {
     moveWrites.unlock()
 }
@@ -178,9 +180,10 @@ fun writeMove(
     rally: List<RallyPoint>,
     fences: List<FencePolygon> = emptyList(),
     items: List<MissionItem> = emptyList(),
+    circles: List<FenceCircle> = emptyList(),
 ): Boolean = moveWrites.withLock {
     committedMoves.incrementAndGet()
-    applyMove(hit, latitude, longitude, surveys, rally, fences, items)
+    applyMove(hit, latitude, longitude, surveys, rally, fences, items, circles)
 }
 
 private fun applyMove(
@@ -191,6 +194,7 @@ private fun applyMove(
     rally: List<RallyPoint>,
     fences: List<FencePolygon>,
     items: List<MissionItem>,
+    circles: List<FenceCircle>,
 ): Boolean =
     when (hit) {
         is MapHit.Waypoint -> PlanBridge.moveItem(hit.index, latitude, longitude)
@@ -204,6 +208,8 @@ private fun applyMove(
             rallyAltitudeFor(rally, hit.index),
         )
         is MapHit.CircleCentre -> FenceBridge.moveCircle(hit.index, latitude, longitude)
+        is MapHit.CircleRadius -> circles.firstOrNull { it.index == hit.index }
+            ?.let { FenceBridge.setCircleRadius(it.index, draggedCircleRadius(it, TrackPoint(latitude, longitude))) } == true
         is MapHit.ShapeCentre -> {
             val target = if (hit.fence) shapeTarget(hit.owner, null) else shapeTarget(null, surveys.firstOrNull { it.index == hit.owner })
             val vertices = if (hit.fence) fences.firstOrNull { it.index == hit.owner }?.vertices else surveys.firstOrNull { it.index == hit.owner }?.area

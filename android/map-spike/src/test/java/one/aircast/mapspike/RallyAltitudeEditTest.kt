@@ -30,7 +30,7 @@ class RallyAltitudeEditTest {
             1e-9,
         )
         assertNotEquals(point.altitude, point.altitudeMetres, 1e-9)
-        assertEquals("164", altitudeFieldText(point.altitude))
+        assertEquals("164", altitudeFieldText(point.altitude, RALLY_ALTITUDE_DECIMALS))
     }
 
     @Test

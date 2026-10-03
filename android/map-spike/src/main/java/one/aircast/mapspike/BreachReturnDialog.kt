@@ -22,7 +22,7 @@ fun breachAltitudeText(altitude: Double?): String = altitude?.let { String.forma
 @Composable
 fun BreachReturnDialog(breach: BreachReturn, onDismiss: () -> Unit, onAltitude: (Double) -> Unit, onRemove: () -> Unit) {
     var typed by remember(breach) { mutableStateOf(breachAltitudeText(breach.altitude)) }
-    val value = typed.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
+    val value = typedNumber(typed)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Breach return point") },
