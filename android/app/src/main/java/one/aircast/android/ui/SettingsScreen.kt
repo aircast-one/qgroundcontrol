@@ -770,19 +770,7 @@ internal const val FIELD_LABEL_BUDGET = 40
 internal const val PAIRED_OPTION_BUDGET = 16
 internal const val PAIRED_UNITS_BUDGET = 6
 
-private val PROPER_NOUNS = setOf("Android", "ArduPilot", "Pixhawk", "Herelink", "Trimble", "Septentrio", "Bing", "Esri", "Google", "Mapbox", "Tianditu", "VWorld", "OpenAIP", "QGroundControl")
-
-private fun keepsCase(word: String): Boolean =
-    word in PROPER_NOUNS || word.drop(1).any(Char::isUpperCase) || word.none(Char::isLowerCase)
-
-private val PROPER_PHRASES = setOf("PX4 Pro")
-
-internal fun sentenceCase(label: String): String =
-    if (label in PROPER_PHRASES) label else label.split(" ").mapIndexed { at, word ->
-        word.split("-").mapIndexed { part, piece ->
-            if ((at == 0 && part == 0) || keepsCase(piece)) piece else piece.replaceFirstChar(Char::lowercaseChar)
-        }.joinToString("-")
-    }.joinToString(" ")
+internal fun sentenceCase(label: String): String = one.aircast.mapspike.sentenceCase(label)
 
 private val SECONDS = setOf("s", "sec", "secs", "second", "seconds")
 

@@ -43,7 +43,7 @@ fun AltitudeModePicker(
                     selected = offer.current,
                     enabled = live && offer.enabled || offer.current,
                     onClick = { if (live && !offer.current) onPick(offer.raw) },
-                    label = { Text(offer.title) },
+                    label = { Text(sentenceCase(offer.title)) },
                 )
             }
         }
