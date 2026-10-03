@@ -505,7 +505,7 @@ private fun InControlNote(holder: ControlStation, onRefusal: (String?) -> Unit) 
 internal const val MULTI_VEHICLE_PANEL_SETTING = "settings.appSettings.enableMultiVehiclePanel"
 internal const val MULTI_VEHICLE_PANEL = "$MULTI_VEHICLE_PANEL_SETTING.rawValue"
 
-internal fun panelToggleShown(fact: JSONObject?): Boolean = fact?.optBoolean("userVisible", true) != false
+internal fun panelToggleShown(fact: JSONObject?): Boolean = fact?.optBoolean("visible", true) != false
 
 internal fun multiVehiclePanelEnabled(setting: JSONObject?): Boolean =
     setting?.takeIf { it.has("value") && !it.isNull("value") }?.optBoolean("value", true) ?: true

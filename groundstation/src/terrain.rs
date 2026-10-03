@@ -32,6 +32,8 @@ pub fn profile(points: Vec<Point>) -> Profile {
     banded(points, None)
 }
 
+const LEVEL_ROUTE_PADDING: f64 = 1.0;
+
 pub fn banded(points: Vec<Point>, mission: Option<(f64, f64)>) -> Profile {
     let unknown_terrain = points.iter().filter(|p| p.terrain_altitude.is_none()).count();
     let total_distance = points.iter().map(|p| p.distance).fold(0.0, f64::max);
@@ -39,7 +41,7 @@ pub fn banded(points: Vec<Point>, mission: Option<(f64, f64)>) -> Profile {
     let low = altitudes.iter().copied().fold(f64::INFINITY, f64::min);
     let high = altitudes.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let (low, high) = if altitudes.is_empty() { (0.0, 0.0) } else { (low, high) };
-    let padding = (high - low) * 0.1;
+    let padding = if altitudes.is_empty() { 0.0 } else { ((high - low) * 0.1).max(LEVEL_ROUTE_PADDING) };
     let floor = if low > 0.0 { (low - padding).max(0.0) } else { low };
     let min_clearance = points
         .iter()
@@ -567,6 +569,13 @@ mod tests {
         assert_eq!(simple_segments(&[home.clone(), takeoff, waypoint.clone()], false, false, &flat).len(), 1, "ArduPilot's NAV_TAKEOFF has no coordinate and still starts the mission from the ground");
         assert_eq!(simple_segments(&[home.clone(), waypoint.clone()], false, true, &flat).len(), 1, "a rover always starts at home");
         assert!(simple_segments(&[home, waypoint], false, false, &flat).is_empty());
+    }
+
+    #[test]
+    fn a_level_route_keeps_a_band_so_its_line_is_not_drawn_on_the_floor() {
+        let level = |distance: f64| Point { sequence: 1, distance, mission_altitude: 50.0, terrain_altitude: None, collision: false };
+        let profile = banded(vec![level(0.0), level(100.0)], None);
+        assert!(profile.min_altitude < 50.0 && profile.max_altitude > 50.0, "{} .. {}", profile.min_altitude, profile.max_altitude);
     }
 
     #[test]

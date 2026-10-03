@@ -1393,7 +1393,7 @@ internal fun MapSpikeScreen(
                         label = { Text("Terrain profile") },
                     )
                 }
-                if (missionStatusShown && layer == PlanLayer.Mission) {
+                if (missionStatusShown && profileShown(layer, profile)) {
                     TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
                         allItems.firstOrNull { it.sequence == sequence }?.let { selected = MapHit.Waypoint(it.index) }
                     }

@@ -107,8 +107,7 @@ internal fun rememberRtkStatus(): RtkStatus? {
 }
 
 @Composable
-internal fun RtkSettingsSheetContent() {
-    val status = rememberRtkStatus()
+internal fun RtkSettingsSheetContent(status: RtkStatus?) {
     Column(
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),

@@ -240,7 +240,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
 
     if (rtkSettings) {
         ModalBottomSheet(onDismissRequest = { rtkSettings = false }) {
-            RtkSettingsSheetContent()
+            RtkSettingsSheetContent(rtk)
         }
     }
 
