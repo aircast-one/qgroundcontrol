@@ -11,8 +11,26 @@ pub fn control_view(backend: &dyn Backend, args: &[String]) -> Value {
     let fact = object(&backend.get(path));
     match fact.get("kind").and_then(Value::as_str) {
         Some("fact") => decode(&fact, path),
+        Some("value") => plain(fact.get("value").cloned().unwrap_or(Value::Null), path),
         _ => json!({ "kind": "null" }),
     }
+}
+
+fn plain(value: Value, path: &str) -> Value {
+    let name = path.rsplit('.').next().unwrap_or(path).to_string();
+    json!({
+        "kind": "object",
+        "class": "Control",
+        "path": path,
+        "name": name,
+        "label": humanise(&name),
+        "shortLabel": humanise(&name),
+        "control": if value.is_string() { "text" } else { "number" },
+        "display": raw_text(&value),
+        "valueString": raw_text(&value),
+        "value": value,
+        "readOnly": true,
+    })
 }
 
 pub fn raw_text(value: &Value) -> String {
@@ -63,10 +81,6 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         .zip(bit_values.iter())
         .filter_map(|(label, raw)| raw.as_i64().filter(|bit| *bit != 0).map(|bit| json!({ "label": label, "raw": raw_text(raw), "set": value_bits & bit != 0 })))
         .collect();
-    // A whole-number fact and a real one are the same "number" control to a head, and the difference
-    // is not cosmetic: convertAndValidateRaw truncates 3.7 to 3 on an integer fact and answers that
-    // it succeeded, so the operator asks for 3.7, the vehicle gets 3, and nothing anywhere says so.
-    // decimalPlaces is not this answer - a real-typed percentage legitimately declares zero.
     let whole = flag("typeIsInteger");
     let control = match (flag("typeIsBool"), labels.is_empty(), bits.is_empty(), flag("typeIsString")) {
         (true, ..) => "toggle",
@@ -82,16 +96,7 @@ pub fn decode(fact: &Value, path: &str) -> Value {
         .cloned()
         .unwrap_or_else(|| text("valueString"));
     let bound = |key: &str, default_flag: &str| (!flag(default_flag)).then(|| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite())).flatten();
-    // minString and maxString are populated whatever minIsDefaultForType says, so a fact that
-    // declares no floor still carries the string for the smallest number its type can hold. Serving
-    // that beside a null minimum is how a field ends up printing "Min -3.4e38". One gate decides the
-    // number and its spelling together, so the two cannot disagree about whether a bound exists.
     let bound_text = |key: &str, default_flag: &str| (!flag(default_flag)).then(|| fact.get(key).and_then(Value::as_str).filter(|s| !s.is_empty()).map(str::to_string)).flatten();
-    // Fact declares a typed defaultValue beside the string one, but it was missing from the
-    // bridge's kFactProperties allowlist and so arrived nowhere - added there rather than parsed
-    // back out of defaultValueString here, because that string is already formatted to
-    // decimalPlaces and reading a number out of it would be the round trip through a rendered
-    // string that Android's plainNumber does, one layer further down where nobody can see it.
     let has_default = flag("defaultValueAvailable");
     let described = text("shortDescription");
     json!({
@@ -141,6 +146,28 @@ pub fn restart_notices(vehicle: bool, application: bool) -> Vec<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_plain_setting_value_is_served_read_only_rather_than_as_nothing() {
+        struct Plain;
+        impl Backend for Plain {
+            fn get(&self, path: &str) -> String {
+                match path {
+                    "settings.unitsSettings.unitSystem" => json!({ "kind": "value", "value": 1 }).to_string(),
+                    "settings.appSettings.logSavePath" => json!({ "kind": "value", "value": "/data/Logs" }).to_string(),
+                    _ => json!({ "kind": "null" }).to_string(),
+                }
+            }
+            fn get_fields(&self, _: &str, _: &str) -> String { String::new() }
+            fn set(&self, _: &str, _: &str) -> String { String::new() }
+            fn invoke(&self, _: &str, _: &str) -> String { String::new() }
+            fn watch(&self, _: &[String]) {}
+        }
+        let system = control_view(&Plain, &["settings.unitsSettings.unitSystem".to_string()]);
+        assert_eq!((&system["value"], &system["readOnly"]), (&json!(1), &json!(true)), "UnitsSettings::unitSystem is a Q_PROPERTY, not a Fact; answering null made every head read it as 0, Metric");
+        assert_eq!(control_view(&Plain, &["settings.appSettings.logSavePath".to_string()])["value"], "/data/Logs", "GeoTag found no downloaded logs because the folder read empty");
+        assert_eq!(control_view(&Plain, &["nowhere".to_string()])["kind"], "null");
+    }
 
     #[test]
     fn the_toggle_branch_is_only_safe_while_no_bool_fact_names_its_alternatives() {
