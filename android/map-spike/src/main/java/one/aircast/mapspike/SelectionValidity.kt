@@ -62,9 +62,6 @@ private fun fenceOf(circle: FenceCircle) = SelectedFence(
     flip = null,
 )
 
-// The wording and the keep-in flip both need one answer - which fence does this
-// hit name - and a circle is named by its edge or its centre, which the map
-// reports as two different hits.
 internal fun selectedFence(
     selected: MapHit?,
     polygons: List<FencePolygon>,

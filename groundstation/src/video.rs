@@ -98,12 +98,6 @@ fn shot_points(backend: &dyn Backend) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-// extraVideoSources is a JSON array kept in a string setting, and VideoSourceModel.swift:30
-// returns [] for every parse failure - which is the same value as "no extra sources configured".
-// A corrupted or hand-edited string therefore makes an operator's cameras vanish looking exactly
-// like a fresh install, and the next edit calls encode() on the empty list and writes it back, so
-// the original is destroyed rather than merely hidden. Empty and unreadable have to be different
-// answers, and the second one has to travel far enough for a head to refuse to overwrite.
 fn extra_sources(backend: &dyn Backend) -> Value {
     let stored = text(&object(&backend.get("settings.videoSettings.extraVideoSources")), "valueString");
     let trimmed = stored.trim();
@@ -122,8 +116,6 @@ fn extra_sources(backend: &dyn Backend) -> Value {
             })).collect::<Vec<_>>(),
             "stored": stored,
         }),
-        // The stored text travels back so a head can show what is there and let someone repair it
-        // rather than silently replacing it with an empty list.
         None => json!({
             "readable": false,
             "sources": [],
@@ -286,9 +278,6 @@ fn stream_labels(camera: &Value) -> Vec<String> {
 }
 
 pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    // The only field any head took from vehicle.cameraManager: the switcher needs every camera's
-    // name, and this view carried only the current one's. One field short kept a whole Qt path
-    // alive on both heads.
     let manager = object(&backend.get_fields("vehicle.cameraManager", "cameraLabels"));
     let labels: Vec<&str> = manager
         .get("cameraLabels")
@@ -305,10 +294,6 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let photo_status = match integer(&camera, "capturePhotosState") { Some(2) => PHOTO_CAPTURE_IN_PROGRESS, Some(3) => PHOTO_CAPTURE_INTERVAL_IN_PROGRESS, _ => PHOTO_CAPTURE_IDLE };
     let video_status = if integer(&camera, "captureVideoState") == Some(2) { VIDEO_CAPTURE_RUNNING } else { VIDEO_CAPTURE_STOPPED };
     let record_time = text(&camera, "recordTimeStr");
-    // STORAGE_STATUS_NOT_SUPPORTED is 3 and means "Camera does not supply storage status
-    // information" - a claim about the hardware, not a neutral placeholder. Defaulting absence to
-    // it turned a camera that had not answered yet into one that had declared it does not track
-    // storage, and PhotoVideoControl.qml:423 hides the whole storage row on that value.
     let storage_status = integer(&camera, "storageStatus");
     let storage_free = text(&camera, "storageFreeStr");
     let (captures_photos, has_modes) = (flag(&camera, "capturesPhotos"), flag(&camera, "hasModes"));
@@ -339,8 +324,6 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         },
         "clockText": if is_recording && !record_time.is_empty() { record_time.clone() } else { IDLE_CLOCK.to_string() },
         "storageStatus": storage_status,
-        // A camera answering NOT_SUPPORTED did report - it reported that this is not a thing it
-        // tracks. "Not reported" is the sentence for silence, and both wore it.
         "reportsStorage": storage_status != Some(STORAGE_NOT_SUPPORTED),
         "storageText": match storage_status {
             Some(0) => "No card".to_string(),
@@ -370,24 +353,12 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })),
         "hasZoom": flag(&camera, "hasZoom"),
         "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(0.0),
-        // VehicleCameraControl.cc:351 and :~300 refuse on terms this gate did not carry, so it was
-        // wrong in both directions: a camera that shoots stills in video mode had a working shutter
-        // greyed out, and a camera mid-capture had a live button whose tap returns false in silence.
         "canRecord": present && integer(&camera, "captureVideoState").is_some_and(|state| state != CAPTURE_DISABLED),
         "canPhoto": present && captures_photos && photo_status == PHOTO_CAPTURE_IDLE,
-        // takePhoto sends `_photoMode == PHOTO_CAPTURE_SINGLE ? 0 : _photoLapse` and
-        // `? 1 : _photoLapseCount`, so the same shutter press either takes one photo or starts an
-        // interval capture of lapseCount shots. Serving only canPhoto makes those one button with
-        // one meaning, and a count of zero is unlimited - the press that never stops on its own.
         "photoMode": match timelapse { true => "timelapse", false => "single" },
-        // Gated the same way the action gates its copy. photoLapseCount keeps whatever it was last
-        // configured to in single mode, so serving it ungated hands a head a count of shots for a
-        // press that takes one - and a count of zero there would read as none rather than unlimited.
         "lapseSeconds": timelapse.then(|| camera.get("photoLapse").and_then(Value::as_f64)).flatten(),
         "lapseCount": timelapse.then(|| integer(&camera, "photoLapseCount")).flatten(),
         "lapseUnlimited": timelapse && integer(&camera, "photoLapseCount") == Some(0),
-        // stopTakePhoto refuses unless the status is one of the two interval states, and nothing in
-        // QGC's QML calls it - so a head that starts a timelapse today cannot end it.
         "canStopPhoto": present && matches!(photo_status, PHOTO_CAPTURE_INTERVAL_IDLE | PHOTO_CAPTURE_INTERVAL_IN_PROGRESS),
         "capturesPhotos": present && captures_photos,
         "hasVideoStream": present && flag(&camera, "hasVideoStream"),

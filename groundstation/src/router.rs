@@ -98,9 +98,6 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn watch(&self, client: &str, paths: &[String]) {
-        // Only paths this client did not already hold count as fresh. A head that re-subscribes on
-        // every recomposition asks for the same set repeatedly, and forcing a re-emit on each of
-        // those would turn one screen's lifecycle into a stream of identical deliveries.
         let (asked, fresh): (BTreeSet<String>, Vec<String>) = {
             let mut watching = self.watching.lock().unwrap();
             let held = watching.clients.get(client).cloned().unwrap_or_default();
@@ -114,13 +111,6 @@ impl<B: Backend> Core<B> {
             (asked, fresh)
         };
         self.rewatch(&asked, !fresh.is_empty());
-        // A watch used to register paths and nothing else. Two views spawn the thread that
-        // produces their data inside their own compute - view.adsbTraffic and view.detections -
-        // so a head that only watches never ran the compute, never started the feed, and received
-        // nothing at all, for as long as it was open. Dropping `last` for the paths this client
-        // asked for is what makes the next upstream emission deliver them rather than dedupe
-        // against a value the client never saw; the render itself still happens on Qt's thread,
-        // through the ordinary event route, because the bridge queues its first poll.
         let mut watching = self.watching.lock().unwrap();
         fresh.iter().for_each(|path| {
             watching.last.remove(path);
@@ -145,10 +135,6 @@ impl<B: Backend> Core<B> {
             watching.upstream = upstream.clone();
             changed
         };
-        // Re-asking for a set the backend already holds is what makes a subscribe deliver: the
-        // Qt watcher clears what it last saw and re-emits every path, and only then does a view
-        // whose dependencies were already watched by some other view get recomputed. Without it a
-        // second subscriber to an already-watched set is registered and never served.
         if changed || force {
             self.backend.watch(&upstream);
         }
@@ -268,10 +254,6 @@ mod tests {
 
     #[test]
     fn a_claimed_write_reaches_the_core_and_an_unclaimed_one_still_forwards() {
-        // Calling actions::write directly proves the function works and says nothing about whether
-        // anything CALLS it. router.set is the only door, and an unclaimed path goes straight to
-        // the backend with every check skipped and the suite still green - the qgc_core_guided
-        // shape, which no test of the function itself can see.
         let core = Core::new(Fake::default());
         let claimed = parsed(&core.set("vehicle.cameraManager.currentCameraInstance.zoomLevel", &json!({ "value": 40.0 }).to_string()));
         assert_eq!(claimed["ok"], false, "the fake serves no camera, so the core answers rather than writing");

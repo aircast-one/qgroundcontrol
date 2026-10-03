@@ -127,9 +127,6 @@ internal fun inspectorMessages(view: JSONObject?): List<InspectorMessage> {
     }.sortedBy { it.name }
 }
 
-// view.inspector serves the SELECTED message's fields. Selecting is a write this screen has just
-// made, so until the view names the message on screen as selected its fields describe the one before;
-// those are refused rather than drawn under the wrong name.
 internal fun parseInspectorFields(view: JSONObject?, messagePath: String): List<InspectorField> {
     val messages = view?.optJSONArray("messages") ?: return emptyList()
     val shown = (0 until messages.length()).any { index ->

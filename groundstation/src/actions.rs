@@ -126,9 +126,6 @@ pub fn owns(path: &str) -> bool {
     OWNED.contains(&path) || path == crate::firstrun::MARK_SHOWN || [crate::applog::LOG_CLEAR, crate::applog::LOG_SAVE, crate::applog::SET_CATEGORY, crate::applog::RESET_CATEGORIES].contains(&path) || crate::offlinemaps::owns(path) || path == crate::virtualjoystick::JOYSTICK_VALUE || path == crate::plantemplates::CREATE_FROM_TEMPLATE || crate::plantransform::owns(path) || crate::px4airframe::owns(path) || crate::apmfollow::owns(path) || crate::apmsubframe::owns(path) || crate::apmairframe::owns(path) || crate::apmsubmotors::owns(path) || crate::rctoparam::owns(path) || crate::presets::owns(path) || crate::ntrip::owns(path) || crate::logreplay::owns(path) || crate::scripting::owns(path) || crate::joystickhost::owns(path) || crate::espbridge::owns(path) || crate::syslink::owns(path) || path == crate::subtitles::SET_INSTRUMENTS || [crate::sensorsettings::SET_PRIORITY, crate::sensorsettings::FACTORY_RESET, crate::camsettings::SET_CAMERA_SETTING].contains(&path) || path == crate::mavlinkactions::SEND_MAVLINK_ACTION || crate::signingkeys::owns(path) || path == crate::px4tuning::SET_TELEMETRY_MODE || path == crate::autotune::REQUEST || crate::actuators::owns(path) || crate::paramtools::owns(path) || crate::gimbalindicator::owns(path) || [crate::paramfile::FILE_SAVE, crate::paramfile::FILE_REVIEW, crate::paramfile::FILE_APPLY].contains(&path) || crate::coreplan::owns(path) || crate::linkconnect::disconnect_target(path).is_some() || crate::fenceedit::owns_member_action(path) || crate::factwrite::owns_validate(path) || crate::vehicleconfig::owns_validate(path) || path == crate::vehicleconfig::PAGE_OPENED || path == crate::powercalc::CALCULATE || crate::mavlinklog::owns(path) || crate::escal::owns(path) || crate::inspectorchart::owns(path) || crate::itemshape::owns(path) || crate::itemshape::owns_split(path) || crate::vehicleselect::fleet_target(path).is_some() || crate::commandtree::hint_target(path).is_some()
 }
 
-// A write had no route to the core at all: router.set refused view paths and passed everything
-// else straight to the backend, and owns() was consulted only by invoke. A write is not a read
-// going the other way, so it needs its own door rather than either of the two that existed.
 pub const OWNED_WRITES: &[&str] = &[ZOOM, CURRENT_CAMERA, TRANSMITTER_MODE, CENTERED_THROTTLE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED, BREACH_ALTITUDE];
 
 pub fn owns_write(path: &str) -> bool {
@@ -167,11 +164,6 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     }
 }
 
-// setZoomLevel drops the write on a camera with no zoom and on a null vehicle, and silently CLAMPS
-// to 0..100 in between - so a head asking for 150 is told the write succeeded and the camera goes
-// to 100. Three ways to be wrong about what happened, none of them reported. The clamp travels
-// back here rather than being refused, because clamping is what the camera does and the head
-// asking too high is not an error; being unable to see it is.
 const ZOOM_LOWEST: f64 = 0.0;
 const ZOOM_HIGHEST: f64 = 100.0;
 
@@ -179,9 +171,6 @@ fn zoom(backend: &dyn Backend, value: &str) -> Value {
     let Some(asked) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()) else {
         return json!({ "ok": false, "result": false, "reason": "A zoom level has to be a number." });
     };
-    // camera_view makes seven backend round trips - trigger points, labels, shot points - and this
-    // needs two flags off one object. A slider sends a write per drag tick, so the whole view per
-    // tick is six reads of things nobody asked for.
     let camera = object(&backend.get_fields(CAMERA, "modelName,hasZoom"));
     if !crate::video::camera_present(&camera) {
         return json!({ "ok": false, "result": false, "reason": "No camera is connected." });
@@ -190,8 +179,6 @@ fn zoom(backend: &dyn Backend, value: &str) -> Value {
         return json!({ "ok": false, "result": false, "reason": "This camera has no zoom." });
     }
     let level = asked.clamp(ZOOM_LOWEST, ZOOM_HIGHEST);
-    // A bridge set answers {"ok": true} and carries no "result", so result_flag - which requires
-    // both - reads every successful write as a failure.
     let answered = crate::read::flag(&object(&backend.set(ZOOM, &json!({ "value": level }).to_string())), "ok");
     json!({
         "ok": answered,
@@ -363,16 +350,6 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
     }
 }
 
-// PlanMasterController snapshots the plan on a timer that only runs while undoTracking is set. Every
-// head turns it on when its plan screen appears and OFF again when that screen goes away -
-// PlanView.qml binds it to planActive, Mission.swift and PlanTab.kt set and clear it on dispose - so
-// a plan screen that is not open is the ordinary state, not a broken one. canUndo is false there for
-// a reason that has nothing to do with the stack, and a gate reading canUndo alone answers "nothing
-// to undo" to a head that has made twenty edits and merely navigated away. The two are told apart.
-//
-// undo() returns void, and QGCBridgeCore answers a void invoke with {"ok": bool} and NO result key -
-// ok being "the call dispatched", not "the plan moved". Reading result here would report failure on
-// every successful undo, so it is not read and not served.
 fn step(backend: &dyn Backend, path: &str) -> Value {
     let plan = object(&backend.get_fields("plan", "canUndo,canRedo,undoTracking"));
     let undoing = path == UNDO;
@@ -397,17 +374,7 @@ fn step(backend: &dyn Backend, path: &str) -> Value {
 
 const CAMERA: &str = "vehicle.cameraManager.currentCameraInstance";
 
-// VehicleCameraControl refuses on terms it never reports back: takePhoto returns false with only a
-// qCWarning, so a head that fires blind cannot tell a photo taken from a photo refused. view.camera
-// already computes every one of those terms for its gates. Doing the check and the call together is
-// what turns silence into an answer, and it is the same read-then-write the mission actions do.
-// These reach the camera through the bridge rather than through Hub::guided, so unlike the guided
-// actions they work in a default build with no QGC_CORE_LINKS.
 fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
-    // What is being ASKED is resolved before whether it can be done. A mode the core has no name
-    // for is a malformed call with or without hardware attached, and answering it "No camera is
-    // connected" hides a caller's bug behind a fact about the rig - two different failures wearing
-    // one sentence, which is the shape this whole file exists to avoid.
     let mode = match path {
         MODE => match serde_json::from_str::<Value>(args).ok().and_then(|a| a.as_array()?.first()?.as_str().map(str::to_string)).as_deref() {
             Some("photo") => Some("Photo"),
@@ -439,26 +406,11 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
     if !allowed {
         return json!({ "ok": false, "result": false, "reason": refusal });
     }
-    // The Qt method's own bool is the answer to "did it happen", and these gates cannot see every
-    // reason it says no - _resetting is not a property the core can read. Ignoring it would put the
-    // silence back one layer down, having just removed it. It also travels as `result`, because
-    // that is where QGCBridgeCore puts a return value and a head must not have to learn which
-    // paths the core has claimed in order to read one.
     let answer = object(&backend.invoke(&format!("{CAMERA}.{invokable}"), "[]"));
     let took = match path {
         MODE => crate::read::flag(&answer, "ok"),
         _ => crate::read::flag(&answer, "result"),
     };
-    // No post-state travels back. setCameraModePhoto and takePhoto set their own status before
-    // returning, but startVideoRecording only sends MAV_CMD_VIDEO_START_CAPTURE and waits for
-    // CAMERA_CAPTURE_STATUS - so isRecording read here is the value from BEFORE the toggle, while
-    // mode and isTakingPhoto beside it are current. Two fresh fields and one stale one with nothing
-    // to tell them apart is worse than none: a head toggling record would read false and conclude
-    // it failed. The action answers whether the command was taken; view.camera is watched and is
-    // where the state comes from when the vehicle confirms it.
-    // A shutter press in timelapse mode starts lapseCount shots at lapseSeconds apart, and with a
-    // count of zero it does not stop on its own. Answering ok for that and for one photo is the
-    // same button meaning two things, so the answer says which capture it began.
     let timelapse = path == PHOTO && view.get("photoMode").and_then(Value::as_str) == Some("timelapse");
     json!({
         "ok": took,
@@ -844,9 +796,6 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    // android/tools/qtpaths.py asks here which of the Android head's writes and invokes the core
-    // keeps. Most claims are patterns - a fact under settings., a link's field, a fence member - so
-    // a list of names read out of this file counted every one of them as Qt work still to do.
     #[test]
     #[ignore = "run by android/tools/qtpaths.py with QTPATHS_QUERY naming a file of kind<TAB>path lines"]
     fn claims_for_qtpaths() {
@@ -919,14 +868,6 @@ mod tests {
 
     #[test]
     fn a_claimed_path_keeps_the_shape_its_qt_answer_had() {
-        // Two different obligations, and conflating them made my first version of this fail on four
-        // correct actions. A path the core INVENTS - mission.insert, guided.orbit, camera.takePhoto,
-        // vehicles.setActive - has no Qt predecessor, so there is no answer it can take away; it owes
-        // ok, and a reason whenever ok is false. A path that SHADOWS a real Qt one owes everything Qt
-        // gave as well, because a head cannot know the core has claimed it. QGCBridgeCore puts a
-        // return value under "result" and seven macOS readers take it, three as `as? [String] ?? []`
-        // - and a list reader losing it draws an empty picker that reads as a quiet vehicle rather
-        // than a broken read.
         struct Nothing;
         impl Backend for Nothing {
             fn get(&self, p: &str) -> String { self.get_fields(p, "") }
@@ -1049,10 +990,6 @@ mod tests {
         struct Cam { camera: Value, fired: RefCell<Vec<String>> }
         impl Backend for Cam {
             fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            // objectJson at QGCBridgeCore.cc:443 serves a property only when the fields set is
-            // empty or contains its name, so a field the core forgets to ask for is ABSENT rather
-            // than merely unread. A fake that ignores the list cannot fail on the omission, and
-            // dropping hasZoom from the request went green here while refusing every real write.
             fn get_fields(&self, path: &str, fields: &str) -> String {
                 if !path.ends_with("currentCameraInstance") {
                     return json!({ "kind": "null" }).to_string();
@@ -1182,10 +1119,6 @@ mod tests {
         struct Cam { camera: Value, wrote: RefCell<Vec<String>> }
         impl Backend for Cam {
             fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            // objectJson at QGCBridgeCore.cc:443 serves a property only when the fields set is
-            // empty or contains its name, so a field the core forgets to ask for is ABSENT rather
-            // than merely unread. A fake that ignores the list cannot fail on the omission, and
-            // dropping hasZoom from the request went green here while refusing every real write.
             fn get_fields(&self, path: &str, fields: &str) -> String {
                 if !path.ends_with("currentCameraInstance") {
                     return json!({ "kind": "null" }).to_string();

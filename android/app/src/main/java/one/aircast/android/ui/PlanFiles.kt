@@ -87,9 +87,6 @@ private fun copyOut(context: Context, from: File, uri: Uri): Boolean = runCatchi
     true
 }.getOrDefault(false)
 
-// view.plan serves the patterns by their canonical names, the insert keys. The raw
-// complexMissionItemNames was renamed upstream to complexMissionItems and answered only through the
-// core's rename shim.
 internal fun patternNames(view: JSONObject?): List<String> {
     val patterns = view?.optJSONArray("patterns") ?: return emptyList()
     return (0 until patterns.length()).mapNotNull { patterns.optJSONObject(it)?.optText("name")?.ifBlank { null } }

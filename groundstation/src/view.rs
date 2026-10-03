@@ -499,9 +499,6 @@ mod watch_paths {
 mod deps_cover_reads {
     use std::collections::BTreeSet;
 
-    // One list. A parallel const of just the names drifted from this within minutes of being
-    // written: dropping a module here left the completeness check passing, which is the drift it
-    // exists to prevent.
     const MODULES: &[(&str, &str)] = &[
             ("actions", include_str!("actions.rs")),
             ("adsb", include_str!("adsb.rs")),
@@ -932,14 +929,6 @@ mod deps_cover_reads {
 
     #[test]
     fn a_view_that_reads_the_backend_declares_where_it_reads_from() {
-        // deps_of returns None for a module with no `pub const DEPS`, and filter_map SKIPS it - so
-        // a view registered with an inline `deps: &[]` was never checked at all, however much it
-        // read. view.gpsRtkBase read seven settings that way. A module reading the backend and
-        // declaring nothing is the case the check above cannot reach, because there is nothing to
-        // compare its reads against.
-        // Only modules that actually back a registered view: read.rs and router.rs read the
-        // backend too and have no view to recompute, so flagging them would be a check wider than
-        // the thing it measures - which is the error this whole family of guards keeps making.
         let backing: BTreeSet<&str> = include_str!("view.rs")
             .split("compute: ")
             .skip(1)
@@ -1117,11 +1106,6 @@ mod deps_cover_reads {
 
     #[test]
     fn the_module_list_covers_every_module_that_declares_dependencies() {
-        // The list above is hand-written and include_str! needs a literal, so it cannot enumerate
-        // itself. It had drifted to 18 of 55 modules - the check that every field a view reads is
-        // one it watches was running over a third of the views and passing, which is the shape of
-        // an instrument that answers a narrower question than the one being asked of it. It cannot
-        // build its own list, but it can refuse to stay quiet about what is missing from it.
         let listed: BTreeSet<&str> = MODULES.iter().map(|(name, _)| *name).collect();
         let missing: Vec<&str> = include_str!("lib.rs")
             .lines()

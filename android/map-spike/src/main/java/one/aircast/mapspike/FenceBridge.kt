@@ -238,9 +238,6 @@ object FenceBridge {
     fun addRallyPoint(latitude: Double, longitude: Double): Boolean =
         invokeOk("$RALLY_ROOT.addPoint", "[${coordinateJson(latitude, longitude)}]")
 
-    // RallyPoint::setCoordinate writes coordinate.altitude() straight into _altitudeFact, unlike
-    // SimpleMissionItem::setCoordinate which takes lat/lon only. QGC's own drag never sends a bare
-    // coordinate: MissionItemIndicatorDrag.qml:57 copies the existing altitude on first.
     fun moveRallyPoint(index: Int, latitude: Double, longitude: Double, altitudeMetres: Double): Boolean =
         setOk("$RALLY_POINTS.$index.coordinate", rallyMovePayload(latitude, longitude, altitudeMetres))
 
@@ -266,9 +263,6 @@ object FenceBridge {
     fun removeRallyPoint(index: Int): Boolean =
         invokeOk("$RALLY_ROOT.removePoint", "[\"@$RALLY_POINTS.$index\"]")
 
-    // QGC offers addInclusionPolygon and addInclusionCircle and no exclusion
-    // counterparts, so a keep-out zone is reached by flipping the property
-    // rather than by a different call.
     fun setPolygonInclusion(index: Int, inclusion: Boolean): Boolean =
         setOk("$FENCE_POLYGONS.$index.inclusion", settingJson(inclusion.toString()))
 

@@ -3,10 +3,6 @@ use serde_json::{Value, json};
 use crate::read::{flag, object, refused};
 use crate::router::Backend;
 
-// The macOS mission item editor read four raw groups per selected item - the item itself, its
-// textFieldFacts and comboboxFacts lists, and cameraCalc - and chose among them in the head: the
-// lists when the item has any, else a complex item's own facts, plus the camera block for a
-// complex item. Each fact is served here in view.control's shape, with the path the head writes.
 pub const DEPS: &[&str] = &[
     "plan.missionController.visualItems.count",
     "plan.controllerVehicle.vtol",
@@ -22,7 +18,6 @@ pub const DEPS: &[&str] = &[
 
 const ITEM_ROOT: &str = "plan.missionController.visualItems";
 const LISTS: [&str; 3] = ["comboboxFacts", "textFieldFacts", "nanFacts"];
-// Mission Settings edits the launch altitude through its own control, so it is not a field here.
 const LAUNCH_ALTITUDE: &str = "plannedHomePositionAltitude";
 const SURVEY_PROPERTIES: [&str; 4] = ["distanceToSurface", "imageDensity", "frontalOverlap", "sideOverlap"];
 const OPTICS_PROPERTIES: [&str; 7] = ["sensorWidth", "sensorHeight", "imageWidth", "imageHeight", "focalLength", "landscape", "minTriggerInterval"];
@@ -232,8 +227,6 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
             true => camera(backend, &item),
             false => Value::Null,
         },
-        // Served by index here rather than only for the plan's current item in view.missionItems,
-        // so an editor showing item N reads item N's speed and altitude mode.
         "speedSection": match available {
             true => crate::missionitems::speed_section(backend, index as i64),
             false => Value::Null,
