@@ -75,6 +75,14 @@ class MoreActionsTest {
     }
 
     @Test
+    fun `the gripper panel lists Release Grab Hold in QGC's order`() {
+        val extra = moreActions(offers("hold" to "ready", "grab" to "ready", "release" to "disabled", "startMission" to "ready"))
+
+        assertEquals(listOf("release", "grab", "hold"), gripperOffers(extra).map { it.id })
+        assertEquals(emptyList<String>(), gripperOffers(moreActions(offers("grab" to "hidden"))).map { it.id })
+    }
+
+    @Test
     fun `an action the core hides is not offered`() {
         val extra = moreActions(offers("grab" to "hidden", "release" to "ready"))
 

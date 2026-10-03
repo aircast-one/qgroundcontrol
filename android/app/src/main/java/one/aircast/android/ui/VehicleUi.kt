@@ -339,6 +339,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     var speedRange by remember { mutableStateOf<GuidedSpeed?>(null) }
     var altitudePauses by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
+    var showGripper by remember { mutableStateOf(false) }
     var deckRest by remember { mutableStateOf<List<DeckEntry>>(emptyList()) }
     var deckShown by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingLoiter by remember { mutableStateOf<LoiterOffer?>(null) }
@@ -354,6 +355,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val actionsJson by qgcPath(GUIDED_ACTIONS)
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
     val extras = remember(offers) { moreActions(offers) }
+    val gripper = remember(extras) { gripperOffers(extras) }
     val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
@@ -766,8 +768,9 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     MoreTile("Checklist", R.drawable.ic_check_circle, checklistPast == null) { showChecklist = true }
                         .takeIf { preflightOffered(preflightJson) },
                     loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
+                    MoreTile("Gripper", R.drawable.ic_download, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
                 ) +
-                extras.filter { it.id !in deckShown }.map { offer ->
+                extras.filter { it.id !in deckShown && it.id !in GRIPPER_ACTIONS }.map { offer ->
                     MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {
                         if (offer.id == PAUSE) {
                             openAltitude(true)
@@ -789,6 +792,11 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             FlyViewMavlinkActions { showMore = false }
         }
     }
+
+    LaunchedEffect(gripper.isEmpty()) {
+        if (gripper.isEmpty()) showGripper = false
+    }
+    if (showGripper && gripper.isNotEmpty()) GripperPanel(gripper) { showGripper = false }
 
     if (showChecklist) {
         AlertDialog(
