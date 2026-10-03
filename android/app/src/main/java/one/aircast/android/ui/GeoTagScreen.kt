@@ -18,7 +18,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -91,7 +90,7 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
 
         GeoTagStepRow(
             mark = geoTagStep(current.logFile.isNotBlank(), 1),
-            title = "Select flight log",
+            title = "Flight log",
             detail = current.logFile.ifBlank { null }?.substringAfterLast('/') ?: "No file selected",
             enabled = editable,
         ) { logPicker.launch(arrayOf("*/*")) }
@@ -104,13 +103,13 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
         }
         GeoTagStepRow(
             mark = geoTagStep(current.imageDirectory.isNotBlank(), 2),
-            title = "Select image folder",
+            title = "Photos folder",
             detail = imageTree?.let(::treeName) ?: "No folder selected",
             enabled = editable,
         ) { imagePicker.launch(null) }
         GeoTagStepRow(
             mark = "3",
-            title = "Output folder (optional)",
+            title = "Output folder",
             detail = outputTree?.let(::treeName) ?: "Default: /$DEFAULT_GEOTAG_OUTPUT subfolder",
             enabled = editable,
         ) { outputPicker.launch(null) }
@@ -122,7 +121,7 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
                 offsetText = typed
                 parsedOffset(typed)?.let { GeoTagRun.set("timeOffsetSecs", it) }
             },
-            label = { Text("Time offset (seconds):") },
+            label = { Text("Time offset (seconds)") },
             supportingText = { Text("Adjust if camera clock differs from flight log") },
             singleLine = true,
             enabled = editable,
@@ -190,7 +189,14 @@ private fun GeoTagImageRow(image: GeoTagImage) {
 
 @Composable
 private fun GeoTagStepRow(mark: String, title: String, detail: String, enabled: Boolean, onBrowse: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    androidx.compose.material3.Surface(
+        onClick = onBrowse,
+        enabled = enabled,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         val done = !mark.all { it.isDigit() }
         Box(
             Modifier.size(32.dp).background(if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer, CircleShape),
@@ -202,6 +208,6 @@ private fun GeoTagStepRow(mark: String, title: String, detail: String, enabled: 
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        OutlinedButton(enabled = enabled, onClick = onBrowse) { Text("Browse...") }
+    }
     }
 }
