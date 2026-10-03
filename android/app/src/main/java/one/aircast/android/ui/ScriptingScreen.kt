@@ -75,9 +75,11 @@ internal fun scripting(view: JSONObject?): Scripting? = view?.let {
 }
 
 private fun displayName(context: android.content.Context, uri: Uri): String =
-    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-        if (cursor.moveToFirst()) cursor.getString(0) else null
-    } ?: uri.lastPathSegment.orEmpty().substringAfterLast('/')
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+    }.getOrNull() ?: uri.lastPathSegment.orEmpty().substringAfterLast('/')
 
 @Composable
 fun ScriptingScreen(modifier: Modifier = Modifier) {

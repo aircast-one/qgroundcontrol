@@ -45,7 +45,14 @@ pub fn on_text(vehicle: u8, message: &str) {
     }
 }
 
+const NO_VEHICLE: &str = "No vehicle is connected.";
+
 pub fn esc_calibration_view(_backend: &dyn Backend, _args: &[String]) -> Value {
+    let gone = { STATUS.lock().unwrap_or_else(PoisonError::into_inner).as_ref().filter(|s| s.running).map(|s| s.vehicle) }.filter(|vehicle| crate::hub::lock().vehicle(*vehicle).is_none());
+    if gone.is_some() {
+        let mut held = STATUS.lock().unwrap_or_else(PoisonError::into_inner);
+        *held = held.take().map(|s| Status { highlight: FAILED.to_string(), text: "The vehicle disconnected.".to_string(), running: false, ..s });
+    }
     let held = STATUS.lock().unwrap_or_else(PoisonError::into_inner);
     json!({
         "kind": "object",
@@ -64,12 +71,18 @@ pub fn owns(path: &str) -> bool {
 pub fn run(backend: &dyn Backend, path: &str) -> Value {
     match path {
         ESC_CAL_START => {
+            let failed = |vehicle: u8, reason: &str| Some(Status { vehicle, highlight: FAILED.to_string(), text: reason.to_string(), running: false });
             let Some(vehicle) = crate::guided::active_id(backend).and_then(|id| u8::try_from(id).ok()) else {
-                return json!({ "ok": false, "reason": "No vehicle is connected." });
+                *STATUS.lock().unwrap_or_else(PoisonError::into_inner) = failed(0, NO_VEHICLE);
+                return json!({ "ok": false, "reason": NO_VEHICLE });
             };
             *STATUS.lock().unwrap_or_else(PoisonError::into_inner) = Some(Status { vehicle, highlight: String::new(), text: "Starting ESC calibration...".to_string(), running: true });
             let params = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, ESC_CAL_PARAM7];
-            crate::guided::dispatch(backend, Some(json!({ "action": "mavlinkCommand", "command": crate::sensorcal::CMD_PREFLIGHT_CALIBRATION, "params": params })), crate::guided::active_id(backend), "", "[]")
+            let sent = crate::guided::dispatch(backend, Some(json!({ "action": "mavlinkCommand", "command": crate::sensorcal::CMD_PREFLIGHT_CALIBRATION, "params": params })), crate::guided::active_id(backend), "", "[]");
+            if sent.get("ok").and_then(Value::as_bool) != Some(true) {
+                *STATUS.lock().unwrap_or_else(PoisonError::into_inner) = failed(vehicle, sent.get("reason").and_then(Value::as_str).unwrap_or("The vehicle was not sent the calibration command."));
+            }
+            sent
         }
         _ => {
             *STATUS.lock().unwrap_or_else(PoisonError::into_inner) = None;
@@ -81,6 +94,23 @@ pub fn run(backend: &dyn Backend, path: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_calibration_that_cannot_start_ends_as_a_failure_the_dialog_can_close() {
+        struct Nothing;
+        impl Backend for Nothing {
+            fn get(&self, _: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get_fields(&self, _: &str, _: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn set(&self, _: &str, _: &str) -> String { String::new() }
+            fn invoke(&self, _: &str, _: &str) -> String { String::new() }
+            fn watch(&self, _: &[String]) {}
+        }
+        assert_eq!(run(&Nothing, ESC_CAL_START)["ok"], false);
+        let view = esc_calibration_view(&Nothing, &[]);
+        assert_eq!((&view["open"], &view["running"], &view["highlight"]), (&json!(true), &json!(false), &json!(FAILED)), "OK is enabled only on an outcome, so a start that never happened has to be one");
+        run(&Nothing, ESC_CAL_CLOSE);
+        assert_eq!(esc_calibration_view(&Nothing, &[])["open"], false);
+    }
 
     #[test]
     fn px4_cal_texts_walk_the_dialog_like_power_component_controller() {

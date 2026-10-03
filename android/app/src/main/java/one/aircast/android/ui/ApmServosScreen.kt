@@ -140,7 +140,10 @@ private fun Stepper(title: String, fact: Fact) {
 
     fun write(next: Double) {
         pending.value = next
-        scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, next) } }
+        scope.launch {
+            refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, next) }
+            if (refusal != null) pending.value = null
+        }
     }
 
     fun step(direction: Int) {
@@ -151,8 +154,14 @@ private fun Stepper(title: String, fact: Fact) {
     val shown = pending.value?.toLong()?.toString() ?: fact.valueString
     var typed by remember(shown) { mutableStateOf(shown) }
     fun commit() {
-        val number = one.aircast.mapspike.typedNumber(typed)
-        if (number == null) typed = shown else if (number.toLong().toString() != shown) write(number.toLong().toDouble())
+        val number = one.aircast.mapspike.typedNumber(typed)?.takeIf { it == kotlin.math.floor(it) }
+        when {
+            number == null -> {
+                refusal = "Enter a whole number."
+                typed = shown
+            }
+            number != one.aircast.mapspike.typedNumber(shown) -> write(number)
+        }
     }
 
     Column {

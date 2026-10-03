@@ -97,9 +97,7 @@ internal val PAGES_WITHOUT_A_SCREEN = mapOf(
         "picker reads what they produce; the raw lists are worse than nothing",
 )
 
-internal val SECTIONS_WITHOUT_A_SCREEN = mapOf(
-    "mavlinkActionsSettings" to "two paths to JSON files that have to be on the device already",
-)
+internal val SECTIONS_DRAWN_BY_THE_HEAD = setOf(MAVLINK_ACTIONS_GROUP)
 
 internal const val CONNECTIONS_PAGE = "Connections"
 
@@ -287,7 +285,8 @@ internal fun settingsSections(page: JSONObject?): List<SettingsSectionRows> {
                 }.filter { it.facts.isNotEmpty() },
             )
         }
-    }.filter { it.blocks.isNotEmpty() && it.group !in SECTIONS_WITHOUT_A_SCREEN.keys }
+    }.map { if (it.group in SECTIONS_DRAWN_BY_THE_HEAD) it.copy(blocks = listOf(SettingsBlock("", emptyList()))) else it }
+        .filter { it.blocks.isNotEmpty() }
 }
 
 internal fun blockHeading(pageTitle: String, section: SettingsSectionRows, block: SettingsBlock): String =

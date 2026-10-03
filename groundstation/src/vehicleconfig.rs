@@ -615,13 +615,13 @@ fn channels(scope: &Scope, template: &str) -> Vec<usize> {
 
 fn listed_channels(scope: &Scope, control: &Value) -> Vec<usize> {
     let first = control["firstChannel"].as_u64().map_or(1, |n| n as usize);
-    let last = control["lastChannelExpr"]
-        .as_str()
-        .and_then(|expr| scope.eval_text(expr).number())
-        .map(|n| n as usize)
-        .or_else(|| control["lastChannel"].as_u64().map(|n| n as usize))
-        .unwrap_or(usize::MAX);
+    let last = control["lastChannel"].as_u64().map_or(usize::MAX, |n| n as usize);
     channels(scope, control["channelParam"].as_str().unwrap_or_default()).into_iter().filter(|n| (first..=last).contains(n)).collect()
+}
+
+fn offered_channels(scope: &Scope, control: &Value) -> Vec<usize> {
+    let shown = control["lastChannelExpr"].as_str().and_then(|expr| scope.eval_text(expr).number()).map_or(usize::MAX, |n| n as usize);
+    listed_channels(scope, control).into_iter().filter(|n| *n <= shown).collect()
 }
 
 const AUTOTUNE_SWITCH_OPTION: f64 = 17.0;
@@ -751,10 +751,11 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
     }
     if kind == "channelFunction" {
         let listed = listed_channels(scope, control);
+        let offered = offered_channels(scope, control);
         let none = control["noneLabel"].as_str().unwrap_or("Disabled").to_string();
         let current = control["functionValue"].as_f64().and_then(|f| listed.iter().copied().find(|n| scope.fact_member(&control["channelParam"].as_str().unwrap_or_default().replace('#', &n.to_string()), "rawValue").number() == Some(f)));
         let options: Vec<Value> = std::iter::once(none.clone())
-            .chain(listed.iter().map(|n| format!("Channel {n}")))
+            .chain(offered.iter().map(|n| format!("Channel {n}")))
             .enumerate()
             .map(|(i, label)| json!({ "label": label, "raw": i.to_string() }))
             .collect();
@@ -1040,10 +1041,11 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
             let function = control["functionValue"].as_f64().unwrap_or(f64::NAN);
             let chosen = asked.as_u64().or_else(|| asked.as_str().and_then(|s| s.parse().ok())).map(|i| i as usize);
             let listed = listed_channels(&scope, control);
+            let offered = offered_channels(&scope, control);
             let param = |n: usize| template.replace('#', &n.to_string());
             let holding: Vec<usize> = listed.iter().copied().filter(|n| scope.fact_member(&param(*n), "rawValue").number() == Some(function)).collect();
             let clear = |keep: Option<usize>| holding.iter().filter(|n| Some(**n) != keep).take(if flag(control, "exclusive") { usize::MAX } else { 1 }).try_for_each(|n| write_parameter(backend, &param(*n), true, 0.0));
-            match chosen.map(|i| i.checked_sub(1).map(|at| listed.get(at).copied())) {
+            match chosen.map(|i| i.checked_sub(1).map(|at| offered.get(at).copied())) {
                 Some(None) => clear(None),
                 Some(Some(Some(n))) => match flag(control, "exclusive") {
                     true => clear(Some(n)).and_then(|()| write_parameter(backend, &param(n), true, function)),
@@ -1452,7 +1454,15 @@ mod tests {
         assert!(rows.iter().any(|r| r["label"] == "Brightness Steps"));
         let board = Fake::new(&named.iter().map(|(n, v)| (n.as_str(), *v)).chain([("JS_LIGHTS_STEPS", 4.0), ("BRD_PWM_COUNT", 2.0)]).collect::<Vec<_>>());
         let rows: Vec<Value> = page(&board, "Lights", false)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect();
-        assert_eq!(rows.iter().find(|r| r["label"] == "Lights 1").unwrap()["options"].as_array().unwrap().len(), 7, "8 main outputs plus BRD_PWM_COUNT=2 auxiliaries: Disabled and channels 5 to 10");
+        let lights = rows.iter().find(|r| r["label"] == "Lights 1").unwrap().clone();
+        assert_eq!(lights["options"].as_array().unwrap().len(), 7, "8 main outputs plus BRD_PWM_COUNT=2 auxiliaries: Disabled and channels 5 to 10");
+        assert_eq!(lights["display"], "Channel 9");
+        let far = Fake::new(&named.iter().map(|(n, v)| (n.as_str(), if n == "SERVO9_FUNCTION" { 0.0 } else if n == "SERVO12_FUNCTION" { 59.0 } else { *v })).chain([("JS_LIGHTS_STEPS", 4.0), ("BRD_PWM_COUNT", 2.0)]).collect::<Vec<_>>());
+        let rows: Vec<Value> = page(&far, "Lights", false)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect();
+        let lights = rows.iter().find(|r| r["label"] == "Lights 1").unwrap().clone();
+        assert_eq!(lights["display"], "Channel 12", "calcLightOutValues scans 5 to 16 even when the list is shorter");
+        assert_eq!(write(&far, &format!("{}{ENUM_INDEX}", lights["path"].as_str().unwrap()), r#"{"value":2}"#)["ok"], true);
+        assert_eq!((far.params.borrow()["SERVO6_FUNCTION"], far.params.borrow()["SERVO12_FUNCTION"]), (59.0, 0.0), "setRCFunction clears a channel beyond the list too");
         let seven = Fake::new(&named.iter().map(|(n, v)| (n.as_str(), *v)).chain([("JS_LIGHTS_STEPS", 4.0), ("BRD_PWM_COUNT", 7.0)]).collect::<Vec<_>>());
         let rows: Vec<Value> = page(&seven, "Lights", false)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect();
         assert_eq!(rows.iter().find(|r| r["label"] == "Lights 1").unwrap()["options"].as_array().unwrap().len(), 8, "a BRD_PWM_COUNT of 7 counts as 3");

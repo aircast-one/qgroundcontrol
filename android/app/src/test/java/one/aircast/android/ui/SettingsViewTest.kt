@@ -51,7 +51,7 @@ class SettingsViewTest {
     }
 
     @Test
-    fun `a section this head deliberately leaves out is not drawn`() {
+    fun `the actions section keeps its heading but not the raw file path rows`() {
         val view = JSONObject(
             """{"title":"General","sections":[
                  {"title":"Actions","group":"mavlinkActionsSettings","subsections":[
@@ -60,8 +60,9 @@ class SettingsViewTest {
                    {"title":"","controls":[{"name":"audioMuted","label":"Mute","control":"toggle","path":"q"}]}]}
                ]}""",
         )
-        assertEquals(listOf("Application"), settingsSections(view).map { it.title })
-        assertTrue(SECTIONS_WITHOUT_A_SCREEN.values.none { it.isBlank() })
+        val sections = settingsSections(view)
+        assertEquals(listOf("Actions", "Application"), sections.map { it.title })
+        assertEquals("MavlinkActionsSection draws the pickers and the folder note", emptyList<String>(), sections.first().blocks.flatMap { it.facts }.map { it.name })
     }
 
     @Test

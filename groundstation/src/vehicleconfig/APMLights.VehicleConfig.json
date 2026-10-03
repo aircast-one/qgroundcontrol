@@ -13,7 +13,8 @@
                     "firstChannel": 5,
                     "noneLabel": "Disabled",
                     "exclusive": true,
-                    "lastChannelExpr": "controller.parameterExists(-1, \"BRD_PWM_COUNT\") ? 8 + (controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value === 7 ? 3 : controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value) : 16"
+                    "lastChannelExpr": "controller.parameterExists(-1, \"BRD_PWM_COUNT\") ? 8 + (controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value === 7 ? 3 : controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value) : 16",
+                    "lastChannel": 16
                 },
                 {
                     "control": "channelFunction",
@@ -23,7 +24,8 @@
                     "firstChannel": 5,
                     "noneLabel": "Disabled",
                     "exclusive": true,
-                    "lastChannelExpr": "controller.parameterExists(-1, \"BRD_PWM_COUNT\") ? 8 + (controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value === 7 ? 3 : controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value) : 16"
+                    "lastChannelExpr": "controller.parameterExists(-1, \"BRD_PWM_COUNT\") ? 8 + (controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value === 7 ? 3 : controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value) : 16",
+                    "lastChannel": 16
                 },
                 {
                     "param": "JS_LIGHTS_STEPS",
