@@ -79,8 +79,8 @@ const COMPASS_PARAMS: [(&str, &str, &str); 3] = [
 ];
 
 fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
-    let fact = object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")));
-    (fact.get("kind").and_then(Value::as_str) == Some("fact")).then(|| fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64)).flatten()
+    let exists = crate::read::result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, name]).to_string()));
+    exists.then(|| object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))).and_then(|fact| fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64))
 }
 
 pub fn fitness_bands(external: bool) -> (f64, f64, f64) {
@@ -88,8 +88,8 @@ pub fn fitness_bands(external: bool) -> (f64, f64, f64) {
     (8.0 * scale, 15.0 * scale, 25.0 * scale)
 }
 
-fn compass_results(backend: &dyn Backend, cal: &Value) -> Vec<Value> {
-    if flag(cal, "px4") {
+fn compass_results(backend: &dyn Backend, cal: &Value, apm: bool) -> Vec<Value> {
+    if !apm {
         return Vec::new();
     }
     COMPASS_PARAMS
@@ -243,7 +243,7 @@ pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "settingsTitle": if flag(&cal, "px4") { "Orientations" } else { "Sensor Settings" },
         "routines": routines(&cal, connected, busy, classes.as_ref()),
         "fastCompass": fast_compass(backend, &cal),
-        "compassResults": compass_results(backend, &cal),
+        "compassResults": compass_results(backend, &cal, connected && !flag(&cal, "px4")),
     })
 }
 
@@ -371,7 +371,10 @@ mod tests {
         }
         fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn invoke(&self, p: &str, a: &str) -> String {
+            let name = serde_json::from_str::<Value>(a).ok().and_then(|args| args.get(1)?.as_str().map(str::to_string)).unwrap_or_default();
+            json!({ "ok": true, "result": p == "vehicle.parameterManager.parameterExists" && self.1.iter().any(|(n, _)| *n == name) }).to_string()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -381,6 +384,7 @@ mod tests {
         let params = vec![("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 1.0), ("COMPASS_EXTERNAL", 1.0), ("COMPASS_DEV_ID2", 131874.0), ("COMPASS_USE2", 1.0), ("COMPASS_EXTERN2", 0.0), ("COMPASS_DEV_ID3", 0.0), ("COMPASS_USE3", 1.0)];
         let results = calibration_view(&Compasses(cal, params), &[])["compassResults"].as_array().unwrap().clone();
         assert_eq!(results.len(), 2, "APMSensorsComponent draws a bar only for a compass that exists and is in use");
+        assert!(calibration_view(&Compasses(json!({ "kind": "null" }), vec![("COMPASS_DEV_ID", 1.0), ("COMPASS_USE", 1.0)]), &[])["compassResults"].as_array().unwrap().is_empty(), "no APM sensors controller, no parameter reads");
         assert_eq!((results[0]["green"].as_f64(), results[0]["range"].as_f64(), results[0]["position"].as_f64()), (Some(8.0), Some(25.0), Some(1.0)), "external: 8/15/25, fitness past the range pins the dot at the end");
         assert_eq!((results[1]["green"].as_f64(), results[1]["yellow"].as_f64(), results[1]["range"].as_f64()), (Some(16.0), Some(30.0), Some(50.0)), "internal compasses get twice the room");
     }

@@ -1893,14 +1893,15 @@ impl Vehicle {
                     let lookup = |name: &str| self.params.value(self.component, name).map(|p| p.as_f64());
                     match action.get("op").and_then(Value::as_str) {
                         Some("next") => cal.next(&vehicle, &lookup),
-                        Some("cancel" | "start") => vec![cal.stop(&vehicle, &lookup)],
+                        Some("cancel") => vec![cal.stop(&vehicle, &lookup)],
+                        Some("start") => {
+                            cal.forget_failure();
+                            vec![cal.stop(&vehicle, &lookup)]
+                        }
                         _ => Vec::new(),
                     }
                 };
                 self.rccal = cal;
-                if outcomes.contains(&crate::rccal::Outcome::ThrottleReversed) {
-                    self.note("Attempt to calibrate with a reversed throttle. Reverse the throttle on the transmitter and calibrate again.".to_string());
-                }
                 let target = (self.id, self.component);
                 let wrote = outcomes.iter().any(|outcome| matches!(outcome, crate::rccal::Outcome::Write(_)));
                 let sent: Vec<Vec<u8>> = outcomes

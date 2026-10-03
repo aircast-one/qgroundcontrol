@@ -2,14 +2,11 @@
 
 #include "RemoteControlCalibrationController.h"
 
-/// \brief Controller class for RC Transmitter calibration
-///
 class RadioComponentController : public RemoteControlCalibrationController
 {
     Q_OBJECT
     QML_ELEMENT
-
-    //friend class RadioConfigTest;
+    Q_PROPERTY(bool throttleReversed READ throttleReversed NOTIFY throttleReversedChanged)
 
 public:
     RadioComponentController(QObject *parent = nullptr);
@@ -27,22 +24,23 @@ public:
     Q_INVOKABLE void spektrumBindMode(int mode);
     Q_INVOKABLE void crsfBindMode();
 
-    // Overrides from RemoteControlCalibrationController
+    bool throttleReversed() const { return _throttleReversed; }
+
     void start() final override;
 
 signals:
-    /// Signalled to indicate cal failure due to reversed throttle
     void throttleReversedCalFailure();
+    void throttleReversedChanged();
 
 private:
     QString _stickFunctionToParamName(RemoteControlCalibrationController::StickFunction function) const;
     bool _channelReversedParamValue(int channel);
     void _setChannelReversedParamValue(int channel, bool reversed);
 
-    // Overrides from RemoteControlCalibrationController
     void _saveStoredCalibrationValues() override;
     void _readStoredCalibrationValues() override;
 
     QString _revParamFormat;
     bool _revParamIsBool = false;
+    bool _throttleReversed = false;
 };

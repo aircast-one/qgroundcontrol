@@ -16,9 +16,6 @@ QGC_LOGGING_CATEGORY(RadioComponentControllerVerboseLog, "AutoPilotPlugins.Radio
 RadioComponentController::RadioComponentController(QObject *parent)
     : RemoteControlCalibrationController(parent)
 {
-    // qCDebug(RadioComponentControllerLog) << Q_FUNC_INFO << this;
-
-    // Channels values are in PWM
 
     _calDefaultMinValue = 1000;
     _calDefaultMaxValue = 2000;
@@ -31,18 +28,14 @@ RadioComponentController::RadioComponentController(QObject *parent)
     _calValidMinValue = _calDefaultMinValue + (valueRange * 0.3f);
     _calValidMaxValue = _calDefaultMaxValue - (valueRange * 0.3f);
 
-    // Deal with parameter differences between PX4 and Ardupilot
     if (parameterExists(ParameterManager::defaultComponentId, QStringLiteral("RC1_REVERSED"))) {
-        // Newer ardupilot firmwares have a different reverse param naming scheme and value scheme
         _revParamFormat = "RC%1_REVERSED";
-        _revParamIsBool = true; // param value is boolean 0/1 for reversed or not
+        _revParamIsBool = true;
     } else {
-        // Older ardupilot firmwares share the same naming convention as PX4
         _revParamFormat = "RC%1_REV";
-        _revParamIsBool = false; // param value if -1 indicates reversed
+        _revParamIsBool = false;
     }
 
-    // Let the mav known we are starting calibration. This should turn off motors and so forth.
     _vehicle->startCalibration(QGCMAVLink::CalibrationRadio);
 }
 
@@ -80,16 +73,17 @@ RadioComponentController *RadioComponentController::forActiveVehicle()
 
 RadioComponentController::~RadioComponentController()
 {
-    // qCDebug(RadioComponentControllerLog) << Q_FUNC_INFO << this;
     if (_vehicle && QCoreApplication::instance() && MultiVehicleManager::instance()->vehicles()->contains(_vehicle)) {
-        // Only PX4 is known to support this command in all versions. For other firmware which may or may not
-        // support this we don't show errors on failure.
-        _vehicle->stopCalibration(_vehicle->px4Firmware() ? true : false /* showError */);
+        _vehicle->stopCalibration(_vehicle->px4Firmware());
     }
 }
 
 void RadioComponentController::start(void)
 {
+    if (_throttleReversed) {
+        _throttleReversed = false;
+        emit throttleReversedChanged();
+    }
     RemoteControlCalibrationController::start();
     (void) connect(_vehicle, &Vehicle::rcChannelsClampedChanged, this, &RemoteControlCalibrationController::_clampedChannelValuesChanged);
 
@@ -140,8 +134,8 @@ void RadioComponentController::_setChannelReversedParamValue(int channel, bool r
 void RadioComponentController::_saveStoredCalibrationValues()
 {
     if (!_vehicle->px4Firmware() && ((_vehicle->vehicleType() == MAV_TYPE_HELICOPTER) || _vehicle->multiRotor()) && _rgChannelInfo[_rgFunctionChannelMapping[stickFunctionThrottle]].channelReversed) {
-        // A reversed throttle could lead to dangerous power up issues if the firmware doesn't handle it absolutely correctly in all places.
-        // So in this case fail the calibration for anything other than PX4 which is known to be able to handle this correctly.
+        _throttleReversed = true;
+        emit throttleReversedChanged();
         emit throttleReversedCalFailure();
     } else {
         _validateAndAdjustCalibrationValues();
@@ -150,7 +144,6 @@ void RadioComponentController::_saveStoredCalibrationValues()
         const QString maxTpl("RC%1_MAX");
         const QString trimTpl("RC%1_TRIM");
 
-        // Note that the rc parameters are all float, so you must cast to float in order to get the right QVariant
         for (int chan = 0; chan<_chanMax; chan++) {
             ChannelInfo *const info = &_rgChannelInfo[chan];
             const int oneBasedChannel = chan + 1;
@@ -172,10 +165,7 @@ void RadioComponentController::_saveStoredCalibrationValues()
                 paramFact->setRawValue(static_cast<float>(info->channelMax));
             }
 
-            // For multi-rotor we can determine reverse setting during radio cal. For anything other than multi-rotor, servo installation
-            // may affect channel reversing so we can't automatically determine it. This is ok for PX4 given how it uses mixers, but not for ArduPilot.
             if (_vehicle->px4Firmware() || _vehicle->multiRotor()) {
-                // APM multi-rotor has a backwards interpretation of "reversed" on the Pitch control. So be careful.
                 bool reversed;
                 if (_vehicle->px4Firmware() || info->stickFunction != stickFunctionPitch) {
                     reversed = info->channelReversed;
@@ -186,14 +176,11 @@ void RadioComponentController::_saveStoredCalibrationValues()
             }
         }
 
-        // Write function mapping parameters
         for (size_t stickFunctionIndex = 0; stickFunctionIndex < stickFunctionMaxRadio; stickFunctionIndex++) {
             int32_t paramChannel;
             if (_rgFunctionChannelMapping[stickFunctionIndex] == _chanMax) {
-                // 0 signals no mapping
                 paramChannel = 0;
             } else {
-                // Note that the channel value is 1-based
                 paramChannel = _rgFunctionChannelMapping[stickFunctionIndex] + 1;
             }
 
@@ -210,19 +197,16 @@ void RadioComponentController::_saveStoredCalibrationValues()
     }
 
     if (_vehicle->px4Firmware()) {
-        // If the RC_CHAN_COUNT parameter is available write the channel count
         if (parameterExists(ParameterManager::defaultComponentId, QStringLiteral("RC_CHAN_CNT"))) {
             getParameterFact(ParameterManager::defaultComponentId, QStringLiteral("RC_CHAN_CNT"))->setRawValue(_chanCount);
         }
     }
 
-    // Read back since validation may have changed values
     _readStoredCalibrationValues();
 }
 
 void RadioComponentController::_readStoredCalibrationValues()
 {
-    // Initialize all function mappings to not set
 
     for (int i = 0; i < _chanMax; i++) {
         ChannelInfo *const info = &_rgChannelInfo[i];
@@ -232,8 +216,6 @@ void RadioComponentController::_readStoredCalibrationValues()
     for (size_t i = 0; i < stickFunctionMaxRadio; i++) {
         _rgFunctionChannelMapping[i] = _chanMax;
     }
-
-    // Pull parameters and update
 
     const QString minTpl("RC%1_MIN");
     const QString maxTpl("RC%1_MAX");

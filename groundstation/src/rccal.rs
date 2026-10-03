@@ -258,6 +258,10 @@ impl RcCal {
         }
     }
 
+    pub fn forget_failure(&mut self) {
+        self.throttle_reversed_failure = false;
+    }
+
     pub fn stop(&mut self, vehicle: &Vehicle, parameter: &dyn Fn(&str) -> Option<f64>) -> Outcome {
         let was = self.step.take().is_some();
         self.read_stored(vehicle, parameter);
@@ -480,8 +484,8 @@ impl RcCal {
             "transmitterMode": self.transmitter_mode,
             "centeredThrottle": self.centered_throttle,
             "joystickMode": false,
-            "throttleReversedCalFailure": self.throttle_reversed_failure,
-            "stickPositions": self.stick_positions(),
+            "throttleReversed": self.throttle_reversed_failure,
+            "stickDisplayPositions": self.stick_positions(),
         });
         answer.as_object_mut().into_iter().for_each(|a| a.extend(object.clone()));
         answer
@@ -579,7 +583,7 @@ mod tests {
         assert!(cal.reversed(Function::Throttle));
         cal.step = Some(STEPS.len() - 1);
         assert_eq!(cal.next(&copter(), &lookup)[0], Outcome::ThrottleReversed);
-        assert_eq!(cal.json()["throttleReversedCalFailure"], true, "the head opens QGC's Throttle channel reversed dialog from this");
+        assert_eq!(cal.json()["throttleReversed"], true, "the head opens QGC's Throttle channel reversed dialog from this");
     }
 
     #[test]
@@ -606,6 +610,6 @@ mod tests {
         cal.step = Some(STEPS.iter().position(|s| *s == Step::Min(Function::Pitch)).unwrap());
         assert_eq!(cal.stick_positions(), [0, -1, 0, 0], "mode 1 pitch is the left stick");
         cal.step = None;
-        assert_eq!(cal.json()["stickPositions"], json!([0, 0, 0, 0]));
+        assert_eq!(cal.json()["stickDisplayPositions"], json!([0, 0, 0, 0]));
     }
 }
