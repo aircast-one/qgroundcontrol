@@ -90,6 +90,7 @@ data class VehicleChoice(
     val heading: Double = Double.NaN,
     val home: TrackPoint? = null,
     val radar: RadarReading? = null,
+    val armed: Boolean = false,
 )
 
 data class VehicleChoices(
@@ -123,6 +124,7 @@ fun vehicleChoices(view: JSONObject?): VehicleChoices {
                     selected = entry.optBoolean("selected"),
                     heading = if (entry.isNull("heading")) Double.NaN else entry.optDouble("heading", Double.NaN),
                     radar = radarReading(entry.optJSONObject("proximity")),
+                    armed = entry.optBoolean("armed"),
                     home = entry.optJSONObject("home")?.let { at ->
                         TrackPoint(at.optDouble("latitude", Double.NaN), at.optDouble("longitude", Double.NaN))
                             .takeIf { isPlottable(it.latitude, it.longitude) }

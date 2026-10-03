@@ -34,6 +34,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -219,8 +221,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     supportingContent = { Text(vehicleChoiceLine(choice, distinguishes)) },
                     leadingContent = selectionBox.takeIf { panelEnabled }?.let { box -> { box(choice) } },
                     trailingContent = {
-                        if (choice.active) {
-                            Icon(Icons.Default.Check, contentDescription = "Flying this one")
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            VehicleRowCompass(choice.heading, choice.armed)
+                            if (choice.active) {
+                                Icon(Icons.Default.Check, contentDescription = "Flying this one")
+                            }
                         }
                     },
                     modifier = Modifier.clickable(enabled = !choice.active) {
@@ -493,3 +498,32 @@ internal fun multiVehiclePanelEnabled(setting: JSONObject?): Boolean =
 
 internal fun activeVehicleId(view: JSONObject?): Int? =
     view?.takeIf { !it.isNull("activeId") }?.optInt("activeId", -1)?.takeIf { it > 0 }
+
+private val ROW_COMPASS_SIZE = 28.dp
+private val ROW_HEADING_COLOUR = androidx.compose.ui.graphics.Color(0xFFEE3424)
+internal const val DISARMED_ALPHA = 0.5f
+
+internal fun rowCompassAlpha(armed: Boolean): Float = if (armed) 1f else DISARMED_ALPHA
+
+@Composable
+private fun VehicleRowCompass(heading: Double, armed: Boolean) {
+    val ring = MaterialTheme.colorScheme.onSurfaceVariant
+    androidx.compose.foundation.Canvas(Modifier.size(ROW_COMPASS_SIZE).alpha(rowCompassAlpha(armed))) {
+        val radius = size.minDimension / 2f
+        drawCircle(ring, radius = radius - 1.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+        if (heading.isFinite()) {
+            rotate(heading.toFloat()) {
+                drawPath(
+                    androidx.compose.ui.graphics.Path().apply {
+                        moveTo(center.x, center.y - radius + 2.dp.toPx())
+                        lineTo(center.x - radius * 0.45f, center.y + radius * 0.55f)
+                        lineTo(center.x, center.y + radius * 0.25f)
+                        lineTo(center.x + radius * 0.45f, center.y + radius * 0.55f)
+                        close()
+                    },
+                    ROW_HEADING_COLOUR,
+                )
+            }
+        }
+    }
+}
