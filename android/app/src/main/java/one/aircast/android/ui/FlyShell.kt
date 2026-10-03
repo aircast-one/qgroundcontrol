@@ -4,6 +4,7 @@ import androidx.compose.ui.zIndex
 
 import one.aircast.mapspike.MapLayersSheet
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 
 import androidx.compose.runtime.mutableStateOf
@@ -110,8 +111,13 @@ internal fun flyViewNamed(name: String?): FlyView = FlyView.entries.firstOrNull 
 
 internal const val VIEWER3D_VIEW = "view.viewer3d"
 
-internal fun flyViewsOffered(viewer3dEnabled: Boolean, current: FlyView): List<FlyView> =
-    FlyView.entries.filter { it != FlyView.ThreeD || viewer3dEnabled || current == FlyView.ThreeD }
+internal fun flyViewsOffered(viewer3dEnabled: Boolean?, current: FlyView): List<FlyView> =
+    FlyView.entries.filter { it != FlyView.ThreeD || viewer3dEnabled == true || (viewer3dEnabled == null && current == FlyView.ThreeD) }
+
+internal fun flyViewAllowed(viewer3dEnabled: Boolean?, current: FlyView): FlyView =
+    if (current == FlyView.ThreeD && viewer3dEnabled == false) FlyView.Map else current
+
+internal fun viewer3dEnabled(view: org.json.JSONObject?): Boolean? = view?.takeIf { it.has("enabled") }?.optBoolean("enabled")
 
 internal fun flyViewSwapped(view: FlyView): FlyView = if (view == FlyView.Map) FlyView.Video else FlyView.Map
 
@@ -139,7 +145,9 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val viewer3dJson by one.aircast.android.bridge.qgcPath(VIEWER3D_VIEW)
-            val offered = flyViewsOffered(viewer3dJson?.optBoolean("enabled") == true, view)
+            val enabled3d = viewer3dEnabled(viewer3dJson)
+            LaunchedEffect(enabled3d, view) { flyViewAllowed(enabled3d, view).takeIf { it != view }?.let(onView) }
+            val offered = flyViewsOffered(enabled3d, view)
             offered.map { entry ->
                 val selected = entry == view
                 Surface(

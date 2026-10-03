@@ -13,6 +13,10 @@ class PipRulesTest {
     fun `the 3D view is offered only while QGC's 3D viewer is enabled, or already showing`() {
         org.junit.Assert.assertEquals(listOf(FlyView.Video, FlyView.Map, FlyView.Simple), flyViewsOffered(false, FlyView.Video))
         org.junit.Assert.assertEquals(FlyView.entries.toList(), flyViewsOffered(true, FlyView.Video))
-        org.junit.Assert.assertEquals(FlyView.entries.toList(), flyViewsOffered(false, FlyView.ThreeD))
+        org.junit.Assert.assertEquals(listOf(FlyView.Video, FlyView.Map, FlyView.Simple), flyViewsOffered(false, FlyView.ThreeD))
+        org.junit.Assert.assertEquals(FlyView.entries.toList(), flyViewsOffered(null, FlyView.ThreeD))
+        org.junit.Assert.assertEquals(FlyView.Map, flyViewAllowed(false, FlyView.ThreeD))
+        org.junit.Assert.assertEquals(FlyView.ThreeD, flyViewAllowed(null, FlyView.ThreeD))
+        org.junit.Assert.assertEquals(FlyView.Video, flyViewAllowed(false, FlyView.Video))
     }
 }
