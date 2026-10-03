@@ -39,6 +39,7 @@ import one.aircast.mapspike.optText
 import org.json.JSONObject
 
 internal const val MAVLINK_GROUP = "mavlinkSettings"
+internal const val SIGNING_AFTER_BLOCK = "Ground Station"
 internal const val SIGNING_KEYS_VIEW = "view.signingKeys"
 internal const val SIGNING_ADD_PASSPHRASE = "signingKeys.addPassphrase"
 internal const val SIGNING_ADD_RAW = "signingKeys.addRaw"
@@ -131,8 +132,9 @@ internal fun SigningKeysSection() {
     }
     val keys = read ?: return
 
-    SectionHeader("Signing Keys")
+    SectionHeader("MAVLink 2 signing")
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Signing keys should only be sent to the vehicle over secure links (e.g. USB).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (keys.vehicle) {
             Row(Modifier.fillMaxWidth()) {
                 Text("Active key", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))

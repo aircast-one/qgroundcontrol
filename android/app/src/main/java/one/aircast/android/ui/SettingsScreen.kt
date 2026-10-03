@@ -533,6 +533,7 @@ private fun SettingsControls(
             FactRuns(block.facts, onWrite)
             if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
             if (section.group == REMOTE_ID_GROUP && block.title == GCS_LOCATION_BLOCK) GcsPositionStatus()
+            if (section.group == MAVLINK_GROUP && block.title == SIGNING_AFTER_BLOCK) SigningKeysSection()
         }
         section.note
             .takeIf { it.isNotBlank() && section.group !in GROUPS_WITH_A_HEAD_EDITOR }
@@ -541,7 +542,6 @@ private fun SettingsControls(
         if (section.group == FLY_VIEW_GROUP) RcControlsEditor()
         if (section.group == VIEWER_3D_GROUP) OsmFilePicker(onWrite)
         if (section.group == OFFLINE_MAPS_GROUP) OfflineMapsSection()
-        if (section.group == MAVLINK_GROUP) SigningKeysSection()
         if (section.group == MAVLINK_GROUP) LinkStatusSection()
         if (section.group == MAVLINK_ACTIONS_GROUP) MavlinkActionsSection(onWrite)
     }
