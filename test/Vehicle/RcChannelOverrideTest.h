@@ -21,6 +21,7 @@ protected:
 private slots:
     void _overrideHoldsOneChannelAndReleasesTheRest();
     void _clearHandsTheChannelBackToTheTransmitter();
+    void _releasingOneChannelKeepsTheOthersHeld();
     void _releaseIsRepeatedThenStops();
     void _outOfRangeChannelIsRejected();
     void _pwmIsClampedToTheRcRange();

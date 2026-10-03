@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +42,11 @@ private fun sendOverride(channel: Int, pwm: Int) {
 
 private fun releaseOverrides() {
     offMainDetached { Qgc.invoke("vehicle.clearRcChannelOverrides") }
+}
+
+internal fun releaseRcChannels(channels: List<Int>) {
+    val held = channels.filter { it > 0 }.distinct()
+    if (held.isNotEmpty()) offMainDetached { held.forEach { Qgc.invoke("vehicle.releaseRcChannelOverride", it) } }
 }
 
 @Composable
@@ -145,7 +151,8 @@ fun RcControlsLayer(modifier: Modifier = Modifier) {
     val stateJson by qgcPath(FLY_STATE)
     val overriding = remember(stateJson) { flyState(stateJson)?.rcOverride == true }
 
-    DisposableEffect(Unit) { onDispose { releaseOverrides() } }
+    val held by rememberUpdatedState(controls.map { it.channel })
+    DisposableEffect(Unit) { onDispose { releaseRcChannels(held) } }
 
     if (controls.isEmpty() || !hasVehicle) {
         return

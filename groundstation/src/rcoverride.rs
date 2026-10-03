@@ -63,6 +63,18 @@ pub fn clear(backend: &dyn Backend, path: &str) -> Value {
     json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the release.") } })
 }
 
+pub fn release(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    if !connected(backend) {
+        return json!({ "ok": false, "refusal": "noVehicle", "reason": "No vehicle is connected." });
+    }
+    let channel = serde_json::from_str::<Value>(args).ok().and_then(|given| given.get(0).and_then(Value::as_i64));
+    let Some(channel) = channel.filter(|c| (1..=18).contains(c)) else {
+        return json!({ "ok": false, "refusal": "noSuchChannel", "reason": "RC channels run from 1 to 18." });
+    };
+    let dispatched = on_core(backend, json!({ "action": "rcReleaseChannel", "channel": channel })).unwrap_or_else(|| flag(&object(&backend.invoke(path, &json!([channel]).to_string())), "ok"));
+    json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The vehicle was not sent the release.") } })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,6 +102,8 @@ mod tests {
         assert_eq!(set(&rig, "vehicle.setRcChannelOverride", "[6, 1600]")["ok"], true);
         assert_eq!(set(&rig, "vehicle.setRcChannelOverride", "[7, 1600]")["refusal"], "notConfigured");
         assert_eq!(clear(&rig, "vehicle.clearRcChannelOverrides")["ok"], true, "a release is never refused while a vehicle is there");
+        assert_eq!(release(&rig, "vehicle.releaseRcChannelOverride", "[6]")["ok"], true);
+        assert_eq!(release(&rig, "vehicle.releaseRcChannelOverride", "[19]")["refusal"], "noSuchChannel");
         assert_eq!(set(&Vehicle("not json", true), "vehicle.setRcChannelOverride", "[6, 1600]")["refusal"], "notConfigured", "an unreadable control list configures nothing");
     }
 }

@@ -414,6 +414,7 @@ public:
 
     Q_INVOKABLE void setRcChannelOverride(int channel, int pwm);
     Q_INVOKABLE void clearRcChannelOverrides(void);
+    Q_INVOKABLE void releaseRcChannelOverride(int channel);
 
     /// Set home from flight map coordinate
     Q_INVOKABLE void doSetHome(const QGeoCoordinate& coord);
@@ -998,7 +999,7 @@ private:
     QVariantList        _rcChannelValues;
     QMap<int, quint16>  _rcChannelOverrides;
     QTimer              _rcChannelOverrideTimer;
-    int                 _rcChannelOverrideReleaseTicks = 0;
+    QMap<int, int>      _rcChannelOverrideReleaseTicks;
     static constexpr int _rcChannelOverrideCount        = 18;
     static constexpr int _rcChannelOverrideIntervalMSecs = 200;
     static constexpr int _rcChannelOverrideReleaseCount  = 3;

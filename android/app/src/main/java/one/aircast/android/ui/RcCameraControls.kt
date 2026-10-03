@@ -35,7 +35,8 @@ private const val FLY_VIEW_SETTINGS = "settings.flyViewSettings"
 private const val GIMBAL_VIEW = "view.gimbalIndicator"
 
 internal data class RcCameraChannels(val tilt: Int, val pan: Int, val zoom: Int, val light: Int, val record: Int) {
-    val any: Boolean get() = listOf(tilt, pan, zoom, light, record).any { it > 0 }
+    val all: List<Int> get() = listOf(tilt, pan, zoom, light, record).filter { it > 0 }
+    val any: Boolean get() = all.isNotEmpty()
 }
 
 internal fun rcCameraChannels(tilt: Int, pan: Int, zoom: Int, light: Int, record: Int): RcCameraChannels =
@@ -134,7 +135,8 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     var zoom by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
     var lightOn by remember(vehicleId) { mutableStateOf(false) }
     var channelRecording by remember(vehicleId) { mutableStateOf(false) }
-    DisposableEffect(vehicleId) { onDispose { offMainDetached { Qgc.invoke("vehicle.clearRcChannelOverrides") } } }
+    val held by rememberUpdatedState(channels.all)
+    DisposableEffect(vehicleId) { onDispose { releaseRcChannels(held) } }
     if (!hasVehicle() || (!channels.any && !gimbalManager)) return
     val gimbal = remember(gimbalJson) { gimbalIndicator(gimbalJson) }
     var gimbalRefused by remember { mutableStateOf<String?>(null) }

@@ -3106,7 +3106,7 @@ void Vehicle::setRcChannelOverride(int channel, int pwm)
     }
 
     const bool wasActive = rcChannelOverrideActive();
-    _rcChannelOverrideReleaseTicks = 0;
+    _rcChannelOverrideReleaseTicks.remove(channel);
     _rcChannelOverrides[channel] = static_cast<quint16>(qBound(_rcPwmMin, pwm, _rcPwmMax));
     if (!wasActive) {
         emit rcChannelOverrideActiveChanged(true);
@@ -3120,32 +3120,42 @@ void Vehicle::setRcChannelOverride(int channel, int pwm)
     _sendRcChannelOverrides();
 }
 
-// A release is a single 0 on each held channel, so a dropped packet would leave the channel
-// overridden until the vehicle's own RC_OVERRIDE_TIME expires. The release is repeated for a
-// few ticks instead, then the timer stops and the channels are forgotten.
 void Vehicle::clearRcChannelOverrides()
 {
-    if (_rcChannelOverrides.isEmpty()) {
+    const QList<int> held = _rcChannelOverrides.keys();
+    for (const int channel : held) {
+        releaseRcChannelOverride(channel);
+    }
+}
+
+void Vehicle::releaseRcChannelOverride(int channel)
+{
+    if (!_rcChannelOverrides.contains(channel)) {
         return;
     }
 
-    for (auto it = _rcChannelOverrides.begin(); it != _rcChannelOverrides.end(); ++it) {
-        it.value() = 0;
-    }
-    _rcChannelOverrideReleaseTicks = _rcChannelOverrideReleaseCount;
+    _rcChannelOverrides[channel] = 0;
+    _rcChannelOverrideReleaseTicks[channel] = _rcChannelOverrideReleaseCount;
     _sendRcChannelOverrides();
 }
 
 void Vehicle::_rcChannelOverrideTick()
 {
-    if (_rcChannelOverrideReleaseTicks > 0 && --_rcChannelOverrideReleaseTicks == 0) {
-        _rcChannelOverrideTimer.stop();
-        _sendRcChannelOverrides();
-        _rcChannelOverrides.clear();
-        emit rcChannelOverrideActiveChanged(false);
-        return;
-    }
     _sendRcChannelOverrides();
+
+    for (auto it = _rcChannelOverrideReleaseTicks.begin(); it != _rcChannelOverrideReleaseTicks.end();) {
+        if (--it.value() <= 0) {
+            _rcChannelOverrides.remove(it.key());
+            it = _rcChannelOverrideReleaseTicks.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    if (_rcChannelOverrides.isEmpty()) {
+        _rcChannelOverrideTimer.stop();
+        emit rcChannelOverrideActiveChanged(false);
+    }
 }
 
 void Vehicle::_sendRcChannelOverrides()

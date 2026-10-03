@@ -296,7 +296,7 @@ pub struct Vehicle {
     pub trigger_points: Vec<(f64, f64, f64)>,
     pub trigger_points_appended: bool,
     image_captured_seen: bool,
-    rc_release_ticks: u8,
+    rc_releasing: BTreeMap<u8, u8>,
     rc_due: Option<u64>,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
@@ -487,7 +487,7 @@ impl Vehicle {
             trigger_points: Vec::new(),
             trigger_points_appended: false,
             image_captured_seen: false,
-            rc_release_ticks: 0,
+            rc_releasing: BTreeMap::new(),
             airframe_reboot: None,
             stream: crate::streamconfig::StreamConfig::default(),
             autotune: crate::autotune::Autotune::default(),
@@ -1774,18 +1774,26 @@ impl Vehicle {
         if !(1..=RC_OVERRIDE_CHANNEL_COUNT).contains(&channel) {
             return Err(format!("RC channels run from 1 to {RC_OVERRIDE_CHANNEL_COUNT}."));
         }
-        self.rc_release_ticks = 0;
+        self.rc_releasing.remove(&channel);
         self.rc_override.insert(channel, pwm.clamp(800, 2200) as u16);
         self.rc_due.get_or_insert(now_ms + RC_OVERRIDE_PERIOD_MS);
         Ok(self.send_rc_override())
     }
 
     pub fn clear_rc_overrides(&mut self) -> Vec<Vec<u8>> {
-        if self.rc_override.is_empty() {
+        let held: Vec<u8> = self.rc_override.keys().copied().collect();
+        self.release_rc_overrides(&held)
+    }
+
+    pub fn release_rc_overrides(&mut self, channels: &[u8]) -> Vec<Vec<u8>> {
+        let released: Vec<u8> = channels.iter().copied().filter(|channel| self.rc_override.contains_key(channel)).collect();
+        if released.is_empty() {
             return Vec::new();
         }
-        self.rc_override.values_mut().for_each(|pwm| *pwm = 0);
-        self.rc_release_ticks = RC_OVERRIDE_RELEASE_TICKS;
+        released.iter().for_each(|channel| {
+            self.rc_override.insert(*channel, 0);
+            self.rc_releasing.insert(*channel, RC_OVERRIDE_RELEASE_TICKS);
+        });
         self.send_rc_override()
     }
 
@@ -1794,16 +1802,17 @@ impl Vehicle {
             return Vec::new();
         }
         self.rc_due = Some(now_ms + RC_OVERRIDE_PERIOD_MS);
-        if self.rc_release_ticks > 0 {
-            self.rc_release_ticks -= 1;
-            if self.rc_release_ticks == 0 {
-                self.rc_due = None;
-                let last = self.send_rc_override();
-                self.rc_override.clear();
-                return last;
-            }
+        let sent = self.send_rc_override();
+        let forgotten: Vec<u8> = self.rc_releasing.iter().filter(|(_, ticks)| **ticks <= 1).map(|(channel, _)| *channel).collect();
+        self.rc_releasing.values_mut().for_each(|ticks| *ticks = ticks.saturating_sub(1));
+        forgotten.iter().for_each(|channel| {
+            self.rc_releasing.remove(channel);
+            self.rc_override.remove(channel);
+        });
+        if self.rc_override.is_empty() {
+            self.rc_due = None;
         }
-        self.send_rc_override()
+        sent
     }
 
     pub fn start_guided(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
@@ -1816,6 +1825,10 @@ impl Vehicle {
                 return self.set_rc_override(channel, pwm, now_ms);
             }
             Some("rcRelease") => return Ok(self.clear_rc_overrides()),
+            Some("rcReleaseChannel") => {
+                let channel = action.get("channel").and_then(Value::as_i64).and_then(|c| u8::try_from(c).ok()).ok_or("An RC release takes a channel number.")?;
+                return Ok(self.release_rc_overrides(&[channel]));
+            }
             Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
             Some("reboot") => return Ok(self.send_tagged(guidedcmd::CMD_PREFLIGHT_REBOOT_SHUTDOWN, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], false, REBOOT_TAG, now_ms)),
             Some("factoryReset") => return Ok(self.send_tagged(guidedcmd::CMD_PREFLIGHT_STORAGE, [STORAGE_RESET_FACTORY, STORAGE_MISSION_UNTOUCHED, 0.0, 0.0, 0.0, 0.0, 0.0], true, FACTORY_RESET_TAG, now_ms)),
@@ -4454,6 +4467,26 @@ mod tests {
         assert_eq!(released, vec![(0, u16::MAX); 3], "Qt repeats the release three ticks and then forgets the channels");
         assert!(vehicle.rc_override.is_empty() && vehicle.rc_due.is_none());
         assert!(vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 19, "pwm": 1500 }), 3_000).is_err());
+    }
+
+    #[test]
+    fn releasing_one_control_s_channel_keeps_the_others_held() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let sent = |bytes: &[Vec<u8>]| bytes.iter().filter_map(|b| match decode(b) {
+            MavMessage::RC_CHANNELS_OVERRIDE(o) => Some((o.chan6_raw, o.chan9_raw)),
+            _ => None,
+        }).collect::<Vec<_>>();
+        vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 6, "pwm": 1600 }), 1_000).unwrap();
+        vehicle.start_guided(&json!({ "action": "rcOverride", "channel": 9, "pwm": 2000 }), 1_000).unwrap();
+        assert_eq!(sent(&vehicle.start_guided(&json!({ "action": "rcReleaseChannel", "channel": 6 }), 1_050).unwrap()), vec![(0, 2000)], "the camera panel closing releases its tilt, and the lights switch stays on");
+        let after: Vec<_> = [1_200, 1_400, 1_600, 1_800].into_iter().flat_map(|t| sent(&vehicle.tick_rc_override(t))).collect();
+        assert_eq!(after, vec![(0, 2000), (0, 2000), (0, 2000), (u16::MAX, 2000)], "the release repeats three ticks, then channel 6 goes back to the pilot");
+        assert_eq!(vehicle.rc_override.keys().copied().collect::<Vec<_>>(), vec![9]);
+        assert!(vehicle.rc_due.is_some(), "the held channel keeps being sent");
+        assert!(vehicle.start_guided(&json!({ "action": "rcReleaseChannel", "channel": 6 }), 2_000).unwrap().is_empty(), "a channel nobody holds has nothing to release");
     }
 
     #[test]
