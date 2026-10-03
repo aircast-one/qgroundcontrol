@@ -1618,11 +1618,7 @@ private fun CenterMenu(
 private fun StatTile(label: String, value: String) {
     val unit = value.substringAfterLast(' ', "").takeIf { value.contains(' ') }.orEmpty()
     val number = value.removeSuffix(unit).trim()
-    Column(
-        Modifier
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.shapes.medium)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    ) {
+    Column(Modifier.padding(end = 20.dp, top = 4.dp, bottom = 4.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(number, style = MaterialTheme.typography.titleLarge)
