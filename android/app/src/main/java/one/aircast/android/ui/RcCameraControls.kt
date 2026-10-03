@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
@@ -155,7 +156,7 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
                     val next = !recording
                     channelRecording = next
                     send(channels.record, if (next) PWM_MAX else PWM_MIN)
-                    offMainDetached { Qgc.invoke(if (next) "video.startRecording" else "video.stopRecording") }
+                    offMainInOrder { Qgc.invoke(if (next) "video.startRecording" else "video.stopRecording") }
                 }, label = { Text("Record") })
             }
             if (channels.light > 0) {

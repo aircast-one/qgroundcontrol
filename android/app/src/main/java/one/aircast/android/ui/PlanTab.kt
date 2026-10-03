@@ -261,13 +261,13 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                     text = { Text("Undo") },
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_undo), null) },
                                     enabled = history.canUndo,
-                                    onClick = { menuOpen = false; offMainDetached { Qgc.invoke("plan.undo") } },
+                                    onClick = { menuOpen = false; offMainInOrder { Qgc.invoke("plan.undo") } },
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Redo") },
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_redo), null) },
                                     enabled = history.canRedo,
-                                    onClick = { menuOpen = false; offMainDetached { Qgc.invoke("plan.redo") } },
+                                    onClick = { menuOpen = false; offMainInOrder { Qgc.invoke("plan.redo") } },
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(

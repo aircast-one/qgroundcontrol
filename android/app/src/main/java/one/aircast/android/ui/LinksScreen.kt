@@ -59,6 +59,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.optText
@@ -499,8 +500,8 @@ private fun BluetoothPicker(chosen: BluetoothDeviceChoice?, onPick: (BluetoothDe
             FilterChip(selected = device == chosen, onClick = { onPick(device) }, label = { Text(device.name) })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(enabled = !state.scanning, onClick = { offMainDetached { Qgc.invoke("links.bluetoothScan", true) } }) { Text("Scan") }
-            OutlinedButton(enabled = state.scanning, onClick = { offMainDetached { Qgc.invoke("links.bluetoothScan", false) } }) { Text("Stop") }
+            OutlinedButton(enabled = !state.scanning, onClick = { offMainInOrder { Qgc.invoke("links.bluetoothScan", true) } }) { Text("Scan") }
+            OutlinedButton(enabled = state.scanning, onClick = { offMainInOrder { Qgc.invoke("links.bluetoothScan", false) } }) { Text("Stop") }
         }
     }
 }
