@@ -176,6 +176,7 @@ fun VehicleMap(
     topInsetPx: Int = 0,
     leftInsetPx: Int = 0,
     cameraBottomPx: Int = 0,
+    pip: Boolean = false,
     fitRequest: Int = 0,
     fitOnly: List<TrackPoint>? = null,
     onFitFailed: () -> Unit = {},
@@ -470,6 +471,10 @@ fun VehicleMap(
         recenterNow()
     }
 
+    LaunchedEffect(style, pip) {
+        style?.let { applyPip(it, pip) }
+    }
+
     LaunchedEffect(map, cameraBottomPx) {
         map?.setPadding(0, 0, 0, cameraBottomPx)
     }
@@ -580,6 +585,19 @@ private fun installLayers(style: Style) {
         )
     }
 
+}
+
+internal const val PIP_ICON_SCALE = 1f / 3f
+internal const val PIP_TRAFFIC_SCALE = 1f / 2.5f
+
+private fun applyPip(style: Style, pip: Boolean) {
+    style.getLayer(TRAIL_LAYER)?.setProperties(PropertyFactory.visibility(if (pip) Property.NONE else Property.VISIBLE))
+    val scale = if (pip) PIP_ICON_SCALE else 1f
+    style.getLayer(VEHICLE_LAYER)?.setProperties(
+        PropertyFactory.circleRadius(Expression.switchCase(Expression.get(ACTIVE_PROPERTY), Expression.literal(9f * scale), Expression.literal(6f * scale))),
+    )
+    style.getLayer(VEHICLE_HEADING_LAYER)?.setProperties(PropertyFactory.iconSize(scale))
+    style.getLayer(TRAFFIC_LAYER)?.setProperties(PropertyFactory.iconSize(if (pip) PIP_TRAFFIC_SCALE else 1f))
 }
 
 private fun installVehicleLayer(style: Style) {

@@ -19,7 +19,7 @@ import org.mavlink.qgroundcontrol.QGCBridge
 import java.util.Locale
 
 const val TRAFFIC_SOURCE = "traffic"
-private const val TRAFFIC_LAYER = "traffic-aircraft"
+internal const val TRAFFIC_LAYER = "traffic-aircraft"
 private const val TRAFFIC_VIEW = "view.adsbTraffic"
 private const val ALERT_IMAGE = "traffic-alert"
 private const val AWARENESS_IMAGE = "traffic-awareness"

@@ -245,6 +245,7 @@ fun AircastShell(hostView: android.view.View?) {
                 cameraBottomPx = 0,
                 topInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) one.aircast.android.ui.FlyChrome.topPx else 0,
                 bottomInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) one.aircast.android.ui.FlyChrome.bottomPx else 0,
+                pip = flyView == one.aircast.android.ui.FlyView.Video,
                 onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
                 onMissionItemClick = { waypointTapped = it },
                 onRoiClick = { roiTapped = it },

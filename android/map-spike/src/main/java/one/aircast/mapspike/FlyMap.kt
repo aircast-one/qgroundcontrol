@@ -86,6 +86,7 @@ fun FlyMap(
     cameraBottomPx: Int = 0,
     topInsetPx: Int = 0,
     bottomInsetPx: Int = 0,
+    pip: Boolean = false,
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
     onRoiClick: ((TrackPoint) -> Unit)? = null,
@@ -105,6 +106,16 @@ fun FlyMap(
 
     DisposableEffect(Unit) {
         onDispose { MapBridge.release() }
+    }
+
+    var mainZoom by remember { mutableDoubleStateOf(saved?.zoom ?: 0.0) }
+    LaunchedEffect(pip) {
+        val at = centre ?: return@LaunchedEffect
+        pipZoom(mainZoom, pip)?.let { level ->
+            centreOn = at
+            centreZoom = level
+            centreRequest++
+        }
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -160,7 +171,8 @@ fun FlyMap(
             modifier = Modifier.fillMaxSize(),
             mapStyle = style,
             follow = true,
-            keepCentered = keepCentered,
+            keepCentered = keepCentered || pip,
+            pip = pip,
             gimbals = plan.gimbals,
             proximityRadar = true,
             cameraBottomPx = cameraBottomPx,
@@ -196,7 +208,10 @@ fun FlyMap(
                 centre = at
                 zoom = level
                 FlightMapPosition.latest = at
-                if (level > 1.0) writeCamera(context, SavedCamera(at, level))
+                if (level > 1.0 && !pip) {
+                    mainZoom = level
+                    writeCamera(context, SavedCamera(at, level))
+                }
             },
         )
         centre?.takeIf { zoom > 0.0 }?.let { at ->
@@ -208,4 +223,11 @@ fun FlyMap(
         }
         }
     }
+}
+
+internal fun pipZoom(mainZoom: Double, pip: Boolean): Double? = when {
+    mainZoom <= 0.0 -> null
+    !pip -> mainZoom
+    mainZoom > 3 -> mainZoom - 3
+    else -> null
 }
