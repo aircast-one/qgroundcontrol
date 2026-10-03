@@ -376,6 +376,12 @@ fn apm_mode_row(name: &str, mut row: Value, px4: bool) -> Value {
         _ if name == "FLTMODE_CH" || name == "MODE_CH" => {
             row["label"] = json!("Flight mode channel");
             row["shortLabel"] = json!("Flight mode channel");
+            let options: Vec<Value> = std::iter::once("Not assigned".to_string()).chain((1..=8).map(|n| format!("Channel {n}"))).enumerate().map(|(raw, label)| json!({ "label": label, "raw": raw.to_string() })).collect();
+            let chosen = row["value"].as_f64().filter(|v| v.fract() == 0.0 && (0.0..=8.0).contains(v)).and_then(|v| options.get(v as usize)).map(|o| o["label"].clone());
+            row["display"] = chosen.unwrap_or_else(|| row["valueString"].clone());
+            row["options"] = json!(options);
+            row["control"] = json!("choice");
+            row["rawChoice"] = json!(true);
         }
         _ => {}
     }
@@ -424,6 +430,13 @@ mod tests {
         assert_eq!((slot["shortLabel"].as_str(), slot["label"].as_str()), (Some("Flight Mode 6"), Some("PWM 1750 +")), "every firmware's slot reads Flight Mode N");
         let channel = apm_mode_row("MODE_CH", json!({ "label": "Mode channel", "shortLabel": "" }), false);
         assert_eq!(channel["label"], "Flight mode channel", "APMFlightModesComponent labels the channel combo");
+        let assigned = apm_mode_row("FLTMODE_CH", json!({ "label": "", "value": 5, "valueString": "5", "control": "number", "options": [] }), false);
+        let labels: Vec<&str> = assigned["options"].as_array().unwrap().iter().filter_map(|o| o["label"].as_str()).collect();
+        assert_eq!((labels.first().copied(), labels.last().copied(), labels.len()), (Some("Not assigned"), Some("Channel 8"), 9), "modeChannelCombo model is Not assigned then Channel 1-8");
+        assert_eq!((assigned["display"].as_str(), assigned["control"].as_str(), assigned["options"][5]["raw"].as_str()), (Some("Channel 5"), Some("choice"), Some("5")), "the combo index is the raw FLTMODE_CH value");
+        assert_eq!(assigned["rawChoice"], true, "FLTMODE_CH has no enum metadata, so the head must write the raw value, not enumIndex");
+        let off_list = apm_mode_row("FLTMODE_CH", json!({ "value": 12, "valueString": "12" }), false);
+        assert_eq!(off_list["display"], "12");
         assert_eq!(apm_mode_row("FLTMODE1", json!({ "label": "x" }), true)["label"], "x", "PX4's page shows no PWM ranges");
     }
 

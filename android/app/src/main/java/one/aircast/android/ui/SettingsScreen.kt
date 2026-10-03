@@ -898,7 +898,7 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit, label: Str
 private fun EnumField(fact: Fact, label: String?, write: (() -> Boolean) -> Unit) {
     ChoiceField(label, shownEnumLabel(fact), fact.enumStrings.map(::sentenceCase), enabled = fact.enabled) { index ->
         // qtpaths: settings.appSettings.indoorPalette.enumIndex, vehicle.parameterManager.getParameter(-1,RTL_TYPE).enumIndex
-        write { Qgc.set("${fact.path}.enumIndex", index) }
+        write { fact.enumValues.getOrNull(index)?.toLongOrNull()?.takeIf { fact.rawChoice }?.let { Qgc.set(fact.path, it) } ?: Qgc.set("${fact.path}.enumIndex", index) }
     }
 }
 

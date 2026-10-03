@@ -115,6 +115,7 @@ internal fun factFromControl(control: JSONObject): Fact? {
         shortLabel = control.optText("shortLabel"),
         keywords = control.optText("keywords"),
         inverted = control.optBoolean("inverted"),
+        rawChoice = control.optBoolean("rawChoice"),
     )
 }
 
