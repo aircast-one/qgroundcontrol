@@ -262,7 +262,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         },
         _ if crate::paramtools::owns(path) => crate::paramtools::run(backend, path),
         _ if crate::gimbalindicator::owns(path) => crate::gimbalindicator::run(backend, path, args),
-        crate::vehicleconfig::PAGE_OPENED => crate::vehicleconfig::page_opened(backend),
+        crate::vehicleconfig::PAGE_OPENED => crate::vehicleconfig::page_opened(backend, args),
         crate::paramfile::FILE_SAVE => crate::paramfile::save(backend),
         crate::paramfile::FILE_REVIEW => crate::paramfile::review(backend, args),
         crate::paramfile::FILE_APPLY => crate::paramfile::apply(backend, args),

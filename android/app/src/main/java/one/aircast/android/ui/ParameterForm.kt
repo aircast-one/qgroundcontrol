@@ -160,7 +160,7 @@ internal fun ParameterForm(
 
     LaunchedEffect(page, section, reloads) {
         rows = withContext(Dispatchers.Default) {
-            if (reloads == 0) Qgc.invoke(SETUP_PAGE_OPENED)
+            if (reloads == 0) Qgc.invoke(SETUP_PAGE_OPENED, page)
             readPage(page).filter { section == null || it.title == section } }
         loaded = true
     }

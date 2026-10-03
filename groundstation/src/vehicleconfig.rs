@@ -476,9 +476,19 @@ fn state_key(backend: &dyn Backend, state: &str) -> String {
 
 pub const PAGE_OPENED: &str = "setup.pageOpened";
 
-pub fn page_opened(backend: &dyn Backend) -> Value {
-    let prefix = state_key(backend, "");
-    page_state().retain(|key, _| !key.starts_with(&prefix));
+pub fn page_opened(backend: &dyn Backend, args: &str) -> Value {
+    let Some(opened) = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)) else {
+        return json!({ "ok": false, "reason": "setup.pageOpened takes the page name" });
+    };
+    let px4 = px4(backend);
+    let merged = (opened == "Flight Modes" && !px4).then_some(SIMPLE_MODES);
+    let keys: Vec<String> = std::iter::once(opened.as_str())
+        .chain(merged)
+        .filter_map(|page| config(backend, page, px4))
+        .flat_map(|c| c["state"].as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()).unwrap_or_default())
+        .map(|state| state_key(backend, &state))
+        .collect();
+    page_state().retain(|key, _| !keys.contains(key));
     json!({ "ok": true })
 }
 
@@ -1293,7 +1303,9 @@ mod tests {
         let mode = rows()[0].clone();
         assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", mode["path"].as_str().unwrap()), r#"{"value":3}"#)["ok"], true);
         assert_eq!(rows()[0]["display"], "Custom");
-        assert_eq!(page_opened(&fake)["ok"], true);
+        assert_eq!(page_opened(&fake, r#"["Power"]"#)["ok"], true);
+        assert_eq!(rows()[0]["display"], "Custom", "another page's form leaves Flight Modes' state alone");
+        assert_eq!(page_opened(&fake, r#"["Flight Modes"]"#)["ok"], true);
         assert_eq!(rows()[0]["display"], "Off");
     }
 
@@ -1373,7 +1385,7 @@ mod tests {
         assert_eq!(third["value"], true);
 
         let fake = Fake::new(&[("SIMPLE", 63.0), ("SUPER_SIMPLE", 0.0)]);
-        page_state().clear();
+        page_opened(&fake, r#"["Flight Modes"]"#);
         let mode = rows(&fake)[0].clone();
         assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", mode["path"].as_str().unwrap()), r#"{"value":3}"#)["ok"], true);
         assert_eq!((fake.params.borrow()["SIMPLE"], fake.params.borrow()["SUPER_SIMPLE"]), (0.0, 0.0), "_updateSimpleParamsFromSimpleMode writes 0 and 0 for Custom, never Simple on slot 1");

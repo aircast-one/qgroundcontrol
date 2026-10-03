@@ -250,6 +250,7 @@ internal fun MapSpikeScreen(
                             placeTakeoff(added, at.latitude, at.longitude)
                         }
                     }
+                    edits += 1
                     selected = MapHit.Waypoint(added)
                 }
             } else {
@@ -272,13 +273,15 @@ internal fun MapSpikeScreen(
         }
     }
 
-    fun onBridge(label: String? = null, done: String? = null, then: () -> Unit = {}, work: () -> Boolean) {
+    fun onBridge(label: String? = null, done: String? = null, then: (() -> Unit)? = null, work: () -> Boolean) {
         busy = label
         scope.launch {
             val ok = withContext(Dispatchers.Default) { work() }
             if (ok) {
-                edits += 1
-                then()
+                then?.let {
+                    edits += 1
+                    it()
+                }
                 busy = done
                 if (done != null) {
                     delay(FAILURE_MESSAGE_MS)
@@ -386,7 +389,6 @@ internal fun MapSpikeScreen(
             val nextStats = surveyStatsFor(nextAll)
             val drawn = planIsDrawn(nextItems, nextSurveys, nextFences, nextCircles, nextRally)
             withContext(Dispatchers.Main) {
-                if (readAt != edits) return@withContext
                 if (fitsPlanOnEntry(firstRead, plan != null, drawn)) {
                     follow = false
                     fitRequest += 1
@@ -400,7 +402,7 @@ internal fun MapSpikeScreen(
                 fences = nextFences
                 rally = nextRally
                 operator = nextOperator
-                if (!selectionSurvives(
+                if (readAt == edits && !selectionSurvives(
                         selected, nextAll, nextFences, nextCircles, nextRally, nextSurveys, nextLandings,
                         breach = nextBreach != null,
                     )
