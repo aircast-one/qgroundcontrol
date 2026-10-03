@@ -94,6 +94,18 @@ internal fun rtkRows(status: RtkStatus): List<Pair<String, String>> =
 
 internal fun rtkHeadline(status: RtkStatus): String = if (status.active) "Survey-in Active" else "RTK Streaming"
 
+@Composable
+internal fun RtkSettingsSheetContent() {
+    var status by remember { mutableStateOf<RtkStatus?>(null) }
+    LaunchedEffect(Unit) { status = withContext(Dispatchers.Default) { rtkStatus(Qgc.get(GPS_RTK_VIEW)) } }
+    Column(
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        RtkSettingsSection(status)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RtkIndicatorCell() {
@@ -126,7 +138,7 @@ internal fun RtkIndicatorCell() {
 }
 
 @Composable
-private fun RtkSettingsSection(status: RtkStatus) {
+internal fun RtkSettingsSection(status: RtkStatus?) {
     val scope = rememberCoroutineScope()
     var reloads by remember { mutableIntStateOf(0) }
     var facts by remember { mutableStateOf(emptyList<Fact>()) }
@@ -142,7 +154,7 @@ private fun RtkSettingsSection(status: RtkStatus) {
     Text("RTK GPS Settings", style = MaterialTheme.typography.titleSmall)
     autoConnect?.let { FactRow(it, title = "AutoConnect") { reloads++ } }
     facts.forEach { FactRow(it) { reloads++ } }
-    val writes = basePositionWrites(status)
+    val writes = status?.let { basePositionWrites(it) }
     if (fixedBaseChosen(facts)) Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Current base position", modifier = Modifier.weight(1f))
         OutlinedButton(enabled = writes != null, onClick = {

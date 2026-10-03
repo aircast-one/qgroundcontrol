@@ -134,6 +134,7 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
     var detail by remember { mutableStateOf<StripDetail?>(null) }
     var batterySettings by remember { mutableStateOf(false) }
     var batteryDisplay by remember { mutableStateOf(false) }
+    var rtkSettings by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     LaunchedEffect(Unit) { loadIndicatorOrder(context) }
     val setupJson by qgcPath(SETUP)
@@ -196,9 +197,19 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
                 TextButton(onClick = { detail = null; batteryDisplay = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery display") }
                 if (hasPowerSetup) TextButton(onClick = { detail = null; AppNavigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle power: configure") }
             }
+        } else if (shown == StripDetail.Gps) {
+            {
+                TextButton(onClick = { detail = null; rtkSettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("RTK GPS settings") }
+            }
         } else {
             null
         }) { detail = null }
+    }
+
+    if (rtkSettings) {
+        ModalBottomSheet(onDismissRequest = { rtkSettings = false }) {
+            RtkSettingsSheetContent()
+        }
     }
 
     if (batterySettings) {
