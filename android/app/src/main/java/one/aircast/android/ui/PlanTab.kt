@@ -249,11 +249,13 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                                 DropdownMenuItem(
                                     text = { Text("Undo") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_undo), null) },
                                     enabled = history.canUndo,
                                     onClick = { menuOpen = false; offMainDetached { Qgc.invoke("plan.undo") } },
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Redo") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_redo), null) },
                                     enabled = history.canRedo,
                                     onClick = { menuOpen = false; offMainDetached { Qgc.invoke("plan.redo") } },
                                 )
@@ -281,27 +283,32 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Export KML…") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_send), null) },
                                     enabled = can.exportKml,
                                     onClick = { menuOpen = false; files.exportKml() },
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Import boundary…") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_map), null) },
                                     enabled = can.open,
                                     onClick = { menuOpen = false; files.importBoundary() },
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("Defaults…") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_tune), null) },
                                     onClick = { menuOpen = false; showDefaults = true },
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Transform…") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_straighten), null) },
                                     enabled = containsItems,
                                     onClick = { menuOpen = false; showTransform = true },
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text("New plan…") },
+                                    leadingIcon = { Icon(painterResource(R.drawable.ic_add), null) },
                                     enabled = can.newPlan,
                                     onClick = {
                                         menuOpen = false
