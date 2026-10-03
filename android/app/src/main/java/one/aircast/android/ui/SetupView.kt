@@ -64,7 +64,7 @@ internal fun setupReadiness(view: JSONObject?): SetupReadiness? = view?.let {
         detail = it.optText("detail"),
         connected = it.optBoolean("connected"),
         firmware = it.optText("firmware"),
-        vehicleId = if (it.isNull("vehicleId") || !it.has("vehicleId")) null else it.optInt("vehicleId"),
+        vehicleId = if (it.isNull("vehicleId")) null else it.optInt("vehicleId"),
     )
 }
 

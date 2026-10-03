@@ -598,22 +598,28 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
         })
 }
 
-const VERSION_FIELDS: &str = "firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,latestStableFirmwareVersion,px4Firmware,apmFirmware,fixedWing,rover,sub";
+const VERSION_FIELDS: &str = "firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,px4Firmware,apmFirmware,fixedWing,vtol,rover,sub,multiRotor";
+
+pub fn apm_version_vehicle(vehicle: &Value) -> Option<&'static str> {
+    let on = |key: &str| crate::read::flag(vehicle, key);
+    match () {
+        _ if on("fixedWing") || on("vtol") => Some("Plane"),
+        _ if on("rover") => Some("Rover"),
+        _ if on("sub") => Some("Sub"),
+        _ if on("multiRotor") => Some("Copter"),
+        _ => None,
+    }
+}
 
 pub fn update_available(backend: &dyn crate::router::Backend) -> Option<String> {
     let vehicle = crate::read::object(&backend.get_fields("vehicle", VERSION_FIELDS));
     let running = crate::firmwareinfo::version(crate::read::integer(&vehicle, "firmwareMajorVersion"), crate::read::integer(&vehicle, "firmwareMinorVersion"), crate::read::integer(&vehicle, "firmwarePatchVersion"))?;
-    let latest = match vehicle.get("latestStableFirmwareVersion").and_then(Value::as_str) {
-        Some(hosted) => hosted.to_string(),
-        None => {
+    let latest = match crate::qthost::present() {
+        true => crate::read::object(&backend.get("vehicle.latestStableFirmwareVersion")).get("value").and_then(Value::as_str).map(str::to_string)?,
+        false => {
             let official = crate::read::text(&vehicle, "firmwareVersionTypeString").is_empty();
             let px4 = crate::read::flag(&vehicle, "px4Firmware");
-            let apm_vehicle = crate::read::flag(&vehicle, "apmFirmware").then(|| match (crate::read::flag(&vehicle, "fixedWing"), crate::read::flag(&vehicle, "rover"), crate::read::flag(&vehicle, "sub")) {
-                (true, _, _) => "Plane",
-                (_, true, _) => "Rover",
-                (_, _, true) => "Sub",
-                _ => "Copter",
-            });
+            let apm_vehicle = crate::read::flag(&vehicle, "apmFirmware").then(|| apm_version_vehicle(&vehicle)).flatten();
             let url = crate::latestfirmware::version_url(px4, apm_vehicle).filter(|_| official)?;
             crate::latestfirmware::latest(&url, px4).filter(|latest| crate::latestfirmware::older(&running, latest))?
         }
@@ -859,18 +865,13 @@ mod tests {
     }
 
     #[test]
-    fn a_hosted_vehicle_reports_its_own_latest_stable_like_vehicle_latest_stable_firmware_version() {
-        struct Hosted(Value);
-        impl crate::router::Backend for Hosted {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { self.0.to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
-            fn watch(&self, _p: &[String]) {}
-        }
-        let vehicle = |latest: &str| Hosted(json!({ "kind": "object", "firmwareMajorVersion": 4, "firmwareMinorVersion": 5, "firmwarePatchVersion": 6, "firmwareVersionTypeString": "", "latestStableFirmwareVersion": latest, "apmFirmware": true }));
-        assert_eq!(update_available(&vehicle("4.5.7")).as_deref(), Some("Update available: this vehicle is running 4.5.6, latest stable is 4.5.7."));
-        assert_eq!(update_available(&vehicle("")), None, "Qt leaves it empty when the vehicle is current or not official");
-        assert_eq!(update_available(&Hosted(json!({ "kind": "null" }))), None);
+    fn the_version_check_file_follows_the_ardupilot_plugin() {
+        let flags = |key: &str| json!({ "kind": "object", key: true });
+        assert_eq!(apm_version_vehicle(&flags("vtol")), Some("Plane"), "APMFirmwarePluginFactory sends VTOL types to ArduPlane");
+        assert_eq!(apm_version_vehicle(&flags("fixedWing")), Some("Plane"));
+        assert_eq!(apm_version_vehicle(&flags("rover")), Some("Rover"));
+        assert_eq!(apm_version_vehicle(&flags("sub")), Some("Sub"));
+        assert_eq!(apm_version_vehicle(&flags("multiRotor")), Some("Copter"));
+        assert_eq!(apm_version_vehicle(&json!({ "kind": "object" })), None, "an airship or generic vehicle has no version file");
     }
 }

@@ -1,11 +1,19 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-const PX4_RELEASES: &str = "https://api.github.com/repos/PX4/Firmware/releases";
+const PX4_RELEASES: &str = "https://api.github.com/repos/PX4/Firmware/releases?per_page=10";
 const APM_VERSION: &str = "http://firmware.ardupilot.org/{}/stable/Pixhawk1/git-version.txt";
-const VERSION_FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+const VERSION_FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+const VERSION_RETRY_AFTER: Duration = Duration::from_secs(60);
 
-static LATEST: Mutex<BTreeMap<String, Option<String>>> = Mutex::new(BTreeMap::new());
+enum Fetch {
+    Pending,
+    Done(String),
+    Failed(Instant),
+}
+
+static FETCHED: Mutex<BTreeMap<String, Fetch>> = Mutex::new(BTreeMap::new());
 
 pub fn version_url(px4: bool, apm_vehicle: Option<&str>) -> Option<String> {
     match (px4, apm_vehicle) {
@@ -16,7 +24,7 @@ pub fn version_url(px4: bool, apm_vehicle: Option<&str>) -> Option<String> {
 }
 
 pub fn parse(px4: bool, contents: &str) -> Option<String> {
-    let pattern = if px4 { r"v([0-9,\.]*) Stable" } else { r"(?m) V([0-9,\.]*)$" };
+    let pattern = if px4 { r"v([0-9.]+)(?: -)? Stable" } else { r"(?m) V([0-9,\.]*)$" };
     regex::Regex::new(pattern).ok()?.captures(contents)?.get(1).map(|m| m.as_str().to_string())
 }
 
@@ -37,25 +45,32 @@ fn fetches() -> bool {
     !cfg!(test) && std::env::var_os("QGC_CORE_OFFLINE").is_none()
 }
 
-fn locked() -> std::sync::MutexGuard<'static, BTreeMap<String, Option<String>>> {
-    LATEST.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+fn fetched() -> std::sync::MutexGuard<'static, BTreeMap<String, Fetch>> {
+    FETCHED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn text(url: &str) -> Option<String> {
+    let mut held = fetched();
+    let due = match held.get(url) {
+        Some(Fetch::Done(body)) => return Some(body.clone()),
+        Some(Fetch::Pending) => false,
+        Some(Fetch::Failed(at)) => at.elapsed() >= VERSION_RETRY_AFTER,
+        None => true,
+    };
+    if due && fetches() {
+        held.insert(url.to_string(), Fetch::Pending);
+        let url = url.to_string();
+        let _ = std::thread::Builder::new().name("firmware-versions".into()).spawn(move || {
+            let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(VERSION_FETCH_TIMEOUT)).build().into();
+            let body = agent.get(&url).call().ok().and_then(|mut answer| answer.body_mut().read_to_string().ok());
+            fetched().insert(url, body.map_or_else(|| Fetch::Failed(Instant::now()), Fetch::Done));
+        });
+    }
+    None
 }
 
 pub fn latest(url: &str, px4: bool) -> Option<String> {
-    if let Some(known) = locked().get(url) {
-        return known.clone();
-    }
-    locked().insert(url.to_string(), None);
-    if !fetches() {
-        return None;
-    }
-    let url = url.to_string();
-    let _ = std::thread::Builder::new().name("latest-firmware".into()).spawn(move || {
-        let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(VERSION_FETCH_TIMEOUT)).build().into();
-        let found = agent.get(&url).call().ok().and_then(|mut answer| answer.body_mut().read_to_string().ok()).and_then(|body| parse(px4, &body));
-        locked().insert(url, found);
-    });
-    None
+    text(url).and_then(|body| parse(px4, &body))
 }
 
 pub fn px4_release_names(releases: &str) -> (Option<String>, Option<String>) {
@@ -64,24 +79,8 @@ pub fn px4_release_names(releases: &str) -> (Option<String>, Option<String>) {
     (first(false), first(true))
 }
 
-static PX4_RELEASES_TEXT: Mutex<Option<Option<String>>> = Mutex::new(None);
-
 pub fn px4_releases() -> (Option<String>, Option<String>) {
-    let mut held = PX4_RELEASES_TEXT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    match held.as_ref() {
-        Some(text) => text.as_deref().map(px4_release_names).unwrap_or_default(),
-        None => {
-            *held = Some(None);
-            if fetches() {
-                let _ = std::thread::Builder::new().name("px4-releases".into()).spawn(|| {
-                    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(VERSION_FETCH_TIMEOUT)).build().into();
-                    let body = agent.get(PX4_RELEASES).call().ok().and_then(|mut answer| answer.body_mut().read_to_string().ok());
-                    *PX4_RELEASES_TEXT.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(body);
-                });
-            }
-            (None, None)
-        }
-    }
+    text(PX4_RELEASES).map(|body| px4_release_names(&body)).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -90,7 +89,8 @@ mod tests {
 
     #[test]
     fn versions_are_read_and_compared_like_firmware_plugin() {
-        assert_eq!(parse(true, r#"[{"name":"v1.15.4 Stable Release"}]"#).as_deref(), Some("1.15.4"), "PX4FirmwarePlugin::_versionRegex");
+        assert_eq!(parse(true, r#"[{"name":"v1.17.0 - Stable Release"},{"name":"v1.14.4 Stable Release"}]"#).as_deref(), Some("1.17.0"), "PX4 names releases \"v1.17.0 - Stable Release\" since 1.15; QGC's pattern skips those");
+        assert_eq!(parse(true, r#"[{"name":"v1.14.4 Stable Release"}]"#).as_deref(), Some("1.14.4"));
         assert_eq!(parse(false, "APMVERSION: ArduCopter V4.5.7\nother").as_deref(), Some("4.5.7"), "APMFirmwarePlugin::_versionRegex");
         assert!(older("4.5.6", "4.5.7") && older("1.9.9", "1.15.0") && !older("4.5.7", "4.5.7") && !older("4.6.0", "4.5.7"));
         assert_eq!(version_url(false, Some("Copter")).as_deref(), Some("http://firmware.ardupilot.org/Copter/stable/Pixhawk1/git-version.txt"));
