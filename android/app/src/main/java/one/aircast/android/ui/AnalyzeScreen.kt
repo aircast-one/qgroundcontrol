@@ -36,12 +36,14 @@ enum class AnalyzePage(
     val description: String,
     val section: AnalyzeSection,
     @DrawableRes val icon: Int,
+    val requiresVehicle: Boolean = false,
 ) {
     LogDownload(
         "Flight logs",
         "Download flight logs from the vehicle",
         AnalyzeSection.FlightData,
         R.drawable.ic_download,
+        requiresVehicle = true,
     ),
     GeoTag(
         "Geotag images",
@@ -54,18 +56,21 @@ enum class AnalyzePage(
         "Accelerometer vibration levels and clipping",
         AnalyzeSection.Live,
         R.drawable.ic_vibration,
+        requiresVehicle = true,
     ),
     Inspector(
         "MAVLink inspector",
         "Live message rates and field values",
         AnalyzeSection.Live,
         R.drawable.ic_analytics,
+        requiresVehicle = true,
     ),
     Console(
         "Console",
         "Vehicle shell over MAVLink",
         AnalyzeSection.Live,
         R.drawable.ic_terminal,
+        requiresVehicle = true,
     ),
     Messages(
         "Messages",
@@ -95,6 +100,11 @@ internal fun analyzeSubtitle(page: AnalyzePage, messages: List<VehicleMessage>, 
     page == AnalyzePage.Vibration -> vibration?.let(::vibrationGlance) ?: page.description
     else -> page.description
 }
+
+internal const val REQUIRES_VEHICLE = "Requires a connected vehicle"
+
+internal fun analyzeGate(page: AnalyzePage, connected: Boolean): String? =
+    REQUIRES_VEHICLE.takeIf { page.requiresVehicle && !connected }
 
 internal fun analyzeNote(
     page: AnalyzePage,
@@ -191,15 +201,23 @@ fun AnalyzeScreen(
 private fun AnalyzePageBody(page: AnalyzePage, leave: () -> Unit, modifier: Modifier = Modifier) {
     Column(modifier.fillMaxSize()) {
         PageTopBar(page.label, "Back to Analyze") { leave() }
+        val gate = analyzeGate(page, hasVehicle())
+        val vehiclesJson by qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+        val reloadKey = remember(vehiclesJson) { activeVehicleId(vehiclesJson)?.takeIf { page.requiresVehicle } }
         Surface(Modifier.weight(1f)) {
-            when (page) {
-                AnalyzePage.LogDownload -> LogDownloadScreen()
-                AnalyzePage.Console -> ConsoleScreen()
-                AnalyzePage.Inspector -> InspectorScreen()
-                AnalyzePage.Vibration -> VibrationScreen()
-                AnalyzePage.GeoTag -> GeoTagScreen()
-                AnalyzePage.Firmware -> FirmwareScreen()
-                AnalyzePage.Messages -> VehicleMessagesPage()
+            when {
+                gate != null -> EmptyState(page.icon, gate, "")
+                else -> androidx.compose.runtime.key(reloadKey) {
+                    when (page) {
+                        AnalyzePage.LogDownload -> LogDownloadScreen()
+                        AnalyzePage.Console -> ConsoleScreen()
+                        AnalyzePage.Inspector -> InspectorScreen()
+                        AnalyzePage.Vibration -> VibrationScreen()
+                        AnalyzePage.GeoTag -> GeoTagScreen()
+                        AnalyzePage.Firmware -> FirmwareScreen()
+                        AnalyzePage.Messages -> VehicleMessagesPage()
+                    }
+                }
             }
         }
     }

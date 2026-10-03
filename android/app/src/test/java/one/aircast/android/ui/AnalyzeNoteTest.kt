@@ -96,4 +96,14 @@ class AnalyzeNoteTest {
         assertNull(inspectorRateText(JSONObject("""{"available":true,"messages":[]}""")))
         assertEquals(AnalyzePage.Inspector.description, analyzeSubtitle(AnalyzePage.Inspector, emptyList(), null, null))
     }
+
+    @Test
+    fun `the pages QGCCorePlugin marks requiresVehicle say so with no vehicle, like AnalyzeView`() {
+        assertEquals(
+            setOf(AnalyzePage.LogDownload, AnalyzePage.Vibration, AnalyzePage.Inspector, AnalyzePage.Console),
+            AnalyzePage.entries.filter { analyzeGate(it, connected = false) != null }.toSet(),
+        )
+        assertEquals("Requires a connected vehicle", analyzeGate(AnalyzePage.Console, connected = false))
+        AnalyzePage.entries.forEach { assertNull(analyzeGate(it, connected = true)) }
+    }
 }

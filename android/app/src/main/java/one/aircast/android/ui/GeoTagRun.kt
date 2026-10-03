@@ -15,6 +15,9 @@ import one.aircast.android.bridge.Qgc
 private const val GEOTAG_POLL_MS = 250L
 internal const val DEFAULT_GEOTAG_OUTPUT = "TAGGED"
 
+internal fun geoTagOutputText(output: String?, images: String?): String =
+    output ?: images?.let { "$it/$DEFAULT_GEOTAG_OUTPUT" } ?: "Default: /$DEFAULT_GEOTAG_OUTPUT subfolder"
+
 internal object GeoTagRun {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val files = Mutex()

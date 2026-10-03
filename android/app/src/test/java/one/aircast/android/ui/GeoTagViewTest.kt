@@ -72,4 +72,11 @@ class GeoTagRunTest {
         assertNull("and a second decimal", parsedOffset("1.26"))
         assertEquals("parseFloat(text) || 0", 0.0, parsedOffset(" ")!!, 0.0)
     }
+
+    @Test
+    fun `the output folder reads like GeoTagPage - chosen, else the photos TAGGED subfolder, else the default`() {
+        assertEquals("Out", geoTagOutputText("Out", "Photos"))
+        assertEquals("Photos/TAGGED", geoTagOutputText(null, "Photos"))
+        assertEquals("Default: /TAGGED subfolder", geoTagOutputText(null, null))
+    }
 }

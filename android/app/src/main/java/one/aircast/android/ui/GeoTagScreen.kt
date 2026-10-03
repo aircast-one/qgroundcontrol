@@ -109,8 +109,8 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
         ) { imagePicker.launch(null) }
         GeoTagStepRow(
             mark = "3",
-            title = "Output folder",
-            detail = outputTree?.let(::treeName) ?: "Default: /$DEFAULT_GEOTAG_OUTPUT subfolder",
+            title = "Output folder (optional)",
+            detail = geoTagOutputText(outputTree?.let(::treeName), imageTree?.let(::treeName)),
             enabled = editable,
         ) { outputPicker.launch(null) }
 
