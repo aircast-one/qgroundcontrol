@@ -35,13 +35,14 @@ pub fn profile(points: Vec<Point>) -> Profile {
     let low = altitudes.iter().copied().fold(f64::INFINITY, f64::min);
     let high = altitudes.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let (low, high) = if altitudes.is_empty() { (0.0, 0.0) } else { (low, high) };
-    let padding = ((high - low) * 0.2).max(5.0);
+    let padding = (high - low) * 0.1;
+    let floor = if low > 0.0 { (low - padding).max(0.0) } else { low };
     let min_clearance = points
         .iter()
         .filter(|p| p.distance > 0.0)
         .filter_map(|p| p.terrain_altitude.map(|ground| p.mission_altitude - ground))
         .fold(None, |worst: Option<f64>, clearance| Some(worst.map_or(clearance, |worst| worst.min(clearance))));
-    Profile { points, min_altitude: low - padding, max_altitude: high + padding, total_distance, unknown_terrain, min_clearance }
+    Profile { points, min_altitude: floor, max_altitude: high + padding, total_distance, unknown_terrain, min_clearance }
 }
 
 pub fn clearance_complete(profile: &Profile) -> bool {
@@ -252,35 +253,36 @@ pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start:
     listed
         .iter()
         .scan(start, |walked, segment| {
-            let number = |key: &str| segment.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
-            let length = number("totalDistance").unwrap_or(0.0);
-            let spacing = number("distanceBetween").unwrap_or(0.0);
             let from = *walked;
-            *walked += length;
-            let (low, high) = (number("coord1AMSLAlt"), number("coord2AMSLAlt"));
-            let collision = segment.get("terrainCollision").and_then(Value::as_bool).unwrap_or(false);
-            let heights: Vec<Option<f64>> = segment
-                .get("amslTerrainHeights")
-                .and_then(Value::as_array)
-                .map(|heights| heights.iter().map(|h| h.as_f64().filter(|v| v.is_finite())).collect())
-                .unwrap_or_default();
-            Some((from, length, spacing, low, high, collision, heights))
+            *walked += segment.get("totalDistance").and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
+            Some(segment_points(segment, sequence, from))
         })
-        .flat_map(|(from, length, spacing, low, high, collision, heights)| {
-            let (Some(low), Some(high)) = (low, high) else { return Vec::new() };
-            let steps = heights.len().max(2);
-            (0..steps)
-                .map(|step| {
-                    let along = sample_at(step, steps, length, spacing);
-                    Point {
-                        sequence,
-                        distance: from + along,
-                        mission_altitude: low + (high - low) * if length > 0.0 { along / length } else { 0.0 },
-                        terrain_altitude: heights.get(step).copied().flatten(),
-                        collision,
-                    }
-                })
-                .collect()
+        .flatten()
+        .collect()
+}
+
+fn segment_points(segment: &Value, sequence: i64, from: f64) -> Vec<Point> {
+    let number = |key: &str| segment.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
+    let length = number("totalDistance").unwrap_or(0.0);
+    let spacing = number("distanceBetween").unwrap_or(0.0);
+    let (Some(low), Some(high)) = (number("coord1AMSLAlt"), number("coord2AMSLAlt")) else { return Vec::new() };
+    let collision = segment.get("terrainCollision").and_then(Value::as_bool).unwrap_or(false);
+    let heights: Vec<Option<f64>> = segment
+        .get("amslTerrainHeights")
+        .and_then(Value::as_array)
+        .map(|heights| heights.iter().map(|h| h.as_f64().filter(|v| v.is_finite())).collect())
+        .unwrap_or_default();
+    let steps = heights.len().max(2);
+    (0..steps)
+        .map(|step| {
+            let along = sample_at(step, steps, length, spacing);
+            Point {
+                sequence,
+                distance: from + along,
+                mission_altitude: low + (high - low) * if length > 0.0 { along / length } else { 0.0 },
+                terrain_altitude: heights.get(step).copied().flatten(),
+                collision,
+            }
         })
         .collect()
 }
@@ -379,7 +381,18 @@ fn flag_of(read: &Value, key: &str) -> bool {
     read.get(key) == Some(&Value::Bool(true))
 }
 
-pub fn simple_legs(reads: &[Value], fixed_wing: bool, height: &dyn Fn(f64, f64) -> Option<f64>) -> Vec<Value> {
+pub fn simple_legs(reads: &[Value], fixed_wing: bool, rover: bool, height: &dyn Fn(f64, f64) -> Option<f64>) -> Vec<Value> {
+    simple_segments(reads, fixed_wing, rover, height).into_iter().filter(|leg| leg.segment["terrainCollision"] == true).map(|leg| leg.line).collect()
+}
+
+pub struct SimpleSegment {
+    pub line: Value,
+    pub segment: Value,
+    pub sequence: i64,
+    pub end_distance: f64,
+}
+
+pub fn simple_segments(reads: &[Value], fixed_wing: bool, rover: bool, height: &dyn Fn(f64, f64) -> Option<f64>) -> Vec<SimpleSegment> {
     let home = reads.first().filter(|h| spot(h.get("coordinate")).is_some());
     let flown: Vec<&Value> = reads.iter().skip(1).filter(|r| flag_of(r, "specifiesCoordinate") && !flag_of(r, "isStandaloneCoordinate")).collect();
     let before_rtl = reads.iter().skip(1).position(|r| r.get("command").and_then(Value::as_i64) == Some(RETURN_TO_LAUNCH));
@@ -393,7 +406,8 @@ pub fn simple_legs(reads: &[Value], fixed_wing: bool, height: &dyn Fn(f64, f64) 
         None => 0,
     };
     let flown: Vec<&Value> = flown[..flown.len() - trailing_incomplete].to_vec();
-    let starts_on_ground = flown.first().is_some_and(|first| flag_of(first, "isTakeoffItem"));
+    let first_flown = flown.first().and_then(|first| reads.iter().position(|r| std::ptr::eq(r, *first))).unwrap_or(reads.len());
+    let starts_on_ground = rover || reads.iter().take(first_flown + 1).skip(1).any(|r| flag_of(r, "isTakeoffItem"));
     let path: Vec<&Value> = home.filter(|_| starts_on_ground).into_iter().chain(flown).chain(home.filter(|_| rtl_sequence.is_some())).collect();
     let to_home = |second: &Value| home.is_some_and(|h| std::ptr::eq(h, second));
     path.windows(2)
@@ -415,41 +429,54 @@ pub fn simple_legs(reads: &[Value], fixed_wing: bool, height: &dyn Fn(f64, f64) 
                 (_, true) => SegmentKind::Land,
                 _ => SegmentKind::Generic,
             };
-            (shaped_segment(from, from_alt, to, to_alt, kind, height)["terrainCollision"] == true).then(|| leg_json(from, to))
+            let segment = shaped_segment(from, from_alt, to, to_alt, kind, height);
+            let total = segment["totalDistance"].as_f64().unwrap_or(0.0);
+            let end_distance = second.get("distanceFromStart").and_then(Value::as_f64).filter(|d| d.is_finite()).unwrap_or(total);
+            Some(SimpleSegment { line: leg_json(from, to), segment, sequence: second.get("sequenceNumber").and_then(Value::as_i64).unwrap_or(-1), end_distance: if to_home(second) { f64::NAN } else { end_distance } })
         })
         .collect()
 }
 
-fn collision_legs(backend: &dyn Backend, core: Option<(&[Value], bool)>) -> Vec<Value> {
-    match core {
-        Some((reads, fixed_wing)) => simple_legs(reads, fixed_wing, &crate::terrainservice::height),
-        None => object(&backend.get_fields("plan.missionController.simpleFlightPathSegments", SEGMENT_FIELDS))
-            .get("elements")
-            .and_then(Value::as_array)
-            .map(|segments| {
-                segments
-                    .iter()
-                    .filter(|s| s.get("terrainCollision") == Some(&Value::Bool(true)))
-                    .filter_map(|s| Some(leg_json(spot(s.get("coordinate1"))?, spot(s.get("coordinate2"))?)))
-                    .collect()
-            })
-            .unwrap_or_default(),
-    }
+fn simple_points(legs: &[SimpleSegment]) -> Vec<Point> {
+    legs.iter()
+        .scan(0.0, |walked: &mut f64, leg| {
+            let total = leg.segment["totalDistance"].as_f64().unwrap_or(0.0);
+            let start = if leg.end_distance.is_finite() { leg.end_distance - total } else { *walked };
+            *walked = start + total;
+            Some(segment_points(&leg.segment, leg.sequence, start))
+        })
+        .flatten()
+        .collect()
+}
+
+fn collision_legs(backend: &dyn Backend) -> Vec<Value> {
+    object(&backend.get_fields("plan.missionController.simpleFlightPathSegments", SEGMENT_FIELDS))
+        .get("elements")
+        .and_then(Value::as_array)
+        .map(|segments| {
+            segments
+                .iter()
+                .filter(|s| s.get("terrainCollision") == Some(&Value::Bool(true)))
+                .filter_map(|s| Some(leg_json(spot(s.get("coordinate1"))?, spot(s.get("coordinate2"))?)))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let core = (crate::vehiclefacade::switched_on() && crate::coreplan::enabled()).then(|| {
         let document = crate::coreplan::current_document();
-        let fixed_wing = crate::plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::FixedWing;
-        (crate::missionitems::document_reads(&document, 0).unwrap_or_default(), fixed_wing)
+        let class = crate::plandoc::vehicle_class(document.vehicle_type);
+        (crate::missionitems::document_reads(&document, 0).unwrap_or_default(), class == crate::cmdinfo::VehicleClass::FixedWing, class == crate::cmdinfo::VehicleClass::Rover)
     });
     let model = match &core {
-        Some((reads, _)) => core_model(backend, reads),
+        Some((reads, ..)) => core_model(backend, reads),
         None => object(&backend.get_fields("plan.missionController.visualItems", FIELDS)),
     };
     let entries = points(&model);
     let inside = walked(backend, &model);
-    let mut all: Vec<Point> = entries.into_iter().chain(inside).collect();
+    let legs = core.as_ref().map(|(reads, fixed_wing, rover)| simple_segments(reads, *fixed_wing, *rover, &crate::terrainservice::height)).unwrap_or_default();
+    let mut all: Vec<Point> = entries.into_iter().chain(inside).chain(simple_points(&legs)).collect();
     all.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
     let profile = profile(all);
     let vertical = Unit::vertical(backend);
@@ -472,7 +499,10 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "highestText": crate::read::format_measure(vertical.show(profile.max_altitude), &vertical.name),
         "bandText": crate::read::range_text(profile.min_altitude, profile.max_altitude, &vertical),
         "markers": markers(&model),
-        "collisionLegs": collision_legs(backend, core.as_ref().map(|(reads, fixed_wing)| (reads.as_slice(), *fixed_wing))),
+        "collisionLegs": match core {
+            Some(_) => legs.iter().filter(|leg| leg.segment["terrainCollision"] == true).map(|leg| leg.line.clone()).collect(),
+            None => collision_legs(backend),
+        },
         "points": profile.points.iter().map(|p| json!({
             "sequence": p.sequence,
             "distance": p.distance,
@@ -489,14 +519,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_takeoff_before_the_first_waypoint_or_a_rover_links_home_like_recalc_flight_path_segments() {
+        let home = json!({ "homePosition": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "amslEntryAlt": 500.0 });
+        let takeoff = json!({ "isTakeoffItem": true, "specifiesCoordinate": false });
+        let waypoint = json!({ "specifiesCoordinate": true, "coordinate": { "latitude": 47.01, "longitude": 8.0 }, "amslEntryAlt": 550.0, "sequenceNumber": 2 });
+        let flat = |_: f64, _: f64| Some(400.0);
+        assert_eq!(simple_segments(&[home.clone(), takeoff, waypoint.clone()], false, false, &flat).len(), 1, "ArduPilot's NAV_TAKEOFF has no coordinate and still starts the mission from the ground");
+        assert_eq!(simple_segments(&[home.clone(), waypoint.clone()], false, true, &flat).len(), 1, "a rover always starts at home");
+        assert!(simple_segments(&[home, waypoint], false, false, &flat).is_empty());
+    }
+
+    #[test]
+    fn the_height_band_pads_a_tenth_and_stays_above_sea_level_like_terrain_profile() {
+        let at = |distance: f64, mission: f64, ground: f64| Point { sequence: 1, distance, mission_altitude: mission, terrain_altitude: Some(ground), collision: false };
+        let band = profile(vec![at(0.0, 600.0, 500.0), at(100.0, 600.0, 400.0)]);
+        assert_eq!((band.min_altitude, band.max_altitude), (380.0, 620.0));
+        let low = profile(vec![at(0.0, 30.0, 5.0), at(100.0, 30.0, 0.0)]);
+        assert_eq!(low.min_altitude, 0.0, "the floor never goes below zero");
+    }
+
+    #[test]
+    fn the_profile_walks_terrain_along_simple_legs_like_terrain_profile() {
+        let item = |lat: f64, alt: f64, sequence: i64, from_start: f64| json!({ "specifiesCoordinate": true, "isSimpleItem": true, "coordinate": { "latitude": lat, "longitude": 8.0 }, "amslEntryAlt": alt, "sequenceNumber": sequence, "distanceFromStart": from_start });
+        let reads = vec![json!({ "homePosition": true }), item(47.0, 600.0, 1, 0.0), item(47.01, 600.0, 2, 1112.0)];
+        let ridge = |lat: f64, _lon: f64| Some(if lat > 47.004 && lat < 47.006 { 700.0 } else { 500.0 });
+        let walked = simple_points(&simple_segments(&reads, false, false, &ridge));
+        assert!(walked.len() > 30, "sampled every 30 m between the two waypoints, not just at them: {}", walked.len());
+        assert!(walked.iter().any(|p| p.terrain_altitude == Some(700.0) && p.collision), "the ridge between the waypoints is on the profile and red");
+        assert!(walked.first().unwrap().distance.abs() < 1.0 && (walked.last().unwrap().distance - 1112.0).abs() < 1.0, "placed on the mission's distance axis");
+    }
+
+    #[test]
     fn a_leg_that_dips_into_the_ground_is_listed_like_a_red_missionlineview() {
         let item = |lat: f64, alt: f64, simple: bool| json!({ "specifiesCoordinate": true, "isSimpleItem": simple, "coordinate": { "latitude": lat, "longitude": 8.0 }, "amslEntryAlt": alt });
         let reads = vec![json!({ "homePosition": true }), item(47.0, 600.0, true), item(47.01, 600.0, true), item(47.02, 800.0, true), item(47.03, 800.0, false)];
         let ridge = |lat: f64, _lon: f64| Some(if lat > 47.004 && lat < 47.006 { 700.0 } else { 500.0 });
-        let legs = simple_legs(&reads, false, &ridge);
+        let legs = simple_legs(&reads, false, false, &ridge);
         assert_eq!(legs.len(), 1, "only the first leg crosses the ridge, and a leg into a complex item is left to its own segments");
         assert_eq!(legs[0]["from"]["latitude"], 47.0);
-        assert!(simple_legs(&reads, false, &|_, _| None).is_empty(), "no terrain known, nothing is red");
+        assert!(simple_legs(&reads, false, false, &|_, _| None).is_empty(), "no terrain known, nothing is red");
         let land = json!({ "specifiesCoordinate": true, "isSimpleItem": true, "isLandCommand": true, "coordinate": { "latitude": 47.01, "longitude": 8.0 }, "amslEntryAlt": 500.0 });
         let after = item(47.02, 300.0, true);
         let rtl = json!({ "command": 20, "sequenceNumber": 9, "specifiesCoordinate": false });
@@ -504,7 +565,7 @@ mod tests {
         let flat = |_: f64, _: f64| Some(500.0);
         let sequenced = |mut item: Value, seq: i64| { item["sequenceNumber"] = json!(seq); item };
         let route = vec![home, sequenced(item(47.0, 600.0, true), 1), sequenced(land, 2), sequenced(after, 3), rtl];
-        let hits = simple_legs(&route, false, &flat);
+        let hits = simple_legs(&route, false, false, &flat);
         assert!(hits.iter().all(|leg| leg["from"]["latitude"] != 47.01), "no segment is drawn out of a landing");
         assert!(hits.iter().any(|leg| leg["to"]["latitude"] == 46.99), "after an RTL the last item links home, and that low leg is red");
         assert!(!hits.iter().any(|leg| leg["to"]["latitude"] == 47.01), "a land leg's last 10 m touching the ground is not a collision");
@@ -518,18 +579,18 @@ mod tests {
         let mut land = at(47.02, 500.0);
         land["isLandCommand"] = json!(true);
         let ridge = |lat: f64, _lon: f64| Some(if lat > 47.008 && lat < 47.012 { 700.0 } else { 500.0 });
-        let legs = simple_legs(&[json!({ "homePosition": true }), terrain_wp, land], false, &ridge);
+        let legs = simple_legs(&[json!({ "homePosition": true }), terrain_wp, land], false, false, &ridge);
         assert_eq!(legs.len(), 1, "segmentTypeForPair makes a pair into a landing a Land segment before it looks at the terrain frame");
         let mut survey = at(47.01, 600.0);
         survey["isIncomplete"] = json!(true);
-        let gapped = simple_legs(&[json!({ "homePosition": true }), at(47.0, 600.0), survey, at(47.02, 600.0)], false, &ridge);
+        let gapped = simple_legs(&[json!({ "homePosition": true }), at(47.0, 600.0), survey, at(47.02, 600.0)], false, false, &ridge);
         assert!(gapped.is_empty(), "MissionController draws no segment into or out of an incomplete item, so none is checked: {gapped:?}");
         let home = json!({ "homePosition": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "amslEntryAlt": 600.0 });
         let mut landing = at(47.02, 600.0);
         landing["isLandCommand"] = json!(true);
         landing["sequenceNumber"] = json!(1);
         let rtl = json!({ "command": 20, "sequenceNumber": 2, "specifiesCoordinate": false });
-        let back = simple_legs(&[home, landing, rtl], false, &ridge);
+        let back = simple_legs(&[home, landing, rtl], false, false, &ridge);
         assert_eq!(back.len(), 1, "after an RTL the leg from the last landing back home is a generic segment and is checked: {back:?}");
         let mut tail = at(47.01, 600.0);
         tail["isIncomplete"] = json!(true);
@@ -538,7 +599,7 @@ mod tests {
         before["sequenceNumber"] = json!(1);
         let home = json!({ "homePosition": true, "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "amslEntryAlt": 600.0 });
         let rtl = json!({ "command": 20, "sequenceNumber": 3, "specifiesCoordinate": false });
-        let home_leg = simple_legs(&[home, before, tail, rtl], false, &ridge);
+        let home_leg = simple_legs(&[home, before, tail, rtl], false, false, &ridge);
         assert_eq!(home_leg.len(), 1, "QGC keeps the last valid item as lastFlyThroughVI past an incomplete one, so the leg home still starts there: {home_leg:?}");
     }
 
@@ -643,18 +704,17 @@ mod tests {
     #[test]
     fn a_flat_mission_still_gets_a_band_to_draw_in() {
         let flat = profile(vec![point(0.0, 100.0, Some(50.0)), point(200.0, 100.0, Some(50.0))]);
-        assert_eq!(flat.min_altitude, 40.0);
-        assert_eq!(flat.max_altitude, 110.0);
+        assert_eq!(flat.min_altitude, 45.0);
+        assert_eq!(flat.max_altitude, 105.0);
         assert_eq!(flat.total_distance, 200.0);
         assert_eq!(flat.unknown_terrain, 0);
     }
 
     #[test]
-    fn the_band_pads_twenty_percent_of_the_range_and_counts_unknown_ground() {
+    fn unknown_ground_is_counted() {
         let hilly = profile(vec![point(0.0, 100.0, None), point(500.0, 150.0, Some(20.0))]);
         assert_eq!(hilly.unknown_terrain, 1);
-        assert_eq!(hilly.min_altitude, 20.0 - 26.0);
-        assert_eq!(hilly.max_altitude, 150.0 + 26.0);
+        assert_eq!((hilly.min_altitude, hilly.max_altitude), (7.0, 163.0));
     }
 
     #[test]
