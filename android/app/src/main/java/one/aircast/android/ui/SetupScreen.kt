@@ -157,6 +157,7 @@ internal fun parametersIncomplete(view: JSONObject?): String? =
 
 internal const val SETUP_PARAMETERS_PAGE = "Parameters"
 internal const val SETUP_OVERVIEW_PAGE = ""
+private const val NAVIGATION_SETTLE_MS = 500L
 internal const val SETUP_SUMMARY = "view.setupSummary"
 private const val SETUP_SUMMARY_POLL_MS = 2000L
 
@@ -249,8 +250,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         if (!hasVehicle) summaries = emptyMap()
     }
 
-    LaunchedEffect(AppNavigation.setupPage, components) {
-        AppNavigation.setupPage?.takeIf { components.isNotEmpty() }?.let { requested ->
+    LaunchedEffect(AppNavigation.setupPage, components, hasVehicle) {
+        AppNavigation.setupPage?.takeIf { hasVehicle && components.isNotEmpty() }?.let { requested ->
             when (requested) {
                 SETUP_PARAMETERS_PAGE -> {
                     parametersSearch = ""
@@ -258,6 +259,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 }
                 else -> components.firstOrNull { it.name == requested }?.let { opened = it to null }
             }
+            delay(NAVIGATION_SETTLE_MS)
             AppNavigation.setupPage = null
         }
     }

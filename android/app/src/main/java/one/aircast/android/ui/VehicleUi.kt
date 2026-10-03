@@ -867,6 +867,8 @@ internal object FlightModePending {
 internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: () -> Unit) {
     val json by qgcPath(FLIGHT_MODES)
     val modes = remember(json) { flightModesView(json) }
+    val setupJson by qgcPath(SETUP)
+    val hasModesPage = remember(setupJson) { setupComponents(setupJson).any { it.name == FLIGHT_MODES_PAGE } }
     val onRefusal: (String?) -> Unit = { FlyRefusal.text = it }
     val onWithdraw: (String) -> Unit = { FlyRefusal.text = withdrawn(FlyRefusal.text, it) }
     var showFolded by remember { mutableStateOf(false) }
@@ -997,6 +999,15 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                 settings = true
             },
         )
+        if (hasModesPage) {
+            DropdownMenuItem(
+                text = { Text("Configure flight modes") },
+                onClick = {
+                    onDismiss()
+                    AppNavigation.setupPage = FLIGHT_MODES_PAGE
+                },
+            )
+        }
         DropdownMenuItem(
             text = { Text("Vehicle status") },
             onClick = {
