@@ -625,7 +625,7 @@ internal fun MapSpikeScreen(
 
         val density = LocalDensity.current
         val waypointAt = placeAt()
-        if (waypointAt != null && kindAllows(insertable, KIND_WAYPOINT) && tracing == null) {
+        if (waypointAt != null && kindAllows(insertable, KIND_WAYPOINT) && tracing == null && !summaryHidden) {
             ExtendedFloatingActionButton(
                 onClick = { addMissionItem(KIND_WAYPOINT, "Adding a waypoint", placeAt(), insertAfter(selected, allItems)) },
                 icon = { Icon(Icons.Default.Add, null) },
