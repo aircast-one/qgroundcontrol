@@ -651,6 +651,21 @@ fn current_camera_mode() -> Option<u8> {
     crate::hub::lock().active()?.cameras.selected()?.mode_now()
 }
 
+#[derive(Debug, PartialEq)]
+enum LocalRecording {
+    Start,
+    Stop,
+}
+
+fn local_recording_op(name: &str, camera_captures_video: bool, recording: bool) -> Option<LocalRecording> {
+    (!camera_captures_video).then_some(())?;
+    match (name, recording) {
+        ("startVideoRecording", _) | ("toggleVideoRecording", false) => Some(LocalRecording::Start),
+        ("stopVideoRecording", _) | ("toggleVideoRecording", true) => Some(LocalRecording::Stop),
+        _ => None,
+    }
+}
+
 fn real_camera_op(name: &str, args: &str) -> Option<Value> {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let timelapse = stored_number("PhotoCaptureMode").is_some_and(|mode| mode as i64 != crate::simcamera::PHOTO_CAPTURE_SINGLE);
@@ -1253,7 +1268,17 @@ impl<B: Backend> Facade<B> {
 
 impl<B: Backend> Facade<B> {
     fn real_camera_invoke(&self, name: &str, args: &str) -> Option<String> {
-        let vehicle = switched_on().then(|| crate::hub::lock().active().filter(|v| v.cameras.selected().is_some()).map(|v| v.id)).flatten()?;
+        let (vehicle, captures_video) = switched_on().then(|| crate::hub::lock().active().and_then(|v| v.cameras.selected().map(|c| (v.id, c.info.flags & crate::cameraproto::CAP_CAPTURE_VIDEO != 0)))).flatten()?;
+        if let Some(local) = local_recording_op(name, captures_video, crate::videohost::recording()) {
+            let started = match local {
+                LocalRecording::Start => crate::videohost::start_recording().map_err(|refused| refused.unwrap_or("Video recording could not start.")),
+                LocalRecording::Stop => Ok(crate::videohost::stop_recording()),
+            };
+            return Some(match started {
+                Ok(()) => json!({ "ok": true, "result": true }).to_string(),
+                Err(reason) => json!({ "ok": false, "result": false, "error": reason }).to_string(),
+            });
+        }
         let mut action = real_camera_op(name, args)?;
         action["action"] = json!("camera");
         action["vehicle"] = json!(vehicle);
@@ -1929,6 +1954,14 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_camera_without_video_capture_records_locally_like_vehicle_camera_control() {
+        assert_eq!(local_recording_op("startVideoRecording", false, false), Some(LocalRecording::Start));
+        assert_eq!(local_recording_op("toggleVideoRecording", false, true), Some(LocalRecording::Stop));
+        assert_eq!(local_recording_op("startVideoRecording", true, false), None, "a camera that records goes over MAVLink");
+        assert_eq!(local_recording_op("takePhoto", false, false), None);
+    }
 
     #[test]
     fn a_fence_contains_items_only_when_it_has_a_shape() {
