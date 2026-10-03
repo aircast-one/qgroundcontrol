@@ -19,4 +19,12 @@ class GotoMarkerTest {
         assertTrue(gotoRing(copter).isEmpty())
         assertNull(gotoLocation(JSONObject("""{"gotoLocation":null}""")))
     }
+
+    @Test
+    fun `the loiter ring points its rotation arrows the way the circle was committed`() {
+        val anticlockwise = gotoLocation(JSONObject("""{"gotoLocation":{"latitude":47.4,"longitude":8.5,"loiterRadiusMetres":80.0,"loiterClockwise":false}}"""))
+        assertEquals(listOf(270.0, 90.0), gotoArrows(anticlockwise).map { it.second })
+        assertEquals(listOf(90.0, 270.0), gotoArrows(anticlockwise?.copy(loiterClockwise = true)).map { it.second })
+        assertTrue(gotoArrows(anticlockwise?.copy(loiterRadiusMetres = null)).isEmpty())
+    }
 }

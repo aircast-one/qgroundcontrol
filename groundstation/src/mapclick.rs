@@ -92,12 +92,12 @@ fn loiter_circle_shown(backend: &dyn Backend, vehicle: &Value) -> bool {
     !flag(vehicle, "px4Firmware") && !flag(vehicle, "orbitActive") && crate::guided::forward_flight(backend)
 }
 
-fn loiter_offer(backend: &dyn Backend) -> Option<(f64, f64)> {
+fn loiter_offer(backend: &dyn Backend) -> Option<GotoMark> {
     let (vehicle, in_goto_mode) = goto_vehicle(backend);
     let mark = goto_shown(in_goto_mode).filter(|_| in_goto_mode)?;
     let guided = flag(&object(&backend.get_fields("vehicle.supports", "guidedMode")), "guidedMode");
     let shown = flag(&vehicle, "armed") && flag(&vehicle, "flying") && guided && loiter_circle_shown(backend, &vehicle) && !crate::guided::mission_active(backend);
-    shown.then_some((mark.latitude, mark.longitude))
+    shown.then_some(mark)
 }
 
 fn goto_location(backend: &dyn Backend) -> Option<Value> {
@@ -110,6 +110,7 @@ fn goto_location(backend: &dyn Backend) -> Option<Value> {
             "longitude": mark.longitude,
             "loiterRadiusMetres": radius,
             "loiterRadiusText": radius.map(|metres| format!("{:.0} {}", unit.show(metres), unit.name)),
+            "loiterClockwise": radius.map(|_| mark.radius >= 0.0),
         })
     })
 }
@@ -164,13 +165,13 @@ pub fn map_click_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "message": o.message,
             "confirm": o.confirm,
         })).collect::<Vec<_>>(),
-        "loiter": loiter_offer(backend).map(|(latitude, longitude)| json!({
-            "latitude": latitude,
-            "longitude": longitude,
+        "loiter": loiter_offer(backend).map(|mark| json!({
+            "latitude": mark.latitude,
+            "longitude": mark.longitude,
             "title": "Change Loiter Radius",
             "message": "Change the forward flight loiter radius",
-            "defaultRadius": unit.show(crate::guided::goto_loiter_radius(backend)),
-            "clockwise": true,
+            "defaultRadius": unit.show(mark.radius.abs()),
+            "clockwise": mark.radius >= 0.0,
         })),
         "gotoLocation": goto_location(backend),
         "orbitDefaultRadius": unit.show(ORBIT_DEFAULT_RADIUS_METRES),
@@ -351,6 +352,38 @@ mod tests {
         assert_eq!(goto_state().mark, Some(GotoMark { latitude: 47.4, longitude: 8.5, radius: 25.0 }), "a goto that went out is the point a loiter radius change re-sends");
         assert_eq!(send(&vehicle, Click::GoTo, "vehicle.guidedModeGotoLocation", r#"[{"latitude":47.4,"longitude":8.5},-40]"#)["ok"], true, "the sign of the radius is the loiter direction, as QGC sends it");
         assert_eq!(goto_state().mark.map(|m| m.radius), Some(-40.0), "a loiter radius change is the radius the circle now draws");
+    }
+
+    struct Plane;
+    impl Backend for Plane {
+        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            match p {
+                "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
+                "vehicle" => json!({ "kind": "object", "armed": true, "flying": true, "fixedWing": true, "flightMode": "Guided", "gotoFlightMode": "Guided" }),
+                "vehicle.supports" => json!({ "kind": "object", "guidedMode": true }),
+                _ => json!({ "kind": "object" }),
+            }
+            .to_string()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn the_loiter_circle_keeps_the_committed_radius_and_direction() {
+        let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        goto_shown(false);
+        remember_goto(GotoMark { latitude: 47.4, longitude: 8.5, radius: -120.0 });
+        let view = map_click_view(&Plane, &[]);
+        assert_eq!(view["gotoLocation"]["loiterRadiusMetres"], 120.0);
+        assert_eq!(view["gotoLocation"]["loiterClockwise"], false, "QGCMapCircleVisuals points its rotation arrows the way the circle was committed");
+        assert_eq!(view["loiter"]["defaultRadius"], 120.0, "the radius edit starts from the committed circle, not the setting");
+        assert_eq!(view["loiter"]["clockwise"], false);
+        remember_goto(GotoMark { latitude: 47.4, longitude: 8.5, radius: 80.0 });
+        assert_eq!(map_click_view(&Plane, &[])["gotoLocation"]["loiterClockwise"], true);
+        goto_shown(false);
     }
 
     #[test]
