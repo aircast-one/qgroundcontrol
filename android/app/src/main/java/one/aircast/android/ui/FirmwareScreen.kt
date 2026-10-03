@@ -170,8 +170,8 @@ internal fun flashingLabel(ports: List<FirmwarePort>, port: String): String =
     "Flashing - ${ports.firstOrNull { it.port == port }?.description?.ifBlank { null } ?: port}"
 
 internal fun sourceLabel(source: String, label: String, stable: String, beta: String): String = when {
-    source == "px4:stable" && stable.isNotBlank() -> "PX4 Pro $stable, stable"
-    source == "px4:beta" && beta.isNotBlank() -> "PX4 Pro $beta, beta"
+    source == "px4:stable" && stable.isNotBlank() -> "PX4 Pro $stable"
+    source == "px4:beta" && beta.isNotBlank() -> "PX4 Pro $beta"
     else -> label
 }
 

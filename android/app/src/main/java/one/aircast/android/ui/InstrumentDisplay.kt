@@ -209,6 +209,7 @@ private fun IconButtonFor(name: String, onClick: () -> Unit) {
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun ValueDisplayDialog(label: String, initial: ValueDisplay, onDismiss: () -> Unit, extra: @Composable () -> Unit = {}, onDone: (ValueDisplay) -> Unit) {
     val context = LocalContext.current
@@ -254,7 +255,7 @@ internal fun ValueDisplayDialog(label: String, initial: ValueDisplay, onDismiss:
                 }
                 Text("Value range", style = MaterialTheme.typography.titleSmall)
                 Text("Change the color, opacity or icon when the value crosses a threshold", style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     RangeType.entries.forEach { type ->
                         FilterChip(
                             selected = display.rangeType == type,

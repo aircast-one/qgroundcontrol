@@ -95,7 +95,7 @@ class FirmwareScreenTest {
 
     @Test
     fun `PX4 builds carry the release name like updatePX4VersionDisplay`() {
-        org.junit.Assert.assertEquals("PX4 Pro v1.15.4, stable", sourceLabel("px4:stable", "PX4 Pro, stable", "v1.15.4", ""))
+        org.junit.Assert.assertEquals("PX4 Pro v1.17.0 - Stable Release", sourceLabel("px4:stable", "PX4 Pro, stable", "v1.17.0 - Stable Release", ""))
         org.junit.Assert.assertEquals("PX4 Pro, beta", sourceLabel("px4:beta", "PX4 Pro, beta", "v1.15.4", ""))
         org.junit.Assert.assertEquals("ArduPilot Copter, stable", sourceLabel("ardupilot:copter:stable", "ArduPilot Copter, stable", "v1.15.4", "x"))
     }
