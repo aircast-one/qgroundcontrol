@@ -49,7 +49,7 @@ enum Next {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Message {
+pub(crate) enum Message {
     Neutral,
     ThrottleUp,
     ThrottleDown,
@@ -80,7 +80,7 @@ fn stick_for(message: Message, mode: u8) -> Stick {
     }
 }
 
-fn stick_positions(message: Message, mode: u8) -> [i32; 4] {
+pub(crate) fn stick_positions(message: Message, mode: u8) -> [i32; 4] {
     let moved = match message {
         Message::ThrottleUp | Message::PitchUp => Some((0, 1)),
         Message::ThrottleDown | Message::PitchDown => Some((0, -1)),

@@ -103,6 +103,7 @@ private fun CalibrationStep(cal: RadioCalibration, onAction: (String) -> Unit) {
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             )
+            if (cal.running) StickDiagram(cal.stickPositions, single = false)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,

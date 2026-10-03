@@ -138,6 +138,22 @@ impl Default for RcCal {
     }
 }
 
+fn diagram(step: Step, centered_throttle: bool) -> Option<crate::stickcal::Message> {
+    use crate::stickcal::Message;
+    match step {
+        Step::StickNeutral if centered_throttle => None,
+        Step::StickNeutral | Step::Min(Function::Throttle) => Some(Message::ThrottleDown),
+        Step::Detect(Function::Throttle) => Some(Message::ThrottleUp),
+        Step::Detect(Function::Yaw) => Some(Message::YawRight),
+        Step::Min(Function::Yaw) => Some(Message::YawLeft),
+        Step::Detect(Function::Roll) => Some(Message::RollRight),
+        Step::Min(Function::Roll) => Some(Message::RollLeft),
+        Step::Detect(Function::Pitch) => Some(Message::PitchUp),
+        Step::Min(Function::Pitch) => Some(Message::PitchDown),
+        Step::SwitchMinMax | Step::Complete => None,
+    }
+}
+
 fn message(step: Step, centered_throttle: bool) -> &'static str {
     match step {
         Step::StickNeutral if centered_throttle => "* Center all sticks as shown in diagram.\n* Make sure any additional axes are at a neutral position.\n* Please ensure all motor power is disconnected from the vehicle.\n* Click Next to continue",
@@ -429,6 +445,14 @@ impl RcCal {
         Outcome::Write(writes)
     }
 
+    pub fn stick_positions(&self) -> [i32; 4] {
+        let mode = u8::try_from(self.transmitter_mode).unwrap_or(2);
+        self.step
+            .and_then(|s| STEPS.get(s))
+            .and_then(|step| diagram(*step, self.centered_throttle))
+            .map_or([0; 4], |message| crate::stickcal::stick_positions(message, mode))
+    }
+
     pub fn json(&self) -> Value {
         let fields = |f: Function| (f, self.mapped(f).is_some(), self.adjusted(f), self.reversed(f));
         let object: serde_json::Map<String, Value> = FUNCTIONS
@@ -457,6 +481,7 @@ impl RcCal {
             "centeredThrottle": self.centered_throttle,
             "joystickMode": false,
             "throttleReversedCalFailure": self.throttle_reversed_failure,
+            "stickPositions": self.stick_positions(),
         });
         answer.as_object_mut().into_iter().for_each(|a| a.extend(object.clone()));
         answer
@@ -566,5 +591,21 @@ mod tests {
         cal.channel_values(&[1500, 1500, 1500], 0);
         assert!(cal.next(&copter(), &lookup).is_empty());
         assert_eq!(clamped(&[900, 2100, 1500]), vec![1000, 2000, 1500]);
+    }
+
+    #[test]
+    fn the_diagram_shows_each_step_like_remote_control_calibration_controller() {
+        let mut cal = RcCal::for_vehicle(&copter(), 2);
+        cal.step = Some(0);
+        assert_eq!(cal.stick_positions(), [0, -1, 0, 0], "throttle-down neutral in mode 2 pulls the left stick down");
+        cal.set_centered_throttle(true);
+        assert_eq!(cal.stick_positions(), [0; 4], "centred throttle centres both sticks");
+        cal.step = Some(STEPS.iter().position(|s| *s == Step::Detect(Function::Yaw)).unwrap());
+        assert_eq!(cal.stick_positions(), [1, 0, 0, 0], "mode 2 yaw is the left stick");
+        cal.transmitter_mode = 1;
+        cal.step = Some(STEPS.iter().position(|s| *s == Step::Min(Function::Pitch)).unwrap());
+        assert_eq!(cal.stick_positions(), [0, -1, 0, 0], "mode 1 pitch is the left stick");
+        cal.step = None;
+        assert_eq!(cal.json()["stickPositions"], json!([0, 0, 0, 0]));
     }
 }

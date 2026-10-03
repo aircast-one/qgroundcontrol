@@ -336,7 +336,7 @@ private fun SettingRow(setting: JoystickSetting, onChange: (Any) -> Unit) {
 private val STICK_BOX = 72.dp
 
 @Composable
-private fun StickDiagram(positions: List<Int>, single: Boolean) {
+internal fun StickDiagram(positions: List<Int>, single: Boolean) {
     val ring = MaterialTheme.colorScheme.outline
     val knob = MaterialTheme.colorScheme.primary
     Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {

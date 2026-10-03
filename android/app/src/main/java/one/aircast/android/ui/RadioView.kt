@@ -28,6 +28,7 @@ internal data class RadioCalibration(
     val cancelEnabled: Boolean,
     val skipEnabled: Boolean,
     val throttleReversed: Boolean = false,
+    val stickPositions: List<Int> = List(4) { 0 },
 )
 
 internal data class RadioView(
@@ -70,6 +71,7 @@ internal fun radioView(view: JSONObject?): RadioView? {
             cancelEnabled = view.optBoolean("cancelEnabled"),
             skipEnabled = view.optBoolean("skipEnabled"),
             throttleReversed = view.optBoolean("throttleReversed"),
+            stickPositions = view.optJSONArray("stickPositions")?.let { a -> (0 until a.length()).map(a::optInt) }?.takeIf { it.size == 4 } ?: List(4) { 0 },
         ),
         sticks = each(view, "sticks") {
             RadioStick(
