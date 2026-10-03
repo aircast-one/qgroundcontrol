@@ -103,7 +103,7 @@ internal fun analyzeNote(
     vibration: String?,
 ): String? = when {
     !connected -> null
-    page == AnalyzePage.Console && !px4 -> "The shell answers on PX4; this vehicle reports another autopilot"
+    page == AnalyzePage.Console && !px4 -> "Only PX4 vehicles answer this shell"
     page == AnalyzePage.Vibration -> vibration
     else -> null
 }

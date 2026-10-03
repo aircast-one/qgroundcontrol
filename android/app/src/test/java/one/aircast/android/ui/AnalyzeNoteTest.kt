@@ -13,7 +13,7 @@ class AnalyzeNoteTest {
     fun `a console row does not promise a shell the vehicle will not answer`() {
         assertEquals(
             "the head knows the firmware in the list and made the operator open the page to find out",
-            "The shell answers on PX4; this vehicle reports another autopilot",
+            "Only PX4 vehicles answer this shell",
             analyzeNote(AnalyzePage.Console, connected = true, px4 = false, vibration = null),
         )
         assertNull(analyzeNote(AnalyzePage.Console, connected = true, px4 = true, vibration = null))

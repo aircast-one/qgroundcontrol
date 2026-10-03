@@ -69,8 +69,7 @@ internal fun consoleShellHint(px4Firmware: Boolean): String? =
     if (px4Firmware) {
         null
     } else {
-        "This vehicle does not report PX4 firmware. The shell answers on PX4; " +
-            "other autopilots may not reply to anything you send."
+        "Only PX4 vehicles answer this shell. This one runs other firmware, so it may not reply to anything you send."
     }
 
 @Composable
