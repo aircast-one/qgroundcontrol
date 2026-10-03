@@ -28,6 +28,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
 import org.json.JSONObject
 
@@ -114,37 +115,40 @@ internal fun ActuatorTestSection(
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Actuator testing", style = MaterialTheme.typography.titleMedium)
+        if (testing.actuators.isEmpty()) {
+            Text("Configure some outputs in order to test them.")
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Switch(checked = enabled && !testing.hadFailure, onCheckedChange = ::setEnabled, enabled = !testing.hadFailure && !assigning)
+                Text(
+                    if (enabled) "Careful: actuator sliders are enabled" else "Propellers are removed - enable sliders",
+                    color = MaterialTheme.aircast.warning,
+                )
+            }
+            testing.allMotors?.let { motors ->
+                TestSlider(motors, allMotors, enabled) { value ->
+                    allMotors = value
+                    val motorFunctions = testing.actuators.filter { it.isMotor }.map { it.function }
+                    values = values + motorFunctions.associateWith { value }
+                    moved = moved + motorFunctions
+                }
+            }
+            testing.actuators.forEach { channel ->
+                TestSlider(channel, values[channel.function] ?: channel.rest, enabled) { value ->
+                    values = values + (channel.function to value)
+                    moved = moved + channel.function
+                }
+                if (enabled && channel.function in moved) {
+                    ChannelSender(channel, values[channel.function] ?: channel.rest) {
+                        values = values + (channel.function to channel.rest)
+                        moved = moved - channel.function
+                    }
+                }
+            }
+        }
         if (actions.isNotEmpty()) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 actions.forEach { group -> ActionGroupButton(group, enabled = !enabled && !assigning) }
-            }
-        }
-        if (testing.actuators.isEmpty()) {
-            Text("Configure some outputs in order to test them.")
-            return@Column
-        }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Switch(checked = enabled && !testing.hadFailure, onCheckedChange = ::setEnabled, enabled = !testing.hadFailure && !assigning)
-            Text(if (enabled) "Careful: actuator sliders are live" else "Propellers are off, so enable the sliders")
-        }
-        testing.allMotors?.let { motors ->
-            TestSlider(motors, allMotors, enabled) { value ->
-                allMotors = value
-                val motorFunctions = testing.actuators.filter { it.isMotor }.map { it.function }
-                values = values + motorFunctions.associateWith { value }
-                moved = moved + motorFunctions
-            }
-        }
-        testing.actuators.forEach { channel ->
-            TestSlider(channel, values[channel.function] ?: channel.rest, enabled) { value ->
-                values = values + (channel.function to value)
-                moved = moved + channel.function
-            }
-            if (enabled && channel.function in moved) {
-                ChannelSender(channel, values[channel.function] ?: channel.rest) {
-                    values = values + (channel.function to channel.rest)
-                    moved = moved - channel.function
-                }
             }
         }
     }
