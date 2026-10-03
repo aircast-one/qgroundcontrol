@@ -1602,12 +1602,13 @@ private fun PositionDialog(at: TrackPoint, onDismiss: () -> Unit, onMove: (Track
 }
 
 @Composable
-private fun CenterMenu(
+fun CenterMenu(
     launch: TrackPoint?,
     myLocation: TrackPoint?,
-    missionPoints: List<TrackPoint>,
-    onFit: (List<TrackPoint>?) -> Unit,
     onCentre: (TrackPoint) -> Unit,
+    launchLabel: String = "Launch",
+    missionPoints: List<TrackPoint>? = null,
+    onFit: (List<TrackPoint>?) -> Unit = {},
 ) {
     var open by remember { mutableStateOf(false) }
     var asking by remember { mutableStateOf(false) }
@@ -1618,9 +1619,11 @@ private fun CenterMenu(
     Box {
         FilledTonalButton(onClick = { open = true }) { Text("Center") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text("Mission") }, onClick = { open = false; onFit(missionPoints) })
-            DropdownMenuItem(text = { Text("All items") }, onClick = { open = false; onFit(null) })
-            DropdownMenuItem(text = { Text("Launch") }, enabled = launch != null, onClick = { open = false; launch?.let(onCentre) })
+            missionPoints?.let { points ->
+                DropdownMenuItem(text = { Text("Mission") }, onClick = { open = false; onFit(points) })
+                DropdownMenuItem(text = { Text("All items") }, onClick = { open = false; onFit(null) })
+            }
+            DropdownMenuItem(text = { Text(launchLabel) }, enabled = launch != null, onClick = { open = false; launch?.let(onCentre) })
             DropdownMenuItem(text = { Text("Vehicle") }, enabled = vehicle != null, onClick = { open = false; vehicle?.let(onCentre) })
             DropdownMenuItem(text = { Text("My location") }, enabled = myLocation != null, onClick = { open = false; myLocation?.let(onCentre) })
             DropdownMenuItem(text = { Text("Coordinates…") }, onClick = { open = false; asking = true })

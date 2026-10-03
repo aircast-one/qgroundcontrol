@@ -50,16 +50,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.mapspike.CenterMenu
 import one.aircast.mapspike.OperatorBridge
 import one.aircast.mapspike.TrackPoint
+import one.aircast.mapspike.VEHICLES_VIEW
 import one.aircast.mapspike.VehicleMap
 import one.aircast.mapspike.aircast
 import one.aircast.mapspike.currentMapType
+import one.aircast.mapspike.mapPath
 import one.aircast.mapspike.operatorHeading
 import one.aircast.mapspike.operatorPoint
 import one.aircast.mapspike.optText
 import one.aircast.mapspike.qgcRasterStyle
 import one.aircast.mapspike.readCamera
+import one.aircast.mapspike.vehicleChoices
 import org.json.JSONObject
 
 internal const val OFFLINE_MAPS_GROUP = "offlineMapsSettings"
@@ -365,6 +369,10 @@ private fun OfflineSetEditor(
     var typeMenu by remember { mutableStateOf(false) }
     var showPreview by remember { mutableStateOf(false) }
     var fetchElevation by remember { mutableStateOf(true) }
+    var picked by remember { mutableStateOf<TrackPoint?>(null) }
+    var picks by remember { mutableIntStateOf(0) }
+    val fleetJson by mapPath(VEHICLES_VIEW)
+    val home = remember(fleetJson) { vehicleChoices(fleetJson).active?.home }
     val minZoom = zooms.start.toInt()
     val maxZoom = zooms.endInclusive.toInt()
 
@@ -402,16 +410,28 @@ private fun OfflineSetEditor(
                         mapStyle = qgcRasterStyle(mapType),
                         follow = false,
                         centreRequest = when {
+                            picks > 0 -> 2 + picks
                             operatorCentre != null -> 2
                             flightMap != null -> 1
                             else -> 0
                         },
-                        centreOn = operatorCentre ?: flightMap?.centre,
-                        centreZoom = flightMap?.zoom.takeIf { operatorCentre == null },
+                        centreOn = picked ?: operatorCentre ?: flightMap?.centre,
+                        centreZoom = flightMap?.zoom.takeIf { picked == null && operatorCentre == null },
                         operator = operator?.point,
                         operatorHeading = operator?.heading ?: Double.NaN,
                         onViewChanged = { corners -> region = offlineRegion(corners) },
                     )
+                    Box(Modifier.align(Alignment.TopStart).padding(8.dp)) {
+                        CenterMenu(
+                            launch = home,
+                            myLocation = operator?.point,
+                            launchLabel = "Home",
+                            onCentre = { point ->
+                                picked = point
+                                picks += 1
+                            },
+                        )
+                    }
                 }
                 Column(
                     Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
