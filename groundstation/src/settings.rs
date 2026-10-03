@@ -303,9 +303,9 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("EU Vehicle Info", &["classificationType", "categoryEU", "classEU"]),
     ]),
     ("mavlinkSettings", &[
+        ("Telemetry logs", &["telemetrySave", "telemetrySaveNotArmed", "saveCsvTelemetry"]),
         ("Ground Station", &["gcsMavlinkSystemID", "sendGCSHeartbeat", "noInitialDownloadWhenFlying"]),
         ("MAVLink Forwarding", &["forwardMavlink", "forwardMavlinkHostName", "forwardMavlinkAPMSupportHostName"]),
-        ("Logging", &["telemetrySave", "telemetrySaveNotArmed", "saveCsvTelemetry"]),
         ("Stream Rates (ArduPilot Only)", &["apmStartMavlinkStreams"]),
     ]),
     ("ntripSettings", &[
@@ -727,9 +727,9 @@ mod tests {
         assert_eq!(
             titles,
             vec![
+                ("Telemetry logs".to_string(), vec!["telemetrySave".to_string()]),
                 ("Ground Station".to_string(), vec!["sendGCSHeartbeat".to_string()]),
                 ("MAVLink Forwarding".to_string(), vec!["forwardMavlink".to_string(), "forwardMavlinkHostName".to_string()]),
-                ("Logging".to_string(), vec!["telemetrySave".to_string()]),
             ],
             "TelemetrySettings.qml heads these groups; without them the forwarding switch reads as a bare Enable"
         );
