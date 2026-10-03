@@ -231,7 +231,7 @@ private fun EmptyState(message: String, detail: String, modifier: Modifier = Mod
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = message,
+            text = sentenceCase(message),
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
         )

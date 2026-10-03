@@ -166,7 +166,7 @@ internal fun EmptyState(@DrawableRes icon: Int, title: String, text: String, mod
         ) {
             Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.onSecondaryContainer, modifier = Modifier.size(48.dp))
         }
-        Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        Text(sentenceCase(title), style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
         if (text.isNotBlank()) {
             Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         }
