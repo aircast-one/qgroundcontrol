@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -28,6 +29,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -41,6 +44,8 @@ internal const val ESP_BRIDGE_VIEW = "view.espBridge"
 internal const val ESP_BRIDGE_SCREEN = "espBridge"
 private const val ESP_POLL_MS = 1000L
 private val WIFI_MODES = listOf("Access point mode", "Station mode")
+private const val STATION_MODE = 1
+private val HOST_PORTS = 1024..65535
 
 internal data class LinkCounts(val received: String, val lost: String, val sent: String)
 
@@ -56,6 +61,7 @@ internal data class EspBridge(
     val baudRates: List<Long>,
     val baudIndex: Int,
     val hostPort: String,
+    val hostPortPath: String,
     val vehicle: LinkCounts,
     val bridge: LinkCounts,
     val qgc: LinkCounts,
@@ -81,12 +87,17 @@ internal fun espBridge(view: JSONObject?): EspBridge? = view?.takeIf { it.optBoo
         baudRates = (0 until (bauds?.length() ?: 0)).map { at -> bauds!!.optLong(at) },
         baudIndex = it.optInt("baudIndex", 4),
         hostPort = it.optJSONObject("hostPort")?.optText("valueString").orEmpty(),
+        hostPortPath = it.optJSONObject("hostPort")?.optText("path").orEmpty(),
         vehicle = counts(status?.optJSONObject("vehicle")),
         bridge = counts(status?.optJSONObject("bridge")),
         qgc = counts(status?.optJSONObject("qgc")),
         rebootPrompt = it.optText("rebootPrompt"),
     )
 }
+
+internal fun stationFieldsEnabled(bridge: EspBridge): Boolean = bridge.modeIndex == STATION_MODE
+
+internal fun hostPortTyped(typed: String): Int? = typed.toIntOrNull()?.takeIf { it in HOST_PORTS }
 
 @Composable
 fun EspBridgeScreen(modifier: Modifier = Modifier) {
@@ -111,18 +122,20 @@ fun EspBridgeScreen(modifier: Modifier = Modifier) {
         return
     }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionHeader("ESP Wi-Fi bridge settings")
-        bridge.modeIndex?.let { mode -> Choice("Wi-Fi mode", WIFI_MODES, mode) { set("${bridge.modePath}.rawValue", it) } }
-        Choice("Wi-Fi channel", (1..11).map { it.toString() }, bridge.channel - 1, enabled = (bridge.modeIndex ?: 0) == 0) { set("${bridge.channelPath}.rawValue", it + 1) }
-        TextSetting("Wi-Fi AP SSID", bridge.ssid) { act("espBridge.setText", "ssid", it) }
-        TextSetting("Wi-Fi AP password", bridge.password) { act("espBridge.setText", "password", it) }
-        bridge.ssidSta?.let { value -> TextSetting("Wi-Fi STA SSID", value) { act("espBridge.setText", "ssidSta", it) } }
-        bridge.passwordSta?.let { value -> TextSetting("Wi-Fi STA password", value) { act("espBridge.setText", "passwordSta", it) } }
+        SectionHeader("ESP WiFi bridge settings")
+        bridge.modeIndex?.let { mode -> Choice("WiFi mode", WIFI_MODES, mode) { set("${bridge.modePath}.rawValue", it) } }
+        Choice("WiFi channel", (1..11).map { it.toString() }, bridge.channel - 1, enabled = (bridge.modeIndex ?: 0) == 0) { set("${bridge.channelPath}.rawValue", it + 1) }
+        TextSetting("WiFi AP SSID", bridge.ssid) { act("espBridge.setText", "ssid", it) }
+        TextSetting("WiFi AP password", bridge.password) { act("espBridge.setText", "password", it) }
+        TextSetting("WiFi STA SSID", bridge.ssidSta.orEmpty(), enabled = stationFieldsEnabled(bridge)) { act("espBridge.setText", "ssidSta", it) }
+        TextSetting("WiFi STA password", bridge.passwordSta.orEmpty(), enabled = stationFieldsEnabled(bridge)) { act("espBridge.setText", "passwordSta", it) }
         Choice("UART baud rate", bridge.baudRates.map { it.toString() }, bridge.baudIndex) { act("espBridge.baud", it) }
-        StatusRow("QGC UDP port", bridge.hostPort)
+        TextSetting("QGC UDP port", bridge.hostPort, enabled = bridge.hostPortPath.isNotEmpty(), digits = true) { typed ->
+            hostPortTyped(typed)?.let { set(bridge.hostPortPath, it) }
+        }
 
-        SectionHeader("ESP Wi-Fi bridge status")
-        listOf("Bridge to vehicle link" to bridge.vehicle, "Bridge to QGC link" to bridge.bridge, "QGC to bridge link" to bridge.qgc).forEach { (title, link) ->
+        SectionHeader("ESP WiFi bridge status")
+        listOf("Bridge/vehicle link" to bridge.vehicle, "Bridge/QGC link" to bridge.bridge, "QGC/bridge link" to bridge.qgc).forEach { (title, link) ->
             Text(title, style = MaterialTheme.typography.titleSmall)
             StatusRow("Messages received", link.received)
             StatusRow("Messages lost", link.lost)
@@ -131,22 +144,22 @@ fun EspBridgeScreen(modifier: Modifier = Modifier) {
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { act("espBridge.restoreDefaults") }) { Text("Restore defaults") }
-            OutlinedButton(onClick = { confirmReboot = true }) { Text("Restart Wi-Fi bridge") }
+            OutlinedButton(onClick = { confirmReboot = true }) { Text("Restart WiFi bridge") }
             OutlinedButton(onClick = { act("espBridge.resetCounters") }) { Text("Reset counters") }
         }
     }
     if (confirmReboot) {
         AlertDialog(
             onDismissRequest = { confirmReboot = false },
-            title = { Text("Reboot Wi-Fi bridge") },
+            title = { Text("Reboot WiFi bridge") },
             text = { Text(bridge.rebootPrompt) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmReboot = false
                     act("espBridge.reboot")
-                }) { Text("OK") }
+                }) { Text("Yes") }
             },
-            dismissButton = { TextButton(onClick = { confirmReboot = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmReboot = false }) { Text("No") } },
         )
     }
 }
@@ -179,14 +192,16 @@ private fun Choice(label: String, options: List<String>, index: Int, enabled: Bo
 }
 
 @Composable
-private fun TextSetting(label: String, value: String, onDone: (String) -> Unit) {
+private fun TextSetting(label: String, value: String, enabled: Boolean = true, digits: Boolean = false, onDone: (String) -> Unit) {
     var typed by remember(value) { mutableStateOf(value) }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, modifier = Modifier.weight(1f))
         OutlinedTextField(
             value = typed,
-            onValueChange = { typed = it.take(16) },
+            onValueChange = { next -> typed = if (digits) next.filter(Char::isDigit).take(5) else next.take(16) },
+            enabled = enabled,
             singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = if (digits) KeyboardType.Number else KeyboardType.Text, imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onDone(typed) }),
             modifier = Modifier.width(180.dp),
         )
