@@ -19,6 +19,8 @@ const SIDECAR: &str = ".uploaded";
 const DEFAULT_URL: &str = "https://logs.px4.io/upload";
 const DEFAULT_DESCRIPTION: &str = "QGroundControl Session";
 const BOUNDARY: &str = "----QGroundControlLogBoundary7f3a";
+const NO_EMAIL: &str = "Please enter an email address before uploading MAVLink log files.";
+const SAVE_ITEMS_FIELDS: [&str; 7] = ["emailAddress", "description", "uploadURL", "videoURL", "windSpeed", "rating", "enableAutoUpload"];
 
 const TEXT_KEYS: [(&str, &str, &str); 6] = [
     ("emailAddress", "Email", ""),
@@ -198,7 +200,7 @@ fn upload_one(folder: &Path, name: &str, feedback: &str, cancel: &AtomicBool) ->
 
 fn upload(names: Vec<String>) -> Result<(), String> {
     if text("emailAddress").is_empty() {
-        return Err("Please enter an email address before uploading MAVLink log files.".to_string());
+        return Err(NO_EMAIL.to_string());
     }
     let folder = folder().ok_or("There is no log folder.")?;
     let writing = writing_file();
@@ -303,13 +305,23 @@ fn set(field: &str, value: &Value) -> Result<(), String> {
     let stored = TEXT_KEYS.iter().find(|(f, _, _)| *f == field).map(|(_, k, _)| (*k, value.as_str().map(str::to_string).or_else(|| value.as_i64().map(|n| n.to_string()))))
         .or_else(|| FLAG_KEYS.iter().find(|(f, _, _)| *f == field).map(|(_, k, _)| (*k, value.as_bool().map(|b| b.to_string()))))
         .ok_or_else(|| format!("{field} is not a log transfer setting"))?;
-    let (name, text) = (stored.0, stored.1.ok_or("That value does not fit the setting.")?);
-    let text = if field == "uploadURL" && text.trim().is_empty() { DEFAULT_URL.to_string() } else { text };
-    crate::settingsstore::written(&key(name), &text);
+    let (name, written) = (stored.0, stored.1.ok_or("That value does not fit the setting.")?);
+    let written = if field == "uploadURL" && written.trim().is_empty() { DEFAULT_URL.to_string() } else { written };
+    crate::settingsstore::written(&key(name), &written);
     if field == "enableAutoStart" {
         configure_hub();
     }
-    Ok(())
+    match auto_upload_dropped(field, flag("enableAutoUpload"), &text("emailAddress")) {
+        true => {
+            crate::settingsstore::written(&key("EnableAutoUpload"), "false");
+            if field == "enableAutoUpload" { Err(NO_EMAIL.to_string()) } else { Ok(()) }
+        }
+        false => Ok(()),
+    }
+}
+
+fn auto_upload_dropped(field: &str, auto_upload: bool, email: &str) -> bool {
+    SAVE_ITEMS_FIELDS.contains(&field) && auto_upload && email.is_empty()
 }
 
 pub fn run(path: &str, args: &str) -> Value {
@@ -371,6 +383,15 @@ mod tests {
         let cancel = AtomicBool::new(true);
         let mut sending = Sending { body: std::io::Cursor::new(vec![1, 2, 3]), cancel: &cancel };
         assert!(std::io::Read::read(&mut sending, &mut [0; 3]).is_err(), "QGC aborts the reply in flight on cancelUpload");
+    }
+
+    #[test]
+    fn saving_the_upload_form_without_an_email_turns_auto_upload_off_like_save_items() {
+        assert!(auto_upload_dropped("enableAutoUpload", true, ""));
+        assert!(auto_upload_dropped("rating", true, ""));
+        assert!(!auto_upload_dropped("rating", true, "a@b.c"));
+        assert!(!auto_upload_dropped("enableAutoUpload", false, ""));
+        assert!(!auto_upload_dropped("publicLog", true, ""), "publicLog writes the manager directly, without saveItems");
     }
 
     #[test]
