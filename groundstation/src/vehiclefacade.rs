@@ -1274,6 +1274,147 @@ impl<B: Backend> Facade<B> {
 }
 
 impl<B: Backend> Facade<B> {
+    fn set_unannounced(&self, path: &str, value: &str) -> String {
+        if let Some(answer) = crate::corelinks::set(path, value) {
+            return answer.to_string();
+        }
+        if let Some(answer) = crate::account::set(path, value) {
+            return answer.to_string();
+        }
+        if let Some(answer) = crate::geotagcontroller::set(path, value) {
+            return answer.to_string();
+        }
+        let link_flag = path.strip_prefix("vehicle.vehicleLinkManager.").filter(|f| matches!(*f, "communicationLostEnabled" | "autoDisconnect"));
+        if let Some(flag) = link_flag.filter(|_| switched_on()) {
+            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            if let Some(on) = on {
+                crate::hub::lock().set_link_flag(flag, on);
+            }
+            return self.held_write(path, value);
+        }
+        if let Some(index) = crate::logs::selection_index(path).filter(|_| switched_on()) {
+            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            if let Some(held) = on.and_then(|on| crate::hub::lock().with_onboard_logs(|logs| logs.select(index, on))) {
+                return json!({ "ok": held }).to_string();
+            }
+        }
+        if let Some(action) = (switched_on() && !crate::qthost::present()).then(|| parameter_write(path, value)).flatten() {
+            return match self.0.core_guided(&action) {
+                Some(Ok(())) => json!({ "ok": true }).to_string(),
+                Some(Err(reason)) => json!({ "ok": false, "error": reason }).to_string(),
+                None => self.0.set(path, value),
+            };
+        }
+        if path == "vehicle.armed" && switched_on() {
+            let truth = |v: &Value| v.as_bool().or_else(|| v.as_i64().map(|n| n != 0));
+            let arm = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(truth).or_else(|| truth(&v)));
+            let vehicle = crate::hub::lock().active_id();
+            if let Some(armed) = arm.zip(vehicle).and_then(|(arm, vehicle)| self.0.core_guided(&json!({ "action": "arm", "arm": arm, "vehicle": vehicle }))) {
+                return match armed {
+                    Ok(_) => json!({ "ok": true }).to_string(),
+                    Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
+                };
+            }
+        }
+        if path == "vehicle.cameraManager.currentCameraInstance.trackingEnabled" && switched_on() {
+            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            if let Some(on) = on {
+                let was = crate::hub::lock().active().is_some_and(|v| v.camera_tracking_enabled);
+                crate::hub::lock().set_camera_tracking(on);
+                if was && !on {
+                    let _ = self.real_camera_invoke("stopTracking", "[]");
+                }
+            }
+            return self.held_write(path, value);
+        }
+        if let Some(key) = camera_stored_key(path).filter(|_| switched_on() && crate::hub::lock().active().is_some_and(|v| v.cameras.selected().is_some())) {
+            let number = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64).or_else(|| v.as_f64()));
+            return match number.filter(|n| n.is_finite()) {
+                Some(number) => {
+                    crate::settingsstore::written(key, &number.to_string());
+                    json!({ "ok": true }).to_string()
+                }
+                None => json!({ "ok": false, "error": "A camera setting is a number." }).to_string(),
+            };
+        }
+        if path == "vehicle.cameraManager.currentCameraInstance.zoomLevel" && switched_on() {
+            let percent = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64).or_else(|| v.as_f64()));
+            let vehicle = crate::hub::lock().active().filter(|v| v.cameras.selected().is_some()).map(|v| v.id);
+            if let Some(zoomed) = percent.zip(vehicle).and_then(|(percent, vehicle)| self.0.core_guided(&json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent, "vehicle": vehicle }))) {
+                return match zoomed {
+                    Ok(_) => json!({ "ok": true }).to_string(),
+                    Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
+                };
+            }
+        }
+        if path == "vehicle.cameraManager.currentCameraInstance.currentStream" && switched_on() {
+            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
+            let vehicle = crate::hub::lock().active_id();
+            if let Some(chosen) = index.zip(vehicle).and_then(|(stream, vehicle)| self.0.core_guided(&json!({ "action": "camera", "op": "selectStream", "stream": stream, "vehicle": vehicle }))) {
+                return match chosen {
+                    Ok(_) => json!({ "ok": true }).to_string(),
+                    Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
+                };
+            }
+        }
+        if path == "vehicle.cameraManager.currentCamera" && switched_on() {
+            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
+            if let Some(index) = index.and_then(|i| usize::try_from(i).ok()) {
+                crate::hub::lock().select_camera(index);
+            }
+            return self.held_write(path, value);
+        }
+        if path == "mavlinkInspector.activeSystem.selected" && inspector_owned() {
+            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
+            let fits = index.and_then(|i| usize::try_from(i).ok()).is_some_and(|i| crate::mavinspect::lock().select(i));
+            return json!({ "ok": fits }).to_string();
+        }
+        if path == "radioCal.transmitterMode" && switched_on() {
+            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
+            if let Some(held) = mode.map(|m| crate::hub::lock().set_transmitter_mode(m)).filter(|held| *held) {
+                return json!({ "ok": held }).to_string();
+            }
+        }
+        if path == "radioCal.centeredThrottle" && switched_on() {
+            let centered = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            if let Some(held) = centered.map(|c| crate::hub::lock().set_centered_throttle(c)).filter(|held| *held) {
+                return json!({ "ok": held }).to_string();
+            }
+        }
+        if path == "vehicle.checkListState" && switched_on() {
+            let state = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
+            if let Some(state) = state {
+                crate::hub::lock().set_check_list_state(state);
+            }
+            return self.held_write(path, value);
+        }
+        if path == "vehicle.vtolInFwdFlight" && switched_on() {
+            let forward = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            let vehicle = crate::hub::lock().active_id();
+            if let Some(started) = forward.zip(vehicle).and_then(|(forward, vehicle)| self.0.core_guided(&json!({ "action": "vtolTransition", "vehicle": vehicle, "forward": forward }))) {
+                return json!({ "ok": started.is_ok() }).to_string();
+            }
+        }
+        let listed_mode = fleet_member(path).filter(|(_, tail)| *tail == "flightMode").map(|(index, _)| index);
+        if (path == "vehicle.flightMode" || listed_mode.is_some()) && switched_on() {
+            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_str).or_else(|| v.as_str()).map(str::to_string));
+            let named_vehicle = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("vehicle")?.as_u64()).and_then(|id| u8::try_from(id).ok());
+            let vehicle = match (named_vehicle, listed_mode) {
+                (Some(id), Some(_)) => Some(id),
+                (None, Some(index)) => crate::hub::lock().listed(index).map(|v| v.id),
+                (_, None) => crate::hub::lock().active_id(),
+            };
+            if let Some(started) = mode.zip(vehicle).and_then(|(mode, vehicle)| self.0.core_guided(&json!({ "action": "setMode", "vehicle": vehicle, "mode": mode }))) {
+                return match started {
+                    Ok(_) => json!({ "ok": true }).to_string(),
+                    Err(reason) => json!({ "ok": false, "reason": reason }).to_string(),
+                };
+            }
+        }
+        fell_through("set", path);
+        self.0.set(path, value)
+    }
+
     fn real_camera_invoke(&self, name: &str, args: &str) -> Option<String> {
         let (vehicle, captures_video, grabs) = switched_on().then(|| crate::hub::lock().active().and_then(|v| v.cameras.selected().map(|c| (v.id, c.info.flags & crate::cameraproto::CAP_CAPTURE_VIDEO != 0, grabs_locally(c.info.flags, c.mode))))).flatten()?;
         if name == "takePhoto" && grabs {
@@ -1578,145 +1719,12 @@ impl<B: Backend> Backend for Facade<B> {
         }
     }
     fn set(&self, path: &str, value: &str) -> String {
-        if let Some(answer) = crate::corelinks::set(path, value) {
-            return answer.to_string();
+        match crate::factwrite::owns_raw(path) {
+            true => crate::factwrite::write_raw(self, path, value, || self.set_unannounced(path, value)),
+            false => self.set_unannounced(path, value),
         }
-        if let Some(answer) = crate::account::set(path, value) {
-            return answer.to_string();
-        }
-        if let Some(answer) = crate::geotagcontroller::set(path, value) {
-            return answer.to_string();
-        }
-        let link_flag = path.strip_prefix("vehicle.vehicleLinkManager.").filter(|f| matches!(*f, "communicationLostEnabled" | "autoDisconnect"));
-        if let Some(flag) = link_flag.filter(|_| switched_on()) {
-            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
-            if let Some(on) = on {
-                crate::hub::lock().set_link_flag(flag, on);
-            }
-            return self.held_write(path, value);
-        }
-        if let Some(index) = crate::logs::selection_index(path).filter(|_| switched_on()) {
-            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
-            if let Some(held) = on.and_then(|on| crate::hub::lock().with_onboard_logs(|logs| logs.select(index, on))) {
-                return json!({ "ok": held }).to_string();
-            }
-        }
-        if let Some(action) = (switched_on() && !crate::qthost::present()).then(|| parameter_write(path, value)).flatten() {
-            return match self.0.core_guided(&action) {
-                Some(Ok(())) => json!({ "ok": true }).to_string(),
-                Some(Err(reason)) => json!({ "ok": false, "error": reason }).to_string(),
-                None => self.0.set(path, value),
-            };
-        }
-        if path == "vehicle.armed" && switched_on() {
-            let truth = |v: &Value| v.as_bool().or_else(|| v.as_i64().map(|n| n != 0));
-            let arm = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(truth).or_else(|| truth(&v)));
-            let vehicle = crate::hub::lock().active_id();
-            if let Some(armed) = arm.zip(vehicle).and_then(|(arm, vehicle)| self.0.core_guided(&json!({ "action": "arm", "arm": arm, "vehicle": vehicle }))) {
-                return match armed {
-                    Ok(_) => json!({ "ok": true }).to_string(),
-                    Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
-                };
-            }
-        }
-        if path == "vehicle.cameraManager.currentCameraInstance.trackingEnabled" && switched_on() {
-            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
-            if let Some(on) = on {
-                let was = crate::hub::lock().active().is_some_and(|v| v.camera_tracking_enabled);
-                crate::hub::lock().set_camera_tracking(on);
-                if was && !on {
-                    let _ = self.real_camera_invoke("stopTracking", "[]");
-                }
-            }
-            return self.held_write(path, value);
-        }
-        if let Some(key) = camera_stored_key(path).filter(|_| switched_on() && crate::hub::lock().active().is_some_and(|v| v.cameras.selected().is_some())) {
-            let number = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64).or_else(|| v.as_f64()));
-            return match number.filter(|n| n.is_finite()) {
-                Some(number) => {
-                    crate::settingsstore::written(key, &number.to_string());
-                    json!({ "ok": true }).to_string()
-                }
-                None => json!({ "ok": false, "error": "A camera setting is a number." }).to_string(),
-            };
-        }
-        if path == "vehicle.cameraManager.currentCameraInstance.zoomLevel" && switched_on() {
-            let percent = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64).or_else(|| v.as_f64()));
-            let vehicle = crate::hub::lock().active().filter(|v| v.cameras.selected().is_some()).map(|v| v.id);
-            if let Some(zoomed) = percent.zip(vehicle).and_then(|(percent, vehicle)| self.0.core_guided(&json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent, "vehicle": vehicle }))) {
-                return match zoomed {
-                    Ok(_) => json!({ "ok": true }).to_string(),
-                    Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
-                };
-            }
-        }
-        if path == "vehicle.cameraManager.currentCameraInstance.currentStream" && switched_on() {
-            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
-            let vehicle = crate::hub::lock().active_id();
-            if let Some(chosen) = index.zip(vehicle).and_then(|(stream, vehicle)| self.0.core_guided(&json!({ "action": "camera", "op": "selectStream", "stream": stream, "vehicle": vehicle }))) {
-                return match chosen {
-                    Ok(_) => json!({ "ok": true }).to_string(),
-                    Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
-                };
-            }
-        }
-        if path == "vehicle.cameraManager.currentCamera" && switched_on() {
-            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
-            if let Some(index) = index.and_then(|i| usize::try_from(i).ok()) {
-                crate::hub::lock().select_camera(index);
-            }
-            return self.held_write(path, value);
-        }
-        if path == "mavlinkInspector.activeSystem.selected" && inspector_owned() {
-            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
-            let fits = index.and_then(|i| usize::try_from(i).ok()).is_some_and(|i| crate::mavinspect::lock().select(i));
-            return json!({ "ok": fits }).to_string();
-        }
-        if path == "radioCal.transmitterMode" && switched_on() {
-            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
-            if let Some(held) = mode.map(|m| crate::hub::lock().set_transmitter_mode(m)).filter(|held| *held) {
-                return json!({ "ok": held }).to_string();
-            }
-        }
-        if path == "radioCal.centeredThrottle" && switched_on() {
-            let centered = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
-            if let Some(held) = centered.map(|c| crate::hub::lock().set_centered_throttle(c)).filter(|held| *held) {
-                return json!({ "ok": held }).to_string();
-            }
-        }
-        if path == "vehicle.checkListState" && switched_on() {
-            let state = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
-            if let Some(state) = state {
-                crate::hub::lock().set_check_list_state(state);
-            }
-            return self.held_write(path, value);
-        }
-        if path == "vehicle.vtolInFwdFlight" && switched_on() {
-            let forward = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
-            let vehicle = crate::hub::lock().active_id();
-            if let Some(started) = forward.zip(vehicle).and_then(|(forward, vehicle)| self.0.core_guided(&json!({ "action": "vtolTransition", "vehicle": vehicle, "forward": forward }))) {
-                return json!({ "ok": started.is_ok() }).to_string();
-            }
-        }
-        let listed_mode = fleet_member(path).filter(|(_, tail)| *tail == "flightMode").map(|(index, _)| index);
-        if (path == "vehicle.flightMode" || listed_mode.is_some()) && switched_on() {
-            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_str).or_else(|| v.as_str()).map(str::to_string));
-            let named_vehicle = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("vehicle")?.as_u64()).and_then(|id| u8::try_from(id).ok());
-            let vehicle = match (named_vehicle, listed_mode) {
-                (Some(id), Some(_)) => Some(id),
-                (None, Some(index)) => crate::hub::lock().listed(index).map(|v| v.id),
-                (_, None) => crate::hub::lock().active_id(),
-            };
-            if let Some(started) = mode.zip(vehicle).and_then(|(mode, vehicle)| self.0.core_guided(&json!({ "action": "setMode", "vehicle": vehicle, "mode": mode }))) {
-                return match started {
-                    Ok(_) => json!({ "ok": true }).to_string(),
-                    Err(reason) => json!({ "ok": false, "reason": reason }).to_string(),
-                };
-            }
-        }
-        fell_through("set", path);
-        self.0.set(path, value)
     }
+
     fn invoke(&self, path: &str, args: &str) -> String {
         if let Some(answer) = crate::noticeboard::invoke(path, args) {
             return answer.to_string();

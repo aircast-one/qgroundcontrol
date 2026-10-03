@@ -73,12 +73,35 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
     }
 }
 
-fn unchanged(fact: &Value, asked: &Value) -> bool {
-    let held = fact.get("value").unwrap_or(&Value::Null);
+fn same(held: &Value, asked: &Value) -> bool {
     match (number(held), number(asked)) {
         (Some(h), Some(a)) => h == a,
         _ => held == asked,
     }
+}
+
+fn unchanged(fact: &Value, asked: &Value) -> bool {
+    same(fact.get("value").unwrap_or(&Value::Null), asked)
+}
+
+const RAW_VALUE: &str = ".rawValue";
+
+pub fn owns_raw(path: &str) -> bool {
+    path.strip_suffix(RAW_VALUE).is_some_and(|fact| FACT_ROOTS.iter().any(|root| fact.starts_with(root)))
+}
+
+pub fn write_raw(backend: &dyn Backend, path: &str, value: &str, write: impl FnOnce() -> String) -> String {
+    let fact = object(&backend.get(path.strip_suffix(RAW_VALUE).unwrap_or(path)));
+    let written = write();
+    if raw_write_changed(&fact, value, &object(&written)) {
+        announce_reboot(&fact);
+    }
+    written
+}
+
+fn raw_write_changed(fact: &Value, value: &str, written: &Value) -> bool {
+    let asked = serde_json::from_str::<Value>(value).ok().map(|given| given.get("value").cloned().unwrap_or(given)).unwrap_or(Value::Null);
+    is_fact(fact) && flag(written, "ok") && !same(fact.get("rawValue").unwrap_or(&Value::Null), &asked)
 }
 
 const ENUM_INDEX: &str = ".enumIndex";
@@ -209,6 +232,22 @@ mod tests {
         assert_eq!(reboot_flags(&both, false), (true, true));
         assert_eq!(reboot_flags(&both, true), (true, false), "Qt's Fact::setRawValue already posts showRebootAppMessage");
         assert_eq!(reboot_flags(&json!({ "kind": "fact" }), false), (false, false));
+    }
+
+    #[test]
+    fn a_raw_write_prompts_a_reboot_when_it_changes_the_value_like_fact_container_raw_value_changed() {
+        let compass = json!({ "kind": "fact", "name": "COMPASS_USE", "rawValue": 1, "vehicleRebootRequired": true });
+        let ok = json!({ "ok": true });
+        assert!(raw_write_changed(&compass, "{\"value\":0}", &ok), "APM setup pages and parameter file loads write rawValue, which skipped the prompt");
+        assert!(raw_write_changed(&compass, "0", &ok));
+        assert!(!raw_write_changed(&compass, "{\"value\":1}", &ok), "Fact::setRawValue emits nothing for the value it already holds");
+        assert!(!raw_write_changed(&compass, "{\"value\":\"1\"}", &ok));
+        assert!(!raw_write_changed(&compass, "{\"value\":0}", &json!({ "ok": false })));
+        assert!(!raw_write_changed(&json!({ "kind": "value", "value": 1 }), "{\"value\":0}", &ok));
+        assert!(owns_raw("vehicle.parameterManager.getParameter(-1,COMPASS_USE).rawValue"));
+        assert!(owns_raw("settings.rtkSettings.useFixedBasePosition.rawValue"));
+        assert!(!owns_raw("settings.rtkSettings.useFixedBasePosition"), "value writes go through write(), which prompts itself");
+        assert!(!owns_raw("vehicle.flightMode.rawValue"));
     }
 
     fn fact(extra: Value) -> Value {
