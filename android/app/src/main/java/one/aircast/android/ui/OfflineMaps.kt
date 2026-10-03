@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -213,8 +215,15 @@ fun OfflineMapsSection() {
             ) {
                 Text(set.name, modifier = Modifier.weight(1f))
                 if (set.downloading) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                if (set.errorCount > 0) Text(set.errorCountText, color = MaterialTheme.aircast.alert)
                 Text(set.rowText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (set.rowText.isNotEmpty()) {
+                    Box(
+                        Modifier.size(8.dp).background(
+                            if (set.complete) MaterialTheme.aircast.success else MaterialTheme.aircast.alert,
+                            CircleShape,
+                        ),
+                    )
+                }
             }
             HorizontalDivider()
         }
