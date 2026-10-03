@@ -1754,8 +1754,8 @@ private fun FenceListRow(
             Text(row.title, style = MaterialTheme.typography.bodyLarge)
             if (row.detail.isNotBlank()) Text(row.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        if (row.radius.isNotBlank()) Text(row.radius, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 8.dp))
         if (onInclusion != null && row.inclusion != null) {
-            Text("Inclusion", style = MaterialTheme.typography.labelMedium)
             Switch(checked = row.inclusion, onCheckedChange = onInclusion, modifier = Modifier.padding(horizontal = 8.dp))
         }
         IconButton(onClick = onRemove) { Icon(Icons.Filled.Close, contentDescription = "Remove ${row.title}") }

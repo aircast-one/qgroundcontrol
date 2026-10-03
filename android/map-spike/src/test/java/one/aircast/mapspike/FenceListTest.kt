@@ -8,8 +8,8 @@ import org.junit.Test
 class FenceListTest {
     @Test
     fun `a row selects its shape and a deleted rally point hands selection to its neighbour`() {
-        val polygon = FenceRow(1, false, "Keep-out polygon 2", "", inclusion = false)
-        val circle = FenceRow(0, true, "Keep-in circle 1", "")
+        val polygon = FenceRow(1, false, "Polygon 2", "", inclusion = false)
+        val circle = FenceRow(0, true, "Circle 1", "")
         assertEquals(MapHit.FenceVertex(1, 0), fenceRowHit(polygon))
         assertEquals(MapHit.Circle(0), fenceRowHit(circle))
         assertTrue(rowSelected(polygon, MapHit.FenceVertex(1, 3)))

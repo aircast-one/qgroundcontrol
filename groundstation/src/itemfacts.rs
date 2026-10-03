@@ -83,25 +83,28 @@ fn qt_entry_point(item: &str, read: &Value) -> Option<Value> {
     Some(json!({ "label": "Start from", "value": name, "path": format!("{item}.rotateEntryPoint") }))
 }
 
+fn value_set_is_distance(facts: &[Value]) -> bool {
+    facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some("valueSetIsDistance")).and_then(|fact| fact.get("value")).map_or(true, |value| value.as_bool().unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0)))
+}
+
 fn owned(read: &Value, item: &str) -> Vec<Value> {
     let class = read.get("class").and_then(Value::as_str);
     let vtol_landing = class == Some("VTOLLandingComplexItem");
     let landing = vtol_landing || class == Some("FixedWingLandingComplexItem");
-    let mut rows: Vec<(&str, Value)> = read
-        .get("facts")
-        .and_then(Value::as_array)
-        .map(|facts| {
-            facts
-                .iter()
-                .filter(|fact| named(fact))
-                .filter_map(|fact| {
-                    let property = fact.get("property").and_then(Value::as_str).filter(|p| !p.is_empty() && *p != LAUNCH_ALTITUDE)?;
-                    let control = field(fact, item, property, "Settings");
-                    Some((property, if landing { crate::landingpattern::editor_row(control, vtol_landing, property) } else { crate::surveydoc::row_labelled(control, vtol_landing, property) }))
-                })
-                .collect()
+    let facts = read.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
+    let by_distance = value_set_is_distance(&facts);
+    let mut rows: Vec<(&str, Value)> = facts
+        .iter()
+        .filter(|fact| named(fact))
+        .filter_map(|fact| {
+            let property = fact.get("property").and_then(Value::as_str).filter(|p| !p.is_empty() && *p != LAUNCH_ALTITUDE)?;
+            let control = field(fact, item, property, "Settings");
+            match landing {
+                true => crate::landingpattern::radioed(crate::landingpattern::editor_row(control, vtol_landing, property), vtol_landing, item, property, by_distance).map(|row| (property, row)),
+                false => Some((property, crate::surveydoc::row_labelled(control, vtol_landing, property))),
+            }
         })
-        .unwrap_or_default();
+        .collect();
     if landing {
         rows.sort_by_key(|(property, _)| crate::landingpattern::editor_rank(property));
     }
@@ -161,7 +164,7 @@ fn camera(backend: &dyn Backend, item: &str, structure: bool) -> Value {
         "distanceMode": read.get("distanceMode").cloned().unwrap_or(Value::Null),
         "distanceModes": crate::altitudemodes::transect_distance_modes(manual, flag(&object(&backend.get_fields("plan.controllerVehicle.supports", "terrainFrame")), "terrainFrame")),
         "distanceModePath": format!("{item}.cameraCalc.distanceMode"),
-        "valueSetIsDistance": facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some("valueSetIsDistance")).and_then(|fact| fact.get("value")).map_or(true, |value| value.as_bool().unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0))),
+        "valueSetIsDistance": value_set_is_distance(&facts),
         "valueSetIsDistancePath": format!("{item}.cameraCalc.valueSetIsDistance"),
         "brandPath": format!("{item}.cameraCalc.cameraBrand"),
         "modelPath": format!("{item}.cameraCalc.cameraModel"),
@@ -336,6 +339,16 @@ mod tests {
         assert!(area_help("CorridorScan", false).unwrap().contains("Polyline Tools"));
         assert!(area_help("StructureScan", false).unwrap().starts_with("Draw the structure outline"));
         assert_eq!(area_help("survey", true), None);
+    }
+
+    #[test]
+    fn qt_landing_rows_choose_distance_or_glide_slope_by_radio_button() {
+        let read = json!({ "class": "FixedWingLandingComplexItem", "facts": [fact("ValueSetIsDistance", "valueSetIsDistance", 0.0), fact("LandingDistance", "landingDistance", 100.0), fact("GlideSlope", "glideSlope", 5.0)] });
+        let rows = owned(&read, "item");
+        let row = |suffix: &str| rows.iter().find(|r| r["pathSuffix"] == suffix).cloned().unwrap_or_default();
+        assert_eq!(rows.len(), 2, "FWLandingPatternEditor has no valueSetIsDistance row, the radio buttons set it");
+        assert_eq!((row("glideSlope")["enabled"].clone(), row("glideSlope")["choice"].clone()), (json!(true), json!({ "path": "item.valueSetIsDistance", "value": false, "selected": true })));
+        assert_eq!((row("landingDistance")["enabled"].clone(), row("landingDistance")["choice"]["selected"].clone()), (json!(false), json!(false)));
     }
 
     fn fact(name: &str, property: &str, value: f64) -> Value {

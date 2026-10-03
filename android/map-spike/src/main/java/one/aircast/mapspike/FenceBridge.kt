@@ -21,11 +21,13 @@ data class FencePolygon(
     val kindText: String = "",
     val detailText: String = "",
 )
-data class FenceRow(val index: Int, val circle: Boolean, val title: String, val detail: String, val inclusion: Boolean? = null)
+data class FenceRow(val index: Int, val circle: Boolean, val title: String, val detail: String, val inclusion: Boolean? = null, val radius: String = "")
+
+internal fun inclusionText(inclusion: Boolean): String = if (inclusion) "Inclusion" else "Exclusion"
 
 fun fenceRows(polygons: List<FencePolygon>, circles: List<FenceCircle>): List<FenceRow> =
-    polygons.map { FenceRow(it.index, false, it.kindText.ifBlank { if (it.inclusion) "Keep-in polygon" else "Keep-out polygon" }, it.detailText, it.inclusion) } +
-        circles.map { FenceRow(it.index, true, it.kindText.ifBlank { if (it.inclusion) "Keep-in circle" else "Keep-out circle" }, it.detailText) }
+    polygons.map { FenceRow(it.index, false, it.kindText.ifBlank { "Polygon ${it.index + 1}" }, inclusionText(it.inclusion), it.inclusion) } +
+        circles.map { FenceRow(it.index, true, it.kindText.ifBlank { "Circle ${it.index + 1}" }, inclusionText(it.inclusion), radius = listOf(trimmedRadius(it.radius), it.radiusUnits).filter(String::isNotBlank).joinToString(" ")) }
 
 internal fun fenceHeading(row: FenceRow, previous: FenceRow?): String? =
     (if (row.circle) "Circular fences" else "Polygon fences").takeIf { previous == null || previous.circle != row.circle }

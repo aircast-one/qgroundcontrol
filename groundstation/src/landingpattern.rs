@@ -201,7 +201,7 @@ fn glide_slope(pattern: &Value, distance: f64) -> f64 {
     ((high - low) / distance).atan().to_degrees()
 }
 
-const FIELDS: [(&str, &str); 13] = [
+const FIELDS: [(&str, &str); 12] = [
     ("UseLoiterToAlt", "useLoiterToAlt"),
     ("FinalApproachAltitude", "finalApproachAltitude"),
     ("UseDoChangeSpeed", "useDoChangeSpeed"),
@@ -210,7 +210,6 @@ const FIELDS: [(&str, &str); 13] = [
     ("LoiterClockwise", "loiterClockwise"),
     ("LandingHeading", "landingHeading"),
     ("LandingAltitude", "landingAltitude"),
-    ("ValueSetIsDistance", "valueSetIsDistance"),
     ("LandingDistance", "landingDistance"),
     ("GlideSlope", "glideSlope"),
     ("StopTakingPhotos", "stopTakingPhotos"),
@@ -224,9 +223,29 @@ pub fn editor_rank(property: &str) -> usize {
 pub fn section(property: &str) -> Option<&'static str> {
     match property {
         "useLoiterToAlt" | "finalApproachAltitude" | "useDoChangeSpeed" | "finalApproachSpeed" | "loiterRadius" | "loiterClockwise" => Some("Final approach"),
-        "landingHeading" | "landingAltitude" | "valueSetIsDistance" | "landingDistance" | "glideSlope" => Some("Landing point"),
+        "landingHeading" | "landingAltitude" | "landingDistance" | "glideSlope" => Some("Landing point"),
         "stopTakingPhotos" | "stopTakingVideo" => Some("Camera"),
         _ => None,
+    }
+}
+
+fn radio(control: Value, item: &str, distance: bool, chosen: bool) -> Value {
+    match control {
+        Value::Object(mut fields) => {
+            fields.insert("enabled".to_string(), json!(chosen));
+            fields.insert("choice".to_string(), json!({ "path": format!("{item}.valueSetIsDistance"), "value": distance, "selected": chosen }));
+            Value::Object(fields)
+        }
+        other => other,
+    }
+}
+
+pub fn radioed(control: Value, vtol: bool, item: &str, property: &str, by_distance: bool) -> Option<Value> {
+    match (vtol, property) {
+        (false, "valueSetIsDistance") => None,
+        (false, "landingDistance") => Some(radio(control, item, true, by_distance)),
+        (false, "glideSlope") => Some(radio(control, item, false, !by_distance)),
+        _ => Some(control),
     }
 }
 
@@ -256,7 +275,6 @@ fn field_values(pattern: &Value) -> Vec<(&'static str, &'static str, Value)> {
         "UseLoiterToAlt" => pattern.get("useLoiterToAlt").cloned(),
         "StopTakingPhotos" => pattern.get("stopTakingPhotos").cloned(),
         "StopTakingVideo" => pattern.get("stopVideoPhotos").cloned(),
-        "ValueSetIsDistance" if !is_vtol(pattern) => pattern.get("valueSetIsDistance").cloned(),
         "GlideSlope" if !is_vtol(pattern) => Some(json!(glide_slope(pattern, g.distance))),
         _ => None,
     };
@@ -268,10 +286,8 @@ pub fn fields(pattern: &Value, item: &str, units: &crate::surveydoc::Units) -> V
     let by_distance = pattern.get("valueSetIsDistance").and_then(Value::as_bool).unwrap_or(true);
     field_values(pattern)
         .into_iter()
-        .filter_map(|(name, suffix, value)| crate::surveydoc::fact_control(file, name, value, item, suffix, units).map(|control| (suffix, editor_row(control, is_vtol(pattern), suffix))))
+        .filter_map(|(name, suffix, value)| crate::surveydoc::fact_control(file, name, value, item, suffix, units).and_then(|control| radioed(editor_row(control, is_vtol(pattern), suffix), is_vtol(pattern), item, suffix, by_distance)).map(|control| (suffix, control)))
         .map(|(suffix, control)| match (suffix, control) {
-            ("landingDistance", Value::Object(map)) if !is_vtol(pattern) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(by_distance))]).collect()),
-            ("glideSlope", Value::Object(map)) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(!by_distance))]).collect()),
             ("finalApproachSpeed", Value::Object(map)) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(flag(pattern, "useDoChangeSpeed")))]).collect()),
             (_, control) => control,
         })
@@ -606,6 +622,10 @@ mod tests {
         assert_eq!(enabled(&by_slope, "landingDistance"), Some(json!(false)), "FWLandingPatternEditor disables the value the radio did not choose");
         let by_distance = edit(&built, "valueSetIsDistance", &json!(true)).unwrap();
         assert_eq!(enabled(&by_distance, "glideSlope"), Some(json!(false)));
+        let choice = |pattern: &Value, suffix: &str| fields(pattern, "item", &units).into_iter().find(|f| f["pathSuffix"] == suffix).map(|f| f["choice"].clone());
+        assert_eq!(choice(&by_slope, "glideSlope"), Some(json!({ "path": "item.valueSetIsDistance", "value": false, "selected": true })), "the Glide Slope radio button writes valueSetIsDistance false");
+        assert_eq!(choice(&by_slope, "landingDistance"), Some(json!({ "path": "item.valueSetIsDistance", "value": true, "selected": false })));
+        assert!(fields(&built, "item", &units).iter().all(|f| f["pathSuffix"] != "valueSetIsDistance"), "the radio buttons replace a valueSetIsDistance row");
     }
 
     #[test]

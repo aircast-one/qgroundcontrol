@@ -81,7 +81,7 @@ internal fun fenceDetail(
     polygons: List<FencePolygon>,
     circles: List<FenceCircle>,
 ): String? = selectedFence(selected, polygons, circles)
-    ?.let { listOf(it.kindText, it.detailText) }
+    ?.let { listOf(it.kindText, inclusionText(it.keepsIn), it.detailText) }
     ?.filter { it.isNotBlank() }
     ?.takeIf { it.isNotEmpty() }
     ?.joinToString(" · ")

@@ -10,7 +10,7 @@ class FenceInclusionTest {
         index = index,
         inclusion = inclusion,
         vertices = (0 until 4).map { TrackPoint(41.0 + it, 44.0) },
-        kindText = if (inclusion) "Keep-in polygon" else "Keep-out polygon",
+        kindText = "Polygon ${index + 1}",
     )
 
     private fun circle(index: Int, inclusion: Boolean) = FenceCircle(
@@ -18,7 +18,7 @@ class FenceInclusionTest {
         inclusion = inclusion,
         centre = TrackPoint(41.0, 44.0),
         radius = 150.0,
-        kindText = if (inclusion) "Keep-in circle" else "Keep-out circle",
+        kindText = "Circle ${index + 1}",
     )
 
     @Test

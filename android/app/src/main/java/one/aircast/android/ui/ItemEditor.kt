@@ -23,6 +23,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -166,6 +167,15 @@ internal fun sectionStarts(view: JSONObject?): Map<String, String> {
     return rows.filterIndexed { at, (_, section) -> section.isNotBlank() && section != rows.getOrNull(at - 1)?.second }.toMap()
 }
 
+internal data class RadioChoice(val path: String, val value: Boolean, val selected: Boolean)
+
+internal fun radioChoices(view: JSONObject?): Map<String, RadioChoice> {
+    val listed = view?.optJSONArray("fields") ?: return emptyMap()
+    return (0 until listed.length()).mapNotNull { listed.optJSONObject(it) }
+        .mapNotNull { row -> row.optJSONObject("choice")?.let { row.optString("path") to RadioChoice(it.optString("path"), it.optBoolean("value"), it.optBoolean("selected")) } }
+        .toMap()
+}
+
 internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact> {
     val listed = view?.optJSONArray("fields") ?: return emptyList()
     return (0 until listed.length()).mapNotNull { listed.optJSONObject(it)?.let(::factFromControl) }
@@ -188,6 +198,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
 
     val fields = remember(view) { withLandingFrameUnits(itemFields(view), altitudesRelative(view)) }
     val sections = remember(view) { sectionStarts(view) }
+    val choices = remember(view) { radioChoices(view) }
     val raw = remember(view) { rawEdit(view) }
     val connected = hasVehicle()
     val camera = remember(view) { cameraCalc(view) }
@@ -312,7 +323,20 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                 items(fields, key = { it.path }) { fact ->
                     Column {
                         sections[fact.path]?.let { SectionHeader(it) }
-                        if (fact.optional) OptionalFactRow(fact) { revision++ } else FactRow(fact) { revision++ }
+                        val choice = choices[fact.path]
+                        when {
+                            choice != null -> Row(Modifier.fillMaxWidth().padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = choice.selected, onClick = {
+                                    scope.launch {
+                                        refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(choice.path, choice.value) }
+                                        revision++
+                                    }
+                                })
+                                Box(Modifier.weight(1f)) { FactRow(fact, fieldModifier = Modifier.fillMaxWidth().padding(end = 16.dp, top = 8.dp, bottom = 8.dp)) { revision++ } }
+                            }
+                            fact.optional -> OptionalFactRow(fact) { revision++ }
+                            else -> FactRow(fact) { revision++ }
+                        }
                     }
                 }
                 item(key = "itemCamera") {

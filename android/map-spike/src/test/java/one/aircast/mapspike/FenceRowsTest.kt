@@ -5,12 +5,12 @@ import org.junit.Test
 
 class FenceRowsTest {
     @Test
-    fun `polygons then circles, named by what the core serves or by their kind`() {
+    fun `polygons then circles, named like GeoFenceEditor rows with Inclusion or Exclusion beneath`() {
         val polygon = FencePolygon(0, inclusion = false, vertices = emptyList(), detailText = "4 corners")
-        val circle = FenceCircle(0, inclusion = true, centre = TrackPoint(0.0, 0.0), radius = 137.0, detailText = "137 m radius", kindText = "Keep-in circle")
+        val circle = FenceCircle(0, inclusion = true, centre = TrackPoint(0.0, 0.0), radius = 137.0, detailText = "137 m radius", kindText = "Circle 1", radiusUnits = "m")
 
         assertEquals(
-            listOf(FenceRow(0, false, "Keep-out polygon", "4 corners", inclusion = false), FenceRow(0, true, "Keep-in circle", "137 m radius")),
+            listOf(FenceRow(0, false, "Polygon 1", "Exclusion", inclusion = false), FenceRow(0, true, "Circle 1", "Inclusion", radius = "137 m")),
             fenceRows(listOf(polygon), listOf(circle)),
         )
     }

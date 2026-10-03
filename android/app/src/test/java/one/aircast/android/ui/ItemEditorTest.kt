@@ -44,6 +44,17 @@ class ItemEditorTest {
     }
 
     @Test
+    fun `distance and glide slope rows carry the radio button that picks between them`() {
+        val view = JSONObject("""{"fields":[
+            {"path":"i.landingDistance","choice":{"path":"i.valueSetIsDistance","value":true,"selected":false}},
+            {"path":"i.glideSlope","choice":{"path":"i.valueSetIsDistance","value":false,"selected":true}},{"path":"i.landingHeading"}]}""")
+        assertEquals(
+            mapOf("i.landingDistance" to RadioChoice("i.valueSetIsDistance", true, false), "i.glideSlope" to RadioChoice("i.valueSetIsDistance", false, true)),
+            radioChoices(view),
+        )
+    }
+
+    @Test
     fun `the speed section is offered only where the item has one`() {
         val speed = speedSection(JSONObject("""{"speedSection":{"available":true,"specified":true,"value":8.5,"units":"m/s","path":"p","specifyPath":"s"}}"""))!!
         assertTrue(speed.specified)

@@ -72,7 +72,7 @@ fn polygon_json(index: usize, json: &Value, area_unit: &Unit) -> Value {
         "path": format!("plan.geoFenceController.polygons.{index}"),
         "shape": "polygon",
         "inclusion": inclusion,
-        "kindText": format!("{} {}", if inclusion { "Keep-in polygon" } else { "Keep-out polygon" }, index + 1),
+        "kindText": format!("Polygon {}", index + 1),
         "detailText": if area > 0.0 { format!("{vertex_text} \u{b7} {}", area_text(area, area_unit)) } else { vertex_text },
         "vertices": vertices.iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
         "usable": vertices.len() >= 3,
@@ -109,7 +109,7 @@ fn circle_json_bounded(index: usize, json: &Value, (smallest, largest): (Option<
         "path": format!("plan.geoFenceController.circles.{index}"),
         "shape": "circle",
         "inclusion": inclusion,
-        "kindText": format!("{} {}", if inclusion { "Keep-in circle" } else { "Keep-out circle" }, index + 1),
+        "kindText": format!("Circle {}", index + 1),
         "detailText": format!("{radius:.0} {units} radius"),
         "centre": centre.map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })),
         "centreText": centre.map(|(lat, lon)| format!("{lat:.6}, {lon:.6}")).unwrap_or("\u{2014}".to_string()),
@@ -487,7 +487,7 @@ mod tests {
     fn fences_are_described_and_framed() {
         let view = fences_view(&Fake, &[]);
         assert_eq!(view["count"], 2);
-        assert_eq!(view["polygons"][0]["kindText"], "Keep-out polygon 1");
+        assert_eq!(view["polygons"][0]["kindText"], "Polygon 1", "GeoFenceEditor names the row; Inclusion/Exclusion is its description");
         assert_eq!(view["polygons"][0]["detailText"], "4 vertices \u{b7} 25000 m\u{b2}", "the fence area follows the operator's unit now, the way the survey area always has - it stepped to km\u{b2} by hand before, whatever the five area settings said");
         assert_eq!(view["circles"][0]["detailText"], "150 m radius");
         assert_eq!(view["circles"][0]["centreText"], "47.000000, 8.000000");
@@ -605,11 +605,10 @@ mod tests {
         let metres = Unit { name: "m\u{b2}".to_string(), factor: 1.0 };
         let polygon = polygon_json(0, &json!({ "path": [ { "latitude": 47.0, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.1 } ] }), &metres);
         assert_eq!(polygon["inclusion"], false);
-        assert_eq!(polygon["kindText"], "Keep-out polygon 1", "mistaking a keep-out zone for a boundary to stay inside flies an operator into forbidden airspace; the other way round only keeps them out of their own");
         let circle = circle_json(&Boundless, 0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }));
-        assert_eq!(circle["kindText"], "Keep-out circle 1");
+        assert_eq!((circle["inclusion"].clone(), circle["kindText"].clone()), (json!(false), json!("Circle 1")), "mistaking a keep-out zone for a boundary to stay inside flies an operator into forbidden airspace; the other way round only keeps them out of their own");
         let stated = polygon_json(0, &json!({ "inclusion": true, "path": [] }), &metres);
-        assert_eq!(stated["kindText"], "Keep-in polygon 1", "a fence that says what it is is taken at its word");
+        assert_eq!(stated["inclusion"], true, "a fence that says what it is is taken at its word");
     }
 
     #[test]
