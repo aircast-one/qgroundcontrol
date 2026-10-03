@@ -128,7 +128,11 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         GIMBAL_CENTER => crate::guided::dispatch(backend, Some(op("center", Value::Null)), vehicle, &qt_path("centerGimbal"), "[]"),
         GIMBAL_TILT_90 => crate::guided::dispatch(backend, Some(op("tilt90", Value::Null)), vehicle, &qt_path("sendPitchBodyYaw"), "[-90, 0]"),
         GIMBAL_PITCH => match given.get(0).and_then(Value::as_f64).filter(|v| v.is_finite()) {
-            Some(pitch) => crate::guided::dispatch(backend, Some(op("pitch", json!({ "pitch": pitch }))), vehicle, &qt_path("sendPitchBodyYaw"), &json!([pitch, Value::Null, false]).to_string()),
+            Some(pitch) => {
+                let snapshot = crate::gimbal::lock().snapshot(crate::hub::now_ms());
+                let body_yaw = snapshot["gimbals"].as_array().and_then(|list| list.iter().find(|g| flag(g, "active"))).and_then(|g| g["bodyYaw"].as_f64()).unwrap_or(0.0);
+                crate::guided::dispatch(backend, Some(op("pitch", json!({ "pitch": pitch }))), vehicle, &qt_path("sendPitchBodyYaw"), &json!([pitch, body_yaw, false]).to_string())
+            }
             None => json!({ "ok": false, "refusal": "badPitch", "reason": "A tilt is a number of degrees." }),
         },
         GIMBAL_RETRACT => crate::guided::dispatch(backend, Some(op("retract", Value::Null)), vehicle, &qt_path("setGimbalRetract"), "[true]"),

@@ -17,6 +17,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -77,6 +78,13 @@ private fun PwmSlider(label: String, channel: Int, pwm: Int, onPwm: (Int) -> Uni
     }
 }
 
+private val gimbalSends = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+private fun sendTilt(pitch: Float) {
+    gimbalSends.execute { gimbalRefusal(Qgc.call("gimbal.pitch", pitch.toDouble())) }
+}
+
+private const val GIMBAL_REFUSAL_MS = 4000L
 internal const val GIMBAL_TILT_MIN = -90f
 internal const val GIMBAL_TILT_MAX = 30f
 
@@ -94,11 +102,11 @@ private fun GimbalTiltSlider(pitch: Double?) {
                 val now = SystemClock.uptimeMillis()
                 if (rcSendDue(now, lastSent, finished = false)) {
                     lastSent = now
-                    offMainDetached { gimbalRefusal(Qgc.call("gimbal.pitch", next.toDouble())) }
+                    sendTilt(next)
                 }
             },
             onValueChangeFinished = {
-                dragging?.let { last -> offMainDetached { gimbalRefusal(Qgc.call("gimbal.pitch", last.toDouble())) } }
+                dragging?.let(::sendTilt)
                 dragging = null
             },
             valueRange = GIMBAL_TILT_MIN..GIMBAL_TILT_MAX,
@@ -129,6 +137,13 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     DisposableEffect(vehicleId) { onDispose { offMainDetached { Qgc.invoke("vehicle.clearRcChannelOverrides") } } }
     if (!hasVehicle() || (!channels.any && !gimbalManager)) return
     val gimbal = remember(gimbalJson) { gimbalIndicator(gimbalJson) }
+    var gimbalRefused by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(gimbalRefused) {
+        if (gimbalRefused != null) {
+            kotlinx.coroutines.delay(GIMBAL_REFUSAL_MS)
+            gimbalRefused = null
+        }
+    }
     val recording = cameraRecording(channels.record, channelRecording, streamRecording)
     val rcGimbal = !gimbalManager && (channels.tilt > 0 || channels.pan > 0)
     Column(modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -153,11 +168,11 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
             }
             if (gimbal != null && gimbal.yawLockOffered) {
                 FilterChip(selected = gimbal.yawLocked, onClick = {
-                    offMainDetached { gimbalRefusal(Qgc.call("gimbal.yawLock", !gimbal.yawLocked)) }
+                    offMainDetached { gimbalRefused = gimbalRefusal(Qgc.call("gimbal.yawLock", !gimbal.yawLocked)) }
                 }, label = { Text(gimbal.yawLockLabel) })
             }
             if (gimbal != null) {
-                TextButton(onClick = { offMainDetached { gimbalRefusal(Qgc.call("gimbal.center")) } }) { Text("Recenter") }
+                TextButton(onClick = { offMainDetached { gimbalRefused = gimbalRefusal(Qgc.call("gimbal.center")) } }) { Text("Recenter") }
             }
             if (rcGimbal) {
                 TextButton(onClick = {
@@ -168,5 +183,6 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
                 }) { Text("Recenter") }
             }
         }
+        gimbalRefused?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error) }
     }
 }
