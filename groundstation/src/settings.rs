@@ -210,6 +210,30 @@ const GATED: &[(&str, &str, bool, &str)] = &[
 
 const INVERTED: &[(&str, &str)] = &[("apmStartMavlinkStreams", "Controlled by Vehicle")];
 
+const QML_LABELS: &[(&str, &str, &str)] = &[
+    ("videoSettings", "multiViewEnabled", "Show all cameras"),
+    ("videoSettings", "rtspTimeout", "Connection Timeout"),
+    ("videoSettings", "disableWhenDisarmed", "Stop recording when disarmed"),
+    ("videoSettings", "lowLatencyMode", "Low latency mode"),
+    ("videoSettings", "forceVideoDecoder", "Video Decode Priority"),
+    ("videoSettings", "recordingFormat", "File Format"),
+    ("videoSettings", "enableStorageLimit", "Delete old recordings automatically"),
+    ("videoSettings", "maxVideoSize", "Storage Limit"),
+];
+
+fn qml_labelled(group: &str, control: Value) -> Value {
+    let name = control.get("name").and_then(Value::as_str).unwrap_or_default();
+    match QML_LABELS.iter().find(|(in_group, labelled, _)| *in_group == group && *labelled == name) {
+        Some((_, _, label)) => {
+            let mut control = control;
+            control["label"] = json!(label);
+            control["shortLabel"] = json!(label);
+            control
+        }
+        None => control,
+    }
+}
+
 fn inverted(control: Value) -> Value {
     let name = control.get("name").and_then(Value::as_str).unwrap_or_default();
     match INVERTED.iter().find(|(inverted, _)| *inverted == name) {
@@ -545,7 +569,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .map(|f| decode(&f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .map(|mut control| {
             control["keywords"] = json!(fact_keywords(group, control.get("name").and_then(Value::as_str).unwrap_or_default()));
-            inverted(control)
+            qml_labelled(group, inverted(control))
         })
         .collect();
     let borrowed: Vec<Value> = GATED_FROM
@@ -804,6 +828,15 @@ mod tests {
         let shown = inverted(json!({ "name": "apmStartMavlinkStreams", "label": "Request start", "value": true }));
         assert_eq!((shown["label"].clone(), shown["shortLabel"].clone(), shown["inverted"].clone(), shown["value"].clone()), (json!("Controlled by Vehicle"), json!("Controlled by Vehicle"), json!(true), json!(true)), "TelemetrySettings.qml checked: !rawValue, the raw value stays as stored");
         assert!(inverted(json!({ "name": "telemetrySave" })).get("inverted").is_none());
+    }
+
+    #[test]
+    fn video_rows_carry_the_text_video_settings_qml_gives_them() {
+        let shown = qml_labelled("videoSettings", json!({ "name": "disableWhenDisarmed", "label": "Disable Video Stream When Disarmed" }));
+        assert_eq!((shown["label"].clone(), shown["shortLabel"].clone()), (json!("Stop recording when disarmed"), json!("Stop recording when disarmed")));
+        assert_eq!(qml_labelled("videoSettings", json!({ "name": "maxVideoSize" }))["label"], "Storage Limit");
+        assert_eq!(qml_labelled("flyViewSettings", json!({ "name": "maxVideoSize", "label": "Kept" }))["label"], "Kept", "the override is the video page's");
+        assert_eq!(qml_labelled("videoSettings", json!({ "name": "videoFit", "label": "Video Display Fit" }))["label"], "Video Display Fit");
     }
 
     #[test]
