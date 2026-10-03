@@ -36,6 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.width
 import java.util.Locale
 import org.json.JSONObject
 import androidx.compose.foundation.layout.Arrangement
@@ -227,6 +230,11 @@ private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
             item(key = "chart0") { InspectorChartPanel(0, shown) }
             item(key = "chart1") { InspectorChartPanel(1, shown) }
         }
+        if (rows.isNotEmpty()) item(key = "plots") {
+            Row(Modifier.fillMaxWidth().padding(end = 16.dp), horizontalArrangement = Arrangement.End) {
+                CHART_LABELS.forEach { label -> Text(label, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center, modifier = Modifier.width(48.dp)) }
+            }
+        }
         items(rows) { field ->
             ListItem(
                 headlineContent = {
@@ -242,6 +250,7 @@ private fun FieldList(messagePath: String, modifier: Modifier = Modifier) {
                                 checked = on,
                                 enabled = chartToggleEnabled(charts, field.name, field.type, chart),
                                 onCheckedChange = { wanted -> toggleChartField(chart, field.name, wanted) },
+                                modifier = Modifier.width(48.dp).semantics { contentDescription = "${field.name} on ${CHART_LABELS[chart]}" },
                             )
                         }
                     }
@@ -360,3 +369,5 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
         }
     }
 }
+
+internal val CHART_LABELS = listOf("Plot 1", "Plot 2")

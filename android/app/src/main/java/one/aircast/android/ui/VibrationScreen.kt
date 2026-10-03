@@ -349,7 +349,10 @@ private fun VibrationBody(reading: VibrationReading, modifier: Modifier = Modifi
 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Clipping events", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            Text(reading.clipCounts.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(clipText(reading.clipCounts), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
+
+internal fun clipText(counts: List<Int>): String =
+    counts.mapIndexed { index, count -> "Accel ${index + 1}: $count" }.joinToString(" \u00b7 ")
