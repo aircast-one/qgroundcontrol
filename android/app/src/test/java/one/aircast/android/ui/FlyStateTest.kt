@@ -43,6 +43,7 @@ class FlyStateTest {
 
         assertEquals("disarmed", state.state)
         assertEquals("Stabilize · Disarmed", state.stateText)
+        assertEquals("Ready to fly", flyState(JSONObject("""{"kind":"object","class":"FlyState","connected":true,"stateText":"Ready to Fly"}"""))?.stateText)
     }
 
     @Test

@@ -59,7 +59,7 @@ internal fun flyState(view: JSONObject?): FlyState? {
         armed = view.optBoolean("armed"),
         contactLost = if (view.isNull("contactLost")) null else view.optBoolean("contactLost"),
         state = view.optText("state"),
-        stateText = view.optText("stateText"),
+        stateText = view.optText("stateText").split(" · ").joinToString(" · ", transform = ::sentenceCase),
         summaryDetail = view.optText("summaryDetail"),
         nominal = view.optBoolean("nominal", true),
         fault = view.optBoolean("fault"),
