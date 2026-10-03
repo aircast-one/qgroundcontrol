@@ -35,7 +35,7 @@ pub fn parameter_tools_view(backend: &dyn Backend, _args: &[String]) -> Value {
         Some(tool(crate::paramfile::FILE_REVIEW, "Load from file for review...", "", "")),
         Some(tool(crate::paramfile::FILE_SAVE, "Save to file...", "", "")),
         Some(tool(RESET_DEFAULTS, "Reset all to firmware's defaults", "Reset All", "Select Reset to reset all parameters to their defaults.\n\nNote that this will also completely reset everything, including UAVCAN nodes, all vehicle settings, setup and calibrations.")),
-        (!apm && autoconfig_exists(backend)).then(|| tool(RESET_VEHICLE_CONFIG, "Reset to vehicle's configuration defaults", "Reset All", "Select Reset to reset all parameters to the vehicle's configuration defaults.")),
+        (!apm).then(|| tool(RESET_VEHICLE_CONFIG, "Reset to vehicle's configuration defaults", "Reset All", "Select Reset to reset all parameters to the vehicle's configuration defaults.")),
         flag(&vehicle, "px4Firmware").then(|| tool(crate::rctoparam::CLEAR_RC_TO_PARAM, "Clear all RC to Param", "", "")),
         Some(tool(REBOOT, "Reboot Vehicle", "Reboot Vehicle", "Select Ok to reboot vehicle.")),
     ]
@@ -64,10 +64,11 @@ pub fn run(backend: &dyn Backend, path: &str) -> Value {
     match path {
         REFRESH => refresh(),
         RESET_DEFAULTS => then_refresh(crate::guided::dispatch(backend, Some(json!({ "action": "resetParameters" })), vehicle, "vehicle.parameterManager.resetAllParametersToDefaults", "[]")),
-        _ => match autoconfig_exists(backend) {
-            true => then_refresh(crate::factwrite::write(backend, AUTOCONFIG, &json!({ "value": AUTOCONFIG_RESET }).to_string())),
-            false => json!({ "ok": false, "refusal": "unsupported", "reason": "This vehicle has no SYS_AUTOCONFIG to reset from." }),
-        },
+        _ => {
+            let written = autoconfig_exists(backend).then(|| crate::factwrite::write(backend, AUTOCONFIG, &json!({ "value": AUTOCONFIG_RESET }).to_string()));
+            let refreshed = refresh();
+            written.unwrap_or(refreshed)
+        }
     }
 }
 
@@ -104,6 +105,7 @@ mod tests {
     fn the_menu_matches_the_parameter_editor() {
         assert_eq!(labels(&Fake { apm: true, autoconfig: false, ready: true }), ["Refresh", "Load from file for review...", "Save to file...", "Reset all to firmware's defaults", "Reboot Vehicle"], "ArduPilot has no vehicle configuration reset");
         assert_eq!(labels(&Fake { apm: false, autoconfig: true, ready: true })[4], "Reset to vehicle's configuration defaults");
+        assert_eq!(labels(&Fake { apm: false, autoconfig: false, ready: true })[4], "Reset to vehicle's configuration defaults", "ParameterEditor.qml shows it for every non-ArduPilot vehicle");
         assert_eq!(labels(&Fake { apm: false, autoconfig: true, ready: true })[5], "Clear all RC to Param", "ParameterEditor.qml shows it for PX4 only");
         assert!(labels(&Fake { apm: false, autoconfig: true, ready: false }).is_empty(), "nothing to act on until the parameters are in");
         let tools = parameter_tools_view(&Fake { apm: true, autoconfig: false, ready: true }, &[]);
@@ -133,11 +135,14 @@ mod tests {
         let recorder = Recorder(std::cell::RefCell::new(Vec::new()));
         assert_eq!(run(&recorder, RESET_DEFAULTS)["ok"], true);
         assert_eq!(*recorder.0.borrow(), ["vehicle.parameterManager.resetAllParametersToDefaults", "vehicle.parameterManager.refreshAllParameters"]);
+        recorder.0.borrow_mut().clear();
+        assert_eq!(run(&recorder, RESET_VEHICLE_CONFIG)["ok"], true);
+        assert_eq!(*recorder.0.borrow(), ["vehicle.parameterManager.refreshAllParameters"], "no SYS_AUTOCONFIG: ParameterEditorController still refreshes");
     }
 
     #[test]
-    fn a_vehicle_configuration_reset_needs_the_parameter() {
-        assert_eq!(run(&Fake { apm: false, autoconfig: false, ready: true }, RESET_VEHICLE_CONFIG)["refusal"], "unsupported");
-        assert_eq!(run(&Fake { apm: false, autoconfig: true, ready: true }, REFRESH)["ok"], true);
+    fn a_vehicle_configuration_reset_without_the_parameter_only_refreshes() {
+        assert_eq!(run(&Fake { apm: false, autoconfig: false, ready: true }, RESET_VEHICLE_CONFIG)["ok"], true);
+        assert_eq!(run(&Fake { apm: false, autoconfig: true, ready: true }, RESET_VEHICLE_CONFIG)["ok"], true);
     }
 }
