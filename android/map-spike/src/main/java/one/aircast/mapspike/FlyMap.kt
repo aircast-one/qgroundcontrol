@@ -215,15 +215,20 @@ fun FlyMap(
             },
         )
         centre?.takeIf { zoom > 0.0 }?.let { at ->
+            val density = androidx.compose.ui.platform.LocalDensity.current
             ScaleBarView(
                 at.latitude,
                 zoom,
-                Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 4.dp),
+                logoEndInsetPx?.let { end ->
+                    with(density) { Modifier.align(Alignment.BottomEnd).padding(end = end.toDp(), bottom = bottomInsetPx.toDp() + SCALE_ABOVE_LOGO) }
+                } ?: Modifier.align(Alignment.BottomStart).padding(start = 4.dp, bottom = 4.dp),
             )
         }
         }
     }
 }
+
+private val SCALE_ABOVE_LOGO = 40.dp
 
 internal fun pipZoom(mainZoom: Double, pip: Boolean): Double? = when {
     mainZoom <= 0.0 -> null
