@@ -338,7 +338,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
                         label = { Text(system.title) },
                     )
                 }
-                if (components.size > 1) (listOf(InspectorChoice(-1, "All")) + components).forEach { choice ->
+                if (components.size > 1) (listOf(InspectorChoice(-1, "Comp All")) + components).forEach { choice ->
                     androidx.compose.material3.FilterChip(
                         selected = (component ?: -1) == choice.id,
                         onClick = { component = choice.id.takeIf { it >= 0 } },
