@@ -2,6 +2,8 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -68,7 +70,15 @@ internal fun unitSystemNote(system: Int): String =
 
 @Composable
 private fun UnitSystemRow(system: Int, onPick: (Int) -> Unit) {
-    ChoiceField("Measurement system", unitSystemLabel(system), UNIT_SYSTEM_LABELS, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), onPick = onPick)
+    val chosen = unitSystemLabel(system)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Measurement system", style = MaterialTheme.typography.bodyLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            UNIT_SYSTEM_LABELS.forEachIndexed { index, label ->
+                FilterChip(selected = label == chosen, onClick = { if (label != chosen) onPick(index) }, label = { Text(label) })
+            }
+        }
+    }
 }
 
 @Composable
