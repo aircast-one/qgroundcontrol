@@ -128,7 +128,10 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        Text("Throttle ${throttle.toInt()}%", style = MaterialTheme.typography.bodyMedium)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Test throttle", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text("${throttle.toInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        }
         Slider(
             value = throttle,
             onValueChange = { throttle = it },
