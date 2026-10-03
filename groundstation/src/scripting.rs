@@ -67,7 +67,7 @@ pub fn run(backend: &dyn Backend, path: &str, text: &str) -> Value {
         REFRESH_SCRIPTS => ftp(backend, json!({ "action": "ftp", "op": "list", "path": SCRIPT_ROOT })),
         UPLOAD_SCRIPT => ftp(backend, json!({ "action": "ftp", "op": "upload", "path": format!("{SCRIPT_ROOT}{}", remote_name(&arg(1))), "file": arg(0) })),
         DOWNLOAD_SCRIPT => {
-            *DOWNLOAD_TARGET.lock().unwrap_or_else(PoisonError::into_inner) = arg(1);
+            *DOWNLOAD_TARGET.lock().unwrap_or_else(PoisonError::into_inner) = Some(arg(2)).filter(|shown| !shown.is_empty()).unwrap_or_else(|| arg(1));
             ftp(backend, json!({ "action": "ftp", "op": "download", "path": format!("{SCRIPT_ROOT}{}", arg(0)), "file": arg(1) }))
         }
         DELETE_SCRIPT => ftp(backend, json!({ "action": "ftp", "op": "delete", "path": format!("{SCRIPT_ROOT}{}", arg(0)) })),
@@ -129,6 +129,21 @@ pub fn scripting_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_download_reports_the_file_the_operator_saved_not_the_staging_copy() {
+        struct Nothing;
+        impl Backend for Nothing {
+            fn get(&self, _: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get_fields(&self, _: &str, _: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn set(&self, _: &str, _: &str) -> String { String::new() }
+            fn invoke(&self, _: &str, _: &str) -> String { String::new() }
+            fn watch(&self, _: &[String]) {}
+        }
+        run(&Nothing, DOWNLOAD_SCRIPT, r#"["hello.lua", "/cache/download-hello.lua", "hello.lua"]"#);
+        let local = DOWNLOAD_TARGET.lock().unwrap().clone();
+        assert_eq!(status_for("/APM/scripts/hello.lua", &Ok(Outcome::Downloaded(Vec::new())), &local).0, "Download succeeded: hello.lua", "ScriptingComponent shows the path the user picked");
+    }
 
     #[test]
     fn only_files_are_listed_and_uploads_get_the_lua_extension() {

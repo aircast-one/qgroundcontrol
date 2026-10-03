@@ -125,7 +125,8 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
         scope.launch {
             val staged = File(context.cacheDir, "download-$name")
             withContext(Dispatchers.IO) { staged.delete() }
-            refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(SCRIPTING_DOWNLOAD, name, staged.absolutePath) }
+            val saved = withContext(Dispatchers.IO) { displayName(context, target) }
+            refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(SCRIPTING_DOWNLOAD, name, staged.absolutePath, saved) }
             while (refusal == null && withContext(Dispatchers.Default) { scripting(Qgc.get(SCRIPTING_VIEW))?.busy } == true) delay(BUSY_POLL_MS)
             withContext(Dispatchers.IO) {
                 when (refusal == null && staged.exists()) {

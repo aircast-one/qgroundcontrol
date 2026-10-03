@@ -11,9 +11,9 @@
                     "channelParam": "SERVO#_FUNCTION",
                     "functionValue": 59,
                     "firstChannel": 5,
-                    "lastChannel": 16,
                     "noneLabel": "Disabled",
-                    "exclusive": true
+                    "exclusive": true,
+                    "lastChannelExpr": "controller.parameterExists(-1, \"BRD_PWM_COUNT\") ? 8 + (controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value === 7 ? 3 : controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value) : 16"
                 },
                 {
                     "control": "channelFunction",
@@ -21,9 +21,9 @@
                     "channelParam": "SERVO#_FUNCTION",
                     "functionValue": 60,
                     "firstChannel": 5,
-                    "lastChannel": 16,
                     "noneLabel": "Disabled",
-                    "exclusive": true
+                    "exclusive": true,
+                    "lastChannelExpr": "controller.parameterExists(-1, \"BRD_PWM_COUNT\") ? 8 + (controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value === 7 ? 3 : controller.getParameterFact(-1, \"BRD_PWM_COUNT\").value) : 16"
                 },
                 {
                     "param": "JS_LIGHTS_STEPS",

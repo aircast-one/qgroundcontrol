@@ -44,6 +44,7 @@ internal data class MavlinkActions(
     val flyViewPath: String,
     val joystickPath: String,
     val actions: List<MavlinkActionEntry>,
+    val folderNote: String = "",
 )
 
 internal fun mavlinkActions(view: JSONObject?): MavlinkActions? = view?.optJSONArray("files")?.let { files ->
@@ -55,6 +56,7 @@ internal fun mavlinkActions(view: JSONObject?): MavlinkActions? = view?.optJSONA
         flyViewPath = view.optText("flyViewPath"),
         joystickPath = view.optText("joystickPath"),
         actions = (0 until (actions?.length() ?: 0)).mapNotNull { at -> actions!!.optJSONObject(at)?.let { MavlinkActionEntry(it.optText("label"), it.optText("description")) } },
+        folderNote = view.optText("folderNote"),
     )
 }
 
@@ -76,6 +78,7 @@ internal fun MavlinkActionsSection(onWrite: () -> Unit) {
         }
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
+        if (actions.folderNote.isNotBlank()) Text(actions.folderNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         FileChoice("Fly View Actions", actions.flyViewFile, options) { choose(actions.flyViewPath, it) }
         FileChoice("Joystick Actions", actions.joystickFile, options) { choose(actions.joystickPath, it) }
     }
@@ -113,10 +116,7 @@ internal fun FlyViewMavlinkActions(onSent: () -> Unit) {
             },
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Column(Modifier.fillMaxWidth()) {
-                Text(action.label, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                if (action.description.isNotBlank()) Text(action.description, style = MaterialTheme.typography.bodySmall)
-            }
+            Text(action.label, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, modifier = Modifier.fillMaxWidth())
         }
     }
 }

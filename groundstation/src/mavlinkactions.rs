@@ -145,6 +145,7 @@ pub fn mavlink_actions_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "joystickFile": text(backend, JOYSTICK_FILE),
         "flyViewPath": FLY_VIEW_FILE,
         "joystickPath": JOYSTICK_FILE,
+        "folderNote": format!("Action JSON files should be created in the '{}' folder.", text(backend, ACTIONS_SAVE_PATH)),
         "actions": if vehicle { fly_view_actions(backend).iter().map(|a| json!({ "label": a.label, "description": a.description })).collect::<Vec<_>>() } else { Vec::new() },
     })
 }

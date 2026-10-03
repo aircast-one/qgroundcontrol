@@ -615,7 +615,12 @@ fn channels(scope: &Scope, template: &str) -> Vec<usize> {
 
 fn listed_channels(scope: &Scope, control: &Value) -> Vec<usize> {
     let first = control["firstChannel"].as_u64().map_or(1, |n| n as usize);
-    let last = control["lastChannel"].as_u64().map_or(usize::MAX, |n| n as usize);
+    let last = control["lastChannelExpr"]
+        .as_str()
+        .and_then(|expr| scope.eval_text(expr).number())
+        .map(|n| n as usize)
+        .or_else(|| control["lastChannel"].as_u64().map(|n| n as usize))
+        .unwrap_or(usize::MAX);
     channels(scope, control["channelParam"].as_str().unwrap_or_default()).into_iter().filter(|n| (first..=last).contains(n)).collect()
 }
 
@@ -1226,7 +1231,7 @@ mod tests {
             let strings = |v: &Value, keys: &[&str]| -> Vec<String> { keys.iter().filter_map(|k| v[*k].as_str().map(str::to_string)).collect() };
             let from_sections: Vec<String> = config["sections"].as_array().unwrap().iter().flat_map(|s| {
                 strings(s, &["showWhen"]).into_iter().chain(s["controls"].as_array().cloned().unwrap_or_default().iter().flat_map(|c| {
-                    strings(c, &["showWhen", "enableWhen"])
+                    strings(c, &["showWhen", "enableWhen", "lastChannelExpr"])
                         .into_iter()
                         .chain(strings(&c["toggleCheckbox"], &["checked"]))
                         .chain(strings(&c["enableCheckbox"], &["checked"]))
@@ -1445,6 +1450,12 @@ mod tests {
         assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", lights1["path"].as_str().unwrap()), r#"{"value":2}"#)["ok"], true);
         assert_eq!((fake.params.borrow()["SERVO9_FUNCTION"], fake.params.borrow()["SERVO6_FUNCTION"]), (0.0, 59.0), "setRCFunction clears the old channel first");
         assert!(rows.iter().any(|r| r["label"] == "Brightness Steps"));
+        let board = Fake::new(&named.iter().map(|(n, v)| (n.as_str(), *v)).chain([("JS_LIGHTS_STEPS", 4.0), ("BRD_PWM_COUNT", 2.0)]).collect::<Vec<_>>());
+        let rows: Vec<Value> = page(&board, "Lights", false)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect();
+        assert_eq!(rows.iter().find(|r| r["label"] == "Lights 1").unwrap()["options"].as_array().unwrap().len(), 7, "8 main outputs plus BRD_PWM_COUNT=2 auxiliaries: Disabled and channels 5 to 10");
+        let seven = Fake::new(&named.iter().map(|(n, v)| (n.as_str(), *v)).chain([("JS_LIGHTS_STEPS", 4.0), ("BRD_PWM_COUNT", 7.0)]).collect::<Vec<_>>());
+        let rows: Vec<Value> = page(&seven, "Lights", false)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).collect();
+        assert_eq!(rows.iter().find(|r| r["label"] == "Lights 1").unwrap()["options"].as_array().unwrap().len(), 8, "a BRD_PWM_COUNT of 7 counts as 3");
     }
 
     #[test]

@@ -27,6 +27,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -137,10 +138,21 @@ private fun Stepper(title: String, fact: Fact) {
     val latest = rememberUpdatedState(fact)
     val pending = remember(fact.path) { mutableStateOf<Double?>(null) }
 
-    fun step(direction: Int) {
-        val next = (pending.value ?: latest.value.let { stepped(it, 0) })?.plus(direction) ?: return
+    fun write(next: Double) {
         pending.value = next
         scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, next) } }
+    }
+
+    fun step(direction: Int) {
+        val next = (pending.value ?: latest.value.let { stepped(it, 0) })?.plus(direction) ?: return
+        write(next)
+    }
+
+    val shown = pending.value?.toLong()?.toString() ?: fact.valueString
+    var typed by remember(shown) { mutableStateOf(shown) }
+    fun commit() {
+        val number = one.aircast.mapspike.typedNumber(typed)
+        if (number == null) typed = shown else if (number.toLong().toString() != shown) write(number.toLong().toDouble())
     }
 
     Column {
@@ -151,10 +163,17 @@ private fun Stepper(title: String, fact: Fact) {
         ) {
             Text(title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             RepeatButton("-") { step(-1) }
-            Text(
-                pending.value?.toLong()?.toString() ?: fact.valueString,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.width(56.dp),
+            androidx.compose.material3.OutlinedTextField(
+                value = typed,
+                onValueChange = { typed = it },
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyLarge,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { commit() }),
+                modifier = Modifier.width(96.dp).onFocusChanged { if (!it.isFocused) commit() },
             )
             RepeatButton("+") { step(1) }
         }
