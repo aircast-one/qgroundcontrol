@@ -13,7 +13,7 @@ pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.di
 // is after the read that drew the panel, so the fixed list above left both on an em-dash until
 // something else forced a reload. The macOS head watched the item's own properties raw to cover
 // it; the view now watches them itself, for the index it was asked about.
-const WATCHED: [&str; 4] = ["cameraShots", "complexDistance", "timeBetweenShots", "coveredArea"];
+const WATCHED: [&str; 6] = ["cameraShots", "complexDistance", "timeBetweenShots", "coveredArea", "topFlightAlt", "bottomFlightAlt"];
 
 pub fn deps_for(args: &[String]) -> Vec<String> {
     let item = args.first().and_then(|a| a.parse::<usize>().ok());
@@ -57,7 +57,7 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
     let surface = fact_metres("distanceToSurface").filter(|metres| *metres > 0.0);
     let area = Unit::area(backend);
     let vertical = Unit::vertical(backend);
-    let layers = survey.get("layers").and_then(|v| v.as_i64().or_else(|| v.get("value").and_then(Value::as_i64)));
+    let layers = survey.get("layers").and_then(Value::as_i64).or_else(|| crate::read::fact_property(&survey, "layers").and_then(|f| f.get("rawValue")).and_then(Value::as_i64));
     let flight_alt = |key: &str| survey.get(key).and_then(Value::as_f64).filter(|v| v.is_finite()).map(|metres| crate::read::format_measure(vertical.show(metres), &vertical.name));
     let layer_rows = layers.zip(flight_alt("topFlightAlt")).zip(flight_alt("bottomFlightAlt")).map(|((layers, top), bottom)| json!({
         "layers": layers.to_string(),

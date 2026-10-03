@@ -48,7 +48,7 @@ pub struct Job {
     pub port: Option<String>,
     pub file: Option<String>,
     pub choices: Vec<(String, String)>,
-    pub best_choice: usize,
+    pub best_choice: Option<usize>,
     pub chosen: Option<String>,
 }
 
@@ -57,12 +57,12 @@ pub enum Event {
     Status(String),
     Board(BoardInfo),
     Progress(f64),
-    Choose(Vec<(String, String)>, usize),
+    Choose(Vec<(String, String)>, Option<usize>),
 }
 
 const CHOICE_POLL_MS: u64 = 200;
 
-fn await_choice(choices: Vec<(String, String)>, best: usize, report: &mut dyn FnMut(Event)) -> Result<String, String> {
+fn await_choice(choices: Vec<(String, String)>, best: Option<usize>, report: &mut dyn FnMut(Event)) -> Result<String, String> {
     report(Event::Choose(choices, best));
     let picked = std::iter::repeat(())
         .take_while(|()| !cancelled())

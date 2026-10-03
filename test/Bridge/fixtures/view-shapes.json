@@ -154,6 +154,7 @@
         "view.escCalibration.text",
         "view.fences.breachReturnAltitude",
         "view.fences.breachReturnPoint",
+        "view.firmwareUpgrade.bestChoice",
         "view.firmwareUpgrade.board",
         "view.firmwareUpgrade.error",
         "view.firmwareUpgrade.file",
@@ -10823,7 +10824,7 @@
         "versionType": "string"
     },
     "view.firmwareUpgrade": {
-        "bestChoice": "number",
+        "bestChoice": "null",
         "board": "null",
         "busy": "bool",
         "cancellable": "bool",

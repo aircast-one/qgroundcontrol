@@ -182,11 +182,11 @@ pub fn parse_manifest(text: &str) -> Result<Vec<Entry>, String> {
     Ok(json.get("firmware").and_then(Value::as_array).map(|listed| listed.iter().filter_map(entry).collect()).unwrap_or_default())
 }
 
-pub fn apm_url(entries: &[Entry], board_id: u32, build: Build, vehicle: Vehicle, chibios: bool, board_description: &str) -> Result<(Vec<(String, String)>, usize), String> {
+pub fn apm_url(entries: &[Entry], board_id: u32, build: Build, vehicle: Vehicle, chibios: bool, board_description: &str) -> Result<(Vec<(String, String)>, Option<usize>), String> {
     let raw_board = if board_id == crate::bootloader::BOARD_ID_PX4_FMU_V3 { crate::bootloader::BOARD_ID_PX4_FMU_V2 } else { board_id };
     let fmuv3 = board_id == crate::bootloader::BOARD_ID_PX4_FMU_V3;
     let matching: Vec<&Entry> = entries.iter().filter(|e| e.build == build && e.chibios == chibios && e.vehicle == vehicle && e.board_id == raw_board && !(e.fmuv2 && fmuv3)).collect();
-    let best = board_description.ends_with("-BL").then(|| matching.iter().position(|e| e.bootloader_strings.iter().any(|s| s == board_description))).flatten().unwrap_or(0);
+    let best = board_description.ends_with("-BL").then(|| matching.iter().position(|e| e.bootloader_strings.iter().any(|s| s == board_description))).flatten().or((matching.len() == 1).then_some(0));
     match matching.is_empty() {
         true => Err("No Firmware Available".to_string()),
         false => Ok((matching.iter().map(|e| (e.name.clone(), e.url.clone())).collect(), best)),
@@ -234,10 +234,10 @@ mod tests {
             apm_url(&entries, board, build, vehicle, chibios, description).map(|(listed, best)| (listed.into_iter().map(|(_, url)| url).collect::<Vec<_>>(), best))
         };
         let both = vec!["https://f/copter-fmuv5.apj".to_string(), "https://f/copter-cuav.apj".to_string()];
-        assert_eq!(offered(50, Build::Stable, Vehicle::Copter, true, "CUAVv5-BL"), Ok((both.clone(), 1)), "apmFirmwareNamesBestIndex is the bootloader string match");
-        assert_eq!(offered(50, Build::Stable, Vehicle::Copter, true, "PX4 BL FMU v5.x"), Ok((both, 0)), "no bootloader match preselects the first");
-        assert_eq!(offered(9, Build::Beta, Vehicle::Plane, true, ""), Ok((vec!["https://f/plane-fmuv2.apj".to_string()], 0)), "a single fitting build is still shown with its version");
-        assert_eq!(offered(9, Build::Beta, Vehicle::Plane, false, ""), Ok((vec!["https://f/plane-nuttx.px4".to_string()], 0)), "the apmChibiOS setting at NuttX picks the .px4 build");
+        assert_eq!(offered(50, Build::Stable, Vehicle::Copter, true, "CUAVv5-BL"), Ok((both.clone(), Some(1))), "apmFirmwareNamesBestIndex is the bootloader string match");
+        assert_eq!(offered(50, Build::Stable, Vehicle::Copter, true, "PX4 BL FMU v5.x"), Ok((both, None)), "several builds and no bootloader match preselect nothing, as QGC's Choose board type placeholder");
+        assert_eq!(offered(9, Build::Beta, Vehicle::Plane, true, ""), Ok((vec!["https://f/plane-fmuv2.apj".to_string()], Some(0))), "a single fitting build is preselected and still shown with its version");
+        assert_eq!(offered(9, Build::Beta, Vehicle::Plane, false, ""), Ok((vec!["https://f/plane-nuttx.px4".to_string()], Some(0))), "the apmChibiOS setting at NuttX picks the .px4 build");
         assert_eq!(offered(crate::bootloader::BOARD_ID_PX4_FMU_V3, Build::Beta, Vehicle::Plane, true, ""), Err("No Firmware Available".to_string()), "an fmuv2 build is never offered to an fmuv3 board");
     }
 

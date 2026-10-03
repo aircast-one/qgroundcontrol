@@ -171,7 +171,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
     val raw = remember(view) { rawEdit(view) }
     val connected = hasVehicle()
     val camera = remember(view) { cameraCalc(view) }
-    val stats by androidx.compose.runtime.produceState<one.aircast.mapspike.SurveyStats?>(null, index, revision, camera) {
+    val stats by androidx.compose.runtime.produceState<one.aircast.mapspike.SurveyStats?>(null, index, revision, camera != null) {
         value = if (camera == null) null else withContext(Dispatchers.Default) { one.aircast.mapspike.surveyStats(Qgc.get("view.surveyStats($index)")) }
     }
     ModalBottomSheet(onDismissRequest = onDismiss) {

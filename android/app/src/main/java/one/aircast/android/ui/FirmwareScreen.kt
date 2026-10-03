@@ -70,7 +70,7 @@ internal data class FirmwareJob(
     val messages: List<String>,
     val error: String,
     val choices: List<Pair<String, String>> = emptyList(),
-    val bestChoice: Int = 0,
+    val bestChoice: Int = -1,
     val updateAvailable: String = "",
     val px4StableVersion: String = "",
     val px4BetaVersion: String = "",
@@ -100,7 +100,7 @@ internal fun firmwareJob(view: JSONObject?): FirmwareJob? = view?.takeIf { it.op
             (0 until listed.length()).mapNotNull { index -> listed.optJSONObject(index)?.let { c -> c.optText("name") to c.optText("url") } }
         }.orEmpty(),
         updateAvailable = it.optText("updateAvailable"),
-        bestChoice = it.optInt("bestChoice"),
+        bestChoice = if (it.isNull("bestChoice")) -1 else it.optInt("bestChoice"),
         px4StableVersion = it.optText("px4StableVersion"),
         px4BetaVersion = it.optText("px4BetaVersion"),
     )
