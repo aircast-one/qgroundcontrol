@@ -132,6 +132,7 @@ pub mod coreplan;
 pub mod devicesetup;
 pub mod plandoc;
 pub mod qtjson;
+pub mod transectload;
 pub mod planitems;
 pub mod plankml;
 pub mod platformbluetooth;

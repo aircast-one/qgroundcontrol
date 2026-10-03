@@ -161,9 +161,10 @@ fn load_item(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::C
         Some("SimpleItem") => load_simple(item, commands).map(Item::Simple),
         Some("ComplexItem") => {
             let kind = item.get("complexItemType").and_then(Value::as_str).unwrap_or("").to_string();
-            let json = match crate::landingpattern::is_landing(&kind) {
-                true => crate::landingpattern::loaded(&kind, item)?,
-                false => item.clone(),
+            let json = match () {
+                _ if crate::landingpattern::is_landing(&kind) => crate::landingpattern::loaded(&kind, item)?,
+                _ if crate::transectload::applies(&kind) => crate::transectload::loaded(&kind, item)?,
+                _ => item.clone(),
             };
             let item_count = complex_count(&kind, &json)?;
             Ok(Item::Complex { kind, json, item_count })
