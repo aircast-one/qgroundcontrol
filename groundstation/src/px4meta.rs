@@ -25,6 +25,8 @@ pub fn bare(value_type: ValueType) -> MetaData {
         max: None,
         increment: None,
         max_string_length: None,
+        user_min: None,
+        user_max: None,
         enums: Vec::new(),
         bitmask: false,
         has_control: true,

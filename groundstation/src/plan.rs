@@ -92,7 +92,22 @@ pub fn capability(backend: &dyn Backend, controller: &str) -> Option<bool> {
 
 fn plan_default(backend: &dyn Backend, name: &str) -> Value {
     let path = format!("settings.appSettings.{name}");
-    crate::control::decode(&object(&backend.get(&path)), &path)
+    let fact = object(&backend.get(&path));
+    match crate::control::decode(&fact, &path) {
+        Value::Object(mut fields) => {
+            fields.insert("slider".to_string(), user_slider(&fact));
+            Value::Object(fields)
+        }
+        other => other,
+    }
+}
+
+fn user_slider(fact: &Value) -> Value {
+    let bound = |key: &str| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
+    match (bound("userMin"), bound("userMax")) {
+        (Some(from), Some(to)) if to > from => json!({ "from": from, "to": to, "decimals": fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(0) }),
+        _ => Value::Null,
+    }
 }
 
 const SPEED_NOTE: &str = "Speeds are used to estimate mission time only. They do not change the flight speed.";
@@ -413,6 +428,7 @@ mod tests {
             "min": fact["min"], "minIsDefaultForType": fact.get("min").is_none(),
             "max": fact.get("max").cloned().unwrap_or(json!(f64::MAX)), "maxIsDefaultForType": fact.get("max").is_none(),
             "decimalPlaces": fact["decimalPlaces"],
+            "userMin": fact["userMin"], "userMax": fact["userMax"],
         })
     }
 
@@ -467,6 +483,9 @@ mod tests {
             (Value::Null, Value::Null, Value::Null),
             "App.SettingsGroup.json declares a min on all three and a max on none, so maxIsDefaultForType is the type's own limit rather than a real one and offering it as a ceiling invents a rule the setting does not have. This used to assert the altitude ceiling was 1000, a number the fake invented and QGC has never declared"
         );
+
+        assert_eq!(agreed["cruise"]["slider"], json!({ "from": 1.0, "to": 30.0, "decimals": 1 }), "MissionDefaultsEditor draws each default as a FactTextFieldSlider ranging userMin..userMax");
+        assert_eq!(agreed["altitude"]["slider"]["to"], 121.92);
 
         let disagreeing = defaults_json(&Defaults("m/s", "ft/s"));
         assert_eq!(disagreeing["speedUnits"], Value::Null, "two speeds in different units have no shared unit, and picking the first would draw one of them wrong");

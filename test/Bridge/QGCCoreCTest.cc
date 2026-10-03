@@ -1546,9 +1546,7 @@ void QGCCoreCTest::_everyFactPropertyIsServedOrExcused()
         { QStringLiteral("selectedBitmaskStrings"), QStringLiteral("view.control computes the set bits from bitmaskValues and the value") },
         { QStringLiteral("volatileValue"), QStringLiteral("nothing asks yet") },
         { QStringLiteral("writeOnly"), QStringLiteral("readOnly is served and no head offers a write-only field") },
-        { QStringLiteral("userMin"), QStringLiteral("nothing asks yet; min is served and no head lets the user narrow a range") },
         { QStringLiteral("userMinString"), QStringLiteral("nothing asks yet; minString is served") },
-        { QStringLiteral("userMax"), QStringLiteral("nothing asks yet; max is served and no head lets the user narrow a range") },
         { QStringLiteral("userMaxString"), QStringLiteral("nothing asks yet; maxString is served") },
         { QStringLiteral("invalidValueString"), QStringLiteral("nothing asks yet; validation sentences come from view.control") },
     };

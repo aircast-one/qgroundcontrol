@@ -79,4 +79,13 @@ class PlanDefaultsTest {
         val noSpeeds = plan("""{"altitude":${control("a", 50.0, "m")},"speedNote":null}""")
         assertEquals("", planDefaultsNote(noSpeeds, planDefaults(noSpeeds)))
     }
+
+    @Test
+    fun `a default carrying the user range gets the slider MissionDefaultsEditor draws under its field`() {
+        val ranged = control("offlineEditingCruiseSpeed", 15.0, "m/s").replace("\"bits\":[]", "\"bits\":[],\"slider\":{\"from\":1.0,\"to\":30.0,\"decimals\":1}")
+        val facts = planDefaults(plan("""{"cruise":$ranged,"altitude":${control("defaultMissionItemAltitude", 50.0, "m")}}"""))
+
+        assertEquals(one.aircast.android.bridge.FactSlider(1f, 30f, 1, ""), facts.last().slider)
+        assertEquals(null, facts.first().slider)
+    }
 }

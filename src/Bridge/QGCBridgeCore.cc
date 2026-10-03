@@ -390,6 +390,8 @@ QJsonObject factJson(Fact *fact)
         QStringLiteral("maxString"),
         QStringLiteral("minIsDefaultForType"),
         QStringLiteral("maxIsDefaultForType"),
+        QStringLiteral("userMin"),
+        QStringLiteral("userMax"),
         QStringLiteral("defaultValue"),
         QStringLiteral("defaultValueString"),
         QStringLiteral("defaultValueAvailable"),

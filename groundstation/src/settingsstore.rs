@@ -318,6 +318,8 @@ pub fn fact_json(meta: &MetaData, raw: &Value, unit: Option<crate::units::Conver
         "maxString": bound_text(shown_max),
         "minIsDefaultForType": raw_min == limits.0,
         "maxIsDefaultForType": raw_max == limits.1,
+        "userMin": meta.user_min.map(|v| number_json(cooked(v), whole)),
+        "userMax": meta.user_max.map(|v| number_json(cooked(v), whole)),
         "typeIsBool": meta.value_type == ValueType::Bool,
         "typeIsInteger": whole,
         "typeIsString": meta.value_type == ValueType::String,

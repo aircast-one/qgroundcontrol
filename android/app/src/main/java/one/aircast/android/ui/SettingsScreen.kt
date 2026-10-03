@@ -44,6 +44,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -76,6 +77,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
+import one.aircast.android.bridge.FactSlider
 import one.aircast.android.bridge.Qgc
 import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
@@ -636,6 +638,23 @@ internal fun factSubtitle(fact: Fact): String = listOfNotNull(
 ).joinToString(" · ")
 
 @Composable
+private fun FieldSlider(fact: Fact, slider: FactSlider, onWrite: (Double) -> Unit) {
+    val held = (fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull() ?: slider.from
+    var shown by remember(fact.path, held) { mutableStateOf(held.coerceIn(slider.from, slider.to)) }
+    Slider(
+        value = shown,
+        onValueChange = { shown = it },
+        valueRange = slider.from..slider.to,
+        enabled = fact.acceptsWrite,
+        onValueChangeFinished = { onWrite(shown.toDouble()) },
+    )
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(sliderValue(slider.from, slider.decimals, ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(sliderValue(slider.to, slider.decimals, ""), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
 internal fun FactRow(
     fact: Fact,
     title: String = sentenceCase(fact.heading),
@@ -669,6 +688,7 @@ internal fun FactRow(
                 fact.isEnum && !fact.valueIsOffTheEnumList -> EnumField(fact, inside, ::write)
                 else -> FactTextField(fact, onWrite, inside, onRejected)
             }
+            fact.slider?.takeIf { !fact.isEnum && !fact.isBitmask }?.let { slider -> FieldSlider(fact, slider) { value -> write { Qgc.set(fact.path, value) } } }
             val runInert = LocalRunInertNote.current
             val note = (subtitle.split(" · ") + listOfNotNull(inertNote(fact).takeIf { !fact.enabled && it != runInert }))
                 .filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
