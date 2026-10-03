@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -56,9 +57,12 @@ private const val HOME_LETTER = "L"
 private val CARDINALS = listOf(0 to "N", 90 to "E", 180 to "S", 270 to "W")
 private val HEADING_COLOUR = Color(0xFFEE3424)
 private val COURSE_COLOUR = Color(0xFF24D3EE)
-private val ROLL_POINTER_COLOUR = Color(0xFFEE3424)
+private val ROLL_POINTER_COLOUR = Color(0xFFED1C24)
+private val HEADING_SHADE = Color(0xFFC72B27)
+private const val HEADING_TEXT_DROP = 0.48f
 private val HORIZON_SKY = Color.hsl(216f, 0.5f, 0.55f)
 private val HORIZON_GROUND = Color.hsl(90f, 0.75f, 0.25f)
+private val HORIZON_GROUND_NEAR = Color.hsl(90f, 0.5f, 0.45f)
 internal val ROLL_TICKS = listOf(-60, -45, -30, -15, 0, 15, 30, 45, 60)
 
 internal data class Attitude(
@@ -185,7 +189,12 @@ private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean
                         drawText(text, topLeft = at - Offset(text.size.width / 2f, text.size.height / 2f))
                     }
                 }
-                reading.courseOverGround?.let { drawBearing(it, outer, COURSE_COLOUR, dashed = false) }
+                reading.courseOverGround?.let { course ->
+                    rotate(course) {
+                        val rim = center.y - outer + 1.dp.toPx()
+                        drawPath(Path().apply { moveTo(center.x, rim + 9.dp.toPx()); lineTo(center.x - 5.dp.toPx(), rim); lineTo(center.x + 5.dp.toPx(), rim); close() }, COURSE_COLOUR)
+                    }
+                }
                 reading.headingToNextWaypoint?.let { drawBearing(it, outer, mission, dashed = true) }
                 reading.headingToHome?.let {
                     val at = pointOnRing(center, outer - 7.dp.toPx(), it)
@@ -196,22 +205,18 @@ private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean
                     }
                 }
                 rotate(reading.heading) {
-                    val tip = Offset(center.x, center.y - outer + 1.dp.toPx())
-                    drawPath(
-                        Path().apply {
-                            moveTo(tip.x, tip.y + 10.dp.toPx())
-                            lineTo(tip.x - 6.dp.toPx(), tip.y)
-                            lineTo(tip.x + 6.dp.toPx(), tip.y)
-                            close()
-                        },
-                        HEADING_COLOUR,
-                    )
+                    val half = outer / 3f
+                    val top = Offset(center.x, center.y - half)
+                    val bottom = center.y + half
+                    val notch = center.y + half * 0.5f
+                    drawPath(Path().apply { moveTo(top.x, top.y); lineTo(center.x + half, bottom); lineTo(center.x, notch); close() }, HEADING_COLOUR)
+                    drawPath(Path().apply { moveTo(top.x, top.y); lineTo(center.x - half, bottom); lineTo(center.x, notch); close() }, HEADING_SHADE)
                 }
             }
 
             if (compass) {
                 val headingText = measurer.measure(reading.headingText, headingStyle)
-                val below = if (horizon) ball * 0.45f else -headingText.size.height / 2f
+                val below = if (horizon) ball * 0.45f else outer * HEADING_TEXT_DROP
                 drawText(headingText, topLeft = Offset(center.x - headingText.size.width / 2f, center.y + below))
             }
         }
@@ -242,7 +247,11 @@ private fun DrawScope.drawHorizon(
         rotate(-reading.roll) {
             translate(top = pitchOffset(reading.pitch, radius)) {
                 drawRect(sky, topLeft = Offset(center.x - radius * 3, center.y - radius * 6), size = Size(radius * 6, radius * 6))
-                drawRect(ground, topLeft = Offset(center.x - radius * 3, center.y), size = Size(radius * 6, radius * 6))
+                drawRect(
+                    Brush.verticalGradient(listOf(HORIZON_GROUND_NEAR, ground), startY = center.y, endY = center.y + radius * 2),
+                    topLeft = Offset(center.x - radius * 3, center.y),
+                    size = Size(radius * 6, radius * 6),
+                )
                 drawLine(ink, Offset(center.x - radius * 3, center.y), Offset(center.x + radius * 3, center.y), strokeWidth = 1.dp.toPx())
                 ladderAngles().forEach { degrees ->
                     val y = center.y - pitchOffset(degrees.toFloat(), radius)
@@ -262,17 +271,18 @@ private fun DrawScope.drawHorizon(
             drawLine(
                 ink,
                 pointOnRing(center, radius - 1.dp.toPx(), degrees.toFloat()),
-                pointOnRing(center, radius - (if (degrees % 30 == 0) 7.dp else 4.dp).toPx(), degrees.toFloat()),
+                pointOnRing(center, radius - 6.dp.toPx(), degrees.toFloat()),
                 strokeWidth = 1.5f.dp.toPx(),
             )
         }
     }
-    val pointerTip = Offset(center.x, center.y - radius + 8.dp.toPx())
+    val pointerTip = Offset(center.x, center.y - radius + 7.dp.toPx())
+    val pointerBase = center.y - radius + 1.dp.toPx()
     drawPath(
         Path().apply {
             moveTo(pointerTip.x, pointerTip.y)
-            lineTo(pointerTip.x - 4.dp.toPx(), pointerTip.y + 6.dp.toPx())
-            lineTo(pointerTip.x + 4.dp.toPx(), pointerTip.y + 6.dp.toPx())
+            lineTo(pointerTip.x - 4.dp.toPx(), pointerBase)
+            lineTo(pointerTip.x + 4.dp.toPx(), pointerBase)
             close()
         },
         ROLL_POINTER_COLOUR,
