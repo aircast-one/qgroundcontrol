@@ -11,7 +11,7 @@ pub fn control_view(backend: &dyn Backend, args: &[String]) -> Value {
     let fact = object(&backend.get(path));
     match fact.get("kind").and_then(Value::as_str) {
         Some("fact") => decode(&fact, path),
-        Some("value") => plain(fact.get("value").cloned().unwrap_or(Value::Null), path),
+        Some("value") => fact.get("value").filter(|value| !value.is_null()).map_or(json!({ "kind": "null" }), |value| plain(value.clone(), path)),
         _ => json!({ "kind": "null" }),
     }
 }
@@ -155,6 +155,7 @@ mod tests {
                 match path {
                     "settings.unitsSettings.unitSystem" => json!({ "kind": "value", "value": 1 }).to_string(),
                     "settings.appSettings.logSavePath" => json!({ "kind": "value", "value": "/data/Logs" }).to_string(),
+                    "settings.nope" => json!({ "kind": "value", "value": null }).to_string(),
                     _ => json!({ "kind": "null" }).to_string(),
                 }
             }
@@ -167,6 +168,7 @@ mod tests {
         assert_eq!((&system["value"], &system["readOnly"]), (&json!(1), &json!(true)), "UnitsSettings::unitSystem is a Q_PROPERTY, not a Fact; answering null made every head read it as 0, Metric");
         assert_eq!(control_view(&Plain, &["settings.appSettings.logSavePath".to_string()])["value"], "/data/Logs", "GeoTag found no downloaded logs because the folder read empty");
         assert_eq!(control_view(&Plain, &["nowhere".to_string()])["kind"], "null");
+        assert_eq!(control_view(&Plain, &["settings.nope".to_string()])["kind"], "null", "Qt answers an unknown setting with a null value, and that is no control");
     }
 
     #[test]
