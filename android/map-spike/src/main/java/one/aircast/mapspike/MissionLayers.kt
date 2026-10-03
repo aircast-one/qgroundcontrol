@@ -783,10 +783,12 @@ fun installSurveyLayers(style: Style) {
     }
 }
 
+internal fun shadedArea(survey: Survey): List<TrackPoint> = if (survey.shape == SHAPE_AREA) survey.area else survey.outline
+
 fun surveyAreaFeatures(surveys: List<Survey>): FeatureCollection {
-    val features = surveys.filter { it.shape == SHAPE_AREA }.mapNotNull { survey ->
-        if (survey.area.size < 3) return@mapNotNull null
-        val ring = survey.area.map { Point.fromLngLat(it.longitude, it.latitude) }
+    val features = surveys.map(::shadedArea).mapNotNull { area ->
+        if (area.size < 3) return@mapNotNull null
+        val ring = area.map { Point.fromLngLat(it.longitude, it.latitude) }
         val closed = if (ring.first() == ring.last()) ring else ring + ring.first()
         Feature.fromGeometry(Polygon.fromLngLats(listOf(closed)))
     }

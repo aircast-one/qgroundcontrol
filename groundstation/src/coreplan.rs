@@ -1929,6 +1929,7 @@ pub fn shape_vertices(path: &str) -> Option<Vec<(f64, f64)>> {
     let document = held().document.clone()?;
     let vertices = match shape_of(path)? {
         Shape::Survey(index) => match document.items.get(index.checked_sub(1)?)? {
+            plandoc::Item::Complex { kind, json, .. } if kind == "CorridorScan" => return Some(crate::corridorscan::corridor_polygon(json).into_iter().map(|(latitude, longitude, _)| (latitude, longitude)).collect()),
             plandoc::Item::Complex { json, .. } => json.get("polygon")?.as_array()?.clone(),
             plandoc::Item::Simple(_) => return None,
         },

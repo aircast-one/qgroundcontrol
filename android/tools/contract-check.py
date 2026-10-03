@@ -301,6 +301,7 @@ ACCEPTED = {
     "headingDegrees": "view.adsbTraffic recorded with contacts[] empty; adsb.rs serves it",
     "canDelete": "view.offlineMaps records sets[] empty because the recording has no tile cache open; offlinemaps.rs set_json serves it",
     "rowText": "view.offlineMaps records sets[] empty because the recording has no tile cache open; offlinemaps.rs set_json serves it",
+    "outline": "view.missionItems records no corridor item; missionitems.rs geometry_of and document_geometry serve it for corridors",
     "capturing": "view.camera records panel.video and panel.photo null because the recording has no camera; video.rs photo_video_panel serves it",
     "clock": "view.camera records panel.video and panel.photo null because the recording has no camera; video.rs photo_video_panel serves it",
     "idle": "view.camera records panel.video and panel.photo null because the recording has no camera; video.rs photo_video_panel serves it",

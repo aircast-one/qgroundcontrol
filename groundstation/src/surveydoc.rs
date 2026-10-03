@@ -442,10 +442,22 @@ fn recalculated(calc: &Value) -> Value {
 
 const SPECS: [(&str, &str); 8] = [("SensorWidth", "sensorWidth"), ("SensorHeight", "sensorHeight"), ("ImageWidth", "imageWidth"), ("ImageHeight", "imageHeight"), ("FocalLength", "focalLength"), ("Landscape", "landscape"), ("FixedOrientation", "fixedOrientation"), ("MinTriggerInterval", "minTriggerInterval")];
 
+const CALC_FACTS: [&str; 4] = ["ValueSetIsDistance", "ImageDensity", "FrontalOverlap", "SideOverlap"];
+
+fn meta_default(file: &str, name: &str) -> Value {
+    meta(file, name).and_then(|m| m.default.as_ref().map(|d| crate::settingsstore::typed(&m.value_type, d).unwrap_or_else(|| d.clone()))).unwrap_or(Value::Null)
+}
+
 fn named_camera(calc: &Value, name: &str) -> Value {
     let known = cameras();
     let mut changed = calc.clone();
     changed["CameraName"] = json!(name);
+    CALC_FACTS
+        .iter()
+        .map(|key| (*key, CAMERA_META))
+        .chain(SPECS.iter().map(|(key, _)| (*key, CAMERA_SPEC_META)))
+        .filter(|(key, _)| calc.get(*key).is_none_or(Value::is_null))
+        .for_each(|(key, file)| changed[key] = meta_default(file, key));
     match known_camera(&known, name) {
         Some(camera) => SPECS.iter().for_each(|(key, spec)| changed[*key] = camera.get(*spec).cloned().unwrap_or(Value::Null)),
         None => {
@@ -1072,6 +1084,14 @@ mod tests {
         let turned = set(&survey, "gridAngle", &json!(0.0), &metric()).unwrap();
         assert_eq!(turned["angle"], 0.0);
         assert!(set(&survey, "noSuchField", &json!(1), &metric()).is_none());
+    }
+
+    #[test]
+    fn a_camera_chosen_after_manual_writes_every_key_camera_calc_load_requires() {
+        let manual = json!({ "version": 2, "CameraName": MANUAL_CAMERA, "AdjustedFootprintSide": 25.0, "AdjustedFootprintFrontal": 25.0, "DistanceToSurface": 50.0, "DistanceMode": 1 });
+        let custom = named_camera(&manual, CUSTOM_CAMERA);
+        let missing: Vec<&str> = CALC_FACTS.iter().copied().chain(SPECS.iter().map(|(key, _)| *key)).filter(|key| custom.get(*key).is_none_or(Value::is_null)).collect();
+        assert!(missing.is_empty(), "QGC writes every fact, so a plan saved after picking a camera must reload: missing {missing:?}");
     }
 
     #[test]

@@ -557,8 +557,69 @@ pub fn altitude_from_shown(shown: f64) -> f64 {
     crate::units::cooking(ALTITUDE_RAW_UNITS).map_or(shown, |c| (c.base)(shown))
 }
 
+fn with_geometry(mut listed: Value, geometry: Value) -> Value {
+    listed["geometry"] = geometry;
+    listed
+}
+
+fn latitude_longitude(points: Option<&Value>) -> Vec<Value> {
+    points
+        .and_then(Value::as_array)
+        .map(|list| list.iter().filter_map(|p| Some(json!({ "latitude": p.get(0)?.as_f64()?, "longitude": p.get(1)?.as_f64()? }))).collect())
+        .unwrap_or_default()
+}
+
+fn document_geometry(kind: &str, json: &Value, vertical: &Unit) -> Value {
+    let Some((shape, property)) = crate::missionkinds::lookup(match kind { "CorridorScan" => "corridor", "StructureScan" => "structure", other => other }).and_then(|k| k.geometry) else {
+        return Value::Null;
+    };
+    let vertices = latitude_longitude(json.get(if property == "corridorPolyline" { "polyline" } else { "polygon" }));
+    if vertices.is_empty() {
+        return Value::Null;
+    }
+    let transect = json.get("TransectStyleComplexItem");
+    let structure = property == "structurePolygon";
+    let plan = structure.then(|| crate::structurescan::saved_plan(json));
+    let flight: Vec<Value> = match structure {
+        true => crate::structurescan::saved_flight(json).unwrap_or_default().into_iter().map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })).collect(),
+        false => Vec::new(),
+    };
+    let stack = plan.as_ref().map(|plan| {
+        let (top, bottom) = crate::structurescan::top_and_bottom(plan);
+        let steps = (plan.layers - 1).max(0) as f64;
+        (0..plan.layers.max(1)).map(|layer| bottom + if steps > 0.0 { (top - bottom) / steps } else { 0.0 } * layer as f64).collect::<Vec<f64>>()
+    });
+    json!({
+        "shape": shape,
+        "property": property,
+        "vertices": vertices,
+        "transects": latitude_longitude(transect.and_then(|t| t.get("VisualTransectPoints"))),
+        "turnaround": transect.and_then(|t| t.get("TurnAroundDistance")).and_then(Value::as_f64).is_some_and(|d| d != 0.0),
+        "flightLoop": (!flight.is_empty()).then_some(flight),
+        "layers": plan.as_ref().map(|p| p.layers),
+        "layerAltitudesMetres": stack.clone(),
+        "layerSpanText": stack.as_ref().and_then(|heights| Some(crate::read::range_text(*heights.first()?, *heights.last()?, vertical))),
+        "outline": (property == "corridorPolyline").then(|| crate::corridorscan::corridor_polygon(json).into_iter().map(|(latitude, longitude, _)| json!({ "latitude": latitude, "longitude": longitude })).collect::<Vec<_>>()),
+    })
+}
+
 pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &Unit, horizontal: &Unit, speed: &Unit, imperial: bool, rover: bool) -> Result<Value, String> {
-    let items: Vec<Value> = document_reads(doc, selected)?.into_iter().enumerate().map(|(index, read)| item(&read, index as i64, vertical, horizontal, speed, imperial)).collect();
+    let shapes = std::iter::once(Value::Null).chain(doc.items.iter().map(|it| match it {
+        crate::plandoc::Item::Complex { kind, json, .. } => document_geometry(kind, json, vertical),
+        crate::plandoc::Item::Simple(_) => Value::Null,
+    }));
+    let items: Vec<Value> = document_reads(doc, selected)?
+        .into_iter()
+        .zip(shapes)
+        .enumerate()
+        .map(|(index, (read, geometry))| {
+            let listed = item(&read, index as i64, vertical, horizontal, speed, imperial);
+            match geometry.is_null() {
+                true => listed,
+                false => with_geometry(listed, geometry),
+            }
+        })
+        .collect();
     let items: Vec<Value> = match walked(&items) {
         true => items,
         false => items.into_iter().map(unwalked).collect(),
@@ -1102,6 +1163,7 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str, vertical: &Unit) -
             "transects": transects,
             "turnaround": fact_number(&item, "turnAroundDistance").is_some_and(|distance| distance != 0.0),
             "flightLoop": (!flown_loop.is_empty()).then_some(flown_loop),
+            "outline": (shape.1 == "corridorPolyline").then(|| path_at(backend, &format!("{base}.surveyAreaPolygon.path"))),
             "layers": layers,
             "layerAltitudesMetres": stack.clone(),
             "layerSpanText": stack.as_ref().and_then(|heights| {
@@ -1351,6 +1413,21 @@ mod from_the_document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn core_plans_carry_the_shapes_the_map_draws() {
+        let metric = Unit { factor: 1.0, name: "m".to_string() };
+        let corridor = json!({ "polyline": [[47.0, 8.0], [47.001, 8.0]], "CorridorWidth": 50.0, "TransectStyleComplexItem": { "VisualTransectPoints": [[47.0, 7.9997], [47.001, 7.9997]], "TurnAroundDistance": 10.0 } });
+        let shown = document_geometry("CorridorScan", &corridor, &metric);
+        assert_eq!((shown["shape"].as_str(), shown["property"].as_str()), (Some("line"), Some("corridorPolyline")));
+        assert_eq!(shown["vertices"].as_array().unwrap().len(), 2);
+        assert_eq!(shown["transects"][0]["longitude"], 7.9997);
+        assert!(shown["turnaround"].as_bool().unwrap());
+        assert!(shown["outline"].as_array().unwrap().len() >= 4, "the corridor's width is drawn as its surveyAreaPolygon: {shown}");
+        let survey = document_geometry("survey", &json!({ "polygon": [[47.0, 8.0], [47.0, 8.1], [47.1, 8.1]] }), &metric);
+        assert_eq!((survey["shape"].as_str(), survey["outline"].clone()), (Some("area"), Value::Null));
+        assert!(document_geometry("survey", &json!({ "polygon": [] }), &metric).is_null());
+    }
 
     #[test]
     fn complex_items_say_why_they_cannot_be_saved_like_their_qgc_items() {

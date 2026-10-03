@@ -19,8 +19,10 @@ pub fn applies(kind: &str) -> bool {
 pub fn loaded(kind: &str, item: &Value) -> Result<Value, String> {
     match kind {
         CORRIDOR => corridor_header(item)?,
-        _ if survey_header(item)? < 4 => return Ok(item.clone()),
-        _ => 0,
+        _ => match survey_header(item)? {
+            version if version < 4 => return Ok(item.clone()),
+            version => survey_keys(item, version)?,
+        },
     };
     validate_keys(item, &[(TRANSECT_STYLE_KEY, "Object", true)])?;
     let inner = transect_style(&item[TRANSECT_STYLE_KEY])?;
@@ -46,6 +48,13 @@ fn survey_header(item: &Value) -> Result<i32, String> {
         version if (2..=5).contains(&version) => Ok(version),
         version => Err(format!("Survey items do not support version {version}")),
     }
+}
+
+fn survey_keys(item: &Value, version: i32) -> Result<i32, String> {
+    let common = [("type", "String", true), ("complexItemType", "String", true), ("entryLocation", "Double", true), ("angle", "Double", true), ("flyAlternateTransects", "Bool", false)];
+    let keys: Vec<(&str, &str, bool)> = common.into_iter().chain((version == 5).then_some(("splitConcavePolygons", "Bool", true))).collect();
+    validate_keys(item, &keys)?;
+    Ok(version)
 }
 
 fn transect_style(saved: &Value) -> Result<Value, String> {
@@ -89,7 +98,7 @@ fn camera_calc(saved: &Value, follow_terrain: bool) -> Result<Value, String> {
             _ => None,
         };
     }
-    if stamped <= 1 {
+    if matches!(stamped, 0 | 1) {
         let relative = json.remove("DistanceToSurfaceRelative").and_then(|v| v.as_bool()).unwrap_or(false);
         let mode = match (follow_terrain, relative) {
             (true, _) => CALC_ABOVE_TERRAIN,
@@ -98,7 +107,7 @@ fn camera_calc(saved: &Value, follow_terrain: bool) -> Result<Value, String> {
         };
         json.insert("DistanceMode".into(), json!(mode));
     }
-    let version = if stamped <= 1 { 2 } else { stamped };
+    let version = if matches!(stamped, 0 | 1) { 2 } else { stamped };
     if version != 2 {
         return Err(format!("CameraCalc section version {version} not supported"));
     }
@@ -167,8 +176,12 @@ mod tests {
 
     #[test]
     fn survey_versions_follow_survey_complex_item() {
-        let survey = |version: i64| json!({ "version": version, TRANSECT_STYLE_KEY: transect(manual_calc()) });
+        let survey = |version: i64| json!({ "version": version, "type": "ComplexItem", "complexItemType": "survey", "entryLocation": 0, "angle": 0, "splitConcavePolygons": true, TRANSECT_STYLE_KEY: transect(manual_calc()) });
         assert!(loaded(SURVEY, &survey(5)).is_ok());
+        let mut old = survey(5);
+        old.as_object_mut().unwrap().remove("splitConcavePolygons");
+        assert_eq!(loaded(SURVEY, &old), Err("The following required keys are missing: splitConcavePolygons".to_string()), "version 5 added the key and requires it");
+        assert!(loaded(SURVEY, &with(old, "version", json!(4))).is_ok());
         assert_eq!(loaded(SURVEY, &survey(6)), Err("Survey items do not support version 6".to_string()));
     }
 }

@@ -22,6 +22,7 @@ data class Survey(
     val layers: Int = 0,
     val layerSpanText: String = "",
     val turnaround: Boolean = false,
+    val outline: List<TrackPoint> = emptyList(),
 )
 
 private fun points(array: JSONArray?): List<TrackPoint> {
@@ -66,6 +67,7 @@ object SurveyBridge {
                 layers = geometry.optInt("layers", 0),
                 layerSpanText = geometry.optText("layerSpanText"),
                 turnaround = geometry.optBoolean("turnaround"),
+                outline = points(geometry.optJSONArray("outline")),
                 cameraShots = element.optInt("cameraShots"),
                 kind = element.optText("kind"),
                 shape = shape,
