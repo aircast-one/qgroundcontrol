@@ -226,6 +226,10 @@ fn tcp_failure(name: &str, host: &str, port: u16, error: &std::io::Error) -> Fai
     }
 }
 
+fn serial_failure(name: &str, port_name: &str, error: &str) -> Failure {
+    Failure::retry(format!("Link {name}: (Port: {port_name}) Could not open port: {error}"))
+}
+
 fn resolves(host: &str, port: u16) -> bool {
     use std::net::ToSocketAddrs;
     (host, port).to_socket_addrs().is_ok()
@@ -235,7 +239,7 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
     match &config.kind {
         Kind::Udp { local_port, hosts } => {
             let shared = shared.clone();
-            UdpLink::open(&UdpConfig { local_port: *local_port, targets: hosts.clone() }, crate::udplink::local_addresses(), move |bytes| shared.deliver(id, bytes)).map(Owned::Udp).map_err(|e| Failure::retry(e.to_string()))
+            UdpLink::open(&UdpConfig { local_port: *local_port, targets: hosts.clone() }, crate::udplink::local_addresses(), move |bytes| shared.deliver(id, bytes)).map(Owned::Udp).map_err(|_| Failure::retry(format!("Link {}: Failed to bind UDP socket to port", config.name)))
         }
         Kind::Tcp { host, port } => {
             let shared = shared.clone();
@@ -257,7 +261,7 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
                 },
             )
             .map(Owned::Serial)
-            .map_err(|e| Failure::retry(e.to_string()))
+            .map_err(|e| serial_failure(&config.name, port_name, &e.to_string()))
         }
         #[cfg(target_os = "android")]
         Kind::Serial { baud, data_bits, stop_bits, parity, port_name, .. } => {
@@ -267,7 +271,7 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
                 crate::platformserial::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
             })
             .map(Owned::PlatformSerial)
-            .map_err(Failure::retry)
+            .map_err(|e| serial_failure(&config.name, port_name, &e))
         }
         Kind::Bluetooth { address, .. } if crate::platformbluetooth::available() => {
             let shared = shared.clone();
@@ -553,6 +557,17 @@ mod tests {
 
         let unnamed = open_json(&transports, r#"{"kind":"tcp","name":"Blank","host":"","port":5760}"#, &[]).unwrap_err();
         assert_eq!((unnamed.remedy, unnamed.reason.as_str()), ("editAddress", "Blank has no address."), "TCPLink.cc:282 names the configuration, not the empty host");
+
+        assert_eq!(
+            serial_failure("Radio", "ttyUSB0", "Permission denied").reason,
+            "Link Radio: (Port: ttyUSB0) Could not open port: Permission denied",
+            "SerialLink.cc:264 wrapped by SerialLink::_onErrorOccurred"
+        );
+        #[cfg(not(target_os = "android"))]
+        {
+            let absent = open_json(&transports, r#"{"kind":"serial","name":"Gone","portName":"/dev/no-such-serial-port","baud":57600}"#, &[]).unwrap_err();
+            assert!(absent.reason.starts_with("Link Gone: (Port: /dev/no-such-serial-port) Could not open port: "), "{}", absent.reason);
+        }
 
         let clash = open_json(&transports, r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#, &[14550]).unwrap_err();
         assert_eq!(clash.remedy, "retry", "a port held by a Qt link is the one failure on this list that a later attempt can genuinely succeed at, so it must not tell the operator to edit an address that is correct");

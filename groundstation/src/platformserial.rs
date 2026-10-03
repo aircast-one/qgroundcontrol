@@ -104,7 +104,7 @@ impl PlatformSerial {
             true => Ok(PlatformSerial { id }),
             false => {
                 RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).remove(&id);
-                Err(format!("{port_name} could not be opened"))
+                Err("Unknown error".to_string())
             }
         }
     }

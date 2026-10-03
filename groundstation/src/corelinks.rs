@@ -463,10 +463,16 @@ fn open_entry(entry: &Entry) -> bool {
             true
         }
         Err(failure) => {
-            errors.insert(entry.config.name.clone(), failure);
+            if !retried_silently(entry) {
+                errors.insert(entry.config.name.clone(), failure);
+            }
             false
         }
     }
+}
+
+fn retried_silently(entry: &Entry) -> bool {
+    entry.config.auto_connect && !runtime(&entry.config.name).suppressed
 }
 
 fn disconnect(index: usize) -> bool {
@@ -808,6 +814,18 @@ mod tests {
         let shown = element(&entry, &TypeTable::new(true, true), &State { link: None, heard: false, error: None, reconnecting: false });
         assert_eq!((shown["dynamic"].as_bool(), shown["autoConnect"].as_bool(), shown["baud"].as_i64(), shown["portDisplayName"].as_str()), (Some(true), Some(true), Some(115200), Some("cu.usbmodem1")));
         assert_eq!(shown["summary"], "cu.usbmodem1 at 115200 baud");
+    }
+
+    #[test]
+    fn an_auto_link_keeps_retrying_without_an_error_until_the_operator_disconnects_it() {
+        let auto = serial_entry("Silent retry test (AutoConnect)", "/dev/cu.silent", 57600);
+        let manual = Entry { config: LinkConfig { auto_connect: false, ..auto.config.clone() }, dynamic: false };
+        assert!(retried_silently(&auto), "LinkManager.cc:240 drops errors of auto-connect links that will retry");
+        assert!(!retried_silently(&manual));
+        update_runtime(&auto.config.name, |run| run.suppressed = true);
+        assert!(!retried_silently(&auto), "a disconnected auto link no longer retries, so its error is recorded");
+        update_runtime(&auto.config.name, Runtime::connect_requested);
+        assert!(retried_silently(&auto));
     }
 
     #[test]
