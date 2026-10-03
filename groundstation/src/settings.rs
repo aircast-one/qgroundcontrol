@@ -212,6 +212,16 @@ const INVERTED: &[(&str, &str)] = &[("apmStartMavlinkStreams", "Controlled by Ve
 
 const QML_LABELS: &[(&str, &str, &str)] = &[
     ("appSettings", "audioMuted", "Mute all audio output"),
+    ("appSettings", "enableMultiVehiclePanel", "Show multi-vehicle panel"),
+    ("appSettings", "virtualJoystickLeftHandedMode", "Left-handed mode (swap sticks)"),
+    ("flyViewSettings", "updateHomePosition", "Update return to home position based on device location"),
+    ("flyViewSettings", "forwardFlightGoToLocationLoiterRad", "Loiter Radius in Forward Flight Guided Mode"),
+    ("flyViewSettings", "goToLocationRequiresConfirmInGuided", "Confirm before Go To Location in guided mode"),
+    ("viewer3DSettings", "enabled", "Enabled"),
+    ("viewer3DSettings", "osmFilePath", "3D Map File"),
+    ("viewer3DSettings", "buildingLevelHeight", "Average Building Level Height"),
+    ("viewer3DSettings", "altitudeBias", "Vehicles Altitude Bias"),
+    ("autoConnectSettings", "nmeaUdpPort", "NMEA stream UDP port"),
     ("videoSettings", "multiViewEnabled", "Show all cameras"),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
     ("videoSettings", "disableWhenDisarmed", "Stop recording when disarmed"),
@@ -843,6 +853,9 @@ mod tests {
         let shown = qml_labelled("videoSettings", json!({ "name": "disableWhenDisarmed", "label": "Disable Video Stream When Disarmed" }));
         assert_eq!((shown["label"].clone(), shown["shortLabel"].clone()), (json!("Stop recording when disarmed"), json!("Stop recording when disarmed")));
         assert_eq!(qml_labelled("videoSettings", json!({ "name": "maxVideoSize" }))["label"], "Storage Limit");
+        assert_eq!(qml_labelled("flyViewSettings", json!({ "name": "updateHomePosition", "label": "Home follows this device" }))["label"], "Update return to home position based on device location");
+        assert_eq!(qml_labelled("viewer3DSettings", json!({ "name": "enabled", "label": "Enable the 3D viewer" }))["label"], "Enabled");
+        assert_eq!(qml_labelled("packetRadioSettings", json!({ "name": "enabled", "label": "Receive over packet radio" }))["label"], "Receive over packet radio");
         assert_eq!(qml_labelled("flyViewSettings", json!({ "name": "maxVideoSize", "label": "Kept" }))["label"], "Kept", "the override is the video page's");
         assert_eq!(qml_labelled("videoSettings", json!({ "name": "videoFit", "label": "Video Display Fit" }))["label"], "Video Display Fit");
     }
