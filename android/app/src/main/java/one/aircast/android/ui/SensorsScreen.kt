@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import one.aircast.mapspike.aircast
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.offset
@@ -177,33 +179,48 @@ internal fun positionsText(sides: List<CalibrationSide>): String? {
     return "${reached.coerceAtLeast(1)} of ${shown.size} positions".takeIf { shown.isNotEmpty() }
 }
 
-internal fun sideLabel(side: CalibrationSide): String = when {
-    side.stage == "inProgress" && side.rotate -> "${side.title} · rotate"
-    side.stage == "inProgress" -> "${side.title} · hold still"
-    else -> side.title
+internal fun sideImage(key: String, rotating: Boolean): Int = when (key) {
+    "UpsideDown" -> if (rotating) R.drawable.cal_vehicle_upside_down_rotate else R.drawable.cal_vehicle_upside_down
+    "Left" -> if (rotating) R.drawable.cal_vehicle_left_rotate else R.drawable.cal_vehicle_left
+    "Right" -> if (rotating) R.drawable.cal_vehicle_right_rotate else R.drawable.cal_vehicle_right
+    "NoseDown" -> if (rotating) R.drawable.cal_vehicle_nose_down_rotate else R.drawable.cal_vehicle_nose_down
+    "TailDown" -> if (rotating) R.drawable.cal_vehicle_tail_down_rotate else R.drawable.cal_vehicle_tail_down
+    else -> if (rotating) R.drawable.cal_vehicle_down_rotate else R.drawable.cal_vehicle_down
+}
+
+internal fun sideStateText(side: CalibrationSide): String = when (side.stage) {
+    "inProgress" -> if (side.rotate) "Rotate" else "Hold still"
+    "done" -> "Done"
+    else -> "Pending"
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OrientationGrid(sides: List<CalibrationSide>) {
+private fun OrientationGrid(sides: List<CalibrationSide>, px4: Boolean) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         sides.filter { it.visible }.forEach { side ->
-            val done = side.stage == "done"
             val current = side.stage == "inProgress"
-            FilterChip(
-                selected = done || current,
-                onClick = {},
-                label = { Text(sideLabel(side)) },
-                leadingIcon = if (done) {
-                    { Icon(painterResource(R.drawable.ic_check_circle), null, Modifier.size(18.dp)) }
-                } else {
-                    null
-                },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = if (current) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                    selectedLabelColor = if (current) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
-                ),
-            )
+            val done = side.stage == "done"
+            val tint = when {
+                current -> MaterialTheme.colorScheme.primary
+                done -> MaterialTheme.aircast.success
+                else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+            }
+            Column(
+                Modifier
+                    .width(104.dp)
+                    .border(2.dp, if (current || done) tint else MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
+                    .padding(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                androidx.compose.foundation.Image(
+                    painterResource(sideImage(side.key, px4 && current && side.rotate)),
+                    contentDescription = side.title,
+                    modifier = Modifier.height(72.dp),
+                )
+                Text(side.title, style = MaterialTheme.typography.labelSmall)
+                Text(sideStateText(side), style = MaterialTheme.typography.labelMedium, color = tint, fontWeight = if (current) androidx.compose.ui.text.font.FontWeight.Bold else null)
+            }
         }
     }
 }
@@ -260,7 +277,7 @@ private fun RunningCalibration(
         }
 
         if (state.showsSides) {
-            OrientationGrid(state.sides)
+            OrientationGrid(state.sides, state.px4)
         }
 
         if (statusText.isNotBlank()) {
