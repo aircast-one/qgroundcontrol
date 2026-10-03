@@ -89,7 +89,7 @@
             "longDesc": "When enabled, parameter and mission plan downloads are skipped when connecting to a vehicle that is already flying. This prevents bandwidth-heavy transfers from disrupting an active flight.",
             "type": "bool",
             "default": false,
-            "label": "Skip param/plan download if flying on connect",
+            "label": "Skip downloads when joining a flight",
             "keywords": "initial download"
         }
     ]
