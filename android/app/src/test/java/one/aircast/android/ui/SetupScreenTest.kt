@@ -127,7 +127,7 @@ class SetupScreenTest {
     fun `a component with an unfinished prerequisite says which one`() {
         val view = org.json.JSONObject("""{"components":[{"name":"Flight Modes","needsAttention":true,"blockedReason":null,"prerequisite":"Frame"}]}""")
         org.junit.Assert.assertEquals("Frame", setupComponents(view).first().prerequisite)
-        org.junit.Assert.assertEquals("Frame has to be set up before Flight Modes.", prerequisiteText("Frame", "Flight Modes"))
+        org.junit.Assert.assertEquals("Frame has to be set up before Flight modes.", prerequisiteText("Frame", "Flight Modes"))
     }
 
     @Test

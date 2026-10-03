@@ -127,7 +127,7 @@ private val COMPONENT_ICONS = linkedMapOf(
     "Syslink" to R.drawable.ic_wifi,
 )
 
-internal fun prerequisiteText(first: String, wanted: String): String = "$first has to be set up before $wanted."
+internal fun prerequisiteText(first: String, wanted: String): String = "${sentenceCase(first)} has to be set up before ${sentenceCase(wanted)}."
 
 internal data class ParameterWait(val title: String, val body: String, val downloadOffered: Boolean = false)
 
@@ -297,10 +297,10 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 )
                 first != null -> androidx.compose.foundation.layout.Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     val firstComponent = setupComponents(setupJson).firstOrNull { it.name == first }
-                    EmptyState(setupIcon(firstComponent?.known, firstComponent?.className.orEmpty()), "$first first", prerequisiteText(first, open.name))
+                    EmptyState(setupIcon(firstComponent?.known, firstComponent?.className.orEmpty()), "${sentenceCase(first)} first", prerequisiteText(first, open.name))
                     androidx.compose.material3.Button(onClick = {
                         openComponent = setupComponents(setupJson).firstOrNull { it.name == first }
-                    }) { Text("Set Up $first") }
+                    }) { Text("Set up ${sentenceCase(first)}") }
                 }
                 headPage(open) == SENSORS -> SensorsScreen(Modifier.weight(1f))
                 headPage(open) == RADIO -> RadioScreen(Modifier.weight(1f))
