@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use crate::gpsrtk::{Driver, Fault, INITIAL_BAUD, Out, RECEIVE_TIMEOUT_MS, Session, Settings};
 use crate::router::Backend;
+use crate::femtobase::FemtoBase;
 use crate::sbfbase::SbfBase;
 use crate::ubxbase::{BaseDriver, Event, Transport, UbxBase};
 
@@ -196,7 +197,8 @@ fn driver_for<T: Transport + 'static>(driver: Driver, transport: T, plan: crate:
     match driver {
         Driver::UBlox => Some(Box::new(UbxBase::new(transport, plan))),
         Driver::Septentrio => Some(Box::new(SbfBase::new(transport, plan))),
-        Driver::Trimble | Driver::Femtomes => None,
+        Driver::Femtomes => Some(Box::new(FemtoBase::new(transport, plan))),
+        Driver::Trimble => None,
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::gpsrtk::{BasePlan, Satellite};
 
 const SYNC: [u8; 2] = [0xb5, 0x62];
-const RTCM3_PREAMBLE: u8 = 0xd3;
+pub(crate) const RTCM3_PREAMBLE: u8 = 0xd3;
 const MAX_UBX_PAYLOAD: usize = 1240;
 const MAX_RTCM_PAYLOAD: usize = 1023;
 
@@ -189,13 +189,13 @@ pub fn frame(class: u8, id: u8, payload: &[u8]) -> Vec<u8> {
     SYNC.iter().copied().chain(body.iter().copied()).chain(checksum(&body)).collect()
 }
 
-enum Scan {
+pub(crate) enum Scan {
     Frame(Frame, usize),
     Skip(usize),
     Incomplete,
 }
 
-fn scan(buffer: &[u8]) -> Scan {
+pub(crate) fn scan(buffer: &[u8]) -> Scan {
     match buffer {
         [] => Scan::Incomplete,
         [0xb5] => Scan::Incomplete,

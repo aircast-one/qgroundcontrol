@@ -70,6 +70,7 @@ pub mod mavlinklog;
 pub mod escal;
 pub mod csvlog;
 pub mod sbfbase;
+pub mod femtobase;
 pub mod rtkbase;
 pub mod gpsview;
 pub mod guided;

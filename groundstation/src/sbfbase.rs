@@ -12,6 +12,25 @@ const SURVEY_IN: &str = "setDataInOut, USB1, Auto, RTCMv3\nsetPVTMode, Static, A
 const STATIC_DYNAMICS: &str = "setReceiverDynamics, Low, Static\n";
 const STATIC_PVT: &str = "setPVTMode, Static, , Geodetic1\n";
 
+pub(crate) fn heard_within<T: Transport>(transport: &mut T, timeout_ms: u64, lost: &mut bool, until: impl Fn(&str) -> bool) -> Option<String> {
+    let deadline = transport.now_ms() + timeout_ms;
+    std::iter::from_fn(|| {
+        let left = deadline.saturating_sub(transport.now_ms());
+        (left > 0).then(|| transport.read(left))
+    })
+    .map_while(|read| {
+        if read.is_none() {
+            *lost = true;
+        }
+        read
+    })
+    .scan(String::new(), |heard, bytes| {
+        heard.push_str(&String::from_utf8_lossy(&bytes));
+        Some(heard.clone())
+    })
+    .find(|heard| until(heard))
+}
+
 pub struct SbfBase<T: Transport> {
     pub transport: T,
     decoder: Decoder,
@@ -27,22 +46,7 @@ impl<T: Transport> SbfBase<T> {
     }
 
     fn read_for(&mut self, timeout_ms: u64, until: impl Fn(&str) -> bool) -> Option<String> {
-        let deadline = self.transport.now_ms() + timeout_ms;
-        std::iter::from_fn(|| {
-            let left = deadline.saturating_sub(self.transport.now_ms());
-            (left > 0).then(|| self.transport.read(left))
-        })
-        .map_while(|read| {
-            if read.is_none() {
-                self.transport_lost = true;
-            }
-            read
-        })
-        .scan(String::new(), |heard, bytes| {
-            heard.push_str(&String::from_utf8_lossy(&bytes));
-            Some(heard.clone())
-        })
-        .find(|heard| until(heard))
+        heard_within(&mut self.transport, timeout_ms, &mut self.transport_lost, until)
     }
 
     fn command(&mut self, text: &str) -> bool {

@@ -609,6 +609,7 @@ mod deps_cover_reads {
             ("ubxbase", include_str!("ubxbase.rs")),
             ("rtkbase", include_str!("rtkbase.rs")),
             ("sbfbase", include_str!("sbfbase.rs")),
+            ("femtobase", include_str!("femtobase.rs")),
             ("speech", include_str!("speech.rs")),
             ("telemetrylog", include_str!("telemetrylog.rs")),
             ("proximity", include_str!("proximity.rs")),
