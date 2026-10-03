@@ -141,6 +141,8 @@ internal fun readPage(page: String): List<ParameterRows> {
     }
 }
 
+internal const val SETUP_PAGE_OPENED = "setup.pageOpened"
+
 internal val EMPTY_PAGE_TEXTS = mapOf("Gimbal" to "Gimbal settings are not available for this firmware version.")
 
 @Composable
@@ -157,7 +159,9 @@ internal fun ParameterForm(
     var calibratingEscs by remember { mutableStateOf(false) }
 
     LaunchedEffect(page, section, reloads) {
-        rows = withContext(Dispatchers.Default) { readPage(page).filter { section == null || it.title == section } }
+        rows = withContext(Dispatchers.Default) {
+            if (reloads == 0) Qgc.invoke(SETUP_PAGE_OPENED)
+            readPage(page).filter { section == null || it.title == section } }
         loaded = true
     }
 

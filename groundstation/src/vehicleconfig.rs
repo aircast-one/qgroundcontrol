@@ -474,6 +474,14 @@ fn state_key(backend: &dyn Backend, state: &str) -> String {
     format!("{vehicle}#{state}")
 }
 
+pub const PAGE_OPENED: &str = "setup.pageOpened";
+
+pub fn page_opened(backend: &dyn Backend) -> Value {
+    let prefix = state_key(backend, "");
+    page_state().retain(|key, _| !key.starts_with(&prefix));
+    json!({ "ok": true })
+}
+
 fn page_state() -> std::sync::MutexGuard<'static, BTreeMap<String, bool>> {
     PAGE_STATE.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -1276,6 +1284,17 @@ mod tests {
         let failsafes = page(&fake, "Failsafes", false);
         let rc = failsafes["sections"].as_array().unwrap().iter().find(|s| s["title"].as_str().is_some_and(|t| t.contains("RC"))).cloned();
         assert!(rc.is_some(), "the RC failsafe section stays with only its label when FS_OPTIONS is missing: {failsafes}");
+    }
+
+    #[test]
+    fn reopening_the_page_derives_custom_again_like_a_new_controller() {
+        let fake = Fake::new(&[("SIMPLE", 0.0), ("SUPER_SIMPLE", 0.0), ("VEHICLE_ID", 7.0)]);
+        let rows = || page(&fake, SIMPLE_MODES, false)["sections"][0]["controls"].as_array().unwrap().clone();
+        let mode = rows()[0].clone();
+        assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", mode["path"].as_str().unwrap()), r#"{"value":3}"#)["ok"], true);
+        assert_eq!(rows()[0]["display"], "Custom");
+        assert_eq!(page_opened(&fake)["ok"], true);
+        assert_eq!(rows()[0]["display"], "Off");
     }
 
     #[test]
