@@ -46,6 +46,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.isActive
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.channels.Channel
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
@@ -305,12 +307,20 @@ private fun CameraDetailsSheet(
         }
         if (camera.hasZoom) {
             SectionHeader("Zoom")
-            var zoom by remember(camera.zoomLevel) { mutableFloatStateOf(camera.zoomLevel.toFloat()) }
+            var dragging by remember { mutableStateOf<Float?>(null) }
+            val zoomWrites = remember { Channel<Double>(Channel.CONFLATED) }
+            LaunchedEffect(zoomWrites) {
+                zoomWrites.consumeAsFlow().collect { level -> withContext(Dispatchers.Default) { Qgc.set(CAMERA_ZOOM, level) } }
+            }
             Slider(
-                value = zoom,
+                value = dragging ?: camera.zoomLevel.toFloat(),
                 onValueChange = { level ->
-                    zoom = level
-                    offMainDetached { Qgc.set(CAMERA_ZOOM, level.toDouble()) }
+                    dragging = level
+                    zoomWrites.trySend(level.toDouble())
+                },
+                onValueChangeFinished = {
+                    dragging?.let { zoomWrites.trySend(it.toDouble()) }
+                    dragging = null
                 },
                 valueRange = ZOOM_LOWEST.toFloat()..ZOOM_HIGHEST.toFloat(),
                 modifier = Modifier.padding(horizontal = 20.dp),

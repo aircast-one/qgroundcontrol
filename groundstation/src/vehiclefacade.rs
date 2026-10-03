@@ -651,6 +651,12 @@ fn current_camera_mode() -> Option<u8> {
     crate::hub::lock().active()?.cameras.selected()?.mode_now()
 }
 
+const TIMELAPSE_NEEDS_STILLS: &str = "Timelapse photo capture is not supported on cameras without still capture capability";
+
+fn grabs_locally(flags: u32, mode: Option<u8>) -> bool {
+    flags & crate::cameraproto::CAP_CAPTURE_IMAGE == 0 || (mode == Some(crate::cameraproto::MODE_VIDEO) && flags & crate::cameraproto::CAP_IMAGE_IN_VIDEO_MODE == 0)
+}
+
 #[derive(Debug, PartialEq)]
 enum LocalRecording {
     Start,
@@ -1269,11 +1275,13 @@ impl<B: Backend> Facade<B> {
 
 impl<B: Backend> Facade<B> {
     fn real_camera_invoke(&self, name: &str, args: &str) -> Option<String> {
-        let (vehicle, captures_video, captures_images) = switched_on().then(|| crate::hub::lock().active().and_then(|v| v.cameras.selected().map(|c| (v.id, c.info.flags & crate::cameraproto::CAP_CAPTURE_VIDEO != 0, c.info.flags & crate::cameraproto::CAP_CAPTURE_IMAGE != 0)))).flatten()?;
-        if name == "takePhoto" && !captures_images {
-            return Some(match crate::videohost::grab_image() {
-                Ok(_) => json!({ "ok": true, "result": true }).to_string(),
-                Err(reason) => json!({ "ok": false, "result": false, "error": reason }).to_string(),
+        let (vehicle, captures_video, grabs) = switched_on().then(|| crate::hub::lock().active().and_then(|v| v.cameras.selected().map(|c| (v.id, c.info.flags & crate::cameraproto::CAP_CAPTURE_VIDEO != 0, grabs_locally(c.info.flags, c.mode))))).flatten()?;
+        if name == "takePhoto" && grabs {
+            let single = stored_number("PhotoCaptureMode").is_none_or(|mode| mode as i64 == crate::simcamera::PHOTO_CAPTURE_SINGLE);
+            let grabbed = if single { crate::videohost::grab_image().map(|_| ()) } else { Err(TIMELAPSE_NEEDS_STILLS) };
+            return Some(match grabbed {
+                Ok(()) => json!({ "ok": true, "result": true }).to_string(),
+                Err(reason) => json!({ "ok": false, "result": false, "reason": reason, "error": reason }).to_string(),
             });
         }
         if let Some(local) = local_recording_op(name, captures_video, crate::videohost::recording()) {
@@ -1283,7 +1291,7 @@ impl<B: Backend> Facade<B> {
             };
             return Some(match started {
                 Ok(()) => json!({ "ok": true, "result": true }).to_string(),
-                Err(reason) => json!({ "ok": false, "result": false, "error": reason }).to_string(),
+                Err(reason) => json!({ "ok": false, "result": false, "reason": reason, "error": reason }).to_string(),
             });
         }
         let mut action = real_camera_op(name, args)?;
@@ -1691,11 +1699,13 @@ impl<B: Backend> Backend for Facade<B> {
             }
         }
         let listed_mode = fleet_member(path).filter(|(_, tail)| *tail == "flightMode").map(|(index, _)| index);
+        let named_vehicle = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("vehicle")?.as_u64()).and_then(|id| u8::try_from(id).ok());
         if (path == "vehicle.flightMode" || listed_mode.is_some()) && switched_on() {
             let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_str).or_else(|| v.as_str()).map(str::to_string));
-            let vehicle = match listed_mode {
-                Some(index) => crate::hub::lock().listed(index).map(|v| v.id),
-                None => crate::hub::lock().active_id(),
+            let vehicle = match (named_vehicle, listed_mode) {
+                (Some(id), Some(_)) => Some(id),
+                (None, Some(index)) => crate::hub::lock().listed(index).map(|v| v.id),
+                (_, None) => crate::hub::lock().active_id(),
             };
             if let Some(started) = mode.zip(vehicle).and_then(|(mode, vehicle)| self.0.core_guided(&json!({ "action": "setMode", "vehicle": vehicle, "mode": mode }))) {
                 return match started {
@@ -1962,6 +1972,20 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_photo_is_grabbed_locally_when_the_camera_cannot_take_one_in_its_mode_like_take_photo() {
+        use crate::cameraproto::{CAP_CAPTURE_IMAGE, CAP_IMAGE_IN_VIDEO_MODE, MODE_PHOTO, MODE_VIDEO};
+        assert!(grabs_locally(0, Some(MODE_PHOTO)), "no still capture at all");
+        assert!(grabs_locally(CAP_CAPTURE_IMAGE, Some(MODE_VIDEO)), "stills, but not while in video mode");
+        assert!(!grabs_locally(CAP_CAPTURE_IMAGE | CAP_IMAGE_IN_VIDEO_MODE, Some(MODE_VIDEO)));
+        assert!(!grabs_locally(CAP_CAPTURE_IMAGE, Some(MODE_PHOTO)));
+    }
+
+    #[test]
+    fn a_listed_vehicles_flight_mode_is_a_fleet_member_write() {
+        assert_eq!(fleet_member("vehicles.vehicles.2.flightMode"), Some((2, "flightMode")));
+    }
 
     #[test]
     fn a_camera_without_video_capture_records_locally_like_vehicle_camera_control() {

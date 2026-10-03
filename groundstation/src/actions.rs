@@ -463,7 +463,7 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
     json!({
         "ok": took,
         "result": took,
-        "reason": match took { true => Value::Null, false => json!("The camera did not carry out the command.") },
+        "reason": match took { true => Value::Null, false => answer.get("reason").filter(|r| r.as_str().is_some_and(|r| !r.is_empty())).cloned().unwrap_or(json!("The camera did not carry out the command.")) },
         "started": match (took, timelapse) { (false, _) => Value::Null, (true, true) => json!("timelapse"), (true, false) => json!("single") },
         "lapseCount": timelapse.then(|| view.get("lapseCount").cloned().unwrap_or(Value::Null)),
         "lapseSeconds": timelapse.then(|| view.get("lapseSeconds").cloned().unwrap_or(Value::Null)),
@@ -1089,10 +1089,8 @@ mod tests {
         assert_eq!(answer["ok"], true);
         assert_eq!(*ready.fired.borrow(), vec![format!("{CAMERA}.takePhoto")]);
 
-        let wrong_mode = cam(json!({ "cameraMode": 1 }));
-        let answer = run(&wrong_mode, PHOTO, "[]");
-        assert_eq!(answer["ok"], false);
-        assert!(answer["reason"].as_str().unwrap().contains("mode"));
+        let video_mode = cam(json!({ "cameraMode": 1 }));
+        assert_eq!(run(&video_mode, PHOTO, "[]")["ok"], true, "takePhoto grabs a video frame when the camera cannot shoot stills in video mode");
         let in_video = cam(json!({ "cameraMode": 1, "photosInVideoMode": true }));
         assert_eq!(run(&in_video, PHOTO, "[]")["ok"], true, "a camera that shoots stills in video mode is not refused, which is the term view.camera was missing");
 

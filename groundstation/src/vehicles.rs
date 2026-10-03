@@ -189,7 +189,7 @@ pub fn write_fleet_mode(backend: &dyn Backend, path: &str, value: &str) -> Value
     if text(&listed, "flightMode") == asked {
         return json!({ "ok": true, "result": true, "refusal": Value::Null, "unchanged": true, "reason": Value::Null });
     }
-    let answer = object(&backend.set(path, &json!({ "value": asked }).to_string()));
+    let answer = object(&backend.set(path, &json!({ "value": asked, "vehicle": listed.get("id").cloned().unwrap_or(Value::Null) }).to_string()));
     let answered = flag(&answer, "ok");
     json!({
         "ok": answered,

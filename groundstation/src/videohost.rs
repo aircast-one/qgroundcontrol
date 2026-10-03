@@ -151,7 +151,11 @@ pub fn stop_recording() {
     }
 }
 
+#[cfg(all(feature = "jni-host", not(test)))]
+const FRAME_CAPACITY_FACTORS: [usize; 3] = [1, 2, 4];
+
 pub const NO_FRAME_MESSAGE: &str = "There is no video frame to capture.";
+const FRAME_TOO_LARGE: &str = "The video frame is too large to save as a photo.";
 
 pub fn tight_rgba(buffer: &[u8], width: usize, height: usize, stride: usize) -> Option<Vec<u8>> {
     let row = width * 4;
@@ -166,12 +170,14 @@ pub fn photo_file_name(folder: &str, stamp: &str) -> String {
 fn latest_frame() -> Option<(Vec<u8>, usize, usize)> {
     let video = crate::androidvideo::video()?;
     let (width, height) = unsafe { ((video.width)(), (video.height)()) };
-    let (width, height) = (usize::try_from(width).ok().filter(|w| *w > 0)?, usize::try_from(height).ok().filter(|h| *h > 0)?);
-    let mut buffer = vec![0u8; width * height * 4];
-    let (mut w, mut h, mut stride) = (0, 0, 0);
-    let copied = unsafe { (video.copy_frame)(buffer.as_mut_ptr().cast(), i32::try_from(buffer.len()).ok()?, &mut w, &mut h, &mut stride) };
-    let (w, h, stride) = (usize::try_from(w).ok()?, usize::try_from(h).ok()?, usize::try_from(stride).ok()?);
-    copied.then(|| tight_rgba(&buffer, w, h, stride).map(|rgba| (rgba, w, h))).flatten()
+    let tight = usize::try_from(width).ok().filter(|w| *w > 0)? * usize::try_from(height).ok().filter(|h| *h > 0)? * 4;
+    FRAME_CAPACITY_FACTORS.iter().find_map(|factor| {
+        let mut buffer = vec![0u8; tight * factor];
+        let (mut w, mut h, mut stride) = (0, 0, 0);
+        let copied = unsafe { (video.copy_frame)(buffer.as_mut_ptr().cast(), i32::try_from(buffer.len()).ok()?, &mut w, &mut h, &mut stride) };
+        let (w, h, stride) = (usize::try_from(w).ok()?, usize::try_from(h).ok()?, usize::try_from(stride).ok()?);
+        copied.then(|| tight_rgba(&buffer, w, h, stride).map(|rgba| (rgba, w, h))).flatten()
+    })
 }
 
 #[cfg(not(all(feature = "jni-host", not(test))))]
@@ -184,7 +190,7 @@ pub fn grab_image() -> Result<String, &'static str> {
     let folder = crate::settingsstore::photo_save_path().ok_or("Unable to save the photo. The save path must be specified in Settings.")?;
     let _ = std::fs::create_dir_all(&folder);
     let file = photo_file_name(&folder, &chrono::Local::now().format("%Y-%m-%d_%H.%M.%S%.3f").to_string());
-    let (width, height) = (u16::try_from(width).map_err(|_| NO_FRAME_MESSAGE)?, u16::try_from(height).map_err(|_| NO_FRAME_MESSAGE)?);
+    let (width, height) = (u16::try_from(width).map_err(|_| FRAME_TOO_LARGE)?, u16::try_from(height).map_err(|_| FRAME_TOO_LARGE)?);
     jpeg_encoder::Encoder::new_file(&file, 90)
         .and_then(|encoder| encoder.encode(&rgba, width, height, jpeg_encoder::ColorType::Rgba))
         .map(|_| file)

@@ -10,6 +10,7 @@ import one.aircast.android.bridge.Qgc
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.requiredSize
@@ -43,12 +44,13 @@ internal fun pinchStep(scale: Float): Int = if (scale < 1f) Math.round(scale * -
 
 private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this else pointerInput(Unit) {
     awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false)
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         var scale = 1f
-        var sent = pinchStep(scale)
+        var sent = 0
         do {
-            val event = awaitPointerEvent()
+            val event = awaitPointerEvent(PointerEventPass.Initial)
             if (event.changes.count { it.pressed } >= 2) {
+                event.changes.forEach { it.consume() }
                 scale *= event.calculateZoom()
                 val step = pinchStep(scale)
                 if (step != sent) offMainDetached { Qgc.invoke(CAMERA_STEP_ZOOM, step) }

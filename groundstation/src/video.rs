@@ -374,7 +374,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         // wrong in both directions: a camera that shoots stills in video mode had a working shutter
         // greyed out, and a camera mid-capture had a live button whose tap returns false in silence.
         "canRecord": present && integer(&camera, "captureVideoState").is_some_and(|state| state != CAPTURE_DISABLED),
-        "canPhoto": present && captures_photos && (!has_modes || mode != VIDEO_MODE || flag(&camera, "photosInVideoMode")) && photo_status == PHOTO_CAPTURE_IDLE,
+        "canPhoto": present && captures_photos && photo_status == PHOTO_CAPTURE_IDLE,
         // takePhoto sends `_photoMode == PHOTO_CAPTURE_SINGLE ? 0 : _photoLapse` and
         // `? 1 : _photoLapseCount`, so the same shutter press either takes one photo or starts an
         // interval capture of lapseCount shots. Serving only canPhoto makes those one button with
@@ -690,7 +690,7 @@ mod tests {
             camera_view(&Fake::new(json!({ "kind": "null" }), base), &[])
         };
 
-        assert_eq!(cam(json!({ "cameraMode": 1 }))["canPhoto"], false, "in video mode a camera that cannot shoot stills there refuses, and the gate says so");
+        assert_eq!(cam(json!({ "cameraMode": 1 }))["canPhoto"], true, "in video mode a camera that cannot shoot stills there falls back to grabbing a video frame, as VehicleCameraControl::takePhoto does");
         assert_eq!(cam(json!({ "cameraMode": 1, "photosInVideoMode": true }))["canPhoto"], true,
             "VehicleCameraControl.cc only refuses on the mode when photosInVideoMode is false; without that term the core greys out a shutter that works");
         assert_eq!(cam(json!({ "cameraMode": 0, "capturePhotosState": 2 }))["canPhoto"], false,
@@ -788,7 +788,7 @@ mod tests {
         assert_eq!(view["shotPoints"].as_array().unwrap().len(), 2, "the core counted the photos and never said where they were taken - a head could report 42 shots and draw none of them, while QGC marks every one on the map");
         assert_eq!(view["shotPoints"][0]["latitude"], 47.397);
         assert_eq!(view["batteryText"], "80%");
-        assert_eq!(view["canPhoto"], false);
+        assert_eq!(view["canPhoto"], true, "a recording camera in video mode still grabs a frame from the stream");
         assert_eq!(view["canRecord"], true);
         let none = camera_view(&Fake::new(json!({ "kind": "null" }), json!({ "kind": "null" })), &[]);
         assert_eq!(none["present"], false);
