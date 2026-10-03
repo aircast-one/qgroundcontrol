@@ -364,6 +364,7 @@ internal fun FleetCard() {
 }
 
 private const val SIMPLE_LANDSCAPE_SPLIT = 0.5f
+internal val MAP_LAYERS_CLEARANCE = 48.dp + AircastSpace.s3 + AircastSpace.s2
 private val FLEET_CARD_MAX_WIDTH = 440.dp
 private val FLEET_CARD_MAX_HEIGHT = 320.dp
 private const val FLEET_CARD_MIN_SCREEN_DP = 600

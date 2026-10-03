@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.delay
@@ -63,6 +64,7 @@ private const val DEFAULT_ZOOM = 17.0
 private const val MIN_FIT_SPAN_DEGREES = 1e-5
 private const val FIT_PADDING_PIXELS = 80
 private const val LOGO_EDGE_MARGIN_PX = 16
+private val ATTRIBUTION_CLEARANCE = 24.dp
 private const val STALE_COLOUR = "#9E9E9E"
 
 const val DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
@@ -175,6 +177,7 @@ fun VehicleMap(
     bottomInsetPx: Int = 0,
     topInsetPx: Int = 0,
     leftInsetPx: Int = 0,
+    logoEndInsetPx: Int? = null,
     cameraBottomPx: Int = 0,
     pip: Boolean = false,
     fitRequest: Int = 0,
@@ -481,10 +484,19 @@ fun VehicleMap(
         map?.setPadding(0, 0, 0, cameraBottomPx)
     }
 
-    LaunchedEffect(map, bottomInsetPx, leftInsetPx) {
+    val attributionClearancePx = with(androidx.compose.ui.platform.LocalDensity.current) { ATTRIBUTION_CLEARANCE.roundToPx() }
+    LaunchedEffect(map, bottomInsetPx, leftInsetPx, logoEndInsetPx) {
         val settings = map?.uiSettings ?: return@LaunchedEffect
-        settings.setLogoMargins(leftInsetPx + LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
-        settings.setAttributionMargins(leftInsetPx + LOGO_EDGE_MARGIN_PX, 0, 0, bottomInsetPx + LOGO_EDGE_MARGIN_PX)
+        val bottom = bottomInsetPx + LOGO_EDGE_MARGIN_PX
+        logoEndInsetPx?.let { end ->
+            settings.logoGravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+            settings.attributionGravity = android.view.Gravity.BOTTOM or android.view.Gravity.END
+            settings.setAttributionMargins(0, 0, end, bottom)
+            settings.setLogoMargins(0, 0, end + attributionClearancePx, bottom)
+        } ?: run {
+            settings.setLogoMargins(leftInsetPx + LOGO_EDGE_MARGIN_PX, 0, 0, bottom)
+            settings.setAttributionMargins(leftInsetPx + LOGO_EDGE_MARGIN_PX, 0, 0, bottom)
+        }
     }
 
     LaunchedEffect(centreRequest, map) {
