@@ -112,19 +112,11 @@ pub fn switch_applies(parameter: &str, vtol: bool, fixed_wing: bool) -> bool {
     }
 }
 const HELI_APM: &[Section] = &[
-    Section { title: "Servo 1", note: "", parameters: &["SERVO1_FUNCTION", "SERVO1_MIN", "SERVO1_MAX", "SERVO1_TRIM", "SERVO1_REVERSED"] },
-    Section { title: "Servo 2", note: "", parameters: &["SERVO2_FUNCTION", "SERVO2_MIN", "SERVO2_MAX", "SERVO2_TRIM", "SERVO2_REVERSED"] },
-    Section { title: "Servo 3", note: "", parameters: &["SERVO3_FUNCTION", "SERVO3_MIN", "SERVO3_MAX", "SERVO3_TRIM", "SERVO3_REVERSED"] },
-    Section { title: "Servo 4", note: "", parameters: &["SERVO4_FUNCTION", "SERVO4_MIN", "SERVO4_MAX", "SERVO4_TRIM", "SERVO4_REVERSED"] },
-    Section { title: "Servo 5", note: "", parameters: &["SERVO5_FUNCTION", "SERVO5_MIN", "SERVO5_MAX", "SERVO5_TRIM", "SERVO5_REVERSED"] },
-    Section { title: "Servo 6", note: "", parameters: &["SERVO6_FUNCTION", "SERVO6_MIN", "SERVO6_MAX", "SERVO6_TRIM", "SERVO6_REVERSED"] },
-    Section { title: "Servo 7", note: "", parameters: &["SERVO7_FUNCTION", "SERVO7_MIN", "SERVO7_MAX", "SERVO7_TRIM", "SERVO7_REVERSED"] },
-    Section { title: "Servo 8", note: "", parameters: &["SERVO8_FUNCTION", "SERVO8_MIN", "SERVO8_MAX", "SERVO8_TRIM", "SERVO8_REVERSED"] },
+    Section { title: "Servo Setup", note: "", parameters: &["label:Servo 1", "SERVO1_FUNCTION", "SERVO1_MIN", "SERVO1_MAX", "SERVO1_TRIM", "SERVO1_REVERSED", "label:Servo 2", "SERVO2_FUNCTION", "SERVO2_MIN", "SERVO2_MAX", "SERVO2_TRIM", "SERVO2_REVERSED", "label:Servo 3", "SERVO3_FUNCTION", "SERVO3_MIN", "SERVO3_MAX", "SERVO3_TRIM", "SERVO3_REVERSED", "label:Servo 4", "SERVO4_FUNCTION", "SERVO4_MIN", "SERVO4_MAX", "SERVO4_TRIM", "SERVO4_REVERSED", "label:Servo 5", "SERVO5_FUNCTION", "SERVO5_MIN", "SERVO5_MAX", "SERVO5_TRIM", "SERVO5_REVERSED", "label:Servo 6", "SERVO6_FUNCTION", "SERVO6_MIN", "SERVO6_MAX", "SERVO6_TRIM", "SERVO6_REVERSED", "label:Servo 7", "SERVO7_FUNCTION", "SERVO7_MIN", "SERVO7_MAX", "SERVO7_TRIM", "SERVO7_REVERSED", "label:Servo 8", "SERVO8_FUNCTION", "SERVO8_MIN", "SERVO8_MAX", "SERVO8_TRIM", "SERVO8_REVERSED"] },
     Section { title: "Swashplate Setup", note: "", parameters: &["H_SV_MAN", "H_SW_TYPE", "H_SW_COL_DIR", "H_SW_LIN_SVO", "H_FLYBAR_MODE", "H_CYC_MAX", "H_COL_MAX", "H_COL_ANG_MAX", "H_COL_MIN", "H_COL_ANG_MIN", "H_COL_ZERO_THRST", "H_COL_LAND_MIN"] },
     Section { title: "Throttle Settings", note: "", parameters: &["H_RSC_MODE", "H_RSC_CRITICAL", "H_RSC_RAMP_TIME", "H_RSC_RUNUP_TIME", "H_RSC_CLDWN_TIME", "H_RSC_SETPOINT", "H_RSC_IDLE", "H_RSC_THRCRV_0", "H_RSC_THRCRV_25", "H_RSC_THRCRV_50", "H_RSC_THRCRV_75", "H_RSC_THRCRV_100"] },
     Section { title: "Governor Settings", note: "", parameters: &["H_RSC_GOV_COMP", "H_RSC_GOV_DROOP", "H_RSC_GOV_FF", "H_RSC_GOV_RANGE", "H_RSC_GOV_RPM", "H_RSC_GOV_TORQUE"] },
-    Section { title: "Stabilize Collective Curve", note: "", parameters: &["IM_STB_COL_1", "IM_STB_COL_2", "IM_STB_COL_3", "IM_STB_COL_4"] },
-    Section { title: "Tail & Gyros", note: "", parameters: &["H_TAIL_TYPE", "H_TAIL_SPEED", "H_GYR_GAIN", "H_GYR_GAIN_ACRO", "H_COLYAW"] },
+    Section { title: "Miscellaneous Settings", note: "", parameters: &["label:* Stabilize Collective Curve *", "IM_STB_COL_1", "IM_STB_COL_2", "IM_STB_COL_3", "IM_STB_COL_4", "label:* Tail & Gyros *", "H_TAIL_TYPE", "H_TAIL_SPEED", "H_GYR_GAIN", "H_GYR_GAIN_ACRO", "H_COLYAW"] },
 ];
 
 pub fn screen_for(page: &str, px4: bool) -> Option<&'static str> {
@@ -388,6 +380,24 @@ fn apm_mode_row(name: &str, mut row: Value, px4: bool) -> Value {
     row
 }
 
+const LABEL_ROW: &str = "label:";
+
+fn servo_column_row(name: &str, mut row: Value) -> Value {
+    let column = name.strip_prefix("SERVO").and_then(|rest| rest.split_once('_')).filter(|(n, _)| n.parse::<u8>().is_ok()).and_then(|(_, field)| match field {
+        "FUNCTION" => Some("Function"),
+        "MIN" => Some("Min"),
+        "MAX" => Some("Max"),
+        "TRIM" => Some("Trim"),
+        "REVERSED" => Some("Reversed"),
+        _ => None,
+    });
+    if let Some(column) = column {
+        row["label"] = json!(column);
+        row["shortLabel"] = json!(column);
+    }
+    row
+}
+
 fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
     let Some(sections) = sections_for(page, px4) else { return crate::read::refused(&format!("no setup page is called {page} for this firmware; the pages a vehicle offers depend on which plugin built them")) };
     let read = |name: &str| {
@@ -404,9 +414,12 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
     let (vtol, fixed_wing) = (crate::read::flag(&shape, "vtol"), crate::read::flag(&shape, "fixedWing"));
     let listed: Vec<Value> = sections
         .iter()
-        .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter(|p| switch_applies(p, vtol, fixed_wing)).filter_map(|p| read(p).map(|row| apm_mode_row(p, row, px4))).collect::<Vec<_>>() }))
+        .map(|s| json!({ "title": s.title, "note": s.note, "controls": s.parameters.iter().filter(|p| switch_applies(p, vtol, fixed_wing)).filter_map(|p| match p.strip_prefix(LABEL_ROW) {
+            Some(text) => Some(json!({ "control": "label", "name": text, "label": text, "path": format!("{page}.{text}"), "enabled": true })),
+            None => read(p).map(|row| servo_column_row(p, apm_mode_row(p, row, px4))),
+        }).collect::<Vec<_>>() }))
         .chain(simple_modes)
-        .filter(|s| !s["controls"].as_array().is_none_or(Vec::is_empty))
+        .filter(|s| s["controls"].as_array().is_some_and(|rows| rows.iter().any(|row| row["control"] != "label")))
         .collect();
     let fixed_channel = page == "Flight Modes" && !px4 && read("FLTMODE_CH").is_none() && read("MODE_CH").is_none();
     let listed: Vec<Value> = listed.into_iter().map(|mut section| {
@@ -553,12 +566,11 @@ mod tests {
         }
         let page = setup_view(&Fake, &["Heli".to_string()]);
         let sections = page["sections"].as_array().unwrap();
-        assert_eq!(sections.len(), 2);
-        assert_eq!(sections[0]["title"], "Servo 1");
-        assert_eq!(sections[0]["controls"][0]["name"], "SERVO1_FUNCTION");
-        assert_eq!(sections[0]["controls"].as_array().unwrap().len(), 1, "a nameless answer is a parameter the vehicle does not have");
-        assert_eq!(sections[0]["controls"][0]["control"], "number");
-        assert_eq!(sections[1]["title"], "Servo 2");
+        assert_eq!(sections.len(), 1, "a group of only subheadings is dropped");
+        assert_eq!(sections[0]["title"], "Servo Setup");
+        let rows: Vec<(&str, &str)> = sections[0]["controls"].as_array().unwrap().iter().map(|r| (r["name"].as_str().unwrap(), r["label"].as_str().unwrap_or(""))).collect();
+        assert_eq!(rows[..4], [("Servo 1", "Servo 1"), ("SERVO1_FUNCTION", "Function"), ("Servo 2", "Servo 2"), ("SERVO2_FUNCTION", "Function")], "the Servo Setup grid: a row per servo, a column per field; a nameless answer is a parameter the vehicle does not have");
+        assert_eq!(sections[0]["controls"][1]["control"], "number");
         assert_eq!(setup_view(&Fake, &["Nope".to_string()])["kind"], "null");
     }
 
@@ -847,8 +859,7 @@ mod components {
     fn heli_is_an_ardupilot_page_listing_the_first_eight_servos_then_the_rotor() {
         assert!(!page_exists("Heli", true));
         let titles: Vec<&str> = sections_for("Heli", false).unwrap().iter().map(|s| s.title).collect();
-        assert_eq!(titles[..8], ["Servo 1", "Servo 2", "Servo 3", "Servo 4", "Servo 5", "Servo 6", "Servo 7", "Servo 8"]);
-        assert_eq!(titles[8..], ["Swashplate Setup", "Throttle Settings", "Governor Settings", "Stabilize Collective Curve", "Tail & Gyros"]);
+        assert_eq!(titles, ["Servo Setup", "Swashplate Setup", "Throttle Settings", "Governor Settings", "Miscellaneous Settings"], "APMHeliComponent QGCGroupBox titles");
     }
 
     struct Typed(&'static str);

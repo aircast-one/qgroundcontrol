@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -201,6 +203,16 @@ private fun SectionHits(titles: List<String>, onOpen: (String) -> Unit) {
     }
 }
 
+internal fun disabledWhile(reason: String): String = "Disabled while the vehicle is $reason"
+
+private fun Modifier.swallowTouches(): Modifier = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.forEach { it.consume() }
+        }
+    }
+}
+
 @Composable
 private fun SetupNotice(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -317,11 +329,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             val nativePage = setupPage(setupJson, open.name)
             val blocked = open.blockedReason
             val first = open.prerequisite
-            when {
-                blocked != null -> SetupNotice(
-                    "${open.name} cannot be set up while the vehicle is $blocked.",
-                    Modifier.weight(1f),
-                )
+            val page: @Composable (Modifier) -> Unit = { area -> Column(area) { when {
                 first != null -> androidx.compose.foundation.layout.Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     val firstComponent = setupComponents(setupJson).firstOrNull { it.name == first }
                     EmptyState(setupIcon(firstComponent?.known, firstComponent?.className.orEmpty()), "${sentenceCase(first)} first", prerequisiteText(first, open.name))
@@ -356,6 +364,21 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     "${open.name} is set up on the desktop.",
                     Modifier.weight(1f),
                 )
+            } } }
+            when (blocked) {
+                null -> page(Modifier.weight(1f))
+                else -> {
+                    Text(
+                        disabledWhile(blocked),
+                        color = MaterialTheme.aircast.warning,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        page(Modifier.fillMaxSize())
+                        Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.5f)).swallowTouches())
+                    }
+                }
             }
         }
     } }
@@ -411,7 +434,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     status = blocked?.let { "Not while $it" }
                         ?: attentionAction(component.className),
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
-                    onClick = if (blocked == null && headCanOpen(page, component.name)) {
+                    onClick = if (headCanOpen(page, component.name)) {
                         { openFromList(component, null) }
                     } else {
                         null
@@ -421,7 +444,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     icon = setupIcon(component.known, component.className),
                     subtitle = setupNote(component.className).takeIf { summaries[component.name].isNullOrEmpty() }.orEmpty(),
                 )
-                if (component.blockedReason == null) SectionHits(sectionHits[component.name].orEmpty()) { openFromList(component, it) }
+                SectionHits(sectionHits[component.name].orEmpty()) { openFromList(component, it) }
                 }
             }
         }
@@ -452,7 +475,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                         !openable -> SetupState.Unavailable
                         else -> SetupState.Neutral
                     },
-                    onClick = if (blocked == null && openable) {
+                    onClick = if (openable) {
                         { openFromList(component, null) }
                     } else {
                         null
@@ -462,7 +485,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     icon = setupIcon(component.known, component.className),
                     subtitle = setupNote(component.className).takeIf { summaries[component.name].isNullOrEmpty() }.orEmpty(),
                 )
-                if (component.blockedReason == null) SectionHits(sectionHits[component.name].orEmpty()) { openFromList(component, it) }
+                SectionHits(sectionHits[component.name].orEmpty()) { openFromList(component, it) }
                 }
             }
         }

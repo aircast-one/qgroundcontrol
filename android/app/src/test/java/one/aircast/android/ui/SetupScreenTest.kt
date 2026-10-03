@@ -42,6 +42,11 @@ class SetupScreenTest {
     }
 
     @Test
+    fun `a blocked page says why like SetupPage`() {
+        assertEquals("Disabled while the vehicle is flying", disabledWhile("flying"))
+    }
+
+    @Test
     fun `a component with no name is not offered, and no view is no components`() {
         assertEquals(1, setupComponents(JSONObject("""{"components":[{"name":"Radio"},{}]}""")).size)
         assertEquals(emptyList<String>(), setupComponents(null).map { it.name })

@@ -22,6 +22,12 @@ class EspBridgeScreenTest {
     }
 
     @Test
+    fun restart_waits_for_the_bridge_like_controller_busy() {
+        assertFalse(espBridge(JSONObject("""{"available":true}"""))!!.busy)
+        assertTrue(espBridge(JSONObject("""{"available":true,"busy":true}"""))!!.busy)
+    }
+
+    @Test
     fun the_qgc_udp_port_is_typed_within_the_validator_range() {
         val bridge = espBridge(JSONObject("""{"available":true,"hostPort":{"valueString":"14550","path":"vehicle.parameterManager.getParameter(240,WIFI_UDP_HPORT)"}}"""))!!
         assertEquals("vehicle.parameterManager.getParameter(240,WIFI_UDP_HPORT)", bridge.hostPortPath)

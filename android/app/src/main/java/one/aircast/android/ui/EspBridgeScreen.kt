@@ -42,6 +42,7 @@ import org.json.JSONObject
 
 internal const val ESP_BRIDGE_VIEW = "view.espBridge"
 internal const val ESP_BRIDGE_SCREEN = "espBridge"
+private const val ESP_BRIDGE_OPENED = "espBridge.open"
 private const val ESP_POLL_MS = 1000L
 private val WIFI_MODES = listOf("Access point mode", "Station mode")
 private const val STATION_MODE = 1
@@ -66,6 +67,7 @@ internal data class EspBridge(
     val bridge: LinkCounts,
     val qgc: LinkCounts,
     val rebootPrompt: String,
+    val busy: Boolean,
 )
 
 internal fun grouped(value: Any?): String = (value as? Number)?.toLong()?.let { "%,d".format(java.util.Locale.ROOT, it) } ?: ""
@@ -92,6 +94,7 @@ internal fun espBridge(view: JSONObject?): EspBridge? = view?.takeIf { it.optBoo
         bridge = counts(status?.optJSONObject("bridge")),
         qgc = counts(status?.optJSONObject("qgc")),
         rebootPrompt = it.optText("rebootPrompt"),
+        busy = it.optBoolean("busy"),
     )
 }
 
@@ -106,6 +109,7 @@ fun EspBridgeScreen(modifier: Modifier = Modifier) {
     var refusal by remember { mutableStateOf<String?>(null) }
     var confirmReboot by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke(ESP_BRIDGE_OPENED) } }
     LaunchedEffect(revision) {
         read = withContext(Dispatchers.Default) { espBridge(Qgc.get(ESP_BRIDGE_VIEW)) }
         delay(ESP_POLL_MS)
@@ -144,7 +148,7 @@ fun EspBridgeScreen(modifier: Modifier = Modifier) {
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { act("espBridge.restoreDefaults") }) { Text("Restore defaults") }
-            OutlinedButton(onClick = { confirmReboot = true }) { Text("Restart WiFi bridge") }
+            OutlinedButton(enabled = !bridge.busy, onClick = { confirmReboot = true }) { Text("Restart WiFi bridge") }
             OutlinedButton(onClick = { act("espBridge.resetCounters") }) { Text("Reset counters") }
         }
     }

@@ -13,6 +13,7 @@ pub const SET_BAUD: &str = "espBridge.baud";
 pub const REBOOT_BRIDGE: &str = "espBridge.reboot";
 pub const RESTORE_DEFAULTS: &str = "espBridge.restoreDefaults";
 pub const RESET_COUNTERS: &str = "espBridge.resetCounters";
+pub const BRIDGE_OPENED: &str = "espBridge.open";
 pub const COMPONENT: u8 = 240;
 const DEFAULT_IP: &str = "192.168.4.1";
 const STATUS_INTERVAL_MS: u64 = 1000;
@@ -20,8 +21,6 @@ const STATUS_TIMEOUT: Duration = Duration::from_secs(2);
 const TEXT_BYTES: usize = 16;
 pub const BAUD_RATES: [i64; 5] = [57600, 115200, 230400, 460800, 921600];
 const WIFI_CHANNELS: std::ops::RangeInclusive<i64> = 1..=11;
-const CMD_PREFLIGHT_STORAGE: u16 = 245;
-const CMD_PREFLIGHT_REBOOT_SHUTDOWN: u16 = 246;
 const TEXT_FIELDS: [(&str, &str, bool); 4] = [("ssid", "WIFI_SSID", false), ("password", "WIFI_PASSWORD", false), ("ssidSta", "WIFI_SSIDSTA", true), ("passwordSta", "WIFI_PWDSTA", true)];
 
 fn path(name: &str) -> String {
@@ -106,6 +105,7 @@ pub fn esp_bridge_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = object(&backend.get_fields("vehicle", "messagesReceived,messagesLost,messagesSent"));
     let decoded = |name: &str| fact(backend, name).map(|f| decode(&f, &path(name)));
     let has_sta = fact(backend, "WIFI_SSIDSTA1").is_some();
+    let busy = crate::hub::lock().active().is_some_and(|v| v.esp_wait.is_some());
     json!({
         "kind": "object",
         "class": "EspBridge",
@@ -130,6 +130,7 @@ pub fn esp_bridge_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "bridge": { "received": count("gpackets"), "lost": count("glost"), "sent": count("gsent") },
             "qgc": { "received": vehicle.get("messagesReceived").cloned().unwrap_or(Value::Null), "lost": vehicle.get("messagesLost").cloned().unwrap_or(Value::Null), "sent": vehicle.get("messagesSent").cloned().unwrap_or(Value::Null) },
         },
+        "busy": busy,
         "rebootPrompt": "This will restart the WiFi Bridge so the settings you've changed can take effect. Note that you may have to change your computer WiFi settings and QGroundControl link settings to match these changes. Are you sure you want to restart it?",
     })
 }
@@ -138,8 +139,8 @@ fn write_raw(backend: &dyn Backend, name: &str, value: u32) -> bool {
     crate::read::flag(&object(&backend.set(&format!("{}.rawValue", path(name)), &json!({ "value": value }).to_string())), "ok")
 }
 
-fn command(backend: &dyn Backend, command: u16, params: [f64; 7]) -> Value {
-    crate::guided::dispatch(backend, Some(json!({ "action": "mavlinkCommand", "command": command, "component": COMPONENT, "params": params })), crate::guided::active_id(backend), "", "[]")
+fn command(backend: &dyn Backend, op: &str) -> Value {
+    crate::guided::dispatch(backend, Some(json!({ "action": "espBridge", "op": op })), crate::guided::active_id(backend), "", "[]")
 }
 
 pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
@@ -159,8 +160,9 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
             Some(baud) => json!({ "ok": write_raw(backend, "UART_BAUDRATE", *baud as u32) }),
             None => json!({ "ok": false, "reason": "Pick one of the listed baud rates." }),
         },
-        REBOOT_BRIDGE => command(backend, CMD_PREFLIGHT_REBOOT_SHUTDOWN, [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
-        RESTORE_DEFAULTS => command(backend, CMD_PREFLIGHT_STORAGE, [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+        REBOOT_BRIDGE => command(backend, "reboot"),
+        RESTORE_DEFAULTS => command(backend, "restoreDefaults"),
+        BRIDGE_OPENED => command(backend, "open"),
         RESET_COUNTERS => {
             STATUS.lock().unwrap_or_else(PoisonError::into_inner).reset = true;
             backend.invoke("vehicle.resetCounters", "[]");
@@ -171,7 +173,7 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [SET_TEXT, SET_BAUD, REBOOT_BRIDGE, RESTORE_DEFAULTS, RESET_COUNTERS].contains(&path)
+    [SET_TEXT, SET_BAUD, REBOOT_BRIDGE, RESTORE_DEFAULTS, RESET_COUNTERS, BRIDGE_OPENED].contains(&path)
 }
 
 #[cfg(test)]

@@ -352,6 +352,7 @@ pub struct Vehicle {
     initial_due: Option<u64>,
     waiting_due: Option<u64>,
     sensor_refresh_due: Option<u64>,
+    pub(crate) esp_wait: Option<u16>,
     terrain_request: Option<crate::terrainprotocol::Request>,
     terrain_due: Option<u64>,
     metadata_types: BTreeMap<u8, Uris>,
@@ -554,6 +555,7 @@ impl Vehicle {
             initial_due: None,
             waiting_due: None,
             sensor_refresh_due: None,
+            esp_wait: None,
             terrain_request: None,
             terrain_due: None,
             metadata_types: BTreeMap::new(),
@@ -1849,6 +1851,19 @@ impl Vehicle {
             Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
             Some("reboot") => return Ok(self.send_tagged(guidedcmd::CMD_PREFLIGHT_REBOOT_SHUTDOWN, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], false, REBOOT_TAG, now_ms)),
             Some("factoryReset") => return Ok(self.send_tagged(guidedcmd::CMD_PREFLIGHT_STORAGE, [STORAGE_RESET_FACTORY, STORAGE_MISSION_UNTOUCHED, 0.0, 0.0, 0.0, 0.0, 0.0], true, FACTORY_RESET_TAG, now_ms)),
+            Some("espBridge") => {
+                let command = match action.get("op").and_then(Value::as_str) {
+                    Some("reboot") => (guidedcmd::CMD_PREFLIGHT_REBOOT_SHUTDOWN, [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                    Some("restoreDefaults") => (guidedcmd::CMD_PREFLIGHT_STORAGE, [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                    _ => {
+                        self.esp_wait = None;
+                        return Ok(Vec::new());
+                    }
+                };
+                self.esp_wait = Some(command.0);
+                let outs = self.commands.send(Command { component: crate::espbridge::COMPONENT, command: command.0, command_int: false, frame: guidedcmd::FRAME_GLOBAL, params: command.1, show_error: true, tag: ESP_BRIDGE_TAG }, now_ms);
+                return Ok(self.handle(outs, now_ms));
+            }
             Some("changeAutostart") => return self.change_autostart(action, now_ms),
             Some("motorAssignment") => return self.motor_assignment_action(action, now_ms),
             Some("actuatorAction") => {
@@ -2138,6 +2153,16 @@ impl Vehicle {
                     crate::noticeboard::post(crate::noticeboard::MESSAGE, "", if reset { "Reset successful" } else { "Reset failed" });
                     self.sensor_refresh_due = reset.then_some(now_ms + SENSOR_REFRESH_DELAY_MS);
                     Vec::new()
+                }
+                Out::Result { tag: ESP_BRIDGE_TAG, command, result: RESULT_ACCEPTED, .. } if self.esp_wait == Some(command) => {
+                    self.esp_wait = None;
+                    match command == guidedcmd::CMD_PREFLIGHT_STORAGE {
+                        true => {
+                            let actions = self.params.refresh_all(crate::espbridge::COMPONENT);
+                            self.follow_params(actions, now_ms)
+                        }
+                        false => Vec::new(),
+                    }
                 }
                 Out::Result { tag: REBOOT_TAG, result, .. } => {
                     match result {
@@ -3535,6 +3560,7 @@ pub struct LinkKinds {
 const SENSOR_REFRESH_DELAY_MS: u64 = 1000;
 const REBOOT_TAG: u64 = 0x5245_424F_4F54;
 const FACTORY_RESET_TAG: u64 = 0x5245_5345_5446;
+const ESP_BRIDGE_TAG: u64 = 0x4553_5042_5247;
 const INSPECTOR_RATE_TAG: u64 = 0x4D53_4749_0000_0000;
 const MSG_MESSAGE_INTERVAL: u32 = 244;
 const STORAGE_RESET_FACTORY: f64 = 3.0;
@@ -4920,6 +4946,30 @@ mod tests {
         let mut reread = reads(hub.tick(1_100));
         reread.sort();
         assert_eq!(reread, ["CAL_ACC0_ID", "SENS_BOARD_ROT"], "only CAL_* and SENS_* are bulk-refreshed");
+    }
+
+    #[test]
+    fn the_wifi_bridge_is_busy_until_its_command_is_accepted_and_a_restore_rereads_its_parameters() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let bridge = MavHeader { system_id: 1, component_id: crate::espbridge::COMPONENT, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let ack = |command, result| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command, result, ..Default::default() });
+        let busy = |hub: &Hub| hub.active().unwrap().esp_wait.is_some();
+        hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "espBridge", "op": "reboot" }), 10).unwrap();
+        assert!(busy(&hub));
+        hub.on_frame(origin(0), &bridge, &ack(MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN, MavResult::MAV_RESULT_DENIED), 0, 20);
+        assert!(busy(&hub), "ESP8266ComponentController stays busy when the command is rejected");
+        hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "espBridge", "op": "open" }), 30).unwrap();
+        assert!(!busy(&hub), "a newly opened page starts with a fresh controller");
+        hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "espBridge", "op": "restoreDefaults" }), 40).unwrap();
+        let list_requests = |frames: Vec<(LinkId, Vec<u8>)>| -> Vec<u8> { frames.iter().filter_map(|(_, b)| match decode(b) { MavMessage::PARAM_REQUEST_LIST(r) => Some(r.target_component), _ => None }).collect() };
+        assert!(list_requests(hub.on_frame(origin(0), &header, &ack(MavCmd::MAV_CMD_PREFLIGHT_STORAGE, MavResult::MAV_RESULT_ACCEPTED), 0, 50)).is_empty(), "the autopilot's storage ack is not the bridge's");
+        assert!(busy(&hub));
+        let reread = list_requests(hub.on_frame(origin(0), &bridge, &ack(MavCmd::MAV_CMD_PREFLIGHT_STORAGE, MavResult::MAV_RESULT_ACCEPTED), 0, 60));
+        assert!(!busy(&hub));
+        assert_eq!(reread, [crate::espbridge::COMPONENT], "refreshAllParameters(componentID()) after the restore is accepted");
     }
 
     #[test]
