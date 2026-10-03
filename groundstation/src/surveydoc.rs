@@ -304,6 +304,7 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, hover_allowed: bool,
 }
 
 const OPTICS: [(&str, &str); 7] = [("SensorWidth", "sensorWidth"), ("SensorHeight", "sensorHeight"), ("ImageWidth", "imageWidth"), ("ImageHeight", "imageHeight"), ("FocalLength", "focalLength"), ("Landscape", "landscape"), ("MinTriggerInterval", "minTriggerInterval")];
+const SENSOR_ROWS: usize = 5;
 const FLIGHT: [(&str, &str); 4] = [("DistanceToSurface", "distanceToSurface"), ("ImageDensity", "imageDensity"), ("FrontalOverlap", "frontalOverlap"), ("SideOverlap", "sideOverlap")];
 const MANUAL_SPACING: [(&str, &str); 2] = [("AdjustedFootprintFrontal", "adjustedFootprintFrontal"), ("AdjustedFootprintSide", "adjustedFootprintSide")];
 
@@ -355,8 +356,14 @@ pub fn camera(survey: &Value, item: &str, units: &Units, terrain_frame: bool) ->
         .chain(known.iter().filter_map(|c| c.get("brand").and_then(Value::as_str).map(str::to_string)))
         .fold(Vec::new(), |seen, b| if seen.contains(&b) { seen } else { seen.into_iter().chain(std::iter::once(b)).collect() });
     let models: Vec<String> = known.iter().filter(|c| c.get("brand").and_then(Value::as_str) == Some(brand.as_str())).filter_map(|c| c.get("model").and_then(Value::as_str).map(str::to_string)).collect();
-    let optics: &[(&str, &str)] = if custom { &OPTICS } else { &[] };
+    let fixed_orientation = calc.get("FixedOrientation").and_then(Value::as_bool).unwrap_or(false);
+    let optics: Vec<(&str, &str)> = match (custom, name_is_manual) {
+        (true, _) => OPTICS.to_vec(),
+        (false, true) => Vec::new(),
+        (false, false) => OPTICS[..SENSOR_ROWS].iter().chain(OPTICS[SENSOR_ROWS..=SENSOR_ROWS].iter().filter(|_| !fixed_orientation)).copied().collect(),
+    };
     let wanted: Vec<(&str, &str)> = optics.iter().chain(FLIGHT.iter()).chain(MANUAL_SPACING.iter()).copied().collect();
+    let sensor_read_only = |name: &str| !custom && OPTICS[..SENSOR_ROWS].iter().any(|(sensor, _)| *sensor == name);
     let facts: Vec<Value> = wanted
         .iter()
         .filter_map(|(name, suffix)| {
@@ -365,6 +372,7 @@ pub fn camera(survey: &Value, item: &str, units: &Units, terrain_frame: bool) ->
             Some(match (spacing_label(survey, name), name_is_manual) {
                 (Some(label), true) => labelled(built, label),
                 (Some(label), false) => read_only(labelled(built, label)),
+                (None, _) if sensor_read_only(name) => read_only(built),
                 (None, _) => built,
             })
         })
@@ -512,7 +520,8 @@ pub fn set(survey: &Value, suffix: &str, value: &Value, units: &Units) -> Option
         _ => {
             let (owner, key) = target(suffix)?;
             let manual = calc.get("CameraName").and_then(Value::as_str).is_none_or(|name| name == MANUAL_CAMERA);
-            if key.starts_with("AdjustedFootprint") && !manual {
+            let custom = calc.get("CameraName").and_then(Value::as_str) == Some(CUSTOM_CAMERA);
+            if (key.starts_with("AdjustedFootprint") && !manual) || (!custom && OPTICS[..SENSOR_ROWS].iter().any(|(sensor, _)| *sensor == key)) {
                 return None;
             }
             match owner {
@@ -1056,6 +1065,22 @@ mod tests {
         let spacing: Vec<(Value, Value)> = camera(&sony, "p", &metric(), true)["facts"].as_array().unwrap().iter().filter(|f| f["name"].as_str().is_some_and(|n| n.starts_with("AdjustedFootprint"))).map(|f| (f["shortLabel"].clone(), f["readOnly"].clone())).collect();
         assert_eq!(spacing, [(json!("Trigger distance"), json!(true)), (json!("Spacing"), json!(true))], "CameraCalcGrid shows them as plain rows for any camera but the manual one");
         assert!(set(&sony, "cameraCalc.adjustedFootprintSide", &json!(40.0), &metric()).is_none(), "a write the camera calc would overwrite is refused rather than reported as taken");
+    }
+
+    #[test]
+    fn a_named_camera_shows_its_sensor_read_only_and_an_orientation_choice_unless_fixed() {
+        let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let sony = set(&plan["mission"]["items"][0], "cameraCalc.cameraBrand", &json!("Sony"), &metric()).unwrap();
+        let rows = |survey: &Value| -> Vec<(String, bool)> {
+            camera(survey, "p", &metric(), true)["facts"].as_array().unwrap().iter().filter(|f| f["pathSuffix"].as_str().is_some_and(|s| OPTICS.iter().any(|(_, o)| s == format!("cameraCalc.{o}")))).map(|f| (f["pathSuffix"].as_str().unwrap().to_string(), f["readOnly"].as_bool().unwrap())).collect()
+        };
+        let sensor = ["sensorWidth", "sensorHeight", "imageWidth", "imageHeight", "focalLength"].map(|s| (format!("cameraCalc.{s}"), true));
+        assert_eq!(rows(&sony), sensor.iter().cloned().chain([("cameraCalc.landscape".to_string(), false)]).collect::<Vec<_>>(), "CameraCalcCamera: SENSOR card disabled unless custom, Orientation shown unless fixedOrientation");
+        let portrait = set(&sony, "cameraCalc.landscape", &json!(false), &metric()).unwrap();
+        assert_eq!(calc_of(&portrait)["Landscape"], json!(false));
+        assert!(set(&sony, "cameraCalc.sensorWidth", &json!(20.0), &metric()).is_none(), "a catalogue camera's sensor is not typed in");
+        let fixed = set(&sony, "cameraCalc.cameraModel", &json!("a7R II Zeiss 21mm f/2.8"), &metric()).unwrap();
+        assert_eq!(rows(&fixed), sensor.to_vec());
     }
 
     #[test]

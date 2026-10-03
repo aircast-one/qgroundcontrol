@@ -20,6 +20,7 @@ const ITEM_ROOT: &str = "plan.missionController.visualItems";
 const LISTS: [&str; 3] = ["comboboxFacts", "textFieldFacts", "nanFacts"];
 const LAUNCH_ALTITUDE: &str = "plannedHomePositionAltitude";
 const SURVEY_PROPERTIES: [&str; 4] = ["distanceToSurface", "imageDensity", "frontalOverlap", "sideOverlap"];
+const SENSOR_PROPERTIES: [&str; 5] = ["sensorWidth", "sensorHeight", "imageWidth", "imageHeight", "focalLength"];
 const OPTICS_PROPERTIES: [&str; 7] = ["sensorWidth", "sensorHeight", "imageWidth", "imageHeight", "focalLength", "landscape", "minTriggerInterval"];
 
 fn field(fact: &Value, item: &str, suffix: &str, group: &str) -> Value {
@@ -108,18 +109,29 @@ fn camera(backend: &dyn Backend, item: &str) -> Value {
     }
     let text = |key: &str| read.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     let custom = flag(&read, "isCustomCamera");
-    let wanted: Vec<&str> = match custom {
-        true => OPTICS_PROPERTIES.iter().chain(SURVEY_PROPERTIES.iter()).copied().collect(),
-        false => SURVEY_PROPERTIES.to_vec(),
-    };
     let facts = read.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
-    let shown: Vec<Value> = wanted
+    let by_property = |property: &str| facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(property));
+    let fixed_orientation = by_property("fixedOrientation").and_then(|fact| fact.get("value")).is_some_and(|value| value.as_bool().unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0)));
+    let optics: Vec<&str> = match (custom, flag(&read, "isManualCamera")) {
+        (true, _) => OPTICS_PROPERTIES.to_vec(),
+        (false, true) => Vec::new(),
+        (false, false) => SENSOR_PROPERTIES.iter().copied().chain((!fixed_orientation).then_some("landscape")).collect(),
+    };
+    let shown: Vec<Value> = optics
         .iter()
-        .filter_map(|property| facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(property)))
+        .chain(SURVEY_PROPERTIES.iter())
+        .filter_map(|property| by_property(property))
         .filter(|fact| named(fact))
         .map(|fact| {
             let property = fact.get("property").and_then(Value::as_str).unwrap_or_default();
-            field(fact, item, &format!("cameraCalc.{property}"), "Camera")
+            let control = field(fact, item, &format!("cameraCalc.{property}"), "Camera");
+            match (control, !custom && SENSOR_PROPERTIES.contains(&property)) {
+                (Value::Object(mut map), true) => {
+                    map.insert("readOnly".to_string(), json!(true));
+                    Value::Object(map)
+                }
+                (control, _) => control,
+            }
         })
         .collect();
     json!({
@@ -318,6 +330,7 @@ mod tests {
         simple: bool,
         lists: bool,
         custom: bool,
+        fixed: bool,
     }
 
     impl Backend for Plan {
@@ -329,7 +342,7 @@ mod tests {
                 "plan.missionController.visualItems.2.cameraCalc" => json!({
                     "kind": "object", "cameraBrand": "Sony", "cameraModel": "RX100", "cameraBrandList": ["Manual", "Sony"], "cameraModelList": ["RX100"],
                     "xlatManualCameraName": "Manual (no camera specs)", "xlatCustomCameraName": "Custom Camera", "isCustomCamera": self.custom, "distanceMode": 1,
-                    "facts": [fact("SensorWidth", "sensorWidth", 13.2), fact("FrontalOverlap", "frontalOverlap", 70.0), fact("DistanceToSurface", "distanceToSurface", 50.0), fact("ValueSetIsDistance", "valueSetIsDistance", 0.0)],
+                    "facts": [fact("SensorWidth", "sensorWidth", 13.2), fact("Landscape", "landscape", 1.0), fact("FixedOrientation", "fixedOrientation", if self.fixed { 1.0 } else { 0.0 }), fact("FrontalOverlap", "frontalOverlap", 70.0), fact("DistanceToSurface", "distanceToSurface", 50.0), fact("ValueSetIsDistance", "valueSetIsDistance", 0.0)],
                 }),
                 _ => json!({ "kind": "null" }),
             }
@@ -347,7 +360,7 @@ mod tests {
 
     #[test]
     fn a_simple_item_edits_its_lists_and_carries_no_camera() {
-        let view = item_facts_view(&Plan { simple: true, lists: true, custom: false }, &["2".to_string()]);
+        let view = item_facts_view(&Plan { simple: true, lists: true, custom: false, fixed: false }, &["2".to_string()]);
         assert_eq!(suffixes(&view, "fields"), ["comboboxFacts.0", "textFieldFacts.0"], "an unnamed element is not a field anyone can edit, the position stays the list's own, and dropdowns come first as SimpleItemEditor lays them out");
         assert_eq!(view["fields"][1]["path"], "plan.missionController.visualItems.2.textFieldFacts.0", "the path is the one the head writes");
         assert!(crate::factwrite::owns(view["fields"][0]["path"].as_str().unwrap()), "and that write is one the core validates");
@@ -359,28 +372,32 @@ mod tests {
 
     #[test]
     fn a_complex_item_without_lists_edits_its_own_facts_and_its_camera() {
-        let view = item_facts_view(&Plan { simple: false, lists: false, custom: false }, &["2".to_string()]);
+        let view = item_facts_view(&Plan { simple: false, lists: false, custom: false, fixed: false }, &["2".to_string()]);
         assert_eq!(suffixes(&view, "fields"), ["altitude"], "Mission Settings edits the launch altitude through its own control");
         let camera = &view["camera"];
         assert_eq!((&camera["brand"], &camera["model"], &camera["custom"], &camera["distanceMode"]), (&json!("Sony"), &json!("RX100"), &json!(false), &json!(1)));
         assert_eq!(camera["brands"], json!(["Manual", "Sony"]));
         assert_eq!(camera["brandPath"], "plan.missionController.visualItems.2.cameraCalc.cameraBrand");
         let shown: Vec<&str> = camera["facts"].as_array().unwrap().iter().map(|f| f["pathSuffix"].as_str().unwrap()).collect();
-        assert_eq!(shown, ["cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap"], "a catalogue camera shows only the survey figures, in the head's order");
+        assert_eq!(shown, ["cameraCalc.sensorWidth", "cameraCalc.landscape", "cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap"], "a catalogue camera shows its sensor and Orientation like CameraCalcCamera, then the survey figures");
+        assert_eq!((&camera["facts"][0]["readOnly"], &camera["facts"][1]["readOnly"]), (&json!(true), &json!(false)), "the SENSOR card is disabled unless the camera is custom; Orientation stays editable");
+        let fixed = item_facts_view(&Plan { simple: false, lists: false, custom: false, fixed: true }, &["2".to_string()]);
+        assert!(fixed["camera"]["facts"].as_array().unwrap().iter().all(|f| f["pathSuffix"] != "cameraCalc.landscape"), "a fixed-orientation camera offers no Orientation choice");
         assert_eq!(camera["facts"][0]["group"], "Camera");
         assert_eq!((&camera["valueSetIsDistance"], &camera["valueSetIsDistancePath"]), (&json!(false), &json!("plan.missionController.visualItems.2.cameraCalc.valueSetIsDistance")), "Set by reads the bool fact, which Qt serves as a number");
 
-        let custom = item_facts_view(&Plan { simple: false, lists: false, custom: true }, &["2".to_string()]);
+        let custom = item_facts_view(&Plan { simple: false, lists: false, custom: true, fixed: false }, &["2".to_string()]);
         assert_eq!(custom["camera"]["facts"][0]["pathSuffix"], "cameraCalc.sensorWidth", "a custom camera's optics come first, then the survey figures");
+        assert_eq!(custom["camera"]["facts"][0]["readOnly"], json!(false), "a custom camera's sensor is typed in");
 
-        let listed = item_facts_view(&Plan { simple: false, lists: true, custom: false }, &["2".to_string()]);
+        let listed = item_facts_view(&Plan { simple: false, lists: true, custom: false, fixed: false }, &["2".to_string()]);
         assert_eq!(suffixes(&listed, "fields"), ["comboboxFacts.0", "textFieldFacts.0"], "a complex item with lists edits the lists, as the head chose");
     }
 
     #[test]
     fn an_item_that_is_not_there_says_so() {
-        let view = item_facts_view(&Plan { simple: true, lists: false, custom: false }, &["9".to_string()]);
+        let view = item_facts_view(&Plan { simple: true, lists: false, custom: false, fixed: false }, &["9".to_string()]);
         assert_eq!((&view["available"], &view["fields"], &view["camera"]), (&json!(false), &json!([]), &Value::Null));
-        assert_eq!(item_facts_view(&Plan { simple: true, lists: false, custom: false }, &[])["kind"], "null");
+        assert_eq!(item_facts_view(&Plan { simple: true, lists: false, custom: false, fixed: false }, &[])["kind"], "null");
     }
 }

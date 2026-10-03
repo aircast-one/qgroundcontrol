@@ -23,8 +23,8 @@ class CameraCalcSectionTest {
     @Test
     fun `the grid shows the figure that sets the other, as CameraCalcGrid does`() {
         val spacing = listOf("cameraCalc.adjustedFootprintFrontal", "cameraCalc.adjustedFootprintSide")
-        assertEquals(listOf("cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap") + spacing, shown("Sony", false, true))
-        assertEquals(listOf("cameraCalc.imageDensity", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap") + spacing, shown("Sony", false, false))
+        assertEquals(listOf("cameraCalc.sensorWidth", "cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap") + spacing, shown("Sony", false, true))
+        assertEquals(listOf("cameraCalc.sensorWidth", "cameraCalc.imageDensity", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap") + spacing, shown("Sony", false, false))
         assertEquals(listOf("cameraCalc.sensorWidth", "cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap", "cameraCalc.sideOverlap") + spacing, shown("Custom Camera", true, true))
         assertEquals(
             "a manual camera sets its trigger distance and spacing by hand",

@@ -86,8 +86,7 @@ internal fun shownCameraFacts(block: CameraCalcBlock): List<Fact> =
                 suffix == DISTANCE_SUFFIX -> block.valueSetIsDistance
                 suffix == DENSITY_SUFFIX -> !block.valueSetIsDistance
                 suffix in OVERLAP_SUFFIXES -> true
-                suffix in SPACING_SUFFIXES -> true
-                else -> block.custom
+                else -> true
             }
         }
         .map { it.second }
