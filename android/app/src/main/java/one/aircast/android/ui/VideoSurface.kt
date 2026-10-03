@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -21,12 +22,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.settingControl
+import one.aircast.mapspike.AircastSpace
 import org.mavlink.qgroundcontrol.QGCBridge
 
 @Composable
@@ -96,7 +99,10 @@ fun VideoSurface(
                 Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
-                Box(contentAlignment = Alignment.Center) {
+                val chrome = with(LocalDensity.current) {
+                    if (expanded && !fullScreen) Modifier.padding(top = FlyChrome.topPx.toDp(), bottom = FlyChrome.bottomPx.toDp(), end = MAP_PIP_SIZE + AircastSpace.s3) else Modifier
+                }
+                Box(chrome, contentAlignment = Alignment.Center) {
                     NoVideoPanel(video)
                 }
             }
