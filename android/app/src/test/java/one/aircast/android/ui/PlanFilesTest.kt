@@ -132,12 +132,12 @@ class PlanHistoryTest {
     }
 
     @Test
-    fun `the title is the file's complete base name, or Untitled like PlanTreeView`() {
+    fun `the title is the file's base name, or Untitled Plan like PlanToolBarIndicators`() {
         assertEquals("ridge", planTitle("ridge.plan"))
         assertEquals("a.b", planTitle("a.b.plan"))
         assertEquals("ridge", planTitle("ridge"))
-        assertEquals("<Untitled>", planTitle(".plan"))
-        assertEquals("<Untitled>", planTitle(null))
-        assertEquals("<Untitled>", planTitle(""))
+        assertEquals(".plan", planTitle(".plan"))
+        assertEquals("Untitled Plan", planTitle(null))
+        assertEquals("Untitled Plan", planTitle(""))
     }
 }
