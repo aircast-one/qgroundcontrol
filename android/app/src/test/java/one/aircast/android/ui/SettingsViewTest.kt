@@ -192,6 +192,11 @@ class SettingsViewTest {
     }
 
     @Test
+    fun aSearchBreadcrumbReadsInSentenceCase() {
+        org.junit.Assert.assertEquals("Maps \u203a Flight map", shownBreadcrumb("Maps \u203a Flight Map"))
+    }
+
+    @Test
     fun theConnectionsPageReadsAsLinksLikePenpot() {
         org.junit.Assert.assertEquals("Links", pageTitle(CONNECTIONS_PAGE))
         org.junit.Assert.assertEquals("Fly view", pageTitle("Fly View"))

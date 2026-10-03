@@ -280,6 +280,9 @@ internal fun settingsSections(page: JSONObject?): List<SettingsSectionRows> {
 internal fun blockHeading(pageTitle: String, section: SettingsSectionRows, block: SettingsBlock): String =
     block.title.ifBlank { section.title.takeIf { it != pageTitle }.orEmpty() }
 
+internal fun shownBreadcrumb(title: String): String =
+    title.split(" \u203a ").joinToString(" \u203a ", transform = ::sentenceCase)
+
 internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, needle: String):
     List<SettingsSectionRows> {
     val wanted = needle.trim().lowercase()
@@ -409,7 +412,7 @@ private fun SettingsList(
         }
 
         hits.forEach { section ->
-            item(key = "head${section.title}") { SectionHeader(section.title) }
+            item(key = "head${section.title}") { SectionHeader(shownBreadcrumb(section.title)) }
             items(section.blocks.flatMap { it.facts }, key = { it.path }) { fact ->
                 FactRow(fact) { searches++ }
             }
