@@ -35,7 +35,19 @@ class ParameterRangeLineTest {
     }
 
     @Test
-    fun `an enum shows its range without units or a raw default`() {
-        assertEquals("Range 0–1", parameterRangeLine(fact("0", "1", "0", enum = true)))
+    fun `an enum shows its range and default without units, as ParameterEditorDialog does`() {
+        assertEquals("Range 0–1 · default 0", parameterRangeLine(fact("0", "1", "0", enum = true)))
+    }
+
+    @Test
+    fun `a lone bound is shown on its own`() {
+        assertEquals("Min 2 m", parameterRangeLine(fact("2", "").copy(maxIsDefaultForType = true)))
+        assertEquals("Max 300 m", parameterRangeLine(fact("", "300").copy(minIsDefaultForType = true)))
+    }
+
+    @Test
+    fun `reboot notes follow the fact like ParameterEditorDialog`() {
+        assertEquals(listOf("Vehicle reboot required after change"), parameterRebootNotes(fact().copy(vehicleRebootRequired = true)))
+        assertEquals(emptyList<String>(), parameterRebootNotes(fact()))
     }
 }

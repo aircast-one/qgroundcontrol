@@ -81,11 +81,24 @@ internal fun manualEntryFact(fact: Fact): Fact = fact.copy(enumStrings = emptyLi
 
 internal fun parameterRangeLine(fact: Fact): String {
     val units = fact.units.takeIf { it.isNotBlank() && !fact.isEnum }?.let { " $it" }.orEmpty()
+    val min = fact.minString.takeIf { !fact.minIsDefaultForType && it.isNotBlank() }
+    val max = fact.maxString.takeIf { !fact.maxIsDefaultForType && it.isNotBlank() }
+    val bounds = when {
+        min != null && max != null -> "Range $min\u2013$max$units"
+        min != null -> "Min $min$units"
+        max != null -> "Max $max$units"
+        else -> null
+    }
     return listOfNotNull(
-        "Range ${fact.minString}\u2013${fact.maxString}$units".takeIf { !fact.minIsDefaultForType && !fact.maxIsDefaultForType && fact.minString.isNotBlank() && fact.maxString.isNotBlank() },
-        "default ${fact.defaultValueString}$units".takeIf { fact.defaultValueString.isNotBlank() && !fact.isEnum && !fact.isBitmask },
+        bounds,
+        "default ${fact.defaultValueString}$units".takeIf { fact.defaultValueString.isNotBlank() },
     ).joinToString(" \u00b7 ")
 }
+
+internal fun parameterRebootNotes(fact: Fact): List<String> = listOfNotNull(
+    "Vehicle reboot required after change".takeIf { fact.vehicleRebootRequired },
+    "Application restart required after change".takeIf { fact.qgcRebootRequired },
+)
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -123,7 +136,7 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                     parameterRangeLine(loaded).takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (loaded.qgcRebootRequired) Text("Application restart required after change", style = MaterialTheme.typography.bodySmall)
+                    if (manual || loaded.isEnum || loaded.isBitmask || loaded.isBool) parameterRebootNotes(loaded).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                     if (editable) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
                     val hasChoices = loaded.isEnum || loaded.isBitmask
                     if (loaded.readOnly || (editable && hasChoices)) {
