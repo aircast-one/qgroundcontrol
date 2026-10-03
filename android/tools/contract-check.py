@@ -10,7 +10,7 @@ CONTRACT = os.environ.get(
 )
 BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unread-baseline.txt")
 READS = re.compile(r'\.opt(?:Text|Boolean|Int|Double|JSONObject|JSONArray|String)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
-NAMES_VIEW = re.compile(r'"(view\.[A-Za-z]+)')
+NAMES_VIEW = re.compile(r'"(view\.[A-Za-z][A-Za-z0-9]*)')
 NESTED = re.compile(r'\.optJSON(?:Object|Array)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
 BARE_BOOL = re.compile(r'\.optBoolean\(\s*"([A-Za-z][A-Za-z0-9]*)"\s*\)')
 HELPER_DEF = re.compile(r'fun JSON(?:Object|Array)\.([a-zA-Z][A-Za-z0-9]*)\(\s*[a-zA-Z]+: String')
@@ -20,9 +20,6 @@ TAKES_KEY = re.compile(
 
 
 def fixture_provenance():
-    # Four sessions share this checkout, so the fixture on disk can be a peer's uncommitted
-    # recording of a producer that is also uncommitted. Both then agree and neither exists,
-    # which is exactly the state that makes a field look landed.
     repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     rel = os.path.relpath(CONTRACT, repo)
     dirty = subprocess.run(
@@ -66,6 +63,12 @@ def head_views(root):
             if name.endswith(".kt"):
                 found.update(NAMES_VIEW.findall(open(os.path.join(base, name)).read()))
     return found
+
+
+def not_recorded(android):
+    test = os.path.join(os.path.dirname(android), "test", "Bridge", "QGCCoreCTest.cc")
+    table = re.search(r"kNotRecorded = \{(.*?)\n    \};", open(test).read(), re.S)
+    return set(re.findall(r'\{ QStringLiteral\("(view\.[A-Za-z0-9]+)"\)', table.group(1))) if table else set()
 
 
 def recorded_null(node, into):
@@ -119,9 +122,6 @@ def nullable_bools(node, path, into):
 
 
 def flattened(root, nullable):
-    # optBoolean returns false for JSON null, so a field the core declares bool|null and the
-    # head reads this way cannot hold the absence - and false is the reassuring direction for
-    # every one of them so far: "contact is fine", "checked and not ready", "nothing to hide".
     bare = re.compile(r'\.optBoolean\(\s*"([A-Za-z][A-Za-z0-9]*)"\s*\)')
     hits = {}
     for base, _, names in os.walk(root):
@@ -137,9 +137,10 @@ def flattened(root, nullable):
     return hits
 
 
-# A field name can be bool in the view a file reads and bool|null in another, so this check
-# matches names rather than paths and needs the collisions named.
 ACCEPTED_FLAT = {
+    "enabled": "only view.obstacle.enabled is an Option, and neither obstacle file reads it; every bare read is another object's plain bool",
+    "supported": "only view.obstacle.supported is an Option, and CameraControl.kt reads the camera tracking object's plain bool",
+    "orbiting": "OrbitMarker.kt hides the circle on null like QGC, whose 3 s _orbitTelemetryTimer clears orbitActive whether or not contact is lost",
     "ready": "PlanFileRules and VehicleSync read the plan's own ready, not view.setup.ready -"
         " SetupView.kt is the one that reads that, and it holds it as Boolean?",
     "stale": "view.detections.stale and an adsbTraffic contact's stale are both plain bool;"
@@ -155,17 +156,11 @@ def head_keys(root):
             if name.endswith(".kt"):
                 sources[os.path.join(base, name)] = open(os.path.join(base, name)).read()
 
-    # A read through a hand-written JSONObject extension is a read. bound("radiusMaximum") and
-    # text("minString") were counted unread for as long as this check has existed, because the
-    # pattern only knew the optX family. The helper names are derived from their own definitions
-    # rather than listed, so a new one starts counting the day it is written.
     helpers = {h for src in sources.values() for h in HELPER_DEF.findall(src)}
     through = re.compile(
         r'\.(?:' + "|".join(sorted(helpers)) + r')\(\s*"([A-Za-z][A-Za-z0-9]*)"'
     ) if helpers else None
 
-    # measureText(view, "gimbalPitch") is the same read with the object passed rather than
-    # received. ItemCamera reads both gimbal measures this way and neither was counted.
     takers = {t for src in sources.values() for t in TAKES_KEY.findall(src)}
     passed = re.compile(
         r'\b(?:' + "|".join(sorted(takers)) + r')\(\s*[^,()]+,\s*"([A-Za-z][A-Za-z0-9]*)"'
@@ -183,8 +178,6 @@ def head_keys(root):
     return found
 
 
-# Accepted for ONE view, not by name. "home" is redundant on view.plan and might be the whole
-# point on some view that serves it next; a bare name would silence both.
 ACCEPTED_ON = {
     ("view.gcsPosition", "distanceToVehicle"): "the head reads distanceToVehicleText, the core's own formatting",
     ("view.gcsPosition", "distanceToVehicleMeters"): "raw half of distanceToVehicleText",
@@ -195,7 +188,6 @@ ACCEPTED_ON = {
     ("view.plan", "valueMeters"): "the geometry half of value. MEASURED: no consumer on this head feeds a "
         "control value into geometry - settings round-trip through Qgc.set, which is cooked and correct",
     ("view.settings", "valueMeters"): "see view.plan",
-    ("view.mavlinkConsole", "last"): "the console draws every line; last is for a head that shows one",
     ("view.vehicleLinks", "watching"): "the reason sentence the core serves alongside says the same thing",
     ("view.vehicleLinks", "autoDisconnect"): "contact loss reaches the operator through view.flyState",
     ("view.plan", "speedUnits"): "the unit the two speed defaults share. Each control carries its "
@@ -216,16 +208,23 @@ ONLY_IN = {
     "maxString": {"Qgc.kt"},
     "minString": {"Qgc.kt"},
     "unknownEnumLabel": {"Qgc.kt"},
-    "defaultValueAvailable": {"Qgc.kt"},
+    "defaultValueAvailable": {"Qgc.kt", "ParameterLinks.kt"},
+    "ports": {"FirmwareScreen.kt"},
+    "bootloader": {"FirmwareScreen.kt"},
+    "statusId": {"LogDownloadScreen.kt"},
+    "hold": {"WaypointSpeed.kt"},
     "valueEqualsDefault": {"Qgc.kt"},
     "message": {"VehicleMessages.kt"},
 }
 
 ACCEPTED = {
+    "ports": "view.firmwarePorts is in QGCCoreCTest kNotRecorded because it lists the serial ports of the recording machine; firmwareflash.rs ports_view serves it",
+    "bootloader": "view.firmwarePorts is in QGCCoreCTest kNotRecorded because it lists the serial ports of the recording machine; firmwareflash.rs ports serves bootloader per port",
+    "statusId": "view.logs lists the vehicle's onboard logs and the rig records before any log list arrives, so entries records empty; logs.rs logs_view serves statusId per entry",
+    "hold": "view.itemFacts is recorded under the Qt plan, and hold is served only by the core plan (coreplan.rs hold_field); the Qt plan shows the waypoint's Hold param among its fields",
     "compass": "view.calibration compassResults lists APM compasses after an onboard compass calibration, and the rig records with no compass calibrated, so the list records empty; calibration.rs compass_results serves it",
     "green": "view.calibration compassResults lists APM compasses after an onboard compass calibration, and the rig records with no compass calibrated, so the list records empty; calibration.rs compass_results serves it",
     "yellow": "view.calibration compassResults lists APM compasses after an onboard compass calibration, and the rig records with no compass calibrated, so the list records empty; calibration.rs compass_results serves it",
-    "throttleReversed": "view.radio throttleReversed is set only after a copter's radio calibration ends with the throttle reversed, which the rig never performs; rccal.rs throttle_reversed_failure serves it",
     "boardType": "view.firmwarePorts lists USB serial ports and the desktop rig records with none attached, so the list records empty; firmwareflash.rs recognized_board serves it on Android",
     "layerHeight": "view.surveyStats structure rows exist only for a structure scan, and the rig's plan has none, so structure records null; survey.rs layer_rows serves them from StructureScanComplexItem's topFlightAlt/bottomFlightAlt",
     "top": "view.surveyStats structure rows exist only for a structure scan, and the rig's plan has none, so structure records null; survey.rs layer_rows serves them from StructureScanComplexItem's topFlightAlt/bottomFlightAlt",
@@ -237,9 +236,7 @@ ACCEPTED = {
     "outer": "view.viewer3d bounds and buildings exist only once the 3D view is on with a readable OpenStreetMap file, and the rig has neither, so they record empty; viewer3d.rs viewer3d_view serves them from QGC's OsmParser rules",
     "inner": "view.viewer3d bounds and buildings exist only once the 3D view is on with a readable OpenStreetMap file, and the rig has neither, so they record empty; viewer3d.rs viewer3d_view serves them from QGC's OsmParser rules",
     "inverted": "view.settings controls[].inverted marks a switch shown flipped, like TelemetrySettings.qml Controlled by Vehicle (checked: !apmStartMavlinkStreams); only an ArduPilot vehicle or none shows that row and the rig records none (settings.rs INVERTED). Read in ParameterForm.kt",
-    "keywords": "two search fields not yet in the recorded contract: view.setup(page).sections[].keywords (vehicleconfig.rs search_terms; the rig records setup pages per-section only as counts) and view.settings pages[].keywords / controls[].keywords (settings.rs page_keywords, fact_keywords). Read in ParameterForm.kt and SettingsScreen.kt",
     "indent": "view.setup rows from a VehicleConfig control marked indent (ArduPilot help labels); the rig's PX4 mock pages carry none. Read in ParameterForm.kt",
-    "smallFont": "view.setup label rows from a VehicleConfig control marked smallFont (ArduPilot help labels); the rig's PX4 mock pages carry none. Read in ParameterForm.kt",
     "firstEntryIsAll": "view.setup on the ArduPilot Flight Safety page (ARMING_CHECK); the rig records a PX4 mock, so no such bitmask is served. Read in ParameterForm.kt",
     "wording": "view.flightModes.modeAck is the core hub's last DO_SET_MODE ack; the Qt rig has no hub vehicle, so it is null there. Read in FlightModes.kt",
     "ok": "the invoke envelope, not a view field",
@@ -314,7 +311,6 @@ ACCEPTED = {
     "canDelete": "view.offlineMaps records sets[] empty because the recording has no tile cache open; offlinemaps.rs set_json serves it",
     "rowText": "view.offlineMaps records sets[] empty because the recording has no tile cache open; offlinemaps.rs set_json serves it",
     "pitchDegrees": "view.gimbalIndicator records shown:false because the recording has no gimbal; gimbalindicator.rs indicator serves it",
-    "outline": "view.missionItems records no corridor item; missionitems.rs geometry_of and document_geometry serve it for corridors",
     "capturing": "view.camera records panel.video and panel.photo null because the recording has no camera; video.rs photo_video_panel serves it",
     "clock": "view.camera records panel.video and panel.photo null because the recording has no camera; video.rs photo_video_panel serves it",
     "idle": "view.camera records panel.video and panel.photo null because the recording has no camera; video.rs photo_video_panel serves it",
@@ -429,7 +425,6 @@ ACCEPTED = {
     "chart": "view.inspectorCharts lists plots and charted fields only after a field is put on a chart, and the recording rig charts nothing, so plots and selectedCharted record empty; inspectorchart.rs serves field and chart per plot",
     "field": "view.inspectorCharts lists plots and charted fields only after a field is put on a chart, and the recording rig charts nothing, so plots and selectedCharted record empty; inspectorchart.rs serves field and chart per plot",
     "singleStickDisplay": "view.joystick serves calibration only while a joystick calibration runs, and the recording rig has no joystick, so calibration records null; stickcal.rs and joystickhost.rs serve these during calibration",
-    "stickPositions": "view.joystick serves calibration only while a joystick calibration runs, and the recording rig has no joystick, so calibration records null; stickcal.rs and joystickhost.rs serve these during calibration",
     "initialConnectComplete": "ActiveVehicle.kt reads Vehicle's loadProgress and initialConnectComplete properties straight through get_fields(vehicle), not through a recorded view; vehiclefacade.rs serves both in the core flavor",
     "loadProgress": "ActiveVehicle.kt reads Vehicle's loadProgress and initialConnectComplete properties straight through get_fields(vehicle), not through a recorded view; vehiclefacade.rs serves both in the core flavor",
     "keepText": "view.plan carries vehicleChangePrompt only after the active vehicle changes under a dirty plan, which the recording rig never does; coreplan.rs vehicle_change_prompt serves these",
@@ -466,9 +461,6 @@ def main():
         print(f"no contract at {CONTRACT}; set VIEW_SHAPES", file=sys.stderr)
         return 2
     contract = served(json.load(open(CONTRACT)), set())
-    # An absolute root rather than ".", because run from anywhere but android/ this walked
-    # nothing and reported "0 read by the head" - a clean result from no data, which then
-    # called every ACCEPTED entry stale.
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     reads = head_keys(root)
     if not reads:
@@ -482,10 +474,6 @@ def main():
             print(f"CONTROL FAILED: {control} in contract = {present}, expected {expected}")
             return 3
 
-    # An acceptance keyed by NAME exempts every file that reads it. "Fact metadata read by path"
-    # is true of Qgc.kt and was also covering ItemCamera.kt, which read enumStrings off a
-    # view-served measure that has never carried one - the picker it fed drew nothing for as long
-    # as it existed, and this check called it explained. Scoped acceptances are the fix.
     escaped = {
         k: sorted(v - ONLY_IN[k])
         for k, v in missing.items()
@@ -511,9 +499,6 @@ def main():
 
     tree = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # An empty list hides its element fields; a key recorded NULL hides them just as completely,
-    # and this check reported only the first. These are the ones the head opens and reads INTO,
-    # so their children are decoded against a shape the contract does not carry.
     unpinned = sorted(recorded_null(json.load(open(CONTRACT)), set()) & opened_as_container(tree))
     if unpinned:
         print(f"\n  {len(unpinned)} key(s) recorded NULL that the head opens as an object or array:")
@@ -522,16 +507,11 @@ def main():
 
     drawn = head_views(tree)
 
-    # A mistyped view path is invisible from here: the bridge answers the same bytes a real but
-    # empty view does. view.geoTag is real and takes a file path, so it was never recorded.
-    unknown = sorted(drawn - {k.split("(")[0] for k in json.load(open(CONTRACT))} - {"view.geoTag"})
+    unknown = sorted(drawn - {k.split("(")[0] for k in json.load(open(CONTRACT))} - not_recorded(tree))
     if unknown:
         print(f"\n  {len(unknown)} view path(s) this head names that the core does not serve:")
         print(f"    {', '.join(unknown)}")
         print("  A typo here reads as a view that exists and has nothing to say.")
-    # A shape shares class and kind with every other view, so matching key NAMES alone counts a
-    # view the head has no screen for as one it consumes. That folded 60 fields from packetRadio,
-    # joystickMapping, gimbal and gpsRtkBase into a count of omissions beside fields we read.
     if not drawn:
         print("  REFUSING: no view path found in any .kt, so every shape would look unconsumed")
         return 1
@@ -552,8 +532,6 @@ def main():
             target.setdefault(name, set()).add(root)
     absent = {k: v for k, v in absent.items() if k not in beside}
 
-    # An acceptance for a field that is now read, or for a view that no longer serves it, is a
-    # sentence nobody will re-check. Say so rather than letting it sit.
     served_on = {(root, n) for root, names in shapes for n in names}
     for key in sorted(ACCEPTED_ON):
         if key not in served_on:
@@ -589,9 +567,6 @@ def main():
         print("  either. Verify with git show HEAD:<path> before calling any field served.")
 
     nullable = nullable_bools(json.load(open(CONTRACT)), "", {})
-    # A parse that finds nothing reports a clean head, so prove it can still see a known
-    # bool|null before believing an empty result. view.flyState.contactLost has been one
-    # since f97d66e13, and it is the field that motivated this check.
     if "contactLost" not in nullable:
         print("  REFUSING: the contract parse found no bool|null fields, so an empty result means nothing")
         return 1
@@ -602,11 +577,6 @@ def main():
             print(f"    FLATTENED {name}: {', '.join(sorted(where))} - contract says {sorted(nullable[name])[0]} is bool|null")
         print("  optBoolean turns JSON null into false, and false is the reassuring answer every time.")
 
-    # The fixture is a RECORDING. A field whose producer returns Option but whose null the rig
-    # could never make is typed bool here, and the check above cannot fire on it -- which is the
-    # class it exists to catch. The core session measured 142 of 212 plain-bool fields never
-    # varying across the suite. view.contract is to gain nullableUnwitnessed, a producer-derived
-    # list; read it here when it lands and treat those paths as bool|null whatever the type says.
     def plain_bools(node, root, into):
         if isinstance(node, dict):
             for key, value in node.items():
@@ -624,9 +594,6 @@ def main():
         if not key.startswith("_"):
             plain_bools(value, key.split("(")[0], declared)
     declared_paths = {f"{root}.{field}" for root, field in declared}
-    # The fixture carries the recorder's own witness lists. _neverVaried names every path that
-    # held one value for the whole suite, so a bool there was typed from a single observation.
-    # Narrowed to the ones THIS head reads with a bare optBoolean, which is its actual exposure.
     witness = json.load(open(CONTRACT))
     never = set(witness.get("_neverVaried", []))
     bare = set()
@@ -635,7 +602,8 @@ def main():
             continue
         for name in names:
             if name.endswith(".kt"):
-                bare |= set(BARE_BOOL.findall(open(os.path.join(base, name)).read()))
+                body = open(os.path.join(base, name)).read()
+                bare |= {k for k in BARE_BOOL.findall(body) if f'isNull("{k}")' not in body}
     unwitnessed = set(witness.get("view.contract", {}).get("nullableUnwitnessed", []))
     lying = sorted(p for p in unwitnessed if p.rsplit(".", 1)[-1] in bare)
     if lying:

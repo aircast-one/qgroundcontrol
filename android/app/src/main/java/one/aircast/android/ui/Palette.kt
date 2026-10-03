@@ -11,6 +11,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.settingControl
+import org.json.JSONObject
 
 internal const val PALETTE_SETTING = "settings.appSettings.indoorPalette"
 internal const val PALETTE_INDOOR = 1
@@ -31,6 +32,9 @@ internal fun paletteIsDark(value: Int?, systemDark: Boolean): Boolean = when (va
     else -> systemDark
 }
 
+private fun changedFromDefault(control: JSONObject): Boolean =
+    control.isNull("changedFromDefault") || control.optBoolean("changedFromDefault")
+
 internal fun shouldDefaultToDark(changedFromDefault: Boolean, alreadyDefaulted: Boolean): Boolean =
     !changedFromDefault && !alreadyDefaulted
 
@@ -42,13 +46,13 @@ internal fun appDarkTheme(): Boolean {
     LaunchedEffect(control != null) {
         val read = control ?: return@LaunchedEffect
         val store = context.getSharedPreferences(PALETTE_STORE, Context.MODE_PRIVATE)
-        if (shouldDefaultToDark(read.optBoolean("changedFromDefault"), store.getBoolean(PALETTE_DEFAULTED, false))) {
+        if (shouldDefaultToDark(changedFromDefault(read), store.getBoolean(PALETTE_DEFAULTED, false))) {
             offMainDetached { Qgc.set(PALETTE_SETTING, PALETTE_INDOOR) }
         }
         store.edit().putBoolean(PALETTE_DEFAULTED, true).apply()
     }
     val pending = control != null && shouldDefaultToDark(
-        control?.optBoolean("changedFromDefault") ?: false,
+        control?.let(::changedFromDefault) ?: false,
         context.getSharedPreferences(PALETTE_STORE, Context.MODE_PRIVATE).getBoolean(PALETTE_DEFAULTED, false),
     )
     return paletteIsDark(if (pending) PALETTE_INDOOR else value, isSystemInDarkTheme())
