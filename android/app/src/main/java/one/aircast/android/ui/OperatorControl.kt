@@ -40,12 +40,18 @@ internal fun controlLine(station: ControlStation?): String? = when {
         ?: station.reason
 }
 
+internal fun holderLine(station: ControlStation?): String? =
+    station?.takeIf { it.known && it.inControl == false }?.let { held ->
+        held.holderSystemId?.let { "System in control: $it" } ?: held.reason.ifBlank { null }
+    }
+
 internal fun acquireLabel(station: ControlStation?): String? = when {
     station == null || !station.known || station.inControl != false -> null
-    !station.requestAllowed -> null
     station.takeoverAllowed == true -> "Acquire control"
-    else -> "Ask the other station for control"
+    else -> "Send request"
 }
+
+internal fun acquireEnabled(station: ControlStation, counting: Boolean): Boolean = station.requestAllowed && !counting
 
 internal fun controlWaitLine(station: ControlStation?): String? = when {
     station == null || !station.known -> null

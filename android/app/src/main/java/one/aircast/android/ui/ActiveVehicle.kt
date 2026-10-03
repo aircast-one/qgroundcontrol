@@ -248,7 +248,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     androidx.compose.material3.TextButton(onClick = { picking = false; statusSettings = true }) { Text("Vehicle status") }
                 }
             }
-            ControlHolderNote(station) { message -> refusal = message }
+            ControlHolderNote(station, activeVehicleId(vehiclesJson)) { message -> refusal = message }
             FootNote(
                 "Tap a name to fly that aircraft. Arm, Takeoff and every action on the flight screen go to the one you pick.",
             )
@@ -402,26 +402,29 @@ internal fun fleetActionLine(action: MvAction): String =
 
 internal fun fleetIsDestructive(action: MvAction): Boolean = action.id != "mvPause"
 
+internal object ControlRequestDeadlines {
+    val endsAt = androidx.compose.runtime.mutableStateMapOf<Int, Long>()
+}
+
 @Composable
-private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> Unit) {
+private fun ControlHolderNote(station: ControlStation?, vehicleId: Int?, onRefusal: (String?) -> Unit) {
     val holder = station ?: return
     if (holder.inControl == true) {
         InControlNote(holder, onRefusal)
         return
     }
-    val line = controlLine(holder) ?: return
+    val line = holderLine(holder) ?: return
     val scope = rememberCoroutineScope()
-    var requestEndsAt by remember(holder.holderSystemId) { mutableStateOf<Long?>(null) }
+    val deadlineKey = vehicleId ?: 0
+    val requestEndsAt = ControlRequestDeadlines.endsAt[deadlineKey]
+    LaunchedEffect(holder.takeoverAllowed) {
+        if (holder.takeoverAllowed == true) ControlRequestDeadlines.endsAt.remove(deadlineKey)
+    }
     Text(
         text = line,
         style = MaterialTheme.typography.bodyMedium,
-        color = when {
-            controlIsElsewhere(holder) -> MaterialTheme.colorScheme.error
-            else -> MaterialTheme.colorScheme.onSurfaceVariant
-        },
         modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
     )
-    var asked by remember(holder.holderSystemId) { mutableStateOf<String?>(null) }
     takeoverLine(holder)?.let { takeover ->
         Text(
             text = takeover,
@@ -432,10 +435,7 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
     }
     ControlSectionTitle(holder)
     requestEndsAt?.let { endsAt ->
-        RequestCountdown(endsAt) {
-            requestEndsAt = null
-            asked = null
-        }
+        RequestCountdown(endsAt) { ControlRequestDeadlines.endsAt.remove(deadlineKey) }
     }
     AllowTakeoverBox(holder, onRefusal)
     controlWaitLine(holder)?.takeIf { requestEndsAt == null }?.let { waiting ->
@@ -447,24 +447,19 @@ private fun ControlHolderNote(station: ControlStation?, onRefusal: (String?) -> 
         )
     }
     acquireLabel(holder)?.let { label ->
-        when (val sent = asked) {
-            null -> TextButton(
-                onClick = {
-                    scope.launch {
-                        val ask = withContext(Dispatchers.Default) { askForControl(holder) }
-                        onRefusal(ask.refusal)
-                        asked = if (ask.refusal == null) label else null
-                        requestEndsAt = if (ask.refusal == null && ask.timeoutSeconds > 0) System.currentTimeMillis() + ask.timeoutSeconds * 1000L else null
+        TextButton(
+            enabled = acquireEnabled(holder, requestEndsAt != null),
+            onClick = {
+                scope.launch {
+                    val ask = withContext(Dispatchers.Default) { askForControl(holder) }
+                    onRefusal(ask.refusal)
+                    if (ask.refusal == null && ask.timeoutSeconds > 0) {
+                        ControlRequestDeadlines.endsAt[deadlineKey] = System.currentTimeMillis() + ask.timeoutSeconds * 1000L
                     }
-                },
-                modifier = Modifier.padding(horizontal = 16.dp),
-            ) { Text(label) }
-            else -> SentNotice(
-                name = sent,
-                onDismiss = { asked = null },
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-            )
-        }
+                }
+            },
+            modifier = Modifier.padding(horizontal = 16.dp),
+        ) { Text(label) }
     }
     if (requestTimeoutEditable(holder)) SettingFactRow(REQUEST_TIMEOUT_PATH, "Request timeout (sec)")
     SettingFactRow(GCS_SYSTEM_ID_PATH, "This GCS MAVLink system ID")

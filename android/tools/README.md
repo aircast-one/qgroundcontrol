@@ -200,7 +200,7 @@ on `view.operatorControl`: without it QGC never sets `firstControlStatusReceived
 answers "This vehicle has not said who is flying it." Set it to the MAVLink system id holding
 control - `IN_CONTROL=255` is this station (QGC's own `gcsMavlinkSystemID`), any other value is
 somebody else. `TAKEOVER_ALLOWED=0` clears the takeover flag, which is what turns the head's
-offer from "Acquire control" into "Ask the other station for control".
+offer from "Acquire control" into "Send request".
 
     RIG_UDP_PORT=14560 IN_CONTROL=42 python3 tools/apmvehicle.py 127.0.0.1    # another station
     RIG_UDP_PORT=14560 IN_CONTROL=255 python3 tools/apmvehicle.py 127.0.0.1   # this one

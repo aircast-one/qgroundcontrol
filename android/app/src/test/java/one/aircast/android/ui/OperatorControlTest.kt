@@ -85,20 +85,27 @@ class OperatorControlTest {
         val station = controlStation(elsewhere(takeover = true))!!
         assertTrue(controlIsElsewhere(station))
         assertEquals("Another ground station is flying this vehicle. (system 42)", controlLine(station))
+        assertEquals("GCSControlIndicator lists the holder as 'System in control:' and its id", "System in control: 42", holderLine(station))
+        assertNull(holderLine(controlStation(ours)))
+        assertNull(holderLine(controlStation(silent)))
     }
 
     @Test
     fun `the offer follows whether takeover was allowed`() {
         assertEquals("Acquire control", acquireLabel(controlStation(elsewhere(takeover = true))))
         assertEquals(
-            "Ask the other station for control",
+            "Send request",
             acquireLabel(controlStation(elsewhere(takeover = false))),
         )
     }
 
     @Test
-    fun `a vehicle that refuses control requests is not offered one`() {
-        assertNull(acquireLabel(controlStation(elsewhere(takeover = true, request = false))))
+    fun `a pending request keeps the button but disables it like the QML`() {
+        val pending = controlStation(elsewhere(takeover = false, request = false))!!
+        assertEquals("Send request", acquireLabel(pending))
+        assertFalse(acquireEnabled(pending, counting = false))
+        assertFalse(acquireEnabled(controlStation(elsewhere(takeover = false))!!, counting = true))
+        assertTrue(acquireEnabled(controlStation(elsewhere(takeover = false))!!, counting = false))
     }
 
     @Test
@@ -134,9 +141,10 @@ class OperatorControlTest {
     }
 
     @Test
-    fun `the button is withdrawn for exactly as long as the wait line stands`() {
-        val waiting = controlStation(elsewhere(takeover = true, request = false))
-        assertNull(acquireLabel(waiting))
+    fun `the wait line stands beside the disabled button`() {
+        val waiting = controlStation(elsewhere(takeover = true, request = false))!!
+        assertEquals("Acquire control", acquireLabel(waiting))
+        assertFalse(acquireEnabled(waiting, counting = false))
         assertEquals("Waiting for the other station to answer", controlWaitLine(waiting))
     }
 
