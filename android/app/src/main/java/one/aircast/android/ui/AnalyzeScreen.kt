@@ -3,6 +3,9 @@ package one.aircast.android.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.annotation.DrawableRes
@@ -171,7 +174,7 @@ fun AnalyzeScreen(
             wide -> Row(Modifier.fillMaxSize()) {
                 AnalyzePageList(onSelect = switchTo, modifier = Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow), selected = page)
                 Surface(Modifier.weight(1f).fillMaxHeight()) {
-                    if (page == null) EmptyState(R.drawable.ic_analytics, "Analyze", "Choose a tool on the left.") else AnalyzePageBody(page, leave)
+                    if (page == null) EmptyState(R.drawable.ic_analytics, "Analyze", "Choose a tool on the left.") else AnalyzePageBody(page, leave, Modifier.wrapContentWidth(Alignment.Start).widthIn(max = DETAIL_PANE_MAX_WIDTH))
                 }
             }
             page == null -> Surface(Modifier.fillMaxSize()) { AnalyzePageList(onSelect = onSelect) }
@@ -181,8 +184,8 @@ fun AnalyzeScreen(
 }
 
 @Composable
-private fun AnalyzePageBody(page: AnalyzePage, leave: () -> Unit) {
-    Column(Modifier.fillMaxSize()) {
+private fun AnalyzePageBody(page: AnalyzePage, leave: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.fillMaxSize()) {
         PageTopBar(page.label, "Back to Analyze") { leave() }
         Surface(Modifier.weight(1f)) {
             when (page) {
