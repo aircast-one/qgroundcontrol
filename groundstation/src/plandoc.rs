@@ -80,7 +80,10 @@ fn validate_plan(root: &Value) -> Result<(), String> {
     }
     crate::qtjson::validate_keys(root, &[("mission", "Object", true), ("geoFence", "Object", true), ("rallyPoints", "Object", true)])?;
     crate::qtjson::validate_keys(&root["mission"], &[("plannedHomePosition", "Array", true), ("items", "Array", true), ("firmwareType", "Double", true), ("vehicleType", "Double", false), ("cruiseSpeed", "Double", false), ("hoverSpeed", "Double", false), ("globalPlanAltitudeMode", "Double", false)])
-        .map_err(|e| format!("Mission: {e}"))?;
+        .map_err(|e| format!("Mission: {e}"))
+}
+
+fn validate_fence_and_rally(root: &Value) -> Result<(), String> {
     validate_section(&root["geoFence"], FENCE_VERSION, &[("circles", "Array", true), ("polygons", "Array", true), ("breachReturn", "Array", false)], "GeoFence supports version", true)?;
     if is_current(&root["geoFence"], FENCE_VERSION) {
         validate_fence(&root["geoFence"])?;
@@ -171,6 +174,7 @@ pub fn load(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
     let commands = cmdinfo::tree(firmware(firmware_type), vehicle_class(vehicle_type));
     let saved = mission["items"].as_array().map(Vec::as_slice).unwrap_or_default();
     let items = resolve_jumps(saved.iter().map(|item| load_item(item, &commands)).collect::<Result<Vec<_>, _>>()?, saved)?;
+    validate_fence_and_rally(&root)?;
     let items = crate::landingpattern::fold(items, firmware(firmware_type) == Firmware::ArduPilot);
     let (settings_sections, items) = fold(items, vehicle_class(vehicle_type));
     Ok(Document {
@@ -1502,5 +1506,17 @@ mod tests {
         assert_eq!(error(plan(json!({"version": 2, "polygons": [], "circles": []}), json!({"version": 2, "points": [[47.0, 8.0]]}))), "Rally: Coordinate array must contain 3 values");
         assert!(load(&plan(json!({"version": 1, "polygons": [1]}), json!({"version": 1, "points": [1]})), 2).is_ok(), "old version 1 sections are ignored, not checked");
         assert!(load(&plan(json!({"version": 2, "polygons": [{"version": 1, "inclusion": true, "polygon": [[null, 8.0]]}], "circles": []}), json!({"version": 2, "points": [[47.0, 8.0, null]]})), 2).is_ok(), "null is a NaN coordinate");
+    }
+
+    #[test]
+    fn mission_items_are_checked_before_fence_and_rally_like_plan_master_controller() {
+        let plan = json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl",
+            "mission": {"firmwareType": 12, "plannedHomePosition": [47.0, 8.0, 500], "items": [{"type": "Bogus"}]},
+            "geoFence": {"version": 2, "polygons": [1], "circles": []}, "rallyPoints": {"version": 3, "points": []}});
+        assert_eq!(load(&plan.to_string(), 2).unwrap_err(), "Unknown item type: Bogus");
+        let fixed = json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl",
+            "mission": {"firmwareType": 12, "plannedHomePosition": [47.0, 8.0, 500], "items": []},
+            "geoFence": {"version": 2, "polygons": [1], "circles": []}, "rallyPoints": {"version": 3, "points": []}});
+        assert_eq!(load(&fixed.to_string(), 2).unwrap_err(), "GeoFence polygon not stored as object", "fence before rally");
     }
 }

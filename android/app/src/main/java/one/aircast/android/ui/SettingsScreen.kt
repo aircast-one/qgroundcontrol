@@ -112,7 +112,7 @@ internal fun glanceText(displays: List<String>): String = displays.filter { it.i
 
 @Composable
 private fun pageGlance(title: String): String {
-    if (title == "About") return "Aircast ${one.aircast.android.BuildConfig.VERSION_NAME}"
+    if (title == "About") return "Aircast ${qgcVersion()}"
     if (title == GENERAL_PAGE) {
         val system by qgcDouble("settings.unitsSettings.unitSystem")
         return if (system.isNaN()) "" else unitSystemLabel(system.toInt())

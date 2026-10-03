@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Process
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -25,7 +26,7 @@ internal fun AboutPage(links: List<HelpLink>, modifier: Modifier = Modifier) {
         SectionHeader("About")
         ListItem(
             headlineContent = { Text("Aircast version") },
-            trailingContent = { Text(BuildConfig.VERSION_NAME, style = MaterialTheme.typography.bodyMedium) },
+            trailingContent = { Text(qgcVersion(), style = MaterialTheme.typography.bodyMedium) },
             modifier = Modifier.clickable(enabled = advancedView != null) { toggleAdvancedUi(advancedUiShown(advancedView)) },
         )
         SectionHeader("Support")
@@ -40,3 +41,7 @@ internal fun AboutPage(links: List<HelpLink>, modifier: Modifier = Modifier) {
         }
     }
 }
+
+internal fun qgcVersion(): String = qgcVersion(BuildConfig.VERSION_NAME, Process.is64Bit())
+
+internal fun qgcVersion(name: String, is64Bit: Boolean): String = "$name ${if (is64Bit) "64" else "32"} bit"
