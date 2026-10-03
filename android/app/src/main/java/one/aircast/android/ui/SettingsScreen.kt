@@ -82,12 +82,12 @@ private const val SEARCH_SETTLE_MS = 250L
 internal const val UNITS_GROUP = "unitsSettings"
 internal const val VIDEO_GROUP = "videoSettings"
 internal const val FLY_VIEW_GROUP = "flyViewSettings"
+internal const val VIEWER_3D_GROUP = "viewer3DSettings"
 
 internal val GROUPS_WITH_A_HEAD_EDITOR = setOf(VIDEO_GROUP, FLY_VIEW_GROUP)
 
 internal val PAGES_WITHOUT_A_SCREEN = mapOf(
     "Firmware Upgrade" to "flashing firmware needs a USB host and a bootloader dance this head does not do",
-    "3D Viewer" to "there is no 3D view here to configure",
     "Flight Modes" to "twelve comma-separated lists of hidden mode names, one per airframe. The mode " +
         "picker reads what they produce; the raw lists are worse than nothing",
 )
@@ -152,6 +152,7 @@ internal val PAGE_NOTES = mapOf(
     "About" to "Version and where to get help",
     "App Logging" to "Writing the app's log to disk, and how the log viewer shows time",
     "Console" to "The app's own log, for diagnosing a problem",
+    "3D Viewer" to "OpenStreetMap buildings drawn in 3D around the vehicle",
 )
 
 internal enum class SettingsGroup(val title: String) { Connection("Connection"), Flying("Flying"), App("App"), More("More") }
@@ -526,6 +527,7 @@ private fun SettingsControls(
             ?.let { FootNote(it) }
         if (section.group == VIDEO_GROUP && page.showsVideoSources) ExtraVideoSourcesEditor()
         if (section.group == FLY_VIEW_GROUP) RcControlsEditor()
+        if (section.group == VIEWER_3D_GROUP) OsmFilePicker(onWrite)
         if (section.group == OFFLINE_MAPS_GROUP) OfflineMapsSection()
         if (section.group == MAVLINK_GROUP) SigningKeysSection()
         if (section.group == MAVLINK_GROUP) LinkStatusSection()
