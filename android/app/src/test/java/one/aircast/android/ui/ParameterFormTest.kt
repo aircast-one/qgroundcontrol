@@ -354,4 +354,12 @@ class ControlBoundsTest {
         assertEquals(KeyboardType.Text, factKeyboard(control("-180.0", "180.0", "0.0")))
         assertEquals(KeyboardType.Decimal, factKeyboard(control("0.0", "180.0", "0.0")))
     }
+
+    @Test
+    fun `a tuning slider reads its setup label and the live value like the Penpot tuning frame`() {
+        val fact = control("0.0", "1.0", "0.5").copy(description = "Climb Sensitivity", shortLabel = "Acceleration (vertical) controller P gain")
+        assertEquals("Climb sensitivity", sliderTitle(fact))
+        assertEquals("0.135", sliderValue(0.1349f, 3, ""))
+        assertEquals("38 %", sliderValue(38f, 0, "%"))
+    }
 }

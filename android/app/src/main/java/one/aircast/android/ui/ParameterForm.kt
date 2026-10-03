@@ -281,9 +281,11 @@ private fun FactSliderRow(fact: Fact, slider: FactSlider, onWrite: () -> Unit) {
     val scope = rememberCoroutineScope()
     val held = (fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull() ?: slider.from
     var shown by remember(fact.path, held) { mutableStateOf(held.coerceIn(slider.from, slider.to)) }
-    FactRow(fact.copy(slider = null), onWrite = onWrite)
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        if (slider.hint.isNotBlank()) Text(slider.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(sliderTitle(fact), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(sliderValue(shown, slider.decimals, fact.units), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
         Slider(
             value = shown,
             onValueChange = { shown = it },
@@ -296,5 +298,11 @@ private fun FactSliderRow(fact: Fact, slider: FactSlider, onWrite: () -> Unit) {
                 }
             },
         )
+        if (slider.hint.isNotBlank()) Text(slider.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+internal fun sliderTitle(fact: Fact): String = sentenceCase(fact.description.ifBlank { fact.heading })
+
+internal fun sliderValue(value: Float, decimals: Int, units: String): String =
+    listOf("%.${decimals.coerceIn(0, 6)}f".format(java.util.Locale.ROOT, value), units).filter { it.isNotBlank() }.joinToString(" ")
