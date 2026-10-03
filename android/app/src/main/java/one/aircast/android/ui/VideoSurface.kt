@@ -5,6 +5,11 @@ import android.view.SurfaceView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.Qgc
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.requiredSize
@@ -32,6 +37,27 @@ import one.aircast.android.bridge.settingControl
 import one.aircast.mapspike.AircastSpace
 import org.mavlink.qgroundcontrol.QGCBridge
 
+internal const val CAMERA_STEP_ZOOM = "vehicle.cameraManager.currentCameraInstance.stepZoom"
+
+internal fun pinchStep(scale: Float): Int = if (scale < 1f) Math.round(scale * -10f) else Math.round(scale)
+
+private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this else pointerInput(Unit) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false)
+        var scale = 1f
+        var sent = pinchStep(scale)
+        do {
+            val event = awaitPointerEvent()
+            if (event.changes.count { it.pressed } >= 2) {
+                scale *= event.calculateZoom()
+                val step = pinchStep(scale)
+                if (step != sent) offMainDetached { Qgc.invoke(CAMERA_STEP_ZOOM, step) }
+                sent = step
+            }
+        } while (event.changes.any { it.pressed })
+    }
+}
+
 @Composable
 fun VideoSurface(
     modifier: Modifier = Modifier,
@@ -47,13 +73,15 @@ fun VideoSurface(
         return
     }
 
+    val cameraJson by qgcPath(CAMERA_VIEW)
+    val zoomable = remember(cameraJson) { cameraReading(cameraJson)?.hasZoom == true }
     val showGrid by qgcBool(settingControl("settings.videoSettings.gridLines"))
     val fitMode by qgcValue(settingControl("settings.videoSettings.videoFit"))
     val aspectSetting by qgcValue(settingControl("settings.videoSettings.aspectRatio"))
     val aspect = videoAspect(video?.sourceSize, (aspectSetting as? Number)?.toDouble() ?: aspectSetting?.toString()?.toDoubleOrNull())
 
     BoxWithConstraints(
-        (if (expanded) modifier.pointerInput(video?.decoding) { if (video?.decoding == true) detectTapGestures(onDoubleTap = { onDoubleTap() }) } else modifier.clickable { onClick() }).clipToBounds(),
+        (if (expanded) modifier.pinchZoom(zoomable).pointerInput(video?.decoding) { if (video?.decoding == true) detectTapGestures(onDoubleTap = { onDoubleTap() }) } else modifier.clickable { onClick() }).clipToBounds(),
         contentAlignment = Alignment.Center,
     ) {
         val (contentWidth, contentHeight) = videoContentSize(maxWidth.value, maxHeight.value, aspect, (fitMode as? Number)?.toInt() ?: fitMode?.toString()?.toIntOrNull() ?: VIDEO_FIT_HEIGHT)

@@ -684,6 +684,7 @@ fn real_camera_op(name: &str, args: &str) -> Option<Value> {
             None => json!({ "op": "toggleMode" }),
         },
         "resetSettings" => json!({ "op": "reset" }),
+        "stepZoom" => json!({ "op": "step", "axis": "zoom", "direction": given.get(0).and_then(Value::as_i64).unwrap_or(0) }),
         "formatCard" => json!({ "op": "format", "storage": given.get(0).and_then(Value::as_u64).unwrap_or(1) }),
         "startTrackingRect" => json!({ "op": "trackRect", "rect": given.get(0).cloned().unwrap_or(Value::Null) }),
         "startTrackingPoint" => json!({ "op": "trackPoint", "point": given.get(0).cloned().unwrap_or(Value::Null), "radius": given.get(1).cloned().unwrap_or(Value::Null) }),
@@ -1943,6 +1944,7 @@ mod tests {
         assert_eq!(real_camera_op("startTrackingRect", r#"[{"x":0.1,"y":0.2,"width":0.3,"height":0.4}]"#), Some(json!({ "op": "trackRect", "rect": { "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4 } })));
         assert_eq!(real_camera_op("startTrackingPoint", r#"[{"x":0.5,"y":0.5},0.05]"#), Some(json!({ "op": "trackPoint", "point": { "x": 0.5, "y": 0.5 }, "radius": 0.05 })));
         assert_eq!(real_camera_op("startTracking", "[]"), None, "anything else is left to the host");
+        assert_eq!(real_camera_op("stepZoom", "[-9]"), Some(json!({ "op": "step", "axis": "zoom", "direction": -9 })), "the pinch area's stepZoom goes out as ZOOM_TYPE_STEP");
     }
 
     #[test]
