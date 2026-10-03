@@ -3122,10 +3122,15 @@ void Vehicle::setRcChannelOverride(int channel, int pwm)
 
 void Vehicle::clearRcChannelOverrides()
 {
-    const QList<int> held = _rcChannelOverrides.keys();
-    for (const int channel : held) {
-        releaseRcChannelOverride(channel);
+    if (_rcChannelOverrides.isEmpty()) {
+        return;
     }
+
+    for (auto it = _rcChannelOverrides.begin(); it != _rcChannelOverrides.end(); ++it) {
+        it.value() = 0;
+        _rcChannelOverrideReleaseTicks[it.key()] = _rcChannelOverrideReleaseCount;
+    }
+    _sendRcChannelOverrides();
 }
 
 void Vehicle::releaseRcChannelOverride(int channel)

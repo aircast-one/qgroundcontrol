@@ -24,7 +24,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,17 +35,35 @@ import one.aircast.android.bridge.settingControl
 
 private const val RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
 
-internal fun sendRcOverride(channel: Int, pwm: Int) {
-    if (channel > 0) offMainInOrder { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
+internal class RcHolder(private val send: (() -> Unit) -> Unit = ::offMainInOrder) {
+    private val sent = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
+
+    fun hold(channel: Int, pwm: Int) {
+        if (channel <= 0) return
+        sent.add(channel)
+        send { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
+    }
+
+    fun release() {
+        val held = sent.toList().sorted()
+        sent.removeAll(held.toSet())
+        if (held.isNotEmpty()) send { held.forEach { Qgc.invoke("vehicle.releaseRcChannelOverride", it) } }
+    }
+
+    fun forget() = sent.clear()
+
+    fun holding(): Set<Int> = sent.toSet()
 }
+
+internal val customRcControls = RcHolder()
+internal val cameraRcControls = RcHolder()
+
+private fun sendRcOverride(channel: Int, pwm: Int) = customRcControls.hold(channel, pwm)
 
 private fun releaseOverrides() {
+    customRcControls.forget()
+    cameraRcControls.forget()
     offMainInOrder { Qgc.invoke("vehicle.clearRcChannelOverrides") }
-}
-
-internal fun releaseRcChannels(channels: List<Int>) {
-    val held = channels.filter { it > 0 }.distinct()
-    if (held.isNotEmpty()) offMainInOrder { held.forEach { Qgc.invoke("vehicle.releaseRcChannelOverride", it) } }
 }
 
 @Composable
@@ -151,8 +168,7 @@ fun RcControlsLayer(modifier: Modifier = Modifier) {
     val stateJson by qgcPath(FLY_STATE)
     val overriding = remember(stateJson) { flyState(stateJson)?.rcOverride == true }
 
-    val held by rememberUpdatedState(controls.map { it.channel })
-    DisposableEffect(Unit) { onDispose { releaseRcChannels(held) } }
+    DisposableEffect(Unit) { onDispose { customRcControls.release() } }
 
     if (controls.isEmpty() || !hasVehicle) {
         return

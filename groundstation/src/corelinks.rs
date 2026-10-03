@@ -268,10 +268,10 @@ pub fn edited(config: &LinkConfig, field: &str, value: &Value) -> Option<LinkCon
         (_, "highLatency") => return value.as_bool().map(|high_latency| LinkConfig { high_latency, ..config.clone() }),
         (Kind::Tcp { port, .. }, "host") => Kind::Tcp { host: text?, port: *port },
         (Kind::Tcp { host, .. }, "port") => Kind::Tcp { host: host.clone(), port: port? },
-        (Kind::Bluetooth { .. }, "setDeviceByAddress") => {
-            let (device_name, address) = scanned_device(crate::platformbluetooth::devices(), &text?)?;
-            Kind::Bluetooth { device_name, address }
-        }
+        (Kind::Bluetooth { .. }, "setDeviceByAddress") => Kind::Bluetooth {
+            device_name: value.get("deviceName")?.as_str()?.to_string(),
+            address: value.get("address")?.as_str()?.to_string(),
+        },
         (Kind::Udp { hosts, .. }, "localPort") => Kind::Udp { local_port: port?, hosts: hosts.clone() },
         (Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_display_name, .. }, "portName") => {
             let port_name = text?;
@@ -301,7 +301,11 @@ pub fn set(path: &str, value: &str) -> Option<Value> {
     owned().then_some(())?;
     let (index, field) = path.strip_prefix(MODEL)?.strip_prefix('.')?.split_once('.')?;
     let index: usize = index.parse().ok()?;
-    let given = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
+    let given = match field {
+        "setDeviceByAddress" => asked.as_str().and_then(|address| scanned_device(crate::platformbluetooth::devices(), address)).map_or(Value::Null, |(name, address)| json!({ "deviceName": name, "address": address })),
+        _ => asked,
+    };
     let name = saved().into_iter().nth(index)?.config.name;
     let changed = with_saved(|entries| {
         let entry = entries.get_mut(index)?;
@@ -310,8 +314,8 @@ pub fn set(path: &str, value: &str) -> Option<Value> {
         Some(())
     });
     let renamed = saved().into_iter().nth(index).map(|e| e.config.name).unwrap_or_else(|| name.clone());
-    if let Some(config) = changed.and_then(|_| saved().into_iter().nth(index)).map(|e| e.config).filter(|config| config.name == name) {
-        crate::linkhost::reconfigure(&crate::linkhost::TRANSPORTS, &config);
+    if let Some(config) = changed.and_then(|_| saved().into_iter().nth(index)).map(|e| e.config) {
+        crate::linkhost::reconfigure(&crate::linkhost::TRANSPORTS, &name, &config);
     }
     if changed.is_some() && renamed != name {
         let mut runtime = RUNTIME.lock().unwrap_or_else(PoisonError::into_inner);
@@ -784,6 +788,9 @@ mod tests {
         let scanned = vec![("HC-05".to_string(), "98:D3:31:F6:12:34".to_string())];
         assert_eq!(scanned_device(scanned.clone(), "98:d3:31:f6:12:34"), Some(("HC-05".to_string(), "98:D3:31:F6:12:34".to_string())), "BluetoothConfiguration::setDeviceByAddress compares QBluetoothAddress values, which ignore case");
         assert_eq!(scanned_device(scanned, "00:00:00:00:00:01"), None, "an address the scan never saw leaves the link as it was, as setDeviceByAddress does");
+        let paired = LinkConfig { name: "Radio".into(), auto_connect: false, high_latency: false, kind: Kind::Bluetooth { device_name: "Old".into(), address: "00:00:00:00:00:02".into() } };
+        assert_eq!(edited(&paired, "setDeviceByAddress", &json!({ "deviceName": "HC-05", "address": "98:D3:31:F6:12:34" })).map(|c| c.kind), Some(Kind::Bluetooth { device_name: "HC-05".into(), address: "98:D3:31:F6:12:34".into() }), "set resolves the address against the scan before taking the link lock, so the edit itself is pure");
+        assert_eq!(edited(&paired, "setDeviceByAddress", &Value::Null), None);
         let replay = LinkConfig { name: "Replay".into(), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: "/a.tlog".into() } };
         assert_eq!(edited(&replay, "filename", &json!("/b.tlog")).map(|c| c.kind), Some(Kind::LogReplay { file: "/b.tlog".into() }), "LogReplaySettings picks another log for a saved replay link");
         assert!(edited(&tcp, "autoConnect", &json!(true)).is_some_and(|c| c.auto_connect), "Automatically Connect on Start");

@@ -878,7 +878,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                                 } else if (type == REPLAY_LINK) {
                                     val staged = stagedReplayLog(context, chosen, replayLog!!)
                                     val created = staged != null && Qgc.invokeResult("links.createLogReplayConfiguration", chosen, staged) == true
-                                    if (!created) pruneReplayFolder(context, chosen, "")
+                                    if (!created) staged?.let { java.io.File(it).delete() }
                                     created && connectNamed(chosen)
                                 } else if (type == BLUETOOTH_LINK) {
                                     val picked = device!!

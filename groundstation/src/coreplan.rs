@@ -1225,6 +1225,7 @@ pub fn controller_fields(path: &str) -> Option<Value> {
                 "hasLandItem": crate::missionkinds::has_land(&document),
                 "isInsertROIValid": state.roi,
                 "flyThroughCommandsAllowed": state.fly_through,
+                "insertBeforeTakeoff": state.before_takeoff,
                 "globalAltitudeFrame": document.global_altitude_mode,
             }))
         }

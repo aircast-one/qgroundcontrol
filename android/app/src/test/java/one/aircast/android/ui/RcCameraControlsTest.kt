@@ -12,11 +12,6 @@ class RcCameraControlsTest {
         assertEquals(0, rcCameraChannels(tilt = 7, pan = 7, zoom = 0, light = 0, record = 0).pan)
         assertEquals(8, rcCameraChannels(tilt = 7, pan = 8, zoom = 0, light = 0, record = 0).pan)
         assertFalse(rcCameraChannels(0, 0, 0, 0, 0).any)
-        assertEquals(
-            "closing the camera controls releases only the channels they drive, so a switch the custom RC controls hold stays on",
-            listOf(7, 10),
-            rcCameraChannels(tilt = 7, pan = 7, zoom = 0, light = 10, record = 0).all,
-        )
         assertTrue(rcCameraChannels(0, 0, 9, 0, 0).any)
     }
 

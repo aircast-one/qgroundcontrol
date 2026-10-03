@@ -62,6 +62,7 @@ pub struct Insertable {
     pub fly_through: bool,
     pub patterns: Option<Vec<String>>,
     pub has_land: bool,
+    pub before_takeoff: Option<bool>,
     pub multi_rotor: bool,
     pub rover: bool,
 }
@@ -85,6 +86,7 @@ pub struct Rules {
 pub struct InsertState {
     pub home_set: bool,
     pub only_takeoff: bool,
+    pub before_takeoff: bool,
     pub takeoff: bool,
     pub land: bool,
     pub roi: bool,
@@ -128,6 +130,7 @@ pub fn insert_state(document: &crate::plandoc::Document, spans: &[(i64, i64)], s
     InsertState {
         home_set,
         only_takeoff,
+        before_takeoff,
         takeoff: home_set && sequence == 0 && takeoff_at.is_none(),
         land: home_set && !only_takeoff && !before_takeoff && !last_flown.is_some_and(|at| sequence < at) && single_land.is_none(),
         roi: home_set && !only_takeoff,
@@ -138,7 +141,7 @@ pub fn insert_state(document: &crate::plandoc::Document, spans: &[(i64, i64)], s
 pub fn insertable(backend: &dyn Backend) -> Insertable {
     let mission = object(&backend.get_fields(
         "plan.missionController",
-        if crate::coreplan::enabled() { "homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem" } else { "complexMissionItems,homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem" },
+        if crate::coreplan::enabled() { "homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem,insertBeforeTakeoff" } else { "complexMissionItems,homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem" },
     ));
     let answered = |key: &str, unset: bool| mission.get(key).and_then(Value::as_bool).unwrap_or(unset);
     Insertable {
@@ -149,6 +152,7 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
         land: answered("isInsertLandValid", false),
         fly_through: answered("flyThroughCommandsAllowed", true),
         has_land: answered("hasLandItem", false),
+        before_takeoff: mission.get("insertBeforeTakeoff").and_then(Value::as_bool),
         multi_rotor: crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "multiRotor")), "multiRotor"),
         rover: crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover"),
         patterns: if crate::coreplan::enabled() { Some(crate::plan::offered_patterns(backend).into_iter().map(str::to_string).collect()) } else { mission.get("complexMissionItems").and_then(Value::as_array).map(|names| {
@@ -178,7 +182,12 @@ pub fn refusal(kind: &Kind, insertable: &Insertable) -> Option<&'static str> {
 }
 
 fn grounded(insertable: &Insertable) -> &'static str {
-    if insertable.has_land { NOT_AFTER_LANDING } else { NOT_BEFORE_TAKEOFF }
+    match insertable.before_takeoff {
+        Some(true) => NOT_BEFORE_TAKEOFF,
+        Some(false) => NOT_AFTER_LANDING,
+        None if insertable.has_land => NOT_AFTER_LANDING,
+        None => NOT_BEFORE_TAKEOFF,
+    }
 }
 
 fn kind_json(kind: &Kind) -> Value {
@@ -274,7 +283,7 @@ mod tests {
 
     #[test]
     fn a_rover_is_offered_no_takeoff_like_plan_view_add_menu() {
-        let insertable = |rover: bool| Insertable { at_sequence: None, home_set: true, only_takeoff: false, takeoff: true, land: true, fly_through: true, patterns: None, has_land: false, multi_rotor: false, rover };
+        let insertable = |rover: bool| Insertable { at_sequence: None, home_set: true, only_takeoff: false, takeoff: true, land: true, fly_through: true, patterns: None, has_land: false, before_takeoff: None, multi_rotor: false, rover };
         let takeoff = KINDS.iter().find(|k| k.id == "takeoff").unwrap();
         assert!(insertable(false).offers(takeoff));
         assert!(!insertable(true).offers(takeoff));
@@ -297,8 +306,9 @@ mod tests {
             crate::plandoc::Document { home: loaded.home.filter(|_| home), ..loaded }
         };
         let rules = Rules { takeoff_not_required: false, multiple_landings: true };
-        let at = |document: &crate::plandoc::Document, sequence: i64| insert_state(document, &crate::coreplan::visual_spans(document), sequence, &rules);
-        let state = |home_set, only_takeoff, takeoff, land, roi, fly_through| InsertState { home_set, only_takeoff, takeoff, land, roi, fly_through };
+        let positioned = |document: &crate::plandoc::Document, sequence: i64| insert_state(document, &crate::coreplan::visual_spans(document), sequence, &rules);
+        let at = |document: &crate::plandoc::Document, sequence: i64| InsertState { before_takeoff: false, ..positioned(document, sequence) };
+        let state = |home_set, only_takeoff, takeoff, land, roi, fly_through| InsertState { home_set, only_takeoff, before_takeoff: false, takeoff, land, roi, fly_through };
 
         let empty = plan(12, 2, true, Vec::new());
         assert_eq!(at(&empty, 0), state(true, true, true, false, false, false), "an empty ground-start mission offers only a takeoff");
@@ -309,6 +319,7 @@ mod tests {
         assert_eq!(at(&flown, 0), state(true, false, false, false, true, false), "before the takeoff neither a landing nor a fly-through fits");
         assert_eq!(at(&flown, 2), state(true, false, false, false, true, true), "a copter holds one landing, so a second is refused");
         assert_eq!(at(&flown, 3), state(true, false, false, false, true, false), "after the landing nothing flies through");
+        assert_eq!((positioned(&flown, 0).before_takeoff, positioned(&flown, 3).before_takeoff), (true, false), "which of the two it is decides the refusal the operator reads");
 
         let plane = plan(3, 1, true, vec![item(22, 1), item(16, 2), item(21, 3)]);
         assert_eq!(at(&plane, 3), state(true, false, false, true, true, true), "an ArduPilot plane may carry several landing sequences");
@@ -546,6 +557,9 @@ mod offering {
         assert_eq!(named(&offered, "waypoint").1, Some(false));
         assert_eq!(named(&offered, "waypoint").2, NOT_BEFORE_TAKEOFF, "with no landing in the mission the only place nothing flies is ahead of the takeoff");
         assert_eq!(named(&offered, "survey").2, NOT_BEFORE_TAKEOFF);
+        let mut ahead = landing(state(false, false, false, false));
+        ahead["insertBeforeTakeoff"] = json!(true);
+        assert_eq!(named(&offering(ahead), "waypoint").2, NOT_BEFORE_TAKEOFF, "a camera command ahead of the takeoff in a mission that also lands is still before the takeoff, which the core plan knows by position");
     }
 
     #[test]
