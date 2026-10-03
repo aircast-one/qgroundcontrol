@@ -249,7 +249,9 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
 
     if (batterySettings) {
         ModalBottomSheet(onDismissRequest = { batterySettings = false }) {
-            ParameterForm(BATTERY_SETTINGS_PAGE)
+            indicatorParameterWait(setupJson)?.let {
+                Text(it, Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
+            } ?: ParameterForm(BATTERY_SETTINGS_PAGE)
         }
     }
 
@@ -261,6 +263,12 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
 }
 
 internal const val BATTERY_SETTINGS_PAGE = "Battery Settings"
+
+internal fun indicatorParameterWait(setup: JSONObject?): String? = when {
+    parametersReady(setup) -> null
+    setup?.optText("parametersReason") == "skipped" -> "Parameters not available"
+    else -> "Waiting for parameters…"
+}
 private const val BATTERY_INDICATOR_SETTINGS = "settings.batteryIndicatorSettings"
 internal val BATTERY_DISPLAY_FACTS = listOf("valueDisplay", "threshold1", "threshold2")
 

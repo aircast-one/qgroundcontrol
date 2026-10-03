@@ -169,3 +169,14 @@ class SatelliteCellTest {
         assertEquals("2D only", satsText(FixLevel.TwoD, ""))
     }
 }
+
+class IndicatorParameterWaitTest {
+
+    @Test
+    fun `battery failsafes wait for parameters like ToolIndicatorPage expandedComponentWaitForParameters`() {
+        assertNull(indicatorParameterWait(JSONObject("""{"connected":true,"parametersReady":true,"parametersReason":"incomplete"}""")))
+        assertEquals("Waiting for parameters…", indicatorParameterWait(JSONObject("""{"connected":true,"parametersReady":false,"parametersReason":"loading"}""")))
+        assertEquals("Waiting for parameters…", indicatorParameterWait(JSONObject("""{"connected":true,"parametersReady":false,"parametersReason":"unanswered"}""")))
+        assertEquals("Parameters not available", indicatorParameterWait(JSONObject("""{"connected":true,"parametersReady":false,"parametersReason":"skipped"}""")))
+    }
+}
