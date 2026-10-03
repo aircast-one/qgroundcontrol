@@ -60,6 +60,9 @@ private val COURSE_COLOUR = Color(0xFF24D3EE)
 private val ROLL_POINTER_COLOUR = Color(0xFFED1C24)
 private val HEADING_SHADE = Color(0xFFC72B27)
 private const val HEADING_TEXT_DROP = 0.48f
+private const val COG_TIP = 0.054f
+private const val COG_BASE = 0.254f
+private const val COG_HALF_WIDTH = 0.075f
 private val HORIZON_SKY = Color.hsl(216f, 0.5f, 0.55f)
 private val HORIZON_GROUND = Color.hsl(90f, 0.75f, 0.25f)
 private val HORIZON_GROUND_NEAR = Color.hsl(90f, 0.5f, 0.45f)
@@ -154,8 +157,9 @@ private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val mission = MaterialTheme.aircast.mission
     val home = MaterialTheme.aircast.success
-    val label = TextStyle(color = ink, fontSize = 10.sp)
-    val headingStyle = TextStyle(color = ink, fontSize = 13.sp)
+    val scale = size / INSTRUMENT_SIZE
+    val label = TextStyle(color = ink, fontSize = 10.sp * scale)
+    val headingStyle = TextStyle(color = ink, fontSize = 13.sp * scale)
     val homeStyle = TextStyle(color = MaterialTheme.aircast.onSuccess, fontSize = 10.sp, fontWeight = FontWeight.Bold)
 
     Surface(
@@ -184,15 +188,17 @@ private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean
                 }
                 CARDINALS.forEach { (degrees, letter) ->
                     val text = measurer.measure(letter, label)
-                    val at = pointOnRing(center, outer - 14.dp.toPx(), degrees.toFloat())
+                    val at = pointOnRing(center, outer - 14.dp.toPx() * scale, degrees.toFloat())
                     rotate(-dial, at) {
                         drawText(text, topLeft = at - Offset(text.size.width / 2f, text.size.height / 2f))
                     }
                 }
                 reading.courseOverGround?.let { course ->
                     rotate(course) {
-                        val rim = center.y - outer + 1.dp.toPx()
-                        drawPath(Path().apply { moveTo(center.x, rim + 9.dp.toPx()); lineTo(center.x - 5.dp.toPx(), rim); lineTo(center.x + 5.dp.toPx(), rim); close() }, COURSE_COLOUR)
+                        val tip = center.y - outer * (1f - COG_TIP)
+                        val base = center.y - outer * (1f - COG_BASE)
+                        val wing = outer * COG_HALF_WIDTH
+                        drawPath(Path().apply { moveTo(center.x, tip); lineTo(center.x - wing, base); lineTo(center.x + wing, base); close() }, COURSE_COLOUR)
                     }
                 }
                 reading.headingToNextWaypoint?.let { drawBearing(it, outer, mission, dashed = true) }
@@ -209,8 +215,12 @@ private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean
                     val top = Offset(center.x, center.y - half)
                     val bottom = center.y + half
                     val notch = center.y + half * 0.5f
-                    drawPath(Path().apply { moveTo(top.x, top.y); lineTo(center.x + half, bottom); lineTo(center.x, notch); close() }, HEADING_COLOUR)
-                    drawPath(Path().apply { moveTo(top.x, top.y); lineTo(center.x - half, bottom); lineTo(center.x, notch); close() }, HEADING_SHADE)
+                    val right = Path().apply { moveTo(top.x, top.y); lineTo(center.x + half, bottom); lineTo(center.x, notch); close() }
+                    val left = Path().apply { moveTo(top.x, top.y); lineTo(center.x - half, bottom); lineTo(center.x, notch); close() }
+                    drawPath(right, HEADING_COLOUR)
+                    drawPath(left, HEADING_SHADE)
+                    drawPath(right, ink, style = Stroke(1.dp.toPx()))
+                    drawPath(left, ink, style = Stroke(1.dp.toPx()))
                 }
             }
 

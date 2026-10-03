@@ -505,24 +505,28 @@ internal const val DISARMED_ALPHA = 0.5f
 
 internal fun rowCompassAlpha(armed: Boolean): Float = if (armed) 1f else DISARMED_ALPHA
 
+private val ROW_HEADING_SHADE = androidx.compose.ui.graphics.Color(0xFFC72B27)
+
 @Composable
 private fun VehicleRowCompass(heading: Double, armed: Boolean) {
-    val ring = MaterialTheme.colorScheme.onSurfaceVariant
+    val fill = MaterialTheme.colorScheme.surface
+    val border = MaterialTheme.colorScheme.onSurface
     androidx.compose.foundation.Canvas(Modifier.size(ROW_COMPASS_SIZE).alpha(rowCompassAlpha(armed))) {
         val radius = size.minDimension / 2f
-        drawCircle(ring, radius = radius - 1.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+        drawCircle(fill, radius = radius)
+        drawCircle(border, radius = radius - 0.5.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
         if (heading.isFinite()) {
             rotate(heading.toFloat()) {
-                drawPath(
-                    androidx.compose.ui.graphics.Path().apply {
-                        moveTo(center.x, center.y - radius + 2.dp.toPx())
-                        lineTo(center.x - radius * 0.45f, center.y + radius * 0.55f)
-                        lineTo(center.x, center.y + radius * 0.25f)
-                        lineTo(center.x + radius * 0.45f, center.y + radius * 0.55f)
-                        close()
-                    },
-                    ROW_HEADING_COLOUR,
-                )
+                val half = radius / 3f
+                val top = center.y - half
+                val bottom = center.y + half
+                val notch = center.y + half * 0.5f
+                val right = androidx.compose.ui.graphics.Path().apply { moveTo(center.x, top); lineTo(center.x + half, bottom); lineTo(center.x, notch); close() }
+                val left = androidx.compose.ui.graphics.Path().apply { moveTo(center.x, top); lineTo(center.x - half, bottom); lineTo(center.x, notch); close() }
+                drawPath(right, ROW_HEADING_COLOUR)
+                drawPath(left, ROW_HEADING_SHADE)
+                drawPath(right, ROW_HEADING_COLOUR, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                drawPath(left, ROW_HEADING_COLOUR, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
             }
         }
     }
