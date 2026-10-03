@@ -132,8 +132,8 @@ pub fn help_text(class_value: Option<i64>, class_label: &str, type_label: Option
     match class_value {
         Some(0) | None => "Airframe is currently not set.".to_string(),
         Some(_) => format!(
-            "Currently set to frame class '{class_label}'{}. To change this configuration, select the desired frame class below and then reboot the vehicle.",
-            type_label.map(|t| format!(" and frame type '{t}'")).unwrap_or_default()
+            "{} is selected. Pick another frame below, then reboot the vehicle for it to take effect.",
+            [Some(class_label), type_label].into_iter().flatten().collect::<Vec<_>>().join(" ")
         ),
     }
 }
@@ -287,10 +287,7 @@ mod tests {
         assert_eq!(copter_image(CLASS_HEX, TYPE_H), UNKNOWN_IMAGE);
         assert_eq!(image(false, CLASS_BOAT, ANY_TYPE), "Boat.svg");
         assert_eq!(help_text(Some(0), "Undefined", Some("X")), "Airframe is currently not set.");
-        assert_eq!(
-            help_text(Some(1), "Quad", Some("X")),
-            "Currently set to frame class 'Quad' and frame type 'X'. To change this configuration, select the desired frame class below and then reboot the vehicle."
-        );
-        assert_eq!(help_text(Some(1), "Rover", None), "Currently set to frame class 'Rover'. To change this configuration, select the desired frame class below and then reboot the vehicle.");
+        assert_eq!(help_text(Some(1), "Quad", Some("X")), "Quad X is selected. Pick another frame below, then reboot the vehicle for it to take effect.");
+        assert_eq!(help_text(Some(1), "Rover", None), "Rover is selected. Pick another frame below, then reboot the vehicle for it to take effect.");
     }
 }
