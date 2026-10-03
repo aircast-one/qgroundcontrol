@@ -28,7 +28,7 @@ fn path(name: &str) -> String {
     format!("vehicle.parameterManager.getParameter({COMPONENT},{name})")
 }
 
-fn fact(backend: &dyn Backend, name: &str) -> Option<Value> {
+pub fn fact(backend: &dyn Backend, name: &str) -> Option<Value> {
     let fact = object(&backend.get(&path(name)));
     let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
     present.then_some(fact)

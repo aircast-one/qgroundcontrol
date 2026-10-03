@@ -332,6 +332,31 @@ fn apm_lights(facts: Facts) -> Rows {
     vec![row("Lights Output 1", channel_for(LIGHTS_1_FUNCTION)), row("Lights Output 2", channel_for(LIGHTS_2_FUNCTION))]
 }
 
+fn esp_text(facts: Facts, prefix: &str) -> String {
+    let words: Option<Vec<u32>> = (1..=4).map(|i| facts(&format!("{prefix}{i}")).map(|f| number(&f) as i64 as u32)).collect();
+    words.map(|w| crate::espbridge::unpack([w[0], w[1], w[2], w[3]])).unwrap_or_default()
+}
+
+fn esp_version(raw: u32) -> String {
+    format!("{}.{}.{}", raw >> 24, (raw >> 16) & 0xFF, raw & 0xFFFF)
+}
+
+fn esp8266(facts: Facts) -> Rows {
+    let value_string = |name: &str| facts(name).map(|f| text(&f, "valueString")).unwrap_or_default();
+    let station = facts("WIFI_MODE").is_some_and(|f| number(&f) != 0.0);
+    [
+        Some(row("Firmware Version", facts("SW_VER").map(|f| esp_version(number(&f) as i64 as u32)).unwrap_or_default())),
+        Some(row("WiFi Mode", if station { "Station Mode" } else { "AP Mode" })),
+        (!station).then(|| row("WiFi Channel", value_string("WIFI_CHANNEL"))),
+        Some(row("WiFi AP SSID", esp_text(facts, "WIFI_SSID"))),
+        Some(row("WiFi AP Password", esp_text(facts, "WIFI_PASSWORD"))),
+        Some(row("UART Baud Rate", value_string("UART_BAUDRATE"))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
 pub fn clean_behavior(part: &str) -> String {
     let cleaned = LEVEL_SUFFIX.replace_all(part, "").trim().to_string();
     match cleaned.is_empty() {
@@ -461,11 +486,15 @@ pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
         custom: (part("firmwareCustomMajorVersion") != -1).then(|| format!("{}.{}.{}", part("firmwareCustomMajorVersion"), part("firmwareCustomMinorVersion"), part("firmwareCustomPatchVersion"))),
     };
     let facts = |name: &str| Some(object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))).filter(|f| f.get("kind").and_then(Value::as_str) == Some("fact") && !text(f, "name").is_empty());
+    let esp_facts = |name: &str| crate::espbridge::fact(backend, name);
     let listed = object(&backend.get(COMPONENTS)).get("value").and_then(Value::as_array).cloned().unwrap_or_default();
     let components: Vec<Value> = listed
         .iter()
         .filter_map(|component| {
-            let found = rows(&text(component, "class"), &facts, &vehicle)?;
+            let found = match text(component, "class").as_str() {
+                "ESP8266Component" => esp8266(&esp_facts),
+                class => rows(class, &facts, &vehicle)?,
+            };
             Some(json!({ "name": text(component, "name"), "rows": found.iter().map(|r| json!({ "label": r.label, "value": r.value, "warn": r.warn })).collect::<Vec<_>>() }))
         })
         .collect();
@@ -510,6 +539,19 @@ mod tests {
         assert!(rows("APMTuningComponent", &facts, &copter()).is_none());
         assert_eq!(firmware_text(-1, 0, 0, ""), "Unknown");
         assert_eq!(firmware_text(1, 15, 2, "beta"), "1.15.2beta");
+    }
+
+    #[test]
+    fn the_wifi_bridge_summary_reads_like_esp8266_component_summary() {
+        let ssid = u32::from_le_bytes(*b"Air\0");
+        let ap = HashMap::from([("SW_VER", fact(f64::from(0x0102_0003u32), "", "", "")), ("WIFI_CHANNEL", fact(6.0, "6", "", "")), ("WIFI_SSID1", fact(f64::from(ssid), "", "", "")), ("WIFI_SSID2", fact(0.0, "", "", "")), ("WIFI_SSID3", fact(0.0, "", "", "")), ("WIFI_SSID4", fact(0.0, "", "", "")), ("UART_BAUDRATE", fact(921600.0, "921600", "", ""))]);
+        assert_eq!(
+            esp8266(&lookup(&ap)),
+            [row("Firmware Version", "1.2.3"), row("WiFi Mode", "AP Mode"), row("WiFi Channel", "6"), row("WiFi AP SSID", "Air"), row("WiFi AP Password", ""), row("UART Baud Rate", "921600")]
+        );
+        let station = HashMap::from([("WIFI_MODE", fact(1.0, "1", "", ""))]);
+        let shown = esp8266(&lookup(&station));
+        assert_eq!((shown[1].clone(), shown.iter().any(|r| r.label == "WiFi Channel")), (row("WiFi Mode", "Station Mode"), false), "the channel row hides in Station Mode");
     }
 
     #[test]
