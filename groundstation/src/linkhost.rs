@@ -15,6 +15,20 @@ pub type StateSink = Arc<dyn Fn(LinkId, bool, &str) + Send + Sync>;
 pub type ExtraSink = Arc<dyn Fn(&crate::transport::Extra) + Send + Sync>;
 const KEEP_CLOSED: usize = 16;
 
+static SEQUENCES: Mutex<BTreeMap<LinkId, u8>> = Mutex::new(BTreeMap::new());
+
+fn next_sequence(id: LinkId) -> u8 {
+    let mut sequences = SEQUENCES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let sequence = sequences.entry(id).or_insert(0);
+    let next = *sequence;
+    *sequence = next.wrapping_add(1);
+    next
+}
+
+fn forget_sequence(id: LinkId) {
+    SEQUENCES.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&id);
+}
+
 pub enum Owned {
     Udp(UdpLink),
     Tcp(TcpLink),
@@ -369,6 +383,7 @@ pub fn host_open(transports: &Mutex<Transports>, kind: &str, name: &str) -> Link
 }
 
 pub fn host_closed(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {
+    forget_sequence(id);
     let shared = transports.lock().unwrap().shared.clone();
     let closed = shared.registry.lock().unwrap().close(id, reason);
     reap(transports);
@@ -384,10 +399,11 @@ pub fn write(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) -> bool {
     if bytes.is_empty() {
         return false;
     }
+    let sequenced = crate::mavout::restamped(bytes, crate::mavout::gcs_system(), &mut || next_sequence(id));
     if crate::vehiclefacade::switched_on() {
-        crate::telemetrylog::sent(bytes);
+        crate::telemetrylog::sent(&sequenced);
     }
-    let signed = crate::signing::lock().outbound(id, bytes);
+    let signed = crate::signing::lock().outbound(id, &sequenced);
     let bytes = signed.as_slice();
     let (owned, writer, shared) = {
         let guard = transports.lock().unwrap();
@@ -412,6 +428,7 @@ pub fn write(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) -> bool {
 }
 
 pub fn close(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {
+    forget_sequence(id);
     let (owned, shared) = {
         let mut guard = transports.lock().unwrap();
         if let Some(linkconfig::Kind::Serial { port_name, .. }) = guard.configs.remove(&id).map(|config| config.kind) {

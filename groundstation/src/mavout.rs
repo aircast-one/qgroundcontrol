@@ -455,6 +455,59 @@ pub fn encode_next(send: &Outbound) -> Option<Vec<u8>> {
     encode(SEQUENCE.fetch_add(1, Ordering::Relaxed), send)
 }
 
+const X25: crc::Crc<u16> = crc::Crc::<u16>::new(&crc::CRC_16_MCRF4XX);
+const V1_MAGIC: u8 = 0xFE;
+const V2_MAGIC: u8 = 0xFD;
+const V2_SIGNED: u8 = 0x01;
+const SIGNATURE_BYTES: usize = 13;
+
+struct FrameAt {
+    sequence: usize,
+    system: usize,
+    end: usize,
+    signed: bool,
+}
+
+fn frame_at(bytes: &[u8]) -> Option<FrameAt> {
+    match bytes {
+        [V1_MAGIC, len, ..] => Some(FrameAt { sequence: 2, system: 3, end: *len as usize + 8, signed: false }),
+        [V2_MAGIC, len, incompat, ..] => {
+            let signed = incompat & V2_SIGNED != 0;
+            Some(FrameAt { sequence: 4, system: 5, end: *len as usize + 12 + if signed { SIGNATURE_BYTES } else { 0 }, signed })
+        }
+        _ => None,
+    }
+    .filter(|at| at.end <= bytes.len())
+}
+
+fn resequenced(frame: &[u8], at: usize, sequence: u8) -> Option<Vec<u8>> {
+    let crc_at = frame.len() - 2;
+    let old = u16::from_le_bytes([frame[crc_at], frame[crc_at + 1]]);
+    let digested = |body: &[u8]| {
+        let mut digest = X25.digest();
+        digest.update(&body[1..]);
+        digest
+    };
+    let finished = |digest: &crc::Digest<'_, u16>, extra: u8| {
+        let mut digest = digest.clone();
+        digest.update(&[extra]);
+        digest.finalize()
+    };
+    let sent = digested(&frame[..crc_at]);
+    let extra = (0..=u8::MAX).find(|extra| finished(&sent, *extra) == old)?;
+    let body: Vec<u8> = frame[..crc_at].iter().enumerate().map(|(i, b)| if i == at { sequence } else { *b }).collect();
+    let crc = finished(&digested(&body), extra);
+    Some([body, crc.to_le_bytes().to_vec()].concat())
+}
+
+pub fn restamped(bytes: &[u8], system: u8, next: &mut impl FnMut() -> u8) -> Vec<u8> {
+    let Some(at) = frame_at(bytes) else { return bytes.to_vec() };
+    let (frame, rest) = bytes.split_at(at.end);
+    let ours = frame[at.system] == system && !at.signed;
+    let head = ours.then(|| resequenced(frame, at.sequence, next())).flatten().unwrap_or_else(|| frame.to_vec());
+    [head, restamped(rest, system, next)].concat()
+}
+
 #[cfg(test)]
 #[allow(deprecated)]
 mod tests {
@@ -463,6 +516,54 @@ mod tests {
 
     fn decode(bytes: &[u8]) -> (MavHeader, MavMessage) {
         read_versioned_msg::<MavMessage, _>(&mut mavlink::peek_reader::PeekReader::new(bytes), ReadVersion::Single(MavlinkVersion::V2)).unwrap()
+    }
+
+    fn counter(from: u8) -> impl FnMut() -> u8 {
+        let mut next = from;
+        move || {
+            let sequence = next;
+            next = next.wrapping_add(1);
+            sequence
+        }
+    }
+
+    #[test]
+    fn each_link_numbers_the_station_frames_it_carries_like_a_qgc_mavlink_channel() {
+        let beat = encode(200, &Outbound::GcsHeartbeat).unwrap();
+        let ping = encode(201, &Outbound::Ping { time_usec: 1, seq: 2, target: (1, 1) }).unwrap();
+        let both = [beat.clone(), ping.clone()].concat();
+        let sent = restamped(&both, DEFAULT_GCS_SYSTEM, &mut counter(7));
+        let (first, message) = decode(&sent);
+        let (second, _) = decode(&sent[beat.len()..]);
+        assert_eq!((first.sequence, second.sequence), (7, 8));
+        assert!(matches!(message, MavMessage::HEARTBEAT(_)), "the checksum is rebuilt, so the frame still decodes");
+        assert_eq!(decode(&restamped(&beat, DEFAULT_GCS_SYSTEM, &mut counter(0))).0.sequence, 0, "another link keeps its own count");
+    }
+
+    #[test]
+    fn forwarded_signed_and_unparsed_bytes_pass_through_untouched() {
+        let vehicle = {
+            let mut raw = MAVLinkV2MessageRaw::new();
+            raw.serialize_message(MavHeader { system_id: 1, component_id: 1, sequence: 42 }, &MavMessage::HEARTBEAT(Default::default()));
+            raw.raw_bytes().to_vec()
+        };
+        let mut never = || -> u8 { panic!("only station frames take a number") };
+        assert_eq!(restamped(&vehicle, DEFAULT_GCS_SYSTEM, &mut never), vehicle);
+        let signed = [encode(3, &Outbound::GcsHeartbeat).unwrap(), vec![0; SIGNATURE_BYTES]].concat();
+        let signed: Vec<u8> = signed.iter().enumerate().map(|(i, b)| if i == 2 { b | V2_SIGNED } else { *b }).collect();
+        assert_eq!(restamped(&signed, DEFAULT_GCS_SYSTEM, &mut never), signed);
+        assert_eq!(restamped(&[1, 2, 3], DEFAULT_GCS_SYSTEM, &mut never), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn a_command_the_dialect_cannot_decode_still_leaves_with_a_valid_checksum() {
+        let raw = encode(9, &Outbound::CommandInt { target: (1, 1), command: 611, frame: 0, params: [0.0; 7], x: 0, y: 0 }).unwrap();
+        let sent = restamped(&raw, DEFAULT_GCS_SYSTEM, &mut counter(1));
+        let expected: Vec<u8> = raw.iter().enumerate().map(|(i, b)| if i == 4 { 1 } else { *b }).collect();
+        assert_eq!(sent[..sent.len() - 2], expected[..expected.len() - 2]);
+        let mut buffer = [0u8; 280];
+        buffer[..sent.len()].copy_from_slice(&sent);
+        assert!(MAVLinkV2MessageRaw::from_bytes_unparsed(buffer).has_valid_crc::<MavMessage>());
     }
 
     #[test]
