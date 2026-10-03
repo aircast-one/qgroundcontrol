@@ -272,7 +272,7 @@ private fun FactSliderRow(fact: Fact, slider: FactSlider, onWrite: () -> Unit) {
     var shown by remember(fact.path, held) { mutableStateOf(held.coerceIn(slider.from, slider.to)) }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(fact.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(sentenceCase(fact.title), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Text("%.${slider.decimals}f".format(shown), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
         if (slider.hint.isNotBlank()) Text(slider.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
