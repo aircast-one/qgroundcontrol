@@ -24,6 +24,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import java.util.TimeZone
+import java.util.Locale
+import kotlinx.coroutines.delay
+import androidx.compose.ui.geometry.Size
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -80,20 +85,22 @@ internal fun inspectorCharts(view: JSONObject?): InspectorCharts? = view?.optJSO
 
 private val CHART_HEIGHT = 220.dp
 private const val TIME_TICKS = 3
+private const val TICK_LABEL_CACHE = 16
+private const val CLOCK_TICK_MS = 1000L
 private const val VALUE_TICKS = 4
 
-internal fun timeTicks(windowMs: Long, nowMs: Long, zone: java.util.TimeZone = java.util.TimeZone.getDefault()): List<Pair<Float, String>> =
+internal fun timeTicks(windowMs: Long, nowMs: Long, zone: TimeZone = TimeZone.getDefault()): List<Pair<Float, String>> =
     (0..TIME_TICKS).map { step ->
         val at = step.toFloat() / TIME_TICKS
         val instant = nowMs - ((1f - at) * windowMs).toLong()
         val wallClock = instant + zone.getOffset(instant)
-        at to "%02d:%02d".format(java.util.Locale.ROOT, (wallClock / 60_000) % 60, (wallClock / 1000) % 60)
+        at to "%02d:%02d".format(Locale.ROOT, (wallClock / 60_000) % 60, (wallClock / 1000) % 60)
     }
 
 internal fun valueTicks(low: Double, high: Double): List<Pair<Float, String>> =
     (0..VALUE_TICKS).map { step ->
         val fraction = step.toDouble() / VALUE_TICKS
-        (1f - fraction.toFloat()) to "%.4g".format(java.util.Locale.ROOT, low + (high - low) * fraction)
+        (1f - fraction.toFloat()) to "%.4g".format(Locale.ROOT, low + (high - low) * fraction)
     }
 
 internal fun chartPoint(ageMs: Long, value: Double, windowMs: Long, yMin: Double, yMax: Double): Pair<Float, Float> =
@@ -142,30 +149,40 @@ internal fun InspectorChartPanel(index: Int, charts: InspectorCharts, modifier: 
             ChartChoice("Scale", charts.timeScales, chart.rangeX) { chosen -> offMainDetached { Qgc.invoke(CHART_RANGE_X, index, chosen) } }
             ChartChoice("Range", charts.ranges, chart.rangeY) { chosen -> offMainDetached { Qgc.invoke(CHART_RANGE_Y, index, chosen) } }
         }
-        val measurer = rememberTextMeasurer()
+        val measurer = rememberTextMeasurer(cacheSize = TICK_LABEL_CACHE)
         val ink = MaterialTheme.colorScheme.onSurfaceVariant
         val tickStyle = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = ink)
-        val now = remember(chart) { System.currentTimeMillis() }
-        Canvas(Modifier.fillMaxWidth().height(CHART_HEIGHT).padding(bottom = 16.dp)) {
-            drawRect(grid, style = Stroke(1.dp.toPx()))
+        val now by produceState(System.currentTimeMillis()) {
+            while (true) {
+                delay(CLOCK_TICK_MS)
+                value = System.currentTimeMillis()
+            }
+        }
+        Canvas(Modifier.fillMaxWidth().height(CHART_HEIGHT)) {
             val low = chart.yMin ?: return@Canvas
             val high = chart.yMax ?: return@Canvas
-            valueTicks(low, high).forEach { (at, label) ->
-                val y = at * size.height
-                drawLine(grid, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
-                drawText(measurer, label, Offset(2.dp.toPx(), (y - 14.dp.toPx()).coerceAtLeast(0f)), tickStyle)
+            val values = valueTicks(low, high).map { (at, label) -> at to measurer.measure(label, tickStyle) }
+            val times = timeTicks(chart.windowMs, now).map { (at, label) -> at to measurer.measure(label, tickStyle) }
+            val gap = 4.dp.toPx()
+            val left = (values.maxOfOrNull { it.second.size.width } ?: 0) + gap
+            val plotHeight = size.height - (times.maxOfOrNull { it.second.size.height } ?: 0) - gap
+            val plotWidth = size.width - left
+            drawRect(grid, topLeft = Offset(left, 0f), size = Size(plotWidth, plotHeight), style = Stroke(1.dp.toPx()))
+            values.forEach { (at, text) ->
+                val y = at * plotHeight
+                drawLine(grid, Offset(left, y), Offset(size.width, y), strokeWidth = 1f)
+                drawText(text, topLeft = Offset(left - gap - text.size.width, (y - text.size.height / 2f).coerceIn(0f, plotHeight - text.size.height)))
             }
-            timeTicks(chart.windowMs, now).forEach { (at, label) ->
-                val x = at * size.width
-                drawLine(grid, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
-                val text = measurer.measure(label, tickStyle)
-                drawText(text, topLeft = Offset((x - text.size.width / 2f).coerceIn(0f, size.width - text.size.width), size.height + 2.dp.toPx()))
+            times.forEach { (at, text) ->
+                val x = left + at * plotWidth
+                drawLine(grid, Offset(x, 0f), Offset(x, plotHeight), strokeWidth = 1f)
+                drawText(text, topLeft = Offset((x - text.size.width / 2f).coerceIn(left, size.width - text.size.width), plotHeight + gap))
             }
             chart.plots.forEach { plot ->
                 val path = Path().apply {
                     plot.points.forEachIndexed { at, (age, value) ->
                         val (x, y) = chartPoint(age, value, chart.windowMs, low, high)
-                        val point = Offset(x * size.width, y * size.height)
+                        val point = Offset(left + x * plotWidth, y * plotHeight)
                         if (at == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
                     }
                 }

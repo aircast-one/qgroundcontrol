@@ -42,7 +42,11 @@ pub fn banded(points: Vec<Point>, mission: Option<(f64, f64)>) -> Profile {
     let high = altitudes.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let (low, high) = if altitudes.is_empty() { (0.0, 0.0) } else { (low, high) };
     let padding = if altitudes.is_empty() { 0.0 } else { ((high - low) * 0.1).max(LEVEL_ROUTE_PADDING) };
-    let floor = if low > 0.0 { (low - padding).max(0.0) } else { low };
+    let floor = match (low > 0.0, high > low) {
+        (true, _) => (low - padding).max(0.0),
+        (false, true) => low,
+        (false, false) => low - padding,
+    };
     let min_clearance = points
         .iter()
         .filter(|p| p.distance > 0.0)
@@ -576,6 +580,9 @@ mod tests {
         let level = |distance: f64| Point { sequence: 1, distance, mission_altitude: 50.0, terrain_altitude: None, collision: false };
         let profile = banded(vec![level(0.0), level(100.0)], None);
         assert!(profile.min_altitude < 50.0 && profile.max_altitude > 50.0, "{} .. {}", profile.min_altitude, profile.max_altitude);
+        let sea = |distance: f64| Point { sequence: 1, distance, mission_altitude: 0.0, terrain_altitude: None, collision: false };
+        let low = banded(vec![sea(0.0), sea(100.0)], None);
+        assert!(low.min_altitude < 0.0 && low.max_altitude > 0.0, "a level route at sea level is centred too: {} .. {}", low.min_altitude, low.max_altitude);
     }
 
     #[test]

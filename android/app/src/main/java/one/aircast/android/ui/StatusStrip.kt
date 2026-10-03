@@ -37,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
+import androidx.compose.ui.unit.Dp
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
@@ -131,8 +133,8 @@ fun StatusPill(modifier: Modifier = Modifier) {
 
 private val STRIP_GAP = 14.dp
 
-private fun Modifier.leadingGap(gap: androidx.compose.ui.unit.Dp): Modifier = layout { measurable, constraints ->
-    val placeable = measurable.measure(constraints)
+private fun Modifier.leadingGap(gap: Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.offset(horizontal = -gap.roundToPx()))
     val offset = if (placeable.width > 0) gap.roundToPx() else 0
     layout(placeable.width + offset, placeable.height) { placeable.place(offset, 0) }
 }
