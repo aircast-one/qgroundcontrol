@@ -29,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -36,6 +37,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
 import org.json.JSONObject
 import java.text.NumberFormat
@@ -89,13 +91,19 @@ internal fun mavlinkLog(view: JSONObject?): MavlinkLog? = view?.let {
 
 internal fun logSizeText(size: Long): String = NumberFormat.getIntegerInstance().format(size)
 
+internal fun logListIdle(log: MavlinkLog): Boolean = !log.uploading && !log.running
+
+internal data class LogConfirm(val title: String, val question: String, val run: () -> Unit)
+
+internal const val MAVLINK_LOGGING_TITLE = "MAVLink Logging"
+
 @Composable
 internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var read by remember { mutableStateOf<MavlinkLog?>(null) }
     var polls by remember { mutableIntStateOf(0) }
     var selected by remember { mutableStateOf(emptySet<String>()) }
-    var confirming by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    var confirming by remember { mutableStateOf<LogConfirm?>(null) }
     var refusal by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(polls) {
@@ -149,7 +157,12 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
                     enabled = !uploadingThis && !file.writing,
                     onCheckedChange = { selected = if (it) selected + file.name else selected - file.name },
                 )
-                Text(file.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                Text(
+                    file.name,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (file.writing) MaterialTheme.aircast.warning else Color.Unspecified,
+                )
                 if (uploadingThis && !file.uploaded) {
                     LinearProgressIndicator(progress = { log.uploadProgress }, modifier = Modifier.width(96.dp))
                 } else {
@@ -157,38 +170,47 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
                 }
             }
         }
-        val idle = !log.uploading
+        val idle = logListIdle(log)
         val uploadedSelected = log.files.any { it.name in selected && it.uploaded }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(enabled = idle, onClick = { selected = log.files.filter { !it.writing }.map { it.name }.toSet() }) { Text("Select all") }
             TextButton(enabled = idle, onClick = { selected = emptySet() }) { Text("Select none") }
             TextButton(enabled = selected.isNotEmpty() && idle, onClick = {
-                confirming = "Delete the selected log files?" to {
+                confirming = LogConfirm("Delete Selected Log Files", "Delete the selected log files?") {
                     act("mavlinkLog.delete", *selected.toTypedArray())
                     selected = emptySet()
                 }
             }) { Text("Delete…") }
             if (log.uploading) {
-                TextButton(onClick = { confirming = "Cancel the upload in progress?" to { act("mavlinkLog.cancelUpload") } }) { Text("Cancel upload…") }
+                TextButton(onClick = { confirming = LogConfirm("Cancel Upload", "Cancel the upload in progress?") { act("mavlinkLog.cancelUpload") } }) { Text("Cancel upload…") }
             } else {
-                TextButton(enabled = selected.isNotEmpty() && !uploadedSelected, onClick = {
+                TextButton(enabled = selected.isNotEmpty() && idle && !uploadedSelected, onClick = {
                     if (log.settings.optText("emailAddress").isBlank()) {
                         refusal = "Please enter an email address before uploading MAVLink log files."
                     } else {
-                        confirming = "Upload the selected log files?" to { act("mavlinkLog.upload", *selected.toTypedArray()) }
+                        confirming = LogConfirm("Upload Selected Log Files", "Upload the selected log files?") { act("mavlinkLog.upload", *selected.toTypedArray()) }
                     }
                 }) { Text("Upload…") }
             }
         }
-        listOfNotNull(refusal, log.message.ifBlank { null }).forEach { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        log.message.ifBlank { null }?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
 
-    confirming?.let { (question, run) ->
+    confirming?.let { confirm ->
         AlertDialog(
             onDismissRequest = { confirming = null },
-            text = { Text(question) },
-            confirmButton = { TextButton(onClick = { confirming = null; run() }) { Text("Ok") } },
+            title = { Text(confirm.title) },
+            text = { Text(confirm.question) },
+            confirmButton = { TextButton(onClick = { confirming = null; confirm.run() }) { Text("Ok") } },
             dismissButton = { TextButton(onClick = { confirming = null }) { Text("Cancel") } },
+        )
+    }
+    refusal?.let { text ->
+        AlertDialog(
+            onDismissRequest = { refusal = null },
+            title = { Text(MAVLINK_LOGGING_TITLE) },
+            text = { Text(text) },
+            confirmButton = { TextButton(onClick = { refusal = null }) { Text("Close") } },
         )
     }
 }

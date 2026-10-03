@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,5 +20,13 @@ class Px4LogTransferTest {
     @Test
     fun `the upload progress is the core's sent fraction`() {
         assertEquals(0.4f, mavlinkLog(JSONObject("""{"uploading":true,"uploadingFile":"001-x","uploadProgress":0.4}"""))!!.uploadProgress)
+    }
+
+    @Test
+    fun `the saved file buttons wait while logging or uploading like PX4LogTransferSettings _idle`() {
+        val idle = { running: Boolean, uploading: Boolean -> logListIdle(mavlinkLog(JSONObject("""{"logRunning":$running,"uploading":$uploading}"""))!!) }
+        assertTrue(idle(false, false))
+        assertFalse(idle(true, false))
+        assertFalse(idle(false, true))
     }
 }
