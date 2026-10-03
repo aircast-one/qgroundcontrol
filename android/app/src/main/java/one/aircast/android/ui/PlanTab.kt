@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import one.aircast.mapspike.aircast
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -226,8 +227,15 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
                             enabled = upload.enabled,
                             modifier = Modifier.alpha(if (upload.enabled) 1f else 0.38f),
                             shape = CircleShape,
-                            color = if (upload.emphasised) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
-                            contentColor = if (upload.emphasised) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                            color = when {
+                                upload.done -> MaterialTheme.aircast.success
+                                upload.emphasised -> MaterialTheme.colorScheme.primary
+                                else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                            },
+                            contentColor = when {
+                                upload.done || upload.emphasised -> MaterialTheme.colorScheme.onPrimary
+                                else -> MaterialTheme.colorScheme.onSurface
+                            },
                         ) {
                             Box(Modifier.height(40.dp)) {
                                 if (syncing) {

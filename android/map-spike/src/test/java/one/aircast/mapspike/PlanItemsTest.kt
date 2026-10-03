@@ -259,8 +259,9 @@ class InsertAfterTest {
     }
 
     @Test
-    fun `a selection that is not an item does not move the insertion point`() {
-        assertEquals(AT_END, insertAfter(MapHit.SurveyVertex(1, 0), plan))
+    fun `a selected pattern corner inserts after its pattern, and a non-mission selection appends`() {
+        assertEquals(2, insertAfter(MapHit.SurveyVertex(1, 0), plan))
+        assertEquals(AT_END, insertAfter(MapHit.Rally(1), plan))
     }
 }
 

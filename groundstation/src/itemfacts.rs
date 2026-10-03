@@ -180,12 +180,15 @@ pub fn wizard_info(wizard: bool, vtol: bool) -> [(String, Value); 2] {
     ]
 }
 
-pub fn command_info(read: &Value) -> [(String, Value); 3] {
+pub fn command_info(read: &Value) -> [(String, Value); 6] {
     let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|t| !t.is_empty()).map_or(Value::Null, |t| json!(t));
     [
         ("takeoff".to_string(), json!(flag(read, "isTakeoffItem"))),
         ("category".to_string(), text("category")),
         ("commandDescription".to_string(), text("commandDescription")),
+        ("commandName".to_string(), text("commandName")),
+        ("sequenceNumber".to_string(), read.get("sequenceNumber").and_then(Value::as_i64).map_or(Value::Null, |n| json!(n))),
+        ("specifiesCoordinate".to_string(), json!(flag(read, "specifiesCoordinate"))),
     ]
 }
 
@@ -294,8 +297,8 @@ mod tests {
 
     #[test]
     fn command_info_carries_what_the_command_picker_and_editor_read() {
-        let info = command_info(&json!({ "isTakeoffItem": true, "category": "Basic", "commandDescription": "Take off from the ground" }));
-        assert_eq!(info.map(|(k, v)| (k, v)), [("takeoff".to_string(), json!(true)), ("category".to_string(), json!("Basic")), ("commandDescription".to_string(), json!("Take off from the ground"))]);
+        let info = command_info(&json!({ "isTakeoffItem": true, "category": "Basic", "commandDescription": "Take off from the ground", "commandName": "Takeoff", "sequenceNumber": 1, "specifiesCoordinate": true }));
+        assert_eq!(info.map(|(k, v)| (k, v)), [("takeoff".to_string(), json!(true)), ("category".to_string(), json!("Basic")), ("commandDescription".to_string(), json!("Take off from the ground")), ("commandName".to_string(), json!("Takeoff")), ("sequenceNumber".to_string(), json!(1)), ("specifiesCoordinate".to_string(), json!(true))], "MissionItemEditor heads with commandName and the sequence seal, and offers a position for any item that specifiesCoordinate");
         assert_eq!(command_info(&json!({}))[1].1, Value::Null);
     }
 

@@ -98,19 +98,30 @@ fun rowAt(rows: List<ItemRow>, index: Int): ItemRow? = rows.firstOrNull { it.ind
 fun selectionAfterRemove(removed: Int, countBefore: Int): MapHit? =
     (countBefore - 2).takeIf { it > HOME_ITEM }?.let { last -> MapHit.Waypoint(minOf(removed, last)) }
 
+fun missionItemIndex(selected: MapHit?): Int? = when (selected) {
+    is MapHit.Waypoint -> selected.index
+    is MapHit.SurveyVertex -> selected.item
+    is MapHit.LandingPlace -> selected.index
+    is MapHit.LoiterRadius -> selected.index
+    is MapHit.LoiterRotation -> selected.index
+    is MapHit.ShapeCentre -> selected.owner.takeIf { !selected.fence }
+    is MapHit.ShapeRadius -> selected.owner.takeIf { !selected.fence }
+    else -> null
+}
+
 fun insertAfter(selected: MapHit?, items: List<MissionItem>): Int {
-    val index = (selected as? MapHit.Waypoint)?.index ?: return AT_END
+    val index = missionItemIndex(selected) ?: return AT_END
     if (items.none { it.index == index }) return AT_END
     return if (index + 1 >= items.size) AT_END else index + 1
 }
 
 fun selectionSequence(selected: MapHit?, items: List<MissionItem>): Int? {
-    val index = (selected as? MapHit.Waypoint)?.index ?: return null
+    val index = missionItemIndex(selected) ?: return null
     return items.firstOrNull { it.index == index }?.sequence
 }
 
 fun addingAfterText(selected: MapHit?, items: List<MissionItem>): String? {
-    val index = (selected as? MapHit.Waypoint)?.index ?: return null
+    val index = missionItemIndex(selected) ?: return null
     val item = items.firstOrNull { it.index == index } ?: return null
     return "Adding after #${item.sequence}"
 }

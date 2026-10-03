@@ -180,8 +180,8 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Item ${index}", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                if (at != null) {
+                Text(itemEditorTitle(view, index), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (at != null || view?.optBoolean("specifiesCoordinate") == true) {
                     Box {
                         TextButton(onClick = { positionMenu = true }) { Text("Position") }
                         val previous = previousCoordinate(view)
@@ -346,9 +346,10 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
         }
     }
 
-    if (editingPosition && at != null) {
+    val positionStart = at ?: (mapCentre ?: previousCoordinate(view))?.let { (latitude, longitude) -> TrackPoint(latitude, longitude) }
+    if (editingPosition && positionStart != null) {
         EditPositionDialog(
-            at = at,
+            at = positionStart,
             onDismiss = { editingPosition = false },
             altitudeMode = view?.takeIf { !it.isNull("altitudeMode") }?.optInt("altitudeMode", -1),
             onAltitude = { shown ->
@@ -636,4 +637,10 @@ private fun PositionField(label: String, value: String, keyboard: KeyboardType =
         keyboardOptions = KeyboardOptions(keyboardType = keyboard),
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+internal fun itemEditorTitle(view: JSONObject?, index: Int): String {
+    val name = view?.optText("commandName")?.ifBlank { null }
+    val sequence = view?.takeIf { it.has("sequenceNumber") && !it.isNull("sequenceNumber") }?.optInt("sequenceNumber")
+    return listOfNotNull(sequence?.let { "#$it" }, name).joinToString(" ").ifBlank { "Item $index" }
 }
