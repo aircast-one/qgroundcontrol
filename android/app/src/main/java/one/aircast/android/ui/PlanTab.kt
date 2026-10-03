@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
@@ -87,8 +88,8 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
     var centre by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
     DisposableEffect(Unit) {
-        offMainDetached { Qgc.set("plan.undoTracking", true) }
-        onDispose { offMainDetached { Qgc.set("plan.undoTracking", false) } }
+        offMainInOrder { Qgc.set("plan.undoTracking", true) }
+        onDispose { offMainInOrder { Qgc.set("plan.undoTracking", false) } }
     }
 
     LaunchedEffect(syncing, containsItems, files.documentName()) {

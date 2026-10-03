@@ -11,3 +11,7 @@ fun CoroutineScope.offMain(block: () -> Unit) {
 fun offMainDetached(block: () -> Unit) {
     Thread(block).start()
 }
+
+private val inOrder = java.util.concurrent.Executors.newSingleThreadExecutor()
+
+fun offMainInOrder(block: () -> Unit) = inOrder.execute(block)

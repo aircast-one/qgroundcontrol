@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -99,7 +100,7 @@ internal fun ActuatorTestSection(
     var moved by remember(testing.actuators) { mutableStateOf(emptySet<Int>()) }
     var allMotors by remember(testing.allMotors) { mutableStateOf(testing.allMotors?.rest ?: 0.0) }
 
-    DisposableEffect(Unit) { onDispose { offMainDetached { Qgc.invoke(ACTUATOR_TEST_ACTIVE, false) } } }
+    DisposableEffect(Unit) { onDispose { offMainInOrder { Qgc.invoke(ACTUATOR_TEST_ACTIVE, false) } } }
 
     fun setEnabled(on: Boolean) {
         onEnabled(on)
@@ -108,7 +109,7 @@ internal fun ActuatorTestSection(
             moved = emptySet()
             allMotors = testing.allMotors?.rest ?: 0.0
         }
-        offMainDetached { Qgc.invoke(ACTUATOR_TEST_ACTIVE, on) }
+        offMainInOrder { Qgc.invoke(ACTUATOR_TEST_ACTIVE, on) }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

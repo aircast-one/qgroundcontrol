@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,21 +36,17 @@ import one.aircast.android.bridge.settingControl
 
 private const val RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
 
-private val rcCalls = java.util.concurrent.Executors.newSingleThreadExecutor()
-
-internal fun rcCall(block: () -> Unit) = rcCalls.execute(block)
-
 internal fun sendRcOverride(channel: Int, pwm: Int) {
-    if (channel > 0) rcCall { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
+    if (channel > 0) offMainInOrder { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
 }
 
 private fun releaseOverrides() {
-    rcCall { Qgc.invoke("vehicle.clearRcChannelOverrides") }
+    offMainInOrder { Qgc.invoke("vehicle.clearRcChannelOverrides") }
 }
 
 internal fun releaseRcChannels(channels: List<Int>) {
     val held = channels.filter { it > 0 }.distinct()
-    if (held.isNotEmpty()) rcCall { held.forEach { Qgc.invoke("vehicle.releaseRcChannelOverride", it) } }
+    if (held.isNotEmpty()) offMainInOrder { held.forEach { Qgc.invoke("vehicle.releaseRcChannelOverride", it) } }
 }
 
 @Composable

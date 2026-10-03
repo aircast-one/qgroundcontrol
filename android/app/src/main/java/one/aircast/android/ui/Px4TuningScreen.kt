@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.horizontalScroll
+import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,7 +34,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.offMainDetached
 import androidx.compose.runtime.DisposableEffect
 import one.aircast.mapspike.optText
 import org.json.JSONArray
@@ -141,8 +141,8 @@ fun Px4TuningScreen(modifier: Modifier = Modifier) {
     }
 
     DisposableEffect(tab.tuningMode) {
-        scope.launch(Dispatchers.IO) { Qgc.invoke(SET_TUNING_TELEMETRY, tab.tuningMode) }
-        onDispose { offMainDetached { Qgc.invoke(SET_TUNING_TELEMETRY, 0) } }
+        offMainInOrder { Qgc.invoke(SET_TUNING_TELEMETRY, tab.tuningMode) }
+        onDispose { offMainInOrder { Qgc.invoke(SET_TUNING_TELEMETRY, 0) } }
     }
 
     fun write(path: String, value: Any) {
