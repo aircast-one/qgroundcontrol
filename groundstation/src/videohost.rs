@@ -151,6 +151,46 @@ pub fn stop_recording() {
     }
 }
 
+pub const NO_FRAME_MESSAGE: &str = "There is no video frame to capture.";
+
+pub fn tight_rgba(buffer: &[u8], width: usize, height: usize, stride: usize) -> Option<Vec<u8>> {
+    let row = width * 4;
+    (stride >= row && buffer.len() >= stride * height.saturating_sub(1) + row).then(|| (0..height).flat_map(|y| buffer[y * stride..y * stride + row].iter().copied()).collect())
+}
+
+pub fn photo_file_name(folder: &str, stamp: &str) -> String {
+    format!("{}/{stamp}.jpg", folder.trim_end_matches('/'))
+}
+
+#[cfg(all(feature = "jni-host", not(test)))]
+fn latest_frame() -> Option<(Vec<u8>, usize, usize)> {
+    let video = crate::androidvideo::video()?;
+    let (width, height) = unsafe { ((video.width)(), (video.height)()) };
+    let (width, height) = (usize::try_from(width).ok().filter(|w| *w > 0)?, usize::try_from(height).ok().filter(|h| *h > 0)?);
+    let mut buffer = vec![0u8; width * height * 4];
+    let (mut w, mut h, mut stride) = (0, 0, 0);
+    let copied = unsafe { (video.copy_frame)(buffer.as_mut_ptr().cast(), i32::try_from(buffer.len()).ok()?, &mut w, &mut h, &mut stride) };
+    let (w, h, stride) = (usize::try_from(w).ok()?, usize::try_from(h).ok()?, usize::try_from(stride).ok()?);
+    copied.then(|| tight_rgba(&buffer, w, h, stride).map(|rgba| (rgba, w, h))).flatten()
+}
+
+#[cfg(not(all(feature = "jni-host", not(test))))]
+fn latest_frame() -> Option<(Vec<u8>, usize, usize)> {
+    None
+}
+
+pub fn grab_image() -> Result<String, &'static str> {
+    let (rgba, width, height) = latest_frame().ok_or(NO_FRAME_MESSAGE)?;
+    let folder = crate::settingsstore::photo_save_path().ok_or("Unable to save the photo. The save path must be specified in Settings.")?;
+    let _ = std::fs::create_dir_all(&folder);
+    let file = photo_file_name(&folder, &chrono::Local::now().format("%Y-%m-%d_%H.%M.%S%.3f").to_string());
+    let (width, height) = (u16::try_from(width).map_err(|_| NO_FRAME_MESSAGE)?, u16::try_from(height).map_err(|_| NO_FRAME_MESSAGE)?);
+    jpeg_encoder::Encoder::new_file(&file, 90)
+        .and_then(|encoder| encoder.encode(&rgba, width, height, jpeg_encoder::ColorType::Rgba))
+        .map(|_| file)
+        .map_err(|_| "The photo could not be saved.")
+}
+
 pub fn recording() -> bool {
     get("video.recording").and_then(|v| v.get("value")?.as_bool()).unwrap_or(false) || HOST.lock().unwrap_or_else(PoisonError::into_inner).as_ref().is_some_and(|host| host.recording_file.is_some())
 }
@@ -473,6 +513,14 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_grabbed_frame_drops_row_padding_and_lands_as_a_dated_jpeg() {
+        let padded = [1, 2, 3, 4, 9, 9, 5, 6, 7, 8, 9, 9];
+        assert_eq!(tight_rgba(&padded, 1, 2, 6), Some(vec![1, 2, 3, 4, 5, 6, 7, 8]));
+        assert_eq!(tight_rgba(&padded, 2, 2, 6), None, "a stride shorter than the row is not a frame");
+        assert_eq!(photo_file_name("/data/Photo/", "2026-10-03_12.00.00.000"), "/data/Photo/2026-10-03_12.00.00.000.jpg");
+    }
 
     #[test]
     fn a_recording_is_named_and_trimmed_as_video_manager_does() {

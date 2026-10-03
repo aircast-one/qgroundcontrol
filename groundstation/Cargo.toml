@@ -50,6 +50,7 @@ pbkdf2 = { version = "0.13.0", features = ["sha2"] }
 getrandom = "0.4.3"
 crc = "3.4.0"
 fs4 = { version = "0.13", features = ["sync"] }
+jpeg-encoder = "0.7.1"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 serialport = "4.10.1"

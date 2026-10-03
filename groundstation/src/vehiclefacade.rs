@@ -1269,7 +1269,13 @@ impl<B: Backend> Facade<B> {
 
 impl<B: Backend> Facade<B> {
     fn real_camera_invoke(&self, name: &str, args: &str) -> Option<String> {
-        let (vehicle, captures_video) = switched_on().then(|| crate::hub::lock().active().and_then(|v| v.cameras.selected().map(|c| (v.id, c.info.flags & crate::cameraproto::CAP_CAPTURE_VIDEO != 0)))).flatten()?;
+        let (vehicle, captures_video, captures_images) = switched_on().then(|| crate::hub::lock().active().and_then(|v| v.cameras.selected().map(|c| (v.id, c.info.flags & crate::cameraproto::CAP_CAPTURE_VIDEO != 0, c.info.flags & crate::cameraproto::CAP_CAPTURE_IMAGE != 0)))).flatten()?;
+        if name == "takePhoto" && !captures_images {
+            return Some(match crate::videohost::grab_image() {
+                Ok(_) => json!({ "ok": true, "result": true }).to_string(),
+                Err(reason) => json!({ "ok": false, "result": false, "error": reason }).to_string(),
+            });
+        }
         if let Some(local) = local_recording_op(name, captures_video, crate::videohost::recording()) {
             let started = match local {
                 LocalRecording::Start => crate::videohost::start_recording().map_err(|refused| refused.unwrap_or("Video recording could not start.")),

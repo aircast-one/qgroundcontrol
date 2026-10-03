@@ -679,6 +679,11 @@ pub fn video_save_path() -> Option<String> {
     Some(child_save_path(&root, "Video")).filter(|path| !path.is_empty())
 }
 
+pub fn photo_save_path() -> Option<String> {
+    let root = stored_text(&key("App", "savePath"))?;
+    Some(child_save_path(&root, "Photo")).filter(|path| !path.is_empty())
+}
+
 pub fn log_save_path() -> Option<String> {
     let root = stored_text(&key("App", "savePath"))?;
     Some(child_save_path(&root, "Logs")).filter(|path| !path.is_empty())
