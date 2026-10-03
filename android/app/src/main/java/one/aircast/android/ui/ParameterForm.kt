@@ -168,7 +168,7 @@ internal fun ParameterForm(
     LazyColumn(modifier.fillMaxSize()) {
         rows.forEach { section ->
             item(key = "section:${section.title}") {
-                SectionHeader(section.title, section.image)
+                SectionHeader(sentenceCase(section.title), section.image)
                 if (section.note.isNotBlank()) {
                     Text(
                         text = section.note,
