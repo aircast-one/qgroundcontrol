@@ -291,7 +291,19 @@ const HOVER_NEEDS_FIXED_ALTITUDE: &str = "Only with a relative or absolute altit
 const REFLY_NOT_WITH_TERRAIN: &str = "Not while the altitude is calculated above terrain.";
 const TURNAROUND_NOT_WITH_HOVER: &str = "Not while hovering to capture each image.";
 
-pub fn fields(survey: &Value, item: &str, multirotor: bool, hover_allowed: bool, units: &Units) -> Vec<Value> {
+pub fn editor_shows(name: &str, class: crate::cmdinfo::VehicleClass) -> bool {
+    use crate::cmdinfo::VehicleClass::{FixedWing, Vtol};
+    match name {
+        "SplitConcavePolygons" => false,
+        "FlyAlternateTransects" => matches!(class, FixedWing | Vtol),
+        _ => true,
+    }
+}
+
+pub fn fields(survey: &Value, item: &str, class: crate::cmdinfo::VehicleClass, units: &Units) -> Vec<Value> {
+    use crate::cmdinfo::VehicleClass::{MultiRotor, Vtol};
+    let multirotor = class == MultiRotor;
+    let hover_allowed = matches!(class, MultiRotor | Vtol);
     let transect = survey.get("TransectStyleComplexItem").cloned().unwrap_or(Value::Null);
     let turnaround = if multirotor { "TurnAroundDistanceMultiRotor" } else { "TurnAroundDistance" };
     let corridor = survey.get("complexItemType").and_then(Value::as_str) == Some("CorridorScan");
@@ -309,7 +321,6 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, hover_allowed: bool,
         false => vec![
             (SURVEY_META, "GridAngle", "gridAngle", survey, "angle"),
             (SURVEY_META, "FlyAlternateTransects", "flyAlternateTransects", survey, "flyAlternateTransects"),
-            (SURVEY_META, "SplitConcavePolygons", "splitConcavePolygons", survey, "splitConcavePolygons"),
         ],
     };
     let manual_camera = survey.pointer("/CameraCalc/CameraName").and_then(Value::as_str).is_none_or(|name| name == MANUAL_CAMERA);
@@ -329,6 +340,7 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, hover_allowed: bool,
     chosen
         .into_iter()
         .filter(|(_, name, ..)| *name != "HoverAndCapture" || hover_allowed)
+        .filter(|(_, name, ..)| editor_shows(name, class))
         .filter(|(_, name, ..)| !corridor || !matches!(*name, "HoverAndCapture" | "Refly90Degrees"))
         .filter_map(|(file, name, suffix, owner, key)| {
             let meta = meta(file, name)?;
@@ -913,7 +925,7 @@ mod tests {
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let units = Units { vertical: &metres, horizontal: &metres };
         let survey = |mode: i64, hover: bool| json!({ "complexItemType": "survey", "TransectStyleComplexItem": { "HoverAndCapture": hover, "CameraCalc": { "DistanceMode": mode, "CameraName": MANUAL_CAMERA } } });
-        let enabled = |s: &Value, hover_allowed: bool, suffix: &str| fields(s, "p", true, hover_allowed, &units).into_iter().find(|c| c["pathSuffix"] == suffix).map(|c| c["enabled"] != false);
+        let enabled = |s: &Value, hover_allowed: bool, suffix: &str| fields(s, "p", if hover_allowed { crate::cmdinfo::VehicleClass::MultiRotor } else { crate::cmdinfo::VehicleClass::FixedWing }, &units).into_iter().find(|c| c["pathSuffix"] == suffix).map(|c| c["enabled"] != false);
         assert_eq!(enabled(&survey(1, false), false, "hoverAndCapture"), None, "a fixed wing never sees hover-and-capture");
         assert_eq!(enabled(&survey(1, false), true, "hoverAndCapture"), Some(true));
         assert_eq!(enabled(&survey(3, false), true, "hoverAndCapture"), Some(false), "only with a relative or absolute altitude");
@@ -927,7 +939,7 @@ mod tests {
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let units = Units { vertical: &metres, horizontal: &metres };
         let survey = json!({ "complexItemType": "survey", "CameraCalc": { "DistanceMode": 1, "CameraName": MANUAL_CAMERA }, "TransectStyleComplexItem": {} });
-        let rows = |s: &Value| fields(s, "p", true, true, &units).into_iter().filter(|c| c["name"].as_str().is_some_and(|n| n.starts_with("TerrainAdjust"))).map(|c| c["enabled"].clone()).collect::<Vec<_>>();
+        let rows = |s: &Value| fields(s, "p", crate::cmdinfo::VehicleClass::MultiRotor, &units).into_iter().filter(|c| c["name"].as_str().is_some_and(|n| n.starts_with("TerrainAdjust"))).map(|c| c["enabled"].clone()).collect::<Vec<_>>();
         assert_eq!(rows(&survey).len(), 3, "the three terrain-adjust rows have to be found at all");
         assert!(rows(&survey).iter().all(|enabled| *enabled == json!(false)), "{:?}", rows(&survey));
         let following = set(&survey, "cameraCalc.distanceMode", &json!(3), &units).expect("the frame is a camera calc key the core writes");
@@ -941,7 +953,7 @@ mod tests {
     #[test]
     fn a_structure_scan_derives_its_layers_and_a_manual_camera_sets_its_own_spacing() {
         let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/structure-inserted-by-qt.json")).unwrap();
-        let layers = fields(&fixture["structure"], "p", true, true, &metric()).into_iter().find(|f| f["name"] == "Layers").expect("the layer count is shown");
+        let layers = fields(&fixture["structure"], "p", crate::cmdinfo::VehicleClass::MultiRotor, &metric()).into_iter().find(|f| f["name"] == "Layers").expect("the layer count is shown");
         assert_eq!(layers["readOnly"], true, "StructureScanEditor shows layers as a label computed from height, bottom and trigger distance");
         assert!(set(&fixture["structure"], "layers", &json!(5), &metric()).is_none());
         let survey = json!({ "complexItemType": "survey", "TransectStyleComplexItem": { "CameraCalc": { "CameraName": MANUAL_CAMERA, "AdjustedFootprintSide": 25.0, "AdjustedFootprintFrontal": 25.0 } } });
@@ -972,8 +984,8 @@ mod tests {
         real["CameraName"] = json!("Sony ILCE-QX1");
         let camera = with_calc(&pitched, real);
         assert_eq!(camera["GimbalPitch"], 0, "StructureScanComplexItem::_updateGimbalPitch zeroes the pitch for a real camera");
-        assert!(fields(&camera, "i", true, true, &metric()).iter().all(|f| f["pathSuffix"] != "gimbalPitch"), "and StructureScanEditor shows it only for a manual camera");
-        let shown = fields(&pitched, "i", true, true, &metric()).into_iter().find(|f| f["pathSuffix"] == "gimbalPitch").unwrap();
+        assert!(fields(&camera, "i", crate::cmdinfo::VehicleClass::MultiRotor, &metric()).iter().all(|f| f["pathSuffix"] != "gimbalPitch"), "and StructureScanEditor shows it only for a manual camera");
+        let shown = fields(&pitched, "i", crate::cmdinfo::VehicleClass::MultiRotor, &metric()).into_iter().find(|f| f["pathSuffix"] == "gimbalPitch").unwrap();
         assert_eq!((shown["value"].as_f64(), shown["minimum"].as_f64(), shown["maximum"].as_f64(), shown["units"].as_str()), (Some(45.0), Some(0.0), Some(90.0), Some("deg")));
     }
 
@@ -1034,7 +1046,7 @@ mod tests {
         assert_eq!(wider["CorridorWidth"], 80.0);
         assert!(passes(&wider) > passes(corridor), "{} passes at 80 m against {} at 50 m", passes(&wider), passes(corridor));
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
-        let listed: Vec<String> = fields(corridor, "i", true, true, &Units { vertical: &metres, horizontal: &metres }).iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
+        let listed: Vec<String> = fields(corridor, "i", crate::cmdinfo::VehicleClass::MultiRotor, &Units { vertical: &metres, horizontal: &metres }).iter().filter_map(|f| f["pathSuffix"].as_str().map(str::to_string)).collect();
         assert!(listed.contains(&"corridorWidth".to_string()) && !listed.contains(&"gridAngle".to_string()), "{listed:?}");
         assert!(!listed.iter().any(|s| s == "hoverAndCapture" || s == "refly90Degrees"), "CorridorScanEditor shows width, turnaround and images in turnarounds only: {listed:?}");
     }
@@ -1198,6 +1210,17 @@ mod tests {
     }
 
     #[test]
+    fn survey_editor_rows_follow_survey_item_editor_visibility() {
+        let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let survey = plan["mission"]["items"][0].clone();
+        let names = |class| fields(&survey, "i", class, &metric()).iter().filter_map(|f| f["name"].as_str().map(str::to_string)).collect::<Vec<_>>();
+        use crate::cmdinfo::VehicleClass::{FixedWing, MultiRotor, Vtol};
+        assert!([FixedWing, MultiRotor, Vtol].iter().all(|class| !names(*class).contains(&"SplitConcavePolygons".to_string())), "SurveyItemEditor has no split concave polygons row");
+        assert!(names(FixedWing).contains(&"FlyAlternateTransects".to_string()) && names(Vtol).contains(&"FlyAlternateTransects".to_string()));
+        assert!(!names(MultiRotor).contains(&"FlyAlternateTransects".to_string()), "alternate transects only for fixedWing || vtol");
+    }
+
+    #[test]
     fn a_survey_editor_offers_the_fields_and_camera_qt_offers() {
         let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
         let survey = plan["mission"]["items"][0].clone();
@@ -1205,7 +1228,7 @@ mod tests {
         let item = "plan.missionController.visualItems.1";
         let metres = crate::read::Unit { name: "m".to_string(), factor: 1.0 };
         let units = Units { vertical: &metres, horizontal: &metres };
-        let mine = json!({ "fields": fields(&survey, item, true, true, &units), "camera": camera(&survey, item, &units, true) });
+        let mine = json!({ "fields": fields(&survey, item, crate::cmdinfo::VehicleClass::MultiRotor, &units), "camera": camera(&survey, item, &units, true) });
         let rows = |v: &Value, key: &str| v[key].as_array().cloned().unwrap_or_default();
         assert_eq!(rows(&mine, "fields").len(), rows(&qt, "fields").len());
         rows(&mine, "fields").iter().zip(rows(&qt, "fields")).for_each(|(core, qt)| {

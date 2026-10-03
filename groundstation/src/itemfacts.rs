@@ -6,6 +6,7 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &[
     "plan.missionController.visualItems.count",
     "plan.controllerVehicle.vtol",
+    "plan.controllerVehicle.fixedWing",
     "plan.controllerVehicle.apmFirmware",
     "plan.controllerVehicle.supports.terrainFrame",
     "plan.missionController@visualItemsReset",
@@ -87,7 +88,7 @@ fn value_set_is_distance(facts: &[Value]) -> bool {
     facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some("valueSetIsDistance")).and_then(|fact| fact.get("value")).map_or(true, |value| value.as_bool().unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0)))
 }
 
-fn owned(read: &Value, item: &str) -> Vec<Value> {
+fn owned(read: &Value, item: &str, vehicle: crate::cmdinfo::VehicleClass) -> Vec<Value> {
     let class = read.get("class").and_then(Value::as_str);
     let vtol_landing = class == Some("VTOLLandingComplexItem");
     let landing = vtol_landing || class == Some("FixedWingLandingComplexItem");
@@ -96,6 +97,7 @@ fn owned(read: &Value, item: &str) -> Vec<Value> {
     let mut rows: Vec<(&str, Value)> = facts
         .iter()
         .filter(|fact| named(fact))
+        .filter(|fact| crate::surveydoc::editor_shows(fact.get("name").and_then(Value::as_str).unwrap_or(""), vehicle))
         .filter_map(|fact| {
             let property = fact.get("property").and_then(Value::as_str).filter(|p| !p.is_empty() && *p != LAUNCH_ALTITUDE)?;
             let control = field(fact, item, property, "Settings");
@@ -218,6 +220,15 @@ pub fn command_info(read: &Value) -> [(String, Value); 6] {
     ]
 }
 
+fn qt_vehicle_class(backend: &dyn Backend) -> crate::cmdinfo::VehicleClass {
+    let vehicle = object(&backend.get_fields("plan.controllerVehicle", "vtol,fixedWing"));
+    match (flag(&vehicle, "vtol"), flag(&vehicle, "fixedWing")) {
+        (true, _) => crate::cmdinfo::VehicleClass::Vtol,
+        (_, true) => crate::cmdinfo::VehicleClass::FixedWing,
+        _ => crate::cmdinfo::VehicleClass::Generic,
+    }
+}
+
 pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(index) = args.first().and_then(|a| a.parse::<usize>().ok()) else {
         return refused("view.itemFacts needs the index of the item in the plan, as view.itemFacts(3)");
@@ -234,7 +245,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         false => Vec::new(),
     };
     let fields = match (lists.is_empty(), available && !simple) {
-        (true, true) => owned(&read, &item),
+        (true, true) => owned(&read, &item, qt_vehicle_class(backend)),
         _ => lists,
     };
     let info = command_info(&read);
@@ -344,7 +355,7 @@ mod tests {
     #[test]
     fn qt_landing_rows_choose_distance_or_glide_slope_by_radio_button() {
         let read = json!({ "class": "FixedWingLandingComplexItem", "facts": [fact("ValueSetIsDistance", "valueSetIsDistance", 0.0), fact("LandingDistance", "landingDistance", 100.0), fact("GlideSlope", "glideSlope", 5.0)] });
-        let rows = owned(&read, "item");
+        let rows = owned(&read, "item", crate::cmdinfo::VehicleClass::FixedWing);
         let row = |suffix: &str| rows.iter().find(|r| r["pathSuffix"] == suffix).cloned().unwrap_or_default();
         assert_eq!(rows.len(), 2, "FWLandingPatternEditor has no valueSetIsDistance row, the radio buttons set it");
         assert_eq!((row("glideSlope")["enabled"].clone(), row("glideSlope")["choice"].clone()), (json!(true), json!({ "path": "item.valueSetIsDistance", "value": false, "selected": true })));
