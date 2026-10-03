@@ -258,12 +258,16 @@ private fun CalibrationStart(
 }
 
 internal const val RADIO_SWITCHES_PAGE = "Radio Switches"
+internal const val RADIO_LEAVE_ACTION = "cancelButtonClicked"
 
 @Composable
 fun RadioScreen(modifier: Modifier = Modifier) {
     val json by qgcPath(RADIO_VIEW)
     val view = radioView(json)
     LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke(radioCalAction("start")) } }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { one.aircast.android.bridge.offMainInOrder { Qgc.invoke(radioCalAction(RADIO_LEAVE_ACTION)) } }
+    }
     var switchReads by remember { mutableIntStateOf(0) }
     var switches by remember { mutableStateOf(emptyList<ParameterRows>()) }
     LaunchedEffect(switchReads, view?.connected) {
