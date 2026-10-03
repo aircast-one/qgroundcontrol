@@ -428,7 +428,7 @@ private fun SettingsList(
 
         val pageHits = pages.filter { pageMatches(it, search) }
         if (hits.isEmpty() && pageHits.isEmpty()) {
-            item(key = "none") { FootNote("No setting matches \"$search\".") }
+            item(key = "none") { FootNote("No settings match “${search.trim()}”.") }
             return@LazyColumn
         }
 
