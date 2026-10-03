@@ -217,6 +217,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
             VehicleRows(choices, selectable = panelEnabled, scope = scope, onRefusal = { refusal = it }) { picking = false }
+            ListItem(
+                headlineContent = { Text("Connect another vehicle", color = MaterialTheme.colorScheme.primary) },
+                leadingContent = { Icon(painterResource(R.drawable.ic_add), null, tint = MaterialTheme.colorScheme.primary) },
+                modifier = Modifier.clickable { picking = false; AppNavigation.settingsPage = CONNECTIONS_PAGE },
+            )
             refusal?.let {
                 Text(
                     text = it,
