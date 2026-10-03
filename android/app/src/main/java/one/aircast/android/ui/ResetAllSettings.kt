@@ -50,7 +50,7 @@ internal fun ResetAllSettingsRow() {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(if (pending) "All settings will be cleared on next start" else "", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
         OutlinedButton(onClick = { if (pending) write(false) else asking = true }) {
-            Text(if (pending) "Cancel Reset" else "Reset All Settings…")
+            Text(if (pending) "Cancel reset" else "Reset all settings…")
         }
     }
 
