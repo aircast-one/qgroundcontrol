@@ -132,11 +132,12 @@ class PlanHistoryTest {
     }
 
     @Test
-    fun `the title is the file's base name, or New plan as Penpot names an unsaved one`() {
+    fun `the title is the file's complete base name, or Untitled like PlanTreeView`() {
         assertEquals("ridge", planTitle("ridge.plan"))
         assertEquals("a.b", planTitle("a.b.plan"))
-        assertEquals(".plan", planTitle(".plan"))
-        assertEquals("New plan", planTitle(null))
-        assertEquals("New plan", planTitle(""))
+        assertEquals("ridge", planTitle("ridge"))
+        assertEquals("<Untitled>", planTitle(".plan"))
+        assertEquals("<Untitled>", planTitle(null))
+        assertEquals("<Untitled>", planTitle(""))
     }
 }

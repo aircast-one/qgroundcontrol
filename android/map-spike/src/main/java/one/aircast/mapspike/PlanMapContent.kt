@@ -720,7 +720,14 @@ internal fun MapSpikeScreen(
                             selected = layer == option,
                             onClick = { layer = option },
                             shape = SegmentedButtonDefaults.itemShape(option.ordinal, PlanLayer.entries.size),
-                        ) { Text(option.label) }
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(option.label)
+                                layerSubtitle(option, itemCount, rally.size).ifBlank { null }?.let {
+                                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
                     }
                 }
                 if (listedInPanel) {
@@ -1667,6 +1674,12 @@ private fun StatTile(label: String, value: String) {
 }
 
 internal enum class PlanLayer(val label: String) { Mission("Mission"), Fence("Fence"), Rally("Rally") }
+
+internal fun layerSubtitle(layer: PlanLayer, missionItems: Int, rallyPoints: Int): String = when (layer) {
+    PlanLayer.Mission -> "$missionItems items"
+    PlanLayer.Rally -> "$rallyPoints points"
+    PlanLayer.Fence -> ""
+}
 
 internal fun ownerOf(hit: MapHit?): String? = when (hit) {
     is MapHit.Waypoint -> "m${hit.index}"
