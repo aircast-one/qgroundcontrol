@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
+import one.aircast.android.bridge.Fact
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -136,6 +137,7 @@ internal fun GimbalIndicatorCell() {
     val state = remember(view) { gimbalIndicator(view) } ?: return
     var open by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<String?>(null) }
+    var settingsOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     fun act(path: String, vararg args: Any?) {
@@ -187,8 +189,45 @@ internal fun GimbalIndicatorCell() {
                     Button(onClick = { act("gimbal.control", !state.haveControl) }, modifier = Modifier.fillMaxWidth()) { Text(state.controlLabel) }
                 }
                 refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { open = false; settingsOpen = true }) { Text("Gimbal settings") }
             }
         }
+    }
+
+    if (settingsOpen) {
+        ModalBottomSheet(onDismissRequest = { settingsOpen = false }) {
+            GimbalSettings()
+        }
+    }
+}
+
+private const val GIMBAL_CONTROLLER_SETTINGS = "settings.gimbalControllerSettings"
+
+internal fun gimbalSettingsShown(facts: List<Fact>): List<Fact> {
+    val named = { name: String -> facts.firstOrNull { it.name == name } }
+    val on = named("enableOnScreenControl")?.value == true
+    val dragging = named("clickAndDrag")?.value == true
+    return listOfNotNull(
+        named("enableOnScreenControl"),
+        named("clickAndDrag")?.takeIf { on },
+        named("cameraHFov")?.takeIf { on && !dragging },
+        named("cameraVFov")?.takeIf { on && !dragging },
+        named("cameraSlideSpeed")?.takeIf { on && dragging },
+        named("zoomMaxSpeed"),
+        named("zoomMinSpeed"),
+        named("joystickButtonsSpeed"),
+        named("showAzimuthIndicatorOnMap"),
+        named("toolbarIndicatorShowAzimuth"),
+        named("toolbarIndicatorShowAcquireReleaseControl"),
+    )
+}
+
+@Composable
+private fun GimbalSettings() {
+    val facts by one.aircast.android.bridge.qgcFacts(GIMBAL_CONTROLLER_SETTINGS)
+    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Text("On-screen control", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+        gimbalSettingsShown(facts).forEach { FactRow(it) }
     }
 }
 
