@@ -8937,6 +8937,8 @@
         "view.polygon(plan.geoFenceController.polygons.0).edgeLengths.#",
         "view.polygon(plan.geoFenceController.polygons.0).edgeLengths[]",
         "view.polygon(plan.geoFenceController.polygons.0).hasEnoughVertices",
+        "view.polygon(plan.geoFenceController.polygons.0).horizontalMetresPerUnit",
+        "view.polygon(plan.geoFenceController.polygons.0).horizontalUnit",
         "view.polygon(plan.geoFenceController.polygons.0).kind",
         "view.polygon(plan.geoFenceController.polygons.0).midpoints.#",
         "view.polygon(plan.geoFenceController.polygons.0).midpoints[].latitude",
@@ -13591,6 +13593,8 @@
             "string"
         ],
         "hasEnoughVertices": "bool",
+        "horizontalMetresPerUnit": "number",
+        "horizontalUnit": "string",
         "kind": "string",
         "midpoints": [
             {

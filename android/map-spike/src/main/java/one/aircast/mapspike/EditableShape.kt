@@ -9,6 +9,8 @@ data class EditableShape(
     val splitInvokable: String,
     val canRemoveVertex: Boolean,
     val edgeLengths: List<String> = emptyList(),
+    val distanceUnit: String = "m",
+    val metresPerUnit: Double = 1.0,
 )
 
 fun editableShape(path: String, shape: String = ""): EditableShape? {
@@ -22,6 +24,8 @@ fun editableShape(path: String, shape: String = ""): EditableShape? {
         splitInvokable = view.optText("splitInvokable"),
         canRemoveVertex = view.optBoolean("canRemoveVertex"),
         edgeLengths = view.optJSONArray("edgeLengths")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
+        distanceUnit = view.optText("horizontalUnit").ifBlank { "m" },
+        metresPerUnit = view.optDouble("horizontalMetresPerUnit", 1.0).takeIf { it.isFinite() && it > 0 } ?: 1.0,
     )
 }
 

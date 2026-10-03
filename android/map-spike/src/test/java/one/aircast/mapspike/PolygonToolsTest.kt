@@ -82,4 +82,12 @@ class PolygonToolsTest {
         assertEquals("kml", mainShapeExtension(listOf("area.kml")))
         assertNull(mainShapeExtension(emptyList()))
     }
+
+    @Test
+    fun `a typed circle radius is in the app distance units like QGC's Set Radius dialog`() {
+        assertEquals(30.48, circleRadiusMetres("100", 0.3048)!!, 1e-9)
+        assertEquals(12.5, circleRadiusMetres("12,5", 1.0)!!, 1e-9)
+        assertNull(circleRadiusMetres("0", 0.3048))
+        assertNull(circleRadiusMetres("wide", 1.0))
+    }
 }

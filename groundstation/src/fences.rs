@@ -303,6 +303,7 @@ pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
         (true, true) => vertices.len(),
         (true, false) => vertices.len().saturating_sub(1),
     };
+    let horizontal = Unit::horizontal(backend);
     let midpoints: Vec<Value> = (0..segments)
         .map(|i| {
             let (a, b) = (vertices[i], vertices[(i + 1) % vertices.len()]);
@@ -323,7 +324,9 @@ pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
         "removeInvokable": "removeVertex",
         "vertices": vertices.iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
         "midpoints": midpoints,
-        "edgeLengths": edge_lengths(&vertices, segments, &Unit::horizontal(backend)),
+        "edgeLengths": edge_lengths(&vertices, segments, &horizontal),
+        "horizontalMetresPerUnit": horizontal.meters(1.0),
+        "horizontalUnit": horizontal.name,
     })
 }
 

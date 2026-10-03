@@ -562,7 +562,13 @@ internal fun MapSpikeScreen(
 
         radiusFor?.let { target ->
             val vertices = shapeVertices(target, fences, surveyList)
-            RadiusDialog(circleRadius(vertices) ?: 0.0, onDismiss = { radiusFor = null }) { radius ->
+            val shape = shapeEditable(target, fences, surveyList)
+            RadiusDialog(
+                circleRadius(vertices) ?: 0.0,
+                shape?.distanceUnit ?: "m",
+                shape?.metresPerUnit ?: 1.0,
+                onDismiss = { radiusFor = null },
+            ) { radius ->
                 radiusFor = null
                 circleAround(vertices, radius)?.let { ring ->
                     onBridge("Changed the circle radius") { replaceShape(target, ring) }
@@ -1559,14 +1565,14 @@ fun cornerPosition(hit: MapHit, fences: List<FencePolygon>, surveys: List<Survey
 }
 
 @Composable
-private fun RadiusDialog(radius: Double, onDismiss: () -> Unit, onSet: (Double) -> Unit) {
-    var text by remember(radius) { mutableStateOf(String.format(java.util.Locale.US, "%.1f", radius)) }
-    val parsed = typedNumber(text)?.takeIf { it > 0 }
+private fun RadiusDialog(radius: Double, unit: String, metresPerUnit: Double, onDismiss: () -> Unit, onSet: (Double) -> Unit) {
+    var text by remember(radius, metresPerUnit) { mutableStateOf(String.format(java.util.Locale.US, "%.1f", radius / metresPerUnit)) }
+    val parsed = circleRadiusMetres(text, metresPerUnit)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Set radius") },
         text = {
-            OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Radius (m)") }, singleLine = true)
+            OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Radius ($unit)") }, singleLine = true)
         },
         confirmButton = { TextButton(enabled = parsed != null, onClick = { parsed?.let(onSet) }) { Text("Set") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

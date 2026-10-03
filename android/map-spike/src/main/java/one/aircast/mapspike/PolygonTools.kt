@@ -110,6 +110,13 @@ fun shapeVertices(target: ShapeTarget, fences: List<FencePolygon>, surveys: List
         ?: surveys.firstOrNull { surveyPath(it) == target.path }?.area
         ?: emptyList()
 
+fun shapeEditable(target: ShapeTarget, fences: List<FencePolygon>, surveys: List<Survey>): EditableShape? =
+    fences.firstOrNull { fencePath(it.index) == target.path }?.editable
+        ?: surveys.firstOrNull { surveyPath(it) == target.path }?.editable
+
+fun circleRadiusMetres(typed: String, metresPerUnit: Double): Double? =
+    typedNumber(typed)?.takeIf { it > 0 }?.times(metresPerUnit)
+
 private const val CIRCLE_TOLERANCE = 0.01
 
 fun isCircleShape(vertices: List<TrackPoint>): Boolean {
