@@ -218,6 +218,42 @@ pub fn grid_label(structure: bool, property: &str) -> Option<&'static str> {
     }
 }
 
+pub fn row_label(vtol_landing: bool, property: &str) -> Option<&'static str> {
+    match (vtol_landing, property) {
+        (_, "gridAngle") => Some("Angle"),
+        (_, "corridorWidth") => Some("Width"),
+        (_, "turnAroundDistance") => Some("Turnaround distance"),
+        (_, "hoverAndCapture") => Some("Hover to capture each image"),
+        (_, "refly90Degrees") => Some("Refly at 90° for a cross grid"),
+        (_, "cameraTriggerInTurnAround") => Some("Images in turnarounds"),
+        (_, "flyAlternateTransects") => Some("Fly alternate transects"),
+        (_, "terrainAdjustTolerance") => Some("Tolerance"),
+        (_, "terrainAdjustMaxClimbRate") => Some("Max Climb Rate"),
+        (_, "terrainAdjustMaxDescentRate") => Some("Max Descent Rate"),
+        (_, "structureHeight") => Some("Structure height"),
+        (_, "scanBottomAlt") => Some("Scan bottom altitude"),
+        (_, "entranceAlt") => Some("Entrance and exit altitude"),
+        (_, "gimbalPitch") => Some("Gimbal pitch"),
+        (_, "layers") => Some("Layers"),
+        (_, "useLoiterToAlt") => Some("Use loiter to altitude"),
+        (_, "loiterRadius") => Some("Radius"),
+        (_, "loiterClockwise") => Some("Loiter clockwise"),
+        (_, "landingHeading") => Some("Heading"),
+        (false, "useDoChangeSpeed") => Some("Flight Speed"),
+        (false, "landingDistance") => Some("Distance"),
+        (true, "landingDistance") => Some("Landing Dist"),
+        (false, "glideSlope") => Some("Glide Slope"),
+        _ => None,
+    }
+}
+
+pub fn row_labelled(control: Value, vtol_landing: bool, property: &str) -> Value {
+    match row_label(vtol_landing, property) {
+        Some(label) => labelled(control, label),
+        None => control,
+    }
+}
+
 pub fn labelled(control: Value, label: &str) -> Value {
     match control {
         Value::Object(mut fields) => {
@@ -296,7 +332,7 @@ pub fn fields(survey: &Value, item: &str, multirotor: bool, hover_allowed: bool,
         .filter_map(|(file, name, suffix, owner, key)| {
             let meta = meta(file, name)?;
             let value = with_default(owner.get(key), &meta);
-            let shown = terrain_gated(control(&meta, value, item, suffix, "Settings", units), name, follows_terrain);
+            let shown = row_labelled(terrain_gated(control(&meta, value, item, suffix, "Settings", units), name, follows_terrain), false, suffix);
             Some(match name {
                 "HoverAndCapture" if !fixed_altitude => disabled(shown, HOVER_NEEDS_FIXED_ALTITUDE),
                 "Refly90Degrees" if follows_terrain => disabled(shown, REFLY_NOT_WITH_TERRAIN),

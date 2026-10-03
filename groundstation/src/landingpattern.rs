@@ -245,7 +245,7 @@ pub fn fields(pattern: &Value, item: &str, units: &crate::surveydoc::Units) -> V
     let by_distance = pattern.get("valueSetIsDistance").and_then(Value::as_bool).unwrap_or(true);
     field_values(pattern)
         .into_iter()
-        .filter_map(|(name, suffix, value)| crate::surveydoc::fact_control(file, name, value, item, suffix, units).map(|control| (suffix, control)))
+        .filter_map(|(name, suffix, value)| crate::surveydoc::fact_control(file, name, value, item, suffix, units).map(|control| (suffix, crate::surveydoc::row_labelled(control, is_vtol(pattern), suffix))))
         .map(|(suffix, control)| match (suffix, control) {
             ("landingDistance", Value::Object(map)) if !is_vtol(pattern) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(by_distance))]).collect()),
             ("glideSlope", Value::Object(map)) => Value::Object(map.into_iter().chain([("enabled".to_string(), json!(!by_distance))]).collect()),
@@ -542,6 +542,22 @@ mod tests {
     fn landing_editors_carry_their_own_notes() {
         assert_eq!(notes(false), ["* Approximate glide slope altitudes.", "* Actual flight path will vary.", "* Avoid tailwind on landing."], "FWLandingPatternEditor");
         assert_eq!(notes(true), ["* Actual flight path will vary.", "* Avoid tailwind on approach to land.", "* Ensure landing distance is enough to complete transition."], "VTOLLandingPatternEditor");
+    }
+
+    #[test]
+    fn landing_rows_carry_the_editor_labels() {
+        let units = crate::surveydoc::Units { vertical: &crate::read::Unit { name: "m".into(), factor: 1.0 }, horizontal: &crate::read::Unit { name: "m".into(), factor: 1.0 } };
+        let label = |vtol: bool, suffix: &str| {
+            let built = fresh(&Fresh { vtol, land: (-35.37, 149.172), ardupilot: true, relative: true, transition_distance: None });
+            fields(&built, "item", &units).into_iter().find(|f| f["pathSuffix"] == suffix).map(|f| f["label"].clone())
+        };
+        assert_eq!(label(false, "useLoiterToAlt"), Some(json!("Use loiter to altitude")), "FWLandingPatternEditor");
+        assert_eq!(label(false, "loiterClockwise"), Some(json!("Loiter clockwise")));
+        assert_eq!(label(false, "useDoChangeSpeed"), Some(json!("Flight Speed")));
+        assert_eq!(label(false, "landingDistance"), Some(json!("Distance")));
+        assert_eq!(label(false, "glideSlope"), Some(json!("Glide Slope")));
+        assert_eq!(label(true, "landingDistance"), Some(json!("Landing Dist")), "VTOLLandingPatternEditor");
+        assert_eq!(label(true, "landingHeading"), Some(json!("Heading")));
     }
 
     #[test]

@@ -84,6 +84,7 @@ fn qt_entry_point(item: &str, read: &Value) -> Option<Value> {
 }
 
 fn owned(read: &Value, item: &str) -> Vec<Value> {
+    let vtol_landing = read.get("class").and_then(Value::as_str) == Some("VTOLLandingComplexItem");
     read.get("facts")
         .and_then(Value::as_array)
         .map(|facts| {
@@ -92,7 +93,7 @@ fn owned(read: &Value, item: &str) -> Vec<Value> {
                 .filter(|fact| named(fact))
                 .filter_map(|fact| {
                     let property = fact.get("property").and_then(Value::as_str).filter(|p| !p.is_empty() && *p != LAUNCH_ALTITUDE)?;
-                    Some(field(fact, item, property, "Settings"))
+                    Some(crate::surveydoc::row_labelled(field(fact, item, property, "Settings"), vtol_landing, property))
                 })
                 .collect()
         })
