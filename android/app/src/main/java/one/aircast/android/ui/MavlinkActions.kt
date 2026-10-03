@@ -79,8 +79,8 @@ internal fun MavlinkActionsSection(onWrite: () -> Unit) {
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
         if (actions.folderNote.isNotBlank()) Text(actions.folderNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FileChoice("Fly View Actions", actions.flyViewFile, options) { choose(actions.flyViewPath, it) }
-        FileChoice("Joystick Actions", actions.joystickFile, options) { choose(actions.joystickPath, it) }
+        FileChoice("Fly view actions", actions.flyViewFile, options) { choose(actions.flyViewPath, it) }
+        FileChoice("Joystick actions", actions.joystickFile, options) { choose(actions.joystickPath, it) }
     }
 }
 
