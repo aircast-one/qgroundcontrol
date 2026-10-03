@@ -29,9 +29,9 @@ import org.mavlink.qgroundcontrol.QGCBridge
 private const val FLY_POLL_MS = 2000L
 private const val CAMERA_STORE = "fly-map-camera"
 
-internal data class SavedCamera(val centre: TrackPoint, val zoom: Double)
+data class SavedCamera(val centre: TrackPoint, val zoom: Double)
 
-private fun readCamera(context: android.content.Context): SavedCamera? =
+fun readCamera(context: android.content.Context): SavedCamera? =
     context.getSharedPreferences(CAMERA_STORE, android.content.Context.MODE_PRIVATE).let { prefs ->
         prefs.getString("camera", null)?.split(",")?.mapNotNull { it.toDoubleOrNull() }?.takeIf { it.size == 3 }
             ?.let { (latitude, longitude, zoom) -> SavedCamera(TrackPoint(latitude, longitude), zoom) }

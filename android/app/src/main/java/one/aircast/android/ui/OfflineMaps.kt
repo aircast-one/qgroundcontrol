@@ -35,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -47,14 +48,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.mapspike.TRACK_VIEW
 import one.aircast.mapspike.TrackPoint
 import one.aircast.mapspike.VehicleMap
 import one.aircast.mapspike.aircast
 import one.aircast.mapspike.currentMapType
 import one.aircast.mapspike.optText
 import one.aircast.mapspike.qgcRasterStyle
-import one.aircast.mapspike.trackReading
+import one.aircast.mapspike.readCamera
 import org.json.JSONObject
 
 internal const val OFFLINE_MAPS_GROUP = "offlineMapsSettings"
@@ -344,7 +344,8 @@ private fun OfflineSetEditor(
     var region by remember { mutableStateOf<OfflineRegion?>(null) }
     var name by remember { mutableStateOf<String?>(null) }
     var read by remember { mutableStateOf<OfflineMaps?>(null) }
-    var centre by remember { mutableStateOf<TrackPoint?>(null) }
+    val context = LocalContext.current
+    val flightMap = remember(context) { readCamera(context) }
     var typeMenu by remember { mutableStateOf(false) }
     var showPreview by remember { mutableStateOf(false) }
     var fetchElevation by remember { mutableStateOf(true) }
@@ -352,11 +353,10 @@ private fun OfflineSetEditor(
     val maxZoom = zooms.endInclusive.toInt()
 
     LaunchedEffect(Unit) {
-        val (min, max, at) = withContext(Dispatchers.IO) {
-            Triple(zoomSetting(MIN_ZOOM_PATH, DEFAULT_MIN_ZOOM), zoomSetting(MAX_ZOOM_PATH, DEFAULT_MAX_ZOOM), trackReading(Qgc.get(TRACK_VIEW)).points.lastOrNull())
+        val (min, max) = withContext(Dispatchers.IO) {
+            zoomSetting(MIN_ZOOM_PATH, DEFAULT_MIN_ZOOM) to zoomSetting(MAX_ZOOM_PATH, DEFAULT_MAX_ZOOM)
         }
         zooms = min.toFloat()..max.toFloat()
-        centre = at
     }
     LaunchedEffect(mapType, region, minZoom, maxZoom, fetchElevation) {
         read = withContext(Dispatchers.IO) { offlineMaps(Qgc.get(offlineMapsPath(mapType, region, minZoom, maxZoom, fetchElevation))) }
@@ -375,8 +375,9 @@ private fun OfflineSetEditor(
                         modifier = Modifier.fillMaxSize(),
                         mapStyle = qgcRasterStyle(mapType),
                         follow = false,
-                        centreRequest = if (centre == null) 0 else 1,
-                        centreOn = centre,
+                        centreRequest = if (flightMap == null) 0 else 1,
+                        centreOn = flightMap?.centre,
+                        centreZoom = flightMap?.zoom,
                         onViewChanged = { corners -> region = offlineRegion(corners) },
                     )
                 }
