@@ -112,7 +112,7 @@ pub fn parse_wanted(shp_path: &str, polyline: Option<bool>) -> Result<(String, u
     let kind = shapefile::ShapeReader::from_path(shp_path).map_err(|_| failed("SHPOpen failed.".to_string()))?.header().shape_type;
     let shapes = shapefile::read_shapes(shp_path).map_err(|_| failed("SHPOpen failed.".to_string()))?;
     let entities = shapes.len();
-    if entities == 0 {
+    if entities == 0 && polyline.is_none() {
         return Err(failed("No entities found.".to_string()));
     }
     let file_kind = match kind {

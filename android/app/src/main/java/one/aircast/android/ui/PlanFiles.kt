@@ -189,7 +189,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                 val main = mainBoundaryName(labelled.map { it.second.orEmpty() })
                 val label = labelled.firstOrNull { it.second.orEmpty() == main }?.second
                 val staged = File(context.cacheDir, boundaryCacheName(label))
-                staged.delete()
+                context.cacheDir.listFiles { file -> file.name.startsWith("boundary.") }?.forEach { it.delete() }
                 if (!labelled.all { (uri, name) -> copyIn(context, uri, File(context.cacheDir, boundaryCacheName(name))) }) {
                     return@withContext "That file could not be read."
                 }

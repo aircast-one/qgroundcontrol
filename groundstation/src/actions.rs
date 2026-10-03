@@ -726,7 +726,9 @@ fn shape_refusal(pattern: &str, file: &str) -> Option<(&'static str, String)> {
             Err(_) => return Some(("unreadable", format!("{file} could not be read."))),
             Ok(text) => crate::kml::parse_wanted(&text, wants_line).map(|_| wants_line).or_else(|wanted| crate::kml::parse(&text).map(|shape| matches!(shape, crate::kml::Shape::Polyline(_))).map_err(|_| wanted)),
         },
-        _ if lower.ends_with(".shp") => crate::shp::parse_wanted(file, Some(wants_line)).map(|_| wants_line),
+        _ if lower.ends_with(".shp") => crate::shp::parse_wanted(file, Some(wants_line))
+            .map(|_| wants_line)
+            .or_else(|wanted| crate::shp::parse(file).map(|(kind, _, _)| kind == "polyline").map_err(|_| wanted)),
         _ => return Some(("notAShape", "A pattern is drawn from a .kml or .shp file.".to_string())),
     };
     match found {
@@ -1009,6 +1011,8 @@ mod tests {
         assert_eq!(shape_refusal("Corridor Scan", &line), None);
         assert_eq!(shape_refusal("Corridor Scan", &area).map(|r| r.0), Some("wrongShape"), "a corridor built from an area file comes out with no corridor, which both heads were left to notice by counting items and measuring distances");
         assert_eq!(shape_refusal("Survey", &empty).map(|r| r.0), Some("noShape"));
+        let pline = format!("{}/../test/Utilities/Geo/pline.shp", env!("CARGO_MANIFEST_DIR"));
+        assert_eq!(shape_refusal("Survey", &pline).map(|r| r.0), Some("wrongShape"), "a line shapefile offered to a survey is the wrong shape, as a line KML is");
         assert_eq!(shape_refusal("Survey", "/no/such/file.kml").map(|r| r.0), Some("unreadable"));
         assert_eq!(shape_refusal("Survey", &write("area.gpx", "")).map(|r| r.0), Some("notAShape"));
     }
