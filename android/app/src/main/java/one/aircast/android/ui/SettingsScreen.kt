@@ -692,7 +692,7 @@ internal fun FactRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .then(if (rowToggles) Modifier.toggleable(value = fact.boolValue, role = Role.Switch) { checked -> write { Qgc.set(fact.path, checked) } } else Modifier)
+            .then(if (rowToggles) Modifier.toggleable(value = fact.boolValue, role = Role.Switch) { checked -> write { Qgc.set(fact.path, checked != fact.inverted) } } else Modifier)
             .heightIn(min = 64.dp)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

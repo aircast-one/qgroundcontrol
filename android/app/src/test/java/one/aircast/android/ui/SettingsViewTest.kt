@@ -103,6 +103,14 @@ class SettingsViewTest {
     }
 
     @Test
+    fun `an inverted switch shows the opposite of the stored value`() {
+        val control = JSONObject("""{"name":"apmStartMavlinkStreams","label":"Controlled by Vehicle","control":"toggle","value":true,"inverted":true}""")
+        val fact = factFromControl(control)!!
+        assertEquals(false, fact.boolValue)
+        assertEquals(true, factFromControl(control.put("inverted", false))!!.boolValue)
+    }
+
+    @Test
     fun `the heading names the subsection, or the section when it says something the page title does not`() {
         val read = settingsSections(general)
         assertEquals("Sound", blockHeading("General", read[0], read[0].blocks[0]))

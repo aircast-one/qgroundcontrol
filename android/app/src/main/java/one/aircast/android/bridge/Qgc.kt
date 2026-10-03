@@ -54,6 +54,7 @@ data class Fact(
     val smallFont: Boolean = false,
     val shortLabel: String = "",
     val keywords: String = "",
+    val inverted: Boolean = false,
 ) {
     val title: String = description.ifBlank { name }.trimEnd(':', ' ')
     val heading: String = shortLabel.trimEnd(':', ' ').ifBlank { title }
@@ -63,7 +64,7 @@ data class Fact(
     val valueIsOffTheEnumList: Boolean =
         unknownEnumLabel.isNotBlank() && enumStrings.getOrNull(enumIndex) == unknownEnumLabel
 
-    val boolValue: Boolean = value == true || valueString.equals("true", ignoreCase = true) || valueString == "1"
+    val boolValue: Boolean = (value == true || valueString.equals("true", ignoreCase = true) || valueString == "1") != inverted
 
     val acceptsWrite: Boolean = !readOnly && enabled
     val optionalSet: Boolean = (value as? Number)?.toDouble()?.isNaN() == false

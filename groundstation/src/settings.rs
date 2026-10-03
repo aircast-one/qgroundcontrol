@@ -208,6 +208,22 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("streamRateExtra3", "apmStartMavlinkStreams", true, STREAMS_FROM_VEHICLE),
 ];
 
+const INVERTED: &[(&str, &str)] = &[("apmStartMavlinkStreams", "Controlled by Vehicle")];
+
+fn inverted(control: Value) -> Value {
+    let name = control.get("name").and_then(Value::as_str).unwrap_or_default();
+    match INVERTED.iter().find(|(inverted, _)| *inverted == name) {
+        Some((_, label)) => {
+            let mut control = control;
+            control["label"] = json!(label);
+            control["shortLabel"] = json!(label);
+            control["inverted"] = json!(true);
+            control
+        }
+        None => control,
+    }
+}
+
 const MOBILE: bool = cfg!(any(target_os = "android", target_os = "ios"));
 const LOGGING_ROWS: [&str; 3] = ["telemetrySave", "telemetrySaveNotArmed", "saveCsvTelemetry"];
 const VIRTUAL_JOYSTICK_OFF: &str = "Has no effect while on-screen sticks are off.";
@@ -529,7 +545,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .map(|f| decode(&f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .map(|mut control| {
             control["keywords"] = json!(fact_keywords(group, control.get("name").and_then(Value::as_str).unwrap_or_default()));
-            control
+            inverted(control)
         })
         .collect();
     let borrowed: Vec<Value> = GATED_FROM
@@ -781,6 +797,13 @@ mod tests {
         assert!(apm_streams_apply(false, false));
         assert!(apm_streams_apply(true, true));
         assert!(!apm_streams_apply(true, false));
+    }
+
+    #[test]
+    fn the_apm_stream_switch_reads_controlled_by_vehicle_and_flips_like_telemetry_settings() {
+        let shown = inverted(json!({ "name": "apmStartMavlinkStreams", "label": "Request start", "value": true }));
+        assert_eq!((shown["label"].clone(), shown["shortLabel"].clone(), shown["inverted"].clone(), shown["value"].clone()), (json!("Controlled by Vehicle"), json!("Controlled by Vehicle"), json!(true), json!(true)), "TelemetrySettings.qml checked: !rawValue, the raw value stays as stored");
+        assert!(inverted(json!({ "name": "telemetrySave" })).get("inverted").is_none());
     }
 
     #[test]
