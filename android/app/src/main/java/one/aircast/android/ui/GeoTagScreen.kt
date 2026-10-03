@@ -142,6 +142,7 @@ fun GeoTagScreen(modifier: Modifier = Modifier) {
         ) { Text(geoTagButton(current)) }
         if (current.images.isNotEmpty()) {
             Text("Images (${current.images.size})", style = MaterialTheme.typography.titleSmall)
+            GeoTagLegend()
             current.images.forEach { GeoTagImageRow(it) }
         }
     }
@@ -154,6 +155,21 @@ private fun geoTagStatusColour(status: Int): Color = when (status) {
     3 -> GEOTAG_ORANGE
     4 -> MaterialTheme.colorScheme.error
     else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+}
+
+internal val GEOTAG_LEGEND = listOf(0 to "Pending", 1 to "Processing", GEOTAG_TAGGED to "Tagged", 3 to "Skipped", 4 to "Failed")
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun GeoTagLegend() {
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        GEOTAG_LEGEND.forEach { (status, label) ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Box(Modifier.size(10.dp).background(geoTagStatusColour(status), RoundedCornerShape(2.dp)))
+                Text(label, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
 }
 
 @Composable
