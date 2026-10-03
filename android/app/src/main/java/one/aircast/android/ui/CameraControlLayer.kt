@@ -198,6 +198,8 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             lapsePlan(camera)?.let { plan ->
                 Text(text = plan, style = MaterialTheme.typography.labelSmall)
             }
+
+            remember(cameraJson) { trackingReading(cameraJson) }?.let { reading -> TrackingToggle(reading) }
         }
         listOfNotNull(panel.freeText, panel.batteryText).takeIf { it.isNotEmpty() }?.let { lines ->
             Column(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -230,6 +232,25 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
         }
         }
     }
+}
+
+@Composable
+private fun TrackingToggle(reading: TrackingReading, modifier: Modifier = Modifier) {
+    TextButton(
+        onClick = {
+            offMainDetached {
+                when {
+                    reading.requested -> {
+                        Qgc.set(CAMERA_TRACKING_ARMED, false)
+                        Qgc.invoke(CAMERA_STOP_TRACKING)
+                    }
+                    else -> Qgc.set(CAMERA_TRACKING_ARMED, true)
+                }
+            }
+        },
+        modifier = modifier,
+        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.aircast.outdoorForeground),
+    ) { Text(trackingToggleLabel(reading), style = MaterialTheme.typography.labelLarge, maxLines = 1) }
 }
 
 @Composable
@@ -287,8 +308,10 @@ private fun CameraDetailsSheet(
             var zoom by remember(camera.zoomLevel) { mutableFloatStateOf(camera.zoomLevel.toFloat()) }
             Slider(
                 value = zoom,
-                onValueChange = { zoom = it },
-                onValueChangeFinished = { offMainDetached { Qgc.set(CAMERA_ZOOM, zoom.toDouble()) } },
+                onValueChange = { level ->
+                    zoom = level
+                    offMainDetached { Qgc.set(CAMERA_ZOOM, level.toDouble()) }
+                },
                 valueRange = ZOOM_LOWEST.toFloat()..ZOOM_HIGHEST.toFloat(),
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
@@ -323,22 +346,7 @@ private fun CameraDetailsSheet(
                 )
             }
         }
-        tracking?.let { reading ->
-            TextButton(
-                onClick = {
-                    offMainDetached {
-                        when {
-                            reading.requested -> {
-                                Qgc.set(CAMERA_TRACKING_ARMED, false)
-                                Qgc.invoke(CAMERA_STOP_TRACKING)
-                            }
-                            else -> Qgc.set(CAMERA_TRACKING_ARMED, true)
-                        }
-                    }
-                },
-                modifier = Modifier.padding(horizontal = 12.dp),
-            ) { Text(trackingToggleLabel(reading)) }
-        }
+        tracking?.let { reading -> TrackingToggle(reading, Modifier.padding(horizontal = 12.dp)) }
 
         thermal?.let { thermal ->
             SectionHeader("Thermal view mode")
