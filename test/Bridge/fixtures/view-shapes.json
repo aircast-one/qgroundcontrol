@@ -158,6 +158,7 @@
         "view.firmwareUpgrade.error",
         "view.firmwareUpgrade.file",
         "view.firmwareUpgrade.port",
+        "view.firmwareUpgrade.updateAvailable",
         "view.firstRun.vehiclePreferences.0.maximum",
         "view.firstRun.vehiclePreferences.0.maximumText",
         "view.firstRun.vehiclePreferences.0.minimum",
@@ -2222,6 +2223,7 @@
         "view.firmwareUpgrade.phase",
         "view.firmwareUpgrade.port",
         "view.firmwareUpgrade.progress",
+        "view.firmwareUpgrade.updateAvailable",
         "view.firstRun.class",
         "view.firstRun.kind",
         "view.firstRun.promptId",
@@ -6870,6 +6872,7 @@
         "view.firmwareUpgrade.phase",
         "view.firmwareUpgrade.port",
         "view.firmwareUpgrade.progress",
+        "view.firmwareUpgrade.updateAvailable",
         "view.firstRun.class",
         "view.firstRun.kind",
         "view.firstRun.promptId",
@@ -9253,6 +9256,7 @@
         "view.setup.parametersText",
         "view.setup.ready",
         "view.setup.setupComplete",
+        "view.setup.vehicleId",
         "view.setupSummary.class",
         "view.setupSummary.components.#",
         "view.setupSummary.components[].name",
@@ -10823,7 +10827,8 @@
         ],
         "phase": "string",
         "port": "null",
-        "progress": "number"
+        "progress": "number",
+        "updateAvailable": "null"
     },
     "view.firstRun": {
         "class": "string",
@@ -13960,7 +13965,8 @@
         "parametersReason": "string",
         "parametersText": "string",
         "ready": "bool|null",
-        "setupComplete": "bool|null"
+        "setupComplete": "bool|null",
+        "vehicleId": "null|number"
     },
     "view.setup(Flight Safety)": {
         "available": "bool",

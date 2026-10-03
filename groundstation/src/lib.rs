@@ -46,6 +46,7 @@ pub mod missionprogress;
 pub mod followme;
 pub mod frame;
 pub mod firmwareinfo;
+pub mod latestfirmware;
 pub mod espbridge;
 pub mod syslink;
 pub mod filejobs;

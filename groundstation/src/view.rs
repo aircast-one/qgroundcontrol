@@ -684,6 +684,7 @@ mod deps_cover_reads {
             ("libevents", include_str!("libevents.rs")),
             ("wfbhost", include_str!("wfbhost.rs")),
             ("bootloader", include_str!("bootloader.rs")),
+            ("latestfirmware", include_str!("latestfirmware.rs")),
             ("firmwareflash", include_str!("firmwareflash.rs")),
             ("firmwarecatalog", include_str!("firmwarecatalog.rs")),
             ("settingsorder", include_str!("settingsorder.rs")),

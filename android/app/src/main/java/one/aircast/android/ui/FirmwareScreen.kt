@@ -70,6 +70,7 @@ internal data class FirmwareJob(
     val messages: List<String>,
     val error: String,
     val choices: List<Pair<String, String>> = emptyList(),
+    val updateAvailable: String = "",
 )
 
 internal fun firmwarePorts(view: JSONObject?): List<FirmwarePort> {
@@ -95,6 +96,7 @@ internal fun firmwareJob(view: JSONObject?): FirmwareJob? = view?.takeIf { it.op
         choices = it.optJSONArray("choices")?.let { listed ->
             (0 until listed.length()).mapNotNull { index -> listed.optJSONObject(index)?.let { c -> c.optText("name") to c.optText("url") } }
         }.orEmpty(),
+        updateAvailable = it.optText("updateAvailable"),
     )
 }
 
@@ -230,6 +232,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
         item(key = "note") {
             Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    job?.updateAvailable?.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning) }
                     Text(if (ports.isEmpty()) "No USB serial devices attached" else "Flash a board over USB", style = MaterialTheme.typography.titleSmall)
                     Text(
                         "Plug in your device via USB, choose its port and either a release, downloaded once the board is " +
