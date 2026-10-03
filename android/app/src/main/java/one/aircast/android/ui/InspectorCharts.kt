@@ -24,6 +24,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import org.json.JSONArray
@@ -75,6 +78,24 @@ internal fun inspectorCharts(view: JSONObject?): InspectorCharts? = view?.optJSO
     )
 }
 
+private val CHART_HEIGHT = 220.dp
+private const val TIME_TICKS = 3
+private const val VALUE_TICKS = 4
+
+internal fun timeTicks(windowMs: Long, nowMs: Long, zone: java.util.TimeZone = java.util.TimeZone.getDefault()): List<Pair<Float, String>> =
+    (0..TIME_TICKS).map { step ->
+        val at = step.toFloat() / TIME_TICKS
+        val instant = nowMs - ((1f - at) * windowMs).toLong()
+        val wallClock = instant + zone.getOffset(instant)
+        at to "%02d:%02d".format(java.util.Locale.ROOT, (wallClock / 60_000) % 60, (wallClock / 1000) % 60)
+    }
+
+internal fun valueTicks(low: Double, high: Double): List<Pair<Float, String>> =
+    (0..VALUE_TICKS).map { step ->
+        val fraction = step.toDouble() / VALUE_TICKS
+        (1f - fraction.toFloat()) to "%.4g".format(java.util.Locale.ROOT, low + (high - low) * fraction)
+    }
+
 internal fun chartPoint(ageMs: Long, value: Double, windowMs: Long, yMin: Double, yMax: Double): Pair<Float, Float> =
     (1f - ageMs.toFloat() / windowMs.coerceAtLeast(1)) to (1f - ((value - yMin) / (yMax - yMin).takeIf { it > 0 }.let { it ?: 1.0 }).toFloat().coerceIn(0f, 1f))
 
@@ -121,10 +142,25 @@ internal fun InspectorChartPanel(index: Int, charts: InspectorCharts, modifier: 
             ChartChoice("Scale", charts.timeScales, chart.rangeX) { chosen -> offMainDetached { Qgc.invoke(CHART_RANGE_X, index, chosen) } }
             ChartChoice("Range", charts.ranges, chart.rangeY) { chosen -> offMainDetached { Qgc.invoke(CHART_RANGE_Y, index, chosen) } }
         }
-        Canvas(Modifier.fillMaxWidth().height(140.dp)) {
+        val measurer = rememberTextMeasurer()
+        val ink = MaterialTheme.colorScheme.onSurfaceVariant
+        val tickStyle = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = ink)
+        val now = remember(chart) { System.currentTimeMillis() }
+        Canvas(Modifier.fillMaxWidth().height(CHART_HEIGHT).padding(bottom = 16.dp)) {
             drawRect(grid, style = Stroke(1.dp.toPx()))
             val low = chart.yMin ?: return@Canvas
             val high = chart.yMax ?: return@Canvas
+            valueTicks(low, high).forEach { (at, label) ->
+                val y = at * size.height
+                drawLine(grid, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+                drawText(measurer, label, Offset(2.dp.toPx(), (y - 14.dp.toPx()).coerceAtLeast(0f)), tickStyle)
+            }
+            timeTicks(chart.windowMs, now).forEach { (at, label) ->
+                val x = at * size.width
+                drawLine(grid, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
+                val text = measurer.measure(label, tickStyle)
+                drawText(text, topLeft = Offset((x - text.size.width / 2f).coerceIn(0f, size.width - text.size.width), size.height + 2.dp.toPx()))
+            }
             chart.plots.forEach { plot ->
                 val path = Path().apply {
                     plot.points.forEachIndexed { at, (age, value) ->
@@ -135,10 +171,6 @@ internal fun InspectorChartPanel(index: Int, charts: InspectorCharts, modifier: 
                 }
                 drawPath(path, INSPECTOR_SERIES_COLOURS[plot.colour % INSPECTOR_SERIES_COLOURS.size], style = Stroke(1.dp.toPx()))
             }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(chart.yMin?.let { "%.4g".format(it) }.orEmpty(), style = MaterialTheme.typography.labelSmall)
-            Text(chart.yMax?.let { "%.4g".format(it) }.orEmpty(), style = MaterialTheme.typography.labelSmall)
         }
         chart.plots.forEach { plot ->
             Text(plot.label, style = MaterialTheme.typography.labelSmall, color = INSPECTOR_SERIES_COLOURS[plot.colour % INSPECTOR_SERIES_COLOURS.size])
