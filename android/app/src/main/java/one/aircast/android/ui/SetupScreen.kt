@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -487,7 +488,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             Row(Modifier.fillMaxSize()) {
                 overview(Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow))
                 Box(Modifier.weight(1f).fillMaxHeight()) {
-                    detail?.invoke(Modifier) ?: EmptyState(R.drawable.ic_build, "Vehicle setup", "Choose a component on the left.")
+                    detail?.invoke(Modifier.widthIn(max = DETAIL_PANE_MAX_WIDTH)) ?: EmptyState(R.drawable.ic_build, "Vehicle setup", "Choose a component on the left.")
                 }
             }
         } else {
