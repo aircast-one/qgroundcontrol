@@ -14,9 +14,10 @@ class Px4TuningScreenTest {
                     """"fact":{"class":"Control","path":"vehicle.parameterManager.getParameter(-1,MC_ROLLRATE_K)","name":"MC_ROLLRATE_K","value":1,"valueString":"1.00"}}]}]}]}""",
             ),
         )
-        assertEquals("Rate Controller", tabs.single().name)
+        assertEquals("Rate controller", tabs.single().name)
         val param = tabs.single().axes.single().params.single()
         assertEquals("MC_ROLLRATE_K", param.fact.name)
+        assertEquals("Overall multiplier (MC_ROLLRATE_K)", param.title)
         assertEquals(1f, factNumber(param.fact))
         assertEquals(53, sliderSteps(param.min, param.max, param.step))
     }

@@ -65,7 +65,7 @@ private fun <T> JSONArray?.mapObjects(read: (JSONObject) -> T?): List<T> =
 internal fun tuningTabs(view: JSONObject?): List<TuningTab> =
     view?.takeIf { it.optBoolean("available") }?.optJSONArray("tabs").mapObjects { tab ->
         TuningTab(
-            name = tab.optText("name"),
+            name = sentenceCase(tab.optText("name")),
             title = tab.optText("title"),
             unit = tab.optText("unit"),
             extras = tab.optJSONArray("extras").mapObjects(::factFromControl),
@@ -75,13 +75,13 @@ internal fun tuningTabs(view: JSONObject?): List<TuningTab> =
             chartSeconds = tab.optDouble("chartSeconds", DEFAULT_CHART_SECONDS),
             axes = tab.optJSONArray("axes").mapObjects { axis ->
                 TuningAxis(
-                    name = axis.optText("name"),
-                    chartTitle = axis.optText("chartTitle"),
+                    name = sentenceCase(axis.optText("name")),
+                    chartTitle = sentenceCase(axis.optText("chartTitle")),
                     plot = axis.optJSONArray("plot").mapObjects { TuningPlot(it.optText("name"), it.optText("path")) },
                     params = axis.optJSONArray("params").mapObjects { param ->
                         param.optJSONObject("fact")?.let(::factFromControl)?.let { fact ->
                             TuningParam(
-                                title = param.optText("title"),
+                                title = sentenceCase(param.optText("title")),
                                 description = param.optText("description"),
                                 min = param.optDouble("min").toFloat(),
                                 max = param.optDouble("max").toFloat(),
