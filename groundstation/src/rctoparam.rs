@@ -4,6 +4,8 @@ use crate::mavout::Outbound;
 
 pub const SET_RC_TO_PARAM: &str = "parameters.setRcToParam";
 pub const CLEAR_RC_TO_PARAM: &str = "parameters.clearAllRcToParam";
+pub const OPEN_RC_TO_PARAM: &str = "parameters.openRcToParam";
+pub const RC_TO_PARAM_READY: &str = "parameters.rcToParamReady";
 const PARAM_INDEX_BY_NAME: i16 = -1;
 const PARAM_INDEX_DISABLE: i16 = -2;
 const TUNING_IDS: u8 = 3;
@@ -25,7 +27,45 @@ fn px4_target() -> Result<((u8, u8), u32), &'static str> {
     Ok(((vehicle.id, crate::hub::COMP_AUTOPILOT1), vehicle.link))
 }
 
+fn named(args: &str) -> Option<String> {
+    serde_json::from_str::<Vec<Value>>(args).ok()?.first()?.as_str().filter(|n| !n.is_empty()).map(str::to_string)
+}
+
+fn open(name: &str) -> Value {
+    let refreshed = {
+        let mut hub = crate::hub::lock();
+        let id = hub.active().map(|v| v.id);
+        hub.parameter_request(id, &json!({ "name": name, "refresh": true }), crate::hub::now_ms())
+    };
+    match refreshed {
+        Ok(frames) => {
+            frames.iter().for_each(|(link, bytes)| {
+                crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
+            });
+            json!({ "ok": true })
+        }
+        Err(reason) => json!({ "ok": false, "reason": reason }),
+    }
+}
+
+fn ready(name: &str) -> Value {
+    let waiting = crate::hub::lock().active().is_some_and(|v| v.parameter_reading(name));
+    json!({ "ok": true, "result": !waiting })
+}
+
+fn wait_for_update(path: &str, args: &str) -> Value {
+    match (named(args), crate::vehiclefacade::switched_on()) {
+        (None, _) => json!({ "ok": false, "reason": "RC to Param needs a parameter name." }),
+        (Some(_), false) => json!({ "ok": true, "result": true }),
+        (Some(name), true) if path == OPEN_RC_TO_PARAM => open(&name),
+        (Some(name), true) => ready(&name),
+    }
+}
+
 pub fn run(backend: &dyn crate::router::Backend, path: &str, args: &str) -> Value {
+    if [OPEN_RC_TO_PARAM, RC_TO_PARAM_READY].contains(&path) {
+        return wait_for_update(path, args);
+    }
     if !crate::vehiclefacade::switched_on() {
         let method = if path == CLEAR_RC_TO_PARAM { "vehicle.clearAllParamMapRC" } else { "vehicle.sendParamMapRC" };
         return crate::read::object(&backend.invoke(method, args));
@@ -48,7 +88,7 @@ pub fn run(backend: &dyn crate::router::Backend, path: &str, args: &str) -> Valu
 }
 
 pub fn owns(path: &str) -> bool {
-    [SET_RC_TO_PARAM, CLEAR_RC_TO_PARAM].contains(&path)
+    [SET_RC_TO_PARAM, CLEAR_RC_TO_PARAM, OPEN_RC_TO_PARAM, RC_TO_PARAM_READY].contains(&path)
 }
 
 #[cfg(test)]

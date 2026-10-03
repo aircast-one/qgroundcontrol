@@ -1285,6 +1285,10 @@ impl Vehicle {
         self.params.value(component, &self.parameter_name(name))
     }
 
+    pub fn parameter_reading(&self, name: &str) -> bool {
+        self.params.reading(self.component, &self.parameter_name(name))
+    }
+
     pub fn parameter_exact(&self, component: u8, name: &str) -> Option<ParamValue> {
         self.params.value(component, name)
     }

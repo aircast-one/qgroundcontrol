@@ -302,6 +302,10 @@ impl Params {
         self.waiting_write.get(&component).is_some_and(|waiting| waiting.contains_key(name))
     }
 
+    pub fn reading(&self, component: u8, name: &str) -> bool {
+        self.waiting_read.get(&component).is_some_and(|waiting| waiting.contains_key(name))
+    }
+
     pub fn value(&self, component: u8, name: &str) -> Option<ParamValue> {
         self.facts.get(&component)?.get(name).copied()
     }
@@ -808,6 +812,18 @@ mod tests {
         let outcomes: Vec<Vec<Action>> = (0..3).map(|_| params.on_waiting_timeout()).collect();
         assert!(outcomes[1].iter().any(|a| matches!(a, Action::Set { .. })), "PARAM_SET goes out three times in all, kParamSetRetryCount = 2");
         assert!(outcomes[2].contains(&Action::WriteFailed { component: 1, name: "A".into() }));
+    }
+
+    #[test]
+    fn a_named_refresh_is_reading_until_the_vehicle_answers_like_fact_vehicle_updated() {
+        let mut params = Params::new(1, false);
+        params.start();
+        deliver(&mut params, &["A"], &[]);
+        assert!(!params.reading(1, "A"));
+        params.refresh(1, "A");
+        assert!(params.reading(1, "A"), "RCToParamDialogController stays not ready until the refreshed value comes back");
+        params.on_param_value(1, "A", 1, 0, ParamValue::I32(0));
+        assert!(!params.reading(1, "A"), "an unchanged value still counts as the update");
     }
 
     #[test]

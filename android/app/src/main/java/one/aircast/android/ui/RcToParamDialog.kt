@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,12 +23,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 
 internal const val SET_RC_TO_PARAM = "parameters.setRcToParam"
+private const val OPEN_RC_TO_PARAM = "parameters.openRcToParam"
+private const val RC_TO_PARAM_READY = "parameters.rcToParamReady"
+private const val READY_POLL_MS = 250L
 private const val DEFAULT_RC_SCALE = "1.0"
 private val TUNING_IDS = listOf(1, 2, 3)
 
@@ -49,6 +54,14 @@ internal fun RcToParamDialog(fact: Fact, onDismiss: () -> Unit) {
     var tuningIndex by remember { mutableIntStateOf(0) }
     var choosing by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<String?>(null) }
+    var ready by remember { mutableStateOf(false) }
+    LaunchedEffect(fact.name) {
+        withContext(Dispatchers.Default) { Qgc.invoke(OPEN_RC_TO_PARAM, fact.name) }
+        while (!ready) {
+            ready = withContext(Dispatchers.Default) { Qgc.invokeResult(RC_TO_PARAM_READY, fact.name) as? Boolean ?: true }
+            if (!ready) delay(READY_POLL_MS)
+        }
+    }
     val scope = rememberCoroutineScope()
     val entered = rcToParam(scale, center, tuningIndex, min, max)
     AlertDialog(
@@ -57,9 +70,10 @@ internal fun RcToParamDialog(fact: Fact, onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Bind an RC Channel to a parameter value. Tuning IDs can be mapped to an RC Channel from Radio Setup page.", style = MaterialTheme.typography.bodySmall)
+                if (!ready) Text("Waiting on parameter update from Vehicle.")
                 Text("Parameter  ${fact.name}")
                 Box {
-                    OutlinedButton(onClick = { choosing = true }) { Text("Tuning ID ${TUNING_IDS[tuningIndex]}") }
+                    OutlinedButton(enabled = ready, onClick = { choosing = true }) { Text("Tuning ID ${TUNING_IDS[tuningIndex]}") }
                     DropdownMenu(expanded = choosing, onDismissRequest = { choosing = false }) {
                         TUNING_IDS.forEachIndexed { index, id ->
                             DropdownMenuItem(text = { Text("$id") }, onClick = {
@@ -70,7 +84,7 @@ internal fun RcToParamDialog(fact: Fact, onDismiss: () -> Unit) {
                     }
                 }
                 listOf(Triple("Scale", scale) { v: String -> scale = v }, Triple("Center Value", center) { v: String -> center = v }, Triple("Min Value", min) { v: String -> min = v }, Triple("Max Value", max) { v: String -> max = v }).forEach { (label, value, onChange) ->
-                    OutlinedTextField(value = value, onValueChange = onChange, label = { Text(label) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    OutlinedTextField(value = value, onValueChange = onChange, enabled = ready, label = { Text(label) }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 }
                 Text("Double check that all values are correct prior to confirming dialog.", style = MaterialTheme.typography.bodySmall)
                 refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
