@@ -663,7 +663,9 @@ impl Vehicle {
         if !std::mem::take(&mut self.calibration_left_behind) {
             return Vec::new();
         }
-        self.calibrate.cancel().map(|actions| self.follow_calibration(actions, now_ms)).unwrap_or_default()
+        let sensors = self.calibrate.cancel().map(|actions| self.follow_calibration(actions, now_ms)).unwrap_or_default();
+        let radio = self.start_guided(&json!({ "action": "rcCal", "op": "cancel" }), now_ms).unwrap_or_default();
+        sensors.into_iter().chain(radio).collect()
     }
 
     pub fn calibration_snapshot(&self) -> Value {
@@ -4063,7 +4065,7 @@ impl Hub {
                 if left.onboard_logs.busy() {
                     left.onboard_logs.cancel();
                 }
-                left.calibration_left_behind = left.calibrate.running();
+                left.calibration_left_behind = left.calibrate.running() || left.rccal.running();
             }
         }
         self.active = id;
@@ -6012,6 +6014,16 @@ mod tests {
         }).collect();
         assert_eq!(sent, vec![0.0], "SetupView rebuilds on a vehicle change and the calibration it left is stopped; nothing on screen can reach it any more");
         assert!(hub.vehicles.get_mut(&3).unwrap().pump_with(1_200, None, 0).iter().all(|b| !matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION)), "and only once");
+
+        hub.set_active(Some(3));
+        let radio = hub.vehicles.get_mut(&3).unwrap();
+        radio.load_rccal();
+        radio.rccal.channel_values(&[1500; 8], 1_250);
+        radio.start_guided(&json!({ "action": "rcCal", "op": "next" }), 1_300).unwrap();
+        assert!(hub.vehicles[&3].rccal.running(), "the radio calibration is under way");
+        hub.set_active(Some(4));
+        let stopped = hub.vehicles.get_mut(&3).unwrap().pump_with(1_400, None, 0).iter().any(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION && c.param4 == 0.0));
+        assert!(stopped && !hub.vehicles[&3].rccal.running(), "RadioComponentController's destructor stops the vehicle's RC calibration too");
     }
 
     #[test]

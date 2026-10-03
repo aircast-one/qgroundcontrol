@@ -262,6 +262,10 @@ impl RcCal {
         self.throttle_reversed_failure = false;
     }
 
+    pub fn running(&self) -> bool {
+        self.step.is_some()
+    }
+
     pub fn stop(&mut self, vehicle: &Vehicle, parameter: &dyn Fn(&str) -> Option<f64>) -> Outcome {
         let was = self.step.take().is_some();
         self.read_stored(vehicle, parameter);
