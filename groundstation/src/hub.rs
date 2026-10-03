@@ -1599,6 +1599,7 @@ impl Vehicle {
         match action.get("action").and_then(Value::as_str).unwrap_or("") {
             "takeoff" if guidedcmd::guided_takeoff_with_altitude(&state) => guidedcmd::takeoff(&state, number("altitude")),
             "takeoff" => guidedcmd::start_takeoff(&state, self.flying),
+            "goto" if !guidedcmd::guided_mode(&state) => Plan::Refused(guidedcmd::GUIDED_NOT_SUPPORTED.into()),
             "goto" => match guidedcmd::too_far_refusal(self.facts.coordinate.map(|(lat, lon, _)| (lat, lon)), (number("latitude"), number("longitude")), guidedcmd::max_goto_meters()) {
                 Some(reason) => Plan::Refused(reason),
                 None => guidedcmd::goto(&state, number("latitude"), number("longitude"), action.get("loiterRadius").and_then(Value::as_f64).unwrap_or(0.0)),

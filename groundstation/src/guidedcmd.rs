@@ -87,8 +87,25 @@ pub fn set_mode(state: &VehicleState, mode: &str) -> Option<Vec<Step>> {
     Some(vec![Step::SetMode { mode: shown.clone(), base_mode: base, custom_mode: custom, via_command }, Step::WaitForMode(shown)])
 }
 
+pub const GUIDED_NOT_SUPPORTED: &str = "Guided mode not supported by Vehicle.";
+pub const CHANGE_HEADING_NOT_SUPPORTED: &str = "Change Heading not supported by Vehicle.";
+
+pub fn guided_mode(state: &VehicleState) -> bool {
+    matches!(state.autopilot, AUTOPILOT_PX4 | AUTOPILOT_ARDUPILOT)
+}
+
+fn change_heading_capable(state: &VehicleState) -> bool {
+    matches!(
+        (state.autopilot, modes::vehicle_class(state.vehicle_type)),
+        (AUTOPILOT_PX4, VehicleClass::MultiRotor) | (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor | VehicleClass::Sub)
+    )
+}
+
 fn mode_or_refuse(state: &VehicleState, mode: &str) -> Result<Vec<Step>, String> {
-    set_mode(state, mode).ok_or_else(|| format!("{mode} is not a mode of this vehicle"))
+    match guided_mode(state) {
+        true => set_mode(state, mode).ok_or_else(|| format!("{mode} is not a mode of this vehicle")),
+        false => Err(GUIDED_NOT_SUPPORTED.to_string()),
+    }
 }
 
 pub fn pause_mode(state: &VehicleState) -> &'static str {
@@ -103,10 +120,11 @@ pub fn pause_mode(state: &VehicleState) -> &'static str {
 pub fn pause(state: &VehicleState) -> Plan {
     match state.autopilot {
         AUTOPILOT_PX4 => Plan::Steps(vec![Step::Command { command: CMD_DO_REPOSITION, params: [-1.0, REPOSITION_CHANGE_MODE, 0.0, nan(), nan(), nan(), nan()], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
-        _ => match mode_or_refuse(state, pause_mode(state)) {
+        AUTOPILOT_ARDUPILOT => match mode_or_refuse(state, pause_mode(state)) {
             Ok(steps) => Plan::Steps(steps),
             Err(reason) => Plan::Refused(reason),
         },
+        _ => Plan::Refused("Pause not supported by vehicle.".into()),
     }
 }
 
@@ -139,6 +157,7 @@ pub fn start_takeoff(state: &VehicleState, flying: bool) -> Plan {
         None => Plan::Refused(refusal.to_string()),
     };
     match (state.autopilot, flying, state.armed) {
+        _ if !guided_mode(state) => Plan::Refused(GUIDED_NOT_SUPPORTED.into()),
         (AUTOPILOT_ARDUPILOT, true, _) => Plan::Refused("Unable to start takeoff: Vehicle is already in the air.".into()),
         (AUTOPILOT_ARDUPILOT, false, true) => Plan::Steps(Vec::new()),
         (AUTOPILOT_ARDUPILOT, false, false) => mode_then_arm("Unable to start takeoff: Vehicle failed to change to Takeoff mode.", "Unable to start takeoff: Vehicle failed to arm."),
@@ -147,6 +166,9 @@ pub fn start_takeoff(state: &VehicleState, flying: bool) -> Plan {
 }
 
 pub fn takeoff(state: &VehicleState, altitude_relative: f64) -> Plan {
+    if !guided_mode(state) {
+        return Plan::Refused(GUIDED_NOT_SUPPORTED.into());
+    }
     let Some(amsl) = state.altitude_amsl.filter(|a| a.is_finite()) else { return Plan::Refused("Unable to takeoff, vehicle position not known.".into()) };
     match state.autopilot {
         AUTOPILOT_PX4 => Plan::Steps(vec![
@@ -167,7 +189,7 @@ pub fn takeoff(state: &VehicleState, altitude_relative: f64) -> Plan {
             let steps = guided.into_iter().chain([Step::Arm, Step::WaitArmed, Step::Command { command: CMD_NAV_TAKEOFF, params: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, altitude], command_int: false, frame: FRAME_GLOBAL, show_error: true }]).collect();
             Plan::Steps(failing_with("Unable to takeoff: Vehicle failed to change to Guided mode.", "Unable to takeoff: Vehicle failed to arm.", steps))
         }
-        _ => Plan::Refused("Vehicle does not support guided takeoff".into()),
+        _ => Plan::Refused(GUIDED_NOT_SUPPORTED.into()),
     }
 }
 
@@ -217,18 +239,20 @@ pub fn initial_bearing(from: (f64, f64), to: (f64, f64)) -> f64 {
 }
 
 pub fn change_heading(state: &VehicleState, vehicle_at: Option<(f64, f64)>, target: (f64, f64), max_yaw_rate: Option<f64>) -> Plan {
+    if !change_heading_capable(state) {
+        return Plan::Refused(CHANGE_HEADING_NOT_SUPPORTED.into());
+    }
     let Some(from) = vehicle_at else { return Plan::Refused("The vehicle position is not known, so there is no heading to the point.".into()) };
     let bearing = initial_bearing(from, target);
     match state.autopilot {
         AUTOPILOT_PX4 => Plan::Steps(vec![Step::Command { command: CMD_DO_REPOSITION, params: [-1.0, REPOSITION_CHANGE_MODE, 0.0, bearing.to_radians(), nan(), nan(), nan()], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
-        AUTOPILOT_ARDUPILOT => {
+        _ => {
             let current = state.current_heading.unwrap_or(0.0);
             let raw = bearing - current;
             let diff = if raw < -180.0 { raw + 360.0 } else if raw > 180.0 { raw - 360.0 } else { raw };
             let direction = if diff > 0.0 { 1.0 } else { -1.0 };
             Plan::Steps(vec![Step::Command { command: CMD_CONDITION_YAW, params: [diff.abs(), max_yaw_rate.unwrap_or(0.0), direction, 1.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }])
         }
-        _ => Plan::Refused("Vehicle does not support guided rotate".into()),
     }
 }
 
@@ -278,7 +302,7 @@ pub fn goto(state: &VehicleState, latitude: f64, longitude: f64, loiter_radius: 
             }
             Plan::Steps(steps)
         }
-        _ => Plan::Refused("Vehicle does not support guided goto".into()),
+        _ => Plan::Refused(GUIDED_NOT_SUPPORTED.into()),
     }
 }
 
@@ -322,7 +346,7 @@ pub fn change_altitude(state: &VehicleState, delta: f64, pause_first: bool) -> P
             steps.push(Step::PositionTargetLocalNed { frame: FRAME_LOCAL_OFFSET_NED, type_mask: 0xFFF8, x: 0.0, y: 0.0, z: -delta });
             Plan::Steps(steps)
         }
-        _ => Plan::Refused("Vehicle does not support guided altitude change".into()),
+        _ => Plan::Refused(GUIDED_NOT_SUPPORTED.into()),
     }
 }
 
@@ -360,7 +384,7 @@ pub fn start_mission(state: &VehicleState, flying: bool) -> Plan {
                 }),
             )
         }
-        _ => Plan::Refused("Vehicle does not support starting a mission".into()),
+        _ => Plan::Refused(GUIDED_NOT_SUPPORTED.into()),
     }
 }
 
@@ -530,6 +554,29 @@ mod tests {
         assert_eq!((command(&steps[0]).0, command(&steps[0]).2), (CMD_DO_SET_ROI_NONE, true));
         let Plan::Steps(steps) = cancel_roi(&copter()) else { panic!() };
         assert!(!command(&steps[0]).2, "without the COMMAND_INT capability it goes as COMMAND_LONG, as Qt sends it");
+    }
+
+    #[test]
+    fn a_generic_vehicle_is_refused_like_the_base_firmware_plugin() {
+        let generic = VehicleState { autopilot: 0, ..px4() };
+        let refused = |plan: Plan| match plan {
+            Plan::Refused(reason) => reason,
+            Plan::Steps(_) => panic!("a generic vehicle has no guided mode"),
+        };
+        [takeoff(&generic, 10.0), start_takeoff(&generic, false), goto(&generic, 47.0, 8.0, 0.0), change_altitude(&generic, 5.0, false), rtl(&generic, false), land(&generic), start_mission(&generic, false)]
+            .into_iter()
+            .for_each(|plan| assert_eq!(refused(plan), GUIDED_NOT_SUPPORTED));
+        assert_eq!(refused(pause(&generic)), "Pause not supported by vehicle.");
+        assert_eq!(refused(change_heading(&generic, None, (0.0, 1.0), None)), CHANGE_HEADING_NOT_SUPPORTED, "Vehicle::guidedModeChangeHeading checks support before position");
+    }
+
+    #[test]
+    fn only_rotors_and_subs_change_heading_like_firmware_is_capable() {
+        let at = Some((0.0, 0.0));
+        [VehicleState { vehicle_type: 1, ..px4() }, VehicleState { vehicle_type: 22, ..px4() }, VehicleState { vehicle_type: 12, ..px4() }, VehicleState { vehicle_type: 1, ..copter() }, VehicleState { vehicle_type: 10, ..copter() }]
+            .iter()
+            .for_each(|state| assert_eq!(change_heading(state, at, (0.0, 1.0), None), Plan::Refused(CHANGE_HEADING_NOT_SUPPORTED.into()), "type {}", state.vehicle_type));
+        assert!(matches!(change_heading(&VehicleState { vehicle_type: 12, ..copter() }, at, (0.0, 1.0), None), Plan::Steps(_)), "ArduSub turns in place");
     }
 
     #[test]

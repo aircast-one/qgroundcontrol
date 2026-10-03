@@ -496,7 +496,7 @@ impl Calibration {
                 self.stop(Outcome::Failed)
             }
             (Some(Kind::Compass), CMD_DO_START_MAG_CAL, result) if result != RESULT_ACCEPTED => {
-                self.note("Compass calibration could not start");
+                self.note("Failed to start compass calibration");
                 self.stop(Outcome::Failed)
             }
             (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple), CMD_PREFLIGHT_CALIBRATION, RESULT_IN_PROGRESS) => {
@@ -932,6 +932,7 @@ mod tests {
         assert_eq!(refused.len(), 2);
         assert!(cal.snapshot()["cancelEnabled"].as_bool().unwrap());
         let aborted = cal.on_ack(CMD_DO_START_MAG_CAL, 2, 0);
+        assert_eq!(cal.log.last().map(String::as_str), Some("Failed to start compass calibration"));
         assert_eq!(aborted, vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }, Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }, Action::Notice(FAILED_NOTICE)], "a refused start restores the threshold and cancels like any failed compass cal");
         cal.start(Kind::Compass, Inputs { compass_mask: 0b001, ..Inputs::default() }, 0).unwrap();
         cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);
