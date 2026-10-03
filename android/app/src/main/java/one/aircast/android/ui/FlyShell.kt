@@ -103,9 +103,15 @@ enum class FlyView(val label: String, @DrawableRes val icon: Int) {
     Video("Video", R.drawable.ic_videocam),
     Map("Map", R.drawable.ic_map),
     Simple("Simple", R.drawable.ic_speed),
+    ThreeD("3D", R.drawable.ic_explore),
 }
 
 internal fun flyViewNamed(name: String?): FlyView = FlyView.entries.firstOrNull { it.name == name } ?: FlyView.Video
+
+internal const val VIEWER3D_VIEW = "view.viewer3d"
+
+internal fun flyViewsOffered(viewer3dEnabled: Boolean, current: FlyView): List<FlyView> =
+    FlyView.entries.filter { it != FlyView.ThreeD || viewer3dEnabled || current == FlyView.ThreeD }
 
 internal fun flyViewSwapped(view: FlyView): FlyView = if (view == FlyView.Map) FlyView.Video else FlyView.Map
 
@@ -132,7 +138,9 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FlyView.entries.map { entry ->
+            val viewer3dJson by one.aircast.android.bridge.qgcPath(VIEWER3D_VIEW)
+            val offered = flyViewsOffered(viewer3dJson?.optBoolean("enabled") == true, view)
+            offered.map { entry ->
                 val selected = entry == view
                 Surface(
                     shape = CircleShape,
@@ -186,7 +194,8 @@ internal fun FlyScreen(
             val mapIsPip = view == FlyView.Video
             val videoIsPip = view == FlyView.Map
             val mapShown = view == FlyView.Map || (mapIsPip && pipExpanded)
-            val videoShown = view != FlyView.Map || videoPipShown(hasVideo, pipExpanded)
+            val videoShown = view != FlyView.ThreeD && (view != FlyView.Map || videoPipShown(hasVideo, pipExpanded))
+            if (view == FlyView.ThreeD) one.aircast.mapspike.Viewer3DPane(Modifier.fillMaxSize())
             val pipCorner = Modifier.windowInsetsPadding(WindowInsets.statusBars)
                 .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, end = AircastSpace.s3)
 
