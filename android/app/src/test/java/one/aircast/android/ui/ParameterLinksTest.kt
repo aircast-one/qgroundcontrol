@@ -31,4 +31,12 @@ class ParameterLinksTest {
         val fact = one.aircast.android.bridge.Fact("p", "MODE", "", "", "1", 1, listOf("A", "B"), listOf("0", "1"), 1, isBool = false, isString = false, readOnly = false)
         assertEquals(false, manualEntryFact(fact).isEnum)
     }
+
+    @Test
+    fun `value details read the control's description and default like the landing altitude dialog`() {
+        val control = org.json.JSONObject("""{"path":"item.finalApproachAltitude","name":"FinalApproachAltitude","label":"Altitude","valueDetails":"Altitude to begin landing approach from.","units":"m","valueString":"40.0","value":40.0,"control":"number","readOnly":false,"minimumText":null,"maximumText":null,"defaultText":"40.0"}""")
+        val fact = factFromControl(control)!!
+        assertEquals("Altitude to begin landing approach from.", fact.valueDetails)
+        assertEquals(listOf("Altitude to begin landing approach from.", "default 40.0 m"), valueDetailsNotes(fact))
+    }
 }

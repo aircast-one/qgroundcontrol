@@ -348,6 +348,7 @@ ACCEPTED = {
     "inner": "view.viewer3d bounds and buildings exist only once the 3D view is on with a readable OpenStreetMap file, and the rig has neither, so they record empty; viewer3d.rs viewer3d_view serves them from QGC's OsmParser rules",
     "inverted": "view.settings controls[].inverted marks a switch shown flipped, like TelemetrySettings.qml Controlled by Vehicle (checked: !apmStartMavlinkStreams); only an ArduPilot vehicle or none shows that row and the rig records none (settings.rs INVERTED). Read in ParameterForm.kt",
     "indent": "view.setup rows from a VehicleConfig control marked indent (ArduPilot help labels); the rig's PX4 mock pages carry none. Read in ParameterForm.kt",
+    "valueDetails": "view.itemFacts landing pattern Altitude rows (FW/VTOLLandingPatternEditor AltitudeFactTextField showHelp -> 'Value Details' ParameterEditorDialog); the rig plan has no landing pattern, so no such row is served. Read in ParameterForm.kt",
     "rawChoice": "view.setup on the ArduPilot Flight Modes page (FLTMODE_CH/MODE_CH, APMFlightModesComponent modeChannelCombo writes the raw index); the rig records a PX4 mock, so no such row is served. Read in ParameterForm.kt",
     "firstEntryIsAll": "view.setup on the ArduPilot Flight Safety page (ARMING_CHECK); the rig records a PX4 mock, so no such bitmask is served. Read in ParameterForm.kt",
     "wording": "view.flightModes.modeAck is the core hub's last DO_SET_MODE ack; the Qt rig has no hub vehicle, so it is null there. Read in FlightModes.kt",

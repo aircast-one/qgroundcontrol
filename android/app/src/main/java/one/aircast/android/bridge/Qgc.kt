@@ -56,6 +56,7 @@ data class Fact(
     val keywords: String = "",
     val inverted: Boolean = false,
     val rawChoice: Boolean = false,
+    val valueDetails: String = "",
 ) {
     val title: String = description.ifBlank { name }.trimEnd(':', ' ')
     val heading: String = shortLabel.trimEnd(':', ' ').ifBlank { title }

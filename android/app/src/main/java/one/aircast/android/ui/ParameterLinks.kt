@@ -181,3 +181,44 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
             }
     }
 }
+
+internal const val VALUE_DETAILS_TITLE = "Value Details"
+
+internal fun valueDetailsNotes(fact: Fact): List<String> = listOfNotNull(
+    fact.longDescription.ifBlank { fact.valueDetails }.takeIf { it.isNotBlank() },
+    parameterRangeLine(fact).takeIf { it.isNotBlank() },
+) + parameterRebootNotes(fact)
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+internal fun ValueDetailsSheet(fact: Fact, onWrite: () -> Unit, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
+    val default = fact.defaultValueString.toDoubleOrNull()?.takeIf { !fact.readOnly }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(VALUE_DETAILS_TITLE, style = MaterialTheme.typography.titleLarge)
+            FactRow(fact = fact, title = fact.heading, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = onWrite)
+            valueDetailsNotes(fact).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            if (!fact.readOnly) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
+            refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                default?.let { value ->
+                    TextButton(onClick = {
+                        scope.launch {
+                            refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, value) }
+                            if (refusal == null) {
+                                onWrite()
+                                onDismiss()
+                            }
+                        }
+                    }) { Text("Reset to default") }
+                }
+                Button(onClick = onDismiss) { Text("Done") }
+            }
+        }
+    }
+}

@@ -194,6 +194,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
     var editingPosition by remember(index) { mutableStateOf(false) }
     var positionMenu by remember(index) { mutableStateOf(false) }
     var refusal by remember(index) { mutableStateOf<String?>(null) }
+    var detailsPath by remember(index) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(index, revision) {
@@ -213,6 +214,9 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
         value = withContext(Dispatchers.Default) { presetsShownFirst(Qgc.get(PRESETS_FIRST_SETTING)) }
     }
     val positionStart = at ?: (mapCentre ?: previousCoordinate(view))?.let { (latitude, longitude) -> TrackPoint(latitude, longitude) }
+    fields.firstOrNull { it.path == detailsPath }?.let { fact ->
+        ValueDetailsSheet(fact, onWrite = { revision++ }, onDismiss = { detailsPath = null })
+    }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             Row(
@@ -339,6 +343,10 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                                 Box(Modifier.weight(1f)) { FactRow(fact, fieldModifier = Modifier.fillMaxWidth().padding(end = 16.dp, top = 8.dp, bottom = 8.dp)) { revision++ } }
                             }
                             fact.optional -> OptionalFactRow(fact) { revision++ }
+                            fact.valueDetails.isNotBlank() -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.weight(1f)) { FactRow(fact) { revision++ } }
+                                TextButton(onClick = { detailsPath = fact.path }, modifier = Modifier.padding(end = 8.dp)) { Text("?") }
+                            }
                             else -> FactRow(fact) { revision++ }
                         }
                     }

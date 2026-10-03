@@ -249,13 +249,19 @@ pub fn radioed(control: Value, vtol: bool, item: &str, property: &str, by_distan
     }
 }
 
+const ALTITUDE_FIELDS: [&str; 2] = ["finalApproachAltitude", "landingAltitude"];
+
 pub fn editor_row(control: Value, vtol: bool, property: &str) -> Value {
-    match (crate::surveydoc::row_labelled(control, vtol, property), section(property)) {
-        (Value::Object(mut fields), Some(heading)) => {
-            fields.insert("section".to_string(), json!(heading));
-            Value::Object(fields)
-        }
-        (control, _) => control,
+    let details = ALTITUDE_FIELDS.contains(&property).then(|| control.get("label").cloned()).flatten();
+    match crate::surveydoc::row_labelled(control, vtol, property) {
+        Value::Object(fields) => Value::Object(
+            fields
+                .into_iter()
+                .chain(section(property).map(|heading| ("section".to_string(), json!(heading))))
+                .chain(details.map(|described| ("valueDetails".to_string(), described)))
+                .collect(),
+        ),
+        other => other,
     }
 }
 
@@ -610,6 +616,18 @@ mod tests {
         assert_eq!(sections, ["Final approach", "Landing point", "Camera"], "FWLandingPatternEditor SectionHeaders, each heading once");
         assert_eq!(rows.first().map(|(p, _)| p.as_str()), Some("useLoiterToAlt"));
         assert_eq!(rows.iter().find(|(p, _)| p == "landingAltitude").map(|(_, s)| s.as_str()), Some("Landing point"), "the second Altitude row is the touchdown one");
+    }
+
+    #[test]
+    fn only_the_altitude_rows_offer_value_details_with_the_fact_description() {
+        let units = crate::surveydoc::Units { vertical: &crate::read::Unit { name: "m".into(), factor: 1.0 }, horizontal: &crate::read::Unit { name: "m".into(), factor: 1.0 } };
+        let built = fresh(&Fresh { vtol: false, land: (-35.37, 149.172), ardupilot: true, relative: true, transition_distance: None });
+        let details: Vec<(String, Value)> = fields(&built, "item", &units).into_iter().filter(|f| f.get("valueDetails").is_some()).map(|f| (f["pathSuffix"].as_str().unwrap_or("").to_string(), f["valueDetails"].clone())).collect();
+        assert_eq!(
+            details,
+            [("finalApproachAltitude".to_string(), json!("Altitude to begin landing approach from.")), ("landingAltitude".to_string(), json!("Altitude for landing point."))],
+            "FWLandingPatternEditor uses AltitudeFactTextField (showHelp -> 'Value Details' dialog) only for the two altitudes; the row label is 'Altitude', so the shortDescription travels separately"
+        );
     }
 
     #[test]
