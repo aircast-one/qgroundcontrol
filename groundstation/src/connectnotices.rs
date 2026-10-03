@@ -2,7 +2,7 @@ use serde_json::Value;
 
 use crate::router::Backend;
 
-pub const SETUP_INCOMPLETE: &str = "Configuration tasks remain before this vehicle is ready to fly. See Vehicle Configuration for details.";
+pub const SETUP_INCOMPLETE: &str = "Configuration tasks remain before this vehicle is ready to fly. Setup shows what is left.";
 pub const HITL_ENABLED: &str = "Warning: Hardware In The Loop (HITL) simulation is enabled for this vehicle.";
 
 pub const OUTDATED_PX4: &str = "QGroundControl supports PX4 Pro firmware Version 1.4.1 and above. You are using a version prior to that which will lead to unpredictable results. Please upgrade your firmware.";
