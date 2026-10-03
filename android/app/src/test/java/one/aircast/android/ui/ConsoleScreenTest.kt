@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -151,5 +153,30 @@ class ConsoleEmptyReasonTest {
         assertTrue(isPromptLine("nsh> free"))
         org.junit.Assert.assertFalse(isPromptLine("total  used  free"))
         org.junit.Assert.assertFalse(isPromptLine("note: nsh> appears mid-line"))
+    }
+
+}
+
+class ConsolePasteTest {
+    @Test
+    fun `a pasted block sends its complete lines and keeps the unfinished tail like handleClipboard`() {
+        val (sent, left) = splitCompleteLines(TextFieldValue("ver all\nfree\nto", TextRange(15)))
+        assertEquals("ver all\nfree", sent)
+        assertEquals("to", left.text)
+        assertEquals(TextRange(2), left.selection)
+    }
+
+    @Test
+    fun `text after the cursor stays behind the pasted tail`() {
+        val (sent, left) = splitCompleteLines(TextFieldValue("lsfree\nps\n -l", TextRange(10)))
+        assertEquals("lsfree\nps", sent)
+        assertEquals(" -l", left.text)
+        assertEquals(TextRange(0), left.selection)
+    }
+
+    @Test
+    fun `typing without a newline sends nothing`() {
+        val field = TextFieldValue("help", TextRange(4))
+        assertEquals(null to field, splitCompleteLines(field))
     }
 }

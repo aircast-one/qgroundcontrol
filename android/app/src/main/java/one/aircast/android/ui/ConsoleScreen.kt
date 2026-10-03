@@ -43,11 +43,13 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.offMain
+import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.aircast
 import one.aircast.mapspike.optText
@@ -84,6 +86,16 @@ private fun ConsoleNotice(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+internal fun splitCompleteLines(field: TextFieldValue): Pair<String?, TextFieldValue> {
+    val cut = field.text.lastIndexOf('\n')
+    return if (cut < 0) {
+        null to field
+    } else {
+        val leftover = field.text.substring(cut + 1)
+        field.text.substring(0, cut) to TextFieldValue(leftover, TextRange((field.selection.end - cut - 1).coerceIn(0, leftover.length)))
+    }
+}
+
 internal fun shouldFollowTail(lastVisibleIndex: Int?, count: Int): Boolean =
     lastVisibleIndex == null || lastVisibleIndex >= count - 2
 
@@ -96,17 +108,27 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
     val rawLines = remember(consoleJson) { consoleLines(consoleJson) }
     val emptyReason = remember(consoleJson) { consoleJson?.optText("emptyReason").orEmpty() }
     val consoleConnected = remember(consoleJson) { consoleJson?.optBoolean("connected") == true }
-    var command by remember { mutableStateOf("") }
+    var field by remember { mutableStateOf(TextFieldValue("")) }
     var sentAnything by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val lines = visibleConsoleLines(rawLines)
 
-    fun send() {
-        val toSend = command
-        command = ""
+    fun sendText(toSend: String) {
         sentAnything = true
-        scope.offMain { Qgc.invoke("$CONSOLE_ROOT.sendCommand", toSend) }
+        offMainInOrder { Qgc.invoke("$CONSOLE_ROOT.sendCommand", toSend) }
+    }
+
+    fun send() {
+        val toSend = field.text
+        field = TextFieldValue("")
+        sendText(toSend)
+    }
+
+    fun edit(next: TextFieldValue) {
+        val (complete, leftover) = splitCompleteLines(next)
+        field = leftover
+        complete?.let(::sendText)
     }
 
     val following by remember {
@@ -184,8 +206,8 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextField(
-                value = command,
-                onValueChange = { command = it },
+                value = field,
+                onValueChange = ::edit,
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 shape = CircleShape,
@@ -201,8 +223,11 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
             )
             listOf("historyUp" to "\u2191", "historyDown" to "\u2193").forEach { (step, arrow) ->
                 TextButton(contentPadding = PaddingValues(0.dp), modifier = Modifier.size(40.dp), onClick = {
-                    val current = command
-                    scope.launch { command = withContext(Dispatchers.Default) { Qgc.invokeResult("$CONSOLE_ROOT.$step", current) as? String } ?: current }
+                    val current = field.text
+                    scope.launch {
+                        val recalled = withContext(Dispatchers.Default) { Qgc.invokeResult("$CONSOLE_ROOT.$step", current) as? String } ?: current
+                        field = TextFieldValue(recalled, TextRange(recalled.length))
+                    }
                 }) { Text(arrow) }
             }
             SmallFloatingActionButton(
