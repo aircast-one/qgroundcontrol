@@ -273,6 +273,7 @@ internal fun FlyScreen(
                 if (layers) MapLayersSheet { layers = false }
             }
 
+            val sideBySide = simple && landscape
             Column(
                 Modifier
                     .align(Alignment.TopStart)
@@ -287,9 +288,10 @@ internal fun FlyScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     content = status,
                 )
-                if (simple) SimpleTiles(Modifier.fillMaxWidth().padding(top = AircastSpace.s3))
+                val half = Modifier.fillMaxWidth(if (sideBySide) SIMPLE_LANDSCAPE_SPLIT else 1f)
+                if (simple) SimpleTiles(half.padding(top = AircastSpace.s3))
                 Row(
-                    Modifier.fillMaxWidth().padding(top = if (simple) AircastSpace.s4 else AircastSpace.s2),
+                    half.padding(top = if (simple) AircastSpace.s4 else AircastSpace.s2),
                     horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -302,14 +304,19 @@ internal fun FlyScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) { keyRow() }
                 Column(
-                    Modifier.fillMaxWidth().padding(top = if (simple) AircastSpace.s8 else 0.dp),
+                    half.padding(top = if (simple && !sideBySide) AircastSpace.s8 else 0.dp),
                     verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     horizontalAlignment = if (simple) Alignment.CenterHorizontally else Alignment.Start,
                 ) { overlays() }
             }
 
             if (simple) {
-                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().onGloballyPositioned { FlyChrome.bottomPx = it.size.height }) { actions(FlyDeckLayout.Simple) }
+                Box(
+                    Modifier
+                        .align(if (sideBySide) Alignment.BottomEnd else Alignment.BottomCenter)
+                        .fillMaxWidth(if (sideBySide) SIMPLE_LANDSCAPE_SPLIT else 1f)
+                        .onGloballyPositioned { FlyChrome.bottomPx = it.size.height },
+                ) { actions(FlyDeckLayout.Simple) }
             } else {
                 Box(
                     Modifier
@@ -356,6 +363,7 @@ internal fun FleetCard() {
     }
 }
 
+private const val SIMPLE_LANDSCAPE_SPLIT = 0.5f
 private val FLEET_CARD_MAX_WIDTH = 440.dp
 private val FLEET_CARD_MAX_HEIGHT = 320.dp
 private const val FLEET_CARD_MIN_SCREEN_DP = 600
