@@ -164,7 +164,7 @@ pub fn recognized_board(port: &crate::boards::PortInfo) -> Option<&'static str> 
 }
 
 fn flashable(port: &crate::boards::PortInfo) -> bool {
-    matches!(crate::corelinks::board_type_of(port), Some(crate::boards::BoardType::Pixhawk | crate::boards::BoardType::SiKRadio))
+    recognized_board(port).is_some()
 }
 
 pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn FnMut(), cancelled: &dyn Fn() -> bool, report: &mut dyn FnMut(Event)) -> Result<(), String> {

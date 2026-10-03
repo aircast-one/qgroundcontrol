@@ -1019,7 +1019,6 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRej
                                 Qgc.writeRefusal(fact.path, committed)
                             }
                             rejection = refusal
-                            if (refusal != null) onRejected()
                             if (refusal == null) {
                                 editing = null
                                 onWrite()

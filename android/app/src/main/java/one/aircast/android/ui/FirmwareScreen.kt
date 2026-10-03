@@ -58,8 +58,9 @@ internal data class FirmwarePort(val port: String, val description: String, val 
 
 internal const val MULTIPLE_DEVICES = "Multiple devices detected. Make sure to select the correct one from the list."
 
-internal fun preselectedPort(ports: List<FirmwarePort>): String? =
-    (ports.firstOrNull { it.bootloader } ?: ports.firstOrNull { it.boardType == "Pixhawk" } ?: ports.firstOrNull { it.boardType == "SiK Radio" })?.port
+internal fun preselectedPort(ports: List<FirmwarePort>, current: String): String? =
+    ports.firstOrNull { it.port == current && it.boardType.isNotBlank() }?.port
+        ?: (ports.firstOrNull { it.boardType == "Pixhawk" } ?: ports.firstOrNull { it.boardType == "SiK Radio" })?.port
 
 internal data class FirmwareJob(
     val phase: String,
@@ -192,6 +193,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
         }
     }
     var refusal by remember { mutableStateOf("") }
+    var flashingName by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -199,8 +201,8 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                 firmwareJob(Qgc.get(FIRMWARE_VIEW)) to firmwarePorts(Qgc.get(FIRMWARE_PORTS_VIEW))
             }
             job = readJob
+            if (readPorts != ports && readJob?.busy != true) port = preselectedPort(readPorts, port) ?: port.takeIf { chosen -> readPorts.any { it.port == chosen } }.orEmpty()
             ports = readPorts
-            if (port.isBlank()) preselectedPort(readPorts)?.let { port = it }
             delay(FIRMWARE_POLL_MS)
         }
     }
@@ -275,7 +277,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                 }
                 firmwareWarning(source)?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
                 val choice = firmwareChoice(source, file?.absolutePath)
-                if (busy) Text(flashingLabel(ports, port), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                if (busy) Text(flashingName.ifBlank { flashingLabel(ports, port) }, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                     if (source == FIRMWARE_FROM_FILE) {
                         OutlinedButton(enabled = !busy, onClick = { picker.launch(arrayOf("*/*")) }) { Text("Choose file") }
@@ -284,6 +286,7 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                         enabled = !busy && port.isNotBlank() && choice != null,
                         onClick = {
                             val chosen = choice ?: return@Button
+                            flashingName = flashingLabel(ports, port)
                             scope.launch {
                                 refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(FIRMWARE_FLASH, port, chosen) }.orEmpty()
                             }

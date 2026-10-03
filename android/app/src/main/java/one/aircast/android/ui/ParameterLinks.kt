@@ -133,11 +133,13 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = if (forced) MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurface)
                     }
                     val shown = loaded.let { if (manual) manualEntryFact(it) else it }
-                    FactRow(fact = shown, title = loaded.heading.ifBlank { "Value" }, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = { revision++ }, onRejected = { rejected = true })
+                    androidx.compose.runtime.CompositionLocalProvider(LocalBlockRebootNote provides factRebootNote(loaded)) {
+                        FactRow(fact = shown, title = loaded.heading.ifBlank { "Value" }, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = { revision++ }, onRejected = { rejected = true })
+                    }
                     parameterRangeLine(loaded).takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (manual || loaded.isEnum || loaded.isBitmask || loaded.isBool) parameterRebootNotes(loaded).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    parameterRebootNotes(loaded).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                     if (editable) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
                     val hasChoices = loaded.isEnum || loaded.isBitmask
                     if (loaded.readOnly || (editable && hasChoices)) {
@@ -149,7 +151,7 @@ internal fun ParameterEditDialog(name: String, onDismiss: () -> Unit) {
                         if (advanced && loaded.readOnly) CheckRow("Force edit read-only param", forced) { forced = it }
                         if (advanced && editable && hasChoices) CheckRow("Manual Entry", manual) { manual = it }
                     }
-                    if (forced || (editable && !hasChoices && !loaded.isString && !loaded.isBool)) {
+                    if (forced || (editable && (manual || !hasChoices) && !loaded.isString && !loaded.isBool)) {
                         if (!forced && rejected) CheckRow("Force save (dangerous!)", forceSave) { forceSave = it }
                         if (forceSave || forced) {
                             OutlinedTextField(value = forcedText, onValueChange = { forcedText = it }, singleLine = true, label = { Text("Value") })

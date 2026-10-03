@@ -83,13 +83,13 @@ class FirmwareScreenTest {
     }
 
     @Test
-    fun `a board in its bootloader wins, then the first Pixhawk, then a SiK radio`() {
+    fun `a recognised selection is kept, else the first Pixhawk, then a SiK radio, like _preselectIndex`() {
         val radio = FirmwarePort("r", "SiK", false, "SiK Radio")
         val fmu = FirmwarePort("p", "Pixhawk 6C", false, "Pixhawk")
         val other = FirmwarePort("o", "FTDI", false)
-        org.junit.Assert.assertEquals("p", preselectedPort(listOf(other, radio, fmu)))
-        org.junit.Assert.assertEquals("r", preselectedPort(listOf(other, radio)))
-        org.junit.Assert.assertEquals(null, preselectedPort(listOf(other)))
-        org.junit.Assert.assertEquals("b", preselectedPort(listOf(fmu, FirmwarePort("b", "PX4 BL", true))))
+        org.junit.Assert.assertEquals("p", preselectedPort(listOf(other, radio, fmu), ""))
+        org.junit.Assert.assertEquals("r", preselectedPort(listOf(other, radio), "o"))
+        org.junit.Assert.assertEquals("r", preselectedPort(listOf(radio, fmu), "r"))
+        org.junit.Assert.assertEquals(null, preselectedPort(listOf(other), ""))
     }
 }
