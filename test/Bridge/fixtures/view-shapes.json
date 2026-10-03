@@ -7453,6 +7453,7 @@
         "view.hostNotices(0).class",
         "view.hostNotices(0).destination",
         "view.hostNotices(0).dialogs.#",
+        "view.hostNotices(0).dialogs[].action",
         "view.hostNotices(0).dialogs[].text",
         "view.hostNotices(0).dialogs[].title",
         "view.hostNotices(0).dropped",
@@ -7479,6 +7480,7 @@
         "view.hostNotices.class",
         "view.hostNotices.destination",
         "view.hostNotices.dialogs.#",
+        "view.hostNotices.dialogs[].action",
         "view.hostNotices.dialogs[].text",
         "view.hostNotices.dialogs[].title",
         "view.hostNotices.dropped",
@@ -11605,6 +11607,7 @@
         "destination": "null|string",
         "dialogs": [
             {
+                "action": "string",
                 "text": "string",
                 "title": "string"
             }
@@ -11643,6 +11646,7 @@
         "destination": "null|string",
         "dialogs": [
             {
+                "action": "string",
                 "text": "string",
                 "title": "string"
             }

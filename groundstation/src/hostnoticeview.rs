@@ -49,7 +49,11 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
         .filter(|n| n["kind"] == crate::noticeboard::MESSAGE)
         .map(|n| {
             let title = n["title"].as_str().filter(|t| !t.trim().is_empty()).map(str::to_string).unwrap_or_else(|| app.clone());
-            json!({ "title": title, "text": n["text"].as_str().unwrap_or_default() })
+            let text = n["text"].as_str().unwrap_or_default();
+            match text == crate::noticeboard::REBOOT_VEHICLE_TEXT {
+                true => json!({ "title": title, "text": format!("{text} Click Ok to reboot the vehicle now."), "action": "rebootVehicle" }),
+                false => json!({ "title": title, "text": text, "action": "" }),
+            }
         })
         .filter(|d| !d["text"].as_str().unwrap_or_default().is_empty())
         .fold(Vec::new(), |kept, dialog| if kept.contains(&dialog) { kept } else { kept.into_iter().chain(std::iter::once(dialog)).collect() });
@@ -114,7 +118,16 @@ mod tests {
         ] }));
         let view = host_notices_view(&host, &[]);
         let app = crate::noticeboard::application_name();
-        assert_eq!(view["dialogs"], json!([{ "title": app, "text": "Parameters could not be loaded" }, { "title": "Links", "text": "Connect not allowed" }]));
+        assert_eq!(view["dialogs"], json!([{ "title": app, "text": "Parameters could not be loaded", "action": "" }, { "title": "Links", "text": "Connect not allowed", "action": "" }]));
         assert_eq!(view["banners"], json!(["EKF failure"]));
+    }
+
+    #[test]
+    fn a_reboot_notice_asks_to_reboot_the_vehicle_like_show_reboot_vehicle_dialog() {
+        let host = Host(json!({ "kind": "object", "dropped": 0, "notices": [
+            { "id": 1, "kind": "message", "title": "", "text": crate::noticeboard::REBOOT_VEHICLE_TEXT },
+        ] }));
+        let dialog = &host_notices_view(&host, &[])["dialogs"][0];
+        assert_eq!((dialog["text"].as_str(), dialog["action"].as_str()), (Some("Reboot vehicle for changes to take effect. Click Ok to reboot the vehicle now."), Some("rebootVehicle")));
     }
 }

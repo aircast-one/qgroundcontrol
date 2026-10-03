@@ -5,6 +5,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import org.json.JSONObject
+import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainDetached
 import one.aircast.mapspike.optText
 
 internal fun hostNoticesPath(acknowledgedThrough: Long): String = "view.hostNotices($acknowledgedThrough)"
@@ -18,7 +20,9 @@ internal data class NoticeBatch(
     val dialogs: List<AppMessage> = emptyList(),
 )
 
-internal data class AppMessage(val title: String, val text: String)
+internal data class AppMessage(val title: String, val text: String, val action: String? = null)
+
+internal const val REBOOT_VEHICLE_ACTION = "rebootVehicle"
 
 internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
     val unseen = view?.optJSONArray("unseen") ?: return null
@@ -31,7 +35,7 @@ internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
         banners = (0 until (banners?.length() ?: 0)).mapNotNull { banners?.optString(it)?.ifBlank { null } },
         unknownKinds = notices.filter { !it.optBoolean("known", true) }.map { it.optText("kind") },
         errorBanners = notices.filter { it.optText("kind") == VEHICLE_ERROR_KIND }.map { it.optText("banner") }.filter { it.isNotBlank() }.distinct(),
-        dialogs = view.optJSONArray("dialogs")?.let { listed -> (0 until listed.length()).mapNotNull { listed.optJSONObject(it) }.map { AppMessage(it.optText("title"), it.optText("text")) } }.orEmpty(),
+        dialogs = view.optJSONArray("dialogs")?.let { listed -> (0 until listed.length()).mapNotNull { listed.optJSONObject(it) }.map { AppMessage(it.optText("title"), it.optText("text"), it.optText("action").ifBlank { null }) } }.orEmpty(),
     )
 }
 
@@ -50,7 +54,13 @@ internal fun AppMessageDialog(message: AppMessage, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text(message.title) },
         text = { Text(message.text) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("OK") } },
+        confirmButton = {
+            TextButton(onClick = {
+                if (message.action == REBOOT_VEHICLE_ACTION) offMainDetached { Qgc.invoke(REBOOT_VEHICLE) }
+                onDismiss()
+            }) { Text("OK") }
+        },
+        dismissButton = if (message.action == REBOOT_VEHICLE_ACTION) ({ TextButton(onClick = onDismiss) { Text("Cancel") } }) else null,
     )
 }
 

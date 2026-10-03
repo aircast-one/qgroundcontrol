@@ -268,7 +268,6 @@ fun AircastShell(hostView: android.view.View?) {
     val noticeScope = rememberCoroutineScope()
     var shownAt by remember { mutableStateOf(emptyMap<String, Long>()) }
     var appMessages by remember { mutableStateOf(emptyList<one.aircast.android.ui.AppMessage>()) }
-    appMessages.firstOrNull()?.let { shown -> one.aircast.android.ui.AppMessageDialog(shown) { appMessages = appMessages.drop(1) } }
 
     val refusalScope = rememberCoroutineScope()
     val refuseNavigation: () -> Boolean = {
@@ -345,6 +344,7 @@ fun AircastShell(hostView: android.view.View?) {
     AircastTheme(dark = darkBars) {
         one.aircast.android.ui.CloseGuard(enabled = tab == Tab.Fly && !fullScreen)
         one.aircast.android.ui.GimbalTakeControlDialog()
+        appMessages.firstOrNull()?.let { shown -> one.aircast.android.ui.AppMessageDialog(shown) { appMessages = appMessages.drop(1) } }
         val barColor = MaterialTheme.colorScheme.surface.toArgb()
         SideEffect {
             (view.context as? Activity)?.window?.let { window ->

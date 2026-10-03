@@ -45,8 +45,8 @@ class HostNoticesTest {
 
     @Test
     fun `app messages arrive as OK dialogs, as showAppMessage opens one`() {
-        val batch = noticeBatch(JSONObject("""{"unseen":[{"id":4,"kind":"message"}],"banners":[],"dialogs":[{"title":"Aircast QGC","text":"Parameters missing"}]}"""))
-        assertEquals(listOf(AppMessage("Aircast QGC", "Parameters missing")), batch?.dialogs)
+        val batch = noticeBatch(JSONObject("""{"unseen":[{"id":4,"kind":"message"}],"banners":[],"dialogs":[{"title":"Aircast QGC","text":"Parameters missing","action":null},{"title":"Aircast QGC","text":"Reboot","action":"rebootVehicle"}]}"""))
+        assertEquals(listOf(AppMessage("Aircast QGC", "Parameters missing"), AppMessage("Aircast QGC", "Reboot", REBOOT_VEHICLE_ACTION)), batch?.dialogs)
     }
 
     @Test

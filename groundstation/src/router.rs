@@ -73,10 +73,16 @@ impl<B: Backend> Core<B> {
         }
         match view::owns(path) {
             true => refusal(path),
-            false => match crate::renamed::write_path(path) {
-                Some(renamed) => self.backend.set(&renamed, value),
-                None => self.backend.set(path, value),
-            },
+            false => {
+                let target = crate::renamed::write_path(path).unwrap_or_else(|| path.to_string());
+                let answer = self.backend.set(&target, value);
+                if serde_json::from_str::<serde_json::Value>(&answer).ok().and_then(|a| a.get("ok").and_then(serde_json::Value::as_bool)) == Some(true) {
+                    let fact = crate::read::object(&self.backend.get(&target));
+                    let flag = |key: &str| fact.get(key).and_then(serde_json::Value::as_bool).unwrap_or(false);
+                    crate::noticeboard::reboot_notice_after_write(flag("vehicleRebootRequired"), flag("qgcRebootRequired"), crate::hub::now_ms() as i64);
+                }
+                answer
+            }
         }
     }
 

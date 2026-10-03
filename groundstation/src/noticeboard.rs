@@ -6,6 +6,32 @@ use serde_json::{Value, json};
 pub const NOTICES_CHANGED: &str = "core.notices@changed";
 pub const MESSAGE: &str = "message";
 pub const VEHICLE_ERROR: &str = "vehicleError";
+pub const REBOOT_VEHICLE_TEXT: &str = "Reboot vehicle for changes to take effect.";
+pub const RESTART_APPLICATION_TEXT: &str = "Restart application for changes to take effect.";
+const REBOOT_DEBOUNCE_MS: i64 = 2 * 60 * 1000;
+static LAST_REBOOT_NOTICE_MS: std::sync::Mutex<Option<i64>> = std::sync::Mutex::new(None);
+
+pub fn reboot_debounced(last: Option<i64>, now_ms: i64) -> bool {
+    last.is_some_and(|previous| now_ms - previous < REBOOT_DEBOUNCE_MS)
+}
+
+pub fn reboot_notice_after_write(vehicle_reboot: bool, application_restart: bool, now_ms: i64) {
+    let text = match (vehicle_reboot, application_restart) {
+        (true, _) => REBOOT_VEHICLE_TEXT,
+        (false, true) => RESTART_APPLICATION_TEXT,
+        (false, false) => return,
+    };
+    let debounced = {
+        let mut last = LAST_REBOOT_NOTICE_MS.lock().unwrap_or_else(PoisonError::into_inner);
+        let debounced = reboot_debounced(*last, now_ms);
+        *last = Some(now_ms);
+        debounced
+    };
+    if !debounced {
+        post(MESSAGE, "", text);
+    }
+}
+
 pub const KINDS: [&str; 3] = ["message", "vehicleError", "navigation"];
 const MAX_NOTICES: usize = 64;
 const KEEP_OLDEST: usize = 8;
@@ -146,6 +172,13 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reboot_prompts_debounce_for_two_minutes_like_qgc_application() {
+        assert!(!super::reboot_debounced(None, 1_000));
+        assert!(super::reboot_debounced(Some(1_000), 1_000 + 119_999));
+        assert!(!super::reboot_debounced(Some(1_000), 1_000 + 120_000));
+    }
+
     use super::*;
 
     #[test]
