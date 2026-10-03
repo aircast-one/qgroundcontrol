@@ -16,13 +16,21 @@
                     "param": "BATT_LOW_VOLT",
                     "label": "Voltage Trigger",
                     "control": "slider",
-                    "optional": true
+                    "optional": true,
+                    "sliderMin": 0,
+                    "sliderMax": 100,
+                    "majorTickStepSize": 5,
+                    "labelWhenZero": "Voltage Trigger - disabled"
                 },
                 {
                     "param": "BATT_LOW_MAH",
                     "label": "mAh Trigger",
                     "control": "slider",
-                    "optional": true
+                    "optional": true,
+                    "sliderMin": 0,
+                    "sliderMax": 30000,
+                    "majorTickStepSize": 1000,
+                    "labelWhenZero": "mAh Trigger - disabled"
                 }
             ]
         },
@@ -40,13 +48,21 @@
                     "param": "BATT_CRT_VOLT",
                     "label": "Voltage Trigger",
                     "control": "slider",
-                    "optional": true
+                    "optional": true,
+                    "sliderMin": 0,
+                    "sliderMax": 100,
+                    "majorTickStepSize": 5,
+                    "labelWhenZero": "Voltage Trigger - disabled"
                 },
                 {
                     "param": "BATT_CRT_MAH",
                     "label": "mAh Trigger",
                     "control": "slider",
-                    "optional": true
+                    "optional": true,
+                    "sliderMin": 0,
+                    "sliderMax": 30000,
+                    "majorTickStepSize": 1000,
+                    "labelWhenZero": "mAh Trigger - disabled"
                 }
             ]
         }

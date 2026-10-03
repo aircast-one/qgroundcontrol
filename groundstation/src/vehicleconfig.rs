@@ -662,6 +662,9 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
     if !control["label"].is_null() {
         decoded["label"] = control["label"].clone();
     }
+    if let Some(zero) = control["labelWhenZero"].as_str().filter(|_| decoded["value"].as_f64() == Some(0.0)) {
+        decoded["label"] = json!(zero);
+    }
     let range = match control["control"].as_str() {
         Some("factslider") => control["sliderFrom"].as_f64().zip(control["sliderTo"].as_f64()),
         Some("slider") => control["sliderMin"].as_f64().or(decoded["minimum"].as_f64()).zip(control["sliderMax"].as_f64().or(decoded["maximum"].as_f64())),
@@ -1430,6 +1433,10 @@ mod tests {
         let labels = |fake: &Fake, px4: bool| -> Vec<String> { page(fake, BATTERY_SETTINGS, px4)["sections"].as_array().unwrap().iter().flat_map(|s| s["controls"].as_array().cloned().unwrap_or_default()).filter_map(|c| c["label"].as_str().map(str::to_string)).collect() };
         assert_eq!(labels(&apm, false), ["Vehicle Action", "Voltage Trigger", "Vehicle Action", "Voltage Trigger"], "a trigger the firmware lacks is left out");
         assert!(labels(&Fake::new(&[("BATT_MONITOR", 0.0), ("BATT_FS_LOW_ACT", 2.0)]), false).is_empty(), "APMBatteryIndicator hides the failsafes with no battery monitor");
+        let triggers = Fake::new(&[("BATT_MONITOR", 4.0), ("BATT_LOW_VOLT", 0.0), ("BATT_LOW_MAH", 1500.0)]);
+        let rows: Vec<Value> = page(&triggers, BATTERY_SETTINGS, false)["sections"][0]["controls"].as_array().cloned().unwrap_or_default();
+        assert_eq!(rows.iter().map(|r| r["label"].as_str().unwrap_or_default()).collect::<Vec<_>>(), ["Voltage Trigger - disabled", "mAh Trigger"], "a zero trigger says it is off, like APMBatteryIndicator's disabledString");
+        assert_eq!((rows[0]["slider"]["from"].as_f64(), rows[0]["slider"]["to"].as_f64(), rows[1]["slider"]["to"].as_f64()), (Some(0.0), Some(100.0), Some(30000.0)), "BATT_LOW_VOLT and BATT_LOW_MAH carry no range in the metadata; the FactSliders pin 0..100 V and 0..30000 mAh");
         let px4 = Fake { px4: true, ..Fake::new(&[("COM_LOW_BAT_ACT", 3.0), ("BAT_LOW_THR", 0.15), ("BAT_CRIT_THR", 0.07), ("BAT_EMERGEN_THR", 0.05)]) };
         assert_eq!(labels(&px4, true), ["Vehicle Action", "Warning Level", "Critical Level", "Emergency Level"]);
     }
