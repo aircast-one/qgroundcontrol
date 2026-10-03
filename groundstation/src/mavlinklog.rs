@@ -137,13 +137,39 @@ fn form_fields(feedback: &str) -> Vec<(&'static str, String)> {
     ]
 }
 
-fn send(path: &Path, feedback: &str) -> Result<(), String> {
+struct Sending<'a> {
+    body: std::io::Cursor<Vec<u8>>,
+    cancel: &'a AtomicBool,
+}
+
+impl std::io::Read for Sending<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.cancel.load(Ordering::Relaxed) {
+            return Err(std::io::Error::other("upload cancelled"));
+        }
+        let read = self.body.read(buf)?;
+        UPLOADS.lock().unwrap_or_else(PoisonError::into_inner).progress = sent_fraction(self.body.position(), self.body.get_ref().len());
+        Ok(read)
+    }
+}
+
+fn sent_fraction(sent: u64, total: usize) -> f64 {
+    match total {
+        0 => 0.0,
+        total => sent as f64 / total as f64,
+    }
+}
+
+fn send(path: &Path, feedback: &str, cancel: &AtomicBool) -> Result<(), String> {
     let bytes = std::fs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
     let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let body = multipart(&form_fields(feedback), &name, &bytes);
+    let length = body.len();
+    let mut sending = Sending { body: std::io::Cursor::new(body), cancel };
     let response = ureq::post(&text("uploadURL"))
         .header("Content-Type", &format!("multipart/form-data; boundary={BOUNDARY}"))
-        .send(&body[..])
+        .header("Content-Length", &length.to_string())
+        .send(ureq::SendBody::from_reader(&mut sending))
         .map_err(|e| format!("Log Upload Error: {e}"))?;
     match response.status().as_u16() {
         200 => Ok(()),
@@ -151,14 +177,14 @@ fn send(path: &Path, feedback: &str) -> Result<(), String> {
     }
 }
 
-fn upload_one(folder: &Path, name: &str, feedback: &str) -> Result<(), String> {
+fn upload_one(folder: &Path, name: &str, feedback: &str, cancel: &AtomicBool) -> Result<(), String> {
     {
         let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
         uploads.current = Some(stem(name));
         uploads.progress = 0.0;
     }
     let path = folder.join(name);
-    send(&path, feedback)?;
+    send(&path, feedback, cancel)?;
     match flag("deleteAfterUpload") {
         true => {
             let _ = std::fs::remove_file(&path);
@@ -190,15 +216,17 @@ fn upload(names: Vec<String>) -> Result<(), String> {
         uploads.feedback.clone()
     };
     std::thread::spawn(move || {
-        let failures: Vec<String> = names.iter().take_while(|_| !cancel.load(Ordering::Relaxed)).filter_map(|name| upload_one(&folder, name, &feedback).err()).collect();
+        let failures: Vec<String> = names.iter().take_while(|_| !cancel.load(Ordering::Relaxed)).filter_map(|name| upload_one(&folder, name, &feedback, &cancel).err()).collect();
+        let cancelled = cancel.load(Ordering::Relaxed);
         let pending = {
             let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
             uploads.running = false;
             uploads.current = None;
             uploads.cancel = None;
-            uploads.message = (!failures.is_empty()).then(|| failures.join("\n"));
+            uploads.progress = 0.0;
+            uploads.message = (!failures.is_empty() && !cancelled).then(|| failures.join("\n"));
             let queued = std::mem::take(&mut uploads.pending);
-            if cancel.load(Ordering::Relaxed) { Vec::new() } else { queued }
+            if cancelled { Vec::new() } else { queued }
         };
         if let Err(reason) = (!pending.is_empty()).then(|| upload(pending)).unwrap_or(Ok(())) {
             UPLOADS.lock().unwrap_or_else(PoisonError::into_inner).message = Some(reason);
@@ -246,6 +274,7 @@ pub fn mavlink_log_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         "files": files(),
         "uploading": uploads.running,
         "uploadingFile": uploads.current,
+        "uploadProgress": uploads.progress,
         "message": uploads.message,
         "error": state.as_ref().map(|s| s["error"].clone()).unwrap_or(Value::Null),
     })
@@ -334,6 +363,14 @@ mod tests {
         let value = |name: &str| fields.iter().find(|(n, _)| *n == name).map(|(_, v)| v.clone()).unwrap();
         assert_eq!((value("feedback"), value("videoUrl"), value("source"), value("rating")), ("None Given".to_string(), "None".to_string(), "QGroundControl".to_string(), "notset".to_string()));
         assert_eq!(value("public"), "true", "PublicLog defaults on as in MAVLinkLogManager");
+    }
+
+    #[test]
+    fn upload_progress_is_the_sent_share_of_the_body_and_cancel_aborts_the_body() {
+        assert_eq!((sent_fraction(0, 0), sent_fraction(25, 100), sent_fraction(100, 100)), (0.0, 0.25, 1.0));
+        let cancel = AtomicBool::new(true);
+        let mut sending = Sending { body: std::io::Cursor::new(vec![1, 2, 3]), cancel: &cancel };
+        assert!(std::io::Read::read(&mut sending, &mut [0; 3]).is_err(), "QGC aborts the reply in flight on cancelUpload");
     }
 
     #[test]

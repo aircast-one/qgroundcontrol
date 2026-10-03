@@ -3771,6 +3771,7 @@
         "view.mavlinkLog.settings.uploadURL",
         "view.mavlinkLog.settings.videoURL",
         "view.mavlinkLog.settings.windSpeed",
+        "view.mavlinkLog.uploadProgress",
         "view.mavlinkLog.uploading",
         "view.mavlinkLog.uploadingFile",
         "view.mavlinkLog.vehiclePx4",
@@ -8096,6 +8097,7 @@
         "view.mavlinkLog.settings.uploadURL",
         "view.mavlinkLog.settings.videoURL",
         "view.mavlinkLog.settings.windSpeed",
+        "view.mavlinkLog.uploadProgress",
         "view.mavlinkLog.uploading",
         "view.mavlinkLog.uploadingFile",
         "view.mavlinkLog.vehiclePx4",
@@ -12511,6 +12513,7 @@
             "videoURL": "string",
             "windSpeed": "string"
         },
+        "uploadProgress": "number",
         "uploading": "bool",
         "uploadingFile": "null",
         "vehiclePx4": "bool"

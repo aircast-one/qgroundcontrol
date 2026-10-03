@@ -13,5 +13,11 @@ class Px4LogTransferTest {
         assertEquals(listOf(LogFile("001-x.ulg", 2048, true)), log.files)
         assertEquals("a@b.c", log.settings.optString("emailAddress"))
         assertEquals("Breeze", WIND_SPEEDS.first { it.second == log.settings.optString("windSpeed") }.first)
+        assertEquals(0f, log.uploadProgress)
+    }
+
+    @Test
+    fun `the upload progress is the core's sent fraction`() {
+        assertEquals(0.4f, mavlinkLog(JSONObject("""{"uploading":true,"uploadingFile":"001-x","uploadProgress":0.4}"""))!!.uploadProgress)
     }
 }

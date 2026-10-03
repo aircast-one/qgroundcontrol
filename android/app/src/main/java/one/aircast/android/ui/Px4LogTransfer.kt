@@ -6,12 +6,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -63,6 +65,7 @@ internal data class MavlinkLog(
     val files: List<LogFile>,
     val uploading: Boolean,
     val uploadingFile: String,
+    val uploadProgress: Float,
     val message: String,
 )
 
@@ -79,6 +82,7 @@ internal fun mavlinkLog(view: JSONObject?): MavlinkLog? = view?.let {
         },
         uploading = it.optBoolean("uploading"),
         uploadingFile = it.optText("uploadingFile"),
+        uploadProgress = it.optDouble("uploadProgress", 0.0).toFloat().coerceIn(0f, 1f),
         message = it.optText("message"),
     )
 }
@@ -146,14 +150,11 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
                     onCheckedChange = { selected = if (it) selected + file.name else selected - file.name },
                 )
                 Text(file.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                Text(
-                    when {
-                        file.uploaded -> "Uploaded"
-                        uploadingThis -> "Uploading"
-                        else -> logSizeText(file.size)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                if (uploadingThis && !file.uploaded) {
+                    LinearProgressIndicator(progress = { log.uploadProgress }, modifier = Modifier.width(96.dp))
+                } else {
+                    Text(if (file.uploaded) "Uploaded" else logSizeText(file.size), style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
         val idle = !log.uploading
