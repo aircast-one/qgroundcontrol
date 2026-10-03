@@ -19,9 +19,12 @@ struct Page {
     shows_px4_logs: bool,
 }
 
+const GIMBAL_CONTROLLER_PAGE: &str = "Gimbal Controller";
+const UNLISTED: &[&str] = &[GIMBAL_CONTROLLER_PAGE];
+
 const PAGES: &[Page] = &[
     Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
-    Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("MAVLink Actions", "mavlinkActionsSettings"), ("Battery Indicator", "batteryIndicatorSettings"), ("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("MAVLink Actions", "mavlinkActionsSettings"), ("Battery Indicator", "batteryIndicatorSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Maps", sections: &[("Maps", "mapsSettings"), ("Flight Map", "flightMapSettings"), ("Map Providers", MAP_PROVIDERS), ("Offline Maps", "offlineMapsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
@@ -39,12 +42,9 @@ const PAGES: &[Page] = &[
     Page { title: "About", sections: &[], shows_links: false, shows_about: true, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Console", sections: &[], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: true, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "App Logging", sections: &[("Save To Disk", "logManagerSettings"), ("Log Viewer", APP_LOG_VIEWER)], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: GIMBAL_CONTROLLER_PAGE, sections: &[("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
 ];
 
-// deviceName is drawn by the Packet Radio page's own block as a picker over the adapters the
-// radio reports. Left in the generic list it renders a second control writing the same fact - a
-// free-text field beside the picker, where a name that is not an adapter gets no feedback at all.
-// Same shape as extraVideoSources: when a bespoke block owns a fact, the fact leaves the list.
 const HIDDEN: &[&str] = &[
     "androidUsePosixSerial",
     "keepSceneAlive",
@@ -287,12 +287,6 @@ const DISK_LOGGING_OFF: &str = "Writing the log to disk is off";
 
 const GATED_FROM: &[(&str, &str)] = &[("apmMavlinkStreamRateSettings", "mavlinkSettings")];
 
-// QGC distinguishes the two, and which binding a page uses is what decides this. FlyViewSettings
-// binds the checklist row's `enabled`, so that control is real but inert and says why. The RTK
-// page binds `visible` on both groups, because GPSIndicatorPage.qml:113-120 is a Survey-In /
-// Specify position radio pair - the two sets are alternatives under a mode selector, not a switch
-// with dependents. Four greyed latitude boxes under a Survey-In selection would be a control
-// disabled with nothing on screen saying what it is disabled FOR.
 const MANUFACTURER_ALL: i64 = 0;
 const MANUFACTURER_ROWS: &[(&str, &[i64])] = &[("surveyInAccuracyLimit", &[4]), ("surveyInMinObservationDuration", &[4, 3, 1]), ("fixedBasePositionAccuracy", &[4])];
 
@@ -667,9 +661,6 @@ fn gated(group: &str, controls: &[Value], facts: &[Value]) -> Vec<Value> {
         .collect()
 }
 
-// Two settings can carry the same shortDesc - the brand image pair differ only in a longDesc
-// nobody shows - and a section then draws two identical rows holding different values. The name
-// is the only thing that always differs, so a repeated label falls back to it.
 fn named_apart(controls: Vec<Value>) -> Vec<Value> {
     let label_of = |c: &Value| c.get("label").and_then(Value::as_str).unwrap_or("").to_string();
     let repeated = |label: &str| controls.iter().filter(|c| label_of(c) == label).count() > 1;
@@ -705,7 +696,7 @@ fn subsections(group: &str, controls: &[Value]) -> Vec<Value> {
 }
 
 fn page_shown(page: &Page, connected: bool, px4: bool) -> bool {
-    !page.shows_px4_logs || !connected || px4
+    !UNLISTED.contains(&page.title) && (!page.shows_px4_logs || !connected || px4)
 }
 
 pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
@@ -842,7 +833,16 @@ mod tests {
         assert!(page_shown(page, false, false), "SettingsPagesModel shows it with no vehicle");
         assert!(page_shown(page, true, true));
         assert!(!page_shown(page, true, false), "an ArduPilot vehicle does not get it");
-        assert!(PAGES.iter().filter(|p| !p.shows_px4_logs).all(|p| page_shown(p, true, false)));
+        assert!(PAGES.iter().filter(|p| !p.shows_px4_logs && !UNLISTED.contains(&p.title)).all(|p| page_shown(p, true, false)));
+    }
+
+    #[test]
+    fn gimbal_settings_live_only_in_the_gimbal_indicator_like_flyviewsettings() {
+        let fly = PAGES.iter().find(|p| p.title == "Fly View").unwrap();
+        assert!(fly.sections.iter().all(|(_, group)| *group != "gimbalControllerSettings"), "FlyViewSettings.qml has no Gimbal Controller group");
+        let gimbal = PAGES.iter().find(|p| p.title == GIMBAL_CONTROLLER_PAGE).unwrap();
+        assert_eq!(gimbal.sections, &[("Gimbal Controller", "gimbalControllerSettings")], "GimbalIndicator's expanded page still reads it");
+        assert!(!page_shown(gimbal, false, false) && !page_shown(gimbal, true, true), "SettingsPagesModel lists no gimbal page");
     }
 
     #[test]

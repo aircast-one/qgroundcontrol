@@ -202,7 +202,7 @@ internal fun GimbalIndicatorCell() {
 }
 
 private const val GIMBAL_CONTROLLER_SETTINGS = "gimbalControllerSettings"
-private const val GIMBAL_SETTINGS_PAGE = "Fly View"
+private const val GIMBAL_SETTINGS_PAGE = "Gimbal Controller"
 private const val JOYSTICK_BUTTONS_SPEED = "joystickButtonsSpeed"
 
 internal fun joystickButtonsAvailable(view: JSONObject?): Boolean =
