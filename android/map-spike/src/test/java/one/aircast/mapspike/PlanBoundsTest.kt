@@ -221,4 +221,12 @@ class FitsPlanOnEntryTest {
         assertFalse(nothing)
         assertTrue(onlyRally)
     }
+
+    @Test
+    fun `the plan map centres on the vehicle once on entry and then stays where the operator put it`() {
+        org.junit.Assert.assertTrue(centersOnVehicleAtEntry(alreadyCentred = false, vehicleKnown = true, fitsRequested = 0))
+        org.junit.Assert.assertFalse("PlanView never follows the vehicle; the Center menu moves the map", centersOnVehicleAtEntry(alreadyCentred = true, vehicleKnown = true, fitsRequested = 0))
+        org.junit.Assert.assertFalse("a mission fitted on entry wins", centersOnVehicleAtEntry(alreadyCentred = false, vehicleKnown = true, fitsRequested = 1))
+        org.junit.Assert.assertFalse(centersOnVehicleAtEntry(alreadyCentred = false, vehicleKnown = false, fitsRequested = 0))
+    }
 }

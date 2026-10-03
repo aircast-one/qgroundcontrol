@@ -177,7 +177,7 @@ internal fun MapSpikeScreen(
     overlay: (@Composable BoxScope.() -> Unit)? = null,
     summaryHidden: Boolean = false,
 ) {
-    var follow by remember { mutableStateOf(true) }
+    var follow by remember { mutableStateOf(false) }
     var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
     var editingItem by remember { mutableStateOf<MissionItem?>(null) }
     var fitRequest by remember { mutableIntStateOf(0) }
@@ -345,6 +345,14 @@ internal fun MapSpikeScreen(
     var listOpen by remember { mutableStateOf(false) }
     var centreRequest by remember { mutableIntStateOf(0) }
     var centreOn by remember { mutableStateOf<TrackPoint?>(null) }
+    var centredOnEntry by remember { mutableStateOf(false) }
+    LaunchedEffect(isPlottable(latitude, longitude)) {
+        if (centersOnVehicleAtEntry(centredOnEntry, isPlottable(latitude, longitude), fitRequest)) {
+            centredOnEntry = true
+            centreOn = TrackPoint(latitude, longitude)
+            centreRequest += 1
+        }
+    }
 
     LaunchedEffect(fitKey) {
         if (fitKey != 0) firstRead = true

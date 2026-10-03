@@ -73,4 +73,7 @@ fun planIsDrawn(
 fun fitsPlanOnEntry(firstRead: Boolean, planRead: Boolean, planIsDrawn: Boolean): Boolean =
     firstRead && planRead && planIsDrawn
 
+fun centersOnVehicleAtEntry(alreadyCentred: Boolean, vehicleKnown: Boolean, fitsRequested: Int): Boolean =
+    !alreadyCentred && vehicleKnown && fitsRequested == 0
+
 fun stillFirstRead(firstRead: Boolean, planRead: Boolean): Boolean = firstRead && !planRead
