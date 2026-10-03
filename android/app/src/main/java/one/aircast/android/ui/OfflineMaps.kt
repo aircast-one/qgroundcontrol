@@ -48,10 +48,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.mapspike.OperatorBridge
 import one.aircast.mapspike.TrackPoint
 import one.aircast.mapspike.VehicleMap
 import one.aircast.mapspike.aircast
 import one.aircast.mapspike.currentMapType
+import one.aircast.mapspike.operatorHeading
+import one.aircast.mapspike.operatorPoint
 import one.aircast.mapspike.optText
 import one.aircast.mapspike.qgcRasterStyle
 import one.aircast.mapspike.readCamera
@@ -334,6 +337,8 @@ private fun OfflineSetDialog(set: OfflineSet, onDismiss: () -> Unit, onRename: (
     )
 }
 
+private data class OperatorFix(val point: TrackPoint, val heading: Double)
+
 @Composable
 private fun OfflineSetEditor(
     onDismiss: () -> Unit,
@@ -346,6 +351,8 @@ private fun OfflineSetEditor(
     var read by remember { mutableStateOf<OfflineMaps?>(null) }
     val context = LocalContext.current
     val flightMap = remember(context) { readCamera(context) }
+    var operator by remember { mutableStateOf<OperatorFix?>(null) }
+    var operatorCentre by remember { mutableStateOf<TrackPoint?>(null) }
     var typeMenu by remember { mutableStateOf(false) }
     var showPreview by remember { mutableStateOf(false) }
     var fetchElevation by remember { mutableStateOf(true) }
@@ -357,6 +364,16 @@ private fun OfflineSetEditor(
             zoomSetting(MIN_ZOOM_PATH, DEFAULT_MIN_ZOOM) to zoomSetting(MAX_ZOOM_PATH, DEFAULT_MAX_ZOOM)
         }
         zooms = min.toFloat()..max.toFloat()
+    }
+    LaunchedEffect(region != null) {
+        if (region == null) return@LaunchedEffect
+        while (isActive) {
+            val fix = withContext(Dispatchers.IO) { OperatorBridge.read() }
+                .let { view -> operatorPoint(view)?.let { OperatorFix(it, operatorHeading(view)) } }
+            operator = fix
+            if (operatorCentre == null) operatorCentre = fix?.point
+            delay(OFFLINE_POLL_MS)
+        }
     }
     LaunchedEffect(mapType, region, minZoom, maxZoom, fetchElevation) {
         read = withContext(Dispatchers.IO) { offlineMaps(Qgc.get(offlineMapsPath(mapType, region, minZoom, maxZoom, fetchElevation))) }
@@ -375,9 +392,15 @@ private fun OfflineSetEditor(
                         modifier = Modifier.fillMaxSize(),
                         mapStyle = qgcRasterStyle(mapType),
                         follow = false,
-                        centreRequest = if (flightMap == null) 0 else 1,
-                        centreOn = flightMap?.centre,
-                        centreZoom = flightMap?.zoom,
+                        centreRequest = when {
+                            operatorCentre != null -> 2
+                            flightMap != null -> 1
+                            else -> 0
+                        },
+                        centreOn = operatorCentre ?: flightMap?.centre,
+                        centreZoom = flightMap?.zoom.takeIf { operatorCentre == null },
+                        operator = operator?.point,
+                        operatorHeading = operator?.heading ?: Double.NaN,
                         onViewChanged = { corners -> region = offlineRegion(corners) },
                     )
                 }
