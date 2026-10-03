@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -57,7 +59,8 @@ import java.net.URLEncoder
 internal const val APP_LOG_VIEW = "view.appLog"
 internal const val APP_LOG_CLEAR = "appLog.clear"
 internal const val APP_LOG_SAVE = "appLog.save"
-internal const val APP_LOG_FILE_NAME = "QGCConsole.txt"
+internal const val APP_LOG_SAVE_FORMAT = "settings.logManagerSettings.saveFormat.rawValue"
+private const val SAVE_FORMAT_CSV = 1
 private const val APP_LOG_POLL_MS = 500L
 private const val FILTER_DEBOUNCE_MS = 200L
 private const val LEVEL_WARNING = 2
@@ -109,12 +112,22 @@ internal fun appLogRead(view: JSONObject?): AppLogRead? =
 internal fun mergedEntries(held: List<AppLogEntry>, read: AppLogRead): List<AppLogEntry> =
     held.filter { entry -> read.first != null && entry.sequence >= read.first } + read.entries
 
-private fun displayName(context: android.content.Context, uri: Uri): String =
+internal fun appLogFileName(saveFormat: JSONObject?): String =
+    if (saveFormat?.optInt("value") == SAVE_FORMAT_CSV) "QGCConsole.csv" else "QGCConsole.txt"
+
+internal fun appLogMime(fileName: String): String = if (fileName.endsWith(".csv", ignoreCase = true)) "text/csv" else "text/plain"
+
+private class CreateAppLog : ActivityResultContracts.CreateDocument("text/plain") {
+    override fun createIntent(context: Context, input: String): Intent =
+        super.createIntent(context, input).setType(appLogMime(input))
+}
+
+private fun displayName(context: Context, uri: Uri, fallback: String): String =
     runCatching {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }
-    }.getOrNull() ?: APP_LOG_FILE_NAME
+    }.getOrNull() ?: fallback
 
 @Composable
 private fun levelColor(level: Int): Color = when {
@@ -157,11 +170,12 @@ fun AppLogPage(modifier: Modifier = Modifier) {
         if (following && entries.isNotEmpty()) list.scrollToItem(entries.lastIndex)
     }
 
-    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+    var saveName by remember { mutableStateOf(appLogFileName(null)) }
+    val saver = rememberLauncherForActivityResult(CreateAppLog()) { uri ->
         val target = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
             notice = withContext(Dispatchers.IO) {
-                val saved = Qgc.invokeResult(APP_LOG_SAVE, displayName(context, target)) as? String
+                val saved = Qgc.invokeResult(APP_LOG_SAVE, displayName(context, target, saveName)) as? String
                     ?: return@withContext "The log could not be read."
                 runCatching { context.contentResolver.openOutputStream(target, "wt")?.use { it.write(saved.toByteArray()) } }
                     .fold({ null }, { "The file could not be written." })
@@ -196,7 +210,12 @@ fun AppLogPage(modifier: Modifier = Modifier) {
             read = read,
             onFilter = { filter = it },
             onCategories = { showCategories = true },
-            onSave = { saver.launch(APP_LOG_FILE_NAME) },
+            onSave = {
+                scope.launch {
+                    saveName = withContext(Dispatchers.Default) { appLogFileName(Qgc.get(APP_LOG_SAVE_FORMAT)) }
+                    saver.launch(saveName)
+                }
+            },
             onClear = {
                 scope.launch {
                     withContext(Dispatchers.IO) { Qgc.invoke(APP_LOG_CLEAR) }

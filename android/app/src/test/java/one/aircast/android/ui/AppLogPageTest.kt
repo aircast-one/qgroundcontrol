@@ -25,4 +25,13 @@ class AppLogPageTest {
         val held = listOf(4L, 5L).map { AppLogEntry(it, 1, "I", "hub", "", "") }
         assertEquals(listOf(5L, 6L), mergedEntries(held, read).map { it.sequence })
     }
+
+    @Test
+    fun `the save name and type follow the log save format setting like the QGC dialog suffix`() {
+        assertEquals("QGCConsole.txt", appLogFileName(JSONObject("""{"value":0}""")))
+        assertEquals("QGCConsole.csv", appLogFileName(JSONObject("""{"value":1}""")))
+        assertEquals("QGCConsole.txt", appLogFileName(null))
+        assertEquals("text/csv", appLogMime("QGCConsole.csv"))
+        assertEquals("text/plain", appLogMime("QGCConsole.txt"))
+    }
 }
