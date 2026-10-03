@@ -43,7 +43,11 @@ internal data class ParameterRows(
     val note: String,
     val calculators: Map<String, PowerCalculator> = emptyMap(),
     val image: String = "",
+    val keywords: List<String> = emptyList(),
 )
+
+internal fun sectionMatches(rows: ParameterRows, search: String): Boolean =
+    search.trim().lowercase().let { query -> query.isEmpty() || (listOf(rows.title) + rows.keywords).any { it.lowercase().contains(query) } }
 
 internal fun factFromParameter(name: String, json: JSONObject): Fact? =
     if (json.optText("kind") == "fact") {
@@ -130,7 +134,8 @@ internal fun readPage(page: String): List<ParameterRows> {
                 val calculators = (0 until (controls?.length() ?: 0)).mapNotNull { control ->
                     controls!!.optJSONObject(control)?.let { row -> powerCalculator(row.optJSONObject("calculator"))?.let { row.optText("path") to it } }
                 }.toMap()
-                ParameterRows(section.optText("title"), facts, note.joinToString(" "), calculators, section.optText("image"))
+                val keywords = section.optJSONArray("keywords")?.let { list -> (0 until list.length()).map(list::optString) }.orEmpty()
+                ParameterRows(section.optText("title"), facts, note.joinToString(" "), calculators, section.optText("image"), keywords)
             }
         }
     }
@@ -143,6 +148,7 @@ internal fun ParameterForm(
     page: String,
     modifier: Modifier = Modifier,
     highlighted: Set<String> = emptySet(),
+    section: String? = null,
 ) {
     var rows by remember { mutableStateOf(emptyList<ParameterRows>()) }
     var loaded by remember { mutableStateOf(false) }
@@ -150,8 +156,8 @@ internal fun ParameterForm(
     var calculating by remember { mutableStateOf<PowerCalculator?>(null) }
     var calibratingEscs by remember { mutableStateOf(false) }
 
-    LaunchedEffect(page, reloads) {
-        rows = withContext(Dispatchers.Default) { readPage(page) }
+    LaunchedEffect(page, section, reloads) {
+        rows = withContext(Dispatchers.Default) { readPage(page).filter { section == null || it.title == section } }
         loaded = true
     }
 

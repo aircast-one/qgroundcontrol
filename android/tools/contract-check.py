@@ -222,6 +222,7 @@ ONLY_IN = {
 }
 
 ACCEPTED = {
+    "keywords": "view.setup(page).sections[].keywords comes from VehicleConfig section search terms, and the rig records its setup pages per-section only as counts; vehicleconfig.rs search_terms serves it. Read in ParameterForm.kt",
     "indent": "view.setup rows from a VehicleConfig control marked indent (ArduPilot help labels); the rig's PX4 mock pages carry none. Read in ParameterForm.kt",
     "smallFont": "view.setup label rows from a VehicleConfig control marked smallFont (ArduPilot help labels); the rig's PX4 mock pages carry none. Read in ParameterForm.kt",
     "firstEntryIsAll": "view.setup on the ArduPilot Flight Safety page (ARMING_CHECK); the rig records a PX4 mock, so no such bitmask is served. Read in ParameterForm.kt",

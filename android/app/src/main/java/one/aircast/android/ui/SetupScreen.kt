@@ -192,6 +192,13 @@ internal fun setupComponents(view: JSONObject?): List<SetupComponent> {
 }
 
 @Composable
+private fun SectionHits(titles: List<String>, onOpen: (String) -> Unit) {
+    titles.forEach { title ->
+        androidx.compose.material3.TextButton(onClick = { onOpen(title) }, modifier = Modifier.padding(start = 56.dp)) { Text(sentenceCase(title)) }
+    }
+}
+
+@Composable
 private fun SetupNotice(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
@@ -212,6 +219,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val line = remember(firmwareJson) { firmwareLine(firmwareJson) }
     val vehicleType = line.vehicleType
     var openComponent by remember { mutableStateOf<SetupComponent?>(null) }
+    var openSection by remember { mutableStateOf<String?>(null) }
     var parametersOpen by remember { mutableStateOf(false) }
     var setupSearch by remember { mutableStateOf("") }
     var parametersSearch by remember { mutableStateOf("") }
@@ -219,6 +227,18 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     BackHandler(enabled = openComponent != null) { openComponent = null }
 
     val components = remember(setupJson) { setupComponents(setupJson) }
+    val sectionHits by produceState(emptyMap<String, List<String>>(), setupSearch, components) {
+        value = if (setupSearch.isBlank()) emptyMap() else withContext(Dispatchers.Default) {
+            components.filter { setupPage(setupJson, it.name)?.parameterSections == true }
+                .associate { component -> component.name to readPage(component.name).filter { sectionMatches(it, setupSearch) }.map { it.title } }
+        }
+    }
+    val searchHit: (SetupComponent) -> Boolean = { setupMatches(it.name, setupSearch) || sectionHits[it.name].orEmpty().isNotEmpty() }
+    val openFromList: (SetupComponent, String?) -> Unit = { component, section ->
+        parametersOpen = false
+        openSection = section
+        openComponent = component
+    }
     var summaries by remember { mutableStateOf(emptyMap<String, List<SummaryLine>>()) }
     LaunchedEffect(hasVehicle) {
         if (!hasVehicle) summaries = emptyMap()
@@ -322,7 +342,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 nativePage?.screen == OPTICAL_FLOW_SCREEN -> OpticalFlowScreen(Modifier.weight(1f))
                 nativePage?.parameterSections == true -> {
                     if (open.known == "power") PowerLiveCard()
-                    ParameterForm(open.name, Modifier.weight(1f))
+                    ParameterForm(open.name, Modifier.weight(1f), section = openSection)
                 }
                 else -> SetupNotice(
                     "${open.name} is set up on the desktop.",
@@ -333,7 +353,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     } }
 
     val firmware = line.summary
-    val needSetup = components.filter { it.needsAttention && setupMatches(it.name, setupSearch) }
+    val needSetup = components.filter { it.needsAttention && searchHit(it) }
 
     val overview: @Composable (Modifier) -> Unit = { pane ->
     LaunchedEffect(Unit) {
@@ -376,13 +396,14 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             items(needSetup, key = { "a${it.index}" }) { component ->
                 val blocked = component.blockedReason
                 val page = setupPage(setupJson, component.name)
+                Column {
                 SetupRow(
                     title = sentenceCase(component.name),
                     status = blocked?.let { "Not while $it" }
                         ?: attentionAction(component.className),
                     state = if (blocked != null) SetupState.Unavailable else SetupState.NeedsAttention,
                     onClick = if (blocked == null && headCanOpen(page, component.name)) {
-                        { parametersOpen = false; openComponent = component }
+                        { openFromList(component, null) }
                     } else {
                         null
                     },
@@ -391,10 +412,12 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     icon = setupIcon(component.known, component.className),
                     subtitle = setupNote(component.className).takeIf { summaries[component.name].isNullOrEmpty() }.orEmpty(),
                 )
+                if (component.blockedReason == null) SectionHits(sectionHits[component.name].orEmpty()) { openFromList(component, it) }
+                }
             }
         }
 
-        val remaining = remainingSetup(components).filter { setupMatches(it.name, setupSearch) }
+        val remaining = remainingSetup(components).filter(searchHit)
         if (components.isEmpty()) {
             item(key = "empty") {
                 parametersIncomplete(setupJson)?.let { SetupNotice(it) } ?: EmptyState(R.drawable.ic_build, NOTHING_TO_CONFIGURE, NOTHING_TO_CONFIGURE_TEXT)
@@ -405,6 +428,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 val page = setupPage(setupJson, component.name)
                 val openable = headCanOpen(page, headPage(component))
                 val blocked = component.blockedReason
+                Column {
                 SetupRow(
                     title = sentenceCase(component.name),
                     status = when {
@@ -420,7 +444,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                         else -> SetupState.Neutral
                     },
                     onClick = if (blocked == null && openable) {
-                        { parametersOpen = false; openComponent = component }
+                        { openFromList(component, null) }
                     } else {
                         null
                     },
@@ -429,6 +453,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     icon = setupIcon(component.known, component.className),
                     subtitle = setupNote(component.className).takeIf { summaries[component.name].isNullOrEmpty() }.orEmpty(),
                 )
+                if (component.blockedReason == null) SectionHits(sectionHits[component.name].orEmpty()) { openFromList(component, it) }
+                }
             }
         }
 

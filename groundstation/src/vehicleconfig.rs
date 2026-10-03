@@ -836,7 +836,20 @@ fn disabled_companion(scope: &Scope, page: &str, section_index: usize, section: 
             })
         })
         .collect();
-    (!controls.is_empty()).then(|| json!({ "title": companion["heading"], "note": "", "controls": controls }))
+    (!controls.is_empty()).then(|| json!({ "title": companion["heading"], "note": "", "keywords": search_terms(section), "controls": controls }))
+}
+
+fn search_terms(section: &Value) -> Vec<String> {
+    let strs = |v: &Value| v.as_str().map(str::to_lowercase);
+    let controls = section["controls"].as_array().cloned().unwrap_or_default();
+    std::iter::once(&section["title"])
+        .chain(section["keywords"].as_array().into_iter().flatten())
+        .chain(controls.iter().flat_map(|c| [&c["label"], &c["param"]]))
+        .chain(std::iter::once(&section["repeat"]["disabledSection"]["heading"]))
+        .filter_map(strs)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn section_image(section: &Value) -> Value {
@@ -872,7 +885,7 @@ pub fn page(backend: &dyn Backend, page: &str, px4: bool) -> Value {
                                 .flat_map(|(control_index, control)| rows(&scope, page, &format!("{section_index}.{}.{control_index}", instance.index), control))
                                 .collect(),
                         };
-                        Some(json!({ "title": instance.heading, "note": "", "image": section_image(section), "controls": controls }))
+                        Some(json!({ "title": instance.heading, "note": "", "image": section_image(section), "keywords": search_terms(section), "controls": controls }))
                     })
                     .collect();
             shown.into_iter().chain(disabled_companion(&base, page, section_index, section))
@@ -1256,6 +1269,15 @@ mod tests {
         let failsafes = page(&fake, "Failsafes", false);
         let rc = failsafes["sections"].as_array().unwrap().iter().find(|s| s["title"].as_str().is_some_and(|t| t.contains("RC"))).cloned();
         assert!(rc.is_some(), "the RC failsafe section stays with only its label when FS_OPTIONS is missing: {failsafes}");
+    }
+
+    #[test]
+    fn sections_carry_the_generated_qml_search_terms() {
+        let fake = Fake::new(&[("FS_GCS_ENABLE", 1.0), ("FS_GCS_TIMEOUT", 5.0), ("FS_OPTIONS", 0.0), ("FS_THR_ENABLE", 1.0), ("FS_THR_VALUE", 975.0)]);
+        let failsafes = page(&fake, "Failsafes", false);
+        let gcs = failsafes["sections"].as_array().unwrap().iter().find(|s| s["title"] == "Ground Station Failsafe").unwrap();
+        let terms: Vec<&str> = gcs["keywords"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        ["ground station failsafe", "heartbeat", "fs_gcs_timeout", "timeout"].iter().for_each(|t| assert!(terms.contains(t), "{t} in {terms:?}"));
     }
 
     #[test]
