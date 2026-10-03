@@ -485,8 +485,14 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     } }
 
+    val shownDetail = parametersPage ?: componentPage
+    val latestDetail by androidx.compose.runtime.rememberUpdatedState(shownDetail)
+    val detailKey = if (parametersOpen) "parameters" else openComponent?.name
+    val movableDetail = remember(detailKey, shownDetail != null) {
+        shownDetail?.let { androidx.compose.runtime.movableContentOf { pane: Modifier -> latestDetail?.invoke(pane) } }
+    }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val detail = parametersPage ?: componentPage
+        val detail = movableDetail
         if (maxWidth >= LIST_DETAIL_MIN_WIDTH) {
             Row(Modifier.fillMaxSize()) {
                 overview(Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow))

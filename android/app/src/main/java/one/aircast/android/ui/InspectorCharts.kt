@@ -137,7 +137,7 @@ internal fun chartToggleEnabled(charts: InspectorCharts?, field: String, type: S
 }
 
 internal fun toggleChartField(chart: Int, field: String, on: Boolean) {
-    offMainDetached {
+    one.aircast.android.bridge.offMainInOrder {
         Qgc.invoke(if (on) CHART_ADD else CHART_REMOVE, chart, field)
     }
 }

@@ -168,6 +168,10 @@ fun AnalyzeScreen(
     }
     val leave: () -> Unit = { switchTo(null) }
     BackHandler(enabled = page != null) { leave() }
+    val currentLeave by androidx.compose.runtime.rememberUpdatedState(leave)
+    val body = remember(page) {
+        page?.let { shown -> androidx.compose.runtime.movableContentOf { at: Modifier -> AnalyzePageBody(shown, { currentLeave() }, at) } }
+    }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val wide = maxWidth >= LIST_DETAIL_MIN_WIDTH
@@ -175,11 +179,11 @@ fun AnalyzeScreen(
             wide -> Row(Modifier.fillMaxSize()) {
                 AnalyzePageList(onSelect = switchTo, modifier = Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow), selected = page)
                 Surface(Modifier.weight(1f).fillMaxHeight()) {
-                    if (page == null) EmptyState(R.drawable.ic_analytics, "Analyze", "Choose a tool on the left.") else CompositionLocalProvider(LocalTwoPane provides true) { AnalyzePageBody(page, leave, Modifier.wrapContentWidth(Alignment.Start).widthIn(max = DETAIL_PANE_MAX_WIDTH)) }
+                    if (body == null) EmptyState(R.drawable.ic_analytics, "Analyze", "Choose a tool on the left.") else CompositionLocalProvider(LocalTwoPane provides true) { body(Modifier.wrapContentWidth(Alignment.Start).widthIn(max = DETAIL_PANE_MAX_WIDTH)) }
                 }
             }
-            page == null -> Surface(Modifier.fillMaxSize()) { AnalyzePageList(onSelect = onSelect) }
-            else -> AnalyzePageBody(page, leave)
+            body == null -> Surface(Modifier.fillMaxSize()) { AnalyzePageList(onSelect = onSelect) }
+            else -> body(Modifier)
         }
     }
 }

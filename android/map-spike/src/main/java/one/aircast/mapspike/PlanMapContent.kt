@@ -411,6 +411,7 @@ internal fun MapSpikeScreen(
                     fitRequest += 1
                 }
                 firstRead = stillFirstRead(firstRead, plan != null)
+                if (!firstRead) centredOnEntry = true
                 allItems = nextAll
                 items = nextItems
                 itemCount = nextItemCount
