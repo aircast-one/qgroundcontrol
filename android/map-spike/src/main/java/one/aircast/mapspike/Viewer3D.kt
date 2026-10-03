@@ -205,12 +205,13 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
     Box(modifier) {
         AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
         if (!scene.available && scene.reason.isNotBlank()) {
-            Text(
-                scene.reason,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
+            androidx.compose.material3.Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
-            )
+            ) {
+                Text(scene.reason, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
+            }
         }
     }
 }
