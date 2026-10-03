@@ -95,9 +95,20 @@ internal fun rtkRows(status: RtkStatus): List<Pair<String, String>> =
 internal fun rtkHeadline(status: RtkStatus): String = if (status.active) "Survey-in Active" else "RTK Streaming"
 
 @Composable
-internal fun RtkSettingsSheetContent() {
+internal fun rememberRtkStatus(): RtkStatus? {
     var status by remember { mutableStateOf<RtkStatus?>(null) }
-    LaunchedEffect(Unit) { status = withContext(Dispatchers.Default) { rtkStatus(Qgc.get(GPS_RTK_VIEW)) } }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            status = withContext(Dispatchers.Default) { rtkStatus(Qgc.get(GPS_RTK_VIEW)) }
+            delay(RTK_POLL_MS)
+        }
+    }
+    return status
+}
+
+@Composable
+internal fun RtkSettingsSheetContent() {
+    val status = rememberRtkStatus()
     Column(
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -108,17 +119,8 @@ internal fun RtkSettingsSheetContent() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun RtkIndicatorCell() {
-    var status by remember { mutableStateOf<RtkStatus?>(null) }
+internal fun RtkIndicatorCell(status: RtkStatus?) {
     var open by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            status = withContext(Dispatchers.Default) { rtkStatus(Qgc.get(GPS_RTK_VIEW)) }
-            delay(RTK_POLL_MS)
-        }
-    }
-
     val shown = status ?: return
     Text("RTK", style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable { open = true })
 

@@ -61,13 +61,11 @@ private fun batteryColour(state: String): Color = when (state) {
     else -> MaterialTheme.colorScheme.onSurfaceVariant
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun GcsBatteryCell() {
+internal fun rememberGcsBattery(): GcsBatteryReading? {
     val context = LocalContext.current
     var battery by remember { mutableStateOf<PhoneBattery?>(null) }
     var reading by remember { mutableStateOf<GcsBatteryReading?>(null) }
-    var open by remember { mutableStateOf(false) }
 
     DisposableEffect(context) {
         val receiver = object : BroadcastReceiver() {
@@ -87,7 +85,13 @@ internal fun GcsBatteryCell() {
         val current = battery ?: return@LaunchedEffect
         reading = withContext(Dispatchers.Default) { gcsBatteryReading(Qgc.get(gcsBatteryPath(current))) }
     }
+    return reading
+}
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun GcsBatteryCell(reading: GcsBatteryReading?) {
+    var open by remember { mutableStateOf(false) }
     val shown = reading ?: return
     Text(
         shown.levelText,

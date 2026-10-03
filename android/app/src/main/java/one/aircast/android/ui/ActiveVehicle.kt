@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,7 +43,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.truthy
@@ -112,6 +112,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     var picking by remember { mutableStateOf(false) }
     val panelJson by qgcPath(MULTI_VEHICLE_PANEL)
     val panelEnabled = multiVehiclePanelEnabled(panelJson)
+    val panelFact by qgcPath(MULTI_VEHICLE_PANEL_SETTING)
     var offline by remember { mutableStateOf(false) }
     var statusSettings by remember { mutableStateOf(false) }
     var modeMenu by remember { mutableStateOf(false) }
@@ -250,12 +251,12 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
             }
-            ListItem(
+            if (panelToggleShown(panelFact)) ListItem(
                 headlineContent = { Text("Enable multi-vehicle panel") },
                 trailingContent = {
-                    androidx.compose.material3.Switch(
+                    Switch(
                         checked = panelEnabled,
-                        onCheckedChange = { wanted -> offMainDetached { Qgc.writeRefusal(MULTI_VEHICLE_PANEL_SETTING, wanted) } },
+                        onCheckedChange = { wanted -> scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(MULTI_VEHICLE_PANEL_SETTING, wanted) } } },
                     )
                 },
             )
@@ -503,6 +504,8 @@ private fun InControlNote(holder: ControlStation, onRefusal: (String?) -> Unit) 
 
 internal const val MULTI_VEHICLE_PANEL_SETTING = "settings.appSettings.enableMultiVehiclePanel"
 internal const val MULTI_VEHICLE_PANEL = "$MULTI_VEHICLE_PANEL_SETTING.rawValue"
+
+internal fun panelToggleShown(fact: JSONObject?): Boolean = fact?.optBoolean("userVisible", true) != false
 
 internal fun multiVehiclePanelEnabled(setting: JSONObject?): Boolean =
     setting?.takeIf { it.has("value") && !it.isNull("value") }?.optBoolean("value", true) ?: true

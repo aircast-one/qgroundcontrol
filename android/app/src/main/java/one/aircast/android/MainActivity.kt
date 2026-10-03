@@ -57,7 +57,7 @@ import one.aircast.android.ui.AppNavigation
 import one.aircast.android.ui.OverlayEditBar
 import one.aircast.android.ui.Hideable
 import one.aircast.android.ui.LogReplayBar
-import one.aircast.android.ui.StatusReadingsInline
+import one.aircast.android.ui.StatusPill
 import one.aircast.android.ui.VehicleStateChip
 import one.aircast.android.ui.ControlRequestPrompt
 import one.aircast.android.ui.VtolStateCell
@@ -421,13 +421,7 @@ fun AircastShell(hostView: android.view.View?) {
                             VtolStateCell()
                             ControlRequestPrompt()
                             Spacer(Modifier.weight(1f))
-                            Surface(
-                                shape = CircleShape,
-                                color = Color.Black.copy(alpha = 0.45f),
-                                contentColor = MaterialTheme.aircast.outdoorForeground,
-                            ) {
-                                StatusReadingsInline(Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-                            }
+                            StatusPill()
                         },
                         video = { mod, expanded -> flyVideo(mod, expanded) },
                         map = { mod -> flyMap(mod) },

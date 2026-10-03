@@ -10,6 +10,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import one.aircast.android.bridge.Fact
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.text.font.FontWeight
+import one.aircast.android.bridge.qgcFacts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -109,12 +113,30 @@ private fun gpsColour(fix: FixLevel): Color = when (fix) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatusReadingsInline(modifier: Modifier = Modifier) {
+fun StatusPill(modifier: Modifier = Modifier) {
+    val rtk = rememberRtkStatus()
+    val gcsBattery = rememberGcsBattery()
+    if (!statusPillShown(hasVehicle(), rtk != null, gcsBattery != null)) return
+    Surface(
+        modifier = modifier,
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = 0.45f),
+        contentColor = MaterialTheme.aircast.outdoorForeground,
+    ) {
+        StatusReadingsInline(rtk, gcsBattery, Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+    }
+}
+
+internal fun statusPillShown(vehicle: Boolean, rtk: Boolean, gcsBattery: Boolean): Boolean = vehicle || rtk || gcsBattery
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading?, modifier: Modifier = Modifier) {
     val available = hasVehicle()
     if (!available) {
         Row(modifier, horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            RtkIndicatorCell()
-            GcsBatteryCell()
+            RtkIndicatorCell(rtk)
+            GcsBatteryCell(gcsBattery)
         }
         return
     }
@@ -161,8 +183,8 @@ fun StatusReadingsInline(modifier: Modifier = Modifier) {
             "joystick" to { JoystickIndicatorCell() },
             "remoteId" to { RemoteIdIndicatorCell() },
             "gpsResilience" to { GpsResilienceCell() },
-            "rtk" to { RtkIndicatorCell() },
-            "gcsBattery" to { GcsBatteryCell() },
+            "rtk" to { RtkIndicatorCell(rtk) },
+            "gcsBattery" to { GcsBatteryCell(gcsBattery) },
             "gimbal" to { GimbalIndicatorCell() },
             "supportForwarding" to { SupportForwardingCell() },
         )
@@ -235,7 +257,7 @@ internal fun batteryDisplayFacts(facts: List<Fact>): List<Fact> =
 
 @Composable
 private fun BatteryDisplaySettings() {
-    val facts by one.aircast.android.bridge.qgcFacts(BATTERY_INDICATOR_SETTINGS)
+    val facts by qgcFacts(BATTERY_INDICATOR_SETTINGS)
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         Text("Battery display", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
         batteryDisplayFacts(facts).forEach { FactRow(it) }
@@ -247,7 +269,7 @@ internal const val POWER_SETUP_PAGE = "Power"
 internal enum class StripDetail { Battery, Gps, Links, Telemetry, Rc }
 
 internal fun rcDetail(state: FlyState?): List<DetailRow> =
-    listOfNotNull(state?.rcSignal?.let { DetailRow("RSSI", "$it%") })
+    listOfNotNull(state?.rcSignalText?.ifBlank { null }?.let { DetailRow("RSSI", it) })
 
 internal fun instrumentTitle(instrument: StripDetail): String = when (instrument) {
     StripDetail.Battery -> "Battery"
@@ -268,7 +290,7 @@ private fun InstrumentSheet(title: String, rows: List<DetailRow>, headline: Batt
         )
         headline?.let { worst ->
             Column(Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
-                Text(worst.text, style = MaterialTheme.typography.headlineMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = severityColour(worst.severity))
+                Text(worst.text, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = severityColour(worst.severity))
                 if (worst.detail.isNotBlank()) Text(worst.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }

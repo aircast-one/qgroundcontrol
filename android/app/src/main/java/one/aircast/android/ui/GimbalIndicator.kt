@@ -15,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import one.aircast.android.bridge.Fact
+import one.aircast.android.bridge.qgcFacts
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -203,7 +204,10 @@ internal fun GimbalIndicatorCell() {
 
 private const val GIMBAL_CONTROLLER_SETTINGS = "settings.gimbalControllerSettings"
 
-internal fun gimbalSettingsShown(facts: List<Fact>): List<Fact> {
+internal fun joystickButtonsAvailable(view: JSONObject?): Boolean =
+    view != null && !view.isNull("active") && view.optBoolean("vehicle") && view.optBoolean("enabled")
+
+internal fun gimbalSettingsShown(facts: List<Fact>, joystickButtons: Boolean): List<Fact> {
     val named = { name: String -> facts.firstOrNull { it.name == name } }
     val on = named("enableOnScreenControl")?.value == true
     val dragging = named("clickAndDrag")?.value == true
@@ -215,7 +219,7 @@ internal fun gimbalSettingsShown(facts: List<Fact>): List<Fact> {
         named("cameraSlideSpeed")?.takeIf { on && dragging },
         named("zoomMaxSpeed"),
         named("zoomMinSpeed"),
-        named("joystickButtonsSpeed"),
+        named("joystickButtonsSpeed")?.let { if (joystickButtons) it else it.copy(enabled = false, disabledReason = "No joystick is enabled for this vehicle.") },
         named("showAzimuthIndicatorOnMap"),
         named("toolbarIndicatorShowAzimuth"),
         named("toolbarIndicatorShowAcquireReleaseControl"),
@@ -224,10 +228,11 @@ internal fun gimbalSettingsShown(facts: List<Fact>): List<Fact> {
 
 @Composable
 private fun GimbalSettings() {
-    val facts by one.aircast.android.bridge.qgcFacts(GIMBAL_CONTROLLER_SETTINGS)
+    val facts by qgcFacts(GIMBAL_CONTROLLER_SETTINGS)
+    val joystick by qgcPath(JOYSTICK_VIEW)
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         Text("On-screen control", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-        gimbalSettingsShown(facts).forEach { FactRow(it) }
+        gimbalSettingsShown(facts, joystickButtonsAvailable(joystick)).forEach { FactRow(it) }
     }
 }
 

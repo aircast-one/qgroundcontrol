@@ -50,7 +50,9 @@ class InstrumentDetailTest {
     fun `every placeholder QGC prints for an uncomputed fact is treated as one`() {
         assertTrue(notYetComputed("--.--"))
         assertTrue(notYetComputed("--:--:--"))
+        assertTrue(notYetComputed("--"))
         assertTrue(notYetComputed(" "))
+        assertFalse(notYetComputed("0"))
         assertFalse(notYetComputed("11.10"))
     }
 
@@ -107,5 +109,17 @@ class InstrumentDetailTest {
             listOf("carrying", "standing by"),
             linkDetail(links, listOf("Telemetry", "WiFi"), "Telemetry").map { it.value },
         )
+    }
+
+    @Test
+    fun `the RC sheet reads the same words as the RC cell`() {
+        assertEquals(emptyList<DetailRow>(), rcDetail(null))
+    }
+
+    @Test
+    fun `the status pill hides only when nothing would draw in it`() {
+        assertFalse(statusPillShown(vehicle = false, rtk = false, gcsBattery = false))
+        assertTrue(statusPillShown(vehicle = false, rtk = false, gcsBattery = true))
+        assertTrue(statusPillShown(vehicle = true, rtk = false, gcsBattery = false))
     }
 }

@@ -194,7 +194,7 @@ pub fn popup_rows(pack: &PopupPack) -> Vec<Value> {
     ]
     .into_iter()
     .flatten()
-    .map(|(label, value, coloured)| json!({ "label": label, "value": value, "severity": if coloured { level } else { -1 } }))
+    .map(|(label, value, coloured)| json!({ "label": label, "value": value, "severity": if coloured && level > 0 { level } else { -1 } }))
     .collect()
 }
 
@@ -217,6 +217,7 @@ fn popup_pack(backend: &dyn Backend, index: usize) -> PopupPack {
 
 pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let packs = packs(backend);
+    let popup_packs: Vec<PopupPack> = (0..packs.len()).map(|index| popup_pack(backend, index)).collect();
     let threshold1 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0);
     let threshold2 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold2.rawValue")).unwrap_or(60.0);
     let value_display = value_number(&backend.get("settings.batteryIndicatorSettings.valueDisplay.rawValue")).map(|v| v as i64).unwrap_or(0);
@@ -241,11 +242,10 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "currentText": p.current_text,
                 "percentText": p.percent_text,
                 "facts": detail_facts(backend, index),
-                "rows": popup_rows(&popup_pack(backend, index)),
+                "rows": popup_rows(&popup_packs[index]),
             })
         })
         .collect();
-    let popup_packs: Vec<PopupPack> = (0..packs.len()).map(|index| popup_pack(backend, index)).collect();
     let worst = ["critical", "warning", "caution", "normal"]
         .into_iter()
         .find(|l| described.iter().any(|p| p["level"] == *l))
@@ -289,6 +289,15 @@ mod tests {
         let labels: Vec<&str> = rows.iter().filter_map(|r| r["label"].as_str()).collect();
         assert_eq!(labels, vec!["Time left", "Charge", "Voltage"]);
         assert_eq!((rows[0]["severity"].as_i64(), rows[2]["severity"].as_i64(), rows[2]["value"].as_str()), (Some(1), Some(-1), Some("15.80 V")));
+        assert_eq!(popup_rows(&popup(1, "Ok", Some(80.0), None))[0]["severity"].as_i64(), Some(-1), "a healthy pack's charge is grey, as _packColor defaults to colorGrey");
+    }
+
+    #[test]
+    fn severity_ranks_charge_states_like_severity_of() {
+        assert_eq!((4..=6).map(severity).collect::<Vec<_>>(), vec![3, 3, 3]);
+        assert_eq!((severity(3), severity(2), severity(7), severity(0)), (2, 1, 0, 0), "charging is not alarming");
+        let tie = headline(&[popup(2, "Low", Some(40.0), None), popup(2, "Low", Some(20.0), None)]).unwrap();
+        assert_eq!(tie["detail"].as_str(), Some("40%"), "an equal severity keeps the first pack");
     }
 
     fn pack_facts(percent: Option<f64>, state: i64, label: &str) -> Vec<(String, Value)> {
