@@ -77,7 +77,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.ui.hasVehicle
 import one.aircast.mapspike.AircastTheme
 import one.aircast.android.ui.AnalyzePage
 import one.aircast.android.ui.AnalyzeScreen
@@ -422,7 +421,7 @@ fun AircastShell(hostView: android.view.View?) {
                             VtolStateCell()
                             ControlRequestPrompt()
                             Spacer(Modifier.weight(1f))
-                            if (hasVehicle()) Surface(
+                            Surface(
                                 shape = CircleShape,
                                 color = Color.Black.copy(alpha = 0.45f),
                                 contentColor = MaterialTheme.aircast.outdoorForeground,

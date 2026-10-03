@@ -109,7 +109,10 @@ private fun gpsColour(fix: FixLevel): Color = when (fix) {
 fun StatusReadingsInline(modifier: Modifier = Modifier) {
     val available = hasVehicle()
     if (!available) {
-        Row(modifier) { RtkIndicatorCell() }
+        Row(modifier, horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            RtkIndicatorCell()
+            GcsBatteryCell()
+        }
         return
     }
 
