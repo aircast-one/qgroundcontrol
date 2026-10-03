@@ -58,6 +58,7 @@ private const val HUB_SIZE = 1.4
 private const val FRONT_ARM_COLOUR = "#E53935"
 private const val REAR_ARM_COLOUR = "#ECEFF1"
 private const val ROTOR_COLOUR = "#37474F"
+private const val HUB_COLOUR = "#90A4AE"
 
 data class Point3D(val lon: Double, val lat: Double, val alt: Double)
 
@@ -100,7 +101,7 @@ internal fun quadFrame(at: Point3D, heading: Double): List<Slab> =
         val motor = offset(at, kotlin.math.sin(bearing) * ARM_LENGTH, kotlin.math.cos(bearing) * ARM_LENGTH)
         val colour = if (kotlin.math.abs(arm) < 90) FRONT_ARM_COLOUR else REAR_ARM_COLOUR
         ribbon(at, motor, colour, ARM_WIDTH, ARM_WIDTH) + box(motor.copy(alt = at.alt + ARM_WIDTH), ROTOR_SIZE, ROTOR_COLOUR, ARM_WIDTH / 2)
-    } + box(at, HUB_SIZE, REAR_ARM_COLOUR, HUB_SIZE / 2)
+    } + box(at, HUB_SIZE, HUB_COLOUR, HUB_SIZE / 2)
 
 internal fun pathSlabs(view: JSONObject?): List<Slab> {
     val segments = view?.optJSONArray("segments")
@@ -197,16 +198,19 @@ private fun installScene(style: Style) {
             PropertyFactory.fillExtrusionOpacity(0.85f),
         ),
     )
-    listOf(V3D_FLOATING_SOURCE to V3D_FLOATING_LAYER, V3D_VEHICLE_SOURCE to V3D_VEHICLE_LAYER).forEach { (source, layer) ->
-        style.addSource(GeoJsonSource(source))
-        style.addLayer(
-            FillExtrusionLayer(layer, source).withProperties(
-                PropertyFactory.fillExtrusionColor(Expression.get("colour")),
-                PropertyFactory.fillExtrusionBase(Expression.get("base")),
-                PropertyFactory.fillExtrusionHeight(Expression.get("top")),
-            ),
-        )
-    }
+    addSlabLayer(style, V3D_FLOATING_SOURCE, V3D_FLOATING_LAYER)
+    addSlabLayer(style, V3D_VEHICLE_SOURCE, V3D_VEHICLE_LAYER)
+}
+
+private fun addSlabLayer(style: Style, source: String, layer: String) {
+    style.addSource(GeoJsonSource(source))
+    style.addLayer(
+        FillExtrusionLayer(layer, source).withProperties(
+            PropertyFactory.fillExtrusionColor(Expression.get("colour")),
+            PropertyFactory.fillExtrusionBase(Expression.get("base")),
+            PropertyFactory.fillExtrusionHeight(Expression.get("top")),
+        ),
+    )
 }
 
 @Composable

@@ -75,6 +75,7 @@ use crate::maptypes;
 use crate::presets;
 use crate::apmairframe;
 use crate::closechecks;
+use crate::viewer3d;
 use crate::setupsummary;
 use crate::apmsubframe;
 use crate::apmsubmotors;
@@ -314,9 +315,9 @@ pub const VIEWS: &[View] = &[
     View { path: "view.packetRadio", deps: &[], compute: packetradio::packet_radio_view },
     View { path: "view.firmwareUpgrade", deps: &[], compute: crate::firmwareflash::view },
     View { path: "view.firmwarePorts", deps: &[], compute: crate::firmwareflash::ports_view },
-    View { path: "view.viewer3d", deps: crate::viewer3d::DEPS, compute: crate::viewer3d::viewer3d_view },
-    View { path: "view.viewer3dPath", deps: crate::viewer3d::PATH_DEPS, compute: crate::viewer3d::path_view },
-    View { path: "view.viewer3dVehicle", deps: crate::viewer3d::VEHICLE_DEPS, compute: crate::viewer3d::vehicle_view },
+    View { path: "view.viewer3d", deps: viewer3d::DEPS, compute: viewer3d::viewer3d_view },
+    View { path: "view.viewer3dPath", deps: viewer3d::PATH_DEPS, compute: viewer3d::path_view },
+    View { path: "view.viewer3dVehicle", deps: viewer3d::VEHICLE_DEPS, compute: viewer3d::vehicle_view },
     View { path: "view.mavlinkConsole", deps: console::DEPS, compute: console::console_view },
     View { path: "view.itemCamera", deps: itemcamera::DEPS, compute: itemcamera::item_camera_view },
     View { path: "view.itemFacts", deps: itemfacts::DEPS, compute: itemfacts::item_facts_view },
@@ -433,7 +434,7 @@ impl View {
             "view.vehicles" => vehicles::deps(),
             "view.followMe" => followme::deps(),
             "view.closeChecks" => closechecks::deps(),
-            "view.viewer3dVehicle" => crate::viewer3d::vehicle_deps(),
+            "view.viewer3dVehicle" => viewer3d::vehicle_deps(),
             _ => self.deps.iter().map(|d| d.to_string()).collect(),
         }
     }

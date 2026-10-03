@@ -350,8 +350,12 @@ fn lon_lat_alt((lat, lon, alt): (f64, f64, f64), bias: f64) -> [f64; 3] {
 pub fn path_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let bias = setting(backend, "altitudeBias").as_f64().unwrap_or(0.0);
     let vehicle_home = coordinate(&crate::read::object(&backend.get("vehicle.homePosition")));
-    let (items, home) = path_items(&crate::missionitems::fly_items_view(backend, &["geometry".to_string()]), vehicle_home);
-    let (markers, segments) = path(&items, home);
+    let flown = crate::missionitems::fly_items_view(backend, &["geometry".to_string()]);
+    let missions = std::iter::once((&flown, vehicle_home)).chain(flown["others"].as_array().into_iter().flatten().map(|other| (other, None)));
+    let (markers, segments): (Vec<Marker>, Vec<Segment>) = missions.map(|(listed, home)| {
+        let (items, home) = path_items(listed, home);
+        path(&items, home)
+    }).fold((Vec::new(), Vec::new()), |(markers, segments), (more_markers, more_segments)| (markers.into_iter().chain(more_markers).collect(), segments.into_iter().chain(more_segments).collect()));
     json!({
         "kind": "object",
         "class": "Viewer3DPath",
@@ -446,5 +450,33 @@ mod tests {
         assert_eq!(path(&fallback, launch).1.last().map(|s| s.to), Some((47.0, 8.0, 30.0)), "without a vehicle the plan's launch point is home");
         let (orphan, none) = path_items(&json!({ "items": [listed["items"][3].clone()] }), None);
         assert!(orphan.is_empty() && none.is_none(), "with no home at all the return leg has nowhere to go");
+    }
+
+    struct Fleet(Vec<Value>);
+
+    impl Backend for Fleet {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicles.vehicles.count" => json!({ "kind": "value", "value": self.0.len() }).to_string(),
+                "settings.viewer3DSettings.altitudeBias.rawValue" => json!({ "kind": "value", "value": 2.0 }).to_string(),
+                _ => String::new(),
+            }
+        }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            path.strip_prefix("vehicles.vehicles.").and_then(|index| index.parse::<usize>().ok()).and_then(|index| self.0.get(index)).map(Value::to_string).unwrap_or_default()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn every_located_vehicle_floats_and_is_watched_field_by_field() {
+        let flying = json!({ "kind": "object", "coordinate": { "latitude": 47.0, "longitude": 8.0 }, "altitudeRelative": { "rawValue": 10.0 }, "heading": { "rawValue": 90.0 } });
+        let lost = json!({ "kind": "object", "coordinate": { "latitude": 0.0, "longitude": 0.0 }, "altitudeRelative": { "rawValue": 5.0 }, "heading": { "rawValue": 0.0 } });
+        let view = vehicle_view(&Fleet(vec![flying.clone(), lost, flying]), &[]);
+        assert_eq!(view["vehicles"], json!([{ "at": [8.0, 47.0, 12.0], "heading": 90.0 }, { "at": [8.0, 47.0, 12.0], "heading": 90.0 }]), "altitudeBias lifts each frame; a vehicle with no position yet draws nothing");
+        assert!(vehicle_deps().contains(&"vehicles.vehicles.2.heading".to_string()), "a third vehicle's heading is served here, so it must be watched");
+        assert!(vehicle_deps().contains(&"vehicles.vehicles.count".to_string()));
     }
 }

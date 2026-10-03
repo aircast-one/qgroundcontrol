@@ -55,7 +55,9 @@ class Viewer3DTest {
         val centre = { slabs: List<Slab> -> slabs.flatMap { it.corners }.map { it.first }.average() }
         val frame = quadFrame(at, 90.0)
         assertEquals(true, centre(frame.filter { it.colour == "#E53935" }) > at.lon)
-        assertEquals(true, centre(frame.filter { it.colour == "#ECEFF1" && it.top - it.base < 1.0 }) < at.lon)
+        assertEquals(true, centre(frame.filter { it.colour == "#ECEFF1" }) < at.lon)
+        val north = quadFrame(at, 0.0).filter { it.colour == "#E53935" }.flatMap { it.corners }.map { it.second }.average()
+        assertEquals(true, north > at.lat)
     }
 
     @Test
