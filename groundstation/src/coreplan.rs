@@ -668,10 +668,6 @@ fn deliver(outbound: Vec<(u32, Vec<u8>)>) {
     });
 }
 
-fn mission_idle(kind: &str) -> bool {
-    crate::hub::lock().active().is_none_or(|v| v.mission_snapshot()[kind]["inProgress"].as_bool() != Some(true))
-}
-
 fn send_shape(kind: &str, document: &Document) -> Value {
     let pair = |v: &Value| json!([v.get(0), v.get(1)]);
     match kind {
@@ -714,14 +710,14 @@ fn contains_items(document: &Document) -> bool {
     !document.items.is_empty() || listed(&document.fence, "polygons") || listed(&document.fence, "circles") || listed(&document.rally, "points")
 }
 
-fn send_after_mission(document: Document) {
+fn send_after_mission(id: u8, document: Document) {
     std::thread::spawn(move || {
-        let (fence, rally) = crate::hub::lock().active().map_or((false, false), crate::hub::Vehicle::plans_supported);
+        let (fence, rally) = crate::hub::lock().vehicle(id).map_or((false, false), crate::hub::Vehicle::plans_supported);
         let wanted: Vec<&str> = [("fence", fence), ("rally", rally)].into_iter().filter(|(_, supported)| *supported).map(|(k, _)| k).collect();
         let previous = std::iter::once("mission").chain(wanted.iter().copied()).collect::<Vec<_>>();
         wanted.iter().zip(previous).for_each(|(kind, before)| {
-            if settle(before) {
-                match crate::hub::lock().mission_request(None, &send_shape(kind, &document), crate::hub::now_ms()) {
+            if settle(id, before) {
+                match crate::hub::lock().mission_request(Some(id), &send_shape(kind, &document), crate::hub::now_ms()) {
                     Ok(outbound) => deliver(outbound),
                     Err(error) => {
                         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::transfer_failed_text(kind, &error));
@@ -729,7 +725,7 @@ fn send_after_mission(document: Document) {
                 }
             }
         });
-        let _ = wanted.last().is_some_and(|last| settle(last));
+        let _ = wanted.last().is_some_and(|last| settle(id, last));
         changed();
     });
 }
@@ -912,12 +908,15 @@ fn send() -> Value {
     let Some(transfer) = transfer else {
         return refused("A mission item's frame or command does not fit MAVLink.");
     };
-    let started = crate::hub::lock().write_mission(None, transfer, crate::hub::now_ms());
+    let Some(id) = crate::hub::lock().active_id() else {
+        return refused("No vehicle is connected through the core.");
+    };
+    let started = crate::hub::lock().write_mission(Some(id), transfer, crate::hub::now_ms());
     match started {
         Ok(outbound) => {
             deliver(outbound);
             settle_uploaded(&mut held());
-            send_after_mission(document);
+            send_after_mission(id, document);
             changed();
             json!({ "ok": true, "items": items.len() })
         }
@@ -925,19 +924,30 @@ fn send() -> Value {
     }
 }
 
-fn settle(kind: &str) -> bool {
-    (0..600).any(|_| {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        mission_idle(kind)
-    })
+fn transfer_outcome(active: Option<u8>, id: u8, in_progress: bool) -> Option<bool> {
+    match (active == Some(id), in_progress) {
+        (false, _) => Some(false),
+        (true, true) => None,
+        (true, false) => Some(true),
+    }
 }
 
-fn load(kind: &str) -> bool {
-    let started = crate::hub::lock().mission_request(None, &json!({ "action": "load", "plan": kind }), crate::hub::now_ms());
+fn settle(id: u8, kind: &str) -> bool {
+    (0..600)
+        .find_map(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let hub = crate::hub::lock();
+            transfer_outcome(hub.active_id(), id, hub.vehicle(id).is_some_and(|v| v.mission_snapshot()[kind]["inProgress"].as_bool() == Some(true)))
+        })
+        .unwrap_or(false)
+}
+
+fn load(id: u8, kind: &str) -> bool {
+    let started = crate::hub::lock().mission_request(Some(id), &json!({ "action": "load", "plan": kind }), crate::hub::now_ms());
     match started {
         Ok(outbound) => {
             deliver(outbound);
-            settle(kind)
+            settle(id, kind)
         }
         Err(_) => false,
     }
@@ -1015,9 +1025,9 @@ fn adopt(snapshot: &Value, sends_home: bool, fence_read: bool, rally_read: bool,
 }
 
 fn fetch() -> Value {
-    let Some((fence, rally, sends_home, types, vehicle_home)) = crate::hub::lock().active().map(|v| {
+    let Some((id, fence, rally, sends_home, types, vehicle_home)) = crate::hub::lock().active().map(|v| {
         let (fence, rally) = v.plans_supported();
-        (fence, rally, v.sends_home(), (i64::from(v.autopilot), i64::from(v.vehicle_type)), v.home.map(|(lat, lon, alt)| [lat, lon, alt]))
+        (v.id, fence, rally, v.sends_home(), (i64::from(v.autopilot), i64::from(v.vehicle_type)), v.home.map(|(lat, lon, alt)| [lat, lon, alt]))
     }) else {
         return refused("No vehicle is connected through the core.");
     };
@@ -1026,11 +1036,14 @@ fn fetch() -> Value {
     }
     held().fetching = true;
     std::thread::spawn(move || {
-        let mission_read = load("mission");
-        let fence_read = fence && load("fence");
-        let rally_read = rally && load("rally");
-        let snapshot = crate::hub::lock().active().map(crate::hub::Vehicle::mission_snapshot).unwrap_or(Value::Null);
-        match mission_read {
+        let mission_read = load(id, "mission");
+        let fence_read = fence && load(id, "fence");
+        let rally_read = rally && load(id, "rally");
+        let (still_active, snapshot) = {
+            let hub = crate::hub::lock();
+            (hub.active_id() == Some(id), hub.vehicle(id).map(crate::hub::Vehicle::mission_snapshot).unwrap_or(Value::Null))
+        };
+        match mission_read && still_active {
             true => {
                 adopt(&snapshot, sends_home, fence_read, rally_read, types, vehicle_home);
                 settle_home_on_terrain(None);
@@ -2086,6 +2099,14 @@ mod tests {
         let body = include_str!("coreplan.rs").split("#[cfg(test)]\nmod tests").next().unwrap_or("");
         let held_across: Vec<&str> = body.lines().filter(|line| line.contains("held()") && line.contains("(backend")).collect();
         assert!(held_across.is_empty(), "a held() temporary lives to the end of its statement, and a backend read can route back into controller_fields, which takes the same lock: {held_across:?}");
+    }
+
+    #[test]
+    fn a_plan_sequence_is_dropped_when_the_active_vehicle_changes_like_plan_master_controller() {
+        assert_eq!(transfer_outcome(Some(1), 1, true), None, "keeps waiting while its vehicle transfers");
+        assert_eq!(transfer_outcome(Some(1), 1, false), Some(true), "moves on once the transfer settles");
+        assert_eq!(transfer_outcome(Some(2), 1, true), Some(false), "_activeVehicleChanged sets the sequence Idle, so the old plan never reaches vehicle 2");
+        assert_eq!(transfer_outcome(None, 1, false), Some(false), "nor continues with no vehicle");
     }
 
     #[test]
