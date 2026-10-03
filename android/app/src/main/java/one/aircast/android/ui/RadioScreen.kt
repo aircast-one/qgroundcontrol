@@ -274,6 +274,17 @@ fun RadioScreen(modifier: Modifier = Modifier) {
         return
     }
 
+    val reversed = view.calibration.throttleReversed
+    var reversedSeen by remember(reversed) { mutableStateOf(false) }
+    if (reversed && !reversedSeen) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { reversedSeen = true },
+            title = { Text(THROTTLE_REVERSED_TITLE) },
+            text = { Text(THROTTLE_REVERSED_TEXT) },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { reversedSeen = true }) { Text("OK") } },
+        )
+    }
+
     LazyColumn(modifier.fillMaxSize()) {
         if (view.channelCount == 0) {
             item(key = "nochannels") {

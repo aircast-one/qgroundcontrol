@@ -93,6 +93,7 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "calibrating": cancel_enabled,
         "startPrompt": start_prompt(connected, truthy(&cal, "joystickMode"), crate::read::flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware")),
         "statusText": text(&cal, "statusText"),
+        "throttleReversed": truthy(&cal, "throttleReversedCalFailure"),
         "nextText": text(&cal, "nextText"),
         "nextEnabled": truthy(&cal, "nextEnabled"),
         "cancelEnabled": cancel_enabled,

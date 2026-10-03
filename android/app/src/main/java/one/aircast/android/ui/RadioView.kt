@@ -27,6 +27,7 @@ internal data class RadioCalibration(
     val nextEnabled: Boolean,
     val cancelEnabled: Boolean,
     val skipEnabled: Boolean,
+    val throttleReversed: Boolean = false,
 )
 
 internal data class RadioView(
@@ -68,6 +69,7 @@ internal fun radioView(view: JSONObject?): RadioView? {
             nextEnabled = view.optBoolean("nextEnabled"),
             cancelEnabled = view.optBoolean("cancelEnabled"),
             skipEnabled = view.optBoolean("skipEnabled"),
+            throttleReversed = view.optBoolean("throttleReversed"),
         ),
         sticks = each(view, "sticks") {
             RadioStick(
@@ -127,3 +129,6 @@ internal val RADIO_PROMPTS = listOf(
         choices = emptyList(),
     ),
 )
+
+internal const val THROTTLE_REVERSED_TITLE = "Throttle channel reversed"
+internal const val THROTTLE_REVERSED_TEXT = "Calibration failed. The throttle channel on your transmitter is reversed. You must correct this on your transmitter in order to complete calibration."

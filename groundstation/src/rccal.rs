@@ -114,6 +114,7 @@ pub struct RcCal {
     pub transmitter_mode: i32,
     centered_throttle: bool,
     pub status_text: String,
+    throttle_reversed_failure: bool,
 }
 
 impl Default for RcCal {
@@ -132,6 +133,7 @@ impl Default for RcCal {
             transmitter_mode: 2,
             centered_throttle: false,
             status_text: String::new(),
+            throttle_reversed_failure: false,
         }
     }
 }
@@ -256,6 +258,7 @@ impl RcCal {
             None if self.count < MINIMUM_CHANNELS => Vec::new(),
             None => {
                 self.reset_internal();
+                self.throttle_reversed_failure = false;
                 self.step = Some(0);
                 self.setup_current();
                 vec![Outcome::StartCalibration]
@@ -392,6 +395,7 @@ impl RcCal {
         let throttle_reversed = self.mapped(Function::Throttle).is_some_and(|c| self.channels[c].reversed);
         if !vehicle.px4 && (vehicle.multi_rotor || vehicle.helicopter) && throttle_reversed {
             self.read_stored(vehicle, parameter);
+            self.throttle_reversed_failure = true;
             return Outcome::ThrottleReversed;
         }
         self.validate();
@@ -452,6 +456,7 @@ impl RcCal {
             "transmitterMode": self.transmitter_mode,
             "centeredThrottle": self.centered_throttle,
             "joystickMode": false,
+            "throttleReversedCalFailure": self.throttle_reversed_failure,
         });
         answer.as_object_mut().into_iter().for_each(|a| a.extend(object.clone()));
         answer
@@ -549,6 +554,7 @@ mod tests {
         assert!(cal.reversed(Function::Throttle));
         cal.step = Some(STEPS.len() - 1);
         assert_eq!(cal.next(&copter(), &lookup)[0], Outcome::ThrottleReversed);
+        assert_eq!(cal.json()["throttleReversedCalFailure"], true, "the head opens QGC's Throttle channel reversed dialog from this");
     }
 
     #[test]
