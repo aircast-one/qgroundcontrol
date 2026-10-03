@@ -341,6 +341,7 @@ fun AircastShell(hostView: android.view.View?) {
 
     AircastTheme(dark = darkBars) {
         one.aircast.android.ui.CloseGuard(enabled = tab == Tab.Fly && !fullScreen)
+        one.aircast.android.ui.GimbalTakeControlDialog()
         val barColor = MaterialTheme.colorScheme.surface.toArgb()
         SideEffect {
             (view.context as? Activity)?.window?.let { window ->

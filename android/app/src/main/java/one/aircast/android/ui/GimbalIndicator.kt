@@ -96,6 +96,26 @@ internal fun gimbalIndicator(view: JSONObject?): GimbalIndicatorState? =
 internal fun gimbalCellText(state: GimbalIndicatorState): String =
     listOf(state.statusText, state.pitchText, state.yawText).filter { it.isNotBlank() }.joinToString(" · ")
 
+@Composable
+fun GimbalTakeControlDialog() {
+    val asking by gimbalAsksForControl.collectAsState()
+    val scope = rememberCoroutineScope()
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { gimbalAsksForControl.value = false },
+            title = { Text("Request Gimbal Control?") },
+            text = { Text("Command not sent. Another user has control of the gimbal.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    gimbalAsksForControl.value = false
+                    scope.launch(Dispatchers.Default) { Qgc.refusalOf("gimbal.control", true) }
+                }) { Text("Yes") }
+            },
+            dismissButton = { TextButton(onClick = { gimbalAsksForControl.value = false }) { Text("No") } },
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun GimbalIndicatorCell() {
@@ -113,21 +133,6 @@ internal fun GimbalIndicatorCell() {
         }
     }
 
-    val asking by gimbalAsksForControl.collectAsState()
-    if (asking) {
-        AlertDialog(
-            onDismissRequest = { gimbalAsksForControl.value = false },
-            title = { Text("Request Gimbal Control?") },
-            text = { Text("Command not sent. Another user has control of the gimbal.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    gimbalAsksForControl.value = false
-                    scope.launch(Dispatchers.Default) { Qgc.refusalOf("gimbal.control", true) }
-                }) { Text("Yes") }
-            },
-            dismissButton = { TextButton(onClick = { gimbalAsksForControl.value = false }) { Text("No") } },
-        )
-    }
 
     Text(
         gimbalCellText(state),
