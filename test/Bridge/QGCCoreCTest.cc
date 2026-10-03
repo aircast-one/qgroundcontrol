@@ -1969,6 +1969,17 @@ void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
              "createSerialConfiguration must be reachable through the bridge; the four step flow it replaces passes a configuration pointer no head can hold");
 }
 
+void QGCCoreCTest::_logReplayConfigurationsCanBeCreatedByPath()
+{
+    ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("createLogReplayConfiguration: bad name")));
+    const QJsonObject refusedFile = take(qgc_bridge_invoke("links.createLogReplayConfiguration", "[\"Replay Test\",\"\"]"));
+    QCOMPARE(refusedFile.value(QStringLiteral("result")).toBool(true), false);
+    QCOMPARE(refusedFile.value(QStringLiteral("errorField")).toString(), QStringLiteral("filename"));
+    const QJsonObject qtRefused = takeQt(qgc_qt_invoke("links.createLogReplayConfiguration", "[\"\",\"/tmp/none.tlog\"]"));
+    QVERIFY2(qtRefused.value(QStringLiteral("ok")).toBool(false), "LinkManager::createLogReplayConfiguration has to stay reachable, or the claim forwards to nothing");
+    QCOMPARE(qtRefused.value(QStringLiteral("result")).toBool(true), false);
+}
+
 void QGCCoreCTest::_surveyTransectsMatchTheRecordedOracle()
 {
     const QList<SurveyCase> cases = {

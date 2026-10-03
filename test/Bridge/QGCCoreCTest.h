@@ -46,6 +46,7 @@ private slots:
     void _everyFactPropertyIsServedOrExcused();
     void _viewShapesMatchTheRecordedContract();
     void _serialConfigurationsCanBeCreatedByPath();
+    void _logReplayConfigurationsCanBeCreatedByPath();
     void _mapProvidersMatchTheRecordedHashes();
     void _theTileCacheSchemaMatchesTheRecordedOne();
     void _polygonGeometryMatchesTheRecordedOracle();

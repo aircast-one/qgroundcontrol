@@ -213,6 +213,14 @@ pub(crate) fn form_error(kind: &str, host: &str, ok: Option<i64>, known: &[Strin
     }
 }
 
+pub(crate) fn replay_form_error(file: &str, known: &[String]) -> Option<(&'static str, &'static str)> {
+    match () {
+        _ if !known.is_empty() && !known.iter().any(|k| k == "logReplay") => Some(("type", "Choose one of the link types this build offers.")),
+        _ if file.trim().is_empty() => Some(("filename", "Choose a log file to replay.")),
+        _ => None,
+    }
+}
+
 pub(crate) fn port_ok(kind: &str, port: Option<i64>, rates: &[i64]) -> Option<i64> {
     match kind == "serial" {
         true => port.filter(|b| *b > 0 && (rates.is_empty() || rates.contains(b))),

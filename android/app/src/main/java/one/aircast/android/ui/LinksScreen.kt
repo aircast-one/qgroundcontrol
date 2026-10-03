@@ -167,6 +167,8 @@ internal fun linkIsEditable(row: LinkRow): Boolean =
 
 internal val CREATABLE_LINK_TYPES = listOf("udp", "tcp", "serial")
 internal const val BLUETOOTH_LINK = "bluetooth"
+internal const val REPLAY_LINK = "logReplay"
+internal const val REPLAY_LINK_NAME = "Log Replay"
 
 internal data class BluetoothDeviceChoice(val name: String, val address: String)
 
@@ -186,7 +188,7 @@ internal fun addableLinkTypes(view: JSONObject?): List<String> {
     val listed = view?.optJSONArray("linkTypeIds") ?: return CREATABLE_LINK_TYPES
     val served = (0 until listed.length()).map { listed.optString(it) }.toSet()
     val bluetooth = listOf(BLUETOOTH_LINK).filter { it in served && bluetoothState(view).available }
-    return CREATABLE_LINK_TYPES.filter { it in served }.ifEmpty { CREATABLE_LINK_TYPES } + bluetooth
+    return CREATABLE_LINK_TYPES.filter { it in served }.ifEmpty { CREATABLE_LINK_TYPES } + bluetooth + listOf(REPLAY_LINK).filter { it in served }
 }
 
 internal fun linkTypeIds(view: JSONObject?): Set<String> {
@@ -651,6 +653,11 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     var host by remember { mutableStateOf("") }
     var port by remember { mutableStateOf("") }
     var servers by remember { mutableStateOf(emptyList<String>()) }
+    var replayLog by remember { mutableStateOf<android.net.Uri?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val logPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) replayLog = uri
+    }
     var portName by remember { mutableStateOf("") }
     var baud by remember { mutableIntStateOf(DEFAULT_BAUD) }
     var advancedSerial by remember { mutableStateOf(false) }
@@ -699,7 +706,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                             },
                             shape = SegmentedButtonDefaults.itemShape(index, choices.size),
                             icon = {},
-                            label = { Text(when (id) { "serial" -> "Serial"; BLUETOOTH_LINK -> "BT"; AIRCAST_CLOUD_LINK -> "Cloud"; else -> id.uppercase() }, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) },
+                            label = { Text(when (id) { "serial" -> "Serial"; BLUETOOTH_LINK -> "BT"; AIRCAST_CLOUD_LINK -> "Cloud"; REPLAY_LINK -> "Log"; else -> id.uppercase() }, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) },
                         )
                     }
                 }
@@ -710,6 +717,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                         "serial" -> "A radio plugged into this device over USB."
                         BLUETOOTH_LINK -> "A radio paired with or near this device over Bluetooth."
                         AIRCAST_CLOUD_LINK -> "A backup link to the aircraft through your Aircast account."
+                        REPLAY_LINK -> "Plays back a saved telemetry log as if the vehicle were connected."
                         else -> "Calls out to a device that is listening, such as a ground station."
                     },
                     style = MaterialTheme.typography.bodySmall,
@@ -721,13 +729,20 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     label = { Text("Name (optional)") },
                     placeholder = {
                         Text(
-                            if (type == "serial") autoSerialName(portLabel(ports, portName))
-                            else autoLinkName(type, host, port.ifBlank { portFor(type, udpDefault) }),
+                            when (type) {
+                                "serial" -> autoSerialName(portLabel(ports, portName))
+                                REPLAY_LINK -> REPLAY_LINK_NAME
+                                else -> autoLinkName(type, host, port.ifBlank { portFor(type, udpDefault) })
+                            },
                         )
                     },
                     singleLine = true,
                 )
-                if (type == AIRCAST_CLOUD_LINK) {
+                if (type == REPLAY_LINK) {
+                    OutlinedButton(onClick = { logPicker.launch(arrayOf("*/*")) }) {
+                        Text(replayLog?.lastPathSegment?.substringAfterLast('/') ?: "Choose a log file")
+                    }
+                } else if (type == AIRCAST_CLOUD_LINK) {
                     AircastCloudFields(apiBase, deviceId, cloudErrors, { apiBase = it }, { deviceId = it })
                 } else if (type == BLUETOOTH_LINK) {
                     BluetoothPicker(device) { device = it }
@@ -821,6 +836,8 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                         if (cloudApiBaseValid(apiBase) && cloudDeviceValid(deviceId)) null else ""
                     } else if (type == BLUETOOTH_LINK) {
                         if (device == null) "Pick a Bluetooth device." else null
+                    } else if (type == REPLAY_LINK) {
+                        if (replayLog == null) "Choose a log file to replay." else null
                     } else if (type == "serial") {
                         serialFormError(portName, baud, taken, name, ports.isNotEmpty())
                     } else {
@@ -833,6 +850,7 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                             uniqueLinkName(
                                 when (type) {
                                     AIRCAST_CLOUD_LINK -> AIRCAST_CLOUD_NAME
+                                    REPLAY_LINK -> REPLAY_LINK_NAME
                                     BLUETOOTH_LINK -> device?.name.orEmpty()
                                     "serial" -> autoSerialName(portLabel(ports, portName))
                                     else -> autoLinkName(type, host, port.ifBlank { portFor(type, udpDefault) })
@@ -845,6 +863,11 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                                 if (type == AIRCAST_CLOUD_LINK) {
                                     Qgc.set("account.apiBase", apiBase)
                                     Qgc.invokeResult("links.createAircastCloudLink", chosen, apiBase, deviceId) == true
+                                } else if (type == REPLAY_LINK) {
+                                    val staged = stagedReplayLog(context, chosen, replayLog!!)
+                                    val created = staged != null && Qgc.invokeResult("links.createLogReplayConfiguration", chosen, staged) == true
+                                    if (!created) pruneReplayFolder(context, chosen, "")
+                                    created && connectNamed(chosen)
                                 } else if (type == BLUETOOTH_LINK) {
                                     val picked = device!!
                                     Qgc.invokeResult("links.createBluetoothLink", chosen, picked.name, picked.address) == true

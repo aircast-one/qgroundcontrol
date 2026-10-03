@@ -45,4 +45,12 @@ class AddableLinkTypesTest {
         assertEquals(listOf("udp", "tcp", "serial", "bluetooth"), addableLinkTypes(view))
         assertEquals(listOf(BluetoothDeviceChoice("HC-05", "98:D3:31:F6:12:34")), bluetoothState(view).devices)
     }
+
+    @Test
+    fun `log replay is offered when the core lists it, after the live links`() {
+        assertEquals(
+            listOf("udp", "tcp", "serial", REPLAY_LINK),
+            addableLinkTypes(links("""["serial","udp","tcp","logReplay"]""")),
+        )
+    }
 }

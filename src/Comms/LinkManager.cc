@@ -790,6 +790,28 @@ bool LinkManager::createAndConnectLink(const QString &type, const QString &name,
     return createConnectedLink(shared);
 }
 
+bool LinkManager::createLogReplayConfiguration(const QString &name, const QString &logFile)
+{
+    if (name.isEmpty() || logFile.isEmpty()) {
+        qCWarning(LinkManagerLog) << "createLogReplayConfiguration: bad name or log file" << name << logFile;
+        return false;
+    }
+
+    for (const SharedLinkConfigurationPtr &existing : std::as_const(_rgLinkConfigs)) {
+        if (existing->name() == name) {
+            qCWarning(LinkManagerLog) << "createLogReplayConfiguration: name already in use" << name;
+            return false;
+        }
+    }
+
+    LogReplayConfiguration *const replayConfig = new LogReplayConfiguration(name);
+    replayConfig->setLogFilename(logFile);
+
+    addConfiguration(replayConfig);
+    saveLinkConfigurationList();
+    return true;
+}
+
 bool LinkManager::createSerialConfiguration(const QString &name, const QString &portName, int baud)
 {
 #ifdef QGC_NO_SERIAL_LINK

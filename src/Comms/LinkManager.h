@@ -72,6 +72,7 @@ public:
     /// registered configuration has a path, so parity, flow control and the rest are writable by property
     /// and createConnectedLink takes it by reference.
     Q_INVOKABLE bool createSerialConfiguration(const QString &name, const QString &portName, int baud);
+    Q_INVOKABLE bool createLogReplayConfiguration(const QString &name, const QString &logFile);
     /// Writes the configuration list to settings. Editing a registered configuration is ordinary property
     /// writes by path, which stay in memory; this is the commit. A head that fails partway through an edit
     /// simply does not call it, and the half applied change is gone at restart rather than saved.

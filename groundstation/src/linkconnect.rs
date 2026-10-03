@@ -88,6 +88,7 @@ pub fn support_forwarding(backend: &dyn Backend, action: Forwarding, path: &str)
 pub enum Create {
     AndConnect,
     Serial,
+    LogReplay,
 }
 
 // LinkManager::saveLinkConfigurationList rewrites the stored list from whatever is in memory and
@@ -142,9 +143,14 @@ pub fn create(backend: &dyn Backend, how: Create, path: &str, args: &str) -> Val
     let (kind, name, host, port, forwarded) = match how {
         Create::AndConnect => (text(0).to_lowercase(), text(1), text(2), whole(3), json!([text(0), text(1), text(2), whole(3)])),
         Create::Serial => ("serial".to_string(), text(0), text(1), whole(2), json!([text(0), text(1), whole(2)])),
+        Create::LogReplay => ("logReplay".to_string(), text(0), text(1), None, json!([text(0), text(1)])),
     };
     let rates = crate::links::serial_baud_rates(backend);
-    let form = crate::links::form_error(&kind, &host, crate::links::port_ok(&kind, port, &rates), &crate::links::link_type_ids(backend));
+    let known = crate::links::link_type_ids(backend);
+    let form = match how {
+        Create::LogReplay => crate::links::replay_form_error(&host, &known),
+        _ => crate::links::form_error(&kind, &host, crate::links::port_ok(&kind, port, &rates), &known),
+    };
     if let Some((field, reason)) = create_refusal(&name, &names(configurations(backend).as_deref()), form) {
         return json!({ "ok": false, "result": false, "refusal": "invalid", "errorField": field, "reason": reason });
     }
@@ -316,6 +322,14 @@ mod tests {
         let made = create(&manager, Create::Serial, "links.createSerialConfiguration", r#"["Radio", "ttyUSB0", 57600]"#);
         assert_eq!((&made["ok"], &made["result"]), (&json!(true), &json!(true)), "the head reads result, so the claimed path keeps it");
         assert_eq!(manager.0.borrow().as_slice(), &[r#"["Radio","ttyUSB0",57600]"#.to_string()]);
+        assert_eq!(create(&manager, Create::LogReplay, "links.createLogReplayConfiguration", r#"["Replay", "/a.tlog"]"#)["errorField"], "type", "a build whose linkTypeTable has no Log Replay cannot make one");
+    }
+
+    #[test]
+    fn a_replay_link_needs_a_log_before_the_manager_is_asked() {
+        assert_eq!(crate::links::replay_form_error("", &["logReplay".to_string()]).map(|r| r.0), Some("filename"));
+        assert_eq!(crate::links::replay_form_error("/a.tlog", &["logReplay".to_string()]), None);
+        assert_eq!(crate::links::replay_form_error("/a.tlog", &[]), None, "a core too old to list types does not refuse on type");
     }
 
     #[test]

@@ -171,6 +171,10 @@ fn create_and_connect(kind: &str, name: &str, host: &str, port: i64) -> bool {
     connect(index)
 }
 
+fn create_replay(name: &str, file: &str) -> bool {
+    !file.is_empty() && add(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: file.to_string() } })
+}
+
 fn create_serial(name: &str, port_name: &str, baud: i64) -> bool {
     if table().code(crate::linkconfig::LinkKind::Serial).is_none() || port_name.is_empty() || baud <= 0 {
         return false;
@@ -698,6 +702,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "links.createConnectedLink" => json!(connect(given.get(0).and_then(Value::as_str).and_then(indexed)?)),
         "links.createAndConnectLink" => json!(create_and_connect(&text(0), &text(1), &text(2), whole(3))),
         "links.createSerialConfiguration" => json!(create_serial(&text(0), &text(1), whole(2))),
+        "links.createLogReplayConfiguration" => json!(create_replay(&text(0), &text(1))),
         "links.createBluetoothLink" => json!(create_bluetooth(&text(0), &text(1), &text(2))),
         "links.createAircastCloudLink" => json!(create_cloud(&text(0), &text(1), &text(2))),
         crate::platformbluetooth::SCAN => return crate::platformbluetooth::scan(args),
