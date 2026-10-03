@@ -127,6 +127,12 @@ private fun lastDocument(context: Context): Uri? =
 
 private fun rememberDocument(context: Context, uri: Uri) {
     context.getSharedPreferences(FILES_STORE, Context.MODE_PRIVATE).edit().putString(LAST_DOCUMENT_KEY, uri.toString()).apply()
+    runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
+}
+
+internal object OpenPlan {
+    val document = androidx.compose.runtime.mutableStateOf<Uri?>(null)
+    val name = androidx.compose.runtime.mutableStateOf<String?>(null)
 }
 
 private fun Intent.startingAt(folder: Uri?): Intent =
@@ -152,8 +158,8 @@ private fun suffixed(context: Context, uri: Uri, extension: String): Uri = runCa
 fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val document = remember { mutableStateOf<Uri?>(null) }
-    val name = remember { mutableStateOf<String?>(null) }
+    val document = OpenPlan.document
+    val name = OpenPlan.name
     val opened = remember { mutableIntStateOf(0) }
 
     fun adopt(uri: Uri) {
