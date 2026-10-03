@@ -990,11 +990,11 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?) {
                                 rejection = refused
                                 return@launch
                             }
-                            val accepted = withContext(Dispatchers.Default) {
-                                Qgc.set(fact.path, committed)
+                            val refusal = withContext(Dispatchers.Default) {
+                                Qgc.writeRefusal(fact.path, committed)
                             }
-                            rejection = writeRefusal(accepted)
-                            if (accepted) {
+                            rejection = refusal
+                            if (refusal == null) {
                                 editing = null
                                 onWrite()
                             }

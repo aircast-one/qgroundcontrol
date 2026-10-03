@@ -782,7 +782,6 @@ fn host_syncing(backend: &dyn Backend) -> bool {
 }
 
 fn follow_vehicle() {
-    forget_raw_edits();
     if !enabled() {
         return;
     }
@@ -820,6 +819,7 @@ fn follow_vehicle() {
                 let before = state.document.clone();
                 state.document = state.document.clone().map(|d| Document { home: None, items: Vec::new(), settings_sections: Vec::new(), fence: empty_document().fence, rally: empty_document().rally, ..d });
                 state.wizard = None;
+                forget_raw_edits();
                 remember(&mut state, before, crate::hub::now_ms());
                 state.selected = 0;
                 settle_clean(&mut state);
@@ -882,6 +882,7 @@ pub fn on_host_event(backend: &dyn Backend, path: &str, value: &str) -> bool {
         let mut state = held();
         state.fetching = false;
         if let Ok(document) = adopted {
+            forget_raw_edits();
             let before = state.document.replace(document);
             remember(&mut state, before, crate::hub::now_ms());
             state.selected = 0;
@@ -1654,8 +1655,9 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         let info = simple.and_then(|s| commands.get(&s.command)).and_then(|info| info.params.get(&u8::try_from(param).ok()?))?;
         let limit = |key: &str| info.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
         let (min, max) = (limit("min"), limit("max"));
+        let shown = |raw_limit: f64| param_conversion(info).map_or(raw_limit, |c| (c.shown)(raw_limit));
         (!raw && value.is_finite() && (min.is_some_and(|m| value < m) || max.is_some_and(|m| value > m)))
-            .then(|| format!("Value must be within {} and {}", min.unwrap_or(f64::MIN), max.unwrap_or(f64::MAX)))
+            .then(|| format!("Value must be within {} and {}", qt_number(min.map_or(f64::MIN, shown)), qt_number(max.map_or(f64::MAX, shown))))
     };
     let raw_of = |param: usize, shown: f64| match raw {
         true => shown,
@@ -1731,6 +1733,21 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
             (None, _) => answer(unknown()),
         },
     })
+}
+
+fn qt_number(value: f64) -> String {
+    let exponent = if value == 0.0 { 0 } else { value.abs().log10().floor() as i32 };
+    let trimmed = |text: String| match text.contains('.') {
+        true => text.trim_end_matches('0').trim_end_matches('.').to_string(),
+        false => text,
+    };
+    match (-4..6).contains(&exponent) {
+        true => trimmed(format!("{:.*}", (5 - exponent).max(0) as usize, value)),
+        false => {
+            let mantissa = value / 10f64.powi(exponent);
+            format!("{}e{}{:02}", trimmed(format!("{mantissa:.5}")), if exponent < 0 { '-' } else { '+' }, exponent.abs())
+        }
+    }
 }
 
 fn point_of(value: Option<&Value>) -> Option<(f64, f64)> {
@@ -2246,6 +2263,12 @@ mod tests {
         assert!(shape_complete("survey", &json!({ "polygon": [[1, 2], [3, 4], [5, 6]] })));
         assert!(shape_complete("CorridorScan", &json!({ "polyline": [[1, 2], [3, 4]] })));
         assert!(!shape_complete("StructureScan", &json!({})));
+    }
+
+    #[test]
+    fn range_limits_print_as_qstring_arg_does() {
+        assert_eq!((qt_number(0.0), qt_number(3600.0), qt_number(f64::MAX), qt_number(-f64::MAX), qt_number(0.5), qt_number(123456.0)), ("0".into(), "3600".into(), "1.79769e+308".into(), "-1.79769e+308".into(), "0.5".into(), "123456".into()));
+        assert_eq!(qt_number(1_234_567.0), "1.23457e+06");
     }
 
     #[test]
