@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
@@ -68,7 +69,15 @@ internal data class ApmFollow(
     val angle: Double,
     val distance: Double,
     val height: Double,
+    val horizontal: DistanceUnit,
+    val vertical: DistanceUnit,
 )
+
+private fun DistanceUnit.shown(metres: Double): Double = metres / metresPerUnit
+
+private fun DistanceUnit.metres(shown: Double): Double = shown * metresPerUnit
+
+internal fun DistanceUnit.text(metres: Double): String = "${oneDecimal(shown(metres))} $name"
 
 private fun JSONObject.strings(key: String): List<String> =
     optJSONArray(key)?.let { array -> (0 until array.length()).map { array.optString(it) } }.orEmpty()
@@ -89,6 +98,8 @@ internal fun apmFollow(view: JSONObject?): ApmFollow? = view?.takeIf { it.optBoo
         angle = it.optDouble("angle"),
         distance = it.optDouble("distance"),
         height = it.optDouble("height"),
+        horizontal = transformUnit(it, "horizontal"),
+        vertical = transformUnit(it, "vertical"),
     )
 }
 
@@ -143,11 +154,11 @@ fun ApmFollowScreen(modifier: Modifier = Modifier) {
                 Text("Vehicle offsets", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
                 androidx.compose.foundation.layout.Row {
                     OffsetGraphic(follow) { act(APM_FOLLOW_OFFSETS, it, follow.distance) }
-                    if (!follow.rover) HeightGraphic(follow.height)
+                    if (!follow.rover) HeightGraphic(follow.vertical.text(follow.height))
                 }
                 NumberEntry("Angle", "deg", follow.angle) { act(APM_FOLLOW_OFFSETS, it, follow.distance) }
-                NumberEntry("Distance", "m", follow.distance) { act(APM_FOLLOW_OFFSETS, follow.angle, it) }
-                if (!follow.rover) NumberEntry("Height", "m", follow.height) { act(APM_FOLLOW_HEIGHT, it) }
+                NumberEntry("Distance", follow.horizontal.name, follow.horizontal.shown(follow.distance)) { act(APM_FOLLOW_OFFSETS, follow.angle, follow.horizontal.metres(it)) }
+                if (!follow.rover) NumberEntry("Height", follow.vertical.name, follow.vertical.shown(follow.height)) { act(APM_FOLLOW_HEIGHT, follow.vertical.metres(it)) }
             }
         }
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
@@ -209,37 +220,49 @@ private fun OffsetGraphic(follow: ApmFollow, onAngle: (Double) -> Unit) {
     val ink = MaterialTheme.colorScheme.onSurface
     val accent = MaterialTheme.colorScheme.primary
     Text("Click in the graphic to change angle", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    androidx.compose.foundation.Canvas(
-        Modifier.size(OFFSET_GRAPHIC).pointerInput(Unit) {
-            detectTapGestures { tap -> onAngle(headingOfTap(tap.x - size.width / 2f, size.height / 2f - tap.y)) }
-        },
-    ) {
-        drawLine(shade, Offset(center.x, 0f), Offset(center.x, size.height), strokeWidth = 3.dp.toPx())
-        drawLine(shade, Offset(0f, center.y), Offset(size.width, center.y), strokeWidth = 3.dp.toPx())
-        val arrow = 14.dp.toPx()
-        drawPath(Path().apply {
-            moveTo(center.x, center.y - arrow)
-            lineTo(center.x - arrow * 0.7f, center.y + arrow * 0.7f)
-            lineTo(center.x + arrow * 0.7f, center.y + arrow * 0.7f)
-            close()
-        }, accent)
-        rotate(follow.angle.toFloat()) {
-            val at = Offset(center.x, 20.dp.toPx())
-            drawLine(ink.copy(alpha = 0.4f), Offset(center.x, at.y + 14.dp.toPx()), Offset(center.x, center.y - arrow - 4.dp.toPx()), strokeWidth = 2.dp.toPx())
-            rotate(vehicleYaw(follow).toFloat(), at) {
-                drawPath(Path().apply {
-                    moveTo(at.x, at.y - 12.dp.toPx())
-                    lineTo(at.x - 9.dp.toPx(), at.y + 10.dp.toPx())
-                    lineTo(at.x + 9.dp.toPx(), at.y + 10.dp.toPx())
-                    close()
-                }, ink)
+    Box(Modifier.size(OFFSET_GRAPHIC), contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Canvas(
+            Modifier.size(OFFSET_GRAPHIC).pointerInput(Unit) {
+                detectTapGestures { tap -> onAngle(headingOfTap(tap.x - size.width / 2f, size.height / 2f - tap.y)) }
+            },
+        ) {
+            drawLine(shade, Offset(center.x, 0f), Offset(center.x, size.height), strokeWidth = 3.dp.toPx())
+            drawLine(shade, Offset(0f, center.y), Offset(size.width, center.y), strokeWidth = 3.dp.toPx())
+            val arrow = 14.dp.toPx()
+            drawPath(Path().apply {
+                moveTo(center.x, center.y - arrow)
+                lineTo(center.x - arrow * 0.7f, center.y + arrow * 0.7f)
+                lineTo(center.x + arrow * 0.7f, center.y + arrow * 0.7f)
+                close()
+            }, accent)
+            rotate(follow.angle.toFloat()) {
+                val at = Offset(center.x, 20.dp.toPx())
+                drawLine(ink.copy(alpha = 0.4f), Offset(center.x, at.y + 14.dp.toPx()), Offset(center.x, center.y - arrow - 4.dp.toPx()), strokeWidth = 2.dp.toPx())
+                rotate(vehicleYaw(follow).toFloat(), at) {
+                    drawPath(Path().apply {
+                        moveTo(at.x, at.y - 12.dp.toPx())
+                        lineTo(at.x - 9.dp.toPx(), at.y + 10.dp.toPx())
+                        lineTo(at.x + 9.dp.toPx(), at.y + 10.dp.toPx())
+                        close()
+                    }, ink)
+                }
             }
         }
+        val labelRadians = Math.toRadians(follow.angle)
+        Text(
+            follow.horizontal.text(follow.distance),
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier
+                .offset(x = DISTANCE_LABEL_RADIUS * kotlin.math.sin(labelRadians).toFloat(), y = -DISTANCE_LABEL_RADIUS * kotlin.math.cos(labelRadians).toFloat())
+                .background(MaterialTheme.colorScheme.surface),
+        )
     }
 }
 
+private val DISTANCE_LABEL_RADIUS = (OFFSET_GRAPHIC / 2 - 16.dp) / 2
+
 @Composable
-private fun HeightGraphic(heightMetres: Double) {
+private fun HeightGraphic(heightText: String) {
     val ink = MaterialTheme.colorScheme.onSurface
     androidx.compose.foundation.layout.Box(Modifier.size(width = 56.dp, height = OFFSET_GRAPHIC), contentAlignment = androidx.compose.ui.Alignment.Center) {
         androidx.compose.foundation.Canvas(Modifier.size(width = 56.dp, height = OFFSET_GRAPHIC)) {
@@ -248,6 +271,6 @@ private fun HeightGraphic(heightMetres: Double) {
             drawLine(ink, Offset(center.x - tick, 1f), Offset(center.x + tick, 1f), strokeWidth = 2.dp.toPx())
             drawLine(ink, Offset(center.x - tick, size.height - 1f), Offset(center.x + tick, size.height - 1f), strokeWidth = 2.dp.toPx())
         }
-        Text("${oneDecimal(heightMetres)} m", style = MaterialTheme.typography.labelSmall, modifier = Modifier.background(MaterialTheme.colorScheme.surface))
+        Text(heightText, style = MaterialTheme.typography.labelSmall, modifier = Modifier.background(MaterialTheme.colorScheme.surface))
     }
 }

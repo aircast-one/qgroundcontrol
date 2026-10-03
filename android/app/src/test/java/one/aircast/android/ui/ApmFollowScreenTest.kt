@@ -24,6 +24,19 @@ class ApmFollowScreenTest {
     }
 
     @Test
+    fun `offsets show and type in the app distance units`() {
+        val follow = apmFollow(
+            JSONObject(
+                """{"available":true,"distance":3.048,"height":6.096,"horizontalUnit":"ft","horizontalMetresPerUnit":0.3048,
+                "verticalUnit":"ft","verticalMetresPerUnit":0.3048}""",
+            ),
+        )!!
+        assertEquals("10.0 ft", follow.horizontal.text(follow.distance))
+        assertEquals("20.0 ft", follow.vertical.text(follow.height))
+                assertEquals("5.0 m", apmFollow(JSONObject("""{"available":true,"distance":5.0}"""))!!.horizontal.text(5.0))
+    }
+
+    @Test
     fun `a tap sets the heading of the vehicle around the ground station`() {
         org.junit.Assert.assertEquals(0.0, headingOfTap(0f, 10f), 1e-9)
         org.junit.Assert.assertEquals(90.0, headingOfTap(10f, 0f), 1e-9)

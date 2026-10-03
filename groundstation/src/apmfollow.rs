@@ -1,9 +1,14 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::{Unit, flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.rover"];
+pub const DEPS: &[&str] = &[
+    "vehicle.parameterManager.parametersReady",
+    "vehicle.rover",
+    "settings.unitsSettings.horizontalDistanceUnits",
+    "settings.unitsSettings.verticalDistanceUnits",
+];
 pub const FOLLOW_ENABLE: &str = "apmFollow.enable";
 pub const FOLLOW_RESET: &str = "apmFollow.reset";
 pub const FOLLOW_POSITION: &str = "apmFollow.position";
@@ -86,6 +91,7 @@ pub fn follow_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let maintain = x == 0.0 && y == 0.0 && z == 0.0;
     let (angle, distance) = if maintain { (0.0, 0.0) } else { angle_and_distance(x, y) };
     let enabled = enable == 1.0;
+    let (horizontal, vertical) = (Unit::horizontal(backend), Unit::vertical(backend));
     json!({
         "kind": "object",
         "class": "ApmFollow",
@@ -103,6 +109,10 @@ pub fn follow_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "angle": angle,
         "distance": distance,
         "height": -z,
+        "horizontalUnit": horizontal.name,
+        "horizontalMetresPerUnit": horizontal.meters(1.0),
+        "verticalUnit": vertical.name,
+        "verticalMetresPerUnit": vertical.meters(1.0),
     })
 }
 
