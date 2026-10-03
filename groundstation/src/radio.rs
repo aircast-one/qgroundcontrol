@@ -65,9 +65,16 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .unwrap_or_default();
     let live = channels.iter().filter(|c| c["live"] == true).count();
+    let px4 = crate::read::flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware");
     let sticks: Vec<Value> = STICKS
         .iter()
-        .map(|(key, title)| {
+        .zip(crate::rccal::FUNCTIONS)
+        .map(|((key, title), function)| {
+            let channel = object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{})", function.map_param(px4))))
+                .get("value")
+                .and_then(Value::as_f64)
+                .map(|n| n as i64)
+                .filter(|n| *n > 0);
             let mapped = truthy(&cal, &format!("{key}ChannelMapped"));
             let capital = format!("{}{}", key[..1].to_uppercase(), &key[1..]);
             let pwm = integer(&cal, &format!("adjusted{capital}ChannelValue")).unwrap_or(0);
@@ -76,7 +83,7 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 (true, true) => pwm.to_string(),
                 (true, false) => ABSENT.to_string(),
             };
-            json!({ "key": key, "title": title, "mapped": mapped, "value": pwm, "valueText": value_text, "fraction": fraction(pwm), "reversed": truthy(&cal, &format!("{key}ChannelReversed")) })
+            json!({ "key": key, "title": title, "mapped": mapped, "value": pwm, "valueText": value_text, "fraction": fraction(pwm), "reversed": truthy(&cal, &format!("{key}ChannelReversed")), "channel": channel })
         })
         .collect();
     let cancel_enabled = truthy(&cal, "cancelEnabled");
@@ -91,7 +98,7 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "summary": summary(connected, channel_count, live),
         "shortfall": shortfall(connected, channel_count, minimum),
         "calibrating": cancel_enabled,
-        "startPrompt": start_prompt(connected, truthy(&cal, "joystickMode"), crate::read::flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware")),
+        "startPrompt": start_prompt(connected, truthy(&cal, "joystickMode"), px4),
         "statusText": text(&cal, "statusText"),
         "throttleReversed": truthy(&cal, "throttleReversed"),
         "stickPositions": cal.get("stickDisplayPositions").cloned().unwrap_or(json!([0, 0, 0, 0])),
@@ -207,6 +214,29 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn each_stick_names_the_channel_its_rc_map_parameter_assigns() {
+        struct Mapped;
+        impl Backend for Mapped {
+            fn get(&self, p: &str) -> String {
+                match p {
+                    "radioCal" => json!({ "kind": "object", "rollChannelMapped": true, "throttleChannelMapped": true }),
+                    "vehicle.parameterManager.getParameter(-1,RCMAP_ROLL)" => json!({ "kind": "fact", "value": 1 }),
+                    "vehicle.parameterManager.getParameter(-1,RCMAP_THROTTLE)" => json!({ "kind": "fact", "value": 3 }),
+                    "vehicle.parameterManager.getParameter(-1,RCMAP_PITCH)" => json!({ "kind": "fact", "value": 0 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "px4Firmware": false }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let channels: Vec<Value> = radio_view(&Mapped, &[])["sticks"].as_array().unwrap().iter().map(|s| s["channel"].clone()).collect();
+        assert_eq!(channels, vec![json!(1), Value::Null, Value::Null, json!(3)], "roll, pitch, yaw, throttle: a zero RCMAP is unassigned and an unread one is unknown");
     }
 
     #[test]

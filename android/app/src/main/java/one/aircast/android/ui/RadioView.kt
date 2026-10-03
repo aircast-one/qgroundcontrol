@@ -11,6 +11,7 @@ internal data class RadioStick(
     val fraction: Float,
     val mapped: Boolean,
     val reversed: Boolean,
+    val channel: Int? = null,
 )
 
 internal data class RadioChannel(
@@ -80,6 +81,7 @@ internal fun radioView(view: JSONObject?): RadioView? {
                 fraction = it.optDouble("fraction", 0.0).toFloat(),
                 mapped = it.optBoolean("mapped"),
                 reversed = it.optBoolean("reversed"),
+                channel = it.optInt("channel").takeIf { channel -> channel > 0 },
             )
         },
         channels = each(view, "channels") {

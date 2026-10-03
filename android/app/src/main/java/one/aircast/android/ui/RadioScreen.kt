@@ -372,4 +372,4 @@ fun RadioScreen(modifier: Modifier = Modifier) {
 
 internal fun stickReading(stick: RadioStick): String =
     if (!stick.mapped) "Not mapped"
-    else listOfNotNull(stick.valueText.takeIf { it.isNotBlank() }?.let { "$it \u00b5s" }, "reversed".takeIf { stick.reversed }).joinToString(" \u00b7 ")
+    else listOfNotNull(stick.channel?.let { "Ch $it" }, stick.valueText.takeIf { it.isNotBlank() }?.let { "$it \u00b5s" }, "reversed".takeIf { stick.reversed }).joinToString(" \u00b7 ")
