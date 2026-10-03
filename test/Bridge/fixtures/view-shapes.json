@@ -2213,6 +2213,7 @@
         "view.firmware.class",
         "view.firmware.kind",
         "view.firmware.versionType",
+        "view.firmwareUpgrade.bestChoice",
         "view.firmwareUpgrade.board",
         "view.firmwareUpgrade.busy",
         "view.firmwareUpgrade.cancellable",
@@ -6864,6 +6865,7 @@
         "view.firmware.vehicleType",
         "view.firmware.version",
         "view.firmware.versionType",
+        "view.firmwareUpgrade.bestChoice",
         "view.firmwareUpgrade.board",
         "view.firmwareUpgrade.busy",
         "view.firmwareUpgrade.cancellable",
@@ -10818,6 +10820,7 @@
         "versionType": "string"
     },
     "view.firmwareUpgrade": {
+        "bestChoice": "number",
         "board": "null",
         "busy": "bool",
         "cancellable": "bool",

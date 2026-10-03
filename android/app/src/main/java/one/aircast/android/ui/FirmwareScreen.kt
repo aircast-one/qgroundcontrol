@@ -70,6 +70,7 @@ internal data class FirmwareJob(
     val messages: List<String>,
     val error: String,
     val choices: List<Pair<String, String>> = emptyList(),
+    val bestChoice: Int = 0,
     val updateAvailable: String = "",
     val px4StableVersion: String = "",
     val px4BetaVersion: String = "",
@@ -99,6 +100,7 @@ internal fun firmwareJob(view: JSONObject?): FirmwareJob? = view?.takeIf { it.op
             (0 until listed.length()).mapNotNull { index -> listed.optJSONObject(index)?.let { c -> c.optText("name") to c.optText("url") } }
         }.orEmpty(),
         updateAvailable = it.optText("updateAvailable"),
+        bestChoice = it.optInt("bestChoice"),
         px4StableVersion = it.optText("px4StableVersion"),
         px4BetaVersion = it.optText("px4BetaVersion"),
     )
@@ -106,7 +108,7 @@ internal fun firmwareJob(view: JSONObject?): FirmwareJob? = view?.takeIf { it.op
 
 internal fun firmwarePhaseText(phase: String): String = when (phase) {
     "connecting" -> "Waiting for the bootloader"
-    "choosing" -> "Choose board type"
+    "choosing" -> "Choose the firmware build"
     "erasing" -> "Erasing"
     "programming" -> "Programming"
     "verifying" -> "Verifying"
@@ -315,11 +317,10 @@ fun FirmwareScreen(modifier: Modifier = Modifier) {
                 job?.let { current ->
                     if (current.busy) LinearProgressIndicator(progress = { current.progress }, modifier = Modifier.fillMaxWidth())
                     firmwarePhaseText(current.phase).takeIf { it.isNotBlank() }?.let { Text(it) }
-                    if (current.phase == "choosing") current.choices.forEach { (name, url) ->
-                        OutlinedButton(
-                            onClick = { scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(FIRMWARE_CHOOSE, url) }.orEmpty() } },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text(name) }
+                    if (current.phase == "choosing") current.choices.forEachIndexed { index, (name, url) ->
+                        val choose = { scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(FIRMWARE_CHOOSE, url) }.orEmpty() } }
+                        if (index == current.bestChoice) Button(onClick = { choose() }, modifier = Modifier.fillMaxWidth()) { Text(name) }
+                        else OutlinedButton(onClick = { choose() }, modifier = Modifier.fillMaxWidth()) { Text(name) }
                     }
                     current.error.takeIf { it.isNotBlank() }?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     if (current.phase == "failed") Text(FLASH_FAIL_TEXT, style = MaterialTheme.typography.bodyMedium)

@@ -48,6 +48,7 @@ pub struct Job {
     pub port: Option<String>,
     pub file: Option<String>,
     pub choices: Vec<(String, String)>,
+    pub best_choice: usize,
     pub chosen: Option<String>,
 }
 
@@ -56,13 +57,13 @@ pub enum Event {
     Status(String),
     Board(BoardInfo),
     Progress(f64),
-    Choose(Vec<(String, String)>),
+    Choose(Vec<(String, String)>, usize),
 }
 
 const CHOICE_POLL_MS: u64 = 200;
 
-fn await_choice(choices: Vec<(String, String)>, report: &mut dyn FnMut(Event)) -> Result<String, String> {
-    report(Event::Choose(choices));
+fn await_choice(choices: Vec<(String, String)>, best: usize, report: &mut dyn FnMut(Event)) -> Result<String, String> {
+    report(Event::Choose(choices, best));
     let picked = std::iter::repeat(())
         .take_while(|()| !cancelled())
         .find_map(|()| {
@@ -268,10 +269,8 @@ pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &m
         Source::ArduPilot { vehicle, build } => {
             report(Event::Status("Downloading the ArduPilot firmware list...".into()));
             let chibios = crate::settingsstore::raw_setting(APM_CHIBIOS).and_then(|v| v.as_i64()).unwrap_or(0) == 0;
-            match crate::firmwarecatalog::apm_url(&manifest()?, board.board_id, *build, *vehicle, chibios, description)? {
-                crate::firmwarecatalog::ApmPick::Url(url) => url,
-                crate::firmwarecatalog::ApmPick::Choose(choices) => await_choice(choices, report)?,
-            }
+            let (choices, best) = crate::firmwarecatalog::apm_url(&manifest()?, board.board_id, *build, *vehicle, chibios, description)?;
+            await_choice(choices, best, report)?
         }
     };
     report(Event::Status(format!("Downloading firmware from {url}")));
@@ -350,9 +349,10 @@ fn apply(event: Event) {
         Event::Status(text) => held.messages.push(text),
         Event::Board(board) => held.board = Some(board),
         Event::Progress(fraction) => held.progress = fraction,
-        Event::Choose(choices) => {
+        Event::Choose(choices, best) => {
             held.phase = Phase::Choosing;
             held.choices = choices;
+            held.best_choice = best;
             held.chosen = None;
         }
     }
@@ -637,6 +637,7 @@ pub fn view(backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
         "busy": held.phase.busy(),
         "cancellable": matches!(held.phase, Phase::Connecting | Phase::Choosing),
         "choices": held.choices.iter().map(|(name, url)| json!({ "name": name, "url": url })).collect::<Vec<_>>(),
+        "bestChoice": held.best_choice,
         "progress": held.progress,
         "messages": held.messages,
         "error": held.error,

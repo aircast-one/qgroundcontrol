@@ -19,7 +19,7 @@ class FirmwareScreenTest {
         assertEquals("", firmwarePhaseText("idle"))
         val choosing = JSONObject("""{"class":"FirmwareUpgrade","phase":"choosing","busy":true,"cancellable":true,"choices":[{"name":"CUAVv5 - 4.6.2","url":"https://f/c.apj"}]}""")
         assertEquals(listOf("CUAVv5 - 4.6.2" to "https://f/c.apj"), firmwareJob(choosing)!!.choices)
-        assertEquals("Choose board type", firmwarePhaseText("choosing"))
+        assertEquals("Choose the firmware build", firmwarePhaseText("choosing"))
     }
 
     @Test
