@@ -90,7 +90,7 @@ fun ApmSubMotorsScreen(modifier: Modifier = Modifier) {
     val frameDisplay by produceState<ImageBitmap?>(null) {
         value = withContext(Dispatchers.Default) { motorDisplayFrame(subFrames(Qgc.get(APM_SUB_FRAME_VIEW)))?.let(::frameImage) }
     }
-    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke("apmSubMotors.arm", false) } }
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke("apmSubMotors.open") } }
     LaunchedEffect(revision) {
         read = withContext(Dispatchers.Default) { subMotors(Qgc.get(APM_SUB_MOTORS_VIEW)) }
         delay(SUB_MOTORS_POLL_MS)
@@ -134,10 +134,10 @@ fun ApmSubMotorsScreen(modifier: Modifier = Modifier) {
                     },
                     onValueChangeFinished = { sliders[index] = SUB_NEUTRAL },
                     valueRange = 0f..100f,
-                    enabled = state.canRunManualTest,
+                    enabled = testing,
                     modifier = Modifier.weight(1f),
                 )
-                Checkbox(checked = motor.reversed, onCheckedChange = {
+                Checkbox(checked = motor.reversed, enabled = testing, onCheckedChange = {
                     sliders[index] = SUB_NEUTRAL
                     act("apmSubMotors.reverse", motor.motor, it)
                 })

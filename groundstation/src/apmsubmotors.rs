@@ -11,6 +11,7 @@ pub const REVERSE: &str = "apmSubMotors.reverse";
 pub const TEST: &str = "apmSubMotors.test";
 pub const ARM: &str = "apmSubMotors.arm";
 pub const AUTO_DETECT: &str = "apmSubMotors.autoDetect";
+pub const OPENED: &str = "apmSubMotors.open";
 pub const MOTOR_DETECTION_MODE: &str = "Motor Detection";
 const UNKNOWN_MOTOR_COUNT_SLIDERS: i64 = 8;
 const AUTO_DETECT_MAJOR: i64 = 4;
@@ -108,16 +109,17 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
             Some(arm) => dispatch(backend, json!({ "action": "arm", "arm": arm })),
             None => json!({ "ok": false, "reason": "apmSubMotors.arm takes true or false" }),
         },
-        AUTO_DETECT => {
+        OPENED => {
             DETECTION_LOG.lock().unwrap_or_else(PoisonError::into_inner).clear();
-            dispatch(backend, json!({ "action": "setModeAndArm", "mode": MOTOR_DETECTION_MODE }))
+            dispatch(backend, json!({ "action": "arm", "arm": false }))
         }
+        AUTO_DETECT => dispatch(backend, json!({ "action": "setModeAndArm", "mode": MOTOR_DETECTION_MODE })),
         _ => json!({ "ok": false, "reason": format!("{action} is not a Sub motor action") }),
     }
 }
 
 pub fn owns(path: &str) -> bool {
-    [REVERSE, TEST, ARM, AUTO_DETECT].contains(&path)
+    [REVERSE, TEST, ARM, AUTO_DETECT, OPENED].contains(&path)
 }
 
 #[cfg(test)]
@@ -138,5 +140,25 @@ mod tests {
         assert!(is_detection_text("Thruster 1 is reversed"));
         assert!(is_detection_text("MOTOR 3 ok"));
         assert!(!is_detection_text("EKF3 IMU0 is using GPS"));
+    }
+
+    #[test]
+    fn detection_messages_last_for_one_page_visit() {
+        struct Nothing;
+        impl Backend for Nothing {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let log = || DETECTION_LOG.lock().unwrap_or_else(PoisonError::into_inner).clone();
+        run(&Nothing, OPENED, "[]");
+        on_text(true, "Thruster 1 is reversed");
+        run(&Nothing, AUTO_DETECT, "[]");
+        on_text(true, "Thruster 2 ok");
+        assert_eq!(log(), "Thruster 1 is reversed\nThruster 2 ok\n", "a second detection run appends like the controller's _motorDetectionMessages");
+        run(&Nothing, OPENED, "[]");
+        assert_eq!(log(), "", "reopening the page starts a new controller with no messages");
     }
 }
