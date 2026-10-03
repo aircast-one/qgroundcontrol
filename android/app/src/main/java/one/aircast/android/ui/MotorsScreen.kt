@@ -44,12 +44,7 @@ internal fun reportedMotors(view: JSONObject?): Int? =
 internal fun motorCount(reported: Int?): Int = reported ?: UNKNOWN_MOTOR_COUNT
 
 internal fun motorCountNotice(reported: Int?): String? =
-    if (reported == null) {
-        "No motor layout is published for this airframe, so eight are offered. " +
-            "Test only the motors it actually has."
-    } else {
-        null
-    }
+    if (reported == null) "Warning: Unable to determine motor count" else null
 
 internal data class MotorGate(
     val connected: Boolean,
@@ -99,16 +94,11 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
         Surface(color = MaterialTheme.aircast.warningContainer, contentColor = MaterialTheme.aircast.warning, shape = CircleShape) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(painterResource(R.drawable.ic_warning), null)
-                Text("Take the propellers off first", style = MaterialTheme.typography.labelLarge)
+                Text("Make sure you remove all props.", style = MaterialTheme.typography.labelLarge)
             }
         }
-        Text(
-            "Each motor spins for $TIMEOUT_SECONDS seconds at the throttle below.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         motorCountNotice(reported)?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall)
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning)
         }
         motorRefusal(gate)?.let {
             Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
@@ -123,13 +113,14 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
                 if (!it) throttle = 0f
             })
             Text(
-                if (propsOff) "Careful: motors are live" else "Propellers are off, so enable the motor test",
+                if (propsOff) "Careful: motors are enabled" else "Propellers are removed - enable slider and motors",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.aircast.warning,
             )
         }
 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Test throttle", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text("Throttle", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             Text("${throttle.toInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         }
         Slider(
@@ -168,7 +159,7 @@ fun MotorsScreen(modifier: Modifier = Modifier) {
             FilledTonalButton(
                 onClick = { (1..motors).forEach { spin(it, throttle.toInt()) } },
                 enabled = canTest(gate, propsOff),
-            ) { Text("Spin all for $TIMEOUT_SECONDS s") }
+            ) { Text("All") }
             OutlinedButton(
                 onClick = { (1..motors).forEach { spin(it, 0) } },
                 enabled = canStop(gate),

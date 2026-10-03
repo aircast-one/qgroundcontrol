@@ -2,9 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MotorsTest {
@@ -20,10 +18,8 @@ class MotorsTest {
     }
 
     @Test
-    fun `the notice does not blame the vehicle for a gap in the layout table`() {
-        val notice = motorCountNotice(null)!!
-        assertFalse(notice.contains("did not say"))
-        assertTrue(notice.contains("airframe"))
+    fun `an unknown count warns with MotorComponent's text`() {
+        assertEquals("Warning: Unable to determine motor count", motorCountNotice(null))
     }
 
     @Test
