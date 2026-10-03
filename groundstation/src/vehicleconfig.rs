@@ -320,7 +320,7 @@ impl<'a> Scope<'a> {
             return local.clone();
         }
         if let Some(initial) = self.config["state"].get(name) {
-            return Val::Bool(page_state().get(name).copied().unwrap_or_else(|| initial.as_bool().unwrap_or(false)));
+            return Val::Bool(page_state().get(&state_key(self.backend, name)).copied().unwrap_or_else(|| initial.as_bool().unwrap_or(false)));
         }
         if let Some(constant) = self.config["constants"].get(name) {
             return from_json(constant);
@@ -456,7 +456,7 @@ impl<'a> Scope<'a> {
         if let Expr::Name(state) = &target {
             if self.config["state"].get(state).is_some() {
                 let value = self.eval_text(body[at + 1..].trim()).truthy();
-                page_state().insert(state.clone(), value);
+                page_state().insert(state_key(self.backend, state), value);
                 return Ok(());
             }
         }
@@ -468,6 +468,11 @@ impl<'a> Scope<'a> {
 }
 
 static PAGE_STATE: std::sync::Mutex<BTreeMap<String, bool>> = std::sync::Mutex::new(BTreeMap::new());
+
+fn state_key(backend: &dyn Backend, state: &str) -> String {
+    let vehicle = crate::read::object(&backend.get("vehicle.id")).get("value").cloned().unwrap_or(Value::Null);
+    format!("{vehicle}#{state}")
+}
 
 fn page_state() -> std::sync::MutexGuard<'static, BTreeMap<String, bool>> {
     PAGE_STATE.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -836,7 +841,7 @@ fn disabled_companion(scope: &Scope, page: &str, section_index: usize, section: 
             })
         })
         .collect();
-    (!controls.is_empty()).then(|| json!({ "title": companion["heading"], "note": "", "keywords": search_terms(section), "controls": controls }))
+    (!controls.is_empty()).then(|| json!({ "title": companion["heading"], "note": "", "keywords": companion["heading"].as_str().map(str::to_lowercase).into_iter().collect::<Vec<_>>(), "controls": controls }))
 }
 
 fn search_terms(section: &Value) -> Vec<String> {
@@ -845,7 +850,6 @@ fn search_terms(section: &Value) -> Vec<String> {
     std::iter::once(&section["title"])
         .chain(section["keywords"].as_array().into_iter().flatten())
         .chain(controls.iter().flat_map(|c| [&c["label"], &c["param"]]))
-        .chain(std::iter::once(&section["repeat"]["disabledSection"]["heading"]))
         .filter_map(strs)
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
@@ -1138,6 +1142,9 @@ mod tests {
 
     impl Backend for Fake {
         fn get(&self, path: &str) -> String {
+            if path == "vehicle.id" {
+                return json!({ "kind": "value", "value": self.params.borrow().get("VEHICLE_ID").copied().unwrap_or(1.0) }).to_string();
+            }
             match name_of(path).and_then(|n| self.params.borrow().get(n).map(|v| (n.to_string(), *v))) {
                 Some((name, value)) => json!({ "kind": "fact", "name": name, "value": value, "rawValue": value, "valueString": value.to_string() }),
                 None => json!({ "kind": "null" }),
@@ -1347,11 +1354,14 @@ mod tests {
         assert_eq!(third["value"], true);
 
         let fake = Fake::new(&[("SIMPLE", 63.0), ("SUPER_SIMPLE", 0.0)]);
+        page_state().clear();
         let mode = rows(&fake)[0].clone();
         assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", mode["path"].as_str().unwrap()), r#"{"value":3}"#)["ok"], true);
         assert_eq!((fake.params.borrow()["SIMPLE"], fake.params.borrow()["SUPER_SIMPLE"]), (0.0, 0.0), "_updateSimpleParamsFromSimpleMode writes 0 and 0 for Custom, never Simple on slot 1");
         let custom = rows(&fake);
         assert_eq!((custom[0]["display"].as_str(), custom.len()), (Some("Custom"), 13), "and the page stays in Custom with every box unchecked");
+        let other = Fake::new(&[("SIMPLE", 0.0), ("SUPER_SIMPLE", 0.0), ("VEHICLE_ID", 2.0)]);
+        assert_eq!(rows(&other)[0]["display"], "Off", "another vehicle at 0/0 derives Off, like a fresh APMFlightModesComponentController");
         assert_eq!(write(&fake, &format!("{}{ENUM_INDEX}", mode["path"].as_str().unwrap()), r#"{"value":0}"#)["ok"], true);
         assert_eq!(rows(&fake)[0]["display"], "Off");
     }
@@ -1438,6 +1448,9 @@ mod tests {
         let served = page(&fake, "Power", false);
         let disabled = served["sections"].as_array().unwrap().iter().find(|s| s["title"] == "Disabled Batteries").unwrap().clone();
         assert_eq!(disabled["controls"][0]["label"], "Battery 2");
+        assert_eq!(disabled["keywords"], json!(["disabled batteries"]), "QGC's sidebar matches the disabled heading by its name only");
+        let enabled = served["sections"].as_array().unwrap().iter().find(|s| s["title"] != "Disabled Batteries").unwrap();
+        assert!(enabled["keywords"].as_array().unwrap().iter().any(|k| k == "capacity"), "{enabled}");
         assert_eq!(write(&fake, disabled["controls"][0]["path"].as_str().unwrap(), r#"{"value":true}"#)["ok"], true);
         assert_eq!(fake.params.borrow()["BATT2_MONITOR"], 4.0, "switching one on picks analog voltage and current, as QGC's checkbox does");
     }

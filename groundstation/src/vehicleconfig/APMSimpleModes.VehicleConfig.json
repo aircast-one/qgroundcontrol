@@ -24,22 +24,22 @@
                         {
                             "label": "Off",
                             "checked": "!_customSimple && _simple.rawValue === 0 && _superSimple.rawValue === 0",
-                            "onSelected": "{ _customSimple = false; _simple.rawValue = 0; _superSimple.rawValue = 0 }"
+                            "onSelected": "{ _simple.rawValue = 0; _superSimple.rawValue = 0; _customSimple = false }"
                         },
                         {
                             "label": "Simple",
                             "checked": "!_customSimple && _simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0",
-                            "onSelected": "{ _customSimple = false; _simple.rawValue = _allSimpleBits; _superSimple.rawValue = 0 }"
+                            "onSelected": "{ _simple.rawValue = _allSimpleBits; _superSimple.rawValue = 0; _customSimple = false }"
                         },
                         {
                             "label": "Super-Simple",
                             "checked": "!_customSimple && _simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits",
-                            "onSelected": "{ _customSimple = false; _simple.rawValue = 0; _superSimple.rawValue = _allSimpleBits }"
+                            "onSelected": "{ _simple.rawValue = 0; _superSimple.rawValue = _allSimpleBits; _customSimple = false }"
                         },
                         {
                             "label": "Custom",
                             "checked": "_customSimple || (!(_simple.rawValue === 0 && _superSimple.rawValue === 0) && !(_simple.rawValue === _allSimpleBits && _superSimple.rawValue === 0) && !(_simple.rawValue === 0 && _superSimple.rawValue === _allSimpleBits))",
-                            "onSelected": "{ _customSimple = true; _simple.rawValue = 0; _superSimple.rawValue = 0 }"
+                            "onSelected": "{ _simple.rawValue = 0; _superSimple.rawValue = 0; _customSimple = true }"
                         }
                     ]
                 },

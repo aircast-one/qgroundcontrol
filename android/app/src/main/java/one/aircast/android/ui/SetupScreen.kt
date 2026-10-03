@@ -191,6 +191,8 @@ internal fun setupComponents(view: JSONObject?): List<SetupComponent> {
     }
 }
 
+private val OWN_SCREEN_HEADS = setOf(SENSORS, RADIO, REMOTE_SUPPORT, MOTORS, FLIGHT_MODES_PAGE)
+
 @Composable
 private fun SectionHits(titles: List<String>, onOpen: (String) -> Unit) {
     titles.forEach { title ->
@@ -218,26 +220,28 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val firmwareJson by qgcPath(FIRMWARE)
     val line = remember(firmwareJson) { firmwareLine(firmwareJson) }
     val vehicleType = line.vehicleType
-    var openComponent by remember { mutableStateOf<SetupComponent?>(null) }
-    var openSection by remember { mutableStateOf<String?>(null) }
+    var opened by remember { mutableStateOf<Pair<SetupComponent, String?>?>(null) }
+    val openComponent = opened?.first
+    val openSection = opened?.second
     var parametersOpen by remember { mutableStateOf(false) }
     var setupSearch by remember { mutableStateOf("") }
     var parametersSearch by remember { mutableStateOf("") }
 
-    BackHandler(enabled = openComponent != null) { openComponent = null }
+    BackHandler(enabled = openComponent != null) { opened = null }
 
     val components = remember(setupJson) { setupComponents(setupJson) }
-    val sectionHits by produceState(emptyMap<String, List<String>>(), setupSearch, components) {
-        value = if (setupSearch.isBlank()) emptyMap() else withContext(Dispatchers.Default) {
-            components.filter { setupPage(setupJson, it.name)?.parameterSections == true }
-                .associate { component -> component.name to readPage(component.name).filter { sectionMatches(it, setupSearch) }.map { it.title } }
+    val searching = setupSearch.isNotBlank()
+    val formSections by produceState(emptyMap<String, List<ParameterRows>>(), searching, components) {
+        value = if (!searching) emptyMap() else withContext(Dispatchers.Default) {
+            components.filter { setupPage(setupJson, it.name)?.parameterSections == true && headPage(it) !in OWN_SCREEN_HEADS }
+                .associate { component -> component.name to readPage(component.name) }
         }
     }
+    val sectionHits = formSections.mapValues { (_, rows) -> rows.filter { sectionMatches(it, setupSearch) }.map { it.title } }
     val searchHit: (SetupComponent) -> Boolean = { setupMatches(it.name, setupSearch) || sectionHits[it.name].orEmpty().isNotEmpty() }
     val openFromList: (SetupComponent, String?) -> Unit = { component, section ->
         parametersOpen = false
-        openSection = section
-        openComponent = component
+        opened = component to section
     }
     var summaries by remember { mutableStateOf(emptyMap<String, List<SummaryLine>>()) }
     LaunchedEffect(hasVehicle) {
@@ -251,7 +255,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     parametersSearch = ""
                     parametersOpen = true
                 }
-                else -> components.firstOrNull { it.name == requested }?.let { openComponent = it }
+                else -> components.firstOrNull { it.name == requested }?.let { opened = it to null }
             }
             AppNavigation.setupPage = null
         }
@@ -259,7 +263,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     LaunchedEffect(hasVehicle) {
         if (!hasVehicle) {
-            openComponent = null
+            opened = null
         }
     }
 
@@ -306,7 +310,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     val componentPage: (@Composable (Modifier) -> Unit)? = openComponent?.takeIf { headCanOpen(setupPage(setupJson, it.name), it.name) }?.let { open -> { pane ->
         Column(pane.fillMaxSize()) {
-            PageTopBar(sentenceCase(open.name), "Back to Setup") { openComponent = null }
+            PageTopBar(sentenceCase(open.name), "Back to Setup") { opened = null }
             val nativePage = setupPage(setupJson, open.name)
             val blocked = open.blockedReason
             val first = open.prerequisite
@@ -319,7 +323,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                     val firstComponent = setupComponents(setupJson).firstOrNull { it.name == first }
                     EmptyState(setupIcon(firstComponent?.known, firstComponent?.className.orEmpty()), "${sentenceCase(first)} first", prerequisiteText(first, open.name))
                     androidx.compose.material3.Button(onClick = {
-                        openComponent = setupComponents(setupJson).firstOrNull { it.name == first }
+                        opened = setupComponents(setupJson).firstOrNull { it.name == first }?.let { it to null }
                     }) { Text("Set up ${sentenceCase(first)}") }
                 }
                 headPage(open) == SENSORS -> SensorsScreen(Modifier.weight(1f))
@@ -467,7 +471,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 icon = R.drawable.ic_tune,
                 onClick = {
                     parametersSearch = ""
-                    openComponent = null
+                    opened = null
                     parametersOpen = true
                 },
                 selected = parametersOpen,
