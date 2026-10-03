@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
-import one.aircast.android.bridge.Fact
-import one.aircast.android.bridge.qgcFacts
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -202,37 +201,36 @@ internal fun GimbalIndicatorCell() {
     }
 }
 
-private const val GIMBAL_CONTROLLER_SETTINGS = "settings.gimbalControllerSettings"
+private const val GIMBAL_CONTROLLER_SETTINGS = "gimbalControllerSettings"
+private const val GIMBAL_SETTINGS_PAGE = "Fly View"
+private const val JOYSTICK_BUTTONS_SPEED = "joystickButtonsSpeed"
 
 internal fun joystickButtonsAvailable(view: JSONObject?): Boolean =
     view != null && !view.isNull("active") && view.optBoolean("vehicle") && view.optBoolean("enabled")
 
-internal fun gimbalSettingsShown(facts: List<Fact>, joystickButtons: Boolean): List<Fact> {
-    val named = { name: String -> facts.firstOrNull { it.name == name } }
-    val on = named("enableOnScreenControl")?.value == true
-    val dragging = named("clickAndDrag")?.value == true
-    return listOfNotNull(
-        named("enableOnScreenControl"),
-        named("clickAndDrag")?.takeIf { on },
-        named("cameraHFov")?.takeIf { on && !dragging },
-        named("cameraVFov")?.takeIf { on && !dragging },
-        named("cameraSlideSpeed")?.takeIf { on && dragging },
-        named("zoomMaxSpeed"),
-        named("zoomMinSpeed"),
-        named("joystickButtonsSpeed")?.let { if (joystickButtons) it else it.copy(enabled = false, disabledReason = "No joystick is enabled for this vehicle.") },
-        named("showAzimuthIndicatorOnMap"),
-        named("toolbarIndicatorShowAzimuth"),
-        named("toolbarIndicatorShowAcquireReleaseControl"),
-    )
-}
+internal fun gimbalSettingsBlocks(sections: List<SettingsSectionRows>, joystickButtons: Boolean): List<SettingsBlock> =
+    sections.filter { it.group == GIMBAL_CONTROLLER_SETTINGS }.flatMap { it.blocks }.map { block ->
+        block.copy(facts = block.facts.map { fact ->
+            if (fact.name != JOYSTICK_BUTTONS_SPEED || joystickButtons) fact
+            else fact.copy(enabled = false, disabledReason = "No joystick is enabled for this vehicle.")
+        })
+    }
 
 @Composable
 private fun GimbalSettings() {
-    val facts by qgcFacts(GIMBAL_CONTROLLER_SETTINGS)
     val joystick by qgcPath(JOYSTICK_VIEW)
+    var reloads by remember { mutableIntStateOf(0) }
+    var sections by remember { mutableStateOf(emptyList<SettingsSectionRows>()) }
+    LaunchedEffect(reloads) {
+        sections = withContext(Dispatchers.Default) { settingsSections(Qgc.get(settingsPagePath(GIMBAL_SETTINGS_PAGE))) }
+    }
     Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-        Text("On-screen control", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-        gimbalSettingsShown(facts, joystickButtonsAvailable(joystick)).forEach { FactRow(it) }
+        gimbalSettingsBlocks(sections, joystickButtonsAvailable(joystick)).forEach { block ->
+            if (block.title.isNotBlank()) {
+                Text(sentenceCase(block.title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+            }
+            block.facts.forEach { FactRow(it, onWrite = { reloads++ }) }
+        }
     }
 }
 

@@ -239,6 +239,17 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
     ("videoSettings", "recordingFormat", "File Format"),
     ("videoSettings", "enableStorageLimit", "Delete old recordings automatically"),
     ("videoSettings", "maxVideoSize", "Storage Limit"),
+    ("gimbalControllerSettings", "enableOnScreenControl", "Enabled"),
+    ("gimbalControllerSettings", "clickAndDrag", "Click and drag"),
+    ("gimbalControllerSettings", "cameraHFov", "Horizontal FOV"),
+    ("gimbalControllerSettings", "cameraVFov", "Vertical FOV"),
+    ("gimbalControllerSettings", "cameraSlideSpeed", "Max speed"),
+    ("gimbalControllerSettings", "zoomMaxSpeed", "Max speed (min zoom)"),
+    ("gimbalControllerSettings", "zoomMinSpeed", "Min speed (max zoom)"),
+    ("gimbalControllerSettings", "joystickButtonsSpeed", "Joystick buttons speed:"),
+    ("gimbalControllerSettings", "showAzimuthIndicatorOnMap", "Show gimbal Azimuth indicator in map"),
+    ("gimbalControllerSettings", "toolbarIndicatorShowAzimuth", "Use Azimuth instead of local yaw on top toolbar indicator"),
+    ("gimbalControllerSettings", "toolbarIndicatorShowAcquireReleaseControl", "Show Acquire/Release control button"),
 ];
 
 fn qml_labelled(group: &str, control: Value) -> Value {
@@ -877,6 +888,15 @@ mod tests {
         let shown = inverted(json!({ "name": "androidDontSaveToSDCard", "label": "Don't save to SD card, even if available", "value": false }));
         assert_eq!((shown["label"].clone(), shown["inverted"].clone(), shown["value"].clone()), (json!("Save application data to SD Card"), json!(true), json!(false)), "GeneralSettings.qml checkedValue: false, uncheckedValue: true");
         assert_eq!(qml_labelled("appSettings", json!({ "name": "audioMuted", "label": "Mute Audio Output" }))["label"], "Mute all audio output");
+    }
+
+    #[test]
+    fn gimbal_rows_carry_the_text_gimbal_indicator_qml_gives_them() {
+        let label = |name: &str| qml_labelled("gimbalControllerSettings", json!({ "name": name, "label": "fact json" }))["label"].as_str().unwrap().to_string();
+        assert_eq!(
+            ["enableOnScreenControl", "cameraHFov", "toolbarIndicatorShowAzimuth"].map(label),
+            ["Enabled", "Horizontal FOV", "Use Azimuth instead of local yaw on top toolbar indicator"]
+        );
     }
 
     #[test]
