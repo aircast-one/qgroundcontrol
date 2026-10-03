@@ -74,7 +74,7 @@ data class FenceCircle(
     val kindText: String = "",
     val radiusMinimum: Double? = null,
     val radiusMaximum: Double? = null,
-    val radiusMetres: Double = 0.0,
+    val radiusMetres: Double = radius,
     val radiusUnits: String = "",
 )
 data class RallyPoint(
