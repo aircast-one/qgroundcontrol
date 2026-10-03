@@ -37,4 +37,10 @@ class InspectorChartsTest {
         assertEquals(0.6f to 0.25f, chartPoint(2000, 0.5, 5000, -1.0, 1.0))
         assertEquals(1f to 1f, chartPoint(0, -5.0, 5000, -1.0, 1.0))
     }
+
+    @Test
+    fun `the legend reads the newest sample, and nothing before one arrives`() {
+        assertEquals("0.02000", latestValue(listOf(900L to 0.5, 40L to 0.02, 400L to -1.0)))
+        assertEquals(null, latestValue(emptyList()))
+    }
 }

@@ -1,6 +1,14 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Alignment
+import one.aircast.mapspike.aircast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,7 +35,6 @@ import androidx.compose.ui.unit.dp
 import java.util.TimeZone
 import java.util.Locale
 import kotlinx.coroutines.delay
-import androidx.compose.ui.geometry.Size
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.drawText
@@ -42,7 +49,6 @@ private const val CHART_ADD = "mavlinkInspector.chart.add"
 private const val CHART_REMOVE = "mavlinkInspector.chart.remove"
 private const val CHART_RANGE_X = "mavlinkInspector.chart.rangeX"
 private const val CHART_RANGE_Y = "mavlinkInspector.chart.rangeY"
-internal val INSPECTOR_SERIES_COLOURS = listOf(Color(0xFF00FF00), Color(0xFFFFA500), Color(0xFFFF0000), Color(0xFF808080), Color(0xFF0000FF), Color(0xFFFFFF00))
 
 internal data class ChartPlot(val label: String, val field: String, val colour: Int, val points: List<Pair<Long, Double>>)
 
@@ -103,6 +109,19 @@ internal fun valueTicks(low: Double, high: Double): List<Pair<Float, String>> =
         (1f - fraction.toFloat()) to "%.4g".format(Locale.ROOT, low + (high - low) * fraction)
     }
 
+internal fun latestValue(points: List<Pair<Long, Double>>): String? =
+    points.minByOrNull { it.first }?.let { "%.4g".format(Locale.ROOT, it.second) }
+
+@Composable
+private fun seriesColours(): List<Color> = listOf(
+    MaterialTheme.colorScheme.primary,
+    MaterialTheme.aircast.mission,
+    MaterialTheme.aircast.success,
+    MaterialTheme.colorScheme.tertiary,
+    MaterialTheme.colorScheme.error,
+    MaterialTheme.aircast.warning,
+)
+
 internal fun chartPoint(ageMs: Long, value: Double, windowMs: Long, yMin: Double, yMax: Double): Pair<Float, Float> =
     (1f - ageMs.toFloat() / windowMs.coerceAtLeast(1)) to (1f - ((value - yMin) / (yMax - yMin).takeIf { it > 0 }.let { it ?: 1.0 }).toFloat().coerceIn(0f, 1f))
 
@@ -139,6 +158,7 @@ private fun ChartChoice(title: String, options: List<String>, chosen: Int, onCho
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun InspectorChartPanel(index: Int, charts: InspectorCharts, modifier: Modifier = Modifier) {
     val chart = charts.charts.getOrNull(index)?.takeIf { it.plots.isNotEmpty() } ?: return
@@ -149,6 +169,7 @@ internal fun InspectorChartPanel(index: Int, charts: InspectorCharts, modifier: 
             ChartChoice("Scale", charts.timeScales, chart.rangeX) { chosen -> offMainDetached { Qgc.invoke(CHART_RANGE_X, index, chosen) } }
             ChartChoice("Range", charts.ranges, chart.rangeY) { chosen -> offMainDetached { Qgc.invoke(CHART_RANGE_Y, index, chosen) } }
         }
+        val colours = seriesColours()
         val measurer = rememberTextMeasurer(cacheSize = TICK_LABEL_CACHE)
         val ink = MaterialTheme.colorScheme.onSurfaceVariant
         val tickStyle = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, color = ink)
@@ -158,39 +179,46 @@ internal fun InspectorChartPanel(index: Int, charts: InspectorCharts, modifier: 
                 value = System.currentTimeMillis()
             }
         }
-        Canvas(Modifier.fillMaxWidth().height(CHART_HEIGHT)) {
-            val low = chart.yMin ?: return@Canvas
-            val high = chart.yMax ?: return@Canvas
-            val values = valueTicks(low, high).map { (at, label) -> at to measurer.measure(label, tickStyle) }
-            val times = timeTicks(chart.windowMs, now).map { (at, label) -> at to measurer.measure(label, tickStyle) }
-            val gap = 4.dp.toPx()
-            val left = (values.maxOfOrNull { it.second.size.width } ?: 0) + gap
-            val plotHeight = size.height - (times.maxOfOrNull { it.second.size.height } ?: 0) - gap
-            val plotWidth = size.width - left
-            drawRect(grid, topLeft = Offset(left, 0f), size = Size(plotWidth, plotHeight), style = Stroke(1.dp.toPx()))
-            values.forEach { (at, text) ->
-                val y = at * plotHeight
-                drawLine(grid, Offset(left, y), Offset(size.width, y), strokeWidth = 1f)
-                drawText(text, topLeft = Offset(left - gap - text.size.width, (y - text.size.height / 2f).coerceIn(0f, plotHeight - text.size.height)))
-            }
-            times.forEach { (at, text) ->
-                val x = left + at * plotWidth
-                drawLine(grid, Offset(x, 0f), Offset(x, plotHeight), strokeWidth = 1f)
-                drawText(text, topLeft = Offset((x - text.size.width / 2f).coerceIn(left, size.width - text.size.width), plotHeight + gap))
-            }
-            chart.plots.forEach { plot ->
-                val path = Path().apply {
-                    plot.points.forEachIndexed { at, (age, value) ->
-                        val (x, y) = chartPoint(age, value, chart.windowMs, low, high)
-                        val point = Offset(left + x * plotWidth, y * plotHeight)
-                        if (at == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+        Surface(Modifier.fillMaxWidth().padding(top = 8.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Canvas(Modifier.fillMaxWidth().height(CHART_HEIGHT)) {
+                    val low = chart.yMin ?: return@Canvas
+                    val high = chart.yMax ?: return@Canvas
+                    val values = valueTicks(low, high).map { (at, label) -> at to measurer.measure(label, tickStyle) }
+                    val times = timeTicks(chart.windowMs, now).map { (at, label) -> at to measurer.measure(label, tickStyle) }
+                    val gap = 4.dp.toPx()
+                    val left = (values.maxOfOrNull { it.second.size.width } ?: 0) + gap
+                    val plotHeight = size.height - (times.maxOfOrNull { it.second.size.height } ?: 0) - gap
+                    val plotWidth = size.width - left
+                    values.forEach { (at, text) ->
+                        val y = at * plotHeight
+                        drawLine(grid, Offset(left, y), Offset(size.width, y), strokeWidth = 1f)
+                        drawText(text, topLeft = Offset(left - gap - text.size.width, (y - text.size.height / 2f).coerceIn(0f, plotHeight - text.size.height)))
+                    }
+                    times.forEach { (at, text) ->
+                        val x = left + at * plotWidth
+                        drawText(text, topLeft = Offset((x - text.size.width / 2f).coerceIn(left, size.width - text.size.width), plotHeight + gap))
+                    }
+                    chart.plots.forEach { plot ->
+                        val path = Path().apply {
+                            plot.points.forEachIndexed { at, (age, value) ->
+                                val (x, y) = chartPoint(age, value, chart.windowMs, low, high)
+                                val point = Offset(left + x * plotWidth, y * plotHeight)
+                                if (at == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                            }
+                        }
+                        drawPath(path, colours[plot.colour % colours.size], style = Stroke(2.dp.toPx()))
                     }
                 }
-                drawPath(path, INSPECTOR_SERIES_COLOURS[plot.colour % INSPECTOR_SERIES_COLOURS.size], style = Stroke(1.dp.toPx()))
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)) {
+                    chart.plots.forEach { plot ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(Modifier.size(8.dp).background(colours[plot.colour % colours.size], CircleShape))
+                            Text(listOfNotNull(plot.label, latestValue(plot.points)).joinToString("  "), style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                }
             }
-        }
-        chart.plots.forEach { plot ->
-            Text(plot.label, style = MaterialTheme.typography.labelSmall, color = INSPECTOR_SERIES_COLOURS[plot.colour % INSPECTOR_SERIES_COLOURS.size])
         }
     }
 }
