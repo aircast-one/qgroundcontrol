@@ -379,6 +379,104 @@ pub fn axis_vector(direction: usize) -> Option<(f64, f64, f64)> {
     direction.checked_sub(1).and_then(|i| AXIS_VECTORS.get(i)).copied()
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AxisChoice {
+    Kept,
+    Custom,
+}
+
+type Signature = Vec<(String, Option<String>)>;
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AxisMemory {
+    pub signature: Signature,
+    pub seen: std::collections::BTreeMap<String, (f64, f64, f64)>,
+    pub choices: std::collections::BTreeMap<String, AxisChoice>,
+}
+
+static AXES: LazyLock<std::sync::Mutex<std::collections::BTreeMap<Option<i64>, AxisMemory>>> = LazyLock::new(Default::default);
+
+pub fn rebuilt(memory: AxisMemory, signature: &Signature) -> AxisMemory {
+    match memory.signature == *signature {
+        true => memory,
+        false => AxisMemory { signature: signature.clone(), ..AxisMemory::default() },
+    }
+}
+
+pub fn observed(memory: AxisMemory, key: &str, values: (f64, f64, f64)) -> AxisMemory {
+    let changed = memory.seen.get(key).is_some_and(|seen| *seen != values);
+    let choices = match changed {
+        true => memory.choices.into_iter().filter(|(k, _)| k != key).chain(std::iter::once((key.to_string(), AxisChoice::Kept))).collect(),
+        false => memory.choices,
+    };
+    let seen = memory.seen.into_iter().filter(|(k, _)| k != key).chain(std::iter::once((key.to_string(), values))).collect();
+    AxisMemory { seen, choices, ..memory }
+}
+
+pub fn chosen(memory: AxisMemory, key: &str, direction: usize) -> AxisMemory {
+    let others = |choices: std::collections::BTreeMap<String, AxisChoice>| choices.into_iter().filter(|(k, _)| k != key);
+    match axis_vector(direction) {
+        None => AxisMemory { choices: others(memory.choices).chain(std::iter::once((key.to_string(), AxisChoice::Custom))).collect(), ..memory },
+        Some(vector) => AxisMemory {
+            choices: others(memory.choices).collect(),
+            seen: memory.seen.into_iter().filter(|(k, _)| k != key).chain(std::iter::once((key.to_string(), vector))).collect(),
+            ..memory
+        },
+    }
+}
+
+pub fn axis_shown(choice: Option<AxisChoice>, derived: usize) -> (usize, bool) {
+    match choice {
+        Some(AxisChoice::Custom) => (0, true),
+        Some(AxisChoice::Kept) => (derived, true),
+        None => (derived, derived == 0),
+    }
+}
+
+fn with_axes<T>(vehicle: Option<i64>, change: impl FnOnce(AxisMemory) -> (AxisMemory, T)) -> T {
+    let mut held = AXES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (memory, answer) = change(held.remove(&vehicle).unwrap_or_default());
+    held.insert(vehicle, memory);
+    answer
+}
+
+pub fn forget(vehicle: u8) {
+    AXES.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&Some(i64::from(vehicle)));
+}
+
+fn condition_param(condition: &Condition) -> Option<String> {
+    match condition {
+        Condition::Compare { parameter, .. } => Some(parameter.clone()),
+        _ => None,
+    }
+}
+
+fn param_names(param: &Param) -> impl Iterator<Item = String> {
+    std::iter::once(param.name.clone()).chain(condition_param(&param.show_if))
+}
+
+pub fn rebuild_params(metadata: &Metadata, mixer: &MixerState) -> Vec<String> {
+    let outputs = metadata.outputs.iter().flat_map(|output| {
+        let subgroups = output.subgroups.iter().flat_map(|subgroup| {
+            let channels = subgroup.channels.iter().flat_map(move |channel| subgroup.channel_configs.iter().map(move |config| channel_param(config, channel)));
+            let conditions = subgroup.channel_configs.iter().filter_map(|c| condition_param(&c.show_if)).chain(subgroup.actions.iter().filter_map(|a| condition_param(&a.condition)));
+            subgroup.primary.iter().chain(subgroup.params.iter()).flat_map(param_names).chain(channels).chain(conditions)
+        });
+        condition_param(&output.show_subgroups_if).into_iter().chain(output.enable.iter().chain(output.params.iter()).flat_map(param_names)).chain(subgroups)
+    });
+    let notes = metadata.functions.values().filter_map(|f| condition_param(&f.note_if));
+    let selected = mixer.option.iter().filter_map(|o| condition_param(&o.option));
+    let groups = mixer.groups.iter().flat_map(|state| {
+        let types = state.channels.iter().flat_map(|c| c.cells.iter()).filter(|c| c.function == "type").filter_map(|c| match &c.source {
+            CellSource::Parameter(name, _) => Some(name.clone()),
+            CellSource::Fixed(_) => None,
+        });
+        std::iter::once(state.group.count_param.clone()).chain(state.group.params.iter().flat_map(param_names)).chain(types)
+    });
+    let names: std::collections::BTreeSet<String> = outputs.chain(notes).chain(condition_param(&metadata.show_ui_if)).chain(selected).chain(groups).filter(|n| !n.is_empty()).collect();
+    names.into_iter().collect()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MixerChannel {
     pub label: String,
@@ -436,7 +534,7 @@ pub fn mixer_state(metadata: &Metadata, value_of: &dyn Fn(&str) -> Option<i64>) 
                     },
                 });
                 let specific = (kind.is_some() && !prefix.is_empty()).then_some((function, prefix));
-                let rule = metadata.rules.iter().rev().find(|rule| group.per_item.iter().any(|item| !item.identifier.is_empty() && item.identifier == rule.select)).cloned();
+                let rule = group.per_item.iter().filter(|item| !item.identifier.is_empty()).flat_map(|item| metadata.rules.iter().filter(move |rule| rule.select == item.identifier)).last().cloned();
                 (MixerChannel { label, function, type_index, cells: type_cells.chain(item_cells).collect(), rule }, specific)
             })
             .collect();
@@ -727,7 +825,7 @@ pub fn outputs_json(backend: &dyn Backend, metadata: &Metadata) -> Value {
             "highlighted": highlighted,
         },
         "hasUnsetRequiredFunctions": mixer_functions(&mixer, true).iter().any(|f| !configured.contains(f)),
-        "geometry": geometry_json(backend, metadata, &mixer, &value_of),
+        "geometry": geometry_json(backend, metadata, &mixer),
         "groups": kept_outputs(metadata, &exists).into_iter().map(|output| json!({
             "label": output.label,
             "notes": function_params(output).iter().filter_map(|name| value_of(name)).filter_map(|f| metadata.functions.get(&f)).filter(|f| !f.note.is_empty() && f.note_if.evaluate(&value_of)).map(|f| f.note.clone()).collect::<Vec<_>>(),
@@ -756,12 +854,15 @@ fn rule_item<'a>(channel: &'a MixerChannel, cell: &MixerCell, value_of: &dyn Fn(
     rule.items.get(&value_of(name)?)?.get(apply)
 }
 
-fn axis_names(channel: &MixerChannel) -> Option<[String; 3]> {
-    let named = |function: &str| channel.cells.iter().find(|c| c.function == function).and_then(|c| match &c.source {
-        CellSource::Parameter(name, _) => Some(name.clone()),
-        CellSource::Fixed(_) => None,
-    });
-    Some([named("axisx")?, named("axisy")?, named("axisz")?])
+const AXIS_FUNCTIONS: [&str; 3] = ["axisx", "axisy", "axisz"];
+
+fn axis_cells(channel: &MixerChannel) -> Option<[&MixerCell; 3]> {
+    let cell = |function: &str| channel.cells.iter().find(|c| c.function == function);
+    Some([cell(AXIS_FUNCTIONS[0])?, cell(AXIS_FUNCTIONS[1])?, cell(AXIS_FUNCTIONS[2])?])
+}
+
+pub fn axis_key(names: &[String]) -> String {
+    names.join(",")
 }
 
 fn number_of(backend: &dyn Backend, name: &str) -> Option<f64> {
@@ -769,19 +870,45 @@ fn number_of(backend: &dyn Backend, name: &str) -> Option<f64> {
     read.get("rawValue").or_else(|| read.get("value")).and_then(Value::as_f64)
 }
 
-fn channel_cells(backend: &dyn Backend, channel: &MixerChannel, value_of: &dyn Fn(&str) -> Option<i64>) -> Vec<Value> {
-    let axes = axis_names(channel);
-    let direction = axes.as_ref().and_then(|[x, y, z]| Some(axis_direction(number_of(backend, x)?, number_of(backend, y)?, number_of(backend, z)?)));
+type AxisUi<'a> = dyn FnMut(&str, (f64, f64, f64)) -> (usize, bool) + 'a;
+
+const MAV_PARAM_TYPE_INT32: i64 = 6;
+
+fn selector_value(backend: &dyn Backend, name: &str) -> Option<i64> {
+    fact(backend, name).filter(|read| read.get("mavType").and_then(Value::as_i64) == Some(MAV_PARAM_TYPE_INT32))?;
+    integer(backend, name)
+}
+
+fn channel_cells(backend: &dyn Backend, channel: &MixerChannel, axis_ui: &mut AxisUi) -> Vec<Value> {
+    let selector = |name: &str| selector_value(backend, name);
+    let axes = axis_cells(channel).map(|cells| {
+        let names = cells.map(|c| match &c.source {
+            CellSource::Parameter(name, _) => name.clone(),
+            CellSource::Fixed(_) => String::new(),
+        });
+        let value = |c: &MixerCell| match &c.source {
+            CellSource::Parameter(name, _) => number_of(backend, name),
+            CellSource::Fixed(v) => Some(*v),
+        };
+        let values = cells.map(value);
+        let shown = match values {
+            [Some(x), Some(y), Some(z)] => Some(axis_ui(&axis_key(&names), (x, y, z))),
+            _ => None,
+        };
+        (names, shown)
+    });
+    let axes_hidden = axes.as_ref().and_then(|(_, shown)| *shown).is_some_and(|(_, visible)| !visible);
     channel
         .cells
         .iter()
         .flat_map(|cell| {
-            let rule = rule_item(channel, cell, value_of);
-            let axis_hidden = direction.is_some_and(|d| d != 0) && ["axisx", "axisy", "axisz"].contains(&cell.function.as_str());
-            let mut shown = match &cell.source {
-                CellSource::Parameter(name, index) => control(backend, &cell.config, name, *index).unwrap_or_else(|| json!({ "unavailable": true, "label": cell.config.label, "advanced": cell.config.advanced })),
-                CellSource::Fixed(value) => json!({ "fixed": true, "label": cell.config.label, "valueString": format!("{value:.4}"), "advanced": cell.config.advanced }),
+            let read = match &cell.source {
+                CellSource::Parameter(name, index) => control(backend, &cell.config, name, *index),
+                CellSource::Fixed(value) => Some(json!({ "fixed": true, "label": cell.config.label, "valueString": format!("{value:.4}"), "advanced": cell.config.advanced })),
             };
+            let rule = read.as_ref().and(rule_item(channel, cell, &selector));
+            let axis_hidden = axes_hidden && AXIS_FUNCTIONS.contains(&cell.function.as_str());
+            let mut shown = read.unwrap_or_else(|| json!({ "unavailable": true, "label": cell.config.label, "advanced": cell.config.advanced }));
             if let Value::Object(map) = &mut shown {
                 map.insert("hidden".to_string(), json!(rule.is_some_and(|r| r.hidden) || axis_hidden));
                 map.insert("disabled".to_string(), json!(rule.is_some_and(|r| r.disabled)));
@@ -790,10 +917,10 @@ fn channel_cells(backend: &dyn Backend, channel: &MixerChannel, value_of: &dyn F
                     map.insert("param".to_string(), json!(name));
                 }
             }
-            let virtual_axis = (cell.function == "axisx").then(|| {
-                axes.clone().zip(direction).map(|(names, index)| {
-                    let first = rule;
-                    json!({ "axis": true, "label": "Axis", "options": AXIS_DIRECTIONS, "index": index, "params": names, "hidden": first.is_some_and(|r| r.hidden), "disabled": first.is_some_and(|r| r.disabled), "advanced": cell.config.advanced })
+            let virtual_axis = (cell.function == AXIS_FUNCTIONS[0]).then(|| {
+                axes.as_ref().map(|(names, shown)| match shown {
+                    Some((index, _)) => json!({ "axis": true, "label": "Axis", "options": AXIS_DIRECTIONS, "index": index, "params": names, "hidden": rule.is_some_and(|r| r.hidden), "disabled": rule.is_some_and(|r| r.disabled), "advanced": cell.config.advanced }),
+                    None => json!({ "unavailable": true, "label": "Axis", "advanced": cell.config.advanced, "hidden": false, "disabled": false, "channelFunction": channel.function }),
                 })
             }).flatten();
             virtual_axis.into_iter().chain(std::iter::once(shown))
@@ -829,7 +956,7 @@ pub fn mixer_set(backend: &dyn Backend, args: &str) -> Value {
     let Some(rule) = channel.rule.as_ref() else { return written };
     let Some(selector) = channel.cells.iter().find(|c| c.identifier == rule.select) else { return written };
     let CellSource::Parameter(select_name, _) = &selector.source else { return written };
-    let Some(selected) = value_of(select_name) else { return written };
+    let Some(selected) = selector_value(backend, select_name) else { return written };
     let select_changed = select_name == name && before != Some(selected);
     channel
         .cells
@@ -847,12 +974,15 @@ pub fn mixer_set(backend: &dyn Backend, args: &str) -> Value {
 
 pub fn mixer_axis(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
-    let names: Vec<&str> = given.get(0).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
-    let direction = given.get(1).and_then(Value::as_u64).and_then(|d| usize::try_from(d).ok()).unwrap_or(0);
-    let Some((x, y, z)) = axis_vector(direction).filter(|_| names.len() == 3) else {
-        return json!({ "ok": direction == 0, "reason": if direction == 0 { Value::Null } else { json!("An axis direction needs its three axis parameters.") } });
+    let names: Vec<String> = given.get(0).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+    let direction = given.get(1).and_then(Value::as_u64).and_then(|d| usize::try_from(d).ok()).filter(|d| *d < AXIS_DIRECTIONS.len());
+    let (Some(direction), 3) = (direction, names.len()) else {
+        return json!({ "ok": false, "reason": "An axis direction needs its three axis parameters." });
     };
-    let all = names.iter().zip([x, y, z]).all(|(name, value)| crate::read::flag(&crate::factwrite::write(backend, &parameter_path(name), &json!({ "value": value }).to_string()), "ok"));
+    let vehicle = crate::guided::active_id(backend);
+    with_axes(vehicle, |memory| (chosen(memory, &axis_key(&names), direction), ()));
+    let Some((x, y, z)) = axis_vector(direction) else { return json!({ "ok": true }) };
+    let all = names.iter().zip([x, y, z]).filter(|(name, _)| !name.is_empty()).all(|(name, value)| crate::read::flag(&crate::factwrite::write(backend, &parameter_path(name), &json!({ "value": value }).to_string()), "ok"));
     json!({ "ok": all })
 }
 
@@ -884,8 +1014,29 @@ pub fn motor_geometry(metadata: &Metadata, mixer: &MixerState, raw_of: &dyn Fn(&
         .collect()
 }
 
-fn geometry_json(backend: &dyn Backend, metadata: &Metadata, mixer: &MixerState, value_of: &dyn Fn(&str) -> Option<i64>) -> Value {
-    let Some(option) = mixer.option.as_ref() else { return Value::Null };
+fn geometry_json(backend: &dyn Backend, metadata: &Metadata, mixer: &MixerState) -> Value {
+    let Some(option) = mixer.option.as_ref().filter(|_| !mixer.groups.is_empty()) else { return Value::Null };
+    let signature: Signature = rebuild_params(metadata, mixer).into_iter().map(|name| {
+        let value = number_of(backend, &name).map(|v| v.to_string());
+        (name, value)
+    }).collect();
+    let vehicle = crate::guided::active_id(backend);
+    let mut memory = Some(with_axes(vehicle, |held| (AxisMemory::default(), rebuilt(held, &signature))));
+    let mut axis_ui = |key: &str, values: (f64, f64, f64)| {
+        let next = observed(memory.take().unwrap_or_default(), key, values);
+        let shown = axis_shown(next.choices.get(key).copied(), axis_direction(values.0, values.1, values.2));
+        memory = Some(next);
+        shown
+    };
+    let groups: Vec<Value> = mixer.groups.iter().map(|state| json!({
+        "label": state.group.label,
+        "count": (!state.group.count_param.is_empty()).then(|| fact(backend, &state.group.count_param).map(|f| decode(&f, &parameter_path(&state.group.count_param)))).flatten(),
+        "columns": state.channels.first().map(|c| c.cells.iter().map(|cell| json!({ "label": cell.config.label, "advanced": cell.config.advanced })).collect::<Vec<_>>()).unwrap_or_default(),
+        "channels": state.channels.iter().map(|channel| json!({ "label": channel.label, "cells": channel_cells(backend, channel, &mut axis_ui) })).collect::<Vec<_>>(),
+        "params": params_json(backend, &state.group.params),
+    })).collect();
+    let kept = memory.unwrap_or_default();
+    with_axes(vehicle, |_| (kept, ()));
     json!({
         "title": if option.title.is_empty() { "Geometry".to_string() } else { format!("Geometry: {}", option.title) },
         "helpUrl": option.help_url,
@@ -894,13 +1045,7 @@ fn geometry_json(backend: &dyn Backend, metadata: &Metadata, mixer: &MixerState,
             .iter()
             .map(|m| json!({ "index": m.index, "label": m.label, "x": m.position.0, "y": m.position.1, "z": m.position.2, "counterClockwise": m.counter_clockwise }))
             .collect::<Vec<_>>(),
-        "groups": mixer.groups.iter().map(|state| json!({
-            "label": state.group.label,
-            "count": (!state.group.count_param.is_empty()).then(|| fact(backend, &state.group.count_param).map(|f| decode(&f, &parameter_path(&state.group.count_param)))).flatten(),
-            "columns": state.channels.first().map(|c| c.cells.iter().map(|cell| json!({ "label": cell.config.label, "advanced": cell.config.advanced })).collect::<Vec<_>>()).unwrap_or_default(),
-            "channels": state.channels.iter().map(|channel| json!({ "label": channel.label, "cells": channel_cells(backend, channel, value_of) })).collect::<Vec<_>>(),
-            "params": params_json(backend, &state.group.params),
-        })).collect::<Vec<_>>(),
+        "groups": groups,
     })
 }
 
@@ -991,9 +1136,116 @@ mod tests {
         }
         let metadata = ruled();
         let state = mixer_state(&metadata, &|_| None);
-        let cells = channel_cells(&Missing, &state.groups[0].channels[0], &|_| None);
+        let cells = channel_cells(&Missing, &state.groups[0].channels[0], &mut |_, _| (0, true));
         assert_eq!(cells.len(), 3, "ActuatorComponent.qml keeps the grid cell and its ActuatorFact shows '(Param not available)'");
         assert_eq!((cells[1]["unavailable"].clone(), cells[1]["label"].clone(), cells[1]["hidden"].clone()), (json!(true), json!("Roll Torque"), json!(false)));
+    }
+
+    struct Params(Vec<(&'static str, f64, i64)>);
+    impl Backend for Params {
+        fn get(&self, p: &str) -> String {
+            let name = p.trim_start_matches("vehicle.parameterManager.getParameter(-1,").trim_end_matches(')');
+            self.0.iter().find(|(n, _, _)| *n == name).map_or_else(|| json!({ "kind": "null" }), |(_, raw, mav)| json!({ "kind": "fact", "rawValue": raw, "value": raw, "mavType": mav, "valueString": raw.to_string() })).to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn axised() -> Metadata {
+        parse(&json!({
+            "outputs_v1": [],
+            "functions_v1": { "101": { "label": "Motor 1" } },
+            "mixer_v1": {
+                "actuator-types": { "motor": { "function-min": 101, "function-max": 108, "values": { "min": 0, "max": 1 } } },
+                "config": [{ "option": "", "actuators": [{ "group-label": "Motors", "count": 1, "actuator-type": "motor", "per-item-parameters": [
+                    { "label": "Axis X", "name": "CA_RTR${i}_AX", "function": "axisx" },
+                    { "label": "Axis Y", "name": "CA_RTR${i}_AY", "function": "axisy" },
+                    { "label": "Axis Z", "name": "CA_RTR${i}_AZ", "function": "axisz" }
+                ] }] }]
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_rule_is_taken_from_the_last_per_item_parameter_naming_one_like_mixers_update() {
+        let metadata = parse(&json!({
+            "outputs_v1": [],
+            "functions_v1": {},
+            "mixer_v1": {
+                "actuator-types": { "servo": { "function-min": 201, "function-max": 208, "values": { "min": -1, "max": 1 } } },
+                "config": [{ "option": "", "actuators": [{ "group-label": "S", "count": 1, "actuator-type": "servo", "per-item-parameters": [
+                    { "label": "B", "name": "B${i}", "identifier": "b" },
+                    { "label": "A", "name": "A${i}", "identifier": "a" }
+                ] }] }],
+                "rules": [
+                    { "select-identifier": "a", "apply-identifiers": ["b"], "items": { "1": [{ "hidden": true }] } },
+                    { "select-identifier": "b", "apply-identifiers": ["a"], "items": { "1": [{ "hidden": true }] } }
+                ]
+            }
+        }))
+        .unwrap();
+        let state = mixer_state(&metadata, &|_| None);
+        assert_eq!(state.groups[0].channels[0].rule.as_ref().map(|r| r.select.as_str()), Some("a"), "per-item order decides, not the rule list order");
+    }
+
+    #[test]
+    fn a_rule_applies_only_when_its_selector_is_an_int32_parameter_and_the_cell_has_a_fact() {
+        let metadata = ruled();
+        let state = mixer_state(&metadata, &|_| None);
+        let channel = &state.groups[0].channels[0];
+        let hidden = |backend: &Params| channel_cells(backend, channel, &mut |_, _| (0, true)).iter().map(|c| c["hidden"] == true).collect::<Vec<_>>();
+        let int32 = Params(vec![("CA_SV_CS0_TYPE", 1.0, 6), ("CA_SV_CS0_TRQ_R", 0.0, 9), ("CA_SV_CS0_TRQ_P", 0.0, 9)]);
+        assert_eq!(hidden(&int32), [false, false, true]);
+        let float = Params(vec![("CA_SV_CS0_TYPE", 1.0, 9), ("CA_SV_CS0_TRQ_R", 0.0, 9), ("CA_SV_CS0_TRQ_P", 0.0, 9)]);
+        assert_eq!(hidden(&float), [false, false, false], "MixerChannel::applyRule needs valueTypeInt32");
+        let missing = Params(vec![("CA_SV_CS0_TYPE", 1.0, 6), ("CA_SV_CS0_TRQ_R", 0.0, 9)]);
+        assert_eq!(hidden(&missing), [false, false, false], "an instance without a fact keeps its default visibility");
+    }
+
+    #[test]
+    fn the_virtual_axis_is_not_available_when_an_axis_parameter_is_missing() {
+        let metadata = axised();
+        let state = mixer_state(&metadata, &|_| None);
+        let channel = &state.groups[0].channels[0];
+        let backend = Params(vec![("CA_RTR0_AX", 0.0, 9), ("CA_RTR0_AY", 0.0, 9)]);
+        let cells = channel_cells(&backend, channel, &mut |_, _| unreachable!("no direction without all three facts"));
+        assert_eq!((cells[0]["unavailable"].clone(), cells[0]["label"].clone(), cells[0]["hidden"].clone()), (json!(true), json!("Axis"), json!(false)));
+        assert!(cells[1..].iter().all(|c| c["hidden"] == false), "setFactFromAxes never ran, so the axes stay shown");
+    }
+
+    #[test]
+    fn axes_matching_a_direction_hide_unless_edited_or_custom_was_picked_like_channel_config_instance_virtual_axis() {
+        let up = (0.0, 0.0, -1.0);
+        let fresh = observed(AxisMemory::default(), "k", up);
+        assert_eq!(axis_shown(fresh.choices.get("k").copied(), axis_direction(up.0, up.1, up.2)), (1, false), "built with a matching direction: hidden");
+        let edited = observed(observed(AxisMemory::default(), "k", (0.0, 0.0, 0.5)), "k", up);
+        assert_eq!(axis_shown(edited.choices.get("k").copied(), 1), (1, true), "an axis value change keeps them visible (setFactFromAxes(true))");
+        let custom = chosen(fresh.clone(), "k", 0);
+        assert_eq!(axis_shown(custom.choices.get("k").copied(), 1), (0, true), "picking Custom shows Custom and the axes");
+        let picked = chosen(edited, "k", 3);
+        assert_eq!(picked.seen.get("k"), Some(&(1.0, 0.0, 0.0)));
+        let after = observed(picked, "k", (1.0, 0.0, 0.0));
+        assert_eq!(axis_shown(after.choices.get("k").copied(), 3), (3, false), "a picked direction hides the axes; its own writes are not an edit");
+        let signature = vec![("CA_RTR0_TYPE".to_string(), Some("1".to_string()))];
+        let rebuilt_once = rebuilt(custom, &signature);
+        assert!(rebuilt_once.choices.is_empty() && rebuilt_once.seen.is_empty(), "a non-geometry parameter change rebuilds the mixer");
+        assert_eq!(rebuilt(rebuilt_once.clone(), &signature), rebuilt_once);
+    }
+
+    #[test]
+    fn rebuild_parameters_are_the_non_geometry_ones() {
+        let parsed = parse(&example()).unwrap();
+        let quad = |name: &str| match name {
+            "CA_AIRFRAME" => Some(1),
+            "CA_MC_R_COUNT" => Some(2),
+            _ => None,
+        };
+        let names = rebuild_params(&parsed, &mixer_state(&parsed, &quad));
+        assert!(names.contains(&"CA_AIRFRAME".to_string()) && names.contains(&"CA_MC_R_COUNT".to_string()) && names.contains(&"PWM_AUX_FUNC1".to_string()));
+        assert!(!names.iter().any(|n| n.starts_with("CA_MC_R0_P")), "positions only redraw the geometry");
     }
 
     #[test]

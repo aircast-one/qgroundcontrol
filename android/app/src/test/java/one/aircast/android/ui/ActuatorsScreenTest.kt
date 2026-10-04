@@ -59,6 +59,13 @@ class ActuatorMixerCellTest {
     }
 
     @Test
+    fun `the mixer is editable only while sliders are off and no motor assignment runs`() {
+        assertTrue(mixerEditable(testing = false, assigning = false))
+        assertFalse(mixerEditable(testing = true, assigning = false))
+        assertFalse(mixerEditable(testing = false, assigning = true))
+    }
+
+    @Test
     fun `a cell with a missing parameter reads as not available`() {
         val missing = geometryCell(JSONObject("""{"unavailable":true,"label":"Roll Torque","advanced":false,"hidden":false,"disabled":false,"channelFunction":201,"param":"CA_SV_CS0_TRQ_R"}"""))
         assertEquals(GeometryCell.Unavailable("Roll Torque", false, false), missing)

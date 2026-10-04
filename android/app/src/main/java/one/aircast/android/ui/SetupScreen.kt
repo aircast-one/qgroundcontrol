@@ -206,7 +206,7 @@ private fun SectionHits(titles: List<String>, onOpen: (String) -> Unit) {
 
 internal fun disabledWhile(reason: String): String = "Disabled while the vehicle is $reason"
 
-private fun Modifier.swallowTouches(): Modifier = pointerInput(Unit) {
+internal fun Modifier.swallowTouches(): Modifier = pointerInput(Unit) {
     awaitPointerEventScope {
         while (true) {
             awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial).changes.forEach { it.consume() }

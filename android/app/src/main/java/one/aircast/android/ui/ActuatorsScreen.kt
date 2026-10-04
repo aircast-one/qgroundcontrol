@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -229,7 +230,7 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
         }
         outputs.geometry?.let { geometry ->
             Column(Modifier.padding(16.dp)) {
-                GeometrySection(geometry, advanced, ::write, outputs.assignment.highlighted, onMotor = { motor ->
+                GeometrySection(geometry, advanced, mixerEditable(testing, outputs.assignment.active), ::write, outputs.assignment.highlighted, onMotor = { motor ->
                     scope.launch {
                         withContext(Dispatchers.IO) { Qgc.invoke(MOTOR_ASSIGNMENT_SELECT, motor) }
                         revision++
@@ -324,8 +325,10 @@ fun ActuatorsScreen(modifier: Modifier = Modifier) {
     }
 }
 
+internal fun mixerEditable(testing: Boolean, assigning: Boolean): Boolean = !testing && !assigning
+
 @Composable
-private fun GeometrySection(geometry: Geometry, advanced: Boolean, write: (String, Any) -> Unit, highlighted: Set<Int> = emptySet(), onMotor: (Int) -> Unit = {}, onWrite: () -> Unit) {
+private fun GeometrySection(geometry: Geometry, advanced: Boolean, editable: Boolean, write: (String, Any) -> Unit, highlighted: Set<Int> = emptySet(), onMotor: (Int) -> Unit = {}, onWrite: () -> Unit) {
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -333,31 +336,38 @@ private fun GeometrySection(geometry: Geometry, advanced: Boolean, write: (Strin
             if (geometry.helpUrl.isNotEmpty()) androidx.compose.material3.TextButton(onClick = { uri.openUri(geometry.helpUrl) }) { Text("?") }
         }
         if (geometry.motors.size > 1) GeometryImage(geometry.motors, highlighted = highlighted, onMotor = onMotor)
-        geometry.groups.forEach { group ->
-            Text(group.label, style = MaterialTheme.typography.titleSmall)
-            group.count?.let { FactRow(it, onWrite = onWrite) }
-            group.channels.forEach { channel ->
-                OutlinedCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(8.dp)) {
-                        Text(channel.label, style = MaterialTheme.typography.labelLarge)
-                        channel.cells.filterNotNull().filter { !it.hidden }.forEach { cell ->
-                            when (cell) {
-                                is GeometryCell.Editable -> if (advanced || !cell.item.advanced) MixerCellRow(cell, onWrite)
-                                is GeometryCell.Fixed -> if (advanced || !cell.advanced) Row {
-                                    Text(cell.label, modifier = Modifier.weight(1f))
-                                    Text(cell.valueString)
+        androidx.compose.foundation.layout.Box {
+            Column(Modifier.alpha(if (editable) 1f else DISABLED_ALPHA), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                geometry.groups.forEach { group ->
+                    Text(group.label, style = MaterialTheme.typography.titleSmall)
+                    group.count?.let { FactRow(it, onWrite = onWrite) }
+                    group.channels.forEach { channel ->
+                        OutlinedCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(8.dp)) {
+                                Text(channel.label, style = MaterialTheme.typography.labelLarge)
+                                channel.cells.filterNotNull().filter { !it.hidden }.forEach { cell ->
+                                    when (cell) {
+                                        is GeometryCell.Editable -> if (advanced || !cell.item.advanced) MixerCellRow(cell, onWrite)
+                                        is GeometryCell.Fixed -> if (advanced || !cell.advanced) Row {
+                                            Text(cell.label, modifier = Modifier.weight(1f))
+                                            Text(cell.valueString)
+                                        }
+                                        is GeometryCell.Axis -> if (advanced || !cell.advanced) AxisRow(cell, onWrite)
+                                        is GeometryCell.Unavailable -> if (advanced || !cell.advanced) NotAvailableRow(cell.label)
+                                    }
                                 }
-                                is GeometryCell.Axis -> if (advanced || !cell.advanced) AxisRow(cell, onWrite)
-                                is GeometryCell.Unavailable -> if (advanced || !cell.advanced) NotAvailableRow(cell.label)
                             }
                         }
                     }
+                    group.params.forEach { if (advanced || !it.advanced) ActuatorFactRow(it, write, onWrite) }
                 }
             }
-            group.params.forEach { if (advanced || !it.advanced) ActuatorFactRow(it, write, onWrite) }
+            if (!editable) androidx.compose.foundation.layout.Box(Modifier.matchParentSize().swallowTouches())
         }
     }
 }
+
+private const val DISABLED_ALPHA = 0.38f
 
 @Composable
 private fun NotAvailableRow(label: String) {
