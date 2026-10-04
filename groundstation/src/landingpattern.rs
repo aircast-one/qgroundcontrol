@@ -106,42 +106,82 @@ pub fn fresh(fresh: &Fresh) -> Value {
     pattern
 }
 
-const REQUIRED: [&str; 3] = ["loiterRadius", "loiterClockwise", "landCoordinate"];
+const MIXED_RELATIVE_TEXT: &str = "Fixed Wing Landing Pattern: Setting the loiter and landing altitudes with different settings for altitude relative is no longer supported. Both have been set to relative altitude. Be sure to adjust/check your plan prior to flight.";
+
+fn deprecated_relative(loiter: bool, land: bool) -> (bool, Option<&'static str>) {
+    match loiter == land {
+        true => (loiter, None),
+        false => (true, Some(MIXED_RELATIVE_TEXT)),
+    }
+}
 
 pub fn loaded(kind: &str, saved: &Value) -> Result<Value, String> {
-    let version = saved.get("version").and_then(Value::as_f64).ok_or("The following required keys are missing: version").map(|v| if v.fract() == 0.0 { v as i64 } else { 0 })?;
-    let supported = if kind == VTOL_PATTERN { version == 1 } else { matches!(version, 1 | 2) };
-    if !supported {
-        return Err(format!("{kind} complex item version {version} not supported"));
-    }
-    let deprecated = kind == FIXED_WING_PATTERN && version == 1;
-    let relative_keys: &[&str] = if deprecated { &["loiterAltitudeRelative", "landAltitudeRelative"] } else { &["altitudesAreRelative"] };
-    let missing: Vec<&str> = REQUIRED
-        .iter()
-        .chain(relative_keys)
-        .chain((kind == FIXED_WING_PATTERN && version == 2).then_some(&"valueSetIsDistance"))
-        .copied()
-        .filter(|key| saved.get(*key).is_none())
-        .collect();
-    if !missing.is_empty() {
-        return Err(format!("The following required keys are missing: {}", missing.join(", ")));
-    }
-    let mut normalized = saved.clone();
-    if saved.get("useLoiterToAlt").is_none() {
-        normalized["useLoiterToAlt"] = json!(true);
-    }
-    if deprecated {
-        let loiter = flag(saved, "loiterAltitudeRelative");
-        let land = flag(saved, "landAltitudeRelative");
-        normalized["altitudesAreRelative"] = json!(loiter != land || loiter);
-        normalized["valueSetIsDistance"] = json!(true);
-        normalized["version"] = json!(2);
-        if let Some(fields) = normalized.as_object_mut() {
-            fields.remove("loiterAltitudeRelative");
-            fields.remove("landAltitudeRelative");
+    crate::qtjson::validate_keys(saved, &[("version", "Double", true)])?;
+    let version = crate::qtjson::to_int(&saved["version"], 0);
+    let value_set_is_distance = match (kind == VTOL_PATTERN, version) {
+        (true, 1) => None,
+        (false, 1) => Some(true),
+        (false, 2) => {
+            crate::qtjson::validate_keys(saved, &[("valueSetIsDistance", "Bool", true)])?;
+            Some(saved["valueSetIsDistance"].as_bool().unwrap_or(false))
         }
-    }
-    Ok(normalized)
+        _ => return Err(format!("{kind} complex item version {version} not supported")),
+    };
+    crate::qtjson::validate_keys(saved, &[
+        ("version", "Double", true),
+        ("type", "String", true),
+        ("complexItemType", "String", true),
+        ("loiterCoordinate", "Array", false),
+        ("landingApproachCoordinate", "Array", false),
+        ("useDoChangeSpeed", "Bool", false),
+        ("finalApproachSpeed", "Double", false),
+        ("loiterRadius", "Double", true),
+        ("loiterClockwise", "Bool", true),
+        ("landCoordinate", "Array", true),
+        ("stopTakingPhotos", "Bool", false),
+        ("stopVideoPhotos", "Bool", false),
+        ("useLoiterToAlt", "Bool", false),
+    ])?;
+    let approach_key = match (saved.get("landingApproachCoordinate"), saved.get("loiterCoordinate")) {
+        (None, None) => return Err("The following required keys are missing: landingApproachCoordinate".to_string()),
+        (Some(_), _) => "landingApproachCoordinate",
+        (None, Some(_)) => "loiterCoordinate",
+    };
+    crate::transectload::of_type(saved, kind)?;
+    let relative = match kind == FIXED_WING_PATTERN && version == 1 {
+        true => {
+            crate::qtjson::validate_keys(saved, &[("loiterAltitudeRelative", "Bool", true), ("landAltitudeRelative", "Bool", true)])?;
+            let (relative, notice) = deprecated_relative(flag(saved, "loiterAltitudeRelative"), flag(saved, "landAltitudeRelative"));
+            if let Some(text) = notice {
+                crate::noticeboard::post(crate::noticeboard::MESSAGE, "", text);
+            }
+            relative
+        }
+        false => {
+            crate::qtjson::validate_keys(saved, &[("altitudesAreRelative", "Bool", true)])?;
+            flag(saved, "altitudesAreRelative")
+        }
+    };
+    crate::plandoc::coordinate(&saved[approach_key], true)?;
+    crate::plandoc::coordinate(&saved["landCoordinate"], true)?;
+    let meta_default = |name: &str| fact(&Fresh { vtol: kind == VTOL_PATTERN, land: (0.0, 0.0), ardupilot: false, relative: true, transition_distance: None }, name);
+    const REPLACED: [&str; 4] = ["loiterCoordinate", "loiterAltitudeRelative", "landAltitudeRelative", "landingApproachCoordinate"];
+    let defaults = [
+        ("useDoChangeSpeed", json!(false)),
+        ("finalApproachSpeed", meta_default("FinalApproachSpeed")),
+        ("stopTakingPhotos", json!(false)),
+        ("stopVideoPhotos", json!(false)),
+        ("useLoiterToAlt", json!(true)),
+    ];
+    let absent = defaults.into_iter().filter(|(key, _)| saved.get(*key).is_none()).map(|(key, value)| (key.to_string(), value));
+    let kept = saved.as_object().cloned().unwrap_or_default().into_iter().filter(|(key, _)| !REPLACED.contains(&key.as_str()));
+    let settled = [
+        ("landingApproachCoordinate".to_string(), saved[approach_key].clone()),
+        ("altitudesAreRelative".to_string(), json!(relative)),
+        ("version".to_string(), json!(if kind == VTOL_PATTERN { 1 } else { 2 })),
+    ];
+    let distance = value_set_is_distance.map(|distance| ("valueSetIsDistance".to_string(), json!(distance)));
+    Ok(Value::Object(kept.chain(absent).chain(settled).chain(distance).collect()))
 }
 
 pub fn wizard_text(pattern: &Value) -> Vec<&'static str> {
@@ -574,13 +614,54 @@ mod tests {
 
     #[test]
     fn a_saved_landing_pattern_loads_as_landing_complex_item_reads_it() {
-        let v1 = json!({ "version": 1, "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0], "loiterAltitudeRelative": false, "landAltitudeRelative": false });
+        let v1 = json!({ "version": 1, "type": "ComplexItem", "complexItemType": FIXED_WING_PATTERN, "loiterCoordinate": [47.01, 8.0, 50.0], "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0], "loiterAltitudeRelative": false, "landAltitudeRelative": false });
         let upgraded = loaded(FIXED_WING_PATTERN, &v1).unwrap();
         assert_eq!((upgraded["altitudesAreRelative"].clone(), upgraded["valueSetIsDistance"].clone(), upgraded["version"].clone(), upgraded["useLoiterToAlt"].clone()), (json!(false), json!(true), json!(2), json!(true)), "an absolute version 1 file stays absolute, and a missing useLoiterToAlt reads as true");
-        let mixed = json!({ "version": 1, "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0], "loiterAltitudeRelative": false, "landAltitudeRelative": true });
+        let mixed = json!({ "version": 1, "type": "ComplexItem", "complexItemType": FIXED_WING_PATTERN, "loiterCoordinate": [47.01, 8.0, 50.0], "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0], "loiterAltitudeRelative": false, "landAltitudeRelative": true });
         assert_eq!(loaded(FIXED_WING_PATTERN, &mixed).unwrap()["altitudesAreRelative"], true, "mismatched old keys fall back to relative");
         assert_eq!(loaded(VTOL_PATTERN, &json!({ "version": 2 })), Err(format!("{VTOL_PATTERN} complex item version 2 not supported")));
-        assert_eq!(loaded(FIXED_WING_PATTERN, &json!({ "version": 2, "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0] })), Err("The following required keys are missing: altitudesAreRelative, valueSetIsDistance".to_string()));
+        assert_eq!(loaded(FIXED_WING_PATTERN, &json!({ "version": 2, "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0] })), Err("The following required keys are missing: valueSetIsDistance".to_string()), "FixedWingLandingComplexItem::load checks its own key before LandingComplexItem::_load");
+    }
+
+    #[test]
+    fn a_loaded_landing_pattern_is_saved_back_with_landing_complex_item_save_keys() {
+        let saved = json!({ "version": 1, "type": "ComplexItem", "complexItemType": VTOL_PATTERN, "loiterCoordinate": [47.01, 8.0, 50.0], "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0], "altitudesAreRelative": true });
+        let loaded = loaded(VTOL_PATTERN, &saved).unwrap();
+        assert_eq!(loaded["landingApproachCoordinate"], json!([47.01, 8.0, 50.0]), "_save writes the final approach key whichever key it was read from");
+        assert!(loaded.get("loiterCoordinate").is_none());
+        let defaults: Vec<Value> = ["useDoChangeSpeed", "finalApproachSpeed", "stopTakingPhotos", "stopVideoPhotos", "useLoiterToAlt"].iter().map(|k| loaded[*k].clone()).collect();
+        assert_eq!(defaults, [json!(false), fact(&Fresh { vtol: true, land: (0.0, 0.0), ardupilot: false, relative: true, transition_distance: None }, "FinalApproachSpeed"), json!(false), json!(false), json!(true)], "absent optional keys load as LandingComplexItem::_load defaults them");
+    }
+
+    #[test]
+    fn a_landing_pattern_is_validated_like_landing_complex_item_load() {
+        let saved = || json!({ "version": 2, "type": "ComplexItem", "complexItemType": FIXED_WING_PATTERN, "valueSetIsDistance": true, "landingApproachCoordinate": [47.01, 8.0, 50.0], "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0], "altitudesAreRelative": true });
+        let without = |key: &str| {
+            let mut pattern = saved();
+            pattern.as_object_mut().unwrap().remove(key);
+            loaded(FIXED_WING_PATTERN, &pattern)
+        };
+        assert!(loaded(FIXED_WING_PATTERN, &saved()).is_ok());
+        assert_eq!(without("landingApproachCoordinate"), Err("The following required keys are missing: landingApproachCoordinate".to_string()));
+        assert_eq!(without("altitudesAreRelative"), Err("The following required keys are missing: altitudesAreRelative".to_string()));
+        let mut short = saved();
+        short["landCoordinate"] = json!([47.0, 8.0]);
+        assert_eq!(loaded(FIXED_WING_PATTERN, &short), Err("Coordinate array must contain 3 values".to_string()), "GeoJsonHelper::loadGeoCoordinate with altitude required");
+        let mut typed = saved();
+        typed["loiterRadius"] = json!("75");
+        assert_eq!(loaded(FIXED_WING_PATTERN, &typed), Err("Incorrect value type - key:type:expected loiterRadius:String:Double".to_string()));
+        let mut canonical = saved();
+        canonical["complexItemType"] = json!("Fixed Wing Landing");
+        assert_eq!(loaded(FIXED_WING_PATTERN, &canonical), Err(format!("{} does not support loading this complex mission item type: ComplexItem:Fixed Wing Landing", crate::noticeboard::application_name())));
+    }
+
+    #[test]
+    fn mismatched_old_relative_keys_tell_the_operator_like_show_app_message() {
+        let mixed = json!({ "version": 1, "type": "ComplexItem", "complexItemType": FIXED_WING_PATTERN, "loiterCoordinate": [47.01, 8.0, 50.0], "loiterRadius": 75.0, "loiterClockwise": true, "landCoordinate": [47.0, 8.0, 0.0], "loiterAltitudeRelative": true, "landAltitudeRelative": false });
+        assert_eq!(loaded(FIXED_WING_PATTERN, &mixed).unwrap()["altitudesAreRelative"], true);
+        assert_eq!(deprecated_relative(true, false), (true, Some(MIXED_RELATIVE_TEXT)));
+        assert_eq!(deprecated_relative(false, false), (false, None));
+        assert_eq!(deprecated_relative(true, true), (true, None));
     }
 
     #[test]

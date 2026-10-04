@@ -122,11 +122,11 @@ fn fence_shape(shape: &Value, kind: &str) -> Result<(), String> {
     is_current(shape, 1).then_some(()).ok_or_else(|| format!("GeoFence {kind} only supports version 1"))
 }
 
-fn coordinates(value: &Value, altitude: bool) -> Result<(), String> {
+pub(crate) fn coordinates(value: &Value, altitude: bool) -> Result<(), String> {
     value.as_array().ok_or_else(|| "value for coordinate array is not array".to_string())?.iter().try_for_each(|point| coordinate(point, altitude))
 }
 
-fn coordinate(value: &Value, altitude: bool) -> Result<(), String> {
+pub(crate) fn coordinate(value: &Value, altitude: bool) -> Result<(), String> {
     let values = value.as_array().ok_or_else(|| "value for coordinate is not array".to_string())?;
     let count = if altitude { 3 } else { 2 };
     if values.len() != count {
@@ -138,7 +138,7 @@ fn coordinate(value: &Value, altitude: bool) -> Result<(), String> {
         .map_or(Ok(()), |v| Err(format!("Coordinate array may only contain double values, found: {}", qt_json_type(v))))
 }
 
-fn qt_json_type(value: &Value) -> u8 {
+pub(crate) fn qt_json_type(value: &Value) -> u8 {
     match value {
         Value::Null => 0,
         Value::Bool(_) => 1,
@@ -174,16 +174,19 @@ fn load_with(text: &str, offline_vehicle_type: i64, jumps: Jumps) -> Result<Docu
     let mission = &root["mission"];
     let number = |key: &str, default: f64| mission.get(key).and_then(Value::as_f64).unwrap_or(default);
     let integer = |key: &str| mission.get(key).and_then(whole).unwrap_or(0);
-    let home = mission
-        .get("plannedHomePosition")
-        .and_then(Value::as_array)
-        .filter(|h| h.len() >= 3)
-        .map(|h| [h[0].as_f64().unwrap_or(0.0), h[1].as_f64().unwrap_or(0.0), h[2].as_f64().unwrap_or(0.0)])
-        .ok_or("The plan has no planned home position.")?;
+    coordinate(&mission["plannedHomePosition"], true).map_err(|e| format!("Mission: {e}"))?;
+    let saved_home = |index: usize| mission["plannedHomePosition"][index].as_f64().unwrap_or(0.0);
+    let home = [saved_home(0), saved_home(1), saved_home(2)];
     let (firmware_type, vehicle_type) = (integer("firmwareType"), mission.get("vehicleType").and_then(Value::as_f64).map_or(offline_vehicle_type, |v| v as i64));
     let commands = cmdinfo::tree(firmware(firmware_type), vehicle_class(vehicle_type));
     let saved = mission["items"].as_array().map(Vec::as_slice).unwrap_or_default();
-    let items = jumps(saved.iter().map(|item| load_item(item, &commands)).collect::<Result<Vec<_>, _>>()?, saved)?;
+    let items = saved
+        .iter()
+        .enumerate()
+        .map(|(index, item)| load_item(index, item, &commands, vehicle_class(vehicle_type)))
+        .collect::<Result<Vec<_>, _>>()
+        .and_then(|items| jumps(items, saved))
+        .map_err(|e| format!("Mission: {e}"))?;
     validate_fence_and_rally(&root)?;
     let items = crate::landingpattern::fold(items, firmware(firmware_type) == Firmware::ArduPilot);
     let (settings_sections, items) = fold(items, vehicle_class(vehicle_type));
@@ -218,7 +221,7 @@ fn resolve_jumps(items: Vec<Item>, saved: &[Value]) -> Result<Vec<Item>, String>
         .map(|item| match item {
             Item::Simple(jump) if jump.command == CMD_DO_JUMP => {
                 let id = jump.params[0].unwrap_or(f64::NAN) as i64;
-                let seq = targets.iter().find(|(target, _)| *target == id).map(|(_, seq)| *seq).ok_or_else(|| format!("Mission: Could not find doJumpId: {id}"))?;
+                let seq = targets.iter().find(|(target, _)| *target == id).map(|(_, seq)| *seq).ok_or_else(|| format!("Could not find doJumpId: {id}"))?;
                 let params = std::array::from_fn(|i| if i == 0 { Some(seq as f64) } else { jump.params[i] });
                 Ok(Item::Simple(Simple { params, ..jump }))
             }
@@ -231,42 +234,41 @@ fn current_or_empty(section: Option<&Value>, version: i64, empty: Value) -> Valu
     section.filter(|s| s.get("version").and_then(whole) == Some(version)).cloned().unwrap_or(empty)
 }
 
-fn load_item(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>) -> Result<Item, String> {
-    match item.get("type").and_then(Value::as_str) {
-        Some("SimpleItem") => load_simple(item, commands).map(Item::Simple),
-        Some("ComplexItem") => {
-            let kind = item.get("complexItemType").and_then(Value::as_str).unwrap_or("").to_string();
-            let json = match () {
-                _ if crate::landingpattern::is_landing(&kind) => crate::landingpattern::loaded(&kind, item)?,
-                _ if crate::transectload::applies(&kind) => crate::transectload::loaded(&kind, item)?,
-                _ => item.clone(),
-            };
+fn load_item(index: usize, item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>, class: VehicleClass) -> Result<Item, String> {
+    if !item.is_object() {
+        return Err(format!("Mission item {index} is not an object"));
+    }
+    crate::qtjson::validate_keys(item, &[("type", "String", true)])?;
+    match item["type"].as_str().unwrap_or("") {
+        "SimpleItem" => load_simple(item, commands).map(Item::Simple),
+        "ComplexItem" => {
+            crate::qtjson::validate_keys(item, &[("complexItemType", "String", true)])?;
+            let kind = item["complexItemType"].as_str().unwrap_or("").to_string();
+            let json = crate::transectload::complex(&kind, item, class)?;
             let item_count = complex_count(&kind, &json)?;
             Ok(Item::Complex { kind, json, item_count })
         }
-        other => Err(format!("Unknown item type: {}", other.unwrap_or("none"))),
+        other => Err(format!("Unknown item type: {other}")),
     }
 }
 
-fn load_simple(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>) -> Result<Simple, String> {
-    let saved = item.get("params").and_then(Value::as_array).ok_or("A mission item has no params.")?;
-    let coordinate = item.get("coordinate").and_then(Value::as_array);
-    let params: Vec<Option<f64>> = match (saved.len(), coordinate) {
-        (7, _) => saved.iter().map(Value::as_f64).collect(),
-        (4, Some(c)) if c.len() >= 3 => saved.iter().chain(c.iter().take(3)).map(Value::as_f64).collect(),
-        _ => return Err("A mission item needs seven params, or four and a coordinate.".to_string()),
-    };
-    let field = |key: &str| item.get(key).and_then(whole).ok_or_else(|| format!("A mission item has no {key}."));
-    let (command, frame) = (field("command")?, field("frame")?);
+fn load_simple(saved: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>) -> Result<Simple, String> {
+    let item = crate::transectload::mission_item(saved)?;
+    let param = |index: usize| item["params"][index].as_f64();
+    let params: [Option<f64>; 7] = std::array::from_fn(param);
+    let (command, frame) = (whole(&item["command"]).unwrap_or(0), whole(&item["frame"]).unwrap_or(0));
     let specifies_altitude = commands.get(&command).is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
     let saved_altitude = ["AltitudeMode", "Altitude", "AMSLAltAboveTerrain"].iter().any(|key| item.get(*key).is_some());
-    let altitude = match (saved_altitude, specifies_altitude) {
-        (true, _) => Some(Altitude {
-            mode: item.get("AltitudeMode").and_then(whole).ok_or("A mission item's altitude has no mode.")?,
-            altitude: item.get("Altitude").and_then(Value::as_f64).ok_or("A mission item's altitude has no value.")?,
-            amsl_above_terrain: item.get("AMSLAltAboveTerrain").and_then(Value::as_f64),
-        }),
-        (false, true) => Some(Altitude {
+    let altitude = match (specifies_altitude, saved_altitude) {
+        (true, true) => {
+            crate::qtjson::validate_keys(&item, &[("AltitudeMode", "Double", true), ("Altitude", "Double", true), ("AMSLAltAboveTerrain", "NULL", true)])?;
+            Some(Altitude {
+                mode: item["AltitudeMode"].as_f64().map_or(0, |v| v as i64),
+                altitude: item["Altitude"].as_f64().unwrap_or(f64::NAN),
+                amsl_above_terrain: item["AMSLAltAboveTerrain"].as_f64(),
+            })
+        }
+        (true, false) => Some(Altitude {
             mode: match frame {
                 FRAME_GLOBAL_RELATIVE_ALT => crate::altitudemodes::RELATIVE,
                 _ => crate::altitudemodes::ABSOLUTE,
@@ -274,13 +276,13 @@ fn load_simple(item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo:
             altitude: params[6].unwrap_or(f64::NAN),
             amsl_above_terrain: None,
         }),
-        (false, false) => None,
+        (false, _) => None,
     };
     Ok(Simple {
         command,
         frame,
-        params: [params[0], params[1], params[2], params[3], params[4], params[5], params[6]],
-        auto_continue: item.get("autoContinue").and_then(Value::as_bool).unwrap_or(true),
+        params,
+        auto_continue: item["autoContinue"].as_bool().unwrap_or(true),
         altitude,
         sections: Vec::new(),
     })
@@ -1415,9 +1417,9 @@ mod tests {
 
     #[test]
     fn a_speed_change_folds_only_when_it_is_the_kind_the_airframe_flies_by() {
-        let speed = |ground: f64| json!({ "type": "SimpleItem", "command": 178, "frame": 2, "doJumpId": 3, "params": [ground, 12, -1, 0, 0, 0, 0] });
+        let speed = |ground: f64| json!({ "type": "SimpleItem", "autoContinue": true, "command": 178, "frame": 2, "doJumpId": 3, "params": [ground, 12, -1, 0, 0, 0, 0] });
         let plan = |ground: f64, vehicle: i64| json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": vehicle, "plannedHomePosition": [1, 2, 0], "items": [
-            { "type": "SimpleItem", "command": 16, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 1.0, 2.0, 30] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 1.0, 2.0, 30] },
             speed(ground),
         ] } }).to_string();
         assert_eq!(load(&plan(1.0, 2), 2).unwrap().items.len(), 1, "a multirotor flies by ground speed");
@@ -1535,11 +1537,28 @@ mod tests {
     }
 
     #[test]
+    fn mission_items_load_like_mission_controller_load_json_mission_file_v2() {
+        let plan = |home: Value, items: Value| json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": {"version": 2, "polygons": [], "circles": []}, "rallyPoints": {"version": 2, "points": []}, "mission": {"firmwareType": 12, "vehicleType": 2, "plannedHomePosition": home, "items": items}}).to_string();
+        let error = |home: Value, items: Value| load(&plan(home, items), 2).unwrap_err();
+        assert_eq!(error(json!([47.0, 8.0]), json!([])), "Mission: Coordinate array must contain 3 values", "the planned home is read with GeoJsonHelper::loadGeoCoordinate");
+        assert_eq!(error(json!([47.0, 8.0, 0]), json!([7])), "Mission: Mission item 0 is not an object");
+        assert_eq!(error(json!([47.0, 8.0, 0]), json!([{"command": 16}])), "Mission: The following required keys are missing: type");
+        assert_eq!(error(json!([47.0, 8.0, 0]), json!([{"type": "ComplexItem"}])), "Mission: The following required keys are missing: complexItemType");
+        assert_eq!(error(json!([47.0, 8.0, 0]), json!([{"type": "ComplexItem", "complexItemType": "Orbit"}])), "Mission: Unsupported complex item type: Orbit");
+        let waypoint = json!({"type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "params": [0, 0, 0, 0, 47.0, 8.0, 50], "AltitudeMode": 1, "Altitude": 50});
+        assert_eq!(error(json!([47.0, 8.0, 0]), json!([waypoint])), "Mission: The following required keys are missing: AMSLAltAboveTerrain", "SimpleMissionItem::load wants all three altitude keys once one is saved");
+        let delay = json!({"type": "SimpleItem", "autoContinue": true, "command": 93, "frame": 2, "params": [5, 0, 0, 0, 0, 0, 0], "AltitudeMode": 1});
+        assert!(load(&plan(json!([47.0, 8.0, 0]), json!([delay])), 2).is_ok(), "a command without altitude never reads the altitude keys");
+        let nan = json!({"type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "params": [0, 0, 0, 0, 47.0, 8.0, 50], "AltitudeMode": 1, "Altitude": 50, "AMSLAltAboveTerrain": null});
+        assert!(load(&plan(json!([47.0, 8.0, 0]), json!([nan])), 2).is_ok(), "a null AMSL altitude is a NaN double");
+    }
+
+    #[test]
     fn mission_items_are_checked_before_fence_and_rally_like_plan_master_controller() {
         let plan = json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl",
             "mission": {"firmwareType": 12, "plannedHomePosition": [47.0, 8.0, 500], "items": [{"type": "Bogus"}]},
             "geoFence": {"version": 2, "polygons": [1], "circles": []}, "rallyPoints": {"version": 3, "points": []}});
-        assert_eq!(load(&plan.to_string(), 2).unwrap_err(), "Unknown item type: Bogus");
+        assert_eq!(load(&plan.to_string(), 2).unwrap_err(), "Mission: Unknown item type: Bogus", "MissionController::load prefixes every item error with Mission:");
         let fixed = json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl",
             "mission": {"firmwareType": 12, "plannedHomePosition": [47.0, 8.0, 500], "items": []},
             "geoFence": {"version": 2, "polygons": [1], "circles": []}, "rallyPoints": {"version": 3, "points": []}});

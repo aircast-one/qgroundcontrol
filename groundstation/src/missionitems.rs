@@ -1308,9 +1308,9 @@ mod from_the_document {
     #[test]
     fn a_fixed_wing_loiter_shows_its_signed_radius_like_simple_mission_item() {
         let plan = |vehicle: i64| json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": vehicle, "plannedHomePosition": [47.0, 8.0, 0], "items": [
-            { "type": "SimpleItem", "command": 16, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 47.01, 8.0, 50] },
-            { "type": "SimpleItem", "command": 18, "frame": 3, "doJumpId": 2, "params": [2, 0, -80, 0, 47.02, 8.0, 50] },
-            { "type": "SimpleItem", "command": 31, "frame": 3, "doJumpId": 3, "params": [0, 120, 0, 0, 47.03, 8.0, 80] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 47.01, 8.0, 50] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 18, "frame": 3, "doJumpId": 2, "params": [2, 0, -80, 0, 47.02, 8.0, 50] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 31, "frame": 3, "doJumpId": 3, "params": [0, 120, 0, 0, 47.03, 8.0, 80] },
         ] } }).to_string();
         let reads = |vehicle: i64| document_reads(&crate::plandoc::load(&plan(vehicle), 2).unwrap(), 0).unwrap();
         let plane = reads(1);
@@ -1322,10 +1322,10 @@ mod from_the_document {
     #[test]
     fn a_vtol_loiter_time_reads_the_tree_of_the_mode_it_flies_in_like_previous_vtol_mode() {
         let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "vehicleType": 22, "plannedHomePosition": [47.0, 8.0, 0], "items": [
-            { "type": "SimpleItem", "command": 84, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 47.01, 8.0, 50] },
-            { "type": "SimpleItem", "command": 19, "frame": 3, "doJumpId": 2, "params": [10, 0, 60, 0, 47.02, 8.0, 50] },
-            { "type": "SimpleItem", "command": 3000, "frame": 2, "doJumpId": 3, "params": [3, 0, 0, 0, 0, 0, 0] },
-            { "type": "SimpleItem", "command": 19, "frame": 3, "doJumpId": 4, "params": [10, 0, 60, 0, 47.03, 8.0, 50] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 84, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 47.01, 8.0, 50] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 19, "frame": 3, "doJumpId": 2, "params": [10, 0, 60, 0, 47.02, 8.0, 50] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 3000, "frame": 2, "doJumpId": 3, "params": [3, 0, 0, 0, 0, 0, 0] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 19, "frame": 3, "doJumpId": 4, "params": [10, 0, 60, 0, 47.03, 8.0, 50] },
         ] } }).to_string();
         let reads = document_reads(&crate::plandoc::load(&plan, 2).unwrap(), 0).unwrap();
         let shown: Vec<bool> = [2, 4].iter().map(|i| reads[*i]["showLoiterRadius"].as_bool().unwrap()).collect();
@@ -1385,9 +1385,9 @@ mod from_the_document {
     #[test]
     fn an_roi_above_the_route_widens_the_altitude_band_like_the_flight_status_calculator() {
         let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "vehicleType": 2, "plannedHomePosition": [47.0, 8.0, 500.0], "items": [
-            { "type": "SimpleItem", "command": 22, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 47.0, 8.0, 30] },
-            { "type": "SimpleItem", "command": 16, "frame": 3, "doJumpId": 2, "params": [0, 0, 0, 0, 47.001, 8.0, 50] },
-            { "type": "SimpleItem", "command": 201, "frame": 3, "doJumpId": 3, "params": [3, 0, 0, 0, 47.002, 8.0, 100] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 22, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 47.0, 8.0, 30] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "doJumpId": 2, "params": [0, 0, 0, 0, 47.001, 8.0, 50] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 201, "frame": 3, "doJumpId": 3, "params": [3, 0, 0, 0, 47.002, 8.0, 100] },
         ] } }).to_string();
         let doc = crate::plandoc::load(&plan, 2).unwrap();
         let status = flight_status(&doc, &Speeds { hover: 5.0, cruise: 15.0, ascent: 3.0, descent: 1.0 }).unwrap();
