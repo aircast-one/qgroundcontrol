@@ -288,7 +288,7 @@ pub(crate) fn start_pump() {
                     let logged: Vec<crate::csvlog::Logged> = {
                         let hub = crate::hub::lock();
                         let count = hub.listed_count().unwrap_or_else(|| hub.vehicle_ids().len());
-                        (0..count).filter_map(|listed| hub.listed(listed).map(|vehicle| crate::csvlog::Logged { id: vehicle.id, listed, armed: vehicle.armed() })).collect()
+                        (0..count).filter_map(|listed| hub.listed(listed).map(|vehicle| crate::csvlog::Logged { id: vehicle.id, listed, armed: vehicle.armed(), sub: vehicle.is_ardusub() })).collect()
                     };
                     crate::csvlog::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), &logged, crate::hub::now_ms());
                     crate::subtitles::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());

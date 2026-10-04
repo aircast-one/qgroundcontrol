@@ -48,16 +48,16 @@ pub fn fact(meta: &MetaData, raw: &Value, property: Option<&str>) -> Value {
     described
 }
 
-const BATTERY_FACT_NAMES: [&str; 12] = ["id", "batteryFunction", "batteryType", "voltage", "current", "mahConsumed", "temperature", "percentRemaining", "timeRemaining", "timeRemainingStr", "chargeState", "instantPower"];
+pub(crate) const BATTERY_FACT_NAMES: [&str; 12] = ["id", "batteryFunction", "batteryType", "voltage", "current", "mahConsumed", "temperature", "percentRemaining", "timeRemaining", "timeRemainingStr", "chargeState", "instantPower"];
 
 const BATTERY_PROPERTIES: [(&str, &str); 12] = [
     ("id", "id"),
     ("function", "batteryFunction"),
     ("type", "batteryType"),
-    ("temperature", "temperature"),
     ("voltage", "voltage"),
     ("current", "current"),
     ("mahConsumed", "mahConsumed"),
+    ("temperature", "temperature"),
     ("percentRemaining", "percentRemaining"),
     ("timeRemaining", "timeRemaining"),
     ("timeRemainingStr", "timeRemainingStr"),
@@ -599,15 +599,15 @@ pub const EFI: GroupSpec = GroupSpec {
         ("fuelConsumed", "fuelConsumed"),
         ("fuelFlow", "fuelFlow"),
         ("engineLoad", "engineLoad"),
-        ("throttlePos", "throttlePos"),
         ("sparkTime", "sparkTime"),
+        ("throttlePos", "throttlePos"),
         ("baroPress", "baroPress"),
         ("intakePress", "intakePress"),
         ("intakeTemp", "intakeTemp"),
         ("cylinderTemp", "cylinderTemp"),
         ("ignTime", "ignTime"),
-        ("injTime", "injTime"),
         ("exGasTemp", "exGasTemp"),
+        ("injTime", "injTime"),
         ("throttleOut", "throttleOut"),
         ("ptComp", "ptComp"),
         ("ignVoltage", "ignVoltage"),
@@ -636,8 +636,8 @@ pub const GENERATOR: GroupSpec = GroupSpec {
         ("loadCurrent", "loadCurrent"),
         ("powerGenerated", "powerGenerated"),
         ("busVoltage", "busVoltage"),
-        ("rectifierTemp", "rectifierTemp"),
         ("batCurrentSetpoint", "batCurrentSetpoint"),
+        ("rectifierTemp", "rectifierTemp"),
         ("genTemp", "genTemp"),
         ("runtime", "runtime"),
         ("timeMaintenance", "timeMaintenance"),
@@ -670,7 +670,7 @@ pub fn generator_flags(g: &crate::sensorfacts::GeneratorFacts) -> Value {
 pub const HYGROMETER: GroupSpec = GroupSpec {
     class: "VehicleHygrometerFactGroup",
     meta: include_str!("../../src/Vehicle/FactGroups/HygrometerFact.json"),
-    properties: &[("hygroID", "hygrometerid"), ("hygroTemp", "temperature"), ("hygroHumi", "humidity")],
+    properties: &[("hygroTemp", "temperature"), ("hygroHumi", "humidity"), ("hygroID", "hygrometerid")],
     added: &["temperature", "humidity", "hygrometerid"],
 };
 
@@ -991,6 +991,14 @@ pub fn gps_aggregate_fact(gps: &crate::gpsfacts::GpsFacts, gps2: &crate::gpsfact
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_group_lists_its_facts_in_the_fact_groups_add_fact_order() {
+        let specs = [&ESTIMATOR, &DISTANCE, &RADIO, &AIRCAST_LINK, &CLOCK, &TEMPERATURE, &ESC, &TERRAIN, &SUB_INFO, &RPM, &EFI, &GENERATOR, &HYGROMETER, &SETPOINT, &WIND, &LOCAL_POSITION];
+        let misordered: Vec<&str> = specs.iter().filter(|spec| !spec.properties.iter().map(|(_, name)| *name).eq(spec.added.iter().copied())).map(|spec| spec.class).collect();
+        assert!(misordered.is_empty(), "FactGroup::factNames is _addFact order, which the CSV columns and the telemetry picker follow: {misordered:?}");
+        assert!(BATTERY_PROPERTIES.iter().map(|(_, name)| *name).eq(BATTERY_FACT_NAMES), "BatteryFactGroup adds id, batteryFunction, batteryType, voltage, current, mahConsumed, temperature, ...");
+    }
 
     #[test]
     fn the_clock_reads_the_ground_station_time_as_vehicle_clock_fact_group_does() {
