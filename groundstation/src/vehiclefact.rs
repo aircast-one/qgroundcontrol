@@ -798,6 +798,57 @@ pub fn trigger_points_part(points: &[(f64, f64, f64)], part: &str) -> Option<Val
     }
 }
 
+const GIMBAL_META: &str = include_str!("../../src/Gimbal/GimbalFact.json");
+pub const GIMBAL_GROUP_PREFIX: &str = "gimbal";
+pub const GIMBAL_FACT_NAMES: [&str; 6] = ["gimbalRoll", "gimbalPitch", "gimbalYaw", "gimbalAzimuth", "deviceId", "managerCompid"];
+
+pub fn gimbal_group_name(pair: crate::gimbal::PairId) -> String {
+    format!("{GIMBAL_GROUP_PREFIX}{}{}", pair.manager_compid, pair.device_id)
+}
+
+fn gimbal_meta(name: &str) -> Option<MetaData> {
+    match crate::factmeta::from_file(GIMBAL_META).ok()?.remove(name) {
+        Some(meta) => Some(meta),
+        None => GIMBAL_FACT_NAMES.contains(&name).then(|| crate::factmeta::from_object(json!({ "name": name, "type": "uint8" }).as_object()?, &Default::default()).ok()).flatten(),
+    }
+}
+
+fn gimbal_raw(pair: crate::gimbal::PairId, attitude: Option<crate::gimbal::Attitude>, name: &str) -> Value {
+    let angle = |degrees: Option<f32>| degrees.map_or(Value::Null, |d| json!(f64::from(d)));
+    match name {
+        "gimbalRoll" => angle(attitude.map(|a| a.roll)),
+        "gimbalPitch" => angle(attitude.map(|a| a.pitch)),
+        "gimbalYaw" => angle(attitude.and_then(|a| a.body_yaw)),
+        "gimbalAzimuth" => angle(attitude.and_then(|a| a.absolute_yaw)),
+        "deviceId" => json!(pair.device_id),
+        "managerCompid" => json!(pair.manager_compid),
+        _ => Value::Null,
+    }
+}
+
+pub fn gimbal_fact(pair: crate::gimbal::PairId, attitude: Option<crate::gimbal::Attitude>, name: &str, property: Option<&str>) -> Option<Value> {
+    Some(fact(&gimbal_meta(name)?, &gimbal_raw(pair, attitude, name), property))
+}
+
+pub fn gimbal_group(pair: crate::gimbal::PairId, attitude: Option<crate::gimbal::Attitude>) -> Value {
+    let facts = GIMBAL_FACT_NAMES.iter().filter_map(|name| gimbal_fact(pair, attitude, name, Some(name))).collect();
+    group("Gimbal", &GIMBAL_FACT_NAMES, facts, false)
+}
+
+pub fn gimbal_answer(path: &str, gimbals: &[(crate::gimbal::PairId, Option<crate::gimbal::Attitude>)]) -> Option<Value> {
+    let rest = path.strip_prefix("vehicle.")?;
+    let (group, name) = rest.split_once('.').map_or((rest, None), |(group, name)| (group, Some(name)));
+    let (pair, attitude) = gimbals.iter().find(|(pair, _)| gimbal_group_name(*pair) == group)?;
+    match name {
+        None => Some(gimbal_group(*pair, *attitude)),
+        Some(name) => gimbal_fact(*pair, *attitude, name, None),
+    }
+}
+
+pub fn gimbal_listing() -> Value {
+    listing(GIMBAL_META, same_names(&GIMBAL_FACT_NAMES))
+}
+
 const CLOCK_META: &str = include_str!("../../src/Vehicle/FactGroups/ClockFact.json");
 const AIRCAST_LINK_META: &str = include_str!("../../src/Vehicle/FactGroups/AircastLinkFact.json");
 const GPS_PROPERTIES: [&str; 17] = ["lat", "lon", "mgrs", "hdop", "vdop", "courseOverGround", "yaw", "count", "lock", "systemErrors", "spoofingState", "jammingState", "authenticationState", "correctionsQuality", "systemQuality", "gnssSignalQuality", "postProcessingQuality"];
@@ -1054,6 +1105,24 @@ mod tests {
         let aggregate = &groups.iter().find(|(g, _)| *g == "gpsAggregate").unwrap().1["facts"];
         assert_eq!((aggregate[0]["shortDescription"].as_str(), aggregate[3]["shortDescription"].as_str()), (Some("Signal Spoofing State"), Some("")), "isStale has no metadata in GPSFact.json, so its label falls back to its name");
         assert_eq!(vehicle["facts"].as_array().map(Vec::len), Some(32));
+    }
+
+    #[test]
+    fn a_complete_gimbal_is_a_fact_group_named_like_gimbal_controller_adds_it() {
+        let pair = crate::gimbal::PairId { manager_compid: 1, device_id: 154 };
+        let attitude = crate::gimbal::Attitude { roll: 1.25, pitch: -30.0, body_yaw: Some(12.0), absolute_yaw: None, pitch_rate: None, yaw_rate: None, delta_yaw: None, at_ms: 0 };
+        let gimbals = [(pair, Some(attitude))];
+        let group = gimbal_answer("vehicle.gimbal1154", &gimbals).unwrap();
+        assert_eq!((group["class"].clone(), group["factNames"].clone()), (json!("Gimbal"), json!(GIMBAL_FACT_NAMES)), "Gimbal::_initFacts adds roll, pitch, body yaw, absolute yaw, device id, manager compid");
+        let fact = |name: &str| gimbal_answer(&format!("vehicle.gimbal1154.{name}"), &gimbals).unwrap();
+        assert_eq!((fact("gimbalPitch")["valueString"].clone(), fact("gimbalPitch")["units"].clone(), fact("gimbalPitch")["shortDescription"].clone()), (json!("-30.0"), json!("deg"), json!("Gimbal Pitch")));
+        assert_eq!((fact("gimbalAzimuth")["shortDescription"].clone(), fact("gimbalAzimuth")["valueString"].clone()), (json!("Azimuth"), json!("–.–")), "no heading, no azimuth");
+        assert_eq!((fact("deviceId")["value"].clone(), fact("deviceId")["shortDescription"].clone()), (json!(154), json!("gimbal device Id")));
+        assert_eq!((fact("managerCompid")["value"].clone(), fact("managerCompid")["shortDescription"].clone()), (json!(1), json!("")), "GimbalFact.json has no managerCompid entry, so the fact keeps its bare metadata");
+        assert_eq!(gimbal_answer("vehicle.gimbalController.centerGimbal", &gimbals), None, "the controller stays the host's");
+        assert_eq!(gimbal_answer("vehicle.gimbal1155", &gimbals), None);
+        let listed: Vec<Value> = gimbal_listing()["facts"].as_array().unwrap().iter().map(|f| f["shortDescription"].clone()).collect();
+        assert_eq!(listed, [json!("Gimbal Roll"), json!("Gimbal Pitch"), json!("Gimbal Yaw"), json!("Azimuth"), json!("gimbal device Id"), json!("")]);
     }
 
     #[test]

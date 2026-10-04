@@ -73,7 +73,7 @@ fn list_names(list: &str) -> Vec<String> {
     }
 }
 
-pub fn columns(backend: &dyn Backend, listed: usize, sub: bool) -> Vec<Column> {
+pub fn columns(backend: &dyn Backend, listed: usize, sub: bool, gimbals: &[String]) -> Vec<Column> {
     let (groups, vehicle) = crate::vehiclefact::instrument_catalogue(sub);
     let own = listed_facts(&vehicle).into_iter().map(|(property, name)| Column { header: name, source: Source::Path(property) });
     let fixed = groups
@@ -85,7 +85,8 @@ pub fn columns(backend: &dyn Backend, listed: usize, sub: bool) -> Vec<Column> {
         let elements = object(&backend.get(&member_path(listed, list)))["elements"].as_array().cloned().unwrap_or_default();
         elements.iter().filter_map(element_id).map(|id| (format!("{prefix}{id}"), list_names(list).into_iter().map(|name| Column { header: format!("{prefix}{id}.{name}"), source: Source::Member { list, id, name } }).collect::<Vec<_>>())).collect::<Vec<_>>()
     });
-    let by_group_name: BTreeMap<String, Vec<Column>> = fixed.chain(members).collect();
+    let gimbal_groups = gimbals.iter().map(|group| (group.clone(), crate::vehiclefact::GIMBAL_FACT_NAMES.iter().map(|name| Column { header: format!("{group}.{name}"), source: Source::Path(format!("{group}.{name}")) }).collect::<Vec<_>>()));
+    let by_group_name: BTreeMap<String, Vec<Column>> = fixed.chain(members).chain(gimbal_groups).collect();
     own.chain(by_group_name.into_values().flatten()).collect()
 }
 
@@ -117,7 +118,8 @@ fn open(backend: &dyn Backend, vehicle: &Logged) -> Option<Csv> {
     std::fs::create_dir_all(&folder).ok()?;
     let name = format!("{} vehicle{}.csv", chrono::Local::now().format("%Y-%m-%d %H-%M-%S"), vehicle.id);
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(folder.join(name)).ok()?;
-    let columns = columns(backend, vehicle.listed, vehicle.sub);
+    let gimbals: Vec<String> = crate::gimbal::lock().fact_groups().into_iter().map(|(pair, _)| crate::vehiclefact::gimbal_group_name(pair)).collect();
+    let columns = columns(backend, vehicle.listed, vehicle.sub, &gimbals);
     file.write_all(header(&columns).as_bytes()).ok()?;
     Some(Csv { file, columns })
 }
@@ -180,7 +182,7 @@ mod tests {
     }
 
     fn headers(sub: bool) -> Vec<String> {
-        columns(&Fleet, 0, sub).into_iter().map(|column| column.header).collect()
+        columns(&Fleet, 0, sub, &[]).into_iter().map(|column| column.header).collect()
     }
 
     #[test]
@@ -200,8 +202,16 @@ mod tests {
     }
 
     #[test]
+    fn a_complete_gimbal_adds_its_fact_group_columns_in_fact_group_names_order() {
+        let listed: Vec<String> = columns(&Fleet, 0, false, &["gimbal1154".to_string()]).into_iter().map(|column| column.header).collect();
+        let at = |header: &str| listed.iter().position(|h| h == header).unwrap();
+        assert!(at("generator.status") < at("gimbal1154.gimbalRoll") && at("gimbal1154.managerCompid") < at("gps.lat"), "gimbal<manager><device> sorts between generator and gps in the QMap");
+        assert_eq!(listed.iter().filter(|h| h.starts_with("gimbal1154.")).collect::<Vec<_>>(), ["gimbal1154.gimbalRoll", "gimbal1154.gimbalPitch", "gimbal1154.gimbalYaw", "gimbal1154.gimbalAzimuth", "gimbal1154.deviceId", "gimbal1154.managerCompid"]);
+    }
+
+    #[test]
     fn a_line_reads_paths_and_each_list_member_by_its_id() {
-        let picked: Vec<Column> = columns(&Fleet, 0, false).into_iter().filter(|column| ["roll", "battery12.voltage", "escStatus0.rpm", "hygrometer.hygrometerid", "battery0.current"].contains(&column.header.as_str())).collect();
+        let picked: Vec<Column> = columns(&Fleet, 0, false, &[]).into_iter().filter(|column| ["roll", "battery12.voltage", "escStatus0.rpm", "hygrometer.hygrometerid", "battery0.current"].contains(&column.header.as_str())).collect();
         let headers: Vec<&str> = picked.iter().map(|column| column.header.as_str()).collect();
         assert_eq!(headers, ["roll", "battery0.current", "battery12.voltage", "escStatus0.rpm", "hygrometer.hygrometerid"]);
         assert_eq!(values(&Fleet, 0, &picked), ["1.5", "", "15.9", "4200", "7"]);

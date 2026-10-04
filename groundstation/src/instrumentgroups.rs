@@ -4,7 +4,7 @@ use crate::label::capitalised;
 use crate::read::object;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.id", "vehicle.batteries.count"];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.id", "vehicle.batteries.count", crate::gimbal::GIMBAL_CHANGED];
 
 fn facts_of(group: &Value, prefix: &str) -> Vec<Value> {
     group
@@ -42,13 +42,16 @@ fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
 fn catalogued() -> Option<(Vec<Value>, Value)> {
     let sub = crate::vehiclefacade::switched_on().then(|| crate::hub::lock().active().map(crate::hub::Vehicle::is_ardusub)).flatten()?;
     let (groups, vehicle) = crate::vehiclefact::instrument_catalogue(sub);
+    let gimbals: Vec<(String, Value)> = crate::gimbal::lock().fact_groups().into_iter().map(|(pair, _)| (crate::vehiclefact::gimbal_group_name(pair), crate::vehiclefact::gimbal_listing())).collect();
     let listed = groups
         .into_iter()
-        .filter(|(group, _)| sub || *group != crate::vehiclefact::SUB_INFO_GROUP)
-        .filter(|(group, _)| *group != "orbitMapCircle")
+        .map(|(group, listing)| (group.to_string(), listing))
+        .chain(gimbals)
+        .filter(|(group, _)| sub || group != crate::vehiclefact::SUB_INFO_GROUP)
+        .filter(|(group, _)| group != "orbitMapCircle")
         .filter_map(|(group, listing)| {
             let facts = facts_of(&listing, &format!("{group}/"));
-            (!facts.is_empty()).then(|| json!({ "group": group, "title": title(group), "facts": facts }))
+            (!facts.is_empty()).then(|| json!({ "group": group, "title": title(&group), "facts": facts }))
         })
         .collect();
     Some((listed, vehicle))

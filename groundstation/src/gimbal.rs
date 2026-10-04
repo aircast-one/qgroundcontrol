@@ -639,6 +639,10 @@ impl Gimbals {
         }
     }
 
+    pub fn fact_groups(&self) -> Vec<(PairId, Option<Attitude>)> {
+        self.gimbals.iter().filter(|(_, gimbal)| gimbal.complete).map(|(pair, gimbal)| (*pair, gimbal.attitude)).collect()
+    }
+
     pub fn any(&self) -> bool {
         !self.gimbals.is_empty()
     }
