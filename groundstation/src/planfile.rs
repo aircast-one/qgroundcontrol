@@ -107,31 +107,33 @@ fn item_object(sequence: usize, item: &SimpleItem) -> Value {
 
 pub fn write(mission: &Mission) -> String {
     let items: Vec<Value> = mission.items.iter().enumerate().map(|(i, item)| item_object(i + 1, item)).collect();
+    let fields = [
+        ("version", json!(2)),
+        ("plannedHomePosition", json!([mission.home.0, mission.home.1, mission.home.2])),
+        ("firmwareType", json!(mission.firmware_type)),
+        ("vehicleType", json!(mission.vehicle_type)),
+        ("globalPlanAltitudeMode", json!(mission.global_altitude_mode)),
+        ("items", json!(items)),
+    ];
+    let speeds = [("cruiseSpeed", mission.cruise_speed), ("hoverSpeed", mission.hover_speed)].into_iter().filter(|(_, speed)| speed.is_finite()).map(|(key, speed)| (key, json!(speed)));
     let root = json!({
         "fileType": "Plan",
         "groundStation": "QGroundControl",
         "version": 1,
-        "mission": {
-            "version": 2,
-            "plannedHomePosition": [mission.home.0, mission.home.1, mission.home.2],
-            "firmwareType": mission.firmware_type,
-            "vehicleType": mission.vehicle_type,
-            "cruiseSpeed": mission.cruise_speed,
-            "hoverSpeed": mission.hover_speed,
-            "globalPlanAltitudeMode": mission.global_altitude_mode,
-            "items": items,
-        },
+        "mission": Value::Object(fields.into_iter().chain(speeds).map(|(key, value)| (key.to_string(), value)).collect()),
         "geoFence": { "version": 2, "circles": [], "polygons": [] },
         "rallyPoints": { "version": 2, "points": [] },
     });
     serde_json::to_string_pretty(&root).unwrap()
 }
 
+const FRAME_GLOBAL_TERRAIN_ALT: i64 = 10;
+
 pub fn altitude_mode_for_frame(frame: i64) -> Option<i64> {
     match frame {
         3 => Some(ALTITUDE_MODE_RELATIVE),
         0 => Some(ALTITUDE_MODE_ABSOLUTE),
-        10 => Some(ALTITUDE_MODE_TERRAIN_FRAME),
+        FRAME_GLOBAL_TERRAIN_ALT => Some(ALTITUDE_MODE_TERRAIN_FRAME),
         _ => None,
     }
 }
@@ -139,18 +141,21 @@ pub fn altitude_mode_for_frame(frame: i64) -> Option<i64> {
 const DO_JUMP: i64 = 177;
 
 fn jump_target(version: i64, row: &crate::waypoints::Row) -> f64 {
-    if version == 120 && row.command == DO_JUMP { row.params[0] + 1.0 } else { row.params[0] }
+    if version == 120 && row.command == DO_JUMP { f64::from(row.params[0] as i32 + 1) } else { row.params[0] }
 }
 
 pub fn from_waypoints(file: &Waypoints, firmware_type: i64, vehicle_type: i64) -> Mission {
-    let home = file.home.as_ref().or(file.items.first()).map(|r| (r.latitude, r.longitude, r.altitude)).unwrap_or_default();
+    let commands = crate::cmdinfo::tree(crate::plandoc::firmware(firmware_type), crate::plandoc::vehicle_class(vehicle_type));
+    let terrain_frame = |r: &crate::waypoints::Row| {
+        (r.frame == FRAME_GLOBAL_TERRAIN_ALT && commands.get(&r.command).is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only)).then_some(ALTITUDE_MODE_TERRAIN_FRAME)
+    };
     Mission {
-        home,
+        home: file.home.as_ref().map(|r| (r.latitude, r.longitude, r.altitude)).unwrap_or_default(),
         firmware_type,
         vehicle_type,
-        cruise_speed: 15.0,
-        hover_speed: 5.0,
-        global_altitude_mode: ALTITUDE_MODE_RELATIVE,
+        cruise_speed: f64::NAN,
+        hover_speed: f64::NAN,
+        global_altitude_mode: ALTITUDE_MODE_MIXED,
         items: file
             .items
             .iter()
@@ -159,7 +164,7 @@ pub fn from_waypoints(file: &Waypoints, firmware_type: i64, vehicle_type: i64) -
                 command: r.command,
                 params: [jump_target(file.version, r), r.params[1], r.params[2], r.params[3], r.latitude, r.longitude, r.altitude],
                 auto_continue: r.auto_continue,
-                altitude_mode: altitude_mode_for_frame(r.frame),
+                altitude_mode: terrain_frame(r),
             })
             .collect(),
     }
@@ -268,19 +273,21 @@ mod tests {
     }
 
     #[test]
-    fn a_waypoints_file_becomes_a_plan_with_the_home_row_as_home() {
+    fn a_waypoints_file_becomes_a_plan_like_load_text_mission_file() {
         let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../test/MissionManager/MissionPlanner.waypoints")).unwrap();
         let file = crate::waypoints::parse(&text).unwrap();
         let mission = from_waypoints(&file, 12, 2);
         let home = file.home.as_ref().unwrap();
         assert_eq!(mission.home, (home.latitude, home.longitude, home.altitude));
         assert_eq!(mission.items.len(), file.items.len());
-        assert!(mission.items.iter().zip(&file.items).all(|(m, r)| m.params[4] == r.latitude && m.altitude_mode == altitude_mode_for_frame(r.frame)));
+        assert_eq!(mission.global_altitude_mode, ALTITUDE_MODE_MIXED, "loadTextFile sets the global altitude frame to Mixed");
+        let written: Value = serde_json::from_str(&write(&mission)).unwrap();
+        assert!(written["mission"].get("cruiseSpeed").is_none() && written["mission"].get("hoverSpeed").is_none(), "a text file carries no speeds, so the offline ones apply");
         assert_eq!(parse(&write(&mission)).unwrap().items.len(), file.items.len());
-        let zero_based = crate::waypoints::parse("QGC WPL 120\n0\t0\t3\t22\t0\t0\t0\t0\t1\t2\t30\t1\n1\t0\t3\t16\t0\t0\t0\t0\t1\t2\t30\t1\n2\t0\t2\t177\t1\t3\t0\t0\t0\t0\t0\t1\n").unwrap();
-        let converted = from_waypoints(&zero_based, 3, 2);
-        assert_eq!(converted.items[2].params[0], 2.0);
-        assert_eq!(from_waypoints(&file, 3, 2).items.iter().filter(|i| i.command == DO_JUMP).count(), file.items.iter().filter(|r| r.command == DO_JUMP).count());
+        let rows = crate::waypoints::parse("QGC WPL 120\n0\t0\t10\t16\t0\t0\t0\t0\t1\t2\t30\t1\n1\t0\t3\t16\t0\t0\t0\t0\t1\t2\t30\t1\n2\t0\t10\t177\t1.7\t3\t0\t0\t0\t0\t0\t1\n").unwrap();
+        let converted = from_waypoints(&rows, 3, 2);
+        assert_eq!(converted.items.iter().map(|i| i.altitude_mode).collect::<Vec<_>>(), vec![Some(ALTITUDE_MODE_TERRAIN_FRAME), None, None], "frames 0/3 are left to the loader's relative-or-absolute rule; a jump has no altitude");
+        assert_eq!(converted.items[2].params[0], 2.0, "a 120 file's jump target moves past the added home as static_cast<int>(param1) + 1");
     }
 
     #[test]

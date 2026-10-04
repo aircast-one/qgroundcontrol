@@ -159,6 +159,16 @@ fn validate_section(section: &Value, version: i64, keys: &[(&str, &str, bool)], 
 }
 
 pub fn load(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
+    load_with(text, offline_vehicle_type, resolve_jumps)
+}
+
+pub fn load_text_mission(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
+    load_with(text, offline_vehicle_type, |items, _| Ok(items))
+}
+
+type Jumps = fn(Vec<Item>, &[Value]) -> Result<Vec<Item>, String>;
+
+fn load_with(text: &str, offline_vehicle_type: i64, jumps: Jumps) -> Result<Document, String> {
     let root: Value = serde_json::from_str(text).map_err(|e| format!("The plan is not JSON: {e}"))?;
     validate_plan(&root)?;
     let mission = &root["mission"];
@@ -173,7 +183,7 @@ pub fn load(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
     let (firmware_type, vehicle_type) = (integer("firmwareType"), mission.get("vehicleType").and_then(Value::as_f64).map_or(offline_vehicle_type, |v| v as i64));
     let commands = cmdinfo::tree(firmware(firmware_type), vehicle_class(vehicle_type));
     let saved = mission["items"].as_array().map(Vec::as_slice).unwrap_or_default();
-    let items = resolve_jumps(saved.iter().map(|item| load_item(item, &commands)).collect::<Result<Vec<_>, _>>()?, saved)?;
+    let items = jumps(saved.iter().map(|item| load_item(item, &commands)).collect::<Result<Vec<_>, _>>()?, saved)?;
     validate_fence_and_rally(&root)?;
     let items = crate::landingpattern::fold(items, firmware(firmware_type) == Firmware::ArduPilot);
     let (settings_sections, items) = fold(items, vehicle_class(vehicle_type));

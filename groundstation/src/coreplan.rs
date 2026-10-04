@@ -581,22 +581,62 @@ fn current_after_remove(removed: usize, last_visual: usize) -> i64 {
     removed.min(last_visual) as i64
 }
 
-const WAYPOINTS_HEADER: &str = "QGC WPL";
+const TEXT_MISSION_SUFFIXES: &[&str] = &["waypoints", "txt"];
+const PLAN_SUFFIX: &str = "plan";
 
-fn plan_text(text: &str) -> Result<String, String> {
-    match text.trim_start().starts_with(WAYPOINTS_HEADER) {
-        true => {
-            let (firmware_type, vehicle_type) = planned_types();
-            crate::waypoints::parse(text).map(|file| crate::planfile::write(&crate::planfile::from_waypoints(&file, firmware_type, vehicle_type)))
-        }
-        false => Ok(text.to_string()),
-    }
+fn is_text_mission(file: &str) -> bool {
+    std::path::Path::new(file).extension().and_then(|e| e.to_str()).is_some_and(|suffix| TEXT_MISSION_SUFFIXES.contains(&suffix))
+}
+
+fn load_text_mission(text: &str) -> Result<Document, String> {
+    let (firmware_type, vehicle_type) = planned_types();
+    let file = crate::waypoints::parse(text).map_err(|e| format!("Mission: {e}"))?;
+    let plan = crate::planfile::write(&crate::planfile::from_waypoints(&file, firmware_type, vehicle_type));
+    let document = with_offline_speeds(plandoc::load_text_mission(&plan, offline_type("offlineEditingVehicleClass")).map_err(|e| format!("Mission: {e}"))?);
+    let vehicle_home = crate::hub::lock().active().and_then(|v| v.home).map(|(latitude, longitude, altitude)| [latitude, longitude, altitude]);
+    Ok(placed_text_mission(document, file.home.is_some(), vehicle_home))
+}
+
+fn placed_text_mission(document: Document, home_in_file: bool, vehicle_home: Option<[f64; 3]>) -> Document {
+    let commands = crate::cmdinfo::tree(plandoc::firmware(document.firmware_type), plandoc::vehicle_class(document.vehicle_type));
+    let takeoff = |s: &plandoc::Simple| commands.get(&s.command).is_some_and(|c| c.is_takeoff);
+    let has_takeoff = document.items.iter().any(|item| matches!(item, plandoc::Item::Simple(s) if takeoff(s)));
+    let home_while_loading = match home_in_file {
+        true => document.home,
+        false => vehicle_home.filter(|_| has_takeoff),
+    };
+    let items = document
+        .items
+        .iter()
+        .map(|item| match (item, home_while_loading) {
+            (plandoc::Item::Simple(s), Some(home)) if takeoff(s) && !commands.get(&s.command).is_some_and(|c| c.specifies_coordinate) => {
+                plandoc::Item::Simple(plandoc::Simple { params: std::array::from_fn(|i| match i { 4 => Some(home[0]), 5 => Some(home[1]), _ => s.params[i] }), ..s.clone() })
+            }
+            _ => item.clone(),
+        })
+        .collect();
+    let placed = Document { items, ..document };
+    Document { home: home_while_loading.or_else(|| plandoc::home_from_first_coordinate(&placed, None)), ..placed }
+}
+
+fn plan_file_after_load(file: &str) -> String {
+    std::path::Path::new(file).with_extension(PLAN_SUFFIX).to_string_lossy().into_owned()
+}
+
+fn load_failed_text(file: &str, reason: &str) -> String {
+    format!("Error loading Plan file ({file}). {reason}")
 }
 
 fn open(file: &str) -> Value {
     forget_raw_edits();
     let connected = !offline();
-    let loaded = std::fs::read_to_string(file).map_err(|e| format!("Could not read {file}: {e}")).and_then(|text| load_plan(&plan_text(&text)?));
+    let loaded = std::fs::read(file).map_err(|e| format!("{e} {file}")).and_then(|bytes| {
+        let text = String::from_utf8_lossy(&bytes);
+        match is_text_mission(file) {
+            true => load_text_mission(&text),
+            false => load_plan(&text),
+        }
+    });
     match loaded {
         Ok(document) => {
             let count = document.items.len();
@@ -607,7 +647,7 @@ fn open(file: &str) -> Value {
                 state.wizard = None;
                 remember(&mut state, before, crate::hub::now_ms());
                 state.selected = 0;
-                state.file = Some(file.to_string());
+                state.file = Some(plan_file_after_load(file));
                 settle_clean(&mut state);
                 state.dirty = connected;
             }
@@ -615,7 +655,11 @@ fn open(file: &str) -> Value {
             changed();
             json!({ "ok": true, "items": count, "result": true })
         }
-        Err(reason) => refused(reason),
+        Err(reason) => {
+            held().file = None;
+            changed();
+            refused(reason)
+        }
     }
 }
 
@@ -975,11 +1019,15 @@ fn fence_from(snapshot: &Value) -> Value {
 }
 
 fn load_plan(text: &str) -> Result<Document, String> {
-    plandoc::load(text, offline_type("offlineEditingVehicleClass")).map(|document| Document {
+    plandoc::load(text, offline_type("offlineEditingVehicleClass")).map(with_offline_speeds)
+}
+
+fn with_offline_speeds(document: Document) -> Document {
+    Document {
         cruise_speed: if document.cruise_speed.is_nan() { remembered_speed("offlineEditingCruiseSpeed", 15.0) } else { document.cruise_speed },
         hover_speed: if document.hover_speed.is_nan() { remembered_speed("offlineEditingHoverSpeed", 5.0) } else { document.hover_speed },
         ..document
-    })
+    }
 }
 
 fn remembered_speed(name: &str, fallback: f64) -> f64 {
@@ -2059,6 +2107,9 @@ pub fn route_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Val
     Some(match path {
         "plan.loadFromFile" => first_text(args).map_or_else(|| refused("Open needs the path of a .plan file."), |file| {
             let opened = open(&file);
+            if let Some(reason) = opened["reason"].as_str().filter(|_| opened["ok"] != true) {
+                crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &load_failed_text(&file, reason));
+            }
             plan_for_offline_vehicle(backend);
             plan_speeds(backend, &file);
             if let Some(document) = held().document.clone() {
@@ -2249,12 +2300,47 @@ mod tests {
 
     #[test]
     fn a_waypoints_file_opens_as_a_plan_like_load_text_file() {
-        let text = "QGC WPL 110\n0\t1\t0\t16\t0\t0\t0\t0\t47.66\t-122.10\t5.2\t1\n1\t0\t3\t22\t0\t0\t0\t0\t47.661\t-122.103\t100\t1\n2\t0\t3\t16\t0\t0\t0\t0\t47.662\t-122.104\t100\t1\n";
-        let doc = plandoc::load(&plan_text(text).unwrap(), 2).unwrap();
+        let doc = load_text_mission("QGC WPL 110\n0\t1\t0\t16\t0\t0\t0\t0\t47.66\t-122.10\t5.2\t1\n1\t0\t3\t22\t0\t0\t0\t0\t47.661\t-122.103\t100\t1\n2\t0\t3\t16\t0\t0\t0\t0\t47.662\t-122.104\t100\t1\n").unwrap();
         assert_eq!(doc.items.len(), 2);
         assert_eq!(doc.home.map(|h| h[2]), Some(5.2), "the first row of a 110 file is the planned home");
-        assert!(plan_text("QGC WPL 110\n0\t1\t0\n").is_err());
-        assert_eq!(plan_text("{}").unwrap(), "{}", "a plan file passes through untouched");
+        assert_eq!(doc.global_altitude_mode, crate::planfile::ALTITUDE_MODE_MIXED, "loadTextFile sets the Mixed global frame");
+        assert!(!doc.cruise_speed.is_nan() && !doc.hover_speed.is_nan(), "the offline speeds fill in");
+        assert_eq!(load_text_mission("QGC WPL 110\n0\t1\t0\n").unwrap_err(), "Mission: The mission file is corrupted.");
+        assert_eq!(load_text_mission("{}").unwrap_err(), format!("Mission: {}", crate::waypoints::not_compatible()));
+    }
+
+    #[test]
+    fn a_120_file_takes_its_home_from_the_first_coordinate_and_keeps_jumps_unchecked() {
+        let doc = load_text_mission("QGC WPL 120\n0\t0\t2\t178\t1\t5\t0\t0\t0\t0\t0\t1\n1\t0\t3\t16\t0\t0\t0\t0\t47.0\t8.0\t50\t1\n2\t0\t2\t177\t40\t1\t0\t0\t0\t0\t0\t1\n").unwrap();
+        let home = doc.home.expect("_setPlannedHomePositionFromFirstCoordinate places it");
+        assert!((home[0] - 47.0).abs() > 1e-5 && (home[1] - 8.0).abs() < 1e-9 && home[2] == 0.0, "30 m north of the first coordinate item, at altitude 0: {home:?}");
+        let plandoc::Item::Simple(jump) = &doc.items[2] else { panic!("the jump stays a simple item") };
+        assert_eq!(jump.params[0], Some(41.0), "_loadTextMissionFile never checks a jump target");
+        assert_eq!(load_text_mission("QGC WPL 120\n").unwrap().home, None, "with nothing to measure from the home stays unset");
+    }
+
+    #[test]
+    fn a_text_loaded_takeoff_without_a_coordinate_sits_on_launch_like_takeoff_mission_item() {
+        let text = "QGC WPL 120\n0\t0\t3\t22\t0\t0\t0\t0\t0\t0\t30\t1\n1\t0\t3\t16\t0\t0\t0\t0\t47.0\t8.0\t50\t1\n";
+        let plan = crate::planfile::write(&crate::planfile::from_waypoints(&crate::waypoints::parse(text).unwrap(), 3, 2));
+        let document = plandoc::load_text_mission(&plan, 2).unwrap();
+        let takeoff_at = |doc: &Document| match &doc.items[0] { plandoc::Item::Simple(s) => (s.params[4], s.params[5]), _ => panic!("takeoff stays simple") };
+        let vehicle = placed_text_mission(document.clone(), false, Some([46.5, 7.5, 400.0]));
+        assert_eq!(vehicle.home, Some([46.5, 7.5, 400.0]), "a 120 file with a takeoff adopts the active vehicle's home");
+        assert_eq!(takeoff_at(&vehicle), (Some(46.5), Some(7.5)), "an ArduPilot takeoff has no coordinate, so it is put on launch");
+        let offline = placed_text_mission(document.clone(), false, None);
+        assert_eq!(takeoff_at(&offline), (Some(0.0), Some(0.0)), "with no launch yet nothing moves");
+        assert!(offline.home.is_some_and(|h| h[2] == 0.0), "and home comes from the first coordinate afterwards");
+        let px4 = placed_text_mission(Document { firmware_type: 12, ..document }, false, Some([46.5, 7.5, 400.0]));
+        assert_eq!(takeoff_at(&px4), (Some(0.0), Some(0.0)), "a PX4 takeoff specifies its own coordinate");
+    }
+
+    #[test]
+    fn the_suffix_picks_the_loader_and_a_loaded_file_is_saved_as_a_plan_beside_it() {
+        assert!(is_text_mission("/a/m.waypoints") && is_text_mission("/a/m.txt"));
+        assert!(!is_text_mission("/a/m.plan") && !is_text_mission("/a/m.WAYPOINTS"), "QFileInfo::suffix compares case-sensitively");
+        assert_eq!(plan_file_after_load("/a/b.c.waypoints"), "/a/b.c.plan", "completeBaseName keeps every dot but the last");
+        assert_eq!(load_failed_text("/a/m.plan", "Mission: x"), "Error loading Plan file (/a/m.plan). Mission: x");
     }
 
     #[test]

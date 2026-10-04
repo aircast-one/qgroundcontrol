@@ -6,7 +6,7 @@ pub const DEPS: &[&str] = &[];
 const COLUMNS: usize = 12;
 const TAKEOFF_COMMANDS: &[i64] = &[22, 24, 84];
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Row {
     pub sequence: i64,
     pub current: bool,
@@ -26,44 +26,46 @@ pub struct Waypoints {
     pub items: Vec<Row>,
 }
 
-fn row(line: &str) -> Result<Row, String> {
-    let fields: Vec<&str> = line.split('\t').map(str::trim).collect();
-    if fields.len() != COLUMNS {
-        return Err(format!("expected {COLUMNS} columns, found {}", fields.len()));
-    }
-    let number = |i: usize| fields[i].parse::<f64>().map_err(|_| format!("column {} is not a number: {}", i + 1, fields[i]));
-    let integer = |i: usize| fields[i].parse::<i64>().map_err(|_| format!("column {} is not an integer: {}", i + 1, fields[i]));
-    Ok(Row {
-        sequence: integer(0)?,
-        current: integer(1)? != 0,
-        frame: integer(2)?,
-        command: integer(3)?,
-        params: [number(4)?, number(5)?, number(6)?, number(7)?],
-        latitude: number(8)?,
-        longitude: number(9)?,
-        altitude: number(10)?,
-        auto_continue: integer(11)? != 0,
+pub const CORRUPTED: &str = "The mission file is corrupted.";
+
+pub fn not_compatible() -> String {
+    format!("The mission file is not compatible with this version of {}.", crate::noticeboard::application_name())
+}
+
+fn qt_int(field: &str) -> i64 {
+    field.trim().parse::<i32>().map_or(0, i64::from)
+}
+
+fn qt_double(field: &str) -> f64 {
+    field.trim().parse::<f64>().unwrap_or(0.0)
+}
+
+fn row(line: &str) -> Option<Row> {
+    let fields: Vec<&str> = line.split('\t').collect();
+    (fields.len() == COLUMNS).then(|| Row {
+        sequence: qt_int(fields[0]),
+        current: qt_int(fields[1]) == 1,
+        frame: qt_int(fields[2]),
+        command: qt_int(fields[3]),
+        params: [qt_double(fields[4]), qt_double(fields[5]), qt_double(fields[6]), qt_double(fields[7])],
+        latitude: qt_double(fields[8]),
+        longitude: qt_double(fields[9]),
+        altitude: qt_double(fields[10]),
+        auto_continue: qt_int(fields[11]) == 1,
     })
 }
 
 pub fn parse(text: &str) -> Result<Waypoints, String> {
-    let mut lines = text.lines().filter(|l| !l.trim().is_empty());
-    let header: Vec<&str> = lines.next().unwrap_or("").split(' ').collect();
-    let version = match header.as_slice() {
+    let lines: Vec<&str> = text.lines().collect();
+    let (header, body) = lines.split_first().map_or(("", &[][..]), |(header, body)| (*header, body));
+    let version = match header.split(' ').collect::<Vec<&str>>().as_slice() {
         ["QGC", "WPL", "110"] => 110,
         ["QGC", "WPL", "120"] => 120,
-        _ => return Err("not a QGC WPL 110 or 120 file".to_string()),
+        _ => return Err(not_compatible()),
     };
-    let rows: Vec<Row> = lines.enumerate().map(|(i, l)| row(l).map_err(|e| format!("line {}: {e}", i + 2))).collect::<Result<_, _>>()?;
-    let (home, items) = match version {
-        110 if !rows.is_empty() => {
-            let mut rows = rows;
-            let home = rows.remove(0);
-            (Some(home), rows)
-        }
-        _ => (None, rows),
-    };
-    Ok(Waypoints { version, home, items })
+    let rows: Vec<Row> = body.iter().copied().map(row).collect::<Option<_>>().ok_or(CORRUPTED)?;
+    let home_in_file = version == 110;
+    Ok(Waypoints { version, home: rows.first().filter(|_| home_in_file).cloned(), items: rows.iter().skip(usize::from(home_in_file)).cloned().collect() })
 }
 
 fn line(r: &Row) -> String {
@@ -147,9 +149,18 @@ mod tests {
         let file = parse("QGC WPL 120\n0\t0\t3\t16\t0\t0\t0\t0\t1\t2\t3\t1\n").unwrap();
         assert!(file.home.is_none());
         assert_eq!(file.items.len(), 1);
-        assert_eq!(parse("QGC WPL 130\n").unwrap_err(), "not a QGC WPL 110 or 120 file");
-        assert!(parse("QGC WPL 110\n0\t1\t0\n").unwrap_err().starts_with("line 2: expected 12 columns"));
-        assert!(parse("QGC WPL 110\n0\t1\t0\t16\t0\t0\t0\t0\tx\t-122.10\t5.2\t1\n").unwrap_err().contains("column 9"));
+        assert_eq!(parse("QGC WPL 130\n").unwrap_err(), not_compatible());
+        assert_eq!(parse("\nQGC WPL 110\n").unwrap_err(), not_compatible(), "the first line is the header, blank or not");
+        assert_eq!(parse("QGC WPL 110\n0\t1\t0\n").unwrap_err(), CORRUPTED);
+        assert_eq!(parse("QGC WPL 120\n0\t0\t3\t16\t0\t0\t0\t0\t1\t2\t3\t1\n\n").unwrap_err(), CORRUPTED, "a blank line is a row with one field, like readLine sees it");
+    }
+
+    #[test]
+    fn unreadable_numbers_read_as_zero_like_qstring_to_int_and_to_double() {
+        let file = parse("QGC WPL 120\n0\t2\t3\t16.0\t0\t0\t0\t0\tx\t-122.10\t 5.5 \tyes\n").unwrap();
+        let item = &file.items[0];
+        assert_eq!((item.command, item.latitude, item.longitude, item.altitude), (0, 0.0, -122.10, 5.5));
+        assert!(!item.current && !item.auto_continue, "only 1 means true");
     }
 
     #[test]

@@ -26,7 +26,8 @@ import one.aircast.mapspike.freshPlanView
 import one.aircast.mapspike.optText
 
 private const val PLAN_ROOT = "plan"
-private const val OPEN_CACHE = "opened.plan"
+private const val OPEN_FOLDER = "plan-open"
+private const val OPEN_FALLBACK = "opened.plan"
 private const val SAVE_CACHE = "saving.plan"
 private const val KML_CACHE = "export.kml"
 private const val MISSION_ROOT = "plan.missionController"
@@ -60,11 +61,8 @@ class PlanFileActions(
 internal fun planLoad(path: String): Boolean? =
     Qgc.invokeResult("$PLAN_ROOT.loadFromFile", path) as? Boolean
 
-internal fun loadFailureMessage(loaded: Boolean?): String? = when (loaded) {
-    true -> null
-    false -> "That is not a plan file. The current plan is unchanged."
-    null -> "The plan could not be loaded. The current plan is unchanged."
-}
+internal fun loadFailureMessage(loaded: Boolean?): String? =
+    if (loaded == null) "The plan could not be loaded. The current plan is unchanged." else null
 
 internal fun planSave(path: String): String? {
     if (Qgc.invokeResult("$PLAN_ROOT.saveToFile", path) != true) {
@@ -104,12 +102,12 @@ private fun lastDistance(items: JSONArray): Double? {
     return (last.opt("patternDistance") as? Number)?.toDouble()
 }
 
-private const val WAYPOINTS_HEADER = "QGC WPL"
+private val TEXT_MISSION_SUFFIXES = setOf("waypoints", "txt")
 
-internal fun isWaypointsText(head: String): Boolean = head.trimStart().startsWith(WAYPOINTS_HEADER)
+internal fun openedFileName(shown: String?): String =
+    shown?.substringAfterLast('/')?.takeIf { it.isNotBlank() && it != "." && it != ".." } ?: OPEN_FALLBACK
 
-private fun isWaypointsFile(file: File): Boolean =
-    runCatching { file.bufferedReader().use { isWaypointsText(it.readLine().orEmpty()) } }.getOrDefault(false)
+internal fun isTextMission(name: String): Boolean = name.substringAfterLast('.', "") in TEXT_MISSION_SUFFIXES
 
 private fun displayName(context: Context, uri: Uri): String? = runCatching {
     context.contentResolver
@@ -262,19 +260,20 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     val opener = rememberLauncherForActivityResult(OpenFrom { lastDocument(context) }) { uri ->
         val chosen = uri ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val staged = File(context.cacheDir, OPEN_CACHE)
-            val failure = withContext(Dispatchers.Default) {
-                staged.delete()
+            val staged = withContext(Dispatchers.IO) { File(File(context.cacheDir, OPEN_FOLDER), openedFileName(displayName(context, chosen))) }
+            val (failure, loaded) = withContext(Dispatchers.Default) {
+                staged.parentFile?.deleteRecursively()
+                staged.parentFile?.mkdirs()
                 if (!copyIn(context, chosen, staged)) {
-                    return@withContext "That file could not be read."
+                    return@withContext "That file could not be read." to false
                 }
-                loadFailureMessage(planLoad(staged.absolutePath))
+                planLoad(staged.absolutePath).let { loadFailureMessage(it) to (it == true) }
             }
-            if (failure != null) {
-                onResult(failure)
+            if (!loaded) {
+                failure?.let(onResult)
                 return@launch
             }
-            if (withContext(Dispatchers.IO) { isWaypointsFile(staged) }) forget() else adopt(chosen)
+            if (isTextMission(staged.name)) forget() else adopt(chosen)
             opened.intValue += 1
             onResult("Plan opened.")
         }
