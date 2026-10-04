@@ -432,11 +432,11 @@ impl Traffic {
     }
 
     pub fn retarget(&mut self, enabled: bool, source: Option<Source>) -> bool {
-        if (self.enabled, &self.source) == (enabled, &source) {
+        self.source = source;
+        if enabled == self.enabled {
             return false;
         }
         self.enabled = enabled;
-        self.source = source;
         self.generation += 1;
         self.connected = false;
         self.failure = None;
@@ -1095,6 +1095,21 @@ mod tests {
         assert_eq!(server_error_text("Connection refused"), "ADSB Server Error: Connection refused");
         assert_eq!(socket_error_text(&std::io::Error::from(std::io::ErrorKind::ConnectionRefused)), "Connection refused");
         assert_eq!(socket_error_text(&std::io::Error::from(std::io::ErrorKind::TimedOut)), "Socket operation timed out");
+    }
+
+    #[test]
+    fn host_and_port_edits_wait_for_the_server_switch_like_adsb_vehicle_manager() {
+        let mut traffic = Traffic::default();
+        assert!(traffic.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 })));
+        let generation = traffic.generation();
+        assert!(!traffic.retarget(true, Some(Source { host: "other.local".into(), port: 30004 })), "only adsbServerConnectEnabled restarts the link");
+        assert_eq!(traffic.generation(), generation, "the running link keeps its old address");
+        assert!(traffic.retarget(false, Some(Source { host: "other.local".into(), port: 30004 })));
+        assert!(traffic.retarget(true, Some(Source { host: "other.local".into(), port: 30004 })), "switching it back on starts a link on the edited address");
+
+        let mut unset = Traffic::default();
+        assert!(unset.retarget(true, None));
+        assert!(!unset.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 })), "a host typed after switching on with none set starts nothing until the switch is toggled");
     }
 
     #[test]
