@@ -15,7 +15,7 @@ use crate::guidedcmd::{self, CMD_DO_REPOSITION, Plan, VehicleState};
 use crate::guidedexec::{Emit, Executor, Observed};
 use crate::mavcmd::{Command, Commands, Failure, Out, RESULT_ACCEPTED};
 use crate::mavout::{self, Outbound};
-use crate::params::{self, INITIAL_REQUEST_TIMEOUT_MS, ParamValue, Params};
+use crate::params::{self, HASH_CHECK_TIMEOUT_MS, INITIAL_REQUEST_TIMEOUT_MS, ParamValue, Params};
 use crate::plantransfer::{self, PLAN_FENCE, PLAN_MISSION, PLAN_RALLY, Transfer};
 use crate::remoteid::{self, GcsFix, RemoteId};
 use crate::sensorcal::{self, Calibration};
@@ -349,6 +349,7 @@ pub struct Vehicle {
     modes: StandardModes,
     params: Params,
     initial_due: Option<u64>,
+    hash_due: Option<u64>,
     waiting_due: Option<u64>,
     sensor_refresh_due: Option<u64>,
     pub(crate) esp_wait: Option<u16>,
@@ -567,6 +568,7 @@ impl Vehicle {
             modes: StandardModes::default(),
             params: Params::new(component, autopilot == crate::modes::AUTOPILOT_PX4),
             initial_due: None,
+            hash_due: None,
             waiting_due: None,
             sensor_refresh_due: None,
             esp_wait: None,
@@ -1545,6 +1547,14 @@ impl Vehicle {
                     self.initial_due = None;
                     Vec::new()
                 }
+                params::Action::StartHashTimer => {
+                    self.hash_due = Some(now_ms + HASH_CHECK_TIMEOUT_MS);
+                    Vec::new()
+                }
+                params::Action::StopHashTimer => {
+                    self.hash_due = None;
+                    Vec::new()
+                }
                 params::Action::StartWaitingTimer => {
                     self.waiting_due = Some(now_ms + self.params.waiting_timeout_ms());
                     Vec::new()
@@ -1585,14 +1595,14 @@ impl Vehicle {
                     let clock = self.send_clock();
                     clock.into_iter().chain(self.step_done(connect::Step::Parameters, now_ms)).collect()
                 }
-                params::Action::ReadFailed { component, name } => {
-                    let text = format!("Parameter read failed: param: {name} {}", self.params.component_label(component)).trim_end().to_string();
+                params::Action::ReadFailed { component, name, error } => {
+                    let text = failure_text("read", &name, &self.params.component_label(component), error);
                     crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &text);
                     self.note(text);
                     Vec::new()
                 }
-                params::Action::WriteFailed { component, name } => {
-                    let text = format!("Parameter write failed: param: {name} {}", self.params.component_label(component)).trim_end().to_string();
+                params::Action::WriteFailed { component, name, error } => {
+                    let text = failure_text("write", &name, &self.params.component_label(component), error);
                     crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &text);
                     self.note(text);
                     Vec::new()
@@ -2363,6 +2373,11 @@ impl Vehicle {
         if self.initial_due.is_some_and(|due| now_ms >= due) {
             self.initial_due = None;
             let actions = self.params.on_initial_timeout();
+            bytes.extend(self.follow_params(actions, now_ms));
+        }
+        if self.hash_due.is_some_and(|due| now_ms >= due) {
+            self.hash_due = None;
+            let actions = self.params.on_hash_timeout();
             bytes.extend(self.follow_params(actions, now_ms));
         }
         if self.terrain_due.is_some_and(|due| now_ms >= due) {
@@ -3287,6 +3302,10 @@ impl Vehicle {
                 let decode = if self.ardupilot_components.contains(&header.component_id) { ParamValue::decode_cast } else { ParamValue::decode };
                 let Some(value) = decode(p.param_type as u8, p.param_value) else { return Vec::new() };
                 let actions = self.params.on_param_value(header.component_id, &name, p.param_count, p.param_index, value);
+                return self.follow_params(actions, now_ms);
+            }
+            MavMessage::PARAM_ERROR(e) => {
+                let actions = self.params.on_param_error(header.component_id, e.param_id.to_str().unwrap_or(""), e.error as u8);
                 return self.follow_params(actions, now_ms);
             }
             MavMessage::LOGGING_DATA(d) => {
@@ -4369,6 +4388,13 @@ pub fn no_parameters_notice(id: u8, autopilot: u8, app: &str) -> Option<String> 
     (!generic).then(|| format!("Vehicle {id} did not respond to request for parameters. This will cause {app} to be unable to display its full user interface."))
 }
 
+pub fn failure_text(operation: &str, name: &str, label: &str, error: Option<u8>) -> String {
+    match error {
+        Some(error) => format!("Parameter {operation} failed: param: {name} {label} - {}", params::error_text(error)),
+        None => format!("Parameter {operation} failed: param: {name} {label}").trim_end().to_string(),
+    }
+}
+
 pub fn skips_download(armed: bool, skip_when_flying: bool) -> bool {
     skip_when_flying && armed
 }
@@ -4492,6 +4518,8 @@ mod tests {
         assert_eq!(no_parameters_notice(3, crate::modes::AUTOPILOT_PX4, "Aircast QGC").as_deref(), Some("Vehicle 3 did not respond to request for parameters. This will cause Aircast QGC to be unable to display its full user interface."));
         assert!(no_parameters_notice(3, crate::modes::AUTOPILOT_ARDUPILOT, "").is_some());
         assert!(no_parameters_notice(3, 0, "Aircast QGC").is_none(), "ParameterManager skips it for generic firmware");
+        assert_eq!(failure_text("write", "RTL_ALT", "", None), "Parameter write failed: param: RTL_ALT");
+        assert_eq!(failure_text("read", "RTL_ALT", "", Some(1)), "Parameter read failed: param: RTL_ALT  - Parameter does not exist", "the PARAM_ERROR reason follows QGC's '%1 %2 - %3'");
     }
 
     use super::*;

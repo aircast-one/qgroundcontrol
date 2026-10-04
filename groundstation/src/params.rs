@@ -8,6 +8,8 @@ const MAX_INITIAL_REQUEST_LIST_RETRY: u32 = 4;
 const MAX_INITIAL_LOAD_RETRY_SINGLE_PARAM: u32 = 5;
 const MAX_READ_WRITE_RETRY: u32 = 2;
 pub const VALUE_ACK_TIMEOUT_MS: u64 = 1000;
+pub const HASH_CHECK_TIMEOUT_MS: u64 = 1000;
+const PARAM_ERROR_DOES_NOT_EXIST: u8 = 1;
 const MAX_BATCH_SIZE: usize = 10;
 const HASH_CHECK: &str = "_HASH_CHECK";
 
@@ -135,13 +137,15 @@ pub enum Action {
     StopInitialTimer,
     StartWaitingTimer,
     StopWaitingTimer,
+    StartHashTimer,
+    StopHashTimer,
     Progress(f64),
     Added { component: u8, name: String },
     Changed { component: u8, name: String },
     Ready { missing: bool },
     SaveCache { component: u8 },
-    ReadFailed { component: u8, name: String },
-    WriteFailed { component: u8, name: String },
+    ReadFailed { component: u8, name: String, error: Option<u8> },
+    WriteFailed { component: u8, name: String, error: Option<u8> },
     NoResponse,
     CacheOnlyFailed,
 }
@@ -172,8 +176,23 @@ pub struct Params {
     missing: bool,
     total_count: usize,
     cache: Option<(BTreeMap<String, ParamValue>, BTreeSet<String>)>,
-    hash_check_pending: bool,
+    hash_check_done: bool,
     cache_only: bool,
+}
+
+pub fn error_text(error: u8) -> String {
+    match error {
+        0 => "No error".to_string(),
+        1 => "Parameter does not exist".to_string(),
+        2 => "Value out of range".to_string(),
+        3 => "Permission denied".to_string(),
+        4 => "Component not found".to_string(),
+        5 => "Parameter is read-only".to_string(),
+        6 => "Parameter type unsupported".to_string(),
+        7 => "Parameter type mismatch".to_string(),
+        8 => "Parameter read failed".to_string(),
+        other => format!("Unknown error ({other})"),
+    }
 }
 
 fn acknowledges(written: ParamValue, echoed: ParamValue) -> bool {
@@ -327,52 +346,64 @@ impl Params {
     }
 
     pub fn start(&mut self) -> Vec<Action> {
-        match self.px4 && self.cache.is_some() && !self.initial_complete {
-            true => {
-                self.hash_check_pending = true;
-                self.initial_timer_active = true;
-                vec![Action::StartInitialTimer, Action::ReadByName { component: self.default_component, name: HASH_CHECK.to_string() }]
-            }
-            false => self.refresh_all(ALL_COMPONENTS),
-        }
+        self.refresh_all(ALL_COMPONENTS)
     }
 
     pub fn start_cache_only(&mut self) -> Vec<Action> {
-        match self.px4 && self.cache.is_some() && !self.initial_complete {
-            true => {
-                self.cache_only = true;
-                self.start()
-            }
+        self.hash_check_done = false;
+        self.cache_only = true;
+        match self.px4 && !self.initial_complete {
+            true => vec![Action::StartHashTimer, Action::ReadByName { component: self.default_component, name: HASH_CHECK.to_string() }],
             false => vec![Action::CacheOnlyFailed],
         }
     }
 
-    fn cache_only_failed(&mut self) -> Vec<Action> {
-        self.cache_only = false;
-        self.initial_timer_active = false;
-        vec![Action::StopInitialTimer, Action::CacheOnlyFailed]
+    fn hash_check_failed(&mut self) -> Vec<Action> {
+        match std::mem::replace(&mut self.hash_check_done, true) {
+            true => Vec::new(),
+            false if self.cache_only => vec![Action::CacheOnlyFailed],
+            false => self.start_download(ALL_COMPONENTS),
+        }
     }
 
     fn hash_answered(&mut self, component: u8, value: ParamValue) -> Vec<Action> {
-        self.hash_check_pending = false;
-        let (cache, volatile) = self.cache.clone().unwrap_or_default();
+        let cache = self.cache.clone().filter(|_| component == self.default_component);
+        let stop = std::iter::once(Action::StopHashTimer);
+        if self.initial_complete {
+            return stop.collect();
+        }
+        let Some((cache, volatile)) = cache else { return stop.chain(self.hash_check_failed()).collect() };
         let crc = cache_crc(&cache, &volatile);
-        match component == self.default_component && crc == hash_of(value) {
-            true => {
-                let entries: Vec<PackEntry> = cache.iter().map(|(name, value)| PackEntry { name: name.clone(), value: *value, default: None }).collect();
-                self.load_pack(component, &entries)
-                    .into_iter()
-                    .chain([Action::Set { component, name: HASH_CHECK.to_string(), value: ParamValue::U32(crc) }])
-                    .collect()
-            }
-            false if self.cache_only => self.cache_only_failed(),
-            false => self.refresh_all(ALL_COMPONENTS),
+        if crc != hash_of(value) {
+            return stop.chain(self.hash_check_failed()).collect();
+        }
+        self.hash_check_done = true;
+        self.initial_timer_active = false;
+        let count = u16::try_from(cache.len()).unwrap_or(u16::MAX);
+        let loaded: Vec<Action> = cache.iter().zip(0..count).flat_map(|((name, value), index)| self.on_param_value(component, name, count, index, *value)).collect();
+        stop.chain([Action::StopInitialTimer]).chain(loaded).chain([Action::Set { component, name: HASH_CHECK.to_string(), value: ParamValue::U32(crc) }]).collect()
+    }
+
+    pub fn on_hash_timeout(&mut self) -> Vec<Action> {
+        self.hash_check_done = true;
+        match self.cache_only {
+            true => vec![Action::CacheOnlyFailed],
+            false => self.start_download(ALL_COMPONENTS),
         }
     }
 
     pub fn refresh_all(&mut self, component: u8) -> Vec<Action> {
+        self.hash_check_done = false;
+        self.start_download(component)
+    }
+
+    fn start_download(&mut self, component: u8) -> Vec<Action> {
         self.unanswered = false;
-        self.cache_only = false;
+        if self.px4 && !self.initial_complete && !self.hash_check_done {
+            self.cache_only = false;
+            let target = if component == ALL_COMPONENTS { self.default_component } else { component };
+            return vec![Action::StartHashTimer, Action::ReadByName { component: target, name: HASH_CHECK.to_string() }];
+        }
         let timer = (!self.initial_complete).then(|| {
             self.initial_timer_active = true;
             Action::StartInitialTimer
@@ -429,10 +460,7 @@ impl Params {
 
     pub fn on_param_value(&mut self, component: u8, name: &str, count: u16, index: u16, value: ParamValue) -> Vec<Action> {
         if self.px4 && name == HASH_CHECK {
-            return match self.hash_check_pending {
-                true => self.hash_answered(component, value),
-                false => Vec::new(),
-            };
+            return self.hash_answered(component, value);
         }
         if index == NO_INDEX && self.initial_timer_active {
             return Vec::new();
@@ -550,7 +578,7 @@ impl Params {
                     } else {
                         waiting.remove(&name);
                         failed.push((*component, name.clone()));
-                        actions.push(Action::WriteFailed { component: *component, name });
+                        actions.push(Action::WriteFailed { component: *component, name, error: None });
                     }
                 }
             }
@@ -575,7 +603,7 @@ impl Params {
                     } else {
                         waiting.remove(&name);
                         if !self.quiet_reads.remove(&(*component, name.clone())) {
-                            actions.push(Action::ReadFailed { component: *component, name });
+                            actions.push(Action::ReadFailed { component: *component, name, error: None });
                         }
                     }
                 }
@@ -587,17 +615,26 @@ impl Params {
         actions
     }
 
-    pub fn on_initial_timeout(&mut self) -> Vec<Action> {
-        if self.hash_check_pending {
-            self.hash_check_pending = false;
-            return match self.cache_only {
-                true => self.cache_only_failed(),
-                false => self.refresh_all(ALL_COMPONENTS),
-            };
+    pub fn on_param_error(&mut self, component: u8, name: &str, error: u8) -> Vec<Action> {
+        let read = self.waiting_read.get_mut(&component).and_then(|waiting| waiting.remove(name)).is_some();
+        let quiet = self.quiet_reads.remove(&(component, name.to_string()));
+        let written = self.waiting_write.get_mut(&component).and_then(|waiting| waiting.remove(name)).is_some();
+        if written {
+            self.pending_write.entry(component).or_default().remove(name);
         }
+        let read_failed = (read && !quiet).then(|| Action::ReadFailed { component, name: name.to_string(), error: Some(error) });
+        let write_failed = written.then(|| Action::WriteFailed { component, name: name.to_string(), error: Some(error) });
+        let reread = match written && error != PARAM_ERROR_DOES_NOT_EXIST {
+            true => self.refresh(component, name),
+            false => Vec::new(),
+        };
+        read_failed.into_iter().chain(write_failed).chain(reread).collect()
+    }
+
+    pub fn on_initial_timeout(&mut self) -> Vec<Action> {
         self.initial_retry += 1;
         if self.initial_retry <= MAX_INITIAL_REQUEST_LIST_RETRY {
-            let mut actions = self.refresh_all(ALL_COMPONENTS);
+            let mut actions = self.start_download(ALL_COMPONENTS);
             actions.push(Action::StartInitialTimer);
             actions
         } else {
@@ -649,9 +686,12 @@ mod tests {
     fn a_matching_hash_loads_the_cache_instead_of_the_full_list() {
         let mut px4 = Params::new(1, true);
         px4.use_cache(cached(), volatile());
-        assert_eq!(px4.start(), vec![Action::StartInitialTimer, Action::ReadByName { component: 1, name: HASH_CHECK.to_string() }]);
+        assert_eq!(px4.start(), vec![Action::StartHashTimer, Action::ReadByName { component: 1, name: HASH_CHECK.to_string() }]);
+        assert_eq!(HASH_CHECK_TIMEOUT_MS, 1000, "kHashCheckTimeoutMs, its own timer beside the 5 s list timer");
+        assert!(!px4.on_param_value(1, "SYS_AUTOSTART", 3, NO_INDEX, ParamValue::I32(4001)).contains(&Action::StopHashTimer), "an unrelated PARAM_VALUE stops only _paramRequestListTimer");
         let crc = cache_crc(&cached(), &volatile());
         let loaded = px4.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(crc));
+        assert_eq!(loaded.first(), Some(&Action::StopHashTimer));
         assert!(loaded.contains(&Action::Ready { missing: false }));
         assert!(loaded.contains(&Action::Set { component: 1, name: HASH_CHECK.to_string(), value: ParamValue::U32(crc) }), "the hash is sent back so PX4 stops streaming");
         assert!(!loaded.iter().any(|a| matches!(a, Action::RequestList { .. })));
@@ -685,14 +725,18 @@ mod tests {
         let mut silent = Params::new(1, true);
         silent.use_cache(cached(), volatile());
         silent.start();
-        assert!(silent.on_initial_timeout().contains(&Action::RequestList { component: ALL_COMPONENTS }), "the hash check timing out goes on to PARAM_REQUEST_LIST");
-        assert_eq!(silent.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(cache_crc(&cached(), &volatile()))), Vec::new(), "a late answer leaves the list request and its retry timer alone");
+        assert!(silent.on_hash_timeout().contains(&Action::RequestList { component: ALL_COMPONENTS }), "the hash check timing out goes on to PARAM_REQUEST_LIST");
+        assert_eq!(silent.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(1)), vec![Action::StopHashTimer], "a late mismatch lets the list stream continue");
+        let late = silent.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(cache_crc(&cached(), &volatile())));
+        assert!(late.contains(&Action::StopInitialTimer) && late.contains(&Action::Ready { missing: false }), "_tryCacheHashLoad still loads a matching cache while the list request runs");
+        assert_eq!(silent.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(1)), vec![Action::StopHashTimer], "once loaded, the _HASH_CHECK that ends every PX4 list stream is ignored");
         let mut stranger = Params::new(1, true);
         stranger.use_cache(cached(), volatile());
         stranger.start();
         assert!(stranger.on_param_value(154, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(cache_crc(&cached(), &volatile()))).contains(&Action::RequestList { component: ALL_COMPONENTS }), "the cache belongs to the autopilot, not whichever component answered");
         let mut fresh = Params::new(1, true);
-        assert!(fresh.start().contains(&Action::RequestList { component: ALL_COMPONENTS }), "with no cache there is nothing to check");
+        assert!(fresh.start().contains(&Action::ReadByName { component: 1, name: HASH_CHECK.to_string() }), "_startParameterDownload asks for _HASH_CHECK before looking for a cache file");
+        assert!(fresh.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(0)).contains(&Action::RequestList { component: ALL_COMPONENTS }), "no cache file falls back to the list, even for a zero hash");
         let mut ardupilot = Params::new(1, false);
         ardupilot.use_cache(cached(), volatile());
         assert!(ardupilot.start().contains(&Action::RequestList { component: ALL_COMPONENTS }), "only PX4 answers _HASH_CHECK");
@@ -703,18 +747,21 @@ mod tests {
         let crc = cache_crc(&cached(), &volatile());
         let mut matching = Params::new(1, true);
         matching.use_cache(cached(), volatile());
-        assert_eq!(matching.start_cache_only(), vec![Action::StartInitialTimer, Action::ReadByName { component: 1, name: HASH_CHECK.to_string() }]);
+        assert_eq!(matching.start_cache_only(), vec![Action::StartHashTimer, Action::ReadByName { component: 1, name: HASH_CHECK.to_string() }]);
         assert!(matching.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(crc)).contains(&Action::Ready { missing: false }));
         let mut stale = Params::new(1, true);
         stale.use_cache(cached(), volatile());
         stale.start_cache_only();
-        assert_eq!(stale.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(1)), vec![Action::StopInitialTimer, Action::CacheOnlyFailed], "ParameterManager::_tryCacheHashLoad emits cacheCheckOnlyFailed on a CRC mismatch instead of PARAM_REQUEST_LIST");
+        assert_eq!(stale.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(1)), vec![Action::StopHashTimer, Action::CacheOnlyFailed], "ParameterManager::_tryCacheHashLoad emits cacheCheckOnlyFailed on a CRC mismatch instead of PARAM_REQUEST_LIST");
         let mut silent = Params::new(1, true);
         silent.use_cache(cached(), volatile());
         silent.start_cache_only();
-        assert_eq!(silent.on_initial_timeout(), vec![Action::StopInitialTimer, Action::CacheOnlyFailed], "_hashCheckTimeout in cache-only mode");
-        assert!(silent.refresh_all(ALL_COMPONENTS).contains(&Action::RequestList { component: ALL_COMPONENTS }), "Download Parameters afterwards streams the full list");
-        assert_eq!(Params::new(1, true).start_cache_only(), vec![Action::CacheOnlyFailed], "no cache file");
+        assert_eq!(silent.on_hash_timeout(), vec![Action::CacheOnlyFailed], "_hashCheckTimeout in cache-only mode");
+        assert!(silent.refresh_all(ALL_COMPONENTS).contains(&Action::ReadByName { component: 1, name: HASH_CHECK.to_string() }), "Download Parameters afterwards resets the hash check and tries it again");
+        assert!(silent.on_hash_timeout().contains(&Action::RequestList { component: ALL_COMPONENTS }), "that check is no longer cache-only, so it falls back to the list");
+        let mut uncached = Params::new(1, true);
+        assert!(uncached.start_cache_only().contains(&Action::ReadByName { component: 1, name: HASH_CHECK.to_string() }), "tryHashCheckCacheLoad asks before looking for the file");
+        assert_eq!(uncached.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(0)), vec![Action::StopHashTimer, Action::CacheOnlyFailed], "no cache file");
         let mut ardupilot = Params::new(1, false);
         ardupilot.use_cache(cached(), volatile());
         assert_eq!(ardupilot.start_cache_only(), vec![Action::CacheOnlyFailed], "only PX4 answers _HASH_CHECK");
@@ -762,7 +809,7 @@ mod tests {
         params.on_param_value(1, "RTL_ALT", 2, 0, ParamValue::I32(0));
         assert!(params.writing(1, "RTL_ALT"), "ParameterManager's ack check needs the echoed value to match what was written");
         let failed: Vec<Action> = (0..=MAX_READ_WRITE_RETRY).flat_map(|_| params.on_waiting_timeout()).collect();
-        assert!(failed.contains(&Action::WriteFailed { component: 1, name: "RTL_ALT".into() }));
+        assert!(failed.contains(&Action::WriteFailed { component: 1, name: "RTL_ALT".into(), error: None }));
         assert!(failed.contains(&Action::ReadByName { component: 1, name: "RTL_ALT".into() }), "a failed write refreshes the parameter from the vehicle");
         assert!(acknowledges(ParamValue::F32(0.1), ParamValue::F32(0.100_000_1)), "floats compare fuzzily, as QGC::fuzzyCompare does");
         params.write(1, "RTL_SPEED", ParamValue::I32(5));
@@ -814,7 +861,8 @@ mod tests {
         assert!(actions.contains(&Action::Set { component: 1, name: "X".into(), value: ParamValue::I32(1) }));
         let mut px4 = Params::new(1, true);
         px4.start();
-        assert_eq!(px4.on_param_value(1, "_HASH_CHECK", 3, NO_INDEX, ParamValue::U32(7)), Vec::new());
+        assert_eq!(px4.on_param_value(1, "_HASH_CHECK", 3, NO_INDEX, ParamValue::U32(7)), vec![Action::StopHashTimer, Action::StartInitialTimer, Action::RequestList { component: ALL_COMPONENTS }]);
+        assert_eq!(px4.value(1, "_HASH_CHECK"), None, "_HASH_CHECK is never a parameter");
         let mut fresh = Params::new(1, false);
         assert!(fresh.refresh(5, "Y").contains(&Action::ReadByName { component: 5, name: "Y".into() }));
     }
@@ -859,7 +907,7 @@ mod tests {
         assert_eq!(params.waiting_timeout_ms(), VALUE_ACK_TIMEOUT_MS, "kWaitForParamValueAckMs once the parameters are in");
         let outcomes: Vec<Vec<Action>> = (0..3).map(|_| params.on_waiting_timeout()).collect();
         assert!(outcomes[1].iter().any(|a| matches!(a, Action::Set { .. })), "PARAM_SET goes out three times in all, kParamSetRetryCount = 2");
-        assert!(outcomes[2].contains(&Action::WriteFailed { component: 1, name: "A".into() }));
+        assert!(outcomes[2].contains(&Action::WriteFailed { component: 1, name: "A".into(), error: None }));
     }
 
     #[test]
@@ -886,7 +934,7 @@ mod tests {
         assert!(!params.awaiting_update(1, "A"), "an unchanged value still counts as the update");
         params.refresh(1, "A");
         let gave_up: Vec<Action> = (0..3).flat_map(|_| params.on_waiting_timeout()).collect();
-        assert!(gave_up.contains(&Action::ReadFailed { component: 1, name: "A".into() }));
+        assert!(gave_up.contains(&Action::ReadFailed { component: 1, name: "A".into(), error: None }));
         assert!(params.awaiting_update(1, "A"), "_ready is set only by Fact::vehicleUpdated, so a failed re-read leaves the dialog disabled");
         params.on_param_value(1, "A", 1, 0, ParamValue::I32(0));
         assert!(!params.awaiting_update(1, "A"), "a late value still enables it");
@@ -900,14 +948,36 @@ mod tests {
         assert!(params.refresh(1, "A").contains(&Action::ReadByName { component: 1, name: "A".into() }));
         let retried: Vec<Vec<Action>> = (0..3).map(|_| params.on_waiting_timeout()).collect();
         assert!(retried[0].contains(&Action::ReadByName { component: 1, name: "A".into() }));
-        assert!(retried[2].contains(&Action::ReadFailed { component: 1, name: "A".into() }), "kParamRequestReadRetryCount = 2");
+        assert!(retried[2].contains(&Action::ReadFailed { component: 1, name: "A".into(), error: None }), "kParamRequestReadRetryCount = 2");
         let mut silent = Params::new(1, true);
         silent.start();
+        silent.on_hash_timeout();
         let retries: Vec<Vec<Action>> = (0..5).map(|_| silent.on_initial_timeout()).collect();
         assert!(retries[..4].iter().all(|a| a.contains(&Action::RequestList { component: 0 })));
         assert_eq!(retries[4], vec![Action::NoResponse]);
         assert!(silent.unanswered(), "requestUnanswered is what the setup page shows once the retries run out");
         silent.refresh_all(ALL_COMPONENTS);
         assert!(!silent.unanswered(), "a new download clears it, as _startParameterDownload does");
+    }
+
+    #[test]
+    fn a_param_error_fails_the_named_request_at_once_with_its_reason() {
+        let mut params = Params::new(1, false);
+        params.start();
+        deliver(&mut params, &["A", "B"], &[]);
+        params.write(1, "A", ParamValue::I32(9));
+        let rejected = params.on_param_error(1, "A", 2);
+        assert_eq!(rejected[0], Action::WriteFailed { component: 1, name: "A".into(), error: Some(2) }, "WaitForParamResponseState fails on PARAM_ERROR without retrying");
+        assert!(rejected.contains(&Action::ReadByName { component: 1, name: "A".into() }), "the write failure re-reads the parameter");
+        assert!(!params.writing(1, "A"));
+        assert_eq!(error_text(2), "Value out of range");
+        params.write(1, "B", ParamValue::I32(9));
+        assert_eq!(params.on_param_error(1, "B", 1), vec![Action::WriteFailed { component: 1, name: "B".into(), error: Some(1) }], "MAV_PARAM_ERROR_DOES_NOT_EXIST skips the post-failure refresh");
+        params.refresh(1, "B");
+        assert_eq!(params.on_param_error(154, "B", 8), Vec::new(), "only the component asked answers");
+        assert_eq!(params.on_param_error(1, "B", 8), vec![Action::ReadFailed { component: 1, name: "B".into(), error: Some(8) }]);
+        params.refresh_quietly(1, "B");
+        assert_eq!(params.on_param_error(1, "B", 8), Vec::new(), "a quiet read (notifyFailure false) fails silently");
+        assert_eq!(error_text(42), "Unknown error (42)");
     }
 }
