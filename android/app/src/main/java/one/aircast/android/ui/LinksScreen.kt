@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -675,7 +677,7 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
+private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Modifier = Modifier) {
     var type by remember { mutableStateOf("udp") }
     var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
@@ -717,11 +719,14 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
     val askBluetooth = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { }
     val scope = rememberCoroutineScope()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add link") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    BackHandler(onBack = onDismiss)
+    OverridePageHeading("Add link", onDismiss)
+    Column(modifier.fillMaxSize()) {
+        if (LocalPageHeading.current == null) PageTopBar("Add link", "Back to links", onDismiss)
+            Column(
+                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     choices.forEach { id ->
                         FilterChip(
@@ -853,8 +858,11 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
-        },
-        confirmButton = {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        ) {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
             Button(
                 enabled = !busy,
                 onClick = {
@@ -922,9 +930,8 @@ private fun AddLinkDialog(onDismiss: () -> Unit, onAdded: () -> Unit) {
                     }
                 },
             ) { Text(if (busy) "Adding…" else "Add and connect") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+        }
+    }
 }
 
 private const val LINK_SETTLE_MS = 4000L
@@ -966,6 +973,11 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     var confirmingDisconnect by remember { mutableStateOf<LinkRow?>(null) }
     var confirmingRemove by remember { mutableStateOf<LinkRow?>(null) }
     var editing by remember { mutableStateOf<LinkRow?>(null) }
+
+    if (adding) {
+        AddLinkPage(onDismiss = { adding = false }, onAdded = { adding = false }, modifier = modifier)
+        return
+    }
 
     Box(modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
@@ -1032,9 +1044,6 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     )
     }
 
-    if (adding) {
-        AddLinkDialog(onDismiss = { adding = false }, onAdded = { adding = false })
-    }
 
     editing?.let { row ->
         EditLinkDialog(

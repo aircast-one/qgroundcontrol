@@ -26,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -147,6 +148,20 @@ internal fun SetupRow(
 }
 
 internal val LocalTwoPane = staticCompositionLocalOf { false }
+
+internal class PageHeading(val title: String, val back: () -> Unit)
+
+internal val LocalPageHeading = staticCompositionLocalOf<androidx.compose.runtime.MutableState<PageHeading?>?> { null }
+
+@Composable
+internal fun OverridePageHeading(title: String, onBack: () -> Unit) {
+    val host = LocalPageHeading.current
+    val back by androidx.compose.runtime.rememberUpdatedState(onBack)
+    androidx.compose.runtime.DisposableEffect(host, title) {
+        host?.value = PageHeading(title) { back() }
+        onDispose { host?.value = null }
+    }
+}
 
 @Composable
 internal fun PageTopBar(title: String, backLabel: String, onBack: () -> Unit) {
