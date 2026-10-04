@@ -4353,6 +4353,7 @@ impl Hub {
             vehicle.onboard_logs.cancel();
         }
         crate::track::forget(i64::from(id));
+        crate::flowimage::forget(id);
         self.arrival.retain(|known| *known != id);
         self.selected.retain(|known| *known != id);
         if self.active == Some(id) {

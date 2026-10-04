@@ -1,7 +1,6 @@
 package one.aircast.android.ui
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -33,21 +32,22 @@ import org.json.JSONObject
 internal const val OPTICAL_FLOW_SCREEN = "opticalFlow"
 private const val OPTICAL_FLOW_VIEW = "view.opticalFlow"
 private const val OPTICAL_FLOW_POLL_MS = 500L
-private const val OPAQUE = 0xFF shl 24
 
-internal data class FlowFrame(val raw: Boolean, val width: Int, val height: Int, val bytes: ByteArray)
+internal data class FlowFrame(val width: Int, val height: Int, val rgba: ByteArray)
 
 internal fun flowFrame(view: JSONObject?): FlowFrame? = view?.optJSONObject("image")?.let {
-    FlowFrame(it.optBoolean("raw"), it.optInt("width"), it.optInt("height"), Base64.decode(it.optString("data"), Base64.DEFAULT))
+    FlowFrame(it.optInt("width"), it.optInt("height"), Base64.decode(it.optString("data"), Base64.DEFAULT))
 }
 
-internal fun greyPixels(bytes: ByteArray, count: Int): IntArray =
-    IntArray(count) { at -> (bytes.getOrElse(at) { 0 }.toInt() and 0xFF).let { grey -> OPAQUE or (grey shl 16) or (grey shl 8) or grey } }
+private fun channel(bytes: ByteArray, at: Int): Int = bytes.getOrElse(at) { 0 }.toInt() and 0xFF
 
-private fun bitmapOf(frame: FlowFrame): ImageBitmap? = when {
-    frame.raw && frame.width > 0 && frame.height > 0 ->
-        Bitmap.createBitmap(greyPixels(frame.bytes, frame.width * frame.height), frame.width, frame.height, Bitmap.Config.ARGB_8888).asImageBitmap()
-    else -> BitmapFactory.decodeByteArray(frame.bytes, 0, frame.bytes.size)?.asImageBitmap()
+internal fun argbPixels(rgba: ByteArray, count: Int): IntArray =
+    IntArray(count) { pixel ->
+        (pixel * 4).let { at -> (channel(rgba, at + 3) shl 24) or (channel(rgba, at) shl 16) or (channel(rgba, at + 1) shl 8) or channel(rgba, at + 2) }
+    }
+
+private fun bitmapOf(frame: FlowFrame): ImageBitmap? = frame.takeIf { it.width > 0 && it.height > 0 }?.let {
+    Bitmap.createBitmap(argbPixels(it.rgba, it.width * it.height), it.width, it.height, Bitmap.Config.ARGB_8888).asImageBitmap()
 }
 
 @Composable
