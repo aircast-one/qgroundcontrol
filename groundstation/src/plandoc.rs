@@ -850,7 +850,7 @@ pub fn camera_section(sections: &[Simple]) -> Value {
     let chosen = CAMERA_ACTIONS.iter().position(|(_, v)| *v == action).unwrap_or(0);
     let state_mode = sections.iter().find(|s| s.command == CMD_SET_CAMERA_MODE).map(|m| p(m, 1));
     let start = sections.iter().find(|s| s.command == CMD_IMAGE_START_CAPTURE).map(|s| p(s, 1)).filter(|t| *t >= 1.0).unwrap_or(DEFAULT_INTERVAL_TIME);
-    let distance = sections.iter().find(|s| s.command == CMD_DO_SET_CAM_TRIGG_DIST).map(|t| p(t, 0)).filter(|d| *d > 0.0).unwrap_or(DEFAULT_INTERVAL_DISTANCE);
+    let distance = trigger_distance(sections, action);
     let number = |property: &str, value: f64, units: &str| json!({ "property": property, "value": value, "valueString": format!("{value}"), "enumOrValueString": format!("{value}"), "units": units });
     let modes = ["Photo", "Video", "Survey"];
     let mode_value = state_mode.unwrap_or(0.0);
@@ -903,16 +903,20 @@ pub struct CameraState {
     pub interval_distance: f64,
 }
 
+fn trigger_distance(sections: &[Simple], action: i64) -> f64 {
+    sections.iter().find(|s| s.command == CMD_DO_SET_CAM_TRIGG_DIST).filter(|_| action == 2).map_or(DEFAULT_INTERVAL_DISTANCE, |t| p(t, 0))
+}
+
 pub fn camera_state(sections: &[Simple]) -> CameraState {
     let found = |command: i64| sections.iter().find(|s| s.command == command);
     let start = found(CMD_IMAGE_START_CAPTURE);
-    let trigger = found(CMD_DO_SET_CAM_TRIGG_DIST);
+    let action = camera_section(sections)["facts"].as_array().and_then(|facts| facts.iter().find(|f| f["property"] == "cameraAction")).and_then(|f| f["value"].as_i64()).unwrap_or(0);
     CameraState {
         mode: found(CMD_SET_CAMERA_MODE).map(|m| p(m, 1)),
         gimbal: found(CMD_DO_MOUNT_CONTROL).map(|g| (p(g, 0), p(g, 2))),
-        action: camera_section(sections)["facts"].as_array().and_then(|facts| facts.iter().find(|f| f["property"] == "cameraAction")).and_then(|f| f["value"].as_i64()).unwrap_or(0),
+        action,
         interval_time: start.map(|s| p(s, 1)).filter(|t| *t >= 1.0).unwrap_or(DEFAULT_INTERVAL_TIME),
-        interval_distance: trigger.map(|t| p(t, 0)).filter(|d| *d > 0.0).unwrap_or(DEFAULT_INTERVAL_DISTANCE),
+        interval_distance: trigger_distance(sections, action),
     }
 }
 
@@ -1108,6 +1112,18 @@ mod tests {
         let stopped = set_camera(&moded, 0, "cameraAction", &json!(3)).unwrap();
         assert_eq!(stopped.settings_sections.iter().map(|s| s.command).collect::<Vec<_>>(), [CMD_SET_CAMERA_MODE, CMD_DO_MOUNT_CONTROL, CMD_DO_SET_CAM_TRIGG_DIST, CMD_IMAGE_STOP_CAPTURE]);
         assert_eq!(camera_state(&stopped.settings_sections).action, 3, "the written commands read back as the same action");
+    }
+
+    #[test]
+    fn a_lone_zero_trigger_distance_reads_as_take_photos_distance_at_zero_like_scan_trigger_stop_distance() {
+        let zero_trigger = mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [0.0; 7]);
+        let state = camera_state(std::slice::from_ref(&zero_trigger));
+        assert_eq!((state.action, state.interval_distance), (2, 0.0), "CameraSection::_scanTriggerStopDistance sets TakePhotoIntervalDistance with the raw 0 distance");
+        let stop = mission_command(CMD_IMAGE_STOP_CAPTURE, [0.0, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN]);
+        let stopping = camera_state(&[zero_trigger, stop]);
+        assert_eq!((stopping.action, stopping.interval_distance), (3, DEFAULT_INTERVAL_DISTANCE), "scanStopTakingPhotos leaves the distance fact at its default");
+        let distance = camera_section(&[mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [0.0; 7])])["facts"][1]["value"].as_f64();
+        assert_eq!(distance, Some(0.0));
     }
 
     fn by_value(value: Value) -> Value {
