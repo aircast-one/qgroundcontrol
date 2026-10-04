@@ -3242,6 +3242,7 @@ impl Vehicle {
                 let outs = self.modes.on_message(true, Some(&mode));
                 return self.follow_modes(outs, now_ms);
             }
+            MavMessage::AVAILABLE_MODES_MONITOR(_) if self.connect.current().is_some() => return Vec::new(),
             MavMessage::AVAILABLE_MODES_MONITOR(m) => {
                 let outs = self.modes.on_monitor(m.seq);
                 return self.follow_modes(outs, now_ms);
@@ -3774,6 +3775,9 @@ impl Hub {
                 vehicle.commands.high_latency = self.link_kinds.high_latency.contains(&origin.link);
                 if kind == TYPE_SUBMARINE && !origin.replay && !crate::qthost::present() {
                     sub_video_defaults();
+                }
+                if !crate::qthost::present() {
+                    crate::settingsstore::set_raw("settings.firmwareUpgradeSettings.defaultFirmwareType", &json!(autopilot));
                 }
                 bytes.extend((crate::gcsheartbeat::wanted() && !vehicle.commands.high_latency).then(|| crate::mavout::encode_next(&crate::mavout::Outbound::GcsHeartbeat)).flatten());
                 bytes.extend(vehicle.begin_connect(now_ms));
@@ -5775,7 +5779,7 @@ mod tests {
     #[test]
     #[allow(deprecated)]
     fn a_px4_vehicle_goes_from_its_autopilot_version_straight_to_its_standard_modes() {
-        use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, AVAILABLE_MODES_DATA, HEARTBEAT_DATA, MavAutopilot, MavModeFlag, MavStandardMode, MavType};
+        use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, AVAILABLE_MODES_DATA, AVAILABLE_MODES_MONITOR_DATA, HEARTBEAT_DATA, MavAutopilot, MavModeFlag, MavStandardMode, MavType};
         let autopilot = MavHeader { system_id: 2, component_id: 1, sequence: 0 };
         let mut px4 = HEARTBEAT_DATA::default();
         px4.mavtype = MavType::MAV_TYPE_QUADROTOR;
@@ -5783,6 +5787,8 @@ mod tests {
         px4.base_mode = MavModeFlag::from_bits_retain(0x01);
         let mut hub = Hub::default();
         hub.on_frame(origin(4), &autopilot, &MavMessage::HEARTBEAT(px4), 0, 0);
+        let monitor = MavMessage::AVAILABLE_MODES_MONITOR(AVAILABLE_MODES_MONITOR_DATA { seq: 7 });
+        assert!(hub.on_frame(origin(4), &autopilot, &monitor, 50_000, 50).is_empty(), "Vehicle.cc ignores AVAILABLE_MODES_MONITOR while the initial connect runs");
         let after_version = hub.on_frame(origin(4), &autopilot, &MavMessage::AUTOPILOT_VERSION(AUTOPILOT_VERSION_DATA::default()), 100_000, 100);
         assert_eq!(request_of(&after_version[0].1), (512, 435.0), "InitialConnectStateMachine asks for no PROTOCOL_VERSION");
         let mode = |index: u8, name: &str, custom: u32| {
