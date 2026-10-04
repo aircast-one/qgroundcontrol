@@ -606,7 +606,7 @@ fn reported_lookups(backend: &dyn Backend, page: &str, px4: bool) -> Vec<(i64, S
     }
 }
 
-fn missing_parameters_text(missing: &[(i64, String)]) -> String {
+pub(crate) fn missing_parameters_text(missing: &[(i64, String)]) -> String {
     let listed = missing
         .iter()
         .map(|(component, name)| format!("{}:{name}", if *component == DEFAULT_COMPONENT { MISSING_PARAM_COMPONENT } else { *component }))

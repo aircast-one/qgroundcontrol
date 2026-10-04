@@ -49,6 +49,10 @@ pub fn announce(backend: &dyn Backend) {
     parameters_ready_notices(setup_ready, announce.px4, announce.hitl).into_iter().chain(bad_cube.then_some(BAD_CUBE_BLACK)).for_each(|text| {
         crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, text);
     });
+    let missing: Vec<(i64, String)> = crate::vehiclefacade::setup_complete_missing_parameters().into_iter().map(|name| (-1, name)).collect();
+    if !missing.is_empty() {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::vehicleconfig::missing_parameters_text(&missing));
+    }
 }
 
 #[cfg(test)]

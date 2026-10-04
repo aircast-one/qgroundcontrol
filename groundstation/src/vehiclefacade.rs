@@ -905,11 +905,24 @@ fn vehicle_components() -> Option<Vec<Value>> {
     if !v.parameters_ready() {
         return Some(Vec::new());
     }
+    Some(described_components(v, crate::components::ardupilot, crate::components::px4))
+}
+
+pub fn setup_complete_missing_parameters() -> Vec<String> {
+    let hub = crate::hub::lock();
+    let Some(v) = hub.active().filter(|v| matches!(v.autopilot, crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4) && v.parameters_ready()) else {
+        return Vec::new();
+    };
+    let looked_up = described_components(v, crate::components::ardupilot_setup_lookups, crate::components::px4_setup_lookups);
+    looked_up.into_iter().filter(|name| v.parameter(v.component, name).is_none()).fold(Vec::new(), |missing, name| if missing.contains(&name) { missing } else { missing.into_iter().chain(std::iter::once(name)).collect() })
+}
+
+fn described_components<T>(v: &crate::hub::Vehicle, ardupilot: impl FnOnce(&crate::components::Vehicle) -> T, px4: impl FnOnce(&crate::components::Vehicle, Option<crate::components::Px4Actuators>) -> T) -> T {
     let parameter = |component: u8, name: &str| v.parameter(component, name).map(|p| p.as_f64());
     let version = v.firmware().and_then(|f| f.version).map(|(major, minor, patch, _)| (major, minor, patch));
     let described = crate::components::Vehicle { vehicle_type: v.vehicle_type, version, parameter: &parameter, default_component: v.component, hil: v.base_mode & MAV_MODE_FLAG_HIL_ENABLED != 0 };
     if v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
-        return Some(crate::components::ardupilot(&described));
+        return ardupilot(&described);
     }
     let value_of = |name: &str| v.parameter(v.component, name).map(|p| p.as_f64() as i64);
     let actuators = v.actuators_metadata.as_ref().and_then(|json| crate::actuators::parse(json).ok()).map(|metadata| {
@@ -917,7 +930,7 @@ fn vehicle_components() -> Option<Vec<Value>> {
         let configured = crate::actuators::configured_functions(&metadata, &value_of);
         crate::components::Px4Actuators { show_ui: metadata.show_ui_if.evaluate(&value_of), has_unset_required: !required.is_subset(&configured) }
     });
-    Some(crate::components::px4(&described, actuators))
+    px4(&described, actuators)
 }
 
 fn vehicle_component(path: &str) -> Option<(Value, Option<&str>)> {

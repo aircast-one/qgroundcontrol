@@ -607,7 +607,7 @@ impl Calibration {
 }
 
 pub fn accel_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
-    ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"].iter().all(|name| parameter(name) as f32 == 0.0)
+    ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"].iter().filter(|name| parameter(name) as f32 == 0.0).count() == 3
 }
 
 pub fn compass_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
