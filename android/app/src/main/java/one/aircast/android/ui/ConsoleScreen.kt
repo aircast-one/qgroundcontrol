@@ -46,7 +46,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
@@ -57,34 +56,8 @@ import one.aircast.mapspike.optText
 private const val CONSOLE_ROOT = "mavlinkConsole"
 private const val CONSOLE_VIEW = "view.mavlinkConsole"
 
-internal fun consoleEmptyText(sent: Boolean, connected: Boolean, servedReason: String): String = when {
-    !connected && servedReason.isNotBlank() -> servedReason
-    !connected -> "Connect a vehicle to open a shell on its autopilot."
-    sent -> "Sent. Nothing back from the vehicle yet."
-    else -> "No output yet. Send a command, for example help."
-}
-
-internal fun visibleConsoleLines(lines: List<String>): List<String> =
-    lines.dropLastWhile { it.isBlank() }
-
-internal fun consoleShellHint(px4Firmware: Boolean): String? =
-    if (px4Firmware) {
-        null
-    } else {
-        "Only PX4 vehicles answer this shell. This one runs other firmware, so it may not reply to anything you send."
-    }
-
-@Composable
-private fun ConsoleNotice(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyLarge,
-        textAlign = TextAlign.Center,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(24.dp),
-    )
-}
+internal const val CONSOLE_OPEN = "$CONSOLE_ROOT.open"
+internal const val CONSOLE_EMPTY_TEXT = "> "
 
 internal fun splitCompleteLines(field: TextFieldValue): Pair<String?, TextFieldValue> {
     val cut = field.text.lastIndexOf('\n')
@@ -101,21 +74,17 @@ internal fun shouldFollowTail(lastVisibleIndex: Int?, count: Int): Boolean =
 
 @Composable
 fun ConsoleScreen(modifier: Modifier = Modifier) {
-    val hasVehicle = hasVehicle()
-    val setupJson by qgcPath(SETUP)
-    val isPx4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     val consoleJson by qgcPath(CONSOLE_VIEW)
-    val rawLines = remember(consoleJson) { consoleLines(consoleJson) }
-    val emptyReason = remember(consoleJson) { consoleJson?.optText("emptyReason").orEmpty() }
-    val consoleConnected = remember(consoleJson) { consoleJson?.optBoolean("connected") == true }
+    val lines = remember(consoleJson) { consoleLines(consoleJson) }
     var field by remember { mutableStateOf(TextFieldValue("")) }
-    var sentAnything by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    val lines = visibleConsoleLines(rawLines)
+
+    LaunchedEffect(Unit) {
+        offMainInOrder { Qgc.invoke(CONSOLE_OPEN) }
+    }
 
     fun sendText(toSend: String) {
-        sentAnything = true
         offMainInOrder { Qgc.invoke("$CONSOLE_ROOT.sendCommand", toSend) }
     }
 
@@ -123,6 +92,9 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
         val toSend = field.text
         field = TextFieldValue("")
         sendText(toSend)
+        if (lines.isNotEmpty()) {
+            scope.launch { listState.scrollToItem(lines.size - 1) }
+        }
     }
 
     fun edit(next: TextFieldValue) {
@@ -143,30 +115,11 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    if (!hasVehicle) {
-        ConsoleNotice(
-            consoleEmptyText(sent = false, connected = false, servedReason = emptyReason),
-            modifier,
-        )
-        return
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
             .imePadding(),
     ) {
-        consoleShellHint(isPx4)?.let { hint ->
-            Text(
-                text = hint,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-        }
-
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -179,9 +132,10 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
             if (lines.isEmpty()) {
                 item {
                     Text(
-                        text = consoleEmptyText(sentAnything, consoleConnected, emptyReason),
+                        text = CONSOLE_EMPTY_TEXT,
+                        fontFamily = FontFamily.Monospace,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
             }
@@ -211,7 +165,7 @@ fun ConsoleScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 shape = CircleShape,
-                placeholder = { Text("Type a command") },
+                placeholder = { Text("Enter commands here...") },
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,

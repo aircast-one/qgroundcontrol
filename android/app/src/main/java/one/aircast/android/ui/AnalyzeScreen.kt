@@ -109,21 +109,17 @@ internal fun analyzeGate(page: AnalyzePage, connected: Boolean): String? =
 internal fun analyzeNote(
     page: AnalyzePage,
     connected: Boolean,
-    px4: Boolean,
     vibration: String?,
 ): String? = when {
     !connected -> null
-    page == AnalyzePage.Console && !px4 -> "Only PX4 vehicles answer this shell"
     page == AnalyzePage.Vibration -> vibration
     else -> null
 }
 
 @Composable
 private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier = Modifier, selected: AnalyzePage? = null) {
-    val setupJson by qgcPath(SETUP)
     val vibrationJson by qgcPath(VIBRATION_VIEW)
     val connected = hasVehicle()
-    val px4 = remember(setupJson) { isPx4(setupReadiness(setupJson)) }
     val caveat = remember(vibrationJson) { vibrationCaveat(vibrationJson) }
     val messagesJson by qgcPath(MESSAGES)
     val vibration = remember(vibrationJson) { vibrationReading(vibrationJson) }
@@ -152,7 +148,7 @@ private fun AnalyzePageList(onSelect: (AnalyzePage) -> Unit, modifier: Modifier 
                     title = page.label,
                     status = status,
                     state = state,
-                    subtitle = listOfNotNull(analyzeSubtitle(page, messages, vibration, rate), analyzeNote(page, connected, px4, caveat)).joinToString("\n"),
+                    subtitle = listOfNotNull(analyzeSubtitle(page, messages, vibration, rate), analyzeNote(page, connected, caveat)).joinToString("\n"),
                     onClick = { onSelect(page) },
                     icon = page.icon,
                     selected = page == selected,

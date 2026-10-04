@@ -8135,7 +8135,6 @@
         "view.mavlinkConsole.class",
         "view.mavlinkConsole.connected",
         "view.mavlinkConsole.count",
-        "view.mavlinkConsole.emptyReason",
         "view.mavlinkConsole.kind",
         "view.mavlinkConsole.last",
         "view.mavlinkConsole.lines.#",
@@ -12594,7 +12593,6 @@
         "class": "string",
         "connected": "bool",
         "count": "number",
-        "emptyReason": "string",
         "kind": "string",
         "last": "null",
         "lines": [

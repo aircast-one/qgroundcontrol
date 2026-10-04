@@ -1259,6 +1259,11 @@ impl<B: Backend> Facade<B> {
         match path {
             "mavlinkConsole.historyUp" => return Some(json!({ "ok": true, "result": history().up(&first()) }).to_string()),
             "mavlinkConsole.historyDown" => return Some(json!({ "ok": true, "result": history().down(&first()) }).to_string()),
+            "mavlinkConsole.open" => {
+                *history() = crate::console::CommandHistory::default();
+                let opened = crate::hub::lock().open_shell();
+                return Some(json!({ "ok": opened }).to_string());
+            }
             "mavlinkConsole.sendCommand" => {}
             _ => return None,
         }

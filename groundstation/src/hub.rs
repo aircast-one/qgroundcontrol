@@ -4354,6 +4354,10 @@ impl Hub {
         self.active.and_then(|id| self.vehicles.get(&id))
     }
 
+    pub fn open_shell(&mut self) -> bool {
+        self.active.and_then(|id| self.vehicles.get_mut(&id)).map(|v| v.shell = crate::shell::Shell::default()).is_some()
+    }
+
     pub fn recheck_setup_everywhere(&mut self) {
         self.vehicles.values_mut().filter(|v| v.parameters_ready()).for_each(|v| v.setup_recheck.joystick = true);
     }
@@ -5360,6 +5364,9 @@ mod tests {
         hub.on_frame(origin(0), &header, &shell(b"lost", 88), 1, 1);
         hub.on_frame(origin(0), &header, &shell(b"nsh> ", 5), 2, 2);
         assert_eq!(hub.active().map(|v| v.shell.lines()), Some(vec!["nsh> ".to_string()]), "Vehicle.cc discards a SERIAL_CONTROL whose count overruns its data rather than truncating it");
+        assert!(hub.open_shell(), "opening the console page makes a fresh MAVLinkConsoleController");
+        assert_eq!(hub.active().map(|v| v.shell.lines()), Some(Vec::new()), "whose model starts empty, so earlier output is gone");
+        assert!(!Hub::default().open_shell(), "nothing to open without an active vehicle");
     }
 
     #[test]

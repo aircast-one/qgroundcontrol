@@ -6,59 +6,17 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ConsoleScreenTest {
     @Test
-    fun `trailing blank lines are dropped`() {
-        assertEquals(
-            listOf("nsh>", "help"),
-            visibleConsoleLines(listOf("nsh>", "help", "", "  ", "")),
-        )
+    fun `an empty console shows the bare prompt like the MAVLinkConsolePage text area`() {
+        assertEquals("> ", CONSOLE_EMPTY_TEXT)
     }
 
     @Test
-    fun `blank lines inside the transcript are kept`() {
-        assertEquals(
-            listOf("a", "", "b"),
-            visibleConsoleLines(listOf("a", "", "b")),
-        )
-    }
-
-    @Test
-    fun `an all blank transcript reads as empty`() {
-        assertEquals(emptyList<String>(), visibleConsoleLines(listOf("", " ")))
-        assertEquals(emptyList<String>(), visibleConsoleLines(emptyList()))
-    }
-
-    @Test
-    fun `before anything is sent the empty console says what to try`() {
-        assertEquals(
-            "No output yet. Send a command, for example help.",
-            consoleEmptyText(sent = false, connected = true, servedReason = ""),
-        )
-    }
-
-    @Test
-    fun `after a command goes out the silence is the vehicle's, not the operator's`() {
-        assertEquals("Sent. Nothing back from the vehicle yet.", consoleEmptyText(sent = true, connected = true, servedReason = ""))
-    }
-}
-
-class ConsoleShellHintTest {
-    @Test
-    fun `a PX4 vehicle gets no hint`() {
-        assertNull(consoleShellHint(px4Firmware = true))
-    }
-
-    @Test
-    fun `another autopilot is warned without being blocked`() {
-        val hint = consoleShellHint(px4Firmware = false)
-
-        assertNotNull(hint)
-        assertTrue(hint!!.contains("may not reply"))
+    fun `opening the page asks the core for a fresh controller`() {
+        assertEquals("mavlinkConsole.open", CONSOLE_OPEN)
     }
 }
 
@@ -89,48 +47,7 @@ class ConsoleFollowTailTest {
     }
 }
 
-class ConsoleEmptyReasonTest {
-    @Test
-    fun `with no vehicle the core's sentence is the only correct one`() {
-        assertEquals(
-            "Connect to a vehicle to open a shell on it.",
-            consoleEmptyText(sent = false, connected = false, servedReason = "Connect to a vehicle to open a shell on it."),
-        )
-    }
-
-    @Test
-    fun `with no vehicle the core's sentence is the one shown, not this head's`() {
-        assertEquals(
-            "the screen returned early with its own wording before consoleEmptyText was reached, " +
-                "so the served branch could never fire and an operator read the head's sentence " +
-                "while the core had one - the same two-sentences-for-one-state fault PlanFileRules " +
-                "records having already been bitten by",
-            "Connect to a vehicle to open a shell on it.",
-            consoleEmptyText(false, connected = false, servedReason = "Connect to a vehicle to open a shell on it."),
-        )
-        assertEquals(
-            "a core too old to serve one still gets a sentence rather than the send-a-command text",
-            "Connect a vehicle to open a shell on its autopilot.",
-            consoleEmptyText(false, connected = false, servedReason = ""),
-        )
-    }
-
-    @Test
-    fun `once the operator has sent something this screen knows more than the core does`() {
-        assertEquals(
-            "Sent. Nothing back from the vehicle yet.",
-            consoleEmptyText(sent = true, connected = true, servedReason = "The vehicle has printed nothing."),
-        )
-    }
-
-    @Test
-    fun `connected and nothing sent keeps the invitation to type, not the core's flat statement`() {
-        assertEquals(
-            "No output yet. Send a command, for example help.",
-            consoleEmptyText(sent = false, connected = true, servedReason = "The vehicle has printed nothing."),
-        )
-    }
-
+class ConsoleLinesTest {
     @Test
     fun `lines come from the served array`() {
         assertEquals(listOf("a", "b"), consoleLines(JSONObject("""{"lines":["a","b"]}""")))

@@ -10,22 +10,17 @@ private const val NONE = "This vehicle is not reporting vibration"
 class AnalyzeNoteTest {
 
     @Test
-    fun `a console row does not promise a shell the vehicle will not answer`() {
-        assertEquals(
-            "the head knows the firmware in the list and made the operator open the page to find out",
-            "Only PX4 vehicles answer this shell",
-            analyzeNote(AnalyzePage.Console, connected = true, px4 = false, vibration = null),
-        )
-        assertNull(analyzeNote(AnalyzePage.Console, connected = true, px4 = true, vibration = null))
+    fun `the console row carries no firmware note, as the AnalyzeView page list has none`() {
+        assertNull(analyzeNote(AnalyzePage.Console, connected = true, vibration = null))
     }
 
     @Test
     fun `a vibration row says when the vehicle is sending none`() {
         assertEquals(
             NONE,
-            analyzeNote(AnalyzePage.Vibration, connected = true, px4 = true, vibration = NONE),
+            analyzeNote(AnalyzePage.Vibration, connected = true, vibration = NONE),
         )
-        assertNull(analyzeNote(AnalyzePage.Vibration, connected = true, px4 = true, vibration = null))
+        assertNull(analyzeNote(AnalyzePage.Vibration, connected = true, vibration = null))
     }
 
     @Test
@@ -51,7 +46,7 @@ class AnalyzeNoteTest {
         AnalyzePage.entries.forEach { page ->
             assertNull(
                 "the screens themselves say to connect a vehicle, and five copies of it in a menu is noise",
-                analyzeNote(page, connected = false, px4 = false, vibration = NONE),
+                analyzeNote(page, connected = false, vibration = NONE),
             )
         }
     }
@@ -59,7 +54,7 @@ class AnalyzeNoteTest {
     @Test
     fun `the rows this head cannot answer for carry nothing`() {
         listOf(AnalyzePage.LogDownload, AnalyzePage.Inspector, AnalyzePage.GeoTag).forEach { page ->
-            assertNull(analyzeNote(page, connected = true, px4 = false, vibration = NONE))
+            assertNull(analyzeNote(page, connected = true, vibration = NONE))
         }
     }
 
