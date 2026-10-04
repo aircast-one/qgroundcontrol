@@ -69,6 +69,7 @@ jobs:
         shell: bash
     env:
       HAS_RELEASE_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_PLAY_UPLOAD_KEYSTORE: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 != '' }}
       AIRCAST_ABI: arm64-v8a
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
@@ -187,13 +188,19 @@ jobs:
           ./gradlew --no-daemon :app:testQtDebugUnitTest :map-spike:testDebugUnitTest
           ./gradlew --no-daemon :app:assembleQtRelease
 
+      - name: Install the Play upload keystore
+        if: ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' }}
+        env:
+          PLAY_UPLOAD_KEYSTORE_BASE64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_BASE64 }}
+        run: echo "$PLAY_UPLOAD_KEYSTORE_BASE64" | base64 -d > "${RUNNER_TEMP}/play-upload.keystore"
+
       - name: Build the Rust core head bundle
         working-directory: ${{ github.workspace }}/android
         env:
           AIRCAST_QGC_AAR: ${{ runner.temp }}/build/android-build/AircastQGC.aar
-          AIRCAST_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && env.QT_ANDROID_KEYSTORE_PATH || '' }}
-          AIRCAST_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
-          AIRCAST_KEY_ALIAS: ${{ env.QT_ANDROID_KEYSTORE_ALIAS }}
+          AIRCAST_KEYSTORE: ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' && format('{0}/play-upload.keystore', runner.temp) || (secrets.ANDROID_KEYSTORE_BASE64 != '' && env.QT_ANDROID_KEYSTORE_PATH || '') }}
+          AIRCAST_KEYSTORE_PASSWORD: ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' && secrets.PLAY_UPLOAD_KEYSTORE_PASSWORD || secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
+          AIRCAST_KEY_ALIAS: ${{ env.HAS_PLAY_UPLOAD_KEYSTORE == 'true' && 'aircast-upload' || env.QT_ANDROID_KEYSTORE_ALIAS }}
           AIRCAST_VERSION_CODE: ${{ github.run_number }}
           RELEASE_TAG: ${{ needs.setup.outputs.version }}
         run: |
