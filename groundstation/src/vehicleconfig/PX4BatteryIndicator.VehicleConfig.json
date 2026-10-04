@@ -1,6 +1,12 @@
 {
     "fileType": "VehicleConfig",
     "version": 1,
+    "params": {
+        "_requiredComLowBatAct": { "name": "COM_LOW_BAT_ACT", "required": true },
+        "_requiredBatLowThr": { "name": "BAT_LOW_THR", "required": true },
+        "_requiredBatCritThr": { "name": "BAT_CRIT_THR", "required": true },
+        "_requiredBatEmergenThr": { "name": "BAT_EMERGEN_THR", "required": true }
+    },
     "sections": [
         {
             "title": "Low Battery Failsafe",

@@ -2,15 +2,21 @@
     "fileType": "VehicleConfig",
     "version": 1,
     "params": {
-        "_leakEnable": "FS_LEAK_ENABLE",
+        "_leakEnable": { "name": "FS_LEAK_ENABLE", "required": true },
         "_batteryEnable": { "name": "BATT_FS_LOW_ACT", "required": false },
         "_batteryDetected": { "name": "BATT_LOW_MAH", "existsOnly": true },
-        "_ekfEnable": "FS_EKF_ACTION",
+        "_ekfEnable": { "name": "FS_EKF_ACTION", "required": true },
         "_pilotEnable": { "name": "FS_PILOT_INPUT", "required": false },
-        "_temperatureEnable": "FS_TEMP_ENABLE",
-        "_pressureEnable": "FS_PRESS_ENABLE",
+        "_temperatureEnable": { "name": "FS_TEMP_ENABLE", "required": true },
+        "_pressureEnable": { "name": "FS_PRESS_ENABLE", "required": true },
         "_armingCheck": { "name": "ARMING_CHECK", "required": false },
-        "_armingSkipCheck": { "name": "ARMING_SKIPCHK", "required": false }
+        "_armingSkipCheck": { "name": "ARMING_SKIPCHK", "required": false },
+        "_requiredFsGcsEnable": { "name": "FS_GCS_ENABLE", "required": true },
+        "_requiredFsPressMax": { "name": "FS_PRESS_MAX", "required": true },
+        "_requiredFsTempMax": { "name": "FS_TEMP_MAX", "required": true },
+        "_requiredLeak1Pin": { "name": "LEAK1_PIN", "required": true },
+        "_requiredLeak1Logic": { "name": "LEAK1_LOGIC", "required": true },
+        "_requiredFsEkfThresh": { "name": "FS_EKF_THRESH", "required": true }
     },
     "sections": [
         {

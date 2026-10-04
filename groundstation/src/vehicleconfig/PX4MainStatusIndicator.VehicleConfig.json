@@ -1,6 +1,10 @@
 {
     "fileType": "VehicleConfig",
     "version": 1,
+    "params": {
+        "_requiredNavDllAct": { "name": "NAV_DLL_ACT", "required": true },
+        "_requiredComDlLossT": { "name": "COM_DL_LOSS_T", "required": true }
+    },
     "sections": [
         {
             "title": "Ground Control Comm Loss Failsafe",

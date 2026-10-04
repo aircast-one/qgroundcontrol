@@ -9,7 +9,9 @@
         "_fenceAlt": {
             "name": "GF_MAX_VER_DIST",
             "required": true
-        }
+        },
+        "_requiredRtlReturnAlt": { "name": "RTL_RETURN_ALT", "required": true },
+        "_requiredGfAction": { "name": "GF_ACTION", "required": true }
     },
     "sections": [
         {

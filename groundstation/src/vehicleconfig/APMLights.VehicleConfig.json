@@ -1,6 +1,20 @@
 {
     "fileType": "VehicleConfig",
     "version": 1,
+    "params": {
+        "_requiredServo5Function": { "name": "SERVO5_FUNCTION", "required": true },
+        "_requiredServo6Function": { "name": "SERVO6_FUNCTION", "required": true },
+        "_requiredServo7Function": { "name": "SERVO7_FUNCTION", "required": true },
+        "_requiredServo8Function": { "name": "SERVO8_FUNCTION", "required": true },
+        "_requiredServo9Function": { "name": "SERVO9_FUNCTION", "required": true },
+        "_requiredServo10Function": { "name": "SERVO10_FUNCTION", "required": true },
+        "_requiredServo11Function": { "name": "SERVO11_FUNCTION", "required": true },
+        "_requiredServo12Function": { "name": "SERVO12_FUNCTION", "required": true },
+        "_requiredServo13Function": { "name": "SERVO13_FUNCTION", "required": true },
+        "_requiredServo14Function": { "name": "SERVO14_FUNCTION", "required": true },
+        "_requiredServo15Function": { "name": "SERVO15_FUNCTION", "required": true },
+        "_requiredServo16Function": { "name": "SERVO16_FUNCTION", "required": true }
+    },
     "sections": [
         {
             "title": "Light Output Channels",

@@ -1382,6 +1382,10 @@ mod tests {
         assert_eq!(missing.iter().filter(|n| *n == "CP_DIST").count(), 1, "each name once");
         let present = Fake::new(&[("CP_DIST", 1.0), ("GF_MAX_HOR_DIST", 0.0), ("GF_MAX_VER_DIST", 0.0), ("COM_DISARM_LAND", 2.0), ("RTL_LAND_DELAY", 0.0)]);
         assert!(missing_parameters(&present, &["Safety"], true).iter().all(|n| !["CP_DIST", "GF_MAX_VER_DIST"].contains(&n.as_str())));
+        let mut bare = Fake::new(&[]);
+        bare.px4 = true;
+        let battery = missing_parameters(&bare, &[BATTERY_SETTINGS], true);
+        assert!(["COM_LOW_BAT_ACT", "BAT_LOW_THR", "BAT_CRIT_THR", "BAT_EMERGEN_THR"].iter().all(|n| battery.contains(&n.to_string())), "PX4BatteryIndicator looks every one up unguarded: {battery:?}");
         let config = json!({});
         let scope = scope_for(&fake, &config);
         UNMET.set(Some(vec![]));
