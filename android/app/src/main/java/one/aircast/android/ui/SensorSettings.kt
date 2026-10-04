@@ -85,6 +85,7 @@ internal const val ORIENTATIONS_HELP = "Adjust orientations as needed.\n\nROTATI
 internal fun CompassOrientations() {
     var revision by remember { mutableIntStateOf(0) }
     var read by remember { mutableStateOf<SensorSettings?>(null) }
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke(SETUP_DIALOG_OPENED, SENSOR_SETTINGS_DIALOG, false) } }
     LaunchedEffect(revision) { read = withContext(Dispatchers.Default) { sensorSettings(Qgc.get(SENSOR_SETTINGS_VIEW)) } }
     val oriented = read?.compasses.orEmpty().mapNotNull { compass -> compass.orientation?.let { compass to it } }
     if (oriented.isEmpty()) return
@@ -100,6 +101,7 @@ internal fun SensorSettingsBlock(calibrating: Boolean, showCompasses: Boolean, o
     var read by remember { mutableStateOf<SensorSettings?>(null) }
     var simple by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke(SETUP_DIALOG_OPENED, SENSOR_SETTINGS_DIALOG, calibrating) } }
     LaunchedEffect(revision) { read = withContext(Dispatchers.Default) { sensorSettings(Qgc.get(SENSOR_SETTINGS_VIEW)) } }
     val settings = read ?: return
     val refresh: () -> Unit = { revision++ }

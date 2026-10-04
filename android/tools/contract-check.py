@@ -369,6 +369,7 @@ ACCEPTED = {
     "yawLockOffered": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "yawText": "view.gimbalIndicator with a gimbal attached; the rig has none, so the recording holds only shown:false. Read in GimbalIndicator.kt",
     "result": "the invoke envelope, not a view field",
+    "exists": "setup.dialogOpened's answer for a param:// link (vehicleconfig.rs dialog_opened), an invoke result rather than a view. Read in ParameterLinks.kt",
     "otherVehicle": "parameterFile.review's answer, an invoke result rather than a view",
     "multipleComponents": "parameterFile.review's answer, an invoke result rather than a view",
     "parsed": "parameterFile.review's answer (ParameterDiffDialog diffParsedCount), an invoke result rather than a view",

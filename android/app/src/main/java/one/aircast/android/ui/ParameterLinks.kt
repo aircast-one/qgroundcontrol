@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,13 +44,24 @@ private const val PARAM_SCHEME = "param://"
 
 internal fun paramLinkName(url: String): String? = url.takeIf { it.startsWith(PARAM_SCHEME) }?.removePrefix(PARAM_SCHEME)?.takeIf { it.isNotBlank() }
 
+internal const val SETUP_DIALOG_OPENED = "setup.dialogOpened"
+internal const val SENSOR_SETTINGS_DIALOG = "sensorSettings"
+private const val PARAMETER_EDITOR_DIALOG = "parameterEditor"
+
+internal fun parameterLinkOpens(name: String): Boolean =
+    Qgc.call(SETUP_DIALOG_OPENED, PARAMETER_EDITOR_DIALOG, name)?.optBoolean("exists", true) ?: true
+
 @Composable
 internal fun LinkedText(html: String, style: TextStyle, color: Color, onParameter: (String) -> Unit, modifier: Modifier = Modifier) {
     val uris = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
+    val opener by rememberUpdatedState(onParameter)
     val text = remember(html) {
         AnnotatedString.fromHtml(html) { link ->
             val url = (link as? LinkAnnotation.Url)?.url ?: return@fromHtml
-            paramLinkName(url)?.let(onParameter) ?: runCatching { uris.openUri(url) }
+            paramLinkName(url)?.let { name ->
+                scope.launch { if (withContext(Dispatchers.Default) { parameterLinkOpens(name) }) opener(name) }
+            } ?: runCatching { uris.openUri(url) }
         }
     }
     Text(text, style = style, color = color, modifier = modifier)

@@ -513,6 +513,44 @@ pub fn page_opened(backend: &dyn Backend, args: &str) -> Value {
     json!({ "ok": true })
 }
 
+pub const DIALOG_OPENED: &str = "setup.dialogOpened";
+pub const SENSOR_SETTINGS_DIALOG: &str = "sensorSettings";
+pub const PARAMETER_EDITOR_DIALOG: &str = "parameterEditor";
+const PX4_MAX_MAG_INDEX: usize = 50;
+
+pub fn dialog_opened(backend: &dyn Backend, args: &str) -> Value {
+    let parsed = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let core = !crate::qthost::present();
+    let lookups = match (parsed[0].as_str(), &parsed[1]) {
+        (Some(SENSOR_SETTINGS_DIALOG), calibrating) if core => sensor_settings_dialog_lookups(backend, *calibrating == true),
+        (Some(SENSOR_SETTINGS_DIALOG), _) => vec![],
+        (Some(PARAMETER_EDITOR_DIALOG), Value::String(name)) if !name.is_empty() => at(DEFAULT_COMPONENT, [name.as_str()]),
+        _ => return json!({ "ok": false, "reason": "setup.dialogOpened takes the dialog name and its argument" }),
+    };
+    let missing = absent(backend, lookups);
+    if core && !missing.is_empty() {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &missing_parameters_text(&missing));
+    }
+    json!({ "ok": true, "exists": missing.is_empty() })
+}
+
+fn sensor_settings_dialog_lookups(backend: &dyn Backend, calibrating: bool) -> Vec<(i64, String)> {
+    match (px4(backend), calibrating) {
+        (false, _) => at(DEFAULT_COMPONENT, ["COMPASS_AUTODEC"]),
+        (true, true) => vec![],
+        (true, false) => at(DEFAULT_COMPONENT, px4_orientation_dialog_lookups(backend)),
+    }
+}
+
+fn px4_orientation_dialog_lookups(backend: &dyn Backend) -> Vec<String> {
+    let exists = |name: &str| parameter_exists(backend, DEFAULT_COMPONENT, name);
+    let mags_disabled = exists("SYS_HAS_MAG") && crate::read::value_number(&backend.get("vehicle.parameterManager.getParameter(-1,SYS_HAS_MAG).rawValue")) == Some(0.0);
+    match mags_disabled {
+        true => vec![],
+        false => (0..PX4_MAX_MAG_INDEX).map_while(|index| exists(&format!("CAL_MAG{index}_ID")).then(|| format!("CAL_MAG{index}_ROT"))).collect(),
+    }
+}
+
 thread_local! {
     static UNMET: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
 }
@@ -1542,6 +1580,24 @@ mod tests {
         let channel: Vec<String> = reported_lookups(&mode_switch, "Flight Modes", true).into_iter().map(|(_, name)| name).collect();
         assert!(channel.ends_with(&["RC5_REV", "RC5_MIN", "RC5_MAX"].map(String::from)), "PX4SimpleFlightModesController reads the mode channel's REV/MIN/MAX on every RC_CHANNELS: {channel:?}");
         assert!(!looked_up(json!({}), &[], "Flight Modes", true).iter().any(|n| n.starts_with("RC0_")), "no mode channel, no channel reads");
+    }
+
+    #[test]
+    fn sensor_dialogs_and_parameter_links_report_their_own_lookups_like_qgc() {
+        let apm = Fake::new(&[]);
+        assert_eq!(names(&sensor_settings_dialog_lookups(&apm, true)), ["COMPASS_AUTODEC"], "APMSensorsComponent orientationsDialog builds the declination checkbox for every calibration type");
+        assert_eq!(dialog_opened(&apm, r#"["sensorSettings", false]"#)["exists"], false);
+        assert_eq!(dialog_opened(&Fake::new(&[("COMPASS_AUTODEC", 1.0)]), r#"["sensorSettings", true]"#)["exists"], true);
+        let mut px4 = Fake::new(&[("CAL_MAG0_ID", 1.0), ("CAL_MAG1_ID", 2.0), ("CAL_MAG3_ID", 3.0), ("CAL_MAG0_ROT", 0.0)]);
+        px4.px4 = true;
+        assert_eq!(names(&sensor_settings_dialog_lookups(&px4, false)), ["CAL_MAG0_ROT", "CAL_MAG1_ROT"], "setOrientationsDialog repeats over the contiguous CAL_MAGn_ID run");
+        assert!(sensor_settings_dialog_lookups(&px4, true).is_empty(), "preCalibrationDialog only shows the page's SENS_BOARD_ROT");
+        assert_eq!(dialog_opened(&px4, r#"["sensorSettings", false]"#)["exists"], false);
+        px4.params.borrow_mut().insert("SYS_HAS_MAG".into(), 0.0);
+        assert!(sensor_settings_dialog_lookups(&px4, false).is_empty(), "_allMagsDisabled makes currentMagParamCount 0");
+        assert_eq!(dialog_opened(&px4, r#"["parameterEditor", "CAL_MAG0_ID"]"#)["exists"], true);
+        assert_eq!(dialog_opened(&px4, r#"["parameterEditor", "NOPE"]"#)["exists"], false, "a param:// link to a missing parameter reports it and opens no editor");
+        assert_eq!(dialog_opened(&px4, r#"["parameterEditor"]"#)["ok"], false);
     }
 
     #[test]
