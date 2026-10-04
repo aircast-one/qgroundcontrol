@@ -15,4 +15,11 @@ class ScriptingScreenTest {
         assertEquals(0.5f, page.progress)
         assertFalse(scripting(JSONObject("""{"available":false}"""))!!.available)
     }
+
+    @Test
+    fun a_refused_transfer_opens_the_lua_dialog_with_the_core_text_or_the_fallback() {
+        assertEquals(ScriptRefusal("Lua Delete", "Another FTP operation is in progress"), scriptRefusal("Lua Delete", "Another FTP operation is in progress", "Delete failed"))
+        assertEquals(ScriptRefusal("Lua Upload", "Upload failed"), scriptRefusal("Lua Upload", "", "Upload failed"))
+        assertEquals(null, scriptRefusal("Lua Download", null, "Download failed"))
+    }
 }

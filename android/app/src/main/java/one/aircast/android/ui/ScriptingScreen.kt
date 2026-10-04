@@ -41,7 +41,7 @@ import org.json.JSONObject
 
 internal const val SCRIPTING_VIEW = "view.scripting"
 internal const val SCRIPTING_SCREEN = "scripting"
-internal const val SCRIPTING_REFRESH = "scripting.refresh"
+internal const val SCRIPTING_OPEN = "scripting.open"
 internal const val SCRIPTING_UPLOAD = "scripting.upload"
 internal const val SCRIPTING_DOWNLOAD = "scripting.download"
 internal const val SCRIPTING_DELETE = "scripting.delete"
@@ -59,6 +59,11 @@ internal data class Scripting(
     val status: String,
     val unsupportedText: String,
 )
+
+internal data class ScriptRefusal(val title: String, val text: String)
+
+internal fun scriptRefusal(title: String, reason: String?, fallback: String): ScriptRefusal? =
+    reason?.let { ScriptRefusal(title, it.ifBlank { fallback }) }
 
 internal fun scripting(view: JSONObject?): Scripting? = view?.let {
     val scripts = it.optJSONArray("scripts")
@@ -85,26 +90,26 @@ private fun displayName(context: android.content.Context, uri: Uri): String =
 fun ScriptingScreen(modifier: Modifier = Modifier) {
     var revision by remember { mutableIntStateOf(0) }
     var read by remember { mutableStateOf<Scripting?>(null) }
-    var refusal by remember { mutableStateOf<String?>(null) }
+    var refusal by remember { mutableStateOf<ScriptRefusal?>(null) }
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     var pendingDownload by remember { mutableStateOf<String?>(null) }
-    var refreshedOnOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.Default) { Qgc.invoke(SCRIPTING_OPEN) }
+        revision++
+    }
+
     LaunchedEffect(revision) {
         read = withContext(Dispatchers.Default) { scripting(Qgc.get(SCRIPTING_VIEW)) }
-        if (!refreshedOnOpen && read?.enabled == true) {
-            refreshedOnOpen = true
-            withContext(Dispatchers.Default) { Qgc.invoke(SCRIPTING_REFRESH) }
-        }
         delay(if (read?.busy == true) BUSY_POLL_MS else IDLE_POLL_MS)
         revision++
     }
 
     fun act(path: String, vararg args: Any) {
         scope.launch {
-            refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(path, *args) }
+            withContext(Dispatchers.Default) { Qgc.refusalOf(path, *args) }
             revision++
         }
     }
@@ -116,7 +121,7 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
                 val name = displayName(context, chosen).replace('/', '_')
                 val staged = File(context.cacheDir, "upload-$name")
                 val copied = runCatching { context.contentResolver.openInputStream(chosen)?.use { source -> staged.outputStream().use { source.copyTo(it) } } != null }.getOrDefault(false)
-                if (copied) Qgc.refusalOf(SCRIPTING_UPLOAD, staged.absolutePath, name) else "That file could not be read."
+                scriptRefusal("Lua Upload", if (copied) Qgc.refusalOf(SCRIPTING_UPLOAD, staged.absolutePath, name) else "File $name does not exist", "Upload failed")
             }
             revision++
         }
@@ -128,7 +133,7 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
             val staged = File(context.cacheDir, "download-$name")
             withContext(Dispatchers.IO) { staged.delete() }
             val saved = withContext(Dispatchers.IO) { displayName(context, target) }
-            refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(SCRIPTING_DOWNLOAD, name, staged.absolutePath, saved) }
+            refusal = withContext(Dispatchers.Default) { scriptRefusal("Lua Download", Qgc.refusalOf(SCRIPTING_DOWNLOAD, name, staged.absolutePath, saved), "Download failed") }
             while (refusal == null && withContext(Dispatchers.Default) { scripting(Qgc.get(SCRIPTING_VIEW))?.busy } == true) delay(BUSY_POLL_MS)
             withContext(Dispatchers.IO) {
                 when (refusal == null && staged.exists()) {
@@ -147,7 +152,7 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
         return
     }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        page.enable?.let { FactRow(it, title = "Enable scripting") { act(SCRIPTING_REFRESH) } }
+        page.enable?.let { FactRow(it, title = "Enable scripting") { revision++ } }
         Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (page.status.isNotBlank()) Text(page.status, style = MaterialTheme.typography.bodyMedium)
             OutlinedButton(enabled = page.enabled && !page.busy, onClick = { uploader.launch(arrayOf("*/*")) }) { Text("Upload") }
@@ -168,7 +173,6 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
                 }
                 LinearProgressIndicator(progress = { page.progress }, modifier = Modifier.fillMaxWidth())
             }
-            refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
     }
     confirmDelete?.let { name ->
@@ -179,10 +183,21 @@ fun ScriptingScreen(modifier: Modifier = Modifier) {
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = null
-                    act(SCRIPTING_DELETE, name)
+                    scope.launch {
+                        refusal = withContext(Dispatchers.Default) { scriptRefusal("Lua Delete", Qgc.refusalOf(SCRIPTING_DELETE, name), "Delete failed") }
+                        revision++
+                    }
                 }) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
+        )
+    }
+    refusal?.let { shown ->
+        AlertDialog(
+            onDismissRequest = { refusal = null },
+            title = { Text(shown.title) },
+            text = { Text(shown.text) },
+            confirmButton = { TextButton(onClick = { refusal = null }) { Text("OK") } },
         )
     }
 }

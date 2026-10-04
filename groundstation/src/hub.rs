@@ -1187,7 +1187,6 @@ impl Vehicle {
         self.camera_definition_from = camera;
         self.files.job = Some(job);
         self.files.progress = 0.0;
-        self.files.generation += 1;
         Ok(self.follow_files(steps, now_ms))
     }
 
@@ -2796,7 +2795,6 @@ impl Vehicle {
                 self.files_for_logs = true;
                 self.files.job = Some(job);
                 self.files.progress = 0.0;
-                self.files.generation += 1;
                 self.follow_files(steps, now_ms)
             }
             Err(error) => self.log_file_job_done(&wanted.kind(), Err(error), now_ms),
@@ -5741,6 +5739,7 @@ mod tests {
         hub.on_frame(origin(4), &autopilot, &ftp_reply(eof), 20_200_000, 20_200);
         let files = &hub.active().unwrap().files;
         assert!(!files.busy());
+        assert_eq!(files.generation, 1, "only a finished transfer moves the generation the scripting page watches");
         assert_eq!(files.last, Some(("/APM/scripts/".to_string(), Ok(crate::filejobs::Outcome::Listed(vec!["Fhello.lua\t120".into(), "Dmodules".into()])))));
     }
 
@@ -5754,6 +5753,7 @@ mod tests {
         let sent = vehicle.start_guided(&json!({ "action": "ftp", "op": "download", "path": "mftp://camera.xml", "cameraDefinition": 100 }), 20_000).unwrap();
         assert!(matches!(decode(&sent[0]), MavMessage::FILE_TRANSFER_PROTOCOL(d) if d.target_component == 100), "QGC downloads the definition from the camera's own component");
         assert_eq!(vehicle.camera_definition_from, Some(100));
+        assert_eq!(vehicle.files.generation, 0, "starting someone else's transfer does not re-read the last script result");
         assert!(vehicle.start_guided(&json!({ "action": "ftp", "op": "list", "path": "/" }), 20_000).err().as_deref() == Some(FILES_BUSY));
     }
 
