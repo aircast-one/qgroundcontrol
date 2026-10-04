@@ -574,6 +574,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "latitude": v.facts.coordinate.map(|(latitude, _, _)| f64::from(latitude as f32)),
         "longitude": v.facts.coordinate.map(|(_, longitude, _)| f64::from(longitude as f32)),
     });
+    let fields = if v.is_ardusub() { crate::vehiclefact::sub_described(fields) } else { fields };
     let fields = match (fields, v.control.fields()) {
         (Value::Object(mut mine), Value::Object(control)) => {
             mine.extend(control);

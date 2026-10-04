@@ -8,6 +8,10 @@ const ACRONYMS: &[&str] = &[
     "ADSB", "AGL", "AMSL", "APM", "ESC", "GCS", "GPS", "ID", "IMU", "NMEA", "PX4", "RC", "RTK", "RTSP", "TCP", "UDP", "UVC", "VTOL", "UTM", "SBS", "3D",
 ];
 
+pub fn capitalised(name: &str) -> String {
+    name.chars().take(1).flat_map(char::to_uppercase).chain(name.chars().skip(1)).collect()
+}
+
 pub fn humanise(identifier: &str) -> String {
     let chars: Vec<char> = identifier.chars().collect();
     let spelt_acronym = |from: usize, at: usize| -> bool {

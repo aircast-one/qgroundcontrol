@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::label::humanise;
+use crate::label::capitalised;
 use crate::read::{Unit, object};
 use crate::router::Backend;
 
@@ -98,7 +98,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
         .map(|(group, name)| {
             let fact = object(&backend.get(&fact_path(group, name)));
             let resolves = fact.get("found").and_then(Value::as_bool) != Some(false);
-            let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
+            let described = (fact.get("kind").and_then(Value::as_str) == Some("fact")).then(|| fact.get("shortDescription").and_then(Value::as_str).unwrap_or_default().to_string());
             let fresh = converted(backend, &fact);
             let unset = matches!(fact.get("value"), Some(Value::Null));
             let held = (!unset).then(|| crate::read::shown_text(&fact)).flatten();
@@ -111,7 +111,7 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
                 "id": format!("{group}/{name}"),
                 "group": group,
                 "name": name,
-                "label": args.is_empty().then(|| DEFAULT_TEXT.iter().find(|(id, _)| *id == format!("{group}/{name}")).map(|(_, text)| text.to_string())).flatten().or(described.map(str::to_string)).unwrap_or_else(|| humanise(name)),
+                "label": args.is_empty().then(|| DEFAULT_TEXT.iter().find(|(id, _)| *id == format!("{group}/{name}")).map(|(_, text)| text.to_string())).flatten().or(described).unwrap_or_else(|| capitalised(name)),
                 "defaultIcon": DEFAULT_ICONS.iter().find(|(id, _)| *id == format!("{group}/{name}")).map_or("", |(_, icon)| icon),
                 "value": value.clone().unwrap_or_else(|| ABSENT.to_string()),
                 "units": if value.is_some() { units } else { "" },
@@ -171,11 +171,11 @@ mod tests {
         assert_eq!(items[1]["label"], "Alt (Rel)");
         assert_eq!(items[1]["value"], "25.0");
         assert_eq!(items[1]["units"], "m");
-        assert_eq!(items[2]["label"], "Ground Speed");
+        assert_eq!(items[2]["label"], "", "the cell text is the fact's shortDescription, even an empty one");
         assert_eq!(selections(&[], true).last().map(|(_, name)| name.as_str()), Some("airSpeed"), "fixed wing, VTOL and airship add AirSpeed");
         assert_eq!(items[2]["value"], "\u{2014}");
         assert_eq!(items[2]["missing"], true);
-        assert_eq!(items[3]["label"], "Climb Rate");
+        assert_eq!(items[3]["label"], "ClimbRate", "a fact the vehicle lacks keeps QGCCorePlugin's factName as its text");
         assert_eq!(view["available"], true);
         struct Plane;
         impl Backend for Plane {

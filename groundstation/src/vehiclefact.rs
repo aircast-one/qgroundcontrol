@@ -818,7 +818,37 @@ fn same_names<'a>(names: &'a [&'a str]) -> impl Iterator<Item = (&'a str, &'a st
     names.iter().map(|name| (*name, *name))
 }
 
-pub fn instrument_catalogue() -> (Vec<(&'static str, Value)>, Value) {
+const SUB_DESCRIPTIONS: [(&str, &str); 5] = [("altitudeRelative", "Depth"), ("flightTime", "Dive Time"), ("altitudeAMSL", ""), ("hobbs", ""), ("airSpeed", "")];
+
+pub fn sub_described(fields: Value) -> Value {
+    match fields {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, fact)| match (SUB_DESCRIPTIONS.iter().find(|(name, _)| *name == key), fact) {
+                    (Some((_, text)), Value::Object(described)) => (key, Value::Object(described.into_iter().filter(|(field, _)| field != "shortDescription").chain([("shortDescription".to_string(), json!(text))]).collect())),
+                    (_, fact) => (key, fact),
+                })
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+fn sub_listing(listing: Value) -> Value {
+    let facts: Vec<Value> = listing["facts"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|fact| match SUB_DESCRIPTIONS.iter().find(|(name, _)| fact["name"] == *name) {
+            Some((_, text)) => json!({ "property": fact["property"], "name": fact["name"], "shortDescription": text }),
+            None => fact,
+        })
+        .collect();
+    json!({ "kind": "object", "facts": facts })
+}
+
+pub fn instrument_catalogue(sub: bool) -> (Vec<(&'static str, Value)>, Value) {
     let spec = |s: &GroupSpec| listing(s.meta, s.properties.iter().copied());
     let groups = vec![
         ("orbitMapCircle", listing(CIRCLE_META, [("radius", "Radius")])),
@@ -843,7 +873,8 @@ pub fn instrument_catalogue() -> (Vec<(&'static str, Value)>, Value) {
         ("radioStatus", spec(&RADIO)),
         ("aircastLink", spec(&AIRCAST_LINK)),
     ];
-    (groups, listing(VEHICLE_META, same_names(&VEHICLE_PROPERTIES)))
+    let vehicle = listing(VEHICLE_META, same_names(&VEHICLE_PROPERTIES));
+    (groups, if sub { sub_listing(vehicle) } else { vehicle })
 }
 
 pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {
@@ -1000,8 +1031,17 @@ mod tests {
     }
 
     #[test]
+    fn an_ardusub_renames_its_vehicle_facts_like_ardusub_firmware_plugin_adjust_meta_data() {
+        let (_, vehicle) = instrument_catalogue(true);
+        let described = |name: &str| vehicle["facts"].as_array().unwrap().iter().find(|f| f["name"] == name).unwrap()["shortDescription"].clone();
+        assert_eq!([described("altitudeRelative"), described("flightTime"), described("altitudeAMSL"), described("hobbs"), described("airSpeed"), described("groundSpeed")], [json!("Depth"), json!("Dive Time"), json!(""), json!(""), json!(""), json!("Ground Speed")]);
+        let served = sub_described(json!({ "altitudeRelative": { "kind": "fact", "shortDescription": "Alt (Rel)" }, "armed": true }));
+        assert_eq!((served["altitudeRelative"]["shortDescription"].clone(), served["armed"].clone()), (json!("Depth"), json!(true)));
+    }
+
+    #[test]
     fn the_instrument_catalogue_describes_each_group_from_its_metadata() {
-        let (groups, vehicle) = instrument_catalogue();
+        let (groups, vehicle) = instrument_catalogue(false);
         assert_eq!(groups.first().map(|(g, _)| *g), Some("orbitMapCircle"));
         let aggregate = &groups.iter().find(|(g, _)| *g == "gpsAggregate").unwrap().1["facts"];
         assert_eq!((aggregate[0]["shortDescription"].as_str(), aggregate[3]["shortDescription"].as_str()), (Some("Signal Spoofing State"), Some("")), "isStale has no metadata in GPSFact.json, so its label falls back to its name");

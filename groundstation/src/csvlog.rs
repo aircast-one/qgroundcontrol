@@ -32,7 +32,7 @@ fn setting(path: &str) -> bool {
 }
 
 pub fn columns() -> Vec<String> {
-    let (groups, vehicle) = crate::vehiclefact::instrument_catalogue();
+    let (groups, vehicle) = crate::vehiclefact::instrument_catalogue(false);
     let names = |listing: &Value| -> Vec<String> {
         listing["facts"].as_array().cloned().unwrap_or_default().iter().filter_map(|fact| fact["property"].as_str().map(str::to_string)).collect()
     };
