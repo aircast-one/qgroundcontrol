@@ -1264,8 +1264,8 @@ impl Cameras {
         tracked.identified = true;
         tracked.attempts = 0;
         tracked.due = None;
-        tracked.last_heartbeat_ms = now_ms;
-        self.cameras.push(Camera::new(compid, info, now_ms));
+        let heard_ms = tracked.last_heartbeat_ms;
+        self.cameras.push(Camera { last_heartbeat_ms: heard_ms, ..Camera::new(compid, info, now_ms) });
     }
 
     pub fn on_definition_known(&mut self, compid: u8, has_parameters: bool, has_mode_parameter: bool) {
@@ -1319,7 +1319,11 @@ impl Cameras {
         let retried = match (asked_for_information, result) {
             (true, RESULT_ACCEPTED | RESULT_IN_PROGRESS) => {
                 if let Some(tracked) = self.tracked.iter_mut().find(|tracked| tracked.compid == compid && !tracked.identified) {
-                    tracked.answer_by = Some(now_ms + REQUEST_TIMEOUT_MS);
+                    tracked.answer_by = match (sent, result) {
+                        (CMD_REQUEST_MESSAGE, _) => Some(now_ms + REQUEST_TIMEOUT_MS),
+                        (_, RESULT_IN_PROGRESS) => Some(now_ms + timeout),
+                        _ => None,
+                    };
                 }
                 None
             }
@@ -1357,7 +1361,7 @@ impl Cameras {
         if !lost.is_empty() {
             self.cameras.retain(|camera| !lost.contains(&camera.compid));
             self.tracked.retain(|tracked| !lost.contains(&tracked.compid));
-            self.selected = self.selected.filter(|compid| !lost.contains(compid));
+            self.selected = None;
         }
         let ack_timeout_ms = self.ack_timeout_ms();
         let requests: Vec<Command> = self.cameras.iter_mut().flat_map(|camera| camera.tick(now_ms, ack_timeout_ms)).collect();
@@ -1686,7 +1690,7 @@ mod tests {
     }
 
     #[test]
-    fn a_camera_that_stops_beating_is_dropped_and_the_selection_follows_the_camera_not_its_position() {
+    fn a_camera_that_stops_beating_is_dropped_and_the_selection_goes_back_to_the_first_camera() {
         let mut cameras = Cameras::new();
         cameras.on_heartbeat(CAMERA, 0);
         cameras.on_camera_information(CAMERA, info(0), 0);
@@ -1695,22 +1699,36 @@ mod tests {
         cameras.on_heartbeat(CAMERA + 2, 0);
         cameras.on_camera_information(CAMERA + 2, info(0), 0);
         assert_eq!(cameras.select(CAMERA + 2), Ok(()));
-        cameras.on_heartbeat(CAMERA + 1, SILENT_TIMEOUT_MS);
+        cameras.on_heartbeat(CAMERA, SILENT_TIMEOUT_MS);
         cameras.on_heartbeat(CAMERA + 2, SILENT_TIMEOUT_MS);
         cameras.tick(SILENT_TIMEOUT_MS + 1);
-        assert_eq!(cameras.count(), 2, "the first camera went five seconds without a heartbeat and is gone");
-        assert_eq!(
-            cameras.selected().map(|camera| camera.compid),
-            Some(CAMERA + 2),
-            "a camera dropping out of the middle of the list must not move the operator onto a different camera, which is what an index selection does"
-        );
-        assert_eq!(cameras.selected_index(), Some(1));
+        assert_eq!(cameras.count(), 2, "the middle camera went five seconds without a heartbeat and is gone");
+        assert_eq!(cameras.selected_index(), Some(0), "_checkForLostCameras puts the current camera index back to 0 whenever it removes one");
+        assert_eq!(cameras.selected().map(|camera| camera.compid), Some(CAMERA));
         assert_eq!(cameras.select(4), Err(Refusal::NoCamera));
-        cameras.on_heartbeat(CAMERA + 1, SILENT_TIMEOUT_MS + 2);
-        cameras.tick(2 * SILENT_TIMEOUT_MS + 2);
-        assert_eq!(cameras.selected().map(|camera| camera.compid), Some(CAMERA + 1), "when the selected camera is the one that left, the survivor takes over");
-        let rediscovered = cameras.on_heartbeat(CAMERA, 2 * SILENT_TIMEOUT_MS + 3);
+        let rediscovered = cameras.on_heartbeat(CAMERA + 1, SILENT_TIMEOUT_MS + 2);
         assert_eq!(commands(&rediscovered), vec![(CMD_REQUEST_MESSAGE, INFORMATION)], "a dropped camera is discovered again from scratch when it comes back");
+    }
+
+    #[test]
+    fn a_camera_identified_long_after_its_last_heartbeat_is_dropped_at_the_next_check() {
+        let mut cameras = Cameras::new();
+        cameras.on_heartbeat(CAMERA, 0);
+        cameras.on_camera_information(CAMERA, info(0), SILENT_TIMEOUT_MS);
+        cameras.tick(SILENT_TIMEOUT_MS + 1);
+        assert_eq!(cameras.count(), 0, "CAMERA_INFORMATION does not restart lastHeartbeat, only a heartbeat does");
+    }
+
+    #[test]
+    fn an_accepted_legacy_camera_information_command_is_not_retried() {
+        let mut cameras = Cameras::new();
+        cameras.on_heartbeat(CAMERA, 0);
+        cameras.on_command_result(CAMERA, CMD_REQUEST_MESSAGE, INFORMATION, RESULT_FAILED, 10);
+        assert!(cameras.on_command_result(CAMERA, CMD_REQUEST_CAMERA_INFORMATION, 1.0, RESULT_ACCEPTED, 20).is_empty());
+        assert!(
+            (1..=20).all(|second| cameras.tick(20 + second * 1000).is_empty()),
+            "sendMavCommandWithHandler only calls back on a failed ack, so an accepted MAV_CMD_REQUEST_CAMERA_INFORMATION leaves nothing to retry"
+        );
     }
 
     #[test]

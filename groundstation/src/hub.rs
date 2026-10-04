@@ -2987,6 +2987,9 @@ impl Vehicle {
 
     fn note_camera(&mut self, compid: u8, message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {
         use crate::cameraproto::{CaptureStatusReport, Info, SettingsReport, StorageReport, StreamReport, StreamStatusReport};
+        if !self.connected || !(compid == COMP_AUTOPILOT1 || crate::cameraproto::is_camera_component(compid)) {
+            return Vec::new();
+        }
         let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).trim_end_matches('\0').to_string();
         let commands = match message {
             MavMessage::HEARTBEAT(_) => self.cameras.on_heartbeat(compid, now_ms),
@@ -3020,8 +3023,12 @@ impl Vehicle {
                 Vec::new()
             }
             MavMessage::CAMERA_SETTINGS(d) => {
+                if self.cameras.camera(compid).is_none() {
+                    return Vec::new();
+                }
                 self.cameras.on_camera_settings(compid, SettingsReport { mode_id: d.mode_id as u8, zoom_percent: f64::from(d.zoomLevel), focus_percent: f64::from(d.focusLevel) }, now_ms);
-                Vec::new()
+                let outs = self.commands.request_message(u64::from(MSG_CAMERA_FOV_STATUS), compid, MSG_CAMERA_FOV_STATUS, [0.0; 5], now_ms);
+                return self.handle(outs, now_ms);
             }
             MavMessage::STORAGE_INFORMATION(d) => {
                 let report = StorageReport { storage_id: d.storage_id, storage_count: d.storage_count, status: d.status as u8, total_capacity_mib: f64::from(d.total_capacity), available_capacity_mib: f64::from(d.available_capacity) };
@@ -3799,6 +3806,7 @@ const ESP_BRIDGE_TAG: u64 = 0x4553_5042_5247;
 const INSPECTOR_RATE_TAG: u64 = 0x4D53_4749_0000_0000;
 const INSPECTOR_INTERVAL_TAG: u64 = 0x4D53_4950_0000_0000;
 const MSG_MESSAGE_INTERVAL: u32 = 244;
+const MSG_CAMERA_FOV_STATUS: u32 = 271;
 const STORAGE_RESET_FACTORY: f64 = 3.0;
 const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
 
@@ -5545,6 +5553,31 @@ mod tests {
         open_pack(&mut fetching, &autopilot);
         fetching.on_frame(origin(4), &autopilot, &param_value("RTL_ALT", 900, 65535, 1500.0), 10_000, 10);
         assert!(fetching.active().unwrap().parameter(1, "RTL_ALT").is_none(), "ParameterManager ignores the autopilot while the file download runs");
+    }
+
+    #[test]
+    fn cameras_are_heard_only_after_the_initial_connect_and_their_settings_ask_for_the_field_of_view() {
+        use mavlink::dialects::ardupilotmega::{CAMERA_INFORMATION_DATA, CAMERA_SETTINGS_DATA, HEARTBEAT_DATA, MavAutopilot, MavType};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let camera = MavHeader { system_id: 1, component_id: 100, sequence: 0 };
+        let beat = MavMessage::HEARTBEAT(HEARTBEAT_DATA { mavtype: MavType::MAV_TYPE_CAMERA, autopilot: MavAutopilot::MAV_AUTOPILOT_INVALID, ..Default::default() });
+        let requests = |frames: &[(LinkId, Vec<u8>)]| -> Vec<(u8, f32)> {
+            frames.iter().filter_map(|(_, b)| match decode(b) { MavMessage::COMMAND_LONG(c) if c.command as u32 == 512 => Some((c.target_component, c.param1)), _ => None }).collect()
+        };
+        let mut hub = Hub::default();
+        let opened = open_pack(&mut hub, &autopilot);
+        assert!(requests(&hub.on_frame(origin(4), &camera, &beat, 3, 3)).iter().all(|(component, _)| *component != 100), "QGCCameraManager ignores every message until initialConnectComplete");
+        refuse_pack(&mut hub, &autopilot, &opened, 3);
+        hub.on_frame(origin(4), &autopilot, &param_value("RTL_ALT", 1, 0, 1500.0), 4, 4);
+        hub.on_frame(origin(4), &autopilot, &mission_count(0), 5, 5);
+        hub.on_frame(origin(4), &autopilot, &plan_count(1, 0), 6, 6);
+        hub.on_frame(origin(4), &autopilot, &plan_count(2, 0), 7, 7);
+        assert!(requests(&hub.on_frame(origin(4), &camera, &beat, 8, 8)).contains(&(100, 259.0)), "the first camera heartbeat after the connect asks for CAMERA_INFORMATION");
+        hub.on_frame(origin(4), &camera, &MavMessage::CAMERA_INFORMATION(CAMERA_INFORMATION_DATA::default()), 9, 9);
+        let settings = MavMessage::CAMERA_SETTINGS(CAMERA_SETTINGS_DATA { zoomLevel: 50.0, ..Default::default() });
+        assert_eq!(requests(&hub.on_frame(origin(4), &camera, &settings, 10, 10)), vec![(100, 271.0)], "_handleCameraSettings asks the camera for CAMERA_FOV_STATUS");
+        let gimbal = MavHeader { system_id: 1, component_id: 154, sequence: 0 };
+        assert!(requests(&hub.on_frame(origin(4), &gimbal, &settings, 11, 11)).is_empty(), "camera messages count only from the autopilot or a camera component");
     }
 
     fn connect_copter(hub: &mut Hub, autopilot: &MavHeader) {
