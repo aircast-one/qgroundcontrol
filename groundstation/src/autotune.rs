@@ -10,7 +10,7 @@ pub const CMD_DO_AUTOTUNE_ENABLE: u16 = 212;
 pub const POLL_MS: u64 = 1000;
 const RESULT_ACCEPTED: u8 = 0;
 pub const RESULT_FAILED: u8 = 4;
-const RESULT_IN_PROGRESS: u8 = 5;
+pub const RESULT_IN_PROGRESS: u8 = 5;
 const WAIT_FOR_DISARM: u8 = 95;
 const DONE: u8 = 100;
 

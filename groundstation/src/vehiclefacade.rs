@@ -537,7 +537,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "climbRate": crate::vehiclefact::vehicle_fact("climbRate", &json!(v.facts.climb_rate)),
         "altitudeRelative": crate::vehiclefact::vehicle_fact("altitudeRelative", &json!(v.facts.altitude_relative)),
         "altitudeAMSL": crate::vehiclefact::vehicle_fact("altitudeAMSL", &json!(v.facts.altitude_amsl)),
-        "altitudeAboveTerr": crate::vehiclefact::vehicle_fact("altitudeAboveTerr", &json!(v.facts.coordinate.and_then(|(latitude, longitude, _)| crate::terrainservice::height(latitude, longitude)).map(|terrain| v.facts.altitude_amsl - terrain))),
+        "altitudeAboveTerr": crate::vehiclefact::vehicle_fact("altitudeAboveTerr", &json!(v.above_terrain.value)),
         "throttlePct": crate::vehiclefact::vehicle_fact("throttlePct", &json!(v.facts.throttle_pct)),
         "distanceToNextWP": crate::vehiclefact::vehicle_fact("distanceToNextWP", &json!(v.facts.distance_to_next_wp)),
         "xTrackError": crate::vehiclefact::vehicle_fact("xTrackError", &json!(v.facts.x_track_error)),

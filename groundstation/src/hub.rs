@@ -255,6 +255,7 @@ pub struct Vehicle {
     pub airframe_reboot: Option<Option<u64>>,
     stream: crate::streamconfig::StreamConfig,
     pub autotune: crate::autotune::Autotune,
+    pub above_terrain: crate::terrainaltitude::AboveTerrain,
     pub actuator_test: crate::actuatortest::ActuatorTest,
     actuator_action_pending: Option<u64>,
     pub motor_assignment: crate::motorassignment::MotorAssignment,
@@ -514,6 +515,7 @@ impl Vehicle {
             airframe_reboot: None,
             stream: crate::streamconfig::StreamConfig::default(),
             autotune: crate::autotune::Autotune::default(),
+            above_terrain: crate::terrainaltitude::AboveTerrain::default(),
             actuator_test: crate::actuatortest::ActuatorTest::default(),
             actuator_action_pending: None,
             motor_assignment: crate::motorassignment::MotorAssignment::default(),
@@ -1884,16 +1886,15 @@ impl Vehicle {
     }
 
     fn tick_autotune(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
-        let ack_timeout_ms = if self.commands.high_latency { crate::mavcmd::ACK_TIMEOUT_HIGH_LATENCY_MS } else { AUTOTUNE_SILENCE_MS };
-        if self.autotune.in_progress && self.autotune_heard_ms < self.autotune_sent_ms && now_ms.saturating_sub(self.autotune_sent_ms) > ack_timeout_ms {
-            self.autotune.on_ack(crate::autotune::RESULT_FAILED, 0);
-        }
         match self.autotune_due {
+            Some(due) if self.autotune.in_progress && now_ms >= due && self.autotune_heard_ms < self.autotune_sent_ms => {
+                self.autotune.on_ack(crate::autotune::RESULT_FAILED, 0);
+                self.autotune_due = None;
+                Vec::new()
+            }
             Some(due) if self.autotune.in_progress && now_ms >= due => {
                 self.autotune_due = Some(now_ms + crate::autotune::POLL_MS);
-                if self.autotune_heard_ms >= self.autotune_sent_ms {
-                    self.autotune_sent_ms = now_ms;
-                }
+                self.autotune_sent_ms = now_ms;
                 self.autotune_poll()
             }
             Some(_) if !self.autotune.in_progress => {
@@ -1901,6 +1902,15 @@ impl Vehicle {
                 Vec::new()
             }
             _ => Vec::new(),
+        }
+    }
+
+    fn tick_above_terrain(&mut self, now_ms: u64) {
+        if let Some((latitude, longitude, _)) = self.facts.coordinate {
+            self.above_terrain.on_position(now_ms, (latitude, longitude), self.facts.altitude_relative as f32);
+        }
+        if let Some(height) = self.above_terrain.pending().and_then(|(latitude, longitude)| crate::terrainservice::cached_height(latitude, longitude)) {
+            self.above_terrain.on_terrain(height, self.facts.altitude_amsl);
         }
     }
 
@@ -2191,7 +2201,7 @@ impl Vehicle {
                     let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0);
                     self.estimator_origin = Some((number("latitude"), number("longitude"), number("altitude")));
                 }
-                if action.get("action").and_then(Value::as_str) == Some("roi") {
+                if action.get("action").and_then(Value::as_str) == Some("roi") && !steps.is_empty() {
                     let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
                     self.roi_coord = Some((number("latitude"), number("longitude"), number("altitude")));
                 }
@@ -2406,6 +2416,7 @@ impl Vehicle {
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_stream_rates(now_ms));
         bytes.extend(self.tick_autotune(now_ms));
+        self.tick_above_terrain(now_ms);
         let event_retry = self.events.receiver.on_tick(now_ms);
         bytes.extend(self.event_request(event_retry));
         let actuator = self.actuator_test.tick(now_ms);
@@ -3278,7 +3289,9 @@ impl Vehicle {
                     false => Vec::new(),
                 };
                 if a.command as u32 as u16 == crate::autotune::CMD_DO_AUTOTUNE_ENABLE {
-                    self.autotune_heard_ms = now_ms;
+                    if self.autopilot == crate::modes::AUTOPILOT_PX4 || a.result as u8 != crate::autotune::RESULT_IN_PROGRESS {
+                        self.autotune_heard_ms = now_ms;
+                    }
                     if let Some(text) = self.autotune.on_ack(a.result as u8, a.progress) {
                         self.pending_notices.push((crate::noticeboard::MESSAGE, text.to_string()));
                     }
@@ -3790,7 +3803,6 @@ const STORAGE_RESET_FACTORY: f64 = 3.0;
 const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
 
 const GIMBAL_RATE_REPEAT_MS: u64 = 500;
-const AUTOTUNE_SILENCE_MS: u64 = 1_200;
 
 fn sensor_parameter(name: &str) -> bool {
     name.starts_with("CAL_") || name.starts_with("SENS_")
@@ -5046,6 +5058,8 @@ mod tests {
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
         let ack = |command, result| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command, result, ..Default::default() });
+        assert_eq!(hub.guided(None, &json!({ "action": "roi", "latitude": 47.4, "longitude": 8.5, "altitude": 90000.0, "frame": 3 }), 0), Ok(Vec::new()));
+        assert_eq!(hub.active().unwrap().roi_coord, None, "an altitude past ArduPilot's limit returns before the point is recorded");
         hub.guided(None, &json!({ "action": "roi", "latitude": 47.4, "longitude": 8.5, "altitude": 0.0, "frame": 3 }), 1).unwrap();
         assert_eq!(hub.active().unwrap().roi_coord, Some((47.4, 8.5, 0.0)), "Vehicle::guidedModeROI records the point when it sends, before any ack");
         hub.on_frame(origin(0), &header, &ack(MavCmd::MAV_CMD_DO_SET_ROI_LOCATION, MavResult::MAV_RESULT_DENIED), 1, 0);
@@ -5853,25 +5867,36 @@ mod tests {
         let mut hub = Hub::default();
         connect_copter(&mut hub, &autopilot);
         let polls = |bytes: &[Vec<u8>]| bytes.iter().filter(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_AUTOTUNE_ENABLE && c.param1 == 1.0)).count();
+        let ack = |progress: u8, result: MavResult| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_AUTOTUNE_ENABLE, result, progress, ..Default::default() });
+        hub.vehicles.get_mut(&1).unwrap().autopilot = crate::modes::AUTOPILOT_PX4;
+        assert_eq!(polls(&hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "autotune" }), 30_000).unwrap()), 1);
+        hub.on_frame(origin(4), &autopilot, &ack(5, MavResult::MAV_RESULT_IN_PROGRESS), 30_200_000, 30_200);
         let vehicle = hub.vehicles.get_mut(&1).unwrap();
-        assert_eq!(polls(&vehicle.start_guided(&json!({ "action": "autotune" }), 30_000).unwrap()), 1);
         assert_eq!(polls(&vehicle.pump_with(30_500, None, 0)), 0);
         assert_eq!(polls(&vehicle.pump_with(31_000, None, 0)), 1, "the request repeats every second while it runs");
         let mut silent = Hub::default();
         connect_copter(&mut silent, &autopilot);
         let quiet = silent.vehicles.get_mut(&1).unwrap();
         quiet.start_guided(&json!({ "action": "autotune" }), 30_000).unwrap();
-        quiet.pump_with(30_000 + AUTOTUNE_SILENCE_MS + 1, None, 0);
-        assert_eq!(quiet.autotune.status, "Autotune: Failed", "a vehicle that never answers ends it as Autotune::handleAckFailure does after the queue gives up");
-        let ack = |progress: u8, result: MavResult| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_AUTOTUNE_ENABLE, result, progress, ..Default::default() });
+        quiet.commands.high_latency = true;
+        assert_eq!(polls(&quiet.pump_with(31_000, None, 0)), 0, "the next poll finds the last one unanswered: MavCommandQueue refuses it as a duplicate, whatever the link's ack timeout");
+        assert_eq!(quiet.autotune.status, "Autotune: Failed", "Autotune::ackHandler takes the duplicate failure as handleAckFailure");
         let mut jittery = Hub::default();
         connect_copter(&mut jittery, &autopilot);
+        jittery.vehicles.get_mut(&1).unwrap().autopilot = crate::modes::AUTOPILOT_PX4;
         jittery.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "autotune" }), 30_000).unwrap();
         jittery.on_frame(origin(4), &autopilot, &ack(10, MavResult::MAV_RESULT_IN_PROGRESS), 30_300_000, 30_300);
         jittery.vehicles.get_mut(&1).unwrap().pump_with(31_000, None, 0);
-        jittery.on_frame(origin(4), &autopilot, &ack(20, MavResult::MAV_RESULT_IN_PROGRESS), 31_550_000, 31_550);
-        jittery.vehicles.get_mut(&1).unwrap().pump_with(31_600, None, 0);
-        assert!(jittery.vehicles[&1].autotune.in_progress, "each poll gets its own 1.2 s from when it was sent, so a 550 ms answer on a cellular link is not a failure");
+        jittery.on_frame(origin(4), &autopilot, &ack(20, MavResult::MAV_RESULT_IN_PROGRESS), 31_950_000, 31_950);
+        assert_eq!(polls(&jittery.vehicles.get_mut(&1).unwrap().pump_with(32_000, None, 0)), 1, "an answer inside the second is in time for the next poll");
+        assert!(jittery.vehicles[&1].autotune.in_progress);
+        let mut ardupilot = Hub::default();
+        connect_copter(&mut ardupilot, &autopilot);
+        ardupilot.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "autotune" }), 30_000).unwrap();
+        ardupilot.on_frame(origin(4), &autopilot, &ack(10, MavResult::MAV_RESULT_IN_PROGRESS), 30_300_000, 30_300);
+        assert_eq!(ardupilot.vehicles[&1].autotune.status, "Autotune: initializing");
+        ardupilot.vehicles.get_mut(&1).unwrap().pump_with(31_000, None, 0);
+        assert_eq!(ardupilot.vehicles[&1].autotune.status, "Autotune: Failed", "only PX4's in-progress ack ends the command; any other autopilot's keeps it pending, so the next poll is a duplicate");
         hub.on_frame(origin(4), &autopilot, &ack(30, MavResult::MAV_RESULT_IN_PROGRESS), 31_100_000, 31_100);
         assert_eq!(hub.vehicles[&1].autotune.status, "Autotune: roll");
         hub.on_frame(origin(4), &autopilot, &ack(100, MavResult::MAV_RESULT_ACCEPTED), 31_200_000, 31_200);

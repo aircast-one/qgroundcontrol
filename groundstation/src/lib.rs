@@ -180,6 +180,7 @@ pub mod forwarding;
 pub mod gcsheartbeat;
 pub mod messagelog;
 pub mod terrainservice;
+mod terrainaltitude;
 mod terrainprotocol;
 pub mod mavinspect;
 pub mod videostats;

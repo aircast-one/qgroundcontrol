@@ -217,14 +217,14 @@ pub fn reset_parameters() -> Plan {
 pub fn set_home(latitude: f64, longitude: f64, terrain_amsl: Option<f64>) -> Plan {
     match terrain_amsl {
         None => Plan::Refused("Set Home failed, terrain data not available for selected coordinate".into()),
-        Some(height) if !(SET_HOME_TERRAIN_MIN..=SET_HOME_TERRAIN_MAX).contains(&height) => Plan::Refused("Set Home failed, the terrain height there is out of range".into()),
+        Some(height) if !(SET_HOME_TERRAIN_MIN..=SET_HOME_TERRAIN_MAX).contains(&height) => Plan::Steps(Vec::new()),
         Some(height) => Plan::Steps(vec![Step::Command { command: CMD_DO_SET_HOME, params: [0.0, 0.0, 0.0, nan(), latitude, longitude, height], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
     }
 }
 
 pub fn roi(state: &VehicleState, latitude: f64, longitude: f64, altitude: f64, frame: u8) -> Plan {
     if state.autopilot != AUTOPILOT_PX4 && altitude.abs() >= APM_ROI_ALTITUDE_LIMIT {
-        return Plan::Refused("That ROI altitude is beyond what ArduPilot accepts.".into());
+        return Plan::Steps(Vec::new());
     }
     let command_int = state.capabilities & CAP_COMMAND_INT != 0;
     Plan::Steps(vec![Step::Command { command: CMD_DO_SET_ROI_LOCATION, params: [nan(), nan(), nan(), nan(), latitude, longitude, altitude], command_int, frame, show_error: true }])
@@ -546,12 +546,12 @@ mod tests {
         let Plan::Steps(steps) = change_heading(&px4(), Some((0.0, 0.0)), (0.0, 1.0), None) else { panic!() };
         assert!(matches!(steps[0], Step::Command { command: CMD_DO_REPOSITION, params, .. } if (params[3] - std::f64::consts::FRAC_PI_2).abs() < 1e-9));
         assert!(matches!(set_home(47.0, 8.0, None), Plan::Refused(_)), "QGC refuses a home with no terrain height under it");
-        assert!(matches!(set_home(47.0, 8.0, Some(20000.0)), Plan::Refused(_)));
+        assert!(matches!(set_home(47.0, 8.0, Some(20000.0)), Plan::Steps(s) if s.is_empty()), "TerrainQueryCoordinator drops a home whose terrain is out of limits without a word");
         let Plan::Steps(steps) = set_home(47.0, 8.0, Some(410.0)) else { panic!() };
         assert!(matches!(steps[0], Step::Command { command: CMD_DO_SET_HOME, params, .. } if params[6] == 410.0));
         let Plan::Steps(steps) = roi(&copter(), 47.0, 8.0, 0.0, FRAME_GLOBAL_RELATIVE_ALT) else { panic!() };
         assert!(matches!(steps[0], Step::Command { command: CMD_DO_SET_ROI_LOCATION, frame: FRAME_GLOBAL_RELATIVE_ALT, .. }));
-        assert!(matches!(roi(&copter(), 47.0, 8.0, 90000.0, FRAME_GLOBAL_RELATIVE_ALT), Plan::Refused(_)));
+        assert!(matches!(roi(&copter(), 47.0, 8.0, 90000.0, FRAME_GLOBAL_RELATIVE_ALT), Plan::Steps(s) if s.is_empty()), "Vehicle::guidedModeROI returns silently past ArduPilot's 83000 limit");
         let Plan::Steps(steps) = cancel_roi(&px4()) else { panic!() };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).2), (CMD_DO_SET_ROI_NONE, true));
         let Plan::Steps(steps) = cancel_roi(&copter()) else { panic!() };

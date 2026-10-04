@@ -216,7 +216,7 @@ fn click_refusal(click: Click, a: Aircraft) -> Option<(&'static str, &'static st
 fn roi_action(backend: &dyn Backend, latitude: f64, longitude: f64, altitude: f64) -> Value {
     match flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware") {
         true => {
-            let home = object(&backend.get("vehicle.homePosition")).get("altitude").and_then(Value::as_f64).unwrap_or(0.0);
+            let home = object(&backend.get("vehicle.homePosition")).get("altitude").and_then(Value::as_f64).unwrap_or(f64::NAN);
             let terrain = crate::terrainservice::height_now(latitude, longitude).ok().flatten().unwrap_or(home);
             json!({ "action": "roi", "latitude": latitude, "longitude": longitude, "altitude": terrain, "frame": crate::guidedcmd::FRAME_GLOBAL })
         }
