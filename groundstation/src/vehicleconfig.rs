@@ -496,7 +496,11 @@ pub fn page_opened(backend: &dyn Backend, args: &str) -> Value {
         .collect();
     page_state().retain(|key, _| !keys.contains(key));
     let ready = !crate::qthost::present() && crate::read::object(&backend.get("vehicle.parameterManager.parametersReady"))["value"] == true;
-    let missing = if ready { missing_parameters(backend, &pages, px4) } else { vec![] };
+    let missing = match (ready, opened == crate::setupsummary::PAGE) {
+        (false, _) => vec![],
+        (true, true) => absent(backend, crate::setupsummary::reported_lookups(backend)),
+        (true, false) => missing_parameters(backend, &pages, px4),
+    };
     if !missing.is_empty() {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &missing_parameters_text(&missing));
     }
@@ -530,24 +534,33 @@ fn missing_parameters(backend: &dyn Backend, pages: &[&str], px4: bool) -> Vec<(
         page(backend, p, px4);
     });
     let evaluated = UNMET.take().unwrap_or_default();
-    let looked_up = pages.iter().flat_map(|p| reported_lookups(backend, p, px4)).filter(|(component, name)| !parameter_exists(backend, *component, name));
-    required
-        .into_iter()
-        .chain(evaluated)
-        .map(|name| (DEFAULT_COMPONENT, name))
-        .chain(looked_up)
-        .fold(vec![], |seen, missing| if seen.contains(&missing) { seen } else { seen.into_iter().chain(std::iter::once(missing)).collect() })
+    let looked_up = pages.iter().flat_map(|p| reported_lookups(backend, p, px4)).collect::<Vec<_>>();
+    let unmet: Vec<(i64, String)> = required.into_iter().chain(evaluated).map(|name| (DEFAULT_COMPONENT, name)).collect();
+    first_seen(unmet.into_iter().chain(absent(backend, looked_up)))
+}
+
+fn absent(backend: &dyn Backend, lookups: Vec<(i64, String)>) -> Vec<(i64, String)> {
+    first_seen(lookups.into_iter().filter(|(component, name)| !parameter_exists(backend, *component, name)))
+}
+
+fn first_seen(missing: impl Iterator<Item = (i64, String)>) -> Vec<(i64, String)> {
+    missing.fold(vec![], |seen, missing| if seen.contains(&missing) { seen } else { seen.into_iter().chain(std::iter::once(missing)).collect() })
 }
 
 const DEFAULT_COMPONENT: i64 = -1;
 
-const APM_SENSOR_LOOKUPS: &[&str] = &["AHRS_ORIENTATION", "COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3", "COMPASS_OFS_X", "COMPASS_OFS_Y", "COMPASS_OFS_Z", "COMPASS_OFS2_X", "COMPASS_OFS2_Y", "COMPASS_OFS2_Z", "COMPASS_OFS3_X", "COMPASS_OFS3_Y", "COMPASS_OFS3_Z", "COMPASS_DEC"];
+const APM_SENSOR_PARAMS_LOOKUPS: &[&str] = &["COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3", "COMPASS_OFS_X", "COMPASS_OFS_Y", "COMPASS_OFS_Z", "COMPASS_OFS2_X", "COMPASS_OFS2_Y", "COMPASS_OFS2_Z", "COMPASS_OFS3_X", "COMPASS_OFS3_Y", "COMPASS_OFS3_Z", "COMPASS_DEC"];
 const APM_SENSOR_GUARDED: &[(&str, &[&str])] = &[("COMPASS_PRIO1_ID", &["COMPASS_PRIO2_ID", "COMPASS_PRIO3_ID"]), ("COMPASS_ORIENT2", &["COMPASS_ORIENT"]), ("BARO1_DEVID", &["BARO2_DEVID", "BARO3_DEVID"])];
 const PX4_SENSOR_LOOKUPS: &[&str] = &["CAL_MAG0_ID", "CAL_MAG1_ID", "CAL_MAG2_ID", "CAL_MAG0_ROT", "CAL_MAG1_ROT", "CAL_MAG2_ROT", "CAL_GYRO0_ID", "CAL_ACC0_ID", "SENS_BOARD_ROT", "SENS_DPRES_OFF"];
 const PX4_RADIO_LOOKUPS: &[&str] = &["RC_MAP_AUX1", "RC_MAP_AUX2", "RC_MAP_PARAM1", "RC_MAP_PARAM2", "RC_MAP_PARAM3", "RC_MAP_PAY_SW"];
 const PX4_MODE_LOOKUPS: &[&str] = &["COM_FLTMODE1", "COM_FLTMODE2", "COM_FLTMODE3", "COM_FLTMODE4", "COM_FLTMODE5", "COM_FLTMODE6", "RC_MAP_FLTMODE"];
 const PX4_SWITCH_LOOKUPS: &[(&str, &str)] = &[("RC_MAP_ARM_SW", "RC_ARMSWITCH_TH"), ("RC_MAP_GEAR_SW", "RC_GEAR_TH"), ("RC_MAP_KILL_SW", "RC_KILLSWITCH_TH"), ("RC_MAP_LOITER_SW", "RC_LOITER_TH"), ("RC_MAP_OFFB_SW", "RC_OFFB_TH"), ("RC_MAP_RETURN_SW", "RC_RETURN_TH")];
-const ESP_LOOKUPS: &[&str] = &["UART_BAUDRATE", "SW_VER", "WIFI_SSID1", "WIFI_SSID2", "WIFI_SSID3", "WIFI_SSID4", "WIFI_PASSWORD1", "WIFI_PASSWORD2", "WIFI_PASSWORD3", "WIFI_PASSWORD4", "WIFI_CHANNEL", "WIFI_UDP_HPORT", "WIFI_UDP_CPORT"];
+pub(crate) const ESP_CONTROLLER_LOOKUPS: &[&str] = &["UART_BAUDRATE", "SW_VER", "WIFI_SSID1", "WIFI_SSID2", "WIFI_SSID3", "WIFI_SSID4", "WIFI_PASSWORD1", "WIFI_PASSWORD2", "WIFI_PASSWORD3", "WIFI_PASSWORD4"];
+const ESP_PAGE_LOOKUPS: &[&str] = &["WIFI_CHANNEL", "WIFI_UDP_HPORT", "WIFI_UDP_CPORT"];
+
+pub(crate) fn apm_sensor_params_lookups(exists: &dyn Fn(&str) -> bool) -> Vec<&'static str> {
+    APM_SENSOR_PARAMS_LOOKUPS.iter().chain(APM_SENSOR_GUARDED.iter().filter(|(guard, _)| exists(guard)).flat_map(|(_, names)| names.iter())).copied().collect()
+}
 const SYSLINK_LOOKUPS: &[&str] = &["SLNK_RADIO_CHAN", "SLNK_RADIO_RATE", "SLNK_RADIO_ADDR1", "SLNK_RADIO_ADDR2"];
 
 fn present(fact: &Value) -> bool {
@@ -576,7 +589,7 @@ fn reported_lookups(backend: &dyn Backend, page: &str, px4: bool) -> Vec<(i64, S
             let switches = PX4_SWITCH_LOOKUPS.iter().copied().chain(flag(&vehicle, "vtol").then_some(("RC_MAP_TRANS_SW", "RC_TRANS_TH"))).chain(flag(&vehicle, "fixedWing").then_some(("RC_MAP_FLAPS", "")));
             at(DEFAULT_COMPONENT, PX4_MODE_LOOKUPS.iter().copied().chain(switches.flat_map(|(switch, threshold)| std::iter::once(switch).chain(Some(threshold).filter(|t| !t.is_empty())))))
         }
-        ("Sensors", false) => at(DEFAULT_COMPONENT, APM_SENSOR_LOOKUPS.iter().chain(APM_SENSOR_GUARDED.iter().filter(|(guard, _)| exists(guard)).flat_map(|(_, names)| names.iter())).copied()),
+        ("Sensors", false) => at(DEFAULT_COMPONENT, std::iter::once("AHRS_ORIENTATION").chain(apm_sensor_params_lookups(&exists))),
         ("Sensors", true) => at(DEFAULT_COMPONENT, PX4_SENSOR_LOOKUPS.iter().copied()),
         ("Radio", true) => at(DEFAULT_COMPONENT, (!flag(&vehicle, "multiRotor")).then_some("RC_MAP_FLAPS").into_iter().chain(PX4_RADIO_LOOKUPS.iter().copied())),
         ("Frame", false) => at(DEFAULT_COMPONENT, [if flag(&vehicle, "sub") { "FRAME_CONFIG" } else { "FRAME_CLASS" }]),
@@ -586,7 +599,7 @@ fn reported_lookups(backend: &dyn Backend, page: &str, px4: bool) -> Vec<(i64, S
             at(DEFAULT_COMPONENT, (1..=motors).map(|motor| format!("MOT_{motor}_DIRECTION")).chain(std::iter::once("FRAME_CONFIG".to_string())))
         }
         ("Follow Me", false) => at(DEFAULT_COMPONENT, ["FOLL_ENABLE"]),
-        ("WiFi Bridge", _) => at(i64::from(crate::espbridge::COMPONENT), ESP_LOOKUPS.iter().copied()),
+        ("WiFi Bridge", _) => at(i64::from(crate::espbridge::COMPONENT), ESP_CONTROLLER_LOOKUPS.iter().chain(ESP_PAGE_LOOKUPS).copied()),
         ("Syslink", _) => at(crate::read::integer(&object(&backend.get("vehicle.id")), "value").unwrap_or(DEFAULT_COMPONENT), SYSLINK_LOOKUPS.iter().copied()),
         ("Tuning", true) | ("Tuning - Advanced", false) => at(DEFAULT_COMPONENT, crate::px4tuning::opening_tab_params(backend)),
         _ => vec![],
@@ -1502,6 +1515,13 @@ mod tests {
         assert!(looked_up(copter.clone(), &[], "Motors", false).is_empty(), "APMMotorComponent looks nothing up");
         assert_eq!(looked_up(json!({ "multiRotor": false }), &[], "Radio", true).first().map(String::as_str), Some("RC_MAP_FLAPS"));
         assert!(looked_up(copter, &[], "Radio", false).is_empty(), "the ArduPilot radio page has no switch rows");
+    }
+
+    #[test]
+    fn the_summary_page_reports_only_absent_lookups_once() {
+        let shaped = Shaped { vehicle: json!({}), params: &["RCMAP_ROLL"] };
+        let lookups = vec![(-1, "RCMAP_ROLL".to_string()), (-1, "RCMAP_YAW".to_string()), (-1, "RCMAP_YAW".to_string())];
+        assert_eq!(absent(&shaped, lookups), [(-1, "RCMAP_YAW".to_string())]);
     }
 
     #[test]

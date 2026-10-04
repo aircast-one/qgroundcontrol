@@ -404,14 +404,22 @@ fn px4_sensors(facts: Facts, vehicle: &Vehicle) -> Rows {
 
 const AIRSPEED_CHECK_CIRCUIT_BREAKER: i64 = 162_128;
 
-fn px4_airspeed_row(facts: Facts, vehicle: &Vehicle) -> Option<SummaryRow> {
+fn px4_airspeed_checks(facts: Facts, vehicle: &Vehicle) -> (Vec<&'static str>, bool) {
     let value = |name: &str| facts(name).map(|f| number(&f)).unwrap_or(0.0);
     let (major, minor, _) = vehicle.version;
-    let supported = match major > 1 || (major == 1 && minor > 14) {
-        true => value("SYS_HAS_NUM_ASPD") != 0.0,
-        false => value("FW_ARSP_MODE") == 0.0 && value("CBRK_AIRSPD_CHK") as i64 != AIRSPEED_CHECK_CIRCUIT_BREAKER,
+    let (read, supported) = match major > 1 || (major == 1 && minor > 14) {
+        true => (vec!["SYS_HAS_NUM_ASPD"], value("SYS_HAS_NUM_ASPD") != 0.0),
+        false => {
+            let mode_off = value("FW_ARSP_MODE") == 0.0;
+            (std::iter::once("FW_ARSP_MODE").chain(mode_off.then_some("CBRK_AIRSPD_CHK")).collect(), mode_off && value("CBRK_AIRSPD_CHK") as i64 != AIRSPEED_CHECK_CIRCUIT_BREAKER)
+        }
     };
-    supported.then(|| row("Airspeed", if value("SENS_DPRES_OFF") == 0.0 { SETUP_REQUIRED } else { READY }))
+    (read.into_iter().chain(supported.then_some("SENS_DPRES_OFF")).collect(), supported)
+}
+
+fn px4_airspeed_row(facts: Facts, vehicle: &Vehicle) -> Option<SummaryRow> {
+    let unset = facts("SENS_DPRES_OFF").is_none_or(|f| number(&f) == 0.0);
+    px4_airspeed_checks(facts, vehicle).1.then(|| row("Airspeed", if unset { SETUP_REQUIRED } else { READY }))
 }
 
 fn px4_airframe(facts: Facts, vehicle: &Vehicle) -> Rows {
@@ -468,10 +476,10 @@ pub fn firmware_text(major: i64, minor: i64, patch: i64, kind: &str) -> String {
     }
 }
 
-pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
+fn vehicle(backend: &dyn Backend) -> Vehicle {
     let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,vtol,airship,vehicleTypeString,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash,firmwareCustomMajorVersion,firmwareCustomMinorVersion,firmwareCustomPatchVersion"));
     let part = |key: &str| read.get(key).and_then(Value::as_i64).unwrap_or(-1);
-    let vehicle = Vehicle {
+    Vehicle {
         multi_rotor: flag(&read, "multiRotor"),
         fixed_wing: flag(&read, "fixedWing"),
         forward_flight: ["fixedWing", "vtol", "airship"].iter().any(|key| flag(&read, key)),
@@ -484,11 +492,61 @@ pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
         firmware_type: text(&read, "firmwareVersionTypeString"),
         git_hash: read.get("gitHash").map(|h| h.as_str().map_or_else(|| h.to_string(), str::to_string)).unwrap_or_default(),
         custom: (part("firmwareCustomMajorVersion") != -1).then(|| format!("{}.{}.{}", part("firmwareCustomMajorVersion"), part("firmwareCustomMinorVersion"), part("firmwareCustomPatchVersion"))),
-    };
-    let facts = |name: &str| Some(object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))).filter(|f| f.get("kind").and_then(Value::as_str) == Some("fact") && !text(f, "name").is_empty());
+    }
+}
+
+fn parameter(backend: &dyn Backend, name: &str) -> Option<Value> {
+    Some(object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))).filter(|f| f.get("kind").and_then(Value::as_str) == Some("fact") && !text(f, "name").is_empty())
+}
+
+fn component_classes(backend: &dyn Backend) -> Vec<Value> {
+    object(&backend.get(COMPONENTS)).get("value").and_then(Value::as_array).cloned().unwrap_or_default()
+}
+
+pub const PAGE: &str = "Summary";
+
+const DEFAULT_COMPONENT: i64 = -1;
+const APM_RADIO_SUMMARY_LOOKUPS: &[&str] = &["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_YAW", "RCMAP_THROTTLE"];
+const PX4_RADIO_SUMMARY_LOOKUPS: &[&str] = &["RC_MAP_ROLL", "RC_MAP_PITCH", "RC_MAP_YAW", "RC_MAP_THROTTLE", "RC_MAP_FLAPS", "RC_MAP_AUX1", "RC_MAP_AUX2"];
+const PX4_SAFETY_SUMMARY_LOOKUPS: &[&str] = &["RTL_RETURN_ALT", "RTL_DESCEND_ALT", "COM_RC_LOSS_T", "COM_LOW_BAT_ACT", "NAV_RCL_ACT", "NAV_DLL_ACT", "RTL_LAND_DELAY"];
+const PX4_AIRFRAME_SUMMARY_LOOKUPS: &[&str] = &["SYS_AUTOSTART", "SYS_AUTOCONFIG", "MAV_SYS_ID"];
+const ESP_SUMMARY_LOOKUPS: &[&str] = &["DEBUG_ENABLED", "WIFI_CHANNEL", "WIFI_UDP_HPORT", "WIFI_UDP_CPORT", "UART_BAUDRATE"];
+
+fn summary_lookups(class: &str, facts: Facts, vehicle: &Vehicle) -> Vec<(i64, String)> {
+    let at = |names: Vec<String>| names.into_iter().map(|name| (DEFAULT_COMPONENT, name)).collect::<Vec<_>>();
+    let listed = |names: &[&str]| at(names.iter().map(|n| n.to_string()).collect());
+    match class {
+        "APMSubFrameComponent" => listed(&["FRAME_CONFIG"]),
+        "APMRadioComponent" => listed(APM_RADIO_SUMMARY_LOOKUPS),
+        "PX4RadioComponent" => listed(PX4_RADIO_SUMMARY_LOOKUPS),
+        "APMFlightModesComponent" => at((1..=6).map(|slot| format!("{}{slot}", if facts("MODE1").is_some() { "MODE" } else { "FLTMODE" })).collect()),
+        "FlightModesComponent" => at((1..=6).map(|slot| format!("COM_FLTMODE{slot}")).collect()),
+        "APMPowerComponent" => listed(&["BATT_MONITOR"]),
+        "APMSensorsComponent" => listed(&crate::vehicleconfig::apm_sensor_params_lookups(&|name| facts(name).is_some())),
+        "APMFailsafesComponent" if !vehicle.safety_supported => vec![],
+        "APMFailsafesComponent" if vehicle.sub => listed(&["FS_EKF_ACTION", "FS_GCS_ENABLE", "FS_LEAK_ENABLE"].into_iter().chain((vehicle.version >= (3, 5, 0)).then_some("FS_PILOT_INPUT")).chain(["FS_TEMP_ENABLE", "FS_PRESS_ENABLE"]).collect::<Vec<_>>()),
+        "APMFailsafesComponent" => listed(&["BATT_MONITOR"]),
+        "APMLightsComponent" => at(LIGHTS_CHANNELS.map(|channel| format!("SERVO{channel}_FUNCTION")).collect()),
+        "SafetyComponent" => listed(PX4_SAFETY_SUMMARY_LOOKUPS),
+        "SensorsComponent" if vehicle.forward_flight => listed(&["CAL_MAG0_ID", "CAL_GYRO0_ID", "CAL_ACC0_ID"].into_iter().chain(px4_airspeed_checks(facts, vehicle).0).collect::<Vec<_>>()),
+        "SensorsComponent" => listed(&["CAL_MAG0_ID", "CAL_MAG1_ID", "CAL_MAG2_ID", "CAL_GYRO0_ID", "CAL_ACC0_ID"]),
+        "AirframeComponent" => listed(PX4_AIRFRAME_SUMMARY_LOOKUPS),
+        "ESP8266Component" => crate::vehicleconfig::ESP_CONTROLLER_LOOKUPS.iter().chain(ESP_SUMMARY_LOOKUPS).map(|name| (i64::from(crate::espbridge::COMPONENT), name.to_string())).collect(),
+        _ => vec![],
+    }
+}
+
+pub fn reported_lookups(backend: &dyn Backend) -> Vec<(i64, String)> {
+    let vehicle = vehicle(backend);
+    let facts = |name: &str| parameter(backend, name);
+    component_classes(backend).iter().flat_map(|component| summary_lookups(&text(component, "class"), &facts, &vehicle)).collect()
+}
+
+pub fn setup_summary_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let vehicle = vehicle(backend);
+    let facts = |name: &str| parameter(backend, name);
     let esp_facts = |name: &str| crate::espbridge::fact(backend, name);
-    let listed = object(&backend.get(COMPONENTS)).get("value").and_then(Value::as_array).cloned().unwrap_or_default();
-    let components: Vec<Value> = listed
+    let components: Vec<Value> = component_classes(backend)
         .iter()
         .filter_map(|component| {
             let found = match text(component, "class").as_str() {
@@ -525,6 +583,59 @@ mod tests {
 
     fn copter() -> Vehicle {
         Vehicle { multi_rotor: true, fixed_wing: false, forward_flight: false, helicopter: false, rover: false, sub: false, safety_supported: true, version: (4, 5, 7), firmware: "4.5.7".into(), firmware_type: String::new(), git_hash: String::new(), custom: None }
+    }
+
+    fn names(found: Vec<(i64, String)>) -> Vec<String> {
+        found.into_iter().map(|(_, name)| name).collect()
+    }
+
+    #[test]
+    fn summary_lookups_follow_each_summary_qml_and_its_controller() {
+        let none: HashMap<&str, Value> = HashMap::new();
+        let bare = lookup(&none);
+        assert_eq!(names(summary_lookups("APMRadioComponent", &bare, &copter())), APM_RADIO_SUMMARY_LOOKUPS);
+        let rover = HashMap::from([("MODE1", fact(0.0, "0", "", ""))]);
+        assert_eq!(names(summary_lookups("APMFlightModesComponent", &lookup(&rover), &copter()))[5], "MODE6", "APMFlightModesComponentSummary picks MODE when MODE1 exists");
+        assert_eq!(names(summary_lookups("APMFlightModesComponent", &bare, &copter()))[0], "FLTMODE1");
+        let old_sub = Vehicle { sub: true, version: (3, 4, 0), ..copter() };
+        assert!(!names(summary_lookups("APMFailsafesComponent", &bare, &old_sub)).contains(&"FS_PILOT_INPUT".to_string()), "_firmware34 skips FS_PILOT_INPUT");
+        assert!(names(summary_lookups("APMFailsafesComponent", &bare, &Vehicle { sub: true, ..copter() })).contains(&"FS_PILOT_INPUT".to_string()));
+        assert_eq!(names(summary_lookups("APMFailsafesComponent", &bare, &copter())), ["BATT_MONITOR"]);
+        assert!(summary_lookups("APMFailsafesComponent", &bare, &Vehicle { safety_supported: false, ..copter() }).is_empty(), "no summary for unsupported vehicle types");
+        assert!(summary_lookups("APMAirspeedComponent", &bare, &copter()).is_empty() && summary_lookups("APMFollowComponent", &bare, &copter()).is_empty(), "guarded or reportMissing false only");
+        assert!(!names(summary_lookups("APMSensorsComponent", &bare, &copter())).contains(&"AHRS_ORIENTATION".to_string()), "APMSensorParams has no board orientation; the page adds it");
+        let has_airspeed = HashMap::from([("SYS_HAS_NUM_ASPD", fact(1.0, "1", "", ""))]);
+        let vtol = Vehicle { multi_rotor: false, forward_flight: true, version: (1, 15, 0), ..copter() };
+        assert_eq!(names(summary_lookups("SensorsComponent", &lookup(&has_airspeed), &vtol))[3..], ["SYS_HAS_NUM_ASPD", "SENS_DPRES_OFF"], "airspeedCalSupported/Required read through ParameterManager::getParameter");
+        let mode_on = HashMap::from([("FW_ARSP_MODE", fact(1.0, "1", "", ""))]);
+        assert_eq!(names(summary_lookups("SensorsComponent", &lookup(&mode_on), &Vehicle { version: (1, 14, 0), ..vtol }))[3..], ["FW_ARSP_MODE"], "&& stops before CBRK_AIRSPD_CHK");
+        let esp = summary_lookups("ESP8266Component", &bare, &copter());
+        assert_eq!((esp[0].0, esp.iter().filter(|(_, n)| n == "UART_BAUDRATE").count()), (i64::from(crate::espbridge::COMPONENT), 2), "controller first, then the summary's own lookups on component 240");
+    }
+
+    struct Summary(&'static [&'static str]);
+
+    impl Backend for Summary {
+        fn get(&self, path: &str) -> String {
+            let name = path.strip_prefix("vehicle.parameterManager.getParameter(").and_then(|p| p.strip_suffix(')')).and_then(|p| p.split_once(',')).map(|(_, n)| n);
+            match (path, name) {
+                (COMPONENTS, _) => json!({ "value": [{ "class": "APMRadioComponent" }, { "class": "APMLightsComponent" }, { "class": "APMPowerComponent" }] }).to_string(),
+                (_, Some(name)) if self.0.contains(&name) => json!({ "kind": "fact", "name": name }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn get_fields(&self, _path: &str, _fields: &str) -> String {
+            json!({ "multiRotor": true, "vehicleTypeString": "Quadrotor", "firmwareMajorVersion": 4, "firmwareMinorVersion": 5, "firmwarePatchVersion": 7 }).to_string()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn the_summary_page_reports_every_listed_component_s_lookups() {
+        let found = names(reported_lookups(&Summary(&[])));
+        assert_eq!((found.first().map(String::as_str), found.last().map(String::as_str), found.len()), (Some("RCMAP_ROLL"), Some("BATT_MONITOR"), 15), "in component order: {found:?}");
     }
 
     #[test]

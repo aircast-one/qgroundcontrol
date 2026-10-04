@@ -160,6 +160,7 @@ internal const val SETUP_PARAMETERS_PAGE = "Parameters"
 internal const val SETUP_OVERVIEW_PAGE = ""
 private const val NAVIGATION_SETTLE_MS = 500L
 internal const val SETUP_SUMMARY = "view.setupSummary"
+internal const val SETUP_SUMMARY_PAGE = "Summary"
 private const val SETUP_SUMMARY_POLL_MS = 2000L
 
 internal fun setupSummaries(view: JSONObject?): Map<String, List<SummaryLine>> {
@@ -395,6 +396,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     val overview: @Composable (Modifier) -> Unit = { pane ->
     LaunchedEffect(Unit) {
+        withContext(Dispatchers.Default) { Qgc.invoke(SETUP_PAGE_OPENED, SETUP_SUMMARY_PAGE) }
         while (true) {
             summaries = withContext(Dispatchers.Default) { setupSummaries(Qgc.get(SETUP_SUMMARY)) }
             delay(SETUP_SUMMARY_POLL_MS)
