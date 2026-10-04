@@ -79,15 +79,16 @@ fun VideoSurface(
     fullScreen: Boolean = false,
     onClick: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
-    explainsMissingSource: Boolean = true,
+    settingsPreview: Boolean = false,
 ) {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
+    val chrome = if (settingsPreview) Modifier else noVideoChrome(expanded && !fullScreen)
 
     if (video?.available == false) {
-        if (!expanded || !explainsMissingSource) return
+        if (!expanded) return
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
-            Box(noVideoChrome(expanded && !fullScreen), contentAlignment = Alignment.Center) { NoVideoPanel(video) }
+            Box(chrome, contentAlignment = Alignment.Center) { NoVideoPanel(video, linksToSettings = !settingsPreview) }
         }
         return
     }
@@ -147,7 +148,7 @@ fun VideoSurface(
                 Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
-                Box(noVideoChrome(expanded && !fullScreen), contentAlignment = Alignment.Center) { NoVideoPanel(video) }
+                Box(chrome, contentAlignment = Alignment.Center) { NoVideoPanel(video, linksToSettings = !settingsPreview) }
             }
         }
 

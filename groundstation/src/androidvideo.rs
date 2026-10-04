@@ -26,6 +26,7 @@ pub struct Video {
     pub frames: unsafe extern "C" fn() -> i64,
     source_buffers: unsafe extern "C" fn() -> i64,
     last_error: unsafe extern "C" fn() -> *const c_char,
+    stream_error: Option<unsafe extern "C" fn() -> *const c_char>,
     pub copy_frame: unsafe extern "C" fn(*mut c_void, c_int, *mut c_int, *mut c_int, *mut c_int) -> bool,
     start_recording: unsafe extern "C" fn(*const c_char, c_int) -> bool,
     stop_recording: unsafe extern "C" fn(),
@@ -58,6 +59,7 @@ fn load() -> Option<Video> {
         frames: symbol(handle, c"qgc_video_frames")?,
         source_buffers: symbol(handle, c"qgc_video_source_buffers")?,
         last_error: symbol(handle, c"qgc_video_last_error")?,
+        stream_error: symbol(handle, c"qgc_video_stream_error"),
         copy_frame: symbol(handle, c"qgc_video_copy_frame")?,
         start_recording: symbol(handle, c"qgc_video_start_recording")?,
         stop_recording: symbol(handle, c"qgc_video_stop_recording")?,
@@ -115,6 +117,7 @@ struct Driver {
     restarted: bool,
     decoders_ranked: bool,
     error: String,
+    streamed: String,
     recording: Option<serde_json::Value>,
     recording_reported: bool,
 }
@@ -169,7 +172,13 @@ impl Driver {
         let (running, frames, width, height) = unsafe { ((video.running)(), (video.frames)(), (video.width)(), (video.height)()) };
         crate::videostats::sample(running, frames, i64::from(height), crate::hub::now_ms());
         let source = unsafe { (video.source_buffers)() };
-        crate::videohost::invoke("video.reportNative", &serde_json::json!([running, frames, width, height, self.error, source, std::mem::take(&mut self.restarted)]).to_string());
+        let streamed = video.stream_error.map(|error| unsafe { CStr::from_ptr(error()) }.to_string_lossy().into_owned()).unwrap_or_default();
+        if streamed != self.streamed && !streamed.is_empty() {
+            log::warn!("Video stream error: {streamed}");
+        }
+        self.streamed = streamed.clone();
+        let error = if self.error.is_empty() { streamed } else { self.error.clone() };
+        crate::videohost::invoke("video.reportNative", &serde_json::json!([running, frames, width, height, error, source, std::mem::take(&mut self.restarted)]).to_string());
     }
 }
 

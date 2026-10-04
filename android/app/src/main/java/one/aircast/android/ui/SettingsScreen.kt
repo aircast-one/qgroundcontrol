@@ -12,6 +12,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.background
 
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 
 import androidx.compose.foundation.layout.aspectRatio
 
@@ -34,6 +35,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import one.aircast.android.bridge.offMainDetached
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -521,7 +530,7 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
                     .clip(MaterialTheme.shapes.large)
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 expanded = true,
-                explainsMissingSource = false,
+                settingsPreview = true,
             )
         }
         SettingsControls(page, sections) { reloads++ }
@@ -544,6 +553,10 @@ private fun SettingsControls(
             return@forEach
         }
         section.blocks.forEach { block ->
+            if (block.title == ADVANCED_BLOCK) {
+                AdvancedBlock("${section.group}#${block.title}") { FactRuns(block.facts, onWrite) }
+                return@forEach
+            }
             blockHeading(page.title, section, block).takeIf { it.isNotBlank() }?.let { SectionHeader(sentenceCase(it)) }
             FactRuns(block.facts, onWrite)
             if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
@@ -560,6 +573,24 @@ private fun SettingsControls(
         if (section.group == MAVLINK_GROUP) LinkStatusSection()
         if (section.group == MAVLINK_ACTIONS_GROUP) MavlinkActionsSection(onWrite)
     }
+}
+
+internal const val ADVANCED_BLOCK = "Advanced"
+
+@Composable
+private fun AdvancedBlock(key: String, content: @Composable () -> Unit) {
+    var open by rememberSaveable(key) { mutableStateOf(false) }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = open, role = Role.Button) { open = it }
+            .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(ADVANCED_BLOCK, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = if (open) "Hide advanced settings" else "Show advanced settings", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.rotate(if (open) 180f else 0f))
+    }
+    if (open) content()
 }
 
 @Composable
@@ -961,7 +992,22 @@ internal fun truncationRefusal(fact: Fact, text: String): String? {
 
 internal fun typedValue(text: String): String = text.replace("\n", "")
 
+internal const val ASPECT_RATIO = "aspectRatio"
+private const val RATIO_TOLERANCE = 0.005
+private val COMMON_RATIOS = listOf(16 to 9, 4 to 3, 21 to 9, 16 to 10, 3 to 2, 5 to 4, 1 to 1)
+
+internal fun ratioText(value: Double): String? =
+    COMMON_RATIOS.firstOrNull { (width, height) -> abs(width.toDouble() / height - value) < RATIO_TOLERANCE }?.let { (width, height) -> "$width:$height" }
+
+internal fun ratioValue(text: String): String? =
+    text.split(':').takeIf { it.size == 2 }?.map { it.trim().toDoubleOrNull() }?.let { (width, height) ->
+        if (width != null && height != null && width > 0.0 && height > 0.0) String.format(java.util.Locale.ROOT, "%.6f", width / height) else null
+    }
+
+internal fun isAddress(fact: Fact): Boolean = fact.isString && (fact.name.endsWith("Url") || fact.name.endsWith("URL"))
+
 internal fun factKeyboard(fact: Fact): KeyboardType = when {
+    isAddress(fact) -> KeyboardType.Uri
     fact.isString || fact.isBool -> KeyboardType.Text
     fact.wholeNumbersOnly && fact.minString.toDoubleOrNull()?.let { it >= 0.0 } == true ->
         KeyboardType.Number
@@ -1002,11 +1048,19 @@ internal fun writeRefusal(accepted: Boolean): String? =
 internal fun validationMessage(result: Any?): String? =
     (result as? String)?.takeIf { it.isNotBlank() }
 
-private suspend fun rejectionFor(fact: Fact, text: String): String? =
-    truncationRefusal(fact, text) ?: withContext(Dispatchers.Default) {
+private fun blockingRejection(fact: Fact, text: String): String? =
+    truncationRefusal(fact, text) ?:
         // qtpaths: settings.appSettings.indoorPalette.validate, vehicle.parameterManager.getParameter(-1,RTL_ALT).validate
         validationMessage(Qgc.invokeResult("${fact.path}.validate", text, false))
-    }
+
+private suspend fun rejectionFor(fact: Fact, text: String): String? =
+    withContext(Dispatchers.Default) { blockingRejection(fact, text) }
+
+internal fun storedText(fact: Fact, typed: String): String =
+    if (fact.name == ASPECT_RATIO) ratioValue(typed) ?: typed else typed
+
+internal fun shownText(fact: Fact): String =
+    if (fact.name == ASPECT_RATIO) fact.valueString.toDoubleOrNull()?.let(::ratioText) ?: fieldText(fact) else fieldText(fact)
 
 @Composable
 private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRejected: () -> Unit = {}) {
@@ -1015,12 +1069,48 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRej
     var revealed by remember(fact.path) { mutableStateOf(false) }
     val secret = isSecret(fact)
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
+    val pending = editing?.takeIf { it != shownText(fact) }
+    val commit: () -> Unit = {
+        pending?.let { typed ->
+            val committed = storedText(fact, typed)
+            scope.launch {
+                val refused = rejectionFor(fact, committed)
+                if (refused != null) {
+                    rejection = refused
+                    onRejected()
+                    return@launch
+                }
+                val refusal = withContext(Dispatchers.Default) {
+                    Qgc.writeRefusal(fact.path, committed)
+                }
+                rejection = refusal
+                if (refusal == null) {
+                    editing = null
+                    onWrite()
+                }
+            }
+        }
+    }
+    val latestCommit by rememberUpdatedState(commit)
+    val latestPending by rememberUpdatedState(pending)
+    LaunchedEffect(interaction) {
+        snapshotFlow { focused }.drop(1).filter { !it }.collect { latestCommit() }
+    }
+    DisposableEffect(fact.path) {
+        onDispose {
+            latestPending?.let { typed ->
+                val committed = storedText(fact, typed)
+                offMainDetached { if (blockingRejection(fact, committed) == null) Qgc.writeRefusal(fact.path, committed) }
+            }
+        }
+    }
     Column {
         OutlinedTextField(
-            value = editing ?: fieldText(fact),
+            value = editing ?: shownText(fact),
             enabled = fact.enabled,
             label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             suffix = fact.units.takeIf { it.isNotBlank() }?.let { { Text(shownUnits(it)) } },
@@ -1036,32 +1126,12 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRej
             },
             singleLine = factValueLines(fact) == 1,
             maxLines = factValueLines(fact),
-            isError = rejection != null || (fact.problem.isNotBlank() && editing.isNullOrBlank()),
-            keyboardOptions = KeyboardOptions(keyboardType = factKeyboard(fact)),
+            isError = rejection != null,
+            keyboardOptions = KeyboardOptions(keyboardType = factKeyboard(fact), autoCorrectEnabled = !isAddress(fact), imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             modifier = Modifier.fillMaxWidth(),
             interactionSource = interaction,
-            trailingIcon = editing?.takeIf { it != fieldText(fact) }?.let { committed ->
-                {
-                    TextButton(onClick = {
-                        scope.launch {
-                            val refused = rejectionFor(fact, committed)
-                            if (refused != null) {
-                                rejection = refused
-                                onRejected()
-                                return@launch
-                            }
-                            val refusal = withContext(Dispatchers.Default) {
-                                Qgc.writeRefusal(fact.path, committed)
-                            }
-                            rejection = refusal
-                            if (refusal == null) {
-                                editing = null
-                                onWrite()
-                            }
-                        }
-                    }) { Text("Set") }
-                }
-            },
+            trailingIcon = pending?.let { { TextButton(onClick = commit) { Text("Set") } } },
         )
         rejection?.let {
             Text(
@@ -1075,7 +1145,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRej
             Text(
                 text = fact.problem,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, top = 4.dp),
             )
         }

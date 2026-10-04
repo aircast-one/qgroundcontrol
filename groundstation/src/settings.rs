@@ -399,10 +399,11 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Files", &["savePath", "androidDontSaveToSDCard", "disableAllPersistence"]),
     ]),
     ("videoSettings", &[
-        ("Cameras", &["videoSource", "primaryCameraName", "multiViewEnabled"]),
-        ("Stream", &["udpUrl", "rtspUrl", "tcpUrl", "whepUrl", "rtspTimeout", "streamEnabled", "disableWhenDisarmed", "lowLatencyMode", "forceVideoDecoder"]),
-        ("Display", &["videoFit", "aspectRatio", "gridLines", "showRecControl"]),
-        ("Local Video Storage", &["videoSavePath", "recordingFormat", "enableStorageLimit", "maxVideoSize"]),
+        ("Stream", &["videoSource", "udpUrl", "rtspUrl", "tcpUrl", "whepUrl", "streamEnabled"]),
+        ("Cameras", &["primaryCameraName", "multiViewEnabled"]),
+        ("Display", &["videoFit", "gridLines", "showRecControl"]),
+        ("Local Video Storage", &["videoSavePath", "recordingFormat", "disableWhenDisarmed", "enableStorageLimit", "maxVideoSize"]),
+        (ADVANCED_BLOCK, &["rtspTimeout", "lowLatencyMode", "forceVideoDecoder", "aspectRatio"]),
     ]),
     ("viewer3DSettings", &[
         ("General", &["enabled", "mapProvider"]),
@@ -530,10 +531,31 @@ fn section_applies(group: &str, backend: Option<&dyn Backend>) -> bool {
 pub const AUTO_CONFIGURED: &str = "Configured automatically over MAVLink.";
 pub const STREAM_ADDRESS_NEEDED: &str = "Enter this address to show video.";
 
+pub const ADVANCED_BLOCK: &str = "Advanced";
+pub const NO_SOURCE_LABEL: &str = "None";
+
+pub fn source_label(label: &Value) -> Value {
+    match label.as_str() == Some(crate::videostate::SOURCE_DISABLED) {
+        true => json!(NO_SOURCE_LABEL),
+        false => label.clone(),
+    }
+}
+
+pub const VIDEO_SOURCE_PATH: &str = "settings.videoSettings.videoSource";
+
+pub fn video_source_control(mut control: Value) -> Value {
+    control["options"] = grouped_video_sources(control.get("options"));
+    control["display"] = source_label(&control["display"]);
+    control
+}
+
 pub fn grouped_video_sources(options: Option<&Value>) -> Value {
     let listed = options.and_then(Value::as_array).cloned().unwrap_or_default();
     json!(listed.into_iter().map(|mut option| {
         let raw = option.get("raw").and_then(Value::as_str).unwrap_or_default().to_string();
+        if let Some(label) = option.get("label").map(source_label) {
+            option["label"] = label;
+        }
         option["group"] = json!(match () {
             _ if !crate::video::source_chosen(&raw) => "",
             _ if crate::settingsstore::URL_SOURCES.iter().any(|(served, _)| *served == raw) => "Video streams",
@@ -623,7 +645,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
             let named = control.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
             control["keywords"] = json!(fact_keywords(group, &named));
             if named == "videoSource" {
-                control["options"] = grouped_video_sources(control.get("options"));
+                control = video_source_control(control);
             }
             if let Some(problem) = video.as_ref().and_then(|(source, _, _)| stream_address_problem(&named, source, control.get("valueString").and_then(Value::as_str).unwrap_or_default())) {
                 control["problem"] = json!(problem);
@@ -1387,9 +1409,19 @@ mod tests {
     }
 
     #[test]
+    fn the_stream_address_sits_right_under_the_source_and_tuning_waits_in_advanced() {
+        let video = SUBSECTIONS.iter().find(|(group, _)| *group == "videoSettings").map(|(_, blocks)| *blocks).unwrap();
+        assert_eq!(video[0].1[..2], ["videoSource", "udpUrl"], "the one input the job needs follows the source, not the camera name");
+        let advanced = video.iter().find(|(title, _)| *title == ADVANCED_BLOCK).unwrap().1;
+        assert!(["rtspTimeout", "lowLatencyMode", "forceVideoDecoder", "aspectRatio"].iter().all(|name| advanced.contains(name)));
+    }
+
+    #[test]
     fn video_sources_are_grouped_into_streams_and_presets() {
-        let grouped = grouped_video_sources(Some(&json!([{ "raw": "Video Stream Disabled" }, { "raw": "RTSP Video Stream" }, { "raw": "Herelink Hotspot" }])));
+        let grouped = grouped_video_sources(Some(&json!([{ "raw": "Video Stream Disabled", "label": "Video Stream Disabled" }, { "raw": "RTSP Video Stream", "label": "RTSP Video Stream" }, { "raw": "Herelink Hotspot" }])));
         assert_eq!(grouped[0]["group"], "");
+        assert_eq!(grouped[0]["label"], "None", "a source called disabled read like the opposite of the Video stream enabled switch below it");
+        assert_eq!(grouped[1]["label"], "RTSP Video Stream");
         assert_eq!(grouped[1]["group"], "Video streams");
         assert_eq!(grouped[2]["group"], "Vehicle and radio presets");
     }

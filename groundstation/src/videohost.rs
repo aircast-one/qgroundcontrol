@@ -22,6 +22,8 @@ struct Host {
     vehicle: Option<u8>,
     timeout_s: u32,
     progress: Option<Watch>,
+    flowing: bool,
+    problem: Option<(String, String)>,
 }
 
 const FILE_EXTENSIONS: [&str; 3] = ["mkv", "mov", "mp4"];
@@ -214,7 +216,7 @@ fn host_port(rest: &str) -> Option<(String, u16)> {
 
 const RETRANSMISSION_MIN_LATENCY_MS: i64 = 40;
 const UDP_BUFFER_BYTES: u32 = 8 * 1024 * 1024;
-const TS_VIDEO: &str = "\"video/x-h264;video/x-h265\"";
+const TS_VIDEO: &str = "capsfilter caps=\"video/x-h264;video/x-h265\"";
 const WHEP_TIMEOUT_S: u32 = 8;
 const WHEP_LOW_LATENCY_JITTER_MS: i64 = 40;
 const WHEP_LATENCY_PREFIX: &str = "whep_latency_";
@@ -280,6 +282,7 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
                 host.wanted = false;
                 host.progress = None;
                 host.reported = (false, false, 0, 0);
+                host.flowing = false;
                 host.state.on_stop_complete(MAIN_RECEIVER, Outcome::Ok)
             }
             Out::StopTelemetryCapture => {
@@ -417,6 +420,7 @@ fn object(host: &Host) -> Value {
         "nativePipeline": (host.wanted && state.has_video()).then(|| pipeline(&uri, latency, settings.low_latency)).flatten(),
         "nativeRecording": host.recording_file,
         "nativeRecordingFormat": recording_format(),
+        "streamProblem": host.problem.as_ref().filter(|(at, _)| *at == uri).map_or("", |(_, text)| text.as_str()),
     })
 }
 
@@ -437,6 +441,10 @@ pub static RESTART: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBoo
 
 pub fn unbuildable_outcome(uri: &str) -> Outcome {
     if uri.trim().is_empty() { Outcome::InvalidUrl } else { Outcome::Failed }
+}
+
+pub fn stream_problem_text() -> String {
+    get("video.streamProblem").and_then(|value| value.get("value")?.as_str().map(str::to_string)).unwrap_or_default()
 }
 
 pub fn native_pipeline() -> Option<String> {
@@ -475,28 +483,40 @@ pub fn stalled(watch: Option<Watch>, source: i64, decoded: i64, timeout_s: u32, 
     (Some(next), stall)
 }
 
-fn report(host: &mut Host, running: bool, frames: i64, width: u32, height: u32, source: i64, restarted: bool) {
+fn report(host: &mut Host, running: bool, frames: i64, width: u32, height: u32, source: Option<i64>, restarted: bool, error: &str) {
     let now_ms = crate::hub::now_ms();
     if restarted && host.wanted {
         host.progress = Some(Watch::fresh(now_ms));
     }
-    let (progress, stall) = stalled(host.progress, source, frames, host.timeout_s, now_ms);
+    let buffers = source.unwrap_or(0);
+    let (progress, stall) = stalled(host.progress, buffers, frames, host.timeout_s, now_ms);
     host.progress = progress;
     if host.wanted && stall {
+        let uri = host.state.desired_uri(MAIN_RECEIVER);
+        host.problem = Some((uri.clone(), stream_problem(&uri, buffers, frames, error)));
         host.wanted = false;
         host.progress = None;
         host.reported = (false, false, 0, 0);
+        host.flowing = false;
         RESTART.store(true, std::sync::atomic::Ordering::Relaxed);
         let outs: Vec<Out> = [host.state.on_decoding(MAIN_RECEIVER, false), host.state.on_streaming(MAIN_RECEIVER, false), host.state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed)].into_iter().flatten().collect();
         apply(host, outs, now_ms);
         return;
     }
     let decoding = running && frames > 0;
-    let before = host.reported;
+    let flowing = running && source.is_none_or(|count| count > 0);
+    if decoding {
+        host.problem = None;
+    } else if host.wanted && !error.is_empty() {
+        let uri = host.state.desired_uri(MAIN_RECEIVER);
+        host.problem = Some((uri.clone(), stream_problem(&uri, buffers, frames, error)));
+    }
+    let (before, was_flowing) = (host.reported, host.flowing);
     host.reported = (running, decoding, width, height);
+    host.flowing = flowing;
     let outs: Vec<Out> = [
         (running && !before.0).then(|| host.state.on_start_complete(MAIN_RECEIVER, Outcome::Ok, crate::hub::now_ms() / 1000)),
-        (running != before.0).then(|| host.state.on_streaming(MAIN_RECEIVER, running)),
+        (flowing != was_flowing).then(|| host.state.on_streaming(MAIN_RECEIVER, flowing)),
         (decoding != before.1).then(|| host.state.on_decoding(MAIN_RECEIVER, decoding)),
         ((width, height) != (before.2, before.3)).then(|| host.state.on_video_size(MAIN_RECEIVER, width, height)),
     ]
@@ -505,6 +525,35 @@ fn report(host: &mut Host, running: bool, frames: i64, width: u32, height: u32, 
     .flatten()
     .collect();
     apply(host, outs, crate::hub::now_ms());
+}
+
+fn place(uri: &str) -> String {
+    let rest = uri.split_once("://").map_or(uri, |(_, rest)| rest);
+    let authority = rest.split(['/', '?']).next().unwrap_or(rest);
+    authority.rsplit_once('@').map_or(authority, |(_, host)| host).to_string()
+}
+
+fn path_of(uri: &str) -> String {
+    let rest = uri.split_once("://").map_or(uri, |(_, rest)| rest);
+    rest.find('/').map_or("/".to_string(), |at| rest[at..].to_string())
+}
+
+pub fn stream_problem(uri: &str, source: i64, decoded: i64, error: &str) -> String {
+    let scheme = uri.split_once("://").map_or("", |(scheme, _)| scheme).to_ascii_lowercase();
+    let at = place(uri);
+    let host = at.rsplit_once(':').map_or(at.as_str(), |(host, _)| host).to_string();
+    let said = error.split_whitespace().filter(|word| !word.contains("://")).collect::<Vec<_>>().join(" ").to_ascii_lowercase();
+    let says = |words: &[&str]| words.iter().any(|word| said.contains(word));
+    match () {
+        _ if decoded > 0 => format!("The stream from {at} stopped."),
+        _ if source > 0 => format!("Data arrives from {at}, but it can't be shown as video."),
+        _ if matches!(scheme.as_str(), "udp" | "udp265" | "mpegts") => format!("Nothing is arriving on UDP port {}. Check the drone is sending video to this device.", at.rsplit(':').next().unwrap_or(&at)),
+        _ if says(&["404", "not found"]) => format!("{at} has no stream at {}. Check the path.", path_of(uri)),
+        _ if says(&["401", "403", "unauthorized", "forbidden"]) => format!("{at} refused access to the stream."),
+        _ if says(&["refused"]) => format!("Nothing is listening at {at}. Check the port."),
+        _ if says(&["dns", "lookup", "resolve", "unknown host", "name or service"]) => format!("Can't find {host}. Check the address."),
+        _ => format!("No answer from {at}. Check the address and that this device is on the drone's network."),
+    }
 }
 
 pub fn invoke(path: &str, args: &str) -> Option<Value> {
@@ -565,7 +614,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "video.reportNative" => {
             let number = |i: usize| given.get(i).and_then(Value::as_i64).unwrap_or(0);
             let size = |i: usize| u32::try_from(number(i)).unwrap_or(0);
-            report(host, given.get(0).and_then(Value::as_bool).unwrap_or(false), number(1), size(2), size(3), number(5), given.get(6).and_then(Value::as_bool).unwrap_or(false));
+            report(host, given.get(0).and_then(Value::as_bool).unwrap_or(false), number(1), size(2), size(3), given.get(5).and_then(Value::as_i64), given.get(6).and_then(Value::as_bool).unwrap_or(false), given.get(4).and_then(Value::as_str).unwrap_or_default());
             Some(json!({ "ok": true }))
         }
         _ => None,
@@ -623,6 +672,20 @@ mod tests {
     }
 
     #[test]
+    fn a_stalled_stream_says_why_in_words_an_operator_can_act_on() {
+        let whep = "http://192.168.1.50:8889/cam/whep";
+        assert_eq!(stream_problem(whep, 0, 0, ""), "No answer from 192.168.1.50:8889. Check the address and that this device is on the drone's network.");
+        assert_eq!(stream_problem(whep, 0, 0, "GStreamer encountered a general resource error. whepsrc: Unexpected response: 404 - no such stream"), "192.168.1.50:8889 has no stream at /cam/whep. Check the path.");
+        assert_eq!(stream_problem("http://10.0.0.5:4040/whep", 0, 0, "error sending request for url (http://10.0.0.5:4040/whep)"), "No answer from 10.0.0.5:4040. Check the address and that this device is on the drone's network.", "the address inside the error is not the answer");
+        assert_eq!(stream_problem(whep, 0, 0, "error sending request: Connection refused (os error 111)"), "Nothing is listening at 192.168.1.50:8889. Check the port.");
+        assert_eq!(stream_problem("rtsp://user:pw@cam.local:554/live", 0, 0, "dns error: failed to lookup address"), "Can't find cam.local. Check the address.");
+        assert_eq!(stream_problem("rtsp://cam:554/live", 0, 0, "Unauthorized (401)"), "cam:554 refused access to the stream.");
+        assert_eq!(stream_problem("udp://0.0.0.0:5600", 0, 0, ""), "Nothing is arriving on UDP port 5600. Check the drone is sending video to this device.");
+        assert_eq!(stream_problem(whep, 40, 0, ""), "Data arrives from 192.168.1.50:8889, but it can't be shown as video.");
+        assert_eq!(stream_problem(whep, 900, 30, ""), "The stream from 192.168.1.50:8889 stopped.");
+    }
+
+    #[test]
     fn a_uri_becomes_a_pipeline_ending_in_the_native_sink() {
         assert_eq!(pipeline("udp://0.0.0.0:5600", 80, false).unwrap(), "udpsrc address=0.0.0.0 port=5600 buffer-size=8388608 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! rtpjitterbuffer latency=80 do-lost=true do-retransmission=true drop-on-latency=true rtx-delay=25 rtx-max-retries=1 ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=true");
         assert_eq!(pipeline("udp://0.0.0.0:5600", 80, true).unwrap(), "udpsrc address=0.0.0.0 port=5600 buffer-size=8388608 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false", "low latency drops the jitter buffer and the clock sync, as GstVideoReceiver does with _buffer -1");
@@ -630,7 +693,7 @@ mod tests {
         assert!(pipeline("whep://sfu/whep/x", 80, false).unwrap().starts_with("whepsrc name=whep_latency_80 whep-endpoint=\"http://sfu/whep/x\""), "the native side reads the webrtcbin latency from the source's name");
         assert!(pipeline("whep://sfu/whep/x", 80, true).unwrap().starts_with("whepsrc name=whep_latency_40 "), "buildWhepSource uses 40 ms when the jitter buffer is off");
         assert!(pipeline("whep://sfu/whep/x", 80, false).unwrap().contains("encoding-name=(string)H265,payload=(int)97") && pipeline("whep://sfu/whep/x", 80, false).unwrap().contains("audio-caps=EMPTY timeout=8"), "buildWhepSource offers H.264 and H.265 video only");
-        assert!(pipeline("mpegts://0.0.0.0:5600", 80, false).unwrap().contains("tsdemux ! \"video/x-h264;video/x-h265\" ! tee"), "only a video pad of the transport stream reaches the tee");
+        assert!(pipeline("mpegts://0.0.0.0:5600", 80, false).unwrap().contains("tsdemux ! capsfilter caps=\"video/x-h264;video/x-h265\" ! tee"), "only a video pad of the transport stream reaches the tee");
         assert_eq!(crate::videostate::source_uri(crate::videostate::SOURCE_WEBRTC, "sfu.host/whep/x"), "http://sfu.host/whep/x", "QUrl::fromUserInput supplies the scheme");
         assert_eq!(pipeline("bogus", 80, false), None);
     }
@@ -653,9 +716,11 @@ mod tests {
         apply(&mut host, outs, 0);
         assert!(host.wanted, "a configured stream starts the main receiver");
         assert_eq!(status_text(host.state.receiver_status(0)), "Connecting\u{2026}");
-        report(&mut host, true, 0, 0, 0, 0, false);
+        report(&mut host, true, 0, 0, 0, Some(0), false, "");
+        assert_eq!(status_text(host.state.receiver_status(0)), "Connecting\u{2026}", "a pipeline that has received nothing is still connecting, not connected");
+        report(&mut host, true, 0, 0, 0, Some(4), false, "");
         assert_eq!(status_text(host.state.receiver_status(0)), "Connected, waiting for frames");
-        report(&mut host, true, 12, 640, 360, 12, false);
+        report(&mut host, true, 12, 640, 360, Some(12), false, "");
         assert_eq!((host.state.decoding, host.state.video_size), (true, Some((640, 360))));
         assert_eq!(status_text(host.state.receiver_status(0)), "");
         assert_eq!(status_text(host.state.receiver_status(1)), "No video source", "a camera with no receiver is no video source, as VideoManager::_cameraStatus says");

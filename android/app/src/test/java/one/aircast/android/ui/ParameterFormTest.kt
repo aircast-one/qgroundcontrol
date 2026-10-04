@@ -356,6 +356,25 @@ class ControlBoundsTest {
     }
 
     @Test
+    fun `a stream address gets the URL keyboard and no autocorrect`() {
+        val address = control("null", "null", "null").copy(name = "whepUrl", isString = true)
+        assertEquals(KeyboardType.Uri, factKeyboard(address))
+        assertTrue(isAddress(address))
+        assertFalse(isAddress(address.copy(name = "primaryCameraName")))
+    }
+
+    @Test
+    fun `an aspect ratio reads and accepts width colon height`() {
+        assertEquals("16:9", ratioText(1.777777))
+        assertEquals("4:3", ratioText(1.333333))
+        assertNull(ratioText(1.9))
+        assertEquals("1.777778", ratioValue("16:9"))
+        assertEquals("1.333333", ratioValue(" 4 : 3 "))
+        assertNull(ratioValue("1.85"))
+        assertNull(ratioValue("16:0"))
+    }
+
+    @Test
     fun `a tuning slider reads its setup label and the live value like the Penpot tuning frame`() {
         val fact = control("0.0", "1.0", "0.5").copy(description = "Climb Sensitivity", shortLabel = "Acceleration (vertical) controller P gain")
         assertEquals("Climb sensitivity", sliderTitle(fact))

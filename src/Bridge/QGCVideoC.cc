@@ -34,6 +34,14 @@ int frameStride = 0;
 int64_t frameCount = 0;
 std::atomic<int64_t> sourceBuffers{0};
 std::string lastError;
+std::mutex streamErrorMutex;
+std::string streamError;
+
+void setStreamError(std::string text)
+{
+    const std::lock_guard<std::mutex> lock(streamErrorMutex);
+    streamError = std::move(text);
+}
 
 #ifdef QGC_GST_STREAMING
 GstElement *pipeline = nullptr;
@@ -257,6 +265,19 @@ void applyWhepLatency(GstBin *bin)
     gst_object_unref(source);
 }
 
+GstBusSyncReply onBusMessage(GstBus *, GstMessage *message, gpointer)
+{
+    if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
+        GError *error = nullptr;
+        gchar *debug = nullptr;
+        gst_message_parse_error(message, &error, &debug);
+        setStreamError(std::string(error ? error->message : "") + (debug ? std::string(" ") + debug : ""));
+        g_clear_error(&error);
+        g_free(debug);
+    }
+    return GST_BUS_PASS;
+}
+
 GstPadProbeReturn onSourceBuffer(GstPad *, GstPadProbeInfo *, gpointer)
 {
     sourceBuffers.fetch_add(1, std::memory_order_relaxed);
@@ -422,7 +443,7 @@ bool qgc_video_start(const char *pipelineDescription)
     }
 
     GError *error = nullptr;
-    pipeline = gst_parse_launch(pipelineDescription, &error);
+    pipeline = gst_parse_launch_full(pipelineDescription, nullptr, GST_PARSE_FLAG_FATAL_ERRORS, &error);
     if (!pipeline) {
         lastError = error ? error->message : "gst_parse_launch failed";
         if (error) {
@@ -442,6 +463,11 @@ bool qgc_video_start(const char *pipelineDescription)
     }
 
     applyWhepLatency(GST_BIN(pipeline));
+
+    if (GstBus *const bus = gst_element_get_bus(pipeline)) {
+        gst_bus_set_sync_handler(bus, onBusMessage, nullptr, nullptr);
+        gst_object_unref(bus);
+    }
 
     if (GstElement *const tee = gst_bin_get_by_name(GST_BIN(pipeline), kRecordingTee)) {
         if (GstPad *const teeSink = gst_element_get_static_pad(tee, "sink")) {
@@ -605,6 +631,7 @@ void qgc_video_stop(void)
     }
     sourceBuffers.store(0, std::memory_order_relaxed);
 #endif
+    setStreamError({});
     const std::lock_guard<std::mutex> lock(frameMutex);
     latestFrame.clear();
     frameWidth = 0;
@@ -652,6 +679,14 @@ int64_t qgc_video_source_buffers(void)
 const char *qgc_video_last_error(void)
 {
     return lastError.c_str();
+}
+
+const char *qgc_video_stream_error(void)
+{
+    thread_local std::string copy;
+    const std::lock_guard<std::mutex> lock(streamErrorMutex);
+    copy = streamError;
+    return copy.c_str();
 }
 
 bool qgc_video_copy_frame(void *destination, int capacity, int *width, int *height, int *stride)

@@ -59,7 +59,10 @@ impl log::Log for CoreLogger {
         if debug && !ENABLED.lock().is_ok_and(|enabled| category_enabled(&enabled, target)) {
             return;
         }
-        record_entry(level_of(record.level()), record.target(), &record.args().to_string(), record.file().unwrap_or_default(), record.line().unwrap_or(0));
+        let message = record.args().to_string();
+        #[cfg(target_os = "android")]
+        logcat(record.level(), target, &message);
+        record_entry(level_of(record.level()), target, &message, record.file().unwrap_or_default(), record.line().unwrap_or(0));
     }
 
     fn flush(&self) {}
@@ -136,6 +139,24 @@ pub fn categories_view(_backend: &dyn Backend, _args: &[String]) -> Value {
             "enabled": enabled.contains(name),
         })).collect::<Vec<_>>(),
     })
+}
+
+#[cfg(target_os = "android")]
+fn logcat(level: log::Level, target: &str, message: &str) {
+    #[link(name = "log")]
+    unsafe extern "C" {
+        fn __android_log_write(priority: std::ffi::c_int, tag: *const std::ffi::c_char, text: *const std::ffi::c_char) -> std::ffi::c_int;
+    }
+    let priority = match level {
+        log::Level::Error => 6,
+        log::Level::Warn => 5,
+        log::Level::Info => 4,
+        log::Level::Debug => 3,
+        log::Level::Trace => 2,
+    };
+    if let Ok(text) = std::ffi::CString::new(format!("{target}: {message}")) {
+        unsafe { __android_log_write(priority, c"qgc_core".as_ptr(), text.as_ptr()) };
+    }
 }
 
 fn level_of(level: log::Level) -> usize {

@@ -14,6 +14,12 @@ class NoVideoPanelTest {
     }
 
     @Test
+    fun `a stalled stream says why instead of how long`() {
+        val reason = "No answer from 192.168.1.50:8889. Check the address and that this device is on the drone's network."
+        assertEquals(reason, noVideoDetail(video.copy(noVideoReason = reason), 70))
+    }
+
+    @Test
     fun `the panel reads the active camera's own status like FlightDisplayViewVideo`() {
         val failing = video.copy(cameras = listOf(VideoCamera(slot = 0, title = "Front", status = "Connection failed, retrying", connecting = false, recording = false, configured = true)))
         assertEquals("Connection failed, retrying", activeCameraStatus(failing))
@@ -31,5 +37,6 @@ class NoVideoPanelTest {
         org.junit.Assert.assertEquals(NoVideoAction.SetUp, unavailableVideoState(unavailable(sourceChosen = false, configured = false))?.action)
         org.junit.Assert.assertEquals("No stream address", unavailableVideoState(unavailable(sourceChosen = true, configured = false))?.title)
         org.junit.Assert.assertEquals(null, unavailableVideoState(unavailable(sourceChosen = true, configured = true).copy(available = true)))
+        org.junit.Assert.assertEquals("Enter the stream address below.", unavailableVideoState(unavailable(sourceChosen = true, configured = false), linksToSettings = false)?.detail)
     }
 }
