@@ -50,9 +50,10 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
         .map(|n| {
             let title = n["title"].as_str().filter(|t| !t.trim().is_empty()).map(str::to_string).unwrap_or_else(|| app.clone());
             let text = n["text"].as_str().unwrap_or_default();
-            match text == crate::noticeboard::REBOOT_VEHICLE_TEXT {
-                true => json!({ "title": title, "text": format!("{text} Click Ok to reboot the vehicle now."), "action": "rebootVehicle" }),
-                false => json!({ "title": title, "text": text, "action": "" }),
+            match text {
+                crate::noticeboard::REBOOT_VEHICLE_TEXT => json!({ "title": title, "text": format!("{text} Click Ok to reboot the vehicle now."), "action": "rebootVehicle" }),
+                crate::connectnotices::SETUP_INCOMPLETE => json!({ "title": title, "text": text, "action": "openSetup" }),
+                _ => json!({ "title": title, "text": text, "action": "" }),
             }
         })
         .filter(|d| !d["text"].as_str().unwrap_or_default().is_empty())
@@ -130,5 +131,13 @@ mod tests {
         ] }));
         let dialog = &host_notices_view(&host, &[])["dialogs"][0];
         assert_eq!((dialog["text"].as_str(), dialog["action"].as_str()), (Some("Reboot vehicle for changes to take effect. Click Ok to reboot the vehicle now."), Some("rebootVehicle")));
+    }
+
+    #[test]
+    fn the_setup_incomplete_notice_offers_to_open_setup() {
+        let host = Host(json!({ "kind": "object", "dropped": 0, "notices": [
+            { "id": 1, "kind": "message", "title": "", "text": crate::connectnotices::SETUP_INCOMPLETE },
+        ] }));
+        assert_eq!(host_notices_view(&host, &[])["dialogs"][0]["action"], "openSetup");
     }
 }

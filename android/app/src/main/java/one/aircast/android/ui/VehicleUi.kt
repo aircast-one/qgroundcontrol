@@ -896,6 +896,8 @@ internal object FlightModePending {
 internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: () -> Unit) {
     val json by qgcPath(FLIGHT_MODES)
     val modes = remember(json) { flightModesView(json) }
+    val flyJson by qgcPath(FLY_STATE)
+    val fly = remember(flyJson) { flyState(flyJson) }
     val setupJson by qgcPath(SETUP)
     val hasModesPage = remember(setupJson) { setupComponents(setupJson).any { it.name == FLIGHT_MODES_PAGE } }
     val onRefusal: (String?) -> Unit = { FlyRefusal.text = it }
@@ -969,6 +971,17 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
         onDismissRequest = { onDismiss(); showFolded = false; editing = false },
         shape = MaterialTheme.shapes.small,
     ) {
+        readinessWarning(fly)?.let { warning ->
+            DropdownMenuItem(
+                text = {
+                    Text(warning, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.widthIn(max = 280.dp))
+                },
+                leadingIcon = { Icon(painterResource(R.drawable.ic_warning), null, tint = MaterialTheme.aircast.warning) },
+                trailingIcon = { Text("Details", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) },
+                onClick = { onDismiss(); onStatus() },
+            )
+            androidx.compose.material3.HorizontalDivider()
+        }
         modeHeading(modes)?.let { heading ->
             Text(
                 heading,

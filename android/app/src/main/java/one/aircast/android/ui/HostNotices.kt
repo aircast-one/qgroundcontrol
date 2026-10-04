@@ -23,6 +23,7 @@ internal data class NoticeBatch(
 internal data class AppMessage(val title: String, val text: String, val action: String? = null)
 
 internal const val REBOOT_VEHICLE_ACTION = "rebootVehicle"
+internal const val OPEN_SETUP_ACTION = "openSetup"
 
 internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
     val unseen = view?.optJSONArray("unseen") ?: return null
@@ -49,7 +50,7 @@ internal fun criticalBanner(errors: List<String>): String? =
     errors.firstOrNull()?.let { first -> if (errors.size > 1) "$first \u00b7 $ADDITIONAL_ERRORS" else first }
 
 @Composable
-internal fun AppMessageDialog(message: AppMessage, onDismiss: () -> Unit) {
+internal fun AppMessageDialog(message: AppMessage, onOpenSetup: () -> Unit = {}, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(message.title) },
@@ -57,10 +58,15 @@ internal fun AppMessageDialog(message: AppMessage, onDismiss: () -> Unit) {
         confirmButton = {
             TextButton(onClick = {
                 if (message.action == REBOOT_VEHICLE_ACTION) offMainDetached { Qgc.invoke(REBOOT_VEHICLE) }
+                if (message.action == OPEN_SETUP_ACTION) onOpenSetup()
                 onDismiss()
-            }) { Text("OK") }
+            }) { Text(if (message.action == OPEN_SETUP_ACTION) "Open Setup" else "OK") }
         },
-        dismissButton = if (message.action == REBOOT_VEHICLE_ACTION) ({ TextButton(onClick = onDismiss) { Text("Cancel") } }) else null,
+        dismissButton = when (message.action) {
+            REBOOT_VEHICLE_ACTION -> ({ TextButton(onClick = onDismiss) { Text("Cancel") } })
+            OPEN_SETUP_ACTION -> ({ TextButton(onClick = onDismiss) { Text("Later") } })
+            else -> null
+        },
     )
 }
 

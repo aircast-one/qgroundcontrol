@@ -137,17 +137,17 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     FlightModeMenu(expanded = modeMenu && !disconnected, onDismiss = { modeMenu = false }, onStatus = { statusSettings = true })
     androidx.compose.material3.Surface(
         shape = MaterialTheme.shapes.small,
-        color = when {
-            lost || fly?.fault == true -> MaterialTheme.colorScheme.errorContainer
-            disconnected -> MaterialTheme.colorScheme.surfaceContainerHigh
-            fly?.nominal == false -> MaterialTheme.aircast.warningContainer
-            else -> MaterialTheme.aircast.successContainer
+        color = when (chipTone(fly, lost)) {
+            ChipTone.Error -> MaterialTheme.colorScheme.errorContainer
+            ChipTone.Neutral -> MaterialTheme.colorScheme.surfaceContainerHigh
+            ChipTone.Warning -> MaterialTheme.aircast.warningContainer
+            ChipTone.Success -> MaterialTheme.aircast.successContainer
         },
-        contentColor = when {
-            lost || fly?.fault == true -> MaterialTheme.colorScheme.onErrorContainer
-            disconnected -> MaterialTheme.colorScheme.onSurface
-            fly?.nominal == false -> MaterialTheme.aircast.warning
-            else -> MaterialTheme.aircast.success
+        contentColor = when (chipTone(fly, lost)) {
+            ChipTone.Error -> MaterialTheme.colorScheme.onErrorContainer
+            ChipTone.Neutral -> MaterialTheme.colorScheme.onSurface
+            ChipTone.Warning -> MaterialTheme.aircast.warning
+            ChipTone.Success -> MaterialTheme.aircast.success
         },
         onClick = {
             when {
@@ -167,6 +167,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             text = activeVehicleTitle(choices, subtitle),
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
         )
         if (FlightModePending.mode != null) {
             androidx.compose.material3.CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)

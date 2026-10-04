@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.runtime.setValue
 
 import androidx.compose.runtime.getValue
@@ -120,6 +121,9 @@ internal fun flyViewAllowed(viewer3dEnabled: Boolean?, current: FlyView): FlyVie
     if (current == FlyView.ThreeD && viewer3dEnabled == false) FlyView.Map else current
 
 internal fun viewer3dEnabled(view: org.json.JSONObject?): Boolean? = view?.takeIf { it.has("enabled") }?.optBoolean("enabled")
+
+internal fun flyViewShown(chosen: FlyView, armed: Boolean, noVideoSource: Boolean): FlyView =
+    if (chosen == FlyView.Video && armed && noVideoSource) FlyView.Map else chosen
 
 internal fun flyViewSwapped(view: FlyView): FlyView = if (view == FlyView.Map) FlyView.Video else FlyView.Map
 
@@ -274,6 +278,9 @@ internal fun FlyScreen(
             }
 
             val sideBySide = simple && landscape
+            var bottomReserve by remember { mutableIntStateOf(0) }
+            val reserveDp = with(androidx.compose.ui.platform.LocalDensity.current) { (if (simple) 0 else bottomReserve).toDp() }
+            Box(Modifier.align(Alignment.TopStart).fillMaxSize().padding(bottom = reserveDp).clipToBounds()) {
             Column(
                 Modifier
                     .align(Alignment.TopStart)
@@ -309,6 +316,7 @@ internal fun FlyScreen(
                     horizontalAlignment = if (simple) Alignment.CenterHorizontally else Alignment.Start,
                 ) { overlays() }
             }
+            }
 
             if (simple) {
                 Box(
@@ -321,7 +329,7 @@ internal fun FlyScreen(
                 Box(
                     Modifier
                         .align(Alignment.BottomStart)
-                        .onGloballyPositioned { FlyChrome.bottomPx = it.size.height }
+                        .onGloballyPositioned { FlyChrome.bottomPx = it.size.height; bottomReserve = it.size.height }
                         .padding(AircastSpace.s3),
                 ) { keyRowEnd() }
             }

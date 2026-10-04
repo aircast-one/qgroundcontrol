@@ -306,6 +306,20 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
 
+    val flyStateJson by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.FLY_STATE)
+    val flyNow = remember(flyStateJson) { one.aircast.android.ui.flyState(flyStateJson) }
+    var wasArmed by remember { mutableStateOf(false) }
+    var flewWhileArmed by remember { mutableStateOf(false) }
+    LaunchedEffect(flyNow?.armed, flyNow?.state) {
+        val armedNow = flyNow?.connected == true && flyNow.armed
+        one.aircast.android.ui.disarmNotice(wasArmed, flewWhileArmed, armedNow)?.let { said -> noticeScope.launch { snackbars.showSnackbar(said) } }
+        flewWhileArmed = armedNow && (flewWhileArmed || flyNow?.state == "flying" || flyNow?.state == "landing")
+        wasArmed = armedNow
+    }
+    val flyVideoJson by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.VIDEO_VIEW)
+    val noVideoSource = remember(flyVideoJson) { one.aircast.android.ui.videoReading(flyVideoJson)?.let { !it.available && !it.sourceChosen } == true }
+    val shownFlyView = one.aircast.android.ui.flyViewShown(flyView, armed = flyNow?.armed == true, noVideoSource = noVideoSource)
+
     val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
     var lastVehicles by remember {
         mutableStateOf<one.aircast.mapspike.VehicleChoices?>(null)
@@ -347,7 +361,7 @@ fun AircastShell(hostView: android.view.View?) {
     AircastTheme(dark = darkBars) {
         one.aircast.android.ui.CloseGuard(enabled = tab == Tab.Fly && !fullScreen)
         one.aircast.android.ui.GimbalTakeControlDialog()
-        appMessages.firstOrNull()?.let { shown -> one.aircast.android.ui.AppMessageDialog(shown) { appMessages = appMessages.drop(1) } }
+        appMessages.firstOrNull()?.let { shown -> one.aircast.android.ui.AppMessageDialog(shown, onOpenSetup = { tab = Tab.Setup }) { appMessages = appMessages.drop(1) } }
         val barColor = MaterialTheme.colorScheme.surface.toArgb()
         SideEffect {
             (view.context as? Activity)?.window?.let { window ->
@@ -418,15 +432,14 @@ fun AircastShell(hostView: android.view.View?) {
 
                 if (onFly) {
                     FlyScreen(
-                        view = flyView,
+                        view = shownFlyView,
                         onView = { flyView = it },
                         landscape = flyLandscape,
                         status = {
                             VehicleStateChip()
                             VtolStateCell()
                             ControlRequestPrompt()
-                            Spacer(Modifier.weight(1f))
-                            StatusPill()
+                            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { StatusPill() }
                         },
                         video = { mod, expanded -> flyVideo(mod, expanded) },
                         map = { mod -> flyMap(mod) },

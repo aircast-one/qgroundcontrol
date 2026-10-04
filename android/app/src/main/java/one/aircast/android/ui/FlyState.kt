@@ -26,7 +26,32 @@ internal data class FlyState(
     val nominal: Boolean = true,
     val fault: Boolean = false,
     val canArm: Boolean = true,
+    val readyToFly: Boolean = true,
 )
+
+internal enum class ChipTone { Error, Neutral, Warning, Success }
+
+internal fun notReadyToFly(state: FlyState?): Boolean =
+    state != null && state.connected && !state.armed && state.contactLost != true && !state.readyToFly
+
+internal fun chipTone(state: FlyState?, lost: Boolean): ChipTone = when {
+    lost || state?.fault == true -> ChipTone.Error
+    state?.connected != true -> ChipTone.Neutral
+    !state.nominal -> ChipTone.Warning
+    notReadyToFly(state) -> ChipTone.Neutral
+    else -> ChipTone.Success
+}
+
+internal const val ALL_CHECKS_PASSED = "All checks passed."
+internal const val SETUP_NOT_COMPLETE = "Vehicle setup is not complete."
+
+internal fun readinessWarning(state: FlyState?): String? =
+    state?.takeIf { it.connected && !it.armed && (notReadyToFly(it) || !it.nominal) }
+        ?.let { listOfNotNull(it.stateText.ifBlank { null }, (if (notReadyToFly(it) && it.summaryDetail == ALL_CHECKS_PASSED) SETUP_NOT_COMPLETE else it.summaryDetail).ifBlank { null }).joinToString(". ") }
+        ?.ifBlank { null }
+
+internal fun disarmNotice(wasArmed: Boolean, flewWhileArmed: Boolean, armedNow: Boolean): String? =
+    if (wasArmed && !armedNow) (if (flewWhileArmed) "Landed and disarmed" else "Disarmed") else null
 
 internal data class TelemetryLink(
     val localRssiDbm: Int,
@@ -64,6 +89,7 @@ internal fun flyState(view: JSONObject?): FlyState? {
         nominal = view.optBoolean("nominal", true),
         fault = view.optBoolean("fault"),
         canArm = view.optBoolean("canArm", true),
+        readyToFly = view.optBoolean("readyToFly", true),
         staleNotice = view.optText("staleNotice"),
         mode = view.optText("mode"),
         rcSupported = view.optBoolean("rcSupported"),

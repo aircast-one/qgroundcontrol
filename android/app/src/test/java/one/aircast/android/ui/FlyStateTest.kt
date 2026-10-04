@@ -159,3 +159,42 @@ class FlyStateArmedTest {
         assertEquals("", flyState(JSONObject("""{"class":"FlyState","summaryDetail":null}"""))!!.summaryDetail)
     }
 }
+
+class FlyReadinessTest {
+    private fun state(armed: Boolean = false, ready: Boolean = true, nominal: Boolean = true, fault: Boolean = false, flying: String = "disarmed") = FlyState(
+        connected = true, armed = armed, contactLost = false, state = flying, stateText = if (ready) "Ready to fly" else "Not ready", staleNotice = "", mode = "Stabilize",
+        rcSupported = false, rcSignalText = "", rcSignal = null, rcOverride = null, telemetry = null,
+        summaryDetail = "2 checks need attention before arming.", nominal = nominal, fault = fault, readyToFly = ready,
+    )
+
+    @Test
+    fun aVehicleThatIsNotReadyIsNotShownGreen() {
+        assertEquals(ChipTone.Neutral, chipTone(state(ready = false), lost = false))
+        assertEquals(ChipTone.Success, chipTone(state(), lost = false))
+        assertEquals(ChipTone.Warning, chipTone(state(nominal = false), lost = false))
+        assertEquals(ChipTone.Error, chipTone(state(fault = true), lost = false))
+        assertEquals(ChipTone.Success, chipTone(state(armed = true, ready = false), lost = false))
+    }
+
+    @Test
+    fun theReadinessWarningSaysWhyAndOnlyBeforeArming() {
+        assertEquals("Not ready. 2 checks need attention before arming.", readinessWarning(state(ready = false)))
+        assertNull(readinessWarning(state()))
+        assertNull(readinessWarning(state(armed = true, ready = false)))
+        assertEquals("Not ready. Vehicle setup is not complete.", readinessWarning(state(ready = false).copy(summaryDetail = ALL_CHECKS_PASSED)))
+    }
+
+    @Test
+    fun disarmingSaysWhetherTheVehicleFlew() {
+        assertEquals("Landed and disarmed", disarmNotice(wasArmed = true, flewWhileArmed = true, armedNow = false))
+        assertEquals("Disarmed", disarmNotice(wasArmed = true, flewWhileArmed = false, armedNow = false))
+        assertNull(disarmNotice(wasArmed = false, flewWhileArmed = false, armedNow = false))
+    }
+
+    @Test
+    fun theMapLeadsWhileArmedWithNoVideoSource() {
+        assertEquals(FlyView.Map, flyViewShown(FlyView.Video, armed = true, noVideoSource = true))
+        assertEquals(FlyView.Video, flyViewShown(FlyView.Video, armed = false, noVideoSource = true))
+        assertEquals(FlyView.Video, flyViewShown(FlyView.Video, armed = true, noVideoSource = false))
+    }
+}

@@ -63,6 +63,12 @@ internal fun GuidedValuePanel(
         if (sentence.isNotBlank()) {
             Text(sentence, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
+        readinessWarning(remember(flyJson) { flyState(flyJson) })?.let { warning ->
+            Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
+                Text(warning, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(12.dp))
+            }
+        }
         content()
         SlideToConfirm(label = slideLabel(commitLabel), enabled = commitEnabled, onConfirm = onCommit)
         TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }

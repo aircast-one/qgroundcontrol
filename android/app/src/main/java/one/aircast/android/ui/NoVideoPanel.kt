@@ -47,7 +47,9 @@ internal fun unavailableVideoState(video: VideoReading): NoVideoState? = when {
 
 @Composable
 internal fun NoVideoPanel(video: VideoReading?) {
-    val unavailable = video?.let(::unavailableVideoState)
+    val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
+    val armed = remember(flyJson) { flyState(flyJson)?.armed == true }
+    val unavailable = video?.let(::unavailableVideoState)?.let { if (armed) it.copy(detail = "", action = NoVideoAction.None) else it }
     if (unavailable != null) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(unavailable.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

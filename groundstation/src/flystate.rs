@@ -118,6 +118,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let contact_lost = reported.unwrap_or(false);
     let state = state_of(connected, contact_lost, flag(&vehicle, "armed"), flag(&vehicle, "flying"), flag(&vehicle, "landing"));
     let health = health(backend);
+    let ready = state == State::Disarmed && disarmed_ready(backend);
     json!({
         "kind": "object",
         "class": "FlyState",
@@ -127,7 +128,8 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "landing": flag(&vehicle, "landing"),
         "contactLost": reported,
         "state": state.token(),
-        "stateText": state_line(state, state == State::Disarmed && disarmed_ready(backend), health.nominal()),
+        "stateText": state_line(state, ready, health.nominal()),
+        "readyToFly": ready,
         "nominal": health.nominal(),
         "fault": health.fault(),
         "canArm": flag(&vehicle, "armed") || health.report.is_none_or(|(can_arm, _)| can_arm),
