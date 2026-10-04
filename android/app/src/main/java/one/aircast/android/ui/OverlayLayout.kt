@@ -8,12 +8,14 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -38,6 +40,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -46,6 +55,7 @@ import kotlinx.coroutines.delay
 
 private const val LAYOUT_STORE = "fly-overlay-layout"
 private const val HIDDEN_PREFIX = "OverlayRigHidden-"
+private const val OFFSET_PREFIX = "OverlayRigOffset-"
 private const val HIDDEN_ALPHA = 0.35f
 private const val JIGGLE_DEGREES = 1.2f
 private const val JIGGLE_MILLIS = 120
@@ -66,6 +76,7 @@ internal object OverlayLayout {
     var hidden by mutableStateOf(emptySet<String>())
     var indicatorOrder by mutableStateOf(emptyList<String>())
     var valueSize by mutableStateOf(ValueSize.Default)
+    var offsets by mutableStateOf(emptyMap<String, Pair<Float, Float>>())
 }
 
 internal fun orderedKeys(available: List<String>, order: List<String>): List<String> =
@@ -102,6 +113,16 @@ private fun resetLayout(context: Context) {
     store(context).edit().clear().apply()
     OverlayLayout.hidden = emptySet()
     OverlayLayout.indicatorOrder = emptyList()
+    OverlayLayout.offsets = emptyMap()
+}
+
+internal fun storedOffsets(stored: Map<String, *>): Map<String, Pair<Float, Float>> =
+    stored.filterKeys { it.startsWith(OFFSET_PREFIX) }.mapNotNull { (key, value) ->
+        (value as? String)?.split(",")?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 2 }?.let { key.removePrefix(OFFSET_PREFIX) to (it[0] to it[1]) }
+    }.toMap()
+
+private fun saveOffset(context: Context, key: String) {
+    OverlayLayout.offsets[key]?.let { (x, y) -> store(context).edit().putString(OFFSET_PREFIX + key, "$x,$y").apply() }
 }
 
 private fun Modifier.onHold(action: () -> Unit): Modifier = pointerInput(Unit) {
@@ -126,25 +147,54 @@ private fun jiggleAngle(key: String): Float {
     return swing
 }
 
+internal fun clampedDrag(left: Float, top: Float, right: Float, bottom: Float, width: Float, height: Float, dx: Float, dy: Float): Pair<Float, Float> =
+    dx.coerceIn(-left, (width - right).coerceAtLeast(-left)) to dy.coerceIn(-top, (height - bottom).coerceAtLeast(-top))
+
 @Composable
-internal fun Hideable(key: String, content: @Composable () -> Unit) {
+internal fun Hideable(key: String, movable: Boolean = true, content: @Composable () -> Unit) {
     val context = LocalContext.current
-    LaunchedEffect(Unit) { OverlayLayout.hidden = hiddenKeys(store(context).all) }
+    LaunchedEffect(Unit) {
+        val stored = store(context).all
+        OverlayLayout.hidden = hiddenKeys(stored)
+        OverlayLayout.offsets = storedOffsets(stored)
+    }
     val hidden = key in OverlayLayout.hidden
     if (hidden && !OverlayLayout.editing) return
+    val moved = OverlayLayout.offsets[key] ?: (0f to 0f)
+    val placed = Modifier.offset(moved.first.dp, moved.second.dp)
     if (!OverlayLayout.editing) {
-        Box(Modifier.onHold { OverlayLayout.editing = true }) { content() }
+        Box(placed.onHold { OverlayLayout.editing = true }) { content() }
         return
     }
     val angle = jiggleAngle(key)
+    val density = LocalDensity.current.density
     var shown by remember { mutableStateOf(false) }
-    Box(Modifier.graphicsLayer { rotationZ = if (shown) angle else 0f }) {
+    var bounds by remember { mutableStateOf(Rect.Zero) }
+    var root by remember { mutableStateOf(Size.Zero) }
+    Box(
+        placed
+            .onGloballyPositioned {
+                bounds = it.boundsInRoot()
+                root = it.findRootCoordinates().size.toSize()
+            }
+            .graphicsLayer { rotationZ = if (shown) angle else 0f },
+    ) {
         Box(
             Modifier
                 .onSizeChanged { shown = it.width > 0 && it.height > 0 }
                 .then(if (shown) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium) else Modifier)
                 .alpha(if (hidden) HIDDEN_ALPHA else 1f),
         ) { content() }
+        if (shown && movable) Box(
+            Modifier.matchParentSize().pointerInput(key) {
+                detectDragGestures(onDragEnd = { saveOffset(context, key) }) { change, drag ->
+                    change.consume()
+                    val (dx, dy) = clampedDrag(bounds.left, bounds.top, bounds.right, bounds.bottom, root.width, root.height, drag.x, drag.y)
+                    val current = OverlayLayout.offsets[key] ?: (0f to 0f)
+                    OverlayLayout.offsets += key to (current.first + dx / density to current.second + dy / density)
+                }
+            },
+        )
         if (shown) Surface(
             onClick = { setHidden(context, key, !hidden) },
             modifier = Modifier.align(Alignment.TopEnd).size(BADGE_SIZE),

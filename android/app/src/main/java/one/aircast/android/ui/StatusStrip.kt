@@ -203,7 +203,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
         val byKey = cells.toMap()
         val keys = orderedKeys(cells.map { it.first }, OverlayLayout.indicatorOrder)
         keys.forEach { key ->
-            Hideable("indicator-$key") {
+            Hideable("indicator-$key", movable = false) {
                 Row(Modifier.leadingGap(STRIP_GAP), verticalAlignment = Alignment.CenterVertically) {
                     if (OverlayLayout.editing) TextButton(onClick = { movedKey(keys, key, -1)?.let { saveIndicatorOrder(context, it) } }) { Text("\u2039") }
                     byKey[key]?.invoke()

@@ -24,4 +24,17 @@ class OverlayLayoutTest {
         assertEquals("Tap again to reset", resetPillText(true))
         assertEquals(4000L, RESET_ARM_MILLIS)
     }
+
+    @Test
+    fun `a dragged widget stops at the screen edges`() {
+        assertEquals(30f to -40f, clampedDrag(100f, 40f, 200f, 140f, 1000f, 2000f, 30f, -80f))
+        assertEquals(-100f to 1860f, clampedDrag(100f, 40f, 200f, 140f, 1000f, 2000f, -500f, 5000f))
+        assertEquals(800f to 0f, clampedDrag(100f, 40f, 200f, 140f, 1000f, 2000f, 900f, 0f))
+    }
+
+    @Test
+    fun `stored offsets are read back per widget and malformed ones are dropped`() {
+        val stored = mapOf("OverlayRigOffset-instrumentPanel" to "12.5,-30.0", "OverlayRigOffset-orbit" to "bad", "OverlayRigHidden-traffic" to true)
+        assertEquals(mapOf("instrumentPanel" to (12.5f to -30f)), storedOffsets(stored))
+    }
 }
