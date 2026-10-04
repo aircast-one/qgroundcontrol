@@ -112,6 +112,7 @@ fn transfer_item(seq: u16, frame: u8, command: u16, current: bool, auto_continue
 const COMMAND_LONG_ID: u32 = 76;
 const ORBIT_TELEMETRY_TIMEOUT_MS: u64 = 3000;
 const LINK_SILENT_MS: u64 = 3500;
+const LINK_CHECK_PERIOD_MS: u64 = 1000;
 const RC_OVERRIDE_CHANNEL_COUNT: u8 = 18;
 const RC_OVERRIDE_PERIOD_MS: u64 = 200;
 const RC_OVERRIDE_RELEASE_TICKS: u8 = 3;
@@ -208,6 +209,10 @@ impl StatusBits {
     }
 }
 
+fn next_timer_due(due: u64, now_ms: u64) -> u64 {
+    Some(due + LINK_CHECK_PERIOD_MS).filter(|next| *next > now_ms).unwrap_or(now_ms + LINK_CHECK_PERIOD_MS)
+}
+
 pub fn counted_loss(seq: Option<(u8, u8)>, lost: u64, header: &MavHeader, heartbeat: bool) -> (Option<(u8, u8)>, u64) {
     let received = header.sequence;
     match seq {
@@ -282,6 +287,7 @@ pub struct Vehicle {
     pub comm_lost_enabled: bool,
     gimbal_rate_due: Option<u64>,
     pub link_states: Vec<(LinkId, u64, bool)>,
+    link_check_due_ms: Option<u64>,
     pub primary_link: Option<LinkId>,
     pub link_kinds: LinkKinds,
     link_frames: Vec<(LinkId, Vec<u8>)>,
@@ -495,6 +501,7 @@ impl Vehicle {
             comm_lost_enabled: true,
             gimbal_rate_due: None,
             link_states: Vec::new(),
+            link_check_due_ms: None,
             primary_link: None,
             link_kinds: LinkKinds::default(),
             link_frames: Vec::new(),
@@ -2725,6 +2732,9 @@ impl Vehicle {
                 }
             }
             None => {
+                if self.link_states.is_empty() {
+                    self.link_check_due_ms = Some(now_ms + LINK_CHECK_PERIOD_MS);
+                }
                 self.link_states.push((link, now_ms, false));
                 self.update_primary_link(now_ms);
             }
@@ -2733,6 +2743,8 @@ impl Vehicle {
 
     pub fn check_links(&mut self, now_ms: u64) {
         self.commands.high_latency = self.primary_link.or(Some(self.link)).is_some_and(|link| self.link_kinds.high_latency.contains(&link));
+        let Some(due) = self.link_check_due_ms.filter(|due| now_ms >= *due) else { return };
+        self.link_check_due_ms = Some(next_timer_due(due, now_ms));
         if !self.comm_lost_enabled || self.calibrate.mutes_comm_lost() {
             return;
         }
@@ -3965,11 +3977,26 @@ impl Hub {
                 }
             }
         }
-        if let MavMessage::RADIO_STATUS(_) = message {
-            self.vehicles.values_mut().filter(|v| v.link == origin.link && v.id != header.system_id).for_each(|v| v.radio.apply((header.system_id, header.component_id), message));
-        }
+        let radio = matches!(message, MavMessage::RADIO_STATUS(_));
+        let receivers: Vec<u8> = self
+            .vehicles
+            .values()
+            .filter(|v| v.id == header.system_id || header.system_id == 0 || radio && v.link_states.iter().any(|(link, _, _)| *link == origin.link))
+            .map(|v| v.id)
+            .collect();
+        receivers
+            .into_iter()
+            .flat_map(|id| {
+                let created = if id == header.system_id { bytes.clone() } else { Vec::new() };
+                self.receive(id, created, origin, header, message, timestamp_us, now_ms)
+            })
+            .collect()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn receive(&mut self, id: u8, mut bytes: Vec<Vec<u8>>, origin: Origin, header: &MavHeader, message: &MavMessage, timestamp_us: u64, now_ms: u64) -> Vec<(LinkId, Vec<u8>)> {
         let inputs = self.remote_inputs.as_ref();
-        let Some(vehicle) = self.vehicles.get_mut(&header.system_id) else { return Vec::new() };
+        let Some(vehicle) = self.vehicles.get_mut(&id) else { return Vec::new() };
         if !matches!(message, MavMessage::RADIO_STATUS(_)) {
             vehicle.note_link(origin.link, now_ms);
         }
@@ -5080,6 +5107,41 @@ mod tests {
     }
 
     #[test]
+    fn link_loss_is_checked_once_a_second_from_the_first_link() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 300);
+        [1_300, 2_300, 3_300].iter().for_each(|now| hub.check_links(*now, &LinkKinds::default()));
+        assert!(!hub.active().unwrap().connection_lost, "the timer fires at 1.3 s, 2.3 s, 3.3 s, 4.3 s");
+        hub.check_links(4_200, &LinkKinds::default());
+        assert!(!hub.active().unwrap().connection_lost, "a 3.9 s silence waits for the next tick");
+        hub.check_links(4_300, &LinkKinds::default());
+        assert!(hub.active().unwrap().connection_lost);
+        assert_eq!(next_timer_due(1_000, 5_500), 6_500, "an overdue QTimer fires once and restarts from now");
+    }
+
+    #[test]
+    fn system_id_zero_reaches_every_vehicle_and_a_radio_reaches_every_vehicle_on_its_link() {
+        let mut hub = Hub::default();
+        hub.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(1), &MavHeader { system_id: 2, component_id: 1, sequence: 0 }, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(1), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::ATTITUDE(Default::default()), 0, 10);
+        hub.on_frame(origin(5), &MavHeader { system_id: 0, component_id: 1, sequence: 0 }, &MavMessage::ATTITUDE(Default::default()), 0, 20);
+        assert!(hub.vehicles.values().all(|v| v.link_states.iter().any(|(link, _, _)| *link == 5)), "Vehicle::_mavlinkMessageReceived lets system id 0 through, so every vehicle's link manager adds the link");
+        assert_eq!((hub.vehicles[&1].messages, hub.vehicles[&2].messages), (3, 2), "and handles the message itself");
+        let radio = MavMessage::RADIO_STATUS(mavlink::dialects::ardupilotmega::RADIO_STATUS_DATA { rssi: 200, ..Default::default() });
+        let before = hub.vehicles[&2].messages;
+        hub.on_frame(origin(1), &MavHeader { system_id: 51, component_id: 68, sequence: 0 }, &radio, 0, 30);
+        assert!(hub.vehicles[&1].radio.telemetry, "a SiK radio on a secondary link reaches the vehicle, as containsLink checks every link");
+        assert_eq!(hub.vehicles[&2].messages, before + 1, "and the vehicle handles it like any other message");
+        assert_eq!(hub.vehicles[&1].link_states.iter().find(|(link, _, _)| *link == 1).map(|(_, at, _)| *at), Some(10), "RADIO_STATUS never keeps a link alive");
+        let counts = |hub: &Hub| hub.vehicles.values().map(|v| v.messages).collect::<Vec<_>>();
+        let quiet = counts(&hub);
+        hub.on_frame(origin(7), &MavHeader { system_id: 51, component_id: 68, sequence: 0 }, &radio, 0, 40);
+        assert_eq!(counts(&hub), quiet, "a radio on a link no vehicle uses reaches none");
+    }
+
+    #[test]
     fn a_disabled_comm_lost_check_neither_loses_nor_regains_the_vehicle() {
         let mut hub = Hub::default();
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
@@ -5088,7 +5150,7 @@ mod tests {
         hub.check_links(10 * LINK_SILENT_MS, &LinkKinds::default());
         assert!(!hub.active().unwrap().connection_lost, "Qt's check returns early while the check is off");
         hub.set_link_flag("communicationLostEnabled", true);
-        hub.check_links(10 * LINK_SILENT_MS, &LinkKinds::default());
+        hub.check_links(10 * LINK_SILENT_MS + LINK_CHECK_PERIOD_MS, &LinkKinds::default());
         assert!(hub.active().unwrap().connection_lost);
     }
 
@@ -5446,6 +5508,8 @@ mod tests {
         hub.check_links(LINK_SILENT_MS, &LinkKinds::default());
         assert!(!hub.snapshot()["vehicle"]["connectionLost"].as_bool().unwrap());
         hub.check_links(LINK_SILENT_MS + 1, &LinkKinds::default());
+        assert!(!hub.snapshot()["vehicle"]["connectionLost"].as_bool().unwrap(), "the check runs once a second from the first link, like VehicleLinkManager's timer");
+        hub.check_links(LINK_SILENT_MS + LINK_CHECK_PERIOD_MS, &LinkKinds::default());
         assert_eq!((hub.snapshot()["available"].as_bool(), hub.snapshot()["vehicle"]["connectionLost"].as_bool()), (Some(true), Some(true)), "a silent vehicle is kept and flagged, as the Qt head keeps it until its link closes");
         assert_eq!(hub.snapshot()["heard"], false, "a head reading only the top-level flags drew a frozen aircraft as a live one, because the liveness answer sat a level below the one it reached for");
         hub.on_frame(origin(0), &MavHeader { system_id: 1, component_id: 1, sequence: 0 }, &MavMessage::HEARTBEAT(quad.clone()), 3_500_007, 0);
