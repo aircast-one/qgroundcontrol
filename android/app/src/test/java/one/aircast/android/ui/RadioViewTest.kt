@@ -53,6 +53,8 @@ class RadioViewTest {
     fun `the action path names the controller the core reads its state from`() {
         assertEquals("radioCal.nextButtonClicked", radioCalAction("nextButtonClicked"))
         assertEquals("radioCal.cancelButtonClicked", radioCalAction("cancelButtonClicked"))
+        assertEquals(listOf("radioCal.start", "radioCal.open"), RADIO_ENTER_ACTIONS.map(::radioCalAction))
+        assertEquals(listOf("radioCal.cancelButtonClicked", "radioCal.close"), RADIO_LEAVE_ACTIONS.map(::radioCalAction))
     }
 
     @Test

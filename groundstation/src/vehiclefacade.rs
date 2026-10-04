@@ -633,15 +633,12 @@ fn onboard_log_get(path: &str) -> Option<Value> {
 const MAV_MODE_FLAG_HIL_ENABLED: u8 = 32;
 const RC_TYPE_SPEKTRUM: f64 = 0.0;
 const RC_TYPE_CRSF: f64 = 1.0;
-const CMD_PREFLIGHT_CALIBRATION: u16 = 241;
-const CALIBRATE_COPY_TRIMS: f64 = 2.0;
 
 fn vehicle_command(path: &str, args: &str) -> Option<(u16, [f64; 7])> {
     let mode = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0).and_then(Value::as_f64)).unwrap_or(0.0);
     match path {
         "radioCal.spektrumBindMode" => Some((crate::mavcmd::CMD_START_RX_PAIR, [RC_TYPE_SPEKTRUM, mode, 0.0, 0.0, 0.0, 0.0, 0.0])),
         "radioCal.crsfBindMode" => Some((crate::mavcmd::CMD_START_RX_PAIR, [RC_TYPE_CRSF, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
-        "radioCal.copyTrims" => Some((CMD_PREFLIGHT_CALIBRATION, [0.0, 0.0, 0.0, CALIBRATE_COPY_TRIMS, 0.0, 0.0, 0.0])),
         "vehicle.flashBootloader" => Some((crate::mavcmd::CMD_FLASH_BOOTLOADER, [0.0, 0.0, 0.0, 0.0, crate::mavcmd::FLASH_BOOTLOADER_MAGIC, 0.0, 0.0])),
         _ => None,
     }
@@ -1852,6 +1849,9 @@ impl<B: Backend> Backend for Facade<B> {
             "radioCal.nextButtonClicked" => Some("next"),
             "radioCal.cancelButtonClicked" => Some("cancel"),
             "radioCal.start" => Some("start"),
+            "radioCal.open" => Some("open"),
+            "radioCal.close" => Some("close"),
+            "radioCal.copyTrims" => Some("copyTrims"),
             _ => None,
         }).flatten() {
             let vehicle = crate::hub::lock().active_id();
@@ -1996,7 +1996,7 @@ mod tests {
     fn radio_bind_and_copy_trims_send_what_vehicle_pair_rx_and_start_calibration_send() {
         assert_eq!(vehicle_command("radioCal.spektrumBindMode", "[2]"), Some((crate::mavcmd::CMD_START_RX_PAIR, [0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0])));
         assert_eq!(vehicle_command("radioCal.crsfBindMode", "[]").map(|c| c.1[0]), Some(1.0));
-        assert_eq!(vehicle_command("radioCal.copyTrims", "[]"), Some((241, [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0])));
+        assert_eq!(vehicle_command("radioCal.copyTrims", "[]"), None, "startCalibration(CalibrationCopyTrims) is a raw COMMAND_LONG, never the command queue");
         assert_eq!(vehicle_command("radioCal.nextButtonClicked", "[]"), None);
         assert_eq!(vehicle_command("vehicle.flashBootloader", "[]"), Some((42650, [0.0, 0.0, 0.0, 0.0, 290876.0, 0.0, 0.0])), "Vehicle::flashBootloader puts the magic number in param 5");
     }

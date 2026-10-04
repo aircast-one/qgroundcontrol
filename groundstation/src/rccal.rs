@@ -93,10 +93,9 @@ pub struct Vehicle {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
     None,
-    StartCalibration,
-    StopCalibration,
     Write(Vec<(String, f64)>),
     ThrottleReversed,
+    Refused(String),
 }
 
 #[derive(Debug, Clone)]
@@ -247,15 +246,9 @@ impl RcCal {
     }
 
     fn advance(&mut self) -> Outcome {
-        let next = self.step.map_or(0, |s| s + 1);
-        match next < STEPS.len() {
-            true => {
-                self.step = Some(next);
-                self.setup_current();
-                Outcome::None
-            }
-            false => Outcome::StopCalibration,
-        }
+        self.step = self.step.map(|s| s + 1).filter(|s| *s < STEPS.len());
+        self.setup_current();
+        Outcome::None
     }
 
     pub fn forget_failure(&mut self) {
@@ -266,26 +259,22 @@ impl RcCal {
         self.step.is_some()
     }
 
-    pub fn stop(&mut self, vehicle: &Vehicle, parameter: &dyn Fn(&str) -> Option<f64>) -> Outcome {
-        let was = self.step.take().is_some();
+    pub fn stop(&mut self, vehicle: &Vehicle, parameter: &dyn Fn(&str) -> Option<f64>) {
+        self.step = None;
         self.read_stored(vehicle, parameter);
         self.status_text.clear();
         self.next_enabled = true;
-        match was {
-            true => Outcome::StopCalibration,
-            false => Outcome::None,
-        }
     }
 
     pub fn next(&mut self, vehicle: &Vehicle, parameter: &dyn Fn(&str) -> Option<f64>) -> Vec<Outcome> {
         match self.step.and_then(|s| STEPS.get(s)).copied() {
-            None if self.count < MINIMUM_CHANNELS => Vec::new(),
+            None if self.count < MINIMUM_CHANNELS => vec![Outcome::Refused(format!("Detected {} channels. To operate vehicle, you need at least {MINIMUM_CHANNELS} channels.", self.count))],
             None => {
                 self.reset_internal();
                 self.throttle_reversed_failure = false;
                 self.step = Some(0);
                 self.setup_current();
-                vec![Outcome::StartCalibration]
+                Vec::new()
             }
             Some(Step::StickNeutral) => {
                 (0..self.count).for_each(|i| self.channels[i].trim = self.raw[i]);
@@ -294,8 +283,8 @@ impl RcCal {
             Some(Step::SwitchMinMax) => vec![self.advance()],
             Some(Step::Complete) => {
                 let saved = self.save(vehicle, parameter);
-                let stopped = self.stop(vehicle, parameter);
-                vec![saved, stopped]
+                self.stop(vehicle, parameter);
+                vec![saved]
             }
             Some(_) => Vec::new(),
         }
@@ -543,7 +532,8 @@ mod tests {
         let mut cal = RcCal::for_vehicle(&copter(), 2);
         let center = [1500, 1500, 1000, 1500, 1500, 1500, 1500, 1500];
         cal.channel_values(&center, 0);
-        assert_eq!(cal.next(&copter(), &lookup), vec![Outcome::StartCalibration]);
+        assert!(cal.next(&copter(), &lookup).is_empty(), "Calibrate starts the steps without a command; RadioComponentController sent the calibration command when the page opened");
+        assert!(cal.calibrating());
         cal.channel_values(&center, 100);
         assert_eq!(cal.next(&copter(), &lookup), vec![Outcome::None], "neutral saves every trim and moves on");
         let with = |channel: usize, value: i32| { let mut v = center; v[channel] = value; v };
@@ -570,7 +560,7 @@ mod tests {
         assert_eq!(get("RC1_REVERSED"), Some(0.0));
         assert_eq!((get("RCMAP_ROLL"), get("RCMAP_THROTTLE")), (None, None), "a mapping that did not change is not rewritten");
         assert_eq!(get("RC8_MIN"), Some(1000.0), "a channel never moved keeps the default range");
-        assert_eq!(outcomes[1], Outcome::StopCalibration);
+        assert_eq!(outcomes.len(), 1, "finishing stops the steps without a command");
         assert!(!cal.calibrating());
         assert_eq!(cal.mapped(Function::Pitch), Some(1), "stopping reads the stored calibration back");
     }
@@ -597,7 +587,8 @@ mod tests {
         let mut cal = RcCal::for_vehicle(&copter(), 9);
         assert_eq!(cal.transmitter_mode, 2, "an invalid mode falls back to 2");
         cal.channel_values(&[1500, 1500, 1500], 0);
-        assert!(cal.next(&copter(), &lookup).is_empty());
+        assert_eq!(cal.next(&copter(), &lookup), vec![Outcome::Refused("Detected 3 channels. To operate vehicle, you need at least 4 channels.".to_string())], "nextButtonClicked shows QGC's app message");
+        assert!(!cal.calibrating());
         assert_eq!(clamped(&[900, 2100, 1500]), vec![1000, 2000, 1500]);
     }
 

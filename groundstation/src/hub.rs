@@ -277,6 +277,7 @@ pub struct Vehicle {
     pub control: crate::operatorcontrol::ControlState,
     pub rccal: crate::rccal::RcCal,
     rccal_loaded: bool,
+    rccal_open: bool,
     pub camera_tracking_enabled: bool,
     pub camera_tracking_image: Option<crate::cameratrack::TrackingImage>,
     camera_sent: BTreeMap<(u8, u16), f64>,
@@ -491,6 +492,7 @@ impl Vehicle {
             control: crate::operatorcontrol::ControlState::default(),
             rccal: crate::rccal::RcCal::default(),
             rccal_loaded: false,
+            rccal_open: false,
             camera_tracking_enabled: false,
             camera_tracking_image: None,
             camera_sent: BTreeMap::new(),
@@ -701,7 +703,7 @@ impl Vehicle {
             return Vec::new();
         }
         let sensors = self.calibrate.cancel().map(|actions| self.follow_calibration(actions, now_ms)).unwrap_or_default();
-        let radio = self.start_guided(&json!({ "action": "rcCal", "op": "cancel" }), now_ms).unwrap_or_default();
+        let radio = self.start_guided(&json!({ "action": "rcCal", "op": "close" }), now_ms).unwrap_or_default();
         sensors.into_iter().chain(radio).collect()
     }
 
@@ -2102,27 +2104,42 @@ impl Vehicle {
             Some("rcCal") => {
                 self.load_rccal();
                 let vehicle = self.rccal_vehicle();
+                let target = (self.id, self.component);
+                let op = action.get("op").and_then(Value::as_str);
+                if let Some(param4) = match op { Some("open") => Some(1.0), Some("copyTrims") => Some(2.0), _ => None } {
+                    self.rccal_open |= op == Some("open");
+                    return Ok(self.encode(&Outbound::CommandLong { target, command: sensorcal::CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, param4, 0.0, 0.0, 0.0] }).into_iter().collect());
+                }
                 let mut cal = std::mem::take(&mut self.rccal);
                 let outcomes = {
                     let lookup = |name: &str| self.params.value(self.component, name).map(|p| p.as_f64());
-                    match action.get("op").and_then(Value::as_str) {
+                    match op {
                         Some("next") => cal.next(&vehicle, &lookup),
-                        Some("cancel") => vec![cal.stop(&vehicle, &lookup)],
+                        Some("cancel" | "close") => {
+                            cal.stop(&vehicle, &lookup);
+                            Vec::new()
+                        }
                         Some("start") => {
                             cal.forget_failure();
-                            vec![cal.stop(&vehicle, &lookup)]
+                            cal.stop(&vehicle, &lookup);
+                            Vec::new()
                         }
                         _ => Vec::new(),
                     }
                 };
                 self.rccal = cal;
-                let target = (self.id, self.component);
+                if op == Some("close") && std::mem::take(&mut self.rccal_open) {
+                    let outs = self.commands.send(Command { component: self.component, command: sensorcal::CMD_PREFLIGHT_CALIBRATION, command_int: false, frame: 0, params: [0.0; 7], show_error: vehicle.px4, tag: 0 }, now_ms);
+                    return Ok(self.handle(outs, now_ms));
+                }
                 let wrote = outcomes.iter().any(|outcome| matches!(outcome, crate::rccal::Outcome::Write(_)));
                 let sent: Vec<Vec<u8>> = outcomes
                     .into_iter()
                     .flat_map(|outcome| match outcome {
-                        crate::rccal::Outcome::StartCalibration => self.encode(&Outbound::CommandLong { target, command: sensorcal::CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0] }).into_iter().collect(),
-                        crate::rccal::Outcome::StopCalibration => self.encode(&Outbound::CommandLong { target, command: sensorcal::CMD_PREFLIGHT_CALIBRATION, params: [0.0; 7] }).into_iter().collect(),
+                        crate::rccal::Outcome::Refused(text) => {
+                            crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &text);
+                            Vec::new()
+                        }
                         crate::rccal::Outcome::Write(writes) => writes
                             .into_iter()
                             .flat_map(|(name, value)| {
@@ -4398,7 +4415,7 @@ impl Hub {
             if let Some(left) = self.active.and_then(|was| self.vehicles.get_mut(&was)) {
                 left.clear_rc_overrides();
                 left.logs_left_behind = left.onboard_logs.busy();
-                left.calibration_left_behind = left.calibrate.running() || left.rccal.running();
+                left.calibration_left_behind = left.calibrate.running() || left.rccal_open || left.rccal.running();
             }
         }
         self.active = id;
@@ -6762,15 +6779,48 @@ mod tests {
         assert_eq!(sent, vec![0.0], "SetupView rebuilds on a vehicle change and the calibration it left is stopped; nothing on screen can reach it any more");
         assert!(hub.vehicles.get_mut(&3).unwrap().pump_with(1_200, None, 0).iter().all(|b| !matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION)), "and only once");
 
+        let acked = MavMessage::COMMAND_ACK(mavlink::dialects::ardupilotmega::COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION, result: mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
+        hub.on_frame(origin(4), &heard(3), &acked, 1_210, 1_210);
         hub.set_active(Some(3));
         let radio = hub.vehicles.get_mut(&3).unwrap();
         radio.load_rccal();
         radio.rccal.channel_values(&[1500; 8], 1_250);
-        radio.start_guided(&json!({ "action": "rcCal", "op": "next" }), 1_300).unwrap();
+        let opened = radio.start_guided(&json!({ "action": "rcCal", "op": "open" }), 1_260).unwrap();
+        assert!(opened.iter().any(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION && c.param4 == 1.0)), "RadioComponentController's constructor puts the vehicle in radio calibration when the page opens");
+        let started = radio.start_guided(&json!({ "action": "rcCal", "op": "next" }), 1_300).unwrap();
+        assert!(started.is_empty(), "Calibrate sends nothing");
         assert!(hub.vehicles[&3].rccal.running(), "the radio calibration is under way");
         hub.set_active(Some(4));
         let stopped = hub.vehicles.get_mut(&3).unwrap().pump_with(1_400, None, 0).iter().any(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION && c.param4 == 0.0));
         assert!(stopped && !hub.vehicles[&3].rccal.running(), "RadioComponentController's destructor stops the vehicle's RC calibration too");
+    }
+
+    #[test]
+    fn the_radio_page_owns_the_calibration_command_and_cancel_or_finish_send_none() {
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavType};
+        let heard = MavHeader { system_id: 3, component_id: 1, sequence: 0 };
+        let mut px4 = HEARTBEAT_DATA::default();
+        px4.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        px4.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &heard, &MavMessage::HEARTBEAT(px4), 0, 0);
+        let radio = hub.vehicles.get_mut(&3).unwrap();
+        let calibration = |sent: &[Vec<u8>]| sent.iter().filter_map(|b| match decode(b) {
+            MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION => Some(c.param4),
+            _ => None,
+        }).collect::<Vec<_>>();
+        assert!(calibration(&radio.start_guided(&json!({ "action": "rcCal", "op": "close" }), 100).unwrap()).is_empty(), "no page was open, so there is no controller to destroy");
+        radio.rccal.channel_values(&[1500; 3], 150);
+        assert!(radio.start_guided(&json!({ "action": "rcCal", "op": "next" }), 200).unwrap().is_empty());
+        assert!(!radio.rccal.running(), "three channels cannot start");
+        assert_eq!(calibration(&radio.start_guided(&json!({ "action": "rcCal", "op": "open" }), 300).unwrap()), vec![1.0]);
+        radio.rccal.channel_values(&[1500; 8], 350);
+        assert!(calibration(&radio.start_guided(&json!({ "action": "rcCal", "op": "next" }), 400).unwrap()).is_empty());
+        assert!(calibration(&radio.start_guided(&json!({ "action": "rcCal", "op": "cancel" }), 500).unwrap()).is_empty(), "_stopCalibration leaves the vehicle in radio calibration");
+        assert_eq!(calibration(&radio.start_guided(&json!({ "action": "rcCal", "op": "copyTrims" }), 550).unwrap()), vec![2.0]);
+        assert_eq!(calibration(&radio.start_guided(&json!({ "action": "rcCal", "op": "copyTrims" }), 560).unwrap()), vec![2.0], "fire and forget: a second copy is never refused as a duplicate");
+        assert_eq!(calibration(&radio.start_guided(&json!({ "action": "rcCal", "op": "close" }), 600).unwrap()), vec![0.0], "the destructor stops it");
+        assert!(calibration(&radio.start_guided(&json!({ "action": "rcCal", "op": "close" }), 700).unwrap()).is_empty(), "once");
     }
 
     #[test]
