@@ -40,9 +40,9 @@ fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
 }
 
 fn catalogued() -> Option<(Vec<Value>, Value)> {
-    let sub = crate::vehiclefacade::switched_on().then(|| crate::hub::lock().active().map(crate::hub::Vehicle::is_ardusub)).flatten()?;
+    let (sub, fact_groups) = crate::vehiclefacade::switched_on().then(|| crate::hub::lock().active().map(|v| (v.is_ardusub(), v.gimbals.fact_groups()))).flatten()?;
     let (groups, vehicle) = crate::vehiclefact::instrument_catalogue(sub);
-    let gimbals: Vec<(String, Value)> = crate::gimbal::lock().fact_groups().into_iter().map(|(pair, _)| (crate::vehiclefact::gimbal_group_name(pair), crate::vehiclefact::gimbal_listing())).collect();
+    let gimbals: Vec<(String, Value)> = fact_groups.into_iter().map(|(pair, _)| (crate::vehiclefact::gimbal_group_name(pair), crate::vehiclefact::gimbal_listing())).collect();
     let listed = groups
         .into_iter()
         .map(|(group, listing)| (group.to_string(), listing))

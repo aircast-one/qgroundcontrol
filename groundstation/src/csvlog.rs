@@ -118,7 +118,7 @@ fn open(backend: &dyn Backend, vehicle: &Logged) -> Option<Csv> {
     std::fs::create_dir_all(&folder).ok()?;
     let name = format!("{} vehicle{}.csv", chrono::Local::now().format("%Y-%m-%d %H-%M-%S"), vehicle.id);
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(folder.join(name)).ok()?;
-    let gimbals: Vec<String> = crate::gimbal::lock().fact_groups().into_iter().map(|(pair, _)| crate::vehiclefact::gimbal_group_name(pair)).collect();
+    let gimbals: Vec<String> = crate::hub::lock().vehicle(vehicle.id).map(|v| v.gimbals.fact_groups()).unwrap_or_default().into_iter().map(|(pair, _)| crate::vehiclefact::gimbal_group_name(pair)).collect();
     let columns = columns(backend, vehicle.listed, vehicle.sub, &gimbals);
     file.write_all(header(&columns).as_bytes()).ok()?;
     Some(Csv { file, columns })

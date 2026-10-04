@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
@@ -43,7 +42,6 @@ pub const DEFAULT_INTERVAL_US: f64 = 0.0;
 pub const INFORMATION_REQUEST_TIMEOUT_MS: u64 = 3000;
 pub const CONTROL_STALE_MS: u64 = 15_000;
 pub const ATTITUDE_STALE_MS: u64 = 3000;
-pub const HEADING_STALE_MS: u64 = 3000;
 pub const NON_MAVLINK_DEVICE_IDS: u8 = 6;
 pub const RELEASE_CONTROL: f64 = -3.0;
 pub const LEAVE_UNCHANGED: f64 = -1.0;
@@ -54,20 +52,19 @@ pub const REASON_NOT_READY: &str = "notReady";
 pub const REASON_NO_ACTIVE_GIMBAL: &str = "noActiveGimbal";
 pub const REASON_OTHERS_HAVE_CONTROL: &str = "othersHaveControl";
 pub const REASON_ATTITUDE_UNKNOWN: &str = "attitudeUnknown";
-pub const REASON_HEADING_UNKNOWN: &str = "headingUnknownWhileYawLocked";
 pub const REASON_UNSUPPORTED: &str = "unsupported";
 
 static ASKED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub const GIMBAL_CHANGED: &str = "core.gimbal@changed";
 pub const ANNOUNCE_INTERVAL_MS: u64 = 250;
-static ANNOUNCED: std::sync::Mutex<(u64, u64)> = std::sync::Mutex::new((0, 0));
+static ANNOUNCED: std::sync::Mutex<(u64, u64, bool)> = std::sync::Mutex::new((0, 0, false));
 
 pub fn announce_due(now_ms: u64, live: bool) -> bool {
     let mut last = ANNOUNCED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    let (serial, at) = *last;
-    let due = asked() != serial || (live && now_ms.saturating_sub(at) >= ANNOUNCE_INTERVAL_MS);
+    let (serial, at, was_live) = *last;
+    let due = asked() != serial || live != was_live || (live && now_ms.saturating_sub(at) >= ANNOUNCE_INTERVAL_MS);
     if due {
-        *last = (asked(), now_ms);
+        *last = (asked(), now_ms, live);
     }
     due
 }
@@ -86,7 +83,6 @@ pub fn reason_text(token: &str) -> Option<&'static str> {
         REASON_NO_ACTIVE_GIMBAL => Some("No gimbal is selected."),
         REASON_OTHERS_HAVE_CONTROL => Some("Command not sent. Another user has control of the gimbal."),
         REASON_ATTITUDE_UNKNOWN => Some("The gimbal has not reported its attitude yet."),
-        REASON_HEADING_UNKNOWN => Some("The vehicle heading is unknown, so a yaw-locked gimbal cannot be pointed."),
         REASON_UNSUPPORTED => Some("This gimbal does not support that."),
         _ => None,
     }
@@ -129,7 +125,6 @@ pub struct DeviceAttitude {
     pub q: [f32; 4],
     pub angular_velocity_rad_s: Option<[f32; 3]>,
     pub failure_flags: u32,
-    pub delta_yaw_rad: Option<f32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,11 +155,10 @@ impl Frame {
 pub struct Attitude {
     pub roll: f32,
     pub pitch: f32,
-    pub body_yaw: Option<f32>,
-    pub absolute_yaw: Option<f32>,
+    pub body_yaw: f32,
+    pub absolute_yaw: f32,
     pub pitch_rate: Option<f32>,
     pub yaw_rate: Option<f32>,
-    pub delta_yaw: Option<f32>,
     pub at_ms: u64,
 }
 
@@ -321,8 +315,8 @@ impl Gimbal {
             "active": active,
             "roll": self.attitude.map(|a| a.roll),
             "pitch": self.attitude.map(|a| a.pitch),
-            "bodyYaw": self.attitude.and_then(|a| a.body_yaw),
-            "absoluteYaw": self.attitude.and_then(|a| a.absolute_yaw),
+            "bodyYaw": self.attitude.map(|a| a.body_yaw),
+            "absoluteYaw": self.attitude.map(|a| a.absolute_yaw),
             "attitudeAgeMs": age_ms,
             "attitudeStale": stale,
             "yawFrame": self.yaw_frame.map(Frame::token),
@@ -379,7 +373,6 @@ pub struct Gimbals {
     gimbals: BTreeMap<PairId, Gimbal>,
     managers: BTreeMap<u8, Manager>,
     active: Option<PairId>,
-    heading: Option<(f32, u64)>,
     pending_information: Option<(u8, u64)>,
     last_status_request_ms: Option<u64>,
 }
@@ -393,7 +386,6 @@ impl Default for Gimbals {
             gimbals: BTreeMap::new(),
             managers: BTreeMap::new(),
             active: None,
-            heading: None,
             pending_information: None,
             last_status_request_ms: None,
         }
@@ -404,16 +396,16 @@ pub fn wrap180(angle: f32) -> f32 {
     (angle + 180.0).rem_euclid(360.0) - 180.0
 }
 
-pub fn euler_degrees(q: [f32; 4]) -> Option<(f32, f32, f32)> {
-    let norm = q.iter().map(|v| v * v).sum::<f32>().sqrt();
-    (q.iter().all(|v| v.is_finite()) && norm > 0.1).then(|| {
-        let [w, x, y, z] = q.map(|v| v / norm);
-        (
-            (2.0 * (w * x + y * z)).atan2(1.0 - 2.0 * (x * x + y * y)).to_degrees(),
-            (2.0 * (w * y - z * x)).clamp(-1.0, 1.0).asin().to_degrees(),
-            (2.0 * (w * z + x * y)).atan2(1.0 - 2.0 * (y * y + z * z)).to_degrees(),
-        )
-    })
+pub fn euler_degrees(q: [f32; 4]) -> (f32, f32, f32) {
+    let (roll, pitch, yaw) = crate::vehiclefacts::quaternion_to_euler(q.map(f64::from));
+    ((roll as f32).to_degrees(), (pitch as f32).to_degrees(), (yaw as f32).to_degrees())
+}
+
+pub fn body_and_absolute_yaw(frame: Frame, yaw: f32, heading: f32) -> (f32, f32) {
+    match frame {
+        Frame::Vehicle => (yaw, match yaw + heading { absolute if absolute > 180.0 => absolute - 360.0, absolute => absolute }),
+        Frame::Earth => (match yaw - heading { body if body < -180.0 => body + 360.0, body => body }, yaw),
+    }
 }
 
 fn offer(reason: Option<&'static str>) -> Value {
@@ -430,18 +422,6 @@ impl Gimbals {
 
     pub fn set_ready(&mut self, ready: bool) {
         self.ready = ready;
-    }
-
-    pub fn set_heading(&mut self, heading: Option<f32>, now_ms: u64) {
-        self.heading = heading.filter(|h| h.is_finite()).map(|h| (h, now_ms));
-    }
-
-    pub fn heading_at(&self, now_ms: u64) -> Option<f32> {
-        self.heading.filter(|(_, at)| now_ms.saturating_sub(*at) <= HEADING_STALE_MS).map(|(h, _)| h)
-    }
-
-    pub fn heading_age_ms(&self, now_ms: u64) -> Option<u64> {
-        self.heading.map(|(_, at)| now_ms.saturating_sub(at))
     }
 
     pub fn get(&self, pair: PairId) -> Option<&Gimbal> {
@@ -518,29 +498,23 @@ impl Gimbals {
         self.check_complete(pair, now_ms)
     }
 
-    pub fn on_device_attitude_status(&mut self, report: DeviceAttitude, now_ms: u64) -> Vec<Out> {
+    pub fn on_device_attitude_status(&mut self, report: DeviceAttitude, heading: f32, now_ms: u64) -> Vec<Out> {
         if !self.ready {
             return Vec::new();
         }
         let Some(pair) = self.attitude_pair(report.compid, report.device_id) else { return Vec::new() };
         let frame = Frame::of(report.flags);
-        let delta_yaw = report.delta_yaw_rad.map(f32::to_degrees).filter(|d| d.is_finite());
-        let offset = delta_yaw.or(self.heading_at(now_ms));
         let rate = |axis: usize| report.angular_velocity_rad_s.map(|w| w[axis].to_degrees()).filter(|r| r.is_finite());
-        let attitude = euler_degrees(report.q).map(|(roll, pitch, yaw)| {
-            let (body_yaw, absolute_yaw) = match frame {
-                Frame::Vehicle => (Some(wrap180(yaw)), offset.map(|d| wrap180(yaw + d))),
-                Frame::Earth => (offset.map(|d| wrap180(yaw - d)), Some(wrap180(yaw))),
-            };
-            Attitude { roll, pitch, body_yaw, absolute_yaw, pitch_rate: rate(1), yaw_rate: rate(2), delta_yaw, at_ms: now_ms }
-        });
+        let (roll, pitch, yaw) = euler_degrees(report.q);
+        let (body_yaw, absolute_yaw) = body_and_absolute_yaw(frame, yaw, heading);
+        let attitude = Attitude { roll, pitch, body_yaw, absolute_yaw, pitch_rate: rate(1), yaw_rate: rate(2), at_ms: now_ms };
         let gimbal = self.gimbals.entry(pair).or_default();
         gimbal.retracted = Some(report.flags & FLAG_RETRACT != 0);
         gimbal.yaw_lock = Some(report.flags & FLAG_YAW_LOCK != 0);
         gimbal.neutral = Some(report.flags & FLAG_NEUTRAL != 0);
         gimbal.failure_flags = Some(report.failure_flags);
         gimbal.yaw_frame = Some(frame);
-        gimbal.attitude = attitude.or(gimbal.attitude);
+        gimbal.attitude = Some(attitude);
         gimbal.received_attitude = true;
         self.check_complete(pair, now_ms)
     }
@@ -619,7 +593,7 @@ impl Gimbals {
         control.into_iter().chain([self.rate_command(pair, FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME | lock, pitch, yaw), repeat]).collect()
     }
 
-    pub fn on_screen_control(&mut self, pan_pct: f32, tilt_pct: f32, screen: Screen, now_ms: u64) -> Vec<Out> {
+    pub fn on_screen_control(&mut self, pan_pct: f32, tilt_pct: f32, screen: Screen, heading: f32, now_ms: u64) -> Vec<Out> {
         let (pan_scale, tilt_scale) = match screen {
             Screen::Point { h_fov, v_fov } => (h_fov * 0.5, v_fov * 0.5),
             Screen::Drag { slide_speed } => (slide_speed * 0.1, slide_speed * 0.1),
@@ -627,15 +601,14 @@ impl Gimbals {
         let pointing = self
             .active
             .and_then(|pair| self.gimbals.get(&pair))
-            .and_then(|gimbal| gimbal.attitude.map(|a| (a.body_yaw, a.pitch, gimbal.yaw_lock.unwrap_or(false), a.delta_yaw)));
-        let Some((Some(body_yaw), pitch, locked, delta_yaw)) = pointing else {
+            .and_then(|gimbal| gimbal.attitude.map(|a| (a.body_yaw, a.pitch, gimbal.yaw_lock.unwrap_or(false))));
+        let Some((body_yaw, pitch, locked)) = pointing else {
             return vec![Out::Refused { pair: self.active, reason: REASON_ATTITUDE_UNKNOWN }];
         };
         let (pan, tilt) = (pan_pct * pan_scale + body_yaw, tilt_pct * tilt_scale + pitch);
-        match (locked, delta_yaw.or(self.heading_at(now_ms))) {
-            (true, Some(offset)) => self.send_pitch_absolute_yaw(tilt, pan + offset, false, now_ms),
-            (true, None) => vec![Out::Refused { pair: self.active, reason: REASON_HEADING_UNKNOWN }],
-            (false, _) => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
+        match locked {
+            true => self.send_pitch_absolute_yaw(tilt, pan + heading, false, now_ms),
+            false => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
         }
     }
 
@@ -658,8 +631,6 @@ impl Gimbals {
             "count": complete.len(),
             "angleUnits": ANGLE_UNITS,
             "rateUnits": RATE_UNITS,
-            "heading": self.heading_at(now_ms),
-            "headingAgeMs": self.heading_age_ms(now_ms),
             "active": self.active.map(|pair| json!({ "managerCompid": pair.manager_compid, "deviceId": pair.device_id })),
             "pending": self.gimbals
                 .iter()
@@ -668,7 +639,7 @@ impl Gimbals {
                 .collect::<Vec<_>>(),
             "gimbals": complete
                 .iter()
-                .map(|(pair, gimbal)| gimbal.snapshot(**pair, self.active == Some(**pair), offer(self.control_gate(**pair)), offer(self.aim_gate(**pair, now_ms)), now_ms))
+                .map(|(pair, gimbal)| gimbal.snapshot(**pair, self.active == Some(**pair), offer(self.control_gate(**pair)), offer(self.aim_gate(**pair)), now_ms))
                 .collect::<Vec<_>>(),
         })
     }
@@ -693,16 +664,8 @@ impl Gimbals {
         }
     }
 
-    fn aim_gate(&self, pair: PairId, now_ms: u64) -> Option<&'static str> {
-        self.control_gate(pair).or_else(|| {
-            let gimbal = self.gimbals.get(&pair)?;
-            let pointing = gimbal.attitude.filter(|a| a.body_yaw.is_some());
-            match (pointing, gimbal.yaw_lock.unwrap_or(false), pointing.and_then(|a| a.delta_yaw).or(self.heading_at(now_ms))) {
-                (None, _, _) => Some(REASON_ATTITUDE_UNKNOWN),
-                (_, true, None) => Some(REASON_HEADING_UNKNOWN),
-                _ => None,
-            }
-        })
+    fn aim_gate(&self, pair: PairId) -> Option<&'static str> {
+        self.control_gate(pair).or_else(|| self.gimbals.get(&pair)?.attitude.is_none().then_some(REASON_ATTITUDE_UNKNOWN))
     }
 
     fn supported(&self, has: fn(&Gimbal) -> Option<bool>) -> bool {
@@ -749,7 +712,7 @@ impl Gimbals {
         let (target, control) = self.control(now_ms);
         let Some(pair) = target else { return control };
         let attitude = self.gimbals.get(&pair).and_then(|gimbal| gimbal.attitude);
-        let yaw = attitude.and_then(|a| match Frame::of(flags) {
+        let yaw = attitude.map(|a| match Frame::of(flags) {
             Frame::Vehicle => a.body_yaw,
             Frame::Earth => a.absolute_yaw,
         });
@@ -839,14 +802,9 @@ impl Gimbals {
     }
 }
 
-pub static GIMBALS: LazyLock<Mutex<Gimbals>> = LazyLock::new(|| Mutex::new(Gimbals::default()));
-
-pub fn lock() -> MutexGuard<'static, Gimbals> {
-    GIMBALS.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 pub fn gimbal_view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
-    lock().snapshot(crate::hub::now_ms())
+    let now_ms = crate::hub::now_ms();
+    crate::hub::lock().active().map_or_else(|| Gimbals::default().snapshot(now_ms), |vehicle| vehicle.gimbals.snapshot(now_ms))
 }
 
 #[cfg(test)]
@@ -888,7 +846,7 @@ mod tests {
         gimbals.set_ready(true);
         gimbals.on_manager_information(info(MANAGER, DEVICE, CAP_HAS_RETRACT | CAP_HAS_YAW_LOCK), 0);
         gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 2000);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, q), 2000);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, q), 0.0, 2000);
         gimbals
     }
 
@@ -977,7 +935,7 @@ mod tests {
         assert_eq!(pending["discovery"], DISCOVERY_SEARCHING);
         assert_eq!(pending["pending"][0]["missing"], json!(["status", "attitude"]), "a manager that answered information and went quiet says which of the three messages is still outstanding");
         gimbals.on_manager_status(status(2, 155, OUR_SYSTEM, OUR_COMPONENT), 2000);
-        gimbals.on_device_attitude_status(attitude(155, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 2000);
+        gimbals.on_device_attitude_status(attitude(155, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 2000);
         let found = gimbals.snapshot(2000);
         assert_eq!(found["discovery"], DISCOVERY_FOUND);
         assert!(found["pending"].as_array().is_some_and(|listed| listed.is_empty()));
@@ -1019,10 +977,10 @@ mod tests {
         assert!(gimbals.on_manager_information(info(MANAGER, 0, CAP_HAS_RETRACT), 0).is_empty());
         assert!(gimbals.on_manager_status(status(MANAGER, 0, OUR_SYSTEM, OUR_COMPONENT), 0).is_empty());
         assert!(gimbals.pairs().is_empty(), "a manager reporting device 0 is reporting no device, not a device numbered zero");
-        assert!(gimbals.on_device_attitude_status(attitude(MANAGER, 7, 0, level()), 0).is_empty(), "7 and up is not a device id this protocol can address");
-        assert!(gimbals.on_device_attitude_status(attitude(DEVICE, 0, 0, level()), 0).is_empty(), "and an attitude from a device nobody has heard of is not a discovery");
+        assert!(gimbals.on_device_attitude_status(attitude(MANAGER, 7, 0, level()), 0.0, 0).is_empty(), "7 and up is not a device id this protocol can address");
+        assert!(gimbals.on_device_attitude_status(attitude(DEVICE, 0, 0, level()), 0.0, 0).is_empty(), "and an attitude from a device nobody has heard of is not a discovery");
         gimbals.on_manager_information(info(MANAGER, DEVICE, 0), 0);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 0);
         assert!(gimbals.get(pair()).is_some_and(|gimbal| gimbal.attitude.is_some()), "device id 0 in an attitude means the sending component id is the device");
     }
 
@@ -1039,9 +997,9 @@ mod tests {
         assert!(!gimbals.get(pair()).unwrap().complete);
         assert!(gimbals.active().is_none(), "an incomplete gimbal is not something a head can be pointed at");
         gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 2000);
-        let done = gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 2000);
+        let done = gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 2000);
         assert_eq!(done, vec![Out::ActiveGimbal(pair()), Out::GimbalComplete(pair())], "the first complete gimbal becomes the active one");
-        assert!(gimbals.on_device_attitude_status(attitude(DEVICE, 0, 0, level()), 3000).is_empty(), "a complete gimbal is never chased again");
+        assert!(gimbals.on_device_attitude_status(attitude(DEVICE, 0, 0, level()), 0.0, 3000).is_empty(), "a complete gimbal is never chased again");
     }
 
     #[test]
@@ -1108,90 +1066,55 @@ mod tests {
     }
 
     #[test]
-    fn both_yaw_readings_wrap_at_the_half_circle() {
+    fn a_commanded_yaw_wraps_to_the_half_circle() {
         assert_eq!(wrap180(380.0), 20.0);
         assert_eq!(wrap180(-190.0), 170.0);
         assert_eq!(wrap180(180.0), -180.0, "a half turn is named once, not twice");
         assert_eq!(wrap180(-900.0), -180.0, "and a bearing wraps however many turns it is out by, not just one");
-        let mut gimbals = discovered();
-        gimbals.set_heading(Some(350.0), 3000);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), 3000);
-        let reading = gimbals.get(pair()).unwrap().attitude.unwrap();
-        assert!((reading.body_yaw.unwrap() - 30.0).abs() < 0.01);
-        assert!((reading.absolute_yaw.unwrap() - 20.0).abs() < 0.01, "30 degrees of body yaw on a heading of 350 points at 20, not at 380");
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_EARTH_FRAME, yawed(-170.0)), 3000);
-        let reading = gimbals.get(pair()).unwrap().attitude.unwrap();
-        assert!((reading.absolute_yaw.unwrap() + 170.0).abs() < 0.01);
-        assert!((reading.body_yaw.unwrap() + 160.0).abs() < 0.01, "-170 in the earth frame on a heading of 350 is -160 in the body frame, not -520");
     }
 
     #[test]
-    fn the_delta_yaw_the_gimbal_sends_converts_the_frames_before_any_gcs_heading_does() {
+    fn yaw_readings_use_the_live_heading_and_wrap_one_way_like_gimbal_controller() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(
-            DeviceAttitude { compid: DEVICE, device_id: 0, flags: FLAG_YAW_IN_VEHICLE_FRAME, q: yawed(30.0), delta_yaw_rad: Some(90.0_f32.to_radians()), ..Default::default() },
-            3000,
-        );
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), 350.0, 3000);
         let reading = gimbals.get(pair()).unwrap().attitude.unwrap();
-        assert!(
-            (reading.absolute_yaw.unwrap() - 120.0).abs() < 0.01,
-            "the aircraft sent the body-to-earth offset in the same message, so an absolute yaw is available with no vehicle heading at all instead of being reported unknown"
-        );
-        gimbals.set_heading(Some(10.0), 4000);
-        gimbals.on_device_attitude_status(
-            DeviceAttitude { compid: DEVICE, device_id: 0, flags: FLAG_YAW_IN_VEHICLE_FRAME, q: yawed(30.0), delta_yaw_rad: Some(90.0_f32.to_radians()), ..Default::default() },
-            4000,
-        );
+        assert!((reading.body_yaw - 30.0).abs() < 0.01);
+        assert!((reading.absolute_yaw - 20.0).abs() < 0.01, "30 degrees of body yaw on a heading of 350 points at 20, not at 380");
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_EARTH_FRAME, yawed(-170.0)), 350.0, 3000);
         let reading = gimbals.get(pair()).unwrap().attitude.unwrap();
-        assert!((reading.absolute_yaw.unwrap() - 120.0).abs() < 0.01, "and the gimbal's own offset is the authoritative one, so it wins over a heading the GCS supplied");
-        let mut locked = discovered();
-        locked.on_device_attitude_status(
-            DeviceAttitude {
-                compid: DEVICE,
-                device_id: 0,
-                flags: FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK,
-                q: yawed(10.0),
-                delta_yaw_rad: Some(90.0_f32.to_radians()),
-                ..Default::default()
-            },
-            3000,
-        );
-        assert!(
-            (angles(&locked.on_screen_control(0.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 3000))[1] - 100.0).abs() < 0.01,
-            "a yaw-locked gimbal is draggable on delta yaw alone, rather than being a dead control until a heading turns up"
-        );
+        assert!((reading.absolute_yaw + 170.0).abs() < 0.01);
+        assert!((reading.body_yaw + 160.0).abs() < 0.01, "-170 in the earth frame on a heading of 350 is -160 in the body frame, not -520");
+        assert_eq!(body_and_absolute_yaw(Frame::Vehicle, 180.0, 180.0), (180.0, 0.0));
+        assert_eq!(body_and_absolute_yaw(Frame::Vehicle, 90.0, 90.0), (90.0, 180.0), "the absolute yaw only wraps above 180");
+        assert_eq!(body_and_absolute_yaw(Frame::Earth, 170.0, 350.0), (-180.0, 170.0), "the body yaw only wraps below -180");
+        assert_eq!(body_and_absolute_yaw(Frame::Earth, 10.0, 300.0), (70.0, 10.0));
+        assert_eq!(body_and_absolute_yaw(Frame::Vehicle, 30.0, 0.0), (30.0, 30.0), "a vehicle that has sent no attitude has heading 0, as the heading fact does");
+        let (body, absolute) = body_and_absolute_yaw(Frame::Vehicle, 30.0, f32::NAN);
+        assert!(body == 30.0 && absolute.is_nan());
+        let (body, absolute) = body_and_absolute_yaw(Frame::Earth, 30.0, f32::NAN);
+        assert!(body.is_nan() && absolute == 30.0);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), f32::NAN, 3000);
+        assert!(gimbals.snapshot(3000)["gimbals"][0]["absoluteYaw"].is_null(), "a NaN azimuth reads as absent");
     }
 
     #[test]
-    fn a_yaw_the_core_cannot_convert_stays_absent() {
-        let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), 3000);
-        let reading = gimbals.get(pair()).unwrap().attitude.unwrap();
-        assert!(reading.body_yaw.is_some() && reading.absolute_yaw.is_none(), "without a vehicle heading the absolute yaw is unknown, and unknown is neither the body yaw nor zero");
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_EARTH_FRAME, yawed(30.0)), 3000);
-        let reading = gimbals.get(pair()).unwrap().attitude.unwrap();
-        assert!(reading.absolute_yaw.is_some() && reading.body_yaw.is_none());
-    }
-
-    #[test]
-    fn an_attitude_that_was_never_measured_is_absent_rather_than_level() {
-        let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
-        gimbals.set_ready(true);
-        gimbals.on_manager_information(info(MANAGER, DEVICE, 0), 0);
-        assert!(gimbals.get(pair()).unwrap().attitude.is_none(), "a gimbal that has not reported an attitude is not known to be pointing straight ahead");
-        assert_eq!(euler_degrees([f32::NAN, 0.0, 0.0, 0.0]), None);
-        assert_eq!(euler_degrees([0.0, 0.0, 0.0, 0.0]), None, "the protocol sends an all-zero or NaN quaternion when the attitude is unknown, and unknown is not level");
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), 0);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_RETRACT, [f32::NAN; 4]), 0);
+    fn the_quaternion_converts_like_mavlink_quaternion_to_euler() {
+        let (roll, pitch, yaw) = euler_degrees(yawed(30.0));
+        assert!(roll.abs() < 0.01 && pitch.abs() < 0.01 && (yaw - 30.0).abs() < 0.01);
+        assert_eq!(euler_degrees([0.0; 4]), (0.0, 0.0, 0.0), "an all-zero quaternion is level there too, with no normalising or rejection");
+        let (roll, pitch, yaw) = euler_degrees([f32::NAN; 4]);
+        assert!(roll.is_nan() && pitch.is_nan() && yaw.is_nan());
+        let mut gimbals = discovered_with(yawed(30.0));
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_RETRACT, [f32::NAN; 4]), 0.0, 0);
         let gimbal = gimbals.get(pair()).unwrap();
-        assert!(gimbal.attitude.is_some_and(|a| a.body_yaw.is_some_and(|yaw| (yaw - 30.0).abs() < 0.01)), "an unknown quaternion leaves the last known angles standing instead of erasing them to zero");
-        assert_eq!(gimbal.retracted, Some(true), "and the flags in the same message are still read");
+        assert!(gimbal.attitude.is_some_and(|a| a.roll.is_nan() && a.body_yaw.is_nan()), "every report replaces the angles, as GimbalController sets them unconditionally");
+        assert_eq!(gimbal.retracted, Some(true));
     }
 
     #[test]
     fn a_frozen_attitude_carries_its_age_and_stops_claiming_to_be_a_mode() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(30.0)), 2000);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(30.0)), 0.0, 2000);
         let live = gimbals.snapshot(2500)["gimbals"][0].clone();
         assert_eq!((live["attitudeAgeMs"].as_u64(), live["attitudeStale"].as_bool(), live["yawLock"].as_bool()), (Some(500), Some(false), Some(true)));
         let frozen = gimbals.snapshot(2001 + ATTITUDE_STALE_MS)["gimbals"][0].clone();
@@ -1206,14 +1129,6 @@ mod tests {
             frozen["yawLock"].is_null() && frozen["retracted"].is_null() && frozen["neutral"].is_null(),
             "past the window nobody knows what mode the gimbal is in, and a lock toggle drawn from a frozen flag unlocks the gimbal the operator meant to lock"
         );
-        (0..4).for_each(|_| {
-            gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, [f32::NAN; 4]), 20_000);
-        });
-        assert_eq!(
-            gimbals.snapshot(20_000)["gimbals"][0]["attitudeStale"],
-            true,
-            "a gimbal that started sending NaN quaternions has stopped measuring, however fast its messages keep arriving"
-        );
     }
 
     #[test]
@@ -1227,7 +1142,7 @@ mod tests {
             (None, None, None),
             "before the first attitude message nothing is known about the mode, and claiming a gimbal is deployed and unlocked is a definite claim about hardware nobody has heard from"
         );
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, level()), 0);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, level()), 0.0, 0);
         let gimbal = gimbals.get(pair()).unwrap();
         assert_eq!((gimbal.yaw_lock, gimbal.retracted, gimbal.neutral), (Some(true), Some(false), Some(false)));
     }
@@ -1248,6 +1163,7 @@ mod tests {
                 failure_flags: ERROR_AT_PITCH_LIMIT | ERROR_MOTOR | ERROR_CALIBRATION_RUNNING,
                 ..Default::default()
             },
+            0.0,
             2000,
         );
         let gimbal = gimbals.snapshot(2000)["gimbals"][0].clone();
@@ -1281,7 +1197,7 @@ mod tests {
             0,
         );
         gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 2000);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 2000);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 2000);
         let limits = gimbals.snapshot(2000)["gimbals"][0]["limits"].clone();
         assert!(
             limits["pitchMin"].as_f64().is_some_and(|deg| (deg + 120.0).abs() < 0.01) && limits["pitchMax"].as_f64().is_some_and(|deg| (deg - 30.0).abs() < 0.01),
@@ -1313,17 +1229,6 @@ mod tests {
             "a gimbal that reported no retract capability is not sent a retract that will be silently dropped"
         );
         assert!(gimbals.set_yaw_lock(true, 2000).iter().any(|out| matches!(out, Out::Command { .. })), "the capability it did report is still commanded");
-        let unknown = discovered_with([f32::NAN; 4]);
-        assert_eq!(
-            unknown.snapshot(2000)["gimbals"][0]["aim"],
-            json!({ "offer": "blocked", "reason": REASON_ATTITUDE_UNKNOWN }),
-            "the operator drags on the video and nothing moves, so the screen names the cause the core already knows instead of sending them after the video link"
-        );
-        assert_eq!(unknown.snapshot(2000)["gimbals"][0]["control"], json!({ "offer": "ready", "reason": "" }), "an unknown attitude blocks aiming relative to it, not every command there is");
-        let mut locked = discovered();
-        locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 2000);
-        assert_eq!(locked.snapshot(2000)["gimbals"][0]["aim"]["reason"], REASON_HEADING_UNKNOWN);
-        assert_eq!(locked.on_screen_control(1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 2000), vec![Out::Refused { pair: Some(pair()), reason: REASON_HEADING_UNKNOWN }]);
         let mut taken = discovered();
         taken.on_manager_status(status(MANAGER, DEVICE, 42, 190), 3000);
         assert_eq!(taken.snapshot(3000)["gimbals"][0]["control"], json!({ "offer": "blocked", "reason": REASON_OTHERS_HAVE_CONTROL }));
@@ -1401,8 +1306,7 @@ mod tests {
         let params = angles(&gimbals.set_retract(true, 2000));
         assert_eq!(params[4], 1.0);
         assert!(params[0].is_nan() && params[1].is_nan(), "a retract must not invent a zero pitch and yaw out of an attitude that was never measured, and an unset axis is what NaN means here");
-        gimbals.set_heading(Some(10.0), 2000);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), 2000);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), 10.0, 2000);
         let params = angles(&gimbals.set_yaw_lock(true, 2000));
         assert_eq!(params[4], 28.0, "roll lock, pitch lock and yaw lock, asserted as the sum the vehicle receives rather than through the same names the code builds it from");
         assert!((params[1] - 40.0).abs() < 0.01, "locking the yaw holds the current angle in the earth frame those flags select, which is the body yaw plus the heading");
@@ -1439,7 +1343,7 @@ mod tests {
         assert_eq!(started.last(), Some(&Out::StartRateRepeat));
         assert!(gimbals.set_rates(None, Some(-15.0), 3000).contains(&Out::StartRateRepeat), "one axis still moving keeps the repeat alive");
         assert!(gimbals.set_rates(Some(0.0), Some(0.0), 4000).contains(&Out::StopRateRepeat));
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, level()), 5000);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, level()), 0.0, 5000);
         let locked = gimbals.set_rates(Some(5.0), None, 5000);
         assert!(matches!(locked.first(), Some(Out::SetAttitudeRates { flags: 60, .. })), "the yaw lock the gimbal is already in is kept");
     }
@@ -1490,6 +1394,7 @@ mod tests {
                 angular_velocity_rad_s: Some([0.0, 12.0_f32.to_radians(), (-40.0_f32).to_radians()]),
                 ..Default::default()
             },
+            0.0,
             2000,
         );
         let gimbal = gimbals.snapshot(2000)["gimbals"][0].clone();
@@ -1504,38 +1409,19 @@ mod tests {
     #[test]
     fn on_screen_control_moves_from_where_the_gimbal_is_pointing() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 2000);
-        let params = angles(&gimbals.on_screen_control(1.0, 0.5, Screen::Point { h_fov: 60.0, v_fov: 40.0 }, 2000));
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
+        let params = angles(&gimbals.on_screen_control(1.0, 0.5, Screen::Point { h_fov: 60.0, v_fov: 40.0 }, 0.0, 2000));
         assert!((params[1] - 40.0).abs() < 0.01, "a click at the right edge is half a horizontal field of view away from where the gimbal already points");
         assert!((params[0] - 10.0).abs() < 0.01, "and a click halfway down is a quarter of the vertical field of view");
-        let params = angles(&gimbals.on_screen_control(-1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 2000));
+        let params = angles(&gimbals.on_screen_control(-1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 0.0, 2000));
         assert!(params[1].abs() < 0.01, "a drag steps a tenth of the slide speed, from 10 degrees back to zero");
         let mut unknown = discovered_with([f32::NAN; 4]);
-        assert_eq!(
-            unknown.on_screen_control(1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 2000),
-            vec![Out::Refused { pair: Some(pair()), reason: REASON_ATTITUDE_UNKNOWN }],
-            "with no measured yaw there is no point to move relative to, and the refusal says that rather than returning an empty list the operator cannot see"
-        );
+        assert!(angles(&unknown.on_screen_control(1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 0.0, 2000))[1].is_nan(), "a NaN body yaw goes out as NaN, as GimbalController sends it");
         let mut locked = discovered();
-        locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 2000);
-        assert_eq!(
-            refusal(&locked.on_screen_control(1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 2000)),
-            Some(REASON_HEADING_UNKNOWN),
-            "a yaw-locked gimbal is aimed in the earth frame, which needs the vehicle heading, and here it is not known"
-        );
-        locked.set_heading(Some(90.0), 2000);
-        locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 2000);
-        assert!((angles(&locked.on_screen_control(0.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 2000))[1] - 100.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn a_heading_carries_its_age_and_stops_being_used_once_it_is_old() {
-        let mut gimbals = discovered();
-        gimbals.set_heading(Some(90.0), 2000);
-        assert_eq!(gimbals.heading_at(2000 + HEADING_STALE_MS), Some(90.0));
-        assert_eq!(gimbals.heading_at(2001 + HEADING_STALE_MS), None, "an absolute yaw computed from a heading of unknown age is a bearing nobody measured");
-        let old = gimbals.snapshot(2001 + HEADING_STALE_MS);
-        assert!(old["heading"].is_null() && old["headingAgeMs"] == 3001, "the age is published beside it so a head can say the bearing is old rather than silently dropping it");
+        locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 0.0, 2000);
+        assert!((angles(&locked.on_screen_control(1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 0.0, 2000))[1] - 20.0).abs() < 0.01, "heading 0 is still a heading, as the heading fact defaults to it");
+        locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 0.0, 2000);
+        assert!((angles(&locked.on_screen_control(0.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 90.0, 2000))[1] - 100.0).abs() < 0.01, "a yaw-locked gimbal is aimed with the heading at the time of the drag");
     }
 
     #[test]
@@ -1547,7 +1433,7 @@ mod tests {
         let second = PairId { manager_compid: 2, device_id: 155 };
         gimbals.on_manager_information(info(2, 155, 0), 5000);
         gimbals.on_manager_status(status(2, 155, OUR_SYSTEM, OUR_COMPONENT), 6000);
-        let complete = gimbals.on_device_attitude_status(attitude(155, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 6000);
+        let complete = gimbals.on_device_attitude_status(attitude(155, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 6000);
         assert_eq!(complete, vec![Out::GimbalComplete(second)], "a second gimbal does not steal the active slot from the first");
         assert_eq!(gimbals.set_active(second), vec![Out::ActiveGimbal(second)]);
         assert_eq!(gimbals.pairs(), vec![pair(), second]);
@@ -1556,8 +1442,7 @@ mod tests {
     #[test]
     fn the_snapshot_emits_numbers_and_unit_names_only() {
         let mut gimbals = discovered();
-        gimbals.set_heading(Some(90.0), 2000);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_NEUTRAL, yawed(45.0)), 2000);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_NEUTRAL, yawed(45.0)), 90.0, 2000);
         let view = gimbals.snapshot(2000);
         assert_eq!((view["class"].as_str(), view["available"].as_bool(), view["count"].as_u64()), (Some("Gimbals"), Some(true), Some(1)));
         assert_eq!((view["angleUnits"].as_str(), view["rateUnits"].as_str()), (Some(ANGLE_UNITS), Some(RATE_UNITS)), "the core names the unit and never renders the number, because a decimal separator belongs to the head");
@@ -1569,7 +1454,7 @@ mod tests {
         assert!(gimbals.snapshot(100_000)["gimbals"][0]["haveControl"].is_null(), "past the staleness window the snapshot says it does not know who is in control rather than guessing");
         let bare = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT).snapshot(0);
         assert_eq!(bare["available"], false);
-        assert!(bare["active"].is_null() && bare["heading"].is_null(), "nothing measured yet reads as absent, not as zero");
+        assert!(bare["active"].is_null(), "nothing measured yet reads as absent, not as zero");
         assert!(bare["gimbals"].as_array().is_some_and(|listed| listed.is_empty()));
     }
 }

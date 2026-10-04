@@ -74,7 +74,7 @@ pub fn indicator(snapshot: &Value, show_azimuth: bool, show_control: bool, on_sc
 }
 
 pub fn indicator_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let snapshot = crate::gimbal::lock().snapshot(crate::hub::now_ms());
+    let snapshot = crate::gimbal::gimbal_view(backend, &[]);
     let mut shown = indicator(
         &snapshot,
         setting(backend, "toolbarIndicatorShowAzimuth"),
@@ -99,7 +99,7 @@ pub fn azimuths(snapshot: &Value, shown: bool) -> Vec<Value> {
 }
 
 pub fn azimuth_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let snapshot = crate::gimbal::lock().snapshot(crate::hub::now_ms());
+    let snapshot = crate::gimbal::gimbal_view(backend, &[]);
     json!({ "kind": "object", "class": "GimbalAzimuth", "gimbals": azimuths(&snapshot, setting(backend, "showAzimuthIndicatorOnMap")) })
 }
 

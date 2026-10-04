@@ -818,8 +818,8 @@ fn gimbal_raw(pair: crate::gimbal::PairId, attitude: Option<crate::gimbal::Attit
     match name {
         "gimbalRoll" => angle(attitude.map(|a| a.roll)),
         "gimbalPitch" => angle(attitude.map(|a| a.pitch)),
-        "gimbalYaw" => angle(attitude.and_then(|a| a.body_yaw)),
-        "gimbalAzimuth" => angle(attitude.and_then(|a| a.absolute_yaw)),
+        "gimbalYaw" => angle(attitude.map(|a| a.body_yaw)),
+        "gimbalAzimuth" => angle(attitude.map(|a| a.absolute_yaw)),
         "deviceId" => json!(pair.device_id),
         "managerCompid" => json!(pair.manager_compid),
         _ => Value::Null,
@@ -1110,7 +1110,7 @@ mod tests {
     #[test]
     fn a_complete_gimbal_is_a_fact_group_named_like_gimbal_controller_adds_it() {
         let pair = crate::gimbal::PairId { manager_compid: 1, device_id: 154 };
-        let attitude = crate::gimbal::Attitude { roll: 1.25, pitch: -30.0, body_yaw: Some(12.0), absolute_yaw: None, pitch_rate: None, yaw_rate: None, delta_yaw: None, at_ms: 0 };
+        let attitude = crate::gimbal::Attitude { roll: 1.25, pitch: -30.0, body_yaw: 12.0, absolute_yaw: f32::NAN, pitch_rate: None, yaw_rate: None, at_ms: 0 };
         let gimbals = [(pair, Some(attitude))];
         let group = gimbal_answer("vehicle.gimbal1154", &gimbals).unwrap();
         assert_eq!((group["class"].clone(), group["factNames"].clone()), (json!("Gimbal"), json!(GIMBAL_FACT_NAMES)), "Gimbal::_initFacts adds roll, pitch, body yaw, absolute yaw, device id, manager compid");

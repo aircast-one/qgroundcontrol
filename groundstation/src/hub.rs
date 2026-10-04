@@ -287,6 +287,7 @@ pub struct Vehicle {
     pub roi_coord: Option<(f64, f64, f64)>,
     pub comm_lost_enabled: bool,
     gimbal_rate_due: Option<u64>,
+    pub gimbals: crate::gimbal::Gimbals,
     pub link_states: Vec<(LinkId, u64, bool)>,
     link_check_due_ms: Option<u64>,
     pub primary_link: Option<LinkId>,
@@ -501,6 +502,7 @@ impl Vehicle {
             roi_coord: None,
             comm_lost_enabled: true,
             gimbal_rate_due: None,
+            gimbals: crate::gimbal::Gimbals::default(),
             link_states: Vec::new(),
             link_check_due_ms: None,
             primary_link: None,
@@ -2455,7 +2457,7 @@ impl Vehicle {
             bytes.extend(expired);
         }
         if self.gimbal_rate_due.is_some_and(|due| now_ms >= due) {
-            let outs = crate::gimbal::lock().set_rates(None, None, now_ms);
+            let outs = self.gimbals.set_rates(None, None, now_ms);
             bytes.extend(self.gimbal_outs(outs, now_ms).unwrap_or_default());
         }
         let stalled = self.calibrate.tick(now_ms);
@@ -3671,12 +3673,12 @@ impl Vehicle {
 
     fn note_gimbal(&mut self, compid: u8, message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {
         use crate::gimbal::{DeviceAttitude, ManagerInformation, ManagerStatus};
+        let heading = self.facts.heading as f32;
         let outs = {
-            let mut gimbals = crate::gimbal::lock();
+            let gimbals = &mut self.gimbals;
             match message {
                 MavMessage::HEARTBEAT(_) => {
                     gimbals.set_ready(self.connected);
-                    gimbals.set_heading(Some(self.facts.heading as f32).filter(|h| h.is_finite()), now_ms);
                     gimbals.on_heartbeat(compid, now_ms)
                 }
                 MavMessage::GIMBAL_MANAGER_INFORMATION(d) => gimbals.on_manager_information(
@@ -3695,8 +3697,8 @@ impl Vehicle {
                         q: d.q,
                         angular_velocity_rad_s: Some([d.angular_velocity_x, d.angular_velocity_y, d.angular_velocity_z]),
                         failure_flags: d.failure_flags.bits(),
-                        delta_yaw_rad: Some(d.delta_yaw).filter(|v| v.is_finite()),
                     },
+                    heading,
                     now_ms,
                 ),
                 _ => return Vec::new(),
@@ -3737,14 +3739,15 @@ impl Vehicle {
     }
 
     fn gimbal_action(&mut self, action: &Value, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
+        let heading = self.facts.heading as f32;
         let outs = {
-            let mut gimbals = crate::gimbal::lock();
+            let gimbals = &mut self.gimbals;
             let flag = |key: &str| action.get(key).and_then(Value::as_bool).unwrap_or(false);
             match action.get("op").and_then(Value::as_str).unwrap_or("") {
                 "center" => gimbals.center(now_ms),
                 "tilt90" => gimbals.send_pitch_body_yaw(-90.0, 0.0, true, now_ms),
                 "pitch" => {
-                    let body_yaw = gimbals.active().and_then(|pair| gimbals.get(pair)).and_then(|g| g.attitude).and_then(|a| a.body_yaw).unwrap_or(0.0);
+                    let body_yaw = gimbals.active().and_then(|pair| gimbals.get(pair)).and_then(|g| g.attitude).map_or(0.0, |a| a.body_yaw);
                     gimbals.send_pitch_body_yaw(action.get("pitch").and_then(Value::as_f64).unwrap_or(0.0) as f32, body_yaw, false, now_ms)
                 }
                 "retract" => gimbals.set_retract(true, now_ms),
@@ -3761,7 +3764,7 @@ impl Vehicle {
                         true => crate::gimbal::Screen::Point { h_fov: number("hFov").unwrap_or(0.0), v_fov: number("vFov").unwrap_or(0.0) },
                         false => crate::gimbal::Screen::Drag { slide_speed: number("slide").unwrap_or(0.0) },
                     };
-                    gimbals.on_screen_control(number("pan").unwrap_or(0.0), number("tilt").unwrap_or(0.0), screen, now_ms)
+                    gimbals.on_screen_control(number("pan").unwrap_or(0.0), number("tilt").unwrap_or(0.0), screen, heading, now_ms)
                 }
                 "select" => {
                     let number = |key: &str| action.get(key).and_then(Value::as_u64).and_then(|v| u8::try_from(v).ok());
@@ -4363,6 +4366,10 @@ impl Hub {
         self.vehicles.get(&id)
     }
 
+    pub fn any_gimbals(&self) -> bool {
+        self.vehicles.values().any(|v| v.gimbals.any())
+    }
+
     pub fn count_sent(&mut self, id: u8, frames: usize) {
         if let Some(vehicle) = self.vehicles.get_mut(&id) {
             vehicle.messages_sent += frames as u64;
@@ -4742,6 +4749,27 @@ mod tests {
         assert_eq!(count, 1, "the sample log carries one vehicle");
         hub.remove(vehicle.id);
         assert_eq!(hub.snapshot()["available"], false);
+    }
+
+    #[test]
+    fn each_vehicle_keeps_its_own_gimbals_and_heading_like_a_gimbal_controller_per_vehicle() {
+        use mavlink::dialects::ardupilotmega::{GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA};
+        let mut hub = Hub::default();
+        let from = |system_id: u8| MavHeader { system_id, component_id: 1, sequence: 0 };
+        [1, 2].iter().for_each(|&id| {
+            hub.on_frame(origin(0), &from(id), &copter_heartbeat(0, false), 0, 0);
+        });
+        hub.vehicles.values_mut().for_each(|v| v.connected = true);
+        hub.vehicles.get_mut(&1).unwrap().facts.heading = 90.0;
+        [1, 2].iter().for_each(|&id| {
+            hub.on_frame(origin(0), &from(id), &copter_heartbeat(0, false), 0, 0);
+        });
+        hub.on_frame(origin(0), &from(1), &MavMessage::GIMBAL_MANAGER_INFORMATION(GIMBAL_MANAGER_INFORMATION_DATA { gimbal_device_id: 1, ..Default::default() }), 0, 0);
+        hub.on_frame(origin(0), &from(1), &MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(GIMBAL_DEVICE_ATTITUDE_STATUS_DATA { gimbal_device_id: 1, q: [1.0, 0.0, 0.0, 0.0], ..Default::default() }), 0, 0);
+        let pair = crate::gimbal::PairId { manager_compid: 1, device_id: 1 };
+        assert_eq!(hub.vehicle(1).unwrap().gimbals.pairs(), vec![pair]);
+        assert!(hub.vehicle(2).unwrap().gimbals.pairs().is_empty(), "another vehicle's gimbal is not this vehicle's");
+        assert_eq!(hub.vehicle(1).unwrap().gimbals.get(pair).and_then(|g| g.attitude).map(|a| a.absolute_yaw), Some(90.0), "the absolute yaw adds this vehicle's own heading");
     }
 
     #[test]

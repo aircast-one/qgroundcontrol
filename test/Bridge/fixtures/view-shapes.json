@@ -218,8 +218,6 @@
         "view.gcsPosition.refused",
         "view.gcsPosition.verticalAccuracy",
         "view.gimbal.active",
-        "view.gimbal.heading",
-        "view.gimbal.headingAgeMs",
         "view.gpsRtk.active",
         "view.gpsRtk.attemptsRemaining",
         "view.gpsRtk.currentAccuracy",
@@ -2509,8 +2507,6 @@
         "view.gimbal.count",
         "view.gimbal.discovery",
         "view.gimbal.gimbals.#",
-        "view.gimbal.heading",
-        "view.gimbal.headingAgeMs",
         "view.gimbal.kind",
         "view.gimbal.pending.#",
         "view.gimbal.rateUnits",
@@ -7344,8 +7340,6 @@
         "view.gimbal.count",
         "view.gimbal.discovery",
         "view.gimbal.gimbals.#",
-        "view.gimbal.heading",
-        "view.gimbal.headingAgeMs",
         "view.gimbal.kind",
         "view.gimbal.pending.#",
         "view.gimbal.rateUnits",
@@ -11520,8 +11514,6 @@
         "gimbals": [
             "empty"
         ],
-        "heading": "null",
-        "headingAgeMs": "null",
         "kind": "string",
         "pending": [
             "empty"
