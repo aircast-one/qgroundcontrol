@@ -9,6 +9,7 @@ on:
   push:
     tags:
       - "aircast-v[0-9]+.[0-9]+.[0-9]+"
+      - "aircast-v*-beta.*"
       - "aircast-v*-staging.*"
       - "aircast-v*-dev.*"
   workflow_dispatch:
@@ -47,6 +48,9 @@ jobs:
           if [[ "$VERSION" =~ ^aircast-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "is_production=true" >> "$GITHUB_OUTPUT"
             echo "environment=production" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" =~ -beta\. ]]; then
+            echo "is_production=false" >> "$GITHUB_OUTPUT"
+            echo "environment=beta" >> "$GITHUB_OUTPUT"
           elif [[ "$VERSION" =~ -staging\. ]]; then
             echo "is_production=false" >> "$GITHUB_OUTPUT"
             echo "environment=staging" >> "$GITHUB_OUTPUT"
@@ -768,6 +772,8 @@ jobs:
 
           if [ "$IS_PRODUCTION" == "true" ]; then
             TAG_PATTERN='^aircast-v[0-9]+\\.[0-9]+\\.[0-9]+$'
+          elif [ "$ENV" == "beta" ]; then
+            TAG_PATTERN='^aircast-v.*-beta\\..*$'
           elif [ "$ENV" == "staging" ]; then
             TAG_PATTERN='^aircast-v.*-staging\\..*$'
           else
