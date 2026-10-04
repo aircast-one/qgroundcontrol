@@ -970,8 +970,10 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     const uint64_t capabilities = MAV_PROTOCOL_CAPABILITY_COMMAND_INT | MAV_PROTOCOL_CAPABILITY_MISSION_INT | MAV_PROTOCOL_CAPABILITY_MISSION_FENCE | MAV_PROTOCOL_CAPABILITY_MISSION_RALLY;
     mavlink_msg_autopilot_version_pack(11, 1, &version, capabilities, 0x04050600, 0, 0, 0, custom, custom, custom, 0, 0, 0, uid2);
     send(version);
-    QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_AVAILABLE_MODES), "no standard modes request reached the peer");
     mavlink_message_t ack{};
+    mavlink_msg_command_ack_pack(11, 1, &ack, MAV_CMD_REQUEST_MESSAGE, MAV_RESULT_ACCEPTED, 0, 0, 255, MAV_COMP_ID_MISSIONPLANNER);
+    send(ack);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_AVAILABLE_MODES), "no standard modes request reached the peer");
     mavlink_msg_command_ack_pack(11, 1, &ack, MAV_CMD_REQUEST_MESSAGE, MAV_RESULT_UNSUPPORTED, 0, 0, 255, MAV_COMP_ID_MISSIONPLANNER);
     send(ack);
     QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_COMPONENT_METADATA), "no component metadata request reached the peer");

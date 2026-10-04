@@ -327,6 +327,7 @@ pub struct Vehicle {
     pub home_altitude: Option<f64>,
     pub home: Option<(f64, f64, f64)>,
     pub reposition_supported: Option<bool>,
+    intervals_unsupported: std::collections::BTreeSet<(u8, u32)>,
     pub errors: Vec<String>,
     pub connection_lost: bool,
     pub flying: bool,
@@ -544,6 +545,7 @@ impl Vehicle {
             home_altitude: None,
             home: None,
             reposition_supported: None,
+            intervals_unsupported: std::collections::BTreeSet::new(),
             errors: Vec::new(),
             connection_lost: false,
             flying: false,
@@ -2201,9 +2203,19 @@ impl Vehicle {
                     self.note(text);
                     Vec::new()
                 }
-                Out::Result { tag, component, result: RESULT_ACCEPTED, .. } if (INSPECTOR_RATE_TAG..INSPECTOR_RATE_TAG + (1 << 32)).contains(&tag) => {
-                    let message = tag - INSPECTOR_RATE_TAG;
-                    self.encode(&Outbound::CommandLong { target: (self.id, component), command: crate::mavcmd::CMD_REQUEST_MESSAGE, params: [f64::from(MSG_MESSAGE_INTERVAL), message as f64, 0.0, 0.0, 0.0, 0.0, 0.0] }).into_iter().collect()
+                Out::Result { tag, component, result: RESULT_ACCEPTED, failure: Failure::ResultOnly, .. } if (INSPECTOR_RATE_TAG..INSPECTOR_RATE_TAG + (1 << 32)).contains(&tag) => {
+                    let message = (tag - INSPECTOR_RATE_TAG) as u32;
+                    if self.intervals_unsupported.contains(&(component, message)) {
+                        return Vec::new();
+                    }
+                    let outs = self.commands.request_message(INSPECTOR_INTERVAL_TAG + u64::from(message), component, MSG_MESSAGE_INTERVAL, [f64::from(message), 0.0, 0.0, 0.0, 0.0], now_ms);
+                    self.handle(outs, now_ms)
+                }
+                Out::RequestResult { tag, component, result, failure, .. } if (INSPECTOR_INTERVAL_TAG..INSPECTOR_INTERVAL_TAG + (1 << 32)).contains(&tag) => {
+                    if result != RESULT_ACCEPTED || failure != crate::mavcmd::RequestFailure::None {
+                        self.intervals_unsupported.insert((component, (tag - INSPECTOR_INTERVAL_TAG) as u32));
+                    }
+                    Vec::new()
                 }
                 Out::Result { tag: FACTORY_RESET_TAG, result, .. } => {
                     let reset = result == RESULT_ACCEPTED;
@@ -3203,7 +3215,7 @@ impl Vehicle {
                         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", notice);
                     }
                 }
-                let outs = self.commands.on_message(header.component_id, MSG_AUTOPILOT_VERSION);
+                let outs = self.commands.on_message(header.component_id, MSG_AUTOPILOT_VERSION, now_ms);
                 if outs.is_empty() {
                     return Vec::new();
                 }
@@ -3212,18 +3224,22 @@ impl Vehicle {
                 return self.handle(outs, now_ms);
             }
             MavMessage::COMPONENT_METADATA(m) => {
-                if self.commands.on_message(header.component_id, MSG_COMPONENT_METADATA).is_empty() {
+                let outs = self.commands.on_message(header.component_id, MSG_COMPONENT_METADATA, now_ms);
+                if outs.is_empty() {
                     return Vec::new();
                 }
                 let uri = m.uri.to_str().unwrap_or("").to_string();
-                return self.start_fetch(TYPE_GENERAL, Source { uri, crc: Some(u64::from(m.file_crc)) }, None, now_ms);
+                let next = self.handle(outs, now_ms);
+                return next.into_iter().chain(self.start_fetch(TYPE_GENERAL, Source { uri, crc: Some(u64::from(m.file_crc)) }, None, now_ms)).collect();
             }
             MavMessage::COMPONENT_INFORMATION(m) => {
-                if self.commands.on_message(header.component_id, MSG_COMPONENT_INFORMATION).is_empty() {
+                let outs = self.commands.on_message(header.component_id, MSG_COMPONENT_INFORMATION, now_ms);
+                if outs.is_empty() {
                     return Vec::new();
                 }
                 let uri = m.general_metadata_uri.to_str().unwrap_or("").to_string();
-                return self.start_fetch(TYPE_GENERAL, Source { uri, crc: Some(u64::from(m.general_metadata_file_crc)) }, None, now_ms);
+                let next = self.handle(outs, now_ms);
+                return next.into_iter().chain(self.start_fetch(TYPE_GENERAL, Source { uri, crc: Some(u64::from(m.general_metadata_file_crc)) }, None, now_ms)).collect();
             }
             MavMessage::FILE_TRANSFER_PROTOCOL(f) if mavout::for_us(f.target_system) => {
                 if let Some(fetch) = self.fetch.as_mut().filter(|fetch| fetch.download.component == header.component_id) {
@@ -3235,12 +3251,14 @@ impl Vehicle {
                 return self.follow_files(steps, now_ms);
             }
             MavMessage::AVAILABLE_MODES(m) => {
-                if self.commands.on_message(header.component_id, MSG_AVAILABLE_MODES).is_empty() {
+                let requested = self.commands.on_message(header.component_id, MSG_AVAILABLE_MODES, now_ms);
+                if requested.is_empty() {
                     return Vec::new();
                 }
+                let next = self.handle(requested, now_ms);
                 let mode = AvailableMode { custom_mode: m.custom_mode, properties: m.properties.bits(), number_modes: m.number_modes, mode_index: m.mode_index, standard_mode: m.standard_mode as u8, name: m.mode_name.to_str().unwrap_or("").to_string() };
                 let outs = self.modes.on_message(true, Some(&mode));
-                return self.follow_modes(outs, now_ms);
+                return next.into_iter().chain(self.follow_modes(outs, now_ms)).collect();
             }
             MavMessage::AVAILABLE_MODES_MONITOR(_) if self.connect.current().is_some() => return Vec::new(),
             MavMessage::AVAILABLE_MODES_MONITOR(m) => {
@@ -3402,9 +3420,11 @@ impl Vehicle {
                 }
             }
         }
+        let answered = self.commands.on_message(header.component_id, mavlink::Message::message_id(message), now_ms);
+        let requested = self.handle(answered, now_ms);
         let camera = self.note_camera(header.component_id, message, now_ms);
         let gimbal = self.note_gimbal(header.component_id, message, now_ms);
-        camera.into_iter().chain(gimbal).chain(self.note_onboard_log(message, now_ms)).chain(event_requests).collect()
+        requested.into_iter().chain(camera).chain(gimbal).chain(self.note_onboard_log(message, now_ms)).chain(event_requests).collect()
     }
 
     fn apply_events(&mut self, from: (u8, u8), message: &MavMessage, now_ms: u64) -> Vec<Vec<u8>> {
@@ -3646,6 +3666,7 @@ const REBOOT_TAG: u64 = 0x5245_424F_4F54;
 const FACTORY_RESET_TAG: u64 = 0x5245_5345_5446;
 const ESP_BRIDGE_TAG: u64 = 0x4553_5042_5247;
 const INSPECTOR_RATE_TAG: u64 = 0x4D53_4749_0000_0000;
+const INSPECTOR_INTERVAL_TAG: u64 = 0x4D53_4950_0000_0000;
 const MSG_MESSAGE_INTERVAL: u32 = 244;
 const STORAGE_RESET_FACTORY: f64 = 3.0;
 const STORAGE_MISSION_UNTOUCHED: f64 = -1.0;
@@ -5477,7 +5498,9 @@ mod tests {
         assert_eq!(quiet.len(), 7, "ten silent seconds without BATTERY_STATUS or HOME_POSITION re-request the streams");
         assert_eq!(hub.snapshot()["vehicle"]["connectStep"], "AutopilotVersion");
         let version = MavMessage::AUTOPILOT_VERSION(AUTOPILOT_VERSION_DATA { capabilities: MavProtocolCapability::from_bits_retain(8 | 4), flight_sw_version: 0x04050600, ..Default::default() });
-        let after_version = hub.on_frame(origin(4), &autopilot, &version, 1_100_000, 1_100);
+        assert!(hub.on_frame(origin(4), &autopilot, &version, 1_100_000, 1_100).is_empty(), "RequestMessageCoordinator holds the next request until the ack");
+        let accepted = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
+        let after_version = hub.on_frame(origin(4), &autopilot, &accepted, 1_150_000, 1_150);
         assert_eq!(request_of(&after_version[0].1), (512, 435.0), "ArduPilot skips the protocol version and goes to standard modes");
         assert_eq!(hub.snapshot()["vehicle"]["capabilities"], 12);
         assert_eq!(hub.snapshot()["vehicle"]["firmware"]["version"], "4.5.6 (0)");
@@ -5606,6 +5629,35 @@ mod tests {
         assert_eq!(interval(&next), Some((31.0, 10_000.0)));
         let vehicle = hub.vehicles.get_mut(&1).unwrap();
         assert!(vehicle.start_guided(&json!({ "action": "pidTuningMode", "mode": 7 }), 20_200).is_err());
+    }
+
+    #[test]
+    fn an_inspector_rate_reads_back_its_interval_through_the_request_queue_and_remembers_refusals() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MESSAGE_INTERVAL_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let interval_request = |bytes: &[Vec<u8>]| bytes.iter().find_map(|b| match decode(b) { MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_REQUEST_MESSAGE => Some((c.param1, c.param2)), _ => None });
+        let ack = |command, result| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command, result, ..Default::default() });
+        let set_rate = |hub: &mut Hub, message: u32, now_ms: u64| hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "messageInterval", "component": 1, "message": message, "rate": 5 }), now_ms).unwrap();
+        (0..20u64).for_each(|n| {
+            if hub.vehicles[&1].commands.pending(1, crate::mavcmd::CMD_SET_MESSAGE_INTERVAL) {
+                hub.on_frame(origin(4), &autopilot, &ack(MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL, MavResult::MAV_RESULT_ACCEPTED), (29_000 + n) * 1000, 29_000 + n);
+            }
+        });
+        assert!(!hub.vehicles[&1].commands.pending(1, crate::mavcmd::CMD_SET_MESSAGE_INTERVAL), "the connect-time stream rates are acked first");
+        set_rate(&mut hub, 30, 30_000);
+        let asked: Vec<Vec<u8>> = hub.on_frame(origin(4), &autopilot, &ack(MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL, MavResult::MAV_RESULT_ACCEPTED), 30_010_000, 30_010).into_iter().map(|(_, b)| b).collect();
+        assert_eq!(interval_request(&asked), Some((244.0, 30.0)), "MessageIntervalManager reads the new interval back after an accepted rate");
+        hub.on_frame(origin(4), &autopilot, &ack(MavCmd::MAV_CMD_REQUEST_MESSAGE, MavResult::MAV_RESULT_ACCEPTED), 30_020_000, 30_020);
+        hub.on_frame(origin(4), &autopilot, &MavMessage::MESSAGE_INTERVAL(MESSAGE_INTERVAL_DATA { interval_us: 200_000, message_id: 30 }), 30_030_000, 30_030);
+        assert!(hub.vehicles[&1].commands.requests_idle(), "the interval message answers the request");
+        set_rate(&mut hub, 31, 31_000);
+        hub.on_frame(origin(4), &autopilot, &ack(MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL, MavResult::MAV_RESULT_ACCEPTED), 31_010_000, 31_010);
+        hub.on_frame(origin(4), &autopilot, &ack(MavCmd::MAV_CMD_REQUEST_MESSAGE, MavResult::MAV_RESULT_UNSUPPORTED), 31_020_000, 31_020);
+        set_rate(&mut hub, 31, 32_000);
+        let again: Vec<Vec<u8>> = hub.on_frame(origin(4), &autopilot, &ack(MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL, MavResult::MAV_RESULT_ACCEPTED), 32_010_000, 32_010).into_iter().map(|(_, b)| b).collect();
+        assert_eq!(interval_request(&again), None, "an unsupported interval read is not asked again");
     }
 
     #[test]
@@ -5789,16 +5841,21 @@ mod tests {
         hub.on_frame(origin(4), &autopilot, &MavMessage::HEARTBEAT(px4), 0, 0);
         let monitor = MavMessage::AVAILABLE_MODES_MONITOR(AVAILABLE_MODES_MONITOR_DATA { seq: 7 });
         assert!(hub.on_frame(origin(4), &autopilot, &monitor, 50_000, 50).is_empty(), "Vehicle.cc ignores AVAILABLE_MODES_MONITOR while the initial connect runs");
-        let after_version = hub.on_frame(origin(4), &autopilot, &MavMessage::AUTOPILOT_VERSION(AUTOPILOT_VERSION_DATA::default()), 100_000, 100);
+        let accepted = MavMessage::COMMAND_ACK(mavlink::dialects::ardupilotmega::COMMAND_ACK_DATA { command: mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_REQUEST_MESSAGE, result: mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
+        let answered = |hub: &mut Hub, message: &MavMessage, now_ms: u64| {
+            assert!(hub.on_frame(origin(4), &autopilot, message, now_ms * 1000, now_ms).is_empty(), "the next request waits for the ack");
+            hub.on_frame(origin(4), &autopilot, &accepted, (now_ms + 10) * 1000, now_ms + 10)
+        };
+        let after_version = answered(&mut hub, &MavMessage::AUTOPILOT_VERSION(AUTOPILOT_VERSION_DATA::default()), 100);
         assert_eq!(request_of(&after_version[0].1), (512, 435.0), "InitialConnectStateMachine asks for no PROTOCOL_VERSION");
         let mode = |index: u8, name: &str, custom: u32| {
             let mut name_bytes = [0u8; 35];
             name_bytes[..name.len()].copy_from_slice(name.as_bytes());
             MavMessage::AVAILABLE_MODES(AVAILABLE_MODES_DATA { custom_mode: custom, number_modes: 2, mode_index: index, standard_mode: MavStandardMode::MAV_STANDARD_MODE_NON_STANDARD, mode_name: name_bytes.into(), ..Default::default() })
         };
-        let second = hub.on_frame(origin(4), &autopilot, &mode(1, "Manual", 65536), 300_000, 300);
+        let second = answered(&mut hub, &mode(1, "Manual", 65536), 300);
         assert_eq!(request_of(&second[0].1), (512, 435.0), "the next mode is requested");
-        let metadata = hub.on_frame(origin(4), &autopilot, &mode(2, "Position", 196608), 400_000, 400);
+        let metadata = answered(&mut hub, &mode(2, "Position", 196608), 400);
         assert_eq!(request_of(&metadata[0].1), (512, 397.0));
         let modes = hub.snapshot()["vehicle"]["flightModes"].clone();
         assert_eq!(modes.as_array().unwrap().len(), 2);

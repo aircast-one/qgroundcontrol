@@ -73,10 +73,18 @@ struct Request {
     wait_started_ms: Option<u64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Queued {
+    tag: u64,
+    message_id: u32,
+    params: [f64; 5],
+}
+
 #[derive(Debug, Default)]
 pub struct Commands {
     entries: Vec<Entry>,
     requests: BTreeMap<(u8, u32), Request>,
+    queued: BTreeMap<u8, Vec<Queued>>,
     pub px4: bool,
     pub high_latency: bool,
 }
@@ -177,13 +185,12 @@ impl Commands {
     pub fn tick(&mut self, now_ms: u64) -> Vec<Out> {
         let due: Vec<usize> = (0..self.entries.len()).rev().filter(|i| now_ms.saturating_sub(self.entries[*i].sent_at_ms) > self.entries[*i].ack_timeout_ms).collect();
         let raw: Vec<Out> = due.into_iter().flat_map(|i| self.transmit(i, now_ms)).collect();
-        let mut out = self.resolve(raw);
+        let resolved = self.resolve(raw, now_ms);
         let expired = self.requests.iter().find(|(_, r)| r.wait_started_ms.is_some_and(|started| now_ms.saturating_sub(started) > MESSAGE_WAIT_MS)).map(|(k, r)| (*k, r.tag));
-        if let Some(((component, message_id), tag)) = expired {
-            self.requests.remove(&(component, message_id));
-            out.push(Out::RequestResult { tag, component, message_id, result: RESULT_FAILED, failure: RequestFailure::MessageNotReceived });
-        }
-        out
+        let timed_out = expired
+            .map(|((component, message_id), tag)| self.finish(component, message_id, Out::RequestResult { tag, component, message_id, result: RESULT_FAILED, failure: RequestFailure::MessageNotReceived }, now_ms))
+            .unwrap_or_default();
+        resolved.into_iter().chain(timed_out).collect()
     }
 
     pub fn on_ack(&mut self, component: u8, command: u16, result: u8, now_ms: u64) -> Vec<Out> {
@@ -214,59 +221,104 @@ impl Commands {
     }
 
     pub fn request_message(&mut self, tag: u64, component: u8, message_id: u32, params: [f64; 5], now_ms: u64) -> Vec<Out> {
+        let duplicate = self.requests.get(&(component, message_id)).is_some_and(|r| !r.message_received) || self.queued.get(&component).is_some_and(|queue| queue.iter().any(|q| q.message_id == message_id));
+        if duplicate {
+            return vec![Out::RequestResult { tag, component, message_id, result: RESULT_FAILED, failure: RequestFailure::DuplicateCommand }];
+        }
+        let request = Queued { tag, message_id, params };
+        if self.active(component) {
+            self.queued.entry(component).or_default().push(request);
+            return Vec::new();
+        }
+        self.send_request(component, request, now_ms)
+    }
+
+    pub fn requests_idle(&self) -> bool {
+        self.requests.is_empty() && self.queued.is_empty()
+    }
+
+    fn active(&self, component: u8) -> bool {
+        self.requests.keys().any(|(c, _)| *c == component)
+    }
+
+    fn send_request(&mut self, component: u8, request: Queued, now_ms: u64) -> Vec<Out> {
+        let Queued { tag, message_id, params } = request;
         self.requests.insert((component, message_id), Request { tag, ack_received: false, message_received: false, wait_started_ms: None });
         let command = Command { component, command: CMD_REQUEST_MESSAGE, command_int: false, frame: 0, params: [message_id as f64, params[0], params[1], params[2], params[3], params[4], 0.0], show_error: false, tag };
         let out = self.send(command, now_ms);
         out.into_iter()
             .flat_map(|o| match o {
                 Out::Result { failure, result, .. } => {
-                    self.requests.remove(&(component, message_id));
                     let failure = if failure == Failure::Duplicate { RequestFailure::DuplicateCommand } else { RequestFailure::CommandError };
-                    vec![Out::RequestResult { tag, component, message_id, result, failure }]
+                    self.finish(component, message_id, Out::RequestResult { tag, component, message_id, result, failure }, now_ms)
                 }
                 other => vec![other],
             })
             .collect()
     }
 
+    fn finish(&mut self, component: u8, message_id: u32, result: Out, now_ms: u64) -> Vec<Out> {
+        self.release(component, message_id, now_ms).into_iter().chain([result]).collect()
+    }
+
+    fn release(&mut self, component: u8, message_id: u32, now_ms: u64) -> Vec<Out> {
+        self.requests.remove(&(component, message_id));
+        self.send_next(component, now_ms)
+    }
+
+    fn send_next(&mut self, component: u8, now_ms: u64) -> Vec<Out> {
+        if self.active(component) {
+            return Vec::new();
+        }
+        let next = self.queued.get_mut(&component).filter(|queue| !queue.is_empty()).map(|queue| queue.remove(0));
+        if self.queued.get(&component).is_some_and(Vec::is_empty) {
+            self.queued.remove(&component);
+        }
+        next.map(|request| self.send_request(component, request, now_ms)).unwrap_or_default()
+    }
+
     fn request_acked(&mut self, component: u8, message_id: u32, result: u8, now_ms: u64, tag: u64) -> Vec<Out> {
         let Some(request) = self.requests.get_mut(&(component, message_id)) else { return Vec::new() };
         request.ack_received = true;
-        if result != RESULT_ACCEPTED {
-            self.requests.remove(&(component, message_id));
-            return vec![Out::RequestResult { tag, component, message_id, result, failure: RequestFailure::CommandError }];
-        }
         if request.message_received {
-            self.requests.remove(&(component, message_id));
-            return vec![Out::RequestResult { tag, component, message_id, result: RESULT_ACCEPTED, failure: RequestFailure::None }];
+            return self.release(component, message_id, now_ms);
+        }
+        if result != RESULT_ACCEPTED {
+            return self.finish(component, message_id, Out::RequestResult { tag, component, message_id, result, failure: RequestFailure::CommandError }, now_ms);
         }
         request.wait_started_ms = Some(now_ms);
         Vec::new()
     }
 
-    pub fn on_message(&mut self, component: u8, message_id: u32) -> Vec<Out> {
-        let Some(request) = self.requests.get(&(component, message_id)).cloned() else { return Vec::new() };
-        if !request.ack_received {
-            if let Some(index) = self.index(component, CMD_REQUEST_MESSAGE) {
-                self.entries.remove(index);
-            }
+    pub fn on_message(&mut self, component: u8, message_id: u32, now_ms: u64) -> Vec<Out> {
+        let Some(request) = self.requests.get_mut(&(component, message_id)) else { return Vec::new() };
+        if request.message_received {
+            return Vec::new();
         }
-        self.requests.remove(&(component, message_id));
-        vec![Out::RequestResult { tag: request.tag, component, message_id, result: RESULT_ACCEPTED, failure: RequestFailure::None }]
+        let delivered = Out::RequestResult { tag: request.tag, component, message_id, result: RESULT_ACCEPTED, failure: RequestFailure::None };
+        if request.ack_received {
+            return self.finish(component, message_id, delivered, now_ms);
+        }
+        request.message_received = true;
+        vec![delivered]
     }
 
-    fn no_response(&mut self, component: u8, message_id: u32) -> Vec<Out> {
-        self.requests.remove(&(component, message_id)).map(|r| vec![Out::RequestResult { tag: r.tag, component, message_id, result: RESULT_FAILED, failure: RequestFailure::CommandNotAcked }]).unwrap_or_default()
+    fn no_response(&mut self, component: u8, message_id: u32, now_ms: u64) -> Vec<Out> {
+        match self.requests.get(&(component, message_id)).map(|r| (r.tag, r.message_received)) {
+            Some((_, true)) => self.release(component, message_id, now_ms),
+            Some((tag, false)) => self.finish(component, message_id, Out::RequestResult { tag, component, message_id, result: RESULT_FAILED, failure: RequestFailure::CommandNotAcked }, now_ms),
+            None => Vec::new(),
+        }
     }
 
-    fn resolve(&mut self, out: Vec<Out>) -> Vec<Out> {
+    fn resolve(&mut self, out: Vec<Out>, now_ms: u64) -> Vec<Out> {
         out.into_iter()
             .flat_map(|o| match o {
                 Out::Result { component, command: CMD_REQUEST_MESSAGE, failure: Failure::NoResponse, tag, .. } => {
                     let message_id = self.requests.iter().find(|(k, r)| k.0 == component && r.tag == tag).map(|(k, _)| k.1);
                     let mut all = vec![Out::Result { tag, component, command: CMD_REQUEST_MESSAGE, result: RESULT_FAILED, failure: Failure::NoResponse }];
                     if let Some(message_id) = message_id {
-                        all.extend(self.no_response(component, message_id));
+                        all.extend(self.no_response(component, message_id, now_ms));
                     }
                     all
                 }
@@ -344,16 +396,28 @@ mod tests {
         assert!(matches!(apm.tick(ACK_TIMEOUT_MS + 1).as_slice(), [Out::Result { failure: Failure::NoResponse, .. }]));
     }
 
+    fn sent_requests(outs: &[Out]) -> Vec<f64> {
+        outs.iter().filter_map(|o| match o { Out::Send { command: CMD_REQUEST_MESSAGE, params, .. } => Some(params[0]), _ => None }).collect()
+    }
+
     #[test]
     fn a_requested_message_succeeds_after_the_ack_or_before_it_and_times_out_without_it() {
         let mut commands = Commands::default();
         let sent = commands.request_message(11, 1, 148, [0.0; 5], 0);
         assert!(matches!(sent.as_slice(), [Out::Send { command: CMD_REQUEST_MESSAGE, params, .. }] if params[0] == 148.0));
         assert!(commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 5).iter().all(|o| !matches!(o, Out::RequestResult { .. })));
-        assert_eq!(commands.on_message(1, 148), vec![Out::RequestResult { tag: 11, component: 1, message_id: 148, result: RESULT_ACCEPTED, failure: RequestFailure::None }]);
+        assert_eq!(commands.on_message(1, 148, 6), vec![Out::RequestResult { tag: 11, component: 1, message_id: 148, result: RESULT_ACCEPTED, failure: RequestFailure::None }]);
         commands.request_message(12, 1, 300, [0.0; 5], 100);
-        assert_eq!(commands.on_message(1, 300), vec![Out::RequestResult { tag: 12, component: 1, message_id: 300, result: RESULT_ACCEPTED, failure: RequestFailure::None }]);
-        assert!(!commands.pending(1, CMD_REQUEST_MESSAGE));
+        assert_eq!(commands.on_message(1, 300, 101), vec![Out::RequestResult { tag: 12, component: 1, message_id: 300, result: RESULT_ACCEPTED, failure: RequestFailure::None }]);
+        assert!(commands.on_message(1, 300, 102).is_empty(), "a second copy of the message is not a second answer");
+        assert!(commands.pending(1, CMD_REQUEST_MESSAGE), "MavCommandQueue keeps the command until its ack even when the message came first");
+        assert!(commands.request_message(18, 1, 300, [2.0, 0.0, 0.0, 0.0, 0.0], 103).is_empty(), "asking again after the early answer waits for the ack, as QGC only answers after it");
+        let released = commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 110);
+        assert!(released.iter().all(|o| !matches!(o, Out::RequestResult { .. })), "the late ack only releases the request");
+        assert_eq!(sent_requests(&released), vec![300.0]);
+        assert_eq!(commands.on_message(1, 300, 111), vec![Out::RequestResult { tag: 18, component: 1, message_id: 300, result: RESULT_ACCEPTED, failure: RequestFailure::None }]);
+        commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 112);
+        assert!(commands.requests_idle());
         commands.request_message(13, 1, 148, [0.0; 5], 200);
         commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 205);
         assert!(commands.tick(205 + MESSAGE_WAIT_MS).is_empty());
@@ -361,13 +425,28 @@ mod tests {
         commands.request_message(14, 1, 148, [0.0; 5], 300);
         let denied = commands.on_ack(1, CMD_REQUEST_MESSAGE, 2, 305);
         assert!(denied.contains(&Out::RequestResult { tag: 14, component: 1, message_id: 148, result: 2, failure: RequestFailure::CommandError }));
-        commands.request_message(15, 1, 148, [0.0; 5], 400);
-        let duplicate = commands.request_message(16, 1, 148, [0.0; 5], 401);
-        assert!(duplicate.contains(&Out::RequestResult { tag: 16, component: 1, message_id: 148, result: RESULT_FAILED, failure: RequestFailure::DuplicateCommand }));
         let mut unanswered = Commands::default();
         unanswered.request_message(17, 1, 148, [0.0; 5], 0);
         let gave_up = (1..=3).flat_map(|n| unanswered.tick(ACK_TIMEOUT_MS + n)).collect::<Vec<_>>();
         assert!(gave_up.contains(&Out::RequestResult { tag: 17, component: 1, message_id: 148, result: RESULT_FAILED, failure: RequestFailure::CommandNotAcked }));
         assert!(unanswered.requests.is_empty());
+    }
+
+    #[test]
+    fn requests_to_one_component_wait_their_turn_and_an_exact_duplicate_fails_alone() {
+        let mut commands = Commands::default();
+        assert_eq!(sent_requests(&commands.request_message(1, 1, 148, [0.0; 5], 0)), vec![148.0]);
+        assert!(commands.request_message(2, 1, 244, [33.0, 0.0, 0.0, 0.0, 0.0], 1).is_empty(), "queued behind the active request");
+        assert_eq!(sent_requests(&commands.request_message(3, 2, 244, [0.0; 5], 2)), vec![244.0], "another component has its own queue");
+        assert_eq!(commands.request_message(4, 1, 148, [0.0; 5], 3), vec![Out::RequestResult { tag: 4, component: 1, message_id: 148, result: RESULT_FAILED, failure: RequestFailure::DuplicateCommand }]);
+        assert_eq!(commands.request_message(5, 1, 244, [0.0; 5], 4), vec![Out::RequestResult { tag: 5, component: 1, message_id: 244, result: RESULT_FAILED, failure: RequestFailure::DuplicateCommand }], "a duplicate of a queued request fails too");
+        assert!(commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 5).iter().all(|o| !matches!(o, Out::RequestResult { .. } | Out::Send { .. })));
+        let answered = commands.on_message(1, 148, 6);
+        assert_eq!(answered.last(), Some(&Out::RequestResult { tag: 1, component: 1, message_id: 148, result: RESULT_ACCEPTED, failure: RequestFailure::None }), "the duplicate left the original request tracked");
+        assert!(matches!(answered.first(), Some(Out::Send { command: CMD_REQUEST_MESSAGE, params, .. }) if params[0] == 244.0 && params[1] == 33.0), "the queued request goes out before the answer is handed on");
+        let refused = commands.on_ack(1, CMD_REQUEST_MESSAGE, 3, 10);
+        assert!(refused.contains(&Out::RequestResult { tag: 2, component: 1, message_id: 244, result: 3, failure: RequestFailure::CommandError }));
+        assert!(commands.queued.is_empty());
+        assert_eq!(sent_requests(&commands.request_message(6, 1, 244, [0.0; 5], 11)), vec![244.0], "an idle component sends at once");
     }
 }
