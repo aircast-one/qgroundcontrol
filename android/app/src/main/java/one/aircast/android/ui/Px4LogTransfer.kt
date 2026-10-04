@@ -140,6 +140,7 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
         return
     }
     val editable = log.persistence
+    fun saveItemsThen(path: String, vararg args: Any) = act(unsavedTexts(log.settings, drafts).map { (field, typed) -> "mavlinkLog.set" to listOf(field, typed) } + (path to args.toList()))
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionHeader("MAVLink 2.0 Logging")
         FootNote("PX4 Pro only")
@@ -155,11 +156,11 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
         LogText("Default Description", log.settings.optText("description"), editable, draft("description"), save("description"))
         LogText("Upload URL", log.settings.optText("uploadURL"), editable, draft("uploadURL"), save("uploadURL"))
         LogText("Video URL", log.settings.optText("videoURL"), editable, draft("videoURL"), save("videoURL"))
-        LogChoice("Wind Speed", WIND_SPEEDS, log.settings.optText("windSpeed"), editable) { act("mavlinkLog.set", "windSpeed", it) }
-        LogChoice("Flight Rating", FLIGHT_RATINGS, log.settings.optText("rating"), editable) { act("mavlinkLog.set", "rating", it) }
+        LogChoice("Wind Speed", WIND_SPEEDS, log.settings.optText("windSpeed"), editable) { saveItemsThen("mavlinkLog.set", "windSpeed", it) }
+        LogChoice("Flight Rating", FLIGHT_RATINGS, log.settings.optText("rating"), editable) { saveItemsThen("mavlinkLog.set", "rating", it) }
         LogText("Additional Feedback", log.settings.optText("feedback"), editable, draft("feedback"), save("feedback"))
         LogFlag("Make logs public", log.settings.optBoolean("publicLog"), editable) { act("mavlinkLog.set", "publicLog", it) }
-        LogFlag("Upload logs automatically", log.settings.optBoolean("enableAutoUpload"), editable) { act("mavlinkLog.set", "enableAutoUpload", it) }
+        LogFlag("Upload logs automatically", log.settings.optBoolean("enableAutoUpload"), editable) { saveItemsThen("mavlinkLog.set", "enableAutoUpload", it) }
         LogFlag("Delete logs after upload", log.settings.optBoolean("deleteAfterUpload"), editable && log.settings.optBoolean("enableAutoUpload")) {
             act("mavlinkLog.set", "deleteAfterUpload", it)
         }
@@ -206,7 +207,10 @@ internal fun Px4LogTransferPage(modifier: Modifier = Modifier) {
                     if (uploadEmail(log.settings, drafts).isBlank()) {
                         refusal = "Please enter an email address before uploading MAVLink log files."
                     } else {
-                        confirming = LogConfirm("Upload Selected Log Files", "Upload the selected log files?") { act("mavlinkLog.upload", *selected.toTypedArray()) }
+                        confirming = LogConfirm("Upload Selected Log Files", "Upload the selected log files?") {
+                            act("mavlinkLog.upload", *selected.toTypedArray())
+                            selected = emptySet()
+                        }
                     }
                 }) { Text("Upload…") }
             }

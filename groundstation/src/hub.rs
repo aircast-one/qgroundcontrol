@@ -3390,14 +3390,15 @@ impl Vehicle {
                 return self.follow_params(actions, now_ms);
             }
             MavMessage::LOGGING_DATA(d) => {
-                let length = (d.length as usize).min(d.data.len());
-                return self.log_data(d.sequence, d.first_message_offset, &d.data[..length], now_ms);
+                return match d.data.get(..d.length as usize) {
+                    Some(data) => self.log_data(d.sequence, d.first_message_offset, data, now_ms),
+                    None => Vec::new(),
+                };
             }
             MavMessage::LOGGING_DATA_ACKED(d) => {
-                let length = (d.length as usize).min(d.data.len());
-                let mut bytes = self.log_data(d.sequence, d.first_message_offset, &d.data[..length], now_ms);
-                bytes.extend(self.encode(&Outbound::LoggingAck { target: (self.id, self.component), sequence: d.sequence }));
-                return bytes;
+                let ack = self.encode(&Outbound::LoggingAck { target: (self.id, self.component), sequence: d.sequence });
+                let written = d.data.get(..d.length as usize).map(|data| self.log_data(d.sequence, d.first_message_offset, data, now_ms)).unwrap_or_default();
+                return ack.into_iter().chain(written).collect();
             }
             MavMessage::OPEN_DRONE_ID_ARM_STATUS(a) => {
                 let outs = self.remote.on_arm_status(self.id, header.system_id, header.component_id, a.status as u8, a.error.to_str().unwrap_or(""));

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use serde_json::{Value, json};
 
@@ -45,11 +45,28 @@ struct Uploads {
     message: Option<String>,
     cancel: Option<Arc<AtomicBool>>,
     feedback: String,
-    was_running: Option<String>,
+    was_running: Vec<(u8, String)>,
     pending: Vec<String>,
 }
 
-static UPLOADS: Mutex<Uploads> = Mutex::new(Uploads { running: false, current: None, progress: 0.0, message: None, cancel: None, feedback: String::new(), was_running: None, pending: Vec::new() });
+static UPLOADS: Mutex<Uploads> = Mutex::new(Uploads { running: false, current: None, progress: 0.0, message: None, cancel: None, feedback: String::new(), was_running: Vec::new(), pending: Vec::new() });
+static APPLICATION_VERSION: OnceLock<String> = OnceLock::new();
+
+pub fn set_application_version(version: &str) {
+    let _ = APPLICATION_VERSION.set(version.to_string());
+}
+
+fn application_version() -> String {
+    APPLICATION_VERSION.get().cloned().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
+}
+
+fn from_user_input(url: &str) -> String {
+    match url.trim() {
+        "" => String::new(),
+        given if given.contains("://") => given.to_string(),
+        given => format!("http://{given}"),
+    }
+}
 
 fn key(name: &str) -> String {
     format!("{MAVLINK_LOG_GROUP}/{name}")
@@ -85,10 +102,28 @@ fn file_of(name: &str) -> String {
     format!("{}{MAVLINK_LOG_EXTENSION}", stem(name))
 }
 
-fn writing_file() -> Option<String> {
-    let state = crate::hub::lock().active().map(|vehicle| vehicle.log_snapshot())?;
-    state["running"].as_bool().filter(|running| *running)?;
-    state["file"].as_str().and_then(|f| Path::new(f).file_name().map(|n| n.to_string_lossy().into_owned()))
+fn vehicle_logs() -> Vec<(u8, Value)> {
+    let hub = crate::hub::lock();
+    hub.vehicle_ids().into_iter().filter_map(|id| hub.vehicle(id).map(|vehicle| (id, vehicle.log_snapshot()))).collect()
+}
+
+fn running_logs(logs: &[(u8, Value)]) -> Vec<(u8, String)> {
+    logs.iter()
+        .filter(|(_, state)| state["running"].as_bool().unwrap_or(false))
+        .filter_map(|(id, state)| state["file"].as_str().map(|file| (*id, file.to_string())))
+        .collect()
+}
+
+fn finished_logs(before: &[(u8, String)], logs: &[(u8, Value)]) -> Vec<String> {
+    before
+        .iter()
+        .filter(|(id, file)| logs.iter().any(|(listed, state)| listed == id && (!state["running"].as_bool().unwrap_or(false) || state["file"].as_str() != Some(file.as_str())) && state["error"].is_null()))
+        .map(|(_, file)| file.clone())
+        .collect()
+}
+
+fn writing_files() -> Vec<String> {
+    running_logs(&vehicle_logs()).into_iter().filter_map(|(_, file)| Path::new(&file).file_name().map(|n| n.to_string_lossy().into_owned())).collect()
 }
 
 pub fn configure_hub() {
@@ -98,7 +133,7 @@ pub fn configure_hub() {
 
 fn files() -> Vec<Value> {
     let Some(folder) = folder() else { return Vec::new() };
-    let writing = writing_file();
+    let writing = writing_files();
     let listed: std::collections::BTreeMap<String, (u64, bool)> = std::fs::read_dir(&folder)
         .map(|entries| {
             entries
@@ -112,7 +147,7 @@ fn files() -> Vec<Value> {
                 .collect()
         })
         .unwrap_or_default();
-    listed.into_iter().map(|(name, (size, uploaded))| json!({ "name": stem(&name), "size": size, "uploaded": uploaded, "writing": writing.as_deref() == Some(name.as_str()) })).collect()
+    listed.into_iter().map(|(name, (size, uploaded))| json!({ "name": stem(&name), "size": size, "uploaded": uploaded, "writing": writing.contains(&name) })).collect()
 }
 
 pub fn multipart(fields: &[(&str, String)], file_name: &str, file: &[u8]) -> Vec<u8> {
@@ -129,7 +164,7 @@ fn form_fields(feedback: &str) -> Vec<(&'static str, String)> {
         ("email", text("emailAddress")),
         ("description", text("description")),
         ("source", "QGroundControl".to_string()),
-        ("version", env!("CARGO_PKG_VERSION").to_string()),
+        ("version", application_version()),
         ("type", "flightreport".to_string()),
         ("windSpeed", text("windSpeed")),
         ("rating", text("rating")),
@@ -168,7 +203,7 @@ fn send(path: &Path, feedback: &str, cancel: &AtomicBool) -> Result<(), String> 
     let body = multipart(&form_fields(feedback), &name, &bytes);
     let length = body.len();
     let mut sending = Sending { body: std::io::Cursor::new(body), cancel };
-    let response = ureq::post(&text("uploadURL"))
+    let response = ureq::post(&from_user_input(&text("uploadURL")))
         .header("Content-Type", &format!("multipart/form-data; boundary={BOUNDARY}"))
         .header("Content-Length", &length.to_string())
         .send(ureq::SendBody::from_reader(&mut sending))
@@ -203,8 +238,8 @@ fn upload(names: Vec<String>) -> Result<(), String> {
         return Err(NO_EMAIL.to_string());
     }
     let folder = folder().ok_or("There is no log folder.")?;
-    let writing = writing_file();
-    let names: Vec<String> = names.iter().map(|name| file_of(name)).filter(|name| !uploaded_marker(&folder.join(name)).exists() && writing.as_deref() != Some(name.as_str())).collect();
+    let writing = writing_files();
+    let names: Vec<String> = names.iter().map(|name| file_of(name)).filter(|name| !uploaded_marker(&folder.join(name)).exists() && !writing.contains(name)).collect::<std::collections::BTreeSet<String>>().into_iter().collect();
     let cancel = Arc::new(AtomicBool::new(false));
     let feedback = {
         let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -238,19 +273,22 @@ fn upload(names: Vec<String>) -> Result<(), String> {
 }
 
 pub fn tick() {
-    let state = crate::hub::lock().active().map(|vehicle| vehicle.log_snapshot());
-    let running = state.as_ref().and_then(|s| s["running"].as_bool()).unwrap_or(false);
-    let failed = state.as_ref().is_some_and(|s| !s["error"].is_null());
-    let file = state.as_ref().and_then(|s| s["file"].as_str().map(str::to_string));
+    configure_hub();
+    let logs = vehicle_logs();
     let finished = {
         let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
-        let was = uploads.was_running.take();
-        uploads.was_running = running.then(|| file.clone()).flatten();
-        was.filter(|_| !running)
+        let before = std::mem::replace(&mut uploads.was_running, running_logs(&logs));
+        finished_logs(&before, &logs)
     };
-    if let Some(done) = finished.filter(|done| flag("enableAutoUpload") && !failed && Path::new(done).exists()) {
-        let name = Path::new(&done).file_name().unwrap_or_default().to_string_lossy().into_owned();
-        let _ = upload(vec![name]);
+    let done: Vec<String> = finished
+        .iter()
+        .filter(|_| flag("enableAutoUpload"))
+        .map(Path::new)
+        .filter(|path| path.exists())
+        .map(|path| path.file_name().unwrap_or_default().to_string_lossy().into_owned())
+        .collect();
+    if !done.is_empty() {
+        let _ = upload(done);
     }
 }
 
@@ -342,8 +380,8 @@ pub fn run(path: &str, args: &str) -> Value {
         MAVLINK_LOG_UPLOAD => outcome(upload(names(&given))),
         MAVLINK_LOG_DELETE => {
             let folder = folder();
-            let writing = writing_file();
-            names(&given).iter().map(|name| file_of(name)).filter(|name| writing.as_deref() != Some(name.as_str())).filter_map(|name| folder.as_ref().map(|f| f.join(name))).for_each(|path| {
+            let writing = writing_files();
+            names(&given).iter().map(|name| file_of(name)).filter(|name| !writing.contains(name)).filter_map(|name| folder.as_ref().map(|f| f.join(name))).for_each(|path| {
                 let _ = std::fs::remove_file(uploaded_marker(&path));
                 let _ = std::fs::remove_file(&path);
             });
@@ -392,6 +430,26 @@ mod tests {
         assert!(!auto_upload_dropped("rating", true, "a@b.c"));
         assert!(!auto_upload_dropped("enableAutoUpload", false, ""));
         assert!(!auto_upload_dropped("publicLog", true, ""), "publicLog writes the manager directly, without saveItems");
+    }
+
+    #[test]
+    fn the_upload_url_is_read_like_qurl_from_user_input() {
+        assert_eq!(from_user_input("logs.px4.io/upload"), "http://logs.px4.io/upload");
+        assert_eq!(from_user_input(" https://review.px4.io/upload "), "https://review.px4.io/upload");
+        assert_eq!(from_user_input(""), "");
+    }
+
+    #[test]
+    fn auto_upload_follows_each_vehicles_own_log_and_skips_a_vehicle_that_went_away() {
+        let stopped = |error: Value| json!({ "running": false, "file": "/l/001-a.ulg", "error": error });
+        let before = vec![(1, "/l/001-a.ulg".to_string()), (2, "/l/002-b.ulg".to_string())];
+        let still = json!({ "running": true, "file": "/l/002-b.ulg", "error": null });
+        assert_eq!(finished_logs(&before, &[(1, stopped(Value::Null)), (2, still.clone())]), vec!["/l/001-a.ulg".to_string()]);
+        assert!(finished_logs(&before, &[(2, still.clone())]).is_empty(), "MAVLinkLogManager dies with its vehicle, so a lost vehicle's log is not uploaded");
+        assert!(finished_logs(&before, &[(1, stopped(json!("Error writing MAVLink log file: x")))]).is_empty(), "a write error stops without stopLogging, so no auto upload");
+        let restarted = json!({ "running": true, "file": "/l/001-c.ulg", "error": null });
+        assert_eq!(finished_logs(&before, &[(1, restarted)]), vec!["/l/001-a.ulg".to_string()], "a log restarted between ticks still uploads the stopped one");
+        assert_eq!(running_logs(&[(2, still)]), vec![(2, "/l/002-b.ulg".to_string())]);
     }
 
     #[test]
