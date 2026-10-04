@@ -972,6 +972,12 @@ impl Vehicle {
     }
 
     fn stream_parameters(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        self.use_parameter_cache();
+        let actions = self.params.start();
+        self.follow_params(actions, now_ms)
+    }
+
+    fn use_parameter_cache(&mut self) {
         if self.params.px4 {
             let cache = crate::paramcache::load(self.id, self.params.default_component);
             let volatile = cache
@@ -981,8 +987,6 @@ impl Vehicle {
                 .collect();
             self.params.use_cache(cache, volatile);
         }
-        let actions = self.params.start();
-        self.follow_params(actions, now_ms)
     }
 
     fn pack_received(&mut self, bytes: &[u8], now_ms: u64) -> Vec<Vec<u8>> {
@@ -1405,12 +1409,17 @@ impl Vehicle {
                     self.follow_modes(outs, now_ms)
                 }
                 Action::RefreshParameters if self.replay => self.step_done(connect::Step::Parameters, now_ms),
-                Action::RefreshParameters if self.commands.high_latency => {
-                    self.params.skip_load();
-                    self.step_done(connect::Step::Parameters, now_ms)
+                Action::RefreshParameters if self.skips_download_flying() && self.params.px4 && !self.commands.high_latency => {
+                    self.use_parameter_cache();
+                    let actions = self.params.start_cache_only();
+                    self.follow_params(actions, now_ms)
                 }
                 Action::RefreshParameters if self.skips_download_flying() => {
                     self.parameter_download_skipped = true;
+                    self.step_done(connect::Step::Parameters, now_ms)
+                }
+                Action::RefreshParameters if self.commands.high_latency => {
+                    self.params.skip_load();
                     self.step_done(connect::Step::Parameters, now_ms)
                 }
                 Action::RefreshParameters if self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT => match Download::start_from(COMP_AUTOPILOT1, params::PACK_URI, false, self.ftp_seq) {
@@ -1425,7 +1434,9 @@ impl Vehicle {
                     let outs = self.commands.request_message(MSG_COMPONENT_METADATA as u64, self.component, MSG_COMPONENT_METADATA, [0.0; 5], now_ms);
                     self.handle(outs, now_ms)
                 }
-                Action::LoadMission if self.skips_download_flying() || (self.parameter_download_skipped && self.armed()) => self.step_done(connect::Step::Mission, now_ms),
+                Action::LoadMission if self.skips_download_flying() => self.step_done(connect::Step::Mission, now_ms),
+                Action::LoadGeoFence if self.skips_download_flying() => self.step_done(connect::Step::GeoFence, now_ms),
+                Action::LoadRallyPoints if self.skips_download_flying() => self.step_done(connect::Step::RallyPoints, now_ms),
                 Action::LoadMission => self.load_plan(PLAN_MISSION, now_ms),
                 Action::LoadGeoFence => self.load_plan(PLAN_FENCE, now_ms),
                 Action::LoadRallyPoints => self.load_plan(PLAN_RALLY, now_ms),
@@ -1515,6 +1526,10 @@ impl Vehicle {
                     let cache = self.params.entries(component).map(|(name, value)| (name.clone(), *value)).collect();
                     crate::paramcache::save(self.id, component, &cache);
                     Vec::new()
+                }
+                params::Action::CacheOnlyFailed => {
+                    self.parameter_download_skipped = true;
+                    self.step_done(connect::Step::Parameters, now_ms)
                 }
                 params::Action::NoResponse => {
                     self.note("The vehicle did not respond to the parameter request.".to_string());
@@ -2969,7 +2984,7 @@ impl Vehicle {
     }
 
     fn skips_download_flying(&self) -> bool {
-        skips_download(self.autopilot, self.armed(), crate::settingsstore::raw_setting("settings.mavlinkSettings.noInitialDownloadWhenFlying").and_then(|v| v.as_bool()).unwrap_or(false))
+        skips_download(self.armed(), crate::settingsstore::raw_setting("settings.mavlinkSettings.noInitialDownloadWhenFlying").and_then(|v| v.as_bool()).unwrap_or(false))
     }
 
     fn arming_not_required(&self) -> bool {
@@ -4267,8 +4282,8 @@ pub fn no_parameters_notice(id: u8, autopilot: u8, app: &str) -> Option<String> 
     (!generic).then(|| format!("Vehicle {id} did not respond to request for parameters. This will cause {app} to be unable to display its full user interface."))
 }
 
-pub fn skips_download(autopilot: u8, armed: bool, skip_when_flying: bool) -> bool {
-    skip_when_flying && armed && autopilot != crate::modes::AUTOPILOT_PX4
+pub fn skips_download(armed: bool, skip_when_flying: bool) -> bool {
+    skip_when_flying && armed
 }
 
 pub fn now_ms() -> u64 {
@@ -4376,11 +4391,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_armed_vehicle_skips_the_download_only_when_asked_and_not_on_px4() {
-        assert!(skips_download(crate::modes::AUTOPILOT_ARDUPILOT, true, true));
-        assert!(!skips_download(crate::modes::AUTOPILOT_ARDUPILOT, false, true));
-        assert!(!skips_download(crate::modes::AUTOPILOT_ARDUPILOT, true, false));
-        assert!(!skips_download(crate::modes::AUTOPILOT_PX4, true, true), "PX4 tries its hash-check cache instead");
+    fn an_armed_vehicle_skips_the_download_only_when_asked() {
+        assert!(skips_download(true, true), "InitialConnectStateMachine::_shouldSkipForFlying uses armed() for every firmware");
+        assert!(!skips_download(false, true));
+        assert!(!skips_download(true, false));
     }
 
     #[test]

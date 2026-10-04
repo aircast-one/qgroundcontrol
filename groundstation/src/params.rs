@@ -143,6 +143,7 @@ pub enum Action {
     ReadFailed { component: u8, name: String },
     WriteFailed { component: u8, name: String },
     NoResponse,
+    CacheOnlyFailed,
 }
 
 #[derive(Debug, Default)]
@@ -172,6 +173,7 @@ pub struct Params {
     total_count: usize,
     cache: Option<(BTreeMap<String, ParamValue>, BTreeSet<String>)>,
     hash_check_pending: bool,
+    cache_only: bool,
 }
 
 fn acknowledges(written: ParamValue, echoed: ParamValue) -> bool {
@@ -335,6 +337,22 @@ impl Params {
         }
     }
 
+    pub fn start_cache_only(&mut self) -> Vec<Action> {
+        match self.px4 && self.cache.is_some() && !self.initial_complete {
+            true => {
+                self.cache_only = true;
+                self.start()
+            }
+            false => vec![Action::CacheOnlyFailed],
+        }
+    }
+
+    fn cache_only_failed(&mut self) -> Vec<Action> {
+        self.cache_only = false;
+        self.initial_timer_active = false;
+        vec![Action::StopInitialTimer, Action::CacheOnlyFailed]
+    }
+
     fn hash_answered(&mut self, component: u8, value: ParamValue) -> Vec<Action> {
         self.hash_check_pending = false;
         let (cache, volatile) = self.cache.clone().unwrap_or_default();
@@ -347,12 +365,14 @@ impl Params {
                     .chain([Action::Set { component, name: HASH_CHECK.to_string(), value: ParamValue::U32(crc) }])
                     .collect()
             }
+            false if self.cache_only => self.cache_only_failed(),
             false => self.refresh_all(ALL_COMPONENTS),
         }
     }
 
     pub fn refresh_all(&mut self, component: u8) -> Vec<Action> {
         self.unanswered = false;
+        self.cache_only = false;
         let timer = (!self.initial_complete).then(|| {
             self.initial_timer_active = true;
             Action::StartInitialTimer
@@ -570,7 +590,10 @@ impl Params {
     pub fn on_initial_timeout(&mut self) -> Vec<Action> {
         if self.hash_check_pending {
             self.hash_check_pending = false;
-            return self.refresh_all(ALL_COMPONENTS);
+            return match self.cache_only {
+                true => self.cache_only_failed(),
+                false => self.refresh_all(ALL_COMPONENTS),
+            };
         }
         self.initial_retry += 1;
         if self.initial_retry <= MAX_INITIAL_REQUEST_LIST_RETRY {
@@ -673,6 +696,28 @@ mod tests {
         let mut ardupilot = Params::new(1, false);
         ardupilot.use_cache(cached(), volatile());
         assert!(ardupilot.start().contains(&Action::RequestList { component: ALL_COMPONENTS }), "only PX4 answers _HASH_CHECK");
+    }
+
+    #[test]
+    fn a_cache_only_check_while_flying_never_falls_back_to_the_full_list() {
+        let crc = cache_crc(&cached(), &volatile());
+        let mut matching = Params::new(1, true);
+        matching.use_cache(cached(), volatile());
+        assert_eq!(matching.start_cache_only(), vec![Action::StartInitialTimer, Action::ReadByName { component: 1, name: HASH_CHECK.to_string() }]);
+        assert!(matching.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(crc)).contains(&Action::Ready { missing: false }));
+        let mut stale = Params::new(1, true);
+        stale.use_cache(cached(), volatile());
+        stale.start_cache_only();
+        assert_eq!(stale.on_param_value(1, HASH_CHECK, 1, NO_INDEX, ParamValue::U32(1)), vec![Action::StopInitialTimer, Action::CacheOnlyFailed], "ParameterManager::_tryCacheHashLoad emits cacheCheckOnlyFailed on a CRC mismatch instead of PARAM_REQUEST_LIST");
+        let mut silent = Params::new(1, true);
+        silent.use_cache(cached(), volatile());
+        silent.start_cache_only();
+        assert_eq!(silent.on_initial_timeout(), vec![Action::StopInitialTimer, Action::CacheOnlyFailed], "_hashCheckTimeout in cache-only mode");
+        assert!(silent.refresh_all(ALL_COMPONENTS).contains(&Action::RequestList { component: ALL_COMPONENTS }), "Download Parameters afterwards streams the full list");
+        assert_eq!(Params::new(1, true).start_cache_only(), vec![Action::CacheOnlyFailed], "no cache file");
+        let mut ardupilot = Params::new(1, false);
+        ardupilot.use_cache(cached(), volatile());
+        assert_eq!(ardupilot.start_cache_only(), vec![Action::CacheOnlyFailed], "only PX4 answers _HASH_CHECK");
     }
 
     #[test]
