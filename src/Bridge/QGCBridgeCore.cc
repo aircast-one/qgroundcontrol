@@ -39,6 +39,7 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QMetaMethod>
 #include <QtCore/QMetaProperty>
+#include <QtCore/QPointer>
 #include <QtCore/QStringList>
 #include <QtCore/QThread>
 
@@ -62,6 +63,18 @@ struct Resolved {
     QObject *object = nullptr;
     QString property;
 };
+
+MAVLinkConsoleController *mavlinkConsole(bool fresh)
+{
+    static QPointer<MAVLinkConsoleController> console;
+    if (fresh) {
+        delete console;
+    }
+    if (!console) {
+        console = new MAVLinkConsoleController(QCoreApplication::instance());
+    }
+    return console;
+}
 
 QObject *rootObject(const QString &name)
 {
@@ -139,7 +152,7 @@ QObject *rootObject(const QString &name)
         return MissionCommandTree::instance();
     }
     if (name == QLatin1String("mavlinkConsole")) {
-        return MAVLinkConsoleController::instance();
+        return mavlinkConsole(false);
     }
     if (name == QLatin1String("mavlinkInspector")) {
         return MAVLinkInspectorController::instance();
@@ -758,6 +771,11 @@ QJsonObject writePath(const QString &path, const QVariant &value)
 
 QJsonObject invokePath(const QString &path, const QJsonArray &args)
 {
+    if (path == QLatin1String("mavlinkConsole.open") && args.isEmpty()) {
+        (void) mavlinkConsole(true);
+        return QJsonObject { { QStringLiteral("ok"), true } };
+    }
+
     const Resolved resolved = resolve(path);
     if (!resolved.object || resolved.property.isEmpty()) {
         return QJsonObject { { QStringLiteral("ok"), false } };

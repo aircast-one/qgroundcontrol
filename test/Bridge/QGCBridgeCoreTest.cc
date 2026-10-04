@@ -363,6 +363,13 @@ void QGCBridgeCoreTest::_resolvesMavlinkConsoleRoot()
         QJsonArray { QString() });
     QVERIFY(recalled.value(QStringLiteral("ok")).toBool());
     QCOMPARE(recalled.value(QStringLiteral("result")).toString(), QStringLiteral("help"));
+
+    QVERIFY(callMethod(QStringLiteral("mavlinkConsole.open")).value(QStringLiteral("ok")).toBool());
+    const QJsonObject forgotten = callMethod(
+        QStringLiteral("mavlinkConsole.historyUp"),
+        QJsonArray { QString() });
+    QVERIFY(forgotten.value(QStringLiteral("ok")).toBool());
+    QCOMPARE(forgotten.value(QStringLiteral("result")).toString(), QString());
 }
 
 

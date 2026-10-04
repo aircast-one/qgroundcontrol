@@ -8,20 +8,12 @@
 #include "Vehicle.h"
 #include "VehicleLinkManager.h"
 
-#include <QtCore/qapplicationstatic.h>
 #ifndef QGC_HEADLESS_CORE
 #include <QtGui/QClipboard>
 #include <QtGui/QGuiApplication>
 #endif
 
 QGC_LOGGING_CATEGORY(MAVLinkConsoleControllerLog, "AnalyzeView.MAVLinkConsoleController")
-
-Q_APPLICATION_STATIC(MAVLinkConsoleController, _mavlinkConsoleControllerInstance);
-
-MAVLinkConsoleController *MAVLinkConsoleController::instance()
-{
-    return _mavlinkConsoleControllerInstance();
-}
 
 MAVLinkConsoleController::MAVLinkConsoleController(QObject *parent)
     : QStringListModel(parent)

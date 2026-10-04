@@ -34,8 +34,6 @@ public:
     explicit MAVLinkConsoleController(QObject *parent = nullptr);
     ~MAVLinkConsoleController();
 
-    static MAVLinkConsoleController *instance();
-
     QStringList lines() const { return stringList(); }
 
     Q_INVOKABLE void sendCommand(const QString &command);
