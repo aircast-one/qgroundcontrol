@@ -14,7 +14,11 @@ constexpr const char *kTestSource =
     "video/x-raw,width=1280,height=720,framerate=30/1 ! "
     "videoconvert";
 constexpr const char *kH264Encoder = "x264enc tune=zerolatency bitrate=2000 key-int-max=30";
-constexpr const char *kH265Encoder = "x265enc tune=zerolatency bitrate=2000";
+constexpr const char *kH265Source =
+    "videotestsrc is-live=true pattern=ball ! "
+    "video/x-raw,width=640,height=360,framerate=15/1 ! "
+    "videoconvert ! video/x-raw,format=I420";
+constexpr const char *kH265Encoder = "x265enc tune=zerolatency speed-preset=ultrafast bitrate=1000 key-int-max=15 option-string=repeat-headers=1";
 
 enum StreamType {
     RtpUdpH264 = 1,
@@ -135,7 +139,7 @@ bool start(Server *server, int type, int port)
         return startPipeline(server, source + " ! " + kH264Encoder + " ! rtph264pay config-interval=1 pt=96 ! udpsink " + sink);
     case RtpUdpH265:
         server->uri = "udp265://" + where;
-        return startPipeline(server, source + " ! " + kH265Encoder + " ! rtph265pay config-interval=1 pt=96 ! udpsink " + sink);
+        return startPipeline(server, std::string(kH265Source) + " ! " + kH265Encoder + " ! rtph265pay config-interval=1 pt=96 ! udpsink " + sink);
     case RtspH264:
         server->uri = "rtsp://" + where + "/test";
         return startRtsp(server, port);

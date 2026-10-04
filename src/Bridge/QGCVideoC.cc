@@ -242,6 +242,14 @@ void requestRetransmission(GstElement *, GObject *transceiver, gpointer)
     g_object_set(transceiver, "do-nack", TRUE, nullptr);
 }
 
+void singleThreadSoftwareHevc(GstBin *, GstBin *, GstElement *element, gpointer)
+{
+    GstElementFactory *const factory = gst_element_get_factory(element);
+    if (factory && g_str_equal(GST_OBJECT_NAME(factory), "avdec_h265")) {
+        g_object_set(element, "max-threads", 1, nullptr);
+    }
+}
+
 void applyWhepLatency(GstBin *bin)
 {
     GstElement *const source = findByFactory(bin, "whepsrc");
@@ -463,6 +471,7 @@ bool qgc_video_start(const char *pipelineDescription)
     }
 
     applyWhepLatency(GST_BIN(pipeline));
+    g_signal_connect(pipeline, "deep-element-added", G_CALLBACK(singleThreadSoftwareHevc), nullptr);
 
     if (GstBus *const bus = gst_element_get_bus(pipeline)) {
         gst_bus_set_sync_handler(bus, onBusMessage, nullptr, nullptr);

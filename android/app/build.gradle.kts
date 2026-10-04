@@ -137,6 +137,8 @@ val buildCoreLibrary by tasks.registering(Exec::class) {
     workingDir = coreCrate
     environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
     commandLine("cargo", "ndk", "--target", abi, "--platform", qgc("minSdk"), "rustc", "--lib", "--release", "--features", "jni-host", "--crate-type", "cdylib")
+    outputs.dir(coreJniLibs)
+    outputs.upToDateWhen { false }
     doLast {
         copy {
             from(coreCrate.resolve("target/$triple/release/libgroundstation.so"))
@@ -163,6 +165,8 @@ val buildCoreVideo = coreBuildTypes.associateWith { buildType ->
             "cmake -S \"$source\" -B \"$build\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=\"$toolchain\" " +
                 "-DANDROID_ABI=$abi -DANDROID_PLATFORM=${qgc("minSdk")} -DQGC_MOCK_VIDEO_SERVER=$mockServer && cmake --build \"$build\"",
         )
+        outputs.dir(coreVideoLibs(buildType))
+        outputs.upToDateWhen { false }
         doLast {
             copy {
                 from(build.resolve("libqgc_video.so"), build.resolve("libqgc_wfb.so"))
@@ -179,6 +183,10 @@ coreBuildTypes.forEach { buildType ->
     val variant = "Core${buildType.replaceFirstChar(Char::uppercase)}"
     tasks.matching { it.name == "pre${variant}Build" || it.name == "merge${variant}JniLibFolders" }.configureEach {
         dependsOn(copyCoreBridge, buildCoreLibrary, buildCoreVideo.getValue(buildType))
+    }
+    tasks.matching { it.name == "merge${variant}JniLibFolders" }.configureEach {
+        outputs.upToDateWhen { false }
+        doFirst { delete(layout.buildDirectory.file("intermediates/incremental/merge${variant}JniLibFolders/merger.xml")) }
     }
 }
 
