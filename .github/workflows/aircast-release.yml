@@ -63,6 +63,8 @@ jobs:
       run:
         shell: bash
     env:
+      HAS_PLAYSTORE_SECRET: ${{ secrets.GOOGLE_SERVICE_ACCOUNT != '' }}
+      HAS_RELEASE_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
       QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
@@ -180,6 +182,34 @@ jobs:
           ./gradlew --no-daemon :app:testQtDebugUnitTest :map-spike:testDebugUnitTest
           ./gradlew --no-daemon :app:assembleQtRelease
 
+      - name: Build the Rust core head bundle
+        working-directory: ${{ github.workspace }}/android
+        env:
+          AIRCAST_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && env.QT_ANDROID_KEYSTORE_PATH || '' }}
+          AIRCAST_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_STORE_PASSWORD }}
+          AIRCAST_KEY_ALIAS: ${{ env.QT_ANDROID_KEYSTORE_ALIAS }}
+          AIRCAST_VERSION_CODE: ${{ github.run_number }}
+          RELEASE_TAG: ${{ needs.setup.outputs.version }}
+        run: |
+          export AIRCAST_VERSION_NAME="${RELEASE_TAG#aircast-v}"
+          ./gradlew --no-daemon :app:testCoreDebugUnitTest
+          ./gradlew --no-daemon :app:bundleCoreRelease
+
+      - name: Collect the Rust core head bundle
+        env:
+          SHORT: ${{ needs.setup.outputs.short_version }}
+        run: cp android/app/build/outputs/bundle/coreRelease/app-core-release.aab "out/AircastAndroidCore-${SHORT}.aab"
+
+      - name: Publish the Rust core head to the Play beta track
+        if: ${{ env.HAS_PLAYSTORE_SECRET == 'true' && env.HAS_RELEASE_KEYSTORE == 'true' }}
+        uses: ./.github/actions/playstore
+        with:
+          package_name: one.aircast.app.core
+          artifact: out/AircastAndroidCore-${{ needs.setup.outputs.short_version }}.aab
+          service_account_json: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          track: beta
+          status: completed
+
       - name: Collect the native head APK
         env:
           SHORT: ${{ needs.setup.outputs.short_version }}
@@ -194,7 +224,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: qgc-android
-          path: out/*.apk
+          path: |
+            out/*.apk
+            out/*.aab
           if-no-files-found: error
 
   build-macos:

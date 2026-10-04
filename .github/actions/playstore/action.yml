@@ -1,6 +1,10 @@
 name: Publish Android Build to Play Store
-description: Uploads Android APK to Google Play Store
+description: Uploads an Android APK or AAB to Google Play Store
 inputs:
+  package_name:
+    description: Play Store application id to publish to
+    required: false
+    default: org.mavlink.qgroundcontrol
   artifact:
     description: Build File To Upload
     required: true
@@ -30,7 +34,7 @@ runs:
       uses: r0adkll/upload-google-play@v1
       with:
         serviceAccountJsonPlainText: ${{ inputs.service_account_json }}
-        packageName: org.mavlink.qgroundcontrol
+        packageName: ${{ inputs.package_name }}
         releaseFiles: ${{ inputs.artifact }}
         track: ${{ inputs.track }}
         status: ${{ inputs.status }}
