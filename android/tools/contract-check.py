@@ -417,6 +417,8 @@ ACCEPTED = {
     "timeState": "the log download screen reads its own progress shape",
     "close": "view.obstacle recorded without the nearest object present",
     "sectorText": "view.obstacle recorded without the nearest object present",
+    "maxMetres": "view.obstacle recorded with no ring increment, so overlay is null (obstacle.rs overlay_drawing serves it)",
+    "texts": "view.obstacle recorded with no ring increment, so overlay is null (obstacle.rs overlay_drawing serves it)",
     "w": "view.detections recorded with no box, so boxes[] pins no element shape",
     "h": "view.detections recorded with no box, so boxes[] pins no element shape",
     "confidence": "view.detections recorded with no box, so boxes[] pins no element shape",

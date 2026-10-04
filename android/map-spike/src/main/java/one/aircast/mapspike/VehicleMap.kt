@@ -23,6 +23,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import android.os.SystemClock
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.Canvas as ComposeCanvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.rememberTextMeasurer
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -195,6 +201,7 @@ fun VehicleMap(
     gimbals: List<GimbalAzimuth> = emptyList(),
     breachReturn: TrackPoint? = null,
     proximityRadar: Boolean = false,
+    obstacleOverlay: Boolean = false,
     tracePoints: List<TrackPoint> = emptyList(),
     traceLine: Boolean = false,
     roi: TrackPoint? = null,
@@ -221,8 +228,6 @@ fun VehicleMap(
     val linkLost by mapViewFlag(FLY_STATE_VIEW, "contactLost")
     val fleetJson by mapPath(VEHICLES_VIEW)
     val fleet = remember(fleetJson) { vehicleChoices(fleetJson).choices }
-    // The raw vehicle.* reads answered for the active vehicle only; view.vehicles carries the same
-    // position, heading and home for every aircraft, and the active one is read from it here.
     val flown = fleet.firstOrNull { it.active }
     val latitude = flown?.latitude ?: Double.NaN
     val longitude = flown?.longitude ?: Double.NaN
@@ -233,6 +238,7 @@ fun VehicleMap(
     var style by remember { mutableStateOf<Style?>(null) }
     var draggingVertex by remember { mutableStateOf<MapHit?>(null) }
     var panning by remember { mutableStateOf(false) }
+    var cameraMoves by remember { mutableIntStateOf(0) }
     var trackingResumesAtMs by remember { mutableLongStateOf(0L) }
     val trackJson by mapPath(TRACK_TAIL_VIEW)
     var track by remember { mutableStateOf(trackReading(null)) }
@@ -302,6 +308,7 @@ fun VehicleMap(
                     trackingResumesAtMs = SystemClock.elapsedRealtime() + PAN_RECENTER_DELAY_MS
                 }
             }
+            loaded.addOnCameraMoveListener { cameraMoves++ }
             loaded.addOnCameraMoveStartedListener { reason ->
                 if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) panning = true
             }
@@ -579,7 +586,31 @@ fun VehicleMap(
         renderMission(currentStyle, missionItems, linkStartToHome, selectedWaypoint, otherMissions, landings)
     }
 
-    AndroidView(factory = { mapView }, modifier = modifier)
+    Box(modifier) {
+        AndroidView(factory = { mapView }, modifier = Modifier.matchParentSize())
+        if (obstacleOverlay) {
+            ObstacleMapOverlay(map, { cameraMoves }, latitude, longitude, heading, showText = !pip)
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.ObstacleMapOverlay(map: MapLibreMap?, cameraMoves: () -> Int, latitude: Double, longitude: Double, heading: Double, showText: Boolean) {
+    val json by mapPath(OBSTACLE_VIEW)
+    val measurer = rememberTextMeasurer()
+    val overlay = remember(json) { obstacleOverlay(json) } ?: return
+    ComposeCanvas(Modifier.matchParentSize()) {
+        cameraMoves()
+        val shown = map ?: return@ComposeCanvas
+        if (!isPlottable(latitude, longitude) || heading.isNaN()) return@ComposeCanvas
+        val vehicle = shown.projection.toScreenLocation(LatLng(latitude, longitude))
+        val probe = TRUE_SCALE_PROBE.toPx()
+        val metresInProbe = shown.projection.fromScreenLocation(android.graphics.PointF(0f, 0f))
+            .distanceTo(shown.projection.fromScreenLocation(android.graphics.PointF(probe, 0f)))
+        val centre = Offset(vehicle.x, vehicle.y)
+        val shape = mapOverlayShape(overlay, centre, size.height, metresInProbe, probe, heading, shown.cameraPosition.bearing)
+        drawMapObstacleOverlay(measurer, overlay, shape, centre, showText)
+    }
 }
 
 private fun installLayers(style: Style) {

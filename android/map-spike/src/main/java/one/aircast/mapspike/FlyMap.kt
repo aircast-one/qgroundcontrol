@@ -174,6 +174,7 @@ fun FlyMap(
             pip = pip,
             gimbals = plan.gimbals,
             proximityRadar = true,
+            obstacleOverlay = true,
             cameraBottomPx = cameraBottomPx,
             topInsetPx = topInsetPx,
             bottomInsetPx = bottomInsetPx,

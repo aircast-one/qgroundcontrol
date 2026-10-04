@@ -57,6 +57,17 @@ pub fn sector(bearing: f64) -> (&'static str, &'static str) {
         .unwrap_or(("ahead", "ahead"))
 }
 
+pub fn overlay_drawing(ring: &[i64], increment: Option<f64>, max_distance: i64, unit: &Unit) -> Option<Value> {
+    let increment = increment?;
+    let length = ring.len().min((360.0 / increment).ceil() as usize);
+    let ranges: Vec<f64> = ring.iter().take(length).map(|cm| *cm as f64 / CENTIMETRES_PER_METRE).collect();
+    Some(json!({
+        "ranges": ranges,
+        "texts": ranges.iter().map(|metres| format!("{:.2}", unit.show(*metres))).collect::<Vec<String>>(),
+        "maxMetres": max_distance as f64 / CENTIMETRES_PER_METRE,
+    }))
+}
+
 pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let avoidance = object(&backend.get_fields(
         "vehicle.objectAvoidance",
@@ -111,6 +122,7 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "ringOffset": real("angleOffset").unwrap_or(0.0),
         "rangeMinMetres": (min_distance > 0).then(|| min_distance as f64 / CENTIMETRES_PER_METRE),
         "rangeMaxMetres": (max_distance > 0).then(|| max_distance as f64 / CENTIMETRES_PER_METRE),
+        "overlay": available.then(|| overlay_drawing(&ring, spacing, max_distance, &unit)).flatten(),
     })
 }
 
@@ -259,6 +271,20 @@ mod tests {
 
         let on = view(true, true, true);
         assert_eq!((on["supported"].clone(), on["enabled"].clone()), (json!(true), json!(true)));
+    }
+
+    #[test]
+    fn the_overlay_carries_what_obstacle_distance_overlay_draws_from() {
+        let metres = Unit { name: "m".into(), factor: 1.0 };
+        let drawn = overlay_drawing(&[NO_READING, 320, 1200, 0, 77], Some(90.0), 1000, &metres).unwrap();
+        assert_eq!(drawn["ranges"], json!([655.35, 3.2, 12.0, 0.0]), "raw distances / 100 like _ranges, capped at 360 / increment like _rangesLen; the empty marker stays a far range so the wedge beside it keeps QGC's shape");
+        assert_eq!(drawn["texts"], json!(["655.35", "3.20", "12.00", "0.00"]), "_rangeToShow: toFixed(2), no unit suffix");
+        assert_eq!(drawn["maxMetres"], json!(10.0));
+        let feet = Unit { name: "ft".into(), factor: 3.2808399 };
+        assert_eq!(overlay_drawing(&[320], Some(5.0), 1000, &feet).unwrap()["texts"], json!(["10.50"]), "feet when horizontalDistanceUnits is Feet");
+        assert_eq!(overlay_drawing(&[320], None, 1000, &metres), None, "onPaint returns when increment is 0");
+        assert_eq!(obstacle_view(&Ring(ring(vec![320, 500])), &[])["overlay"]["ranges"], json!([3.2, 5.0]));
+        assert_eq!(obstacle_view(&Ring(json!({ "kind": "object", "available": false })), &[])["overlay"], Value::Null, "the Canvas is invisible without objectAvoidance.available");
     }
 
     #[test]

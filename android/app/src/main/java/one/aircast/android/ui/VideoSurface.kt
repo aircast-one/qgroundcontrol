@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import one.aircast.mapspike.ObstacleVideoOverlay
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.foundation.Canvas
@@ -117,6 +118,7 @@ fun VideoSurface(
         if (video?.decoding == true) {
             if (showGrid && !fullScreen) VideoGrid(Modifier.fillMaxSize())
             ProximityRadarOverlay(Modifier.fillMaxSize())
+            ObstacleVideoOverlay(Modifier.fillMaxSize(), showText = expanded)
             if (expanded) GimbalScreenControl(Modifier.fillMaxSize())
             DetectionOverlay(Modifier.fillMaxSize())
             TrackingBoxOverlay(Modifier.fillMaxSize())
