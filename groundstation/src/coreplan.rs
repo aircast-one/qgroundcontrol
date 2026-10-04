@@ -689,7 +689,7 @@ fn save(file: &str) -> Value {
 }
 
 fn save_kml(file: &str) -> Value {
-    let Some(plan) = held().document.as_ref().map(plandoc::save) else {
+    let Some(plan) = held().document.as_ref().map(plandoc::mission) else {
         return refused("There is no plan to export.");
     };
     let (firmware_type, vehicle_type) = planned_types();
@@ -941,7 +941,7 @@ fn send() -> Value {
     if waiting_on_terrain(&document) {
         return refused(format!("Unable to Upload. {WAITING_ON_TERRAIN}"));
     }
-    let items = match crate::planitems::flatten(&plandoc::save(&document)) {
+    let items = match crate::planitems::flatten(&plandoc::mission(&document)) {
         Ok(items) => items,
         Err(reason) => return refused(reason),
     };

@@ -738,6 +738,14 @@ pub fn remove(doc: &Document, visual_index: usize) -> Option<Document> {
 }
 
 pub fn save(doc: &Document) -> Value {
+    encode(doc, &[crate::landingpattern::WIZARD, crate::structurescan::ENTRY_VERTEX])
+}
+
+pub fn mission(doc: &Document) -> Value {
+    encode(doc, &[crate::landingpattern::WIZARD])
+}
+
+fn encode(doc: &Document, unsaved: &[&str]) -> Value {
     let section = |s: &Simple| Item::Simple(Simple { frame: FRAME_MISSION, ..s.clone() });
     let settings = doc.settings_sections.iter().map(section);
     let spans: Vec<(Item, usize)> = settings
@@ -758,7 +766,7 @@ pub fn save(doc: &Document) -> Value {
         *next += span;
         Some(start)
     });
-    let items: Vec<Value> = spans.iter().zip(starts).map(|((item, _), seq)| save_item(item, seq)).collect();
+    let items: Vec<Value> = spans.iter().zip(starts).map(|((item, _), seq)| save_item(item, seq, unsaved)).collect();
     json!({
         "fileType": "Plan",
         "groundStation": "QGroundControl",
@@ -1057,13 +1065,12 @@ fn fold(items: Vec<Item>, class: VehicleClass) -> (Vec<Simple>, Vec<Item>) {
     (simples(&items[..settings]), fold_rest(&items[settings..], class))
 }
 
-fn save_item(item: &Item, seq: usize) -> Value {
+fn save_item(item: &Item, seq: usize, unsaved: &[&str]) -> Value {
     match item {
         Item::Complex { json, .. } => {
             let mut numbered = json.clone();
             if let Some(fields) = numbered.as_object_mut() {
-                fields.remove(crate::landingpattern::WIZARD);
-                fields.remove(crate::structurescan::ENTRY_VERTEX);
+                fields.retain(|key, _| !unsaved.contains(&key.as_str()));
             }
             if let Some(items) = numbered.pointer_mut("/TransectStyleComplexItem/Items").and_then(Value::as_array_mut) {
                 items.iter_mut().enumerate().for_each(|(i, item)| item["doJumpId"] = json!(seq + i));
@@ -1164,6 +1171,18 @@ mod tests {
         let from_doc = crate::planitems::flatten(&save(&load(text, 2).unwrap())).unwrap();
         let from_file = crate::planitems::flatten(&serde_json::from_str(text).unwrap()).unwrap();
         assert_eq!(format!("{from_doc:?}"), format!("{from_file:?}"));
+    }
+
+    #[test]
+    fn an_upload_flies_the_rotated_entry_vertex_the_file_forgets() {
+        let scan = json!({ "version": 3, "type": "ComplexItem", "complexItemType": "StructureScan", "polygon": [[47.0, 8.0], [47.001, 8.0], [47.001, 8.001]], "ScanBottomAlt": 0, "StructureHeight": 25, "Layers": 1, "CameraCalc": { "version": 2, "CameraName": "Manual (no camera specs)", "AdjustedFootprintSide": 25, "AdjustedFootprintFrontal": 25, "DistanceToSurface": 50, "DistanceMode": 1 }, "EntranceAltitude": 50, "GimbalPitch": 0, "StartFromTop": true });
+        let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "circles": [], "polygons": [], "version": 2 }, "rallyPoints": { "points": [], "version": 2 }, "mission": { "version": 2, "firmwareType": 3, "vehicleType": 2, "cruiseSpeed": 15, "hoverSpeed": 5, "globalPlanAltitudeMode": 1, "plannedHomePosition": [47.0, 8.0, 0], "items": [scan] } });
+        let doc = load(&plan.to_string(), 2).unwrap();
+        let Item::Complex { kind, json, item_count } = &doc.items[0] else { panic!() };
+        let rotated = Document { items: vec![Item::Complex { kind: kind.clone(), json: crate::structurescan::rotated_entry(json).unwrap(), item_count: *item_count }], ..doc.clone() };
+        let first = |plan: &Value| crate::planitems::flatten(plan).unwrap().iter().skip(1).find(|i| i.command == 16).map(|i| (i.params[4], i.params[5])).unwrap();
+        assert_ne!(first(&mission(&rotated)), first(&mission(&doc)), "QGC appendMissionItems flies from the live _entryVertex");
+        assert_eq!(save(&rotated), save(&doc), "StructureScanComplexItem::save writes no entry vertex");
     }
 
     fn section() -> Document {

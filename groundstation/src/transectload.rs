@@ -197,7 +197,8 @@ fn structure(item: &Value) -> Result<Value, String> {
     }
     let calc = camera_calc(&item[CAMERA_CALC_KEY], false)?;
     shape(item, "polygon")?;
-    Ok(with(item.clone(), CAMERA_CALC_KEY, calc))
+    let fields = with(item.clone(), CAMERA_CALC_KEY, calc).as_object().cloned().unwrap_or_default();
+    Ok(Value::Object(fields.into_iter().filter(|(key, _)| key != crate::structurescan::ENTRY_VERTEX).collect()))
 }
 
 fn shape(item: &Value, key: &str) -> Result<(), String> {
@@ -448,6 +449,12 @@ mod tests {
 
     fn structure() -> Value {
         json!({ "version": 3, "type": "ComplexItem", "complexItemType": STRUCTURE, "polygon": [[47.0, 8.0], [47.001, 8.0], [47.001, 8.001]], "ScanBottomAlt": 0, "StructureHeight": 25, "Layers": 1, CAMERA_CALC_KEY: manual_calc(), "EntranceAltitude": 50, "GimbalPitch": 0, "StartFromTop": true })
+    }
+
+    #[test]
+    fn a_saved_entry_vertex_is_ignored_like_structure_scan_complex_item_load() {
+        let loaded = complex_any(STRUCTURE, &with(structure(), crate::structurescan::ENTRY_VERTEX, json!(2))).unwrap();
+        assert_eq!(crate::structurescan::entry_vertex(&loaded), 0);
     }
 
     #[test]
