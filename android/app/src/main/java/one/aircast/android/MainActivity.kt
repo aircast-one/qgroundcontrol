@@ -20,6 +20,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +61,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import one.aircast.android.ui.AppFontScale
 import one.aircast.android.ui.AppNavigation
 import one.aircast.android.ui.OverlayEditBar
-import one.aircast.android.ui.Hideable
+import one.aircast.android.ui.LayoutWidget
 import one.aircast.android.ui.LogReplayBar
 import one.aircast.android.ui.StatusPill
 import one.aircast.android.ui.VehicleStateChip
@@ -255,14 +261,14 @@ fun AircastShell(hostView: android.view.View?) {
             )
         }
     }
-    val flyVideoSourceLayer = remember { movableContentOf { Hideable("videoSource") { VideoSourceLayer() } } }
-    val flyCameraControlLayer = remember { movableContentOf { Hideable("cameraControl") { CameraControlLayer() } } }
-    val flyObstacleArc = remember { movableContentOf { Hideable("obstacleArc") { ObstacleArc() } } }
-    val flyAttitude = remember { movableContentOf { Hideable("instrumentPanel") { AttitudeInstrument() } } }
-    val flyOrbitReadout = remember { movableContentOf { Hideable("orbit") { OrbitReadout() } } }
-    val flyFollowMeReadout = remember { movableContentOf { Hideable("followMe") { FollowMeReadout() } } }
-    val flyTrafficReadout = remember { movableContentOf { Hideable("traffic") { TrafficReadout() } } }
-    val flyRcControlsLayer = remember { movableContentOf { RcControlsLayer() } }
+    val flyVideoSourceLayer = remember { movableContentOf { LayoutWidget("videoSource") { VideoSourceLayer() } } }
+    val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer() } } }
+    val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
+    val flyAttitude = remember { movableContentOf { LayoutWidget("instrumentPanel") { AttitudeInstrument() } } }
+    val flyOrbitReadout = remember { movableContentOf { LayoutWidget("orbit") { OrbitReadout() } } }
+    val flyFollowMeReadout = remember { movableContentOf { LayoutWidget("followMe") { FollowMeReadout() } } }
+    val flyTrafficReadout = remember { movableContentOf { LayoutWidget("traffic") { TrafficReadout() } } }
+    val flyRcControlsLayer = remember { movableContentOf { LayoutWidget("rcControls") { RcControlsLayer() } } }
 
     val snackbars = remember { SnackbarHostState() }
     val alerts = remember { SnackbarHostState() }
@@ -394,7 +400,7 @@ fun AircastShell(hostView: android.view.View?) {
         }
         Row(Modifier.fillMaxSize()) {
         if (showNav && landscape) {
-            NavigationRail(Modifier.fillMaxHeight()) {
+            NavigationRail(Modifier.fillMaxHeight(), windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)) {
                 tabs.forEach { entry ->
                     NavigationRailItem(
                         selected = tab == entry,
@@ -428,7 +434,7 @@ fun AircastShell(hostView: android.view.View?) {
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
                 hostView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
-                if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.BottomCenter).zIndex(2f).padding(8.dp))
+                if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.BottomCenter).zIndex(2f).then(if (flyLandscape) Modifier.windowInsetsPadding(WindowInsets.navigationBars) else Modifier).padding(8.dp).widthIn(max = 560.dp))
 
                 if (onFly) {
                     FlyScreen(
@@ -436,10 +442,10 @@ fun AircastShell(hostView: android.view.View?) {
                         onView = { flyView = it },
                         landscape = flyLandscape,
                         status = {
-                            VehicleStateChip()
-                            VtolStateCell()
+                            LayoutWidget("vehicleState", hideable = false) { VehicleStateChip() }
+                            LayoutWidget("vtolState", hideable = false) { VtolStateCell() }
                             ControlRequestPrompt()
-                            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { StatusPill() }
+                            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { LayoutWidget("statusPill", hideable = false) { StatusPill() } }
                         },
                         video = { mod, expanded -> flyVideo(mod, expanded) },
                         map = { mod -> flyMap(mod) },
@@ -448,14 +454,14 @@ fun AircastShell(hostView: android.view.View?) {
                             flyCameraControlLayer()
                             flyObstacleArc()
                         },
-                        keyRowEnd = { PinnedEmergencyStop() },
+                        keyRowEnd = { LayoutWidget("emergencyStop", hideable = false) { PinnedEmergencyStop() } },
                         overlays = {
-                            one.aircast.android.ui.VehicleMessageBanner()
-                            one.aircast.android.ui.FleetCard()
-                            one.aircast.android.ui.MissionProgressCard()
+                            LayoutWidget("messageBanner", hideable = false) { one.aircast.android.ui.VehicleMessageBanner() }
+                            LayoutWidget("fleet") { one.aircast.android.ui.FleetCard() }
+                            LayoutWidget("missionProgress") { one.aircast.android.ui.MissionProgressCard() }
                             flyAttitude()
-                            ObstacleReadout()
-                            TerrainProgress()
+                            LayoutWidget("obstacleReadout") { ObstacleReadout() }
+                            LayoutWidget("terrainProgress") { TerrainProgress() }
                             flyOrbitReadout()
                             flyFollowMeReadout()
                             flyTrafficReadout()

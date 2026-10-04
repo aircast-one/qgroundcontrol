@@ -29,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -63,7 +65,11 @@ private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this 
 
 @Composable
 private fun noVideoChrome(underFlyChrome: Boolean): Modifier = with(LocalDensity.current) {
-    if (underFlyChrome) Modifier.padding(top = FlyChrome.topPx.toDp(), bottom = FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3) else Modifier
+    when {
+        !underFlyChrome -> Modifier
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE -> Modifier.padding(horizontal = MAP_PIP_SIZE + AircastSpace.s3)
+        else -> Modifier.padding(top = FlyChrome.topPx.toDp(), bottom = FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3)
+    }
 }
 
 @Composable

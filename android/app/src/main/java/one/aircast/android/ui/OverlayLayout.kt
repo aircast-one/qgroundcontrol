@@ -151,7 +151,7 @@ internal fun clampedDrag(left: Float, top: Float, right: Float, bottom: Float, w
     dx.coerceIn(-left, (width - right).coerceAtLeast(-left)) to dy.coerceIn(-top, (height - bottom).coerceAtLeast(-top))
 
 @Composable
-internal fun Hideable(key: String, movable: Boolean = true, content: @Composable () -> Unit) {
+internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolean = true, content: @Composable () -> Unit) {
     val context = LocalContext.current
     LaunchedEffect(Unit) {
         val stored = store(context).all
@@ -163,7 +163,7 @@ internal fun Hideable(key: String, movable: Boolean = true, content: @Composable
     val moved = OverlayLayout.offsets[key] ?: (0f to 0f)
     val placed = Modifier.offset(moved.first.dp, moved.second.dp)
     if (!OverlayLayout.editing) {
-        Box(placed.onHold { OverlayLayout.editing = true }) { content() }
+        Box(if (hideable) placed.onHold { OverlayLayout.editing = true } else placed) { content() }
         return
     }
     val angle = jiggleAngle(key)
@@ -195,7 +195,7 @@ internal fun Hideable(key: String, movable: Boolean = true, content: @Composable
                 }
             },
         )
-        if (shown) Surface(
+        if (shown && hideable) Surface(
             onClick = { setHidden(context, key, !hidden) },
             modifier = Modifier.align(Alignment.TopEnd).size(BADGE_SIZE),
             shape = CircleShape,

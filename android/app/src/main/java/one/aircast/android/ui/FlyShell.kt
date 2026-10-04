@@ -31,6 +31,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.statusBars
@@ -302,7 +305,7 @@ internal fun FlyScreen(
                     horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    FlyViewSwitcher(view, onView)
+                    LayoutWidget("viewSwitcher", hideable = false) { FlyViewSwitcher(view, onView) }
                     if (simple) keyRowEnd()
                 }
                 if (!simple) Row(
@@ -343,7 +346,7 @@ internal fun FlyScreen(
                 Surface(
                     Modifier.width(SIDE_PANEL_WIDTH).fillMaxHeight(),
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
-                ) { actions(FlyDeckLayout.Side) }
+                ) { Box(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.End))) { actions(FlyDeckLayout.Side) } }
             }
         }
     } else {
