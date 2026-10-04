@@ -193,7 +193,7 @@ jobs:
         run: |
           export AIRCAST_VERSION_NAME="${RELEASE_TAG#aircast-v}"
           ./gradlew --no-daemon :app:testCoreDebugUnitTest
-          ./gradlew --no-daemon :app:bundleCoreRelease
+          ./gradlew --no-daemon -Paircast.coreApplicationId=one.aircast.app :app:bundleCoreRelease
 
       - name: Collect the Rust core head bundle
         env:
@@ -209,15 +209,15 @@ jobs:
           service_account: play-publisher@aircast-439915.iam.gserviceaccount.com
           create_credentials_file: true
 
-      - name: Publish the Rust core head to the Play beta track
+      - name: Publish the Rust core head to the Play internal testing track
         if: ${{ steps.play_auth.outcome == 'success' }}
         continue-on-error: true
         uses: ./.github/actions/playstore
         with:
-          package_name: one.aircast.app.core
+          package_name: one.aircast.app
           artifact: out/AircastAndroidCore-${{ needs.setup.outputs.short_version }}.aab
           service_account_json_file: ${{ steps.play_auth.outputs.credentials_file_path }}
-          track: beta
+          track: internal
           status: completed
 
       - name: Collect the native head APK

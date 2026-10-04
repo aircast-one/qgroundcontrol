@@ -69,7 +69,10 @@ android {
     flavorDimensions += "host"
     productFlavors {
         create("qt") { dimension = "host" }
-        create("core") { dimension = "host"; applicationIdSuffix = ".core" }
+        create("core") {
+            dimension = "host"
+            (findProperty("aircast.coreApplicationId") as String?)?.let { applicationId = it } ?: run { applicationIdSuffix = ".core" }
+        }
     }
     sourceSets {
         getByName("main") {
