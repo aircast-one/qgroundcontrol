@@ -8,7 +8,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use crate::batteryfacts::Batteries;
 use crate::gpsfacts::GpsFacts;
 use crate::compinfo::ComponentParameters;
-use crate::compmeta::{self, MSG_COMPONENT_METADATA, TYPE_GENERAL, TYPE_PARAMETER, Uris};
+use crate::compmeta::{self, MSG_COMPONENT_INFORMATION, MSG_COMPONENT_METADATA, Source, TYPE_GENERAL, TYPE_PARAMETER, Uris};
 use crate::connect::{self, Action, AutopilotVersion, Connect, Firmware, MSG_AUTOPILOT_VERSION};
 use crate::ftp::{self, Download};
 use crate::guidedcmd::{self, CMD_DO_REPOSITION, Plan, VehicleState};
@@ -363,6 +363,7 @@ pub struct Vehicle {
     pub events: crate::libevents::Session,
     intended_custom_mode: u32,
     fetch: Option<Fetch>,
+    http_fetch: Option<HttpFetch>,
     ftp_due: Option<u64>,
     ftp_seq: u16,
     pub files: crate::filejobs::Files,
@@ -388,10 +389,23 @@ pub struct Vehicle {
 struct Fetch {
     kind: u8,
     uri: String,
+    crc: Option<u64>,
+    fallback: Option<Source>,
     download: Download,
     started_ms: u64,
     progress: f64,
 }
+
+#[derive(Debug)]
+struct HttpFetch {
+    kind: u8,
+    uri: String,
+    crc: Option<u64>,
+    fallback: Option<Source>,
+    answer: std::sync::mpsc::Receiver<Result<Vec<u8>, String>>,
+}
+
+const METADATA_DOWNLOAD_TIMEOUT_MS: u64 = 30_000;
 
 const SEVERITY_CRITICAL: u8 = 2;
 
@@ -566,6 +580,7 @@ impl Vehicle {
             events: crate::libevents::Session::default(),
             intended_custom_mode: 0,
             fetch: None,
+            http_fetch: None,
             ftp_due: None,
             ftp_seq: 0,
             files: crate::filejobs::Files::default(),
@@ -1000,47 +1015,67 @@ impl Vehicle {
         }
     }
 
+    fn fetch_listed(&mut self, kind: u8, now_ms: u64) -> Option<Vec<Vec<u8>>> {
+        let uris = self.metadata_types.get(&kind).cloned()?;
+        Some(self.start_fetch(kind, Source { uri: uris.uri, crc: uris.crc }, uris.fallback, now_ms))
+    }
+
+    fn after_general_metadata(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
+        self.fetch_listed(TYPE_PARAMETER, now_ms).unwrap_or_else(|| self.after_parameter_metadata(now_ms))
+    }
+
     fn after_parameter_metadata(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
-        match self.metadata_types.get(&compmeta::TYPE_EVENTS).map(|u| u.uri.clone()) {
-            Some(uri) => self.start_fetch(compmeta::TYPE_EVENTS, &uri, now_ms),
-            None => self.after_event_metadata(now_ms),
-        }
+        self.fetch_listed(compmeta::TYPE_EVENTS, now_ms).unwrap_or_else(|| self.after_event_metadata(now_ms))
     }
 
     fn after_event_metadata(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
-        match self.metadata_types.get(&compmeta::TYPE_ACTUATORS).map(|u| u.uri.clone()) {
-            Some(uri) => self.start_fetch(compmeta::TYPE_ACTUATORS, &uri, now_ms),
-            None => self.step_done(connect::Step::ComponentInformation, now_ms),
-        }
+        self.fetch_listed(compmeta::TYPE_ACTUATORS, now_ms).unwrap_or_else(|| self.step_done(connect::Step::ComponentInformation, now_ms))
     }
 
-    fn fetch_failed(&mut self, kind: u8, reason: String, now_ms: u64) -> Vec<Vec<u8>> {
+    fn after_metadata(&mut self, kind: u8, now_ms: u64) -> Vec<Vec<u8>> {
         match kind {
             FETCH_PARAMETER_PACK => self.stream_parameters(now_ms),
-            TYPE_PARAMETER => {
-                self.note(reason);
-                self.after_parameter_metadata(now_ms)
-            }
-            compmeta::TYPE_EVENTS => {
-                self.note(reason);
-                self.after_event_metadata(now_ms)
-            }
-            _ => {
-                self.note(reason);
-                self.step_done(connect::Step::ComponentInformation, now_ms)
-            }
+            TYPE_PARAMETER => self.after_parameter_metadata(now_ms),
+            compmeta::TYPE_EVENTS => self.after_event_metadata(now_ms),
+            _ => self.step_done(connect::Step::ComponentInformation, now_ms),
         }
     }
 
-    fn start_fetch(&mut self, kind: u8, uri: &str, now_ms: u64) -> Vec<Vec<u8>> {
-        match Download::start_from(self.component, uri, true, self.ftp_seq) {
-            Ok((download, outs)) => {
-                self.fetch = Some(Fetch { kind, uri: uri.to_string(), download, started_ms: now_ms, progress: 0.0 });
-                self.follow_ftp(outs, now_ms)
-            }
-            Err(reason) => {
-                self.note(format!("Component metadata at {uri} is not fetched: {reason}"));
-                self.step_done(connect::Step::ComponentInformation, now_ms)
+    fn fetch_failed(&mut self, kind: u8, fallback: Option<Source>, reason: String, now_ms: u64) -> Vec<Vec<u8>> {
+        if kind != FETCH_PARAMETER_PACK {
+            self.note(reason);
+        }
+        match fallback {
+            Some(source) => self.start_fetch(kind, source, None, now_ms),
+            None => self.after_metadata(kind, now_ms),
+        }
+    }
+
+    fn start_fetch(&mut self, kind: u8, source: Source, fallback: Option<Source>, now_ms: u64) -> Vec<Vec<u8>> {
+        let hit = source.crc.zip(compmeta::cache_folder()).and_then(|(crc, folder)| compmeta::cached(&folder, &compmeta::cache_tag(kind, crc)));
+        match hit {
+            Some(bytes) => self.metadata_text(kind, String::from_utf8_lossy(&bytes).into_owned(), now_ms),
+            None if source.uri.is_empty() => self.after_metadata(kind, now_ms),
+            None if compmeta::over_mavlink_ftp(&source.uri) => match Download::start_from(self.component, &source.uri, true, self.ftp_seq) {
+                Ok((download, outs)) => {
+                    self.fetch = Some(Fetch { kind, uri: source.uri, crc: source.crc, fallback, download, started_ms: now_ms, progress: 0.0 });
+                    self.follow_ftp(outs, now_ms)
+                }
+                Err(reason) => self.fetch_failed(kind, fallback, format!("Component metadata at {} is not fetched: {reason}", source.uri), now_ms),
+            },
+            None => {
+                let (sender, answer) = std::sync::mpsc::channel();
+                let uri = source.uri.clone();
+                let spawned = std::thread::Builder::new().name("groundstation-component-metadata".to_string()).spawn(move || {
+                    let _ = sender.send(compmeta::download_over_http(&uri));
+                });
+                match spawned {
+                    Ok(_) => {
+                        self.http_fetch = Some(HttpFetch { kind, uri: source.uri, crc: source.crc, fallback, answer });
+                        Vec::new()
+                    }
+                    Err(reason) => self.fetch_failed(kind, fallback, format!("Component metadata at {} is not fetched: {reason}", source.uri), now_ms),
+                }
             }
         }
     }
@@ -1159,36 +1194,40 @@ impl Vehicle {
                     let Some(fetch) = self.fetch.take() else { return Vec::new() };
                     self.ftp_seq = fetch.download.expected_seq();
                     match (ok, fetch.kind) {
-                        (false, kind) => self.fetch_failed(kind, format!("Component metadata download failed: {error}"), now_ms),
+                        (false, kind) => self.fetch_failed(kind, fetch.fallback, format!("Component metadata download failed: {error}"), now_ms),
                         (true, FETCH_PARAMETER_PACK) => self.pack_received(&bytes, now_ms),
-                        (true, kind) => self.metadata_received(kind, &fetch.uri, &bytes, now_ms),
+                        (true, kind) => self.metadata_received(kind, Source { uri: fetch.uri, crc: fetch.crc }, fetch.fallback, &bytes, now_ms),
                     }
                 }
             })
             .collect()
     }
 
-    fn metadata_received(&mut self, kind: u8, uri: &str, bytes: &[u8], now_ms: u64) -> Vec<Vec<u8>> {
-        let text = compmeta::inflate(uri, bytes).map(|b| String::from_utf8_lossy(&b).to_string());
-        match (kind, text) {
-            (_, Err(reason)) => {
-                self.note(format!("Component metadata could not be read: {reason}"));
-                self.step_done(connect::Step::ComponentInformation, now_ms)
+    fn metadata_received(&mut self, kind: u8, source: Source, fallback: Option<Source>, bytes: &[u8], now_ms: u64) -> Vec<Vec<u8>> {
+        match compmeta::inflate(&source.uri, bytes) {
+            Err(reason) => self.fetch_failed(kind, fallback, format!("Component metadata could not be read: {reason}"), now_ms),
+            Ok(inflated) => {
+                if let (Some(crc), Some(folder)) = (source.crc, compmeta::cache_folder()) {
+                    compmeta::insert(&folder, &compmeta::cache_tag(kind, crc), &inflated);
+                }
+                self.metadata_text(kind, String::from_utf8_lossy(&inflated).into_owned(), now_ms)
             }
-            (TYPE_GENERAL, Ok(text)) => match compmeta::parse_general(&text) {
+        }
+    }
+
+    fn metadata_text(&mut self, kind: u8, text: String, now_ms: u64) -> Vec<Vec<u8>> {
+        match kind {
+            TYPE_GENERAL => match compmeta::parse_general(&text) {
                 Ok(types) => {
                     self.metadata_types = types;
-                    match self.metadata_types.get(&TYPE_PARAMETER).map(|u| u.uri.clone()) {
-                        Some(uri) => self.start_fetch(TYPE_PARAMETER, &uri, now_ms),
-                        None => self.step_done(connect::Step::ComponentInformation, now_ms),
-                    }
+                    self.after_general_metadata(now_ms)
                 }
                 Err(reason) => {
                     self.note(reason);
                     self.step_done(connect::Step::ComponentInformation, now_ms)
                 }
             },
-            (compmeta::TYPE_EVENTS, Ok(text)) => {
+            compmeta::TYPE_EVENTS => {
                 match crate::libevents::parse(&text) {
                     Ok(definitions) => {
                         let delivered = self.events.load(definitions, self.component);
@@ -1198,14 +1237,14 @@ impl Vehicle {
                 }
                 self.after_event_metadata(now_ms)
             }
-            (compmeta::TYPE_ACTUATORS, Ok(text)) => {
+            compmeta::TYPE_ACTUATORS => {
                 match serde_json::from_str::<Value>(&text) {
                     Ok(parsed) => self.actuators_metadata = Some(parsed),
                     Err(reason) => self.note(format!("Actuator metadata could not be parsed: {reason}")),
                 }
                 self.step_done(connect::Step::ComponentInformation, now_ms)
             }
-            (_, Ok(text)) => {
+            _ => {
                 match crate::compinfo::parse(&text) {
                     Ok(parsed) => self.parameter_metadata = Some(parsed),
                     Err(reason) => self.note(format!("Parameter metadata could not be parsed: {reason}")),
@@ -1421,7 +1460,7 @@ impl Vehicle {
                     }
                     ParameterLoad::Download if self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT => match Download::start_from(COMP_AUTOPILOT1, params::PACK_URI, false, self.ftp_seq) {
                         Ok((download, outs)) => {
-                            self.fetch = Some(Fetch { kind: FETCH_PARAMETER_PACK, uri: params::PACK_URI.to_string(), download, started_ms: now_ms, progress: 0.0 });
+                            self.fetch = Some(Fetch { kind: FETCH_PARAMETER_PACK, uri: params::PACK_URI.to_string(), crc: None, fallback: None, download, started_ms: now_ms, progress: 0.0 });
                             self.follow_ftp(outs, now_ms)
                         }
                         Err(_) => self.stream_parameters(now_ms),
@@ -2225,7 +2264,11 @@ impl Vehicle {
                     });
                     Vec::new()
                 }
-                Out::RequestResult { message_id: MSG_COMPONENT_METADATA, failure, .. } if failure != crate::mavcmd::RequestFailure::None => self.step_done(connect::Step::ComponentInformation, now_ms),
+                Out::RequestResult { message_id: MSG_COMPONENT_METADATA, failure, .. } if failure != crate::mavcmd::RequestFailure::None => {
+                    let outs = self.commands.request_message(MSG_COMPONENT_INFORMATION as u64, self.component, MSG_COMPONENT_INFORMATION, [0.0; 5], now_ms);
+                    self.handle(outs, now_ms)
+                }
+                Out::RequestResult { message_id: MSG_COMPONENT_INFORMATION, failure, .. } if failure != crate::mavcmd::RequestFailure::None => self.step_done(connect::Step::ComponentInformation, now_ms),
                 Out::RequestResult { message_id: MSG_AVAILABLE_MODES, failure, .. } if failure != crate::mavcmd::RequestFailure::None => {
                     let outs = self.modes.on_message(false, None);
                     self.follow_modes(outs, now_ms)
@@ -2323,13 +2366,33 @@ impl Vehicle {
             let outs = self.fetch.as_mut().map(|f| f.download.on_timeout()).unwrap_or_default();
             bytes.extend(self.follow_ftp(outs, now_ms));
         }
-        let slow = self.fetch.as_ref().filter(|f| compmeta::too_slow(now_ms.saturating_sub(f.started_ms), f.progress)).map(|f| f.kind);
-        if let Some(kind) = slow {
+        let abandoned = self.fetch.as_ref().and_then(|f| {
+            let elapsed = now_ms.saturating_sub(f.started_ms);
+            match (compmeta::too_slow(elapsed, f.progress), f.kind != FETCH_PARAMETER_PACK && elapsed >= METADATA_DOWNLOAD_TIMEOUT_MS) {
+                (true, _) => Some("Component metadata download abandoned: too slow."),
+                (false, true) => Some("Component metadata download timed out."),
+                (false, false) => None,
+            }
+        });
+        if let Some(reason) = abandoned {
             let outs = self.fetch.as_mut().map(|f| f.download.cancel()).unwrap_or_default();
             bytes.extend(self.follow_ftp(outs, now_ms));
-            self.fetch = None;
+            let gone = self.fetch.take();
             self.ftp_due = None;
-            bytes.extend(self.fetch_failed(kind, "Component metadata download abandoned: too slow.".to_string(), now_ms));
+            if let Some(fetch) = gone {
+                bytes.extend(self.fetch_failed(fetch.kind, fetch.fallback, reason.to_string(), now_ms));
+            }
+        }
+        let answered = self.http_fetch.as_ref().and_then(|h| match h.answer.try_recv() {
+            Ok(result) => Some(result),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(Err("Component metadata download failed: the download stopped.".to_string())),
+        });
+        if let Some((result, http)) = answered.and_then(|result| self.http_fetch.take().map(|http| (result, http))) {
+            bytes.extend(match result {
+                Ok(body) => self.metadata_received(http.kind, Source { uri: http.uri, crc: http.crc }, http.fallback, &body, now_ms),
+                Err(reason) => self.fetch_failed(http.kind, http.fallback, reason, now_ms),
+            });
         }
         let emits = self.guided.advance(&self.observed(), now_ms);
         bytes.extend(self.carry(emits, now_ms));
@@ -3153,7 +3216,14 @@ impl Vehicle {
                     return Vec::new();
                 }
                 let uri = m.uri.to_str().unwrap_or("").to_string();
-                return self.start_fetch(TYPE_GENERAL, &uri, now_ms);
+                return self.start_fetch(TYPE_GENERAL, Source { uri, crc: Some(u64::from(m.file_crc)) }, None, now_ms);
+            }
+            MavMessage::COMPONENT_INFORMATION(m) => {
+                if self.commands.on_message(header.component_id, MSG_COMPONENT_INFORMATION).is_empty() {
+                    return Vec::new();
+                }
+                let uri = m.general_metadata_uri.to_str().unwrap_or("").to_string();
+                return self.start_fetch(TYPE_GENERAL, Source { uri, crc: Some(u64::from(m.general_metadata_file_crc)) }, None, now_ms);
             }
             MavMessage::FILE_TRANSFER_PROTOCOL(f) if mavout::for_us(f.target_system) => {
                 if let Some(fetch) = self.fetch.as_mut().filter(|fetch| fetch.download.component == header.component_id) {
@@ -5285,6 +5355,7 @@ mod tests {
         let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(origin(4), autopilot, &refused, 1, 1);
         hub.on_frame(origin(4), autopilot, &refused, 2, 2);
+        hub.on_frame(origin(4), autopilot, &refused, 3, 3);
         let opened = hub.on_frame(origin(4), autopilot, &refused, 3, 3);
         refuse_pack(hub, autopilot, &opened, 3);
         hub.on_frame(origin(4), autopilot, &param_value("RTL_ALT", 1, 0, 1500.0), 4, 4);
@@ -5410,6 +5481,8 @@ mod tests {
         let after_modes = hub.on_frame(origin(4), &autopilot, &unsupported, 1_200_000, 1_200);
         assert_eq!(request_of(&after_modes[0].1), (512, 397.0), "modes refused, component metadata asked for next");
         let after_metadata = hub.on_frame(origin(4), &autopilot, &unsupported, 1_250_000, 1_250);
+        assert_eq!(request_of(&after_metadata[0].1), (512, 395.0), "RequestMetaDataTypeStateMachine falls back to the deprecated COMPONENT_INFORMATION");
+        let after_metadata = hub.on_frame(origin(4), &autopilot, &unsupported, 1_255_000, 1_255);
         let listed_after_pack = refuse_pack(&mut hub, &autopilot, &after_metadata, 1_260);
         assert!(matches!(decode(&listed_after_pack[0].1), MavMessage::PARAM_REQUEST_LIST(l) if l.target_system == 1 && l.target_component == 0), "metadata refused and no parameter file, so parameters are requested from every component");
         assert_eq!(hub.snapshot()["vehicle"]["connectStep"], "Parameters");
@@ -5690,6 +5763,7 @@ mod tests {
         let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
         hub.on_frame(origin(4), &autopilot, &refused, 100_000, 100);
         hub.on_frame(origin(4), &autopilot, &refused, 150_000, 150);
+        hub.on_frame(origin(4), &autopilot, &refused, 175_000, 175);
         let opened = hub.on_frame(origin(4), &autopilot, &refused, 200_000, 200);
         let listed = refuse_pack(&mut hub, &autopilot, &opened, 200);
         assert!(matches!(decode(&listed[0].1), MavMessage::PARAM_REQUEST_LIST(_)));
@@ -5771,6 +5845,7 @@ mod tests {
         pack.extend([0x04, (4 << 4) | 4, b'S', b'P', b'E', b'E', b'D']);
         pack.extend(2.5f32.to_le_bytes());
         let files = BTreeMap::from([(params::PACK_URI.to_string(), pack)]);
+        hub.on_frame(origin(4), &autopilot, &refused, 3, 3);
         let mut pending = hub.on_frame(origin(4), &autopilot, &refused, 3, 3);
         (0..20).for_each(|i| {
             let Some((_, bytes)) = pending.first().cloned() else { return };
@@ -5857,6 +5932,108 @@ mod tests {
         let listed: Vec<MavMessage> = refuse_pack(&mut hub, &autopilot, &timed_out, 1_100).into_iter().map(|(_, b)| decode(&b)).collect();
         assert!(matches!(listed.last(), Some(MavMessage::PARAM_REQUEST_LIST(_))), "an unanswered open fails the fetch and the parameters are requested anyway");
         assert!(hub.guided_snapshot(None)["guided"]["errors"].as_array().unwrap().iter().any(|e| e.as_str().unwrap().contains("Download failed")));
+    }
+
+    fn metadata_asked(hub: &mut Hub, autopilot: &MavHeader) {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        hub.on_frame(origin(4), autopilot, &copter_heartbeat(5, false), 0, 0);
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
+        hub.on_frame(origin(4), autopilot, &refused, 1, 1);
+        let asked = hub.on_frame(origin(4), autopilot, &refused, 2, 2);
+        assert_eq!(request_of(&asked[0].1), (512, 397.0));
+    }
+
+    fn general_metadata(uri: &str) -> MavMessage {
+        use mavlink::dialects::ardupilotmega::COMPONENT_METADATA_DATA;
+        let mut text = [0u8; 100];
+        text[..uri.len()].copy_from_slice(uri.as_bytes());
+        MavMessage::COMPONENT_METADATA(COMPONENT_METADATA_DATA { time_boot_ms: 0, file_crc: 7, uri: text.into() })
+    }
+
+    fn serve_files(hub: &mut Hub, autopilot: &MavHeader, files: &BTreeMap<String, Vec<u8>>, pending: Vec<(LinkId, Vec<u8>)>, opened: &mut Vec<String>, unanswered: &str) -> Vec<(LinkId, Vec<u8>)> {
+        (0..60).fold(pending, |pending, i| {
+            let request = pending.first().and_then(|(_, bytes)| match decode(bytes) {
+                MavMessage::FILE_TRANSFER_PROTOCOL(f) => ftp::Request::decode(&f.payload),
+                _ => None,
+            });
+            let Some(request) = request.filter(|r| r.opcode != ftp::CMD_OPEN_FILE_RO || String::from_utf8_lossy(&r.data).trim_end_matches('\0') != unanswered) else { return pending };
+            if request.opcode == ftp::CMD_OPEN_FILE_RO {
+                opened.push(String::from_utf8_lossy(&request.data).trim_end_matches('\0').to_string());
+            }
+            let current = opened.last().and_then(|path| files.get(path).map(|f| BTreeMap::from([(path.clone(), f.clone())]))).unwrap_or_default();
+            hub.on_frame(origin(4), autopilot, &ftp_reply(serve(&current, &request)), 10 + i, 10 + i)
+        })
+    }
+
+    #[test]
+    fn a_failed_primary_metadata_file_is_fetched_from_its_fallback_and_a_failed_http_file_moves_on() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        metadata_asked(&mut hub, &autopilot);
+        let general = br#"{"version":1,"metadataTypes":[{"type":1,"uri":"mftp://etc/extras/gone.json","fileCrc":5,"uriFallback":"mftp://etc/extras/parameters.json","fileCrcFallback":6},{"type":4,"uri":"http://127.0.0.1:1/events.json","fileCrc":8}]}"#.to_vec();
+        let parameters = br#"{"version":1,"parameters":[{"name":"RTL_ALT","type":"float","shortDesc":"Return altitude"}]}"#.to_vec();
+        let files = BTreeMap::from([("/etc/extras/component_general.json".to_string(), general), ("/etc/extras/parameters.json".to_string(), parameters)]);
+        let mut opened = Vec::new();
+        let first = hub.on_frame(origin(4), &autopilot, &general_metadata("mftp://etc/extras/component_general.json"), 3, 3);
+        let after = serve_files(&mut hub, &autopilot, &files, first, &mut opened, "");
+        assert_eq!(opened, ["/etc/extras/component_general.json", "/etc/extras/gone.json", "/etc/extras/parameters.json"], "RequestMetaDataJsonFallback runs after the primary download fails");
+        assert_eq!(hub.active().unwrap().parameter_meta("RTL_ALT", Some(ParamValue::F32(0.0))).unwrap()["shortDescription"], "Return altitude");
+        assert!(after.iter().all(|(_, b)| !matches!(decode(b), MavMessage::FILE_TRANSFER_PROTOCOL(_))), "events are fetched over HTTP, not FTP");
+        let started = std::time::Instant::now();
+        let answered = std::iter::repeat_with(|| {
+            std::thread::yield_now();
+            hub.tick(100)
+        })
+        .take_while(|_| started.elapsed() < std::time::Duration::from_secs(20))
+        .find(|frames| !frames.is_empty())
+        .expect("the HTTP download fails and the sequence moves on");
+        let listed = refuse_pack(&mut hub, &autopilot, &answered, 100);
+        assert!(matches!(decode(&listed[0].1), MavMessage::PARAM_REQUEST_LIST(_)));
+        let errors = hub.guided_snapshot(None)["guided"]["errors"].clone();
+        assert!(errors.as_array().unwrap().iter().any(|e| e.as_str().unwrap().starts_with("Component metadata download failed")), "{errors}");
+    }
+
+    #[test]
+    fn the_deprecated_component_information_names_the_general_file_when_component_metadata_is_refused() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, COMPONENT_INFORMATION_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        metadata_asked(&mut hub, &autopilot);
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_UNSUPPORTED, ..Default::default() });
+        let asked = hub.on_frame(origin(4), &autopilot, &refused, 3, 3);
+        assert_eq!(request_of(&asked[0].1), (512, 395.0));
+        let mut uri = [0u8; 100];
+        uri[..19].copy_from_slice(b"mftp://etc/old.json");
+        let information = MavMessage::COMPONENT_INFORMATION(COMPONENT_INFORMATION_DATA { general_metadata_uri: uri.into(), general_metadata_file_crc: 1, ..Default::default() });
+        let opened = hub.on_frame(origin(4), &autopilot, &information, 4, 4);
+        let request = ftp_request(&opened[0].1);
+        assert_eq!((request.opcode, String::from_utf8_lossy(&request.data).trim_end_matches('\0')), (ftp::CMD_OPEN_FILE_RO, "/etc/old.json"));
+    }
+
+    #[test]
+    fn a_metadata_download_past_thirty_seconds_gives_way_to_the_fallback() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        metadata_asked(&mut hub, &autopilot);
+        let general = br#"{"version":1,"metadataTypes":[{"type":1,"uri":"mftp://etc/extras/slow.json","fileCrc":5,"uriFallback":"mftp://etc/extras/quick.json"}]}"#.to_vec();
+        let files = BTreeMap::from([("/etc/extras/component_general.json".to_string(), general)]);
+        let mut opened = Vec::new();
+        let first = hub.on_frame(origin(4), &autopilot, &general_metadata("mftp://etc/extras/component_general.json"), 3, 3);
+        let slow = serve_files(&mut hub, &autopilot, &files, first, &mut opened, "/etc/extras/slow.json");
+        assert_eq!(ftp_request(&slow[0].1).opcode, ftp::CMD_OPEN_FILE_RO);
+        hub.vehicles.get_mut(&1).unwrap().fetch.as_mut().unwrap().started_ms = 0;
+        hub.vehicles.get_mut(&1).unwrap().ftp_due = None;
+        assert!(hub.tick(29_000).iter().all(|(_, b)| !matches!(decode(b), MavMessage::FILE_TRANSFER_PROTOCOL(f) if ftp::Request::decode(&f.payload).is_some_and(|r| String::from_utf8_lossy(&r.data).contains("quick")))));
+        hub.vehicles.get_mut(&1).unwrap().ftp_due = None;
+        let gave_way = hub.tick(30_000);
+        let opens: Vec<String> = gave_way
+            .iter()
+            .filter_map(|(_, b)| match decode(b) {
+                MavMessage::FILE_TRANSFER_PROTOCOL(f) => ftp::Request::decode(&f.payload).filter(|r| r.opcode == ftp::CMD_OPEN_FILE_RO).map(|r| String::from_utf8_lossy(&r.data).trim_end_matches('\0').to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(opens, ["/etc/extras/quick.json"], "the RequestMetaDataJson state times out after 30 s and the fallback is asked for");
     }
 
     #[test]

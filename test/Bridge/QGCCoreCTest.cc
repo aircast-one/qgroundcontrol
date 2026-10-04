@@ -976,6 +976,8 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
     send(ack);
     QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_COMPONENT_METADATA), "no component metadata request reached the peer");
     send(ack);
+    QVERIFY2(expectRequest(MAVLINK_MSG_ID_COMMAND_LONG, MAVLINK_MSG_ID_COMPONENT_INFORMATION), "no deprecated component information request reached the peer");
+    send(ack);
     QVERIFY2(expectRequest(MAVLINK_MSG_ID_FILE_TRANSFER_PROTOCOL, 0), "ArduPilot's parameters were not asked for as a file first");
     mavlink_file_transfer_protocol_t opened{};
     mavlink_msg_file_transfer_protocol_decode(&matched, &opened);
