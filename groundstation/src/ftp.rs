@@ -233,7 +233,7 @@ impl Download {
         match self.sink.as_mut() {
             Some(file) => {
                 use std::io::{Seek, SeekFrom, Write};
-                file.seek(SeekFrom::Start(u64::from(offset))).and_then(|_| file.write_all(data)).map_err(|e| format!("Download failed for: {} - {e}", self.path))?;
+                file.seek(SeekFrom::Start(u64::from(offset))).and_then(|_| file.write_all(data)).map_err(|_| "Download failed: Error saving file".to_string())?;
             }
             None => {
                 let end = offset as usize + data.len();
@@ -252,7 +252,7 @@ impl Download {
     }
 
     pub fn cancel(&mut self) -> Vec<Out> {
-        if !self.in_progress() {
+        if !self.in_progress() || self.file_size == 0 {
             return Vec::new();
         }
         self.phase = Some(Phase::Terminate);
@@ -278,7 +278,7 @@ impl Download {
             Some(Phase::Terminate) => {
                 self.retries += 1;
                 if self.retries > MAX_RETRY {
-                    self.fail("Download cancelled")
+                    self.fail("Download failed")
                 } else {
                     self.expected_seq = self.expected_seq.wrapping_sub(2);
                     let mut request = Request { session: self.session, opcode: CMD_TERMINATE_SESSION, ..Default::default() };
@@ -319,7 +319,7 @@ impl Download {
                     if let Some(path) = self.sink_path.clone() {
                         match std::fs::File::create(&path) {
                             Ok(file) => self.sink = Some(file),
-                            Err(e) => return self.fail(&format!("Download failed for: {} - {e}", self.path)),
+                            Err(_) => return self.fail("Download failed"),
                         }
                     }
                     self.session = reply.session;
@@ -449,7 +449,7 @@ impl Download {
         if reply.req_opcode != CMD_TERMINATE_SESSION || reply.seq != self.expected_seq {
             return Vec::new();
         }
-        self.fail("Download cancelled")
+        self.fail("Aborted")
     }
 }
 
@@ -530,7 +530,10 @@ impl Listing {
 
     pub fn on_payload(&mut self, payload: &[u8]) -> Vec<ListOut> {
         let Some(reply) = Request::decode(payload) else { return Vec::new() };
-        if self.active && self.opcode == CMD_LIST_DIRECTORY_WITH_TIME && reply.req_opcode == CMD_LIST_DIRECTORY_WITH_TIME && reply.opcode == RSP_NAK && reply.data.first() == Some(&ERR_UNKNOWN_COMMAND) {
+        if !self.active || self.expected_seq.wrapping_sub(1).wrapping_sub(reply.seq) < u16::MAX / 2 {
+            return Vec::new();
+        }
+        if self.opcode == CMD_LIST_DIRECTORY_WITH_TIME && reply.req_opcode == CMD_LIST_DIRECTORY_WITH_TIME && reply.opcode == RSP_NAK && reply.data.first() == Some(&ERR_UNKNOWN_COMMAND) {
             self.opcode = CMD_LIST_DIRECTORY;
             self.time_unsupported = true;
             self.expected_offset = 0;
@@ -540,7 +543,7 @@ impl Listing {
             out.append(&mut self.request(true));
             return out;
         }
-        if !self.active || reply.req_opcode != self.opcode || self.expected_seq.wrapping_sub(1).wrapping_sub(reply.seq) < u16::MAX / 2 {
+        if reply.req_opcode != self.opcode {
             return Vec::new();
         }
         match reply.opcode {
@@ -854,7 +857,7 @@ mod tests {
         let terminate = sent(&cancelled.cancel());
         assert_eq!((terminate.opcode, terminate.session), (CMD_TERMINATE_SESSION, 4));
         let ended = cancelled.on_payload(&ack(terminate.seq + 1, 4, CMD_TERMINATE_SESSION, 0, &[], false));
-        assert!(matches!(ended.last(), Some(Out::Complete { ok: false, error, .. }) if error == "Download cancelled"));
+        assert!(matches!(ended.last(), Some(Out::Complete { ok: false, error, .. }) if error == "Aborted"));
         let (mut short_file, _) = Download::start(1, "/fs/d", true).unwrap();
         short_file.on_payload(&ack(2, 2, CMD_OPEN_FILE_RO, 0, &50u32.to_le_bytes(), false));
         let short = short_file.on_payload(&nak(4, 2, CMD_BURST_READ_FILE, ERR_EOF));
@@ -866,6 +869,48 @@ mod tests {
         let (seeded, out) = Download::start_from(1, "/fs/f", false, 40).unwrap();
         assert_eq!(sent(&out).seq, 41);
         assert_eq!(seeded.expected_seq(), 42);
+    }
+
+    #[test]
+    fn cancel_follows_cancel_download_and_the_terminate_session_state() {
+        let (mut opening, _) = Download::start(1, "/fs/a", false).unwrap();
+        assert!(opening.cancel().is_empty(), "cancelDownload is a no-op until the open ack sets fileSize");
+        let opened = opening.on_payload(&ack(2, 5, CMD_OPEN_FILE_RO, 0, &10u32.to_le_bytes(), false));
+        assert_eq!(sent(&opened).opcode, CMD_BURST_READ_FILE, "the ignored cancel leaves the download running");
+        let (mut empty, _) = Download::start(1, "/fs/empty", false).unwrap();
+        empty.on_payload(&ack(2, 5, CMD_OPEN_FILE_RO, 0, &0u32.to_le_bytes(), false));
+        assert!(empty.cancel().is_empty(), "a zero-length file never counts as in progress");
+        let (mut silent, _) = Download::start(1, "/fs/b", false).unwrap();
+        silent.on_payload(&ack(2, 6, CMD_OPEN_FILE_RO, 0, &10u32.to_le_bytes(), false));
+        silent.cancel();
+        let timeouts: Vec<Vec<Out>> = (0..=MAX_RETRY).map(|_| silent.on_timeout()).collect();
+        assert!(timeouts[..MAX_RETRY as usize].iter().all(|t| matches!(sent(t), Request { opcode: CMD_TERMINATE_SESSION, session: 6, .. })));
+        assert!(matches!(timeouts.last().unwrap().last(), Some(Out::Complete { ok: false, error, .. }) if error == "Download failed"), "_terminateSessionTimeout");
+        let (mut refused, _) = Download::start(1, "/fs/c", false).unwrap();
+        refused.on_payload(&ack(2, 7, CMD_OPEN_FILE_RO, 0, &10u32.to_le_bytes(), false));
+        let terminate = sent(&refused.cancel());
+        let nakked = refused.on_payload(&nak(terminate.seq + 1, 7, CMD_TERMINATE_SESSION, 1));
+        assert!(matches!(nakked.last(), Some(Out::Complete { ok: false, error, .. }) if error == "Aborted"), "a Nak to the terminate still ends in _terminateComplete");
+    }
+
+    #[test]
+    fn a_local_file_that_cannot_be_written_fails_with_qgcs_texts() {
+        let dir = std::env::temp_dir().join(format!("groundstation-ftp-unwritable-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (mut download, _) = Download::start(1, "/fs/log.bin", true).unwrap();
+        download.stream_to(&dir.join("missing-folder").join("log.bin")).unwrap();
+        let opened = download.on_payload(&ack(2, 7, CMD_OPEN_FILE_RO, 0, &10u32.to_le_bytes(), false));
+        assert!(matches!(opened.last(), Some(Out::Complete { ok: false, error, .. }) if error == "Download failed"), "_openFileROAckOrNak file open failed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_old_unknown_command_nak_does_not_restart_a_timed_listing() {
+        let (mut listing, out) = Listing::start_with_time(1, "@MAV_LOG", 10).unwrap();
+        let first = out.iter().find_map(|o| match o { ListOut::Send(r) => Some(r.clone()), _ => None }).unwrap();
+        let stale = listing.on_payload(&Request { seq: first.seq - 2, opcode: RSP_NAK, req_opcode: CMD_LIST_DIRECTORY_WITH_TIME, data: vec![ERR_UNKNOWN_COMMAND], ..Default::default() }.encode());
+        assert!(stale.is_empty(), "_mavlinkMessageReceived drops old packets before any state sees them");
+        assert!(!listing.time_unsupported);
     }
 
     #[test]
