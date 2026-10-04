@@ -8,7 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -232,8 +234,14 @@ fun VehicleMap(
     var draggingVertex by remember { mutableStateOf<MapHit?>(null) }
     var panning by remember { mutableStateOf(false) }
     var trackingResumesAtMs by remember { mutableLongStateOf(0L) }
-    val trackJson by mapPath(TRACK_VIEW)
-    val track = trackReading(trackJson)
+    val trackJson by mapPath(TRACK_TAIL_VIEW)
+    var track by remember { mutableStateOf(trackReading(null)) }
+    LaunchedEffect(trackJson) {
+        val tail = trackReading(trackJson)
+        track = mergedTrack(track, tail)
+            ?: withContext(Dispatchers.Default) { MapBridge.read(TRACK_VIEW) }?.let(::trackReading)
+            ?: tail.copy(points = emptyList(), from = 0)
+    }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val mapView = remember {
@@ -456,13 +464,18 @@ fun VehicleMap(
             ),
         )
 
-        (currentStyle.getSource(TRAIL_SOURCE) as? GeoJsonSource)?.setGeoJson(
+        recenterOnVehicle()
+    }
+
+    LaunchedEffect(style, track) {
+        val trailStyle = style ?: return@LaunchedEffect
+        (trailStyle.getSource(TRAIL_SOURCE) as? GeoJsonSource)?.setGeoJson(
             when {
                 trackDraws(track) -> FeatureCollection.fromFeatures(
                     listOf(
                         Feature.fromGeometry(
                             LineString.fromLngLats(
-                                track.points.map { Point.fromLngLat(it.longitude, it.latitude) },
+                                plottedTrack(track).map { Point.fromLngLat(it.longitude, it.latitude) },
                             ),
                         ),
                     ),
@@ -470,8 +483,6 @@ fun VehicleMap(
                 else -> FeatureCollection.fromFeatures(emptyList())
             },
         )
-
-        recenterOnVehicle()
     }
 
     val recenterNow by rememberUpdatedState(::recenterOnVehicle)

@@ -76,9 +76,11 @@ object MapBridge {
         if (_values.value.containsKey(path)) {
             return
         }
-        val json = runCatching { JSONObject(QGCBridge.get(path)) }.getOrNull() ?: return
+        val json = read(path) ?: return
         _values.update { held -> if (held.containsKey(path)) held else held + (path to json) }
     }
+
+    fun read(path: String): JSONObject? = runCatching { JSONObject(QGCBridge.get(path)) }.getOrNull()
 
     fun markReachable() {
         _bridgeReady.value = true

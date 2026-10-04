@@ -148,6 +148,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.instruments", "<group/fact>,..."),
     ("view.landingPattern", "<index>"),
     ("view.mapScale", "<pixels>"),
+    ("view.track", "[tail]"),
     ("view.missionItems", "geometry | fields"),
     ("view.flyMissionItems", "geometry | fields"),
     ("view.missionKinds", "<kind id>"),

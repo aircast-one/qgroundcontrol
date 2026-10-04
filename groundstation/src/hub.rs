@@ -4318,6 +4318,7 @@ impl Hub {
         if let Some(mut vehicle) = self.vehicles.remove(&id) {
             vehicle.onboard_logs.cancel();
         }
+        crate::track::forget(i64::from(id));
         self.arrival.retain(|known| *known != id);
         self.selected.retain(|known| *known != id);
         if self.active == Some(id) {

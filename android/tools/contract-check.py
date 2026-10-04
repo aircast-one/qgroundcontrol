@@ -235,6 +235,7 @@ ACCEPTED_ON = {
     ("view.hostNotices", "acknowledgedThrough"): "HostNotices.kt reads the core's split of the queue into banners, dialogs and unseen; these are the raw queue and its acknowledgement bookkeeping",
     ("view.hostNotices", "latestId"): "HostNotices.kt reads the core's split of the queue into banners, dialogs and unseen; these are the raw queue and its acknowledgement bookkeeping",
     ("view.hostNotices", "notices"): "HostNotices.kt reads the core's split of the queue into banners, dialogs and unseen; these are the raw queue and its acknowledgement bookkeeping",
+    ("view.hostNotices", "dropped"): "HostNotices.kt reads the core's split of the queue into banners, dialogs and unseen; dropped is the raw queue's overflow bookkeeping",
     ("view.itemFacts", "customName"): "CameraCalcSection reads custom (isCustomCamera) and brands, which already lists Custom Camera like CameraCalc's cameraBrandList",
     ("view.itemFacts", "defaultValue"): "a Fact's default; heads show it through defaultText or Qgc.kt defaultValueString and never write it",
     ("view.itemFacts", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",

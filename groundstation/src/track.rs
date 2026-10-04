@@ -1,5 +1,5 @@
 use serde_json::{Value, json};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 use std::sync::{LazyLock, Mutex, PoisonError};
 
 use crate::read::{flag, integer, object};
@@ -9,17 +9,14 @@ pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.id", "ve
 
 const DISTANCE_TOLERANCE_M: f64 = 2.0;
 const AZIMUTH_TOLERANCE_DEG: f64 = 1.5;
-pub const MAX_POINTS: usize = 5_000;
-const MAX_TRACKED_VEHICLES: usize = 8;
+pub const TAIL_POINTS: usize = 128;
 
 #[derive(Debug, Default)]
 pub struct Track {
-    points: VecDeque<(f64, f64)>,
+    points: Vec<(f64, f64)>,
     last_azimuth: Option<f64>,
     generation: u64,
-    dropped: u64,
     armed: bool,
-    touched: u64,
     flight_distance: f64,
 }
 
@@ -47,16 +44,7 @@ impl Track {
     fn restart(&mut self) {
         self.points.clear();
         self.last_azimuth = None;
-        self.dropped = 0;
         self.generation += 1;
-    }
-
-    fn append(&mut self, position: (f64, f64)) {
-        if self.points.len() == MAX_POINTS {
-            self.points.pop_front();
-            self.dropped += 1;
-        }
-        self.points.push_back(position);
     }
 
     pub fn observe(&mut self, armed: bool, position: Option<(f64, f64)>) {
@@ -67,8 +55,8 @@ impl Track {
             self.flight_distance = 0.0;
         }
         let Some(position) = position.filter(|_| armed) else { return };
-        let Some(&last) = self.points.back() else {
-            self.append(position);
+        let Some(&last) = self.points.last() else {
+            self.points.push(position);
             return;
         };
         let moved = distance_m(last, position);
@@ -77,16 +65,26 @@ impl Track {
         }
         self.flight_distance += moved;
         let azimuth = azimuth_deg(last, position);
-        if self.last_azimuth.is_some_and(|anchor| turn_deg(anchor, azimuth) <= AZIMUTH_TOLERANCE_DEG) {
-            let end = self.points.len() - 1;
-            self.points[end] = position;
-            return;
+        match self.points.last_mut() {
+            Some(end) if self.last_azimuth.is_some_and(|anchor| turn_deg(anchor, azimuth) <= AZIMUTH_TOLERANCE_DEG) => *end = position,
+            _ => {
+                self.last_azimuth = Some(azimuth);
+                self.points.push(position);
+            }
         }
-        self.last_azimuth = Some(azimuth);
-        self.append(position);
     }
 
-    pub fn snapshot(&self, vehicle: Option<i64>) -> Value {
+    fn mirror(&mut self, armed: bool, listed: Vec<(f64, f64)>) {
+        let cleared = !self.points.is_empty() && (listed.len() < self.points.len() || listed.first() != self.points.first());
+        if cleared {
+            self.generation += 1;
+        }
+        self.armed = armed;
+        self.points = listed;
+    }
+
+    pub fn snapshot(&self, vehicle: Option<i64>, tail: bool) -> Value {
+        let from = if tail { self.points.len().saturating_sub(TAIL_POINTS) } else { 0 };
         json!({
             "kind": "object",
             "class": "Track",
@@ -95,14 +93,15 @@ impl Track {
             "vehicleId": vehicle,
             "recording": self.armed,
             "generation": self.generation,
-            "dropped": self.dropped,
             "count": self.points.len(),
-            "points": self.points.iter().map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })).collect::<Vec<_>>(),
+            "from": from,
+            "points": self.points[from..].iter().map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })).collect::<Vec<_>>(),
         })
     }
 }
 
 static TRACKS: LazyLock<Mutex<BTreeMap<i64, Track>>> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
+static QT_TRACK: LazyLock<Mutex<Option<(i64, Track)>>> = LazyLock::new(|| Mutex::new(None));
 
 pub fn observe(vehicle: i64, armed: bool, position: Option<(f64, f64)>) {
     TRACKS.lock().unwrap_or_else(PoisonError::into_inner).entry(vehicle).or_default().observe(armed, position);
@@ -118,23 +117,42 @@ pub fn clear(vehicle: i64) {
     }
 }
 
-pub fn track_view(backend: &dyn Backend, _args: &[String]) -> Value {
+pub fn forget(vehicle: i64) {
+    TRACKS.lock().unwrap_or_else(PoisonError::into_inner).remove(&vehicle);
+}
+
+fn qt_points(reply: &str) -> Vec<(f64, f64)> {
+    crate::read::ok_result(reply)
+        .and_then(|listed| listed.as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|point| crate::read::nested_coordinate(&json!({ "coordinate": point })))
+        .collect()
+}
+
+fn qt_snapshot(backend: &dyn Backend, vehicle: i64, armed: bool, tail: bool) -> Value {
+    let listed = qt_points(&backend.invoke("vehicle.trajectoryPoints.list", "[]"));
+    let mut held = QT_TRACK.lock().unwrap_or_else(PoisonError::into_inner);
+    let generation = held.as_ref().map_or(0, |(_, track)| track.generation);
+    let track = match held.take() {
+        Some((id, track)) if id == vehicle => track,
+        _ => Track { generation: generation + 1, ..Track::default() },
+    };
+    let (_, track) = held.insert((vehicle, track));
+    track.mirror(armed, listed);
+    track.snapshot(Some(vehicle), tail)
+}
+
+pub fn track_view(backend: &dyn Backend, args: &[String]) -> Value {
+    let tail = args.first().is_some_and(|arg| arg == "tail");
     let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
-    let vehicle = object(&backend.get_fields("vehicle", "id,armed,coordinate"));
+    let vehicle = object(&backend.get_fields("vehicle", "id,armed"));
     let present = flag(&vehicles, "activeVehicleAvailable") && vehicle.get("kind").and_then(Value::as_str) == Some("object");
-    let id = present.then(|| integer(&vehicle, "id")).flatten();
-    let mut tracks = TRACKS.lock().unwrap_or_else(PoisonError::into_inner);
-    let Some(id) = id else { return Track::default().snapshot(None) };
-    let clock = tracks.values().map(|t| t.touched).max().unwrap_or(0) + 1;
-    let track = tracks.entry(id).or_default();
-    track.touched = clock;
-    track.observe(flag(&vehicle, "armed"), crate::read::nested_coordinate(&vehicle));
-    let snapshot = track.snapshot(Some(id));
-    let stale: Vec<i64> = tracks.iter().filter(|(_, t)| clock.saturating_sub(t.touched) >= MAX_TRACKED_VEHICLES as u64).map(|(id, _)| *id).collect();
-    stale.iter().for_each(|id| {
-        tracks.remove(id);
-    });
-    snapshot
+    let Some(id) = present.then(|| integer(&vehicle, "id")).flatten() else { return Track::default().snapshot(None, tail) };
+    if crate::qthost::present() {
+        return qt_snapshot(backend, id, flag(&vehicle, "armed"), tail);
+    }
+    TRACKS.lock().unwrap_or_else(PoisonError::into_inner).get(&id).map_or_else(|| Track::default().snapshot(Some(id), tail), |track| track.snapshot(Some(id), tail))
 }
 
 #[cfg(test)]
@@ -237,33 +255,69 @@ mod tests {
         let start = (47.397, 8.545);
         let mut track = Track::default();
         track.observe(false, Some(start));
-        assert_eq!(track.snapshot(Some(1))["count"], 0, "a disarmed vehicle lays no track, as QGC starts the trail on arming");
+        assert_eq!(track.snapshot(Some(1), false)["count"], 0, "a disarmed vehicle lays no track, as QGC starts the trail on arming");
         track.observe(true, Some(start));
         track.observe(true, Some(north_of(start, 10.0)));
-        let flight = track.snapshot(Some(1));
+        let flight = track.snapshot(Some(1), false);
         assert_eq!((flight["count"].as_u64(), flight["recording"].as_bool()), (Some(2), Some(true)));
         let generation = flight["generation"].as_u64().unwrap();
         track.observe(false, Some(north_of(start, 20.0)));
-        assert_eq!(track.snapshot(Some(1))["count"], 2, "landing keeps the track that was flown");
-        assert_eq!(track.snapshot(Some(1))["generation"].as_u64(), Some(generation), "the same flight keeps its generation");
+        assert_eq!(track.snapshot(Some(1), false)["count"], 2, "landing keeps the track that was flown");
+        assert_eq!(track.snapshot(Some(1), false)["generation"].as_u64(), Some(generation), "the same flight keeps its generation");
         track.observe(true, Some(start));
-        assert_eq!(track.snapshot(Some(1))["count"], 1, "arming again is a new flight");
-        assert!(track.snapshot(Some(1))["generation"].as_u64().unwrap() > generation);
+        assert_eq!(track.snapshot(Some(1), false)["count"], 1, "arming again is a new flight");
+        assert!(track.snapshot(Some(1), false)["generation"].as_u64().unwrap() > generation);
     }
 
     #[test]
-    fn a_long_flight_drops_its_oldest_points_rather_than_its_whole_trail() {
+    fn a_long_flight_keeps_every_point_and_the_tail_serves_only_the_end() {
         let start = (47.397, 8.545);
         let mut track = Track::default();
         track.observe(true, Some(start));
         let generation = track.generation;
-        (0..MAX_POINTS + 40).for_each(|i| {
+        (0..6_000).for_each(|i| {
             let along = north_of(start, 10.0 * (i + 1) as f64);
             track.observe(true, Some(if i % 2 == 0 { along } else { east_of(along, 40.0) }));
         });
-        assert_eq!(track.points.len(), MAX_POINTS, "the trail is capped, unlike TrajectoryPoints which has no cap at all");
-        assert!(track.dropped > 0, "a head is told how many points fell off the front");
-        assert_eq!(track.generation, generation, "reaching the cap is not a new flight, so a head keeps drawing rather than starting over");
+        assert_eq!(track.points.len(), 6_001, "TrajectoryPoints has no cap, so neither does the trail");
+        assert_eq!(track.generation, generation);
+        let whole = track.snapshot(Some(1), false);
+        assert_eq!((whole["from"].as_u64(), whole["points"].as_array().map(Vec::len)), (Some(0), Some(6_001)));
+        let tail = track.snapshot(Some(1), true);
+        assert_eq!(tail["count"], 6_001);
+        assert_eq!(tail["from"].as_u64(), Some((6_001 - TAIL_POINTS) as u64));
+        assert_eq!(tail["points"].as_array().map(Vec::len), Some(TAIL_POINTS), "a head watching the tail is not sent the whole flight on every fix");
+        assert_eq!(tail["points"][TAIL_POINTS - 1], whole["points"][6_000]);
+    }
+
+    #[test]
+    fn a_qt_trail_that_restarts_is_a_new_generation_and_one_that_grows_is_not() {
+        let start = (47.397, 8.545);
+        let mut track = Track::default();
+        track.mirror(true, vec![start]);
+        let generation = track.generation;
+        track.mirror(true, vec![start, north_of(start, 10.0)]);
+        track.mirror(true, vec![start, north_of(start, 20.0)]);
+        assert_eq!(track.generation, generation, "a moved end point is the same flight");
+        track.mirror(true, vec![]);
+        assert!(track.generation > generation, "Qt cleared its trail after a mission transfer");
+        let cleared = track.generation;
+        track.mirror(true, vec![east_of(start, 30.0)]);
+        assert_eq!(track.generation, cleared, "the first point after a clear is not another clear");
+        track.mirror(true, vec![north_of(start, 90.0), start, start]);
+        assert!(track.generation > cleared, "a trail that starts somewhere else was cleared between reads");
+    }
+
+    #[test]
+    fn qt_trajectory_points_read_as_plain_positions() {
+        let reply = json!({ "ok": true, "result": [
+            { "valid": true, "latitude": 47.1, "longitude": 8.1, "altitude": 10.0 },
+            null,
+            { "valid": true, "latitude": 47.2, "longitude": 8.2, "altitude": 11.0 },
+        ] })
+        .to_string();
+        assert_eq!(qt_points(&reply), vec![(47.1, 8.1), (47.2, 8.2)]);
+        assert!(qt_points(&json!({ "ok": false }).to_string()).is_empty());
     }
 
     struct Fake {
@@ -291,27 +345,22 @@ mod tests {
     }
 
     #[test]
-    fn each_vehicle_keeps_its_own_trail_across_a_switch() {
+    fn each_vehicle_keeps_its_own_trail_and_distance_however_often_the_view_is_read() {
         let start = (47.4, 8.5);
-        let leg = |i: f64| {
-            let along = north_of(start, 50.0 * i);
-            track_view(&flying(71, if i as i64 % 2 == 0 { along } else { east_of(along, 40.0) }, true), &[])
-        };
-        leg(0.0);
-        leg(1.0);
-        assert_eq!(leg(2.0)["count"], 3);
-        let other = track_view(&flying(72, east_of(start, 500.0), true), &[]);
-        assert_eq!((other["vehicleId"].as_i64(), other["count"].as_u64()), (Some(72), Some(1)), "a second vehicle starts its own trail");
-        assert_eq!(leg(3.0)["count"], 4, "switching back shows the first vehicle's trail, as QGC keeps one per vehicle");
+        observe(71, true, Some(start));
+        observe(71, true, Some(north_of(start, 50.0)));
+        observe(71, true, Some(east_of(north_of(start, 100.0), 40.0)));
+        observe(72, true, Some(east_of(start, 500.0)));
+        let other = (0..40).map(|_| track_view(&flying(72, east_of(start, 500.0), true), &[])).last().unwrap();
+        assert_eq!((other["vehicleId"].as_i64(), other["count"].as_u64()), (Some(72), Some(1)), "a second vehicle has its own trail");
+        observe(71, true, Some(north_of(start, 200.0)));
+        assert_eq!(track_view(&flying(71, start, true), &[])["count"], 4, "switching back shows the first vehicle's whole trail, as QGC keeps one per vehicle");
+        assert!(flight_distance(71).unwrap() > 200.0, "reading another vehicle's trail never restarts this one's flight");
         let gone = track_view(&Fake { vehicle: json!({ "kind": "null" }) }, &[]);
         assert_eq!((gone["available"].as_bool(), gone["count"].as_u64()), (Some(false), Some(0)));
-    }
-
-    #[test]
-    fn a_position_the_vehicle_calls_invalid_is_not_a_point() {
-        let start = (47.5, 8.6);
-        assert_eq!(track_view(&flying(81, start, false), &[])["count"], 0, "an invalid coordinate is not a place the vehicle has been");
-        assert_eq!(track_view(&flying(81, (0.0, 0.0), true), &[])["count"], 0, "null island is what an autopilot reports before it has a fix");
-        assert_eq!(track_view(&flying(81, start, true), &[])["count"], 1);
+        forget(71);
+        forget(72);
+        assert_eq!(flight_distance(71), None, "a removed vehicle takes its trail with it");
+        assert_eq!(track_view(&flying(71, start, true), &["tail".into()])["count"], 0);
     }
 }
