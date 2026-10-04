@@ -4,7 +4,7 @@ pub const ALL_COMPONENTS: u8 = 0;
 pub const NO_INDEX: u16 = 65535;
 pub const INITIAL_REQUEST_TIMEOUT_MS: u64 = 5000;
 pub const WAITING_TIMEOUT_MS: u64 = 3000;
-const MAX_INITIAL_REQUEST_LIST_RETRY: u32 = 4;
+pub const MAX_INITIAL_REQUEST_LIST_RETRY: u32 = 4;
 const MAX_INITIAL_LOAD_RETRY_SINGLE_PARAM: u32 = 5;
 const MAX_READ_WRITE_RETRY: u32 = 2;
 pub const VALUE_ACK_TIMEOUT_MS: u64 = 1000;
@@ -150,6 +150,21 @@ pub enum Action {
     CacheOnlyFailed,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum Asked {
+    Index(u16),
+    Read(String),
+    Write(String),
+}
+
+#[derive(Debug, Clone)]
+struct Request {
+    sends: u32,
+    due: Option<u64>,
+    send: Action,
+    quiet: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct Params {
     pub default_component: u8,
@@ -157,10 +172,7 @@ pub struct Params {
     facts: BTreeMap<u8, BTreeMap<String, ParamValue>>,
     counts: BTreeMap<u8, u16>,
     waiting_index: BTreeMap<u8, BTreeMap<u16, u32>>,
-    waiting_read: BTreeMap<u8, BTreeMap<String, u32>>,
-    waiting_write: BTreeMap<u8, BTreeMap<String, u32>>,
-    pending_write: BTreeMap<u8, BTreeMap<String, ParamValue>>,
-    quiet_reads: BTreeSet<(u8, String)>,
+    requests: BTreeMap<(u8, Asked), Request>,
     updates_awaited: BTreeSet<(u8, String)>,
     write_batch: usize,
     read_batch: usize,
@@ -280,13 +292,30 @@ pub fn parse_pack(bytes: &[u8]) -> Result<Vec<PackEntry>, String> {
 
 impl Params {
     pub fn load_pack(&mut self, component: u8, entries: &[PackEntry]) -> Vec<Action> {
-        let values: BTreeMap<String, ParamValue> = entries.iter().map(|e| (e.name.clone(), e.value)).collect();
-        self.counts.insert(component, u16::try_from(values.len()).unwrap_or(u16::MAX));
-        self.total_count += values.len();
-        self.facts.insert(component, values);
+        let facts = self.facts.entry(component).or_default();
+        let stored: Vec<Action> = entries
+            .iter()
+            .filter_map(|e| match facts.insert(e.name.clone(), e.value) {
+                None => Some(Action::Added { component, name: e.name.clone() }),
+                Some(previous) if previous != e.value => Some(Action::Changed { component, name: e.name.clone() }),
+                Some(_) => None,
+            })
+            .collect();
+        self.counts.insert(component, u16::try_from(entries.len()).unwrap_or(u16::MAX));
+        self.total_count += entries.len();
+        self.waiting_index.insert(component, BTreeMap::new());
         self.initial_timer_active = false;
-        let added = entries.iter().map(|e| Action::Added { component, name: e.name.clone() });
-        added.chain([Action::StopInitialTimer, Action::Progress(1.0)]).chain(self.check_initial_load_complete()).collect()
+        stored.into_iter().chain([Action::StopInitialTimer, Action::Progress(0.0)]).chain(self.check_initial_load_complete()).collect()
+    }
+
+    pub fn initial_complete(&self) -> bool {
+        self.initial_complete
+    }
+
+    pub fn no_response(&mut self) -> Vec<Action> {
+        self.initial_timer_active = false;
+        self.unanswered = true;
+        vec![Action::NoResponse]
     }
 
     pub fn new(default_component: u8, px4: bool) -> Self {
@@ -306,7 +335,7 @@ impl Params {
     }
 
     pub fn pending_writes(&self) -> bool {
-        self.pending_write.values().any(|names| !names.is_empty())
+        self.requests.keys().any(|(_, asked)| matches!(asked, Asked::Write(_)))
     }
 
     pub fn missing(&self) -> bool {
@@ -314,7 +343,7 @@ impl Params {
     }
 
     pub fn skip_load(&mut self) {
-        (self.ready, self.missing) = (true, true);
+        (self.ready, self.missing, self.initial_complete) = (true, true, true);
     }
 
     pub fn ready(&self) -> bool {
@@ -322,7 +351,7 @@ impl Params {
     }
 
     pub fn writing(&self, component: u8, name: &str) -> bool {
-        self.waiting_write.get(&component).is_some_and(|waiting| waiting.contains_key(name))
+        self.requests.contains_key(&(component, Asked::Write(name.to_string())))
     }
 
     pub fn awaiting_update(&self, component: u8, name: &str) -> bool {
@@ -416,33 +445,68 @@ impl Params {
         timer.into_iter().chain([Action::RequestList { component }]).collect()
     }
 
+    fn ask(&mut self, component: u8, asked: Asked, send: Action, quiet: bool) -> (bool, Action) {
+        let fresh = self.requests.insert((component, asked), Request { sends: 1, due: None, send: send.clone(), quiet }).is_none();
+        (fresh, send)
+    }
+
     pub fn refresh(&mut self, component: u8, name: &str) -> Vec<Action> {
-        self.updates_awaited.insert((component, name.to_string()));
-        let waiting = self.waiting_read.entry(component).or_default();
-        if waiting.insert(name.to_string(), 0).is_none() {
-            self.read_batch += 1;
-        }
-        vec![self.progress(), Action::StartWaitingTimer, Action::ReadByName { component, name: name.to_string() }]
+        self.read(component, name, false)
     }
 
     pub fn refresh_quietly(&mut self, component: u8, name: &str) -> Vec<Action> {
-        self.quiet_reads.insert((component, name.to_string()));
-        self.refresh(component, name)
+        self.read(component, name, true)
+    }
+
+    fn read(&mut self, component: u8, name: &str, quiet: bool) -> Vec<Action> {
+        self.updates_awaited.insert((component, name.to_string()));
+        let (fresh, send) = self.ask(component, Asked::Read(name.to_string()), Action::ReadByName { component, name: name.to_string() }, quiet);
+        self.read_batch += usize::from(fresh);
+        vec![self.progress(), send]
     }
 
     pub fn write(&mut self, component: u8, name: &str, value: ParamValue) -> Vec<Action> {
-        if self.waiting_write.entry(component).or_default().insert(name.to_string(), 0).is_none() {
-            self.write_batch += 1;
-        }
-        self.pending_write.entry(component).or_default().insert(name.to_string(), value);
+        let (fresh, send) = self.ask(component, Asked::Write(name.to_string()), Action::Set { component, name: name.to_string(), value }, false);
+        self.write_batch += usize::from(fresh);
         let changed = self.facts.get_mut(&component).and_then(|facts| facts.get_mut(name)).is_some_and(|known| std::mem::replace(known, value) != value);
-        [self.progress(), Action::StartWaitingTimer, Action::Set { component, name: name.to_string(), value }].into_iter().chain(changed.then(|| Action::Changed { component, name: name.to_string() })).collect()
+        [self.progress(), send].into_iter().chain(changed.then(|| Action::Changed { component, name: name.to_string() })).collect()
+    }
+
+    pub fn schedule(&mut self, now_ms: u64) {
+        self.requests.values_mut().filter(|request| request.due.is_none()).for_each(|request| request.due = Some(now_ms + VALUE_ACK_TIMEOUT_MS));
+    }
+
+    pub fn next_request_due(&self) -> Option<u64> {
+        self.requests.values().filter_map(|request| request.due).min()
+    }
+
+    pub fn on_request_timeouts(&mut self, now_ms: u64) -> Vec<Action> {
+        let expired: Vec<(u8, Asked)> = self.requests.iter().filter(|(_, request)| request.due.is_some_and(|due| now_ms >= due)).map(|(key, _)| key.clone()).collect();
+        expired.into_iter().flat_map(|key| self.request_timed_out(key, now_ms)).collect()
+    }
+
+    fn request_timed_out(&mut self, key: (u8, Asked), now_ms: u64) -> Vec<Action> {
+        let Some(request) = self.requests.get(&key).cloned() else { return Vec::new() };
+        let (component, asked) = key;
+        if request.sends <= MAX_READ_WRITE_RETRY {
+            let send = request.send.clone();
+            self.requests.insert((component, asked), Request { sends: request.sends + 1, due: Some(now_ms + VALUE_ACK_TIMEOUT_MS), ..request });
+            return vec![send];
+        }
+        self.requests.remove(&(component, asked.clone()));
+        let progress = self.progress();
+        let failure: Vec<Action> = match asked {
+            Asked::Index(_) => Vec::new(),
+            Asked::Read(name) => (!request.quiet).then_some(Action::ReadFailed { component, name, error: None }).into_iter().collect(),
+            Asked::Write(name) => std::iter::once(Action::WriteFailed { component, name: name.clone(), error: None }).chain(self.refresh(component, &name)).collect(),
+        };
+        std::iter::once(progress).chain(failure).collect()
     }
 
     fn progress(&mut self) -> Action {
         let waiting_index: usize = self.waiting_index.values().map(BTreeMap::len).sum();
-        let waiting_write: usize = self.waiting_write.values().map(BTreeMap::len).sum();
-        let waiting_read: usize = self.waiting_read.values().map(BTreeMap::len).sum();
+        let waiting_write = self.requests.keys().filter(|(_, asked)| matches!(asked, Asked::Write(_))).count();
+        let waiting_read = self.requests.keys().filter(|(_, asked)| matches!(asked, Asked::Read(_))).count();
         let fraction = |batch: usize, waiting: usize| batch.saturating_sub(waiting).max(1) as f64 / (batch + 1) as f64;
         if waiting_index > 0 {
             return Action::Progress((self.total_count.saturating_sub(waiting_index)) as f64 / self.total_count.max(1) as f64);
@@ -458,7 +522,19 @@ impl Params {
         Action::Progress(0.0)
     }
 
+    pub fn answer_requests(&mut self, component: u8, name: &str, index: u16, value: ParamValue) {
+        self.requests.retain(|(asked_of, asked), request| {
+            *asked_of != component
+                || match asked {
+                    Asked::Index(asked_index) => *asked_index != index,
+                    Asked::Read(asked_name) => asked_name != name,
+                    Asked::Write(asked_name) => asked_name != name || !matches!(request.send, Action::Set { value: written, .. } if acknowledges(written, value)),
+                }
+        });
+    }
+
     pub fn on_param_value(&mut self, component: u8, name: &str, count: u16, index: u16, value: ParamValue) -> Vec<Action> {
+        self.answer_requests(component, name, index, value);
         if self.px4 && name == HASH_CHECK {
             return self.hash_answered(component, value);
         }
@@ -473,8 +549,6 @@ impl Params {
         }
         if !self.waiting_index.contains_key(&component) {
             self.waiting_index.insert(component, (0..count).map(|i| (i, 0)).collect());
-            self.waiting_read.entry(component).or_default();
-            self.waiting_write.entry(component).or_default();
         }
         let reads_before = self.index_reads_waiting(component);
         let waiting = self.waiting_index.get_mut(&component).unwrap();
@@ -482,16 +556,9 @@ impl Params {
             self.batch_queue.retain(|i| *i != index);
             actions.extend(self.fill_batch_queue(false));
         }
-        self.waiting_read.entry(component).or_default().remove(name);
-        self.quiet_reads.remove(&(component, name.to_string()));
         self.updates_awaited.remove(&(component, name.to_string()));
-        let acknowledged = self.pending_write.get(&component).and_then(|written| written.get(name)).is_none_or(|written| acknowledges(*written, value));
-        if acknowledged {
-            self.waiting_write.entry(component).or_default().remove(name);
-            self.pending_write.entry(component).or_default().remove(name);
-        }
-        let total_waiting: usize = self.waiting_index.values().map(BTreeMap::len).sum::<usize>() + self.waiting_read.values().map(BTreeMap::len).sum::<usize>() + self.waiting_write.values().map(BTreeMap::len).sum::<usize>();
-        if total_waiting > 0 || !self.facts.contains_key(&self.default_component) {
+        let index_waiting: usize = self.waiting_index.values().map(BTreeMap::len).sum();
+        if index_waiting > 0 || !self.facts.contains_key(&self.default_component) {
             actions.push(Action::StartWaitingTimer);
         }
         actions.push(self.progress());
@@ -518,7 +585,7 @@ impl Params {
         if timeout {
             self.batch_queue.clear();
         }
-        let mut actions = Vec::new();
+        let mut asked = Vec::new();
         for (component, waiting) in self.waiting_index.iter_mut() {
             for index in waiting.keys().copied().collect::<Vec<_>>() {
                 if self.batch_queue.contains(&index) {
@@ -534,113 +601,64 @@ impl Params {
                     waiting.remove(&index);
                 } else {
                     self.batch_queue.push(index);
-                    actions.push(Action::ReadByIndex { component: *component, index });
+                    asked.push((*component, index));
                 }
             }
         }
-        actions
-    }
-
-    pub fn waiting_timeout_ms(&self) -> u64 {
-        match self.waiting_index.values().any(|waiting| !waiting.is_empty()) || !self.facts.contains_key(&self.default_component) {
-            true => WAITING_TIMEOUT_MS,
-            false => VALUE_ACK_TIMEOUT_MS,
-        }
+        asked.into_iter().map(|(component, index)| self.ask(component, Asked::Index(index), Action::ReadByIndex { component, index }, true).1).collect()
     }
 
     pub fn on_waiting_timeout(&mut self) -> Vec<Action> {
         self.batch_active = true;
-        let mut actions = self.fill_batch_queue(true);
-        let mut requested = !actions.is_empty();
-        if !requested && !self.waiting_for_default && !self.facts.contains_key(&self.default_component) {
+        let requested = self.fill_batch_queue(true);
+        if requested.is_empty() && !self.waiting_for_default && !self.facts.contains_key(&self.default_component) {
             self.waiting_for_default = true;
             return vec![Action::StartWaitingTimer];
         }
         self.waiting_for_default = false;
-        actions.extend(self.check_initial_load_complete());
-        let mut batch = 0usize;
-        let mut failed: Vec<(u8, String)> = Vec::new();
-        if !requested {
-            'writes: for (component, waiting) in self.waiting_write.iter_mut() {
-                for name in waiting.keys().cloned().collect::<Vec<_>>() {
-                    requested = true;
-                    let retries = waiting.entry(name.clone()).or_insert(0);
-                    *retries += 1;
-                    if *retries <= MAX_READ_WRITE_RETRY {
-                        let value = self.pending_write.get(component).and_then(|f| f.get(&name)).copied();
-                        if let Some(value) = value {
-                            actions.push(Action::Set { component: *component, name: name.clone(), value });
-                        }
-                        batch += 1;
-                        if batch > MAX_BATCH_SIZE {
-                            break 'writes;
-                        }
-                    } else {
-                        waiting.remove(&name);
-                        failed.push((*component, name.clone()));
-                        actions.push(Action::WriteFailed { component: *component, name, error: None });
-                    }
-                }
-            }
-        }
-        failed.iter().for_each(|(component, name)| {
-            self.pending_write.entry(*component).or_default().remove(name);
-        });
-        let refreshes: Vec<Action> = failed.iter().flat_map(|(component, name)| self.refresh(*component, name)).collect();
-        actions.extend(refreshes);
-        if !requested {
-            'reads: for (component, waiting) in self.waiting_read.iter_mut() {
-                for name in waiting.keys().cloned().collect::<Vec<_>>() {
-                    requested = true;
-                    let retries = waiting.entry(name.clone()).or_insert(0);
-                    *retries += 1;
-                    if *retries <= MAX_READ_WRITE_RETRY {
-                        actions.push(Action::ReadByName { component: *component, name });
-                        batch += 1;
-                        if batch > MAX_BATCH_SIZE {
-                            break 'reads;
-                        }
-                    } else {
-                        waiting.remove(&name);
-                        if !self.quiet_reads.remove(&(*component, name.clone())) {
-                            actions.push(Action::ReadFailed { component: *component, name, error: None });
-                        }
-                    }
-                }
-            }
-        }
-        if requested {
-            actions.push(Action::StartWaitingTimer);
-        }
-        actions
+        let restart = (!requested.is_empty()).then_some(Action::StartWaitingTimer);
+        let complete = self.check_initial_load_complete();
+        requested.into_iter().chain(complete).chain(restart).collect()
     }
 
-    pub fn on_param_error(&mut self, component: u8, name: &str, error: u8) -> Vec<Action> {
-        let read = self.waiting_read.get_mut(&component).and_then(|waiting| waiting.remove(name)).is_some();
-        let quiet = self.quiet_reads.remove(&(component, name.to_string()));
-        let written = self.waiting_write.get_mut(&component).and_then(|waiting| waiting.remove(name)).is_some();
-        if written {
-            self.pending_write.entry(component).or_default().remove(name);
-        }
-        let read_failed = (read && !quiet).then(|| Action::ReadFailed { component, name: name.to_string(), error: Some(error) });
-        let write_failed = written.then(|| Action::WriteFailed { component, name: name.to_string(), error: Some(error) });
-        let reread = match written && error != PARAM_ERROR_DOES_NOT_EXIST {
-            true => self.refresh(component, name),
-            false => Vec::new(),
-        };
-        read_failed.into_iter().chain(write_failed).chain(reread).collect()
+    pub fn on_param_error(&mut self, component: u8, name: &str, index: i16, error: u8) -> Vec<Action> {
+        let failed: Vec<((u8, Asked), Request)> = self
+            .requests
+            .iter()
+            .filter(|((asked_of, asked), _)| {
+                *asked_of == component
+                    && match asked {
+                        Asked::Index(asked_index) => i32::from(*asked_index) == i32::from(index),
+                        Asked::Read(asked_name) | Asked::Write(asked_name) => asked_name == name,
+                    }
+            })
+            .map(|(key, request)| (key.clone(), request.clone()))
+            .collect();
+        failed.iter().for_each(|(key, _)| {
+            self.requests.remove(key);
+        });
+        failed
+            .into_iter()
+            .flat_map(|((component, asked), request)| match asked {
+                Asked::Index(_) => Vec::new(),
+                Asked::Read(name) => (!request.quiet).then_some(Action::ReadFailed { component, name, error: Some(error) }).into_iter().collect(),
+                Asked::Write(name) => {
+                    let reread = match error != PARAM_ERROR_DOES_NOT_EXIST {
+                        true => self.refresh(component, &name),
+                        false => Vec::new(),
+                    };
+                    std::iter::once(Action::WriteFailed { component, name, error: Some(error) }).chain(reread).collect()
+                }
+            })
+            .collect()
     }
 
     pub fn on_initial_timeout(&mut self) -> Vec<Action> {
         self.initial_retry += 1;
         if self.initial_retry <= MAX_INITIAL_REQUEST_LIST_RETRY {
-            let mut actions = self.start_download(ALL_COMPONENTS);
-            actions.push(Action::StartInitialTimer);
-            actions
+            self.start_download(ALL_COMPONENTS)
         } else {
-            self.initial_timer_active = false;
-            self.unanswered = true;
-            vec![Action::NoResponse]
+            self.no_response()
         }
     }
 
@@ -792,6 +810,11 @@ mod tests {
         assert_eq!(params.value(1, "RTL_SPEED"), Some(ParamValue::F32(2.5)));
     }
 
+    fn expire(params: &mut Params) -> Vec<Action> {
+        params.schedule(0);
+        params.next_request_due().map_or_else(Vec::new, |due| params.on_request_timeouts(due))
+    }
+
     fn deliver(params: &mut Params, names: &[&str], skip: &[u16]) -> Vec<Action> {
         names
             .iter()
@@ -808,7 +831,7 @@ mod tests {
         params.write(1, "RTL_ALT", ParamValue::I32(3000));
         params.on_param_value(1, "RTL_ALT", 2, 0, ParamValue::I32(0));
         assert!(params.writing(1, "RTL_ALT"), "ParameterManager's ack check needs the echoed value to match what was written");
-        let failed: Vec<Action> = (0..=MAX_READ_WRITE_RETRY).flat_map(|_| params.on_waiting_timeout()).collect();
+        let failed: Vec<Action> = (0..=MAX_READ_WRITE_RETRY).flat_map(|_| expire(&mut params)).collect();
         assert!(failed.contains(&Action::WriteFailed { component: 1, name: "RTL_ALT".into(), error: None }));
         assert!(failed.contains(&Action::ReadByName { component: 1, name: "RTL_ALT".into() }), "a failed write refreshes the parameter from the vehicle");
         assert!(acknowledges(ParamValue::F32(0.1), ParamValue::F32(0.100_000_1)), "floats compare fuzzily, as QGC::fuzzyCompare does");
@@ -856,9 +879,8 @@ mod tests {
         params.start();
         params.write(1, "X", ParamValue::I32(1));
         assert_eq!(params.on_waiting_timeout(), vec![Action::StartWaitingTimer]);
-        let actions = params.on_waiting_timeout();
-        assert!(!actions.iter().any(|a| matches!(a, Action::Ready { .. })));
-        assert!(actions.contains(&Action::Set { component: 1, name: "X".into(), value: ParamValue::I32(1) }));
+        assert!(!params.on_waiting_timeout().iter().any(|a| matches!(a, Action::Ready { .. })));
+        assert!(expire(&mut params).contains(&Action::Set { component: 1, name: "X".into(), value: ParamValue::I32(1) }));
         let mut px4 = Params::new(1, true);
         px4.start();
         assert_eq!(px4.on_param_value(1, "_HASH_CHECK", 3, NO_INDEX, ParamValue::U32(7)), vec![Action::StopHashTimer, Action::StartInitialTimer, Action::RequestList { component: ALL_COMPONENTS }]);
@@ -897,15 +919,19 @@ mod tests {
         params.start();
         deliver(&mut params, &["A"], &[]);
         let sent = params.write(1, "A", ParamValue::I32(9));
-        assert_eq!(sent, vec![Action::Progress(0.5), Action::StartWaitingTimer, Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }, Action::Changed { component: 1, name: "A".into() }]);
+        assert_eq!(sent, vec![Action::Progress(0.5), Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }, Action::Changed { component: 1, name: "A".into() }]);
         assert_eq!(params.value(1, "A"), Some(ParamValue::I32(9)), "Fact::setRawValue changes the local value at once, before the vehicle acknowledges it");
-        let resend = params.on_waiting_timeout();
-        assert!(resend.contains(&Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }));
+        params.schedule(100);
+        assert_eq!(params.next_request_due(), Some(100 + VALUE_ACK_TIMEOUT_MS), "each PARAM_SET waits kWaitForParamValueAckMs from its own send");
+        assert_eq!(params.on_request_timeouts(1099), Vec::new());
+        let resend = params.on_request_timeouts(1100);
+        assert_eq!(resend, vec![Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }]);
+        assert_eq!(params.next_request_due(), Some(2100));
         let ack = params.on_param_value(1, "A", 1, 0, ParamValue::I32(9));
-        assert!(!ack.contains(&Action::StartWaitingTimer));
+        assert!(!ack.contains(&Action::StartWaitingTimer), "acks no longer touch _waitingParamTimeoutTimer, which only serves index reads");
+        assert_eq!(params.next_request_due(), None);
         params.write(1, "A", ParamValue::I32(10));
-        assert_eq!(params.waiting_timeout_ms(), VALUE_ACK_TIMEOUT_MS, "kWaitForParamValueAckMs once the parameters are in");
-        let outcomes: Vec<Vec<Action>> = (0..3).map(|_| params.on_waiting_timeout()).collect();
+        let outcomes: Vec<Vec<Action>> = (0..3).map(|_| expire(&mut params)).collect();
         assert!(outcomes[1].iter().any(|a| matches!(a, Action::Set { .. })), "PARAM_SET goes out three times in all, kParamSetRetryCount = 2");
         assert!(outcomes[2].contains(&Action::WriteFailed { component: 1, name: "A".into(), error: None }));
     }
@@ -933,7 +959,7 @@ mod tests {
         params.on_param_value(1, "A", 1, 0, ParamValue::I32(0));
         assert!(!params.awaiting_update(1, "A"), "an unchanged value still counts as the update");
         params.refresh(1, "A");
-        let gave_up: Vec<Action> = (0..3).flat_map(|_| params.on_waiting_timeout()).collect();
+        let gave_up: Vec<Action> = (0..3).flat_map(|_| expire(&mut params)).collect();
         assert!(gave_up.contains(&Action::ReadFailed { component: 1, name: "A".into(), error: None }));
         assert!(params.awaiting_update(1, "A"), "_ready is set only by Fact::vehicleUpdated, so a failed re-read leaves the dialog disabled");
         params.on_param_value(1, "A", 1, 0, ParamValue::I32(0));
@@ -946,7 +972,7 @@ mod tests {
         params.start();
         deliver(&mut params, &["A"], &[]);
         assert!(params.refresh(1, "A").contains(&Action::ReadByName { component: 1, name: "A".into() }));
-        let retried: Vec<Vec<Action>> = (0..3).map(|_| params.on_waiting_timeout()).collect();
+        let retried: Vec<Vec<Action>> = (0..3).map(|_| expire(&mut params)).collect();
         assert!(retried[0].contains(&Action::ReadByName { component: 1, name: "A".into() }));
         assert!(retried[2].contains(&Action::ReadFailed { component: 1, name: "A".into(), error: None }), "kParamRequestReadRetryCount = 2");
         let mut silent = Params::new(1, true);
@@ -961,23 +987,72 @@ mod tests {
     }
 
     #[test]
+    fn every_read_and_write_runs_its_own_one_second_timer_with_two_retries_like_a_per_request_state_machine() {
+        let mut params = Params::new(1, false);
+        params.start();
+        let names: Vec<String> = (0..15).map(|i| format!("P{i}")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        deliver(&mut params, &refs, &[]);
+        params.write(1, "P0", ParamValue::I32(100));
+        params.schedule(0);
+        params.write(1, "P1", ParamValue::I32(100));
+        params.schedule(500);
+        assert!(!params.on_param_value(1, "P2", 15, 2, ParamValue::I32(2)).contains(&Action::StartWaitingTimer), "an unrelated PARAM_VALUE no longer restarts a shared write timer");
+        assert_eq!(params.on_request_timeouts(1000), vec![Action::Set { component: 1, name: "P0".into(), value: ParamValue::I32(100) }], "P1 was sent later and still has time");
+        assert_eq!(params.on_request_timeouts(1500), vec![Action::Set { component: 1, name: "P1".into(), value: ParamValue::I32(100) }]);
+        let mut many = Params::new(1, false);
+        many.start();
+        deliver(&mut many, &refs, &[]);
+        names.iter().for_each(|name| {
+            many.write(1, name, ParamValue::I32(-1));
+        });
+        assert_eq!(expire(&mut many).iter().filter(|a| matches!(a, Action::Set { .. })).count(), 15, "no batch-of-10 cap: each state machine resends on its own");
+        let mut reads = Params::new(1, false);
+        reads.start();
+        deliver(&mut reads, &refs, &[]);
+        reads.write(1, "P3", ParamValue::I32(7));
+        reads.refresh(1, "P4");
+        let both = expire(&mut reads);
+        assert!(both.contains(&Action::Set { component: 1, name: "P3".into(), value: ParamValue::I32(7) }) && both.contains(&Action::ReadByName { component: 1, name: "P4".into() }), "a pending write no longer holds back read retries");
+    }
+
+    #[test]
+    fn an_index_re_request_retries_on_its_own_and_fails_silently() {
+        let mut params = Params::new(1, false);
+        params.start();
+        deliver(&mut params, &["A", "B", "C"], &[1]);
+        assert_eq!(params.on_waiting_timeout(), vec![Action::ReadByIndex { component: 1, index: 1 }, Action::StartWaitingTimer]);
+        let retried: Vec<Vec<Action>> = (0..3).map(|_| expire(&mut params)).collect();
+        assert_eq!(retried[0], vec![Action::ReadByIndex { component: 1, index: 1 }], "_fillIndexBatchQueue sends through _mavlinkParamRequestRead, 1 s x 2 retries");
+        assert_eq!(retried[1], vec![Action::ReadByIndex { component: 1, index: 1 }]);
+        assert!(!retried[2].iter().any(|a| matches!(a, Action::ReadFailed { .. } | Action::ReadByIndex { .. })), "notifyFailure false");
+        assert!(params.on_waiting_timeout().contains(&Action::ReadByIndex { component: 1, index: 1 }), "the 3 s batch refill still asks again");
+        assert_eq!(params.on_param_error(1, "", 1, 8), Vec::new(), "a PARAM_ERROR for the index ends that request quietly");
+        assert_eq!(params.next_request_due(), None);
+        params.on_waiting_timeout();
+        let answered = params.on_param_value(1, "B", 3, 1, ParamValue::I32(1));
+        assert!(answered.contains(&Action::Ready { missing: false }));
+        assert_eq!(params.next_request_due(), None, "the PARAM_VALUE with that index completes the request");
+    }
+
+    #[test]
     fn a_param_error_fails_the_named_request_at_once_with_its_reason() {
         let mut params = Params::new(1, false);
         params.start();
         deliver(&mut params, &["A", "B"], &[]);
         params.write(1, "A", ParamValue::I32(9));
-        let rejected = params.on_param_error(1, "A", 2);
+        let rejected = params.on_param_error(1, "A", -1, 2);
         assert_eq!(rejected[0], Action::WriteFailed { component: 1, name: "A".into(), error: Some(2) }, "WaitForParamResponseState fails on PARAM_ERROR without retrying");
         assert!(rejected.contains(&Action::ReadByName { component: 1, name: "A".into() }), "the write failure re-reads the parameter");
         assert!(!params.writing(1, "A"));
         assert_eq!(error_text(2), "Value out of range");
         params.write(1, "B", ParamValue::I32(9));
-        assert_eq!(params.on_param_error(1, "B", 1), vec![Action::WriteFailed { component: 1, name: "B".into(), error: Some(1) }], "MAV_PARAM_ERROR_DOES_NOT_EXIST skips the post-failure refresh");
+        assert_eq!(params.on_param_error(1, "B", -1, 1), vec![Action::WriteFailed { component: 1, name: "B".into(), error: Some(1) }], "MAV_PARAM_ERROR_DOES_NOT_EXIST skips the post-failure refresh");
         params.refresh(1, "B");
-        assert_eq!(params.on_param_error(154, "B", 8), Vec::new(), "only the component asked answers");
-        assert_eq!(params.on_param_error(1, "B", 8), vec![Action::ReadFailed { component: 1, name: "B".into(), error: Some(8) }]);
+        assert_eq!(params.on_param_error(154, "B", -1, 8), Vec::new(), "only the component asked answers");
+        assert_eq!(params.on_param_error(1, "B", -1, 8), vec![Action::ReadFailed { component: 1, name: "B".into(), error: Some(8) }]);
         params.refresh_quietly(1, "B");
-        assert_eq!(params.on_param_error(1, "B", 8), Vec::new(), "a quiet read (notifyFailure false) fails silently");
+        assert_eq!(params.on_param_error(1, "B", -1, 8), Vec::new(), "a quiet read (notifyFailure false) fails silently");
         assert_eq!(error_text(42), "Unknown error (42)");
     }
 }

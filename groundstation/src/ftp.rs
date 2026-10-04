@@ -76,16 +76,16 @@ pub fn error_text(code: u8) -> &'static str {
     match code {
         0 => "None",
         1 => "Fail",
-        2 => "FailErrno",
-        3 => "InvalidDataSize",
-        4 => "InvalidSession",
-        5 => "NoSessionsAvailable",
+        2 => "Fail Errorno",
+        3 => "Invalid Data Size",
+        4 => "Invalid Session",
+        5 => "No Sessions Available",
         6 => "EOF",
-        7 => "UnknownCommand",
-        8 => "FailFileExists",
-        9 => "FailFileProtected",
-        10 => "FailFileNotFound",
-        _ => "Unknown",
+        7 => "Unknown Command",
+        8 => "File Already Exists",
+        9 => "File Protected",
+        10 => "File Not Found",
+        _ => "Unknown Error",
     }
 }
 
@@ -774,7 +774,7 @@ mod tests {
         assert_eq!(parse_uri(1, "MFTP://a/b").unwrap().0, "/a/b");
         assert!(parse_uri(1, "[;comp=x]/f").is_err());
         assert_eq!(Request { data: vec![ERR_FAIL_ERRNO, 13], ..Default::default() }.nak_error(), "errno 13");
-        assert_eq!(Request { data: vec![10], ..Default::default() }.nak_error(), "FailFileNotFound");
+        assert_eq!(Request { data: vec![10], ..Default::default() }.nak_error(), "File Not Found", "MavlinkFTP::errorCodeToString");
         assert_eq!(Request { data: vec![], ..Default::default() }.nak_error(), "Invalid Nak format");
     }
 
@@ -841,7 +841,7 @@ mod tests {
     fn failures_retries_and_cancel_follow_the_manager() {
         let (mut download, _) = Download::start(1, "/fs/missing", true).unwrap();
         let refused = download.on_payload(&nak(2, 0, CMD_OPEN_FILE_RO, 10));
-        assert!(matches!(refused.last(), Some(Out::Complete { ok: false, error, .. }) if error == "Download failed: FailFileNotFound"));
+        assert!(matches!(refused.last(), Some(Out::Complete { ok: false, error, .. }) if error == "Download failed: File Not Found"));
         let (mut stalled, _) = Download::start(1, "/fs/a", false).unwrap();
         stalled.on_payload(&ack(2, 1, CMD_OPEN_FILE_RO, 0, &100u32.to_le_bytes(), false));
         let retries: Vec<Vec<Out>> = (0..4).map(|_| stalled.on_timeout()).collect();
