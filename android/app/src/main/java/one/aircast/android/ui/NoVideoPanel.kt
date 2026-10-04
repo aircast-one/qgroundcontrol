@@ -3,9 +3,14 @@ package one.aircast.android.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,7 +18,11 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import one.aircast.android.R
 import kotlinx.coroutines.delay
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
@@ -21,6 +30,7 @@ import one.aircast.android.bridge.offMainDetached
 private const val PROLONGED_SECONDS = 8
 private const val VIDEO_RESTART = "video.restart"
 private const val VIDEO_SETTINGS_PAGE = "Video"
+private val PANEL_MAX_WIDTH = 360.dp
 
 internal fun elapsedText(seconds: Int): String = when {
     seconds < 60 -> "$seconds s"
@@ -45,21 +55,44 @@ internal fun unavailableVideoState(video: VideoReading): NoVideoState? = when {
     else -> NoVideoState(video.summary, "", NoVideoAction.Settings)
 }
 
+internal data class NoVideoButton(val label: String, val onClick: () -> Unit)
+
+private val openVideoSettings = NoVideoButton("Video settings") { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }
+
+@Composable
+private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoButton? = null, secondary: NoVideoButton? = null) {
+    Column(
+        Modifier.widthIn(max = PANEL_MAX_WIDTH).padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(painterResource(R.drawable.ic_videocam_off), contentDescription = null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
+        if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        if (primary != null || secondary != null) {
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                primary?.let { FilledTonalButton(onClick = it.onClick) { Text(it.label) } }
+                secondary?.let { TextButton(onClick = it.onClick) { Text(it.label) } }
+            }
+        }
+    }
+}
+
 @Composable
 internal fun NoVideoPanel(video: VideoReading?) {
     val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
     val armed = remember(flyJson) { flyState(flyJson)?.armed == true }
     val unavailable = video?.let(::unavailableVideoState)?.let { if (armed) it.copy(detail = "", action = NoVideoAction.None) else it }
     if (unavailable != null) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(unavailable.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (unavailable.detail.isNotBlank()) Text(unavailable.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (unavailable.action != NoVideoAction.None) {
-                OutlinedButton(onClick = { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }) {
-                    Text(if (unavailable.action == NoVideoAction.SetUp) "Set up video" else "Video settings")
-                }
-            }
-        }
+        NoVideoLayout(
+            title = unavailable.title,
+            detail = unavailable.detail,
+            primary = when (unavailable.action) {
+                NoVideoAction.None -> null
+                NoVideoAction.SetUp -> openVideoSettings.copy(label = "Set up video")
+                NoVideoAction.Settings -> openVideoSettings
+            },
+        )
         return
     }
     NoVideoStreamPanel(video)
@@ -76,29 +109,18 @@ private fun NoVideoStreamPanel(video: VideoReading?) {
         }
     }
     val prolonged = video != null && video.streamEnabled && seconds >= PROLONGED_SECONDS
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = when {
-                video == null -> "No video"
-                !video.streamEnabled -> "Video off"
-                prolonged -> "No video signal"
-                else -> activeCameraStatus(video) ?: video.summary
+    when {
+        video == null -> NoVideoLayout("No video")
+        !video.streamEnabled -> NoVideoLayout("Video off", primary = openVideoSettings)
+        prolonged -> NoVideoLayout(
+            title = "No video signal",
+            detail = noVideoDetail(video, seconds),
+            primary = NoVideoButton("Retry") {
+                seconds = 0
+                offMainDetached { Qgc.invoke(VIDEO_RESTART) }
             },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            secondary = openVideoSettings,
         )
-        if (video != null && !video.streamEnabled) {
-            OutlinedButton(onClick = { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }) { Text("Video settings") }
-        }
-        if (prolonged && video != null) {
-            Text(noVideoDetail(video, seconds), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = {
-                    seconds = 0
-                    offMainDetached { Qgc.invoke(VIDEO_RESTART) }
-                }) { Text("Retry") }
-                OutlinedButton(onClick = { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }) { Text("Video settings") }
-            }
-        }
+        else -> NoVideoLayout(activeCameraStatus(video) ?: video.summary)
     }
 }

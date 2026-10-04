@@ -62,6 +62,11 @@ private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this 
 }
 
 @Composable
+private fun noVideoChrome(underFlyChrome: Boolean): Modifier = with(LocalDensity.current) {
+    if (underFlyChrome) Modifier.padding(top = FlyChrome.topPx.toDp(), bottom = FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3) else Modifier
+}
+
+@Composable
 fun VideoSurface(
     modifier: Modifier = Modifier,
     expanded: Boolean = false,
@@ -76,10 +81,7 @@ fun VideoSurface(
     if (video?.available == false) {
         if (!expanded || !explainsMissingSource) return
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
-            val chrome = with(LocalDensity.current) {
-                if (expanded && !fullScreen) Modifier.padding(top = FlyChrome.topPx.toDp(), bottom = FlyChrome.bottomPx.toDp(), end = MAP_PIP_SIZE + AircastSpace.s3) else Modifier
-            }
-            Box(chrome, contentAlignment = Alignment.Center) { NoVideoPanel(video) }
+            Box(noVideoChrome(expanded && !fullScreen), contentAlignment = Alignment.Center) { NoVideoPanel(video) }
         }
         return
     }
@@ -139,12 +141,7 @@ fun VideoSurface(
                 Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
-                val chrome = with(LocalDensity.current) {
-                    if (expanded && !fullScreen) Modifier.padding(top = FlyChrome.topPx.toDp(), bottom = FlyChrome.bottomPx.toDp(), end = MAP_PIP_SIZE + AircastSpace.s3) else Modifier
-                }
-                Box(chrome, contentAlignment = Alignment.Center) {
-                    NoVideoPanel(video)
-                }
+                Box(noVideoChrome(expanded && !fullScreen), contentAlignment = Alignment.Center) { NoVideoPanel(video) }
             }
         }
 
