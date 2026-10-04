@@ -3,6 +3,7 @@ name: Aircast Release
 
 permissions:
   contents: write
+  id-token: write
 
 on:
   push:
@@ -63,7 +64,6 @@ jobs:
       run:
         shell: bash
     env:
-      HAS_PLAYSTORE_SECRET: ${{ secrets.GOOGLE_SERVICE_ACCOUNT != '' }}
       HAS_RELEASE_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
       QT_ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/deploy/android/android_release.keystore
       QT_ANDROID_KEYSTORE_ALIAS: QGCAndroidKeyStore
@@ -200,13 +200,23 @@ jobs:
           SHORT: ${{ needs.setup.outputs.short_version }}
         run: cp android/app/build/outputs/bundle/coreRelease/app-core-release.aab "out/AircastAndroidCore-${SHORT}.aab"
 
+      - name: Authenticate to Google Play
+        id: play_auth
+        if: ${{ env.HAS_RELEASE_KEYSTORE == 'true' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/334352171308/locations/global/workloadIdentityPools/github/providers/github
+          service_account: play-publisher@aircast-439915.iam.gserviceaccount.com
+          create_credentials_file: true
+
       - name: Publish the Rust core head to the Play beta track
-        if: ${{ env.HAS_PLAYSTORE_SECRET == 'true' && env.HAS_RELEASE_KEYSTORE == 'true' }}
+        if: ${{ steps.play_auth.outcome == 'success' }}
+        continue-on-error: true
         uses: ./.github/actions/playstore
         with:
           package_name: one.aircast.app.core
           artifact: out/AircastAndroidCore-${{ needs.setup.outputs.short_version }}.aab
-          service_account_json: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          service_account_json_file: ${{ steps.play_auth.outputs.credentials_file_path }}
           track: beta
           status: completed
 

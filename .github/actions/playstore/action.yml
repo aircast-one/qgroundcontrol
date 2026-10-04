@@ -9,8 +9,13 @@ inputs:
     description: Build File To Upload
     required: true
   service_account_json:
-    description: The service account json private key file to authorize the upload request
-    required: true
+    description: The service account json private key to authorize the upload request
+    required: false
+    default: ""
+  service_account_json_file:
+    description: Path to a credentials file (e.g. from google-github-actions/auth workload identity) to authorize the upload request
+    required: false
+    default: ""
   track:
     description: Play Store track to release on (production, beta, alpha, internal)
     required: false
@@ -34,6 +39,7 @@ runs:
       uses: r0adkll/upload-google-play@v1
       with:
         serviceAccountJsonPlainText: ${{ inputs.service_account_json }}
+        serviceAccountJson: ${{ inputs.service_account_json_file }}
         packageName: ${{ inputs.package_name }}
         releaseFiles: ${{ inputs.artifact }}
         track: ${{ inputs.track }}
