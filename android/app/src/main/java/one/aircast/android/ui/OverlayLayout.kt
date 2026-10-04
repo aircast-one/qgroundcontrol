@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -151,6 +152,42 @@ internal fun clampedDrag(left: Float, top: Float, right: Float, bottom: Float, w
     dx.coerceIn(-left, (width - right).coerceAtLeast(-left)) to dy.coerceIn(-top, (height - bottom).coerceAtLeast(-top))
 
 @Composable
+internal fun LayoutDragArea(key: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val density = LocalDensity.current.density
+    var bounds by remember { mutableStateOf(Rect.Zero) }
+    var root by remember { mutableStateOf(Size.Zero) }
+    Box(
+        modifier
+            .onGloballyPositioned {
+                bounds = it.boundsInRoot()
+                root = it.findRootCoordinates().size.toSize()
+            }
+            .pointerInput(key) {
+                detectDragGestures(onDragEnd = { saveOffset(context, key) }) { change, drag ->
+                    change.consume()
+                    val (dx, dy) = clampedDrag(bounds.left, bounds.top, bounds.right, bounds.bottom, root.width, root.height, drag.x, drag.y)
+                    val current = OverlayLayout.offsets[key] ?: (0f to 0f)
+                    OverlayLayout.offsets += key to (current.first + dx / density to current.second + dy / density)
+                }
+            },
+    )
+}
+
+@Composable
+internal fun Modifier.layoutPlaced(key: String): Modifier {
+    val moved = OverlayLayout.offsets[key] ?: (0f to 0f)
+    val angle = if (OverlayLayout.editing) jiggleAngle(key) else 0f
+    return offset(moved.first.dp, moved.second.dp).graphicsLayer { rotationZ = angle }
+}
+
+@Composable
+internal fun LayoutPipEditor(key: String, shape: androidx.compose.ui.graphics.Shape, modifier: Modifier = Modifier) {
+    if (!OverlayLayout.editing) return
+    LayoutDragArea(key, modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape))
+}
+
+@Composable
 internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolean = true, content: @Composable () -> Unit) {
     val context = LocalContext.current
     LaunchedEffect(Unit) {
@@ -167,34 +204,15 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
         return
     }
     val angle = jiggleAngle(key)
-    val density = LocalDensity.current.density
     var shown by remember { mutableStateOf(false) }
-    var bounds by remember { mutableStateOf(Rect.Zero) }
-    var root by remember { mutableStateOf(Size.Zero) }
-    Box(
-        placed
-            .onGloballyPositioned {
-                bounds = it.boundsInRoot()
-                root = it.findRootCoordinates().size.toSize()
-            }
-            .graphicsLayer { rotationZ = if (shown) angle else 0f },
-    ) {
+    Box(placed.graphicsLayer { rotationZ = if (shown) angle else 0f }) {
         Box(
             Modifier
                 .onSizeChanged { shown = it.width > 0 && it.height > 0 }
                 .then(if (shown) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium) else Modifier)
                 .alpha(if (hidden) HIDDEN_ALPHA else 1f),
         ) { content() }
-        if (shown && movable) Box(
-            Modifier.matchParentSize().pointerInput(key) {
-                detectDragGestures(onDragEnd = { saveOffset(context, key) }) { change, drag ->
-                    change.consume()
-                    val (dx, dy) = clampedDrag(bounds.left, bounds.top, bounds.right, bounds.bottom, root.width, root.height, drag.x, drag.y)
-                    val current = OverlayLayout.offsets[key] ?: (0f to 0f)
-                    OverlayLayout.offsets += key to (current.first + dx / density to current.second + dy / density)
-                }
-            },
-        )
+        if (shown && movable) LayoutDragArea(key, Modifier.matchParentSize())
         if (shown && hideable) Surface(
             onClick = { setHidden(context, key, !hidden) },
             modifier = Modifier.align(Alignment.TopEnd).size(BADGE_SIZE),
@@ -211,6 +229,7 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
 @Composable
 internal fun OverlayEditBar(modifier: Modifier = Modifier) {
     if (!OverlayLayout.editing) return
+    BackHandler { OverlayLayout.editing = false }
     val context = LocalContext.current
     val classView by one.aircast.android.bridge.qgcPath(INSTRUMENTS_VIEW)
     val vehicleClass = instrumentVehicleClass(classView)

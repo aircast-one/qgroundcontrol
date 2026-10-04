@@ -75,6 +75,8 @@ private val STATUS_ROW_HEIGHT = 32.dp
 private val SEGMENT_HEIGHT = 32.dp
 private val SIDE_PANEL_WIDTH = 168.dp
 internal val MAP_PIP_SIZE = 120.dp
+private const val MAP_PIP_KEY = "mapPip"
+private const val VIDEO_PIP_KEY = "videoPip"
 private val VIDEO_PIP_WIDTH = 156.dp
 private val VIDEO_PIP_HEIGHT = 96.dp
 private val PIP_TOGGLE_SIZE = 28.dp
@@ -223,6 +225,7 @@ internal fun FlyScreen(
                             .zIndex(1f)
                             .align(Alignment.BottomEnd)
                             .padding(AircastSpace.s3)
+                            .layoutPlaced(MAP_PIP_KEY)
                             .size(MAP_PIP_SIZE)
                             .clip(CircleShape)
                             .border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
@@ -238,6 +241,7 @@ internal fun FlyScreen(
                             .zIndex(1f)
                             .align(Alignment.TopEnd)
                             .then(pipCorner)
+                            .layoutPlaced(VIDEO_PIP_KEY)
                             .size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)
                             .clip(MaterialTheme.shapes.medium)
                     } else {
@@ -253,18 +257,21 @@ internal fun FlyScreen(
                             .zIndex(2f)
                             .align(Alignment.BottomEnd)
                             .padding(AircastSpace.s3)
+                            .layoutPlaced(MAP_PIP_KEY)
                             .size(MAP_PIP_SIZE)
                             .clip(CircleShape)
                             .clickable { onView(FlyView.Map) },
                     )
                 }
-                Box(Modifier.zIndex(3f).align(Alignment.BottomEnd).padding(AircastSpace.s3).size(MAP_PIP_SIZE)) {
+                Box(Modifier.zIndex(3f).align(Alignment.BottomEnd).padding(AircastSpace.s3).layoutPlaced(MAP_PIP_KEY).size(MAP_PIP_SIZE)) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
+                    if (pipExpanded) LayoutPipEditor(MAP_PIP_KEY, CircleShape, Modifier.matchParentSize())
                 }
             }
             if (videoIsPip && hasVideo) {
-                Box(Modifier.zIndex(3f).align(Alignment.TopEnd).then(pipCorner).size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)) {
+                Box(Modifier.zIndex(3f).align(Alignment.TopEnd).then(pipCorner).layoutPlaced(VIDEO_PIP_KEY).size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.TopEnd))
+                    if (pipExpanded) LayoutPipEditor(VIDEO_PIP_KEY, MaterialTheme.shapes.medium, Modifier.matchParentSize())
                 }
             }
             if (view == FlyView.Map) {
