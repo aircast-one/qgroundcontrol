@@ -225,6 +225,9 @@ private fun SetupNotice(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+internal fun reportsOwnLookups(prerequisite: String?, page: SetupPage?): Boolean =
+    prerequisite == null && page?.parameterSections != true && page?.screen != NOT_SUPPORTED_SCREEN
+
 @Composable
 fun SetupScreen(modifier: Modifier = Modifier) {
     val setupJson by qgcPath(SETUP)
@@ -329,6 +332,10 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             val nativePage = setupPage(setupJson, open.name)
             val blocked = open.blockedReason
             val first = open.prerequisite
+            val reportsLookups = reportsOwnLookups(first, nativePage)
+            LaunchedEffect(open.name, reportsLookups) {
+                if (reportsLookups) withContext(Dispatchers.Default) { Qgc.invoke(SETUP_PAGE_OPENED, open.name) }
+            }
             val page: @Composable (Modifier) -> Unit = { area -> Column(area) { when {
                 first != null -> androidx.compose.foundation.layout.Column(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                     val firstComponent = setupComponents(setupJson).firstOrNull { it.name == first }

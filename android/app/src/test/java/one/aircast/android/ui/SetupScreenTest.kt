@@ -15,6 +15,14 @@ class SetupScreenTest {
     }
 
     @Test
+    fun `only pages that are not a parameter form ask the core to report their lookups`() {
+        assertEquals(true, reportsOwnLookups(null, SetupPage("Sensors", parameterSections = false)))
+        assertEquals(false, reportsOwnLookups(null, SetupPage("Heli", parameterSections = true)))
+        assertEquals(false, reportsOwnLookups("Radio", SetupPage("Flight Modes", parameterSections = false)))
+        assertEquals(false, reportsOwnLookups(null, SetupPage("Flight Safety", parameterSections = false, screen = NOT_SUPPORTED_SCREEN)))
+    }
+
+    @Test
     fun `parameters read ready only on a connected vehicle that says so`() {
         assertEquals(true, parametersReady(JSONObject("""{"connected":true,"parametersReady":true}""")))
         assertEquals(false, parametersReady(JSONObject("""{"connected":false,"parametersReady":true}""")))

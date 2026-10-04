@@ -184,15 +184,23 @@ fn control(backend: &dyn Backend, name: &str) -> Option<Value> {
     (fact.get("kind").and_then(Value::as_str) == Some("fact")).then(|| decode(&fact, &path))
 }
 
-pub fn tuning_view(backend: &dyn Backend, _args: &[String]) -> Value {
+fn vehicle_pages(backend: &dyn Backend) -> &'static [Page] {
     let vehicle = object(&backend.get_fields("vehicle", "vehicleTypeString,px4Firmware,apmFirmware,multiRotor"));
     let named = vehicle.get("vehicleTypeString").and_then(Value::as_str).unwrap_or("");
     let vehicle_type = (0..=u8::MAX).find(|t| !named.is_empty() && crate::vehiclefacade::mav_type_text(*t) == named).map_or(0, i64::from);
-    let pages: &[Page] = match (crate::read::flag(&vehicle, "px4Firmware"), crate::read::flag(&vehicle, "apmFirmware") && crate::read::flag(&vehicle, "multiRotor")) {
+    match (crate::read::flag(&vehicle, "px4Firmware"), crate::read::flag(&vehicle, "apmFirmware") && crate::read::flag(&vehicle, "multiRotor")) {
         (true, _) => container_for(vehicle_type).map_or(&[], parsed),
         (false, true) => APM_ADVANCED_PAGES.as_slice(),
         _ => &[],
-    };
+    }
+}
+
+pub fn opening_tab_params(backend: &dyn Backend) -> Vec<String> {
+    vehicle_pages(backend).first().map(|page| page.axes.iter().flat_map(|axis| axis.params.iter().map(|p| p.param.clone())).collect()).unwrap_or_default()
+}
+
+pub fn tuning_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let pages = vehicle_pages(backend);
     let tabs: Vec<Value> = pages
         .iter()
         .map(|page| {

@@ -303,8 +303,7 @@ impl<'a> Scope<'a> {
 
     fn fact(&self, name: &str) -> Option<Value> {
         let fact = object(&self.backend.get(&parameter_path(name)));
-        let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
-        present.then_some(fact)
+        present(&fact).then_some(fact)
     }
 
     fn exists(&self, name: &str) -> bool {
@@ -508,9 +507,9 @@ thread_local! {
     static UNMET: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
 }
 
-const MISSING_PARAM_COMPONENT: u8 = 1;
+const MISSING_PARAM_COMPONENT: i64 = 1;
 
-fn missing_parameters(backend: &dyn Backend, pages: &[&str], px4: bool) -> Vec<String> {
+fn missing_parameters(backend: &dyn Backend, pages: &[&str], px4: bool) -> Vec<(i64, String)> {
     let configs: Vec<Value> = pages.iter().filter_map(|page| config(backend, page, px4)).collect();
     let required: Vec<String> = configs
         .iter()
@@ -531,11 +530,75 @@ fn missing_parameters(backend: &dyn Backend, pages: &[&str], px4: bool) -> Vec<S
         page(backend, p, px4);
     });
     let evaluated = UNMET.take().unwrap_or_default();
-    required.into_iter().chain(evaluated).fold(vec![], |seen, name| if seen.contains(&name) { seen } else { seen.into_iter().chain(std::iter::once(name)).collect() })
+    let looked_up = pages.iter().flat_map(|p| reported_lookups(backend, p, px4)).filter(|(component, name)| !parameter_exists(backend, *component, name));
+    required
+        .into_iter()
+        .chain(evaluated)
+        .map(|name| (DEFAULT_COMPONENT, name))
+        .chain(looked_up)
+        .fold(vec![], |seen, missing| if seen.contains(&missing) { seen } else { seen.into_iter().chain(std::iter::once(missing)).collect() })
 }
 
-fn missing_parameters_text(names: &[String]) -> String {
-    let listed = names.iter().map(|name| format!("{MISSING_PARAM_COMPONENT}:{name}")).collect::<Vec<_>>().join(", ");
+const DEFAULT_COMPONENT: i64 = -1;
+
+const APM_SENSOR_LOOKUPS: &[&str] = &["AHRS_ORIENTATION", "COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3", "COMPASS_OFS_X", "COMPASS_OFS_Y", "COMPASS_OFS_Z", "COMPASS_OFS2_X", "COMPASS_OFS2_Y", "COMPASS_OFS2_Z", "COMPASS_OFS3_X", "COMPASS_OFS3_Y", "COMPASS_OFS3_Z", "COMPASS_DEC"];
+const APM_SENSOR_GUARDED: &[(&str, &[&str])] = &[("COMPASS_PRIO1_ID", &["COMPASS_PRIO2_ID", "COMPASS_PRIO3_ID"]), ("COMPASS_ORIENT2", &["COMPASS_ORIENT"]), ("BARO1_DEVID", &["BARO2_DEVID", "BARO3_DEVID"])];
+const PX4_SENSOR_LOOKUPS: &[&str] = &["CAL_MAG0_ID", "CAL_MAG1_ID", "CAL_MAG2_ID", "CAL_MAG0_ROT", "CAL_MAG1_ROT", "CAL_MAG2_ROT", "CAL_GYRO0_ID", "CAL_ACC0_ID", "SENS_BOARD_ROT", "SENS_DPRES_OFF"];
+const PX4_RADIO_LOOKUPS: &[&str] = &["RC_MAP_AUX1", "RC_MAP_AUX2", "RC_MAP_PARAM1", "RC_MAP_PARAM2", "RC_MAP_PARAM3", "RC_MAP_PAY_SW"];
+const PX4_MODE_LOOKUPS: &[&str] = &["COM_FLTMODE1", "COM_FLTMODE2", "COM_FLTMODE3", "COM_FLTMODE4", "COM_FLTMODE5", "COM_FLTMODE6", "RC_MAP_FLTMODE"];
+const PX4_SWITCH_LOOKUPS: &[(&str, &str)] = &[("RC_MAP_ARM_SW", "RC_ARMSWITCH_TH"), ("RC_MAP_GEAR_SW", "RC_GEAR_TH"), ("RC_MAP_KILL_SW", "RC_KILLSWITCH_TH"), ("RC_MAP_LOITER_SW", "RC_LOITER_TH"), ("RC_MAP_OFFB_SW", "RC_OFFB_TH"), ("RC_MAP_RETURN_SW", "RC_RETURN_TH")];
+const ESP_LOOKUPS: &[&str] = &["UART_BAUDRATE", "SW_VER", "WIFI_SSID1", "WIFI_SSID2", "WIFI_SSID3", "WIFI_SSID4", "WIFI_PASSWORD1", "WIFI_PASSWORD2", "WIFI_PASSWORD3", "WIFI_PASSWORD4", "WIFI_CHANNEL", "WIFI_UDP_HPORT", "WIFI_UDP_CPORT"];
+const SYSLINK_LOOKUPS: &[&str] = &["SLNK_RADIO_CHAN", "SLNK_RADIO_RATE", "SLNK_RADIO_ADDR1", "SLNK_RADIO_ADDR2"];
+
+fn present(fact: &Value) -> bool {
+    fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty())
+}
+
+fn parameter_exists(backend: &dyn Backend, component: i64, name: &str) -> bool {
+    present(&object(&backend.get(&format!("vehicle.parameterManager.getParameter({component},{name})"))))
+}
+
+fn at<S: Into<String>>(component: i64, names: impl IntoIterator<Item = S>) -> Vec<(i64, String)> {
+    names.into_iter().map(|name| (component, name.into())).collect()
+}
+
+fn reported_lookups(backend: &dyn Backend, page: &str, px4: bool) -> Vec<(i64, String)> {
+    let exists = |name: &str| parameter_exists(backend, DEFAULT_COMPONENT, name);
+    let vehicle = object(&backend.get_fields("vehicle", "sub,multiRotor,vtol,fixedWing,motorCount"));
+    match (page, px4) {
+        ("Heli", false) => at(DEFAULT_COMPONENT, crate::setup::sections_for("Heli", false).unwrap_or_default().iter().flat_map(|s| s.parameters.iter().copied()).filter(|p| !p.starts_with("label:"))),
+        ("Flight Modes", false) => {
+            let prefix = if exists("MODE1") { "MODE" } else { "FLTMODE" };
+            let options = if exists("CH7_OPT") { 7..=12 } else { 6..=16 };
+            at(DEFAULT_COMPONENT, (1..=6).map(|slot| format!("{prefix}{slot}")).chain(options.map(|channel| format!("RC{channel}_OPTION"))))
+        }
+        ("Flight Modes", true) => {
+            let switches = PX4_SWITCH_LOOKUPS.iter().copied().chain(flag(&vehicle, "vtol").then_some(("RC_MAP_TRANS_SW", "RC_TRANS_TH"))).chain(flag(&vehicle, "fixedWing").then_some(("RC_MAP_FLAPS", "")));
+            at(DEFAULT_COMPONENT, PX4_MODE_LOOKUPS.iter().copied().chain(switches.flat_map(|(switch, threshold)| std::iter::once(switch).chain(Some(threshold).filter(|t| !t.is_empty())))))
+        }
+        ("Sensors", false) => at(DEFAULT_COMPONENT, APM_SENSOR_LOOKUPS.iter().chain(APM_SENSOR_GUARDED.iter().filter(|(guard, _)| exists(guard)).flat_map(|(_, names)| names.iter())).copied()),
+        ("Sensors", true) => at(DEFAULT_COMPONENT, PX4_SENSOR_LOOKUPS.iter().copied()),
+        ("Radio", true) => at(DEFAULT_COMPONENT, (!flag(&vehicle, "multiRotor")).then_some("RC_MAP_FLAPS").into_iter().chain(PX4_RADIO_LOOKUPS.iter().copied())),
+        ("Frame", false) => at(DEFAULT_COMPONENT, [if flag(&vehicle, "sub") { "FRAME_CONFIG" } else { "FRAME_CLASS" }]),
+        ("Frame", true) => at(DEFAULT_COMPONENT, ["SYS_AUTOSTART", "SYS_AUTOCONFIG"]),
+        ("Motors", false) if flag(&vehicle, "sub") => {
+            let motors = crate::apmsubmotors::slider_count(vehicle.get("motorCount").and_then(Value::as_i64));
+            at(DEFAULT_COMPONENT, (1..=motors).map(|motor| format!("MOT_{motor}_DIRECTION")).chain(std::iter::once("FRAME_CONFIG".to_string())))
+        }
+        ("Follow Me", false) => at(DEFAULT_COMPONENT, ["FOLL_ENABLE"]),
+        ("WiFi Bridge", _) => at(i64::from(crate::espbridge::COMPONENT), ESP_LOOKUPS.iter().copied()),
+        ("Syslink", _) => at(crate::read::integer(&object(&backend.get("vehicle.id")), "value").unwrap_or(DEFAULT_COMPONENT), SYSLINK_LOOKUPS.iter().copied()),
+        ("Tuning", true) | ("Tuning - Advanced", false) => at(DEFAULT_COMPONENT, crate::px4tuning::opening_tab_params(backend)),
+        _ => vec![],
+    }
+}
+
+fn missing_parameters_text(missing: &[(i64, String)]) -> String {
+    let listed = missing
+        .iter()
+        .map(|(component, name)| format!("{}:{name}", if *component == DEFAULT_COMPONENT { MISSING_PARAM_COMPONENT } else { *component }))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!("Parameters are missing from firmware. You may be running a version of firmware which is not fully supported or your firmware has a bug in it. Missing params: {listed}")
 }
 
@@ -1373,18 +1436,22 @@ mod tests {
         assert_eq!(rows()[0]["display"], "Off");
     }
 
+    fn names(missing: &[(i64, String)]) -> Vec<String> {
+        missing.iter().map(|(_, name)| name.clone()).collect()
+    }
+
     #[test]
     fn opening_a_page_reports_its_required_and_looked_up_parameters_that_the_firmware_lacks() {
         let mut fake = Fake::new(&[("GF_MAX_HOR_DIST", 0.0), ("COM_DISARM_LAND", 2.0), ("RTL_LAND_DELAY", 0.0)]);
         fake.px4 = true;
-        let missing = missing_parameters(&fake, &["Safety"], true);
+        let missing = names(&missing_parameters(&fake, &["Safety"], true));
         assert_eq!(missing[..2], ["CP_DIST".to_string(), "GF_MAX_VER_DIST".to_string()], "required params first, in config order: {missing:?}");
         assert_eq!(missing.iter().filter(|n| *n == "CP_DIST").count(), 1, "each name once");
         let present = Fake::new(&[("CP_DIST", 1.0), ("GF_MAX_HOR_DIST", 0.0), ("GF_MAX_VER_DIST", 0.0), ("COM_DISARM_LAND", 2.0), ("RTL_LAND_DELAY", 0.0)]);
-        assert!(missing_parameters(&present, &["Safety"], true).iter().all(|n| !["CP_DIST", "GF_MAX_VER_DIST"].contains(&n.as_str())));
+        assert!(names(&missing_parameters(&present, &["Safety"], true)).iter().all(|n| !["CP_DIST", "GF_MAX_VER_DIST"].contains(&n.as_str())));
         let mut bare = Fake::new(&[]);
         bare.px4 = true;
-        let battery = missing_parameters(&bare, &[BATTERY_SETTINGS], true);
+        let battery = names(&missing_parameters(&bare, &[BATTERY_SETTINGS], true));
         assert!(["COM_LOW_BAT_ACT", "BAT_LOW_THR", "BAT_CRIT_THR", "BAT_EMERGEN_THR"].iter().all(|n| battery.contains(&n.to_string())), "PX4BatteryIndicator looks every one up unguarded: {battery:?}");
         let config = json!({});
         let scope = scope_for(&fake, &config);
@@ -1392,9 +1459,60 @@ mod tests {
         scope.eval_text("controller.getParameterFact(-1, \"NOPE\", false) || controller.getParameterFact(-1, \"GONE\")");
         assert_eq!(UNMET.take(), Some(vec!["GONE".to_string()]), "reportMissing false stays quiet");
         assert_eq!(
-            missing_parameters_text(&["CP_DIST".into(), "GF_MAX_VER_DIST".into()]),
+            missing_parameters_text(&[(-1, "CP_DIST".into()), (-1, "GF_MAX_VER_DIST".into())]),
             "Parameters are missing from firmware. You may be running a version of firmware which is not fully supported or your firmware has a bug in it. Missing params: 1:CP_DIST, 1:GF_MAX_VER_DIST"
         );
+    }
+
+    struct Shaped {
+        vehicle: Value,
+        params: &'static [&'static str],
+    }
+
+    impl Backend for Shaped {
+        fn get(&self, path: &str) -> String {
+            let name = path.strip_prefix("vehicle.parameterManager.getParameter(-1,").and_then(|p| p.strip_suffix(')'));
+            match name.filter(|n| self.params.contains(n)) {
+                Some(name) => json!({ "kind": "fact", "name": name }).to_string(),
+                None => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn get_fields(&self, _path: &str, _fields: &str) -> String { self.vehicle.to_string() }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn looked_up(vehicle: Value, params: &'static [&'static str], page: &str, px4: bool) -> Vec<String> {
+        reported_lookups(&Shaped { vehicle, params }, page, px4).into_iter().map(|(_, name)| name).collect()
+    }
+
+    #[test]
+    fn setup_page_lookups_follow_each_qml_page_and_its_controller() {
+        let copter = json!({ "multiRotor": true });
+        let modes = looked_up(json!({ "vtol": true, "fixedWing": true }), &[], "Flight Modes", true);
+        assert!(["RC_MAP_FLTMODE", "RC_MAP_TRANS_SW", "RC_TRANS_TH", "RC_MAP_FLAPS", "RC_ARMSWITCH_TH"].iter().all(|n| modes.contains(&n.to_string())), "PX4FlightModes looks up every switch and its non-empty threshold: {modes:?}");
+        assert!(!looked_up(copter.clone(), &[], "Flight Modes", true).contains(&"RC_MAP_FLAPS".to_string()));
+        let rover = looked_up(copter.clone(), &["MODE1"], "Flight Modes", false);
+        assert_eq!((rover.first().map(String::as_str), rover.last().map(String::as_str)), (Some("MODE1"), Some("RC16_OPTION")), "rover prefix from MODE1, options RC6..16");
+        assert_eq!(looked_up(copter.clone(), &["CH7_OPT"], "Flight Modes", false).last().map(String::as_str), Some("RC12_OPTION"));
+        let sensors = looked_up(copter.clone(), &["COMPASS_ORIENT2"], "Sensors", false);
+        assert!(sensors.contains(&"COMPASS_ORIENT".to_string()) && !sensors.contains(&"COMPASS_PRIO2_ID".to_string()), "APMSensorParams guards ORIENT on ORIENT2 and PRIO2/3 on PRIO1: {sensors:?}");
+        assert_eq!(looked_up(json!({ "sub": true }), &[], "Motors", false).len(), 9, "8 sliders without a motor count, plus FRAME_CONFIG");
+        assert!(looked_up(copter.clone(), &[], "Motors", false).is_empty(), "APMMotorComponent looks nothing up");
+        assert_eq!(looked_up(json!({ "multiRotor": false }), &[], "Radio", true).first().map(String::as_str), Some("RC_MAP_FLAPS"));
+        assert!(looked_up(copter, &[], "Radio", false).is_empty(), "the ArduPilot radio page has no switch rows");
+    }
+
+    #[test]
+    fn hand_written_setup_pages_report_their_unguarded_lookups_through_the_same_check() {
+        let heli = Fake::new(&[("H_SV_MAN", 0.0)]);
+        let missing = names(&missing_parameters(&heli, &["Heli"], false));
+        assert!(missing.contains(&"SERVO1_FUNCTION".to_string()) && missing.contains(&"H_COLYAW".to_string()), "APMHeliComponent looks up every row unguarded: {missing:?}");
+        assert!(!missing.contains(&"H_SV_MAN".to_string()) && missing.iter().all(|n| !n.starts_with("label:")));
+        let esp = missing_parameters(&Fake::new(&[]), &["WiFi Bridge"], false);
+        assert_eq!(missing_parameters_text(&esp[..1]), "Parameters are missing from firmware. You may be running a version of firmware which is not fully supported or your firmware has a bug in it. Missing params: 240:UART_BAUDRATE", "ESP8266ComponentController asks component 240");
+        assert!(missing_parameters(&Fake::new(&[]), &["Logging"], false).is_empty(), "a page with no unguarded lookups reports nothing");
     }
 
     #[test]
