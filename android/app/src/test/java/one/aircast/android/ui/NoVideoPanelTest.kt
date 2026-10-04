@@ -19,4 +19,17 @@ class NoVideoPanelTest {
         assertEquals("Connection failed, retrying", activeCameraStatus(failing))
         assertEquals(null, activeCameraStatus(video))
     }
+
+    private fun unavailable(sourceChosen: Boolean, configured: Boolean) = VideoReading(
+        available = false, decoding = false, sourceSize = null, summary = "No stream URL is set.", activeSource = 0, multipleSources = false,
+        cameras = listOf(VideoCamera(0, "Camera 1", "", connecting = false, recording = false, configured = configured)),
+        sourceChosen = sourceChosen,
+    )
+
+    @Test
+    fun anUnavailableStreamSaysWhatIsMissingAndWhereToFixIt() {
+        org.junit.Assert.assertEquals(NoVideoAction.SetUp, unavailableVideoState(unavailable(sourceChosen = false, configured = false))?.action)
+        org.junit.Assert.assertEquals("No stream address", unavailableVideoState(unavailable(sourceChosen = true, configured = false))?.title)
+        org.junit.Assert.assertEquals(null, unavailableVideoState(unavailable(sourceChosen = true, configured = true).copy(available = true)))
+    }
 }

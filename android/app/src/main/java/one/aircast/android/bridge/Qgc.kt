@@ -57,6 +57,8 @@ data class Fact(
     val inverted: Boolean = false,
     val rawChoice: Boolean = false,
     val valueDetails: String = "",
+    val problem: String = "",
+    val enumGroups: List<String> = emptyList(),
 ) {
     val title: String = description.ifBlank { name }.trimEnd(':', ' ')
     val heading: String = shortLabel.trimEnd(':', ' ').ifBlank { title }

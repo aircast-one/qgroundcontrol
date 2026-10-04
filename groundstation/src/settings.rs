@@ -525,6 +525,25 @@ fn section_applies(group: &str, backend: Option<&dyn Backend>) -> bool {
 }
 
 pub const AUTO_CONFIGURED: &str = "Configured automatically over MAVLink.";
+pub const STREAM_ADDRESS_NEEDED: &str = "Enter this address to show video.";
+
+pub fn grouped_video_sources(options: Option<&Value>) -> Value {
+    let listed = options.and_then(Value::as_array).cloned().unwrap_or_default();
+    json!(listed.into_iter().map(|mut option| {
+        let raw = option.get("raw").and_then(Value::as_str).unwrap_or_default().to_string();
+        option["group"] = json!(match () {
+            _ if !crate::video::source_chosen(&raw) => "",
+            _ if crate::settingsstore::URL_SOURCES.iter().any(|(served, _)| *served == raw) => "Video streams",
+            _ => "Vehicle and radio presets",
+        });
+        option
+    }).collect::<Vec<_>>())
+}
+
+pub fn stream_address_problem(name: &str, source: &str, value: &str) -> Option<&'static str> {
+    let url_fact = crate::settingsstore::URL_SOURCES.iter().find(|(served, _)| *served == source).map(|(_, fact)| *fact);
+    (url_fact == Some(name) && value.trim().is_empty()).then_some(STREAM_ADDRESS_NEEDED)
+}
 const PRIMARY_CAMERA: [&str; 6] = ["videoSource", "primaryCameraName", "udpUrl", "rtspUrl", "tcpUrl", "whepUrl"];
 
 fn auto_locked(control: Value) -> Value {
@@ -541,6 +560,7 @@ pub fn video_row_shown(name: &str, source: &str, stream_source: bool, auto_confi
     match name {
         "udpUrl" | "rtspUrl" | "tcpUrl" | "whepUrl" => url_fact == Some(name),
         "forceVideoDecoder" => stream_source,
+        "streamEnabled" => crate::video::source_chosen(source),
         _ if STREAM_ONLY.contains(&name) => stream_source && !auto_configured,
         _ => true,
     }
@@ -597,7 +617,14 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .map(|f| with_choices(backend, f))
         .map(|f| decode(&f, &format!("{path}.{}", f.get("name").and_then(Value::as_str).unwrap_or(""))))
         .map(|mut control| {
-            control["keywords"] = json!(fact_keywords(group, control.get("name").and_then(Value::as_str).unwrap_or_default()));
+            let named = control.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+            control["keywords"] = json!(fact_keywords(group, &named));
+            if named == "videoSource" {
+                control["options"] = grouped_video_sources(control.get("options"));
+            }
+            if let Some(problem) = video.as_ref().and_then(|(source, _, _)| stream_address_problem(&named, source, control.get("valueString").and_then(Value::as_str).unwrap_or_default())) {
+                control["problem"] = json!(problem);
+            }
             qml_labelled(group, inverted(control))
         })
         .collect();
@@ -1338,4 +1365,22 @@ mod tests {
         let general = PAGES.iter().find(|p| !p.shows_about).map(|p| page_json(p, None)).unwrap();
         assert!(general["helpLinks"].as_array().unwrap().is_empty());
     }
+    #[test]
+    fn an_empty_stream_address_is_flagged_and_stream_enabled_waits_for_a_source() {
+        assert_eq!(stream_address_problem("rtspUrl", "RTSP Video Stream", "  "), Some(STREAM_ADDRESS_NEEDED));
+        assert_eq!(stream_address_problem("rtspUrl", "RTSP Video Stream", "rtsp://10.0.0.1/live"), None);
+        assert_eq!(stream_address_problem("udpUrl", "RTSP Video Stream", ""), None, "only the address the chosen source reads is required");
+        assert!(!video_row_shown("streamEnabled", "Video Stream Disabled", false, false));
+        assert!(!video_row_shown("streamEnabled", "No Video Available", false, false));
+        assert!(video_row_shown("streamEnabled", "RTSP Video Stream", true, false));
+    }
+
+    #[test]
+    fn video_sources_are_grouped_into_streams_and_presets() {
+        let grouped = grouped_video_sources(Some(&json!([{ "raw": "Video Stream Disabled" }, { "raw": "RTSP Video Stream" }, { "raw": "Herelink Hotspot" }])));
+        assert_eq!(grouped[0]["group"], "");
+        assert_eq!(grouped[1]["group"], "Video streams");
+        assert_eq!(grouped[2]["group"], "Vehicle and radio presets");
+    }
+
 }

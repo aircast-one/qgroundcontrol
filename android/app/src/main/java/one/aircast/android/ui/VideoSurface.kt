@@ -68,11 +68,19 @@ fun VideoSurface(
     fullScreen: Boolean = false,
     onClick: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
+    explainsMissingSource: Boolean = true,
 ) {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
 
     if (video?.available == false) {
+        if (!expanded || !explainsMissingSource) return
+        Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
+            val chrome = with(LocalDensity.current) {
+                if (expanded && !fullScreen) Modifier.padding(top = FlyChrome.topPx.toDp(), bottom = FlyChrome.bottomPx.toDp(), end = MAP_PIP_SIZE + AircastSpace.s3) else Modifier
+            }
+            Box(chrome, contentAlignment = Alignment.Center) { NoVideoPanel(video) }
+        }
         return
     }
 

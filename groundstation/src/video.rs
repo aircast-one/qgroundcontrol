@@ -71,6 +71,10 @@ pub(crate) fn slot_flag(backend: &dyn Backend, path: &str, slot: usize) -> bool 
     crate::read::result_flag(&backend.invoke(path, &json!([slot]).to_string()))
 }
 
+pub fn source_chosen(source: &str) -> bool {
+    !source.is_empty() && source != crate::videostate::SOURCE_DISABLED && source != crate::videostate::SOURCE_NO_VIDEO
+}
+
 pub fn video_summary(build_shows_video: bool, available: bool, decoding: bool, recording: bool, connecting: bool, configured: usize) -> &'static str {
     match (build_shows_video, available, decoding, recording, connecting, configured) {
         (false, ..) => "This build cannot show video.",
@@ -174,6 +178,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "configuredCount": configured,
         "summary": video_summary(flag(&video, "gstreamerEnabled"), available, decoding, recording, any_connecting, configured),
         "streamEnabled": setting("streamEnabled").as_bool().unwrap_or(true),
+        "sourceChosen": source_chosen(setting_text("videoSource").as_str()),
         "noVideoText": no_video_text(setting_text("videoSource").as_str(), setting_text("udpUrl").as_str(), setting_text("rtspUrl").as_str(), setting_text("tcpUrl").as_str(), setting_text("whepUrl").as_str()),
         "cameras": cameras,
         "extraSources": extra_sources(backend),

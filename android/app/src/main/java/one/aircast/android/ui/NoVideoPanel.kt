@@ -34,8 +34,37 @@ internal fun activeCameraStatus(video: VideoReading): String? =
 internal fun noVideoDetail(video: VideoReading, seconds: Int): String =
     "${if (video.streaming) "Receiving data \u2014 waiting for video" else video.noVideoText} for ${elapsedText(seconds)}"
 
+internal enum class NoVideoAction { None, SetUp, Settings }
+
+internal data class NoVideoState(val title: String, val detail: String, val action: NoVideoAction)
+
+internal fun unavailableVideoState(video: VideoReading): NoVideoState? = when {
+    video.available -> null
+    !video.sourceChosen -> NoVideoState("No video source", "Choose where the camera stream comes from.", NoVideoAction.SetUp)
+    video.cameras.none { it.configured } -> NoVideoState("No stream address", "Enter the stream URL in Settings \u203a Video.", NoVideoAction.Settings)
+    else -> NoVideoState(video.summary, "", NoVideoAction.Settings)
+}
+
 @Composable
 internal fun NoVideoPanel(video: VideoReading?) {
+    val unavailable = video?.let(::unavailableVideoState)
+    if (unavailable != null) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(unavailable.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (unavailable.detail.isNotBlank()) Text(unavailable.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (unavailable.action != NoVideoAction.None) {
+                OutlinedButton(onClick = { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }) {
+                    Text(if (unavailable.action == NoVideoAction.SetUp) "Set up video" else "Video settings")
+                }
+            }
+        }
+        return
+    }
+    NoVideoStreamPanel(video)
+}
+
+@Composable
+private fun NoVideoStreamPanel(video: VideoReading?) {
     var seconds by remember { mutableIntStateOf(0) }
     LaunchedEffect(video?.streamEnabled, video?.decoding) {
         seconds = 0
@@ -56,6 +85,9 @@ internal fun NoVideoPanel(video: VideoReading?) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (video != null && !video.streamEnabled) {
+            OutlinedButton(onClick = { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }) { Text("Video settings") }
+        }
         if (prolonged && video != null) {
             Text(noVideoDetail(video, seconds), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

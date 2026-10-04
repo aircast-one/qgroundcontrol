@@ -117,6 +117,8 @@ internal fun factFromControl(control: JSONObject): Fact? {
         inverted = control.optBoolean("inverted"),
         rawChoice = control.optBoolean("rawChoice"),
         valueDetails = control.optText("valueDetails"),
+        problem = control.optText("problem"),
+        enumGroups = (0 until (options?.length() ?: 0)).map { options!!.optJSONObject(it).optText("group") },
     )
 }
 

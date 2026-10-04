@@ -512,6 +512,7 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
                     .clip(MaterialTheme.shapes.large)
                     .background(MaterialTheme.colorScheme.surfaceContainerHighest),
                 expanded = true,
+                explainsMissingSource = false,
             )
         }
         SettingsControls(page, sections) { reloads++ }
@@ -901,14 +902,14 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit, label: Str
 
 @Composable
 private fun EnumField(fact: Fact, label: String?, write: (() -> Boolean) -> Unit) {
-    ChoiceField(label, shownEnumLabel(fact), fact.enumStrings.map(::sentenceCase), enabled = fact.enabled) { index ->
+    ChoiceField(label, shownEnumLabel(fact), fact.enumStrings.map(::sentenceCase), enabled = fact.enabled, groups = fact.enumGroups) { index ->
         // qtpaths: settings.appSettings.indoorPalette.enumIndex, vehicle.parameterManager.getParameter(-1,RTL_TYPE).enumIndex
         write { fact.enumValues.getOrNull(index)?.toLongOrNull()?.takeIf { fact.rawChoice }?.let { Qgc.set(fact.path, it) } ?: Qgc.set("${fact.path}.enumIndex", index) }
     }
 }
 
 @Composable
-internal fun ChoiceField(label: String?, value: String, options: List<String>, modifier: Modifier = Modifier, enabled: Boolean = true, onPick: (Int) -> Unit) {
+internal fun ChoiceField(label: String?, value: String, options: List<String>, modifier: Modifier = Modifier, enabled: Boolean = true, groups: List<String> = emptyList(), onPick: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
 
     Box(modifier) {
@@ -925,6 +926,10 @@ internal fun ChoiceField(label: String?, value: String, options: List<String>, m
         Box(Modifier.matchParentSize().clickable(enabled = enabled) { expanded = true })
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEachIndexed { index, option ->
+                groups.getOrNull(index)?.takeIf { it.isNotBlank() && it != groups.getOrNull(index - 1) }?.let { group ->
+                    if (index > 0) androidx.compose.material3.HorizontalDivider()
+                    Text(group, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                }
                 DropdownMenuItem(
                     text = { Text(option) },
                     onClick = {
@@ -1022,7 +1027,7 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRej
             },
             singleLine = factValueLines(fact) == 1,
             maxLines = factValueLines(fact),
-            isError = rejection != null,
+            isError = rejection != null || (fact.problem.isNotBlank() && editing.isNullOrBlank()),
             keyboardOptions = KeyboardOptions(keyboardType = factKeyboard(fact)),
             modifier = Modifier.fillMaxWidth(),
             interactionSource = interaction,
@@ -1052,6 +1057,14 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRej
         rejection?.let {
             Text(
                 text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp),
+            )
+        }
+        if (rejection == null && fact.problem.isNotBlank() && editing.isNullOrBlank()) {
+            Text(
+                text = fact.problem,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(start = 16.dp, top = 4.dp),
