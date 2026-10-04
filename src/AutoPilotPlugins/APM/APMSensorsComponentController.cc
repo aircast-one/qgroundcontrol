@@ -83,8 +83,17 @@ void APMSensorsComponentController::_clearStatusLog()
     emit resetStatusTextArea();
 }
 
+void APMSensorsComponentController::_setCompletedCalibration(int calType)
+{
+    if (_completedCalibration != calType) {
+        _completedCalibration = calType;
+        emit completedCalibrationChanged();
+    }
+}
+
 void APMSensorsComponentController::_startLogCalibration()
 {
+    _setCompletedCalibration(QGCMAVLink::CalibrationNone);
     _clearStatusLog();
     _hideAllCalAreas();
 
@@ -102,6 +111,7 @@ void APMSensorsComponentController::_startLogCalibration()
 
 void APMSensorsComponentController::_startVisualCalibration()
 {
+    _setCompletedCalibration(QGCMAVLink::CalibrationNone);
     _clearStatusLog();
     _setCalibrationInProgress(true);
     _setCancelEnabled(true);
@@ -181,9 +191,11 @@ void APMSensorsComponentController::_stopCalibration(APMSensorsComponentControll
     case StopCalibrationSuccess:
         _setOrientationHelpText(tr("Calibration complete"));
         _clearStatusLog();
+        _setCompletedCalibration(_calTypeInProgress);
         emit calibrationComplete(_calTypeInProgress);
         break;
     case StopCalibrationSuccessShowLog:
+        _setCompletedCalibration(_calTypeInProgress);
         emit calibrationComplete(_calTypeInProgress);
         break;
     case StopCalibrationCancelled:

@@ -205,6 +205,17 @@ fn routines(cal: &Value, connected: bool, busy: bool, classes: Option<&Classes>)
         .collect()
 }
 
+const CALIBRATION_MAG: i64 = 3;
+const CALIBRATION_ACCEL: i64 = 4;
+
+fn completed_dialog(cal: &Value) -> &'static str {
+    match cal.get("completedCalibration").and_then(Value::as_i64) {
+        Some(CALIBRATION_MAG) => "compass",
+        Some(CALIBRATION_ACCEL) => "accelerometer",
+        _ => "",
+    }
+}
+
 pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let cal = object(&backend.get("sensorsCal"));
     let vehicle = object(&backend.get_fields("vehicle", "px4Firmware,multiRotor,rover,sub,fixedWing"));
@@ -236,6 +247,7 @@ pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "progressText": format!("{:.0}%", progress * 100.0),
         "helpText": text(&cal, "orientationHelpText"),
         "statusText": text(&cal, "statusText"),
+        "completed": completed_dialog(&cal),
         "accelNeeded": accel_needed,
         "compassNeeded": compass_needed,
         "needsAttention": needs_attention(accel_needed, compass_needed),
@@ -379,6 +391,16 @@ mod tests {
             json!({ "ok": true, "result": p == "vehicle.parameterManager.parameterExists" && self.1.iter().any(|(n, _)| *n == name) }).to_string()
         }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn only_a_completed_mag_or_accel_calibration_names_a_dialog_like_on_calibration_complete() {
+        let completed = |calibration: Value| calibration_view(&Compasses(json!({ "kind": "object", "completedCalibration": calibration }), Vec::new()), &[])["completed"].clone();
+        assert_eq!(completed(json!(3)), "compass");
+        assert_eq!(completed(json!(4)), "accelerometer");
+        assert_eq!(completed(json!(8)), "", "CompassMot completes without a dialog");
+        assert_eq!(completed(json!(0)), "");
+        assert_eq!(completed(Value::Null), "");
     }
 
     #[test]

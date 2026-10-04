@@ -2378,8 +2378,8 @@ impl Vehicle {
                     self.pending_notices.push((crate::noticeboard::MESSAGE, text.to_string()));
                     Vec::new()
                 }
-                Out::Result { command: sensorcal::CMD_DO_CANCEL_MAG_CAL, failure: Failure::NoResponse, result, .. } => {
-                    let calibration = self.calibrate.on_ack(sensorcal::CMD_DO_CANCEL_MAG_CAL, result, now_ms);
+                Out::Result { command: command @ (sensorcal::CMD_DO_CANCEL_MAG_CAL | sensorcal::CMD_DO_START_MAG_CAL | sensorcal::CMD_FIXED_MAG_CAL_YAW), failure: Failure::NoResponse | Failure::Duplicate, result, .. } => {
+                    let calibration = self.calibrate.on_ack(command, result, now_ms);
                     self.follow_calibration(calibration, now_ms)
                 }
                 Out::Result { command: guidedcmd::CMD_DO_SET_GLOBAL_ORIGIN, result: RESULT_UNSUPPORTED, .. } => match self.estimator_origin.take() {
@@ -6910,6 +6910,22 @@ mod tests {
         let done = MavMessage::COMMAND_LONG(COMMAND_LONG_DATA { command: MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS, param1: 16_777_215.0, ..Default::default() });
         hub.on_frame(origin(4), &apm, &done, 0, 2_300);
         assert_eq!(hub.calibration_snapshot(Some(1))["calibration"]["outcome"], "success");
+    }
+
+    #[test]
+    fn an_apm_compass_start_the_vehicle_never_answers_fails_like_a_refused_one() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let apm = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &apm);
+        hub.calibrate_request(Some(1), &json!({ "action": "start", "type": "compass" }), 2_000).unwrap();
+        let cancel_acked = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_CANCEL_MAG_CAL, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
+        let started = hub.on_frame(origin(4), &apm, &cancel_acked, 0, 2_100);
+        assert!(started.iter().any(|(_, b)| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_START_MAG_CAL)));
+        (1..=4u64).for_each(|step| { hub.tick(2_100 + step * crate::mavcmd::ACK_TIMEOUT_MS + 1); });
+        let calibration = hub.calibration_snapshot(Some(1))["calibration"].clone();
+        assert_eq!(calibration["outcome"], "failed", "Vehicle reports no response as MAV_RESULT_FAILED, which _mavCommandResult treats as a refused start");
+        assert!(calibration["log"].as_array().unwrap().iter().any(|line| line == "Failed to start compass calibration"));
     }
     #[test]
     fn a_relayed_adsb_contact_reaches_the_traffic_module() {

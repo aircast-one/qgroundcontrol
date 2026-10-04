@@ -114,12 +114,10 @@ internal const val PX4_REBOOT = "Reboot the vehicle prior to flight."
 internal fun postCalibrationTitle(routine: String?, px4: Boolean): String =
     if (px4 && routine == COMPASS_ROUTINE) PX4_COMPASS_COMPLETE else CALIBRATION_COMPLETE
 
-internal fun postCalibrationPrompt(routine: String?, helpText: String, px4: Boolean): String? = when {
-    helpText != CALIBRATION_COMPLETE -> null
-    px4 && routine == COMPASS_ROUTINE -> PX4_REBOOT
-    px4 -> null
-    routine == COMPASS_ROUTINE -> COMPASS_QUALITY + MUST_REBOOT
-    routine == ACCEL_ROUTINE -> MUST_REBOOT
+internal fun postCalibrationPrompt(routine: String?, helpText: String, completed: String, px4: Boolean): String? = when {
+    px4 -> PX4_REBOOT.takeIf { helpText == CALIBRATION_COMPLETE && routine == COMPASS_ROUTINE }
+    completed == COMPASS_ROUTINE -> COMPASS_QUALITY + MUST_REBOOT
+    completed == ACCEL_ROUTINE -> MUST_REBOOT
     else -> null
 }
 
@@ -337,7 +335,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
 
     LaunchedEffect(state.inProgress) {
         if (wasInProgress && !state.inProgress) {
-            rebootPrompt = postCalibrationPrompt(ranRoutine, state.helpText, state.px4)
+            rebootPrompt = postCalibrationPrompt(ranRoutine, state.helpText, state.completed, state.px4)
         }
         wasInProgress = state.inProgress
     }
@@ -349,7 +347,7 @@ fun SensorsScreen(modifier: Modifier = Modifier) {
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(prompt)
-                    if (!state.px4 && ranRoutine == COMPASS_ROUTINE) state.compassResults.forEach { CompassFitnessBar(it) }
+                    if (!state.px4 && state.completed == COMPASS_ROUTINE) state.compassResults.forEach { CompassFitnessBar(it) }
                     if (state.px4 && ranRoutine == COMPASS_ROUTINE) CompassOrientations()
                 }
             },

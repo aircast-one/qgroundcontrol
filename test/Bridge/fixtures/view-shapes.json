@@ -829,6 +829,7 @@
         "view.calibration.class",
         "view.calibration.compassNeeded",
         "view.calibration.compassResults.#",
+        "view.calibration.completed",
         "view.calibration.connected",
         "view.calibration.fastCompass.gcsPosition.latitude",
         "view.calibration.fastCompass.gcsPosition.longitude",
@@ -6534,6 +6535,7 @@
         "view.calibration.class",
         "view.calibration.compassNeeded",
         "view.calibration.compassResults.#",
+        "view.calibration.completed",
         "view.calibration.connected",
         "view.calibration.fastCompass.gcsPosition.latitude",
         "view.calibration.fastCompass.gcsPosition.longitude",
@@ -10003,6 +10005,7 @@
         "compassResults": [
             "empty"
         ],
+        "completed": "string",
         "connected": "bool",
         "fastCompass": {
             "gcsPosition": {
