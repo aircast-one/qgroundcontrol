@@ -179,14 +179,17 @@ fun VehicleTitle() {
     }
 }
 
+internal object ReadingsRequest {
+    var choosing by mutableStateOf(false)
+}
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
+fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShown: Boolean = true) {
     val context = LocalContext.current
     val classView by qgcPath(INSTRUMENTS_VIEW)
     val vehicleClass = instrumentVehicleClass(classView)
     var chosen by remember(vehicleClass) { mutableStateOf(readChosen(context, vehicleClass)) }
-    var choosing by remember { mutableStateOf(false) }
     var displays by remember(vehicleClass) { mutableStateOf(readDisplays(context, vehicleClass)) }
     var styling by remember { mutableStateOf<Instrument?>(null) }
     LaunchedEffect(vehicleClass) { OverlayLayout.valueSize = readValueSize(context, vehicleClass) }
@@ -200,15 +203,6 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
     val silent = stale.isNotBlank()
 
     if (shown.isEmpty()) return
-
-    if (silent) {
-        Text(
-            text = stale,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        )
-    }
 
     val change: (List<String>) -> Unit = { next ->
         chosen = next
@@ -256,17 +250,31 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
         )
     }
 
-    if (choosing) {
+    if (ReadingsRequest.choosing) {
         InstrumentSheet(
             chosen = chosen,
             onToggle = { name ->
                 chosen = withInstrument(chosen, name)
                 writeChosen(context, vehicleClass, chosen)
             },
-            onDismiss = { choosing = false },
+            onDismiss = { ReadingsRequest.choosing = false },
         )
     }
 
+    androidx.compose.animation.AnimatedVisibility(
+        visible = valuesShown,
+        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically(),
+    ) {
+    Column {
+    if (silent) {
+        Text(
+            text = stale,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        )
+    }
     FlowRow(
         modifier
             .fillMaxWidth()
@@ -299,13 +307,15 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null) {
                 }
             }
         }
-        IconButton(onClick = { choosing = true }) {
+        IconButton(onClick = { ReadingsRequest.choosing = true }) {
             Icon(
                 painter = painterResource(R.drawable.ic_tune),
                 contentDescription = "Readings",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+    }
     }
 }
 
@@ -598,7 +608,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             DeckRequest.action = null
         }
 
-        if (!simple && !side) TelemetryRow()
+        if (!simple && !side) TelemetryRow(valuesShown = armed)
 
         if (side) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -607,7 +617,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 }
                 DeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false, modifier = Modifier.fillMaxWidth())
             }
-            TelemetryRow(columns = 1)
+            TelemetryRow(columns = 1, valuesShown = armed)
         } else if (simple) SimpleDeck(deck, entries) { showMore = true } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             deck.forEach { (id, primary) ->
                 entries.firstOrNull { it.id == id }?.let { entry ->
@@ -769,6 +779,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                         .takeIf { preflightOffered(preflightJson) },
                     loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
                     MoreTile("Gripper", R.drawable.ic_download, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
+                    MoreTile("Choose readings", R.drawable.ic_tune, true) { ReadingsRequest.choosing = true }.takeIf { !simple },
                 ) +
                 extras.filter { it.id !in deckShown && it.id !in GRIPPER_ACTIONS }.map { offer ->
                     MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {
@@ -893,7 +904,7 @@ internal object FlightModePending {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: () -> Unit) {
+internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: () -> Unit, onMessages: () -> Unit) {
     val json by qgcPath(FLIGHT_MODES)
     val modes = remember(json) { flightModesView(json) }
     val flyJson by qgcPath(FLY_STATE)
@@ -982,6 +993,12 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
             )
             androidx.compose.material3.HorizontalDivider()
         }
+        DropdownMenuItem(
+            text = { Text("Messages", style = MaterialTheme.typography.bodyMedium) },
+            leadingIcon = { Icon(painterResource(R.drawable.ic_notifications), null) },
+            onClick = { onDismiss(); onMessages() },
+        )
+        androidx.compose.material3.HorizontalDivider()
         modeHeading(modes)?.let { heading ->
             Text(
                 heading,

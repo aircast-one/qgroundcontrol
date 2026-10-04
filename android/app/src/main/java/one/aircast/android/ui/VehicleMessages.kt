@@ -60,8 +60,15 @@ data class VehicleMessage(
     val text: String,
 )
 
-internal fun bannerText(blocker: String?, messages: List<VehicleMessage>): String? {
-    if (blocker != null) return blocker
+private const val PREARM_PREFIX = "PreArm:"
+
+internal fun chipBlocker(blocker: String): String =
+    blocker.trim().removePrefix(PREARM_PREFIX).trim().substringBefore(". ").trimEnd('.')
+
+internal fun bannerMessages(unread: List<VehicleMessage>): List<VehicleMessage> =
+    unread.filter { (it.level == MessageSeverity.Error || it.level == MessageSeverity.Warning) && !it.text.trimStart().startsWith(PREARM_PREFIX) }
+
+internal fun bannerText(messages: List<VehicleMessage>): String? {
     if (messages.isEmpty()) return null
     val worst = messages.lastOrNull { it.level == MessageSeverity.Error }
         ?: messages.lastOrNull { it.level == MessageSeverity.Warning }
@@ -147,21 +154,15 @@ internal fun messageTime(served: String): String =
 
 @Composable
 fun VehicleMessageBanner(modifier: Modifier = Modifier) {
-    val warnings by qgcPath(WARNINGS)
     val messagesJson by qgcPath(MESSAGES)
     val messages = remember(messagesJson) { vehicleMessages(messagesJson) }
-
     var showing by remember { mutableStateOf(false) }
-    val unread = unreadMessages(messages, unreadCount(messagesJson))
+    val shown = bannerMessages(unreadMessages(messages, unreadCount(messagesJson)))
 
-    val blocker = armingBlocker(warnings)
-    val checks = remember(warnings) { armingChecks(warnings).orEmpty() }
-    val hasError = unread.any { it.level == MessageSeverity.Error }
-    val hasWarning = unread.any { it.level == MessageSeverity.Warning }
+    if (showing) VehicleMessagesSheet { showing = false }
+    if (shown.isEmpty()) return
 
-    if (blocker == null && messages.isEmpty()) return
-
-    val urgent = blocker != null || hasError
+    val urgent = shown.any { it.level == MessageSeverity.Error }
     Surface(
         onClick = {
             showing = true
@@ -169,15 +170,8 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
         },
         modifier = modifier,
         shape = if (urgent) RoundedCornerShape(ALERT_CORNER) else CircleShape,
-        color = when {
-            urgent -> MaterialTheme.colorScheme.errorContainer
-            hasWarning -> MaterialTheme.aircast.warningContainer
-            else -> MaterialTheme.colorScheme.surfaceContainerHigh
-        },
-        contentColor = when {
-            urgent -> MaterialTheme.colorScheme.onErrorContainer
-            else -> MaterialTheme.colorScheme.onSurface
-        },
+        color = if (urgent) MaterialTheme.colorScheme.errorContainer else MaterialTheme.aircast.warningContainer,
+        contentColor = if (urgent) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
     ) {
         Row(
             Modifier.heightIn(min = 40.dp).padding(horizontal = 12.dp, vertical = 6.dp),
@@ -185,35 +179,32 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Icon(
-                painterResource(
-                    when {
-                        urgent -> R.drawable.ic_error
-                        hasWarning -> R.drawable.ic_warning
-                        else -> R.drawable.ic_notifications
-                    },
-                ),
+                painterResource(if (urgent) R.drawable.ic_error else R.drawable.ic_warning),
                 null,
-                tint = if (!urgent && hasWarning) MaterialTheme.aircast.warning else LocalContentColor.current,
+                tint = if (urgent) LocalContentColor.current else MaterialTheme.aircast.warning,
                 modifier = Modifier.size(24.dp),
             )
             Text(
-                text = bannerText(blocker, unread) ?: messageCountText(messages.size),
+                text = bannerText(shown) ?: messageCountText(shown.size),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            if (blocker == null && unread.isNotEmpty()) {
-                IconButton(onClick = { offMainDetached { Qgc.invoke("vehicle.resetAllMessages") } }, modifier = Modifier.size(32.dp)) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Dismiss messages", modifier = Modifier.size(24.dp))
-                }
+            IconButton(onClick = { offMainDetached { Qgc.invoke("vehicle.resetAllMessages") } }, modifier = Modifier.size(32.dp)) {
+                Icon(painterResource(R.drawable.ic_close), contentDescription = "Dismiss messages", modifier = Modifier.size(24.dp))
             }
         }
     }
+}
 
-    if (showing) {
-        VehicleMessageLog(messages = messages, checks = checks, onDismiss = { showing = false })
-    }
+@Composable
+internal fun VehicleMessagesSheet(onDismiss: () -> Unit) {
+    val warnings by qgcPath(WARNINGS)
+    val messagesJson by qgcPath(MESSAGES)
+    val messages = remember(messagesJson) { vehicleMessages(messagesJson) }
+    val checks = remember(warnings) { armingChecks(warnings).orEmpty() }
+    VehicleMessageLog(messages = messages, checks = checks, blocker = armingBlocker(warnings), onDismiss = onDismiss)
 }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -221,8 +212,10 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
 private fun VehicleMessageLog(
     messages: List<VehicleMessage>,
     checks: List<ArmingCheck>,
+    blocker: String?,
     onDismiss: () -> Unit,
 ) {
+    val blocking = checks.ifEmpty { listOfNotNull(blocker?.let { ArmingCheck(it, "", "error") }) }
     val lines = remember(messages) { messages.asReversed() }
     var editing by remember { mutableStateOf<String?>(null) }
 
@@ -230,13 +223,13 @@ private fun VehicleMessageLog(
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            Text(if (checks.isEmpty()) "Messages" else "Why it will not arm", style = MaterialTheme.typography.headlineSmall)
+            Text(if (blocking.isEmpty()) "Messages" else "Why it will not arm", style = MaterialTheme.typography.headlineSmall)
             Text(severitySummary(lines), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (lines.isEmpty() && checks.isEmpty()) {
+            if (lines.isEmpty() && blocking.isEmpty()) {
                 Text("The vehicle has not said anything yet.", Modifier.padding(vertical = 16.dp))
             } else {
                 LazyColumn(Modifier.heightIn(max = 420.dp).padding(top = 12.dp)) {
-                    items(checks) { check ->
+                    items(blocking) { check ->
                         MessageLine(
                             level = if (check.severity == "error") MessageSeverity.Error else MessageSeverity.Warning,
                             time = "",

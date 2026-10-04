@@ -92,7 +92,15 @@ internal fun SimpleTiles(modifier: Modifier = Modifier) {
     val displays = remember(vehicleClass, edits) { readDisplays(context, vehicleClass) }
     val view by qgcPath(instrumentsPath(chosen, vehicleClass))
     val shown = remember(view, chosen) { if (showsInstruments(chosen)) instruments(view).take(SIMPLE_TILE_COUNT) else emptyList() }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
+    val flyJson by qgcPath(FLY_STATE)
+    val armed = remember(flyJson) { flyState(flyJson)?.armed == true }
+    androidx.compose.animation.AnimatedVisibility(
+        visible = armed,
+        modifier = modifier,
+        enter = androidx.compose.animation.fadeIn(),
+        exit = androidx.compose.animation.fadeOut(),
+    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
         shown.chunked(2).map { pair ->
             Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
                 pair.map { instrument ->
@@ -125,6 +133,7 @@ internal fun SimpleTiles(modifier: Modifier = Modifier) {
                 if (pair.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+    }
     }
 }
 

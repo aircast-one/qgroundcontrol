@@ -105,6 +105,9 @@ internal const val STATUS_SETTINGS_PAGE = "Status Settings"
 internal const val CLOSE_VEHICLE = "vehicle.closeVehicle"
 private const val LOAD_POLL_MS = 500L
 
+internal fun readinessSubtitle(state: FlyState?, blocker: String?, failing: Int): String? =
+    blocker?.let { listOfNotNull(state?.mode?.ifBlank { null }, chipBlocker(it) + if (failing > 1) " +${failing - 1}" else "").joinToString(" \u00b7 ") }
+
 internal fun loadingProgress(fields: org.json.JSONObject?): Float? =
     fields?.takeIf { it.has("initialConnectComplete") && !it.optBoolean("initialConnectComplete") }
         ?.let { it.optDouble("loadProgress", 0.0).toFloat().coerceIn(0f, 1f) }
@@ -121,7 +124,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val taken = controlIsElsewhere(station)
     val lost = fly?.contactLost == true
     val offlineJson by qgcPath(OFFLINE_STATUS_VIEW)
-    val subtitle = vehicleSubtitle(fly, remember(offlineJson) { offlineMainStatus(offlineJson) })
+    val warningsJson by qgcPath(WARNINGS)
+    val blocker = remember(warningsJson, fly) { armingBlocker(warningsJson)?.takeIf { fly?.connected == true && !fly.armed } }
+    val failing = remember(warningsJson) { armingChecks(warningsJson).orEmpty().size }
+    val subtitle = readinessSubtitle(fly, blocker, failing) ?: vehicleSubtitle(fly, remember(offlineJson) { offlineMainStatus(offlineJson) })
+    var why by remember { mutableStateOf(false) }
     var picking by remember { mutableStateOf(false) }
     val panelJson by qgcPath(MULTI_VEHICLE_PANEL)
     val panelEnabled = multiVehiclePanelEnabled(panelJson)
@@ -134,16 +141,17 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     var refusal by remember { mutableStateOf<String?>(null) }
 
     androidx.compose.foundation.layout.Box(modifier) {
-    FlightModeMenu(expanded = modeMenu && !disconnected, onDismiss = { modeMenu = false }, onStatus = { statusSettings = true })
+    FlightModeMenu(expanded = modeMenu && !disconnected, onDismiss = { modeMenu = false }, onStatus = { statusSettings = true }, onMessages = { why = true })
+    val tone = if (blocker != null) ChipTone.Error else chipTone(fly, lost)
     androidx.compose.material3.Surface(
         shape = MaterialTheme.shapes.small,
-        color = when (chipTone(fly, lost)) {
+        color = when (tone) {
             ChipTone.Error -> MaterialTheme.colorScheme.errorContainer
             ChipTone.Neutral -> MaterialTheme.colorScheme.surfaceContainerHigh
             ChipTone.Warning -> MaterialTheme.aircast.warningContainer
             ChipTone.Success -> MaterialTheme.aircast.successContainer
         },
-        contentColor = when (chipTone(fly, lost)) {
+        contentColor = when (tone) {
             ChipTone.Error -> MaterialTheme.colorScheme.onErrorContainer
             ChipTone.Neutral -> MaterialTheme.colorScheme.onSurface
             ChipTone.Warning -> MaterialTheme.aircast.warning
@@ -153,6 +161,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             when {
                 choices.ambiguous || taken -> picking = true
                 disconnected -> offline = true
+                blocker != null -> why = true
                 else -> modeMenu = true
             }
         },
@@ -179,7 +188,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 contentDescription = alarm ?: "Choose which vehicle to fly",
             )
         } else if (!disconnected) {
-            Icon(painterResource(R.drawable.ic_arrow_drop_down), contentDescription = "Change flight mode")
+            Icon(
+                painterResource(R.drawable.ic_arrow_drop_down),
+                contentDescription = "Change flight mode",
+                modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { modeMenu = true },
+            )
         }
         var loading by remember { mutableStateOf<Float?>(null) }
         androidx.compose.runtime.LaunchedEffect(choices.choices.size) {
@@ -209,6 +222,9 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     }
     if (statusSettings && !disconnected) {
         VehicleStatusSheet { statusSettings = false }
+    }
+    if (why) {
+        VehicleMessagesSheet { why = false }
     }
 
     if (picking) {

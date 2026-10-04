@@ -15,6 +15,30 @@ class VehicleMessagesTest {
     }
 
     @Test
+    fun `the chip carries the arming blocker as a short reason`() {
+        assertEquals("GPS 1: not healthy", chipBlocker("PreArm: GPS 1: not healthy"))
+        assertEquals("No GPS lock", chipBlocker("No GPS lock. This vehicle needs a position fix before it will arm."))
+        assertEquals("Throttle too high", chipBlocker("Throttle too high"))
+        val fly = FlyState(true, false, false, "disarmed", "Not ready", "", "Guided", false, "", null, null, null)
+        assertEquals("Guided \u00b7 GPS 1: not healthy +2", readinessSubtitle(fly, "PreArm: GPS 1: not healthy", 3))
+        assertEquals("Guided \u00b7 Compass not calibrated", readinessSubtitle(fly, "Compass not calibrated", 1))
+        assertNull(readinessSubtitle(fly, null, 0))
+    }
+
+    @Test
+    fun `the banner only interrupts for warnings and errors the chip is not already saying`() {
+        fun message(level: MessageSeverity, text: String) = VehicleMessage(0, "", "", level, text)
+        val unread = listOf(
+            message(MessageSeverity.Error, "PreArm: GPS 1: not healthy"),
+            message(MessageSeverity.Normal, "EKF3 IMU0 is using GPS"),
+            message(MessageSeverity.Warning, "Battery low"),
+        )
+        assertEquals(listOf("Battery low"), bannerMessages(unread).map { it.text })
+        assertTrue(bannerMessages(unread.take(2)).isEmpty())
+        assertEquals("Battery low", bannerText(bannerMessages(unread)))
+    }
+
+    @Test
     fun `a message time drops the milliseconds QGC stamps it with`() {
         org.junit.Assert.assertEquals("20:00:53", messageTime("20:00:53.747"))
         org.junit.Assert.assertEquals("yesterday", messageTime("yesterday"))
@@ -88,7 +112,7 @@ class VehicleMessagesTest {
             message(2, MessageSeverity.Normal, "Mode changed"),
         )
 
-        assertEquals("EKF variance", bannerText(null, messages))
+        assertEquals("EKF variance", bannerText(messages))
     }
 
     @Test
@@ -98,7 +122,7 @@ class VehicleMessagesTest {
             message(1, MessageSeverity.Error, "EKF variance"),
         )
 
-        assertEquals("EKF variance", bannerText(null, messages))
+        assertEquals("EKF variance", bannerText(messages))
     }
 
     @Test
@@ -133,29 +157,22 @@ class VehicleMessagesTest {
     fun `a warning is named when nothing worse has happened`() {
         val messages = listOf(message(0, MessageSeverity.Warning, "Low battery"))
 
-        assertEquals("Low battery", bannerText(null, messages))
+        assertEquals("Low battery", bannerText(messages))
     }
 
     @Test
-    fun `routine chatter stays a count`() {
+    fun `routine chatter does not interrupt the pilot`() {
         val messages = listOf(
             message(0, MessageSeverity.Normal, "Armed"),
             message(1, MessageSeverity.Normal, "Disarmed"),
         )
 
-        assertEquals("2 messages from the vehicle", bannerText(null, messages))
-    }
-
-    @Test
-    fun `an arming blocker outranks anything in the log`() {
-        val messages = listOf(message(0, MessageSeverity.Error, "EKF variance"))
-
-        assertEquals("Needs 3D fix", bannerText("Needs 3D fix", messages))
+        assertTrue(bannerMessages(messages).isEmpty())
     }
 
     @Test
     fun `nothing to say is nothing shown`() {
-        assertNull(bannerText(null, emptyList()))
+        assertNull(bannerText(emptyList()))
     }
 
     private fun oldestFirst(vararg messages: VehicleMessage) = messages.toList()
