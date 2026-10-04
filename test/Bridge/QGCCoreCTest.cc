@@ -1005,7 +1005,7 @@ void QGCCoreCTest::_coreConnectSequenceReachesParameters()
         const QJsonObject vehicle = take(qgc_bridge_get("view.coreVehicle(11)")).value(QStringLiteral("vehicle")).toObject();
         const QJsonObject plans = take(qgc_bridge_get("view.coreMission(11)")).value(QStringLiteral("plans")).toObject();
         const QJsonArray errors = take(qgc_bridge_get("view.coreGuided(11)")).value(QStringLiteral("guided")).toObject().value(QStringLiteral("errors")).toArray();
-        return QStringLiteral("proto %1 caps %2 step %3 complete %4 plans %5 errors %6").arg(vehicle.value(QStringLiteral("maxProtoVersion")).toInt(-1)).arg(vehicle.value(QStringLiteral("capabilities")).toInt(-1)).arg(vehicle.value(QStringLiteral("connectStep")).toString()).arg(vehicle.value(QStringLiteral("initialConnectComplete")).toBool()).arg(QString::fromUtf8(QJsonDocument(plans).toJson(QJsonDocument::Compact))).arg(QString::fromUtf8(QJsonDocument(errors).toJson(QJsonDocument::Compact)));
+        return QStringLiteral("caps %1 step %2 complete %3 plans %4 errors %5").arg(vehicle.value(QStringLiteral("capabilities")).toInt(-1)).arg(vehicle.value(QStringLiteral("connectStep")).toString()).arg(vehicle.value(QStringLiteral("initialConnectComplete")).toBool()).arg(QString::fromUtf8(QJsonDocument(plans).toJson(QJsonDocument::Compact))).arg(QString::fromUtf8(QJsonDocument(errors).toJson(QJsonDocument::Compact)));
     };
     const auto leftovers = [&seen]() {
         QStringList ids;

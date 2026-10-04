@@ -1,7 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     AutopilotVersion,
-    ProtocolVersion,
     ComponentInformation,
     StandardModes,
     Parameters,
@@ -11,9 +10,8 @@ pub enum Step {
     Complete,
 }
 
-pub const STEPS: [Step; 9] = [
+pub const STEPS: [Step; 8] = [
     Step::AutopilotVersion,
-    Step::ProtocolVersion,
     Step::StandardModes,
     Step::ComponentInformation,
     Step::Parameters,
@@ -23,7 +21,7 @@ pub const STEPS: [Step; 9] = [
     Step::Complete,
 ];
 
-pub const WEIGHTS: [u32; 9] = [1, 1, 1, 5, 5, 2, 1, 1, 1];
+pub const WEIGHTS: [u32; 8] = [1, 1, 5, 5, 2, 1, 1, 1];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Link {
@@ -38,7 +36,6 @@ pub struct Vehicle {
     pub apm: bool,
     pub fence_supported: bool,
     pub rally_supported: bool,
-    pub max_proto_version: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,13 +51,11 @@ pub enum Action {
     FirstGeoFenceLoadComplete,
     FirstRallyPointLoadComplete,
     SetCapabilities(u64),
-    SetMaxProtoVersion(u32),
     Progress(f64),
     InitialConnectComplete,
 }
 
 pub const MSG_AUTOPILOT_VERSION: u32 = 148;
-pub const MSG_PROTOCOL_VERSION: u32 = 300;
 pub const CAP_MISSION_INT: u64 = 4;
 pub const CAP_COMMAND_INT: u64 = 8;
 pub const CAP_FTP: u64 = 32;
@@ -97,9 +92,8 @@ pub fn firmware_from(version: &AutopilotVersion, px4: bool) -> Firmware {
 }
 
 pub fn assumed_capabilities(vehicle: &Vehicle) -> u64 {
-    let mavlink2 = if vehicle.max_proto_version >= 200 { CAP_MAVLINK2 } else { 0 };
     let firmware = if vehicle.px4 || vehicle.apm { CAP_MISSION_INT | CAP_COMMAND_INT | CAP_MISSION_FENCE | CAP_MISSION_RALLY } else { 0 };
-    mavlink2 | firmware
+    CAP_MAVLINK2 | firmware
 }
 
 #[derive(Debug, Clone)]
@@ -147,8 +141,6 @@ impl Connect {
         match step {
             Step::AutopilotVersion if quiet => chain(self.advance(link, vehicle), &mut actions),
             Step::AutopilotVersion => actions.push(Action::RequestMessage { message_id: MSG_AUTOPILOT_VERSION }),
-            Step::ProtocolVersion if quiet || vehicle.apm => chain(self.advance(link, vehicle), &mut actions),
-            Step::ProtocolVersion => actions.push(Action::RequestMessage { message_id: MSG_PROTOCOL_VERSION }),
             Step::ComponentInformation if quiet => chain(self.advance(link, vehicle), &mut actions),
             Step::ComponentInformation => actions.push(Action::RequestComponentInformation),
             Step::StandardModes => actions.push(Action::RequestStandardModes),
@@ -180,12 +172,6 @@ impl Connect {
         actions
     }
 
-    pub fn on_protocol_version(&mut self, link: &Link, vehicle: &Vehicle, max_version: Option<u32>) -> Vec<Action> {
-        let mut actions = vec![Action::SetMaxProtoVersion(max_version.unwrap_or(100))];
-        actions.append(&mut self.advance(link, vehicle));
-        actions
-    }
-
     pub fn on_step_done(&mut self, link: &Link, vehicle: &Vehicle) -> Vec<Action> {
         self.advance(link, vehicle)
     }
@@ -200,7 +186,7 @@ mod tests {
     }
 
     fn px4() -> Vehicle {
-        Vehicle { px4: true, apm: false, fence_supported: true, rally_supported: true, max_proto_version: 200 }
+        Vehicle { px4: true, apm: false, fence_supported: true, rally_supported: true }
     }
 
     fn requests(actions: &[Action]) -> Vec<&Action> {
@@ -214,9 +200,7 @@ mod tests {
         assert_eq!(requests(&connect.start(&link, &vehicle)), vec![&Action::RequestMessage { message_id: MSG_AUTOPILOT_VERSION }]);
         let version = AutopilotVersion { capabilities: 0x1010, flight_sw_version: 0x01_0F_02_FF, flight_custom_version: [0xaa, 0xbb, 0xcc, 1, 2, 3, 4, 5], uid: 9, vendor_id: 1, product_id: 2 };
         let after_version = connect.on_autopilot_version(&link, &vehicle, Some(&version));
-        assert_eq!(requests(&after_version), vec![&Action::SetCapabilities(0x1010), &Action::RequestMessage { message_id: MSG_PROTOCOL_VERSION }]);
-        let after_proto = connect.on_protocol_version(&link, &vehicle, Some(200));
-        assert_eq!(requests(&after_proto), vec![&Action::SetMaxProtoVersion(200), &Action::RequestStandardModes]);
+        assert_eq!(requests(&after_version), vec![&Action::SetCapabilities(0x1010), &Action::RequestStandardModes], "current QGC requests no PROTOCOL_VERSION");
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::RequestComponentInformation]);
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::RefreshParameters]);
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::LoadMission]);
@@ -233,13 +217,14 @@ mod tests {
     }
 
     #[test]
-    fn ardupilot_skips_the_protocol_version_and_a_missing_answer_assumes_capabilities() {
+    fn a_missing_autopilot_version_assumes_mavlink2_and_known_firmware_capabilities() {
         let mut connect = Connect::default();
         let link = live();
-        let vehicle = Vehicle { px4: false, apm: true, fence_supported: false, rally_supported: true, max_proto_version: 100 };
+        let vehicle = Vehicle { px4: false, apm: true, fence_supported: false, rally_supported: true };
         connect.start(&link, &vehicle);
         let after = connect.on_autopilot_version(&link, &vehicle, None);
-        assert_eq!(requests(&after), vec![&Action::SetCapabilities(CAP_MISSION_INT | CAP_COMMAND_INT | CAP_MISSION_FENCE | CAP_MISSION_RALLY), &Action::RequestStandardModes]);
+        assert_eq!(requests(&after), vec![&Action::SetCapabilities(CAP_MAVLINK2 | CAP_MISSION_INT | CAP_COMMAND_INT | CAP_MISSION_FENCE | CAP_MISSION_RALLY), &Action::RequestStandardModes]);
+        assert_eq!(assumed_capabilities(&Vehicle { px4: false, apm: false, fence_supported: false, rally_supported: false }), CAP_MAVLINK2, "_handleAutopilotVersionFailure always assumes MAVLink 2");
         connect.on_step_done(&link, &vehicle);
         connect.on_step_done(&link, &vehicle);
         connect.on_step_done(&link, &vehicle);
@@ -262,7 +247,7 @@ mod tests {
         assert_eq!(connect.current(), Some(Step::StandardModes));
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::RefreshParameters], "component information is skipped on a quiet link");
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::FirstMissionLoadComplete]);
-        assert!((connect.progress(0.5) - (13.0 + 1.0) / 18.0).abs() < 1e-9);
+        assert!((connect.progress(0.5) - (12.0 + 1.0) / 17.0).abs() < 1e-9);
         let mut absent = Connect::default();
         let none = Link { present: false, high_latency: false, log_replay: false };
         absent.start(&none, &vehicle);

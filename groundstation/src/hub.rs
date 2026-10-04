@@ -9,7 +9,7 @@ use crate::batteryfacts::Batteries;
 use crate::gpsfacts::GpsFacts;
 use crate::compinfo::ComponentParameters;
 use crate::compmeta::{self, MSG_COMPONENT_METADATA, TYPE_GENERAL, TYPE_PARAMETER, Uris};
-use crate::connect::{self, Action, AutopilotVersion, Connect, Firmware, MSG_AUTOPILOT_VERSION, MSG_PROTOCOL_VERSION};
+use crate::connect::{self, Action, AutopilotVersion, Connect, Firmware, MSG_AUTOPILOT_VERSION};
 use crate::ftp::{self, Download};
 use crate::guidedcmd::{self, CMD_DO_REPOSITION, Plan, VehicleState};
 use crate::guidedexec::{Emit, Executor, Observed};
@@ -133,7 +133,6 @@ const PREARM_SHOWN_MS: u64 = 35_000;
 const CHUNKED_TEXT_TIMEOUT_MS: u64 = 1000;
 pub const RESULT_UNSUPPORTED: u8 = 3;
 pub const MAX_ERRORS: usize = 10;
-pub const PROTO_MAVLINK2: u32 = 200;
 pub const ODID_SEND_MS: u64 = 1000;
 pub const CMD_LOGGING_START: u16 = 2510;
 pub const CMD_LOGGING_STOP: u16 = 2511;
@@ -338,7 +337,6 @@ pub struct Vehicle {
     pub status_bits: StatusBits,
     pub landing: bool,
     pub replay: bool,
-    pub max_proto_version: Option<u32>,
     pub autopilot_version: Option<AutopilotVersion>,
     pub flight_modes: Vec<FlightMode>,
     pub connect_progress: f64,
@@ -542,7 +540,6 @@ impl Vehicle {
             status_bits: StatusBits { all_healthy: true, ..StatusBits::default() },
             landing: false,
             replay,
-            max_proto_version: None,
             autopilot_version: None,
             flight_modes: Vec::new(),
             connect_progress: 0.0,
@@ -1265,8 +1262,7 @@ impl Vehicle {
     fn connect_vehicle(&self) -> connect::Vehicle {
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
         let apm = self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
-        let proto = self.max_proto_version.unwrap_or(0);
-        connect::Vehicle { px4, apm, fence_supported: self.capabilities & connect::CAP_MISSION_FENCE != 0, rally_supported: self.capabilities & connect::CAP_MISSION_RALLY != 0, max_proto_version: proto }
+        connect::Vehicle { px4, apm, fence_supported: self.capabilities & connect::CAP_MISSION_FENCE != 0, rally_supported: self.capabilities & connect::CAP_MISSION_RALLY != 0 }
     }
 
     pub fn pending_parameter_writes(&self) -> bool {
@@ -1408,28 +1404,30 @@ impl Vehicle {
                     let outs = self.modes.request();
                     self.follow_modes(outs, now_ms)
                 }
-                Action::RefreshParameters if self.replay => self.step_done(connect::Step::Parameters, now_ms),
-                Action::RefreshParameters if self.skips_download_flying() && self.params.px4 && !self.commands.high_latency => {
-                    self.use_parameter_cache();
-                    let actions = self.params.start_cache_only();
-                    self.follow_params(actions, now_ms)
-                }
-                Action::RefreshParameters if self.skips_download_flying() => {
-                    self.parameter_download_skipped = true;
-                    self.step_done(connect::Step::Parameters, now_ms)
-                }
-                Action::RefreshParameters if self.commands.high_latency => {
-                    self.params.skip_load();
-                    self.step_done(connect::Step::Parameters, now_ms)
-                }
-                Action::RefreshParameters if self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT => match Download::start_from(COMP_AUTOPILOT1, params::PACK_URI, false, self.ftp_seq) {
-                    Ok((download, outs)) => {
-                        self.fetch = Some(Fetch { kind: FETCH_PARAMETER_PACK, uri: params::PACK_URI.to_string(), download, started_ms: now_ms, progress: 0.0 });
-                        self.follow_ftp(outs, now_ms)
+                Action::RefreshParameters => match parameter_load(self.skips_download_flying(), self.params.px4, self.commands.high_latency, self.replay) {
+                    ParameterLoad::CacheOnly => {
+                        self.use_parameter_cache();
+                        let actions = self.params.start_cache_only();
+                        self.follow_params(actions, now_ms)
                     }
-                    Err(_) => self.stream_parameters(now_ms),
+                    ParameterLoad::Skipped => {
+                        self.parameter_download_skipped = true;
+                        self.step_done(connect::Step::Parameters, now_ms)
+                    }
+                    ParameterLoad::Replayed => self.step_done(connect::Step::Parameters, now_ms),
+                    ParameterLoad::HighLatency => {
+                        self.params.skip_load();
+                        self.step_done(connect::Step::Parameters, now_ms)
+                    }
+                    ParameterLoad::Download if self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT => match Download::start_from(COMP_AUTOPILOT1, params::PACK_URI, false, self.ftp_seq) {
+                        Ok((download, outs)) => {
+                            self.fetch = Some(Fetch { kind: FETCH_PARAMETER_PACK, uri: params::PACK_URI.to_string(), download, started_ms: now_ms, progress: 0.0 });
+                            self.follow_ftp(outs, now_ms)
+                        }
+                        Err(_) => self.stream_parameters(now_ms),
+                    },
+                    ParameterLoad::Download => self.stream_parameters(now_ms),
                 },
-                Action::RefreshParameters => self.stream_parameters(now_ms),
                 Action::RequestComponentInformation => {
                     let outs = self.commands.request_message(MSG_COMPONENT_METADATA as u64, self.component, MSG_COMPONENT_METADATA, [0.0; 5], now_ms);
                     self.handle(outs, now_ms)
@@ -1446,10 +1444,6 @@ impl Vehicle {
                 Action::SetCapabilities(capabilities) => {
                     self.capabilities = capabilities;
                     self.capabilities_known = true;
-                    Vec::new()
-                }
-                Action::SetMaxProtoVersion(version) => {
-                    self.max_proto_version = Some(version);
                     Vec::new()
                 }
                 Action::Progress(progress) => {
@@ -2221,10 +2215,6 @@ impl Vehicle {
                 }
                 Out::RequestResult { message_id: MSG_AUTOPILOT_VERSION, .. } => {
                     let actions = self.connect.on_autopilot_version(&self.connect_link(), &self.connect_vehicle(), self.autopilot_version.as_ref());
-                    self.follow_connect(actions, now_ms)
-                }
-                Out::RequestResult { message_id: MSG_PROTOCOL_VERSION, .. } => {
-                    let actions = self.connect.on_protocol_version(&self.connect_link(), &self.connect_vehicle(), self.max_proto_version);
                     self.follow_connect(actions, now_ms)
                 }
                 Out::Result { command: CMD_LOGGING_START, result, .. } if result != RESULT_ACCEPTED => {
@@ -3158,14 +3148,6 @@ impl Vehicle {
                 self.autopilot_version = Some(AutopilotVersion { capabilities: v.capabilities.bits(), flight_sw_version: v.flight_sw_version, flight_custom_version: v.flight_custom_version, uid: v.uid, vendor_id: v.vendor_id, product_id: v.product_id });
                 return self.handle(outs, now_ms);
             }
-            MavMessage::PROTOCOL_VERSION(p) => {
-                let outs = self.commands.on_message(header.component_id, MSG_PROTOCOL_VERSION);
-                if outs.is_empty() {
-                    return Vec::new();
-                }
-                self.max_proto_version = Some(p.max_version as u32);
-                return self.handle(outs, now_ms);
-            }
             MavMessage::COMPONENT_METADATA(m) => {
                 if self.commands.on_message(header.component_id, MSG_COMPONENT_METADATA).is_empty() {
                     return Vec::new();
@@ -3565,7 +3547,6 @@ impl Vehicle {
             "connectProgress": self.connect_progress,
             "connectStep": self.connect.current().map(|s| format!("{s:?}")),
             "capabilities": self.capabilities,
-            "maxProtoVersion": self.max_proto_version,
             "firmware": firmware,
             "flightModes": flight_modes,
             "parameters": parameters,
@@ -3724,9 +3705,6 @@ impl Hub {
                 if kind == TYPE_SUBMARINE && !origin.replay && !crate::qthost::present() {
                     sub_video_defaults();
                 }
-                if origin.v2 {
-                    vehicle.max_proto_version = Some(PROTO_MAVLINK2);
-                }
                 bytes.extend((crate::gcsheartbeat::wanted() && !vehicle.commands.high_latency).then(|| crate::mavout::encode_next(&crate::mavout::Outbound::GcsHeartbeat)).flatten());
                 bytes.extend(vehicle.begin_connect(now_ms));
                 if header.system_id == crate::mavout::gcs_system() {
@@ -3753,9 +3731,6 @@ impl Hub {
         if vehicle.is_standby(origin.link) {
             let link = vehicle.link;
             return bytes.into_iter().map(|bytes| (link, bytes)).collect();
-        }
-        if origin.v2 {
-            vehicle.max_proto_version = Some(PROTO_MAVLINK2);
         }
         bytes.extend(vehicle.apply(header, message, timestamp_us, now_ms));
         let armed = vehicle.armed();
@@ -4286,6 +4261,25 @@ pub fn skips_download(armed: bool, skip_when_flying: bool) -> bool {
     skip_when_flying && armed
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParameterLoad {
+    CacheOnly,
+    Skipped,
+    Replayed,
+    HighLatency,
+    Download,
+}
+
+pub fn parameter_load(skip_flying: bool, px4: bool, high_latency: bool, replay: bool) -> ParameterLoad {
+    match (skip_flying, replay, high_latency) {
+        (true, false, false) if px4 => ParameterLoad::CacheOnly,
+        (true, _, _) => ParameterLoad::Skipped,
+        (false, true, _) => ParameterLoad::Replayed,
+        (false, false, true) => ParameterLoad::HighLatency,
+        (false, false, false) => ParameterLoad::Download,
+    }
+}
+
 pub fn now_ms() -> u64 {
     STARTED.elapsed().as_millis() as u64
 }
@@ -4389,6 +4383,17 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn an_armed_vehicle_on_a_replay_or_high_latency_link_marks_its_parameter_download_skipped() {
+        assert_eq!(parameter_load(true, true, false, false), ParameterLoad::CacheOnly);
+        assert_eq!(parameter_load(true, true, false, true), ParameterLoad::Skipped, "tryHashCheckCacheLoad signals cacheCheckOnlyFailed on a log replay link");
+        assert_eq!(parameter_load(true, true, true, false), ParameterLoad::Skipped, "and on a high latency link");
+        assert_eq!(parameter_load(true, false, false, true), ParameterLoad::Skipped, "non-PX4 skips the parameter state outright");
+        assert_eq!(parameter_load(false, true, false, true), ParameterLoad::Replayed);
+        assert_eq!(parameter_load(false, false, true, false), ParameterLoad::HighLatency);
+        assert_eq!(parameter_load(false, true, false, false), ParameterLoad::Download);
+    }
 
     #[test]
     fn an_armed_vehicle_skips_the_download_only_when_asked() {
@@ -5428,7 +5433,6 @@ mod tests {
         let snapshot = hub.snapshot();
         assert_eq!(snapshot["vehicle"]["initialConnectComplete"], true);
         assert_eq!(snapshot["vehicle"]["mission"], json!({ "inProgress": false, "transaction": null, "count": 1, "progress": 1.0, "error": null }));
-        assert_eq!(snapshot["vehicle"]["maxProtoVersion"], 200);
         let plans = hub.active().unwrap().mission_snapshot();
         assert_eq!((plans["mission"]["items"][0]["command"].as_u64(), plans["mission"]["items"][0]["params"][4].as_f64()), (Some(16), Some(47.4)));
         assert_eq!(snapshot["vehicle"]["connectProgress"], 1.0);
@@ -5696,8 +5700,8 @@ mod tests {
 
     #[test]
     #[allow(deprecated)]
-    fn a_px4_vehicle_asks_for_its_protocol_version_and_collects_its_standard_modes() {
-        use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, AVAILABLE_MODES_DATA, HEARTBEAT_DATA, MavAutopilot, MavModeFlag, MavStandardMode, MavType, PROTOCOL_VERSION_DATA};
+    fn a_px4_vehicle_goes_from_its_autopilot_version_straight_to_its_standard_modes() {
+        use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, AVAILABLE_MODES_DATA, HEARTBEAT_DATA, MavAutopilot, MavModeFlag, MavStandardMode, MavType};
         let autopilot = MavHeader { system_id: 2, component_id: 1, sequence: 0 };
         let mut px4 = HEARTBEAT_DATA::default();
         px4.mavtype = MavType::MAV_TYPE_QUADROTOR;
@@ -5706,10 +5710,7 @@ mod tests {
         let mut hub = Hub::default();
         hub.on_frame(origin(4), &autopilot, &MavMessage::HEARTBEAT(px4), 0, 0);
         let after_version = hub.on_frame(origin(4), &autopilot, &MavMessage::AUTOPILOT_VERSION(AUTOPILOT_VERSION_DATA::default()), 100_000, 100);
-        assert_eq!(request_of(&after_version[0].1), (512, 300.0));
-        let protocol = MavMessage::PROTOCOL_VERSION(PROTOCOL_VERSION_DATA { version: 200, min_version: 100, max_version: 200, ..Default::default() });
-        let after_protocol = hub.on_frame(origin(4), &autopilot, &protocol, 200_000, 200);
-        assert_eq!(request_of(&after_protocol[0].1), (512, 435.0));
+        assert_eq!(request_of(&after_version[0].1), (512, 435.0), "InitialConnectStateMachine asks for no PROTOCOL_VERSION");
         let mode = |index: u8, name: &str, custom: u32| {
             let mut name_bytes = [0u8; 35];
             name_bytes[..name.len()].copy_from_slice(name.as_bytes());
@@ -5722,7 +5723,6 @@ mod tests {
         let modes = hub.snapshot()["vehicle"]["flightModes"].clone();
         assert_eq!(modes.as_array().unwrap().len(), 2);
         assert_eq!(modes[1]["name"], "Position");
-        assert_eq!(hub.snapshot()["vehicle"]["maxProtoVersion"], 200);
     }
 
     fn ftp_request(bytes: &[u8]) -> ftp::Request {
