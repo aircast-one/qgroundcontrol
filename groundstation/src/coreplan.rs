@@ -1252,6 +1252,7 @@ pub fn controller_fields(path: &str) -> Option<Value> {
             "vtol": class == crate::cmdinfo::VehicleClass::Vtol,
             "rover": class == crate::cmdinfo::VehicleClass::Rover,
             "sub": class == crate::cmdinfo::VehicleClass::Sub,
+            "airship": class == crate::cmdinfo::VehicleClass::Airship,
             "apmFirmware": firmware == crate::cmdinfo::Firmware::ArduPilot,
             "px4Firmware": firmware == crate::cmdinfo::Firmware::Px4,
             "firmwareTypeString": match firmware {
@@ -1316,7 +1317,7 @@ fn offline_classes(firmware: i64, vehicle: i64) -> (i64, i64) {
         crate::cmdinfo::VehicleClass::Vtol => 20,
         crate::cmdinfo::VehicleClass::Sub => 12,
         crate::cmdinfo::VehicleClass::Rover => 10,
-        crate::cmdinfo::VehicleClass::Generic => 0,
+        crate::cmdinfo::VehicleClass::Generic | crate::cmdinfo::VehicleClass::Airship => 0,
     };
     (firmware_class, vehicle_class)
 }

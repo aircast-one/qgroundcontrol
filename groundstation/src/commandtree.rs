@@ -18,14 +18,14 @@ fn answered(result: Value) -> Value {
 }
 
 fn planned_for(backend: &dyn Backend) -> Option<(Firmware, VehicleClass)> {
-    let vehicle = object(&backend.get_fields(PLAN_VEHICLE, "apmFirmware,px4Firmware,fixedWing,multiRotor,vtol,rover,sub"));
+    let vehicle = object(&backend.get_fields(PLAN_VEHICLE, "apmFirmware,px4Firmware,fixedWing,multiRotor,vtol,rover,sub,airship"));
     (vehicle.get("kind").and_then(Value::as_str) == Some("object")).then_some(())?;
     let firmware = match (flag(&vehicle, "apmFirmware"), flag(&vehicle, "px4Firmware")) {
         (true, _) => Firmware::ArduPilot,
         (false, true) => Firmware::Px4,
         _ => Firmware::Generic,
     };
-    let class = [("fixedWing", VehicleClass::FixedWing), ("multiRotor", VehicleClass::MultiRotor), ("vtol", VehicleClass::Vtol), ("rover", VehicleClass::Rover), ("sub", VehicleClass::Sub)]
+    let class = [("fixedWing", VehicleClass::FixedWing), ("multiRotor", VehicleClass::MultiRotor), ("vtol", VehicleClass::Vtol), ("rover", VehicleClass::Rover), ("sub", VehicleClass::Sub), ("airship", VehicleClass::Airship)]
         .into_iter()
         .find(|(key, _)| flag(&vehicle, key))
         .map_or(VehicleClass::Generic, |(_, class)| class);
@@ -34,6 +34,7 @@ fn planned_for(backend: &dyn Backend) -> Option<(Firmware, VehicleClass)> {
 
 pub fn supported_commands(firmware: Firmware, class: VehicleClass, condition_gate: bool) -> Vec<i64> {
     let base: &[i64] = match firmware {
+        Firmware::ArduPilot if matches!(class, VehicleClass::Generic | VehicleClass::Airship) => return Vec::new(),
         Firmware::ArduPilot => &[16, 17, 18, 19, 20, 30, 31, 82, 92, 93, 112, 114, 115, 176, 177, 178, 179, 181, 182, 183, 184, 189, 201, 202, 203, 205, 1000, 206, 2000, 2001, 2500, 2501, 207, 208, 210, 211, 222, 212],
         Firmware::Px4 => &[16, 17, 19, 20, 177, 203, 206, 183, 187, 178, 179, 189, 195, 196, 197, 204, 205, 530, 2000, 2001, 2500, 2501, 93, 115, 31, 211],
         Firmware::Generic => return Vec::new(),
@@ -55,8 +56,7 @@ fn condition_gate() -> bool {
 }
 
 fn offered(firmware: Firmware, class: VehicleClass) -> Vec<Command> {
-    let plugin_for_class = !(firmware == Firmware::ArduPilot && class == VehicleClass::Generic);
-    let supported = if plugin_for_class { supported_commands(firmware, class, condition_gate()) } else { Vec::new() };
+    let supported = supported_commands(firmware, class, condition_gate());
     crate::cmdinfo::tree(firmware, class).into_values().filter(|c| supported.is_empty() || supported.contains(&c.id)).collect()
 }
 
@@ -220,6 +220,11 @@ mod tests {
         assert_eq!(categories(&generic, "")["result"], json!(["All commands"]), "a firmware with no supported list offers only the whole tree");
         let apm_generic = Tree { vehicle: json!({ "kind": "object", "apmFirmware": true }), calls: RefCell::new(Vec::new()) };
         assert_eq!(names(&commands(&apm_generic, "", r#"["@vehicle","Advanced",true]"#)).len(), 53, "ArduPilot has no plugin for a generic airframe, so its list is not filtered");
+        assert_eq!(categories(&apm_generic, "")["result"], json!(["All commands"]), "the generic plugin supports no commands, so _buildAllCommands names no category but the whole tree");
+        let px4_airship = Tree { vehicle: json!({ "kind": "object", "px4Firmware": true, "airship": true }), calls: RefCell::new(Vec::new()) };
+        let airship_commands = names(&commands(&px4_airship, "", r#"["@vehicle","All commands",true]"#));
+        assert!(!airship_commands.iter().any(|c| [21, 22, 84, 85, 3000].contains(c)), "PX4 adds VTOL and takeoff/land commands only for generic, VTOL, fixed wing and multi-rotor classes: {airship_commands:?}");
+        assert!(airship_commands.contains(&16));
 
         assert_eq!(commands(&quad, "", r#"["@vehicle",""]"#)["refusal"], "noCategory");
         assert_eq!(commands(&quad, "", r#"["@vehicle","Basic","yes"]"#)["refusal"], "malformed");

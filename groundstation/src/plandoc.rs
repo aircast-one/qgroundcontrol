@@ -62,6 +62,7 @@ pub fn vehicle_class(vehicle_type: i64) -> VehicleClass {
         19..=25 => VehicleClass::Vtol,
         12 => VehicleClass::Sub,
         10 | 11 => VehicleClass::Rover,
+        7 => VehicleClass::Airship,
         _ => VehicleClass::Generic,
     }
 }

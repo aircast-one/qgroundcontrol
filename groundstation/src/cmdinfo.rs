@@ -11,6 +11,7 @@ pub enum Firmware {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VehicleClass {
     Generic,
+    Airship,
     FixedWing,
     MultiRotor,
     Vtol,
@@ -55,8 +56,9 @@ const APM_VTOL: &str = include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfo
 const APM_SUB: &str = include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoSub.json");
 const APM_ROVER: &str = include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoRover.json");
 
-fn file(firmware: Firmware, vehicle: VehicleClass) -> &'static str {
-    match (firmware, vehicle) {
+fn file(firmware: Firmware, vehicle: VehicleClass) -> Option<&'static str> {
+    let text = match (firmware, vehicle) {
+        (_, VehicleClass::Airship) => return None,
         (Firmware::Generic, VehicleClass::Generic) => COMMON,
         (Firmware::Generic, VehicleClass::FixedWing) => FIXED_WING,
         (Firmware::Generic, VehicleClass::MultiRotor) => MULTI_ROTOR,
@@ -75,7 +77,8 @@ fn file(firmware: Firmware, vehicle: VehicleClass) -> &'static str {
         (Firmware::ArduPilot, VehicleClass::Vtol) => APM_VTOL,
         (Firmware::ArduPilot, VehicleClass::Sub) => APM_SUB,
         (Firmware::ArduPilot, VehicleClass::Rover) => APM_ROVER,
-    }
+    };
+    Some(text)
 }
 
 fn entries(text: &str) -> Result<Vec<Map<String, Value>>, String> {
@@ -151,10 +154,10 @@ fn command(id: i64, layered: Layered) -> Command {
 
 pub fn tree(firmware: Firmware, vehicle: VehicleClass) -> BTreeMap<i64, Command> {
     let layers = [
-        Some(file(Firmware::Generic, VehicleClass::Generic)),
-        (vehicle != VehicleClass::Generic).then(|| file(Firmware::Generic, vehicle)),
-        (firmware != Firmware::Generic).then(|| file(firmware, VehicleClass::Generic)),
-        (firmware != Firmware::Generic && vehicle != VehicleClass::Generic).then(|| file(firmware, vehicle)),
+        file(Firmware::Generic, VehicleClass::Generic),
+        (vehicle != VehicleClass::Generic).then(|| file(Firmware::Generic, vehicle)).flatten(),
+        (firmware != Firmware::Generic).then(|| file(firmware, VehicleClass::Generic)).flatten(),
+        (firmware != Firmware::Generic && vehicle != VehicleClass::Generic).then(|| file(firmware, vehicle)).flatten(),
     ];
     layers
         .into_iter()
@@ -173,7 +176,7 @@ mod tests {
     fn every_bundled_file_parses_and_the_base_tree_has_the_common_commands() {
         let firmwares = [Firmware::Generic, Firmware::Px4, Firmware::ArduPilot];
         let vehicles = [VehicleClass::Generic, VehicleClass::FixedWing, VehicleClass::MultiRotor, VehicleClass::Vtol, VehicleClass::Sub, VehicleClass::Rover];
-        assert!(firmwares.iter().all(|f| vehicles.iter().all(|v| entries(file(*f, *v)).is_ok())));
+        assert!(firmwares.iter().all(|f| vehicles.iter().all(|v| file(*f, *v).is_some_and(|text| entries(text).is_ok()))));
         let base = tree(Firmware::Generic, VehicleClass::Generic);
         assert_eq!(base.len(), 89);
         assert_eq!(base[&176].friendly_name, "Set flight mode");
@@ -204,5 +207,11 @@ mod tests {
         assert!(px4.len() >= 89 && apm.len() >= 89);
         assert_ne!(px4, apm);
         assert!(px4[&17].hidden.contains(&3));
+    }
+
+    #[test]
+    fn an_airship_has_no_override_files_so_it_gets_the_generic_tree() {
+        assert!(file(Firmware::Px4, VehicleClass::Airship).is_none());
+        assert_eq!(tree(Firmware::Px4, VehicleClass::Airship), tree(Firmware::Px4, VehicleClass::Generic));
     }
 }
