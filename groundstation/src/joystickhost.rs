@@ -236,6 +236,7 @@ struct Host {
     devices: Vec<Device>,
     joysticks: BTreeMap<String, Joystick>,
     calibration: Option<(String, StickCal)>,
+    setup_state: Option<(Option<String>, bool)>,
 }
 
 fn axis_group(joystick: &str) -> String {
@@ -530,7 +531,9 @@ fn sync_polling(now_ms: u64) {
     let enabled = enabled_vehicles();
     let mut host = host();
     let active = active_name(&host.devices);
-    ACTIVE_UNCALIBRATED.store(active.as_deref().is_some_and(|name| !settings_for(name).calibrated), std::sync::atomic::Ordering::Relaxed);
+    let calibrated = active.as_deref().is_some_and(|name| settings_for(name).calibrated);
+    ACTIVE_UNCALIBRATED.store(active.is_some() && !calibrated, std::sync::atomic::Ordering::Relaxed);
+    let joystick_changed = host.setup_state.replace((active.clone(), calibrated)).is_some_and(|before| before != (active.clone(), calibrated));
     let names: Vec<String> = host.joysticks.keys().cloned().collect();
     let outs: Vec<Out> = names
         .iter()
@@ -545,6 +548,9 @@ fn sync_polling(now_ms: u64) {
         })
         .collect();
     drop(host);
+    if joystick_changed {
+        crate::hub::lock().recheck_setup_everywhere();
+    }
     if let Some((id, link, ..)) = vehicle {
         send((id, link), outs);
     }

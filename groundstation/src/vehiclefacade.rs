@@ -908,13 +908,33 @@ fn vehicle_components() -> Option<Vec<Value>> {
     Some(described_components(v, crate::components::ardupilot, crate::components::px4))
 }
 
+fn setup_described(v: &crate::hub::Vehicle) -> bool {
+    matches!(v.autopilot, crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4) && v.parameters_ready()
+}
+
+fn first_seen(names: impl IntoIterator<Item = String>) -> Vec<String> {
+    names.into_iter().fold(Vec::new(), |seen, name| if seen.contains(&name) { seen } else { seen.into_iter().chain(std::iter::once(name)).collect() })
+}
+
+fn absent_once(v: &crate::hub::Vehicle, looked_up: Vec<String>) -> Vec<String> {
+    first_seen(looked_up.into_iter().filter(|name| v.parameter(v.component, name).is_none()))
+}
+
 pub fn setup_complete_missing_parameters() -> Vec<String> {
     let hub = crate::hub::lock();
-    let Some(v) = hub.active().filter(|v| matches!(v.autopilot, crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4) && v.parameters_ready()) else {
+    let Some(v) = hub.active().filter(|v| setup_described(v)) else {
         return Vec::new();
     };
-    let looked_up = described_components(v, crate::components::ardupilot_setup_lookups, crate::components::px4_setup_lookups);
-    looked_up.into_iter().filter(|name| v.parameter(v.component, name).is_none()).fold(Vec::new(), |missing, name| if missing.contains(&name) { missing } else { missing.into_iter().chain(std::iter::once(name)).collect() })
+    absent_once(v, described_components(v, crate::components::ardupilot_setup_lookups, crate::components::px4_setup_lookups))
+}
+
+pub fn setup_recheck_missing_parameters() -> Vec<String> {
+    let mut hub = crate::hub::lock();
+    let rechecks = hub.take_setup_rechecks();
+    let missing = rechecks.iter().filter_map(|(id, recheck)| hub.vehicle(*id).filter(|v| setup_described(v)).map(|v| {
+        absent_once(v, described_components(v, |described| crate::components::ardupilot_recheck_lookups(described, recheck), |described, actuators| crate::components::px4_recheck_lookups(described, actuators, recheck)))
+    }));
+    first_seen(missing.flatten())
 }
 
 pub fn prerequisite_lookups(class: &str) -> Vec<String> {

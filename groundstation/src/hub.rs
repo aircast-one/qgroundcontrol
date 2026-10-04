@@ -359,6 +359,7 @@ pub struct Vehicle {
     parameter_metadata: Option<ComponentParameters>,
     pub parameter_download_skipped: bool,
     parameters_announce_due: bool,
+    setup_recheck: crate::components::Recheck,
     pub link_status: crate::linkcount::LinkStatus,
     pub actuators_metadata: Option<Value>,
     pub events: crate::libevents::Session,
@@ -562,6 +563,7 @@ impl Vehicle {
             parameter_metadata: None,
             parameter_download_skipped: false,
             parameters_announce_due: false,
+            setup_recheck: crate::components::Recheck::default(),
             link_status: crate::linkcount::LinkStatus::default(),
             actuators_metadata: None,
             events: crate::libevents::Session::default(),
@@ -1535,6 +1537,12 @@ impl Vehicle {
                     Vec::new()
                 }
                 params::Action::Added { .. } => Vec::new(),
+                params::Action::Changed { component, name } => {
+                    if component == self.component && self.parameters_ready() {
+                        self.setup_recheck.changed.insert(name);
+                    }
+                    Vec::new()
+                }
             })
             .collect()
     }
@@ -4057,6 +4065,14 @@ impl Hub {
 
     pub fn active(&self) -> Option<&Vehicle> {
         self.active.and_then(|id| self.vehicles.get(&id))
+    }
+
+    pub fn recheck_setup_everywhere(&mut self) {
+        self.vehicles.values_mut().filter(|v| v.parameters_ready()).for_each(|v| v.setup_recheck.joystick = true);
+    }
+
+    pub fn take_setup_rechecks(&mut self) -> Vec<(u8, crate::components::Recheck)> {
+        self.vehicles.iter_mut().filter(|(_, v)| v.setup_recheck.joystick || !v.setup_recheck.changed.is_empty()).map(|(id, v)| (*id, std::mem::take(&mut v.setup_recheck))).collect()
     }
 
     pub fn vehicle(&self, id: u8) -> Option<&Vehicle> {

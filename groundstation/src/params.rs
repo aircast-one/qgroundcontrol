@@ -137,6 +137,7 @@ pub enum Action {
     StopWaitingTimer,
     Progress(f64),
     Added { component: u8, name: String },
+    Changed { component: u8, name: String },
     Ready { missing: bool },
     SaveCache { component: u8 },
     ReadFailed { component: u8, name: String },
@@ -383,10 +384,8 @@ impl Params {
             self.write_batch += 1;
         }
         self.pending_write.entry(component).or_default().insert(name.to_string(), value);
-        if let Some(known) = self.facts.get_mut(&component).and_then(|facts| facts.get_mut(name)) {
-            *known = value;
-        }
-        vec![self.progress(), Action::StartWaitingTimer, Action::Set { component, name: name.to_string(), value }]
+        let changed = self.facts.get_mut(&component).and_then(|facts| facts.get_mut(name)).is_some_and(|known| std::mem::replace(known, value) != value);
+        [self.progress(), Action::StartWaitingTimer, Action::Set { component, name: name.to_string(), value }].into_iter().chain(changed.then(|| Action::Changed { component, name: name.to_string() })).collect()
     }
 
     fn progress(&mut self) -> Action {
@@ -449,10 +448,11 @@ impl Params {
         }
         actions.push(self.progress());
         let facts = self.facts.entry(component).or_default();
-        if !facts.contains_key(name) {
-            actions.push(Action::Added { component, name: name.to_string() });
+        match facts.insert(name.to_string(), value) {
+            None => actions.push(Action::Added { component, name: name.to_string() }),
+            Some(previous) if previous != value => actions.push(Action::Changed { component, name: name.to_string() }),
+            Some(_) => {}
         }
-        facts.insert(name.to_string(), value);
         let refreshed = self.px4 && self.initial_complete && reads_before > 0 && self.index_reads_waiting(component) == 0;
         actions.extend(self.check_initial_load_complete());
         actions.extend(refreshed.then_some(Action::SaveCache { component }));
@@ -804,7 +804,7 @@ mod tests {
         params.start();
         deliver(&mut params, &["A"], &[]);
         let sent = params.write(1, "A", ParamValue::I32(9));
-        assert_eq!(sent, vec![Action::Progress(0.5), Action::StartWaitingTimer, Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }]);
+        assert_eq!(sent, vec![Action::Progress(0.5), Action::StartWaitingTimer, Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }, Action::Changed { component: 1, name: "A".into() }]);
         assert_eq!(params.value(1, "A"), Some(ParamValue::I32(9)), "Fact::setRawValue changes the local value at once, before the vehicle acknowledges it");
         let resend = params.on_waiting_timeout();
         assert!(resend.contains(&Action::Set { component: 1, name: "A".into(), value: ParamValue::I32(9) }));
@@ -815,6 +815,18 @@ mod tests {
         let outcomes: Vec<Vec<Action>> = (0..3).map(|_| params.on_waiting_timeout()).collect();
         assert!(outcomes[1].iter().any(|a| matches!(a, Action::Set { .. })), "PARAM_SET goes out three times in all, kParamSetRetryCount = 2");
         assert!(outcomes[2].contains(&Action::WriteFailed { component: 1, name: "A".into() }));
+    }
+
+    #[test]
+    fn a_value_differing_from_the_known_one_is_a_change_like_fact_value_changed() {
+        let mut params = Params::new(1, false);
+        params.start();
+        let changed = |actions: &[Action]| actions.contains(&Action::Changed { component: 1, name: "A".into() });
+        assert!(!changed(&deliver(&mut params, &["A"], &[])), "the first value is an addition");
+        assert!(!changed(&params.on_param_value(1, "A", 1, 0, ParamValue::I32(0))), "the same value again changes nothing");
+        assert!(changed(&params.on_param_value(1, "A", 1, 0, ParamValue::I32(4))));
+        assert!(!changed(&params.write(1, "A", ParamValue::I32(4))), "writing the current value changes nothing");
+        assert!(!changed(&params.on_param_value(1, "A", 1, 0, ParamValue::I32(4))), "the acknowledgement of a local change is not a second change");
     }
 
     #[test]

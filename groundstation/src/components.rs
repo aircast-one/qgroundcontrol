@@ -16,6 +16,12 @@ const SUBMARINE: u8 = 12;
 const UDP_BRIDGE_COMPONENT: u8 = 240;
 const RC_MAP: [&str; 4] = ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_YAW", "RCMAP_THROTTLE"];
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Recheck {
+    pub changed: std::collections::BTreeSet<String>,
+    pub joystick: bool,
+}
+
 pub struct Vehicle<'a> {
     pub vehicle_type: u8,
     pub version: Option<(u8, u8, u8)>,
@@ -70,8 +76,62 @@ fn until_incomplete<'a>(checked: impl IntoIterator<Item = &'a Entry>) -> Vec<Str
     checked[..recalculated].iter().flat_map(|e| e.lookups.iter().cloned()).collect()
 }
 
-fn setup_lookups(entries: &[Entry], constructed: &[&str]) -> Vec<String> {
-    constructed.iter().map(|name| name.to_string()).chain(until_incomplete(entries)).collect()
+fn setup_lookups(entries: &[Entry], constructed: &[String]) -> Vec<String> {
+    constructed.iter().cloned().chain(until_incomplete(entries)).collect()
+}
+
+fn recheck_lookups(entries: &[Entry], recheck: &Recheck, triggers: impl Fn(&str) -> Vec<String>, retriggered: impl Fn(&str) -> Vec<String>) -> Vec<String> {
+    let fired: Vec<&Entry> = entries.iter().filter(|e| recheck.joystick && e.class == "JoystickComponent" || triggers(e.class).iter().any(|name| recheck.changed.contains(name))).collect();
+    match fired.is_empty() {
+        true => vec![],
+        false => until_incomplete(entries).into_iter().chain(fired.iter().flat_map(|e| retriggered(e.class))).collect(),
+    }
+}
+
+fn apm_radio_triggers(param: &dyn Fn(&str) -> Option<f64>) -> Vec<String> {
+    RC_MAP.iter().flat_map(|map| {
+        let channel = param(map).map_or(0, |v| v as i64);
+        std::iter::once(map.to_string()).chain(["MIN", "MAX", "TRIM"].iter().map(move |suffix| format!("RC{channel}_{suffix}")))
+    }).collect()
+}
+
+const APM_SENSOR_TRIGGERS: [&str; 18] = [
+    "COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3", "COMPASS_USE", "COMPASS_USE2", "COMPASS_USE3",
+    "COMPASS_OFS_X", "COMPASS_OFS_Y", "COMPASS_OFS_Z", "COMPASS_OFS2_X", "COMPASS_OFS2_Y", "COMPASS_OFS2_Z",
+    "COMPASS_OFS3_X", "COMPASS_OFS3_Y", "COMPASS_OFS3_Z", "INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z",
+];
+
+fn named(names: &[&str]) -> Vec<String> {
+    names.iter().map(|name| name.to_string()).collect()
+}
+
+fn ardupilot_triggers(class: &str, param: &dyn Fn(&str) -> Option<f64>) -> Vec<String> {
+    match class {
+        "APMSensorsComponent" => named(&APM_SENSOR_TRIGGERS),
+        "APMAirframeComponent" => named(&["FRAME_CLASS"]),
+        "APMRadioComponent" => apm_radio_triggers(param),
+        _ => vec![],
+    }
+}
+
+fn px4_airspeed_vehicle(vehicle_type: u8) -> bool {
+    matches!(vehicle_type, 1 | 7 | 19..=25)
+}
+
+fn px4_triggers(class: &str, vehicle_type: u8, version: Option<(u8, u8, u8)>) -> Vec<String> {
+    let (major, minor, _) = version.unwrap_or((0, 0, 0));
+    let airspeed: &[&str] = match px4_airspeed_vehicle(vehicle_type) {
+        false => &[],
+        true if major >= 1 && minor >= 14 => &["SENS_DPRES_OFF", "SYS_HAS_NUM_ASPD"],
+        true => &["SENS_DPRES_OFF", "FW_ARSP_MODE", "CBRK_AIRSPD_CHK"],
+    };
+    match class {
+        "AirframeComponent" => named(&["SYS_AUTOSTART"]),
+        "SensorsComponent" => named(&["CAL_GYRO0_ID", "CAL_ACC0_ID", "CAL_MAG0_ID", "SYS_HAS_MAG"]).into_iter().chain(named(airspeed)).collect(),
+        "PX4RadioComponent" => named(&["COM_RC_IN_MODE", "RC_MAP_ROLL", "RC_MAP_PITCH", "RC_MAP_YAW", "RC_MAP_THROTTLE"]),
+        "PowerComponent" => named(&["BAT1_SOURCE", "BAT1_V_CHARGED", "BAT1_V_EMPTY", "BAT1_N_CELLS"]),
+        _ => vec![],
+    }
 }
 
 const RC_IN_MODE: &str = "COM_RC_IN_MODE";
@@ -117,8 +177,22 @@ pub fn ardupilot(vehicle: &Vehicle) -> Vec<Value> {
 
 pub fn ardupilot_setup_lookups(vehicle: &Vehicle) -> Vec<String> {
     let entries = ardupilot_entries(vehicle);
+    let param = |name: &str| (vehicle.parameter)(vehicle.default_component, name);
     let radio_constructed = entries.iter().any(|e| e.class == "APMRadioComponent");
-    setup_lookups(&entries, if radio_constructed { &RC_MAP } else { &[] })
+    let constructed: Vec<String> = match radio_constructed {
+        true => named(&RC_MAP).into_iter().chain(apm_radio_triggers(&param)).collect(),
+        false => vec![],
+    };
+    setup_lookups(&entries, &constructed)
+}
+
+pub fn ardupilot_recheck_lookups(vehicle: &Vehicle, recheck: &Recheck) -> Vec<String> {
+    let param = |name: &str| (vehicle.parameter)(vehicle.default_component, name);
+    let retriggered = |class: &str| match class {
+        "APMRadioComponent" => apm_radio_triggers(&param),
+        _ => vec![],
+    };
+    recheck_lookups(&ardupilot_entries(vehicle), recheck, |class| ardupilot_triggers(class, &param), retriggered)
 }
 
 fn ardupilot_entries(vehicle: &Vehicle) -> Vec<Entry> {
@@ -170,7 +244,7 @@ fn px4_sensors_complete(param: &dyn Fn(&str) -> Option<f64>, guarded: &dyn Fn(&s
     let value = |name: &str| param(name).unwrap_or(0.0);
     let mag_ok = || guarded("SYS_HAS_MAG").is_some_and(|v| v == 0.0) || value("CAL_MAG0_ID") != 0.0;
     let (major, minor, _) = version.unwrap_or((0, 0, 0));
-    let airspeed_ok = || match matches!(vehicle_type, 1 | 7 | 19..=25) {
+    let airspeed_ok = || match px4_airspeed_vehicle(vehicle_type) {
         false => true,
         true if major > 1 || (major == 1 && minor > 14) => !(value("SYS_HAS_NUM_ASPD") != 0.0 && value("SENS_DPRES_OFF") == 0.0),
         true => !(value("FW_ARSP_MODE") == 0.0 && value("CBRK_AIRSPD_CHK") as i64 != SPEED_CHECK_CIRCUIT_BREAKER && value("SENS_DPRES_OFF") == 0.0),
@@ -191,6 +265,10 @@ pub fn px4(vehicle: &Vehicle, actuators: Option<Px4Actuators>) -> Vec<Value> {
 
 pub fn px4_setup_lookups(vehicle: &Vehicle, actuators: Option<Px4Actuators>) -> Vec<String> {
     setup_lookups(&px4_entries(vehicle, actuators), &[])
+}
+
+pub fn px4_recheck_lookups(vehicle: &Vehicle, actuators: Option<Px4Actuators>, recheck: &Recheck) -> Vec<String> {
+    recheck_lookups(&px4_entries(vehicle, actuators), recheck, |class| px4_triggers(class, vehicle.vehicle_type, vehicle.version), |_| vec![])
 }
 
 fn px4_entries(vehicle: &Vehicle, actuators: Option<Px4Actuators>) -> Vec<Entry> {
@@ -294,10 +372,14 @@ mod tests {
 
     #[test]
     fn apm_setup_complete_looks_up_like_recalc_setup_complete_stopping_at_the_first_incomplete_component() {
-        assert_eq!(apm_lookups(&[(1, "FRAME_CLASS", 1.0)]), ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_YAW", "RCMAP_THROTTLE", "RCMAP_ROLL"], "the radio ctor reads every RCMAP, then Radio stops at the first unmapped channel");
+        let unmapped = apm_lookups(&[(1, "FRAME_CLASS", 1.0)]);
+        assert_eq!(unmapped[..4], ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_YAW", "RCMAP_THROTTLE"], "the radio ctor reads every RCMAP");
+        assert_eq!(unmapped[4..8], ["RCMAP_ROLL", "RC0_MIN", "RC0_MAX", "RC0_TRIM"], "then _connectSetupTriggers reads each mapped channel's MIN/MAX/TRIM, channel 0 when unmapped");
+        assert_eq!(unmapped[20..], ["RCMAP_ROLL"], "then Radio stops at the first unmapped channel");
         let mapped: &[(u8, &str, f64)] = &[(1, "FRAME_CLASS", 1.0), (1, "RCMAP_ROLL", 1.0), (1, "RCMAP_PITCH", 2.0), (1, "RCMAP_YAW", 4.0), (1, "RCMAP_THROTTLE", 3.0), (1, "INS_ACCOFFS_X", 0.1)];
         let looked_up = apm_lookups(mapped);
-        assert_eq!(looked_up[8..], ["RC1_MIN", "COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3", "INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"], "a missing RC1_MIN reads as 0, so Radio is complete and Sensors reads all three accel offsets: {looked_up:?}");
+        assert_eq!(looked_up[16..20], ["RCMAP_THROTTLE", "RC3_MIN", "RC3_MAX", "RC3_TRIM"]);
+        assert_eq!(looked_up[24..], ["RC1_MIN", "COMPASS_DEV_ID", "COMPASS_DEV_ID2", "COMPASS_DEV_ID3", "INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"], "a missing RC1_MIN reads as 0, so Radio is complete and Sensors reads all three accel offsets: {looked_up:?}");
     }
 
     #[test]
@@ -308,6 +390,31 @@ mod tests {
         assert_eq!(px4_lookups(2, radio_done)[2..], ["CAL_GYRO0_ID", "CAL_ACC0_ID", "CAL_MAG0_ID"], "SYS_HAS_MAG is behind parameterExists, CAL_MAG0_ID is not");
         let plane: &[(&str, f64)] = &[("SYS_AUTOSTART", 2100.0), ("COM_RC_IN_MODE", 1.0), ("CAL_GYRO0_ID", 1.0), ("CAL_ACC0_ID", 1.0), ("SYS_HAS_MAG", 0.0)];
         assert_eq!(px4_lookups(1, plane)[2..], ["CAL_GYRO0_ID", "CAL_ACC0_ID", "SYS_HAS_NUM_ASPD"], "a plane on 1.15 checks SYS_HAS_NUM_ASPD and stops when it reads 0");
+    }
+
+    fn changed(names: &[&str]) -> Recheck {
+        Recheck { changed: names.iter().map(|name| name.to_string()).collect(), joystick: false }
+    }
+
+    #[test]
+    fn a_trigger_parameter_change_re_runs_recalc_setup_complete_and_the_apm_radio_reconnects_its_triggers() {
+        let params: &[(u8, &str, f64)] = &[(1, "FRAME_CLASS", 1.0), (1, "RCMAP_ROLL", 1.0), (1, "RCMAP_PITCH", 2.0), (1, "RCMAP_YAW", 4.0), (1, "RCMAP_THROTTLE", 3.0), (1, "RC1_MIN", 982.0), (1, "INS_ACCOFFS_X", 0.1)];
+        let parameter = move |component: u8, name: &str| params.iter().find(|(c, n, _)| *c == component && *n == name).map(|(_, _, v)| *v);
+        let copter = Vehicle { vehicle_type: 2, version: Some((4, 5, 7)), parameter: &parameter, default_component: 1, hil: false };
+        assert!(ardupilot_recheck_lookups(&copter, &changed(&["RC5_MIN", "SERVO1_MIN"])).is_empty(), "only setupCompleteChangedTriggerList facts are watched");
+        let sensors = ardupilot_recheck_lookups(&copter, &changed(&["COMPASS_OFS_X"]));
+        assert_eq!(sensors.first().map(String::as_str), Some("RCMAP_ROLL"), "the walk restarts at the first component: {sensors:?}");
+        assert!(sensors.contains(&"COMPASS_DEV_ID".to_string()) && !sensors.contains(&"RC1_MAX".to_string()));
+        let radio = ardupilot_recheck_lookups(&copter, &changed(&["RC1_MIN"]));
+        assert_eq!(radio[radio.len() - 16..radio.len() - 12], ["RCMAP_ROLL", "RC1_MIN", "RC1_MAX", "RC1_TRIM"], "APMRadioComponent::_triggerChanged reconnects after the recalc: {radio:?}");
+        let joystick = ardupilot_recheck_lookups(&copter, &Recheck { joystick: true, ..Recheck::default() });
+        assert_eq!(joystick, sensors, "a joystick change re-runs the same walk");
+        let px4_params: &[(&str, f64)] = &[("SYS_AUTOSTART", 2100.0)];
+        let px4_parameter = move |_component: u8, name: &str| px4_params.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        let plane = |version| Vehicle { vehicle_type: 1, version: Some(version), parameter: &px4_parameter, default_component: 1, hil: false };
+        assert_eq!(px4_recheck_lookups(&plane((1, 15, 0)), None, &changed(&["BAT1_N_CELLS"])), ["SYS_AUTOSTART", "COM_RC_IN_MODE", "RC_MAP_ROLL"]);
+        assert!(px4_recheck_lookups(&plane((2, 0, 0)), None, &changed(&["SYS_HAS_NUM_ASPD"])).is_empty(), "SensorsComponent tests major >= 1 && minor >= 14, so 2.0 watches the old airspeed set");
+        assert!(!px4_recheck_lookups(&plane((2, 0, 0)), None, &changed(&["CBRK_AIRSPD_CHK"])).is_empty());
     }
 
     #[test]
