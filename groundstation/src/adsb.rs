@@ -252,8 +252,7 @@ pub fn decode(message: &MavMessage) -> Option<Report> {
     let altitude = has(AdsbFlags::ADSB_FLAGS_VALID_ALTITUDE).then(|| data.altitude as f64 / MILLIMETRES_PER_METRE);
     let callsign = has(AdsbFlags::ADSB_FLAGS_VALID_CALLSIGN)
         .then(|| data.callsign.to_str().ok().map(|text| text.trim().to_string()))
-        .flatten()
-        .filter(|text| !text.is_empty());
+        .flatten();
     Some(Report {
         icao_address: data.ICAO_address,
         callsign,
@@ -756,6 +755,18 @@ mod tests {
         assert!(decode(&vehicle(everything(), MAX_SECONDS_SINCE_LAST_SEEN as u8 + 1)).is_none(), "a contact last seen longer ago than the message allows is not reported at all");
         assert!(decode(&vehicle(everything(), MAX_SECONDS_SINCE_LAST_SEEN as u8)).is_some(), "and the boundary itself still is");
         assert!(decode(&MavMessage::HEARTBEAT(Default::default())).is_none());
+    }
+
+    #[test]
+    fn a_valid_blank_mavlink_callsign_replaces_the_old_one_like_adsb_vehicle_update() {
+        let mut traffic = Traffic::default();
+        assert!(traffic.on_message(&vehicle(everything(), 1), 0));
+        let blank = match vehicle(everything(), 1) {
+            MavMessage::ADSB_VEHICLE(data) => MavMessage::ADSB_VEHICLE(ADSB_VEHICLE_DATA { callsign: CharArray::from(""), ..data }),
+            other => other,
+        };
+        assert!(traffic.on_message(&blank, PUBLISH_INTERVAL_MS));
+        assert_eq!(traffic.contact(0xABCDEF).and_then(|contact| contact.report.callsign.as_deref()), Some(""), "CallsignAvailable copies whatever the transponder sent");
     }
 
     #[test]
