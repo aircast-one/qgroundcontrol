@@ -917,6 +917,14 @@ pub fn setup_complete_missing_parameters() -> Vec<String> {
     looked_up.into_iter().filter(|name| v.parameter(v.component, name).is_none()).fold(Vec::new(), |missing, name| if missing.contains(&name) { missing } else { missing.into_iter().chain(std::iter::once(name)).collect() })
 }
 
+pub fn prerequisite_lookups(class: &str) -> Vec<String> {
+    let hub = crate::hub::lock();
+    hub.active()
+        .filter(|v| matches!(v.autopilot, crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4))
+        .map(|v| described_components(v, |d| crate::components::ardupilot_prerequisite_lookups(d, class), |d, actuators| crate::components::px4_prerequisite_lookups(d, actuators, class)))
+        .unwrap_or_default()
+}
+
 fn described_components<T>(v: &crate::hub::Vehicle, ardupilot: impl FnOnce(&crate::components::Vehicle) -> T, px4: impl FnOnce(&crate::components::Vehicle, Option<crate::components::Px4Actuators>) -> T) -> T {
     let parameter = |component: u8, name: &str| v.parameter(component, name).map(|p| p.as_f64());
     let version = v.firmware().and_then(|f| f.version).map(|(major, minor, patch, _)| (major, minor, patch));

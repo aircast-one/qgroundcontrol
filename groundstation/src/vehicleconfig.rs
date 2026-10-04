@@ -494,12 +494,18 @@ pub fn page_opened(backend: &dyn Backend, args: &str) -> Value {
         .flat_map(|c| c["state"].as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()).unwrap_or_default())
         .map(|state| state_key(backend, &state))
         .collect();
-    page_state().retain(|key, _| !keys.contains(key));
+    let component = crate::setup::opened_component(backend, &opened, px4);
+    let blocked = component.as_ref().is_some_and(|(_, prerequisite)| prerequisite.is_some());
+    if !blocked {
+        page_state().retain(|key, _| !keys.contains(key));
+    }
     let ready = !crate::qthost::present() && crate::read::object(&backend.get("vehicle.parameterManager.parametersReady"))["value"] == true;
-    let missing = match (ready, opened == crate::setupsummary::PAGE) {
-        (false, _) => vec![],
-        (true, true) => absent(backend, crate::setupsummary::reported_lookups(backend)),
-        (true, false) => missing_parameters(backend, &pages, px4),
+    let prerequisite = || absent(backend, at(DEFAULT_COMPONENT, component.as_ref().map(|(class, _)| crate::vehiclefacade::prerequisite_lookups(class)).unwrap_or_default()));
+    let missing = match (ready, opened == crate::setupsummary::PAGE, blocked) {
+        (false, _, _) => vec![],
+        (true, true, _) => absent(backend, crate::setupsummary::reported_lookups(backend)),
+        (true, false, true) => prerequisite(),
+        (true, false, false) => first_seen(prerequisite().into_iter().chain(missing_parameters(backend, &pages, px4))),
     };
     if !missing.is_empty() {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &missing_parameters_text(&missing));
@@ -587,11 +593,14 @@ fn reported_lookups(backend: &dyn Backend, page: &str, px4: bool) -> Vec<(i64, S
         }
         ("Flight Modes", true) => {
             let switches = PX4_SWITCH_LOOKUPS.iter().copied().chain(flag(&vehicle, "vtol").then_some(("RC_MAP_TRANS_SW", "RC_TRANS_TH"))).chain(flag(&vehicle, "fixedWing").then_some(("RC_MAP_FLAPS", "")));
-            at(DEFAULT_COMPONENT, PX4_MODE_LOOKUPS.iter().copied().chain(switches.flat_map(|(switch, threshold)| std::iter::once(switch).chain(Some(threshold).filter(|t| !t.is_empty())))))
+            let mode_channel = crate::read::value_number(&backend.get("vehicle.parameterManager.getParameter(-1,RC_MAP_FLTMODE).rawValue")).map_or(0, |channel| channel as i64);
+            let channel_reads = (mode_channel > 0).then(|| ["REV", "MIN", "MAX"].map(|suffix| format!("RC{mode_channel}_{suffix}"))).into_iter().flatten();
+            at(DEFAULT_COMPONENT, PX4_MODE_LOOKUPS.iter().copied().chain(switches.flat_map(|(switch, threshold)| std::iter::once(switch).chain(Some(threshold).filter(|t| !t.is_empty())))).map(str::to_string).chain(channel_reads))
         }
         ("Sensors", false) => at(DEFAULT_COMPONENT, std::iter::once("AHRS_ORIENTATION").chain(apm_sensor_params_lookups(&exists))),
         ("Sensors", true) => at(DEFAULT_COMPONENT, PX4_SENSOR_LOOKUPS.iter().copied()),
-        ("Radio", true) => at(DEFAULT_COMPONENT, (!flag(&vehicle, "multiRotor")).then_some("RC_MAP_FLAPS").into_iter().chain(PX4_RADIO_LOOKUPS.iter().copied())),
+        ("Radio", true) => at(DEFAULT_COMPONENT, (!flag(&vehicle, "multiRotor")).then_some("RC_MAP_FLAPS").into_iter().map(str::to_string).chain(PX4_RADIO_LOOKUPS.iter().map(|name| name.to_string())).chain(radio_controller_lookups(&exists, true))),
+        ("Radio", false) => at(DEFAULT_COMPONENT, radio_controller_lookups(&exists, false)),
         ("Frame", false) => at(DEFAULT_COMPONENT, [if flag(&vehicle, "sub") { "FRAME_CONFIG" } else { "FRAME_CLASS" }]),
         ("Frame", true) => at(DEFAULT_COMPONENT, ["SYS_AUTOSTART", "SYS_AUTOCONFIG"]),
         ("Motors", false) if flag(&vehicle, "sub") => {
@@ -604,6 +613,16 @@ fn reported_lookups(backend: &dyn Backend, page: &str, px4: bool) -> Vec<(i64, S
         ("Tuning", true) | ("Tuning - Advanced", false) => at(DEFAULT_COMPONENT, crate::px4tuning::opening_tab_params(backend)),
         _ => vec![],
     }
+}
+
+fn radio_controller_lookups(exists: &dyn Fn(&str) -> bool, px4: bool) -> Vec<String> {
+    let reversed = if exists("RC1_REVERSED") { "REVERSED" } else { "REV" };
+    let sticks: &[&str] = if px4 { &["RC_MAP_ROLL", "RC_MAP_PITCH", "RC_MAP_YAW", "RC_MAP_THROTTLE"] } else { &["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_YAW", "RCMAP_THROTTLE"] };
+    (1..=crate::rccal::MAX_CHANNELS)
+        .filter(|channel| exists(&format!("RC{channel}_MIN")))
+        .flat_map(|channel| ["TRIM", "MIN", "MAX", reversed].map(|suffix| format!("RC{channel}_{suffix}")))
+        .chain(sticks.iter().map(|name| name.to_string()))
+        .collect()
 }
 
 pub(crate) fn missing_parameters_text(missing: &[(i64, String)]) -> String {
@@ -1514,7 +1533,15 @@ mod tests {
         assert_eq!(looked_up(json!({ "sub": true }), &[], "Motors", false).len(), 9, "8 sliders without a motor count, plus FRAME_CONFIG");
         assert!(looked_up(copter.clone(), &[], "Motors", false).is_empty(), "APMMotorComponent looks nothing up");
         assert_eq!(looked_up(json!({ "multiRotor": false }), &[], "Radio", true).first().map(String::as_str), Some("RC_MAP_FLAPS"));
-        assert!(looked_up(copter, &[], "Radio", false).is_empty(), "the ArduPilot radio page has no switch rows");
+        assert_eq!(looked_up(copter.clone(), &[], "Radio", false), ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_YAW", "RCMAP_THROTTLE"], "the ArduPilot radio page has no switch rows; RadioComponentController::start reads the stick maps");
+        assert_eq!(looked_up(copter.clone(), &["RC2_MIN", "RC1_REVERSED"], "Radio", false)[..4], ["RC2_TRIM", "RC2_MIN", "RC2_MAX", "RC2_REVERSED"], "only channels whose RCn_MIN exists, REVERSED once RC1_REVERSED exists");
+        let px4_radio = looked_up(copter, &["RC1_MIN"], "Radio", true);
+        assert!(px4_radio.ends_with(&["RC1_TRIM", "RC1_MIN", "RC1_MAX", "RC1_REV", "RC_MAP_ROLL", "RC_MAP_PITCH", "RC_MAP_YAW", "RC_MAP_THROTTLE"].map(String::from)), "{px4_radio:?}");
+        let mut mode_switch = Fake::new(&[("RC_MAP_FLTMODE", 5.0)]);
+        mode_switch.px4 = true;
+        let channel: Vec<String> = reported_lookups(&mode_switch, "Flight Modes", true).into_iter().map(|(_, name)| name).collect();
+        assert!(channel.ends_with(&["RC5_REV", "RC5_MIN", "RC5_MAX"].map(String::from)), "PX4SimpleFlightModesController reads the mode channel's REV/MIN/MAX on every RC_CHANNELS: {channel:?}");
+        assert!(!looked_up(json!({}), &[], "Flight Modes", true).iter().any(|n| n.starts_with("RC0_")), "no mode channel, no channel reads");
     }
 
     #[test]

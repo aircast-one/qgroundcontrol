@@ -64,9 +64,38 @@ fn sorted(entries: impl IntoIterator<Item = Option<Entry>>) -> Vec<Entry> {
     listed
 }
 
+fn until_incomplete<'a>(checked: impl IntoIterator<Item = &'a Entry>) -> Vec<String> {
+    let checked: Vec<&Entry> = checked.into_iter().collect();
+    let recalculated = checked.iter().position(|e| !e.setup_complete).map_or(checked.len(), |incomplete| incomplete + 1);
+    checked[..recalculated].iter().flat_map(|e| e.lookups.iter().cloned()).collect()
+}
+
 fn setup_lookups(entries: &[Entry], constructed: &[&str]) -> Vec<String> {
-    let recalculated = entries.iter().position(|e| !e.setup_complete).map_or(entries.len(), |incomplete| incomplete + 1);
-    constructed.iter().map(|name| name.to_string()).chain(entries[..recalculated].iter().flat_map(|e| e.lookups.iter().cloned())).collect()
+    constructed.iter().map(|name| name.to_string()).chain(until_incomplete(entries)).collect()
+}
+
+const RC_IN_MODE: &str = "COM_RC_IN_MODE";
+
+fn prerequisite_lookups(entries: &[Entry], class: &str, rc_in_mode: Option<f64>) -> Vec<String> {
+    let of = |classes: &[&str]| entries.iter().find(|e| classes.contains(&e.class));
+    let airframe = || until_incomplete(of(&crate::setup::AIRFRAME_CLASSES));
+    let airframe_then_radio = || until_incomplete(of(&crate::setup::AIRFRAME_CLASSES).into_iter().chain(of(&crate::setup::RADIO_CLASSES)));
+    match class {
+        "FlightModesComponent" if rc_in_mode.is_some_and(|mode| mode as i64 == crate::setup::RC_IN_MODE_NO_RC) => vec![RC_IN_MODE.to_string()],
+        "FlightModesComponent" => std::iter::once(RC_IN_MODE.to_string()).chain(airframe_then_radio()).collect(),
+        "PX4RadioComponent" => vec![RC_IN_MODE.to_string()],
+        "APMFlightModesComponent" => airframe_then_radio(),
+        class if crate::setup::NEEDS_AIRFRAME.contains(&class) => airframe(),
+        _ => vec![],
+    }
+}
+
+pub fn ardupilot_prerequisite_lookups(vehicle: &Vehicle, class: &str) -> Vec<String> {
+    prerequisite_lookups(&ardupilot_entries(vehicle), class, None)
+}
+
+pub fn px4_prerequisite_lookups(vehicle: &Vehicle, actuators: Option<Px4Actuators>, class: &str) -> Vec<String> {
+    prerequisite_lookups(&px4_entries(vehicle, actuators), class, (vehicle.parameter)(vehicle.default_component, RC_IN_MODE))
 }
 
 fn at_least(version: Option<(u8, u8, u8)>, wanted: (u8, u8, u8)) -> bool {
@@ -279,6 +308,24 @@ mod tests {
         assert_eq!(px4_lookups(2, radio_done)[2..], ["CAL_GYRO0_ID", "CAL_ACC0_ID", "CAL_MAG0_ID"], "SYS_HAS_MAG is behind parameterExists, CAL_MAG0_ID is not");
         let plane: &[(&str, f64)] = &[("SYS_AUTOSTART", 2100.0), ("COM_RC_IN_MODE", 1.0), ("CAL_GYRO0_ID", 1.0), ("CAL_ACC0_ID", 1.0), ("SYS_HAS_MAG", 0.0)];
         assert_eq!(px4_lookups(1, plane)[2..], ["CAL_GYRO0_ID", "CAL_ACC0_ID", "SYS_HAS_NUM_ASPD"], "a plane on 1.15 checks SYS_HAS_NUM_ASPD and stops when it reads 0");
+    }
+
+    #[test]
+    fn opening_a_setup_page_looks_up_what_prerequisite_setup_checks() {
+        let px4 = |params: &'static [(&'static str, f64)], class: &str| {
+            let parameter = move |_component: u8, name: &str| params.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+            px4_prerequisite_lookups(&Vehicle { vehicle_type: 2, version: Some((1, 15, 0)), parameter: &parameter, default_component: 1, hil: false }, None, class)
+        };
+        assert_eq!(px4(&[], "PX4RadioComponent"), ["COM_RC_IN_MODE"]);
+        assert_eq!(px4(&[], "FlightModesComponent"), ["COM_RC_IN_MODE", "SYS_AUTOSTART"], "an unset airframe stops the check before the radio");
+        assert_eq!(px4(&[("SYS_AUTOSTART", 4001.0)], "FlightModesComponent"), ["COM_RC_IN_MODE", "SYS_AUTOSTART", "COM_RC_IN_MODE", "RC_MAP_ROLL"]);
+        assert_eq!(px4(&[("COM_RC_IN_MODE", 1.0)], "FlightModesComponent"), ["COM_RC_IN_MODE"], "no RC input skips both checks");
+        assert_eq!(px4(&[], "SafetyComponent"), ["SYS_AUTOSTART"]);
+        assert!(px4(&[], "SyslinkComponent").is_empty());
+        let parameter = |_component: u8, name: &str| (name == "FRAME_CLASS").then_some(1.0);
+        let copter = Vehicle { vehicle_type: 2, version: Some((4, 5, 7)), parameter: &parameter, default_component: 1, hil: false };
+        assert_eq!(ardupilot_prerequisite_lookups(&copter, "APMFlightModesComponent"), ["RCMAP_ROLL"], "the frame reads its own fact; the radio check stops at the first unmapped channel");
+        assert!(ardupilot_prerequisite_lookups(&copter, "APMPowerComponent").is_empty());
     }
 
     #[test]

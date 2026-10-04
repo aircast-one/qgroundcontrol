@@ -196,13 +196,13 @@ pub struct Component {
     pub setup_complete: bool,
 }
 
-const AIRFRAME_CLASSES: [&str; 2] = ["APMAirframeComponent", "AirframeComponent"];
-const RADIO_CLASSES: [&str; 2] = ["APMRadioComponent", "PX4RadioComponent"];
-const NEEDS_AIRFRAME: [&str; 12] = [
+pub(crate) const AIRFRAME_CLASSES: [&str; 2] = ["APMAirframeComponent", "AirframeComponent"];
+pub(crate) const RADIO_CLASSES: [&str; 2] = ["APMRadioComponent", "PX4RadioComponent"];
+pub(crate) const NEEDS_AIRFRAME: [&str; 12] = [
     "APMFlightModesComponent", "APMRadioComponent", "APMPowerComponent", "APMESCComponent", "APMFlightSafetyComponent", "APMTuningComponent", "APMSensorsComponent", "APMAirspeedComponent",
     "PX4TuningComponent", "PowerComponent", "SafetyComponent", "SensorsComponent",
 ];
-const RC_IN_MODE_NO_RC: i64 = 1;
+pub(crate) const RC_IN_MODE_NO_RC: i64 = 1;
 
 pub fn prerequisite(component: &Component, all: &[Component], rc_in_mode: Option<i64>) -> Option<String> {
     let unfinished = |classes: &[&str]| all.iter().find(|c| classes.contains(&c.class_name.as_str()) && !c.setup_complete).map(|c| c.name.clone());
@@ -213,6 +213,16 @@ pub fn prerequisite(component: &Component, all: &[Component], rc_in_mode: Option
         class if NEEDS_AIRFRAME.contains(&class) => unfinished(&AIRFRAME_CLASSES),
         _ => None,
     }
+}
+
+fn rc_in_mode(backend: &dyn Backend, px4: bool) -> Option<i64> {
+    px4.then(|| crate::read::value_number(&backend.get("vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue")).map(|m| m as i64)).flatten()
+}
+
+pub fn opened_component(backend: &dyn Backend, name: &str, px4: bool) -> Option<(String, Option<String>)> {
+    let components = vehicle_components(backend);
+    let rc_in_mode = rc_in_mode(backend, px4);
+    components.iter().find(|c| c.name == name).map(|c| (c.class_name.clone(), prerequisite(c, &components, rc_in_mode)))
 }
 
 fn known_component(component: &Value) -> Option<String> {
@@ -294,7 +304,7 @@ fn parameter_state(backend: &dyn Backend, connected: bool) -> (bool, &'static st
 
 fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let components = vehicle_components(backend);
-    let rc_in_mode = px4.then(|| crate::read::value_number(&backend.get("vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue")).map(|m| m as i64)).flatten();
+    let rc_in_mode = rc_in_mode(backend, px4);
     let faults: Vec<String> = sensors::sensors(&object(&backend.get("vehicle.sysStatusSensorInfo"))).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
     let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), !c.setup_complete)).collect();
     let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);

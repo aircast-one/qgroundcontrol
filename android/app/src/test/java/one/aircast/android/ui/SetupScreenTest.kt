@@ -15,11 +15,12 @@ class SetupScreenTest {
     }
 
     @Test
-    fun `only pages that are not a parameter form ask the core to report their lookups`() {
-        assertEquals(true, reportsOwnLookups(null, SetupPage("Sensors", parameterSections = false)))
-        assertEquals(false, reportsOwnLookups(null, SetupPage("Heli", parameterSections = true)))
-        assertEquals(false, reportsOwnLookups("Radio", SetupPage("Flight Modes", parameterSections = false)))
-        assertEquals(false, reportsOwnLookups(null, SetupPage("Flight Safety", parameterSections = false, screen = NOT_SUPPORTED_SCREEN)))
+    fun `the screen reports opening unless a parameter form does it, and always while a prerequisite blocks the page`() {
+        assertEquals(true, reportsOpening(null, SetupPage("Sensors", parameterSections = false)))
+        assertEquals(false, reportsOpening(null, SetupPage("Heli", parameterSections = true)))
+        assertEquals(true, reportsOpening("Radio", SetupPage("Flight Modes", parameterSections = false)))
+        assertEquals(true, reportsOpening("Airframe", SetupPage("Power", parameterSections = true)))
+        assertEquals(false, reportsOpening(null, SetupPage("Flight Safety", parameterSections = false, screen = NOT_SUPPORTED_SCREEN)))
     }
 
     @Test

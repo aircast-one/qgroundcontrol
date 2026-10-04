@@ -226,8 +226,8 @@ private fun SetupNotice(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-internal fun reportsOwnLookups(prerequisite: String?, page: SetupPage?): Boolean =
-    prerequisite == null && page?.parameterSections != true && page?.screen != NOT_SUPPORTED_SCREEN
+internal fun reportsOpening(prerequisite: String?, page: SetupPage?): Boolean =
+    prerequisite != null || (page?.parameterSections != true && page?.screen != NOT_SUPPORTED_SCREEN)
 
 @Composable
 fun SetupScreen(modifier: Modifier = Modifier) {
@@ -333,7 +333,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             val nativePage = setupPage(setupJson, open.name)
             val blocked = open.blockedReason
             val first = open.prerequisite
-            val reportsLookups = reportsOwnLookups(first, nativePage)
+            val reportsLookups = reportsOpening(first, nativePage)
             LaunchedEffect(open.name, reportsLookups) {
                 if (reportsLookups) withContext(Dispatchers.Default) { Qgc.invoke(SETUP_PAGE_OPENED, open.name) }
             }
