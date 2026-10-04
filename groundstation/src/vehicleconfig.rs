@@ -360,7 +360,13 @@ impl<'a> Scope<'a> {
             Expr::Name(f) if f == "_fullParamName" => text(0).map_or(Val::Null, |p| Val::Str(self.full_name(&p))),
             Expr::Member(base, method) if matches!(base.as_ref(), Expr::Name(n) if n == "controller") => match method.as_str() {
                 "parameterExists" => Val::Bool(text(1).is_some_and(|n| self.exists(&n))),
-                "getParameterFact" => text(1).filter(|n| self.exists(n)).map_or(Val::Null, Val::Fact),
+                "getParameterFact" => match text(1).filter(|n| self.exists(n)) {
+                    Some(name) => Val::Fact(name),
+                    None => {
+                        text(1).filter(|_| args.get(2) != Some(&Val::Bool(false))).into_iter().for_each(|name| UNMET.with_borrow_mut(|unmet| unmet.iter_mut().for_each(|names| names.push(name.clone()))));
+                        Val::Null
+                    }
+                },
                 _ => Val::Null,
             },
             Expr::Member(base, method) if method == "includes" => match (self.eval(base), args.first()) {
@@ -482,14 +488,55 @@ pub fn page_opened(backend: &dyn Backend, args: &str) -> Value {
     };
     let px4 = px4(backend);
     let merged = (opened == "Flight Modes" && !px4).then_some(SIMPLE_MODES);
-    let keys: Vec<String> = std::iter::once(opened.as_str())
-        .chain(merged)
+    let pages: Vec<&str> = std::iter::once(opened.as_str()).chain(merged).collect();
+    let keys: Vec<String> = pages
+        .iter()
         .filter_map(|page| config(backend, page, px4))
         .flat_map(|c| c["state"].as_object().map(|o| o.keys().cloned().collect::<Vec<_>>()).unwrap_or_default())
         .map(|state| state_key(backend, &state))
         .collect();
     page_state().retain(|key, _| !keys.contains(key));
+    let ready = !crate::qthost::present() && crate::read::object(&backend.get("vehicle.parameterManager.parametersReady"))["value"] == true;
+    let missing = if ready { missing_parameters(backend, &pages, px4) } else { vec![] };
+    if !missing.is_empty() {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &missing_parameters_text(&missing));
+    }
     json!({ "ok": true })
+}
+
+thread_local! {
+    static UNMET: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+}
+
+const MISSING_PARAM_COMPONENT: u8 = 1;
+
+fn missing_parameters(backend: &dyn Backend, pages: &[&str], px4: bool) -> Vec<String> {
+    let configs: Vec<Value> = pages.iter().filter_map(|page| config(backend, page, px4)).collect();
+    let required: Vec<String> = configs
+        .iter()
+        .flat_map(|c| {
+            let scope = scope_for(backend, c);
+            c["params"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .filter(|(_, p)| flag(p, "required") && !flag(p, "existsOnly"))
+                .filter_map(|(_, p)| p["name"].as_str().map(str::to_string))
+                .filter(|name| !scope.exists(name))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    UNMET.set(Some(vec![]));
+    pages.iter().for_each(|p| {
+        page(backend, p, px4);
+    });
+    let evaluated = UNMET.take().unwrap_or_default();
+    required.into_iter().chain(evaluated).fold(vec![], |seen, name| if seen.contains(&name) { seen } else { seen.into_iter().chain(std::iter::once(name)).collect() })
+}
+
+fn missing_parameters_text(names: &[String]) -> String {
+    let listed = names.iter().map(|name| format!("{MISSING_PARAM_COMPONENT}:{name}")).collect::<Vec<_>>().join(", ");
+    format!("Parameters are missing from firmware. You may be running a version of firmware which is not fully supported or your firmware has a bug in it. Missing params: {listed}")
 }
 
 fn page_state() -> std::sync::MutexGuard<'static, BTreeMap<String, bool>> {
@@ -1324,6 +1371,26 @@ mod tests {
         assert_eq!(rows()[0]["display"], "Custom", "another page's form leaves Flight Modes' state alone");
         assert_eq!(page_opened(&fake, r#"["Flight Modes"]"#)["ok"], true);
         assert_eq!(rows()[0]["display"], "Off");
+    }
+
+    #[test]
+    fn opening_a_page_reports_its_required_and_looked_up_parameters_that_the_firmware_lacks() {
+        let mut fake = Fake::new(&[("GF_MAX_HOR_DIST", 0.0), ("COM_DISARM_LAND", 2.0), ("RTL_LAND_DELAY", 0.0)]);
+        fake.px4 = true;
+        let missing = missing_parameters(&fake, &["Safety"], true);
+        assert_eq!(missing[..2], ["CP_DIST".to_string(), "GF_MAX_VER_DIST".to_string()], "required params first, in config order: {missing:?}");
+        assert_eq!(missing.iter().filter(|n| *n == "CP_DIST").count(), 1, "each name once");
+        let present = Fake::new(&[("CP_DIST", 1.0), ("GF_MAX_HOR_DIST", 0.0), ("GF_MAX_VER_DIST", 0.0), ("COM_DISARM_LAND", 2.0), ("RTL_LAND_DELAY", 0.0)]);
+        assert!(missing_parameters(&present, &["Safety"], true).iter().all(|n| !["CP_DIST", "GF_MAX_VER_DIST"].contains(&n.as_str())));
+        let config = json!({});
+        let scope = scope_for(&fake, &config);
+        UNMET.set(Some(vec![]));
+        scope.eval_text("controller.getParameterFact(-1, \"NOPE\", false) || controller.getParameterFact(-1, \"GONE\")");
+        assert_eq!(UNMET.take(), Some(vec!["GONE".to_string()]), "reportMissing false stays quiet");
+        assert_eq!(
+            missing_parameters_text(&["CP_DIST".into(), "GF_MAX_VER_DIST".into()]),
+            "Parameters are missing from firmware. You may be running a version of firmware which is not fully supported or your firmware has a bug in it. Missing params: 1:CP_DIST, 1:GF_MAX_VER_DIST"
+        );
     }
 
     #[test]
