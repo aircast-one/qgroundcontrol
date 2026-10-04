@@ -157,8 +157,9 @@ unset(_qgc_gst_plat_key)
 
 # Android has no filesystem plugin scan — only statically registered plugins exist at
 # runtime. Add the encode-side plugins the Debug-only MockLink video stream server
-# needs (GSTREAMER_MOCK_SERVER_DEBUG_PLUGINS, PluginPolicy.cmake) in Debug builds.
-if(ANDROID AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+# needs (GSTREAMER_MOCK_SERVER_DEBUG_PLUGINS, PluginPolicy.cmake) in Debug builds or
+# when QGC_MOCK_VIDEO_SERVER asks for them.
+if(ANDROID AND (CMAKE_BUILD_TYPE STREQUAL "Debug" OR QGC_MOCK_VIDEO_SERVER))
     list(APPEND GSTREAMER_PLUGINS ${GSTREAMER_MOCK_SERVER_DEBUG_PLUGINS})
     list(REMOVE_DUPLICATES GSTREAMER_PLUGINS)
 endif()

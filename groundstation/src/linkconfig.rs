@@ -52,7 +52,7 @@ pub enum Kind {
     Udp { local_port: u16, hosts: Vec<(String, u16)> },
     Tcp { host: String, port: u16 },
     Bluetooth { device_name: String, address: String },
-    Mock { firmware_type: i64, vehicle_type: i64, send_status_text: bool, increment_vehicle_id: bool, failure_mode: i64 },
+    Mock { firmware_type: i64, vehicle_type: i64, send_status_text: bool, increment_vehicle_id: bool, failure_mode: i64, enable_camera: bool, enable_gimbal: bool, enable_proximity: bool, apm_start_fresh_params: bool, video_stream_type: i64 },
     LogReplay { file: String },
     AircastCloud { api_base: String, device_id: String },
 }
@@ -116,6 +116,11 @@ fn kind(settings: &BTreeMap<String, Setting>, root: &str, link: LinkKind, defaul
             send_status_text: flag(settings, &key("SendStatusText")),
             increment_vehicle_id: text(settings, &key("IncrementVehicleId")).map(|v| v == "true" || v == "1").unwrap_or(true),
             failure_mode: number(settings, &key("FailureMode")).unwrap_or(0),
+            enable_camera: flag(settings, &key("EnableCamera")),
+            enable_gimbal: flag(settings, &key("EnableGimbal")),
+            enable_proximity: flag(settings, &key("EnableProximity")),
+            apm_start_fresh_params: flag(settings, &key("APMStartFreshParams")),
+            video_stream_type: number(settings, &key("VideoStreamType")).unwrap_or(0),
         },
         LinkKind::LogReplay => Kind::LogReplay { file: text(settings, &key("logFilename")).unwrap_or_default() },
         LinkKind::AircastCloud => Kind::AircastCloud { api_base: text(settings, &key("apiBase")).unwrap_or_default(), device_id: text(settings, &key("deviceId")).unwrap_or_default() },
@@ -164,12 +169,17 @@ fn entries(root: &str, kind: &Kind) -> Vec<(String, String)> {
             .collect(),
         Kind::Tcp { host, port } => vec![key("host", host.clone()), key("port", port.to_string())],
         Kind::Bluetooth { device_name, address } => vec![key("deviceName", device_name.clone()), key("address", address.clone())],
-        Kind::Mock { firmware_type, vehicle_type, send_status_text, increment_vehicle_id, failure_mode } => vec![
+        Kind::Mock { firmware_type, vehicle_type, send_status_text, increment_vehicle_id, failure_mode, enable_camera, enable_gimbal, enable_proximity, apm_start_fresh_params, video_stream_type } => vec![
             key("FirmwareType", firmware_type.to_string()),
             key("VehicleType", vehicle_type.to_string()),
             key("SendStatusText", send_status_text.to_string()),
             key("IncrementVehicleId", increment_vehicle_id.to_string()),
             key("FailureMode", failure_mode.to_string()),
+            key("EnableCamera", enable_camera.to_string()),
+            key("EnableGimbal", enable_gimbal.to_string()),
+            key("EnableProximity", enable_proximity.to_string()),
+            key("APMStartFreshParams", apm_start_fresh_params.to_string()),
+            key("VideoStreamType", video_stream_type.to_string()),
         ],
         Kind::LogReplay { file } => vec![key("logFilename", file.clone())],
         Kind::AircastCloud { api_base, device_id } => vec![key("apiBase", api_base.clone()), key("deviceId", device_id.clone())],
@@ -203,7 +213,7 @@ pub fn to_json(config: &LinkConfig) -> serde_json::Value {
         Kind::Udp { local_port, hosts } => json!({ "kind": "udp", "port": local_port, "hosts": hosts.iter().map(|(h, p)| json!({ "host": h, "port": p })).collect::<Vec<_>>() }),
         Kind::Tcp { host, port } => json!({ "kind": "tcp", "host": host, "port": port }),
         Kind::Bluetooth { device_name, address } => json!({ "kind": "bluetooth", "deviceName": device_name, "address": address }),
-        Kind::Mock { firmware_type, vehicle_type, send_status_text, increment_vehicle_id, failure_mode } => json!({ "kind": "mock", "firmwareType": firmware_type, "vehicleType": vehicle_type, "sendStatusText": send_status_text, "incrementVehicleId": increment_vehicle_id, "failureMode": failure_mode }),
+        Kind::Mock { firmware_type, vehicle_type, send_status_text, increment_vehicle_id, failure_mode, enable_camera, enable_gimbal, enable_proximity, apm_start_fresh_params, video_stream_type } => json!({ "kind": "mock", "firmwareType": firmware_type, "vehicleType": vehicle_type, "sendStatusText": send_status_text, "incrementVehicleId": increment_vehicle_id, "failureMode": failure_mode, "enableCamera": enable_camera, "enableGimbal": enable_gimbal, "enableProximity": enable_proximity, "apmStartFreshParams": apm_start_fresh_params, "videoStreamType": video_stream_type }),
         Kind::LogReplay { file } => json!({ "kind": "logReplay", "logFilename": file }),
         Kind::AircastCloud { api_base, device_id } => json!({ "kind": "aircastCloud", "apiBase": api_base, "deviceId": device_id }),
     };
@@ -228,7 +238,21 @@ pub fn from_json(value: &serde_json::Value) -> Result<LinkConfig, String> {
         },
         Some("tcp") => Kind::Tcp { host: text("host").ok_or("tcp link without a host")?, port: port("port").ok_or("tcp link without a port")? },
         Some("bluetooth") => Kind::Bluetooth { device_name: text("deviceName").unwrap_or_default(), address: text("address").unwrap_or_default() },
-        Some("mock") => Kind::Mock { firmware_type: int("firmwareType", 12), vehicle_type: int("vehicleType", 2), send_status_text: value.get("sendStatusText").and_then(Value::as_bool).unwrap_or(false), increment_vehicle_id: value.get("incrementVehicleId").and_then(Value::as_bool).unwrap_or(true), failure_mode: int("failureMode", 0) },
+        Some("mock") => {
+            let on = |field: &str| value.get(field).and_then(Value::as_bool).unwrap_or(false);
+            Kind::Mock {
+                firmware_type: int("firmwareType", 12),
+                vehicle_type: int("vehicleType", 2),
+                send_status_text: on("sendStatusText"),
+                increment_vehicle_id: value.get("incrementVehicleId").and_then(Value::as_bool).unwrap_or(true),
+                failure_mode: int("failureMode", 0),
+                enable_camera: on("enableCamera"),
+                enable_gimbal: on("enableGimbal"),
+                enable_proximity: on("enableProximity"),
+                apm_start_fresh_params: on("apmStartFreshParams"),
+                video_stream_type: int("videoStreamType", 0),
+            }
+        }
         Some("logReplay") => Kind::LogReplay { file: text("logFilename").unwrap_or_default() },
         Some("aircastCloud") => Kind::AircastCloud { api_base: text("apiBase").unwrap_or_default(), device_id: text("deviceId").unwrap_or_default() },
         other => return Err(format!("unknown link kind {other:?}")),
@@ -243,7 +267,7 @@ pub fn port_display_name(system_location: &str) -> String {
 const LINK_TYPES: [(&str, &str); 7] = [("serial", "Serial"), ("udp", "UDP"), ("tcp", "TCP"), ("bluetooth", "Bluetooth"), ("mock", "Mock Link"), ("logReplay", "Log Replay"), ("aircastCloud", "Aircast Cloud")];
 
 pub fn link_type_field(field: &str) -> Option<serde_json::Value> {
-    let listed = LINK_TYPES.iter().filter(|(id, _)| cfg!(debug_assertions) || *id != "mock");
+    let listed = LINK_TYPES.iter().filter(|(id, _)| crate::mocklink::available() || *id != "mock");
     match field {
         "linkTypeStrings" => Some(serde_json::json!(listed.map(|(_, label)| *label).collect::<Vec<_>>())),
         "linkTypeIds" => Some(serde_json::json!(listed.map(|(id, _)| *id).collect::<Vec<_>>())),
@@ -276,7 +300,7 @@ mod tests {
             LinkConfig { name: "Field UDP".into(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: 14550, hosts: vec![("192.168.4.1".into(), 14550), ("10.0.0.2".into(), 14551)] } },
             LinkConfig { name: "SITL".into(), auto_connect: false, high_latency: false, kind: Kind::Tcp { host: "127.0.0.1".into(), port: 5760 } },
             LinkConfig { name: "Radio".into(), auto_connect: true, high_latency: true, kind: Kind::Serial { baud: 57600, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: "cu.usbserial".into(), port_display_name: "USB Serial".into() } },
-            LinkConfig { name: "Mock".into(), auto_connect: false, high_latency: false, kind: Kind::Mock { firmware_type: 3, vehicle_type: 1, send_status_text: true, increment_vehicle_id: false, failure_mode: 0 } },
+            LinkConfig { name: "Mock".into(), auto_connect: false, high_latency: false, kind: Kind::Mock { firmware_type: 3, vehicle_type: 1, send_status_text: true, increment_vehicle_id: false, failure_mode: 0, enable_camera: true, enable_gimbal: false, enable_proximity: true, apm_start_fresh_params: false, video_stream_type: 3 } },
             LinkConfig { name: "Replay".into(), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: "/tmp/mav.tlog".into() } },
         ];
         let saved = save(&configs, &table);
@@ -298,7 +322,7 @@ mod tests {
             LinkConfig { name: "t".into(), auto_connect: false, high_latency: true, kind: Kind::Tcp { host: "127.0.0.1".into(), port: 5760 } },
             LinkConfig { name: "s".into(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud: 115200, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: "/dev/x".into(), port_display_name: "x".into() } },
             LinkConfig { name: "b".into(), auto_connect: false, high_latency: false, kind: Kind::Bluetooth { device_name: "r".into(), address: "aa:bb".into() } },
-            LinkConfig { name: "m".into(), auto_connect: false, high_latency: false, kind: Kind::Mock { firmware_type: 3, vehicle_type: 2, send_status_text: true, increment_vehicle_id: false, failure_mode: 1 } },
+            LinkConfig { name: "m".into(), auto_connect: false, high_latency: false, kind: Kind::Mock { firmware_type: 3, vehicle_type: 2, send_status_text: true, increment_vehicle_id: false, failure_mode: 1, enable_camera: false, enable_gimbal: true, enable_proximity: false, apm_start_fresh_params: true, video_stream_type: 5 } },
             LinkConfig { name: "r".into(), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: "/tmp/x.tlog".into() } },
             LinkConfig { name: "c".into(), auto_connect: true, high_latency: false, kind: Kind::AircastCloud { api_base: "https://api.aircast.one".into(), device_id: "d-1".into() } },
         ];

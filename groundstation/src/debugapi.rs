@@ -380,7 +380,7 @@ impl DebugApi {
             name: MOCK_LINK_NAME.to_string(),
             auto_connect: false,
             high_latency: false,
-            kind: Kind::Mock { firmware_type: firmware, vehicle_type: VEHICLE_TYPE_QUADROTOR, send_status_text: false, increment_vehicle_id: true, failure_mode: 0 },
+            kind: Kind::Mock { firmware_type: firmware, vehicle_type: VEHICLE_TYPE_QUADROTOR, send_status_text: false, increment_vehicle_id: true, failure_mode: 0, enable_camera: false, enable_gimbal: false, enable_proximity: false, apm_start_fresh_params: false, video_stream_type: 0 },
         };
         let mut request = crate::linkconfig::to_json(&config);
         request["dynamic"] = json!(true);

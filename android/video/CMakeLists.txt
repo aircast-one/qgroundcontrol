@@ -13,7 +13,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
+option(QGC_MOCK_VIDEO_SERVER "Serve the MockLink test video stream" OFF)
 set(QGCGStreamer_FIND_COMPONENTS Core Base Video App Rtsp)
+if(QGC_MOCK_VIDEO_SERVER)
+    list(APPEND QGCGStreamer_FIND_COMPONENTS RtspServer)
+endif()
 include(GStreamer/Orchestrator)
 
 set(_qgc_gst_template "${QGC_ROOT}/src/VideoManager/VideoReceiver/GStreamer/gst_static_plugins.c.in")
@@ -24,6 +28,9 @@ add_library(qgc_video SHARED
     "${CMAKE_CURRENT_BINARY_DIR}/gst_static_plugins.c"
     QGCVideoAndroid.cc
 )
+if(QGC_MOCK_VIDEO_SERVER)
+    target_sources(qgc_video PRIVATE QGCMockVideoServer.cc)
+endif()
 target_include_directories(qgc_video PRIVATE "${QGC_ROOT}/src/Bridge")
 target_compile_definitions(qgc_video PRIVATE QGC_GST_STREAMING QGC_VIDEO_FORMAT="RGBA")
 target_link_libraries(qgc_video PRIVATE GStreamer::GStreamer GStreamer::mobile android log)

@@ -142,6 +142,7 @@ pub extern "C" fn qgc_set_host_provides_ui(_provides: c_int) {}
 pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c_int {
     let arguments: Vec<String> = (0..usize::try_from(argc).unwrap_or(0)).map(|i| read(if argv.is_null() { std::ptr::null() } else { unsafe { *argv.add(i) } })).collect();
     let chosen = options(&arguments);
+    crate::mocklink::set_available(cfg!(debug_assertions) || chosen.debug_build);
     crate::units::set_measurement_system(chosen.measurement_system);
     crate::applog::install();
     unsafe {
@@ -280,10 +281,10 @@ impl Host for CoreOnly {
         std::env::var("QGC_DEBUG_API_ALLOW_ACTUATORS").is_ok_and(|v| v == "1")
     }
     fn mock_links_available(&self) -> bool {
-        false
+        crate::mocklink::available()
     }
     fn mock_link_present(&self) -> bool {
-        false
+        crate::corelinks::mock_link_present()
     }
     fn vehicle_connected(&self) -> bool {
         serde_json::from_str::<Value>(&self.bridge_get("vehicles.activeVehicleAvailable")).ok().and_then(|v| v["value"].as_bool()).unwrap_or(false)

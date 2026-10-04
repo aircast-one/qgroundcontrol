@@ -102,7 +102,7 @@ pub fn owned() -> bool {
 }
 
 pub fn table() -> TypeTable {
-    TypeTable::new(cfg!(not(target_os = "ios")), cfg!(debug_assertions))
+    TypeTable::new(cfg!(not(target_os = "ios")), crate::mocklink::available())
 }
 
 fn defaults() -> Defaults {
@@ -210,6 +210,58 @@ fn create_cloud(name: &str, api_base: &str, device_id: &str) -> bool {
     }
     let index = listed().iter().position(|e| e.config.name == name).unwrap_or(0);
     connect(index)
+}
+
+pub const START_MOCK_LINK: &str = "links.startMockLink";
+pub const STOP_ONE_MOCK_LINK: &str = "links.stopOneMockLink";
+
+fn live_mocks() -> Vec<crate::transport::LinkId> {
+    live().into_iter().filter(|(_, config)| matches!(config.kind, Kind::Mock { .. })).map(|(id, _)| id).collect()
+}
+
+pub fn mock_link_present() -> bool {
+    !live_mocks().is_empty()
+}
+
+fn unused_name(base: &str) -> String {
+    let taken: Vec<String> = listed().into_iter().map(|e| e.config.name).chain(live().into_iter().map(|(_, c)| c.name)).collect();
+    std::iter::once(base.to_string()).chain((2..).map(|n| format!("{base} {n}"))).find(|name| !taken.contains(name)).unwrap_or_default()
+}
+
+fn start_mock(vehicle: &str, given: &Value) -> bool {
+    let flag = |at: usize| given.get(at).and_then(Value::as_bool).unwrap_or(false);
+    let Some(vehicle) = crate::mocklink::Vehicle::from_key(vehicle).filter(|_| crate::mocklink::available()) else { return false };
+    let Some((open, _)) = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner) else { return false };
+    let (firmware_type, vehicle_type) = vehicle.codes();
+    let config = LinkConfig {
+        name: unused_name(vehicle.link_name()),
+        auto_connect: false,
+        high_latency: false,
+        kind: Kind::Mock {
+            firmware_type,
+            vehicle_type,
+            send_status_text: flag(1),
+            increment_vehicle_id: true,
+            failure_mode: 0,
+            enable_camera: flag(2),
+            enable_gimbal: flag(3),
+            enable_proximity: flag(4),
+            apm_start_fresh_params: flag(5),
+            video_stream_type: given.get(6).and_then(Value::as_i64).unwrap_or(0),
+        },
+    };
+    open(config).is_ok()
+}
+
+fn stop_one_mock() -> bool {
+    let hooks = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner);
+    match (live_mocks().first(), hooks) {
+        (Some(id), Some((_, close))) => {
+            close(*id);
+            true
+        }
+        _ => false,
+    }
 }
 
 fn remove(index: usize) -> bool {
@@ -723,6 +775,8 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "links.createLogReplayConfiguration" => json!(create_replay(&text(0), &text(1))),
         "links.createBluetoothLink" => json!(create_bluetooth(&text(0), &text(1), &text(2))),
         "links.createAircastCloudLink" => json!(create_cloud(&text(0), &text(1), &text(2))),
+        START_MOCK_LINK => json!(start_mock(&text(0), &given)),
+        STOP_ONE_MOCK_LINK => json!(stop_one_mock()),
         crate::platformbluetooth::SCAN => return crate::platformbluetooth::scan(args),
         "links.removeConfiguration" => json!(remove(given.get(0).and_then(Value::as_str).and_then(indexed)?)),
         "links.commitLinkConfigurations" => {

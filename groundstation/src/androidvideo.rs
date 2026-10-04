@@ -30,6 +30,9 @@ pub struct Video {
     start_recording: unsafe extern "C" fn(*const c_char, c_int) -> bool,
     stop_recording: unsafe extern "C" fn(),
     recording: unsafe extern "C" fn() -> bool,
+    mock_serve: Option<unsafe extern "C" fn(c_int, c_int) -> *mut c_void>,
+    mock_uri: Option<unsafe extern "C" fn(*mut c_void) -> *const c_char>,
+    mock_stop: Option<unsafe extern "C" fn(*mut c_void)>,
 }
 
 static VIDEO: OnceLock<Option<Video>> = OnceLock::new();
@@ -59,11 +62,34 @@ fn load() -> Option<Video> {
         start_recording: symbol(handle, c"qgc_video_start_recording")?,
         stop_recording: symbol(handle, c"qgc_video_stop_recording")?,
         recording: symbol(handle, c"qgc_video_recording")?,
+        mock_serve: symbol(handle, c"qgc_video_mock_serve"),
+        mock_uri: symbol(handle, c"qgc_video_mock_uri"),
+        mock_stop: symbol(handle, c"qgc_video_mock_stop"),
     })
 }
 
 pub fn video() -> Option<&'static Video> {
     VIDEO.get_or_init(load).as_ref()
+}
+
+pub struct MockStream {
+    handle: usize,
+    pub uri: String,
+}
+
+impl Drop for MockStream {
+    fn drop(&mut self) {
+        if let Some(stop) = video().and_then(|v| v.mock_stop) {
+            unsafe { stop(self.handle as *mut c_void) };
+        }
+    }
+}
+
+pub fn mock_serve(kind: c_int, port: u16) -> Option<MockStream> {
+    let video = video()?;
+    let (serve, uri) = (video.mock_serve?, video.mock_uri?);
+    let handle = unsafe { serve(kind, c_int::from(port)) };
+    (!handle.is_null()).then(|| MockStream { handle: handle as usize, uri: unsafe { CStr::from_ptr(uri(handle)) }.to_string_lossy().into_owned() })
 }
 
 fn folder(env: &mut JNIEnv, application: &JObject, getter: &str) -> jni::errors::Result<CString> {
@@ -128,6 +154,9 @@ impl Driver {
                     let started = unsafe { (video.start)(text.as_ptr()) };
                     self.restarted = true;
                     self.error = if started { String::new() } else { unsafe { CStr::from_ptr((video.last_error)()) }.to_string_lossy().into_owned() };
+                    if !started {
+                        log::warn!("Video pipeline did not start: {}", self.error);
+                    }
                 }
                 None => unsafe { (video.stop)() },
             }

@@ -20,6 +20,7 @@ struct Page {
 }
 
 const GIMBAL_CONTROLLER_PAGE: &str = "Gimbal Controller";
+pub const MOCK_LINK_PAGE: &str = "Mock Link";
 const UNLISTED: &[&str] = &[GIMBAL_CONTROLLER_PAGE];
 
 const PAGES: &[Page] = &[
@@ -42,6 +43,7 @@ const PAGES: &[Page] = &[
     Page { title: "About", sections: &[], shows_links: false, shows_about: true, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Console", sections: &[], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: true, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "App Logging", sections: &[("Save To Disk", "logManagerSettings"), ("Log Viewer", APP_LOG_VIEWER)], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: MOCK_LINK_PAGE, sections: &[], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: GIMBAL_CONTROLLER_PAGE, sections: &[("Gimbal Controller", "gimbalControllerSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
 ];
 
@@ -506,6 +508,7 @@ fn page_json(page: &Page, with_controls: Option<&dyn Backend>) -> Value {
         "showsConsole": page.shows_console,
         "showsNtrip": page.shows_ntrip,
         "showsPx4Logs": page.shows_px4_logs,
+        "showsMockLink": page.title == MOCK_LINK_PAGE,
         "sections": page.sections.iter().filter(|(_, group)| section_applies(group, with_controls)).map(|(title, group)| section_json(title, group, with_controls)).collect::<Vec<_>>(),
     })
 }
@@ -722,8 +725,8 @@ fn subsections(group: &str, controls: &[Value]) -> Vec<Value> {
     }
 }
 
-fn page_shown(page: &Page, connected: bool, px4: bool) -> bool {
-    !UNLISTED.contains(&page.title) && (!page.shows_px4_logs || !connected || px4)
+fn page_shown(page: &Page, connected: bool, px4: bool, mock: bool) -> bool {
+    !UNLISTED.contains(&page.title) && (!page.shows_px4_logs || !connected || px4) && (page.title != MOCK_LINK_PAGE || mock)
 }
 
 pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
@@ -732,7 +735,7 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
         None => {
             let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
             let px4 = flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware");
-            json!({ "kind": "object", "class": "Settings", "pages": PAGES.iter().filter(|p| page_shown(p, connected, px4)).map(|p| page_json(p, None)).collect::<Vec<_>>() })
+            json!({ "kind": "object", "class": "Settings", "pages": PAGES.iter().filter(|p| page_shown(p, connected, px4, crate::mocklink::available())).map(|p| page_json(p, None)).collect::<Vec<_>>() })
         }
     }
 }
@@ -857,10 +860,18 @@ mod tests {
     #[test]
     fn px4_log_transfer_is_listed_only_for_px4_or_with_no_vehicle() {
         let page = PAGES.iter().find(|p| p.shows_px4_logs).unwrap();
-        assert!(page_shown(page, false, false), "SettingsPagesModel shows it with no vehicle");
-        assert!(page_shown(page, true, true));
-        assert!(!page_shown(page, true, false), "an ArduPilot vehicle does not get it");
-        assert!(PAGES.iter().filter(|p| !p.shows_px4_logs && !UNLISTED.contains(&p.title)).all(|p| page_shown(p, true, false)));
+        assert!(page_shown(page, false, false, false), "SettingsPagesModel shows it with no vehicle");
+        assert!(page_shown(page, true, true, false));
+        assert!(!page_shown(page, true, false, false), "an ArduPilot vehicle does not get it");
+        assert!(PAGES.iter().filter(|p| !p.shows_px4_logs && !UNLISTED.contains(&p.title)).all(|p| page_shown(p, true, false, true)));
+    }
+
+    #[test]
+    fn mock_link_is_listed_only_where_mock_links_exist_like_screentools_isdebug() {
+        let page = PAGES.iter().find(|p| p.title == MOCK_LINK_PAGE).unwrap();
+        assert!(!page_shown(page, false, false, false) && page_shown(page, true, true, true));
+        assert_eq!(page_json(page, None)["showsMockLink"], true);
+        assert!(page_keywords(MOCK_LINK_PAGE).contains("simulated"));
     }
 
     #[test]
@@ -869,7 +880,7 @@ mod tests {
         assert!(fly.sections.iter().all(|(_, group)| *group != "gimbalControllerSettings"), "FlyViewSettings.qml has no Gimbal Controller group");
         let gimbal = PAGES.iter().find(|p| p.title == GIMBAL_CONTROLLER_PAGE).unwrap();
         assert_eq!(gimbal.sections, &[("Gimbal Controller", "gimbalControllerSettings")], "GimbalIndicator's expanded page still reads it");
-        assert!(!page_shown(gimbal, false, false) && !page_shown(gimbal, true, true), "SettingsPagesModel lists no gimbal page");
+        assert!(!page_shown(gimbal, false, false, true) && !page_shown(gimbal, true, true, true), "SettingsPagesModel lists no gimbal page");
     }
 
     #[test]

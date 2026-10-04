@@ -39,6 +39,7 @@ pub enum Owned {
     PlatformBluetooth(crate::platformbluetooth::PlatformBluetooth),
     Cloud(crate::cloudlink::CloudLink),
     Replay(crate::logreplay::ReplayLink),
+    Mock(crate::mocklink::MockLink),
 }
 
 impl Owned {
@@ -53,6 +54,7 @@ impl Owned {
             Owned::PlatformBluetooth(link) => link.write(bytes),
             Owned::Cloud(link) => link.write(bytes),
             Owned::Replay(_) => true,
+            Owned::Mock(link) => link.write(bytes),
         }
     }
 
@@ -67,6 +69,7 @@ impl Owned {
             Owned::PlatformBluetooth(link) => link.close(),
             Owned::Cloud(link) => link.close(),
             Owned::Replay(link) => link.close(),
+            Owned::Mock(link) => link.close(),
         }
     }
 }
@@ -292,6 +295,11 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
         Kind::LogReplay { file } => {
             let shared = shared.clone();
             crate::logreplay::ReplayLink::open(file, move |bytes| shared.deliver(id, bytes)).map(Owned::Replay).map_err(Failure::retry)
+        }
+        Kind::Mock { .. } if crate::mocklink::available() => {
+            let options = crate::mocklink::Options::from_kind(&config.kind).ok_or_else(|| Failure::retry("not a mock link"))?;
+            let shared = shared.clone();
+            crate::mocklink::MockLink::open(options, move |bytes| shared.deliver(id, bytes)).map(Owned::Mock).map_err(Failure::retry)
         }
         other => Err(Failure::retry(format!("the core does not own {other:?} links on this platform"))),
     }

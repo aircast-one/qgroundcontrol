@@ -21,7 +21,9 @@ val coreCrate = rootProject.file("../groundstation")
 val coreJniLibs = layout.buildDirectory.dir("core/jniLibs")
 val coreBridgeSources = layout.buildDirectory.dir("core/bridge")
 val instrumentIconAssets = layout.buildDirectory.dir("instrumentIcons")
-val coreVideoBuild = layout.buildDirectory.dir("core/video/${qgc("abi")}")
+fun coreVideoBuild(buildType: String) = layout.buildDirectory.dir("core/video/$buildType/${qgc("abi")}")
+fun coreVideoLibs(buildType: String) = layout.buildDirectory.dir("core/videoLibs/$buildType")
+val coreBuildTypes = listOf("debug", "release")
 val coreTriples = mapOf(
     "arm64-v8a" to "aarch64-linux-android",
     "armeabi-v7a" to "armv7-linux-androideabi",
@@ -80,8 +82,13 @@ android {
         }
         getByName("core") {
             java.srcDir(coreBridgeSources)
-            java.srcDir(coreVideoBuild.map { it.dir("android-build/src") })
             jniLibs.srcDir(coreJniLibs)
+        }
+        coreBuildTypes.forEach { buildType ->
+            maybeCreate("core${buildType.replaceFirstChar(Char::uppercase)}").apply {
+                java.srcDir(coreVideoBuild(buildType).map { it.dir("android-build/src") })
+                jniLibs.srcDir(coreVideoLibs(buildType))
+            }
         }
     }
 
@@ -138,28 +145,41 @@ val buildCoreLibrary by tasks.registering(Exec::class) {
     }
 }
 
-val buildCoreVideo by tasks.registering(Exec::class) {
-    val abi = qgc("abi")
-    val source = rootProject.file("video")
-    val build = coreVideoBuild.get().asFile
-    val toolchain = android.ndkDirectory.resolve("build/cmake/android.toolchain.cmake")
-    commandLine(
-        "sh", "-c",
-        "cmake -S \"$source\" -B \"$build\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=\"$toolchain\" " +
-            "-DANDROID_ABI=$abi -DANDROID_PLATFORM=${qgc("minSdk")} && cmake --build \"$build\"",
-    )
-    doLast {
-        copy {
-            from(build.resolve("libqgc_video.so"), build.resolve("libqgc_wfb.so"))
-            into(coreJniLibs.get().dir(abi))
+fun ndkLibCxx(abi: String): File {
+    val sysrootTriple = coreTriples.getValue(abi).replace("armv7-linux-androideabi", "arm-linux-androideabi")
+    return android.ndkDirectory.resolve("toolchains/llvm/prebuilt").listFiles().orEmpty().first()
+        .resolve("sysroot/usr/lib/$sysrootTriple/libc++_shared.so")
+}
+
+val buildCoreVideo = coreBuildTypes.associateWith { buildType ->
+    tasks.register<Exec>("buildCoreVideo${buildType.replaceFirstChar(Char::uppercase)}") {
+        val abi = qgc("abi")
+        val source = rootProject.file("video")
+        val build = coreVideoBuild(buildType).get().asFile
+        val toolchain = android.ndkDirectory.resolve("build/cmake/android.toolchain.cmake")
+        val mockServer = if (buildType == "debug") "ON" else "OFF"
+        commandLine(
+            "sh", "-c",
+            "cmake -S \"$source\" -B \"$build\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=\"$toolchain\" " +
+                "-DANDROID_ABI=$abi -DANDROID_PLATFORM=${qgc("minSdk")} -DQGC_MOCK_VIDEO_SERVER=$mockServer && cmake --build \"$build\"",
+        )
+        doLast {
+            copy {
+                from(build.resolve("libqgc_video.so"), build.resolve("libqgc_wfb.so"))
+                if (buildType == "debug") from(ndkLibCxx(abi))
+                into(coreVideoLibs(buildType).get().dir(abi))
+            }
         }
     }
 }
 
 tasks.named("preBuild") { dependsOn(copyInstrumentIcons, copyAirframeImages, copySectionImages) }
 
-tasks.matching { it.name.startsWith("preCore") && it.name.endsWith("Build") }.configureEach {
-    dependsOn(copyCoreBridge, buildCoreLibrary, buildCoreVideo)
+coreBuildTypes.forEach { buildType ->
+    val variant = "Core${buildType.replaceFirstChar(Char::uppercase)}"
+    tasks.matching { it.name == "pre${variant}Build" || it.name == "merge${variant}JniLibFolders" }.configureEach {
+        dependsOn(copyCoreBridge, buildCoreLibrary, buildCoreVideo.getValue(buildType))
+    }
 }
 
 dependencies {
