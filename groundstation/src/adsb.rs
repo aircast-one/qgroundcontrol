@@ -71,7 +71,6 @@ pub const STALE_MS: u64 = 3_000;
 pub const MAX_SECONDS_SINCE_LAST_SEEN: u32 = 15;
 pub const MOVED_METRES: f64 = 1.0;
 
-const RETRY: Duration = Duration::from_secs(1);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub const FEET_TO_METRES: f64 = 0.3048;
@@ -417,6 +416,7 @@ pub struct Traffic {
     enabled: bool,
     source: Option<Source>,
     generation: u64,
+    linked: bool,
     connected: bool,
     failure: Option<Failure>,
     mavlink_ms: Option<u64>,
@@ -437,6 +437,10 @@ impl Traffic {
             return false;
         }
         self.enabled = enabled;
+        if std::mem::replace(&mut self.linked, enabled && self.source.is_some()) {
+            self.contacts.clear();
+            self.revision += 1;
+        }
         self.generation += 1;
         self.connected = false;
         self.failure = None;
@@ -452,14 +456,13 @@ impl Traffic {
         true
     }
 
-    pub fn failed(&mut self, generation: u64, token: &'static str, detail: String) -> Option<bool> {
+    pub fn failed(&mut self, generation: u64, token: &'static str, detail: String) -> bool {
         if generation != self.generation {
-            return None;
+            return false;
         }
-        let first = self.failure.is_none();
         self.connected = false;
         self.failure = Some(Failure { token, detail });
-        Some(first)
+        true
     }
 
     pub fn receive(&mut self, report: &Report, now_ms: u64) -> bool {
@@ -616,8 +619,10 @@ pub fn server_error_text(detail: &str) -> String {
 }
 
 fn report_failure(generation: u64, token: &'static str, detail: String) {
-    let Some(first) = lock().failed(generation, token, detail.clone()) else { return };
-    if first && !crate::qthost::present() {
+    if !lock().failed(generation, token, detail.clone()) {
+        return;
+    }
+    if !crate::qthost::present() {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &server_error_text(&detail));
     }
     changed();
@@ -631,25 +636,21 @@ pub fn sbs1_lines(mut reader: impl BufRead) -> impl Iterator<Item = String> {
 }
 
 fn follow(source: Source, generation: u64) {
-    while lock().generation == generation {
-        let opened = source.open(|address| TcpStream::connect_timeout(address, CONNECT_TIMEOUT));
-        match opened {
-            Err(detail) => report_failure(generation, CONNECT_FAILED, detail),
-            Ok(stream) => {
-                if lock().attached(generation) {
-                    changed();
-                }
-                sbs1_lines(BufReader::new(stream))
-                    .take_while(|_| lock().generation == generation)
-                    .for_each(|line| {
-                        if lock().on_sbs1_line(&line, crate::hub::now_ms()) {
-                            changed();
-                        }
-                    });
-                report_failure(generation, LINK_LOST, REMOTE_HOST_CLOSED.to_string());
+    match source.open(|address| TcpStream::connect_timeout(address, CONNECT_TIMEOUT)) {
+        Err(detail) => report_failure(generation, CONNECT_FAILED, detail),
+        Ok(stream) => {
+            if lock().attached(generation) {
+                changed();
             }
+            sbs1_lines(BufReader::new(stream))
+                .take_while(|_| lock().generation == generation)
+                .for_each(|line| {
+                    if lock().on_sbs1_line(&line, crate::hub::now_ms()) {
+                        changed();
+                    }
+                });
+            report_failure(generation, LINK_LOST, REMOTE_HOST_CLOSED.to_string());
         }
-        std::thread::sleep(RETRY);
     }
 }
 
@@ -1065,10 +1066,9 @@ mod tests {
         assert!(!traffic.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 })), "the same setting does not restart the link");
 
         let generation = traffic.generation();
-        assert_eq!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()), Some(true));
+        assert!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()));
         assert_eq!(traffic.snapshot(0)["error"], json!({ "token": CONNECT_FAILED, "detail": "Connection refused" }), "the token is what a head keys on and the detail is the untranslated reason, as the C++ link put in its app message");
-        assert_eq!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()), Some(false), "a retry failing again is not a new error, so ADSBVehicleManager::_linkError's one message is not repeated every second");
-        assert_eq!(traffic.failed(generation - 1, CONNECT_FAILED, "stale".into()), None, "a failure from a superseded link is dropped");
+        assert!(!traffic.failed(generation - 1, CONNECT_FAILED, "stale".into()), "a failure from a superseded link is dropped");
 
         assert!(traffic.attached(generation));
         let up = traffic.snapshot(0);
@@ -1082,16 +1082,16 @@ mod tests {
     }
 
     #[test]
-    fn a_server_error_is_new_once_per_connection_and_spelled_like_qtcpsocket() {
+    fn every_server_error_is_reported_and_spelled_like_qtcpsocket() {
         let mut traffic = Traffic::default();
         traffic.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 }));
         let generation = traffic.generation();
-        assert_eq!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()), Some(true));
+        assert!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()));
         assert!(traffic.attached(generation));
-        assert_eq!(traffic.failed(generation, LINK_LOST, REMOTE_HOST_CLOSED.into()), Some(true), "losing a feed that was up is a new error");
+        assert!(traffic.failed(generation, LINK_LOST, REMOTE_HOST_CLOSED.into()), "losing a feed that was up is reported");
         traffic.retarget(false, None);
         traffic.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 }));
-        assert_eq!(traffic.failed(traffic.generation(), CONNECT_FAILED, "Connection refused".into()), Some(true), "switching the server back on starts over");
+        assert!(traffic.failed(traffic.generation(), CONNECT_FAILED, "Connection refused".into()), "switching the server back on starts over");
         assert_eq!(server_error_text("Connection refused"), "ADSB Server Error: Connection refused");
         assert_eq!(socket_error_text(&std::io::Error::from(std::io::ErrorKind::ConnectionRefused)), "Connection refused");
         assert_eq!(socket_error_text(&std::io::Error::from(std::io::ErrorKind::TimedOut)), "Socket operation timed out");
@@ -1113,13 +1113,21 @@ mod tests {
     }
 
     #[test]
-    fn switching_the_server_off_does_not_blank_traffic_the_vehicle_is_still_relaying() {
+    fn switching_the_server_off_clears_every_contact_like_adsb_vehicle_manager_stop() {
         let mut traffic = Traffic::default();
         assert!(traffic.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 })));
         assert!(traffic.on_message(&vehicle(everything(), 1), 0));
+        let revision = traffic.revision;
         assert!(traffic.retarget(false, None));
-        assert_eq!(traffic.count(), 1, "the C++ manager cleared every contact when the TCP link stopped, including the ones its own receiver sent - dropping live traffic because a setting was toggled is the blank this whole view exists to prevent");
+        assert_eq!(traffic.count(), 0, "_stop clears _adsbVehicles, MAVLink-relayed contacts included");
+        assert_ne!(traffic.revision, revision, "heads are told the list emptied");
         assert_eq!(traffic.snapshot(0)["connected"], json!(false), "the link state goes with the link");
+
+        let mut never_linked = Traffic::default();
+        assert!(never_linked.retarget(true, None));
+        assert!(never_linked.on_message(&vehicle(everything(), 1), 0));
+        assert!(never_linked.retarget(false, None));
+        assert_eq!(never_linked.count(), 1, "_stop returns early when no link was started");
     }
 
     #[test]
