@@ -137,6 +137,7 @@ swiftc -Onone -o "$out" "${shims[@]}" \
     "$root/macos/Sources/VideoFrameModel.swift" \
     "$root/macos/Sources/FlightModePositions.swift" \
     "$root/macos/Sources/PageSelection.swift" \
+    "$root/macos/Sources/GamepadLayout.swift" \
     "$root/macos/Tests/main.swift"
 
 QGC_ROOT="$root" "$out"
