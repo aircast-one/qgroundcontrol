@@ -179,8 +179,14 @@ pub struct Source {
 }
 
 impl Source {
-    fn address(&self) -> Option<std::net::SocketAddr> {
-        (self.host.as_str(), self.port).to_socket_addrs().ok()?.next()
+    fn addresses(&self) -> Vec<std::net::SocketAddr> {
+        (self.host.as_str(), self.port).to_socket_addrs().map(Iterator::collect).unwrap_or_default()
+    }
+
+    pub fn open(&self, connect: impl Fn(&std::net::SocketAddr) -> std::io::Result<TcpStream>) -> Result<TcpStream, String> {
+        self.addresses()
+            .iter()
+            .fold(Err(HOST_NOT_FOUND.to_string()), |opened, address| opened.or_else(|_| connect(address).map_err(|error| socket_error_text(&error))))
     }
 }
 
@@ -617,21 +623,23 @@ fn report_failure(generation: u64, token: &'static str, detail: String) {
     changed();
 }
 
+pub fn sbs1_lines(mut reader: impl BufRead) -> impl Iterator<Item = String> {
+    std::iter::from_fn(move || {
+        let mut bytes = Vec::new();
+        reader.read_until(b'\n', &mut bytes).ok().filter(|_| bytes.ends_with(b"\n")).map(|_| String::from_utf8_lossy(&bytes).into_owned())
+    })
+}
+
 fn follow(source: Source, generation: u64) {
     while lock().generation == generation {
-        let opened = source
-            .address()
-            .ok_or_else(|| HOST_NOT_FOUND.to_string())
-            .and_then(|address| TcpStream::connect_timeout(&address, CONNECT_TIMEOUT).map_err(|error| socket_error_text(&error)));
+        let opened = source.open(|address| TcpStream::connect_timeout(address, CONNECT_TIMEOUT));
         match opened {
             Err(detail) => report_failure(generation, CONNECT_FAILED, detail),
             Ok(stream) => {
                 if lock().attached(generation) {
                     changed();
                 }
-                BufReader::new(stream)
-                    .lines()
-                    .map_while(Result::ok)
+                sbs1_lines(BufReader::new(stream))
                     .take_while(|_| lock().generation == generation)
                     .for_each(|line| {
                         if lock().on_sbs1_line(&line, crate::hub::now_ms()) {
@@ -821,6 +829,30 @@ mod tests {
             "an unreadable climb rate leaves the climb rate absent"
         );
         assert!(parse_sbs1(&sbs1(AIRBORNE_VELOCITY, &[(FIELD_ICAO, "ABCDEF"), (FIELD_TRACK, "45.0"), (FIELD_VERTICAL_RATE, "64")])).is_none(), "heading and speed arrive together or not at all");
+    }
+
+    #[test]
+    fn every_address_the_host_resolves_to_is_tried_in_turn_like_qabstractsocket() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let tried = std::sync::Mutex::new(Vec::new());
+        let refuse_ipv6 = |address: &std::net::SocketAddr| {
+            tried.lock().unwrap().push(address.is_ipv6());
+            if address.is_ipv6() { Err(std::io::Error::from(std::io::ErrorKind::ConnectionRefused)) } else { TcpStream::connect(address) }
+        };
+        assert!(Source { host: "localhost".into(), port }.open(refuse_ipv6).is_ok(), "a server on 127.0.0.1 is reached even when localhost resolves to ::1 first");
+        assert_eq!(tried.lock().unwrap().iter().filter(|ipv6| !**ipv6).count(), 1, "and nothing after the first success is dialled");
+        drop(listener);
+        assert_eq!(Source { host: "127.0.0.1".into(), port }.open(|_| Err(std::io::Error::from(std::io::ErrorKind::ConnectionRefused))).err().as_deref(), Some("Connection refused"), "the last address's error is the one reported");
+        assert_eq!(Source { host: "".into(), port }.open(|_| unreachable!()).err().as_deref(), Some(HOST_NOT_FOUND));
+    }
+
+    #[test]
+    fn a_byte_that_is_not_utf8_never_ends_the_feed_and_a_line_cut_off_by_the_close_is_dropped() {
+        let feed: &[u8] = b"MSG,1,1,1,ABCDEF,1,,,,,\xffSWR\r\nMSG,1,1,1,ABCDEF,1,,,,,SWR123\r\nMSG,1,1,1,ABC";
+        let lines: Vec<String> = sbs1_lines(std::io::Cursor::new(feed)).collect();
+        assert_eq!(lines.len(), 2, "QTcpSocket::readLine waits for the newline, so the unterminated tail is never parsed; got {lines:?}");
+        assert_eq!(parse_sbs1(&lines[1]).and_then(|report| report.callsign).as_deref(), Some("SWR123"), "fromLocal8Bit decodes lossily, so a stray byte never ends the feed");
     }
 
     #[test]
