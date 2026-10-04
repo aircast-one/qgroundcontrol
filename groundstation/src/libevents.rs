@@ -629,7 +629,7 @@ pub struct Raw {
 #[derive(Debug, PartialEq)]
 pub enum Delivered {
     Checks,
-    Message { severity: u8, text: String },
+    Message { severity: u8, text: String, description: String },
 }
 
 #[derive(Debug, Default)]
@@ -684,7 +684,7 @@ impl Session {
         };
         let separator = if !message.is_empty() && !joined.is_empty() { "\n" } else { "" };
         let text = format!("{message}{separator}{joined}");
-        (!text.is_empty()).then_some(Delivered::Message { severity: level, text })
+        (!text.is_empty()).then(|| Delivered::Message { severity: level, text, description: parsed.description() })
     }
 
     pub fn refresh(&mut self, component: u8, custom_mode: u32, takeoff_mode: Option<u32>, mission_mode: Option<u32>) {

@@ -2542,7 +2542,7 @@ impl Vehicle {
     fn spoken_status(&self, status: &StatusText, now_ms: u64) -> Option<String> {
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
         let text = crate::messagelog::admitted(px4, self.events.supports_checks(status.component), status.severity, &status.text)?;
-        let repeated = is_prearm(&text, status.severity) && self.prearm_spoken.get(&text).is_some_and(|at| now_ms.saturating_sub(*at) < PREARM_REPEAT_MS);
+        let repeated = is_prearm(&status.text, status.severity) && self.prearm_spoken.get(&text).is_some_and(|at| now_ms.saturating_sub(*at) < PREARM_REPEAT_MS);
         let asked = status.text.starts_with('#') || status.severity <= SEVERITY_NOTICE;
         (asked && !repeated).then_some(text)
     }
@@ -2608,11 +2608,17 @@ impl Vehicle {
             crate::speech::say(&spoken.to_lowercase());
         }
         self.log_status(&status);
-        crate::escal::on_text(self.id, &status.text);
-        crate::apmsubmotors::on_text(self.flight_mode() == self.announced_name(crate::apmsubmotors::MOTOR_DETECTION_MODE), &status.text);
-        let actions = self.calibrate.on_text(&status.text, now_ms);
-        let bytes = self.follow_calibration(actions, now_ms);
-        self.note_prearm(&status.text, status.severity, status.component, now_ms);
+        let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
+        let bytes = match crate::messagelog::admitted(px4, self.events.supports_checks(status.component), status.severity, &status.text) {
+            Some(text) => {
+                crate::escal::on_text(self.id, &text);
+                crate::apmsubmotors::on_text(self.flight_mode() == self.announced_name(crate::apmsubmotors::MOTOR_DETECTION_MODE), &text);
+                let actions = self.calibrate.on_text(&text, now_ms);
+                self.note_prearm(&status.text, status.severity, status.component, now_ms);
+                self.follow_calibration(actions, now_ms)
+            }
+            None => Vec::new(),
+        };
         self.recent.push(status);
         if self.recent.len() > MAX_MESSAGES {
             self.recent.remove(0);
@@ -3614,11 +3620,12 @@ impl Vehicle {
     fn event_delivered(&mut self, delivered: crate::libevents::Delivered) {
         match delivered {
             crate::libevents::Delivered::Checks => self.refresh_arming_report(),
-            crate::libevents::Delivered::Message { severity, text } => {
+            crate::libevents::Delivered::Message { text, .. } if self.autopilot == crate::modes::AUTOPILOT_PX4 && text.starts_with("[cal]") => {}
+            crate::libevents::Delivered::Message { severity, text, description } => {
                 if severity <= SEVERITY_ERROR {
                     self.pending_notices.push((crate::noticeboard::VEHICLE_ERROR, text.clone()));
                 }
-                self.message_log.record_html(self.component, severity, text, crate::messagelog::clock_now());
+                self.message_log.record_html(self.component, severity, with_event_description(text, &description), crate::messagelog::clock_now());
             }
         }
     }
@@ -3846,6 +3853,13 @@ fn high_latency_custom_mode(autopilot: u8, mode: u16) -> u32 {
 
 const APM_CALIBRATION_PROMPTS: [&str; 2] = ["Place vehicle", "Calibration successful"];
 const SEVERITY_INFO: u8 = 6;
+
+fn with_event_description(text: String, description: &str) -> String {
+    match description {
+        "" => text,
+        description => format!("{text}<br/><small><small>{}</small></small>", description.replace('\n', "<br/>")),
+    }
+}
 
 fn calibration_as_info(status: crate::statustext::StatusText, ardupilot: bool) -> crate::statustext::StatusText {
     match ardupilot && APM_CALIBRATION_PROMPTS.iter().any(|prompt| status.text.contains(prompt)) {
@@ -6490,6 +6504,34 @@ mod tests {
         assert!(vehicle.spoken_status(&status(2, "PreArm: RC not calibrated"), 12_000).is_some());
         vehicle.note_prearm("Preflight Fail: Accel uncalibrated", 2, 1, 20_000);
         assert_eq!(vehicle.spoken_status(&status(2, "Preflight Fail: Accel uncalibrated"), 25_000), None, "Vehicle::_handleStatusText limits PX4 preflight repeats the same way");
+    }
+
+    #[test]
+    fn event_texts_carry_their_description_and_px4_cal_events_stay_out_of_the_log() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        vehicle.event_delivered(crate::libevents::Delivered::Message { severity: 4, text: "Low battery".into(), description: "Land\nnow".into() });
+        assert!(vehicle.message_log.formatted().ends_with("Warning: Low battery<br/><small><small>Land<br/>now</small></small></font><br/>"), "StatusTextHandler::handleHTMLEscapedTextMessage appends the description small");
+        vehicle.event_delivered(crate::libevents::Delivered::Message { severity: 6, text: "[cal] progress 10".into(), description: String::new() });
+        assert_eq!(vehicle.message_log.count(), 2, "only PX4 drops [cal] events");
+        vehicle.autopilot = crate::modes::AUTOPILOT_PX4;
+        vehicle.event_delivered(crate::libevents::Delivered::Message { severity: 6, text: "[cal] progress 20".into(), description: String::new() });
+        assert_eq!(vehicle.message_log.count(), 2, "MAVLinkEventManager::_handleEvent leaves PX4 [cal] events to the calibration flow");
+    }
+
+    #[test]
+    fn text_listeners_hear_only_what_vehicle_passes_on() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        vehicle.autopilot = crate::modes::AUTOPILOT_PX4;
+        vehicle.take_status(StatusText { component: 1, severity: 4, text: "Preflight Fail: baro\t".into() }, 1_000);
+        assert!(vehicle.prearm.is_none(), "Vehicle::_textMessageReceived drops the event copy before the prearm and textMessageReceived listeners");
+        vehicle.take_status(StatusText { component: 1, severity: 4, text: "Preflight Fail: baro".into() }, 2_000);
+        assert!(vehicle.prearm.is_some());
     }
 
     #[test]
