@@ -305,7 +305,6 @@ pub struct Vehicle {
     image_captured_seen: bool,
     rc_releasing: BTreeMap<u8, u8>,
     calibration_left_behind: bool,
-    logs_left_behind: bool,
     rc_due: Option<u64>,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
@@ -520,7 +519,6 @@ impl Vehicle {
             image_captured_seen: false,
             rc_releasing: BTreeMap::new(),
             calibration_left_behind: false,
-            logs_left_behind: false,
             airframe_reboot: None,
             stream: crate::streamconfig::StreamConfig::default(),
             autotune: crate::autotune::Autotune::default(),
@@ -2434,9 +2432,6 @@ impl Vehicle {
         }
         bytes.extend(self.tick_rc_override(now_ms));
         bytes.extend(self.cancel_calibration_left_behind(now_ms));
-        if std::mem::take(&mut self.logs_left_behind) {
-            bytes.extend(self.onboard_log_action("logCancel", None, now_ms));
-        }
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_stream_rates(now_ms));
         bytes.extend(self.tick_autotune(now_ms));
@@ -2843,8 +2838,18 @@ impl Vehicle {
                 self.files.progress = 0.0;
                 self.follow_files(steps, now_ms)
             }
-            Err(error) => self.log_file_job_done(&wanted.kind(), Err(error), now_ms),
+            Err(error) => self.log_file_job_refused(&wanted.kind(), error, now_ms),
         }
+    }
+
+    fn log_file_job_refused(&mut self, kind: &LogFileKind, error: String, now_ms: u64) -> Vec<Vec<u8>> {
+        let was_busy = self.onboard_logs.busy();
+        let outs = match kind {
+            LogFileKind::List => self.onboard_logs.on_ftp_list_refused(self.ftp_list_time_unsupported, now_ms),
+            LogFileKind::Download => self.onboard_logs.on_ftp_downloaded(Err(error), now_ms),
+            LogFileKind::Delete => self.onboard_logs.on_ftp_delete_refused(now_ms),
+        };
+        self.onboard_log_outs(was_busy, outs, now_ms)
     }
 
     fn log_file_job_done(&mut self, kind: &LogFileKind, result: Result<crate::filejobs::Outcome, String>, now_ms: u64) -> Vec<Vec<u8>> {
@@ -4392,7 +4397,7 @@ impl Hub {
 
     pub fn remove(&mut self, id: u8) {
         if let Some(mut vehicle) = self.vehicles.remove(&id) {
-            vehicle.onboard_logs.cancel();
+            vehicle.onboard_logs.leave();
         }
         crate::track::forget(i64::from(id));
         crate::flowimage::forget(id);
@@ -4414,7 +4419,10 @@ impl Hub {
             }
             if let Some(left) = self.active.and_then(|was| self.vehicles.get_mut(&was)) {
                 left.clear_rc_overrides();
-                left.logs_left_behind = left.onboard_logs.busy();
+                if left.onboard_logs.busy() {
+                    left.comm_lost_enabled = true;
+                }
+                left.onboard_logs.leave();
                 left.calibration_left_behind = left.calibrate.running() || left.rccal_open || left.rccal.running();
             }
         }
@@ -4928,9 +4936,10 @@ mod tests {
         hub.vehicles.get_mut(&1).unwrap().onboard_log_action("logRefresh", None, 0);
         assert!(hub.vehicles[&1].onboard_logs.busy() && !hub.vehicles[&1].comm_lost_enabled, "a listing turns link-loss detection off, as _setListing does");
         hub.set_active(Some(2));
-        hub.vehicles.get_mut(&1).unwrap().pump_with(100, None, 0);
         assert!(!hub.vehicles[&1].onboard_logs.busy(), "_setActiveVehicle stops the listing or download of the vehicle it leaves; nothing on screen could cancel it any more");
         assert!(hub.vehicles[&1].comm_lost_enabled, "and _setDownloading(false) turns link-loss detection back on for it");
+        let ended = hub.vehicles.get_mut(&1).unwrap().pump_with(100, None, 0).iter().any(|b| matches!(decode(b), MavMessage::LOG_REQUEST_END(_)));
+        assert!(!ended, "the teardown sends no LOG_REQUEST_END, it only forgets the transfer");
     }
 
     #[test]

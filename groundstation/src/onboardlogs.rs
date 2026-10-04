@@ -39,6 +39,7 @@ struct Ftp {
     downloads: Vec<u16>,
     deletes: Vec<u16>,
     deleting: bool,
+    erasing: Option<u16>,
     current: Option<u16>,
     had_error: bool,
     progress_bytes: u64,
@@ -250,6 +251,23 @@ impl OnboardLogs {
                 }
             }
         }
+        self.next_listing(time_unsupported, now_ms)
+    }
+
+    pub fn on_ftp_list_refused(&mut self, time_unsupported: bool, now_ms: u64) -> Vec<Out> {
+        if !self.listing || !self.use_ftp {
+            return Vec::new();
+        }
+        if self.ftp.listing_root {
+            return self.fall_back_to_messages(now_ms);
+        }
+        if !self.ftp.dirs.is_empty() {
+            self.ftp.dirs.remove(0);
+        }
+        self.next_listing(time_unsupported, now_ms)
+    }
+
+    fn next_listing(&mut self, time_unsupported: bool, now_ms: u64) -> Vec<Out> {
         match self.ftp.dirs.first() {
             Some(dir) => vec![Out::FtpList(format!("{}/{dir}", self.ftp.root))],
             None if time_unsupported => self.fall_back_to_messages(now_ms),
@@ -492,8 +510,10 @@ impl OnboardLogs {
         if let Some(slot) = download.table.get_mut(bin) {
             *slot = true;
         }
-        let wrote = download.file.seek(SeekFrom::Start(u64::from(offset))).and_then(|_| download.file.write_all(data)).is_ok();
-        if !wrote {
+        if download.file.seek(SeekFrom::Start(u64::from(offset))).is_err() {
+            return Vec::new();
+        }
+        if download.file.write_all(data).is_err() {
             self.set_status(index, "Error");
             return Vec::new();
         }
@@ -630,6 +650,7 @@ impl OnboardLogs {
     }
 
     fn next_ftp_delete(&mut self, now_ms: u64) -> Vec<Out> {
+        self.ftp.erasing = None;
         if self.ftp.deletes.is_empty() {
             self.ftp.deleting = false;
             self.downloading = false;
@@ -639,7 +660,19 @@ impl OnboardLogs {
         let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) else { return self.next_ftp_delete(now_ms) };
         entry.selected = false;
         entry.status = "Erasing".to_string();
-        vec![Out::FtpDelete(entry.ftp_path.clone().unwrap_or_default())]
+        let path = entry.ftp_path.clone().unwrap_or_default();
+        self.ftp.erasing = Some(id);
+        vec![Out::FtpDelete(path)]
+    }
+
+    pub fn on_ftp_delete_refused(&mut self, now_ms: u64) -> Vec<Out> {
+        if !self.ftp.deleting {
+            return Vec::new();
+        }
+        if let Some(id) = self.ftp.erasing {
+            self.set_status(id, "Error");
+        }
+        self.next_ftp_delete(now_ms)
     }
 
     pub fn on_ftp_deleted(&mut self, now_ms: u64) -> Vec<Out> {
@@ -666,27 +699,35 @@ impl OnboardLogs {
     }
 
     fn cancel_ftp(&mut self) -> Vec<Out> {
-        match (self.listing, self.ftp.deleting, self.downloading) {
-            (true, _, _) => {
-                self.ftp.dirs.clear();
-                self.finish_listing();
-                vec![Out::FtpCancel]
-            }
-            (_, true, _) => {
-                self.ftp.deletes.clear();
-                Vec::new()
-            }
-            (_, _, true) => {
-                if let Some(id) = self.ftp.current.take() {
-                    self.set_status(id, "Canceled");
-                }
-                self.ftp.downloads.clear();
-                self.reset_selection(true);
-                self.downloading = false;
-                vec![Out::FtpCancel]
-            }
-            _ => Vec::new(),
+        let listing = self.listing;
+        if listing {
+            self.ftp.dirs.clear();
+            self.finish_listing();
         }
+        let stop_listing = listing.then_some(Out::FtpCancel);
+        if self.ftp.deleting {
+            self.ftp.deletes.clear();
+            self.reset_selection(true);
+            return stop_listing.into_iter().collect();
+        }
+        let downloading = self.downloading;
+        if downloading {
+            if let Some(id) = self.ftp.current.take() {
+                self.set_status(id, "Canceled");
+            }
+            self.ftp.downloads.clear();
+        }
+        self.reset_selection(true);
+        self.downloading = false;
+        stop_listing.into_iter().chain(downloading.then_some(Out::FtpCancel)).collect()
+    }
+
+    pub fn leave(&mut self) {
+        if let Some(download) = self.download.take() {
+            drop(download.file);
+            let _ = std::fs::remove_file(&download.path);
+        }
+        *self = OnboardLogs { sort_ascending: self.sort_ascending, ..OnboardLogs::default() };
     }
 
     pub fn erase_all(&mut self, now_ms: u64) -> Vec<Out> {
@@ -847,6 +888,53 @@ mod tests {
         logs.select(0, true);
         assert!(matches!(logs.erase_selected().as_slice(), [Out::FtpDelete(_)]));
         assert_eq!(logs.on_ftp_deleted(3), vec![Out::RequestList { start: 0, end: 0xffff }], "the failed download disabled FTP, so the refresh after erasing goes over messages");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn a_refused_ftp_listing_falls_back_or_skips_the_folder_like_the_controller() {
+        let mut root = ftp_logs();
+        root.refresh(0);
+        assert_eq!(root.on_ftp_list_refused(false, 0), vec![Out::RequestList { start: 0, end: 0xffff }], "a root listing FTPManager will not start goes straight to messages, no fallback root");
+
+        let mut walk = ftp_logs();
+        walk.refresh(0);
+        walk.on_ftp_listed(Ok(vec!["D2026-09-29".into(), "D2026-09-30".into()]), false, 0);
+        assert_eq!(walk.on_ftp_list_refused(false, 0), vec![Out::FtpList(format!("{MAVLINK_LOG_ROOT}/2026-09-30"))], "a folder that cannot be listed is skipped");
+        assert!(walk.on_ftp_list_refused(false, 0).is_empty());
+        assert_eq!((walk.listing, walk.transport()), (false, FTP_TRANSPORT));
+    }
+
+    #[test]
+    fn ftp_erase_marks_a_refused_delete_and_cancel_drops_the_queue_like_the_controller() {
+        let mut logs = ftp_logs();
+        logs.refresh(0);
+        logs.on_ftp_listed(Ok(vec!["Fa.ulg\t10".into(), "Fb.ulg\t20".into(), "Fc.ulg\t30".into()]), false, 0);
+        logs.select_all(true);
+        let Out::FtpDelete(first) = logs.erase_selected().remove(0) else { unreachable!() };
+        let erasing = logs.entries.iter().position(|e| e.ftp_path.as_deref() == Some(first.as_str())).unwrap();
+        assert!(matches!(logs.on_ftp_delete_refused(1).as_slice(), [Out::FtpDelete(_)]));
+        assert_eq!(logs.entries[erasing].status, "Error");
+        assert!(logs.cancel().is_empty(), "the delete in flight cannot be aborted");
+        assert_eq!(logs.entries.iter().filter(|e| e.status == "Canceled" && !e.selected).count(), 1, "the still queued log is canceled and deselected");
+        assert!(logs.downloading, "the cycle ends when the delete in flight completes");
+        assert_eq!(logs.on_ftp_deleted(2), vec![Out::FtpList(MAVLINK_LOG_ROOT.to_string())]);
+    }
+
+    #[test]
+    fn leaving_the_vehicle_forgets_the_logs_and_the_partial_file_without_ending_the_request() {
+        let folder = std::env::temp_dir().join(format!("qgc-onboard-leave-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut logs = ftp_logs();
+        logs.ftp_disabled = true;
+        logs.refresh(0);
+        logs.on_entry(false, 0, 180, 0, 1, 0);
+        logs.select(0, true);
+        logs.download(&folder, ".bin", 0);
+        assert!(folder.join("log_0_UnknownDate.bin").exists());
+        logs.leave();
+        assert!(!folder.join("log_0_UnknownDate.bin").exists());
+        assert_eq!((logs.busy(), logs.entries.len(), logs.ftp_disabled), (false, 0, false), "the next vehicle starts with an empty model and FTP allowed again");
         std::fs::remove_dir_all(&folder).unwrap();
     }
 
