@@ -50,6 +50,7 @@ enum Expect {
     Item,
     Request,
     ClearAck,
+    GuidedItem,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +58,7 @@ pub enum Transaction {
     Read,
     Write,
     RemoveAll,
+    GuidedItem,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -149,8 +151,7 @@ pub struct Transfer {
     last_request: Option<u16>,
     writing: Vec<Item>,
     pub items: Vec<Item>,
-    pub wrote: bool,
-    pub removed_all: bool,
+    pub finished: Option<Transaction>,
 }
 
 fn result_text(result: u8) -> String {
@@ -219,8 +220,7 @@ impl Transfer {
         self.to_write.clear();
         self.expect = None;
         let transaction = self.transaction.take();
-        self.wrote = success && transaction == Some(Transaction::Write);
-        self.removed_all = transaction == Some(Transaction::RemoveAll);
+        self.finished = transaction;
         match (transaction, success) {
             (Some(Transaction::Read), false) => self.items.clear(),
             (Some(Transaction::Write), true) => self.items = std::mem::take(&mut self.writing),
@@ -262,6 +262,14 @@ impl Transfer {
         self.retries = 0;
         self.transaction = Some(Transaction::RemoveAll);
         self.clear_all()
+    }
+
+    pub fn guided_item(&mut self) -> Vec<Out> {
+        if self.in_progress() {
+            return Vec::new();
+        }
+        self.transaction = Some(Transaction::GuidedItem);
+        self.expecting(Expect::GuidedItem)
     }
 
     fn clear_all(&mut self) -> Vec<Out> {
@@ -329,6 +337,7 @@ impl Transfer {
                 self.retries += 1;
                 self.clear_all()
             }
+            Some(Expect::GuidedItem) => self.finish(false, "Vehicle did not respond to mission item communication: Guided Mode Item"),
         }
     }
 
@@ -357,8 +366,8 @@ impl Transfer {
         };
         let item = Item { frame, ..item };
         if !self.take_expected(Expect::Item) {
-            return match (self.apm, self.plan_type, item.seq) {
-                (true, PLAN_MISSION, 0) => vec![Out::HomePosition(item.params[4], item.params[5], item.params[6])],
+            return match (self.in_progress(), self.apm, self.plan_type, item.seq) {
+                (true, true, PLAN_MISSION, 0) => vec![Out::HomePosition(item.params[4], item.params[5], item.params[6])],
                 _ => Vec::new(),
             };
         }
@@ -406,8 +415,8 @@ impl Transfer {
         self.expect = None;
         match (expected, result, self.to_write.is_empty()) {
             (Expect::Request, RESULT_ACCEPTED, true) => self.finish(true, ""),
-            (Expect::Request, RESULT_ACCEPTED, false) => self.finish(false, "Vehicle acknowledged the mission before requesting every item."),
-            (Expect::ClearAck, RESULT_ACCEPTED, _) => self.finish(true, ""),
+            (Expect::ClearAck | Expect::GuidedItem, RESULT_ACCEPTED, _) => self.finish(true, ""),
+            (Expect::GuidedItem, failed, _) => self.finish(false, &format!("Vehicle returned error: {}. Vehicle did not accept guided item.", result_text(failed))),
             (Expect::ClearAck, failed, _) => self.finish(false, &format!("Vehicle remove all failed. Error: {}", result_text(failed))),
             _ => {
                 let text = rejection_text(self.last_request.and_then(|seq| self.writing.get(usize::from(seq))), result);
@@ -439,7 +448,7 @@ mod tests {
         assert!(transfer.remove_all().is_empty(), "one transaction at a time");
         assert_eq!(transfer.on_timeout()[0], Out::ClearAll, "a lost ack is retried");
         assert!(matches!(transfer.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: true, .. })));
-        assert!(!transfer.in_progress() && !transfer.wrote && transfer.removed_all, "Vehicle clears the trail on sendComplete and newMissionItemsAvailable, never on removeAllComplete");
+        assert!(!transfer.in_progress() && transfer.finished == Some(Transaction::RemoveAll), "Vehicle clears the trail on sendComplete and newMissionItemsAvailable, never on removeAllComplete");
         let mut refused = Transfer::new(true, PLAN_FENCE);
         refused.remove_all();
         assert!(matches!(refused.on_ack(1).last(), Some(Out::Done { success: false, error }) if error == "Vehicle remove all failed. Error: Unspecified error."));
@@ -547,7 +556,7 @@ mod tests {
         let mut early = Transfer::new(true, PLAN_MISSION);
         early.write(vec![waypoint(0, 0.0), waypoint(1, 1.0)]);
         early.on_request(0);
-        assert!(matches!(early.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: false, error }) if error.contains("before requesting every item")));
+        assert!(matches!(early.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: false, error }) if error == "Mission accepted. Item #0 Command: Waypoint"), "PlanManager reports an early accept as the result text naming the last requested item");
         let mut stalled = Transfer::new(true, PLAN_MISSION);
         stalled.write(vec![waypoint(0, 0.0), waypoint(1, 1.0)]);
         stalled.on_request(0);
@@ -556,7 +565,10 @@ mod tests {
 
     #[test]
     fn an_unrequested_first_item_on_ardupilot_is_the_home_position() {
+        let mut idle = Transfer::new(true, PLAN_MISSION);
+        assert!(idle.on_item(waypoint(0, 47.5)).is_empty(), "PlanManager only listens to MAVLink while a transaction runs, so an idle stray item never moves home");
         let mut transfer = Transfer::new(true, PLAN_MISSION);
+        transfer.write(vec![waypoint(0, 0.0)]);
         assert_eq!(transfer.on_item(waypoint(0, 47.5)), vec![Out::HomePosition(47.5, 8.5, 50.0)]);
         let mut px4 = Transfer::new(false, PLAN_MISSION);
         assert!(px4.on_item(waypoint(0, 47.5)).is_empty());
@@ -564,6 +576,23 @@ mod tests {
         let mut apm = Transfer::new(true, PLAN_MISSION);
         apm.load();
         assert!(apm.on_ack(RESULT_INVALID_SEQUENCE).is_empty(), "ArduPilot's invalid-sequence ack is ignored");
+    }
+
+    #[test]
+    fn an_ardupilot_guided_item_waits_for_its_ack_like_write_ardupilot_guided_mission_item() {
+        let mut guided = Transfer::new(true, PLAN_MISSION);
+        guided.items = vec![waypoint(0, 47.0)];
+        assert_eq!(timer(&guided.guided_item()), Some(ACK_TIMEOUT_MS));
+        assert!(guided.in_progress() && guided.load().is_empty() && guided.guided_item().is_empty(), "the guided item holds the manager like any other transaction");
+        assert!(matches!(guided.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: true, .. })));
+        assert_eq!((guided.finished, guided.items.len()), (Some(Transaction::GuidedItem), 1), "a guided write never replaces the mission the manager holds");
+        guided.guided_item();
+        assert!(matches!(guided.on_ack(3).last(), Some(Out::Done { success: false, error }) if error == "Vehicle returned error: Command is not supported.. Vehicle did not accept guided item."));
+        guided.guided_item();
+        assert!(matches!(guided.on_timeout().last(), Some(Out::Done { success: false, error }) if error == "Vehicle did not respond to mission item communication: Guided Mode Item"), "no retry: AckGuidedItem falls to the default timeout branch");
+        let mut busy = Transfer::new(true, PLAN_MISSION);
+        busy.load();
+        assert!(busy.guided_item().is_empty(), "writeArduPilotGuidedMissionItem drops the item while a transfer runs");
     }
 
     #[test]

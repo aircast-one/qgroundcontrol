@@ -310,7 +310,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "resumeFromSequence": (state.resume_from_sequence > 0).then_some(state.resume_from_sequence),
         "roiSupported": state.roi_supported,
         "roiActive": state.roi_active,
-        "resumeFailedIndex": crate::vehiclefacade::switched_on().then(|| crate::hub::lock().active().and_then(|v| v.resume_failed)).flatten(),
+        "resumeFailedIndex": (crate::vehiclefacade::switched_on() && state.can_resume()).then(|| crate::hub::lock().active().and_then(|v| v.resume_failed)).flatten(),
         "roi": state.roi_active.then(|| crate::read::object(&backend.get("vehicle.roiCoord"))).and_then(|at| {
             Some(json!({ "latitude": at.get("latitude")?.as_f64()?, "longitude": at.get("longitude")?.as_f64()? }))
         }),

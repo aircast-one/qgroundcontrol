@@ -839,14 +839,25 @@ impl Vehicle {
                     self.home = Some((latitude, longitude, altitude));
                     Vec::new()
                 }
-                plantransfer::Out::Done { success, error } => {
-                    if kind == plantransfer::PLAN_MISSION && self.plans[plan].transfer.wrote {
-                        self.resume_failed = self.resume_upload.take().filter(|_| !success);
+                plantransfer::Out::Done { success, error } if self.plans[plan].transfer.finished == Some(plantransfer::Transaction::GuidedItem) => {
+                    self.plans[plan].due = None;
+                    if !success {
+                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &transfer_failed(kind, &error));
+                        self.note(error);
                     }
-                    if kind == plantransfer::PLAN_MISSION && !self.plans[plan].transfer.removed_all {
+                    Vec::new()
+                }
+                plantransfer::Out::Done { success, error } => {
+                    let finished = self.plans[plan].transfer.finished;
+                    if kind == plantransfer::PLAN_MISSION {
+                        if let Some(index) = self.resume_upload.take() {
+                            self.resume_failed = (!success).then_some(index);
+                        }
+                    }
+                    if kind == plantransfer::PLAN_MISSION && finished != Some(plantransfer::Transaction::RemoveAll) {
                         self.clear_trigger_points();
                         crate::track::clear(i64::from(self.id));
-                        if self.plans[plan].transfer.wrote {
+                        if success && finished == Some(plantransfer::Transaction::Write) {
                             (self.mission_current, self.mission_last_current) = (-1, -1);
                         }
                     }
@@ -2175,7 +2186,13 @@ impl Vehicle {
                 }
                 Emit::SetMode { base_mode, custom_mode } => self.encode(&Outbound::SetMode { system: self.id, base_mode, custom_mode }).into_iter().collect(),
                 Emit::PositionTargetLocalNed { frame, type_mask, x, y, z } => self.encode(&Outbound::PositionTargetLocalNed { target, frame, type_mask, x, y, z }).into_iter().collect(),
-                Emit::GuidedMissionItem { latitude, longitude, altitude_relative } => self.encode(&Outbound::GuidedMissionItem { target, latitude, longitude, altitude_relative }).into_iter().collect(),
+                Emit::GuidedMissionItem { latitude, longitude, altitude_relative } => {
+                    let outs = self.plans[usize::from(PLAN_MISSION)].transfer.guided_item();
+                    match outs.is_empty() {
+                        true => Vec::new(),
+                        false => self.encode(&Outbound::GuidedMissionItem { target, latitude, longitude, altitude_relative }).into_iter().chain(self.follow_plan(PLAN_MISSION, outs, now_ms)).collect(),
+                    }
+                }
             })
             .collect()
     }
@@ -6145,6 +6162,34 @@ mod tests {
         use mavlink::dialects::ardupilotmega::MISSION_REQUEST_DATA;
         let plain = hub.on_frame(origin(4), &autopilot, &MavMessage::MISSION_REQUEST(MISSION_REQUEST_DATA { seq: 0, target_system: 0, target_component: 190, ..Default::default() }), 13_100_000, 13_100);
         assert!(matches!(decode(&plain[0].1), MavMessage::MISSION_ITEM_INT(i) if i.seq == 0), "the float request form and a broadcast target are served too");
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn a_refused_resume_upload_raises_the_retry_prompt_and_a_guided_item_waits_for_its_ack() {
+        use mavlink::dialects::ardupilotmega::{MISSION_ACK_DATA, MISSION_ITEM_INT_DATA, MavMissionResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let nack = MavMessage::MISSION_ACK(MISSION_ACK_DATA { target_system: 255, target_component: 190, mavtype: MavMissionResult::MAV_MISSION_ERROR, ..Default::default() });
+        let items = json!([{ "frame": 0, "command": 16, "params": [0, 0, 0, 0, 47.0, 8.0, 0] }, { "frame": 3, "command": 16, "params": [0, 0, 0, 0, 47.1, 8.1, 50] }]);
+        hub.mission_request(None, &json!({ "action": "write", "items": items }), 10_000).unwrap();
+        hub.vehicles.get_mut(&1).unwrap().resume_upload = Some(3);
+        hub.on_frame(origin(4), &autopilot, &nack, 10_100_000, 10_100);
+        assert_eq!(hub.active().unwrap().resume_failed, Some(3), "PlanManager emits resumeMissionUploadFail when the resume write fails");
+        let home = hub.active().unwrap().home;
+        let stray = MavMessage::MISSION_ITEM_INT(MISSION_ITEM_INT_DATA { seq: 0, x: 480000000, y: 90000000, z: 10.0, target_system: 255, target_component: 190, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &stray, 10_200_000, 10_200);
+        assert_eq!(hub.active().unwrap().home, home, "an idle PlanManager is disconnected from MAVLink, so a stray item zero is not a home update");
+        let target = (1, 1);
+        let sent = hub.vehicles.get_mut(&1).unwrap().carry(vec![Emit::GuidedMissionItem { latitude: 47.2, longitude: 8.2, altitude_relative: 30.0 }], 11_000);
+        assert!(matches!(decode(&sent[0]), MavMessage::MISSION_ITEM(i) if i.current == 2 && (i.target_system, i.target_component) == target));
+        assert!(hub.mission_request(None, &json!({ "action": "load" }), 11_000).is_err(), "the guided item holds the mission manager until it is acked");
+        let busy = hub.vehicles.get_mut(&1).unwrap().carry(vec![Emit::GuidedMissionItem { latitude: 47.2, longitude: 8.2, altitude_relative: 30.0 }], 11_100);
+        assert!(busy.is_empty(), "a second guided item while one is in flight is dropped");
+        hub.tick(12_600);
+        let plans = hub.active().unwrap().mission_snapshot();
+        assert_eq!((plans["mission"]["inProgress"].as_bool(), plans["mission"]["error"].as_str(), hub.active().unwrap().resume_failed), (Some(false), Some("Unspecified error."), Some(3)), "a guided timeout is only an app message; the mission state and resume prompt are untouched");
     }
 
     #[test]
