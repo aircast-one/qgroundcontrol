@@ -3459,14 +3459,12 @@ impl Vehicle {
                 let outs = self.plans[kind as usize].transfer.on_ack(m.mavtype as u8);
                 return self.follow_plan(kind, outs, now_ms);
             }
-            MavMessage::SYS_STATUS(s) => {
+            MavMessage::SYS_STATUS(s) if from == (self.id, self.component) => {
                 let (present, enabled, health) = (s.onboard_control_sensors_present.bits(), s.onboard_control_sensors_enabled.bits(), s.onboard_control_sensors_health.bits());
                 self.sensors.update(present, enabled, health);
-                if from == (self.id, self.component) {
-                    self.status_bits = self.status_bits.after(present, enabled, health);
-                    if self.arming_not_required() {
-                        self.armed_now = enabled & SENSOR_MOTOR_OUTPUTS != 0;
-                    }
+                self.status_bits = self.status_bits.after(present, enabled, health);
+                if self.arming_not_required() {
+                    self.armed_now = enabled & SENSOR_MOTOR_OUTPUTS != 0;
                 }
             }
             MavMessage::DATA_TRANSMISSION_HANDSHAKE(h) => {
@@ -4794,6 +4792,26 @@ mod tests {
         assert!(!hub.active().unwrap().armed(), "once motor outputs are reported the heartbeat's armed bit is ignored");
         hub.on_frame(origin(0), &header, &motors(true), 3, 0);
         assert!(hub.active().unwrap().armed());
+    }
+
+    #[test]
+    fn only_the_default_component_reports_the_sensor_list() {
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavSysStatusSensor, MavType, SYS_STATUS_DATA};
+        let mut hub = Hub::default();
+        let header = |component_id: u8| MavHeader { system_id: 1, component_id, sequence: 0 };
+        let mut h = HEARTBEAT_DATA::default();
+        h.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        h.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+        hub.on_frame(origin(0), &header(1), &MavMessage::HEARTBEAT(h), 0, 0);
+        let gps = MavMessage::SYS_STATUS(SYS_STATUS_DATA {
+            onboard_control_sensors_present: MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_GPS,
+            onboard_control_sensors_enabled: MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_GPS,
+            ..Default::default()
+        });
+        hub.on_frame(origin(0), &header(154), &gps, 1, 0);
+        assert!(hub.active().unwrap().sensors.ordered().names.is_empty());
+        hub.on_frame(origin(0), &header(1), &gps, 2, 0);
+        assert_eq!(hub.active().unwrap().sensors.ordered().names, vec!["GPS"]);
     }
 
     #[test]

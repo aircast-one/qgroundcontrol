@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -35,7 +37,6 @@ import one.aircast.android.bridge.qgcPath
 import one.aircast.mapspike.aircast
 
 private const val SENSOR_FAULT_STATE = "unhealthy"
-private const val SENSORS_SETUP_PAGE = "Sensors"
 
 internal object DeckRequest {
     var action by mutableStateOf<String?>(null)
@@ -91,11 +92,13 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
                 shownSensors(reading.sensors, showAll).forEach { sensor ->
                     val fault = sensor.state == SENSOR_FAULT_STATE
                     Row(
-                        Modifier.fillMaxWidth().clickable { open(SENSORS_SETUP_PAGE) }.padding(horizontal = 20.dp, vertical = 6.dp),
+                        Modifier.fillMaxWidth().clickable { open(SETUP_OVERVIEW_PAGE) }.padding(horizontal = 20.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(sensor.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Text(sensor.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = if (fault) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(sensor.label, style = MaterialTheme.typography.bodySmall, color = if (fault) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 val normal = reading.sensors.count { it.state == SENSOR_HEALTHY_STATE }

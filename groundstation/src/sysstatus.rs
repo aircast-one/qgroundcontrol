@@ -11,7 +11,7 @@ const NAMES: &[(u32, &str)] = &[
 ];
 
 pub fn sensor_name(bit: u32) -> String {
-    NAMES.iter().find(|(b, _)| *b == bit).map(|(_, n)| n.to_string()).unwrap_or_else(|| format!("Unknown sensor 0x{bit:X}"))
+    NAMES.iter().find(|(b, _)| *b == bit).map_or("Unknown sensor", |(_, n)| n).to_string()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn unknown_bits_still_get_a_name() {
-        assert_eq!(sensor_name(1 << 31), "Unknown sensor 0x80000000");
+        assert_eq!(sensor_name(1 << 31), "Unknown sensor");
         assert_eq!(sensor_name(1 << 21), "Attitude Estimation");
     }
 }
