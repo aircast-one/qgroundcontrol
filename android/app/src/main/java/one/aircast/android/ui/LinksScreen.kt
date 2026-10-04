@@ -519,7 +519,7 @@ private fun BluetoothPicker(chosen: BluetoothDeviceChoice?, onPick: (BluetoothDe
 }
 
 @Composable
-private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Unit) {
+private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Unit, modifier: Modifier = Modifier) {
     var name by remember { mutableStateOf(row.name) }
     var host by remember { mutableStateOf(row.host) }
     var port by remember { mutableStateOf(row.port.toString()) }
@@ -553,11 +553,14 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
     val udpListen by one.aircast.android.bridge.qgcValue(UDP_LISTEN_PORT)
     val udpDefault = (udpListen as? Number)?.toInt()?.takeIf { it in 1..65535 }?.toString() ?: DEFAULT_PORT
 
-    AlertDialog(
-        onDismissRequest = cancel,
-        title = { Text("Edit ${row.name}") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    BackHandler(onBack = cancel)
+    OverridePageHeading("Edit ${row.name}", cancel)
+    Column(modifier.fillMaxSize()) {
+        if (LocalPageHeading.current == null) PageTopBar("Edit ${row.name}", "Back to links", cancel)
+            Column(
+                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -625,8 +628,11 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
-        },
-        confirmButton = {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        ) {
+            TextButton(onClick = cancel) { Text("Cancel") }
             Button(
                 onClick = {
                     val udp = row.editing == "portOnly"
@@ -670,9 +676,8 @@ private fun EditLinkDialog(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> U
                     }
                 },
             ) { Text("Save & Connect") }
-        },
-        dismissButton = { TextButton(onClick = cancel) { Text("Cancel") } },
-    )
+        }
+    }
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -978,6 +983,10 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
         AddLinkPage(onDismiss = { adding = false }, onAdded = { adding = false }, modifier = modifier)
         return
     }
+    editing?.let { row ->
+        EditLinkPage(row = row, onDismiss = { editing = null }, onSaved = { editing = null }, modifier = modifier)
+        return
+    }
 
     Box(modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
@@ -1044,14 +1053,6 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     )
     }
 
-
-    editing?.let { row ->
-        EditLinkDialog(
-            row = row,
-            onDismiss = { editing = null },
-            onSaved = { editing = null },
-        )
-    }
 
     confirmingDisconnect?.let { row ->
         AlertDialog(
