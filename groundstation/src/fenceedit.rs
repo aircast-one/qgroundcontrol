@@ -29,7 +29,7 @@ impl Shape {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Fence {
-    supported: Option<bool>,
+    supported: bool,
     syncing: bool,
 }
 
@@ -53,7 +53,7 @@ pub(crate) fn point(value: Option<&Value>) -> Option<(f64, f64)> {
 
 fn editing_refusal(state: Fence) -> Option<(&'static str, &'static str)> {
     match () {
-        _ if state.supported == Some(false) => Some(("unsupported", "This link does not accept a geofence.")),
+        _ if !state.supported => Some(("unsupported", "This vehicle does not support GeoFence.")),
         _ if state.syncing => Some(("busy", "Wait for the sync to finish before changing the geofence.")),
         _ => None,
     }
@@ -165,8 +165,6 @@ pub fn owns_member_action(path: &str) -> bool {
     member_target(path).is_some_and(|(owner, _, member)| owner == Owner::Polygon && VERTEX_EDITS.contains(&member))
 }
 
-// A fence polygon's inclusion is a plain bool property, like a circle's; the bridge converted
-// anything to it through QVariant::toBool, so a string such as "no" was stored as true.
 pub fn owns_member_write(path: &str) -> bool {
     member_target(path).is_some_and(|(_, _, member)| !VERTEX_EDITS.contains(&member))
 }
@@ -259,9 +257,8 @@ mod tests {
         assert_eq!(window_refusal(nw, nw).map(|r| r.0), Some("emptyWindow"), "a zero-area window makes a zero-size fence");
         assert_eq!(window_refusal(None, se).map(|r| r.0), Some("badCoordinate"));
         assert_eq!(point(Some(&json!({ "latitude": 91.0, "longitude": 8.0 }))), None);
-        assert_eq!(editing_refusal(Fence { supported: Some(false), syncing: false }).map(|r| r.0), Some("unsupported"));
-        assert_eq!(editing_refusal(Fence { supported: None, syncing: false }), None, "a vehicle that has not said what it accepts is offered a fence, as view.plan offers one");
-        assert_eq!(editing_refusal(Fence { supported: Some(true), syncing: true }).map(|r| r.0), Some("busy"));
+        assert_eq!(editing_refusal(Fence { supported: false, syncing: false }).map(|r| r.0), Some("unsupported"));
+        assert_eq!(editing_refusal(Fence { supported: true, syncing: true }).map(|r| r.0), Some("busy"));
     }
 
     struct Controller {
@@ -277,7 +274,6 @@ mod tests {
         }
         fn get_fields(&self, p: &str, _f: &str) -> String {
             match p {
-                "plan.managerVehicle" => json!({ "kind": "object", "capabilitiesKnown": true }),
                 FENCE_CONTROLLER => json!({ "kind": "object", "supported": true, "breachReturnPoint": self.breach.borrow().clone() }),
                 _ => json!({ "kind": "object", "syncInProgress": false }),
             }

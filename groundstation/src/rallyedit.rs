@@ -7,7 +7,7 @@ const POINTS: &str = "plan.rallyPointController.points";
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Rally {
-    supported: Option<bool>,
+    supported: bool,
     syncing: bool,
     count: usize,
 }
@@ -34,7 +34,7 @@ fn coordinate(args: &Value) -> Option<(f64, f64)> {
 fn add_refusal(state: Rally, at: Option<(f64, f64)>) -> Option<(&'static str, &'static str)> {
     match () {
         _ if at.is_none() => Some(("badCoordinate", "A rally point needs a latitude from -90 to 90 and a longitude from -180 to 180.")),
-        _ if state.supported == Some(false) => Some(("unsupported", "This link does not accept rally points.")),
+        _ if !state.supported => Some(("unsupported", "This vehicle does not support Rally Points.")),
         _ if state.syncing => Some(("busy", "Wait for the sync to finish before adding a rally point.")),
         _ => None,
     }
@@ -92,13 +92,12 @@ mod tests {
 
     #[test]
     fn a_rally_point_is_added_only_somewhere_real_on_a_link_that_takes_them() {
-        let open = Rally { supported: Some(true), syncing: false, count: 2 };
+        let open = Rally { supported: true, syncing: false, count: 2 };
         let at = |lat: f64, lon: f64| coordinate(&json!([{ "latitude": lat, "longitude": lon }]));
         assert_eq!(add_refusal(open, at(47.4, 8.5)), None);
         assert_eq!(add_refusal(open, at(147.4, 8.5)).map(|r| r.0), Some("badCoordinate"), "addPoint appends whatever coordinate it is given");
         assert_eq!(add_refusal(open, None).map(|r| r.0), Some("badCoordinate"));
-        assert_eq!(add_refusal(Rally { supported: Some(false), ..open }, at(47.4, 8.5)).map(|r| r.0), Some("unsupported"), "a point the vehicle will not take still dirties the plan and waits for an upload that drops it");
-        assert_eq!(add_refusal(Rally { supported: None, ..open }, at(47.4, 8.5)), None, "a vehicle that has not said what it accepts is offered rally, as view.plan offers it");
+        assert_eq!(add_refusal(Rally { supported: false, ..open }, at(47.4, 8.5)).map(|r| r.0), Some("unsupported"), "a point the vehicle will not take still dirties the plan and waits for an upload that drops it");
         assert_eq!(add_refusal(Rally { syncing: true, ..open }, at(47.4, 8.5)).map(|r| r.0), Some("busy"));
         assert_eq!(remove_refusal(open, Some(1)), None);
         assert_eq!(remove_refusal(open, Some(2)).map(|r| r.0), Some("noSuchPoint"), "a stale position reaches removePoint as a null object, which matches nothing and says nothing");
@@ -115,7 +114,6 @@ mod tests {
         fn get(&self, _p: &str) -> String { json!({ "kind": "object", "elements": vec![json!({}); *self.points.borrow()] }).to_string() }
         fn get_fields(&self, p: &str, _f: &str) -> String {
             match p {
-                "plan.managerVehicle" => json!({ "kind": "object", "capabilitiesKnown": true }),
                 "plan.rallyPointController" => json!({ "kind": "object", "supported": true }),
                 _ => json!({ "kind": "object", "syncInProgress": false }),
             }

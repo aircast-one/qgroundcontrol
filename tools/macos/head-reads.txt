@@ -434,7 +434,6 @@ typeLabel
 unit
 units
 unknownTerrain
-unsupportedReason
 up
 usable
 valid

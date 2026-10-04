@@ -6,7 +6,6 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var shapes: [FenceShape] = []
     @Published private(set) var rallyPoints: [RallyPointRow] = []
     @Published private(set) var fence = FenceSupport.unread
-    @Published private(set) var unsupportedReason = ""
     var fenceSupported: Bool { fence.offers }
     @Published private(set) var rally = FenceSupport.unread
     var rallySupported: Bool { rally.offers }
@@ -25,14 +24,6 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     private var watchPoll: Timer?
 
-    // The Fly view reads these while the Plan window edits them, and a fence is plan state that no
-    // telemetry tick announces, so a reader has to look again.
-    //
-    // COUNTED, because there are now two owners. The Plan window watches so its own page notices a
-    // vehicle arriving -- connected gates the download offer, and with only Plan open it used to be
-    // read once on appear and never again, so powering the aircraft on afterwards left the offer
-    // hidden until something else reloaded. A single flag would let whichever window closed first
-    // stop the poll the other was still using, and the two windows close in either order.
     private var watchers = 0
 
     func startWatching() {
@@ -56,8 +47,6 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func reload() {
         reloads += 1
-        // view.fences answers whether there is a plan to show and the breach return point, the two
-        // things reading plan.geoFenceController raw was for.
         let fences = Bridge.group("view.fences")
         guard (fences["available"] as? NSNumber)?.boolValue == true else {
             set(\.status, "The plan is not available.")
@@ -70,12 +59,6 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         set(\.status, "")
 
         let planView = Bridge.group("view.plan")
-        set(\.unsupportedReason, (planView["unsupportedReason"] as? String) ?? "")
-        // view.flyState composes connected from the same read -- it takes `vehicle` as an object
-        // and asks whether one came back -- so this is the same answer with the raw path retired.
-        // Deliberately NOT contactLost: a vehicle that has stopped talking still holds its fence
-        // and rally points, and QGC keeps the object until the link drops. Offering the download
-        // is right while contact is out; the download is what finds out whether it is coming back.
         set(\.connected, FlyState(Bridge.group("view.flyState")).connected)
         set(\.fence, FenceSupport(answer: fences["fenceSupported"]))
         set(\.rally, FenceSupport(answer: fences["rallySupported"]))
@@ -93,17 +76,9 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         set(\.breachRange, BreachReturn.range(breachFact))
         set(\.breachDecimals, BreachReturn.decimals(breachFact))
 
-        // The view was already in hand twenty lines above. Its sync composes offline, busy and
-        // ready where plan.syncInProgress is one flag, and offline WINS over syncing there -- so
-        // this retires the raw path rather than fixing behaviour: offline already means connected
-        // is false, and offersDownload was false either way. Saying so because the tidier sentence
-        // would be that it fixes something, and a difference nobody can reach is not a fix.
         set(\.syncing, PlanSync.busy(planView["sync"]))
     }
 
-    // Every one of these feeds the map. Assigning an unchanged value republishes the store and
-    // rebuilds the overlays, which is invisible at one reload per edit and twice a second once
-    // the Fly view is watching.
     private func set<T: Equatable>(_ key: ReferenceWritableKeyPath<FenceRallyStore, T>, _ value: T) {
         guard self[keyPath: key] != value else { return }
         self[keyPath: key] = value
@@ -125,7 +100,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func addFence(circle: Bool) -> String? {
         if !fence.read { reload() }
-        if let refusal = fence.refusal(servedReason: unsupportedReason) { return refusal }
+        if let refusal = fence.refusal() { return refusal }
         guard let window = mapWindow else {
             return "The map has not settled yet, so there is nowhere to put a fence."
         }
@@ -151,8 +126,6 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         shape.isCircle ? shape.path : nil
     }
 
-    // A Fact write is COOKED, so this is whatever unit the operator is working in, not
-    // metres. Naming it metres invites someone to convert a value that is already right.
     func setRadius(_ shape: FenceShape, value: Double) {
         if let refused = shape.radiusRefusal(value) {
             writeFailure = refused
@@ -171,7 +144,7 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
 
     func addBreachReturn() -> String? {
         if !fence.read { reload() }
-        if let refusal = fence.refusal(servedReason: unsupportedReason) { return refusal }
+        if let refusal = fence.refusal() { return refusal }
         guard let centre = mapCentre, let altitude = breachAltitudeMetres else {
             return BreachReturn.refusal(haveMap: mapCentre != nil)
         }
@@ -220,10 +193,6 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         reload()
     }
 
-    // PlanMasterController::loadFromVehicle returns silently five ways - no primary link, a
-    // high-latency link, offline, the fly view, or a sync already running - and the bridge's ok
-    // reports none of them. connected and syncing are the two this head can see, and they are
-    // the same gate MissionStore uses for the same C++ call; only one caller had it.
     var offersDownload: Bool { connected && !syncing }
 
     func downloadFromVehicle() {
@@ -253,9 +222,6 @@ final class FenceRallyStore: ObservableObject, Probeable, WriteReporting {
         RallyPointRow.list(Bridge.group("view.fences")["rallyPoints"])
     }
 
-    // The mission probe reports the centre menu but cannot see this store, and a probe that
-    // computes a field differently from the screen can never disagree with it. It reads through
-    // the same two builders the view's state comes from, so a new shape kind reaches both.
     static func planPoints() -> (fence: [GeoPoint], rally: [GeoPoint]) {
         (readShapes().flatMap(\.framingPoints), geoPoints(readRally()))
     }

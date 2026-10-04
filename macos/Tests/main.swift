@@ -2,9 +2,6 @@ import Foundation
 
 var failures = 0
 
-// Counts what RAN, not only what failed. An assertion that never executes and one that passed
-// produced the same output until now -- the shape that let two of the core's contract tests
-// report green while comparing nothing, because a bare `return` reports PASS.
 var assertions = 0
 
 func expect(_ actual: String, _ expected: String, _ label: String) {
@@ -97,13 +94,6 @@ expect(arming.map { $0.toggling($0.bits[3], on: false) } == 66,
 expect(arming.map { $0.toggling($0.bits[1], on: true) } == 82,
        "ticking a bit that is already set changes nothing, so a redraw cannot corrupt the value")
 
-// Every fixture above builds its value out of DECLARED bits only, so none of them can tell
-// "preserve the other bits this control knows about" from "preserve every bit in the value". The
-// distinction is the whole difference between this head and QGC: ParameterEditorDialog.qml's
-// bitmaskValue() starts from zero and ORs the checked declared bits back in, so a bit the metadata
-// does not name is CLEARED the moment the operator touches any checkbox. It is the same root cause
-// as the enum gap in ee2d41080 -- ArduPilot ships values ahead of the metadata that names them --
-// and on newer firmware an undeclared bit is the ordinary case, not the exotic one.
 let undeclared = SettingsControl([
     "path": "vehicle.parameter.ARMING_CHECK", "name": "ARMING_CHECK", "control": "bitmask",
     "value": 338 as NSNumber, "valueString": "338",
@@ -327,12 +317,6 @@ expect(!VibrationReading.unavailable.available, "the unavailable reading reports
 expect(VibrationReading.Severity("molten") == nil,
        "a severity this head does not know is no severity, not the reassuring one")
 
-// The enum-label rules that lived here are the core's now: control.rs picks display from enumIndex,
-// drops the synthetic "Unknown: N" entry, and zips labels to raws only when the lists match. Its own
-// tests cover all three -- a_bool_fact_is_a_toggle_and_an_enum_a_choice_without_unknowns,
-// the_synthetic_entry_is_recognised_in_a_language_that_is_not_english, and
-// strings_and_enum_positions_fall_back_sensibly. Re-asserting them through a hand-made fixture here
-// would test the fixture, not the rule.
 let insideEnum = Parameter(name: "ACRO_RP_EXPO", componentId: 1, json: [
     "control": "choice", "display": "High", "valueString": "0.30"])
 expect(insideEnum.value, "High", "the head draws the display the core composed")
@@ -718,27 +702,11 @@ checkACoordinateIsSpelledOneWay()
 func checkTheCapabilityKeepsItsThirdState() {
     expect(FenceSupport(answer: true as NSNumber).offers,
            "a vehicle the core says accepts a geofence offers one")
-    expect(FenceSupport(answer: false as NSNumber).refusal(servedReason: "") ?? "",
-           FenceSupport.unsupportedRefusal, "one that refuses says so")
-    expect(FenceSupport(answer: false as NSNumber)
-               .refusal(servedReason: "This link accepts neither a geofence nor rally points.") ?? "",
-           "This link accepts neither a geofence nor rally points.",
-           "and when the core has spelled WHY, that sentence wins over the head's own. plan.rs "
-           + "distinguishes four cases this head cannot -- neither, fence only, rally only, and a "
-           + "vehicle that has not answered -- and its own test says why the wording matters: "
-           + "GeoFenceController::supported is a capability bit AND maxProtoVersion >= 200, so a "
-           + "false can mean the vehicle lacks the feature OR that the link speaks MAVLink 1. "
-           + "This head said \"This vehicle does not accept a geofence\", picking one of the two "
-           + "causes without reading either, and an operator who believes it goes looking at the "
-           + "wrong end. The fallback now says \"link\" too, for the same reason")
-    expect(FenceSupport(answer: nil).refusal(servedReason: "ignored") ?? "",
+    expect(FenceSupport(answer: false as NSNumber).refusal() ?? "",
+           "This vehicle does not support GeoFence.", "one that refuses says so in GeoFenceEditor's words")
+    expect(FenceSupport(answer: nil).refusal() ?? "",
            FenceSupport.unreadRefusal,
-           "and a vehicle that has NOT YET ANSWERED is a third state, not a refusal. The core "
-           + "returns null until capabilitiesKnown is true -- QGC's capabilityBits DEFAULT to "
-           + "fence and rally, and its supported() ignores whether they were ever reported, so "
-           + "the raw controller property this head used to read says yes to a vehicle that has "
-           + "said nothing. Collapsing null to false would spell an unanswered vehicle as a "
-           + "refusing one, which is the sentence the core's own test warns about")
+           "and a plan view that has not been read yet is a third state, not a refusal")
     expect(FenceSupport(answer: nil).offers == false,
            "an unanswered capability offers nothing either, so nothing is drawn on a guess")
 }
@@ -850,13 +818,6 @@ func checkPacketRadioReadingsNeverInventANumber() {
     expect(radio([:])?.emptyText ?? "", "No signal readings yet.",
            "as does a radio that IS hearing something, which never reaches this line")
 
-    // MY OWN ASSERTION'S PROSE WAS WRONG HERE AND SAID THE OPPOSITE: it claimed this line is
-    // "only drawn when there are no readings to list", which made the hearing-nothing sentence
-    // unreachable, because readings is NEVER empty for a radio that is hearing nothing.
-    // antennaSnr is [i32; 2] and the core fills it from the whole Reading (packetradio.rs:514),
-    // so only antennaRssi carries presence. CONSTRUCTED through the parameterised view:
-    // view.packetRadio(receiving,wfb0,0/0,12/6,1800/2500,0) gives antennaRssi [null, null],
-    // antennaSnr [12, 6], haveSignal false -- a full readings list and nothing heard.
     let deaf = radio(["haveSignal": false as NSNumber,
                       "antennaRssi": [NSNull(), NSNull()],
                       "antennaSnr": [12.0 as NSNumber, 6.0 as NSNumber]])
@@ -989,9 +950,6 @@ func checkSilenceAndAnEmptySkyAreDifferentAnswers() {
 checkSilenceAndAnEmptySkyAreDifferentAnswers()
 
 func checkTrafficIsSpelledInTheOperatorsUnits() {
-    // Deliberately IMPERIAL. A units test written in the default unit passes whether the
-    // conversion is there or not, which is the trap the core's own adsb fix was written about
-    // and which its test at :951 still sits in.
     func traffic(_ overrides: [String: Any]) -> AdsbTraffic? {
         AdsbTraffic(["kind": "object", "class": "AdsbTraffic",
                      "enabled": true as NSNumber, "available": true as NSNumber,
@@ -1391,18 +1349,6 @@ func checkTheAdapterPickerShowsTheChoiceNotTheConsequence() {
            "and a named adapter selects its own row, offset by the Automatic entry sitting "
            + "above the list")
 
-    // REVERSED, and the note it replaces was mine: it asserted this falls back to Automatic
-    // "because that is what PacketRadioSettings.qml:86-90 does and is therefore what parity
-    // requires", while admitting the result is arguably misleading. QGC does do exactly that --
-    // `found < 0 ? 0` and an onActivated that writes "" for index 0 -- so the parity claim was
-    // accurate. What it got wrong is that this is not a case where the two situations are
-    // indistinguishable to an operator: an unset preference and a preference for a radio that is
-    // unplugged are different facts, and only one of them should read as Automatic.
-    //
-    // The cost of the old answer is not the label. Index 0 writes "", so a single interaction on
-    // a picker that is showing the wrong selection erases a preference the operator still has --
-    // and they would have to already know Automatic was never their choice to avoid it. Matching
-    // QGC there means copying a hazard, which is a different thing from matching a convention.
     expect(AdapterChoice.selected(deviceName: "A radio that went away", adapters: adapters)
                == adapters.count + 1,
            "a configured adapter that is not present gets a row of its own rather than collapsing "
@@ -1523,12 +1469,6 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            + "readable stays true because the FILE opened, so only the frame counts separate a "
            + "corrupt log from an empty one")
 
-    // MEASURED on three files built for this and read through view.tlog: 200 KB of random bytes
-    // gives undecodable 1597, but 175 KB of plain text and 200 KB of zeros both give ZERO.
-    // tlog.rs:66 skips a byte and CONTINUES where no frame header is found, counting nothing;
-    // only a recognised header with a failing body is counted at :78. So undecodable cannot tell
-    // "not a recording" from "a recording that captured nothing", and both of those files used to
-    // take the empty arm and call themselves a flight that recorded nothing.
     expect(tlog(["frames": 0 as NSNumber, "undecodable": 0 as NSNumber,
                  "bytes": 200_000 as NSNumber])?.whollyUndecodable == true,
            "two hundred kilobytes that decoded to nothing is a file that is not a recording, "
@@ -1543,11 +1483,6 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            + "not need to -- distances and altitudes are the ones that convert")
     expect(tlog(["spanSeconds": 45.0 as NSNumber])?.spanText ?? "", "45s",
            "and a log under a minute does not claim a leading zero minutes")
-    // MEASURED and CONSTRUCTED: cutting a real log to its first 30 bytes gives frames 1 and
-    // spanSeconds 0.0, and the Duration row then drew a LABELLED ROW WITH AN EMPTY VALUE. None
-    // of the 24 real logs in the Telemetry folder reaches it, so only a built file separates
-    // these two. tlog.rs:104 collapses three states into 0.0 -- no timestamps, equal first and
-    // last, and a last EARLIER than the first -- and the head can only tell the first apart.
     expect(tlog(["spanSeconds": 0.0 as NSNumber])?.spanText ?? "MISSING", "\u{2014}",
            "a log with frames and no span has a duration the file cannot express, not a span of "
            + "zero seconds -- so it draws the panel's unreported mark rather than claiming 0s, "
@@ -1569,10 +1504,6 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            "a log of several kinds has one that dominates, and the row says which")
     expect(tlog([:])?.busiestRow?.value ?? "", "ATTITUDE  30160",
            "with its count, because the point of the row is how far ahead of the rest it is")
-    // MEASURED on the all-HEARTBEAT log in the Telemetry folder: Frames 78, Message kinds 1,
-    // and the row read "Busiest  HEARTBEAT 78". parse() increments frames and the by_name entry
-    // in the SAME visit (tlog.rs:88-89), so the per-name counts sum to frames -- with one name
-    // that count is the Frames row, always, for every such log.
     let oneKind = tlog(["frames": 78 as NSNumber, "byName": ["HEARTBEAT": 78 as NSNumber]])
     expect(oneKind?.busiestRow?.label ?? "", "Only kind",
            "BUSIEST IS A SUPERLATIVE AND A LOG OF ONE KIND HELD NO CONTEST. The label claimed a "
@@ -1582,10 +1513,6 @@ func checkAnUnreadableLogIsNotAnEmptyOne() {
            "and it drops the count, which is arithmetically the Frames row two lines above it -- "
            + "the name is the only thing this row adds to a single-kind log")
 
-    // MEASURED ACROSS ALL 24 REAL LOGS, WITH THE CENSUS THE CORE ADDED FOR IT: not one system
-    // carries frames without a HEARTBEAT entry, so the inclusion rule is measured rather than the
-    // less-bad default both heads had been reasoning about. vehicleSystemIds is [1] on 17 logs
-    // and [] on the 7 that hold only the station's own heartbeat.
     expect(tlog(["systemIds": [255 as NSNumber, 1 as NSNumber],
                  "vehicleSystemIds": [1 as NSNumber]])?.vehiclesText ?? "", "1",
            "THE ROW JOINED systemIds, WHICH IS NOT A LIST OF VEHICLES. gcsMavlinkSystemID defaults "
@@ -1821,9 +1748,6 @@ func checkAParameterMovedOffStockIsMarkedAndNothingElseIs() {
            + "defaultValueAvailable && !valueEqualsDefault -- and this head drew nothing at all")
     expect(parameter(["changedFromDefault": false as NSNumber]).showsNonDefaultDot == false,
            "a parameter still at its stock value is not marked")
-    // control.rs:105 serves has_default.then(...), so this key is ABSENT for a fact with no stock
-    // value at all. The contract records it as a plain bool because every fact on the recording rig
-    // has a default; nullableUnwitnessed is the producer saying the type map understates it.
     expect(parameter([:]).changedFromDefault == nil,
            "AND A FACT WITH NO DEFAULT DECODES AS NULL, NOT FALSE. A `?? false` here would make "
            + "\"matches stock\" and \"has no stock value\" the same answer, and the second is not "
@@ -1854,9 +1778,6 @@ func checkAParameterMovedOffStockIsMarkedAndNothingElseIs() {
 checkAParameterMovedOffStockIsMarkedAndNothingElseIs()
 
 func checkParameterOptions() {
-    // Fixtures are the control shape now, which is what the producer sends. The synthetic-entry
-    // filter, the enum/raw zip and the label-for-a-value choice all moved to control.rs and are
-    // covered by its own tests; what is left here is what THIS head still decides.
     let mode = Parameter(name: "FLTMODE1", componentId: 1, json: [
         "control": "choice", "label": "Flight mode 1", "units": "", "display": "AltHold",
         "valueString": "5",
@@ -2967,10 +2888,6 @@ func checkRallyAndBreach() {
     expect(RallyPointRow.separates(contiguous[1], in: contiguous),
            "and one between it and the next")
 
-    // CONSTRUCTED, NOT OBSERVED: no producer can make this list. fences.rs filter_maps a rally
-    // point whose coordinate does not resolve, but RallyPointController::load rejects the whole
-    // file if any coordinate fails and addPoint always supplies one. The case is here because it
-    // is the one that separates the two spellings, not because it happens.
     let skipped = RallyPointRow.list([["index": 1 as NSNumber], ["index": 2 as NSNumber]])
     expect(!RallyPointRow.separates(skipped[0], in: skipped),
            "a list not starting at index 0 still draws no rule above its first ROW. Asking "
@@ -4191,8 +4108,6 @@ func checkVideoSources() {
     expect(VideoSources.decode("not json").isEmpty, "a corrupt setting yields no slots, not a crash")
     expect(VideoSources.decode("").isEmpty, "nor does an empty one")
 
-    // The assertions above were the whole story here and they pinned the defect: both cases give
-    // [], and treating that as one fact is what let a corrupt setting present as a fresh install.
     expect(VideoSources.readable(""),
            "an empty setting is READABLE -- it says there are no extra sources, which is a fact "
            + "about the configuration rather than a failure to read it")
@@ -4353,9 +4268,6 @@ func checkLogReplayLink() {
     expect(empty?.displaySummary ?? "", "No log chosen",
            "and the core says so rather than leaving an empty summary")
 
-    // links.rs:108 takes logFileName as the basename of filename, so "/tmp/" is a pair the core
-    // really produces: a path that is set and a basename that is empty. Constructed, because no
-    // rig here chooses a directory as a log.
     let trailing = LinkConfig(["index": 0 as NSNumber, "type": "logReplay", "name": "Replay",
                                "editing": "logFile", "filename": "/tmp/", "logFileName": ""])
     expect(trailing?.logFileText ?? "", "No log chosen",
@@ -4643,9 +4555,6 @@ func checkALogRowKeysOnTheId() {
            "and a log the core answered nothing for says nothing, rather than appending an empty "
            + "separator")
 
-    // logs.rs:101 serves sizeText as human_size(size) unconditionally, so it is never empty and
-    // these fixtures carry it rather than leaning on the decoder's default -- an empty size would
-    // compose a dangling separator, and pinning that would make an artefact the requirement.
     func sized(_ status: String, id: String) -> LogEntry? {
         LogEntry(["id": 1 as NSNumber, "sizeText": "4.0 KB", "status": status, "statusId": id,
                   "received": false as NSNumber, "time": "2026-09-08T14:42:51.000"])
@@ -5826,12 +5735,6 @@ func checkTheLinkEditorStopsDroppingWhatItRejects() {
            "and an empty host on a TCP link was accepted outright, which is the exact state that "
            + "later raises the editAddress remedy -- the editor was creating the failure the row "
            + "exists to explain")
-    // MEASURED through the parameterised view: view.linkForm(tcp,,5760) answers valid false with
-    // that sentence. The PORT field guarded on it. The HOST field drew the sentence in red and
-    // called setHost with the empty string in the next line, so the refusal was displayed and
-    // disobeyed in the same breath -- the half of this fix that never landed.
-    // MEASURED LIVE AFTER a1c17e083: view.linkForm(tcp,,5760) answers errorField "host",
-    // (udp,127.0.0.1,abc) answers "port", and both valid forms answer null.
     let hostRefused = LinkFormCheck(["class": "LinkForm", "valid": false as NSNumber,
                                      "error": "A TCP link needs the address of the device to call.",
                                      "errorField": "host", "name": "TCP 5760"])
@@ -5848,9 +5751,6 @@ func checkTheLinkEditorStopsDroppingWhatItRejects() {
            "and an accepted entry comes back to be written, so the gate costs a valid address "
            + "nothing")
 
-    // GATING ON `valid` ALONE FIXED ONE DIRECTION AND OPENED THE OTHER. The check is form-level
-    // and each field passes the other's stored value, so these two are the whole reason
-    // errorField exists.
     expect(portRefused?.accepted("127.0.0.1", editing: .host) ?? "", "127.0.0.1",
            "A LINK WHOSE PORT READS AS ABSENT MUST STILL BE REPAIRABLE. LinkConfig.portText is "
            + "`port.map(String.init) ?? \"\"`, so such a link presents an empty port, the form "
@@ -5881,12 +5781,6 @@ func checkTheLinkEditorStopsDroppingWhatItRejects() {
 
     expect(LinkFormCheck(["class": "Something else"]) == nil,
            "an answer that is not a LinkForm is not one")
-    // THE REASON I WROTE HERE FOR FAILING OPEN WAS A COST I INVENTED FOR A CASE THE PRODUCER
-    // CANNOT MAKE. It said a validator failing closed "would make every field unusable the moment
-    // the view went missing" -- but the core never makes it go missing: measured, view.linkForm(),
-    // (udp), (udp,127.0.0.1) and (,,) all still answer class LinkForm with an error string. What
-    // IS reachable is the bridge read failing, and there the old fallback reported valid with no
-    // sentence, which is an unchecked address accepted exactly like a passed one.
     expect(LinkFormCheck.unchecked.valid == false,
            "SO A READ THAT DID NOT ANSWER IS NOT A CHECK THAT PASSED, and the caller refuses "
            + "rather than writing an address nothing has looked at")
@@ -6125,14 +6019,6 @@ func checkTheInspectorSaysWhichSilenceItIsIn() {
 checkTheInspectorSaysWhichSilenceItIsIn()
 
 
-// The count is the point: a silently skipped block still prints "passed", and only a DROP in
-// what ran distinguishes it. Reporting it was not enough -- a number a reader has to notice is
-// not a check, and this file has 196 check functions whose assertions vanish with them if one
-// stops being entered. The Rust side found the same shape as a vacuous pass: an assertion that
-// read a key no producer serves collected nothing and agreed with itself for its whole life.
-//
-// Raise the floor in the same commit that adds assertions; the line below says so when it is
-// behind, so it cannot quietly stop being able to catch anything.
 let assertionFloor = 2298
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
@@ -6216,11 +6102,6 @@ func checkMissionStartSpeed() {
     expect(speed.shown(missionStart: true, vehicle: px4), "on PX4 it does")
     expect(!speed.shown(missionStart: true, vehicle: vtol), "and never on a VTOL")
 
-    // THE TWO FIXTURES ABOVE VARY multiRotor AND vtol TOGETHER in opposite directions, so a rule
-    // keyed on !multiRotor passes both as readily as the correct one keyed on !vtol. These two
-    // separate them. MissionSettingsEditor.qml is the authority: _showFlightSpeed is
-    // !_controllerVehicle.vtol && !_simpleMissionStart && !_controllerVehicle.apmFirmware, with
-    // no mention of multiRotor at all.
     let plane = MissionVehicle(firmware: "PX4 Pro", type: "Fixed Wing",
                                multiRotor: false, vtol: false, apmFirmware: false)
     expect(speed.shown(missionStart: true, vehicle: plane),
@@ -6383,11 +6264,6 @@ func checkRemoteSupport() {
            + "writing the latch down as though it were a design")
     expect(running.status, "MAVLink is being forwarded.", "it says what is happening, and stops there")
 
-    // The eleven assertions this replaces spelled the REFUSAL RULE -- port ranges, the two-part
-    // split, the bare-host exception. That rule is the core's now (view.supportHost, links.rs:145)
-    // and is asserted there against UDPLink.cc, so keeping copies here would have been two
-    // opinions on one question with mine unable to fail. What is left is the only part still this
-    // head's: whether a control is OFFERED, and what happens when nobody answered.
     let refused = RemoteSupport(host: "support.ardupilot.org:xxxx", forwarding: false,
                                 valid: false, error: "The part after the colon has to be a port "
                                     + "number between 1 and 65535.")
@@ -7709,9 +7585,6 @@ func checkFlownLeg() {
     expect(!unplaced.flownLeg && !unplaced.hasPosition,
            "an item with no place at all is neither a marker nor a leg")
 
-    // kind is set from the name because the settings row is the one the home-link rule turns on,
-    // and a fixture that left kind empty could not reach that rule at all: every assertion below
-    // would pass with the suppression present or absent.
     func leg(_ seq: Int, _ name: String, flown: Bool, ends: Bool = false) -> MissionItem {
         MissionItem(view: ["index": seq, "sequence": seq, "name": name,
                            "kind": name == "Mission Start" ? "settings" : "waypoint",
@@ -7949,10 +7822,6 @@ func checkTheBreachAltitudeIsMeasuredAgainstItsOwnFact() {
            "the fact declares its own decimalPlaces, so the field's precision comes from the same "
            + "object as its bounds and the head invents neither")
 
-    // The type-filled bound used to be gated HERE, on minIsDefaultForType. The core gates it now
-    // and serves minimum and minimumText through the SAME branch, so what is left to pin on this
-    // side is narrower and true: a null bound is no bound. Said plainly because the replacement
-    // checks less than what it replaces, and a test that quietly narrows is how a rule goes missing.
     let filledIn: [String: Any] = ["minimum": NSNull(), "maximum": NSNull(),
                                    "minimumText": NSNull(), "maximumText": NSNull()]
     expect(BreachReturn.range(filledIn).refusal(1e9) == nil,
@@ -8166,22 +8035,17 @@ func checkSaveAsksTheCoreRatherThanTheReadiness() {
 }
 
 func checkAnUnreadStoreDoesNotBlameTheVehicle() {
-    expect(FenceSupport.unread.refusal(servedReason: "") ?? "", FenceSupport.unreadRefusal,
+    expect(FenceSupport.unread.refusal() ?? "", FenceSupport.unreadRefusal,
            "a store that has never read says so. fenceSupported was a Bool defaulting to false, "
            + "and addFence guarded on it, so before the Plan window appeared the head answered "
            + "\"This vehicle does not accept a geofence\" -- its OWN sentence, about a vehicle "
            + "that had refused nothing. I measured that, believed it, told both peers fences "
            + "were unreachable here, and wrote the refusal into a rig as expected")
-    expect(FenceSupport.answered(false).refusal(servedReason: "") ?? "",
+    expect(FenceSupport.answered(false).refusal() ?? "",
            FenceSupport.unsupportedRefusal,
-           "and a store that HAS read and been told no says the LINK does not accept one. This "
-           + "assertion used to say \"the vehicle ... because then it is true\", and that "
-           + "reasoning was wrong: GeoFenceController::supported is a capability bit AND "
-           + "maxProtoVersion >= 200, so a false can mean the vehicle lacks the feature or that "
-           + "the link speaks MAVLink 1. Naming the vehicle picks one cause without reading "
-           + "either. The core spells all four cases and its sentence is preferred whenever it "
-           + "has one; this is only the fallback")
-    expect(FenceSupport.answered(true).refusal(servedReason: "") == nil,
+           "and a store that HAS read and been told no says what GeoFenceEditor says: the "
+           + "vehicle does not support GeoFence, since supported() is the capability bit alone")
+    expect(FenceSupport.answered(true).refusal() == nil,
            "a supported fence has nothing to refuse")
     expect(!FenceSupport.unread.offers,
            "unread offers nothing either -- the button is not drawn as available on the strength "
@@ -9446,9 +9310,6 @@ func checkModeSlotNaming() {
 }
 
 func checkAnIntegerFactRefusesAFraction() {
-    // The fixture keys are the producer's: typeIsInteger is what kFactProperties serves on a raw
-    // fact and what control.rs turns into wholeNumbersOnly, and the core's own test builds
-    // SR0_POSITION the same way.
     let counted = Parameter(name: "SR0_POSITION", componentId: 1, json: [
         "control": "number", "wholeNumbersOnly": true as NSNumber, "valueString": "4",
         "decimalPlaces": 0])
@@ -9486,9 +9347,6 @@ func checkAnIntegerFactRefusesAFraction() {
 }
 
 func checkAStoppedParameterLoadStopsSayingItIsLoading() {
-    // The four cases are setup.rs parameter_state's own returns, not four I invented: connected
-    // false gives noVehicle with no text, ready gives "" with no text, requestUnanswered gives
-    // unanswered WITH the sentence, and neither gives loading with no text.
     let stopped = "This vehicle has not answered the request for its parameters, and the retries are finished."
 
     expect(VehicleSetupText.parameters(reason: "loading", served: ""),

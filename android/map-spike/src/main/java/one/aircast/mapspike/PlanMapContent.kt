@@ -759,8 +759,8 @@ internal fun MapSpikeScreen(
                     }
                 }
                 if (layer == PlanLayer.Rally) {
-                    if (!support.rally && support.reason.isNotBlank()) PaletteNote(support.reason)
-                    if (rally.isEmpty() && !support.rallyRefused) PaletteNote(NO_RALLY_POINTS)
+                    if (support.rallyRefused) PaletteNote(RALLY_NOT_SUPPORTED)
+                    else if (rally.isEmpty()) PaletteNote(NO_RALLY_POINTS)
                     if (rally.isNotEmpty()) FenceHeading("Rally points")
                     rallyRows(rally).forEach { row ->
                         FenceListRow(
@@ -774,9 +774,9 @@ internal fun MapSpikeScreen(
                     }
                 }
                 if (layer == PlanLayer.Fence) {
-                    if (!support.fence && support.reason.isNotBlank()) PaletteNote(support.reason)
-                    if (fences.isEmpty() && circles.isEmpty() && !support.fenceRefused) PaletteNote(NO_GEOFENCE)
-                    val listed = fenceRows(fences, circles)
+                    if (support.fenceRefused) PaletteNote(GEOFENCE_NOT_SUPPORTED)
+                    else if (fences.isEmpty() && circles.isEmpty()) PaletteNote(NO_GEOFENCE)
+                    val listed = if (support.fenceRefused) emptyList() else fenceRows(fences, circles)
                     listed.forEachIndexed { at, row ->
                         fenceHeading(row, listed.getOrNull(at - 1))?.let { FenceHeading(it) }
                         FenceListRow(
@@ -856,7 +856,7 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    if (layer == PlanLayer.Fence) FilledTonalButton(enabled = support.fence, onClick = {
+                    if (layer == PlanLayer.Fence && !support.fenceRefused) FilledTonalButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         val next = fences.size
                         onBridge("Adding fence", then = { selected = MapHit.FenceVertex(next, 0) }) {
@@ -908,7 +908,7 @@ internal fun MapSpikeScreen(
                         )
                     }
 
-                    if (layer == PlanLayer.Fence) FilledTonalButton(enabled = support.fence, onClick = {
+                    if (layer == PlanLayer.Fence && !support.fenceRefused) FilledTonalButton(enabled = support.fence, onClick = {
                         val at = placeAt()
                         val next = circles.size
                         onBridge("Adding circle", then = { selected = MapHit.Circle(next) }) {
@@ -916,7 +916,7 @@ internal fun MapSpikeScreen(
                         }
                     }) { Text("Circular fence") }
 
-                    if (layer == PlanLayer.Fence) FilledTonalButton(enabled = support.fence, onClick = {
+                    if (layer == PlanLayer.Fence && !support.fenceRefused) FilledTonalButton(enabled = support.fence, onClick = {
                         if (breach != null) {
                             editingBreach = true
                         } else {

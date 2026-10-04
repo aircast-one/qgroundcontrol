@@ -21,7 +21,6 @@ pub const DEPS: &[&str] = &[
     "vehicle.armed",
     crate::coreplan::CHANGED,
     "vehicle.flightMode",
-    "plan.managerVehicle.capabilitiesKnown",
     "plan.geoFenceController.supported",
     "plan.rallyPointController.supported",
     "plan.controllerVehicle.vehicleTypeString",
@@ -84,10 +83,8 @@ fn planning_for(backend: &dyn Backend) -> Value {
     }
 }
 
-pub fn capability(backend: &dyn Backend, controller: &str) -> Option<bool> {
-    let known = flag(&object(&backend.get_fields("plan.managerVehicle", "capabilitiesKnown")), "capabilitiesKnown");
-    let supported = flag(&object(&backend.get_fields(&format!("plan.{controller}"), "supported")), "supported");
-    known.then_some(supported)
+pub fn capability(backend: &dyn Backend, controller: &str) -> bool {
+    flag(&object(&backend.get_fields(&format!("plan.{controller}"), "supported")), "supported")
 }
 
 fn plan_default(backend: &dyn Backend, name: &str) -> Value {
@@ -190,7 +187,6 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let file = core.as_ref().map_or(qt_file.as_str(), |c| c.file.as_str());
     let name = file.rsplit('/').next().filter(|n| !n.is_empty());
     let (fences, rally) = (capability(backend, "geoFenceController"), capability(backend, "rallyPointController"));
-    let (offers_fence, offers_rally) = (fences.unwrap_or(true), rally.unwrap_or(true));
     let readiness = match core {
         Some(_) if crate::coreplan::drawing() => Some(2),
         Some(_) if crate::coreplan::awaiting_terrain() => Some(1),
@@ -221,18 +217,11 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "newPlan": !syncing,
             "clearMission": !offline && !syncing,
             "download": !offline && !syncing,
-            "addFence": offers_fence && !syncing,
-            "addRally": offers_rally && !syncing,
+            "addFence": fences && !syncing,
+            "addRally": rally && !syncing,
         },
         "fenceSupported": fences,
         "rallySupported": rally,
-        "unsupportedReason": match (fences, rally) {
-            (None, _) | (_, None) => Some("This vehicle has not said what it accepts yet."),
-            (Some(false), Some(false)) => Some("This link accepts neither a geofence nor rally points."),
-            (Some(false), Some(true)) => Some("This link does not accept a geofence."),
-            (Some(true), Some(false)) => Some("This link does not accept rally points."),
-            (Some(true), Some(true)) => None,
-        },
         "sync": sync_json(offline, syncing, progress),
         "status": state_line(syncing, contains_items, dirty, item_count),
         "file": name,
@@ -532,14 +521,9 @@ mod tests {
     }
 
     fn supporting(plan: Value, fences: bool, rally: bool) -> Fake {
-        told(plan, fences, rally, true)
-    }
-
-    fn told(plan: Value, fences: bool, rally: bool, known: bool) -> Fake {
         Fake {
             fields: BTreeMap::from([
                 ("plan", plan),
-                ("plan.managerVehicle", json!({ "kind": "object", "capabilitiesKnown": known })),
                 ("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "Multi-Rotor", "firmwareTypeString": "PX4 Pro", "multiRotor": true, "vtol": false, "apmFirmware": false, "homePosition": { "valid": true, "latitude": 47.397, "longitude": 8.546, "altitude": 12.0 } })),
                 ("plan.missionController", json!({ "kind": "object", "containsItems": true })),
                 ("plan.geoFenceController", json!({ "kind": "object", "supported": fences })),
@@ -556,25 +540,18 @@ mod tests {
 
         let takes_both = plan_view(&supporting(connected.clone(), true, true), &[]);
         assert_eq!(takes_both["actions"]["addFence"], true);
-        assert_eq!(takes_both["unsupportedReason"], Value::Null, "nothing to explain when the vehicle accepts both, and an empty sentence is a sentence a head will draw");
+        assert_eq!(takes_both["unsupportedReason"], Value::Null, "QGC words the refusal per editor, so the view carries only the two capabilities");
 
         let neither = plan_view(&supporting(connected.clone(), false, false), &[]);
         assert_eq!(neither["actions"]["addFence"], false, "PlanElementController::supported is a vehicle capability, and both heads were offering a button for something the vehicle refuses when pressed");
         assert_eq!(neither["actions"]["addRally"], false);
         assert_eq!(neither["fenceSupported"], false);
-        assert!(neither["unsupportedReason"].as_str().unwrap().contains("neither"));
-        assert!(neither["unsupportedReason"].as_str().unwrap().starts_with("This link"), "GeoFenceController::supported is a capability bit AND maxProtoVersion >= 200, so a false can mean the vehicle lacks the feature or that the link speaks MAVLink 1 - naming the vehicle picks one of the two causes without reading either, and the operator acts on the wrong one");
+        assert_eq!(neither["rallySupported"], false);
 
         let fence_only = plan_view(&supporting(connected.clone(), true, false), &[]);
         assert_eq!(fence_only["actions"]["addFence"], true, "the two are separate capabilities and a vehicle can accept one and not the other");
         assert_eq!(fence_only["actions"]["addRally"], false);
-        assert!(fence_only["unsupportedReason"].as_str().unwrap().contains("rally points"));
-
-        let unasked = plan_view(&told(connected, true, true, false), &[]);
-        assert_eq!(unasked["fenceSupported"], Value::Null, "Vehicle.cc initialises _capabilityBits to MISSION_FENCE|MISSION_RALLY and GeoFenceController::supported never consults capabilitiesKnown, so a vehicle that has said nothing reads as one that accepts both - true here would be a default answering for someone who was never asked");
-        assert_eq!(unasked["rallySupported"], Value::Null);
-        assert_eq!(unasked["actions"]["addFence"], true, "the button stays, because QGC itself lets you draw a fence for a vehicle that has not answered - withholding it would remove a capability that works");
-        assert!(unasked["unsupportedReason"].as_str().unwrap().contains("not said"));
+        assert_eq!(fence_only["rallySupported"], false);
     }
 
     fn fake(plan: Value, mission_items: bool, readiness: Value, upload: Value) -> Fake {

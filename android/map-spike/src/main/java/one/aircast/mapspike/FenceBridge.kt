@@ -60,6 +60,8 @@ internal fun rallyAfterRemove(removed: Int, countBefore: Int): MapHit? =
 
 internal const val NO_GEOFENCE = "No geofence \u2013 keep the vehicle inside a boundary, or out of an area."
 internal const val NO_RALLY_POINTS = "No rally points \u2013 alternate landing points for Return to Launch. Tap the map to place one."
+internal const val GEOFENCE_NOT_SUPPORTED = "Not supported \u2013 this vehicle does not support geofence."
+internal const val RALLY_NOT_SUPPORTED = "Not supported \u2013 this vehicle does not support rally points."
 
 fun rallyRows(points: List<RallyPoint>): List<FenceRow> = points.map { point ->
     val height = point.altitude.takeIf { it.isFinite() }?.let { "${plainAltitude(it)} ${point.altitudeUnits.ifBlank { "m" }}" }

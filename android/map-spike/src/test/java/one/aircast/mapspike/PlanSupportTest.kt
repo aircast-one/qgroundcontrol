@@ -1,7 +1,6 @@
 package one.aircast.mapspike
 
 import org.json.JSONObject
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,23 +11,23 @@ class PlanSupportTest {
 
     @Test
     fun `a vehicle that takes both offers both`() {
-        val both = view("""{"kind":"object","actions":{"addFence":true,"addRally":true},"unsupportedReason":""}""")
+        val both = view("""{"kind":"object","actions":{"addFence":true,"addRally":true},"fenceSupported":true,"rallySupported":true}""")
 
         assertTrue(both.fence)
         assertTrue(both.rally)
-        assertEquals("", both.reason)
+        assertFalse(both.fenceRefused)
     }
 
     @Test
     fun `a vehicle that takes neither says so instead of offering buttons that fail`() {
         val neither = view(
-            """{"kind":"object","actions":{"addFence":false,"addRally":false},
-               "unsupportedReason":"This vehicle accepts neither a geofence nor rally points."}""",
+            """{"kind":"object","actions":{"addFence":false,"addRally":false},"fenceSupported":false,"rallySupported":false}""",
         )
 
         assertFalse(neither.fence)
         assertFalse(neither.rally)
-        assertTrue(neither.reason.contains("neither"))
+        assertTrue(neither.fenceRefused)
+        assertTrue(neither.rallyRefused)
     }
 
     @Test
@@ -49,11 +48,11 @@ class PlanSupportTest {
     @Test
     fun `only an explicit refusal hides the empty-layer hint, like RallyPointEditor and GeoFenceEditor`() {
         val rallyOnlyRefused = view("""{"kind":"object","actions":{"addFence":true,"addRally":false},"fenceSupported":true,"rallySupported":false}""")
-        val unasked = view("""{"kind":"object","actions":{"addFence":true,"addRally":true},"fenceSupported":null,"rallySupported":null}""")
+        val unread = view("""{"kind":"object","actions":{"addFence":false,"addRally":false}}""")
 
         assertTrue(rallyOnlyRefused.rallyRefused)
         assertFalse(rallyOnlyRefused.fenceRefused)
-        assertFalse(unasked.rallyRefused)
-        assertFalse(unasked.fenceRefused)
+        assertFalse(unread.rallyRefused)
+        assertFalse(unread.fenceRefused)
     }
 }

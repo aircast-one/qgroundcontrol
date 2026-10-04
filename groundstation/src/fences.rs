@@ -16,7 +16,6 @@ pub const DEPS: &[&str] = &[
     "plan.geoFenceController.breachReturnAltitude",
     "settings.appSettings.defaultMissionItemAltitude",
     "plan.rallyPointController.supported",
-    "plan.managerVehicle.capabilitiesKnown",
     "plan.geoFenceController.paramCircularFence",
     "vehicle.homePosition",
     "settings.unitsSettings.areaUnits",
@@ -248,13 +247,6 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
                     .flatten()
                     .filter(|metres| metres.is_finite())
                     .map(|metres| crate::read::format_measure(vertical.show(metres), &vertical.name)),
-                // Dragging a rally point writes back a whole QGeoCoordinate, and QGC's own handler
-                // copies the existing altitude onto it first - RallyPointMapVisuals.qml:47 wires
-                // MissionItemIndicatorDrag for exactly that. So a head that moves one needs a height
-                // in the payload and the only one it had was cooked: on an imperial profile that is
-                // a number of feet, and the bridge would take it as metres. Gated by read::metres
-                // rather than trusting rawValue, so a fact whose raw unit is not a length answers
-                // null instead of a number that means something else.
                 "altitudeMetres": crate::read::metres(&altitude),
                 "altitudePath": format!("plan.rallyPointController.points.{i}.textFieldFacts.2"),
             }))
@@ -264,8 +256,6 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
     json!({
         "kind": "object",
         "class": "Fences",
-        // FenceRally.swift gated its whole reload on plan.geoFenceController answering as an
-        // object, a raw read made only to learn whether there is a plan to show.
         "available": controller.get("kind").and_then(Value::as_str) == Some("object"),
         "polygons": polygons,
         "circles": circles,
@@ -274,9 +264,6 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "fenceSupported": crate::plan::capability(backend, "geoFenceController"),
         "rallySupported": crate::plan::capability(backend, "rallyPointController"),
         "firmwareFence": firmware_fence(backend),
-        // The macOS head read the whole controller raw for this one coordinate. An unset return
-        // point is an invalid QGeoCoordinate, whose NaN latitude arrives as null, so it is served
-        // as null rather than as a point at the null island.
         "breachReturnPoint": controller.get("breachReturnPoint").and_then(point).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
         "breachReturnAltitude": controller.get("breachReturnPoint").and_then(point).map(|_| {
             let fact = object(&backend.get(BREACH_ALTITUDE_PATH));
@@ -457,14 +444,13 @@ mod tests {
 
     #[test]
     fn the_fences_view_answers_the_capability_with_the_same_voice_as_the_plan_view() {
-        struct Vehicle(bool, bool);
+        struct Vehicle(bool);
         impl Backend for Vehicle {
             fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
-                    "plan.managerVehicle" => json!({ "kind": "object", "capabilitiesKnown": self.0 }),
-                    "plan.geoFenceController" => json!({ "kind": "object", "supported": self.1 }),
-                    "plan.rallyPointController" => json!({ "kind": "object", "supported": self.1 }),
+                    "plan.geoFenceController" => json!({ "kind": "object", "supported": self.0 }),
+                    "plan.rallyPointController" => json!({ "kind": "object", "supported": self.0 }),
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
@@ -473,13 +459,10 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        let asked = |known: bool, yes: bool| fences_view(&Vehicle(known, yes), &[])["fenceSupported"].clone();
-        assert_eq!(asked(true, true), json!(true));
-        assert_eq!(asked(true, false), json!(false));
-        assert_eq!(asked(false, true), Value::Null, "a head that reaches for the capability on the fences view rather than the plan view must meet the same three states, or the view it happened to pick decides whether an unanswered vehicle reads as a refusing one");
-        assert_eq!(fences_view(&Vehicle(false, true), &[])["rallySupported"], Value::Null);
-        assert_eq!(crate::plan::capability(&Vehicle(false, true), "geoFenceController"), None, "both views call one function, so they cannot drift apart the day one of them changes its mind");
-        assert_eq!(fences_view(&Vehicle(true, false), &[])["available"], true, "a controller that refuses fences is still a plan to show");
+        assert_eq!(fences_view(&Vehicle(true), &[])["fenceSupported"], json!(true));
+        assert_eq!(fences_view(&Vehicle(false), &[])["fenceSupported"], json!(false));
+        assert_eq!(fences_view(&Vehicle(false), &[])["rallySupported"], json!(false), "GeoFenceController/RallyPointController::supported is the capability bit alone, and a vehicle starts with no bits until AUTOPILOT_VERSION answers");
+        assert_eq!(fences_view(&Vehicle(false), &[])["available"], true, "a controller that refuses fences is still a plan to show");
         assert_eq!(fences_view(&Fake, &[])["available"], false);
     }
 
@@ -522,10 +505,6 @@ mod tests {
         struct Feet;
         impl Backend for Feet {
             fn get(&self, path: &str) -> String {
-                // The bridge cooks value into the operator's unit and leaves rawValue in metres, so
-                // an imperial profile really does serve 164 beside a raw 50. Fake serves 50 for both,
-                // which cannot tell a cooked read from a raw one - and a test that cannot tell them
-                // apart passes whichever the code picks.
                 match path {
                     "plan.rallyPointController.points.0.textFieldFacts.2" => json!({ "kind": "fact", "name": "RelativeAltitude", "value": 164.04199475065616, "units": "ft", "rawValue": 50.0, "rawUnits": "vertical m" }).to_string(),
                     _ => Fake.get(path),

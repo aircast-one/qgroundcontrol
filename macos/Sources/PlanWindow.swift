@@ -455,11 +455,6 @@ struct PlanInspector: View {
                 .labelStyle(.titleAndIcon)
                 .lineLimit(1)
 
-                // The extras share the second line rather than competing on the first. They lost
-                // that fight every time -- default layout priority against 2, 2 and 1 -- and a
-                // measured survey plan rendered them as "P..." and "...", two labels with no
-                // numbers eating the width that would have carried one. This line holds only the
-                // altitude range and had room the whole time.
                 if !mission.summary.altitudeRange.isEmpty || !mission.summary.extraRows.isEmpty {
                     HStack(spacing: Overlay.step) {
                         if !mission.summary.altitudeRange.isEmpty {
@@ -710,9 +705,6 @@ struct PlanInspector: View {
         }
     }
 
-    // Shown only when the core spelled a loiter radius. The pattern's altitude, heading and
-    // distance are served as raw numbers with no text sibling, so there is nothing here that
-    // this head could spell without choosing a precision the core did not.
     private var landingCard: some View {
         VStack(alignment: .leading, spacing: Overlay.unit * 0.35) {
             SectionLabel(text: "Landing Pattern")
@@ -907,10 +899,6 @@ struct PlanInspector: View {
                 ForEach(fenceRally.shapes) { shape in
                     GroupRow(
                         title: shape.shapeText,
-                        // A polygon's detail carries its vertex count AND its area, and the core
-                        // spells that area in whatever unit Settings chose -- six of them, down to
-                        // square metres, where a 9 km2 fence is seven digits. On one line the unit
-                        // was what got cut, leaving "9020155..." with nothing saying of what.
                         description: shape.rowDetail,
                         showSeparator: shape.id != fenceRally.shapes.first?.id,
                         descriptionLines: 2,
@@ -1044,7 +1032,7 @@ struct PlanInspector: View {
                         })
                 } else {
                     EmptyStateRow(text: fenceRally.fence
-                        .refusal(servedReason: fenceRally.unsupportedReason)
+                        .refusal()
                         ?? "No breach return point. On a fence breach the vehicle follows its firmware default.")
                 }
             }

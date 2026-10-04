@@ -1,15 +1,14 @@
 package one.aircast.mapspike
 
 import org.json.JSONObject
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlanSupportGateTest {
 
-    private fun plan(addFence: Boolean, addRally: Boolean, reason: String = "") = JSONObject(
-        """{"actions":{"addFence":$addFence,"addRally":$addRally},"unsupportedReason":"$reason"}""",
+    private fun plan(addFence: Boolean, addRally: Boolean) = JSONObject(
+        """{"actions":{"addFence":$addFence,"addRally":$addRally}}""",
     )
 
     @Test
@@ -22,15 +21,6 @@ class PlanSupportGateTest {
             support.fence,
         )
         assertTrue("rally is a separate capability and is unaffected", support.rally)
-    }
-
-    @Test
-    fun `the reason travels so both buttons can say the same thing`() {
-        assertEquals(
-            "the polygon button already reported this on completion; the circle reported nothing",
-            "This firmware has no geofence support.",
-            planSupport(plan(false, false, "This firmware has no geofence support.")).reason,
-        )
     }
 
     @Test

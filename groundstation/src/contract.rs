@@ -60,10 +60,6 @@ pub fn enumerations() -> Value {
 }
 
 pub const NULLABLE_UNWITNESSED: &[&str] = &[
-    "view.fences.fenceSupported",
-    "view.fences.rallySupported",
-    "view.plan.fenceSupported",
-    "view.plan.rallySupported",
     "view.control(settings.appSettings.audioMuted).changedFromDefault",
     "view.plan.defaults.altitude.changedFromDefault",
     "view.settings(General).sections[0].subsections[0].controls[0].changedFromDefault",
@@ -104,8 +100,6 @@ mod tests {
                     None => node?.get(step),
                 })
                 .map(|node| match node {
-                    // A list-typed field is recorded as a one-element array naming its element
-                    // type, so the walk has to step into it or every array reads as absent.
                     Value::Array(of) => of.first().and_then(Value::as_str).unwrap_or("empty").to_string(),
                     other => other.as_str().unwrap_or("missing").to_string(),
                 })
@@ -119,17 +113,16 @@ mod tests {
             );
         });
 
-        assert_eq!(crate::plan::capability(&Unknowing, "geoFenceController"), None, "this is the case the recorder cannot create: capability() withholds until capabilitiesKnown, and the rig's vehicle has always answered, so the recorded type says bool and a head is told the value can never be null");
         assert!(
-            contract_view(&Unknowing, &[])["nullableUnwitnessed"].as_array().unwrap().iter().any(|p| p == "view.plan.fenceSupported"),
+            contract_view(&Silent, &[])["nullableUnwitnessed"].as_array().unwrap().iter().any(|p| p == "view.plan.defaults.altitude.changedFromDefault"),
             "the list has to ride on the view a head actually reads, or it is a comment"
         );
     }
 
-    struct Unknowing;
-    impl Backend for Unknowing {
+    struct Silent;
+    impl Backend for Silent {
         fn get(&self, _p: &str) -> String { String::new() }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "capabilitiesKnown": false, "supported": true }).to_string() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}

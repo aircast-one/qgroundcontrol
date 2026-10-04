@@ -465,7 +465,6 @@
         "view.plan.planningFor.home",
         "view.plan.readiness.next",
         "view.plan.readiness.reason",
-        "view.plan.unsupportedReason",
         "view.plan.vehicleChangePrompt",
         "view.planFile(<checkout>/test/MissionManager/SectionTest.plan).items.0.complexItemType",
         "view.planFile(<checkout>/test/MissionManager/SectionTest.plan).items.1.complexItemType",
@@ -4488,7 +4487,6 @@
         "view.plan.templates.names.1",
         "view.plan.templates.names.2",
         "view.plan.templates.names.3",
-        "view.plan.unsupportedReason",
         "view.plan.upload.pausesFirst",
         "view.plan.vehicleChangePrompt",
         "view.planFile(<checkout>/test/MissionManager/SectionTest.plan).class",
@@ -8954,7 +8952,6 @@
         "view.plan.templates.names[]",
         "view.plan.templates.prompt",
         "view.plan.templates.show",
-        "view.plan.unsupportedReason",
         "view.plan.upload.canProceed",
         "view.plan.upload.canSend",
         "view.plan.upload.heading",
@@ -10616,10 +10613,6 @@
         },
         "kind": "object",
         "nullableUnwitnessed": [
-            "view.fences.fenceSupported",
-            "view.fences.rallySupported",
-            "view.plan.fenceSupported",
-            "view.plan.rallySupported",
             "view.control(settings.appSettings.audioMuted).changedFromDefault",
             "view.plan.defaults.altitude.changedFromDefault",
             "view.settings(General).sections[0].subsections[0].controls[0].changedFromDefault",
@@ -13654,7 +13647,6 @@
             "prompt": "string",
             "show": "bool"
         },
-        "unsupportedReason": "null",
         "upload": {
             "canProceed": "bool",
             "canSend": "bool",

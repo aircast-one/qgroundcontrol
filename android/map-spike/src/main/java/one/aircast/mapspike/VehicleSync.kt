@@ -65,14 +65,13 @@ fun uploadStep(gate: UploadGate?, notReady: String? = null): UploadStep = when {
     else -> UploadStep.Refuse(gate.refusal.ifBlank { "This plan cannot be uploaded." })
 }
 
-data class PlanSupport(val fence: Boolean, val rally: Boolean, val reason: String, val fenceRefused: Boolean = false, val rallyRefused: Boolean = false)
+data class PlanSupport(val fence: Boolean, val rally: Boolean, val fenceRefused: Boolean = false, val rallyRefused: Boolean = false)
 
 fun planSupport(view: org.json.JSONObject?): PlanSupport {
     val actions = view?.optJSONObject("actions")
     return PlanSupport(
         fence = actions?.optBoolean("addFence") == true,
         rally = actions?.optBoolean("addRally") == true,
-        reason = view?.optText("unsupportedReason").orEmpty(),
         fenceRefused = view?.opt("fenceSupported") == false,
         rallyRefused = view?.opt("rallySupported") == false,
     )
