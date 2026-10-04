@@ -300,4 +300,13 @@ class UdpServerFormTest {
         assertEquals(listOf("10.0.0.2:14550"), withServer(once, "10.0.0.2:14550", "14550"))
         assertEquals(once, withServer(once, "bad:host:name", "14550"))
     }
+
+    @Test
+    fun formErrorsPointAtTheFieldThatFailed() {
+        assertEquals("port", linkFormErrorField("udp", "", "70000", "14550"))
+        assertEquals("port", linkFormErrorField("tcp", "10.0.0.2", "abc"))
+        assertEquals("host", linkFormErrorField("tcp", "", "5760"))
+        assertEquals(null, linkFormErrorField("udp", "", "", "14550"))
+        assertEquals(null, linkFormErrorField("tcp", "10.0.0.2", "5760"))
+    }
 }

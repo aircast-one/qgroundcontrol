@@ -28,6 +28,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -317,6 +320,15 @@ internal fun linkFormError(type: String, host: String, port: String, udpDefault:
     }
 }
 
+internal fun linkFormErrorField(type: String, host: String, port: String, udpDefault: String = DEFAULT_PORT): String? {
+    val parsed = port.ifBlank { if (type == "udp") udpDefault else port }.toIntOrNull()
+    return when {
+        parsed == null || parsed !in 1..65535 -> "port"
+        type == "tcp" && host.isBlank() -> "host"
+        else -> null
+    }
+}
+
 private const val CONNECTED_STATUS = "Connected"
 
 @Composable
@@ -439,6 +451,22 @@ private fun LinkRowItem(
             )
         }
     }
+}
+
+@Composable
+private fun LinkOptions(autoConnect: Boolean, highLatency: Boolean, onAutoConnect: (Boolean) -> Unit, onHighLatency: (Boolean) -> Unit) {
+    var open by remember { mutableStateOf(autoConnect || highLatency) }
+    Row(
+        Modifier.fillMaxWidth().clickable { open = !open }.heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Options", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Icon(
+            if (open) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+            contentDescription = if (open) "Hide options" else "Show options",
+        )
+    }
+    if (open) LinkFlagSwitches(autoConnect, highLatency, onAutoConnect, onHighLatency)
 }
 
 @Composable
@@ -567,7 +595,7 @@ private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Uni
                     label = { Text("Name (optional)") },
                     singleLine = true,
                 )
-                LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
+                LinkOptions(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
                 if (row.editing == "hostAndPort") {
                     OutlinedTextField(
                         value = host,
@@ -723,6 +751,8 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
     val choices = offered + listOf(AIRCAST_CLOUD_LINK).filter { cloudOffered && it in linkTypeIds(linksJson) }
     val askBluetooth = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { }
     val scope = rememberCoroutineScope()
+    val fieldError = error?.takeIf { (type == "udp" || type == "tcp") && it == linkFormError(type, host, port.ifBlank { portFor(type, udpDefault) }, udpDefault) }
+        ?.let { linkFormErrorField(type, host, port.ifBlank { portFor(type, udpDefault) }, udpDefault) }
 
     BackHandler(onBack = onDismiss)
     OverridePageHeading("Add link", onDismiss)
@@ -822,9 +852,11 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
                 } else if (type == "udp") {
                     OutlinedTextField(
                         value = port,
-                        onValueChange = { port = it },
+                        onValueChange = { port = it; if (fieldError == "port") error = null },
                         label = { Text("Port") },
                         placeholder = { Text(udpDefault) },
+                        isError = fieldError == "port",
+                        supportingText = { Text(if (fieldError == "port") error.orEmpty() else "Leave blank for $udpDefault") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
@@ -842,24 +874,28 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedTextField(
                             value = host,
-                            onValueChange = { host = it },
+                            onValueChange = { host = it; if (fieldError == "host") error = null },
                             label = { Text(if (type == "tcp") "Host" else "Host (optional)", maxLines = 1) },
+                            isError = fieldError == "host",
+                            supportingText = { if (fieldError == "host") Text(error.orEmpty()) },
                             singleLine = true,
                             modifier = Modifier.weight(1.6f),
                         )
                         OutlinedTextField(
                             value = port,
-                            onValueChange = { port = it },
+                            onValueChange = { port = it; if (fieldError == "port") error = null },
                             label = { Text("Port") },
                             placeholder = { Text(portFor(type, udpDefault)) },
+                            isError = fieldError == "port",
+                            supportingText = { Text(if (fieldError == "port") error.orEmpty() else "Default ${portFor(type, udpDefault)}") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.weight(1f),
                         )
                     }
                 }
-                LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
-                error?.let {
+                LinkOptions(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
+                if (fieldError == null) error?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
             }
@@ -1157,7 +1193,7 @@ private fun UdpAutoConnectSwitch() {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("Auto connect to UDP devices")
-            Text("Turn this off for best performance with this link.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Applies to every UDP link. Turn it off for the best performance on this one.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = { on -> offMainInOrder { Qgc.set(AUTO_CONNECT_UDP, on) } })
     }
