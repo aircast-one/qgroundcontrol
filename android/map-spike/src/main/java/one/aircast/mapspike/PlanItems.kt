@@ -130,20 +130,17 @@ fun addingAfterText(selected: MapHit?, items: List<MissionItem>): String? {
     return "Adding after #${item.sequence}"
 }
 
-fun legText(item: MissionItem): String? {
-    val travelled = !item.distance.isNaN() && item.distance > 0.0
-    val climbed = !item.altitudeChange.isNaN() && item.altitudeChange != 0.0
-    return listOf(
-        "Alt diff" to item.altitudeChangeText.takeIf { climbed },
-        "Azimuth" to item.azimuthText.takeIf { travelled },
+fun legText(item: MissionItem): String? =
+    listOf(
+        "Alt diff" to item.altitudeChangeText,
+        "Azimuth" to item.azimuthText,
         "Heading" to item.headingText,
-        "Gradient" to item.gradientText.takeIf { travelled && climbed },
-        "Prev WP" to item.distanceText.takeIf { travelled },
+        "Gradient" to item.gradientText,
+        "Prev WP" to item.distanceText,
     )
-        .filter { (_, value) -> !value.isNullOrBlank() }
+        .filter { (_, value) -> value.isNotBlank() }
         .takeIf { it.isNotEmpty() }
         ?.joinToString(" \u00b7 ") { (label, value) -> "$label $value" }
-}
 
 fun movedText(hit: MapHit, items: List<MissionItem>): String = when (hit) {
     is MapHit.Waypoint ->

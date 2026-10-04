@@ -55,12 +55,6 @@ pub fn text(object: &Value, key: &str) -> String {
     object.get(key).and_then(Value::as_str).unwrap_or("").to_string()
 }
 
-// rawValue is the fact's value in whatever unit its metadata declares - metres for an altitude,
-// but degrees, seconds or a bare count elsewhere - so a field named for metres has to be null
-// unless it IS metres. The four spellings are the ones FactMetaData translates as a length:
-// cm/px is centimetres per pixel and m^2 is an area, and neither is a distance a caller can use.
-// Null rather than a number a reader has to remember to check: a wrong length in a geo layer
-// places a marker somewhere real and nothing downstream can tell.
 pub fn metres(fact: &Value) -> Option<f64> {
     matches!(text(fact, "rawUnits").as_str(), "m" | "meter" | "meters" | "vertical m")
         .then(|| fact.get("rawValue").and_then(Value::as_f64).filter(|value| value.is_finite()))
@@ -88,10 +82,6 @@ pub fn enum_choice(fact: &Value) -> Option<i64> {
 }
 
 pub fn shown_text(fact: &Value) -> Option<String> {
-    // The synthetic label is skipped rather than shown. Fact::enumStringValue appends
-    // tr("Unknown: %1") and then returns it, so enumOrValueString for a value outside the declared
-    // set is that placeholder - and control.rs already falls back to valueString there. Two views
-    // spelling the same fact differently is worse than either spelling.
     let synthetic = text(fact, "unknownEnumLabel");
     ["enumOrValueString", "valueString"]
         .iter()
@@ -189,15 +179,10 @@ impl Unit {
 
 pub const WHOLE_NUMBER_FROM: f64 = 100.0;
 
-pub fn altitude_text(metres: f64, vertical: &Unit, signed: bool) -> String {
+pub fn altitude_text(metres: f64, vertical: &Unit) -> String {
     let measure = format_measure(vertical.show(metres.abs()), &vertical.name);
     let nothing = measure.split(' ').next().map(|number| number.chars().all(|c| c == '0' || c == '.')).unwrap_or(false);
-    let sign = match (metres < 0.0, signed, nothing) {
-        (_, _, true) => "",
-        (true, _, false) => "-",
-        (false, true, false) => "+",
-        (false, false, false) => "",
-    };
+    let sign = if metres < 0.0 && !nothing { "-" } else { "" };
     format!("{sign}{measure}")
 }
 
@@ -222,6 +207,13 @@ pub fn settled(number: String) -> String {
     }
 }
 
+pub fn qml_fixed(value: f64, decimals: i32) -> String {
+    let doubled = value * 2f64.powi(decimals + 1);
+    let tie = doubled.fract() == 0.0 && doubled % 2.0 != 0.0;
+    let nudged = if tie { value + value.signum() * 0.5 * 10f64.powi(-decimals) } else { value + 0.0 };
+    format!("{nudged:.*}", decimals.max(0) as usize)
+}
+
 pub fn format_measure(value: f64, units: &str) -> String {
     let number = settled(if value.abs() >= WHOLE_NUMBER_FROM { format!("{value:.0}") } else { format!("{value:.1}") });
     format!("{number} {}", units.replace("^2", "\u{b2}"))
@@ -238,11 +230,20 @@ mod measure_tests {
         assert_eq!(super::range_text(-0.04, 60.0, &metric), "0.0 m to 60.0 m", "a grounded vehicle a hair below launch made the climb control read -0.0 to 60.0 m on two heads and three drawing sites");
         assert_eq!(super::range_text(-12.0, 60.0, &metric), "-12.0 m to 60.0 m", "a real low end keeps its sign");
 
-        assert_eq!(super::altitude_text(-0.04, &metric, true), "0.0 m", "the sign was chosen from the raw value and pasted in front of a separately formatted magnitude, so settled() could not see it - and a change of nothing is neither a climb nor a descent");
-        assert_eq!(super::altitude_text(0.04, &metric, true), "0.0 m", "so the plus goes too, rather than reading +0.0 m");
-        assert_eq!(super::altitude_text(-2.5, &metric, true), "-2.5 m");
-        assert_eq!(super::altitude_text(2.5, &metric, true), "+2.5 m", "a real climb still announces itself");
-        assert_eq!(super::altitude_text(-2.5, &metric, false), "-2.5 m");
+        assert_eq!(super::altitude_text(-0.04, &metric), "0.0 m", "the sign was chosen from the raw value and pasted in front of a separately formatted magnitude, so settled() could not see it");
+        assert_eq!(super::altitude_text(-2.5, &metric), "-2.5 m");
+        assert_eq!(super::altitude_text(2.5, &metric), "2.5 m");
+    }
+
+    #[test]
+    fn qml_fixed_rounds_like_javascript_to_fixed() {
+        assert_eq!(super::qml_fixed(0.25, 1), "0.3", "an exact tie goes up like toFixed, not to even like Rust");
+        assert_eq!(super::qml_fixed(-0.25, 1), "-0.3");
+        assert_eq!(super::qml_fixed(2.5, 0), "3");
+        assert_eq!(super::qml_fixed(1.15, 1), "1.1", "1.15 is stored just below the tie, and toFixed sees the stored value");
+        assert_eq!(super::qml_fixed(-0.04, 1), "-0.0");
+        assert_eq!(super::qml_fixed(-0.0, 1), "0.0");
+        assert_eq!(super::qml_fixed(449.36, 1), "449.4");
     }
 
     #[test]

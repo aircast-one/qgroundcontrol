@@ -47,7 +47,6 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let vertical = Unit::vertical(backend);
     let horizontal = Unit::horizontal(backend);
     let speed = Unit::speed(backend);
-    let imperial = crate::missionsummary::imperial(backend);
     let shapes = args.iter().any(|arg| arg == "geometry");
     let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
     let has_items = flag(&object(&backend.get_fields("plan.missionController", "containsItems")), "containsItems");
@@ -57,9 +56,9 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
     let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
     let items: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
-        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical, &horizontal, &speed, imperial)).collect(),
+        Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical, &horizontal, &speed)).collect(),
         None => (0..count)
-            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical, &horizontal, &speed, imperial))
+            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical, &horizontal, &speed))
             .collect(),
     };
     let items: Vec<Value> = match walked(&items) {
@@ -603,7 +602,7 @@ fn document_geometry(kind: &str, json: &Value, vertical: &Unit) -> Value {
     })
 }
 
-pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &Unit, horizontal: &Unit, speed: &Unit, imperial: bool, rover: bool) -> Result<Value, String> {
+pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &Unit, horizontal: &Unit, speed: &Unit, rover: bool) -> Result<Value, String> {
     let shapes = std::iter::once(Value::Null).chain(doc.items.iter().map(|it| match it {
         crate::plandoc::Item::Complex { kind, json, .. } => document_geometry(kind, json, vertical),
         crate::plandoc::Item::Simple(_) => Value::Null,
@@ -613,7 +612,7 @@ pub fn document_view(doc: &crate::plandoc::Document, selected: i64, vertical: &U
         .zip(shapes)
         .enumerate()
         .map(|(index, (read, geometry))| {
-            let listed = item(&read, index as i64, vertical, horizontal, speed, imperial);
+            let listed = item(&read, index as i64, vertical, horizontal, speed);
             match geometry.is_null() {
                 true => listed,
                 false => with_geometry(listed, geometry),
@@ -909,7 +908,7 @@ fn at_key(read: &Value, key: &str) -> Option<Value> {
     (at.get("valid").and_then(Value::as_bool) == Some(true) && !unset).then(|| at.clone())
 }
 
-fn item(read: &Value, index: i64, vertical: &Unit, horizontal: &Unit, speed: &Unit, imperial: bool) -> Value {
+fn item(read: &Value, index: i64, vertical: &Unit, horizontal: &Unit, speed: &Unit) -> Value {
     let coordinate = placed(read);
     let exit = match flag(read, "exitCoordinateSameAsEntry") {
         true => None,
@@ -953,14 +952,14 @@ fn item(read: &Value, index: i64, vertical: &Unit, horizontal: &Unit, speed: &Un
         "altitudeFrameText": altitude_frame(read, vertical).and_then(frame_word),
         "specifiesCoordinate": flag(read, "specifiesCoordinate"),
         "altitudeChange": number(read, "altDifference"),
-        "altitudeChangeText": number(read, "altDifference").map(|change| crate::read::altitude_text(change, vertical, true)),
+        "altitudeChangeText": number(read, "altDifference").map(|change| format!("{} {}", crate::read::qml_fixed(vertical.show(change), 1), vertical.name)),
         "azimuth": number(read, "azimuth"),
-        "azimuthText": number(read, "azimuth").map(|bearing| format!("{}\u{b0}", (bearing.round() as i64).rem_euclid(360))),
+        "azimuthText": number(read, "azimuth").map(bearing_text),
         "heading": number(read, "missionVehicleYaw"),
-        "headingText": number(read, "missionVehicleYaw").map(|bearing| format!("{}\u{b0}", (bearing.round() as i64).rem_euclid(360))),
+        "headingText": number(read, "missionVehicleYaw").map(bearing_text),
         "gimbalYaw": number(read, "missionGimbalYaw").filter(|yaw| yaw.is_finite()),
         "distance": number(read, "distance"),
-        "distanceText": number(read, "distance").map(|metres| crate::missionsummary::distance_text(metres, imperial)),
+        "distanceText": number(read, "distance").map(|metres| format!("{} {}", crate::read::qml_fixed(horizontal.show(metres), 1), horizontal.name)),
         "gradientText": match integer(read, "command") == Some(VTOL_TAKEOFF) && number(read, "distance").is_some_and(|d| d > 0.0) {
             true => Some("0 deg".to_string()),
             false => gradient_text(number(read, "altDifference"), number(read, "distance")),
@@ -1014,7 +1013,11 @@ pub(crate) fn speed_section(backend: &dyn Backend, index: i64) -> Value {
 
 pub fn gradient_text(alt_difference: Option<f64>, distance: Option<f64>) -> Option<String> {
     let (rise, run) = (alt_difference?, distance.filter(|d| *d > 0.0)?);
-    Some(format!("{:.0} deg", (rise / run).atan().to_degrees()))
+    Some(format!("{} deg", crate::read::qml_fixed((rise / run).atan().to_degrees(), 0)))
+}
+
+fn bearing_text(degrees: f64) -> String {
+    (((degrees + 0.5).floor() as i64) % 360).to_string()
 }
 
 const LEG_FIGURES: [&str; 6] = ["distance", "distanceText", "distanceFromStart", "azimuth", "azimuthText", "altitudeChangeText"];
@@ -1086,7 +1089,7 @@ fn band(read: &Value, vertical: &Unit) -> Option<String> {
     let edge = |key: &str| number(read, key).filter(|metres| metres.is_finite());
     match (edge("minAMSLAltitude"), edge("maxAMSLAltitude")) {
         (Some(low), Some(high)) if high > low => Some(crate::read::range_text(low, high, vertical)),
-        (Some(low), Some(high)) if high == low => Some(crate::read::altitude_text(low, vertical, false)),
+        (Some(low), Some(high)) if high == low => Some(crate::read::altitude_text(low, vertical)),
         _ => None,
     }
 }
@@ -1343,7 +1346,7 @@ mod from_the_document {
         let loaded = crate::plandoc::load(plan, 2).unwrap();
         let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], terrain_under_home]), ..loaded };
         let (vertical, speed) = metres();
-        let mine = by_value(document_view(&doc, 0, &vertical, &vertical, &speed, false, false).unwrap());
+        let mine = by_value(document_view(&doc, 0, &vertical, &vertical, &speed, false).unwrap());
         let qt = by_value(serde_json::from_str(qt).unwrap());
         let rows = |v: &Value| v["items"].as_array().unwrap().clone();
         assert_eq!(rows(&mine).len(), rows(&qt).len());
@@ -1421,7 +1424,7 @@ mod from_the_document {
         let terrain_under_home = 35.0;
         let doc = crate::plandoc::Document { home: loaded.home.map(|h| [h[0], h[1], terrain_under_home]), ..loaded };
         let (vertical, speed) = metres();
-        let mine = by_value(document_view(&doc, 0, &vertical, &vertical, &speed, false, false).unwrap());
+        let mine = by_value(document_view(&doc, 0, &vertical, &vertical, &speed, false).unwrap());
         let qt = by_value(serde_json::from_str(include_str!("../tests/fixtures/missionitems-sectiontest-by-qt.json")).unwrap());
         let rows = |v: &Value| v["items"].as_array().unwrap().clone();
         assert_eq!(rows(&mine).len(), rows(&qt).len());
@@ -1811,7 +1814,7 @@ mod reported {
         plan["mission"]["items"] = json!([waypoint(-35.36, 1), survey, waypoint(-35.359, 99)]);
         let doc = crate::plandoc::load(&plan.to_string(), 2).unwrap();
         let unit = |name: &str| Unit { name: name.to_string(), factor: 1.0 };
-        let view = document_view(&doc, 0, &unit("m"), &unit("m"), &unit("m/s"), false, false).unwrap();
+        let view = document_view(&doc, 0, &unit("m"), &unit("m"), &unit("m/s"), false).unwrap();
         let distances: Vec<f64> = view["items"].as_array().unwrap().iter().filter_map(|i| i["distance"].as_f64()).collect();
         assert!(distances.iter().all(|d| *d < 1_000.0), "QGC measures an invalid coordinate as 0, so nothing reaches 0,0: {distances:?}");
         assert_eq!(view["items"][2]["incomplete"], true);
@@ -1829,7 +1832,7 @@ mod reported {
         }).to_string(), 2)
         .unwrap();
         let unit = |name: &str| Unit { name: name.to_string(), factor: 1.0 };
-        let view = document_view(&doc, 0, &unit("m"), &unit("ft"), &unit("m/s"), false, false).unwrap();
+        let view = document_view(&doc, 0, &unit("m"), &unit("ft"), &unit("m/s"), false).unwrap();
         assert_eq!(view["items"][0]["altitudeUnits"], "m", "plannedHomePositionAltitude declares vertical m");
         assert_eq!(view["items"][1]["altitudeUnits"], "ft", "a waypoint's altitude declares m, which QGC shows in the horizontal unit, so its cooked number must carry that name");
     }
@@ -2038,7 +2041,7 @@ mod reported {
 
         let walked_plan = vec![place(0), json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "specifiesCoordinate": true, "distance": 120.0, "distanceFromStart": 120.0 }), place(2)];
         let done = items_view(&Plan(walked_plan), &[]);
-        assert_eq!(done["items"][1]["distanceText"], "120 m", "one item reporting a distance from the start is the tell that the walk has run, and then every figure it produced is trusted - including the zeros, which are real once something moved");
+        assert_eq!(done["items"][1]["distanceText"], "120.0 m", "one item reporting a distance from the start is the tell that the walk has run, and then every figure it produced is trusted - including the zeros, which are real once something moved");
         assert_eq!(done["items"][2]["distance"], 0.0);
     }
 
@@ -2107,7 +2110,7 @@ mod reported {
     }
 
     #[test]
-    fn a_leg_is_spelled_by_the_same_code_that_spells_the_strip_above_it() {
+    fn a_leg_is_spelled_like_plan_tool_bar_indicators() {
         struct Units(Value, f64);
         impl Backend for Units {
             fn get(&self, path: &str) -> String {
@@ -2118,14 +2121,14 @@ mod reported {
             }
             fn get_fields(&self, path: &str, fields: &str) -> String {
                 match (path, self.1) {
-                    ("units", 0.0) => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft" }).to_string(),
+                    ("units", 0.0) => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft", "appSettingsHorizontalDistanceUnitsString": "ft" }).to_string(),
                     _ => One(self.0.clone()).get_fields(path, fields),
                 }
             }
             fn set(&self, _p: &str, _v: &str) -> String { String::new() }
             fn invoke(&self, path: &str, args: &str) -> String {
                 match (path, self.1) {
-                    ("units.metersToAppSettingsVerticalDistanceUnits", 0.0) => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
+                    ("units.metersToAppSettingsVerticalDistanceUnits" | "units.metersToAppSettingsHorizontalDistanceUnits", 0.0) => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
                     _ => String::new(),
                 }
             }
@@ -2135,26 +2138,26 @@ mod reported {
         let row = |item: Value, raw: f64| items_view(&Units(item, raw), &[])["items"][1].clone();
 
         let short = row(leg(449.36), 1.0);
-        assert_eq!(short["distanceText"], "449 m");
-        assert_eq!(short["distanceText"], crate::missionsummary::distance_text(449.36, false), "the strip and the row are one function, so they cannot disagree about a number they both draw");
-        assert_eq!(short["azimuthText"], "47\u{b0}");
+        assert_eq!(short["distanceText"], "449.4 m", "Prev WP is toFixed(1) in the horizontal unit");
+        assert_eq!(short["azimuthText"], "47", "Azimuth is Math.round(azimuth) % 360 with no unit");
         let mut vtol = leg(100.0);
         vtol["command"] = json!(VTOL_TAKEOFF);
         vtol["altDifference"] = json!(50.0);
         assert_eq!(row(vtol, 1.0)["gradientText"], "0 deg", "PlanToolBarIndicators shows a VTOL takeoff's gradient as zero");
-        assert_eq!(row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "azimuth": 359.7 }), 1.0)["azimuthText"], "0\u{b0}", "QGC rounds before it wraps, so a bearing a third of a degree short of north reads as north and never as 360");
-        assert_eq!(short["altitudeChangeText"], "-12.0 m", "a descent reads as a descent; the bare magnitude leaves the operator to work out the direction from the two altitudes either side");
+        assert_eq!(row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "azimuth": 359.7 }), 1.0)["azimuthText"], "0", "QGC rounds before it wraps, so a bearing a third of a degree short of north reads as north and never as 360");
+        assert_eq!(row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "missionVehicleYaw": -90.4 }), 1.0)["headingText"], "-90", "JavaScript % keeps the sign of a negative waypoint yaw");
+        assert_eq!(short["altitudeChangeText"], "-12.0 m");
         assert_eq!(short["altitudeChange"], -12.0, "the signed number still travels, so a head drawing an arrow is not parsing its own string back");
 
         let far = row(leg(1500.0), 1.0);
-        assert_eq!(far["distanceText"], "1.50 km", "the kilometre threshold is the part a head reimplementing this would get wrong");
+        assert_eq!(far["distanceText"], "1500.0 m", "QGC never switches Prev WP to kilometres");
 
         let feet = row(leg(449.36), 0.0);
-        assert_eq!(feet["distanceText"], "1474 ft");
+        assert_eq!(feet["distanceText"], "1474.3 ft");
         assert_eq!(feet["altitudeChangeText"], "-39.4 ft", "an altitude is drawn in the vertical unit, which QGC keeps apart from the horizontal one, and by the app's own conversion rather than a factor the core copies");
 
         let climb = row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true, "altDifference": 12.0 }), 1.0);
-        assert_eq!(climb["altitudeChangeText"], "+12.0 m");
+        assert_eq!(climb["altitudeChangeText"], "12.0 m", "a climb carries no plus sign in QGC");
         let unknown = row(json!({ "kind": "object", "sequenceNumber": 1, "isSimpleItem": true }), 1.0);
         assert_eq!(unknown["azimuthText"], Value::Null, "a bearing the controller has not worked out is absent, not a plausible one");
         assert_eq!(unknown["altitudeChangeText"], Value::Null);
@@ -2409,7 +2412,7 @@ mod reported {
         assert!(yaw(4).is_some_and(|y| (y - 90.0).abs() < 1.0), "the next leg heads east from the yawed waypoint");
         assert_eq!(yaw(5), yaw(4), "the last fly-through item, even a pattern, keeps the running yaw");
         let unit = |name: &str| crate::read::Unit { name: name.to_string(), factor: 1.0 };
-        assert_eq!(item(&reads[4], 4, &unit("m"), &unit("m"), &unit("m/s"), false)["headingText"], "90\u{b0}");
+        assert_eq!(item(&reads[4], 4, &unit("m"), &unit("m"), &unit("m/s"))["headingText"], "90");
     }
 
     #[test]

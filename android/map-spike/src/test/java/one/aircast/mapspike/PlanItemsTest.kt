@@ -322,82 +322,36 @@ class AddingAfterTextTest {
 
 class LegTextTest {
     private fun item(
-        distance: Double,
-        distanceText: String = "449 m",
-        azimuthText: String = "47°",
-        altitudeChange: Double = 0.0,
-        altitudeChangeText: String = "",
+        distanceText: String = "449.4 m",
+        azimuthText: String = "47",
+        altitudeChangeText: String = "12.0 m",
+        headingText: String = "",
+        gradientText: String = "2 deg",
     ) = MissionItem(
         2, 2, 41.0, 44.0, "Waypoint", false, 50.0, kind = "waypoint", commandId = 16,
-        distance = distance, distanceText = distanceText, azimuthText = azimuthText,
-        altitudeChange = altitudeChange, altitudeChangeText = altitudeChangeText,
+        distanceText = distanceText, azimuthText = azimuthText, altitudeChangeText = altitudeChangeText,
+        headingText = headingText, gradientText = gradientText,
     )
 
     @Test
-    fun `each figure carries the label PlanToolBarIndicators gives it`() {
-        assertEquals("Azimuth 47° · Prev WP 449 m", legText(item(449.0)))
+    fun `each figure carries the label and order PlanToolBarIndicators gives it`() {
+        assertEquals(
+            "Alt diff 12.0 m \u00b7 Azimuth 47 \u00b7 Heading 90 \u00b7 Gradient 2 deg \u00b7 Prev WP 449.4 m",
+            legText(item(headingText = "90")),
+        )
     }
 
     @Test
-    fun `the expected vehicle heading closes the line`() {
-        assertEquals("Azimuth 47° · Heading 90° · Prev WP 449 m", legText(item(449.0).copy(headingText = "90°")))
-    }
-
-    @Test
-    fun `the first item has no leg into it, and QGC says so with a zero rather than a null`() {
-        assertNull(legText(item(0.0)))
+    fun `zeros show like QGC, which hides a stat only when it has no number`() {
+        assertEquals(
+            "Alt diff 0.0 m \u00b7 Azimuth 0 \u00b7 Prev WP 0.0 m",
+            legText(item(distanceText = "0.0 m", azimuthText = "0", altitudeChangeText = "0.0 m", gradientText = "")),
+        )
     }
 
     @Test
     fun `an item the controller has not measured says nothing`() {
-        assertNull(legText(item(Double.NaN)))
-    }
-
-    @Test
-    fun `a bearing without a distance is not a leg`() {
-        assertNull(legText(item(0.0, distanceText = "", azimuthText = "47°")))
-    }
-
-    @Test
-    fun `a climb straight up still says the climb, having no distance to report`() {
-        assertEquals(
-            "Alt diff +10.0 m",
-            legText(item(0.0, altitudeChange = 10.0, altitudeChangeText = "+10.0 m")),
-        )
-    }
-
-    @Test
-    fun `a leg with neither distance nor climb says nothing`() {
-        assertNull(legText(item(0.0)))
-    }
-
-    @Test
-    fun `a climbing leg also gives the gradient QGC's plan stats show`() {
-        assertEquals(
-            "Alt diff +12.0 m · Azimuth 47° · Gradient 2 deg · Prev WP 449 m",
-            legText(item(449.0, altitudeChange = 12.0, altitudeChangeText = "+12.0 m").copy(gradientText = "2 deg")),
-        )
-    }
-
-    @Test
-    fun `a climbing leg says how much it climbs, signed and in the vertical unit`() {
-        assertEquals(
-            "Alt diff +12.0 m · Azimuth 47° · Prev WP 449 m",
-            legText(item(449.0, altitudeChange = 12.0, altitudeChangeText = "+12.0 m")),
-        )
-    }
-
-    @Test
-    fun `a level leg says nothing about climbing rather than plus zero`() {
-        assertEquals(
-            "Azimuth 47° · Prev WP 449 m",
-            legText(item(449.0, altitudeChange = 0.0, altitudeChangeText = "+0.0 m")),
-        )
-    }
-
-    @Test
-    fun `a measured leg with only one of the two still says what it has`() {
-        assertEquals("Prev WP 449 m", legText(item(449.0, azimuthText = "")))
+        assertNull(legText(item(distanceText = "", azimuthText = "", altitudeChangeText = "", gradientText = "")))
     }
 }
 
