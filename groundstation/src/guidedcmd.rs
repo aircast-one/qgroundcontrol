@@ -311,9 +311,11 @@ const PAUSE_FAILED: &str = "Unable to pause vehicle.";
 pub fn change_altitude(state: &VehicleState, delta: f64, pause_first: bool) -> Plan {
     match state.autopilot {
         AUTOPILOT_PX4 => {
-            let Some(home) = state.home_altitude.filter(|a| a.is_finite()) else { return Plan::Refused("Unable to change altitude, home position altitude unknown.".into()) };
-            let Some(relative) = state.altitude_relative.filter(|a| a.is_finite()) else { return Plan::Refused("Unable to change altitude, vehicle altitude not known.".into()) };
-            let target = home + relative + delta;
+            let Some(home) = state.home_altitude else { return Plan::Refused("Unable to change altitude, home position unknown.".into()) };
+            if home.is_nan() {
+                return Plan::Refused("Unable to change altitude, home position altitude unknown.".into());
+            }
+            let target = home + state.altitude_relative.unwrap_or(f64::NAN) + delta;
             let mut steps = Vec::new();
             if pause_first {
                 steps.push(Step::Command { command: CMD_DO_REPOSITION, params: [-1.0, REPOSITION_CHANGE_MODE, 0.0, nan(), nan(), nan(), nan()], command_int: false, frame: FRAME_GLOBAL, show_error: false });
@@ -600,7 +602,14 @@ mod tests {
         assert!(matches!(land(&state), Plan::Steps(_)));
         let blind = VehicleState { altitude_amsl: None, ..px4() };
         assert!(matches!(takeoff(&blind, 15.0), Plan::Refused(_)));
-        assert!(matches!(change_altitude(&VehicleState { home_altitude: None, ..px4() }, 1.0, false), Plan::Refused(_)));
+        let refused = |plan: Plan| match plan {
+            Plan::Refused(reason) => reason,
+            Plan::Steps(_) => panic!("expected a refusal"),
+        };
+        assert_eq!(refused(change_altitude(&VehicleState { home_altitude: None, ..px4() }, 1.0, false)), "Unable to change altitude, home position unknown.", "PX4FirmwarePlugin::guidedModeChangeAltitude checks homePosition().isValid() first");
+        assert_eq!(refused(change_altitude(&VehicleState { home_altitude: Some(f64::NAN), ..px4() }, 1.0, false)), "Unable to change altitude, home position altitude unknown.");
+        let Plan::Steps(steps) = change_altitude(&VehicleState { altitude_relative: None, ..px4() }, 1.0, false) else { panic!("PX4 does not refuse an unknown vehicle altitude, only APM does") };
+        assert!(command(&steps[0]).1[6].is_nan());
     }
 
     #[test]
