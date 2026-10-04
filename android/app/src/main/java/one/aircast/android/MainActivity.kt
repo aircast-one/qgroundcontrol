@@ -428,7 +428,7 @@ fun AircastShell(hostView: android.view.View?) {
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
                 hostView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
-                if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.TopCenter).zIndex(2f).padding(top = 8.dp))
+                if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.BottomCenter).zIndex(2f).padding(8.dp))
 
                 if (onFly) {
                     FlyScreen(
