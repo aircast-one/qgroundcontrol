@@ -37,7 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,7 +48,7 @@ import androidx.compose.runtime.DisposableEffect
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.PlanMapScreen
+import one.aircast.map.PlanMapScreen
 
 private const val NOTICE_MILLIS = 4000L
 

@@ -1,0 +1,62 @@
+package one.aircast.map
+
+import org.json.JSONObject
+
+const val MISSION_CONTEXT = "mission"
+const val ITEM_CONTEXT = "item"
+const val ALT_MODE_MIXED = 0
+const val FRAME_UNKNOWN = "Frame"
+
+data class AltitudeModeOffer(
+    val raw: Int,
+    val title: String,
+    val help: String,
+    val enabled: Boolean,
+    val current: Boolean,
+    val reason: String,
+)
+
+data class AltitudeModesView(
+    val context: String,
+    val current: Int,
+    val offers: List<AltitudeModeOffer>,
+    val omitted: List<AltitudeModeOffer>,
+)
+
+fun altitudeModesPath(context: String, current: Int): String = "view.altitudeModes($context,$current)"
+
+private fun offers(view: JSONObject?, key: String): List<AltitudeModeOffer> {
+    val items = view?.optJSONArray(key) ?: return emptyList()
+    return (0 until items.length()).mapNotNull { index ->
+        items.optJSONObject(index)?.let {
+            AltitudeModeOffer(
+                raw = it.optInt("raw", -1),
+                title = it.optText("title"),
+                help = it.optText("help"),
+                enabled = it.optBoolean("enabled"),
+                current = it.optBoolean("current"),
+                reason = it.optText("reason"),
+            )
+        }
+    }
+}
+
+fun altitudeModesView(view: JSONObject?): AltitudeModesView? {
+    if (view == null || view.optText("class") != "AltitudeModes") return null
+    return AltitudeModesView(
+        context = view.optText("context"),
+        current = view.optInt("current", -1),
+        offers = offers(view, "modes"),
+        omitted = offers(view, "omitted"),
+    )
+}
+
+fun choosable(view: AltitudeModesView?): List<AltitudeModeOffer> =
+    view?.offers.orEmpty().filter { it.raw != ALT_MODE_MIXED }
+
+fun offersChoice(view: AltitudeModesView?): Boolean = choosable(view).count { it.enabled } > 1
+
+fun refusalFor(view: AltitudeModesView?, raw: Int): String? =
+    view?.offers.orEmpty().firstOrNull { it.raw == raw }?.takeIf { !it.enabled }?.reason?.ifBlank { null }
+
+fun altitudeModePath(index: Int): String = "$PLAN_ITEMS.$index.altitudeMode"

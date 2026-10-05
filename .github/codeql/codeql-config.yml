@@ -3,7 +3,7 @@ name: "QGroundControl CodeQL Config"
 paths:
   - src
   - android/app/src
-  - android/map-spike/src
+  - android/map/src
   - android/tools
   - deploy/android/src
   - tools

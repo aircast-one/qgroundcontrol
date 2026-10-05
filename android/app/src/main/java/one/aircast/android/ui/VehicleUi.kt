@@ -1,6 +1,6 @@
 package one.aircast.android.ui
 
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import androidx.compose.foundation.rememberScrollState
 
 import androidx.compose.foundation.verticalScroll
@@ -84,8 +84,8 @@ import org.json.JSONObject
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcString
 import one.aircast.android.bridge.qgcStrings
-import one.aircast.mapspike.TelemetryNumber
-import one.aircast.mapspike.optText
+import one.aircast.map.TelemetryNumber
+import one.aircast.map.optText
 
 private const val MISSION_POPUP_DELAY_MS = 1000L
 private const val CHECKLIST_CLOSE_DELAY_MS = 1000L
@@ -406,7 +406,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         return
     }
 
-    val vehiclesJson by qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    val vehiclesJson by qgcPath(one.aircast.map.VEHICLES_VIEW)
     val vehicleId = remember(vehiclesJson) { activeVehicleId(vehiclesJson) }
     var checklistStateSent by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(vehicleId) {

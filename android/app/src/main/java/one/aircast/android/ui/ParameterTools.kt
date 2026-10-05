@@ -14,7 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONObject
 
 internal const val PARAMETER_TOOLS_PATH = "view.parameterTools"

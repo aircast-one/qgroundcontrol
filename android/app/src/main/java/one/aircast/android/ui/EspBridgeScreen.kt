@@ -37,7 +37,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONObject
 
 internal const val ESP_BRIDGE_VIEW = "view.espBridge"

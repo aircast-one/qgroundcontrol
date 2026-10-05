@@ -2,7 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONArray
 import org.json.JSONObject
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal const val EXTRA_SOURCES_FACT = "settings.videoSettings.extraVideoSources"
 internal const val VIDEO_SOURCE_FACT = "settings.videoSettings.videoSource"

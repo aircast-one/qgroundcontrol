@@ -36,7 +36,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONObject
 
 internal const val PX4_AIRFRAME_VIEW = "view.px4Airframe"

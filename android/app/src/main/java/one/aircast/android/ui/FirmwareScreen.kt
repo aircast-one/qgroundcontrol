@@ -1,6 +1,6 @@
 package one.aircast.android.ui
 
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import androidx.compose.material3.Surface
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -40,7 +40,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcBool
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONObject
 import java.io.File
 

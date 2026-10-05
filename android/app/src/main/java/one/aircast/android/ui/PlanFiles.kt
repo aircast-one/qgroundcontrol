@@ -1,6 +1,6 @@
 package one.aircast.android.ui
 
-import one.aircast.mapspike.PlanFocus
+import one.aircast.map.PlanFocus
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -22,8 +22,8 @@ import one.aircast.android.bridge.Qgc
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import one.aircast.mapspike.freshPlanView
-import one.aircast.mapspike.optText
+import one.aircast.map.freshPlanView
+import one.aircast.map.optText
 
 private const val PLAN_ROOT = "plan"
 private const val OPEN_FOLDER = "plan-open"

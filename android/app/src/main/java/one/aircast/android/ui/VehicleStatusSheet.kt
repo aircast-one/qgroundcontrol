@@ -34,7 +34,7 @@ import one.aircast.android.R
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 
 private const val SENSOR_FAULT_STATE = "unhealthy"
 

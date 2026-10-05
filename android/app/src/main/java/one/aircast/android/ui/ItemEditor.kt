@@ -1,6 +1,6 @@
 package one.aircast.android.ui
 
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -45,9 +45,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.mapspike.PlanBridge
-import one.aircast.mapspike.TrackPoint
-import one.aircast.mapspike.optText
+import one.aircast.map.PlanBridge
+import one.aircast.map.TrackPoint
+import one.aircast.map.optText
 import org.json.JSONArray
 import org.json.JSONObject
 import androidx.compose.material3.Button
@@ -214,8 +214,8 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
     val raw = remember(view) { rawEdit(view) }
     val connected = hasVehicle()
     val camera = remember(view) { cameraCalc(view) }
-    val stats by androidx.compose.runtime.produceState<one.aircast.mapspike.SurveyStats?>(null, index, revision, camera != null) {
-        value = if (camera == null) null else withContext(Dispatchers.Default) { one.aircast.mapspike.surveyStats(Qgc.get("view.surveyStats($index)")) }
+    val stats by androidx.compose.runtime.produceState<one.aircast.map.SurveyStats?>(null, index, revision, camera != null) {
+        value = if (camera == null) null else withContext(Dispatchers.Default) { one.aircast.map.surveyStats(Qgc.get("view.surveyStats($index)")) }
     }
     val presetsFirst by androidx.compose.runtime.produceState<Boolean?>(null, index) {
         value = withContext(Dispatchers.Default) { presetsShownFirst(Qgc.get(PRESETS_FIRST_SETTING)) }
@@ -359,7 +359,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                     }
                 }
                 item(key = "itemCamera") {
-                    one.aircast.mapspike.ItemCameraSection(index, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { revision++ }
+                    one.aircast.map.ItemCameraSection(index, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { revision++ }
                 }
                 camera?.let { block ->
                     item(key = "camera") {
@@ -405,7 +405,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             known.warning.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning) }
                             Text("Statistics", style = MaterialTheme.typography.titleSmall)
-                            one.aircast.mapspike.statisticsRows(known).forEach { (label, value) ->
+                            one.aircast.map.statisticsRows(known).forEach { (label, value) ->
                                 Row(Modifier.fillMaxWidth()) {
                                     Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                     Text(value.ifBlank { "\u2014" }, style = MaterialTheme.typography.bodyMedium)
@@ -560,8 +560,8 @@ internal fun SpeedSectionRow(speed: SpeedSection, withSlider: Boolean = false, o
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(
-                    enabled = one.aircast.mapspike.typedNumber(typed) != null,
-                    onClick = { one.aircast.mapspike.typedNumber(typed)?.let { value -> onWrite { Qgc.writeRefusal(speed.path, value) } } },
+                    enabled = one.aircast.map.typedNumber(typed) != null,
+                    onClick = { one.aircast.map.typedNumber(typed)?.let { value -> onWrite { Qgc.writeRefusal(speed.path, value) } } },
                 ) { Text("Set") }
             }
             speed.slider?.takeIf { withSlider }?.let { slider -> FieldSlider(speed.value?.toFloat(), slider, enabled = true) { value -> onWrite { Qgc.writeRefusal(speed.path, value) } } }
@@ -663,7 +663,7 @@ internal fun EditPositionDialog(
         scope.launch {
             val target = withContext(Dispatchers.Default) {
                 when (system) {
-                    CoordinateSystem.Geographic -> one.aircast.mapspike.typedNumber(latitude)?.let { lat -> one.aircast.mapspike.typedNumber(longitude)?.let { lat to it } }
+                    CoordinateSystem.Geographic -> one.aircast.map.typedNumber(latitude)?.let { lat -> one.aircast.map.typedNumber(longitude)?.let { lat to it } }
                     CoordinateSystem.Utm -> geoOf(Qgc.get(utmToGeoPath(easting, northing, zone, southern)))
                     CoordinateSystem.Mgrs -> geoOf(Qgc.get("view.mgrsToGeo(${mgrs.replace(" ", "")})"))
                     CoordinateSystem.Vehicle -> geoOf(Qgc.get("vehicle.coordinate"))

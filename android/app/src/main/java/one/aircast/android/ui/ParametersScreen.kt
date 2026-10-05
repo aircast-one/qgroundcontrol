@@ -33,7 +33,7 @@ import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
 import org.json.JSONArray
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 private const val PARAMETER_MANAGER = "vehicle.parameterManager"
 private const val DEFAULT_COMPONENT = -1

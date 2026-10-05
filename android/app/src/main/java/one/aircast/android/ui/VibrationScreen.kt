@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.dp
 import java.util.Locale
 import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.aircast
-import one.aircast.mapspike.optText
+import one.aircast.map.aircast
+import one.aircast.map.optText
 import org.json.JSONObject
 
 

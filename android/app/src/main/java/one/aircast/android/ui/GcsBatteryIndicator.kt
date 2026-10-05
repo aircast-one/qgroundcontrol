@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.mapspike.aircast
-import one.aircast.mapspike.optText
+import one.aircast.map.aircast
+import one.aircast.map.optText
 import org.json.JSONObject
 
 internal data class PhoneBattery(val percent: Int, val charging: Boolean)

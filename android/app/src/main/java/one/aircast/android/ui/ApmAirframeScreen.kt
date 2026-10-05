@@ -36,7 +36,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONArray
 import org.json.JSONObject
 

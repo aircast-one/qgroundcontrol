@@ -39,7 +39,7 @@ def main():
 
     heading = next(
         line.split('"')[1]
-        for line in (HERE.parent / "map-spike/src/main/java/one/aircast/mapspike/PlanItems.kt")
+        for line in (HERE.parent / "map/src/main/java/one/aircast/map/PlanItems.kt")
         .read_text().splitlines()
         if "PLAN_ITEMS_HEADING" in line
     )

@@ -50,20 +50,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.mapspike.CenterMenu
-import one.aircast.mapspike.OperatorBridge
-import one.aircast.mapspike.TrackPoint
-import one.aircast.mapspike.VEHICLES_VIEW
-import one.aircast.mapspike.VehicleMap
-import one.aircast.mapspike.aircast
-import one.aircast.mapspike.currentMapType
-import one.aircast.mapspike.mapPath
-import one.aircast.mapspike.operatorHeading
-import one.aircast.mapspike.operatorPoint
-import one.aircast.mapspike.optText
-import one.aircast.mapspike.qgcRasterStyle
-import one.aircast.mapspike.readCamera
-import one.aircast.mapspike.vehicleChoices
+import one.aircast.map.CenterMenu
+import one.aircast.map.OperatorBridge
+import one.aircast.map.TrackPoint
+import one.aircast.map.VEHICLES_VIEW
+import one.aircast.map.VehicleMap
+import one.aircast.map.aircast
+import one.aircast.map.currentMapType
+import one.aircast.map.mapPath
+import one.aircast.map.operatorHeading
+import one.aircast.map.operatorPoint
+import one.aircast.map.optText
+import one.aircast.map.qgcRasterStyle
+import one.aircast.map.readCamera
+import one.aircast.map.vehicleChoices
 import org.json.JSONObject
 
 internal const val OFFLINE_MAPS_GROUP = "offlineMapsSettings"

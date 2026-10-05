@@ -1,6 +1,6 @@
 package one.aircast.android.ui
 
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import one.aircast.android.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Spacer

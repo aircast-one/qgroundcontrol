@@ -38,7 +38,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 
 private const val PARAM_SCHEME = "param://"
 

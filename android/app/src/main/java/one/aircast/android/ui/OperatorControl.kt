@@ -3,7 +3,7 @@ package one.aircast.android.ui
 import one.aircast.android.bridge.settingControl
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal const val OPERATOR_CONTROL_VIEW = "view.operatorControl"
 

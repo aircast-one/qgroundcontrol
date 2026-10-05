@@ -44,7 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.toSize
@@ -87,7 +87,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.mapspike.AircastTheme
+import one.aircast.map.AircastTheme
 import one.aircast.android.ui.AnalyzePage
 import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.CameraControlLayer
@@ -109,8 +109,8 @@ import one.aircast.android.ui.RcControlsLayer
 import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.TrafficReadout
-import one.aircast.mapspike.FlyMap
-import one.aircast.mapspike.TrackPoint
+import one.aircast.map.FlyMap
+import one.aircast.map.TrackPoint
 import one.aircast.android.ui.VideoSourceLayer
 import one.aircast.android.ui.VideoSurface
 import one.aircast.android.ui.FlyScreen
@@ -338,18 +338,18 @@ fun AircastShell(hostView: android.view.View?) {
     val noVideoSource = remember(flyVideoJson) { one.aircast.android.ui.videoReading(flyVideoJson)?.let { !it.available && !it.sourceChosen } == true }
     val shownFlyView = one.aircast.android.ui.flyViewShown(flyView, armed = flyNow?.armed == true, noVideoSource = noVideoSource)
 
-    val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.map.VEHICLES_VIEW)
     var lastVehicles by remember {
-        mutableStateOf<one.aircast.mapspike.VehicleChoices?>(null)
+        mutableStateOf<one.aircast.map.VehicleChoices?>(null)
     }
 
     LaunchedEffect(vehiclesJson) {
-        val now = one.aircast.mapspike.vehicleChoices(vehiclesJson)
-        val notice = one.aircast.mapspike.handoverNotice(lastVehicles, now, one.aircast.mapspike.VehicleBridge.lastAsked)
-        if (one.aircast.mapspike.activeChanged(lastVehicles, now)) {
-            one.aircast.mapspike.VehicleBridge.forget()
+        val now = one.aircast.map.vehicleChoices(vehiclesJson)
+        val notice = one.aircast.map.handoverNotice(lastVehicles, now, one.aircast.map.VehicleBridge.lastAsked)
+        if (one.aircast.map.activeChanged(lastVehicles, now)) {
+            one.aircast.map.VehicleBridge.forget()
         }
-        lastVehicles = one.aircast.mapspike.rememberedChoices(lastVehicles, now)
+        lastVehicles = one.aircast.map.rememberedChoices(lastVehicles, now)
         notice?.let { said -> noticeScope.launch { snackbars.showSnackbar(said) } }
     }
 

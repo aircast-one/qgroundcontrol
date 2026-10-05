@@ -6,7 +6,7 @@ import androidx.compose.runtime.setValue
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import org.json.JSONObject
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal const val INSTRUMENT_GROUPS = "view.instrumentGroups"
 

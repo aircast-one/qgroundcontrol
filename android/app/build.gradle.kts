@@ -213,7 +213,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
-    implementation(project(":map-spike"))
+    implementation(project(":map"))
     implementation("androidx.compose.material:material-icons-core")
     implementation("io.coil-kt.coil3:coil-compose:3.1.0")
     implementation("io.coil-kt.coil3:coil-svg:3.1.0")

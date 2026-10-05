@@ -50,8 +50,8 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.aircast
-import one.aircast.mapspike.optText
+import one.aircast.map.aircast
+import one.aircast.map.optText
 
 private const val CONSOLE_ROOT = "mavlinkConsole"
 private const val CONSOLE_VIEW = "view.mavlinkConsole"

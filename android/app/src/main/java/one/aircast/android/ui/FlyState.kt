@@ -5,7 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import one.aircast.android.bridge.qgcPath
 import org.json.JSONObject
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal const val FLY_STATE = "view.flyState"
 

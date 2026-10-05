@@ -8,7 +8,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import org.json.JSONObject
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 // A setting read through view.control carries the same value key as the raw fact, decoded by the
 // core that also checks writes to it, so qgcValue and the typed readers below take either.

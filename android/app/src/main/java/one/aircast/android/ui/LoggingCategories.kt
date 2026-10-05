@@ -36,7 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONObject
 
 internal const val LOG_CATEGORIES_VIEW = "view.logCategories"

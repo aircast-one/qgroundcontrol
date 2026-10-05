@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import org.json.JSONObject
 
 internal const val MISSION_COMPLETE_PATH = "view.missionComplete"

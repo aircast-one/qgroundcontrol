@@ -22,7 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

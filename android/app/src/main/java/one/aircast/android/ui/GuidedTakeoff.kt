@@ -2,7 +2,7 @@ package one.aircast.android.ui
 
 import java.util.Locale
 import org.json.JSONObject
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal const val GUIDED_TAKEOFF = "view.guidedTakeoff"
 

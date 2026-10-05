@@ -42,8 +42,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.aircast
-import one.aircast.mapspike.optText
+import one.aircast.map.aircast
+import one.aircast.map.optText
 import org.json.JSONObject
 import kotlin.math.cos
 import kotlin.math.sin

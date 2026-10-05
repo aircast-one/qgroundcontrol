@@ -185,7 +185,7 @@ jobs:
           RELEASE_TAG: ${{ needs.setup.outputs.version }}
         run: |
           export AIRCAST_VERSION_NAME="${RELEASE_TAG#aircast-v}"
-          ./gradlew --no-daemon :app:testQtDebugUnitTest :map-spike:testDebugUnitTest
+          ./gradlew --no-daemon :app:testQtDebugUnitTest :map:testDebugUnitTest
           ./gradlew --no-daemon :app:assembleQtRelease
 
       - name: Install the Play upload keystore

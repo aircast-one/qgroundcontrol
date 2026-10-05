@@ -20,8 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import one.aircast.mapspike.aircast
-import one.aircast.mapspike.optText
+import one.aircast.map.aircast
+import one.aircast.map.optText
 
 internal fun sentIsStillShowing(name: String?, snapshotAtSend: String?, live: String?): Boolean =
     name != null && snapshotAtSend != null && snapshotAtSend == live
@@ -51,8 +51,8 @@ internal fun missionIdentity(plan: org.json.JSONObject?, summary: org.json.JSONO
         planTitle(plan.optText("file")),
         listOfNotNull(
             planStatusText(plan).ifBlank { null },
-            one.aircast.mapspike.summaryRow(summary, "Distance"),
-            one.aircast.mapspike.summaryRow(summary, "Time"),
+            one.aircast.map.summaryRow(summary, "Distance"),
+            one.aircast.map.summaryRow(summary, "Time"),
         ).joinToString(" \u00b7 "),
         null,
     )

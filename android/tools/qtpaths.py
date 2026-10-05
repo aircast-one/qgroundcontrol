@@ -38,7 +38,7 @@ ROOT = Path(
     subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, cwd=Path(__file__).parent)
     .stdout.strip()
 )
-SOURCES = [ROOT / "android/app/src/main/java", ROOT / "android/map-spike/src/main/java"]
+SOURCES = [ROOT / "android/app/src/main/java", ROOT / "android/map/src/main/java"]
 BASELINE = ROOT / "android/tools/qtpaths.baseline"
 WRAPPERS = re.compile(r"^(?:internal )?fun (qgc[A-Za-z]+|map[A-Za-z]+)\(\s*(?:group)?[Pp]ath: String", re.M)
 DIRECT = ["setOk", "invokeOk", r"Qgc\.get", r"Qgc\.set", r"Qgc\.invoke", r"Qgc\.invokeResult",

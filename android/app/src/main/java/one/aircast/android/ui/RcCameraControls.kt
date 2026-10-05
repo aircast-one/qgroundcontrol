@@ -125,7 +125,7 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     )
     val gimbalJson by qgcPath(GIMBAL_VIEW)
     val gimbalManager = gimbalJson?.optBoolean("shown") == true
-    val vehiclesJson by qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    val vehiclesJson by qgcPath(one.aircast.map.VEHICLES_VIEW)
     val vehicleId = activeVehicleId(vehiclesJson)
     val streamRecording by qgcBool("video.recording")
     var tilt by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }

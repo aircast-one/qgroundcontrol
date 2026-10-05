@@ -198,7 +198,7 @@ private fun AnalyzePageBody(page: AnalyzePage, leave: () -> Unit, modifier: Modi
     Column(modifier.fillMaxSize()) {
         PageTopBar(page.label, "Back to Analyze") { leave() }
         val gate = analyzeGate(page, hasVehicle())
-        val vehiclesJson by qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+        val vehiclesJson by qgcPath(one.aircast.map.VEHICLES_VIEW)
         val reloadKey = remember(vehiclesJson) { activeVehicleId(vehiclesJson)?.takeIf { page.requiresVehicle } }
         Surface(Modifier.weight(1f)) {
             when {

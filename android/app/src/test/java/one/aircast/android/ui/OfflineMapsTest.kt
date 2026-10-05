@@ -1,6 +1,6 @@
 package one.aircast.android.ui
 
-import one.aircast.mapspike.TrackPoint
+import one.aircast.map.TrackPoint
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -44,6 +44,6 @@ class OfflineMapsTest {
 
     @Test
     fun `zoom previews centre on the chosen region, like OfflineMapEditor's preview maps`() {
-        assertEquals(one.aircast.mapspike.TrackPoint(41.5, 44.5), regionCentre(OfflineRegion(west = 44.0, north = 42.0, east = 45.0, south = 41.0)))
+        assertEquals(one.aircast.map.TrackPoint(41.5, 44.5), regionCentre(OfflineRegion(west = 44.0, north = 42.0, east = 45.0, south = 41.0)))
     }
 }

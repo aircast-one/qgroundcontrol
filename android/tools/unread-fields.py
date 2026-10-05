@@ -3,7 +3,7 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-TREES = [ROOT / "android/app/src/main", ROOT / "android/map-spike/src/main"]
+TREES = [ROOT / "android/app/src/main", ROOT / "android/map/src/main"]
 
 KNOWN = ("canPhoto", 1)
 KNOWN_CLASS = ("Instrument", ["label", "reading"])

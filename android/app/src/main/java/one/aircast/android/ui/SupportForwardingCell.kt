@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.settingControl
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 
 private const val SUPPORT_LINKS_VIEW = "view.links"
 private val SUPPORT_HOST_SETTING = settingControl("settings.mavlinkSettings.forwardMavlinkAPMSupportHostName")

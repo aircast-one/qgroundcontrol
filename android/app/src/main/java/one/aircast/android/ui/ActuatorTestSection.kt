@@ -28,8 +28,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.mapspike.aircast
-import one.aircast.mapspike.optText
+import one.aircast.map.aircast
+import one.aircast.map.optText
 import org.json.JSONObject
 
 internal const val ACTUATOR_TEST_ACTIVE = "actuatorTest.setActive"

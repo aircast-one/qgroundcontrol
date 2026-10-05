@@ -29,7 +29,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 private const val HOST_FACT = "settings.mavlinkSettings.forwardMavlinkAPMSupportHostName"
 

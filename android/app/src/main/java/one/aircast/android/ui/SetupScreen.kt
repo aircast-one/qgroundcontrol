@@ -41,8 +41,8 @@ import one.aircast.android.bridge.Qgc
 import org.json.JSONObject
 import one.aircast.android.bridge.qgcPath
 import androidx.compose.ui.Alignment
-import one.aircast.mapspike.optText
-import one.aircast.mapspike.aircast
+import one.aircast.map.optText
+import one.aircast.map.aircast
 import androidx.compose.material3.OutlinedButton
 
 

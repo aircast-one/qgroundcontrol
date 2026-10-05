@@ -1,6 +1,6 @@
 package one.aircast.android.ui
 
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONObject
 
 internal data class ObstacleWarning(val label: String, val close: Boolean)

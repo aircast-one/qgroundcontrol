@@ -10,7 +10,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.VEHICLES_VIEW
+import one.aircast.map.VEHICLES_VIEW
 import org.json.JSONObject
 
 private const val LOCK_TAG = "aircast:vehicle"

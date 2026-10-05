@@ -20,8 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.AircastSpace
-import one.aircast.mapspike.optText
+import one.aircast.map.AircastSpace
+import one.aircast.map.optText
 import org.json.JSONObject
 
 private const val MISSION_PROGRESS = "view.missionProgress"

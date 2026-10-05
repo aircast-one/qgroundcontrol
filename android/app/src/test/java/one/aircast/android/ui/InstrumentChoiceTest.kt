@@ -181,8 +181,8 @@ class InstrumentChoiceTest {
     @Test
     fun `a scaled value keeps the telemetry figures and grows its line with it`() {
         val large = scaledNumber(1.5f)
-        assertEquals(one.aircast.mapspike.TelemetryNumber.fontSize * 1.5f, large.fontSize)
-        assertEquals(one.aircast.mapspike.TelemetryNumber.fontFeatureSettings, large.fontFeatureSettings)
+        assertEquals(one.aircast.map.TelemetryNumber.fontSize * 1.5f, large.fontSize)
+        assertEquals(one.aircast.map.TelemetryNumber.fontFeatureSettings, large.fontFeatureSettings)
     }
 
     @Test

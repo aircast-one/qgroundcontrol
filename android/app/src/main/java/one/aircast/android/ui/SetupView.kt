@@ -1,7 +1,7 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal const val SETUP = "view.setup"
 internal const val FIRMWARE = "view.firmware"

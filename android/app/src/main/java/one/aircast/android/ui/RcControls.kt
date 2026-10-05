@@ -2,7 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONArray
 import org.json.JSONObject
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal const val PWM_MIN = 1000
 internal const val PWM_CENTER = 1500

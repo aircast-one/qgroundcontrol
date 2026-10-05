@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONObject
 
 private const val APP_SETTINGS = "settings.appSettings"

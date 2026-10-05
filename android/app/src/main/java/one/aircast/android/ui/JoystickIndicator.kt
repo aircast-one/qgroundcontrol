@@ -18,8 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.aircast
-import one.aircast.mapspike.optText
+import one.aircast.map.aircast
+import one.aircast.map.optText
 import org.json.JSONObject
 
 internal data class JoystickDetail(val label: String, val value: String, val warn: Boolean)

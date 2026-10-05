@@ -154,13 +154,13 @@ private fun Stepper(title: String, fact: Fact) {
     val shown = pending.value?.toLong()?.toString() ?: fact.valueString
     var typed by remember(shown) { mutableStateOf(shown) }
     fun commit() {
-        val number = one.aircast.mapspike.typedNumber(typed)?.takeIf { it == kotlin.math.floor(it) }
+        val number = one.aircast.map.typedNumber(typed)?.takeIf { it == kotlin.math.floor(it) }
         when {
             number == null -> {
                 refusal = "Enter a whole number."
                 typed = shown
             }
-            number != one.aircast.mapspike.typedNumber(shown) -> write(number)
+            number != one.aircast.map.typedNumber(shown) -> write(number)
         }
     }
 

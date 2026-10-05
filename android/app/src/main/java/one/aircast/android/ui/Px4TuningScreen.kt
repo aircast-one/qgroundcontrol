@@ -35,7 +35,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
 import androidx.compose.runtime.DisposableEffect
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt

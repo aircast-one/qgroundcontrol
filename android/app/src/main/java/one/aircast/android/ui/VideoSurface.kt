@@ -1,6 +1,6 @@
 package one.aircast.android.ui
 
-import one.aircast.mapspike.ObstacleVideoOverlay
+import one.aircast.map.ObstacleVideoOverlay
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.foundation.Canvas
@@ -43,7 +43,7 @@ import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.settingControl
-import one.aircast.mapspike.AircastSpace
+import one.aircast.map.AircastSpace
 import org.mavlink.qgroundcontrol.QGCBridge
 
 internal const val CAMERA_STEP_ZOOM = "vehicle.cameraManager.currentCameraInstance.stepZoom"

@@ -39,14 +39,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.GotoLoiterEdit
-import one.aircast.mapspike.LoiterEdit
-import one.aircast.mapspike.MINIMUM_CIRCLE_RADIUS_METRES
-import one.aircast.mapspike.OrbitCircle
-import one.aircast.mapspike.OrbitPreview
-import one.aircast.mapspike.loiterEditNumber
-import one.aircast.mapspike.optText
-import one.aircast.mapspike.TrackPoint
+import one.aircast.map.GotoLoiterEdit
+import one.aircast.map.LoiterEdit
+import one.aircast.map.MINIMUM_CIRCLE_RADIUS_METRES
+import one.aircast.map.OrbitCircle
+import one.aircast.map.OrbitPreview
+import one.aircast.map.loiterEditNumber
+import one.aircast.map.optText
+import one.aircast.map.TrackPoint
 import org.json.JSONObject
 import java.util.Locale
 
@@ -61,7 +61,7 @@ private val COMPASS_POINTS = listOf("north", "north-east", "east", "south-east",
 
 internal fun goHereText(from: MapPoint, to: MapPoint, unit: String, metresPerUnit: Double): String? {
     if (metresPerUnit <= 0.0 || unit.isBlank()) return null
-    val metres = one.aircast.mapspike.metresBetween(one.aircast.mapspike.TrackPoint(from.latitude, from.longitude), one.aircast.mapspike.TrackPoint(to.latitude, to.longitude))
+    val metres = one.aircast.map.metresBetween(one.aircast.map.TrackPoint(from.latitude, from.longitude), one.aircast.map.TrackPoint(to.latitude, to.longitude))
     val fromLat = Math.toRadians(from.latitude)
     val toLat = Math.toRadians(to.latitude)
     val deltaLon = Math.toRadians(to.longitude - from.longitude)
@@ -107,7 +107,7 @@ internal fun orbitDefaults(view: JSONObject?): OrbitDefaults = OrbitDefaults(
 )
 
 internal fun radiusMetres(entered: String, defaults: OrbitDefaults): Double? =
-    one.aircast.mapspike.typedNumber(entered.ifBlank { defaults.radius.toString() })?.let { it * defaults.metresPerUnit }
+    one.aircast.map.typedNumber(entered.ifBlank { defaults.radius.toString() })?.let { it * defaults.metresPerUnit }
 
 internal fun orbitOpened(point: MapPoint, defaults: OrbitDefaults): OrbitCircle =
     OrbitCircle(TrackPoint(point.latitude, point.longitude), (radiusMetres("", defaults) ?: 0.0).coerceAtLeast(MINIMUM_CIRCLE_RADIUS_METRES), defaults.clockwise)
@@ -340,10 +340,10 @@ internal fun loiterEditOpened(offer: LoiterOffer, units: OrbitDefaults): LoiterE
     LoiterEdit(kotlin.math.abs(offer.defaultRadius) * units.metresPerUnit, offer.clockwise, units.unit, units.metresPerUnit)
 
 internal fun loiterRadiusField(typed: String?, edit: LoiterEdit): String =
-    typed?.takeIf { it.isBlank() || one.aircast.mapspike.typedNumber(it)?.times(edit.metresPerUnit) == edit.radiusMetres } ?: loiterEditNumber(edit)
+    typed?.takeIf { it.isBlank() || one.aircast.map.typedNumber(it)?.times(edit.metresPerUnit) == edit.radiusMetres } ?: loiterEditNumber(edit)
 
 internal fun loiterTyped(text: String, edit: LoiterEdit): LoiterEdit =
-    one.aircast.mapspike.typedNumber(text)?.takeIf { it > 0.0 }?.let { edit.copy(radiusMetres = it * edit.metresPerUnit) } ?: edit
+    one.aircast.map.typedNumber(text)?.takeIf { it > 0.0 }?.let { edit.copy(radiusMetres = it * edit.metresPerUnit) } ?: edit
 
 @Composable
 internal fun LoiterRadiusPanel(offer: LoiterOffer, units: OrbitDefaults, onRefused: (String) -> Unit, onDone: () -> Unit) {

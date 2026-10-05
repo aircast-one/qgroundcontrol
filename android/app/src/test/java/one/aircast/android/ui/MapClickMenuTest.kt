@@ -36,13 +36,13 @@ class MapClickMenuTest {
     fun `orbit at location opens a default circle on the tapped point that the radius field edits in app units`() {
         val feet = orbitDefaults(JSONObject("""{"orbitDefaultRadius":98.4252,"orbitRadiusUnit":"ft","orbitMetresPerUnit":0.3048,"orbitClockwise":true}"""))
         val opened = orbitOpened(MapPoint(47.4, 8.5), feet)
-        assertEquals(one.aircast.mapspike.TrackPoint(47.4, 8.5), opened.centre)
+        assertEquals(one.aircast.map.TrackPoint(47.4, 8.5), opened.centre)
         assertEquals(30.0, opened.radiusMetres, 1e-3)
         assertTrue(opened.clockwise)
         val edit = orbitEdit(opened.copy(radiusMetres = 15.24, clockwise = false), feet)
         assertEquals("50", loiterRadiusField(null, edit))
         assertEquals(30.48, loiterTyped("100", edit).radiusMetres, 1e-9)
-        assertEquals(one.aircast.mapspike.MINIMUM_CIRCLE_RADIUS_METRES, orbitOpened(MapPoint(47.4, 8.5), orbitDefaults(null)).radiusMetres, 0.0)
+        assertEquals(one.aircast.map.MINIMUM_CIRCLE_RADIUS_METRES, orbitOpened(MapPoint(47.4, 8.5), orbitDefaults(null)).radiusMetres, 0.0)
     }
 
     @Test

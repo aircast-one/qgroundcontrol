@@ -2,7 +2,7 @@ package one.aircast.android.ui
 
 import androidx.compose.ui.zIndex
 
-import one.aircast.mapspike.MapLayersSheet
+import one.aircast.map.MapLayersSheet
 
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -41,7 +41,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.graphics.Color
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -68,7 +68,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import one.aircast.android.R
-import one.aircast.mapspike.AircastSpace
+import one.aircast.map.AircastSpace
 
 private const val FLY_STORE = "fly"
 private const val FLY_VIEW_KEY = "view"
@@ -218,7 +218,7 @@ internal fun FlyScreen(
             val videoIsPip = view == FlyView.Map
             val mapShown = view == FlyView.Map || (mapIsPip && pipExpanded)
             val videoShown = view != FlyView.ThreeD && (view != FlyView.Map || videoPipShown(hasVideo, pipExpanded))
-            if (view == FlyView.ThreeD) one.aircast.mapspike.Viewer3DPane(Modifier.fillMaxSize())
+            if (view == FlyView.ThreeD) one.aircast.map.Viewer3DPane(Modifier.fillMaxSize())
             val pipCorner = Modifier.windowInsetsPadding(WindowInsets.statusBars)
                 .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, end = AircastSpace.s3)
 

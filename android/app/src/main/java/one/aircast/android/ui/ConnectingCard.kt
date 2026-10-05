@@ -33,8 +33,8 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.R
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.VEHICLES_VIEW
-import one.aircast.mapspike.vehicleChoices
+import one.aircast.map.VEHICLES_VIEW
+import one.aircast.map.vehicleChoices
 
 private const val CONNECTING_POLL_MS = 500L
 

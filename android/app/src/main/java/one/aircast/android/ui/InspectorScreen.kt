@@ -45,7 +45,7 @@ import androidx.compose.foundation.layout.Arrangement
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 private const val INSPECTOR_MESSAGES = "mavlinkInspector.activeSystem.messages"
 

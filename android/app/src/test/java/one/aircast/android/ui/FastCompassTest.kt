@@ -32,7 +32,7 @@ class FastCompassTest {
 
     @Test
     fun `the fly map centre stands in for the position when ticked, like APMSensorsComponent`() {
-        val choice = initialFastCompassChoice(withoutGcs, one.aircast.mapspike.TrackPoint(41.71, 44.79)).copy(enabled = true)
+        val choice = initialFastCompassChoice(withoutGcs, one.aircast.map.TrackPoint(41.71, 44.79)).copy(enabled = true)
         assertEquals(listOf<Any>(0.0, 0.0), fastCompassArguments(withoutGcs, choice))
         assertEquals(listOf<Any>(41.71, 44.79), fastCompassArguments(withoutGcs, choice.copy(useMap = true)))
         assertEquals(listOf<Any>(0.0, 0.0), fastCompassArguments(withoutGcs, choice.copy(useMap = true, mapPosition = null)))

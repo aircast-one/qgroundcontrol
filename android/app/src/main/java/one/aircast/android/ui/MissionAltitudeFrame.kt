@@ -21,11 +21,11 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.AltitudeModesView
-import one.aircast.mapspike.MISSION_CONTEXT
-import one.aircast.mapspike.altitudeModesPath
-import one.aircast.mapspike.altitudeModesView
-import one.aircast.mapspike.refusalFor
+import one.aircast.map.AltitudeModesView
+import one.aircast.map.MISSION_CONTEXT
+import one.aircast.map.altitudeModesPath
+import one.aircast.map.altitudeModesView
+import one.aircast.map.refusalFor
 import org.json.JSONObject
 
 private const val PLAN_VIEW_PATH = "view.plan"

@@ -22,7 +22,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import org.json.JSONArray
 import org.json.JSONObject
 

@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.res.painterResource
 import one.aircast.android.R
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import androidx.compose.foundation.layout.width
 import kotlinx.coroutines.isActive
 import androidx.compose.foundation.layout.padding
@@ -51,25 +51,25 @@ import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.truthy
-import one.aircast.mapspike.VehicleChoice
+import one.aircast.map.VehicleChoice
 import org.json.JSONObject
-import one.aircast.mapspike.CHOOSER_TITLE
-import one.aircast.mapspike.VEHICLES_VIEW
-import one.aircast.mapspike.FleetBridge
-import one.aircast.mapspike.VehicleBridge
-import one.aircast.mapspike.VehicleChoices
-import one.aircast.mapspike.activeVehicleTitle
-import one.aircast.mapspike.optText
-import one.aircast.mapspike.lostVehicles
-import one.aircast.mapspike.lostVehiclesText
-import one.aircast.mapspike.linkDistinguishes
-import one.aircast.mapspike.vehicleChoiceLine
-import one.aircast.mapspike.vehicleFlightModePath
+import one.aircast.map.CHOOSER_TITLE
+import one.aircast.map.VEHICLES_VIEW
+import one.aircast.map.FleetBridge
+import one.aircast.map.VehicleBridge
+import one.aircast.map.VehicleChoices
+import one.aircast.map.activeVehicleTitle
+import one.aircast.map.optText
+import one.aircast.map.lostVehicles
+import one.aircast.map.lostVehiclesText
+import one.aircast.map.linkDistinguishes
+import one.aircast.map.vehicleChoiceLine
+import one.aircast.map.vehicleFlightModePath
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.layout.Box
-import one.aircast.mapspike.vehicleTelemetryLine
-import one.aircast.mapspike.vehicleChoices
+import one.aircast.map.vehicleTelemetryLine
+import one.aircast.map.vehicleChoices
 
 internal data class MvAction(
     val id: String,
@@ -362,7 +362,7 @@ internal fun fleetPanelShown(vehicleCount: Int, panelEnabled: Boolean): Boolean 
 
 @Composable
 internal fun FleetPanel(modifier: Modifier = Modifier) {
-    val vehiclesJson by qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    val vehiclesJson by qgcPath(one.aircast.map.VEHICLES_VIEW)
     val choices = remember(vehiclesJson) { vehicleChoices(vehiclesJson) }
     val panelJson by qgcPath(MULTI_VEHICLE_PANEL)
     var refusal by remember { mutableStateOf<String?>(null) }

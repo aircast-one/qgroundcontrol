@@ -11,7 +11,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import one.aircast.android.R
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,7 +67,7 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 private const val LINKS_VIEW = "view.links"
 private const val LINKS_PATH = "links.linkConfigurations"

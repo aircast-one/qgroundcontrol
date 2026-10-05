@@ -60,7 +60,7 @@ import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMain
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 private const val LOG_ROOT = "logDownload"
 private const val LOG_MODEL = "logDownload.model"

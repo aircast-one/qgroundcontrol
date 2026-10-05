@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
-import one.aircast.mapspike.TrackPoint
+import one.aircast.map.TrackPoint
 import org.json.JSONObject
 
 internal const val PLAN_TRANSFORM_VIEW = "view.planTransform"
@@ -50,7 +50,7 @@ internal fun transformUnit(view: JSONObject?, axis: String): DistanceUnit =
         ?.takeIf { it.metresPerUnit.isFinite() && it.metresPerUnit > 0 } ?: METRES
 
 internal fun offsetArgs(east: String, north: String, up: String, horizontal: DistanceUnit, vertical: DistanceUnit, takeoff: Boolean, landing: Boolean): List<Any>? {
-    val values = listOf(east to horizontal, north to horizontal, up to vertical).map { (typed, unit) -> one.aircast.mapspike.typedNumber(typed.ifBlank { "0" })?.times(unit.metresPerUnit) }
+    val values = listOf(east to horizontal, north to horizontal, up to vertical).map { (typed, unit) -> one.aircast.map.typedNumber(typed.ifBlank { "0" })?.times(unit.metresPerUnit) }
     return values.takeIf { list -> list.all { it != null && it.isFinite() } }?.let { list -> list.map { it!! } + listOf(takeoff, landing) }
 }
 
@@ -61,7 +61,7 @@ private fun NumberField(label: String, value: String, onChange: (String) -> Unit
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
-        isError = value.isNotBlank() && one.aircast.mapspike.typedNumber(value) == null,
+        isError = value.isNotBlank() && one.aircast.map.typedNumber(value) == null,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -141,7 +141,7 @@ fun PlanTransformDialog(onDismiss: () -> Unit) {
                 CheckRow("Also move takeoff items", rotateTakeoff) { rotateTakeoff = it }
                 CheckRow("Also move landing items", rotateLanding) { rotateLanding = it }
                 Text("Note: Complex items are rotated by moving their reference coordinate: their geometry and orientation are not changed.", style = note)
-                val rotation = one.aircast.mapspike.typedNumber(degrees)
+                val rotation = one.aircast.map.typedNumber(degrees)
                 OutlinedButton(
                     onClick = { rotation?.let { apply(ROTATE_MISSION, listOf(it, rotateTakeoff, rotateLanding)) } },
                     enabled = home != null && rotation != null,

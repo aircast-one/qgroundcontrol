@@ -38,7 +38,7 @@ import one.aircast.android.bridge.qgcDouble
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.settingControl
 import androidx.compose.material3.FilterChip
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 import org.json.JSONObject
 
 internal const val FIRST_RUN_PATH = "view.firstRun"

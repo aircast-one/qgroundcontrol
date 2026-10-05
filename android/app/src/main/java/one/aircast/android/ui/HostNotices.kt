@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal fun hostNoticesPath(acknowledgedThrough: Long): String = "view.hostNotices($acknowledgedThrough)"
 

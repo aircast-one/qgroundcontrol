@@ -2,7 +2,7 @@ package one.aircast.android.ui
 
 import org.json.JSONArray
 import org.json.JSONObject
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal const val DEFAULT_PLAN_NAME = "mission.plan"
 internal const val DEFAULT_KML_NAME = "mission.kml"

@@ -65,8 +65,8 @@ internal fun GuidedValuePanel(
             GuidedPanel.shown++
             onDispose { GuidedPanel.shown-- }
         }
-        val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
-        val vehicles = remember(vehiclesJson) { one.aircast.mapspike.vehicleChoices(vehiclesJson) }
+        val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.map.VEHICLES_VIEW)
+        val vehicles = remember(vehiclesJson) { one.aircast.map.vehicleChoices(vehiclesJson) }
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -118,7 +118,7 @@ internal fun guidedStepped(value: Double, delta: Int, minimum: Double, maximum: 
     guidedRounded((value + delta).coerceIn(minimum, maximum), unit)
 
 internal fun guidedTyped(text: String, minimum: Double, maximum: Double, unit: String): Double? =
-    one.aircast.mapspike.typedNumber(text)?.let { guidedRounded(it.coerceIn(minimum, maximum), unit) }
+    one.aircast.map.typedNumber(text)?.let { guidedRounded(it.coerceIn(minimum, maximum), unit) }
 
 internal fun guidedValueText(value: Double, unit: String): String =
     String.format(Locale.US, "%.${guidedDecimals(unit)}f", value)

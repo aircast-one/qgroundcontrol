@@ -88,8 +88,8 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.FactSlider
 import one.aircast.android.bridge.Qgc
-import one.aircast.mapspike.aircast
-import one.aircast.mapspike.optText
+import one.aircast.map.aircast
+import one.aircast.map.optText
 import org.json.JSONObject
 
 private const val SETTINGS_VIEW = "view.settings"
@@ -845,7 +845,7 @@ internal const val FIELD_LABEL_BUDGET = 40
 internal const val PAIRED_OPTION_BUDGET = 16
 internal const val PAIRED_UNITS_BUDGET = 6
 
-internal fun sentenceCase(label: String): String = one.aircast.mapspike.sentenceCase(label)
+internal fun sentenceCase(label: String): String = one.aircast.map.sentenceCase(label)
 
 private val SECONDS = setOf("s", "sec", "secs", "second", "seconds")
 

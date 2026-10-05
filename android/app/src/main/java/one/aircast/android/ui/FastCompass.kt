@@ -14,9 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import one.aircast.mapspike.FlightMapPosition
-import one.aircast.mapspike.TrackPoint
-import one.aircast.mapspike.optText
+import one.aircast.map.FlightMapPosition
+import one.aircast.map.TrackPoint
+import one.aircast.map.optText
 import org.json.JSONObject
 import java.util.Locale
 

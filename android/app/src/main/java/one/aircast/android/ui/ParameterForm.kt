@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Surface
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.fillMaxSize
 import one.aircast.android.bridge.FactSlider
@@ -35,7 +35,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.Qgc
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 internal data class ParameterRows(
     val title: String,

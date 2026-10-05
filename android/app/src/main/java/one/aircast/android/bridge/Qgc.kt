@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.update
 import org.json.JSONArray
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
-import one.aircast.mapspike.optText
+import one.aircast.map.optText
 
 data class FactSlider(val from: Float, val to: Float, val decimals: Int, val hint: String)
 
@@ -75,7 +75,7 @@ data class Fact(
 }
 
 internal fun labelCase(note: String): String =
-    if (!note.trimEnd().endsWith('.') && note.split(' ').size <= 4) one.aircast.mapspike.sentenceCase(note) else note
+    if (!note.trimEnd().endsWith('.') && note.split(' ').size <= 4) one.aircast.map.sentenceCase(note) else note
 
 private fun restates(note: String, label: String): Boolean =
     note.trimEnd('.').lowercase().let { it.isNotEmpty() && label.isNotEmpty() && (label.lowercase().startsWith(it) || it.startsWith(label.lowercase()) || it.endsWith(" " + label.lowercase()) || label.lowercase().endsWith(" $it")) }

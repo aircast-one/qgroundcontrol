@@ -3,7 +3,7 @@ package one.aircast.android
 import android.app.Activity
 import android.view.View
 import java.io.File
-import one.aircast.mapspike.MapTileHost
+import one.aircast.map.MapTileHost
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
 

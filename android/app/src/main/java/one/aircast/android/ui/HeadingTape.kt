@@ -24,7 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import one.aircast.mapspike.aircast
+import one.aircast.map.aircast
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
