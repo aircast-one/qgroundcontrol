@@ -1,17 +1,10 @@
 package one.aircast.android.ui
 
-import androidx.compose.ui.text.style.TextAlign
-
-import androidx.compose.ui.Alignment
-
 import androidx.compose.foundation.shape.CircleShape
-
 import androidx.compose.foundation.layout.widthIn
-
-import androidx.compose.foundation.layout.FlowRow
-
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +25,8 @@ import one.aircast.mapspike.optText
 import org.json.JSONObject
 
 internal const val CREATE_FROM_TEMPLATE = "plan.createFromTemplate"
+private const val NO_TEMPLATE = "No Template"
+private const val SET_POSITION_PROMPT = "Click in map to set position"
 private const val DISABLED_ALPHA = 0.5f
 private val TEMPLATE_PANEL_WIDTH = 380.dp
 
@@ -53,7 +48,6 @@ internal fun planTemplates(view: JSONObject?): PlanTemplatesState? =
         )
     }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlanTemplates(planStatus: JSONObject?, centre: Pair<Double, Double>?, onRefused: (String) -> Unit, modifier: Modifier = Modifier) {
     val state = planTemplates(planStatus)?.takeIf { it.show } ?: return
@@ -63,16 +57,16 @@ fun PlanTemplates(planStatus: JSONObject?, centre: Pair<Double, Double>?, onRefu
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = MaterialTheme.shapes.extraLarge,
     ) {
-        Column(
-            Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("No mission yet", style = MaterialTheme.typography.titleLarge)
-            Text(touchWording(state.prompt), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+        Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                templatePrompt(state.prompt),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 state.names.forEach { name ->
                     Surface(
@@ -88,10 +82,15 @@ fun PlanTemplates(planStatus: JSONObject?, centre: Pair<Double, Double>?, onRefu
                         color = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     ) {
-                        Text(sentenceCase(name), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
+                        Text(templateLabel(name), style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     }
                 }
             }
         }
     }
 }
+
+internal fun templateLabel(name: String): String = if (name == NO_TEMPLATE) "Blank mission" else sentenceCase(name)
+
+internal fun templatePrompt(prompt: String): String =
+    if (prompt == SET_POSITION_PROMPT) "Tap the map to set home, or start from a template" else touchWording(prompt)

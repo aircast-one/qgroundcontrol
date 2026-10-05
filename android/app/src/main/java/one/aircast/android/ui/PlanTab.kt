@@ -69,7 +69,7 @@ internal fun applyAltitudePrompt(view: org.json.JSONObject?): AltitudePrompt? =
     view?.optJSONObject("applyAltitudePrompt")?.let { AltitudePrompt(it.optString("title"), it.optString("text")) }
 
 @Composable
-fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
+fun PlanTab(modifier: Modifier = Modifier) {
     var notice by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<PlanConfirm?>(null) }
@@ -200,11 +200,10 @@ fun PlanTab(modifier: Modifier = Modifier, onBack: () -> Unit = {}) {
             header = { upload ->
                 Column {
                     Row(
-                        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 4.dp, end = 4.dp),
+                        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 16.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        IconButton(onClick = onBack) { Icon(painterResource(R.drawable.ic_arrow_back), "Back to Fly") }
                         val title = planTitle(files.documentName())
                         Column(Modifier.weight(1f)) {
                             Text(

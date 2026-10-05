@@ -23,4 +23,12 @@ class PlanTemplatesTest {
         assertEquals("Tap in map to set position", touchWording("Click in map to set position"))
         assertEquals("Drag to move home position. Tap to set new position.", touchWording("Drag to move home position. Click to set new position."))
     }
+
+    @Test
+    fun `the blank choice and the first prompt read as one first step`() {
+        assertEquals("Blank mission", templateLabel("No Template"))
+        assertEquals("Corridor scan", templateLabel("Corridor Scan"))
+        assertEquals("Tap the map to set home, or start from a template", templatePrompt("Click in map to set position"))
+        assertEquals("Drag to move home position. Tap to set new position.", templatePrompt("Drag to move home position. Click to set new position."))
+    }
 }

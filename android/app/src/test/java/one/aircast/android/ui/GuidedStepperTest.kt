@@ -36,4 +36,18 @@ class GuidedStepperTest {
         assertNull(guidedTyped("x", 1.0, 120.0, "m"))
         assertNull(guidedBounds(null, 10.0))
     }
+
+    @Test
+    fun `the reading carries its unit on one line`() {
+        assertEquals("10 ft", guidedReading(10.0, "ft"))
+        assertEquals("12.5 m", guidedReading(12.5, "m"))
+        assertEquals("3", guidedReading(3.0, ""))
+    }
+
+    @Test
+    fun `the panel names the vehicle only when there is a choice of vehicles`() {
+        assertNull(guidedVehicle(1, "Quadrotor 128"))
+        assertEquals("Quadrotor 128", guidedVehicle(2, "Quadrotor 128"))
+        assertNull(guidedVehicle(2, null))
+    }
 }

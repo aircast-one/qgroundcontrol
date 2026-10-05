@@ -506,7 +506,7 @@ fun AircastShell(hostView: android.view.View?) {
                     when (tab) {
                         Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
                         Tab.Setup -> Surface(Modifier.fillMaxSize()) { SetupScreen() }
-                        Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab(onBack = { tab = Tab.Fly }) }
+                        Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab() }
                         Tab.Analyze -> AnalyzeScreen(
                             page = analyzePage,
                             onSelect = { analyzePage = it },

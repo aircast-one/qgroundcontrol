@@ -73,13 +73,15 @@ private fun NoVideoArea(underFlyChrome: Boolean, video: VideoReading?, linksToSe
         val chrome = with(LocalDensity.current) {
             when {
                 !underFlyChrome -> Modifier
-                !flyIsPortrait() -> Modifier.padding(horizontal = MAP_PIP_SIZE + AircastSpace.s3)
-                else -> Modifier.padding(
-                    start = (FlyChrome.instrumentsRightPx - areaInRoot.x).coerceAtLeast(0f).toDp() + AircastSpace.s3,
-                    end = AircastSpace.s3,
-                    top = (FlyChrome.controlsBottomPx - areaInRoot.y).coerceAtLeast(0f).toDp() + AircastSpace.s2,
-                    bottom = FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3,
-                )
+                else -> {
+                    val portrait = flyIsPortrait()
+                    Modifier.padding(
+                        start = (FlyChrome.instrumentsRightPx - areaInRoot.x).coerceAtLeast(0f).toDp() + AircastSpace.s3,
+                        end = if (portrait) AircastSpace.s3 else MAP_PIP_SIZE + AircastSpace.s3,
+                        top = (FlyChrome.controlsBottomPx - areaInRoot.y).coerceAtLeast(0f).toDp() + AircastSpace.s2,
+                        bottom = if (portrait) FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3 else AircastSpace.s3,
+                    )
+                }
             }
         }
         BoxWithConstraints(chrome.fillMaxSize()) {

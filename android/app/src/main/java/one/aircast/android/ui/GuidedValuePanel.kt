@@ -2,6 +2,10 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -22,6 +26,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,26 +60,47 @@ internal fun GuidedValuePanel(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.extraLarge,
     ) {
+    DisposableEffect(Unit) {
+        GuidedPanel.open = true
+        onDispose { GuidedPanel.open = false }
+    }
+    val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.mapspike.VEHICLES_VIEW)
+    val vehicles = remember(vehiclesJson) { one.aircast.mapspike.vehicleChoices(vehiclesJson) }
     Column(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
-        if (sentence.isNotBlank()) {
-            Text(sentence, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
-        readinessWarning(remember(flyJson) { flyState(flyJson) })?.let { warning ->
-            Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
-                Text(warning, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(12.dp))
+        Column(
+            Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            guidedVehicle(vehicles.choices.size, vehicles.active?.name)?.let {
+                Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
+            if (sentence.isNotBlank()) {
+                Text(sentence, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
+            readinessWarning(remember(flyJson) { flyState(flyJson) })?.let { warning ->
+                Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
+                    Text(warning, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(12.dp))
+                }
+            }
+            content()
         }
-        content()
         SlideToConfirm(label = slideLabel(commitLabel), enabled = commitEnabled, onConfirm = onCommit)
         TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
     }
     }
 }
+
+internal object GuidedPanel {
+    var open by mutableStateOf(false)
+}
+
+internal fun guidedVehicle(vehicleCount: Int, activeName: String?): String? =
+    activeName?.takeIf { vehicleCount >= 2 && it.isNotBlank() }
 
 private val METRIC_UNITS = setOf("m", "m/s", "km/h")
 
@@ -120,13 +146,17 @@ internal fun GuidedStepper(
 ) {
     var typing by remember { mutableStateOf<String?>(null) }
     val focusManager = LocalFocusManager.current
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+    val narrow = maxWidth < GUIDED_STEPPER_WIDE
+    val reading: @Composable () -> Unit = {
+        Column {
             val typed = typing
             if (typed == null) {
                 Text(
-                    guidedValueText(value, unit),
-                    style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
+                    guidedReading(value, unit),
+                    style = (if (narrow) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displaySmall).copy(fontFeatureSettings = "tnum"),
+                    maxLines = 1,
+                    softWrap = false,
                     modifier = Modifier.clickable { typing = guidedValueText(value, unit) },
                 )
             } else {
@@ -145,8 +175,10 @@ internal fun GuidedStepper(
                     modifier = Modifier.width(160.dp).focusRequester(focus),
                 )
             }
-            Text(listOf(label, unit).filter { it.isNotBlank() }.joinToString(" "), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (label.isNotBlank()) Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+    val steps: @Composable () -> Unit = {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(-1 to "−", 1 to "+").forEach { (delta, sign) ->
                 FilledTonalIconButton(
@@ -157,4 +189,21 @@ internal fun GuidedStepper(
             }
         }
     }
+    if (narrow) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            reading()
+            steps()
+        }
+    } else {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { reading() }
+            steps()
+        }
+    }
+    }
 }
+
+private val GUIDED_STEPPER_WIDE = 220.dp
+
+internal fun guidedReading(value: Double, unit: String): String =
+    listOf(guidedValueText(value, unit), unit).filter { it.isNotBlank() }.joinToString(" ")

@@ -500,7 +500,7 @@ internal fun MapSpikeScreen(
     Column(Modifier.fillMaxSize()) {
     val uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems)
     val uploadEnabled = planHasItems && !planOffline && !planSyncing
-    header?.invoke(PlanUpload(enabled = uploadEnabled, emphasised = !uploadBlocked, label = uploadText, shown = !planOffline, onClick = upload))
+    header?.invoke(PlanUpload(enabled = uploadEnabled, emphasised = uploadEnabled && !uploadBlocked, label = uploadText, shown = !planOffline, onClick = upload))
     Box(Modifier.fillMaxWidth().weight(1f)) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
@@ -830,7 +830,7 @@ internal fun MapSpikeScreen(
                     }
 
                     if (header == null && !planOffline) {
-                        PlanUploadButton(emphasised = !uploadBlocked, enabled = uploadEnabled, onClick = upload, contentPadding = PRIMARY_PADDING) { Text(uploadText) }
+                        PlanUploadButton(emphasised = uploadEnabled && !uploadBlocked, enabled = uploadEnabled, onClick = upload, contentPadding = PRIMARY_PADDING) { Text(uploadText) }
                     }
 
                     uploadAsk?.let { gate ->
@@ -1551,7 +1551,7 @@ private fun MapTypeMenu(onStyle: (String) -> Unit) {
                 listed = withContext(Dispatchers.Default) { mapTypes(runCatching { JSONObject(QGCBridge.get(MAP_TYPES_VIEW)) }.getOrNull()) }
                 open = true
             }
-        }) { Text("Map") }
+        }) { Text("Map type") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             listed?.types?.forEach { type ->
                 DropdownMenuItem(
@@ -1639,7 +1639,7 @@ fun CenterMenu(
         ?.takeIf { isPlottable(it.latitude, it.longitude) }
         ?.let { TrackPoint(it.latitude, it.longitude) }
     Box {
-        FilledTonalButton(onClick = { open = true }) { Text("Center") }
+        FilledTonalButton(onClick = { open = true }) { Text("Center map") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             missionPoints?.let { points ->
                 DropdownMenuItem(text = { Text("Mission") }, onClick = { open = false; onFit(points) })
