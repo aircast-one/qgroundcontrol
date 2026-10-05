@@ -629,24 +629,26 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         if (!simple && !side) TelemetryRow(valuesShown = armed)
 
         if (side) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (pending == null) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 deck.forEach { (id, primary) ->
                     entries.firstOrNull { it.id == id }?.let { entry -> DeckButton(entry, primary, Modifier.fillMaxWidth()) }
                 }
                 DeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false, modifier = Modifier.fillMaxWidth())
             }
             TelemetryRow(columns = 1, valuesShown = armed)
-        } else if (simple) SimpleDeck(deck, entries) { showMore = true } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            deck.forEach { (id, primary) ->
-                entries.firstOrNull { it.id == id }?.let { entry ->
-                    DeckButton(entry, primary, Modifier.weight(1f))
+        } else if (pending == null) {
+            if (simple) SimpleDeck(deck, entries) { showMore = true } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                deck.forEach { (id, primary) ->
+                    entries.firstOrNull { it.id == id }?.let { entry ->
+                        DeckButton(entry, primary, Modifier.weight(1f))
+                    }
                 }
+                DeckButton(
+                    DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true },
+                    primary = false,
+                    modifier = if (deck.isEmpty()) Modifier.weight(1f) else Modifier.width(64.dp),
+                )
             }
-            DeckButton(
-                DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true },
-                primary = false,
-                modifier = if (deck.isEmpty()) Modifier.weight(1f) else Modifier.width(64.dp),
-            )
         }
     }
 

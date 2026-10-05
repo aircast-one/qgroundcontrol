@@ -123,3 +123,34 @@ fun SlideToConfirm(
         }
     }
 }
+
+private const val HOLD_TRACK_FILL_ALPHA = 0.45f
+
+internal fun holdLabel(name: String): String = name.ifBlank { null }?.let { "Hold to ${it.lowercase()}" } ?: "Hold to confirm"
+
+@Composable
+fun HoldToConfirm(
+    label: String,
+    modifier: Modifier = Modifier,
+    destructive: Boolean = false,
+    enabled: Boolean = true,
+    onConfirm: () -> Unit,
+) {
+    val accent = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val track = if (destructive) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+    val onTrack = if (destructive) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
+    val (progress, gesture) = rememberHold(label, enabled, onTap = {}, onHold = onConfirm, label = label)
+    Box(
+        modifier
+            .fillMaxWidth()
+            .height(TRACK_HEIGHT)
+            .alpha(if (enabled) 1f else DISABLED_SLIDE_ALPHA)
+            .clip(CircleShape)
+            .background(track)
+            .then(gesture),
+        contentAlignment = Alignment.Center,
+    ) {
+        HoldFill(progress, accent.copy(alpha = HOLD_TRACK_FILL_ALPHA), Modifier.align(Alignment.CenterStart))
+        Text(text = label, style = MaterialTheme.typography.labelLarge, color = onTrack)
+    }
+}

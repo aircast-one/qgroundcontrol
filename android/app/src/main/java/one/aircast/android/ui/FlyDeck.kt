@@ -81,15 +81,15 @@ internal fun holdTakeoffHeight(takeoff: GuidedTakeoff?): Double? =
     takeoff?.takeIf(::takeoffRangeUsable)?.initial
 
 @Composable
-private fun DeckPress(entry: DeckEntry, content: @Composable () -> Unit) {
+internal fun rememberHold(key: Any, enabled: Boolean, onTap: () -> Unit, onHold: (() -> Unit)?, label: String): Pair<Float, Modifier> {
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
-    val tap by rememberUpdatedState(entry.onClick)
-    val hold by rememberUpdatedState(entry.onHold)
+    val tap by rememberUpdatedState(onTap)
+    val hold by rememberUpdatedState(onHold)
     val gesture = when {
-        entry.onHold != null && entry.enabled -> Modifier
-            .pointerInput(entry.id) {
+        onHold != null && enabled -> Modifier
+            .pointerInput(key) {
                 detectTapGestures(onPress = {
                     val pressedAt = System.nanoTime()
                     val fill = scope.launch {
@@ -108,20 +108,23 @@ private fun DeckPress(entry: DeckEntry, content: @Composable () -> Unit) {
             .semantics(mergeDescendants = true) {
                 role = Role.Button
                 onClick { tap(); true }
-                onLongClick(label = entry.label) { hold?.invoke(); true }
+                onLongClick(label = label) { hold?.invoke(); true }
             }
-        else -> Modifier.clickable(enabled = entry.enabled, role = Role.Button, onClick = entry.onClick)
+        else -> Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onTap)
     }
+    return progress.value to gesture
+}
+
+@Composable
+internal fun HoldFill(progress: Float, color: Color, modifier: Modifier = Modifier) {
+    if (progress > 0f) Box(modifier.fillMaxHeight().fillMaxWidth(progress).background(color))
+}
+
+@Composable
+private fun DeckPress(entry: DeckEntry, content: @Composable () -> Unit) {
+    val (progress, gesture) = rememberHold(entry.id, entry.enabled, entry.onClick, entry.onHold, entry.label)
     Box(Modifier.fillMaxSize().then(gesture), contentAlignment = Alignment.Center) {
-        if (progress.value > 0f) {
-            Box(
-                Modifier
-                    .align(Alignment.CenterStart)
-                    .fillMaxHeight()
-                    .fillMaxWidth(progress.value)
-                    .background(LocalContentColor.current.copy(alpha = DECK_HOLD_FILL_ALPHA)),
-            )
-        }
+        HoldFill(progress, LocalContentColor.current.copy(alpha = DECK_HOLD_FILL_ALPHA), Modifier.align(Alignment.CenterStart))
         content()
     }
 }

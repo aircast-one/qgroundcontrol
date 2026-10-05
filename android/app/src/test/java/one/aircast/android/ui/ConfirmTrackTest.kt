@@ -47,4 +47,16 @@ class ConfirmTrackTest {
         org.junit.Assert.assertNull(landFrom(org.json.JSONObject("""{"items":[{"missing":true,"value":"\u2014","units":""}]}""")))
         org.junit.Assert.assertNull(landFrom(null))
     }
+
+    @Test
+    fun `starting a mission names the mission the drone will fly`() {
+        val summary = org.json.JSONObject("""{"rows":[{"id":"distance","label":"Distance","value":"1.40 km"},{"id":"time","label":"Time","value":"6 min"}]}""")
+        val uploaded = org.json.JSONObject("""{"hasMissionItems":true,"dirty":false,"file":"ridge.plan","status":"Uploaded \u00b7 12 items"}""")
+        assertEquals(MissionIdentity("ridge", "Uploaded \u00b7 12 items \u00b7 1.40 km \u00b7 6 min", null), missionIdentity(uploaded, summary))
+        val edited = org.json.JSONObject("""{"hasMissionItems":true,"dirty":true,"file":"ridge.plan","status":"Edited \u00b7 13 items"}""")
+        assertEquals(MISSION_ON_DRONE, missionIdentity(edited, summary).title)
+        assertTrue(missionIdentity(edited, summary).warning!!.startsWith("ridge has changes"))
+        assertEquals(MISSION_ON_DRONE, missionIdentity(org.json.JSONObject("""{"hasMissionItems":false}"""), summary).title)
+        assertEquals("Hold to start mission", holdLabel("Start mission"))
+    }
 }
