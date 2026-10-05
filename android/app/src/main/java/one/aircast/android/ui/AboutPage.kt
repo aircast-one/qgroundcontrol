@@ -30,7 +30,7 @@ internal fun AboutPage(links: List<HelpLink>, modifier: Modifier = Modifier) {
             modifier = Modifier.clickable(enabled = advancedView != null) { toggleAdvancedUi(advancedUiShown(advancedView)) },
         )
         SectionHeader("Support")
-        links.forEach { link ->
+        aboutLinks(links).forEach { link ->
             ListItem(
                 headlineContent = { Text(link.name) },
                 supportingContent = { Text(link.host, color = MaterialTheme.colorScheme.primary) },
@@ -41,6 +41,10 @@ internal fun AboutPage(links: List<HelpLink>, modifier: Modifier = Modifier) {
         }
     }
 }
+
+internal val PRIVACY_POLICY_LINK = HelpLink("Privacy policy", "https://aircast.one/privacy/android", "aircast.one")
+
+internal fun aboutLinks(links: List<HelpLink>): List<HelpLink> = links + PRIVACY_POLICY_LINK
 
 internal fun qgcVersion(): String = qgcVersion(BuildConfig.VERSION_NAME, Process.is64Bit())
 

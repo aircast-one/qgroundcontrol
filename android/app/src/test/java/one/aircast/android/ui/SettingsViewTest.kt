@@ -240,4 +240,11 @@ class SettingsViewTest {
         assertTrue(!pageMatches(telemetry, "offline"))
         assertTrue(!pageMatches(telemetry, " "))
     }
+
+    @Test
+    fun `about lists the privacy policy after the support links`() {
+        val guide = HelpLink("QGroundControl User Guide", "https://docs.qgroundcontrol.com", "docs.qgroundcontrol.com")
+        assertEquals(listOf(guide, PRIVACY_POLICY_LINK), aboutLinks(listOf(guide)))
+        assertEquals("https://aircast.one/privacy/android", aboutLinks(emptyList()).single().url)
+    }
 }
