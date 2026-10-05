@@ -25,6 +25,17 @@ fun qgcPath(path: String): State<JSONObject?> {
 }
 
 @Composable
+fun qgcPathHoldingLast(path: String): State<JSONObject?> {
+    val current = qgcPath(path)
+    val last = remember { LastReading() }
+    return remember(current) { derivedStateOf { (current.value ?: last.value).also { last.value = it } } }
+}
+
+private class LastReading {
+    var value: JSONObject? = null
+}
+
+@Composable
 fun qgcValue(path: String): State<Any?> {
     val json by qgcPath(path)
     return remember(path) { derivedStateOf { json?.opt("value") } }

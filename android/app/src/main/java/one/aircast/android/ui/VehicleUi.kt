@@ -190,7 +190,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     var displays by remember(vehicleClass) { mutableStateOf(readDisplays(context, vehicleClass)) }
     var styling by remember { mutableStateOf<Instrument?>(null) }
     LaunchedEffect(vehicleClass) { flyScreen.layout.valueSize = readValueSize(context, vehicleClass) }
-    val view by qgcPath(instrumentsPath(chosen, vehicleClass))
+    val view by one.aircast.android.bridge.qgcPathHoldingLast(instrumentsPath(chosen, vehicleClass))
     val gcsJson by qgcPath(GCS_POSITION)
     val shown = remember(view, gcsJson, chosen) {
         (if (showsInstruments(chosen)) instruments(view) else emptyList()) + operatorDistance(gcsJson)
@@ -198,8 +198,6 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     val stateJson by qgcPath(FLY_STATE)
     val stale = remember(stateJson) { flyState(stateJson)?.staleNotice.orEmpty() }
     val silent = stale.isNotBlank()
-
-    if (shown.isEmpty()) return
 
     val change: (List<String>) -> Unit = { next ->
         chosen = next
@@ -259,6 +257,8 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
             onDismiss = { flyScreen.choosingReadings = false },
         )
     }
+
+    if (shown.isEmpty()) return
 
     androidx.compose.animation.AnimatedVisibility(
         visible = valuesShown,

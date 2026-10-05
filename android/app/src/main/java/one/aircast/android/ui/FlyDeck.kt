@@ -170,7 +170,7 @@ internal fun SimpleTiles(modifier: Modifier = Modifier) {
     val edits = flyScreen.instrumentEdits
     val chosen = remember(vehicleClass, edits) { readChosen(context, vehicleClass) }
     val displays = remember(vehicleClass, edits) { readDisplays(context, vehicleClass) }
-    val view by qgcPath(instrumentsPath(chosen, vehicleClass))
+    val view by one.aircast.android.bridge.qgcPathHoldingLast(instrumentsPath(chosen, vehicleClass))
     val shown = remember(view, chosen) { if (showsInstruments(chosen)) instruments(view).take(SIMPLE_TILE_COUNT) else emptyList() }
     val flyJson by qgcPath(FLY_STATE)
     val armed = remember(flyJson) { flyState(flyJson)?.armed == true }
