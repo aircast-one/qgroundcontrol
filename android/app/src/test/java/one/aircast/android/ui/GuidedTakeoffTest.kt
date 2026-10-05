@@ -47,4 +47,13 @@ class GuidedTakeoffTest {
         assertEquals("view.guidedTakeoff(10.00)", guidedTakeoffPath(10.0))
         assertFalse(guidedTakeoffPath(10.0).contains(","))
     }
+
+    @Test
+    fun `holding Takeoff climbs to the default height and refuses a vehicle with no range`() {
+        fun takeoff(initial: Double?, minimum: Double?, maximum: Double?) = GuidedTakeoff("Takeoff altitude", "m", initial, minimum, maximum, "", 10.0)
+        assertEquals(10.0, holdTakeoffHeight(takeoff(10.0, 3.0, 121.0))!!, 0.0)
+        assertNull(holdTakeoffHeight(takeoff(10.0, null, 121.0)))
+        assertNull(holdTakeoffHeight(takeoff(10.0, 5.0, 5.0)))
+        assertNull(holdTakeoffHeight(null))
+    }
 }

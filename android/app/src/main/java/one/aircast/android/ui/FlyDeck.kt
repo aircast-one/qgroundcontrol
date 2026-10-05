@@ -1,6 +1,27 @@
 package one.aircast.android.ui
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,8 +68,63 @@ internal class DeckEntry(
     @DrawableRes val icon: Int,
     val enabled: Boolean,
     val warning: Boolean = false,
+    val onHold: (() -> Unit)? = null,
     val onClick: () -> Unit,
 )
+
+internal const val HOLD_TO_TAKE_OFF = "Hold to take off"
+internal const val DECK_HOLD_MS = 1500
+private const val DECK_HOLD_FILL_ALPHA = 0.3f
+private const val NANOS_PER_MILLI = 1_000_000L
+
+internal fun holdTakeoffHeight(takeoff: GuidedTakeoff?): Double? =
+    takeoff?.takeIf(::takeoffRangeUsable)?.initial
+
+@Composable
+private fun DeckPress(entry: DeckEntry, content: @Composable () -> Unit) {
+    val progress = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
+    val tap by rememberUpdatedState(entry.onClick)
+    val hold by rememberUpdatedState(entry.onHold)
+    val gesture = when {
+        entry.onHold != null && entry.enabled -> Modifier
+            .pointerInput(entry.id) {
+                detectTapGestures(onPress = {
+                    val pressedAt = System.nanoTime()
+                    val fill = scope.launch {
+                        progress.animateTo(1f, tween(DECK_HOLD_MS, easing = LinearEasing))
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        hold?.invoke()
+                    }
+                    val released = tryAwaitRelease()
+                    val fired = fill.isCompleted && !fill.isCancelled
+                    fill.cancel()
+                    progress.snapTo(0f)
+                    val quick = (System.nanoTime() - pressedAt) / NANOS_PER_MILLI < viewConfiguration.longPressTimeoutMillis
+                    if (released && !fired && quick) tap()
+                })
+            }
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                onClick { tap(); true }
+                onLongClick(label = entry.label) { hold?.invoke(); true }
+            }
+        else -> Modifier.clickable(enabled = entry.enabled, role = Role.Button, onClick = entry.onClick)
+    }
+    Box(Modifier.fillMaxSize().then(gesture), contentAlignment = Alignment.Center) {
+        if (progress.value > 0f) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .fillMaxHeight()
+                    .fillMaxWidth(progress.value)
+                    .background(LocalContentColor.current.copy(alpha = DECK_HOLD_FILL_ALPHA)),
+            )
+        }
+        content()
+    }
+}
 
 internal fun deckIds(shown: Set<String>, armed: Boolean): List<Pair<String, Boolean>> {
     val flying = armed && ("rtl" in shown || "land" in shown)
@@ -61,19 +137,19 @@ internal fun deckIds(shown: Set<String>, armed: Boolean): List<Pair<String, Bool
 @Composable
 internal fun DeckButton(entry: DeckEntry, primary: Boolean, modifier: Modifier = Modifier) {
     Surface(
-        onClick = entry.onClick,
-        enabled = entry.enabled,
         modifier = modifier.height(DECK_BUTTON_HEIGHT).alpha(if (entry.enabled) 1f else DISABLED_ALPHA),
         shape = MaterialTheme.shapes.large,
         color = if (primary) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = if (primary) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
     ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(AircastSpace.s1, Alignment.CenterVertically),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Icon(painterResource(entry.icon), null, Modifier.size(DECK_ICON_SIZE))
-            Text(entry.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        DeckPress(entry) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(AircastSpace.s1, Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(painterResource(entry.icon), null, Modifier.size(DECK_ICON_SIZE))
+                Text(entry.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+            }
         }
     }
 }
@@ -154,19 +230,19 @@ internal fun SimpleDeck(deck: List<Pair<String, Boolean>>, entries: List<DeckEnt
 @Composable
 private fun SimpleButton(entry: DeckEntry, primary: Boolean, modifier: Modifier, iconOnly: Boolean = false) {
     Surface(
-        onClick = entry.onClick,
-        enabled = entry.enabled,
         modifier = modifier.alpha(if (entry.enabled) 1f else DISABLED_ALPHA),
         shape = MaterialTheme.shapes.extraLarge,
         color = if (primary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
         contentColor = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(painterResource(entry.icon), if (iconOnly) entry.label else null, Modifier.size(if (primary) 36.dp else 32.dp))
-            if (!iconOnly) Text(entry.label, style = if (primary) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge, maxLines = 1)
+        DeckPress(entry) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(entry.icon), if (iconOnly) entry.label else null, Modifier.size(if (primary) 36.dp else 32.dp))
+                if (!iconOnly) Text(entry.label, style = if (primary) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge, maxLines = 1)
+            }
         }
     }
 }

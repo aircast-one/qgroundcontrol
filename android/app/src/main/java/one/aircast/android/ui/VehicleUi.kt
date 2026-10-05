@@ -517,7 +517,25 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     ) { Qgc.set("vehicle.armed", target) }
                 }
             }.takeIf { armAction?.shown == true },
-            DeckEntry("takeoff", offers["takeoff"]?.title ?: "Takeoff", R.drawable.ic_flight_takeoff, offers["takeoff"]?.ready == true) {
+            DeckEntry(
+                "takeoff",
+                HOLD_TO_TAKE_OFF,
+                R.drawable.ic_flight_takeoff,
+                offers["takeoff"]?.ready == true,
+                onHold = {
+                    scope.launch {
+                        refusal = withContext(Dispatchers.Default) {
+                            val heightless = offers["takeoff"]?.carriesValue == false
+                            val target = if (heightless) null else holdTakeoffHeight(guidedTakeoff(Qgc.get(GUIDED_TAKEOFF)))?.let { height -> guidedTakeoff(Qgc.get(guidedTakeoffPath(height))) }
+                            when {
+                                heightless -> Qgc.refusalOf("vehicle.guidedModeTakeoff")
+                                target == null -> "This vehicle did not report a takeoff height range."
+                                else -> Qgc.refusalOf("vehicle.guidedModeTakeoff", target.targetMeters)
+                            }
+                        }
+                    }
+                },
+            ) {
                 if (offers["takeoff"]?.carriesValue == false) {
                     pending = GuidedAction(
                         offerId = "takeoff",
