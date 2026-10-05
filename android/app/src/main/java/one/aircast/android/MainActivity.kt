@@ -47,6 +47,9 @@ import androidx.compose.ui.graphics.Color
 import one.aircast.mapspike.aircast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -265,7 +268,14 @@ fun AircastShell(hostView: android.view.View?) {
     val flyVideoSourceLayer = remember { movableContentOf { LayoutWidget("videoSource") { VideoSourceLayer() } } }
     val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer() } } }
     val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
-    val flyAttitude = remember { movableContentOf { LayoutWidget("instrumentPanel") { AttitudeInstrument() } } }
+    val flyAttitude = remember {
+        movableContentOf {
+            LayoutWidget("instrumentPanel") {
+                DisposableEffect(Unit) { onDispose { one.aircast.android.ui.FlyChrome.instrumentsRightPx = 0f } }
+                AttitudeInstrument(Modifier.onGloballyPositioned { one.aircast.android.ui.FlyChrome.instrumentsRightPx = it.boundsInRoot().right })
+            }
+        }
+    }
     val flyOrbitReadout = remember { movableContentOf { LayoutWidget("orbit") { OrbitReadout() } } }
     val flyFollowMeReadout = remember { movableContentOf { LayoutWidget("followMe") { FollowMeReadout() } } }
     val flyTrafficReadout = remember { movableContentOf { LayoutWidget("traffic") { TrafficReadout() } } }
@@ -385,9 +395,6 @@ fun AircastShell(hostView: android.view.View?) {
         val onFly = tab == Tab.Fly
         val landscape = !flyIsPortrait()
         val flyLandscape = onFly && landscape
-        val flyStateJson by qgcPath(one.aircast.android.ui.FLY_STATE)
-        val armedOnFly = remember(flyStateJson) { one.aircast.android.ui.flyState(flyStateJson)?.armed == true }
-        val showNav = !(onFly && armedOnFly)
         val tabs = visibleTabs(one.aircast.android.ui.advancedUiShown())
         val selectTab: (Tab) -> Unit = { entry ->
             when {
@@ -400,7 +407,7 @@ fun AircastShell(hostView: android.view.View?) {
             }
         }
         Row(Modifier.fillMaxSize()) {
-        if (showNav && landscape) {
+        if (landscape) {
             NavigationRail(Modifier.fillMaxHeight(), windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)) {
                 tabs.forEach { entry ->
                     NavigationRailItem(
@@ -420,7 +427,7 @@ fun AircastShell(hostView: android.view.View?) {
             bottomBar = {
                 Column {
                 LogReplayBar()
-                if (showNav && !landscape) NavigationBar {
+                if (!landscape) NavigationBar {
                     tabs.forEach { entry ->
                         NavigationBarItem(
                             selected = tab == entry,

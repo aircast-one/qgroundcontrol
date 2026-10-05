@@ -10,6 +10,9 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.material3.Surface
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,8 +65,20 @@ internal data class NoVideoButton(val label: String, val onClick: () -> Unit)
 
 private val openVideoSettings = NoVideoButton("Video settings") { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }
 
+internal val LocalNoVideoCompact = staticCompositionLocalOf { false }
+
 @Composable
-private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoButton? = null, secondary: NoVideoButton? = null) {
+private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoButton? = null, secondary: NoVideoButton? = null, compactTitle: String = title) {
+    if (LocalNoVideoCompact.current) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+            Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(painterResource(R.drawable.ic_videocam_off), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(compactTitle, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).padding(vertical = 12.dp))
+                primary?.let { TextButton(onClick = it.onClick) { Text(it.label) } }
+            }
+        }
+        return
+    }
     Column(
         Modifier.widthIn(max = PANEL_MAX_WIDTH).padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -125,6 +140,7 @@ private fun NoVideoStreamPanel(video: VideoReading?, settings: NoVideoButton?) {
                 offMainDetached { Qgc.invoke(VIDEO_RESTART) }
             },
             secondary = settings,
+            compactTitle = "No video",
         )
         else -> NoVideoLayout(activeCameraStatus(video) ?: video.summary)
     }

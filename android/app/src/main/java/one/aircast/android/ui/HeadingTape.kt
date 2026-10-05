@@ -35,7 +35,7 @@ private const val TICK_STEP = 5
 private const val MAJOR_STEP = 15
 private const val LABEL_STEP = 30
 private const val POINTER_CLEARANCE_DEGREES = 8f
-private val TAPE_WIDTH = 240.dp
+private val TAPE_WIDTH = 200.dp
 private val TAPE_HEIGHT = 52.dp
 private val TEXT_SHADOW = Shadow(Color.Black, Offset(0f, 1f), 3f)
 

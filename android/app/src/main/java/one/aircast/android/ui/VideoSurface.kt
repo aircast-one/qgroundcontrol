@@ -24,10 +24,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -67,20 +68,26 @@ private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this 
 
 @Composable
 private fun NoVideoArea(underFlyChrome: Boolean, video: VideoReading?, linksToSettings: Boolean) {
-    var areaTopPx by remember { mutableFloatStateOf(0f) }
-    BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { areaTopPx = it.positionInRoot().y }) {
+    var areaInRoot by remember { mutableStateOf(Offset.Zero) }
+    Box(Modifier.fillMaxSize().onGloballyPositioned { areaInRoot = it.positionInRoot() }) {
         val chrome = with(LocalDensity.current) {
             when {
                 !underFlyChrome -> Modifier
                 !flyIsPortrait() -> Modifier.padding(horizontal = MAP_PIP_SIZE + AircastSpace.s3)
                 else -> Modifier.padding(
-                    start = maxWidth * NO_VIDEO_INSTRUMENT_SHARE,
-                    top = (FlyChrome.controlsBottomPx - areaTopPx).coerceAtLeast(0f).toDp(),
+                    start = (FlyChrome.instrumentsRightPx - areaInRoot.x).coerceAtLeast(0f).toDp() + AircastSpace.s3,
+                    end = AircastSpace.s3,
+                    top = (FlyChrome.controlsBottomPx - areaInRoot.y).coerceAtLeast(0f).toDp() + AircastSpace.s2,
                     bottom = FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3,
                 )
             }
         }
-        Box(chrome.fillMaxSize(), contentAlignment = Alignment.Center) { NoVideoPanel(video, linksToSettings = linksToSettings) }
+        BoxWithConstraints(chrome.fillMaxSize()) {
+            val compact = underFlyChrome && (maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH)
+            Box(Modifier.fillMaxSize(), contentAlignment = if (compact) Alignment.TopEnd else Alignment.Center) {
+                CompositionLocalProvider(LocalNoVideoCompact provides compact) { NoVideoPanel(video, linksToSettings = linksToSettings) }
+            }
+        }
     }
 }
 
@@ -166,7 +173,8 @@ fun VideoSurface(
     }
 }
 
-private const val NO_VIDEO_INSTRUMENT_SHARE = 0.35f
+private val NO_VIDEO_FULL_HEIGHT = 230.dp
+private val NO_VIDEO_FULL_WIDTH = 260.dp
 internal const val VIDEO_FIT_WIDTH = 0
 internal const val VIDEO_FIT_HEIGHT = 1
 internal const val VIDEO_FILL = 2
