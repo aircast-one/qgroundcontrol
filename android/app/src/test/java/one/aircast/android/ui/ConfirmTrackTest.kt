@@ -58,5 +58,8 @@ class ConfirmTrackTest {
         assertTrue(missionIdentity(edited, summary).warning!!.startsWith("ridge has changes"))
         assertEquals(MISSION_ON_DRONE, missionIdentity(org.json.JSONObject("""{"hasMissionItems":false}"""), summary).title)
         assertEquals("Hold to start mission", holdLabel("Start mission"))
+        assertEquals("Hold to land", holdLabel("Land"))
+        assertTrue("land" in HOLD_CONFIRM_ACTIONS)
+        assertFalse("land" in MISSION_ACTIONS)
     }
 }

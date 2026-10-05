@@ -35,7 +35,8 @@ internal fun landFrom(view: org.json.JSONObject?): Pair<String, String>? =
         ?.let { it.optString("value") to it.optString("units") }
         ?.takeIf { it.first.isNotBlank() && it.first != "\u2014" }
 
-internal val HOLD_CONFIRM_ACTIONS = setOf("startMission", "continueMission")
+internal val MISSION_ACTIONS = setOf("startMission", "continueMission")
+internal val HOLD_CONFIRM_ACTIONS = MISSION_ACTIONS + "land"
 
 internal const val MISSION_ON_DRONE = "The mission already on the drone"
 
@@ -86,7 +87,7 @@ internal fun ConfirmTrack(
         if (action.confirm.isNotBlank()) {
             Text(action.confirm, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (action.offerId in HOLD_CONFIRM_ACTIONS) MissionIdentityCard()
+        if (action.offerId in MISSION_ACTIONS) MissionIdentityCard()
         if (action.offerId == "land") {
             val fromJson by one.aircast.android.bridge.qgcPath(LAND_FROM)
             landFrom(fromJson)?.let { (value, units) -> FactTile("FROM", value, units) }

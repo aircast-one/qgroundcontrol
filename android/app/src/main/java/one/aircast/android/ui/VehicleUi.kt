@@ -576,7 +576,15 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
                 }
             }.takeIf { offers["rtl"]?.shown == true },
-            DeckEntry("land", offers["land"]?.title ?: "Land", R.drawable.ic_flight_land, offers["land"]?.ready == true) {
+            DeckEntry(
+                "land",
+                holdLabel(offers["land"]?.title ?: "Land"),
+                R.drawable.ic_flight_land,
+                offers["land"]?.ready == true,
+                onHold = {
+                    scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf("vehicle.guidedModeLand") } }
+                },
+            ) {
                 pending = GuidedAction(
                     offerId = "land",
                     name = offers["land"]?.title ?: "Land",
