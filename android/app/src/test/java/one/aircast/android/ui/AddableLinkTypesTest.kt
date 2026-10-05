@@ -27,7 +27,7 @@ class AddableLinkTypesTest {
             "createAndConnectLink handles udp and tcp and returns false for anything else, and " +
                 "Bluetooth is only offered where the core has a Bluetooth host",
             listOf("udp", "tcp", "serial"),
-            addableLinkTypes(links("""["serial","udp","tcp","bluetooth","mock"]""")),
+            addableLinkTypes(links("""["serial","udp","tcp","bluetooth"]""")),
         )
     }
 

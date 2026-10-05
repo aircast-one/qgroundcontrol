@@ -11,6 +11,7 @@ private const val LINKS_CREATE_REPLAY = "links.createLogReplayConfiguration"
 private const val LINKS_CREATE_BLUETOOTH = "links.createBluetoothLink"
 private const val LINKS_CREATE_SERIAL = "links.createSerialConfiguration"
 private const val LINKS_CREATE_SUPPORT = "links.createMavlinkForwardingSupportLink"
+private const val LINKS_START_MOCK = "links.startMockLink"
 private const val ACCOUNT_STATE = "account"
 private const val ACCOUNT_API_BASE = "account.apiBase"
 private const val ACCOUNT_SIGN_IN = "account.signIn"
@@ -50,6 +51,7 @@ internal object LinkCommands {
     fun createBluetooth(name: String, deviceName: String, address: String): Boolean = Qgc.invokeResult(LINKS_CREATE_BLUETOOTH, name, deviceName, address) == true
     fun createSerial(name: String, port: String, baud: Int): Boolean = Qgc.invokeResult(LINKS_CREATE_SERIAL, name, port, baud) == true
     fun createSupportForwarding(): Boolean = Qgc.invoke(LINKS_CREATE_SUPPORT)
+    fun startMock(arguments: List<Any>): Boolean = Qgc.invokeResult(LINKS_START_MOCK, *arguments.toTypedArray()) == true
 }
 
 internal object AccountCommands {

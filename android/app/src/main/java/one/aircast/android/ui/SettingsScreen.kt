@@ -169,7 +169,6 @@ internal val PAGE_NOTES = mapOf(
     "App Logging" to "Writing the app's log to disk, and how the log viewer shows time",
     "Console" to "The app's own log, for diagnosing a problem",
     "3D Viewer" to "OpenStreetMap buildings drawn in 3D around the vehicle",
-    "Mock Link" to "Simulated vehicles for trying the app without hardware",
 )
 
 internal enum class SettingsGroup(val title: String) { Connection("Connection"), Flying("Flying"), App("App"), More("More") }
@@ -196,7 +195,6 @@ internal val PAGE_LOOKS = mapOf(
     "App Logging" to PageLook(SettingsGroup.App, R.drawable.ic_description),
     "Console" to PageLook(SettingsGroup.App, R.drawable.ic_terminal),
     "About" to PageLook(SettingsGroup.App, R.drawable.ic_description),
-    "Mock Link" to PageLook(SettingsGroup.App, R.drawable.ic_flight),
 )
 
 internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(SettingsGroup.More, R.drawable.ic_settings)
@@ -217,7 +215,6 @@ internal data class SettingsPageEntry(
     val showsNtrip: Boolean = false,
     val showsPx4Logs: Boolean = false,
     val showsPacketRadio: Boolean = false,
-    val showsMockLink: Boolean = false,
     val helpLinks: List<HelpLink> = emptyList(),
     val keywords: String = "",
 )
@@ -254,7 +251,6 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
                 showsNtrip = page.optBoolean("showsNtrip"),
                 showsPx4Logs = page.optBoolean("showsPx4Logs"),
                 showsPacketRadio = page.optBoolean("showsPacketRadio"),
-                showsMockLink = page.optBoolean("showsMockLink"),
                 keywords = page.optText("keywords"),
                 helpLinks = page.optJSONArray("helpLinks")?.let { links ->
                     (0 until links.length()).mapNotNull { i ->
@@ -265,7 +261,7 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
         }
     }.filter {
         it.title.isNotBlank() && it.title !in PAGES_WITHOUT_A_SCREEN.keys &&
-            (it.sectionCount > 0 || it.showsLinks || it.showsAbout || it.showsConsole || it.showsPx4Logs || it.showsMockLink)
+            (it.sectionCount > 0 || it.showsLinks || it.showsAbout || it.showsConsole || it.showsPx4Logs)
     }
 }
 
@@ -503,11 +499,6 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
 
     if (page.showsPx4Logs) {
         Px4LogTransferPage(modifier)
-        return
-    }
-
-    if (page.showsMockLink) {
-        MockLinkPage(modifier)
         return
     }
 

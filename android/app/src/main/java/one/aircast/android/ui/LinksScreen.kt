@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -100,16 +101,19 @@ data class LinkRow(
     val filename: String = "",
 )
 
-internal data class AutoLink(val name: String, val summary: String, val heard: Boolean, val type: String = "")
+internal data class AutoLink(val name: String, val summary: String, val heard: Boolean, val type: String = "", val index: Int = 0)
 
 internal fun autoLinks(view: JSONObject?): List<AutoLink> {
     val links = view?.optJSONArray("links") ?: return emptyList()
     return (0 until links.length()).mapNotNull { links.optJSONObject(it) }
         .filter { it.optBoolean("dynamic") && it.optBoolean("connected") }
-        .map { AutoLink(it.optText("name"), it.optText("displaySummary"), it.optBoolean("heardVehicle"), it.optText("type")) }
+        .map { AutoLink(it.optText("name"), it.optText("displaySummary"), it.optBoolean("heardVehicle"), it.optText("type"), it.optInt("index")) }
 }
 
 internal fun autoLinkStatus(link: AutoLink): String = if (link.heard) "Vehicle" else "Listening"
+
+internal fun autoLinkSubtitle(link: AutoLink): String =
+    if (link.type == MOCK_LINK) "Simulated" else listOf(link.summary, "automatic").filter { it.isNotBlank() }.joinToString(" \u00b7 ")
 
 internal fun linkRows(view: JSONObject?): List<LinkRow> {
     val links = view?.optJSONArray("configured") ?: return emptyList()
@@ -174,6 +178,7 @@ internal fun linkIsEditable(row: LinkRow): Boolean =
 internal val CREATABLE_LINK_TYPES = listOf("udp", "tcp", "serial")
 internal const val BLUETOOTH_LINK = "bluetooth"
 internal const val REPLAY_LINK = "logReplay"
+internal const val MOCK_LINK = "mock"
 internal const val REPLAY_LINK_NAME = "Log Replay"
 
 internal data class BluetoothDeviceChoice(val name: String, val address: String)
@@ -194,7 +199,7 @@ internal fun addableLinkTypes(view: JSONObject?): List<String> {
     val listed = view?.optJSONArray("linkTypeIds") ?: return CREATABLE_LINK_TYPES
     val served = (0 until listed.length()).map { listed.optString(it) }.toSet()
     val bluetooth = listOf(BLUETOOTH_LINK).filter { it in served && bluetoothState(view).available }
-    return CREATABLE_LINK_TYPES.filter { it in served }.ifEmpty { CREATABLE_LINK_TYPES } + bluetooth + listOf(REPLAY_LINK).filter { it in served }
+    return CREATABLE_LINK_TYPES.filter { it in served }.ifEmpty { CREATABLE_LINK_TYPES } + bluetooth + listOf(REPLAY_LINK, MOCK_LINK).filter { it in served }
 }
 
 internal fun linkTypeIds(view: JSONObject?): Set<String> {
@@ -246,6 +251,7 @@ internal fun linkTypeLabel(id: String): String = when (id) {
     BLUETOOTH_LINK -> "Bluetooth"
     AIRCAST_CLOUD_LINK -> "Aircast Cloud"
     REPLAY_LINK -> "Log replay"
+    MOCK_LINK -> "Simulated"
     else -> id.uppercase()
 }
 
@@ -334,7 +340,7 @@ internal fun linkFormErrorField(type: String, host: String, port: String, udpDef
 private const val CONNECTED_STATUS = "Connected"
 
 @Composable
-private fun AutoLinkItem(link: AutoLink) {
+private fun AutoLinkItem(link: AutoLink, onStop: (() -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -348,9 +354,10 @@ private fun AutoLinkItem(link: AutoLink) {
         }
         Column(Modifier.weight(1f)) {
             Text(link.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${link.summary} \u00b7 automatic", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(autoLinkSubtitle(link), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(autoLinkStatus(link), style = MaterialTheme.typography.labelMedium, color = if (link.heard) MaterialTheme.aircast.success else MaterialTheme.colorScheme.onSurfaceVariant)
+        onStop?.let { TextButton(onClick = it) { Text("Stop") } }
     }
 }
 
@@ -744,6 +751,7 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
     var busy by remember { mutableStateOf(false) }
     var autoConnect by remember { mutableStateOf(false) }
     var highLatency by remember { mutableStateOf(false) }
+    var mock by remember { mutableStateOf(MockLinkChoices()) }
     var device by remember { mutableStateOf<BluetoothDeviceChoice?>(null) }
     var apiBase by remember { mutableStateOf("") }
     var deviceId by remember { mutableStateOf("") }
@@ -786,12 +794,13 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
                         BLUETOOTH_LINK -> "A radio paired with or near this device over Bluetooth."
                         AIRCAST_CLOUD_LINK -> "A backup link to the aircraft through your Aircast account."
                         REPLAY_LINK -> "Plays back a saved telemetry log as if the vehicle were connected."
+                        MOCK_LINK -> "A simulated vehicle for trying the app without hardware. It is not saved, so it ends when the app restarts."
                         else -> "Calls out to a device that is listening, such as a ground station."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedTextField(
+                if (type != MOCK_LINK) OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Name (optional)") },
@@ -806,7 +815,9 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
                     },
                     singleLine = true,
                 )
-                if (type == REPLAY_LINK) {
+                if (type == MOCK_LINK) {
+                    MockLinkFields(mock) { mock = it }
+                } else if (type == REPLAY_LINK) {
                     OutlinedButton(onClick = { logPicker.launch(arrayOf("*/*")) }) {
                         Text(replayLog?.lastPathSegment?.substringAfterLast('/') ?: "Choose a log file")
                     }
@@ -896,7 +907,7 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
                         )
                     }
                 }
-                LinkOptions(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
+                if (type != MOCK_LINK) LinkOptions(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
                 if (fieldError == null) error?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
@@ -910,7 +921,9 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
                 enabled = !busy,
                 onClick = {
                     cloudErrors = type == AIRCAST_CLOUD_LINK
-                    val invalid = if (type == AIRCAST_CLOUD_LINK) {
+                    val invalid = if (type == MOCK_LINK) {
+                        null
+                    } else if (type == AIRCAST_CLOUD_LINK) {
                         if (cloudApiBaseValid(apiBase) && cloudDeviceValid(deviceId)) null else ""
                     } else if (type == BLUETOOTH_LINK) {
                         if (device == null) "Pick a Bluetooth device." else null
@@ -938,6 +951,7 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
                         }
                         scope.launch {
                             val added = withContext(Dispatchers.Default) {
+                                if (type == MOCK_LINK) return@withContext LinkCommands.startMock(mockLinkArguments(mock))
                                 if (type == AIRCAST_CLOUD_LINK) {
                                     AccountCommands.setApiBase(apiBase)
                                     LinkCommands.createAircastCloud(chosen, apiBase, deviceId)
@@ -967,12 +981,12 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
                             if (added) {
                                 onAdded()
                             } else {
-                                error = "Could not add that link. The name may already be in use."
+                                error = if (type == MOCK_LINK) "Could not start the simulated vehicle." else "Could not add that link. The name may already be in use."
                             }
                         }
                     }
                 },
-            ) { Text(if (busy) "Adding…" else "Add and connect") }
+            ) { Text(if (busy) "Adding…" else if (type == MOCK_LINK) "Start" else "Add and connect") }
         }
     }
 }
@@ -1037,7 +1051,9 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
         )
     }
 
-    LazyColumn(Modifier.weight(1f)) {
+    val listState = rememberLazyListState()
+    if (!listState.canScrollBackward) listState.requestScrollToItem(0)
+    LazyColumn(Modifier.weight(1f), state = listState) {
         val connected = rows.filter { it.connected }
         val saved = rows.filterNot { it.connected }
         if (rows.isEmpty() && auto.isEmpty()) {
@@ -1073,7 +1089,17 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                     onEdit = { editing = row },
                 )
             }
-            if (title == "Connected") items(auto, key = { "auto${it.name}" }) { AutoLinkItem(it) }
+            if (title == "Connected") items(auto, key = { "auto${it.name}" }) { link ->
+                AutoLinkItem(
+                    link,
+                    onStop = {
+                        attempt(
+                            action = "stop",
+                            settled = { autoLinks(Qgc.get(LINKS_VIEW)).none { it.name == link.name } },
+                        ) { Qgc.invoke("$LINKS_PATH.${link.index}.link.disconnect") }
+                    }.takeIf { link.type == MOCK_LINK },
+                )
+            }
         }
 
         item(key = "footer") { footer() }

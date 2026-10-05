@@ -5,14 +5,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class MockLinkPageTest {
+class MockLinkFieldsTest {
 
     @Test
-    fun `the mock link page is offered although it has no settings sections`() {
-        val view = JSONObject("""{"pages":[{"title":"Mock Link","showsMockLink":true,"sections":[]}]}""")
-        val page = settingsPages(view).single()
-        assertTrue(page.showsMockLink)
-        assertEquals(SettingsGroup.App, pageLook(page.title).group)
+    fun `mock links are started from Add link, not a settings page of their own`() {
+        val view = JSONObject("""{"pages":[{"title":"Mock Link","sections":[]}]}""")
+        assertTrue(settingsPages(view).isEmpty())
+        assertEquals(listOf("udp", "tcp", "serial", MOCK_LINK), addableLinkTypes(JSONObject("""{"linkTypeIds":["serial","udp","tcp","mock"]}""")))
     }
 
     @Test
@@ -25,6 +24,7 @@ class MockLinkPageTest {
     fun `fresh firmware parameters only reach an ArduPilot vehicle`() {
         val px4 = MockLinkChoices(freshParams = true, vehicle = 0)
         assertEquals(false, mockLinkArguments(px4)[5])
+        assertEquals(false, withMockVehicle(MockLinkChoices(freshParams = true, vehicle = 1), 0).freshParams)
         assertEquals(listOf("px4", "apmCopter", "apmPlane", "apmSub", "apmRover", "generic"), MOCK_VEHICLES.map { it.first })
         assertEquals(6, MOCK_VIDEO_STREAMS.size)
     }
