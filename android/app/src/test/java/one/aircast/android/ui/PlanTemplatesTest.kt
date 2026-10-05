@@ -11,10 +11,10 @@ class PlanTemplatesTest {
         val read = planTemplates(
             JSONObject(
                 """{"templates":{"show":true,"enabled":false,"prompt":"Click in map to set position",""" +
-                    """"names":["Survey","Corridor Scan","Structure Scan","No Template"]}}""",
+                    """"names":["Survey","Corridor Scan","Structure Scan","No Template"],"homeSet":false,"blank":"No Template"}}""",
             ),
         )
-        assertEquals(PlanTemplatesState(true, false, "Click in map to set position", listOf("Survey", "Corridor Scan", "Structure Scan", "No Template")), read)
+        assertEquals(PlanTemplatesState(true, false, "Click in map to set position", listOf("Survey", "Corridor Scan", "Structure Scan", "No Template"), false, "No Template"), read)
         assertNull(planTemplates(JSONObject("{}")))
     }
 
@@ -25,10 +25,13 @@ class PlanTemplatesTest {
     }
 
     @Test
-    fun `the blank choice and the first prompt read as one first step`() {
-        assertEquals("Blank mission", templateLabel("No Template"))
-        assertEquals("Corridor scan", templateLabel("Corridor Scan"))
-        assertEquals("Tap the map to set home, or start from a template", templatePrompt("Click in map to set position"))
-        assertEquals("Drag to move home position. Tap to set new position.", templatePrompt("Drag to move home position. Click to set new position."))
+    fun `the blank mission comes first and the prompt names one first step until home is set`() {
+        val state = PlanTemplatesState(true, true, "Click in map to set position", listOf("Survey", "Corridor Scan", "No Template"), false, "No Template")
+        assertEquals(listOf("No Template" to "Blank mission", "Survey" to "Survey", "Corridor Scan" to "Corridor scan"), templateChoices(state))
+        assertEquals("Tap the map to set home, or start from a template", templatePrompt(state))
+        assertEquals(
+            "Drag to move home position. Tap to set new position.",
+            templatePrompt(state.copy(homeSet = true, prompt = "Drag to move home position. Click to set new position.")),
+        )
     }
 }

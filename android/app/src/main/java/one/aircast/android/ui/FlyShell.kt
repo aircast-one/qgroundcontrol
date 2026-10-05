@@ -27,7 +27,6 @@ import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
@@ -379,21 +378,17 @@ internal fun FlyScreen(
 internal fun FleetCard() {
     if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < FLEET_CARD_MIN_SCREEN_DP) return
     if (GuidedPanel.open) return
-    BoxWithConstraints {
-        if (maxWidth < FLEET_CARD_MIN_WIDTH) return@BoxWithConstraints
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            modifier = Modifier.widthIn(min = FLEET_CARD_MIN_WIDTH, max = FLEET_CARD_MAX_WIDTH).heightIn(max = FLEET_CARD_MAX_HEIGHT),
-        ) {
-            FleetPanel(Modifier.verticalScroll(rememberScrollState()).padding(vertical = AircastSpace.s2))
-        }
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.widthIn(max = FLEET_CARD_MAX_WIDTH).heightIn(max = FLEET_CARD_MAX_HEIGHT),
+    ) {
+        FleetPanel(Modifier.verticalScroll(rememberScrollState()).padding(vertical = AircastSpace.s2))
     }
 }
 
 private const val SIMPLE_LANDSCAPE_SPLIT = 0.5f
 internal val MAP_LAYERS_CLEARANCE = 48.dp + AircastSpace.s3 + AircastSpace.s2
 private val FLEET_CARD_MAX_WIDTH = 440.dp
-private val FLEET_CARD_MIN_WIDTH = 360.dp
 private val FLEET_CARD_MAX_HEIGHT = 320.dp
 private const val FLEET_CARD_MIN_SCREEN_DP = 600

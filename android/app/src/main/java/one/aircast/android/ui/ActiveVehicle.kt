@@ -378,35 +378,38 @@ internal fun FleetPanel(modifier: Modifier = Modifier) {
 private fun VehicleRows(choices: VehicleChoices, selectable: Boolean, scope: CoroutineScope, onRefusal: (String?) -> Unit, onSwitched: () -> Unit) {
     val distinguishes = linkDistinguishes(choices.choices)
     choices.choices.forEach { choice -> key(choice.id) {
-        ListItem(
-            headlineContent = { Text(choice.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            supportingContent = {
-                Column {
-                    Text(vehicleChoiceLine(choice, distinguishes), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    vehicleTelemetryLine(choice)?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable(enabled = !choice.active) {
+                    scope.launch {
+                        val switched = withContext(Dispatchers.Default) { VehicleBridge.askFor(choice.id) }
+                        onRefusal(if (switched) null else VehicleBridge.lastRefusal ?: "That vehicle did not take control.")
+                        if (switched) onSwitched()
+                    }
                 }
-            },
-            leadingContent = if (selectable) ({
+                .heightIn(min = 72.dp)
+                .padding(start = 16.dp, end = 24.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (selectable) {
                 Checkbox(
                     checked = choice.selected,
                     onCheckedChange = { wanted -> scope.launch { withContext(Dispatchers.Default) { FleetBridge.setSelected(choice.id, wanted) } } },
                 )
-            }) else null,
-            trailingContent = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (choice.flightModes.isNotEmpty() && choice.index >= 0) VehicleModeMenu(choice, scope, onRefusal)
-                    VehicleRowCompass(choice.heading, choice.armed)
-                    if (choice.active) Icon(Icons.Default.Check, contentDescription = "Flying this one")
-                }
-            },
-            modifier = Modifier.clickable(enabled = !choice.active) {
-                scope.launch {
-                    val switched = withContext(Dispatchers.Default) { VehicleBridge.askFor(choice.id) }
-                    onRefusal(if (switched) null else VehicleBridge.lastRefusal ?: "That vehicle did not take control.")
-                    if (switched) onSwitched()
-                }
-            },
-        )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(choice.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(vehicleChoiceLine(choice, distinguishes), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                vehicleTelemetryLine(choice)?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (choice.flightModes.isNotEmpty() && choice.index >= 0) VehicleModeMenu(choice, scope, onRefusal)
+                VehicleRowCompass(choice.heading, choice.armed)
+                if (choice.active) Icon(Icons.Default.Check, contentDescription = "Flying this one")
+            }
+        }
         HorizontalDivider()
     } }
 }

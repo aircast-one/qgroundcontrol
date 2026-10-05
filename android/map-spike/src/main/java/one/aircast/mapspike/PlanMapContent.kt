@@ -500,7 +500,8 @@ internal fun MapSpikeScreen(
     Column(Modifier.fillMaxSize()) {
     val uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems)
     val uploadEnabled = planHasItems && !planOffline && !planSyncing
-    header?.invoke(PlanUpload(enabled = uploadEnabled, emphasised = uploadEnabled && !uploadBlocked, label = uploadText, shown = !planOffline, onClick = upload))
+    val uploadEmphasised = uploadEnabled && !uploadBlocked
+    header?.invoke(PlanUpload(enabled = uploadEnabled, emphasised = uploadEmphasised, label = uploadText, shown = !planOffline, onClick = upload))
     Box(Modifier.fillMaxWidth().weight(1f)) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
@@ -830,7 +831,7 @@ internal fun MapSpikeScreen(
                     }
 
                     if (header == null && !planOffline) {
-                        PlanUploadButton(emphasised = uploadEnabled && !uploadBlocked, enabled = uploadEnabled, onClick = upload, contentPadding = PRIMARY_PADDING) { Text(uploadText) }
+                        PlanUploadButton(emphasised = uploadEmphasised, enabled = uploadEnabled, onClick = upload, contentPadding = PRIMARY_PADDING) { Text(uploadText) }
                     }
 
                     uploadAsk?.let { gate ->
@@ -973,7 +974,7 @@ internal fun MapSpikeScreen(
                         },
                     ) { Text(kindLabel(insertable, KIND_LAND)) }
 
-                    if (layer == PlanLayer.Mission) blockedReason(insertable)?.let {
+                    if (layer == PlanLayer.Mission && !summaryHidden) blockedReason(insertable)?.let {
                         PaletteNote(it)
                     }
 

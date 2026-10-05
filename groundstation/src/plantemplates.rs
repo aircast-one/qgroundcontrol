@@ -38,6 +38,8 @@ pub fn templates_json(backend: &dyn Backend, patterns: &[String], contains_items
     json!({
         "show": show(contains_items),
         "enabled": home_set || crate::coreplan::enabled(),
+        "homeSet": home_set,
+        "blank": NO_TEMPLATE,
         "prompt": if home_set { "Drag to move home position. Click to set new position." } else { "Click in map to set position" },
         "names": patterns.iter().map(String::as_str).chain(std::iter::once(NO_TEMPLATE)).collect::<Vec<_>>(),
     })
