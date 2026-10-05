@@ -53,10 +53,10 @@ private val INSTRUMENT_SIZE = 132.dp
 private const val HORIZON_FRACTION = 0.72f
 private const val PITCH_SPAN_DEGREES = 45f
 private const val LADDER_STEP_DEGREES = 5
-private const val HOME_LETTER = "L"
+internal const val HOME_LETTER = "L"
 private val CARDINALS = listOf(0 to "N", 90 to "E", 180 to "S", 270 to "W")
 private val HEADING_COLOUR = Color(0xFFEE3424)
-private val COURSE_COLOUR = Color(0xFF24D3EE)
+internal val COURSE_COLOUR = Color(0xFF24D3EE)
 private val ROLL_POINTER_COLOUR = Color(0xFFED1C24)
 private val HEADING_SHADE = Color(0xFFC72B27)
 private const val HEADING_TEXT_DROP = 0.48f
@@ -136,7 +136,7 @@ fun AttitudeInstrument(modifier: Modifier = Modifier) {
     }
 
     when (style) {
-        InstrumentStyle.Integrated -> InstrumentDial(reading, horizon = false, compass = true, size = INSTRUMENT_SIZE, modifier = modifier)
+        InstrumentStyle.Integrated -> HeadingTape(reading, modifier)
         InstrumentStyle.Horizontal -> Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             InstrumentDial(reading, horizon = true, compass = false, size = SPLIT_SIZE)
             InstrumentDial(reading, horizon = false, compass = true, size = SPLIT_SIZE)
