@@ -1,6 +1,8 @@
 package one.aircast.android
 
 import androidx.compose.runtime.getValue
+import one.aircast.android.bridge.VideoCommands
+import one.aircast.android.bridge.AppCommands
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
 import android.content.Intent
@@ -316,7 +318,7 @@ fun AircastShell(hostView: android.view.View?) {
         appMessages = (appMessages + batch.dialogs).distinct()
         noticeScope.launch {
             withContext(Dispatchers.Default) {
-                Qgc.invoke("host.acknowledgeThrough", batch.through)
+                AppCommands.acknowledgeNoticesThrough(batch.through)
             }
             val errors = banners.filter { it in batch.errorBanners }
             one.aircast.android.ui.criticalBanner(errors)?.takeIf { tab != Tab.Fly }?.let { critical ->
@@ -360,8 +362,8 @@ fun AircastShell(hostView: android.view.View?) {
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
-            Qgc.invoke("video.setNativeRendering", true)
-            Qgc.invoke("video.initNative")
+            VideoCommands.setNativeRendering(true)
+            VideoCommands.initNative()
         }
     }
 

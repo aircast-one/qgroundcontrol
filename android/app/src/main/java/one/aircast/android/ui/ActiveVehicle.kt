@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
+import one.aircast.android.bridge.SetupCommands
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -199,7 +200,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         var loading by remember { mutableStateOf<Float?>(null) }
         androidx.compose.runtime.LaunchedEffect(choices.choices.size) {
             while (isActive) {
-                loading = withContext(Dispatchers.Default) { loadingProgress(Qgc.get("vehicle", listOf("initialConnectComplete", "loadProgress"))) }
+                loading = withContext(Dispatchers.Default) { loadingProgress(SetupCommands.vehicleFields(listOf("initialConnectComplete", "loadProgress"))) }
                 kotlinx.coroutines.delay(LOAD_POLL_MS)
             }
         }

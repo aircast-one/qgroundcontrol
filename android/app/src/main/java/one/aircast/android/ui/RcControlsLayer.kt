@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.VehicleCommands
 import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,13 +42,13 @@ internal class RcHolder(private val send: (() -> Unit) -> Unit = ::offMainInOrde
     fun hold(channel: Int, pwm: Int) {
         if (channel <= 0) return
         sent.add(channel)
-        send { Qgc.invoke("vehicle.setRcChannelOverride", channel, pwm) }
+        send { VehicleCommands.overrideRcChannel(channel, pwm) }
     }
 
     fun release() {
         val held = sent.toList().sorted()
         sent.removeAll(held.toSet())
-        if (held.isNotEmpty()) send { held.forEach { Qgc.invoke("vehicle.releaseRcChannelOverride", it) } }
+        if (held.isNotEmpty()) send { held.forEach { VehicleCommands.releaseRcChannel(it) } }
     }
 
     fun forget() = sent.clear()
@@ -63,7 +64,7 @@ private fun sendRcOverride(channel: Int, pwm: Int) = customRcControls.hold(chann
 private fun releaseOverrides() {
     customRcControls.forget()
     cameraRcControls.forget()
-    offMainInOrder { Qgc.invoke("vehicle.clearRcChannelOverrides") }
+    offMainInOrder { VehicleCommands.clearRcOverrides() }
 }
 
 @Composable

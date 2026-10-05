@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
+import one.aircast.android.bridge.SetupCommands
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -122,7 +123,7 @@ fun GimbalTakeControlDialog() {
             confirmButton = {
                 TextButton(onClick = {
                     gimbalAsksForControl.value = false
-                    scope.launch(Dispatchers.Default) { Qgc.refusalOf("gimbal.control", true) }
+                    scope.launch(Dispatchers.Default) { SetupCommands.takeGimbalControlRefusal() }
                 }) { Text("Yes") }
             },
             dismissButton = { TextButton(onClick = { gimbalAsksForControl.value = false }) { Text("No") } },

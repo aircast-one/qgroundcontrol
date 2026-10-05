@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import one.aircast.android.R
+import one.aircast.android.bridge.LinkCommands
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
@@ -105,7 +106,7 @@ fun RemoteSupportScreen(modifier: Modifier = Modifier) {
 
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
             Button(
-                onClick = { offMainDetached { Qgc.invoke("links.createMavlinkForwardingSupportLink") } },
+                onClick = { offMainDetached { LinkCommands.createSupportForwarding() } },
                 enabled = !forwarding && verdict?.valid == true,
             ) { Text("Connect") }
         }

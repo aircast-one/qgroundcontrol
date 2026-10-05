@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import one.aircast.map.aircast
+import one.aircast.android.bridge.VehicleCommands
 import one.aircast.android.R
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Spacer
@@ -72,7 +73,7 @@ internal fun motorRefusal(gate: MotorGate): String? = when {
 
 internal fun spin(motor: Int, percent: Int) {
     val seconds = if (percent == 0) 0 else TIMEOUT_SECONDS
-    Qgc.invoke("vehicle.motorTest", motor, percent, seconds, true)
+    VehicleCommands.motorTest(motor, percent, seconds, inOrder = true)
 }
 
 internal fun motorLabel(motor: Int, letters: Boolean): String =

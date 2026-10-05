@@ -66,8 +66,9 @@ class GuidedAltitudeTest {
         )!!
         assertEquals(
             "guidedModeChangeAltitude takes a delta; sending 68.5 here flies it to 93.5 m",
-            listOf(43.5, false),
-            altitudeCommandArgs(reading, pauses = false),
+            43.5,
+            altitudeDelta(reading)!!,
+            1e-9,
         )
     }
 
@@ -81,7 +82,7 @@ class GuidedAltitudeTest {
                     "pause":false,"sentence":"The aircraft is already at 25 m and will not move."}""",
             ),
         )!!
-        assertNull(altitudeCommandArgs(standing, pauses = false))
+        assertNull(altitudeDelta(standing))
     }
 }
 

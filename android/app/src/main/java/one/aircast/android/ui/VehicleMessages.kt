@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.fillMaxSize
+import one.aircast.android.bridge.VehicleCommands
 import androidx.compose.runtime.LaunchedEffect
 import one.aircast.android.R
 
@@ -166,7 +167,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
     Surface(
         onClick = {
             showing = true
-            offMainDetached { Qgc.invoke("vehicle.resetAllMessages") }
+            offMainDetached { VehicleCommands.resetAllMessages() }
         },
         modifier = modifier,
         shape = if (urgent) RoundedCornerShape(ALERT_CORNER) else CircleShape,
@@ -191,7 +192,7 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            IconButton(onClick = { offMainDetached { Qgc.invoke("vehicle.resetAllMessages") } }, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = { offMainDetached { VehicleCommands.resetAllMessages() } }, modifier = Modifier.size(32.dp)) {
                 Icon(painterResource(R.drawable.ic_close), contentDescription = "Dismiss messages", modifier = Modifier.size(24.dp))
             }
         }
@@ -254,7 +255,7 @@ private fun VehicleMessageLog(
             }
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = {
-                    offMainDetached { Qgc.invoke("vehicle.clearMessages") }
+                    offMainDetached { VehicleCommands.clearMessages() }
                     onDismiss()
                 }) { Text("Clear") }
                 TextButton(onClick = onDismiss) { Text("Close") }
@@ -267,7 +268,7 @@ private fun VehicleMessageLog(
 internal fun VehicleMessagesPage(modifier: Modifier = Modifier) {
     val messagesJson by qgcPath(MESSAGES)
     val lines = remember(messagesJson) { vehicleMessages(messagesJson).asReversed() }
-    LaunchedEffect(Unit) { offMainDetached { Qgc.invoke("vehicle.resetAllMessages") } }
+    LaunchedEffect(Unit) { offMainDetached { VehicleCommands.resetAllMessages() } }
 
     if (lines.isEmpty()) {
         EmptyState(R.drawable.ic_description, "No messages", "The vehicle has not said anything yet.", modifier)
@@ -281,7 +282,7 @@ internal fun VehicleMessagesPage(modifier: Modifier = Modifier) {
         }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { offMainDetached { Qgc.invoke("vehicle.clearMessages") } }) { Text("Clear") }
+                TextButton(onClick = { offMainDetached { VehicleCommands.clearMessages() } }) { Text("Clear") }
             }
         }
     }

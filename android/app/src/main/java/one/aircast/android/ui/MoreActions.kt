@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.PlanCommands
+import one.aircast.android.bridge.VehicleCommands
 import one.aircast.android.bridge.offMainDetached
 
 internal const val PAUSE = "pause"
@@ -37,17 +39,17 @@ internal fun autoMissionPopup(wasReady: Set<String>, offers: Map<String, GuidedO
     AUTO_POPUP_ACTIONS.mapNotNull { offers[it] }.firstOrNull { (enabled || it.id == LAND_ABORT) && it.ready && it.id !in wasReady }
 
 internal fun guidedCommand(id: String, resumeFrom: Int?): (() -> Unit)? = when (id) {
-    "startMission", "continueMission" -> ({ offMainDetached { Qgc.invoke("vehicle.startMission") } })
-    "landAbort" -> ({ offMainDetached { Qgc.invoke("vehicle.abortLanding", LAND_ABORT_CLIMB_METERS) } })
-    "grab" -> ({ offMainDetached { Qgc.invoke("vehicle.sendGripperAction", GRIPPER_GRAB) } })
-    "release" -> ({ offMainDetached { Qgc.invoke("vehicle.sendGripperAction", GRIPPER_RELEASE) } })
-    "hold" -> ({ offMainDetached { Qgc.invoke("vehicle.sendGripperAction", GRIPPER_HOLD) } })
-    "cancelRoi" -> ({ offMainDetached { Qgc.invoke("vehicle.stopGuidedModeROI") } })
-    "vtolTransitionToFixedWing" -> ({ offMainDetached { Qgc.set("vehicle.vtolInFwdFlight", true) } })
-    "vtolTransitionToMultiRotor" -> ({ offMainDetached { Qgc.set("vehicle.vtolInFwdFlight", false) } })
-    "forceArm" -> ({ offMainDetached { Qgc.invoke("vehicle.forceArm") } })
+    "startMission", "continueMission" -> ({ offMainDetached { VehicleCommands.startMission() } })
+    "landAbort" -> ({ offMainDetached { VehicleCommands.abortLanding(LAND_ABORT_CLIMB_METERS) } })
+    "grab" -> ({ offMainDetached { VehicleCommands.gripper(GRIPPER_GRAB) } })
+    "release" -> ({ offMainDetached { VehicleCommands.gripper(GRIPPER_RELEASE) } })
+    "hold" -> ({ offMainDetached { VehicleCommands.gripper(GRIPPER_HOLD) } })
+    "cancelRoi" -> ({ offMainDetached { VehicleCommands.stopRoi() } })
+    "vtolTransitionToFixedWing" -> ({ offMainDetached { VehicleCommands.setForwardFlight(true) } })
+    "vtolTransitionToMultiRotor" -> ({ offMainDetached { VehicleCommands.setForwardFlight(false) } })
+    "forceArm" -> ({ offMainDetached { VehicleCommands.forceArm() } })
     "resumeMission" -> resumeFrom?.let { at ->
-        ({ offMainDetached { Qgc.invoke("planFly.missionController.resumeMission", at) } })
+        ({ offMainDetached { PlanCommands.resumeMission(at) } })
     }
     else -> null
 }

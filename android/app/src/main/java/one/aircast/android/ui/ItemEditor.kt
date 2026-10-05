@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
 import one.aircast.map.aircast
+import one.aircast.android.bridge.PlanCommands
+import one.aircast.android.bridge.VehicleCommands
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -101,11 +103,11 @@ internal fun vehicleCoordinate(coordinate: JSONObject?): JSONObject? =
         ?.let { JSONObject().put("latitude", it.optDouble("latitude")).put("longitude", it.optDouble("longitude")).put("altitude", 0) }
 
 private fun setToVehicleHeading(index: Int): String? =
-    vehicleHeading(Qgc.get("vehicle.heading"))?.let { Qgc.writeRefusal("plan.missionController.visualItems.$index.landingHeading", it) } ?: "The vehicle has not reported its heading."
+    vehicleHeading(VehicleCommands.heading())?.let { PlanCommands.setLandingHeading(index, it) } ?: "The vehicle has not reported its heading."
 
 private fun setToVehicleLocation(index: Int): String? =
-    vehicleCoordinate(Qgc.get("vehicle.coordinate")?.let { it.optJSONObject("value") ?: it })
-        ?.let { Qgc.writeRefusal("plan.missionController.visualItems.$index.landingCoordinate", it) } ?: "The vehicle has no position yet."
+    vehicleCoordinate(VehicleCommands.coordinate()?.let { it.optJSONObject("value") ?: it })
+        ?.let { PlanCommands.setLandingCoordinate(index, it) } ?: "The vehicle has no position yet."
 
 internal fun areaHelp(view: JSONObject?): String? = view?.optText("areaHelp")?.takeIf { it.isNotBlank() }
 
@@ -239,7 +241,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                             positionMenu = false
                             scope.launch {
                                 val moved = withContext(Dispatchers.Default) {
-                                    (target ?: geoOf(Qgc.get("vehicle.coordinate")))?.let { PlanBridge.moveItem(index, it.first, it.second) } ?: false
+                                    (target ?: geoOf(VehicleCommands.coordinate()))?.let { PlanBridge.moveItem(index, it.first, it.second) } ?: false
                                 }
                                 refusal = if (moved) null else "The item could not be moved there."
                                 revision++
@@ -294,7 +296,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                     Text("Altitudes relative to launch", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     Switch(checked = relative, onCheckedChange = { wanted ->
                         scope.launch {
-                            refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal("plan.missionController.visualItems.$index.altitudesAreRelative", wanted) }
+                            refusal = withContext(Dispatchers.Default) { PlanCommands.setAltitudesRelative(index, wanted) }
                             revision++
                         }
                     })
@@ -484,13 +486,13 @@ private fun CommandPicker(itemCategory: String?, onDismiss: () -> Unit, onChosen
     var commands by remember { mutableStateOf<List<CommandChoice>>(emptyList()) }
 
     LaunchedEffect(Unit) {
-        categories = withContext(Dispatchers.Default) { categoryNames(Qgc.invokeResult("missionCommandTree.categoriesForVehicle")) }
+        categories = withContext(Dispatchers.Default) { categoryNames(PlanCommands.commandCategories()) }
         category = startCategory(categories, itemCategory)
     }
     LaunchedEffect(category) {
         val chosen = category ?: return@LaunchedEffect
         commands = withContext(Dispatchers.Default) {
-            commandChoices(Qgc.invokeResult("missionCommandTree.getCommandsForCategory", null, chosen, true))
+            commandChoices(PlanCommands.commandsForCategory(chosen))
         }
     }
 
@@ -627,7 +629,7 @@ internal fun EditPositionDialog(
 
     LaunchedEffect(system, altitudePath) {
         while (system == CoordinateSystem.Vehicle && vehicleConfirm == null) {
-            vehicleShown = withContext(Dispatchers.Default) { vehiclePositionOf(Qgc.get("vehicle.coordinate"), altitudePath?.let { Qgc.get(it) }) }
+            vehicleShown = withContext(Dispatchers.Default) { vehiclePositionOf(VehicleCommands.coordinate(), altitudePath?.let { Qgc.get(it) }) }
             delay(VEHICLE_POSITION_POLL_MS)
         }
     }
@@ -646,7 +648,7 @@ internal fun EditPositionDialog(
     fun fromVehicle() {
         scope.launch {
             val (position, altitude) = withContext(Dispatchers.Default) {
-                geoOf(Qgc.get("vehicle.coordinate")).takeIf { setPosition } to
+                geoOf(VehicleCommands.coordinate()).takeIf { setPosition } to
                     altitudePath?.takeIf { setAltitude }?.let { Qgc.get(it).optDouble("value", Double.NaN) }?.takeIf { it.isFinite() }
             }
             altitude?.let { onAltitude?.invoke(it) }
@@ -666,7 +668,7 @@ internal fun EditPositionDialog(
                     CoordinateSystem.Geographic -> one.aircast.map.typedNumber(latitude)?.let { lat -> one.aircast.map.typedNumber(longitude)?.let { lat to it } }
                     CoordinateSystem.Utm -> geoOf(Qgc.get(utmToGeoPath(easting, northing, zone, southern)))
                     CoordinateSystem.Mgrs -> geoOf(Qgc.get("view.mgrsToGeo(${mgrs.replace(" ", "")})"))
-                    CoordinateSystem.Vehicle -> geoOf(Qgc.get("vehicle.coordinate"))
+                    CoordinateSystem.Vehicle -> geoOf(VehicleCommands.coordinate())
                 }
             }
             if (target == null) problem = "That position could not be read." else onMove(target.first, target.second)

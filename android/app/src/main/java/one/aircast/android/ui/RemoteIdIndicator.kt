@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
+import one.aircast.android.bridge.VehicleCommands
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -160,7 +161,7 @@ internal fun RemoteIdIndicatorCell() {
                                 val released = withTimeoutOrNull(status.holdMs) { waitForUpOrCancellation() }
                                 if (released == null) {
                                     val declare = !status.emergency
-                                    offMainDetached { Qgc.invoke("vehicle.remoteIDManager.setEmergency", declare) }
+                                    offMainDetached { VehicleCommands.declareRemoteIdEmergency(declare) }
                                 }
                             }
                         },

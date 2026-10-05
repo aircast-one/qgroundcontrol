@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.rememberScrollState
+import one.aircast.android.bridge.SetupCommands
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.Checkbox
 import kotlinx.coroutines.Dispatchers
@@ -161,7 +162,7 @@ private fun selectMessage(messagePath: String) {
 private fun requestRate(messagePath: String, rate: Int) {
     offMainDetached {
         Qgc.set(selectedPathFor(messagePath), messageIndexIn(messagePath))
-        Qgc.invoke("mavlinkInspector.setMessageInterval", rate)
+        SetupCommands.setInspectorMessageInterval(rate)
     }
 }
 
@@ -334,7 +335,7 @@ fun InspectorScreen(modifier: Modifier = Modifier) {
                 if (systems.size > 1) systems.forEach { system ->
                     androidx.compose.material3.FilterChip(
                         selected = system.id == activeSystem,
-                        onClick = { one.aircast.android.bridge.offMainDetached { Qgc.invoke("mavlinkInspector.setActiveSystem", system.id) } },
+                        onClick = { one.aircast.android.bridge.offMainDetached { SetupCommands.setInspectorSystem(system.id) } },
                         label = { Text(system.title) },
                     )
                 }

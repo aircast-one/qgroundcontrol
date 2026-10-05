@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import one.aircast.android.bridge.VehicleCommands
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -76,7 +77,7 @@ internal fun PreflightChecklist(checklist: PreflightChecklistState, deciding: Bo
             return@LaunchedEffect
         }
         checklist.stateSent = passed
-        withContext(Dispatchers.Default) { Qgc.set("vehicle.checkListState", checklistStateValue(passed)) }
+        withContext(Dispatchers.Default) { VehicleCommands.setChecklistState(checklistStateValue(passed)) }
     }
     LaunchedEffect(vehicleId, deciding) {
         val id = vehicleId ?: return@LaunchedEffect

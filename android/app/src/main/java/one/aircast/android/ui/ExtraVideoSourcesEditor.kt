@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.VideoCommands
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -119,7 +120,7 @@ fun ExtraVideoSourcesEditor(modifier: Modifier = Modifier) {
                     undo = entry.name.ifBlank { "Camera ${index + 2}" } to json
                     save(extraSourceRemoved(json, index))
                     offMainDetached {
-                        activeAfterRemoval(Qgc.get(VIDEO_VIEW)?.optInt("activeSource") ?: 0, index + 1)?.let { Qgc.invoke("video.setActiveVideoSource", it) }
+                        activeAfterRemoval(Qgc.get(VIDEO_VIEW)?.optInt("activeSource") ?: 0, index + 1)?.let { VideoCommands.setActiveSource(it) }
                     }
                 }) { Text("Remove") }
             }

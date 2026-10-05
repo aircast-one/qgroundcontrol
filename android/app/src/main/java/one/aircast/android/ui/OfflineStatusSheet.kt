@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
+import one.aircast.android.bridge.LinkCommands
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -107,7 +108,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
                     modifier = Modifier.clickable {
                         offMainDetached {
                             if (link.connected) Qgc.invoke("$OFFLINE_LINKS_PATH.${link.index}.link.disconnect")
-                            else Qgc.invoke("links.createConnectedLink", "@$OFFLINE_LINKS_PATH.${link.index}")
+                            else LinkCommands.connect("@$OFFLINE_LINKS_PATH.${link.index}")
                         }
                     },
                 )

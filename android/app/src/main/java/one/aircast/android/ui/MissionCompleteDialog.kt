@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.PlanCommands
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
@@ -47,7 +48,7 @@ internal fun imagesTakenText(count: Int): String? = if (count == 0) null else "$
 fun MissionCompleteDialog() {
     val view by qgcPath(MISSION_COMPLETE_PATH)
     val notice = remember(view) { missionComplete(view) } ?: return
-    val close = { offMainDetached { Qgc.invoke("missionComplete.dismiss", notice.id) } }
+    val close = { offMainDetached { PlanCommands.dismissMissionComplete(notice.id) } }
 
     AlertDialog(
         onDismissRequest = close,
@@ -61,8 +62,8 @@ fun MissionCompleteDialog() {
                 Button(
                     onClick = {
                         offMainDetached {
-                            Qgc.invoke("plan.removeAllFromVehicle")
-                            Qgc.invoke("missionComplete.dismiss", notice.id)
+                            PlanCommands.removeAllFromVehicle()
+                            PlanCommands.dismissMissionComplete(notice.id)
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -73,8 +74,8 @@ fun MissionCompleteDialog() {
                     OutlinedButton(
                         onClick = {
                             offMainDetached {
-                                Qgc.invoke("planFly.missionController.resumeMission", waypoint)
-                                Qgc.invoke("missionComplete.dismiss", notice.id)
+                                PlanCommands.resumeMission(waypoint)
+                                PlanCommands.dismissMissionComplete(notice.id)
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),

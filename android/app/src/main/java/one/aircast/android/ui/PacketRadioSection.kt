@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.SetupCommands
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -73,7 +74,7 @@ internal fun PacketRadioSection(onWrite: () -> Unit) {
     var choosing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.Default) { Qgc.invoke("packetRadio.refreshAdapters") }
+        withContext(Dispatchers.Default) { SetupCommands.refreshPacketRadios() }
         while (true) {
             read = withContext(Dispatchers.Default) { packetRadioStatus(Qgc.get(PACKET_RADIO_VIEW)) }
             device = withContext(Dispatchers.Default) { Qgc.get(PACKET_RADIO_DEVICE)?.optText("value").orEmpty() }

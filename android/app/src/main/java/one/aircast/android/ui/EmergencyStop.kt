@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.VehicleCommands
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Row
@@ -42,7 +43,7 @@ internal fun emergencyStopAction(offer: GuidedOffer): GuidedAction = GuidedActio
     name = offer.title,
     confirm = offer.prompt,
     destructive = true,
-    run = { offMainDetached { Qgc.invoke("vehicle.$EMERGENCY_STOP") } },
+    run = { offMainDetached { VehicleCommands.emergencyStop() } },
 )
 
 @Composable

@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.PlanCommands
 import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -88,8 +89,8 @@ fun PlanTab(modifier: Modifier = Modifier) {
     var centre by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
     DisposableEffect(Unit) {
-        offMainInOrder { Qgc.set("plan.undoTracking", true) }
-        onDispose { offMainInOrder { Qgc.set("plan.undoTracking", false) } }
+        offMainInOrder { PlanCommands.setUndoTracking(true) }
+        onDispose { offMainInOrder { PlanCommands.setUndoTracking(false) } }
     }
 
     LaunchedEffect(syncing, containsItems, files.documentName()) {
@@ -260,13 +261,13 @@ fun PlanTab(modifier: Modifier = Modifier) {
                                     text = { Text("Undo") },
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_undo), null) },
                                     enabled = history.canUndo,
-                                    onClick = { menuOpen = false; offMainInOrder { Qgc.invoke("plan.undo") } },
+                                    onClick = { menuOpen = false; offMainInOrder { PlanCommands.undo() } },
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Redo") },
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_redo), null) },
                                     enabled = history.canRedo,
-                                    onClick = { menuOpen = false; offMainInOrder { Qgc.invoke("plan.redo") } },
+                                    onClick = { menuOpen = false; offMainInOrder { PlanCommands.redo() } },
                                 )
                                 HorizontalDivider()
                                 DropdownMenuItem(

@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.Image
+import one.aircast.android.bridge.SetupCommands
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -90,7 +91,7 @@ fun ApmSubMotorsScreen(modifier: Modifier = Modifier) {
     val frameDisplay by produceState<ImageBitmap?>(null) {
         value = withContext(Dispatchers.Default) { motorDisplayFrame(subFrames(Qgc.get(APM_SUB_FRAME_VIEW)))?.let(::frameImage) }
     }
-    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { Qgc.invoke("apmSubMotors.open") } }
+    LaunchedEffect(Unit) { withContext(Dispatchers.Default) { SetupCommands.openSubMotors() } }
     LaunchedEffect(revision) {
         read = withContext(Dispatchers.Default) { subMotors(Qgc.get(APM_SUB_MOTORS_VIEW)) }
         delay(SUB_MOTORS_POLL_MS)
@@ -110,7 +111,7 @@ fun ApmSubMotorsScreen(modifier: Modifier = Modifier) {
     LaunchedEffect(testing) {
         while (testing) {
             val value = sliders[lastIndex] ?: SUB_NEUTRAL
-            withContext(Dispatchers.Default) { Qgc.invoke("apmSubMotors.test", lastIndex, value.toDouble()) }
+            withContext(Dispatchers.Default) { SetupCommands.testSubMotor(lastIndex, value.toDouble()) }
             delay(SUB_MOTOR_TEST_MS)
         }
     }

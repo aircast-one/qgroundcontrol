@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import one.aircast.android.R
+import one.aircast.android.bridge.AppCommands
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
@@ -115,7 +116,7 @@ internal const val WELCOME_NOTE = "Two questions so numbers and controls match y
 fun FirstRunDialog() {
     val view by qgcPath(FIRST_RUN_PATH)
     val prompt = remember(view) { firstRun(view) } ?: return
-    val close = { offMainDetached { Qgc.invoke("firstRun.markShown") } }
+    val close = { offMainDetached { AppCommands.markFirstRunShown() } }
 
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {

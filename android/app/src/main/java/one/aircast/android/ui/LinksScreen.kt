@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.background
+import one.aircast.android.bridge.LinkCommands
+import one.aircast.android.bridge.AccountCommands
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
@@ -502,7 +504,7 @@ private fun writeNewLinkFraming(name: String, framing: SerialFraming): Boolean {
     if (framing == SerialFraming()) return true
     val row = currentRows().firstOrNull { it.name == name } ?: return false
     framingWrites(row.index, framing).forEach { (path, value) -> Qgc.set(path, value) }
-    Qgc.invoke("links.commitLinkConfigurations")
+    LinkCommands.commitConfigurations()
     return true
 }
 
@@ -510,7 +512,7 @@ private fun addServers(name: String, servers: List<String>): Boolean {
     if (servers.isEmpty()) return true
     val row = currentRows().firstOrNull { it.name == name } ?: return false
     servers.forEach { Qgc.invoke("$LINKS_PATH.${row.index}.addHost", it) }
-    Qgc.invoke("links.commitLinkConfigurations")
+    LinkCommands.commitConfigurations()
     return true
 }
 
@@ -518,7 +520,7 @@ private fun writeNewLinkFlags(name: String, autoConnect: Boolean, highLatency: B
     if (!autoConnect && !highLatency) return
     val row = currentRows().firstOrNull { it.name == name } ?: return
     linkFlagWrites(row.index, autoConnect, highLatency).forEach { (path, value) -> Qgc.set(path, value) }
-    Qgc.invoke("links.commitLinkConfigurations")
+    LinkCommands.commitConfigurations()
 }
 
 private const val BLUETOOTH_POLL_MS = 1000L
@@ -540,8 +542,8 @@ private fun BluetoothPicker(chosen: BluetoothDeviceChoice?, onPick: (BluetoothDe
             FilterChip(selected = device == chosen, onClick = { onPick(device) }, label = { Text(device.name) })
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(enabled = !state.scanning, onClick = { offMainInOrder { Qgc.invoke("links.bluetoothScan", true) } }) { Text("Scan") }
-            OutlinedButton(enabled = state.scanning, onClick = { offMainInOrder { Qgc.invoke("links.bluetoothScan", false) } }) { Text("Stop") }
+            OutlinedButton(enabled = !state.scanning, onClick = { offMainInOrder { LinkCommands.scanBluetooth(true) } }) { Text("Scan") }
+            OutlinedButton(enabled = state.scanning, onClick = { offMainInOrder { LinkCommands.scanBluetooth(false) } }) { Text("Stop") }
         }
     }
 }
@@ -695,8 +697,8 @@ private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Uni
                                     }
                                 // qtpaths: links.linkConfigurations.0.setDeviceByAddress
                                 device?.let { Qgc.invoke("$LINKS_PATH.${row.index}.setDeviceByAddress", it.address) }
-                                Qgc.invoke("links.commitLinkConfigurations")
-                                Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")
+                                LinkCommands.commitConfigurations()
+                                LinkCommands.connect("@$LINKS_PATH.${row.index}")
                             }
                             if (row.editing == "logFile") withContext(Dispatchers.IO) { pruneReplayFolder(context, row.name, logFile) }
                             onSaved()
@@ -747,7 +749,7 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
     var deviceId by remember { mutableStateOf("") }
     var cloudErrors by remember { mutableStateOf(false) }
     var cloudOffered by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { cloudOffered = withContext(Dispatchers.Default) { accountState(Qgc.get("account")) != null } }
+    LaunchedEffect(Unit) { cloudOffered = withContext(Dispatchers.Default) { accountState(AccountCommands.state()) != null } }
     val choices = offered + listOf(AIRCAST_CLOUD_LINK).filter { cloudOffered && it in linkTypeIds(linksJson) }
     val askBluetooth = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { }
     val scope = rememberCoroutineScope()
@@ -937,18 +939,18 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
                         scope.launch {
                             val added = withContext(Dispatchers.Default) {
                                 if (type == AIRCAST_CLOUD_LINK) {
-                                    Qgc.set("account.apiBase", apiBase)
-                                    Qgc.invokeResult("links.createAircastCloudLink", chosen, apiBase, deviceId) == true
+                                    AccountCommands.setApiBase(apiBase)
+                                    LinkCommands.createAircastCloud(chosen, apiBase, deviceId)
                                 } else if (type == REPLAY_LINK) {
                                     val staged = stagedReplayLog(context, chosen, replayLog!!)
-                                    val created = staged != null && Qgc.invokeResult("links.createLogReplayConfiguration", chosen, staged) == true
+                                    val created = staged != null && LinkCommands.createLogReplay(chosen, staged)
                                     if (!created) staged?.let { java.io.File(it).delete() }
                                     created && connectNamed(chosen)
                                 } else if (type == BLUETOOTH_LINK) {
                                     val picked = device!!
-                                    Qgc.invokeResult("links.createBluetoothLink", chosen, picked.name, picked.address) == true
+                                    LinkCommands.createBluetooth(chosen, picked.name, picked.address)
                                 } else if (type == "serial") {
-                                    Qgc.invokeResult("links.createSerialConfiguration", chosen, portName, baud) == true &&
+                                    LinkCommands.createSerial(chosen, portName, baud) &&
                                         writeNewLinkFraming(chosen, newFraming) &&
                                         connectNamed(chosen)
                                 } else if (type == "udp") {
@@ -984,7 +986,7 @@ private fun currentRows(): List<LinkRow> = linkRows(Qgc.get(LINKS_VIEW))
 
 private fun connectNamed(name: String): Boolean {
     val row = currentRows().firstOrNull { it.name == name } ?: return false
-    Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}")
+    LinkCommands.connect("@$LINKS_PATH.${row.index}")
     return true
 }
 
@@ -1055,7 +1057,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                         attempt(
                             action = "connect",
                             settled = { currentRows().getOrNull(row.index)?.connected == true },
-                        ) { Qgc.invoke("links.createConnectedLink", "@$LINKS_PATH.${row.index}") }
+                        ) { LinkCommands.connect("@$LINKS_PATH.${row.index}") }
                     },
                     onDisconnect = {
                         if (hasVehicle) {
@@ -1134,7 +1136,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                     attempt(
                         action = "remove",
                         settled = { currentRows().none { it.name == row.name } },
-                    ) { Qgc.invoke("links.removeConfiguration", "@$LINKS_PATH.${row.index}") }
+                    ) { LinkCommands.remove("@$LINKS_PATH.${row.index}") }
                     confirmingRemove = null
                 }) { Text("Remove") }
             },

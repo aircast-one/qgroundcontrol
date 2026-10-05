@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.VideoCommands
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.FilterChip
@@ -40,7 +41,7 @@ fun VideoSourceLayer(modifier: Modifier = Modifier) {
                 FilterChip(
                     selected = source.slot == video?.activeSource,
                     onClick = {
-                        offMainDetached { Qgc.invoke("video.setActiveVideoSource", source.slot) }
+                        offMainDetached { VideoCommands.setActiveSource(source.slot) }
                     },
                     label = { Text(if (source.connecting) "${source.title} · connecting" else source.title) },
                 )

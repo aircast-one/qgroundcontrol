@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import one.aircast.map.aircast
+import one.aircast.android.bridge.VehicleCommands
 import androidx.compose.foundation.rememberScrollState
 
 import androidx.compose.foundation.verticalScroll
@@ -626,7 +627,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
             onRefusal(null)
             flyScreen.pendingMode = mode.name
             val before = withContext(Dispatchers.Default) { modeAck(Qgc.get(FLIGHT_MODES)) }
-            withContext(Dispatchers.Default) { Qgc.set("vehicle.flightMode", mode.name) }
+            withContext(Dispatchers.Default) { VehicleCommands.setFlightMode(mode.name) }
             val started = System.currentTimeMillis()
             var outcome: ModeOutcome = ModeOutcome.Pending
             while (outcome == ModeOutcome.Pending) {
@@ -890,7 +891,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                     report = report,
                     withdraw = withdraw,
                     reached = { armedNow() == target },
-                ) { Qgc.set("vehicle.armed", target) }
+                ) { VehicleCommands.setArmed(target) }
             })
         }.takeIf { armAction?.shown == true },
         DeckEntry(
@@ -904,9 +905,9 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                         val heightless = offers["takeoff"]?.carriesValue == false
                         val target = if (heightless) null else holdTakeoffHeight(guidedTakeoff(Qgc.get(GUIDED_TAKEOFF)))?.let { height -> guidedTakeoff(Qgc.get(guidedTakeoffPath(height))) }
                         when {
-                            heightless -> Qgc.refusalOf("vehicle.guidedModeTakeoff")
+                            heightless -> VehicleCommands.takeoffRefusal()
                             target == null -> "This vehicle did not report a takeoff height range."
-                            else -> Qgc.refusalOf("vehicle.guidedModeTakeoff", target.targetMeters)
+                            else -> VehicleCommands.takeoffRefusal(target.targetMeters)
                         }
                     })
                 }
@@ -919,7 +920,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                     confirm = offers["takeoff"]?.prompt?.ifBlank { null } ?: "Takeoff from ground and hold position.",
                     destructive = false,
                 ) {
-                    offMainDetached { Qgc.invoke("vehicle.guidedModeTakeoff") }
+                    offMainDetached { VehicleCommands.takeoff() }
                 })
                 return@DeckEntry
             }
@@ -935,10 +936,10 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                 confirm = offers["rtl"]?.prompt?.ifBlank { null } ?: "Return to the launch position of the vehicle",
                 destructive = false,
                 option = offers["rtl"]?.option?.ifBlank { null }?.let { label ->
-                    ConfirmOption(label) { smart -> offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", smart) } }
+                    ConfirmOption(label) { smart -> offMainDetached { VehicleCommands.returnToLaunch(smart) } }
                 },
             ) {
-                offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
+                offMainDetached { VehicleCommands.returnToLaunch(false) }
             })
         }.takeIf { offers["rtl"]?.shown == true },
         DeckEntry(
@@ -947,7 +948,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
             R.drawable.ic_flight_land,
             offers["land"]?.ready == true,
             onHold = {
-                scope.launch { report(withContext(Dispatchers.Default) { Qgc.refusalOf("vehicle.guidedModeLand") }) }
+                scope.launch { report(withContext(Dispatchers.Default) { VehicleCommands.landRefusal() }) }
             },
         ) {
             confirm(GuidedAction(
@@ -957,7 +958,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                     ?: "Land the vehicle at the current position",
                 destructive = false,
             ) {
-                offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
+                offMainDetached { VehicleCommands.land() }
             })
         }.takeIf { offers["land"]?.shown == true },
         DeckEntry("changeSpeed", "Speed", R.drawable.ic_speed, offers["changeSpeed"]?.ready == true) {

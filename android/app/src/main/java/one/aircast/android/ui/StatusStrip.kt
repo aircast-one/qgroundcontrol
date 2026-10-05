@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.annotation.DrawableRes
+import one.aircast.android.bridge.VehicleCommands
 import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
@@ -395,7 +396,7 @@ private fun BatteryReturnButton(onClosed: () -> Unit) {
                 androidx.compose.material3.TextButton(onClick = {
                     confirming = false
                     onClosed()
-                    one.aircast.android.bridge.offMainDetached { one.aircast.android.bridge.Qgc.invoke("vehicle.guidedModeRTL", false) }
+                    one.aircast.android.bridge.offMainDetached { VehicleCommands.returnToLaunch(false) }
                 }) { Text("Return") }
             },
             dismissButton = { androidx.compose.material3.TextButton(onClick = { confirming = false }) { Text("Cancel") } },

@@ -134,9 +134,7 @@ private fun sendPlan(
     say("Uploading to vehicle")
     scope.launch {
         val outcome = withContext(Dispatchers.Default) {
-            if (pauseFirst) {
-                QGCBridge.invoke("vehicle.pauseVehicle", "[]")
-            }
+            if (pauseFirst) PlanBridge.pauseVehicle()
             uploadOutcome(PlanBridge.sendToVehicle())
         }
         say(uploadMessage(outcome))

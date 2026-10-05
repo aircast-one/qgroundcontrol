@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import android.content.Intent
+import one.aircast.android.bridge.AccountCommands
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -76,12 +77,12 @@ internal fun AircastCloudFields(apiBase: String, deviceId: String, showErrors: B
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Account  ${accountLine(state)}", modifier = Modifier.weight(1f))
                 when {
-                    state.signedIn -> OutlinedButton(onClick = { offMainDetached { Qgc.invoke("account.signOut") } }) { Text("Sign out") }
-                    state.signingIn -> OutlinedButton(onClick = { offMainDetached { Qgc.invoke("account.cancelSignIn") } }) { Text("Cancel") }
+                    state.signedIn -> OutlinedButton(onClick = { offMainDetached { AccountCommands.signOut() } }) { Text("Sign out") }
+                    state.signingIn -> OutlinedButton(onClick = { offMainDetached { AccountCommands.cancelSignIn() } }) { Text("Cancel") }
                     else -> OutlinedButton(onClick = {
                         offMainDetached {
-                            Qgc.set("account.apiBase", apiBase)
-                            Qgc.invoke("account.signIn")
+                            AccountCommands.setApiBase(apiBase)
+                            AccountCommands.signIn()
                         }
                     }) { Text("Sign in") }
                 }

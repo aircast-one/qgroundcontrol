@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import one.aircast.android.bridge.SetupCommands
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +41,7 @@ internal fun escCalibration(view: JSONObject?): EscCalibrationState? = view?.tak
 internal fun EscCalibrationDialog(onClose: () -> Unit) {
     var state by remember { mutableStateOf<EscCalibrationState?>(null) }
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.Default) { Qgc.invoke("escCalibration.start") }
+        withContext(Dispatchers.Default) { SetupCommands.startEscCalibration() }
         while (isActive) {
             state = withContext(Dispatchers.Default) { escCalibration(Qgc.get(ESC_CAL_VIEW)) }
             delay(ESC_CAL_POLL_MS)
@@ -63,7 +64,7 @@ internal fun EscCalibrationDialog(onClose: () -> Unit) {
         },
         confirmButton = {
             TextButton(enabled = state?.running == false, onClick = {
-                offMainDetached { Qgc.invoke("escCalibration.close") }
+                offMainDetached { SetupCommands.closeEscCalibration() }
                 onClose()
             }) { Text("OK") }
         },

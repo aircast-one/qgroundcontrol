@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.background
+import one.aircast.android.bridge.SetupCommands
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,7 +51,7 @@ internal fun ConnectingCard(modifier: Modifier = Modifier) {
 
     LaunchedEffect(Unit) {
         while (isActive) {
-            loading = withContext(Dispatchers.Default) { loadingProgress(Qgc.get("vehicle", listOf("initialConnectComplete", "loadProgress"))) }
+            loading = withContext(Dispatchers.Default) { loadingProgress(SetupCommands.vehicleFields(listOf("initialConnectComplete", "loadProgress"))) }
             delay(CONNECTING_POLL_MS)
         }
     }

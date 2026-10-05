@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import android.content.Context
+import one.aircast.android.bridge.AppCommands
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import one.aircast.android.bridge.Qgc
@@ -120,7 +121,7 @@ internal fun writeChosen(context: Context, vehicleClass: String, chosen: List<St
         .edit()
         .putString(chosenKey(vehicleClass), chosen.joinToString(","))
         .apply()
-    offMainDetached { Qgc.invoke("subtitles.setInstruments", vehicleClass, chosen.joinToString(",")) }
+    offMainDetached { AppCommands.setSubtitleInstruments(vehicleClass, chosen) }
 }
 
 private const val VALUE_SIZE_KEY = "fontSize"

@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.material3.Slider
+import one.aircast.android.bridge.VehicleCommands
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,7 +68,7 @@ internal fun takeoffValue(offer: GuidedOffer?): GuidedValueKind = GuidedValueKin
     missingRange = "This vehicle did not report a takeoff height range.",
     quickPicks = false,
     read = { target -> takeoffReading(guidedTakeoff(Qgc.get(target?.let(::guidedTakeoffPath) ?: GUIDED_TAKEOFF))) },
-    commit = { target -> guidedTakeoff(Qgc.get(guidedTakeoffPath(target)))?.let { Qgc.invoke("vehicle.guidedModeTakeoff", it.targetMeters) } },
+    commit = { target -> guidedTakeoff(Qgc.get(guidedTakeoffPath(target)))?.let { VehicleCommands.takeoff(it.targetMeters) } },
 )
 
 internal fun speedValue(offer: GuidedOffer?): GuidedValueKind = GuidedValueKind(
@@ -80,10 +81,7 @@ internal fun speedValue(offer: GuidedOffer?): GuidedValueKind = GuidedValueKind(
     read = { target -> speedReading(guidedSpeed(Qgc.get(target?.let(::guidedSpeedPath) ?: GUIDED_SPEED))) },
     commit = { target ->
         guidedSpeed(Qgc.get(guidedSpeedPath(target)))?.let { fresh ->
-            fresh.command?.let { method ->
-                // qtpaths: vehicle.guidedModeChangeGroundSpeedMetersSecond, vehicle.guidedModeChangeEquivalentAirspeedMetersSecond
-                Qgc.invoke("vehicle.$method", fresh.targetMetersSecond)
-            }
+            fresh.command?.let { method -> VehicleCommands.changeSpeed(method, fresh.targetMetersSecond) }
         }
     },
 )
@@ -97,9 +95,7 @@ internal fun altitudeValue(pauses: Boolean): GuidedValueKind = GuidedValueKind(
     quickPicks = true,
     read = { target -> altitudeReading(guidedAltitude(Qgc.get(target?.let { guidedAltitudePath(it, pauses) } ?: GUIDED_ALTITUDE))) },
     commit = { target ->
-        guidedAltitude(Qgc.get(guidedAltitudePath(target, pauses)))?.let { altitudeCommandArgs(it, pauses) }?.let { args ->
-            Qgc.invoke("vehicle.guidedModeChangeAltitude", *args.toTypedArray())
-        }
+        guidedAltitude(Qgc.get(guidedAltitudePath(target, pauses)))?.let(::altitudeDelta)?.let { VehicleCommands.changeAltitude(it, pauses) }
     },
 )
 

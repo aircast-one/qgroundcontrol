@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
+import one.aircast.android.bridge.VehicleCommands
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -122,11 +123,11 @@ private fun StatusMessages() {
     val messagesJson by qgcPath(MESSAGES)
     val lines = remember(messagesJson) { vehicleMessages(messagesJson).asReversed() }
     var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { offMainDetached { Qgc.invoke("vehicle.resetAllMessages") } }
+    LaunchedEffect(Unit) { offMainDetached { VehicleCommands.resetAllMessages() } }
     if (lines.isEmpty()) return
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("Messages", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-        if (shown) TextButton(onClick = { offMainDetached { Qgc.invoke("vehicle.clearMessages") } }) { Text("Clear") }
+        if (shown) TextButton(onClick = { offMainDetached { VehicleCommands.clearMessages() } }) { Text("Clear") }
     }
     TextButton(onClick = { shown = !shown }, modifier = Modifier.padding(horizontal = 12.dp)) { Text(messagesToggleText(shown)) }
     if (shown) {
