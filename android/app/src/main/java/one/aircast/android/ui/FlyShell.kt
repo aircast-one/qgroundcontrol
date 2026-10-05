@@ -10,6 +10,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.runtime.setValue
 
@@ -184,6 +186,7 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
 internal object FlyChrome {
     var topPx by mutableIntStateOf(0)
     var bottomPx by mutableIntStateOf(0)
+    var controlsBottomPx by mutableFloatStateOf(0f)
 }
 
 @Composable
@@ -308,7 +311,8 @@ internal fun FlyScreen(
                 val half = Modifier.fillMaxWidth(if (sideBySide) SIMPLE_LANDSCAPE_SPLIT else 1f)
                 if (simple) SimpleTiles(half.padding(top = AircastSpace.s3))
                 Row(
-                    half.padding(top = if (simple) AircastSpace.s4 else AircastSpace.s2),
+                    half.padding(top = if (simple) AircastSpace.s4 else AircastSpace.s2)
+                        .then(if (simple) Modifier.onGloballyPositioned { FlyChrome.controlsBottomPx = it.boundsInRoot().bottom } else Modifier),
                     horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -316,7 +320,7 @@ internal fun FlyScreen(
                     if (simple) keyRowEnd()
                 }
                 if (!simple) Row(
-                    Modifier.horizontalScroll(rememberScrollState()),
+                    Modifier.onGloballyPositioned { FlyChrome.controlsBottomPx = it.boundsInRoot().bottom }.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     verticalAlignment = Alignment.CenterVertically,
                 ) { keyRow() }

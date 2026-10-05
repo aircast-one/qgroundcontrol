@@ -24,6 +24,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -62,11 +66,21 @@ private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this 
 }
 
 @Composable
-private fun noVideoChrome(underFlyChrome: Boolean): Modifier = with(LocalDensity.current) {
-    when {
-        !underFlyChrome -> Modifier
-        !flyIsPortrait() -> Modifier.padding(horizontal = MAP_PIP_SIZE + AircastSpace.s3)
-        else -> Modifier.padding(top = FlyChrome.topPx.toDp(), bottom = FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3)
+private fun NoVideoArea(underFlyChrome: Boolean, video: VideoReading?, linksToSettings: Boolean) {
+    var areaTopPx by remember { mutableFloatStateOf(0f) }
+    BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { areaTopPx = it.positionInRoot().y }) {
+        val chrome = with(LocalDensity.current) {
+            when {
+                !underFlyChrome -> Modifier
+                !flyIsPortrait() -> Modifier.padding(horizontal = MAP_PIP_SIZE + AircastSpace.s3)
+                else -> Modifier.padding(
+                    start = maxWidth * NO_VIDEO_INSTRUMENT_SHARE,
+                    top = (FlyChrome.controlsBottomPx - areaTopPx).coerceAtLeast(0f).toDp(),
+                    bottom = FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3,
+                )
+            }
+        }
+        Box(chrome.fillMaxSize(), contentAlignment = Alignment.Center) { NoVideoPanel(video, linksToSettings = linksToSettings) }
     }
 }
 
@@ -81,12 +95,11 @@ fun VideoSurface(
 ) {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
-    val chrome = if (settingsPreview) Modifier else noVideoChrome(expanded && !fullScreen)
 
     if (video?.available == false) {
         if (!expanded) return
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
-            Box(chrome, contentAlignment = Alignment.Center) { NoVideoPanel(video, linksToSettings = !settingsPreview) }
+            NoVideoArea(!settingsPreview && expanded && !fullScreen, video, linksToSettings = !settingsPreview)
         }
         return
     }
@@ -146,13 +159,14 @@ fun VideoSurface(
                 Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
-                Box(chrome, contentAlignment = Alignment.Center) { NoVideoPanel(video, linksToSettings = !settingsPreview) }
+                NoVideoArea(!settingsPreview && expanded && !fullScreen, video, linksToSettings = !settingsPreview)
             }
         }
 
     }
 }
 
+private const val NO_VIDEO_INSTRUMENT_SHARE = 0.35f
 internal const val VIDEO_FIT_WIDTH = 0
 internal const val VIDEO_FIT_HEIGHT = 1
 internal const val VIDEO_FILL = 2
