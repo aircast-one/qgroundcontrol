@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -18,6 +19,8 @@ internal class FlyScreenState(val layout: OverlayLayoutState) {
     val guidedPanelOpen: Boolean get() = guidedPanels > 0
     val controlRequestDeadlines = mutableStateMapOf<Int, Long>()
     val mapEdits = FlyMapEdits()
+    val obstacles = mutableStateMapOf<String, Rect>()
+    var mapInsets by mutableStateOf(MapInsets(top = 0, bottom = 0))
 }
 
 internal val LocalFlyScreenState = staticCompositionLocalOf<FlyScreenState> { error("FlyScreenState is provided by AircastShell") }

@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.activity.compose.BackHandler
@@ -32,11 +34,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -244,10 +245,12 @@ internal fun LayoutPipEditor(key: String, shape: Shape, modifier: Modifier = Mod
 
 @Composable
 internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolean = true, content: @Composable () -> Unit) {
-    val layout = LocalFlyScreenState.current.layout
+    val flyScreen = LocalFlyScreenState.current
+    val layout = flyScreen.layout
     val editing = layout.editing
     val hidden = key in layout.hidden
     if (hidden && !editing) return
+    val avoided = LocalAvoidedByVideoMessage.current
     val placedKey = layoutKey(key)
     val moved = layout.offsets[placedKey] ?: (0f to 0f)
     val angle = if (editing) jiggleAngle(key) else 0f
@@ -258,7 +261,8 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
             .offset(moved.first.dp, moved.second.dp)
             .then(if (movable) keptOnScreen(placedKey) else Modifier)
             .then(if (hideable && !editing) Modifier.onHold { layout.editing = true } else Modifier)
-            .graphicsLayer { rotationZ = if (decorated) angle else 0f },
+            .graphicsLayer { rotationZ = if (decorated) angle else 0f }
+            .then(if (avoided) Modifier.avoidedByVideoMessage(key) else Modifier),
     ) {
         Box(
             Modifier

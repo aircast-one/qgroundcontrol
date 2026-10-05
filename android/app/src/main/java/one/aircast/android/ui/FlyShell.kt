@@ -1,6 +1,20 @@
 package one.aircast.android.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.Layout
 
 import one.aircast.map.MapLayersSheet
 
@@ -9,12 +23,8 @@ import androidx.compose.runtime.remember
 
 import androidx.compose.runtime.mutableStateOf
 
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.runtime.setValue
 
-import androidx.compose.runtime.getValue
 
 import android.content.Context
 import android.content.res.Configuration
@@ -23,8 +33,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.ui.layout.boundsInParent
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -183,13 +191,6 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
     }
 }
 
-internal object FlyChrome {
-    var topPx by mutableIntStateOf(0)
-    var bottomPx by mutableIntStateOf(0)
-    var controlsBottomPx by mutableFloatStateOf(0f)
-    var instruments by mutableStateOf(androidx.compose.ui.geometry.Rect.Zero)
-}
-
 @Composable
 internal fun FlyScreen(
     view: FlyView,
@@ -267,7 +268,7 @@ internal fun FlyScreen(
                             .clickable { onView(FlyView.Map) },
                     )
                 }
-                Box(Modifier.zIndex(3f).align(Alignment.BottomEnd).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).size(MAP_PIP_SIZE)) {
+                Box(Modifier.zIndex(3f).align(Alignment.BottomEnd).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).size(MAP_PIP_SIZE).avoidedByVideoMessage(MAP_PIP_KEY)) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
                     if (pipExpanded) LayoutPipEditor(MAP_PIP_KEY, CircleShape, Modifier.matchParentSize())
                 }
@@ -292,62 +293,63 @@ internal fun FlyScreen(
             }
 
             val sideBySide = simple && landscape
-            var bottomReserve by remember { mutableIntStateOf(0) }
-            val reserveDp = with(androidx.compose.ui.platform.LocalDensity.current) { (if (simple) 0 else bottomReserve).toDp() }
-            Box(Modifier.align(Alignment.TopStart).fillMaxSize().padding(bottom = reserveDp).clipToBounds()) {
-            Column(
-                Modifier
-                    .align(Alignment.TopStart)
-                    .onGloballyPositioned { FlyChrome.topPx = it.boundsInParent().bottom.toInt() }
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
-                verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
-                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = status,
-                )
-                val half = Modifier.fillMaxWidth(if (sideBySide) SIMPLE_LANDSCAPE_SPLIT else 1f)
-                if (simple) SimpleTiles(half.padding(top = AircastSpace.s3))
-                Row(
-                    half.padding(top = if (simple) AircastSpace.s4 else AircastSpace.s2)
-                        .then(if (simple) Modifier.onGloballyPositioned { FlyChrome.controlsBottomPx = it.positionInRoot().y + it.size.height } else Modifier),
-                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    LayoutWidget("viewSwitcher", hideable = false) { FlyViewSwitcher(view, onView) }
-                    if (simple) keyRowEnd()
-                }
-                if (!simple) Row(
-                    Modifier.onGloballyPositioned { FlyChrome.controlsBottomPx = it.positionInRoot().y + it.size.height }.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) { keyRow() }
-                Column(
-                    half.padding(top = if (simple && !sideBySide) AircastSpace.s8 else 0.dp),
-                    verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                    horizontalAlignment = if (simple) Alignment.CenterHorizontally else Alignment.Start,
-                ) { overlays() }
-            }
-            }
-
-            if (simple) {
-                Box(
-                    Modifier
-                        .align(if (sideBySide) Alignment.BottomEnd else Alignment.BottomCenter)
-                        .fillMaxWidth(if (sideBySide) SIMPLE_LANDSCAPE_SPLIT else 1f)
-                        .onGloballyPositioned { FlyChrome.bottomPx = it.size.height },
-                ) { actions(FlyDeckLayout.Simple) }
-            } else {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .onGloballyPositioned { FlyChrome.bottomPx = it.size.height; bottomReserve = it.size.height }
-                        .padding(AircastSpace.s3),
-                ) { keyRowEnd() }
-            }
+            val half = Modifier.fillMaxWidth(if (sideBySide) SIMPLE_LANDSCAPE_SPLIT else 1f)
+            val flyScreen = LocalFlyScreenState.current
+            val videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
+            FlyChromeLayout(
+                modifier = Modifier.fillMaxSize(),
+                top = {
+                    Column(
+                        Modifier
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
+                        verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
+                            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                            verticalAlignment = Alignment.CenterVertically,
+                            content = status,
+                        )
+                        if (simple) SimpleTiles(half.padding(top = AircastSpace.s3))
+                        Row(
+                            half.padding(top = if (simple) AircastSpace.s4 else AircastSpace.s2),
+                            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            LayoutWidget("viewSwitcher", hideable = false) { FlyViewSwitcher(view, onView) }
+                            if (simple) keyRowEnd()
+                        }
+                        if (!simple) Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) { keyRow() }
+                    }
+                },
+                overlays = {
+                    Column(
+                        half.clipToBounds().padding(horizontal = AircastSpace.s3).padding(top = if (simple && !sideBySide) AircastSpace.s8 else 0.dp),
+                        verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                        horizontalAlignment = if (simple) Alignment.CenterHorizontally else Alignment.Start,
+                    ) {
+                        CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { overlays() }
+                    }
+                },
+                bottom = {
+                    if (simple) Box(half) { actions(FlyDeckLayout.Simple) } else Box(Modifier.padding(AircastSpace.s3)) { keyRowEnd() }
+                },
+                bottomAlignment = when {
+                    !simple -> Alignment.Start
+                    sideBySide -> Alignment.End
+                    else -> Alignment.CenterHorizontally
+                },
+                overlaysAboveBottom = !simple,
+                message = if (videoMessage) ({ FlyNoVideoMessage() }) else null,
+                messageAboveBottom = !landscape,
+                obstacles = { flyScreen.obstacles.values },
+                onInsets = { insets -> if (insets != flyScreen.mapInsets) flyScreen.mapInsets = insets },
+            )
         }
     }
 
@@ -393,3 +395,66 @@ internal val MAP_LAYERS_CLEARANCE = 48.dp + AircastSpace.s3 + AircastSpace.s2
 private val FLEET_CARD_MAX_WIDTH = 440.dp
 private val FLEET_CARD_MAX_HEIGHT = 320.dp
 private const val FLEET_CARD_MIN_SCREEN_DP = 600
+
+internal data class MapInsets(val top: Int, val bottom: Int)
+
+internal val LocalAvoidedByVideoMessage = staticCompositionLocalOf { false }
+
+@Composable
+private fun FlyChromeLayout(
+    modifier: Modifier,
+    top: @Composable () -> Unit,
+    overlays: @Composable () -> Unit,
+    bottom: @Composable () -> Unit,
+    bottomAlignment: Alignment.Horizontal,
+    overlaysAboveBottom: Boolean,
+    message: (@Composable () -> Unit)?,
+    messageAboveBottom: Boolean,
+    obstacles: () -> Collection<Rect>,
+    onInsets: (MapInsets) -> Unit,
+) {
+    val placed = remember { PlacedCoordinates() }
+    Layout(
+        contents = listOf(top, overlays, bottom, message ?: {}),
+        modifier = modifier.onPlaced { placed.coordinates = it },
+    ) { (topSlot, overlaySlot, bottomSlot, messageSlot), constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val tops = topSlot.map { it.measure(loose) }
+        val topHeight = tops.maxOfOrNull { it.height } ?: 0
+        val bottoms = bottomSlot.map { it.measure(loose) }
+        val bottomHeight = bottoms.maxOfOrNull { it.height } ?: 0
+        val overlayRoom = (height - topHeight - if (overlaysAboveBottom) bottomHeight else 0).coerceAtLeast(0)
+        val overlayPlaceables = overlaySlot.map { it.measure(loose.copy(maxHeight = overlayRoom)) }
+        val overlayHeight = overlayPlaceables.maxOfOrNull { it.height } ?: 0
+        val origin = placed.coordinates?.takeIf { it.isAttached }?.positionInRoot() ?: Offset.Zero
+        val free = Rect(
+            left = AircastSpace.s3.toPx(),
+            top = topHeight.toFloat(),
+            right = width - AircastSpace.s3.toPx(),
+            bottom = height - AircastSpace.s3.toPx() - if (messageAboveBottom) bottomHeight else 0,
+        )
+        val region = messageRegion(free, obstacles().map { it.translate(-origin) }, AircastSpace.s3.toPx(), NO_VIDEO_PILL_WIDTH.toPx(), NO_VIDEO_PILL_HEIGHT.toPx())
+        val messages = region?.let { room -> messageSlot.map { it.measure(Constraints.fixed(room.width.toInt(), room.height.toInt())) } }.orEmpty()
+        layout(width, height) {
+            region?.let { room -> messages.forEach { it.place(room.left.toInt(), room.top.toInt()) } }
+            tops.forEach { it.place(0, 0) }
+            overlayPlaceables.forEach { it.place(0, topHeight) }
+            bottoms.forEach { it.place(bottomAlignment.align(it.width, width, layoutDirection), height - it.height) }
+            onInsets(MapInsets(top = topHeight + overlayHeight, bottom = bottomHeight))
+        }
+    }
+}
+
+private class PlacedCoordinates {
+    var coordinates: LayoutCoordinates? = null
+}
+
+@Composable
+internal fun Modifier.avoidedByVideoMessage(key: String): Modifier {
+    val flyScreen = LocalFlyScreenState.current
+    DisposableEffect(key) { onDispose { flyScreen.obstacles.remove(key) } }
+    return onGloballyPositioned { flyScreen.obstacles[key] = Rect(it.positionInRoot(), it.size.toSize()) }
+}
+

@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class NoVideoPanelTest {
@@ -40,15 +41,29 @@ class NoVideoPanelTest {
         org.junit.Assert.assertEquals("Enter the stream address below.", unavailableVideoState(unavailable(sourceChosen = true, configured = false), linksToSettings = false)?.detail)
     }
 
+    private fun rect(left: Float, top: Float, right: Float, bottom: Float) = androidx.compose.ui.geometry.Rect(left, top, right, bottom)
+
     @Test
-    fun `the message avoids the instruments by taking the largest free side`() {
-        val free = androidx.compose.ui.geometry.Rect(0f, 100f, 1000f, 1500f)
-        val besideTop = androidx.compose.ui.geometry.Rect(0f, 100f, 500f, 220f)
-        assertEquals(androidx.compose.ui.geometry.Rect(0f, 230f, 1000f, 1500f), noVideoRegion(free, besideTop, 10f))
-        val tallLeft = androidx.compose.ui.geometry.Rect(0f, 100f, 300f, 1500f)
-        assertEquals(androidx.compose.ui.geometry.Rect(310f, 100f, 1000f, 1500f), noVideoRegion(free, tallLeft, 10f))
-        val movedBelow = androidx.compose.ui.geometry.Rect(300f, 1600f, 700f, 1700f)
-        assertEquals(free, noVideoRegion(free, movedBelow, 10f))
-        assertEquals(free, noVideoRegion(free, androidx.compose.ui.geometry.Rect.Zero, 10f))
+    fun `the message takes the largest free side of the instruments, or the whole area when they are elsewhere`() {
+        val free = rect(0f, 100f, 1000f, 1500f)
+        assertEquals(rect(0f, 230f, 1000f, 1500f), messageRegion(free, listOf(rect(0f, 100f, 500f, 220f)), 10f, 200f, 50f))
+        assertEquals(rect(310f, 100f, 1000f, 1500f), messageRegion(free, listOf(rect(0f, 100f, 300f, 1500f)), 10f, 200f, 50f))
+        assertEquals(free, messageRegion(free, listOf(rect(300f, 1600f, 700f, 1700f)), 10f, 200f, 50f))
+        assertEquals(free, messageRegion(free, emptyList(), 10f, 200f, 50f))
+    }
+
+    @Test
+    fun `the message clears every widget, looking past the first side it finds`() {
+        val free = rect(0f, 100f, 1000f, 600f)
+        val tape = rect(0f, 100f, 400f, 200f)
+        val fleet = rect(0f, 210f, 900f, 600f)
+        assertEquals(rect(410f, 100f, 1000f, 200f), messageRegion(free, listOf(tape, fleet), 10f, 200f, 50f))
+    }
+
+    @Test
+    fun `with no gap big enough for the pill there is no message rather than a squeezed one`() {
+        val free = rect(0f, 100f, 1000f, 600f)
+        assertNull(messageRegion(free, listOf(rect(0f, 100f, 950f, 600f)), 10f, 200f, 50f))
+        assertNull(messageRegion(rect(0f, 0f, 150f, 600f), emptyList(), 10f, 200f, 50f))
     }
 }

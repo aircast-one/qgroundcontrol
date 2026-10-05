@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import androidx.compose.runtime.getValue
 import one.aircast.map.ObstacleVideoOverlay
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -17,33 +18,23 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.unit.toSize
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.settingControl
-import one.aircast.map.AircastSpace
 import org.mavlink.qgroundcontrol.QGCBridge
 
 internal const val CAMERA_STEP_ZOOM = "vehicle.cameraManager.currentCameraInstance.stepZoom"
@@ -69,47 +60,44 @@ private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this 
 }
 
 @Composable
-private fun NoVideoArea(underFlyChrome: Boolean, video: VideoReading?, linksToSettings: Boolean) {
-    var area by remember { mutableStateOf(Rect.Zero) }
-    Box(Modifier.fillMaxSize().onGloballyPositioned { area = Rect(it.positionInRoot(), it.size.toSize()) }) {
-        val chrome = with(LocalDensity.current) {
-            when {
-                !underFlyChrome -> Modifier
-                else -> {
-                    val portrait = flyIsPortrait()
-                    val free = Rect(
-                        left = area.left + AircastSpace.s3.toPx(),
-                        top = maxOf(area.top, FlyChrome.controlsBottomPx) + AircastSpace.s2.toPx(),
-                        right = area.right - (if (portrait) AircastSpace.s3 else MAP_PIP_SIZE + AircastSpace.s3).toPx(),
-                        bottom = area.bottom - (if (portrait) FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3 else AircastSpace.s3).toPx(),
-                    )
-                    val region = noVideoRegion(free, FlyChrome.instruments, AircastSpace.s3.toPx())
-                    Modifier.padding(
-                        start = (region.left - area.left).coerceAtLeast(0f).toDp(),
-                        top = (region.top - area.top).coerceAtLeast(0f).toDp(),
-                        end = (area.right - region.right).coerceAtLeast(0f).toDp(),
-                        bottom = (area.bottom - region.bottom).coerceAtLeast(0f).toDp(),
-                    )
-                }
-            }
-        }
-        BoxWithConstraints(chrome.fillMaxSize()) {
-            val compact = underFlyChrome && (maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH)
-            Box(Modifier.fillMaxSize(), contentAlignment = if (compact) Alignment.TopEnd else Alignment.Center) {
-                CompositionLocalProvider(LocalNoVideoCompact provides compact) { NoVideoPanel(video, linksToSettings = linksToSettings) }
-            }
+private fun NoVideoArea(underFlyChrome: Boolean, compact: Boolean, video: VideoReading?, linksToSettings: Boolean) {
+    if (underFlyChrome) return
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CompositionLocalProvider(LocalNoVideoCompact provides compact) { NoVideoPanel(video, linksToSettings = linksToSettings) }
+    }
+}
+
+@Composable
+internal fun FlyNoVideoMessage() {
+    val videoJson by qgcPath(VIDEO_VIEW)
+    val video = remember(videoJson) { videoReading(videoJson) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
+        Box(Modifier.fillMaxSize(), contentAlignment = if (compact) Alignment.TopEnd else Alignment.Center) {
+            CompositionLocalProvider(LocalNoVideoCompact provides compact) { NoVideoPanel(video) }
         }
     }
 }
 
-internal fun noVideoRegion(free: Rect, obstacle: Rect, gap: Float): Rect =
-    if (obstacle.isEmpty || !free.overlaps(obstacle)) free
-    else listOf(
-        Rect(obstacle.right + gap, free.top, free.right, free.bottom),
-        Rect(free.left, free.top, obstacle.left - gap, free.bottom),
-        Rect(free.left, obstacle.bottom + gap, free.right, free.bottom),
-        Rect(free.left, free.top, free.right, obstacle.top - gap),
-    ).filter { it.width > 0f && it.height > 0f }.maxByOrNull { it.width * it.height } ?: free
+internal fun messageRegion(free: Rect, obstacles: List<Rect>, gap: Float, minWidth: Float, minHeight: Float): Rect? {
+    val fits = { room: Rect -> room.width >= minWidth && room.height >= minHeight }
+    return obstacles.filterNot { it.isEmpty }
+        .fold(listOf(free).filter(fits)) { rooms, obstacle ->
+            rooms.flatMap { room -> if (room.overlaps(obstacle)) sidesAround(room, obstacle, gap).filter(fits) else listOf(room) }
+                .distinct()
+                .let { found -> found.filterNot { room -> found.any { other -> other != room && other.contains(room) } } }
+        }
+        .maxByOrNull { it.width * it.height }
+}
+
+private fun Rect.contains(other: Rect): Boolean = left <= other.left && top <= other.top && right >= other.right && bottom >= other.bottom
+
+private fun sidesAround(room: Rect, obstacle: Rect, gap: Float): List<Rect> = listOf(
+    Rect(obstacle.right + gap, room.top, room.right, room.bottom),
+    Rect(room.left, room.top, obstacle.left - gap, room.bottom),
+    Rect(room.left, obstacle.bottom + gap, room.right, room.bottom),
+    Rect(room.left, room.top, room.right, obstacle.top - gap),
+)
 
 @Composable
 fun VideoSurface(
@@ -126,7 +114,7 @@ fun VideoSurface(
     if (video?.available == false) {
         if (!expanded) return
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
-            NoVideoArea(!settingsPreview && expanded && !fullScreen, video, linksToSettings = !settingsPreview)
+            NoVideoArea(!settingsPreview && expanded && !fullScreen, compact = !expanded, video = video, linksToSettings = !settingsPreview)
         }
         return
     }
@@ -186,7 +174,7 @@ fun VideoSurface(
                 Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.surfaceVariant,
             ) {
-                NoVideoArea(!settingsPreview && expanded && !fullScreen, video, linksToSettings = !settingsPreview)
+                NoVideoArea(!settingsPreview && expanded && !fullScreen, compact = !expanded, video = video, linksToSettings = !settingsPreview)
             }
         }
 
@@ -195,6 +183,8 @@ fun VideoSurface(
 
 private val NO_VIDEO_FULL_HEIGHT = 230.dp
 private val NO_VIDEO_FULL_WIDTH = 260.dp
+internal val NO_VIDEO_PILL_WIDTH = 180.dp
+internal val NO_VIDEO_PILL_HEIGHT = 48.dp
 internal const val VIDEO_FIT_WIDTH = 0
 internal const val VIDEO_FIT_HEIGHT = 1
 internal const val VIDEO_FILL = 2

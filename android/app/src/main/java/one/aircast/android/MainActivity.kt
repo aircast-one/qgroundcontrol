@@ -1,5 +1,7 @@
 package one.aircast.android
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
 import android.content.Intent
 import android.content.res.Configuration
@@ -41,17 +43,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.graphics.Color
 import one.aircast.map.aircast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.unit.toSize
-import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -59,7 +53,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.WindowInsets
 import one.aircast.android.ui.AppFontScale
@@ -237,7 +230,8 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 fun AircastShell(hostView: android.view.View?) {
     val navigation = one.aircast.android.ui.LocalAppNavigation.current
     var tab by remember { mutableStateOf(Tab.Fly) }
-    val overlayLayout = one.aircast.android.ui.LocalFlyScreenState.current.layout
+    val flyScreen = one.aircast.android.ui.LocalFlyScreenState.current
+    val overlayLayout = flyScreen.layout
     LaunchedEffect(tab) { if (tab != Tab.Fly) overlayLayout.editing = false }
     LaunchedEffect(navigation.setupPage) {
         if (navigation.setupPage != null) tab = Tab.Setup
@@ -267,8 +261,8 @@ fun AircastShell(hostView: android.view.View?) {
             FlyMap(
                 modifier = mod,
                 cameraBottomPx = 0,
-                topInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) one.aircast.android.ui.FlyChrome.topPx else 0,
-                bottomInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) one.aircast.android.ui.FlyChrome.bottomPx else 0,
+                topInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) flyScreen.mapInsets.top else 0,
+                bottomInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) flyScreen.mapInsets.bottom else 0,
                 logoEndInsetPx = with(androidx.compose.ui.platform.LocalDensity.current) { one.aircast.android.ui.MAP_LAYERS_CLEARANCE.roundToPx() }.takeIf { flyView == one.aircast.android.ui.FlyView.Map },
                 pip = flyView == one.aircast.android.ui.FlyView.Video,
                 onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
@@ -284,8 +278,7 @@ fun AircastShell(hostView: android.view.View?) {
     val flyAttitude = remember {
         movableContentOf {
             LayoutWidget("instrumentPanel") {
-                DisposableEffect(Unit) { onDispose { one.aircast.android.ui.FlyChrome.instruments = androidx.compose.ui.geometry.Rect.Zero } }
-                AttitudeInstrument(Modifier.onGloballyPositioned { one.aircast.android.ui.FlyChrome.instruments = androidx.compose.ui.geometry.Rect(it.positionInRoot(), it.size.toSize()) })
+                AttitudeInstrument()
             }
         }
     }
