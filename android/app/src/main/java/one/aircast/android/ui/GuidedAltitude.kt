@@ -45,9 +45,6 @@ internal fun guidedAltitude(view: JSONObject?): GuidedAltitude? {
 internal fun altitudeCommandArgs(reading: GuidedAltitude, pauses: Boolean): List<Any>? =
     reading.takeIf { it.sends }?.let { listOf(it.deltaMeters, pauses) }
 
-internal fun altitudeRangeUsable(reading: GuidedAltitude?): Boolean =
-    reading?.minimum != null && reading.maximum != null && reading.maximum > reading.minimum
-
 internal fun rangeLabel(minimum: Double?, maximum: Double?, unit: String): String? {
     if (minimum == null || maximum == null || maximum <= minimum) return null
     val show = { value: Double ->

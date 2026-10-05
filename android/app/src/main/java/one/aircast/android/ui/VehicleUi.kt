@@ -88,7 +88,6 @@ import one.aircast.map.TelemetryNumber
 import one.aircast.map.optText
 
 private const val MISSION_POPUP_DELAY_MS = 1000L
-private const val CHECKLIST_CLOSE_DELAY_MS = 1000L
 private const val GCS_POSITION = "view.gcsPosition"
 
 
@@ -338,16 +337,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     var sentSnapshot by remember { mutableStateOf<String?>(null) }
     var refusal by flyScreen::refusal
     val scope = rememberCoroutineScope()
-    var takeoffTarget by remember { mutableStateOf<Double?>(null) }
-    var takeoffSettled by remember { mutableStateOf<Double?>(null) }
-    var takeoffRange by remember { mutableStateOf<GuidedTakeoff?>(null) }
-    var altitudeTarget by remember { mutableStateOf<Double?>(null) }
-    var altitudeSettled by remember { mutableStateOf<Double?>(null) }
-    var altitudeRange by remember { mutableStateOf<GuidedAltitude?>(null) }
-    var speedTarget by remember { mutableStateOf<Double?>(null) }
-    var speedSettled by remember { mutableStateOf<Double?>(null) }
-    var speedRange by remember { mutableStateOf<GuidedSpeed?>(null) }
-    var altitudePauses by remember { mutableStateOf(false) }
+    var guidedValue by remember { mutableStateOf<OpenGuidedValue?>(null) }
     var showMore by remember { mutableStateOf(false) }
     var showGripper by remember { mutableStateOf(false) }
     var deckRest by remember { mutableStateOf<List<DeckEntry>>(emptyList()) }
@@ -355,13 +345,9 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     var editingLoiter by remember { mutableStateOf<LoiterOffer?>(null) }
     val mapClickJson by qgcPath(MAP_CLICK_PATH)
     val loiter = remember(mapClickJson) { loiterOffer(mapClickJson) }
-    var showChecklist by remember { mutableStateOf(false) }
-    val enforceChecklist by qgcBool(settingControl("settings.appSettings.enforceChecklist"))
-    var popupShownFor by remember { mutableStateOf<Int?>(null) }
-    var checklistTicked by rememberSaveable { mutableStateOf(setOf<String>()) }
+    val checklist = rememberPreflightChecklist()
     val preflightJson by qgcPath(PREFLIGHT)
     val useChecklist = remember(preflightJson) { preflightOffered(preflightJson) }
-    val checks = remember(preflightJson) { preflight(preflightJson) }
     val actionsJson by qgcPath(GUIDED_ACTIONS)
     val offers = remember(actionsJson) { guidedOffers(actionsJson) }
     val extras = remember(offers) { moreActions(offers) }
@@ -373,9 +359,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
 
     LaunchedEffect(offers) {
         if (offerWithdrawn(pending?.offerId, offers)) pending = null
-        if (speedTarget != null && offerWithdrawn("changeSpeed", offers)) speedTarget = null
-        if (takeoffTarget != null && offerWithdrawn("takeoff", offers)) takeoffTarget = null
-        if (altitudeTarget != null && offerWithdrawn(if (altitudePauses) PAUSE else "changeAltitude", offers)) altitudeTarget = null
+        if (offerWithdrawn(guidedValue?.kind?.offerId, offers)) guidedValue = null
         val popup = missionReady?.let { autoMissionPopup(it, offers, automaticMissionPopups) }
         missionReady = AUTO_POPUP_ACTIONS.filter { offers[it]?.ready == true }.toSet()
         if (popup != null) popupDue = popup
@@ -394,71 +378,24 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         }
     }
 
-    LaunchedEffect(available) {
-        if (!available) {
-            checklistTicked = emptySet()
-            popupShownFor = null
-        }
-    }
+    PreflightChecklistReset(checklist, available)
 
     if (!available) {
         Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
 
-    val vehiclesJson by qgcPath(one.aircast.map.VEHICLES_VIEW)
-    val vehicleId = remember(vehiclesJson) { activeVehicleId(vehiclesJson) }
-    var checklistStateSent by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(vehicleId) {
-        checklistTicked = emptySet()
-        checklistStateSent = null
-    }
-    val checklistPassed = checklistIsComplete(checks, checklistTicked)
-    LaunchedEffect(checklistPassed) {
-        if (checklistPassed && showChecklist) {
-            delay(CHECKLIST_CLOSE_DELAY_MS)
-            showChecklist = false
-        }
-    }
-    LaunchedEffect(checklistPassed, vehicleId) {
-        if (vehicleId == null || checklistStateSent == checklistPassed) return@LaunchedEffect
-        if (checklistStateSent == null && !checklistPassed) {
-            checklistStateSent = false
-            return@LaunchedEffect
-        }
-        checklistStateSent = checklistPassed
-        withContext(Dispatchers.Default) { Qgc.set("vehicle.checkListState", checklistStateValue(checklistPassed)) }
-    }
+    val deciding = pending != null || guidedValue != null || editingLoiter != null
 
-    val deciding = pending != null || speedTarget != null ||
-        takeoffTarget != null || altitudeTarget != null || editingLoiter != null
+    PreflightChecklist(checklist, deciding)
 
-    LaunchedEffect(vehicleId, deciding) {
-        val id = vehicleId ?: return@LaunchedEffect
-        if (popupShownFor == id || deciding) return@LaunchedEffect
-        delay(CHECKLIST_POPUP_DELAY_MS)
-        val complete = withContext(Dispatchers.Default) {
-            checklistIsComplete(preflight(Qgc.get(PREFLIGHT)), checklistTicked)
-        }
-        if (checklistPopupIsDue(true, useChecklist, enforceChecklist, complete, deciding)) {
-            popupShownFor = id
-            showChecklist = true
-        }
-    }
-
-    val openAltitude: (Boolean) -> Unit = { pauses ->
-        altitudePauses = pauses
+    val openValue: (GuidedValueKind) -> Unit = { kind ->
         scope.launch {
-            val fresh = withContext(Dispatchers.Default) { guidedAltitude(Qgc.get(GUIDED_ALTITUDE)) }
-            if (altitudeRangeUsable(fresh)) {
-                altitudeRange = fresh
-                altitudeTarget = fresh?.current
-                altitudeSettled = fresh?.current
-            } else {
-                refusal = "This vehicle did not report an altitude range."
-            }
+            val opened = openGuidedValue(kind)
+            if (opened == null) refusal = kind.missingRange else guidedValue = opened
         }
     }
+    val openAltitude: (Boolean) -> Unit = { pauses -> openValue(altitudeValue(pauses)) }
 
     Column(modifier.then(if (side) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
@@ -489,132 +426,17 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             SentNotice(sentName.orEmpty(), onDismiss = { sentName = null })
         }
 
-        val armAction = offers[if (armed) "disarm" else "arm"]
-        val entries = listOfNotNull(
-            DeckEntry(
-                id = "arm",
-                label = armAction?.title ?: if (armed) "Disarm" else "Arm",
-                icon = R.drawable.ic_bolt,
-                enabled = armAction?.ready == true,
-                warning = armed,
-            ) {
-                pending = GuidedAction(
-                    offerId = if (armed) "disarm" else "arm",
-                    name = armAction?.title ?: if (armed) "Disarm" else "Arm",
-                    confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
-                        "Disarm the vehicle"
-                    } else {
-                        "Arm the vehicle."
-                    },
-                    destructive = armAction?.destructive ?: true,
-                ) {
-                    val target = !armed
-                    scope.attemptCommand(
-                        action = if (target) "Arm" else "Disarm",
-                        report = { refusal = it },
-                        withdraw = { refusal = withdrawn(refusal, it) },
-                        reached = { armedNow() == target },
-                    ) { Qgc.set("vehicle.armed", target) }
-                }
-            }.takeIf { armAction?.shown == true },
-            DeckEntry(
-                "takeoff",
-                HOLD_TO_TAKE_OFF,
-                R.drawable.ic_flight_takeoff,
-                offers["takeoff"]?.ready == true,
-                onHold = {
-                    scope.launch {
-                        refusal = withContext(Dispatchers.Default) {
-                            val heightless = offers["takeoff"]?.carriesValue == false
-                            val target = if (heightless) null else holdTakeoffHeight(guidedTakeoff(Qgc.get(GUIDED_TAKEOFF)))?.let { height -> guidedTakeoff(Qgc.get(guidedTakeoffPath(height))) }
-                            when {
-                                heightless -> Qgc.refusalOf("vehicle.guidedModeTakeoff")
-                                target == null -> "This vehicle did not report a takeoff height range."
-                                else -> Qgc.refusalOf("vehicle.guidedModeTakeoff", target.targetMeters)
-                            }
-                        }
-                    }
-                },
-            ) {
-                if (offers["takeoff"]?.carriesValue == false) {
-                    pending = GuidedAction(
-                        offerId = "takeoff",
-                        name = offers["takeoff"]?.title ?: "Takeoff",
-                        confirm = offers["takeoff"]?.prompt?.ifBlank { null } ?: "Takeoff from ground and hold position.",
-                        destructive = false,
-                    ) {
-                        offMainDetached { Qgc.invoke("vehicle.guidedModeTakeoff") }
-                    }
-                    return@DeckEntry
-                }
-                scope.launch {
-                    val fresh = withContext(Dispatchers.Default) {
-                        guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))
-                    }
-                    if (!takeoffRangeUsable(fresh)) {
-                        refusal = "This vehicle did not report a takeoff height range."
-                        return@launch
-                    }
-                    takeoffRange = fresh
-                    takeoffTarget = fresh?.initial
-                    takeoffSettled = fresh?.initial
-                }
-            }.takeIf { offers["takeoff"]?.shown == true },
-            DeckEntry(PAUSE, offers[PAUSE]?.title ?: "Pause", R.drawable.ic_pause, offers[PAUSE]?.ready == true) {
-                openAltitude(true)
-            }.takeIf { offers[PAUSE]?.shown == true },
-            DeckEntry("rtl", "Return", R.drawable.ic_home, offers["rtl"]?.ready == true) {
-                pending = GuidedAction(
-                    offerId = "rtl",
-                    name = offers["rtl"]?.title ?: "Return",
-                    confirm = offers["rtl"]?.prompt?.ifBlank { null } ?: "Return to the launch position of the vehicle",
-                    destructive = false,
-                    option = offers["rtl"]?.option?.ifBlank { null }?.let { label ->
-                        ConfirmOption(label) { smart -> offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", smart) } }
-                    },
-                ) {
-                    offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
-                }
-            }.takeIf { offers["rtl"]?.shown == true },
-            DeckEntry(
-                "land",
-                holdLabel(offers["land"]?.title ?: "Land"),
-                R.drawable.ic_flight_land,
-                offers["land"]?.ready == true,
-                onHold = {
-                    scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf("vehicle.guidedModeLand") } }
-                },
-            ) {
-                pending = GuidedAction(
-                    offerId = "land",
-                    name = offers["land"]?.title ?: "Land",
-                    confirm = offers["land"]?.prompt?.ifBlank { null }
-                        ?: "Land the vehicle at the current position",
-                    destructive = false,
-                ) {
-                    offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
-                }
-            }.takeIf { offers["land"]?.shown == true },
-            DeckEntry("changeSpeed", "Speed", R.drawable.ic_speed, offers["changeSpeed"]?.ready == true) {
-                scope.launch {
-                    val fresh = withContext(Dispatchers.Default) {
-                        guidedSpeed(Qgc.get(GUIDED_SPEED))
-                    }
-                    if (!speedRangeUsable(fresh)) {
-                        refusal = "This vehicle did not report a speed range."
-                        return@launch
-                    }
-                    speedRange = fresh
-                    speedTarget = fresh?.initial
-                    speedSettled = fresh?.initial
-                }
-            }.takeIf { offers["changeSpeed"]?.shown == true },
-            DeckEntry("changeAltitude", "Altitude", R.drawable.ic_height, offers["changeAltitude"]?.ready == true) {
-                openAltitude(false)
-            }.takeIf { offers["changeAltitude"]?.shown == true },
-            DeckEntry(CHECKLIST, "Checklist", R.drawable.ic_check_circle, true) {
-                showChecklist = true
-            }.takeIf { useChecklist && checklistOffered(armed) == null },
+        val entries = flightDeckEntries(
+            FlightDeckContext(
+                offers = offers,
+                armed = armed,
+                scope = scope,
+                confirm = { pending = it },
+                openValue = openValue,
+                report = { refusal = it },
+                withdraw = { refusal = withdrawn(refusal, it) },
+                openChecklist = checklist::open.takeIf { useChecklist },
+            ),
         )
         val deck = deckIds(entries.map { it.id }.toSet(), armed)
         deckRest = entries.filter { entry -> deck.none { it.first == entry.id } }
@@ -660,136 +482,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         }
     }
 
-    speedTarget?.let { target ->
-        var probe by remember(speedTarget != null) { mutableStateOf<GuidedSpeed?>(null) }
-        LaunchedEffect(speedSettled) {
-            val at = speedSettled ?: return@LaunchedEffect
-            probe = withContext(Dispatchers.Default) { guidedSpeed(Qgc.get(guidedSpeedPath(at))) }
-        }
-        GuidedValuePanel(
-            title = offers["changeSpeed"]?.title?.ifBlank { null } ?: "Change Max Ground Speed",
-            sentence = listOfNotNull(offers["changeSpeed"]?.prompt, probe?.sentence).filter { it.isNotBlank() }.joinToString("\n"),
-            commitLabel = "Set",
-            commitEnabled = probe != null,
-            onCommit = {
-                speedTarget = null
-                offMainDetached {
-                    val fresh = guidedSpeed(Qgc.get(guidedSpeedPath(target)))
-                    val method = fresh?.command
-                    if (method != null) {
-                        // qtpaths: vehicle.guidedModeChangeGroundSpeedMetersSecond, vehicle.guidedModeChangeEquivalentAirspeedMetersSecond
-                        Qgc.invoke("vehicle.$method", fresh.targetMetersSecond)
-                    }
-                }
-            },
-            onCancel = { speedTarget = null },
-        ) {
-            speedRange?.let { range -> guidedBounds(range.minimum, range.maximum)?.let { range to it } }?.let { (range, bounds) ->
-                GuidedStepper(target, range.label, range.unit, bounds.first, bounds.second) { stepped ->
-                    speedTarget = stepped
-                    speedSettled = stepped
-                }
-            }
-            Slider(
-                value = target.toFloat(),
-                onValueChange = { speedTarget = guidedRounded(it.toDouble(), speedRange?.unit.orEmpty()) },
-                onValueChangeFinished = { speedSettled = speedTarget },
-                valueRange = (speedRange?.minimum ?: 0.0).toFloat()..
-                    (speedRange?.maximum ?: 0.0).toFloat(),
-            )
-            rangeLabel(speedRange?.minimum, speedRange?.maximum, speedRange?.unit.orEmpty())
-                ?.let { RangeHint(it) }
-        }
-    }
-
-    takeoffTarget?.let { target ->
-        var probe by remember(takeoffTarget != null) { mutableStateOf<GuidedTakeoff?>(null) }
-        LaunchedEffect(takeoffSettled) {
-            val at = takeoffSettled ?: return@LaunchedEffect
-            probe = withContext(Dispatchers.Default) { guidedTakeoff(Qgc.get(guidedTakeoffPath(at))) }
-        }
-        GuidedValuePanel(
-            title = offers["takeoff"]?.title?.ifBlank { null } ?: "Takeoff",
-            sentence = listOfNotNull(offers["takeoff"]?.prompt, probe?.sentence).filter { it.isNotBlank() }.joinToString("\n"),
-            commitLabel = "Take off",
-            commitEnabled = probe != null,
-            onCommit = {
-                takeoffTarget = null
-                offMainDetached {
-                    val fresh = guidedTakeoff(Qgc.get(guidedTakeoffPath(target)))
-                    if (fresh != null) {
-                        Qgc.invoke("vehicle.guidedModeTakeoff", fresh.targetMeters)
-                    }
-                }
-            },
-            onCancel = { takeoffTarget = null },
-        ) {
-            takeoffRange?.let { range -> guidedBounds(range.minimum, range.maximum)?.let { range to it } }?.let { (range, bounds) ->
-                GuidedStepper(target, range.label, range.unit, bounds.first, bounds.second) { stepped ->
-                    takeoffTarget = stepped
-                    takeoffSettled = stepped
-                }
-            }
-            Slider(
-                value = target.toFloat(),
-                onValueChange = { takeoffTarget = guidedRounded(it.toDouble(), takeoffRange?.unit.orEmpty()) },
-                onValueChangeFinished = { takeoffSettled = takeoffTarget },
-                valueRange = (takeoffRange?.minimum ?: 0.0).toFloat()..
-                    (takeoffRange?.maximum ?: 0.0).toFloat(),
-            )
-            rangeLabel(takeoffRange?.minimum, takeoffRange?.maximum, takeoffRange?.unit.orEmpty())
-                ?.let { RangeHint(it) }
-        }
-    }
-
-    altitudeTarget?.let { target ->
-        var probe by remember(altitudeTarget != null) { mutableStateOf<GuidedAltitude?>(null) }
-        LaunchedEffect(altitudeSettled) {
-            val at = altitudeSettled ?: return@LaunchedEffect
-            probe = withContext(Dispatchers.Default) {
-                guidedAltitude(Qgc.get(guidedAltitudePath(at, altitudePauses)))
-            }
-        }
-        GuidedValuePanel(
-            title = if (altitudePauses) "Pause" else "Change altitude",
-            sentence = probe?.sentence ?: "",
-            commitLabel = if (altitudePauses) "Pause" else "Change",
-            commitEnabled = probe?.sends == true,
-            onCommit = {
-                altitudeTarget = null
-                val pauses = altitudePauses
-                offMainDetached {
-                    val fresh = guidedAltitude(Qgc.get(guidedAltitudePath(target, pauses)))
-                    fresh?.let { altitudeCommandArgs(it, pauses) }?.let { args ->
-                        Qgc.invoke("vehicle.guidedModeChangeAltitude", *args.toTypedArray())
-                    }
-                }
-            },
-            onCancel = { altitudeTarget = null },
-        ) {
-            altitudeRange?.let { range -> guidedBounds(range.minimum, range.maximum)?.let { range to it } }?.let { (range, bounds) ->
-                GuidedStepper(target, range.label, range.unit, bounds.first, bounds.second) { stepped ->
-                    altitudeTarget = stepped
-                    altitudeSettled = stepped
-                }
-            }
-            Slider(
-                value = target.toFloat(),
-                onValueChange = { altitudeTarget = guidedRounded(it.toDouble(), altitudeRange?.unit.orEmpty()) },
-                onValueChangeFinished = { altitudeSettled = altitudeTarget },
-                valueRange = (altitudeRange?.minimum ?: 0.0).toFloat()..
-                    (altitudeRange?.maximum ?: 0.0).toFloat(),
-            )
-            altitudeRange?.let { range -> guidedBounds(range.minimum, range.maximum)?.let { range to it } }?.let { (range, bounds) ->
-                GuidedQuickPicks(target, bounds.first, bounds.second, range.unit) { picked ->
-                    altitudeTarget = picked
-                    altitudeSettled = picked
-                }
-            }
-            rangeLabel(altitudeRange?.minimum, altitudeRange?.maximum, altitudeRange?.unit.orEmpty())
-                ?.let { RangeHint(it) }
-        }
-    }
+    guidedValue?.let { open -> GuidedValueFlow(open) { guidedValue = null } }
 
     LaunchedEffect(loiter == null) {
         if (loiter == null) editingLoiter = null
@@ -803,7 +496,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         MoreActionsSheet(
             tiles = deckRest.filter { it.id != CHECKLIST }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
                 listOfNotNull(
-                    MoreTile("Checklist", R.drawable.ic_check_circle, checklistPast == null) { showChecklist = true }
+                    MoreTile("Checklist", R.drawable.ic_check_circle, checklistPast == null) { checklist.open() }
                         .takeIf { preflightOffered(preflightJson) },
                     loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
                     MoreTile("Gripper", R.drawable.ic_download, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
@@ -837,21 +530,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     }
     if (showGripper && gripper.isNotEmpty()) GripperPanel(gripper) { showGripper = false }
 
-    if (showChecklist) {
-        AlertDialog(
-            onDismissRequest = { showChecklist = false },
-            title = { Text("Pre-flight checklist") },
-            text = {
-                PreflightScreen(
-                    modifier = Modifier.fillMaxWidth(),
-                    ticked = checklistTicked,
-                    onTicked = { checklistTicked = it },
-                )
-            },
-            confirmButton = {},
-            dismissButton = { TextButton(onClick = { showChecklist = false }) { Text("Close") } },
-        )
-    }
 
 }
 
@@ -1174,3 +852,122 @@ internal fun flightModeIcon(name: String): Int =
     name.lowercase().split(' ', '_', '-').let { words -> words.joinToString("") to words }.let { (joined, words) ->
         FLIGHT_MODE_ICONS.firstOrNull { (keys, _) -> keys.any { it == joined || it in words } }?.second ?: R.drawable.ic_flight
     }
+
+internal class FlightDeckContext(
+    val offers: Map<String, GuidedOffer>,
+    val armed: Boolean,
+    val scope: CoroutineScope,
+    val confirm: (GuidedAction) -> Unit,
+    val openValue: (GuidedValueKind) -> Unit,
+    val report: (String?) -> Unit,
+    val withdraw: (String) -> Unit,
+    val openChecklist: (() -> Unit)?,
+)
+
+internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(deck) {
+    val armAction = offers[if (armed) "disarm" else "arm"]
+    listOfNotNull(
+        DeckEntry(
+            id = "arm",
+            label = armAction?.title ?: if (armed) "Disarm" else "Arm",
+            icon = R.drawable.ic_bolt,
+            enabled = armAction?.ready == true,
+            warning = armed,
+        ) {
+            confirm(GuidedAction(
+                offerId = if (armed) "disarm" else "arm",
+                name = armAction?.title ?: if (armed) "Disarm" else "Arm",
+                confirm = armAction?.prompt?.ifBlank { null } ?: if (armed) {
+                    "Disarm the vehicle"
+                } else {
+                    "Arm the vehicle."
+                },
+                destructive = armAction?.destructive ?: true,
+            ) {
+                val target = !armed
+                scope.attemptCommand(
+                    action = if (target) "Arm" else "Disarm",
+                    report = report,
+                    withdraw = withdraw,
+                    reached = { armedNow() == target },
+                ) { Qgc.set("vehicle.armed", target) }
+            })
+        }.takeIf { armAction?.shown == true },
+        DeckEntry(
+            "takeoff",
+            HOLD_TO_TAKE_OFF,
+            R.drawable.ic_flight_takeoff,
+            offers["takeoff"]?.ready == true,
+            onHold = {
+                scope.launch {
+                    report(withContext(Dispatchers.Default) {
+                        val heightless = offers["takeoff"]?.carriesValue == false
+                        val target = if (heightless) null else holdTakeoffHeight(guidedTakeoff(Qgc.get(GUIDED_TAKEOFF)))?.let { height -> guidedTakeoff(Qgc.get(guidedTakeoffPath(height))) }
+                        when {
+                            heightless -> Qgc.refusalOf("vehicle.guidedModeTakeoff")
+                            target == null -> "This vehicle did not report a takeoff height range."
+                            else -> Qgc.refusalOf("vehicle.guidedModeTakeoff", target.targetMeters)
+                        }
+                    })
+                }
+            },
+        ) {
+            if (offers["takeoff"]?.carriesValue == false) {
+                confirm(GuidedAction(
+                    offerId = "takeoff",
+                    name = offers["takeoff"]?.title ?: "Takeoff",
+                    confirm = offers["takeoff"]?.prompt?.ifBlank { null } ?: "Takeoff from ground and hold position.",
+                    destructive = false,
+                ) {
+                    offMainDetached { Qgc.invoke("vehicle.guidedModeTakeoff") }
+                })
+                return@DeckEntry
+            }
+            openValue(takeoffValue(offers["takeoff"]))
+        }.takeIf { offers["takeoff"]?.shown == true },
+        DeckEntry(PAUSE, offers[PAUSE]?.title ?: "Pause", R.drawable.ic_pause, offers[PAUSE]?.ready == true) {
+            openValue(altitudeValue(true))
+        }.takeIf { offers[PAUSE]?.shown == true },
+        DeckEntry("rtl", "Return", R.drawable.ic_home, offers["rtl"]?.ready == true) {
+            confirm(GuidedAction(
+                offerId = "rtl",
+                name = offers["rtl"]?.title ?: "Return",
+                confirm = offers["rtl"]?.prompt?.ifBlank { null } ?: "Return to the launch position of the vehicle",
+                destructive = false,
+                option = offers["rtl"]?.option?.ifBlank { null }?.let { label ->
+                    ConfirmOption(label) { smart -> offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", smart) } }
+                },
+            ) {
+                offMainDetached { Qgc.invoke("vehicle.guidedModeRTL", false) }
+            })
+        }.takeIf { offers["rtl"]?.shown == true },
+        DeckEntry(
+            "land",
+            holdLabel(offers["land"]?.title ?: "Land"),
+            R.drawable.ic_flight_land,
+            offers["land"]?.ready == true,
+            onHold = {
+                scope.launch { report(withContext(Dispatchers.Default) { Qgc.refusalOf("vehicle.guidedModeLand") }) }
+            },
+        ) {
+            confirm(GuidedAction(
+                offerId = "land",
+                name = offers["land"]?.title ?: "Land",
+                confirm = offers["land"]?.prompt?.ifBlank { null }
+                    ?: "Land the vehicle at the current position",
+                destructive = false,
+            ) {
+                offMainDetached { Qgc.invoke("vehicle.guidedModeLand") }
+            })
+        }.takeIf { offers["land"]?.shown == true },
+        DeckEntry("changeSpeed", "Speed", R.drawable.ic_speed, offers["changeSpeed"]?.ready == true) {
+            openValue(speedValue(offers["changeSpeed"]))
+        }.takeIf { offers["changeSpeed"]?.shown == true },
+        DeckEntry("changeAltitude", "Altitude", R.drawable.ic_height, offers["changeAltitude"]?.ready == true) {
+            openValue(altitudeValue(false))
+        }.takeIf { offers["changeAltitude"]?.shown == true },
+        DeckEntry(CHECKLIST, "Checklist", R.drawable.ic_check_circle, true) {
+            openChecklist?.invoke()
+        }.takeIf { openChecklist != null && checklistOffered(armed) == null },
+    )
+}

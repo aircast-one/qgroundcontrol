@@ -33,14 +33,14 @@ class GuidedAltitudeTest {
         assertNull(reading.current)
         assertNull(reading.minimum)
         assertNull(reading.maximum)
-        assertFalse(altitudeRangeUsable(reading))
+        assertNull(altitudeReading(reading)?.range)
     }
 
     @Test
     fun `an unavailable view offers nothing`() {
         assertNull(guidedAltitude(null))
         assertNull(guidedAltitude(JSONObject("""{"available":false}""")))
-        assertFalse(altitudeRangeUsable(null))
+        assertNull(altitudeReading(null))
     }
 
     @Test

@@ -37,20 +37,19 @@ class GuidedSpeedTest {
 
         assertNull(none.command)
         assertEquals("Speed", none.label)
-        assertFalse(speedRangeUsable(none))
+        assertNull(speedReading(none)?.range)
     }
 
     @Test
     fun `a usable range needs a command and both bounds`() {
-        assertTrue(
-            speedRangeUsable(
-                guidedSpeed(
-                    JSONObject("""{"available":true,"command":"guidedModeChangeGroundSpeedMetersSecond",
-                        "label":"Speed","unit":"m/s","minimum":1.0,"maximum":20.0,"initial":5.0}"""),
-                ),
+        val usable = speedReading(
+            guidedSpeed(
+                JSONObject("""{"available":true,"command":"guidedModeChangeGroundSpeedMetersSecond",
+                    "label":"Speed","unit":"m/s","minimum":1.0,"maximum":20.0,"initial":5.0}"""),
             ),
         )
-        assertFalse(speedRangeUsable(null))
+        assertEquals(1.0..20.0, usable?.range)
+        assertNull(speedReading(null))
         assertNull(guidedSpeed(JSONObject("""{"available":false}""")))
     }
 

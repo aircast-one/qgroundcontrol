@@ -39,9 +39,3 @@ internal fun guidedSpeed(view: JSONObject?): GuidedSpeed? {
         targetMetersSecond = view.optDouble("targetMetersSecond", 0.0),
     )
 }
-
-internal fun speedRangeUsable(speed: GuidedSpeed?): Boolean =
-    speed?.command != null &&
-        speed.minimum != null &&
-        speed.maximum != null &&
-        speed.maximum > speed.minimum
