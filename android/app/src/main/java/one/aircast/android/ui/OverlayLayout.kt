@@ -41,7 +41,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.geometry.Rect
@@ -57,6 +58,7 @@ import kotlinx.coroutines.delay
 private const val LAYOUT_STORE = "fly-overlay-layout"
 private const val HIDDEN_PREFIX = "OverlayRigHidden-"
 private const val OFFSET_PREFIX = "OverlayRigOffset-"
+private const val LANDSCAPE_SUFFIX = "@landscape"
 private const val HIDDEN_ALPHA = 0.35f
 private const val JIGGLE_DEGREES = 1.2f
 private const val JIGGLE_MILLIS = 120
@@ -78,7 +80,29 @@ internal object OverlayLayout {
     var indicatorOrder by mutableStateOf(emptyList<String>())
     var valueSize by mutableStateOf(ValueSize.Default)
     var offsets by mutableStateOf(emptyMap<String, Pair<Float, Float>>())
+    var loaded = false
 }
+
+internal fun loadLayoutOnce(stored: () -> Map<String, *>) {
+    if (OverlayLayout.loaded) return
+    val read = stored()
+    OverlayLayout.hidden = hiddenKeys(read)
+    OverlayLayout.offsets = storedOffsets(read)
+    OverlayLayout.loaded = true
+}
+
+internal fun onScreenCorrection(bounds: Rect, root: Size, offset: Pair<Float, Float>): Pair<Float, Float> {
+    val (dx, dy) = clampedDrag(bounds.left, bounds.top, bounds.right, bounds.bottom, root.width, root.height, 0f, 0f)
+    return pulledBack(if (bounds.width > root.width) 0f else dx, offset.first) to pulledBack(if (bounds.height > root.height) 0f else dy, offset.second)
+}
+
+internal fun pulledBack(correction: Float, offset: Float): Float = when {
+    offset > 0f -> correction.coerceIn(-offset, 0f)
+    offset < 0f -> correction.coerceIn(0f, -offset)
+    else -> 0f
+}
+
+internal fun orientedKey(key: String, landscape: Boolean): String = if (landscape) "$key$LANDSCAPE_SUFFIX" else key
 
 internal fun orderedKeys(available: List<String>, order: List<String>): List<String> =
     order.filter { it in available } + available.filter { it !in order }
@@ -126,6 +150,32 @@ private fun saveOffset(context: Context, key: String) {
     OverlayLayout.offsets[key]?.let { (x, y) -> store(context).edit().putString(OFFSET_PREFIX + key, "$x,$y").apply() }
 }
 
+private fun nudge(key: String, dx: Float, dy: Float) {
+    val current = OverlayLayout.offsets[key] ?: (0f to 0f)
+    OverlayLayout.offsets += key to (current.first + dx to current.second + dy)
+}
+
+private fun Modifier.onRootBounds(seen: (Rect, Size) -> Unit): Modifier = onGloballyPositioned {
+    seen(Rect(it.positionInRoot(), it.size.toSize()), it.findRootCoordinates().size.toSize())
+}
+
+@Composable
+private fun layoutKey(key: String): String = orientedKey(key, !flyIsPortrait())
+
+@Composable
+private fun keptOnScreen(key: String): Modifier {
+    val context = LocalContext.current
+    val density = LocalDensity.current.density
+    return Modifier.onRootBounds { bounds, root ->
+        val (x, y) = OverlayLayout.offsets[key] ?: (0f to 0f)
+        val (dx, dy) = onScreenCorrection(bounds, root, x * density to y * density)
+        if (dx != 0f || dy != 0f) {
+            nudge(key, dx / density, dy / density)
+            saveOffset(context, key)
+        }
+    }
+}
+
 private fun Modifier.onHold(action: () -> Unit): Modifier = pointerInput(Unit) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
@@ -155,34 +205,38 @@ internal fun clampedDrag(left: Float, top: Float, right: Float, bottom: Float, w
 internal fun LayoutDragArea(key: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val density = LocalDensity.current.density
+    val placedKey = layoutKey(key)
     var bounds by remember { mutableStateOf(Rect.Zero) }
     var root by remember { mutableStateOf(Size.Zero) }
     Box(
         modifier
-            .onGloballyPositioned {
-                bounds = it.boundsInRoot()
-                root = it.findRootCoordinates().size.toSize()
+            .onRootBounds { seen, size ->
+                bounds = seen
+                root = size
             }
-            .pointerInput(key) {
-                detectDragGestures(onDragEnd = { saveOffset(context, key) }) { change, drag ->
+            .pointerInput(placedKey) {
+                detectDragGestures(onDragEnd = { saveOffset(context, placedKey) }, onDragCancel = { saveOffset(context, placedKey) }) { change, drag ->
                     change.consume()
                     val (dx, dy) = clampedDrag(bounds.left, bounds.top, bounds.right, bounds.bottom, root.width, root.height, drag.x, drag.y)
-                    val current = OverlayLayout.offsets[key] ?: (0f to 0f)
-                    OverlayLayout.offsets += key to (current.first + dx / density to current.second + dy / density)
+                    nudge(placedKey, dx / density, dy / density)
                 }
             },
     )
 }
 
 @Composable
-internal fun Modifier.layoutPlaced(key: String): Modifier {
-    val moved = OverlayLayout.offsets[key] ?: (0f to 0f)
+internal fun layoutPlacement(key: String, keepOnScreen: Boolean): Modifier {
+    val context = LocalContext.current
+    loadLayoutOnce { store(context).all }
+    val placedKey = layoutKey(key)
+    val moved = OverlayLayout.offsets[placedKey] ?: (0f to 0f)
     val angle = if (OverlayLayout.editing) jiggleAngle(key) else 0f
-    return offset(moved.first.dp, moved.second.dp).graphicsLayer { rotationZ = angle }
+    val clamped = if (keepOnScreen) keptOnScreen(placedKey) else Modifier
+    return Modifier.offset(moved.first.dp, moved.second.dp).then(clamped).graphicsLayer { rotationZ = angle }
 }
 
 @Composable
-internal fun LayoutPipEditor(key: String, shape: androidx.compose.ui.graphics.Shape, modifier: Modifier = Modifier) {
+internal fun LayoutPipEditor(key: String, shape: Shape, modifier: Modifier = Modifier) {
     if (!OverlayLayout.editing) return
     LayoutDragArea(key, modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape))
 }
@@ -190,30 +244,30 @@ internal fun LayoutPipEditor(key: String, shape: androidx.compose.ui.graphics.Sh
 @Composable
 internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolean = true, content: @Composable () -> Unit) {
     val context = LocalContext.current
-    LaunchedEffect(Unit) {
-        val stored = store(context).all
-        OverlayLayout.hidden = hiddenKeys(stored)
-        OverlayLayout.offsets = storedOffsets(stored)
-    }
+    loadLayoutOnce { store(context).all }
+    val editing = OverlayLayout.editing
     val hidden = key in OverlayLayout.hidden
-    if (hidden && !OverlayLayout.editing) return
-    val moved = OverlayLayout.offsets[key] ?: (0f to 0f)
-    val placed = Modifier.offset(moved.first.dp, moved.second.dp)
-    if (!OverlayLayout.editing) {
-        Box(if (hideable) placed.onHold { OverlayLayout.editing = true } else placed) { content() }
-        return
-    }
-    val angle = jiggleAngle(key)
+    if (hidden && !editing) return
+    val placedKey = layoutKey(key)
+    val moved = OverlayLayout.offsets[placedKey] ?: (0f to 0f)
+    val angle = if (editing) jiggleAngle(key) else 0f
     var shown by remember { mutableStateOf(false) }
-    Box(placed.graphicsLayer { rotationZ = if (shown) angle else 0f }) {
+    val decorated = editing && shown
+    Box(
+        Modifier
+            .offset(moved.first.dp, moved.second.dp)
+            .then(if (movable) keptOnScreen(placedKey) else Modifier)
+            .then(if (hideable && !editing) Modifier.onHold { OverlayLayout.editing = true } else Modifier)
+            .graphicsLayer { rotationZ = if (decorated) angle else 0f },
+    ) {
         Box(
             Modifier
                 .onSizeChanged { shown = it.width > 0 && it.height > 0 }
-                .then(if (shown) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium) else Modifier)
+                .then(if (decorated) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium) else Modifier)
                 .alpha(if (hidden) HIDDEN_ALPHA else 1f),
         ) { content() }
-        if (shown && movable) LayoutDragArea(key, Modifier.matchParentSize())
-        if (shown && hideable) Surface(
+        if (decorated && movable) LayoutDragArea(key, Modifier.matchParentSize())
+        if (decorated && hideable) Surface(
             onClick = { setHidden(context, key, !hidden) },
             modifier = Modifier.align(Alignment.TopEnd).size(BADGE_SIZE),
             shape = CircleShape,

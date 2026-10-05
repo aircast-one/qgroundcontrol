@@ -225,7 +225,7 @@ internal fun FlyScreen(
                             .zIndex(1f)
                             .align(Alignment.BottomEnd)
                             .padding(AircastSpace.s3)
-                            .layoutPlaced(MAP_PIP_KEY)
+                            .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
                             .size(MAP_PIP_SIZE)
                             .clip(CircleShape)
                             .border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
@@ -241,7 +241,7 @@ internal fun FlyScreen(
                             .zIndex(1f)
                             .align(Alignment.TopEnd)
                             .then(pipCorner)
-                            .layoutPlaced(VIDEO_PIP_KEY)
+                            .then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = false))
                             .size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)
                             .clip(MaterialTheme.shapes.medium)
                     } else {
@@ -257,19 +257,19 @@ internal fun FlyScreen(
                             .zIndex(2f)
                             .align(Alignment.BottomEnd)
                             .padding(AircastSpace.s3)
-                            .layoutPlaced(MAP_PIP_KEY)
+                            .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
                             .size(MAP_PIP_SIZE)
                             .clip(CircleShape)
                             .clickable { onView(FlyView.Map) },
                     )
                 }
-                Box(Modifier.zIndex(3f).align(Alignment.BottomEnd).padding(AircastSpace.s3).layoutPlaced(MAP_PIP_KEY).size(MAP_PIP_SIZE)) {
+                Box(Modifier.zIndex(3f).align(Alignment.BottomEnd).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).size(MAP_PIP_SIZE)) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
                     if (pipExpanded) LayoutPipEditor(MAP_PIP_KEY, CircleShape, Modifier.matchParentSize())
                 }
             }
             if (videoIsPip && hasVideo) {
-                Box(Modifier.zIndex(3f).align(Alignment.TopEnd).then(pipCorner).layoutPlaced(VIDEO_PIP_KEY).size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)) {
+                Box(Modifier.zIndex(3f).align(Alignment.TopEnd).then(pipCorner).then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = true)).size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.TopEnd))
                     if (pipExpanded) LayoutPipEditor(VIDEO_PIP_KEY, MaterialTheme.shapes.medium, Modifier.matchParentSize())
                 }

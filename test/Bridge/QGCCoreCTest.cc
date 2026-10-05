@@ -1,6 +1,7 @@
 #include "QGCCoreCTest.h"
 
 #include <QDir>
+#include <atomic>
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
@@ -38,6 +39,8 @@
 #include "CoreLink.h"
 #include "QGCBridgeC.h"
 #include "QGCCoreC.h"
+#include "QGCVideoC.h"
+#include <gst/gst.h>
 #include "MAVLinkLib.h"
 
 #include <QtCore/QDir>
@@ -1169,6 +1172,66 @@ void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
         const QString percent = close(factValue("vehicle.batteries.0.percentRemaining"), coreBatteries.first().toObject().value(QStringLiteral("percentRemaining")).toDouble(), 0.5, "battery percent");
         QVERIFY2(percent.isEmpty(), qPrintable(percent));
     }
+}
+
+namespace {
+std::atomic<void *> startedPipeline{nullptr};
+
+void noteStartedPipeline(void *pipeline)
+{
+    startedPipeline = pipeline;
+}
+
+GstElement *elementFromFactory(GstBin *bin, const char *factory)
+{
+    GstIterator *const elements = gst_bin_iterate_recurse(bin);
+    GValue item = G_VALUE_INIT;
+    GstElement *found = nullptr;
+    while (!found && gst_iterator_next(elements, &item) == GST_ITERATOR_OK) {
+        GstElement *const element = GST_ELEMENT(g_value_get_object(&item));
+        GstElementFactory *const made = gst_element_get_factory(element);
+        if (made && g_str_equal(GST_OBJECT_NAME(made), factory)) {
+            found = GST_ELEMENT(gst_object_ref(element));
+        }
+        g_value_reset(&item);
+    }
+    g_value_unset(&item);
+    gst_iterator_free(elements);
+    return found;
+}
+}
+
+void QGCCoreCTest::_softwareHevcJoinedMidStreamDecodesSingleThreaded()
+{
+    QVERIFY(qgc_video_available());
+    if (!gst_is_initialized()) {
+        gst_init(nullptr, nullptr);
+    }
+    GstPluginFeature *const software = gst_registry_lookup_feature(gst_registry_get(), "avdec_h265");
+    QVERIFY2(software, "the desktop GStreamer has no avdec_h265, so a phone without a hardware HEVC decoder is untested");
+    const guint rank = gst_plugin_feature_get_rank(software);
+    gst_plugin_feature_set_rank(software, GST_RANK_PRIMARY + 1000);
+    qgc_video_set_pipeline_callback(noteStartedPipeline);
+    const auto restore = qScopeGuard([&] {
+        qgc_video_stop();
+        qgc_video_set_pipeline_callback(nullptr);
+        startedPipeline = nullptr;
+        gst_plugin_feature_set_rank(software, rank);
+        gst_object_unref(software);
+    });
+
+    const QString stream = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/hevc-joined-mid-stream.h265"));
+    QVERIFY(QFile::exists(stream));
+    const QByteArray pipeline = QStringLiteral("filesrc location=\"%1\" ! h265parse ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false").arg(stream).toUtf8();
+    QVERIFY2(qgc_video_start(pipeline.constData()), qgc_video_last_error());
+    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames() > 0, 10000);
+
+    GstElement *const decoder = elementFromFactory(GST_BIN(startedPipeline.load()), "avdec_h265");
+    QVERIFY2(decoder, "decodebin3 did not pick the software HEVC decoder");
+    gint threads = 0;
+    g_object_get(decoder, "max-threads", &threads, nullptr);
+    gst_object_unref(decoder);
+    QCOMPARE(threads, 1);
 }
 
 void QGCCoreCTest::_videoAndCameraAreServed()

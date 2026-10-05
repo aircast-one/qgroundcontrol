@@ -42,6 +42,7 @@ private slots:
     void _fencesAndPolygonsAreServed();
     void _setupOverviewFollowsTheVehicle();
     void _videoAndCameraAreServed();
+    void _softwareHevcJoinedMidStreamDecodesSingleThreaded();
     void _everyRegisteredViewIsRecordedOrExcused();
     void _everyFactPropertyIsServedOrExcused();
     void _viewShapesMatchTheRecordedContract();

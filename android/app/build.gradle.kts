@@ -1,3 +1,5 @@
+import java.nio.file.Files
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,11 +20,9 @@ play {
 }
 
 val coreCrate = rootProject.file("../groundstation")
-val coreJniLibs = layout.buildDirectory.dir("core/jniLibs")
 val coreBridgeSources = layout.buildDirectory.dir("core/bridge")
 val instrumentIconAssets = layout.buildDirectory.dir("instrumentIcons")
 fun coreVideoBuild(buildType: String) = layout.buildDirectory.dir("core/video/$buildType/${qgc("abi")}")
-fun coreVideoLibs(buildType: String) = layout.buildDirectory.dir("core/videoLibs/$buildType")
 val coreBuildTypes = listOf("debug", "release")
 val coreTriples = mapOf(
     "arm64-v8a" to "aarch64-linux-android",
@@ -82,12 +82,10 @@ android {
         }
         getByName("core") {
             java.srcDir(coreBridgeSources)
-            jniLibs.srcDir(coreJniLibs)
         }
         coreBuildTypes.forEach { buildType ->
             maybeCreate("core${buildType.replaceFirstChar(Char::uppercase)}").apply {
                 java.srcDir(coreVideoBuild(buildType).map { it.dir("android-build/src") })
-                jniLibs.srcDir(coreVideoLibs(buildType))
             }
         }
     }
@@ -131,18 +129,22 @@ val copyCoreBridge by tasks.registering(Copy::class) {
     into(coreBridgeSources)
 }
 
-val buildCoreLibrary by tasks.registering(Exec::class) {
+abstract class NativeLibs : Exec() {
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+}
+
+val buildCoreLibrary by tasks.registering(NativeLibs::class) {
     val abi = qgc("abi")
     val triple = coreTriples[abi] ?: error("no Rust target for the $abi ABI")
     workingDir = coreCrate
     environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
     commandLine("cargo", "ndk", "--target", abi, "--platform", qgc("minSdk"), "rustc", "--lib", "--release", "--features", "jni-host", "--crate-type", "cdylib")
-    outputs.dir(coreJniLibs)
     outputs.upToDateWhen { false }
     doLast {
         copy {
             from(coreCrate.resolve("target/$triple/release/libgroundstation.so"))
-            into(coreJniLibs.get().dir(abi))
+            into(outputDir.get().dir(abi))
         }
     }
 }
@@ -154,7 +156,7 @@ fun ndkLibCxx(abi: String): File {
 }
 
 val buildCoreVideo = coreBuildTypes.associateWith { buildType ->
-    tasks.register<Exec>("buildCoreVideo${buildType.replaceFirstChar(Char::uppercase)}") {
+    tasks.register<NativeLibs>("buildCoreVideo${buildType.replaceFirstChar(Char::uppercase)}") {
         val abi = qgc("abi")
         val source = rootProject.file("video")
         val build = coreVideoBuild(buildType).get().asFile
@@ -165,13 +167,12 @@ val buildCoreVideo = coreBuildTypes.associateWith { buildType ->
             "cmake -S \"$source\" -B \"$build\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=\"$toolchain\" " +
                 "-DANDROID_ABI=$abi -DANDROID_PLATFORM=${qgc("minSdk")} -DQGC_MOCK_VIDEO_SERVER=$mockServer && cmake --build \"$build\"",
         )
-        outputs.dir(coreVideoLibs(buildType))
         outputs.upToDateWhen { false }
         doLast {
             copy {
                 from(build.resolve("libqgc_video.so"), build.resolve("libqgc_wfb.so"))
                 if (buildType == "debug") from(ndkLibCxx(abi))
-                into(coreVideoLibs(buildType).get().dir(abi))
+                into(outputDir.get().dir(abi))
             }
         }
     }
@@ -179,14 +180,27 @@ val buildCoreVideo = coreBuildTypes.associateWith { buildType ->
 
 tasks.named("preBuild") { dependsOn(copyInstrumentIcons, copyAirframeImages, copySectionImages) }
 
+androidComponents {
+    onVariants(selector().withFlavor("host" to "core")) { variant ->
+        val video = buildCoreVideo.getValue(variant.buildType ?: error("variant ${variant.name} has no build type"))
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(buildCoreLibrary, NativeLibs::outputDir)
+        variant.sources.jniLibs?.addGeneratedSourceDirectory(video, NativeLibs::outputDir)
+    }
+}
+
 coreBuildTypes.forEach { buildType ->
     val variant = "Core${buildType.replaceFirstChar(Char::uppercase)}"
-    tasks.matching { it.name == "pre${variant}Build" || it.name == "merge${variant}JniLibFolders" }.configureEach {
-        dependsOn(copyCoreBridge, buildCoreLibrary, buildCoreVideo.getValue(buildType))
+    val built = listOf(buildCoreLibrary.get(), buildCoreVideo.getValue(buildType).get())
+    tasks.matching { it.name == "pre${variant}Build" }.configureEach {
+        dependsOn(copyCoreBridge, buildCoreVideo.getValue(buildType))
     }
     tasks.matching { it.name == "merge${variant}JniLibFolders" }.configureEach {
-        outputs.upToDateWhen { false }
-        doFirst { delete(layout.buildDirectory.file("intermediates/incremental/merge${variant}JniLibFolders/merger.xml")) }
+        doLast {
+            val merged = outputs.files.singleFile
+            val stale = built.flatMap { task -> task.outputDir.get().asFileTree.files.map { it to merged.resolve(it.relativeTo(task.outputDir.get().asFile)) } }
+                .filterNot { (source, packaged) -> packaged.isFile && Files.mismatch(source.toPath(), packaged.toPath()) == -1L }
+            check(stale.isEmpty()) { "merge$variant packaged stale native libraries: ${stale.joinToString { it.second.name }}" }
+        }
     }
 }
 
