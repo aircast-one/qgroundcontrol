@@ -74,7 +74,7 @@ private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoBu
             Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(painterResource(R.drawable.ic_videocam_off), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(compactTitle, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).padding(vertical = 12.dp))
-                primary?.let { TextButton(onClick = it.onClick) { Text(it.label) } }
+                primary?.let { TextButton(onClick = it.onClick) { Text(it.label, maxLines = 1, softWrap = false) } }
             }
         }
         return

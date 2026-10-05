@@ -187,7 +187,7 @@ internal object FlyChrome {
     var topPx by mutableIntStateOf(0)
     var bottomPx by mutableIntStateOf(0)
     var controlsBottomPx by mutableFloatStateOf(0f)
-    var instrumentsRightPx by mutableFloatStateOf(0f)
+    var instruments by mutableStateOf(androidx.compose.ui.geometry.Rect.Zero)
 }
 
 @Composable

@@ -47,7 +47,8 @@ import androidx.compose.ui.graphics.Color
 import one.aircast.mapspike.aircast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -271,8 +272,8 @@ fun AircastShell(hostView: android.view.View?) {
     val flyAttitude = remember {
         movableContentOf {
             LayoutWidget("instrumentPanel") {
-                DisposableEffect(Unit) { onDispose { one.aircast.android.ui.FlyChrome.instrumentsRightPx = 0f } }
-                AttitudeInstrument(Modifier.onGloballyPositioned { one.aircast.android.ui.FlyChrome.instrumentsRightPx = it.boundsInRoot().right })
+                DisposableEffect(Unit) { onDispose { one.aircast.android.ui.FlyChrome.instruments = androidx.compose.ui.geometry.Rect.Zero } }
+                AttitudeInstrument(Modifier.onGloballyPositioned { one.aircast.android.ui.FlyChrome.instruments = androidx.compose.ui.geometry.Rect(it.positionInRoot(), it.size.toSize()) })
             }
         }
     }

@@ -27,6 +27,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,18 +70,25 @@ private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this 
 
 @Composable
 private fun NoVideoArea(underFlyChrome: Boolean, video: VideoReading?, linksToSettings: Boolean) {
-    var areaInRoot by remember { mutableStateOf(Offset.Zero) }
-    Box(Modifier.fillMaxSize().onGloballyPositioned { areaInRoot = it.positionInRoot() }) {
+    var area by remember { mutableStateOf(Rect.Zero) }
+    Box(Modifier.fillMaxSize().onGloballyPositioned { area = Rect(it.positionInRoot(), it.size.toSize()) }) {
         val chrome = with(LocalDensity.current) {
             when {
                 !underFlyChrome -> Modifier
                 else -> {
                     val portrait = flyIsPortrait()
+                    val free = Rect(
+                        left = area.left + AircastSpace.s3.toPx(),
+                        top = maxOf(area.top, FlyChrome.controlsBottomPx) + AircastSpace.s2.toPx(),
+                        right = area.right - (if (portrait) AircastSpace.s3 else MAP_PIP_SIZE + AircastSpace.s3).toPx(),
+                        bottom = area.bottom - (if (portrait) FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3 else AircastSpace.s3).toPx(),
+                    )
+                    val region = noVideoRegion(free, FlyChrome.instruments, AircastSpace.s3.toPx())
                     Modifier.padding(
-                        start = (FlyChrome.instrumentsRightPx - areaInRoot.x).coerceAtLeast(0f).toDp() + AircastSpace.s3,
-                        end = if (portrait) AircastSpace.s3 else MAP_PIP_SIZE + AircastSpace.s3,
-                        top = (FlyChrome.controlsBottomPx - areaInRoot.y).coerceAtLeast(0f).toDp() + AircastSpace.s2,
-                        bottom = if (portrait) FlyChrome.bottomPx.toDp() + MAP_PIP_SIZE + AircastSpace.s3 else AircastSpace.s3,
+                        start = (region.left - area.left).coerceAtLeast(0f).toDp(),
+                        top = (region.top - area.top).coerceAtLeast(0f).toDp(),
+                        end = (area.right - region.right).coerceAtLeast(0f).toDp(),
+                        bottom = (area.bottom - region.bottom).coerceAtLeast(0f).toDp(),
                     )
                 }
             }
@@ -92,6 +101,15 @@ private fun NoVideoArea(underFlyChrome: Boolean, video: VideoReading?, linksToSe
         }
     }
 }
+
+internal fun noVideoRegion(free: Rect, obstacle: Rect, gap: Float): Rect =
+    if (obstacle.isEmpty || !free.overlaps(obstacle)) free
+    else listOf(
+        Rect(obstacle.right + gap, free.top, free.right, free.bottom),
+        Rect(free.left, free.top, obstacle.left - gap, free.bottom),
+        Rect(free.left, obstacle.bottom + gap, free.right, free.bottom),
+        Rect(free.left, free.top, free.right, obstacle.top - gap),
+    ).filter { it.width > 0f && it.height > 0f }.maxByOrNull { it.width * it.height } ?: free
 
 @Composable
 fun VideoSurface(

@@ -39,4 +39,16 @@ class NoVideoPanelTest {
         org.junit.Assert.assertEquals(null, unavailableVideoState(unavailable(sourceChosen = true, configured = true).copy(available = true)))
         org.junit.Assert.assertEquals("Enter the stream address below.", unavailableVideoState(unavailable(sourceChosen = true, configured = false), linksToSettings = false)?.detail)
     }
+
+    @Test
+    fun `the message avoids the instruments by taking the largest free side`() {
+        val free = androidx.compose.ui.geometry.Rect(0f, 100f, 1000f, 1500f)
+        val besideTop = androidx.compose.ui.geometry.Rect(0f, 100f, 500f, 220f)
+        assertEquals(androidx.compose.ui.geometry.Rect(0f, 230f, 1000f, 1500f), noVideoRegion(free, besideTop, 10f))
+        val tallLeft = androidx.compose.ui.geometry.Rect(0f, 100f, 300f, 1500f)
+        assertEquals(androidx.compose.ui.geometry.Rect(310f, 100f, 1000f, 1500f), noVideoRegion(free, tallLeft, 10f))
+        val movedBelow = androidx.compose.ui.geometry.Rect(300f, 1600f, 700f, 1700f)
+        assertEquals(free, noVideoRegion(free, movedBelow, 10f))
+        assertEquals(free, noVideoRegion(free, androidx.compose.ui.geometry.Rect.Zero, 10f))
+    }
 }
