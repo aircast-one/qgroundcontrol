@@ -145,6 +145,7 @@ internal fun statusPillShown(vehicle: Boolean, rtk: Boolean, gcsBattery: Boolean
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading?, modifier: Modifier = Modifier) {
+    val navigation = LocalAppNavigation.current
     val available = hasVehicle()
     if (!available) {
         Row(modifier, verticalAlignment = Alignment.CenterVertically) {
@@ -170,8 +171,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     var batterySettings by remember { mutableStateOf(false) }
     var batteryDisplay by remember { mutableStateOf(false) }
     var rtkSettings by remember { mutableStateOf(false) }
-    val context = androidx.compose.ui.platform.LocalContext.current
-    LaunchedEffect(Unit) { loadIndicatorOrder(context) }
+    val layout = LocalFlyScreenState.current.layout
     val setupJson by qgcPath(SETUP)
     val hasPowerSetup = remember(setupJson) { setupComponents(setupJson).any { it.name == POWER_SETUP_PAGE } }
 
@@ -201,13 +201,13 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
             "supportForwarding" to { SupportForwardingCell() },
         )
         val byKey = cells.toMap()
-        val keys = orderedKeys(cells.map { it.first }, OverlayLayout.indicatorOrder)
+        val keys = orderedKeys(cells.map { it.first }, layout.indicatorOrder)
         keys.forEach { key ->
             LayoutWidget("indicator-$key", movable = false) {
                 Row(Modifier.leadingGap(STRIP_GAP), verticalAlignment = Alignment.CenterVertically) {
-                    if (OverlayLayout.editing) TextButton(onClick = { movedKey(keys, key, -1)?.let { saveIndicatorOrder(context, it) } }) { Text("\u2039") }
+                    if (layout.editing) TextButton(onClick = { movedKey(keys, key, -1)?.let { layout.saveIndicatorOrder(it) } }) { Text("\u2039") }
                     byKey[key]?.invoke()
-                    if (OverlayLayout.editing) TextButton(onClick = { movedKey(keys, key, 1)?.let { saveIndicatorOrder(context, it) } }) { Text("\u203A") }
+                    if (layout.editing) TextButton(onClick = { movedKey(keys, key, 1)?.let { layout.saveIndicatorOrder(it) } }) { Text("\u203A") }
                 }
             }
         }
@@ -230,7 +230,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                 if (batteryReturnOffered(batteryJson)) BatteryReturnButton { detail = null }
                 TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery failsafes") }
                 TextButton(onClick = { detail = null; batteryDisplay = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery display") }
-                if (hasPowerSetup && advancedUiShown()) TextButton(onClick = { detail = null; AppNavigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle power: configure") }
+                if (hasPowerSetup && advancedUiShown()) TextButton(onClick = { detail = null; navigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle power: configure") }
             }
         } else if (shown == StripDetail.Gps) {
             {

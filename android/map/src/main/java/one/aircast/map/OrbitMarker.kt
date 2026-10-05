@@ -49,10 +49,6 @@ fun orbitCircle(view: JSONObject?): OrbitCircle? {
 fun orbitRing(orbit: OrbitCircle?): List<TrackPoint> =
     orbit?.let { circleRing(it.centre, it.radiusMetres) }?.takeIf { it.isNotEmpty() }?.let { it + it.first() }.orEmpty()
 
-object OrbitPreview {
-    var circle by mutableStateOf<OrbitCircle?>(null)
-}
-
 fun orbitRadiusHandle(orbit: OrbitCircle?): TrackPoint? = orbit?.let { pointAt(it.centre, it.radiusMetres, 90.0) }
 
 fun orbitHandles(preview: OrbitCircle?): List<TrackPoint> = listOfNotNull(preview?.centre, orbitRadiusHandle(preview))

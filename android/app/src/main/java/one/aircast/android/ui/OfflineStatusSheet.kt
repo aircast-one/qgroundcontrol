@@ -63,14 +63,15 @@ internal fun offlineStatus(view: JSONObject?): OfflineStatus? =
         )
     }
 
-private fun openConnectionSettings(onDismiss: () -> Unit) {
-    AppNavigation.settingsPage = CONNECTIONS_SETTINGS_PAGE
+private fun openConnectionSettings(navigation: AppNavigationState, onDismiss: () -> Unit) {
+    navigation.settingsPage = CONNECTIONS_SETTINGS_PAGE
     onDismiss()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
+    val navigation = LocalAppNavigation.current
     var status by remember { mutableStateOf<OfflineStatus?>(null) }
     LaunchedEffect(Unit) {
         while (isActive) {
@@ -83,7 +84,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(shown.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp))
             Row(
-                Modifier.padding(horizontal = 20.dp).let { if (shown.editAddress) it.clickable { openConnectionSettings(onDismiss) } else it },
+                Modifier.padding(horizontal = 20.dp).let { if (shown.editAddress) it.clickable { openConnectionSettings(navigation, onDismiss) } else it },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -91,7 +92,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
                 Text(shown.footnote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (shown.noLinks) {
-                Button(onClick = { openConnectionSettings(onDismiss) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) { Text("Add link\u2026") }
+                Button(onClick = { openConnectionSettings(navigation, onDismiss) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) { Text("Add link\u2026") }
             }
             shown.links.forEach { link ->
                 ListItem(
@@ -114,7 +115,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
             HorizontalDivider()
             ListItem(
                 headlineContent = { Text("Connection settings") },
-                modifier = Modifier.clickable { openConnectionSettings(onDismiss) },
+                modifier = Modifier.clickable { openConnectionSettings(navigation, onDismiss) },
             )
         }
     }

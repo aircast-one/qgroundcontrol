@@ -63,7 +63,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.WindowInsets
 import one.aircast.android.ui.AppFontScale
-import one.aircast.android.ui.AppNavigation
 import one.aircast.android.ui.OverlayEditBar
 import one.aircast.android.ui.LayoutWidget
 import one.aircast.android.ui.LogReplayBar
@@ -176,7 +175,18 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 
         setContent {
             ConnectionLocks()
-            AppFontScale { AircastShell(hostView) }
+            AppFontScale {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val flyScreen = remember { one.aircast.android.ui.FlyScreenState(one.aircast.android.ui.OverlayLayoutState(one.aircast.android.ui.overlayLayoutStore(context))) }
+                val navigation = remember { one.aircast.android.ui.AppNavigationState() }
+                val openPlan = remember { one.aircast.android.ui.OpenPlanDocument() }
+                androidx.compose.runtime.CompositionLocalProvider(
+                    one.aircast.android.ui.LocalAppNavigation provides navigation,
+                    one.aircast.android.ui.LocalOpenPlan provides openPlan,
+                    one.aircast.android.ui.LocalFlyScreenState provides flyScreen,
+                    one.aircast.map.LocalFlyMapEdits provides flyScreen.mapEdits,
+                ) { AircastShell(hostView) }
+            }
         }
         GamepadInput.start(this, lifecycleScope)
         one.aircast.android.ui.VirtualStickSender.start(lifecycleScope)
@@ -225,13 +235,15 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AircastShell(hostView: android.view.View?) {
+    val navigation = one.aircast.android.ui.LocalAppNavigation.current
     var tab by remember { mutableStateOf(Tab.Fly) }
-    LaunchedEffect(tab) { if (tab != Tab.Fly) one.aircast.android.ui.OverlayLayout.editing = false }
-    LaunchedEffect(AppNavigation.setupPage) {
-        if (AppNavigation.setupPage != null) tab = Tab.Setup
+    val overlayLayout = one.aircast.android.ui.LocalFlyScreenState.current.layout
+    LaunchedEffect(tab) { if (tab != Tab.Fly) overlayLayout.editing = false }
+    LaunchedEffect(navigation.setupPage) {
+        if (navigation.setupPage != null) tab = Tab.Setup
     }
-    LaunchedEffect(AppNavigation.settingsPage) {
-        if (AppNavigation.settingsPage != null) tab = Tab.Settings
+    LaunchedEffect(navigation.settingsPage) {
+        if (navigation.settingsPage != null) tab = Tab.Settings
     }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var popEpoch by remember { mutableIntStateOf(0) }
@@ -292,7 +304,7 @@ fun AircastShell(hostView: android.view.View?) {
 
     val refusalScope = rememberCoroutineScope()
     val refuseNavigation: () -> Boolean = {
-        one.aircast.android.ui.navigationRefusal(one.aircast.android.ui.AppNavigation.blockedReason, leaving = true)
+        one.aircast.android.ui.navigationRefusal(navigation.blockedReason, leaving = true)
             ?.also { said -> refusalScope.launch { snackbars.showSnackbar(said) } } != null
     }
     BackHandler(enabled = tab != Tab.Fly) { if (!refuseNavigation()) tab = Tab.Fly }

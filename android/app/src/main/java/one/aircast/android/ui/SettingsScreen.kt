@@ -324,12 +324,13 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
+    val navigation = LocalAppNavigation.current
     var pages by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
     var open by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(AppNavigation.settingsPage) {
-        AppNavigation.settingsPage?.let { requested ->
+    LaunchedEffect(navigation.settingsPage) {
+        navigation.settingsPage?.let { requested ->
             open = requested
-            AppNavigation.settingsPage = null
+            navigation.settingsPage = null
         }
     }
 

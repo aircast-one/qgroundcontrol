@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -74,22 +75,49 @@ internal fun resetPillText(armed: Boolean): String = if (armed) "Tap again to re
 
 private const val INDICATOR_ORDER = "FlyViewIndicatorOrder"
 
-internal object OverlayLayout {
+internal class OverlayLayoutState(private val prefs: SharedPreferences) {
+    private val stored = prefs.all
     var editing by mutableStateOf(false)
-    var hidden by mutableStateOf(emptySet<String>())
-    var indicatorOrder by mutableStateOf(emptyList<String>())
+    var hidden by mutableStateOf(hiddenKeys(stored))
+        private set
+    var indicatorOrder by mutableStateOf(storedIndicatorOrder(stored))
+        private set
     var valueSize by mutableStateOf(ValueSize.Default)
-    var offsets by mutableStateOf(emptyMap<String, Pair<Float, Float>>())
-    var loaded = false
+    var offsets by mutableStateOf(storedOffsets(stored))
+        private set
+
+    fun setHidden(key: String, hide: Boolean) {
+        prefs.edit().putBoolean(HIDDEN_PREFIX + key, hide).apply()
+        hidden = withHidden(hidden, key, hide)
+    }
+
+    fun saveIndicatorOrder(keys: List<String>) {
+        prefs.edit().putString(INDICATOR_ORDER, keys.joinToString(",")).apply()
+        indicatorOrder = keys
+    }
+
+    fun nudge(key: String, dx: Float, dy: Float) {
+        val current = offsets[key] ?: (0f to 0f)
+        offsets = offsets + (key to (current.first + dx to current.second + dy))
+    }
+
+    fun saveOffset(key: String) {
+        offsets[key]?.let { (x, y) -> prefs.edit().putString(OFFSET_PREFIX + key, "$x,$y").apply() }
+    }
+
+    fun reset() {
+        prefs.edit().clear().apply()
+        hidden = emptySet()
+        indicatorOrder = emptyList()
+        offsets = emptyMap()
+    }
 }
 
-internal fun loadLayoutOnce(stored: () -> Map<String, *>) {
-    if (OverlayLayout.loaded) return
-    val read = stored()
-    OverlayLayout.hidden = hiddenKeys(read)
-    OverlayLayout.offsets = storedOffsets(read)
-    OverlayLayout.loaded = true
-}
+internal fun overlayLayoutStore(context: Context): SharedPreferences = context.getSharedPreferences(LAYOUT_STORE, Context.MODE_PRIVATE)
+
+internal fun storedIndicatorOrder(stored: Map<String, *>): List<String> =
+    (stored[INDICATOR_ORDER] as? String).orEmpty().split(",").filter { it.isNotBlank() }
+
 
 internal fun onScreenCorrection(bounds: Rect, root: Size, offset: Pair<Float, Float>): Pair<Float, Float> {
     val (dx, dy) = clampedDrag(bounds.left, bounds.top, bounds.right, bounds.bottom, root.width, root.height, 0f, 0f)
@@ -113,47 +141,21 @@ internal fun movedKey(keys: List<String>, key: String, delta: Int): List<String>
     return if (from < 0 || to !in keys.indices) null else keys.filterIndexed { i, _ -> i != from }.let { rest -> rest.take(to) + key + rest.drop(to) }
 }
 
-internal fun loadIndicatorOrder(context: Context) {
-    OverlayLayout.indicatorOrder = store(context).getString(INDICATOR_ORDER, "").orEmpty().split(",").filter { it.isNotBlank() }
-}
 
-internal fun saveIndicatorOrder(context: Context, keys: List<String>) {
-    store(context).edit().putString(INDICATOR_ORDER, keys.joinToString(",")).apply()
-    OverlayLayout.indicatorOrder = keys
-}
 
 internal fun hiddenKeys(stored: Map<String, *>): Set<String> =
     stored.filter { (key, value) -> key.startsWith(HIDDEN_PREFIX) && value == true }.keys.map { it.removePrefix(HIDDEN_PREFIX) }.toSet()
 
 internal fun withHidden(hidden: Set<String>, key: String, hide: Boolean): Set<String> = if (hide) hidden + key else hidden - key
 
-private fun store(context: Context) = context.getSharedPreferences(LAYOUT_STORE, Context.MODE_PRIVATE)
 
-private fun setHidden(context: Context, key: String, hide: Boolean) {
-    store(context).edit().putBoolean(HIDDEN_PREFIX + key, hide).apply()
-    OverlayLayout.hidden = withHidden(OverlayLayout.hidden, key, hide)
-}
-
-private fun resetLayout(context: Context) {
-    store(context).edit().clear().apply()
-    OverlayLayout.hidden = emptySet()
-    OverlayLayout.indicatorOrder = emptyList()
-    OverlayLayout.offsets = emptyMap()
-}
 
 internal fun storedOffsets(stored: Map<String, *>): Map<String, Pair<Float, Float>> =
     stored.filterKeys { it.startsWith(OFFSET_PREFIX) }.mapNotNull { (key, value) ->
         (value as? String)?.split(",")?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 2 }?.let { key.removePrefix(OFFSET_PREFIX) to (it[0] to it[1]) }
     }.toMap()
 
-private fun saveOffset(context: Context, key: String) {
-    OverlayLayout.offsets[key]?.let { (x, y) -> store(context).edit().putString(OFFSET_PREFIX + key, "$x,$y").apply() }
-}
 
-private fun nudge(key: String, dx: Float, dy: Float) {
-    val current = OverlayLayout.offsets[key] ?: (0f to 0f)
-    OverlayLayout.offsets += key to (current.first + dx to current.second + dy)
-}
 
 private fun Modifier.onRootBounds(seen: (Rect, Size) -> Unit): Modifier = onGloballyPositioned {
     seen(Rect(it.positionInRoot(), it.size.toSize()), it.findRootCoordinates().size.toSize())
@@ -164,14 +166,14 @@ private fun layoutKey(key: String): String = orientedKey(key, !flyIsPortrait())
 
 @Composable
 private fun keptOnScreen(key: String): Modifier {
-    val context = LocalContext.current
+    val layout = LocalFlyScreenState.current.layout
     val density = LocalDensity.current.density
     return Modifier.onRootBounds { bounds, root ->
-        val (x, y) = OverlayLayout.offsets[key] ?: (0f to 0f)
+        val (x, y) = layout.offsets[key] ?: (0f to 0f)
         val (dx, dy) = onScreenCorrection(bounds, root, x * density to y * density)
         if (dx != 0f || dy != 0f) {
-            nudge(key, dx / density, dy / density)
-            saveOffset(context, key)
+            layout.nudge(key, dx / density, dy / density)
+            layout.saveOffset(key)
         }
     }
 }
@@ -203,7 +205,7 @@ internal fun clampedDrag(left: Float, top: Float, right: Float, bottom: Float, w
 
 @Composable
 internal fun LayoutDragArea(key: String, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
+    val layout = LocalFlyScreenState.current.layout
     val density = LocalDensity.current.density
     val placedKey = layoutKey(key)
     var bounds by remember { mutableStateOf(Rect.Zero) }
@@ -215,10 +217,10 @@ internal fun LayoutDragArea(key: String, modifier: Modifier = Modifier) {
                 root = size
             }
             .pointerInput(placedKey) {
-                detectDragGestures(onDragEnd = { saveOffset(context, placedKey) }, onDragCancel = { saveOffset(context, placedKey) }) { change, drag ->
+                detectDragGestures(onDragEnd = { layout.saveOffset(placedKey) }, onDragCancel = { layout.saveOffset(placedKey) }) { change, drag ->
                     change.consume()
                     val (dx, dy) = clampedDrag(bounds.left, bounds.top, bounds.right, bounds.bottom, root.width, root.height, drag.x, drag.y)
-                    nudge(placedKey, dx / density, dy / density)
+                    layout.nudge(placedKey, dx / density, dy / density)
                 }
             },
     )
@@ -226,30 +228,28 @@ internal fun LayoutDragArea(key: String, modifier: Modifier = Modifier) {
 
 @Composable
 internal fun layoutPlacement(key: String, keepOnScreen: Boolean): Modifier {
-    val context = LocalContext.current
-    loadLayoutOnce { store(context).all }
+    val layout = LocalFlyScreenState.current.layout
     val placedKey = layoutKey(key)
-    val moved = OverlayLayout.offsets[placedKey] ?: (0f to 0f)
-    val angle = if (OverlayLayout.editing) jiggleAngle(key) else 0f
+    val moved = layout.offsets[placedKey] ?: (0f to 0f)
+    val angle = if (layout.editing) jiggleAngle(key) else 0f
     val clamped = if (keepOnScreen) keptOnScreen(placedKey) else Modifier
     return Modifier.offset(moved.first.dp, moved.second.dp).then(clamped).graphicsLayer { rotationZ = angle }
 }
 
 @Composable
 internal fun LayoutPipEditor(key: String, shape: Shape, modifier: Modifier = Modifier) {
-    if (!OverlayLayout.editing) return
+    if (!LocalFlyScreenState.current.layout.editing) return
     LayoutDragArea(key, modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape))
 }
 
 @Composable
 internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolean = true, content: @Composable () -> Unit) {
-    val context = LocalContext.current
-    loadLayoutOnce { store(context).all }
-    val editing = OverlayLayout.editing
-    val hidden = key in OverlayLayout.hidden
+    val layout = LocalFlyScreenState.current.layout
+    val editing = layout.editing
+    val hidden = key in layout.hidden
     if (hidden && !editing) return
     val placedKey = layoutKey(key)
-    val moved = OverlayLayout.offsets[placedKey] ?: (0f to 0f)
+    val moved = layout.offsets[placedKey] ?: (0f to 0f)
     val angle = if (editing) jiggleAngle(key) else 0f
     var shown by remember { mutableStateOf(false) }
     val decorated = editing && shown
@@ -257,7 +257,7 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
         Modifier
             .offset(moved.first.dp, moved.second.dp)
             .then(if (movable) keptOnScreen(placedKey) else Modifier)
-            .then(if (hideable && !editing) Modifier.onHold { OverlayLayout.editing = true } else Modifier)
+            .then(if (hideable && !editing) Modifier.onHold { layout.editing = true } else Modifier)
             .graphicsLayer { rotationZ = if (decorated) angle else 0f },
     ) {
         Box(
@@ -268,7 +268,7 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
         ) { content() }
         if (decorated && movable) LayoutDragArea(key, Modifier.matchParentSize())
         if (decorated && hideable) Surface(
-            onClick = { setHidden(context, key, !hidden) },
+            onClick = { layout.setHidden(key, !hidden) },
             modifier = Modifier.align(Alignment.TopEnd).size(BADGE_SIZE),
             shape = CircleShape,
             color = if (hidden) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.inverseSurface,
@@ -282,17 +282,18 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
 
 @Composable
 internal fun OverlayEditBar(modifier: Modifier = Modifier) {
-    if (!OverlayLayout.editing) return
-    BackHandler { OverlayLayout.editing = false }
+    val layout = LocalFlyScreenState.current.layout
+    if (!layout.editing) return
+    BackHandler { layout.editing = false }
     val context = LocalContext.current
     val classView by one.aircast.android.bridge.qgcPath(INSTRUMENTS_VIEW)
     val vehicleClass = instrumentVehicleClass(classView)
     Surface(modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = 3.dp) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = {
-                OverlayLayout.valueSize = nextValueSize(OverlayLayout.valueSize)
-                writeValueSize(context, vehicleClass, OverlayLayout.valueSize)
-            }) { Text(valueSizePillText(OverlayLayout.valueSize)) }
+                layout.valueSize = nextValueSize(layout.valueSize)
+                writeValueSize(context, vehicleClass, layout.valueSize)
+            }) { Text(valueSizePillText(layout.valueSize)) }
             var armed by remember { mutableStateOf(false) }
             LaunchedEffect(armed) {
                 if (armed) {
@@ -303,13 +304,13 @@ internal fun OverlayEditBar(modifier: Modifier = Modifier) {
             TextButton(
                 onClick = {
                     val tap = resetTap(armed)
-                    if (tap.reset) resetLayout(context)
+                    if (tap.reset) layout.reset()
                     armed = tap.armed
                 },
                 colors = if (armed) ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.textButtonColors(),
             ) { Text(resetPillText(armed)) }
             Spacer(Modifier.weight(1f))
-            Button(onClick = { OverlayLayout.editing = false }) { Text("Done") }
+            Button(onClick = { layout.editing = false }) { Text("Done") }
         }
     }
 }

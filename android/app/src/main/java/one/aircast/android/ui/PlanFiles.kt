@@ -126,10 +126,6 @@ private fun rememberDocument(context: Context, uri: Uri) {
     runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
 }
 
-internal object OpenPlan {
-    val document = androidx.compose.runtime.mutableStateOf<Uri?>(null)
-    val name = androidx.compose.runtime.mutableStateOf<String?>(null)
-}
 
 private fun Intent.startingAt(folder: Uri?): Intent =
     folder?.let { putExtra(DocumentsContract.EXTRA_INITIAL_URI, it) } ?: this
@@ -164,21 +160,20 @@ private suspend fun downloadSettled(left: Int = DOWNLOAD_POLLS): Boolean {
 fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val document = OpenPlan.document
-    val name = OpenPlan.name
+    val openPlan = LocalOpenPlan.current
     val opened = remember { mutableIntStateOf(0) }
 
     fun adopt(uri: Uri) {
-        document.value = uri
+        openPlan.document = uri
         rememberDocument(context, uri)
         scope.launch {
-            name.value = withContext(Dispatchers.IO) { displayName(context, uri) }
+            openPlan.name = withContext(Dispatchers.IO) { displayName(context, uri) }
         }
     }
 
     fun forget() {
-        document.value = null
-        name.value = null
+        openPlan.document = null
+        openPlan.name = null
     }
 
     fun discard(method: String, success: String, failure: String, then: suspend () -> Unit = {}) {
@@ -337,10 +332,10 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
     return remember(opener, creator, kmlCreator, importer) {
         PlanFileActions(
             open = { opener.launch(PLAN_OPEN_TYPES) },
-            saveAs = { guarded { creator.launch(name.value ?: DEFAULT_PLAN_NAME) } },
+            saveAs = { guarded { creator.launch(openPlan.name ?: DEFAULT_PLAN_NAME) } },
             save = {
                 guarded {
-                    val target = document.value
+                    val target = openPlan.document
                     if (target == null) creator.launch(DEFAULT_PLAN_NAME) else writeTo(target)
                 }
             },
@@ -360,7 +355,7 @@ fun rememberPlanFileActions(onResult: (String) -> Unit = {}): PlanFileActions {
                     if (downloadSettled()) opened.intValue += 1
                 }
             },
-            documentName = { name.value },
+            documentName = { openPlan.name },
             opened = { opened.intValue },
         )
     }

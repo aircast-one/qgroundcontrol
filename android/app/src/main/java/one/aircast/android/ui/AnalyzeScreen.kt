@@ -164,9 +164,10 @@ fun AnalyzeScreen(
     onSelect: (AnalyzePage?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val navigation = LocalAppNavigation.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val switchTo: (AnalyzePage?) -> Unit = { next ->
-        navigationRefusal(AppNavigation.blockedReason, leaving = true)
+        navigationRefusal(navigation.blockedReason, leaving = true)
             ?.takeIf { page != null }
             ?.let { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show() }
             ?: onSelect(next)

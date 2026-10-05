@@ -376,8 +376,9 @@ internal fun FlyScreen(
 
 @Composable
 internal fun FleetCard() {
+    val flyScreen = LocalFlyScreenState.current
     if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < FLEET_CARD_MIN_SCREEN_DP) return
-    if (GuidedPanel.open) return
+    if (flyScreen.guidedPanelOpen) return
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainer,

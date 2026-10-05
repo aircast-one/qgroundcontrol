@@ -115,6 +115,8 @@ internal fun loadingProgress(fields: org.json.JSONObject?): Float? =
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VehicleStateChip(modifier: Modifier = Modifier) {
+    val navigation = LocalAppNavigation.current
+    val flyScreen = LocalFlyScreenState.current
     val flyJson by qgcPath(FLY_STATE)
     val fly = remember(flyJson) { flyState(flyJson) }
     val vehiclesJson by qgcPath(VEHICLES_VIEW)
@@ -179,7 +181,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
-        if (FlightModePending.mode != null) {
+        if (flyScreen.pendingMode != null) {
             androidx.compose.material3.CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
         } else if (choices.ambiguous || taken) {
             val alarm = lostVehiclesText(lostVehicles(choices)) ?: controlLine(station).takeIf { taken }
@@ -241,7 +243,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             ListItem(
                 headlineContent = { Text("Connect another vehicle", color = MaterialTheme.colorScheme.primary) },
                 leadingContent = { Icon(painterResource(R.drawable.ic_add), null, tint = MaterialTheme.colorScheme.primary) },
-                modifier = Modifier.clickable { picking = false; AppNavigation.settingsPage = CONNECTIONS_PAGE },
+                modifier = Modifier.clickable { picking = false; navigation.settingsPage = CONNECTIONS_PAGE },
             )
             refusal?.let {
                 Text(
@@ -423,12 +425,9 @@ internal fun fleetActionLine(action: MvAction): String =
 
 internal fun fleetIsDestructive(action: MvAction): Boolean = action.id != "mvPause"
 
-internal object ControlRequestDeadlines {
-    val endsAt = androidx.compose.runtime.mutableStateMapOf<Int, Long>()
-}
-
 @Composable
 private fun ControlHolderNote(station: ControlStation?, vehicleId: Int?, onRefusal: (String?) -> Unit) {
+    val flyScreen = LocalFlyScreenState.current
     val holder = station ?: return
     if (holder.inControl == true) {
         InControlNote(holder, onRefusal)
@@ -437,9 +436,9 @@ private fun ControlHolderNote(station: ControlStation?, vehicleId: Int?, onRefus
     val line = holderLine(holder) ?: return
     val scope = rememberCoroutineScope()
     val deadlineKey = vehicleId ?: 0
-    val requestEndsAt = ControlRequestDeadlines.endsAt[deadlineKey]
+    val requestEndsAt = flyScreen.controlRequestDeadlines[deadlineKey]
     LaunchedEffect(holder.takeoverAllowed) {
-        if (holder.takeoverAllowed == true) ControlRequestDeadlines.endsAt.remove(deadlineKey)
+        if (holder.takeoverAllowed == true) flyScreen.controlRequestDeadlines.remove(deadlineKey)
     }
     Text(
         text = line,
@@ -456,7 +455,7 @@ private fun ControlHolderNote(station: ControlStation?, vehicleId: Int?, onRefus
     }
     ControlSectionTitle(holder)
     requestEndsAt?.let { endsAt ->
-        RequestCountdown(endsAt) { ControlRequestDeadlines.endsAt.remove(deadlineKey) }
+        RequestCountdown(endsAt) { flyScreen.controlRequestDeadlines.remove(deadlineKey) }
     }
     AllowTakeoverBox(holder, onRefusal)
     controlWaitLine(holder)?.takeIf { requestEndsAt == null }?.let { waiting ->
@@ -475,7 +474,7 @@ private fun ControlHolderNote(station: ControlStation?, vehicleId: Int?, onRefus
                     val ask = withContext(Dispatchers.Default) { askForControl(holder) }
                     onRefusal(ask.refusal)
                     if (ask.refusal == null && ask.timeoutSeconds > 0) {
-                        ControlRequestDeadlines.endsAt[deadlineKey] = System.currentTimeMillis() + ask.timeoutSeconds * 1000L
+                        flyScreen.controlRequestDeadlines[deadlineKey] = System.currentTimeMillis() + ask.timeoutSeconds * 1000L
                     }
                 }
             },

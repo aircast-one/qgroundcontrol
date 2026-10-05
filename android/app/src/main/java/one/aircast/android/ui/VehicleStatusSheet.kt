@@ -38,10 +38,6 @@ import one.aircast.map.aircast
 
 private const val SENSOR_FAULT_STATE = "unhealthy"
 
-internal object DeckRequest {
-    var action by mutableStateOf<String?>(null)
-}
-
 internal const val ARM_REQUEST = "arm"
 internal const val FORCE_ARM_REQUEST = "forceArm"
 
@@ -75,11 +71,12 @@ internal fun shownSensors(sensors: List<SensorHealth>, showAll: Boolean): List<S
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
+    val navigation = LocalAppNavigation.current
     val healthJson by qgcPath(SENSOR_HEALTH)
     val health = remember(healthJson) { sensorHealth(healthJson) }
     var showAll by remember { mutableStateOf(false) }
     val open: (String) -> Unit = { page ->
-        AppNavigation.setupPage = page
+        navigation.setupPage = page
         onDismiss()
     }
 
@@ -193,12 +190,13 @@ private fun StatusSummary() {
 
 @Composable
 private fun ArmSection(onDismiss: () -> Unit) {
+    val flyScreen = LocalFlyScreenState.current
     val stateJson by qgcPath(FLY_STATE)
     val state = remember(stateJson) { flyState(stateJson) }?.takeIf { it.connected } ?: return
     var forceOpen by remember { mutableStateOf(false) }
     val controls = armControls(state, forceOpen)
     val request: (String) -> Unit = { action ->
-        DeckRequest.action = action
+        flyScreen.deckRequest = action
         onDismiss()
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

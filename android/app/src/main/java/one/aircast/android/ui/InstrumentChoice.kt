@@ -115,12 +115,7 @@ internal fun readChosen(context: Context, vehicleClass: String): List<String> =
         ?.filter { it.isNotBlank() }
         ?: defaultInstruments(vehicleClass)
 
-internal object InstrumentEdits {
-    var version by androidx.compose.runtime.mutableIntStateOf(0)
-}
-
 internal fun writeChosen(context: Context, vehicleClass: String, chosen: List<String>) {
-    InstrumentEdits.version += 1
     context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
         .edit()
         .putString(chosenKey(vehicleClass), chosen.joinToString(","))

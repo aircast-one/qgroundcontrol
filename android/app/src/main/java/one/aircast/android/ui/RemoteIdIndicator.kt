@@ -106,6 +106,7 @@ private fun stateColour(state: String): Color = when (state) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RemoteIdIndicatorCell() {
+    val navigation = LocalAppNavigation.current
     val view by qgcPath(REMOTE_ID_STATUS_PATH)
     val status = remember(view) { remoteIdStatus(view) } ?: return
     var open by remember { mutableStateOf(false) }
@@ -119,7 +120,7 @@ internal fun RemoteIdIndicatorCell() {
     )
 
     val configure = {
-        AppNavigation.settingsPage = REMOTE_ID_SETTINGS_PAGE
+        navigation.settingsPage = REMOTE_ID_SETTINGS_PAGE
         open = false
     }
 

@@ -56,14 +56,15 @@ internal fun GuidedValuePanel(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val flyScreen = LocalFlyScreenState.current
     Surface(
         modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.extraLarge,
     ) {
         DisposableEffect(Unit) {
-            GuidedPanel.shown++
-            onDispose { GuidedPanel.shown-- }
+            flyScreen.guidedPanels++
+            onDispose { flyScreen.guidedPanels-- }
         }
         val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.map.VEHICLES_VIEW)
         val vehicles = remember(vehiclesJson) { one.aircast.map.vehicleChoices(vehiclesJson) }
@@ -94,11 +95,6 @@ internal fun GuidedValuePanel(
             TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
         }
     }
-}
-
-internal object GuidedPanel {
-    var shown by mutableIntStateOf(0)
-    val open: Boolean get() = shown > 0
 }
 
 internal fun guidedVehicle(vehicleCount: Int, activeName: String?): String? =

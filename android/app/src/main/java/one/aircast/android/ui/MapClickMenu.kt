@@ -39,11 +39,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
-import one.aircast.map.GotoLoiterEdit
 import one.aircast.map.LoiterEdit
 import one.aircast.map.MINIMUM_CIRCLE_RADIUS_METRES
 import one.aircast.map.OrbitCircle
-import one.aircast.map.OrbitPreview
 import one.aircast.map.loiterEditNumber
 import one.aircast.map.optText
 import one.aircast.map.TrackPoint
@@ -209,12 +207,13 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
 
 @Composable
 private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitDefaults, onDone: () -> Unit) {
+    val mapEdits = one.aircast.map.LocalFlyMapEdits.current
     val opened = remember(point) { orbitOpened(point, defaults) }
     DisposableEffect(opened) {
-        OrbitPreview.circle = opened
-        onDispose { OrbitPreview.circle = null }
+        mapEdits.orbit = opened
+        onDispose { mapEdits.orbit = null }
     }
-    val circle = OrbitPreview.circle ?: opened
+    val circle = mapEdits.orbit ?: opened
     val edit = orbitEdit(circle, defaults)
     var typed by remember(opened) { mutableStateOf<String?>(null) }
     var height by remember(opened) { mutableStateOf<GuidedAltitude?>(null) }
@@ -255,7 +254,7 @@ private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitD
                 value = loiterRadiusField(typed, edit),
                 onValueChange = { text ->
                     typed = text
-                    OrbitPreview.circle = circle.copy(radiusMetres = loiterTyped(text, edit).radiusMetres)
+                    mapEdits.orbit = circle.copy(radiusMetres = loiterTyped(text, edit).radiusMetres)
                 },
                 label = { Text(listOf("Radius", defaults.unit).filter { it.isNotBlank() }.joinToString(" ")) },
                 singleLine = true,
@@ -264,7 +263,7 @@ private fun OrbitPanel(point: MapPoint, action: MapClickAction, defaults: OrbitD
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Clockwise", Modifier.weight(1f))
-                Switch(checked = circle.clockwise, onCheckedChange = { OrbitPreview.circle = circle.copy(clockwise = it) })
+                Switch(checked = circle.clockwise, onCheckedChange = { mapEdits.orbit = circle.copy(clockwise = it) })
             }
             height?.let { reading ->
                 Text(reading.label, style = MaterialTheme.typography.bodySmall)
@@ -347,12 +346,13 @@ internal fun loiterTyped(text: String, edit: LoiterEdit): LoiterEdit =
 
 @Composable
 internal fun LoiterRadiusPanel(offer: LoiterOffer, units: OrbitDefaults, onRefused: (String) -> Unit, onDone: () -> Unit) {
+    val mapEdits = one.aircast.map.LocalFlyMapEdits.current
     val opened = remember(offer) { loiterEditOpened(offer, units) }
     DisposableEffect(opened) {
-        GotoLoiterEdit.edit = opened
-        onDispose { GotoLoiterEdit.edit = null }
+        mapEdits.gotoLoiter = opened
+        onDispose { mapEdits.gotoLoiter = null }
     }
-    val edit = GotoLoiterEdit.edit ?: opened
+    val edit = mapEdits.gotoLoiter ?: opened
     var typed by remember(opened) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     GuidedValuePanel(
@@ -380,7 +380,7 @@ internal fun LoiterRadiusPanel(offer: LoiterOffer, units: OrbitDefaults, onRefus
             value = loiterRadiusField(typed, edit),
             onValueChange = { text ->
                 typed = text
-                GotoLoiterEdit.edit = loiterTyped(text, edit)
+                mapEdits.gotoLoiter = loiterTyped(text, edit)
             },
             label = { Text(listOf("Radius", edit.unit).filter { it.isNotBlank() }.joinToString(" ")) },
             singleLine = true,
@@ -389,7 +389,7 @@ internal fun LoiterRadiusPanel(offer: LoiterOffer, units: OrbitDefaults, onRefus
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Clockwise", Modifier.weight(1f))
-            Switch(checked = edit.clockwise, onCheckedChange = { GotoLoiterEdit.edit = edit.copy(clockwise = it) })
+            Switch(checked = edit.clockwise, onCheckedChange = { mapEdits.gotoLoiter = edit.copy(clockwise = it) })
         }
     }
 }

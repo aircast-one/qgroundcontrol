@@ -231,6 +231,7 @@ internal fun reportsOpening(prerequisite: String?, page: SetupPage?): Boolean =
 
 @Composable
 fun SetupScreen(modifier: Modifier = Modifier) {
+    val navigation = LocalAppNavigation.current
     val setupJson by qgcPath(SETUP)
     val setup = remember(setupJson) { setupReadiness(setupJson) }
     val hasVehicle = setup?.connected == true
@@ -266,8 +267,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         if (!hasVehicle) summaries = emptyMap()
     }
 
-    LaunchedEffect(AppNavigation.setupPage, components, hasVehicle) {
-        AppNavigation.setupPage?.takeIf { hasVehicle && components.isNotEmpty() }?.let { requested ->
+    LaunchedEffect(navigation.setupPage, components, hasVehicle) {
+        navigation.setupPage?.takeIf { hasVehicle && components.isNotEmpty() }?.let { requested ->
             when (requested) {
                 SETUP_PARAMETERS_PAGE -> {
                     parametersSearch = ""
@@ -276,7 +277,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 else -> components.firstOrNull { it.name == requested }?.let { opened = it to null }
             }
             delay(NAVIGATION_SETTLE_MS)
-            AppNavigation.setupPage = null
+            navigation.setupPage = null
         }
     }
 
@@ -289,7 +290,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     if (!hasVehicle) {
         Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             EmptyState(R.drawable.ic_build, NO_VEHICLE_HEADLINE, NO_VEHICLE_TEXT)
-            OutlinedButton(onClick = { AppNavigation.settingsPage = "Connections" }) { Text("Set up connection") }
+            OutlinedButton(onClick = { navigation.settingsPage = "Connections" }) { Text("Set up connection") }
         }
         return
     }

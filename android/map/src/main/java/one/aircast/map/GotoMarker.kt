@@ -58,10 +58,6 @@ fun gotoArrows(location: GotoLocation?): List<Pair<TrackPoint, Double>> =
 
 data class LoiterEdit(val radiusMetres: Double, val clockwise: Boolean, val unit: String, val metresPerUnit: Double)
 
-object GotoLoiterEdit {
-    var edit by mutableStateOf<LoiterEdit?>(null)
-}
-
 fun loiterEditNumber(edit: LoiterEdit): String =
     String.format(java.util.Locale.US, "%.1f", edit.radiusMetres / edit.metresPerUnit).removeSuffix(".0")
 
@@ -83,7 +79,7 @@ fun draggedGotoRadius(location: GotoLocation, to: TrackPoint): Double =
 private enum class CircleGrab { None, GotoRadius, GotoFlip, OrbitRadius, OrbitCentre, OrbitFlip }
 
 @SuppressLint("ClickableViewAccessibility")
-fun attachGotoRadiusDrag(mapView: MapView, map: MapLibreMap, shown: () -> GotoLocation?) {
+fun attachGotoRadiusDrag(mapView: MapView, map: MapLibreMap, edits: FlyMapEdits, shown: () -> GotoLocation?) {
     var grab = CircleGrab.None
     var downX = 0f
     var downY = 0f
@@ -91,8 +87,8 @@ fun attachGotoRadiusDrag(mapView: MapView, map: MapLibreMap, shown: () -> GotoLo
         at != null && map.projection.toScreenLocation(LatLng(at.latitude, at.longitude)).let { withinHit(it.x - x, it.y - y) }
     fun nearArrow(arrows: List<Pair<TrackPoint, Double>>, x: Float, y: Float): Boolean = arrows.any { (at, _) -> near(at, x, y) }
     fun grabbed(x: Float, y: Float): CircleGrab {
-        val orbit = OrbitPreview.circle
-        val goto = shown().takeIf { GotoLoiterEdit.edit != null }
+        val orbit = edits.orbit
+        val goto = shown().takeIf { edits.gotoLoiter != null }
         return when {
             near(orbitRadiusHandle(orbit), x, y) -> CircleGrab.OrbitRadius
             near(orbit?.centre, x, y) -> CircleGrab.OrbitCentre
@@ -104,21 +100,21 @@ fun attachGotoRadiusDrag(mapView: MapView, map: MapLibreMap, shown: () -> GotoLo
     }
     fun dragTo(x: Float, y: Float) {
         val to = map.projection.fromScreenLocation(android.graphics.PointF(x, y)).let { TrackPoint(it.latitude, it.longitude) }
-        val orbit = OrbitPreview.circle
-        val edit = GotoLoiterEdit.edit
+        val orbit = edits.orbit
+        val edit = edits.gotoLoiter
         val goto = shown()
         when {
-            grab == CircleGrab.OrbitRadius && orbit != null -> OrbitPreview.circle = orbit.copy(radiusMetres = draggedOrbitRadius(orbit, to))
-            grab == CircleGrab.OrbitCentre && orbit != null -> OrbitPreview.circle = orbit.copy(centre = to)
-            grab == CircleGrab.GotoRadius && edit != null && goto != null -> GotoLoiterEdit.edit = edit.copy(radiusMetres = draggedGotoRadius(goto, to))
+            grab == CircleGrab.OrbitRadius && orbit != null -> edits.orbit = orbit.copy(radiusMetres = draggedOrbitRadius(orbit, to))
+            grab == CircleGrab.OrbitCentre && orbit != null -> edits.orbit = orbit.copy(centre = to)
+            grab == CircleGrab.GotoRadius && edit != null && goto != null -> edits.gotoLoiter = edit.copy(radiusMetres = draggedGotoRadius(goto, to))
         }
     }
     fun flip() {
-        val orbit = OrbitPreview.circle
-        val edit = GotoLoiterEdit.edit
+        val orbit = edits.orbit
+        val edit = edits.gotoLoiter
         when {
-            grab == CircleGrab.OrbitFlip && orbit != null -> OrbitPreview.circle = orbit.copy(clockwise = !orbit.clockwise)
-            grab == CircleGrab.GotoFlip && edit != null -> GotoLoiterEdit.edit = edit.copy(clockwise = !edit.clockwise)
+            grab == CircleGrab.OrbitFlip && orbit != null -> edits.orbit = orbit.copy(clockwise = !orbit.clockwise)
+            grab == CircleGrab.GotoFlip && edit != null -> edits.gotoLoiter = edit.copy(clockwise = !edit.clockwise)
         }
     }
     val dragging = { grab in setOf(CircleGrab.GotoRadius, CircleGrab.OrbitRadius, CircleGrab.OrbitCentre) }

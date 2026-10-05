@@ -179,20 +179,17 @@ fun VehicleTitle() {
     }
 }
 
-internal object ReadingsRequest {
-    var choosing by mutableStateOf(false)
-}
-
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShown: Boolean = true) {
+    val flyScreen = LocalFlyScreenState.current
     val context = LocalContext.current
     val classView by qgcPath(INSTRUMENTS_VIEW)
     val vehicleClass = instrumentVehicleClass(classView)
     var chosen by remember(vehicleClass) { mutableStateOf(readChosen(context, vehicleClass)) }
     var displays by remember(vehicleClass) { mutableStateOf(readDisplays(context, vehicleClass)) }
     var styling by remember { mutableStateOf<Instrument?>(null) }
-    LaunchedEffect(vehicleClass) { OverlayLayout.valueSize = readValueSize(context, vehicleClass) }
+    LaunchedEffect(vehicleClass) { flyScreen.layout.valueSize = readValueSize(context, vehicleClass) }
     val view by qgcPath(instrumentsPath(chosen, vehicleClass))
     val gcsJson by qgcPath(GCS_POSITION)
     val shown = remember(view, gcsJson, chosen) {
@@ -207,6 +204,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     val change: (List<String>) -> Unit = { next ->
         chosen = next
         writeChosen(context, vehicleClass, next)
+        flyScreen.instrumentEdits++
         styling = null
     }
     var replacing by remember { mutableStateOf<Pair<Int, String>?>(null) }
@@ -244,20 +242,21 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
             onDone = { display ->
                 writeDisplay(context, vehicleClass, instrument.id, display)
                 displays = displays + (instrument.id to display)
-                InstrumentEdits.version += 1
+                flyScreen.instrumentEdits += 1
                 styling = null
             },
         )
     }
 
-    if (ReadingsRequest.choosing) {
+    if (flyScreen.choosingReadings) {
         InstrumentSheet(
             chosen = chosen,
             onToggle = { name ->
                 chosen = withInstrument(chosen, name)
                 writeChosen(context, vehicleClass, chosen)
+                flyScreen.instrumentEdits++
             },
-            onDismiss = { ReadingsRequest.choosing = false },
+            onDismiss = { flyScreen.choosingReadings = false },
         )
     }
 
@@ -294,7 +293,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
                 Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(
                         instrument.value,
-                        style = scaledNumber(OverlayLayout.valueSize.scale),
+                        style = scaledNumber(flyScreen.layout.valueSize.scale),
                         color = displayColour(display, instrument.raw)?.let { Color(it) } ?: MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.alignByBaseline(),
                     )
@@ -307,7 +306,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
                 }
             }
         }
-        IconButton(onClick = { ReadingsRequest.choosing = true }) {
+        IconButton(onClick = { flyScreen.choosingReadings = true }) {
             Icon(
                 painter = painterResource(R.drawable.ic_tune),
                 contentDescription = "Readings",
@@ -327,6 +326,7 @@ internal fun scaledNumber(scale: Float): TextStyle = TelemetryNumber.copy(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeckLayout.Bottom) {
+    val flyScreen = LocalFlyScreenState.current
     val simple = layout == FlyDeckLayout.Simple
     val side = layout == FlyDeckLayout.Side
     val stateJson by qgcPath(FLY_STATE)
@@ -336,7 +336,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
     var sentName by remember { mutableStateOf<String?>(null) }
     var sentSnapshot by remember { mutableStateOf<String?>(null) }
-    var refusal by FlyRefusal::text
+    var refusal by flyScreen::refusal
     val scope = rememberCoroutineScope()
     var takeoffTarget by remember { mutableStateOf<Double?>(null) }
     var takeoffSettled by remember { mutableStateOf<Double?>(null) }
@@ -619,8 +619,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         val deck = deckIds(entries.map { it.id }.toSet(), armed)
         deckRest = entries.filter { entry -> deck.none { it.first == entry.id } }
         deckShown = deck.map { it.first }.toSet()
-        LaunchedEffect(DeckRequest.action) {
-            when (val asked = DeckRequest.action) {
+        LaunchedEffect(flyScreen.deckRequest) {
+            when (val asked = flyScreen.deckRequest) {
                 null -> Unit
                 ARM_REQUEST -> entries.firstOrNull { it.id == ARM_REQUEST && it.enabled }?.onClick?.invoke()
                     ?: armedStopOffer(offers, armed)?.let { pending = emergencyStopAction(it) }
@@ -631,7 +631,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     }
                 }
             }
-            DeckRequest.action = null
+            flyScreen.deckRequest = null
         }
 
         if (!simple && !side) TelemetryRow(valuesShown = armed)
@@ -807,7 +807,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                         .takeIf { preflightOffered(preflightJson) },
                     loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
                     MoreTile("Gripper", R.drawable.ic_download, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
-                    MoreTile("Choose readings", R.drawable.ic_tune, true) { ReadingsRequest.choosing = true }.takeIf { !simple },
+                    MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true }.takeIf { !simple },
                 ) +
                 extras.filter { it.id !in deckShown && it.id !in GRIPPER_ACTIONS }.map { offer ->
                     MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {
@@ -910,10 +910,6 @@ internal fun commandRefusal(action: String, confirmed: Boolean): String? =
 
 internal const val FLIGHT_MODE_SETTINGS_PAGE = "Flight Mode Settings"
 
-internal object FlyRefusal {
-    var text by mutableStateOf<String?>(null)
-}
-
 private fun Modifier.longPress(key: Any?, action: () -> Unit): Modifier =
     if (key == null) this else pointerInput(key) {
         awaitEachGesture {
@@ -926,21 +922,19 @@ private fun Modifier.longPress(key: Any?, action: () -> Unit): Modifier =
         }
     }
 
-internal object FlightModePending {
-    var mode by mutableStateOf<String?>(null)
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: () -> Unit, onMessages: () -> Unit) {
+    val navigation = LocalAppNavigation.current
+    val flyScreen = LocalFlyScreenState.current
     val json by qgcPath(FLIGHT_MODES)
     val modes = remember(json) { flightModesView(json) }
     val flyJson by qgcPath(FLY_STATE)
     val fly = remember(flyJson) { flyState(flyJson) }
     val setupJson by qgcPath(SETUP)
     val hasModesPage = remember(setupJson) { setupComponents(setupJson).any { it.name == FLIGHT_MODES_PAGE } }
-    val onRefusal: (String?) -> Unit = { FlyRefusal.text = it }
-    val onWithdraw: (String) -> Unit = { FlyRefusal.text = withdrawn(FlyRefusal.text, it) }
+    val onRefusal: (String?) -> Unit = { flyScreen.refusal = it }
+    val onWithdraw: (String) -> Unit = { flyScreen.refusal = withdrawn(flyScreen.refusal, it) }
     var showFolded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var confirming by remember { mutableStateOf<FlightModeOption?>(null) }
@@ -952,7 +946,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     fun send(mode: FlightModeOption) {
         scope.launch {
             onRefusal(null)
-            FlightModePending.mode = mode.name
+            flyScreen.pendingMode = mode.name
             val before = withContext(Dispatchers.Default) { modeAck(Qgc.get(FLIGHT_MODES)) }
             withContext(Dispatchers.Default) { Qgc.set("vehicle.flightMode", mode.name) }
             val started = System.currentTimeMillis()
@@ -963,7 +957,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                     modeOutcome(mode.name, before, modeAck(Qgc.get(FLIGHT_MODES)), flightModeNow() == mode.name, System.currentTimeMillis() - started)
                 }
             }
-            FlightModePending.mode = null
+            flyScreen.pendingMode = null
             (outcome as? ModeOutcome.Rejected)?.let { rejected ->
                 onRefusal(rejected.text)
                 delay(MODE_REJECTION_MS)
@@ -1102,7 +1096,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                 text = { Text("Configure flight modes") },
                 onClick = {
                     onDismiss()
-                    AppNavigation.setupPage = FLIGHT_MODES_PAGE
+                    navigation.setupPage = FLIGHT_MODES_PAGE
                 },
             )
         }

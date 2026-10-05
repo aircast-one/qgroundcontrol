@@ -63,7 +63,7 @@ internal fun unavailableVideoState(video: VideoReading, linksToSettings: Boolean
 
 internal data class NoVideoButton(val label: String, val onClick: () -> Unit)
 
-private val openVideoSettings = NoVideoButton("Video settings") { AppNavigation.settingsPage = VIDEO_SETTINGS_PAGE }
+private fun videoSettingsButton(navigation: AppNavigationState) = NoVideoButton("Video settings") { navigation.settingsPage = VIDEO_SETTINGS_PAGE }
 
 internal val LocalNoVideoCompact = staticCompositionLocalOf { false }
 
@@ -98,6 +98,8 @@ private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoBu
 
 @Composable
 internal fun NoVideoPanel(video: VideoReading?, linksToSettings: Boolean = true) {
+    val navigation = LocalAppNavigation.current
+    val openVideoSettings = videoSettingsButton(navigation)
     val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
     val armed = remember(flyJson) { flyState(flyJson)?.armed == true }
     val unavailable = video?.let { unavailableVideoState(it, linksToSettings) }

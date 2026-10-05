@@ -41,16 +41,11 @@ class OverlayLayoutTest {
     }
 
     @Test
-    fun `the stored layout is read once so a later widget cannot undo an unsaved drag`() {
-        OverlayLayout.loaded = false
-        val reads = mutableListOf<Unit>()
-        loadLayoutOnce { reads += Unit; mapOf("OverlayRigOffset-instrumentPanel" to "10.0,20.0", "OverlayRigHidden-orbit" to true) }
-        OverlayLayout.offsets += "instrumentPanel" to (50f to 60f)
-        loadLayoutOnce { reads += Unit; mapOf("OverlayRigOffset-instrumentPanel" to "10.0,20.0") }
-        assertEquals(1, reads.size)
-        assertEquals(50f to 60f, OverlayLayout.offsets["instrumentPanel"])
-        assertEquals(setOf("orbit"), OverlayLayout.hidden)
-        OverlayLayout.loaded = false
+    fun `the stored layout yields hidden widgets, offsets and the indicator order`() {
+        val stored = mapOf("OverlayRigOffset-instrumentPanel" to "10.0,20.0", "OverlayRigHidden-orbit" to true, "FlyViewIndicatorOrder" to "gps,battery")
+        assertEquals(mapOf("instrumentPanel" to (10f to 20f)), storedOffsets(stored))
+        assertEquals(setOf("orbit"), hiddenKeys(stored))
+        assertEquals(listOf("gps", "battery"), storedIndicatorOrder(stored))
     }
 
     @Test

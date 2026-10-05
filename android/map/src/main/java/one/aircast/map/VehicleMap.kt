@@ -212,12 +212,13 @@ fun VehicleMap(
     orbit: OrbitCircle? = null,
     otherMissions: List<OtherMission> = emptyList(),
 ) {
+    val mapEdits = one.aircast.map.LocalFlyMapEdits.current
     val latestMapClick by rememberUpdatedState(onMapClick)
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
     val latestRoi by rememberUpdatedState(roi)
     val latestRoiClick by rememberUpdatedState(onRoiClick)
-    val shownGoto = editedGoto(goto, GotoLoiterEdit.edit)
-    val gotoEditing = GotoLoiterEdit.edit != null && shownGoto?.loiterRadiusMetres != null
+    val shownGoto = editedGoto(goto, mapEdits.gotoLoiter)
+    val gotoEditing = mapEdits.gotoLoiter != null && shownGoto?.loiterRadiusMetres != null
     val latestGoto by rememberUpdatedState(shownGoto)
     val latestItems by rememberUpdatedState(missionItems)
     val latestOnAdd by rememberUpdatedState(onAdd)
@@ -354,7 +355,7 @@ fun VehicleMap(
                         latestMapClick?.invoke(at.latitude, at.longitude)
                         latestMapClick != null
                     }
-                    attachGotoRadiusDrag(mapView, loaded) { latestGoto }
+                    attachGotoRadiusDrag(mapView, loaded, mapEdits) { latestGoto }
                 }
                 if (editable) {
                     attachMissionEditing(
@@ -396,7 +397,7 @@ fun VehicleMap(
         renderProximityRadars(radarStyle, radars)
     }
 
-    val orbitPreview = OrbitPreview.circle
+    val orbitPreview = mapEdits.orbit
     LaunchedEffect(style, orbit, shownGoto, orbitPreview) {
         val orbitStyle = style ?: return@LaunchedEffect
         renderOrbit(orbitStyle, orbit, gotoShown = shownGoto != null, preview = orbitPreview)
