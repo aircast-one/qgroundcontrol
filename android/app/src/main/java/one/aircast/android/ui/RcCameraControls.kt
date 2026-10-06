@@ -7,6 +7,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.ui.res.painterResource
+import one.aircast.android.R
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
@@ -42,7 +49,6 @@ import one.aircast.android.bridge.settingControl
 private const val FLY_VIEW_SETTINGS = "settings.flyViewSettings"
 private val RAIL_SLIDER_LENGTH = 140.dp
 private val RAIL_SLIDER_THICKNESS = 40.dp
-private val RAIL_COLUMN_WIDTH = 104.dp
 
 private fun Modifier.railSlider(): Modifier = this
     .width(RAIL_SLIDER_THICKNESS)
@@ -138,6 +144,7 @@ private fun GimbalTiltSlider(pitch: Double?) {
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun RcCameraControls(modifier: Modifier = Modifier) {
     val channels = rcCameraChannels(
@@ -161,6 +168,7 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     if (!hasVehicle() || (!channels.any && !gimbalManager)) return
     val gimbal = remember(gimbalJson) { gimbalIndicator(gimbalJson) }
     var gimbalRefused by remember { mutableStateOf<String?>(null) }
+    var options by remember { mutableStateOf(false) }
     LaunchedEffect(gimbalRefused) {
         if (gimbalRefused != null) {
             kotlinx.coroutines.delay(GIMBAL_REFUSAL_MS)
@@ -170,7 +178,7 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     val recording = cameraRecording(channels.record, channelRecording, streamRecording)
     val rcGimbal = !gimbalManager && (channels.tilt > 0 || channels.pan > 0)
     Column(
-        modifier.padding(horizontal = 4.dp, vertical = 4.dp).width(RAIL_COLUMN_WIDTH),
+        modifier.padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -180,36 +188,49 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
             if (!gimbalManager && channels.pan > 0) PwmSlider("Pan", channels.pan, pan) { pan = it }
             if (channels.zoom > 0) PwmSlider("Zoom", channels.zoom, zoom) { zoom = it }
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            if (channels.record > 0) {
-                FilterChip(selected = recording, onClick = {
-                    val next = !recording
-                    channelRecording = next
-                    send(channels.record, if (next) PWM_MAX else PWM_MIN)
-                    offMainInOrder { Qgc.invoke(if (next) "video.startRecording" else "video.stopRecording") }
-                }, label = { Text("Record") })
+        if (channels.record > 0) {
+            FilterChip(selected = recording, onClick = {
+                val next = !recording
+                channelRecording = next
+                send(channels.record, if (next) PWM_MAX else PWM_MIN)
+                offMainInOrder { Qgc.invoke(if (next) "video.startRecording" else "video.stopRecording") }
+            }, label = { Text("Record") })
+        }
+        if (channels.light > 0 || gimbal != null || rcGimbal) {
+            IconButton(onClick = { options = true }, modifier = Modifier.size(48.dp)) {
+                Icon(painterResource(R.drawable.ic_tune), "Gimbal options", Modifier.size(22.dp))
             }
-            if (channels.light > 0) {
-                FilterChip(selected = lightOn, onClick = {
-                    lightOn = !lightOn
-                    send(channels.light, if (lightOn) PWM_MAX else PWM_MIN)
-                }, label = { Text("Light") })
-            }
-            if (gimbal != null && gimbal.yawLockOffered) {
-                FilterChip(selected = gimbal.yawLocked, onClick = {
-                    offMainDetached { gimbalRefused = gimbalRefusal(Qgc.call("gimbal.yawLock", !gimbal.yawLocked)) }
-                }, label = { Text(gimbal.yawLockLabel) })
-            }
-            if (gimbal != null) {
-                TextButton(onClick = { offMainDetached { gimbalRefused = gimbalRefusal(Qgc.call("gimbal.center")) } }) { Text("Recenter") }
-            }
-            if (rcGimbal) {
-                TextButton(onClick = {
-                    tilt = PWM_CENTER
-                    pan = PWM_CENTER
-                    send(channels.tilt, PWM_CENTER)
-                    send(channels.pan, PWM_CENTER)
-                }) { Text("Recenter") }
+        }
+        if (options) {
+            ModalBottomSheet(onDismissRequest = { options = false }) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Gimbal", style = MaterialTheme.typography.titleLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (channels.light > 0) {
+                            FilterChip(selected = lightOn, onClick = {
+                                lightOn = !lightOn
+                                send(channels.light, if (lightOn) PWM_MAX else PWM_MIN)
+                            }, label = { Text("Light") })
+                        }
+                        if (gimbal != null && gimbal.yawLockOffered) {
+                            FilterChip(selected = gimbal.yawLocked, onClick = {
+                                offMainDetached { gimbalRefused = gimbalRefusal(Qgc.call("gimbal.yawLock", !gimbal.yawLocked)) }
+                            }, label = { Text(gimbal.yawLockLabel) })
+                        }
+                        if (gimbal != null) {
+                            TextButton(onClick = { offMainDetached { gimbalRefused = gimbalRefusal(Qgc.call("gimbal.center")) } }) { Text("Recenter") }
+                        }
+                        if (rcGimbal) {
+                            TextButton(onClick = {
+                                tilt = PWM_CENTER
+                                pan = PWM_CENTER
+                                send(channels.tilt, PWM_CENTER)
+                                send(channels.pan, PWM_CENTER)
+                            }) { Text("Recenter") }
+                        }
+                    }
+                    gimbalRefused?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                }
             }
         }
         gimbalRefused?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error) }

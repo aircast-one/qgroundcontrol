@@ -180,8 +180,6 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             Text(text = plan, style = MaterialTheme.typography.labelSmall)
         }
 
-        remember(cameraJson) { trackingReading(cameraJson) }?.let { reading -> TrackingToggle(reading) }
-
         IconButton(onClick = { details = true }, modifier = Modifier.size(CAMERA_TARGET)) {
             Icon(painterResource(R.drawable.ic_settings), "Camera settings", Modifier.size(22.dp))
         }
