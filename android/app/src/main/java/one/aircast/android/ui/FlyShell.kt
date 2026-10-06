@@ -53,6 +53,7 @@ import one.aircast.map.aircast
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -94,6 +95,8 @@ private val MINIMAP_WIDTH = 184.dp
 private val MINIMAP_HEIGHT = 112.dp
 private val ACTION_RAIL_CLEARANCE = 72.dp
 private val STOP_CLEARANCE = 56.dp
+private val TOP_SCRIM_HEIGHT = 96.dp
+private const val TOP_SCRIM_ALPHA = 0.6f
 private val PIP_TOGGLE_SIZE = 28.dp
 private const val PIP_EXPANDED_KEY = "IsPIPVisible"
 
@@ -296,7 +299,7 @@ internal fun FlyScreen(
             }
             if (view == FlyView.Map) {
                 var layers by remember { mutableStateOf(false) }
-                Box(if (landscape) Modifier.align(Alignment.BottomStart).padding(start = MINIMAP_WIDTH + AircastSpace.s3 * 2, bottom = AircastSpace.s3) else Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3)) {
+                Box(if (landscape) Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MINIMAP_HEIGHT + AircastSpace.s3 * 2) else Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3)) {
                     LayoutWidget("mapLayers", hideable = false) {
                         Surface(
                             onClick = { layers = true },
@@ -311,6 +314,15 @@ internal fun FlyScreen(
                 if (layers) MapLayersSheet { layers = false }
             }
 
+            if (landscape) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(TOP_SCRIM_HEIGHT)
+                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Black.copy(alpha = TOP_SCRIM_ALPHA), Color.Transparent))),
+                )
+            }
             val flyScreen = LocalFlyScreenState.current
             val videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
             CompositionLocalProvider(LocalFlyOsd provides (view == FlyView.Video)) {
@@ -323,12 +335,14 @@ internal fun FlyScreen(
                                 .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
                             verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                         ) {
-                            Row(
-                                Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
-                                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                                verticalAlignment = Alignment.CenterVertically,
-                                content = status,
-                            )
+                            CompositionLocalProvider(LocalCompactStatus provides landscape) {
+                                Row(
+                                    Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
+                                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    content = status,
+                                )
+                            }
                             if (!landscape) Row(Modifier.padding(top = AircastSpace.s2)) {
                                 LayoutWidget("viewSwitcher", hideable = false) { FlyViewSwitcher(view, onView) }
                             }

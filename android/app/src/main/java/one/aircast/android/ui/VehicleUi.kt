@@ -474,7 +474,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 }
             }
             Box(Modifier.align(Alignment.BottomCenter).widthIn(max = RAIL_TELEMETRY_WIDTH).padding(bottom = AircastSpace.s2).osdShadow()) {
-                CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(columns = RAIL_TELEMETRY_COLUMNS, valuesShown = armed) }
+                CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(columns = RAIL_TELEMETRY_COLUMNS, valuesShown = true) }
             }
         }
     } else Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {

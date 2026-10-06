@@ -180,3 +180,14 @@ class IndicatorParameterWaitTest {
         assertEquals("Parameters not available", indicatorParameterWait(JSONObject("""{"connected":true,"parametersReady":false,"parametersReason":"skipped"}""")))
     }
 }
+
+class CompactStatusTest {
+    @Test
+    fun `a compact cell keeps only the reading, and an icon alone when there is none`() {
+        assertEquals("53%", compactStatusText("B1 53%"))
+        assertEquals("12", compactStatusText("12 sats"))
+        assertEquals("12", compactStatusText("12 sats · 2D only"))
+        assertEquals("-70", compactStatusText("-70 dBm"))
+        assertEquals("", compactStatusText("No signal RC"))
+    }
+}

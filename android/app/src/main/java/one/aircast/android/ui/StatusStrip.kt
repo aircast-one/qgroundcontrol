@@ -29,6 +29,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -170,6 +171,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     val satellites = gps?.satellites?.toString() ?: ""
     var detail by remember { mutableStateOf<StripDetail?>(null) }
     var batterySettings by remember { mutableStateOf(false) }
+    var overflow by remember { mutableStateOf(false) }
     var batteryDisplay by remember { mutableStateOf(false) }
     var rtkSettings by remember { mutableStateOf(false) }
     val layout = LocalFlyScreenState.current.layout
@@ -202,7 +204,19 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
             "supportForwarding" to { SupportForwardingCell() },
         )
         val byKey = cells.toMap()
-        val keys = orderedKeys(cells.map { it.first }, layout.indicatorOrder)
+        val ordered = orderedKeys(cells.map { it.first }, layout.indicatorOrder)
+        val compact = LocalCompactStatus.current && !layout.editing
+        val keys = if (compact) ordered.take(COMPACT_STATUS_CELLS) else ordered
+        if (overflow) {
+            ModalBottomSheet(onDismissRequest = { overflow = false }) {
+                CompositionLocalProvider(LocalCompactStatus provides false) {
+                    Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text("Status", style = MaterialTheme.typography.titleLarge)
+                        ordered.drop(keys.size).map { key -> byKey[key]?.invoke() }
+                    }
+                }
+            }
+        }
         keys.forEach { key ->
             LayoutWidget("indicator-$key", movable = false) {
                 Row(Modifier.leadingGap(STRIP_GAP), verticalAlignment = Alignment.CenterVertically) {
@@ -210,6 +224,11 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                     byKey[key]?.invoke()
                     if (layout.editing) TextButton(onClick = { movedKey(keys, key, 1)?.let { layout.saveIndicatorOrder(it) } }) { Text("\u203A") }
                 }
+            }
+        }
+        if (compact && ordered.size > keys.size) {
+            Box(Modifier.leadingGap(STRIP_GAP)) {
+                Text("\u22EF", style = MaterialTheme.typography.titleMedium, modifier = Modifier.clickable { overflow = true }.padding(horizontal = 4.dp))
             }
         }
     }
@@ -345,15 +364,22 @@ private fun severityColour(severity: Int): Color = when {
 @Composable
 private fun InlineCell(text: String, colour: Color, @DrawableRes icon: Int? = null, onClick: (() -> Unit)? = null) {
     val tint = if (colour == Color.Unspecified) MaterialTheme.colorScheme.onSurfaceVariant else colour
+    val shown = if (LocalCompactStatus.current && icon != null) compactStatusText(text) else text
     Row(
         if (onClick == null) Modifier else Modifier.clickable { onClick() },
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         icon?.let { Icon(painterResource(it), null, tint = tint, modifier = Modifier.size(18.dp)) }
-        Text(text, style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1)
+        if (shown.isNotEmpty()) Text(shown, style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1)
     }
 }
+
+internal val LocalCompactStatus = androidx.compose.runtime.compositionLocalOf { false }
+internal const val COMPACT_STATUS_CELLS = 4
+
+internal fun compactStatusText(text: String): String =
+    text.substringBefore(" \u00b7 ").split(" ").lastOrNull { token -> token.any(Char::isDigit) }.orEmpty()
 
 internal data class OverrideCell(val text: String)
 
