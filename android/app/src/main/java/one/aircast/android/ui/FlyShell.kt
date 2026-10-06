@@ -76,6 +76,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import one.aircast.android.R
 import one.aircast.map.AircastSpace
@@ -93,6 +95,7 @@ private val VIDEO_PIP_HEIGHT = 96.dp
 private val MAP_LAYERS_BUTTON = 48.dp
 private val MINIMAP_WIDTH = 184.dp
 private val MINIMAP_HEIGHT = 112.dp
+private const val COMPASS_DIAL_KEY = "compassDial"
 private val ACTION_RAIL_CLEARANCE = 72.dp
 private val STOP_CLEARANCE = 56.dp
 private val TOP_SCRIM_HEIGHT = 96.dp
@@ -286,8 +289,20 @@ internal fun FlyScreen(
                             .clickable { onView(FlyView.Map) },
                     )
                 }
-                Box(Modifier.zIndex(3f).align(mapPipAlign).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).then(mapPipSize).avoidedByVideoMessage(MAP_PIP_KEY).holdToEditLayout()) {
-                    PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else if (landscape) Alignment.BottomStart else Alignment.BottomEnd))
+                if (landscape && !pipExpanded) {
+                    Box(
+                        Modifier
+                            .zIndex(3f)
+                            .align(Alignment.BottomStart)
+                            .padding(AircastSpace.s3)
+                            .avoidedByVideoMessage(COMPASS_DIAL_KEY)
+                            .clip(CircleShape)
+                            .clickable(onClickLabel = "Show the map") { togglePip() }
+                            .semantics { contentDescription = "Compass" },
+                    ) { CompassDial(MINIMAP_HEIGHT) }
+                }
+                if (pipExpanded || !landscape) Box(Modifier.zIndex(3f).align(mapPipAlign).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).then(mapPipSize).avoidedByVideoMessage(MAP_PIP_KEY).holdToEditLayout()) {
+                    PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
                     if (pipExpanded) LayoutPipEditor(MAP_PIP_KEY, mapPipShape, Modifier.matchParentSize())
                 }
             }
@@ -398,17 +413,6 @@ internal fun FlyScreen(
                     CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { rail() }
                 }
                 if (landscape) {
-                    Column(
-                        Modifier
-                            .zIndex(1f)
-                            .align(Alignment.TopCenter)
-                            .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                    ) {
-                        CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { heading() }
-                    }
                     Box(
                         Modifier
                             .zIndex(2f)

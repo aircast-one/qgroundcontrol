@@ -149,6 +149,13 @@ fun AttitudeInstrument(modifier: Modifier = Modifier) {
 }
 
 @Composable
+internal fun CompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val view by qgcPath(ATTITUDE_PATH)
+    val reading = remember(view) { attitude(view) ?: NO_VEHICLE_ATTITUDE }
+    InstrumentDial(reading, horizon = true, compass = true, size = size, modifier = modifier)
+}
+
+@Composable
 private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     val measurer = rememberTextMeasurer()
     val sky = HORIZON_SKY
