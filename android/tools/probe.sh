@@ -4,10 +4,12 @@
 #   probe.sh on                  enable the debug API and forward the port
 #   probe.sh get <path>          read a bridge path or a view
 #   probe.sh set <path> <json>   write a bridge path
+#   probe.sh invoke <path> [json-args]  call a bridge method, e.g. invoke vehicle.guidedModeLand
+#   probe.sh fly arm|disarm|takeoff [m]|land|rtl|mode <name>   fly a simulated vehicle
 #   probe.sh raw <route> [args]  any debug-api route, e.g. raw /status
-#   probe.sh mock [opt...]       start a simulated vehicle, e.g. mock camera gimbal video=h264
+#   probe.sh mock [opt...]       start a simulated vehicle, e.g. mock camera gimbal video=h264 pattern=smpte
 #   probe.sh ui <cmd> [value]    drive the app UI: state, tab, fly-view, orientation,
-#                                layout-edit, layout-reset, deck  (debug builds only)
+#                                layout-edit, layout-reset, open, back  (debug builds only)
 #
 # The deep link MUST name the activity: two installed apps claim aircast-qgc://
 # (this head and the QML QGCActivity), so an untargeted intent opens a chooser
@@ -69,6 +71,23 @@ raw)
     curl -s --max-time 8 -H "$HEADER" "http://127.0.0.1:$PORT$2"
     echo ""
     ;;
+invoke)
+    [ -n "${2:-}" ] || { echo "usage: probe.sh invoke <path> [json-args]" >&2; exit 2; }
+    curl -s --max-time 8 -H "$HEADER" -G "http://127.0.0.1:$PORT/bridge/invoke" \
+        --data-urlencode "path=$2" --data-urlencode "args=${3:-[]}"
+    echo ""
+    ;;
+fly)
+    case "${2:-}" in
+    arm) "$0" set vehicle.armed true ;;
+    disarm) "$0" set vehicle.armed false ;;
+    takeoff) "$0" invoke vehicle.guidedModeTakeoff "[${3:-10}]" ;;
+    land) "$0" invoke vehicle.guidedModeLand ;;
+    rtl) "$0" invoke vehicle.guidedModeRTL "[false]" ;;
+    mode) [ -n "${3:-}" ] || { echo "usage: probe.sh fly mode <name>" >&2; exit 2; }; "$0" set vehicle.flightMode "\"$3\"" ;;
+    *) echo "usage: probe.sh fly arm|disarm|takeoff [metres]|land|rtl|mode <name>" >&2; exit 2 ;;
+    esac
+    ;;
 mock)
     shift
     query="autopilot=${MOCK_AUTOPILOT:-px4}$(printf '&%s' "$@")"
@@ -76,6 +95,13 @@ mock)
     ;;
 ui)
     [ -n "${2:-}" ] || { echo "usage: probe.sh ui <cmd> [value]" >&2; exit 2; }
+    if [ "$2" = "back" ]; then
+        adb shell dumpsys activity activities | grep -q "topResumedActivity=.*$APP/" \
+            || { echo "REFUSED: $APP is not in front - a back press would land in another app" >&2; exit 1; }
+        adb shell input keyevent KEYCODE_BACK
+        echo "ok"
+        exit 0
+    fi
     answer="$(adb shell am broadcast -a one.aircast.android.DEBUG_UI -p "$APP" --es cmd "$2" ${3:+--es value "$3"} \
         | sed -n 's/^Broadcast completed: result=[-0-9]*, data="\(.*\)"$/\1/p')"
     [ -n "$answer" ] || { echo "REFUSED: no answer from $APP - is a debug build running?" >&2; exit 1; }
@@ -83,7 +109,7 @@ ui)
     case "$answer" in error:*) exit 1 ;; esac
     ;;
 *)
-    sed -n '2,13p' "$0"
+    sed -n '2,15p' "$0"
     exit 2
     ;;
 esac

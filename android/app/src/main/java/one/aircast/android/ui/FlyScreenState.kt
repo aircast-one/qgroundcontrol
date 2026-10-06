@@ -12,6 +12,7 @@ import one.aircast.map.FlyMapEdits
 internal class FlyScreenState(val layout: OverlayLayoutState) {
     var refusal by mutableStateOf<String?>(null)
     var deckRequest by mutableStateOf<String?>(null)
+    var requestedSheet by mutableStateOf<String?>(null)
     var choosingReadings by mutableStateOf(false)
     var pendingMode by mutableStateOf<String?>(null)
     var instrumentEdits by mutableIntStateOf(0)
@@ -24,3 +25,16 @@ internal class FlyScreenState(val layout: OverlayLayoutState) {
 }
 
 internal val LocalFlyScreenState = staticCompositionLocalOf<FlyScreenState> { error("FlyScreenState is provided by AircastShell") }
+
+internal val REQUESTABLE_SHEETS = setOf("more", "readings", "camera", "gimbal", "indicators", "status", "modes")
+
+@androidx.compose.runtime.Composable
+internal fun OpenOnRequest(name: String, open: () -> Unit) {
+    val flyScreen = LocalFlyScreenState.current
+    androidx.compose.runtime.LaunchedEffect(flyScreen.requestedSheet) {
+        if (flyScreen.requestedSheet == name) {
+            flyScreen.requestedSheet = null
+            open()
+        }
+    }
+}

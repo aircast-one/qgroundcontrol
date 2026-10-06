@@ -80,7 +80,7 @@ pub const ROUTES: &[(&str, Route, &str)] = &[
     ("/links", Route::Links, ""),
     ("/links/connect", Route::LinkConnect, "host,port,name"),
     ("/links/disconnect", Route::LinkDisconnect, "name"),
-    ("/links/mocklink", Route::MockLink, "autopilot,add,camera,gimbal,proximity,statustext,video"),
+    ("/links/mocklink", Route::MockLink, "autopilot,add,camera,gimbal,proximity,statustext,video,pattern"),
     ("/mission/upload", Route::MissionUpload, "file"),
     ("/mission/download", Route::MissionDownload, "file"),
     ("/logging", Route::Logging, "rules"),
@@ -157,6 +157,7 @@ fn present(pairs: &[(String, String)], key: &str) -> bool {
     pairs.iter().any(|(k, _)| k == key)
 }
 
+pub const MOCK_VIDEO_PATTERNS: &[&str] = &["ball", "smpte", "snow", "gradient", "pinwheel", "colors", "white"];
 pub const MOCK_VIDEO_STREAMS: &[(&str, i64)] = &[("none", 0), ("h264", 1), ("h265", 2), ("rtsp", 3), ("mpegts-udp", 4), ("mpegts-tcp", 5)];
 
 fn mock_video_stream(name: &str) -> Option<i64> {
@@ -176,6 +177,10 @@ fn literal(raw: &str) -> Value {
         true => Value::Null,
         false => serde_json::from_str::<Value>(&format!("[{raw}]")).ok().and_then(|v| v.as_array().and_then(|a| a.first().cloned())).unwrap_or_else(|| Value::String(raw.to_string())),
     }
+}
+
+fn real_vehicle_heard(host: &dyn Host) -> bool {
+    configured_links(host).iter().any(|link| link["type"] != "mock" && link["heardVehicle"] == true)
 }
 
 fn configured_links(host: &dyn Host) -> Vec<Value> {
@@ -307,7 +312,11 @@ impl DebugApi {
             return ok(bridge_body(host.bridge_get(target)));
         }
         if !host.bridge_writes_allowed() {
-            return refuse(format!("bridge writes disabled; set {BRIDGE_WRITE_GUARD}=1 (props off!)"));
+            match (host.mock_links_available(), real_vehicle_heard(host)) {
+                (true, false) => {}
+                (true, true) => return refuse(format!("bridge writes disabled while a real vehicle is connected; set {BRIDGE_WRITE_GUARD}=1 (props off!)")),
+                (false, _) => return refuse(format!("bridge writes disabled; set {BRIDGE_WRITE_GUARD}=1 (props off!)")),
+            }
         }
         match route {
             Route::BridgeSet => match first(pairs, "value").map(str::to_string).or_else(|| (!body.is_empty()).then(|| body.to_string())) {
@@ -386,6 +395,11 @@ impl DebugApi {
             "apm" | "arducopter" => AUTOPILOT_ARDUPILOTMEGA,
             other => return refuse(format!("autopilot must be px4 or apm, got: {other}")),
         };
+        let pattern = given(pairs, "pattern").unwrap_or(MOCK_VIDEO_PATTERNS[0]).to_ascii_lowercase();
+        if !MOCK_VIDEO_PATTERNS.contains(&pattern.as_str()) {
+            return refuse(format!("pattern must be one of {}", MOCK_VIDEO_PATTERNS.join(", ")));
+        }
+        crate::mocklink::set_video_pattern(&pattern);
         let video_stream_type = match given(pairs, "video").map(mock_video_stream) {
             None => 0,
             Some(Some(kind)) => kind,
@@ -809,6 +823,23 @@ mod tests {
     }
 
     #[test]
+    fn a_debug_build_writes_freely_until_a_real_vehicle_is_heard() {
+        let api = DebugApi::new();
+        let simulated = Fake { mock_available: true, links: model(&[json!({ "name": MOCK_LINK_NAME, "settingsURL": "MockLinkSettings.qml", "heardVehicle": true, "children": ["link"] })]), ..Fake::default() };
+        assert_eq!(get(&api, &simulated, "/bridge/set", "path=vehicle.armed&value=true").status, STATUS_OK, "a simulated vehicle has no props to take off");
+        let real = Fake { mock_available: true, links: plain(&[("Radio", true)]), ..Fake::default() };
+        assert_eq!(
+            get(&api, &real, "/bridge/invoke", "path=vehicle.guidedModeTakeoff").body["error"],
+            "bridge writes disabled while a real vehicle is connected; set QGC_DEBUG_API_ALLOW_ACTUATORS=1 (props off!)",
+            "a debug build on a bench with a real vehicle still asks for the explicit switch",
+        );
+        let release = Fake { links: model(&[]), ..Fake::default() };
+        assert_eq!(get(&api, &release, "/bridge/set", "path=x&value=1").status, STATUS_BAD_REQUEST, "a release build never writes without the switch");
+        let switched = Fake { writes_allowed: true, links: plain(&[("Radio", true)]), ..Fake::default() };
+        assert_eq!(get(&api, &switched, "/bridge/set", "path=x&value=1").status, STATUS_OK);
+    }
+
+    #[test]
     fn a_mock_link_can_carry_a_camera_gimbal_and_test_video() {
         let api = DebugApi::new();
         let host = Fake { mock_available: true, ..Fake::default() };
@@ -820,6 +851,11 @@ mod tests {
         assert!(["\"enableCamera\":true", "\"enableGimbal\":true", "\"enableProximity\":true", "\"sendStatusText\":true"].iter().all(|flag| opened[1].contains(flag)), "a present flag with no value, 1, yes and on all switch an option on");
         assert!(opened[2].contains("\"videoStreamType\":1") && opened[2].contains("\"enableCamera\":true"), "a served stream needs the camera that announces it");
         assert_eq!(get(&api, &host, "/links/mocklink", "autopilot=px4&add=1&video=vp9").body["error"], "video must be one of none, h264, h265, rtsp, mpegts-udp, mpegts-tcp");
+        get(&api, &host, "/links/mocklink", "autopilot=px4&add=1&video=h264&pattern=SMPTE");
+        assert_eq!(crate::mocklink::video_pattern(), "smpte", "the next served stream paints the asked-for pattern, case-insensitively");
+        assert_eq!(get(&api, &host, "/links/mocklink", "autopilot=px4&add=1&pattern=plaid").body["error"], "pattern must be one of ball, smpte, snow, gradient, pinwheel, colors, white");
+        get(&api, &host, "/links/mocklink", "autopilot=px4&add=1&video=h264");
+        assert_eq!(crate::mocklink::video_pattern(), "ball", "a link that names no pattern gets the default back, not the last caller's");
     }
 
     #[test]

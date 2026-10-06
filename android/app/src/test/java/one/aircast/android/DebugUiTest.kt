@@ -13,7 +13,7 @@ class DebugUiTest {
         assertEquals(DebugCommand.Orient(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE), debugCommand("orientation", "landscape").getOrThrow())
         assertEquals(DebugCommand.EditLayout(false), debugCommand("layout-edit", "off").getOrThrow())
         assertEquals(DebugCommand.ResetLayout, debugCommand("layout-reset", null).getOrThrow())
-        assertEquals(DebugCommand.Deck("rtl"), debugCommand("deck", "rtl").getOrThrow())
+        assertEquals(DebugCommand.Open("takeoff"), debugCommand("open", "takeoff").getOrThrow())
     }
 
     @Test
@@ -21,6 +21,9 @@ class DebugUiTest {
         assertEquals("cmd must be one of $DEBUG_COMMANDS", debugCommand("rotate", null).exceptionOrNull()?.message)
         assertEquals("orientation must be one of landscape, portrait, auto", debugCommand("orientation", "sideways").exceptionOrNull()?.message)
         assertEquals("tab must be one of Fly, Plan, Setup, Analyze, Settings", debugCommand("tab", "Home").exceptionOrNull()?.message)
-        assertEquals("deck needs an action id, e.g. arm, rtl, land", debugCommand("deck", "").exceptionOrNull()?.message)
+        assertEquals(
+            "open needs a sheet (more, readings, camera, gimbal, indicators, status, modes) or a flight action id, e.g. takeoff, rtl, land",
+            debugCommand("open", "").exceptionOrNull()?.message,
+        )
     }
 }

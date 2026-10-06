@@ -169,6 +169,7 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     val gimbal = remember(gimbalJson) { gimbalIndicator(gimbalJson) }
     var gimbalRefused by remember { mutableStateOf<String?>(null) }
     var options by remember { mutableStateOf(false) }
+    OpenOnRequest("gimbal") { options = true }
     LaunchedEffect(gimbalRefused) {
         if (gimbalRefused != null) {
             kotlinx.coroutines.delay(GIMBAL_REFUSAL_MS)

@@ -12,14 +12,16 @@ constexpr const char *kHost = "127.0.0.1";
 constexpr const char *kH264Encoder = "x264enc tune=zerolatency bitrate=2000 key-int-max=30";
 constexpr const char *kH265Encoder = "x265enc tune=zerolatency speed-preset=ultrafast bitrate=1000 key-int-max=15 option-string=repeat-headers=1";
 
+std::string gPattern = "ball";
+
 std::string testSource(int width, int height, int fps)
 {
-    return "videotestsrc is-live=true pattern=ball ! video/x-raw,width=" + std::to_string(width) + ",height=" + std::to_string(height) +
+    return "videotestsrc is-live=true pattern=" + gPattern + " ! video/x-raw,width=" + std::to_string(width) + ",height=" + std::to_string(height) +
            ",framerate=" + std::to_string(fps) + "/1 ! videoconvert ! video/x-raw,format=I420";
 }
 
-const std::string kH264Source = testSource(1280, 720, 30);
-const std::string kH265Source = testSource(640, 360, 15);
+std::string h264Source() { return testSource(1280, 720, 30); }
+std::string h265Source() { return testSource(640, 360, 15); }
 
 enum StreamType {
     RtpUdpH264 = 1,
@@ -83,7 +85,7 @@ bool startRtsp(Server *server, int port)
     gst_rtsp_server_set_service(rtsp, service.c_str());
     GstRTSPMountPoints *mounts = gst_rtsp_server_get_mount_points(rtsp);
     GstRTSPMediaFactory *factory = gst_rtsp_media_factory_new();
-    const std::string launch = "( " + kH264Source + " ! " + kH264Encoder + " ! rtph264pay name=pay0 pt=96 )";
+    const std::string launch = "( " + h264Source() + " ! " + kH264Encoder + " ! rtph264pay name=pay0 pt=96 )";
     gst_rtsp_media_factory_set_launch(factory, launch.c_str());
     gst_rtsp_media_factory_set_shared(factory, TRUE);
     gst_rtsp_mount_points_add_factory(mounts, "/test", factory);
@@ -136,19 +138,19 @@ bool start(Server *server, int type, int port)
     switch (type) {
     case RtpUdpH264:
         server->uri = "udp://" + where;
-        return startPipeline(server, kH264Source + " ! " + kH264Encoder + " ! rtph264pay config-interval=1 pt=96 ! udpsink " + sink);
+        return startPipeline(server, h264Source() + " ! " + kH264Encoder + " ! rtph264pay config-interval=1 pt=96 ! udpsink " + sink);
     case RtpUdpH265:
         server->uri = "udp265://" + where;
-        return startPipeline(server, kH265Source + " ! " + kH265Encoder + " ! rtph265pay config-interval=1 pt=96 ! udpsink " + sink);
+        return startPipeline(server, h265Source() + " ! " + kH265Encoder + " ! rtph265pay config-interval=1 pt=96 ! udpsink " + sink);
     case RtspH264:
         server->uri = "rtsp://" + where + "/test";
         return startRtsp(server, port);
     case MpegTsUdp:
         server->uri = "mpegts://" + where;
-        return startPipeline(server, kH264Source + " ! " + kH264Encoder + " ! mpegtsmux ! udpsink " + sink);
+        return startPipeline(server, h264Source() + " ! " + kH264Encoder + " ! mpegtsmux ! udpsink " + sink);
     case MpegTsTcp:
         server->uri = "tcp://" + where;
-        return startPipeline(server, kH264Source + " ! " + kH264Encoder + " ! mpegtsmux ! tcpserversink " + sink);
+        return startPipeline(server, h264Source() + " ! " + kH264Encoder + " ! mpegtsmux ! tcpserversink " + sink);
     default:
         return false;
     }
@@ -171,6 +173,11 @@ __attribute__((visibility("default"))) void *qgc_video_mock_serve(int type, int 
     }
     __android_log_print(ANDROID_LOG_INFO, kTag, "serving %s", server->uri.c_str());
     return server;
+}
+
+__attribute__((visibility("default"))) void qgc_video_mock_pattern(const char *pattern)
+{
+    gPattern = pattern && *pattern ? pattern : "ball";
 }
 
 __attribute__((visibility("default"))) const char *qgc_video_mock_uri(void *server)

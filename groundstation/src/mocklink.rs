@@ -75,6 +75,15 @@ const PROXIMITY: [MavSensorOrientation; 6] = [
 ];
 
 static DEBUG_BUILD: AtomicBool = AtomicBool::new(false);
+static VIDEO_PATTERN: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+pub fn set_video_pattern(pattern: &str) {
+    *VIDEO_PATTERN.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = pattern.to_string();
+}
+
+pub fn video_pattern() -> String {
+    VIDEO_PATTERN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+}
 static NEXT_SYSTEM: AtomicU8 = AtomicU8::new(FIRST_SYSTEM_ID);
 
 pub fn set_available(available: bool) {
@@ -955,7 +964,7 @@ fn encode(system: u8, sequences: &mut BTreeMap<u8, u8>, (component, message): &O
 
 #[cfg(all(feature = "jni-host", not(test)))]
 fn serve(kind: StreamKind) -> Option<crate::androidvideo::MockStream> {
-    crate::androidvideo::mock_serve(kind.index() as i32, kind.port())
+    crate::androidvideo::mock_serve(kind.index() as i32, kind.port(), &video_pattern())
 }
 
 #[cfg(not(all(feature = "jni-host", not(test))))]

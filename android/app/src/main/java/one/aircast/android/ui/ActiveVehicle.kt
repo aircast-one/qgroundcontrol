@@ -139,6 +139,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     var offline by remember { mutableStateOf(false) }
     var statusSettings by remember { mutableStateOf(false) }
     var modeMenu by remember { mutableStateOf(false) }
+    OpenOnRequest("status") { statusSettings = true }
+    OpenOnRequest("modes") { modeMenu = true }
     val disconnected = fly?.connected != true
     val scope = rememberCoroutineScope()
     var refusal by remember { mutableStateOf<String?>(null) }

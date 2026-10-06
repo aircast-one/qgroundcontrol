@@ -90,6 +90,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
     val camera = remember(cameraJson) { cameraReading(cameraJson) }
     var refused by remember { mutableStateOf<String?>(null) }
     var details by remember { mutableStateOf(false) }
+    OpenOnRequest("camera") { details = true }
 
     LaunchedEffect(refused) {
         if (refused != null) {

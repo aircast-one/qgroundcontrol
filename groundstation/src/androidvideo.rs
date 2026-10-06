@@ -34,6 +34,7 @@ pub struct Video {
     mock_serve: Option<unsafe extern "C" fn(c_int, c_int) -> *mut c_void>,
     mock_uri: Option<unsafe extern "C" fn(*mut c_void) -> *const c_char>,
     mock_stop: Option<unsafe extern "C" fn(*mut c_void)>,
+    mock_pattern: Option<unsafe extern "C" fn(*const c_char)>,
 }
 
 static VIDEO: OnceLock<Option<Video>> = OnceLock::new();
@@ -67,6 +68,7 @@ fn load() -> Option<Video> {
         mock_serve: symbol(handle, c"qgc_video_mock_serve"),
         mock_uri: symbol(handle, c"qgc_video_mock_uri"),
         mock_stop: symbol(handle, c"qgc_video_mock_stop"),
+        mock_pattern: symbol(handle, c"qgc_video_mock_pattern"),
     })
 }
 
@@ -87,8 +89,11 @@ impl Drop for MockStream {
     }
 }
 
-pub fn mock_serve(kind: c_int, port: u16) -> Option<MockStream> {
+pub fn mock_serve(kind: c_int, port: u16, pattern: &str) -> Option<MockStream> {
     let video = video()?;
+    if let (Some(choose), Ok(name)) = (video.mock_pattern, CString::new(pattern)) {
+        unsafe { choose(name.as_ptr()) };
+    }
     let (serve, uri) = (video.mock_serve?, video.mock_uri?);
     let handle = unsafe { serve(kind, c_int::from(port)) };
     (!handle.is_null()).then(|| MockStream { handle: handle as usize, uri: unsafe { CStr::from_ptr(uri(handle)) }.to_string_lossy().into_owned() })

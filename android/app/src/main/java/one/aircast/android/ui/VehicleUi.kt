@@ -392,6 +392,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val deciding = pending != null || guidedValue != null || editingLoiter != null
 
     PreflightChecklist(checklist, deciding)
+    OpenOnRequest("more") { showMore = true }
 
     val openValue: (GuidedValueKind) -> Unit = { kind ->
         scope.launch {
@@ -426,7 +427,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             ARM_REQUEST -> entries.firstOrNull { it.id == ARM_REQUEST && it.enabled }?.onClick?.invoke()
                 ?: armedStopOffer(offers, armed)?.let { pending = emergencyStopAction(it) }
                 ?: run { refusal = deckRequestRefusal(offers[if (armed) "disarm" else "arm"]) }
-            else -> offers[asked]?.takeIf { it.ready }?.let { offer ->
+            else -> entries.firstOrNull { it.id == asked && it.enabled }?.onClick?.invoke() ?: offers[asked]?.takeIf { it.ready }?.let { offer ->
                 guidedCommand(offer.id, resumeFrom)?.let { command ->
                     pending = GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, run = command)
                 }

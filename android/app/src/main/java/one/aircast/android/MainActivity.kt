@@ -263,7 +263,11 @@ fun AircastShell(hostView: android.view.View?) {
                 is DebugCommand.Orient -> (context as? Activity)?.requestedOrientation = command.orientation
                 is DebugCommand.EditLayout -> if (command.on) overlayLayout.startEditing() else overlayLayout.editing = false
                 DebugCommand.ResetLayout -> overlayLayout.reset()
-                is DebugCommand.Deck -> flyScreen.deckRequest = command.id
+                is DebugCommand.Open -> when (command.target) {
+                    "readings" -> flyScreen.choosingReadings = true
+                    in one.aircast.android.ui.REQUESTABLE_SHEETS -> flyScreen.requestedSheet = command.target
+                    else -> flyScreen.deckRequest = command.target
+                }
             }
         }
     }
@@ -276,6 +280,7 @@ fun AircastShell(hostView: android.view.View?) {
             .put("layoutEditing", overlayLayout.editing)
             .put("layoutLocked", overlayLayout.locked)
             .put("guidedPanelOpen", flyScreen.guidedPanelOpen)
+            .put("pendingOpen", flyScreen.requestedSheet ?: flyScreen.deckRequest ?: org.json.JSONObject.NULL)
             .toString()
     }
     val videoExpanded = flyView != one.aircast.android.ui.FlyView.Map

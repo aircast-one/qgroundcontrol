@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
 
 internal val LocalFlyOsd = compositionLocalOf { false }
 
-private val OSD_SHADOW_BLUR = 2.dp
+private val OSD_SHADOW_BLUR = 3.dp
 private val OSD_SHADOW_DROP = 1.dp
 
 @Composable
@@ -29,8 +29,8 @@ internal fun Modifier.osdShadow(): Modifier =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) graphicsLayer { renderEffect = osdShadowEffect(OSD_SHADOW_BLUR.toPx(), OSD_SHADOW_DROP.toPx()) } else this
 
 @RequiresApi(Build.VERSION_CODES.S)
-private fun osdShadowEffect(blur: Float, drop: Float) = RenderEffect.createBlendModeEffect(
-    RenderEffect.createOffsetEffect(
+private fun osdShadowEffect(blur: Float, drop: Float): androidx.compose.ui.graphics.RenderEffect {
+    val halo = RenderEffect.createOffsetEffect(
         0f,
         drop,
         RenderEffect.createBlurEffect(
@@ -39,7 +39,7 @@ private fun osdShadowEffect(blur: Float, drop: Float) = RenderEffect.createBlend
             RenderEffect.createColorFilterEffect(BlendModeColorFilter(android.graphics.Color.BLACK, BlendMode.SRC_IN)),
             Shader.TileMode.DECAL,
         ),
-    ),
-    RenderEffect.createOffsetEffect(0f, 0f),
-    BlendMode.SRC_OVER,
-).asComposeRenderEffect()
+    )
+    val doubled = RenderEffect.createBlendModeEffect(halo, halo, BlendMode.SRC_OVER)
+    return RenderEffect.createBlendModeEffect(doubled, RenderEffect.createOffsetEffect(0f, 0f), BlendMode.SRC_OVER).asComposeRenderEffect()
+}

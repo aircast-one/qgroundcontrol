@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import kotlinx.coroutines.flow.MutableSharedFlow
 import one.aircast.android.ui.FlyView
+import one.aircast.android.ui.REQUESTABLE_SHEETS
 
 internal const val DEBUG_UI_ACTION = "one.aircast.android.DEBUG_UI"
 private const val DEBUG_COMMAND_BUFFER = 16
@@ -16,7 +17,7 @@ internal sealed interface DebugCommand {
     data class Orient(val orientation: Int) : DebugCommand
     data class EditLayout(val on: Boolean) : DebugCommand
     data object ResetLayout : DebugCommand
-    data class Deck(val id: String) : DebugCommand
+    data class Open(val target: String) : DebugCommand
 }
 
 private val ORIENTATIONS = mapOf(
@@ -27,7 +28,7 @@ private val ORIENTATIONS = mapOf(
 
 private val SWITCHES = mapOf("on" to true, "off" to false)
 
-internal const val DEBUG_COMMANDS = "state, tab, fly-view, orientation, layout-edit, layout-reset, deck"
+internal const val DEBUG_COMMANDS = "state, tab, fly-view, orientation, layout-edit, layout-reset, open"
 
 private fun <T> named(value: String?, choices: Map<String, T>, what: String): Result<T> =
     choices.entries.firstOrNull { it.key.equals(value, ignoreCase = true) }?.let { Result.success(it.value) }
@@ -39,8 +40,8 @@ internal fun debugCommand(cmd: String?, value: String?): Result<DebugCommand> = 
     "orientation" -> named(value, ORIENTATIONS, "orientation").map { DebugCommand.Orient(it) }
     "layout-edit" -> named(value, SWITCHES, "layout-edit").map { DebugCommand.EditLayout(it) }
     "layout-reset" -> Result.success(DebugCommand.ResetLayout)
-    "deck" -> value?.takeIf { it.isNotBlank() }?.let { Result.success(DebugCommand.Deck(it)) }
-        ?: Result.failure(IllegalArgumentException("deck needs an action id, e.g. arm, rtl, land"))
+    "open" -> value?.takeIf { it.isNotBlank() }?.let { Result.success(DebugCommand.Open(it)) }
+        ?: Result.failure(IllegalArgumentException("open needs a sheet (${REQUESTABLE_SHEETS.joinToString(", ")}) or a flight action id, e.g. takeoff, rtl, land"))
     else -> Result.failure(IllegalArgumentException("cmd must be one of $DEBUG_COMMANDS"))
 }
 
