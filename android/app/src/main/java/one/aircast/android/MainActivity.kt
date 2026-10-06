@@ -467,9 +467,9 @@ fun AircastShell(hostView: android.view.View?) {
                         map = { mod -> flyMap(mod) },
                         keyRow = {
                             flyVideoSourceLayer()
-                            flyCameraControlLayer()
                             flyObstacleArc()
                         },
+                        rail = { flyCameraControlLayer() },
                         keyRowEnd = { LayoutWidget("emergencyStop", hideable = false) { PinnedEmergencyStop() } },
                         overlays = {
                             LayoutWidget("messageBanner", hideable = false) { one.aircast.android.ui.VehicleMessageBanner() }

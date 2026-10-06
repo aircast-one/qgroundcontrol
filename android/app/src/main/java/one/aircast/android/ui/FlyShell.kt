@@ -89,6 +89,7 @@ private const val MAP_PIP_KEY = "mapPip"
 private const val VIDEO_PIP_KEY = "videoPip"
 private val VIDEO_PIP_WIDTH = 156.dp
 private val VIDEO_PIP_HEIGHT = 96.dp
+private val MAP_LAYERS_BUTTON = 48.dp
 private val PIP_TOGGLE_SIZE = 28.dp
 private const val PIP_EXPANDED_KEY = "IsPIPVisible"
 
@@ -200,6 +201,7 @@ internal fun FlyScreen(
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
     keyRowEnd: @Composable () -> Unit,
+    rail: @Composable () -> Unit,
     overlays: @Composable () -> Unit,
     actions: @Composable (FlyDeckLayout) -> Unit,
 ) {
@@ -344,6 +346,21 @@ internal fun FlyScreen(
                     obstacles = { flyScreen.obstacles.values },
                     onInsets = { insets -> if (insets != flyScreen.mapInsets) flyScreen.mapInsets = insets },
                 )
+                Box(
+                    Modifier
+                        .zIndex(1f)
+                        .fillMaxHeight()
+                        .align(Alignment.CenterEnd)
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(
+                            top = STATUS_ROW_HEIGHT + AircastSpace.s4 + if (videoIsPip && hasVideo && pipExpanded) VIDEO_PIP_HEIGHT + AircastSpace.s3 else 0.dp,
+                            bottom = (if (mapIsPip && pipExpanded) MAP_PIP_SIZE else MAP_LAYERS_BUTTON) + AircastSpace.s3 * 2,
+                            end = AircastSpace.s3,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { rail() }
+                }
             }
         }
     }

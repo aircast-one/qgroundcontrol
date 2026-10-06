@@ -1,6 +1,13 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.RadioButton
@@ -67,7 +74,13 @@ private const val MANAGER = "vehicle.cameraManager"
 
 internal const val SHOW_PHOTO_VIDEO_CONTROL = "settings.flyViewSettings.showPhotoVideoControl"
 private const val CAMERA_SCRIM_ALPHA = 0.55f
-private val SHUTTER_SIZE = 40.dp
+private val SHUTTER_SIZE = 56.dp
+private val SHUTTER_STOP_SIZE = 18.dp
+private val CAMERA_TARGET = 48.dp
+private val CAMERA_RAIL_MAX_WIDTH = 120.dp
+private val REC_DOT_SIZE = 8.dp
+private const val REC_BLINK_MS = 600
+internal val RECORD_RED = Color(0xFFE53935)
 
 @Composable
 fun CameraControlLayer(modifier: Modifier = Modifier) {
@@ -100,86 +113,46 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
         color = osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)),
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
-        Column {
-        RcCameraControls()
-        Row(
-            Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            Modifier.padding(horizontal = 6.dp, vertical = 8.dp).widthIn(max = CAMERA_RAIL_MAX_WIDTH),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            panel.shutters.forEach { shutter ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        RcCameraControls()
+        panel.shutters.map { shutter ->
+            ShutterButton(panel, shutter) { action -> offMainDetached { refused = Qgc.refusalOf(action) } }
+        }
+
+        if (camera.hasModes) {
+            Column(
+                Modifier.background(osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)), CircleShape).padding(2.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                listOf(false to R.drawable.ic_photo_camera, true to R.drawable.ic_videocam).map { (video, icon) ->
+                    val selected = panel.inPhotoMode != video
                     Surface(
-                        onClick = { shutter.action?.let { action -> offMainDetached { refused = Qgc.refusalOf(action) } } },
-                        enabled = shutter.enabled,
-                        modifier = Modifier.size(SHUTTER_SIZE).semantics { contentDescription = shutter.label },
-                        shape = CircleShape,
-                        color = Color.Transparent,
-                        border = BorderStroke(3.dp, MaterialTheme.aircast.outdoorForeground),
-                    ) {
-                        Box(Modifier.padding(5.dp), contentAlignment = Alignment.Center) {
-                            Box(
-                                Modifier
-                                    .size(if (shutter.recording) 14.dp else SHUTTER_SIZE)
-                                    .background(
-                                        if (shutter.video) MaterialTheme.colorScheme.error else MaterialTheme.aircast.outdoorForeground,
-                                        if (shutter.recording) MaterialTheme.shapes.extraSmall else CircleShape,
-                                    ),
-                            )
-                        }
-                    }
-                    shutterCaption(panel, shutter)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
-                    Text(
-                        shutter.readout,
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = if (shutter.readoutActive) {
-                            Modifier.background(if (shutter.video) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary, MaterialTheme.shapes.extraSmall).padding(horizontal = 4.dp)
-                        } else {
-                            Modifier.padding(horizontal = 4.dp)
+                        onClick = {
+                            if (modeTapSwitches(camera, video)) offMainDetached {
+                                refused = Qgc.refusalOf(CAMERA_SET_MODE, if (video) "video" else "photo")
+                            }
                         },
-                    )
-                }
-            }
-
-            if (camera.hasModes) {
-                Row(
-                    Modifier.background(osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)), CircleShape).padding(2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    listOf(false to R.drawable.ic_photo_camera, true to R.drawable.ic_videocam).map { (video, icon) ->
-                        val selected = panel.inPhotoMode != video
-                        Surface(
-                            onClick = {
-                                if (modeTapSwitches(camera, video)) offMainDetached {
-                                    refused = Qgc.refusalOf(CAMERA_SET_MODE, if (video) "video" else "photo")
-                                }
-                            },
-                            enabled = if (video) panel.selectVideoEnabled else panel.selectPhotoEnabled,
-                            shape = CircleShape,
-                            color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-                            contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.aircast.outdoorForeground,
-                        ) {
-                            Icon(
-                                painterResource(icon),
-                                if (video) "Video" else "Photo",
-                                Modifier.padding(6.dp).size(20.dp),
-                            )
-                        }
+                        enabled = if (video) panel.selectVideoEnabled else panel.selectPhotoEnabled,
+                        shape = CircleShape,
+                        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.aircast.outdoorForeground,
+                    ) {
+                        Icon(
+                            painterResource(icon),
+                            if (video) "Video" else "Photo",
+                            Modifier.padding(8.dp).size(20.dp),
+                        )
                     }
                 }
             }
+        }
 
-            zoomText(camera)?.let { label ->
-                IconButton(
-                    onClick = {
-                        zoomStep(camera, -ZOOM_TICK)?.let { level ->
-                            offMainDetached { refused = Qgc.writeRefusal(CAMERA_ZOOM, level) }
-                        }
-                    },
-                    enabled = zoomStep(camera, -ZOOM_TICK) != null,
-                    modifier = Modifier.size(32.dp),
-                ) { Text("\u2212", style = MaterialTheme.typography.titleMedium) }
-                Text(label, style = MaterialTheme.typography.labelLarge)
+        zoomText(camera)?.let { label ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 IconButton(
                     onClick = {
                         zoomStep(camera, ZOOM_TICK)?.let { level ->
@@ -187,28 +160,29 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                         }
                     },
                     enabled = zoomStep(camera, ZOOM_TICK) != null,
-                    modifier = Modifier.size(32.dp),
-                ) { Text("+", style = MaterialTheme.typography.titleMedium) }
+                    modifier = Modifier.size(CAMERA_TARGET).semantics { contentDescription = "Zoom in" },
+                ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                IconButton(
+                    onClick = {
+                        zoomStep(camera, -ZOOM_TICK)?.let { level ->
+                            offMainDetached { refused = Qgc.writeRefusal(CAMERA_ZOOM, level) }
+                        }
+                    },
+                    enabled = zoomStep(camera, -ZOOM_TICK) != null,
+                    modifier = Modifier.size(CAMERA_TARGET).semantics { contentDescription = "Zoom out" },
+                ) { Text("\u2212", style = MaterialTheme.typography.titleLarge) }
             }
-
-            TextButton(onClick = { details = true }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.aircast.outdoorForeground)) {
-                Text(
-                    camera.labels.getOrElse(camera.selected ?: 0) { camera.title.ifBlank { "Camera" } },
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                )
-            }
-
-            lapsePlan(camera)?.let { plan ->
-                Text(text = plan, style = MaterialTheme.typography.labelSmall)
-            }
-
-            remember(cameraJson) { trackingReading(cameraJson) }?.let { reading -> TrackingToggle(reading) }
         }
-        listOfNotNull(panel.freeText, panel.batteryText).takeIf { it.isNotEmpty() }?.let { lines ->
-            Column(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                lines.forEach { Text(it, style = MaterialTheme.typography.labelMedium) }
-            }
+
+        lapsePlan(camera)?.let { plan ->
+            Text(text = plan, style = MaterialTheme.typography.labelSmall)
+        }
+
+        remember(cameraJson) { trackingReading(cameraJson) }?.let { reading -> TrackingToggle(reading) }
+
+        IconButton(onClick = { details = true }, modifier = Modifier.size(CAMERA_TARGET)) {
+            Icon(painterResource(R.drawable.ic_settings), "Camera settings", Modifier.size(22.dp))
         }
 
         if (details) {
@@ -217,6 +191,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 thermal = remember(cameraJson) { thermalReading(cameraJson) },
                 tracking = remember(cameraJson) { trackingReading(cameraJson) },
                 destructive = remember(cameraJson) { destructiveActions(cameraJson) },
+                storage = listOfNotNull(panel.freeText, panel.batteryText),
                 current = camera.selected ?: 0,
                 onSelect = { index ->
                     offMainDetached { Qgc.set("$MANAGER.currentCamera", index) }
@@ -231,9 +206,49 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 text = sentence,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
+        }
+    }
+}
+
+@Composable
+private fun ShutterButton(panel: CameraPanel, shutter: CameraShutter, onPress: (String) -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Surface(
+            onClick = { shutter.action?.let(onPress) },
+            enabled = shutter.enabled,
+            modifier = Modifier.size(SHUTTER_SIZE).semantics { contentDescription = shutter.label },
+            shape = CircleShape,
+            color = Color.Transparent,
+            border = BorderStroke(3.dp, MaterialTheme.aircast.outdoorForeground),
+        ) {
+            Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .size(if (shutter.recording) SHUTTER_STOP_SIZE else SHUTTER_SIZE)
+                        .background(
+                            if (shutter.video) RECORD_RED else MaterialTheme.aircast.outdoorForeground,
+                            if (shutter.recording) MaterialTheme.shapes.extraSmall else CircleShape,
+                        ),
+                )
+            }
+        }
+        shutterCaption(panel, shutter)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+        shutterReadout(shutter)?.let { readout ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (shutter.video) {
+                    val blink by rememberInfiniteTransition(label = "rec").animateFloat(
+                        initialValue = 1f,
+                        targetValue = 0f,
+                        animationSpec = infiniteRepeatable(tween(REC_BLINK_MS), RepeatMode.Reverse),
+                        label = "recDot",
+                    )
+                    Box(Modifier.size(REC_DOT_SIZE).alpha(blink).background(RECORD_RED, CircleShape))
+                }
+                Text(readout, style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"))
+            }
         }
     }
 }
@@ -276,6 +291,7 @@ private fun CameraDetailsSheet(
     thermal: ThermalReading?,
     tracking: TrackingReading?,
     destructive: List<DestructiveAction>,
+    storage: List<String>,
     current: Int,
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
@@ -294,6 +310,9 @@ private fun CameraDetailsSheet(
                 Text(label, style = MaterialTheme.typography.bodyMedium)
                 Text(reading, style = MaterialTheme.typography.bodyMedium)
             }
+        }
+        storage.map { line ->
+            Text(line, Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodyMedium)
         }
         if (camera.labels.size > 1) {
             SectionHeader("Cameras")

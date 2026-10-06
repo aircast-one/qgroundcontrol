@@ -325,7 +325,13 @@ internal fun zoomStep(camera: CameraReading, by: Double): Double? {
 }
 
 internal fun zoomText(camera: CameraReading): String? =
-    if (camera.hasZoom) "Zoom ${camera.zoomLevel.toInt()}%" else null
+    if (camera.hasZoom) "${camera.zoomLevel.toInt()}%" else null
+
+internal fun shutterReadout(shutter: CameraShutter): String? = when {
+    !shutter.readoutActive -> null
+    shutter.video -> "REC ${shutter.readout}"
+    else -> shutter.readout
+}
 
 internal const val CAMERA_PHOTO = "camera.takePhoto"
 internal const val CAMERA_RECORD = "camera.toggleRecording"

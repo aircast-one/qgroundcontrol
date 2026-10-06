@@ -31,6 +31,9 @@ class CameraControlTest {
         assertNull("a single shot in progress has no press", photo.action)
         assertEquals("00042", photo.readout)
         assertEquals("Video", shutterCaption(panel, video))
+        assertEquals("REC 00:01:05", shutterReadout(video))
+        assertEquals("00042", shutterReadout(photo))
+        assertNull("an idle shutter shows no running clock", shutterReadout(video.copy(readoutActive = false)))
         assertEquals("Free: 12.0 GB", panel.freeText)
         assertNull(panel.batteryText)
         val lapse = camera("""{"present":true,"panel":{"visible":true,"bothShown":false,"photo":{"enabled":true,"capturing":true,"press":"stop","count":"00003"}}}""")!!.panel!!
@@ -188,7 +191,7 @@ class CameraZoomTest {
 
     @Test
     fun `a step moves by the tick and states where it is`() {
-        assertEquals("Zoom 50%", zoomText(camera()))
+        assertEquals("50%", zoomText(camera()))
         assertEquals(60.0, zoomStep(camera(), 10.0)!!, 1e-9)
         assertEquals(40.0, zoomStep(camera(), -10.0)!!, 1e-9)
     }
