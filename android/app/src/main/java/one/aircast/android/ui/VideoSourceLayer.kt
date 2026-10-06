@@ -30,7 +30,7 @@ fun VideoSourceLayer(modifier: Modifier = Modifier) {
 
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        color = osdBackdrop(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)),
     ) {
         Row(
             Modifier.padding(horizontal = 10.dp, vertical = 6.dp),

@@ -19,10 +19,12 @@ fun ObstacleReadout(modifier: Modifier = Modifier) {
 
     Surface(
         modifier = modifier,
-        color = when {
-            warning.close -> MaterialTheme.colorScheme.errorContainer
-            else -> MaterialTheme.colorScheme.surfaceVariant
-        },
+        color = osdBackdrop(
+            when {
+                warning.close -> MaterialTheme.colorScheme.errorContainer
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            },
+        ),
     ) {
         Text(
             text = warning.label,

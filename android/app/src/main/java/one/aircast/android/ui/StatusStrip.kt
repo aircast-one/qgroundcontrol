@@ -126,7 +126,7 @@ fun StatusPill(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = CircleShape,
-        color = Color.Black.copy(alpha = 0.45f),
+        color = osdBackdrop(Color.Black.copy(alpha = 0.45f)),
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
         StatusReadingsInline(rtk, gcsBattery, Modifier.padding(end = STRIP_GAP, top = 6.dp, bottom = 6.dp))

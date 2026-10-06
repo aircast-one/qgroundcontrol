@@ -97,7 +97,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.extraLarge,
-        color = Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA),
+        color = osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)),
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
         Column {
@@ -143,7 +143,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
 
             if (camera.hasModes) {
                 Row(
-                    Modifier.background(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA), CircleShape).padding(2.dp),
+                    Modifier.background(osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)), CircleShape).padding(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     listOf(false to R.drawable.ic_photo_camera, true to R.drawable.ic_videocam).map { (video, icon) ->

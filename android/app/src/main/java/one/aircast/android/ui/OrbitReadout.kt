@@ -18,7 +18,7 @@ fun OrbitReadout(modifier: Modifier = Modifier) {
 
     Surface(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f),
+        color = osdBackdrop(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f)),
     ) {
         Text(
             text = label,

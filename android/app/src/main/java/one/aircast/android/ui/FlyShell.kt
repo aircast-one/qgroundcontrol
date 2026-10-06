@@ -156,7 +156,7 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
     Surface(
         modifier,
         shape = CircleShape,
-        color = Color.Black.copy(alpha = FLY_SCRIM_ALPHA),
+        color = osdBackdrop(Color.Black.copy(alpha = FLY_SCRIM_ALPHA)),
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
         Row(
@@ -172,8 +172,8 @@ internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier:
                 val selected = entry == view
                 Surface(
                     shape = CircleShape,
-                    color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-                    contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.aircast.outdoorForeground,
+                    color = if (selected) osdBackdrop(MaterialTheme.colorScheme.secondaryContainer) else Color.Transparent,
+                    contentColor = if (selected) osdTint(MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.aircast.outdoorForeground) else MaterialTheme.aircast.outdoorForeground,
                     modifier = Modifier.selectable(selected = selected, role = Role.Tab) { onView(entry) },
                 ) {
                     Row(
@@ -300,49 +300,51 @@ internal fun FlyScreen(
 
             val flyScreen = LocalFlyScreenState.current
             val videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
-            FlyChromeLayout(
-                modifier = Modifier.fillMaxSize(),
-                top = {
-                    Column(
-                        Modifier
-                            .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
-                        verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                    ) {
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
-                            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                            verticalAlignment = Alignment.CenterVertically,
-                            content = status,
-                        )
-                        Row(Modifier.padding(top = AircastSpace.s2)) {
-                            LayoutWidget("viewSwitcher", hideable = false) { FlyViewSwitcher(view, onView) }
+            CompositionLocalProvider(LocalFlyOsd provides (view == FlyView.Video)) {
+                FlyChromeLayout(
+                    modifier = Modifier.fillMaxSize(),
+                    top = {
+                        Column(
+                            Modifier
+                                .windowInsetsPadding(WindowInsets.statusBars)
+                                .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
+                            verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
+                                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                                verticalAlignment = Alignment.CenterVertically,
+                                content = status,
+                            )
+                            Row(Modifier.padding(top = AircastSpace.s2)) {
+                                LayoutWidget("viewSwitcher", hideable = false) { FlyViewSwitcher(view, onView) }
+                            }
+                            Row(
+                                Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) { keyRow() }
                         }
-                        Row(
-                            Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) { keyRow() }
-                    }
-                },
-                overlays = {
-                    Column(
-                        Modifier.fillMaxWidth().clipToBounds().padding(horizontal = AircastSpace.s3),
-                        verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                    ) {
-                        CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { overlays() }
-                    }
-                },
-                bottom = {
-                    Box(Modifier.padding(AircastSpace.s3)) { keyRowEnd() }
-                },
-                bottomAlignment = Alignment.Start,
-                overlaysAboveBottom = true,
-                message = if (videoMessage) ({ FlyNoVideoMessage() }) else null,
-                messageAboveBottom = !landscape,
-                obstacles = { flyScreen.obstacles.values },
-                onInsets = { insets -> if (insets != flyScreen.mapInsets) flyScreen.mapInsets = insets },
-            )
+                    },
+                    overlays = {
+                        Column(
+                            Modifier.fillMaxWidth().clipToBounds().padding(horizontal = AircastSpace.s3),
+                            verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                        ) {
+                            CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { overlays() }
+                        }
+                    },
+                    bottom = {
+                        Box(Modifier.padding(AircastSpace.s3)) { keyRowEnd() }
+                    },
+                    bottomAlignment = Alignment.Start,
+                    overlaysAboveBottom = true,
+                    message = if (videoMessage) ({ Box(Modifier.osdShadow()) { FlyNoVideoMessage() } }) else null,
+                    messageAboveBottom = !landscape,
+                    obstacles = { flyScreen.obstacles.values },
+                    onInsets = { insets -> if (insets != flyScreen.mapInsets) flyScreen.mapInsets = insets },
+                )
+            }
         }
     }
 
@@ -376,7 +378,7 @@ internal fun FleetCard() {
     if (flyScreen.guidedPanelOpen) return
     Surface(
         shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = osdBackdrop(MaterialTheme.colorScheme.surfaceContainer),
         modifier = Modifier.widthIn(max = FLEET_CARD_MAX_WIDTH).heightIn(max = FLEET_CARD_MAX_HEIGHT),
     ) {
         FleetPanel(Modifier.verticalScroll(rememberScrollState()).padding(vertical = AircastSpace.s2))

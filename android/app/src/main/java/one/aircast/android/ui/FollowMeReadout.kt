@@ -21,10 +21,12 @@ fun FollowMeReadout(modifier: Modifier = Modifier) {
 
     Surface(
         modifier = modifier,
-        color = when {
-            sending -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f)
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f)
-        },
+        color = osdBackdrop(
+            when {
+                sending -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.92f)
+                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.92f)
+            },
+        ),
     ) {
         Text(
             text = label,

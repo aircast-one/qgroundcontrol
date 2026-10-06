@@ -171,8 +171,8 @@ fun VehicleMessageBanner(modifier: Modifier = Modifier) {
         },
         modifier = modifier,
         shape = if (urgent) RoundedCornerShape(ALERT_CORNER) else CircleShape,
-        color = if (urgent) MaterialTheme.colorScheme.errorContainer else MaterialTheme.aircast.warningContainer,
-        contentColor = if (urgent) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
+        color = osdBackdrop(if (urgent) MaterialTheme.colorScheme.errorContainer else MaterialTheme.aircast.warningContainer),
+        contentColor = if (urgent) osdTint(MaterialTheme.colorScheme.onErrorContainer, MaterialTheme.colorScheme.error) else osdTint(MaterialTheme.colorScheme.onSurface, MaterialTheme.aircast.warning),
     ) {
         Row(
             Modifier.heightIn(min = 40.dp).padding(horizontal = 12.dp, vertical = 6.dp),

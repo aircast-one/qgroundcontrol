@@ -148,14 +148,16 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val tone = if (blocker != null) ChipTone.Error else chipTone(fly, lost)
     androidx.compose.material3.Surface(
         shape = MaterialTheme.shapes.small,
-        color = when (tone) {
-            ChipTone.Error -> MaterialTheme.colorScheme.errorContainer
-            ChipTone.Neutral -> MaterialTheme.colorScheme.surfaceContainerHigh
-            ChipTone.Warning -> MaterialTheme.aircast.warningContainer
-            ChipTone.Success -> MaterialTheme.aircast.successContainer
-        },
+        color = osdBackdrop(
+            when (tone) {
+                ChipTone.Error -> MaterialTheme.colorScheme.errorContainer
+                ChipTone.Neutral -> MaterialTheme.colorScheme.surfaceContainerHigh
+                ChipTone.Warning -> MaterialTheme.aircast.warningContainer
+                ChipTone.Success -> MaterialTheme.aircast.successContainer
+            },
+        ),
         contentColor = when (tone) {
-            ChipTone.Error -> MaterialTheme.colorScheme.onErrorContainer
+            ChipTone.Error -> osdTint(MaterialTheme.colorScheme.onErrorContainer, MaterialTheme.colorScheme.error)
             ChipTone.Neutral -> MaterialTheme.colorScheme.onSurface
             ChipTone.Warning -> MaterialTheme.aircast.warning
             ChipTone.Success -> MaterialTheme.aircast.success

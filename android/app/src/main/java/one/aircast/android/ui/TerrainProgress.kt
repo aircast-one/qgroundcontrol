@@ -50,7 +50,7 @@ fun TerrainProgress(modifier: Modifier = Modifier) {
         }
     }
     if (!visible) return
-    Surface(modifier, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), shape = MaterialTheme.shapes.medium) {
+    Surface(modifier, color = osdBackdrop(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)), shape = MaterialTheme.shapes.medium) {
         Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Terrain load progress", style = MaterialTheme.typography.labelSmall)
             Box(Modifier.width(160.dp).height(18.dp).border(1.dp, TERRAIN_GREEN)) {

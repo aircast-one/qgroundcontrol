@@ -73,8 +73,9 @@ internal fun HeadingTape(reading: Attitude, modifier: Modifier = Modifier) {
     Surface(
         modifier.width(TAPE_WIDTH).height(TAPE_HEIGHT).semantics { contentDescription = "Heading ${reading.headingText}" },
         shape = MaterialTheme.shapes.small,
-        color = Color.Black.copy(alpha = 0.35f),
+        color = osdBackdrop(Color.Black.copy(alpha = 0.35f)),
     ) {
+        val readoutBox = osdBackdrop(Color.Black.copy(alpha = 0.6f))
         Canvas(Modifier.width(TAPE_WIDTH).height(TAPE_HEIGHT)) {
             val baseline = size.height - 6.dp.toPx()
             tapeTicks(reading.heading).forEach { degrees ->
@@ -98,7 +99,7 @@ internal fun HeadingTape(reading: Attitude, modifier: Modifier = Modifier) {
             val value = measurer.measure(headingReadout(reading.heading), readout)
             val boxWidth = value.size.width + 10.dp.toPx()
             val boxLeft = size.width / 2f - boxWidth / 2f
-            drawRoundRect(Color.Black.copy(alpha = 0.6f), topLeft = Offset(boxLeft, 2.dp.toPx()), size = Size(boxWidth, value.size.height.toFloat()), cornerRadius = CornerRadius(4.dp.toPx()))
+            drawRoundRect(readoutBox, topLeft = Offset(boxLeft, 2.dp.toPx()), size = Size(boxWidth, value.size.height.toFloat()), cornerRadius = CornerRadius(4.dp.toPx()))
             drawText(value, topLeft = Offset(size.width / 2f - value.size.width / 2f, 2.dp.toPx()))
             val pointer = 2.dp.toPx() + value.size.height
             drawPath(Path().apply { moveTo(size.width / 2f - 5.dp.toPx(), pointer); lineTo(size.width / 2f + 5.dp.toPx(), pointer); lineTo(size.width / 2f, pointer + 6.dp.toPx()); close() }, ink)

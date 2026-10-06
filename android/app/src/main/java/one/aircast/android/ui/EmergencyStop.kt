@@ -61,7 +61,7 @@ internal fun EmergencyStopButton(
             enabled = offer.ready,
             modifier = Modifier.alpha(if (offer.ready) 1f else DISABLED_STOP_ALPHA),
             shape = CircleShape,
-            color = Color.Black.copy(alpha = STOP_SCRIM_ALPHA),
+            color = osdBackdrop(Color.Black.copy(alpha = STOP_SCRIM_ALPHA)),
             contentColor = MaterialTheme.colorScheme.error,
             border = BorderStroke(2.dp, MaterialTheme.colorScheme.error),
         ) {

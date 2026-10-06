@@ -44,7 +44,7 @@ fun TrafficReadout(modifier: Modifier = Modifier) {
 
     Surface(
         modifier = modifier.clickable(enabled = reading.contacts.isNotEmpty()) { listed = true },
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        color = osdBackdrop(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)),
     ) {
         Text(
             text = listOf(trafficSummary(reading), trafficEmergencyText(reading.emergency))

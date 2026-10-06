@@ -47,7 +47,7 @@ fun MissionProgressCard(modifier: Modifier = Modifier) {
     val view by qgcPath(MISSION_PROGRESS)
     val progress = missionProgress(view) ?: return
     var skipTarget by remember { mutableStateOf<Int?>(null) }
-    Surface(modifier.widthIn(max = CARD_MAX_WIDTH), shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+    Surface(modifier.widthIn(max = CARD_MAX_WIDTH), shape = MaterialTheme.shapes.medium, color = osdBackdrop(MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.padding(AircastSpace.s3), verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(missionProgressLine(progress), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))

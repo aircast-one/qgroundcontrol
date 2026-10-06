@@ -286,7 +286,8 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
             Modifier
                 .onSizeChanged { shown = it.width > 0 && it.height > 0 }
                 .then(if (decorated) Modifier.border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium) else Modifier)
-                .alpha(if (hidden) HIDDEN_ALPHA else 1f),
+                .alpha(if (hidden) HIDDEN_ALPHA else 1f)
+                .then(if (LocalFlyOsd.current) Modifier.osdShadow() else Modifier),
         ) { content() }
         if (decorated && movable) LayoutDragArea(key, Modifier.matchParentSize())
         if (decorated && hideable) Surface(
