@@ -260,7 +260,7 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
         Modifier
             .offset(moved.first.dp, moved.second.dp)
             .then(if (movable) keptOnScreen(placedKey) else Modifier)
-            .then(if (hideable && !editing) Modifier.onHold { layout.editing = true } else Modifier)
+            .then(if ((movable || hideable) && !editing) Modifier.onHold { layout.editing = true } else Modifier)
             .graphicsLayer { rotationZ = if (decorated) angle else 0f }
             .then(if (avoided) Modifier.avoidedByVideoMessage(key) else Modifier),
     ) {
