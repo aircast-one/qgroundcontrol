@@ -59,7 +59,7 @@ class ConfirmTrackTest {
         assertEquals(MISSION_ON_DRONE, missionIdentity(org.json.JSONObject("""{"hasMissionItems":false}"""), summary).title)
         assertEquals("Hold to start mission", holdLabel("Start mission"))
         assertEquals("Hold to land", holdLabel("Land"))
-        assertTrue("land" in HOLD_CONFIRM_ACTIONS)
+        assertEquals("Hold to confirm", holdLabel(""))
         assertFalse("land" in MISSION_ACTIONS)
     }
 }

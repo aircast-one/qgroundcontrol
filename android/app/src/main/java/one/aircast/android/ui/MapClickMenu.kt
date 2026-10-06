@@ -181,7 +181,7 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
                     val vehicleAt = geoOf(vehicleCoordinate)?.let { (lat, lon) -> MapPoint(lat, lon) }
                     val away = vehicleAt?.takeIf { pending.id == GOTO_ACTION }?.let { goHereText(it, point, defaults.unit, defaults.metresPerUnit) }
                     Text(away ?: pending.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    SlideOrCancel(pending.title, onConfirm = { run(pending) }, onCancel = { confirming = null })
+                    HoldOrCancel(pending.title, onConfirm = { run(pending) }, onCancel = { confirming = null })
                 }
             }
             refusal?.let {
@@ -298,7 +298,7 @@ internal fun SetWaypointSheet(sequence: Int, onDismiss: () -> Unit) {
         ) {
             Text("Set waypoint", style = MaterialTheme.typography.titleLarge)
             Text(setWaypointMessage(sequence), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SlideOrCancel("Set waypoint", onConfirm = {
+            HoldOrCancel("Set waypoint", onConfirm = {
                 scope.launch {
                     val refused = withContext(Dispatchers.Default) { Qgc.refusalOf(SET_WAYPOINT_PATH, waypointTarget(sequence)) }
                     if (refused == null) onDismiss() else refusal = refused

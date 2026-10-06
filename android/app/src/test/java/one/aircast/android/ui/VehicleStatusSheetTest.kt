@@ -25,11 +25,11 @@ class VehicleStatusSheetTest {
 
     @Test
     fun `the status drawer's arm controls follow MainStatusIndicator`() {
-        assertEquals(ArmControls("Slide to Arm", true, false, false, false), armControls(state(), forceOpen = false))
-        assertEquals(ArmControls("Slide to Disarm", true, false, false, false), armControls(state(armed = true), forceOpen = false))
-        assertEquals(ArmControls("Slide to Arm", true, true, false, false), armControls(state(nominal = false), forceOpen = false))
-        assertEquals(ArmControls("Slide to Arm", false, false, true, false), armControls(state(nominal = false, fault = true, canArm = false), forceOpen = false))
-        assertEquals(ArmControls("Slide to Arm", false, false, false, true), armControls(state(canArm = false), forceOpen = true))
+        assertEquals(ArmControls("Hold to arm", true, false, false, false), armControls(state(), forceOpen = false))
+        assertEquals(ArmControls("Hold to disarm", true, false, false, false), armControls(state(armed = true), forceOpen = false))
+        assertEquals(ArmControls("Hold to arm", true, true, false, false), armControls(state(nominal = false), forceOpen = false))
+        assertEquals(ArmControls("Hold to arm", false, false, true, false), armControls(state(nominal = false, fault = true, canArm = false), forceOpen = false))
+        assertEquals(ArmControls("Hold to arm", false, false, false, true), armControls(state(canArm = false), forceOpen = true))
     }
 
     @Test

@@ -47,19 +47,19 @@ internal const val ARM_UNAVAILABLE = "Arming is not available right now."
 internal fun deckRequestRefusal(offer: GuidedOffer?): String = offer?.reason?.ifBlank { null } ?: ARM_UNAVAILABLE
 
 internal data class ArmControls(
-    val sliderText: String,
-    val sliderEnabled: Boolean,
+    val holdText: String,
+    val holdEnabled: Boolean,
     val mayBeRefused: Boolean,
     val forceLink: Boolean,
-    val forceSlider: Boolean,
+    val forceHold: Boolean,
 )
 
 internal fun armControls(state: FlyState, forceOpen: Boolean): ArmControls = ArmControls(
-    sliderText = if (state.armed) "Slide to Disarm" else "Slide to Arm",
-    sliderEnabled = state.canArm,
+    holdText = if (state.armed) "Hold to disarm" else "Hold to arm",
+    holdEnabled = state.canArm,
     mayBeRefused = !state.armed && !state.nominal && state.canArm && !forceOpen,
     forceLink = !state.armed && !forceOpen && (!state.canArm || state.fault),
-    forceSlider = !state.armed && forceOpen,
+    forceHold = !state.armed && forceOpen,
 )
 
 internal const val SENSOR_HEALTHY_STATE = "healthy"
@@ -201,15 +201,15 @@ private fun ArmSection(onDismiss: () -> Unit) {
         onDismiss()
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlideToConfirm(controls.sliderText, destructive = state.armed, enabled = controls.sliderEnabled) { request(ARM_REQUEST) }
+        HoldToConfirm(controls.holdText, destructive = state.armed, enabled = controls.holdEnabled) { request(ARM_REQUEST) }
         if (controls.mayBeRefused) {
             Text("Arming may be refused.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (controls.forceLink) {
             TextButton(onClick = { forceOpen = true }) { Text("Force arm…") }
         }
-        if (controls.forceSlider) {
-            SlideToConfirm("Slide to Force Arm", destructive = true) { request(FORCE_ARM_REQUEST) }
+        if (controls.forceHold) {
+            HoldToConfirm("Hold to force arm", destructive = true) { request(FORCE_ARM_REQUEST) }
         }
     }
 }

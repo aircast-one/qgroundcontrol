@@ -91,7 +91,7 @@ internal fun GuidedValuePanel(
                 }
                 content()
             }
-            SlideToConfirm(label = slideLabel(commitLabel), enabled = commitEnabled, onConfirm = onCommit)
+            HoldToConfirm(label = holdLabel(commitLabel), enabled = commitEnabled, onConfirm = onCommit)
             TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
         }
     }

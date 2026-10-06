@@ -36,7 +36,6 @@ internal fun landFrom(view: org.json.JSONObject?): Pair<String, String>? =
         ?.takeIf { it.first.isNotBlank() && it.first != "\u2014" }
 
 internal val MISSION_ACTIONS = setOf("startMission", "continueMission")
-internal val HOLD_CONFIRM_ACTIONS = MISSION_ACTIONS + "land"
 
 internal const val MISSION_ON_DRONE = "The mission already on the drone"
 
@@ -72,8 +71,6 @@ private fun MissionIdentityCard() {
     }
 }
 
-internal fun slideLabel(name: String): String = name.ifBlank { null }?.let { "Slide to ${it.lowercase()}" } ?: "Slide to confirm"
-
 @Composable
 internal fun ConfirmTrack(
     action: GuidedAction,
@@ -105,19 +102,15 @@ internal fun ConfirmTrack(
             action.option?.run?.invoke(optionChecked) ?: action.run()
             onSent()
         }
-        if (action.offerId in HOLD_CONFIRM_ACTIONS) {
-            HoldToConfirm(label = holdLabel(action.name), destructive = action.destructive, modifier = Modifier.padding(top = 8.dp), onConfirm = confirm)
-        } else {
-            SlideToConfirm(label = slideLabel(action.name), destructive = action.destructive, modifier = Modifier.padding(top = 8.dp), onConfirm = confirm)
-        }
+        HoldToConfirm(label = holdLabel(action.name), destructive = action.destructive, modifier = Modifier.padding(top = 8.dp), onConfirm = confirm)
         TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
     }
 }
 
 @Composable
-internal fun SlideOrCancel(label: String, onConfirm: () -> Unit, onCancel: () -> Unit) {
+internal fun HoldOrCancel(label: String, onConfirm: () -> Unit, onCancel: () -> Unit) {
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlideToConfirm(label = slideLabel(label), modifier = Modifier.padding(top = 8.dp), onConfirm = onConfirm)
+        HoldToConfirm(label = holdLabel(label), modifier = Modifier.padding(top = 8.dp), onConfirm = onConfirm)
         TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
     }
 }

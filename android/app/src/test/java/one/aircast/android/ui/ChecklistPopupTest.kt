@@ -49,7 +49,7 @@ class ChecklistPopupTest {
     @Test
     fun `the popup never opens over a decision in progress`() {
         assertFalse(
-            "a slide-to-confirm or a value panel is the operator mid-decision; a checklist " +
+            "a hold-to-confirm or a value panel is the operator mid-decision; a checklist " +
                 "landing on top of it takes the screen at the worst moment",
             checklistPopupIsDue(true, useChecklist = true, enforceChecklist = true, complete = false, deciding = true),
         )
