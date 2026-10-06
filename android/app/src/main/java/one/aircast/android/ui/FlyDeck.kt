@@ -57,7 +57,7 @@ import one.aircast.map.AircastSpace
 
 internal const val CHECKLIST = "checklist"
 
-enum class FlyDeckLayout { Bottom, Side, Simple }
+enum class FlyDeckLayout { Bottom, Side }
 private const val DISABLED_ALPHA = 0.38f
 private val DECK_BUTTON_HEIGHT = 80.dp
 private val DECK_ICON_SIZE = 28.dp
@@ -152,100 +152,6 @@ internal fun DeckButton(entry: DeckEntry, primary: Boolean, modifier: Modifier =
             ) {
                 Icon(painterResource(entry.icon), null, Modifier.size(DECK_ICON_SIZE))
                 Text(entry.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-            }
-        }
-    }
-}
-
-private const val SIMPLE_TILE_COUNT = 4
-private const val SIMPLE_SCRIM_ALPHA = 0.45f
-private val SIMPLE_RETURN_HEIGHT = 96.dp
-
-@Composable
-internal fun SimpleTiles(modifier: Modifier = Modifier) {
-    val flyScreen = LocalFlyScreenState.current
-    val context = LocalContext.current
-    val classView by qgcPath(INSTRUMENTS_VIEW)
-    val vehicleClass = instrumentVehicleClass(classView)
-    val edits = flyScreen.instrumentEdits
-    val chosen = remember(vehicleClass, edits) { readChosen(context, vehicleClass) }
-    val displays = remember(vehicleClass, edits) { readDisplays(context, vehicleClass) }
-    val view by one.aircast.android.bridge.qgcPathHoldingLast(instrumentsPath(chosen, vehicleClass))
-    val shown = remember(view, chosen) { if (showsInstruments(chosen)) instruments(view).take(SIMPLE_TILE_COUNT) else emptyList() }
-    val flyJson by qgcPath(FLY_STATE)
-    val armed = remember(flyJson) { flyState(flyJson)?.armed == true }
-    androidx.compose.animation.AnimatedVisibility(
-        visible = armed,
-        modifier = modifier,
-        enter = androidx.compose.animation.fadeIn(),
-        exit = androidx.compose.animation.fadeOut(),
-    ) {
-    Column(verticalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
-        shown.chunked(2).map { pair ->
-            Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
-                pair.map { instrument ->
-                    val display = displayFor(displays, instrument)
-                    Surface(
-                        Modifier.weight(1f),
-                        shape = MaterialTheme.shapes.large,
-                        color = Color.Black.copy(alpha = SIMPLE_SCRIM_ALPHA),
-                        contentColor = MaterialTheme.aircast.outdoorForeground,
-                    ) {
-                        Column(Modifier.padding(horizontal = AircastSpace.s4 - 2.dp, vertical = AircastSpace.s2)) {
-                            ValueLabel(display, instrument.raw, instrument.label.uppercase(), MaterialTheme.colorScheme.onSurfaceVariant)
-                            Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
-                                Text(
-                                    instrument.value,
-                                    style = MaterialTheme.typography.displaySmall.copy(fontFeatureSettings = "tnum"),
-                                    color = displayColour(display, instrument.raw)?.let { Color(it) } ?: Color.Unspecified,
-                                    modifier = Modifier.alignByBaseline(),
-                                )
-                                if (display.showUnits && instrument.units.isNotBlank()) Text(
-                                    instrument.units,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.alignByBaseline(),
-                                )
-                            }
-                        }
-                    }
-                }
-                if (pair.size == 1) Spacer(Modifier.weight(1f))
-            }
-        }
-    }
-    }
-}
-
-@Composable
-internal fun SimpleDeck(deck: List<Pair<String, Boolean>>, entries: List<DeckEntry>, onMore: () -> Unit) {
-    val chosen = deck.mapNotNull { (id, primary) -> entries.firstOrNull { it.id == id }?.let { it to primary } }
-    Column(verticalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3)) {
-            chosen.filterNot { it.second }.map { (entry, _) -> SimpleButton(entry, primary = false, Modifier.weight(1f).height(DECK_BUTTON_HEIGHT)) }
-            SimpleButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true, onClick = onMore), primary = false, Modifier.width(DECK_BUTTON_HEIGHT).height(DECK_BUTTON_HEIGHT), iconOnly = true)
-        }
-        chosen.firstOrNull { it.second }?.let { (entry, _) ->
-            SimpleButton(entry, primary = true, Modifier.fillMaxWidth().height(SIMPLE_RETURN_HEIGHT))
-        }
-    }
-}
-
-@Composable
-private fun SimpleButton(entry: DeckEntry, primary: Boolean, modifier: Modifier, iconOnly: Boolean = false) {
-    Surface(
-        modifier = modifier.alpha(if (entry.enabled) 1f else DISABLED_ALPHA),
-        shape = MaterialTheme.shapes.extraLarge,
-        color = if (primary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
-        contentColor = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-    ) {
-        DeckPress(entry) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(painterResource(entry.icon), if (iconOnly) entry.label else null, Modifier.size(if (primary) 36.dp else 32.dp))
-                if (!iconOnly) Text(entry.label, style = if (primary) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge, maxLines = 1)
             }
         }
     }

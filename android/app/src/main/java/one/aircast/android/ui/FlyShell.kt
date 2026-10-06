@@ -121,7 +121,6 @@ private fun PipToggle(expanded: Boolean, onToggle: () -> Unit, modifier: Modifie
 enum class FlyView(val label: String, @DrawableRes val icon: Int) {
     Video("Video", R.drawable.ic_videocam),
     Map("Map", R.drawable.ic_map),
-    Simple("Simple", R.drawable.ic_speed),
     ThreeD("3D", R.drawable.ic_explore),
 }
 
@@ -204,7 +203,6 @@ internal fun FlyScreen(
     overlays: @Composable () -> Unit,
     actions: @Composable (FlyDeckLayout) -> Unit,
 ) {
-    val simple = view == FlyView.Simple
     val context = androidx.compose.ui.platform.LocalContext.current
     val videoJson by one.aircast.android.bridge.qgcPath(VIDEO_VIEW)
     val hasVideo = videoJson?.optBoolean("available") == true
@@ -292,8 +290,6 @@ internal fun FlyScreen(
                 if (layers) MapLayersSheet { layers = false }
             }
 
-            val sideBySide = simple && landscape
-            val half = Modifier.fillMaxWidth(if (sideBySide) SIMPLE_LANDSCAPE_SPLIT else 1f)
             val flyScreen = LocalFlyScreenState.current
             val videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
             FlyChromeLayout(
@@ -311,16 +307,10 @@ internal fun FlyScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             content = status,
                         )
-                        if (simple) SimpleTiles(half.padding(top = AircastSpace.s3))
-                        Row(
-                            half.padding(top = if (simple) AircastSpace.s4 else AircastSpace.s2),
-                            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        Row(Modifier.padding(top = AircastSpace.s2)) {
                             LayoutWidget("viewSwitcher", hideable = false) { FlyViewSwitcher(view, onView) }
-                            if (simple) keyRowEnd()
                         }
-                        if (!simple) Row(
+                        Row(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                             verticalAlignment = Alignment.CenterVertically,
@@ -329,22 +319,17 @@ internal fun FlyScreen(
                 },
                 overlays = {
                     Column(
-                        half.clipToBounds().padding(horizontal = AircastSpace.s3).padding(top = if (simple && !sideBySide) AircastSpace.s8 else 0.dp),
+                        Modifier.fillMaxWidth().clipToBounds().padding(horizontal = AircastSpace.s3),
                         verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                        horizontalAlignment = if (simple) Alignment.CenterHorizontally else Alignment.Start,
                     ) {
                         CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { overlays() }
                     }
                 },
                 bottom = {
-                    if (simple) Box(half) { actions(FlyDeckLayout.Simple) } else Box(Modifier.padding(AircastSpace.s3)) { keyRowEnd() }
+                    Box(Modifier.padding(AircastSpace.s3)) { keyRowEnd() }
                 },
-                bottomAlignment = when {
-                    !simple -> Alignment.Start
-                    sideBySide -> Alignment.End
-                    else -> Alignment.CenterHorizontally
-                },
-                overlaysAboveBottom = !simple,
+                bottomAlignment = Alignment.Start,
+                overlaysAboveBottom = true,
                 message = if (videoMessage) ({ FlyNoVideoMessage() }) else null,
                 messageAboveBottom = !landscape,
                 obstacles = { flyScreen.obstacles.values },
@@ -356,7 +341,7 @@ internal fun FlyScreen(
     if (landscape) {
         Row(Modifier.fillMaxSize()) {
             stage(Modifier.weight(1f).fillMaxHeight())
-            if (!simple) {
+            run {
                 Surface(
                     Modifier.width(SIDE_PANEL_WIDTH).fillMaxHeight(),
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -366,7 +351,7 @@ internal fun FlyScreen(
     } else {
         Column(Modifier.fillMaxSize()) {
             stage(Modifier.fillMaxWidth().weight(1f))
-            if (!simple) {
+            run {
                 Surface(
                     Modifier.fillMaxWidth(),
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -390,7 +375,6 @@ internal fun FleetCard() {
     }
 }
 
-private const val SIMPLE_LANDSCAPE_SPLIT = 0.5f
 internal val MAP_LAYERS_CLEARANCE = 48.dp + AircastSpace.s3 + AircastSpace.s2
 private val FLEET_CARD_MAX_WIDTH = 440.dp
 private val FLEET_CARD_MAX_HEIGHT = 320.dp

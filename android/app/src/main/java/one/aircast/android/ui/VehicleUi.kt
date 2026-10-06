@@ -327,7 +327,6 @@ internal fun scaledNumber(scale: Float): TextStyle = TelemetryNumber.copy(
 @Composable
 fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeckLayout.Bottom) {
     val flyScreen = LocalFlyScreenState.current
-    val simple = layout == FlyDeckLayout.Simple
     val side = layout == FlyDeckLayout.Side
     val stateJson by qgcPath(FLY_STATE)
     val state = remember(stateJson) { flyState(stateJson) }
@@ -457,7 +456,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             flyScreen.deckRequest = null
         }
 
-        if (!simple && !side) TelemetryRow(valuesShown = armed)
+        if (!side) TelemetryRow(valuesShown = armed)
 
         if (side) {
             if (pending == null) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -468,7 +467,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             }
             TelemetryRow(columns = 1, valuesShown = armed)
         } else if (pending == null) {
-            if (simple) SimpleDeck(deck, entries) { showMore = true } else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 deck.forEach { (id, primary) ->
                     entries.firstOrNull { it.id == id }?.let { entry ->
                         DeckButton(entry, primary, Modifier.weight(1f))
@@ -501,7 +500,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                         .takeIf { preflightOffered(preflightJson) },
                     loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
                     MoreTile("Gripper", R.drawable.ic_download, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
-                    MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true }.takeIf { !simple },
+                    MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
                 ) +
                 extras.filter { it.id !in deckShown && it.id !in GRIPPER_ACTIONS }.map { offer ->
                     MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {
