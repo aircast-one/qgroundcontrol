@@ -30,6 +30,8 @@ internal class GuidedValueKind(
     val commitLabel: String,
     val missingRange: String,
     val quickPicks: Boolean,
+    val presets: Boolean = false,
+    val explains: Boolean = true,
     val read: (Double?) -> GuidedReading?,
     val commit: (Double) -> Unit,
 )
@@ -67,6 +69,8 @@ internal fun takeoffValue(offer: GuidedOffer?): GuidedValueKind = GuidedValueKin
     commitLabel = "Take off",
     missingRange = "This vehicle did not report a takeoff height range.",
     quickPicks = false,
+    presets = true,
+    explains = false,
     read = { target -> takeoffReading(guidedTakeoff(Qgc.get(target?.let(::guidedTakeoffPath) ?: GUIDED_TAKEOFF))) },
     commit = { target -> guidedTakeoff(Qgc.get(guidedTakeoffPath(target)))?.let { VehicleCommands.takeoff(it.targetMeters) } },
 )
@@ -113,8 +117,8 @@ internal fun GuidedValueFlow(open: OpenGuidedValue, onClose: () -> Unit) {
     }
     GuidedValuePanel(
         title = kind.title,
-        sentence = listOfNotNull(kind.prompt, probe?.sentence).filter { it.isNotBlank() }.joinToString("\n"),
-        commitLabel = kind.commitLabel,
+        sentence = if (kind.explains) listOfNotNull(kind.prompt, probe?.sentence).filter { it.isNotBlank() }.joinToString("\n") else "",
+        commitLabel = "${kind.commitLabel} \u00b7 ${guidedValueText(open.target, unit)} $unit".trim(),
         commitEnabled = probe?.sendable == true,
         onCommit = {
             val target = open.target
@@ -134,6 +138,7 @@ internal fun GuidedValueFlow(open: OpenGuidedValue, onClose: () -> Unit) {
             onValueChangeFinished = { open.settled = open.target },
             valueRange = open.range.start.toFloat()..open.range.endInclusive.toFloat(),
         )
+        if (kind.presets) GuidedPresets(open.target, open.range.start, open.range.endInclusive, unit, settle)
         if (kind.quickPicks) GuidedQuickPicks(open.target, open.range.start, open.range.endInclusive, unit, settle)
         rangeLabel(open.range.start, open.range.endInclusive, unit)?.let { RangeHint(it) }
     }

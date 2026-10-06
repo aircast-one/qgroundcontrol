@@ -6,6 +6,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -33,6 +40,23 @@ import one.aircast.android.bridge.qgcValue
 import one.aircast.android.bridge.settingControl
 
 private const val FLY_VIEW_SETTINGS = "settings.flyViewSettings"
+private val RAIL_SLIDER_LENGTH = 140.dp
+private val RAIL_SLIDER_THICKNESS = 40.dp
+private val RAIL_COLUMN_WIDTH = 104.dp
+
+private fun Modifier.railSlider(): Modifier = this
+    .width(RAIL_SLIDER_THICKNESS)
+    .height(RAIL_SLIDER_LENGTH)
+    .graphicsLayer {
+        rotationZ = 270f
+        transformOrigin = TransformOrigin(0f, 0f)
+    }
+    .layout { measurable, constraints ->
+        val placeable = measurable.measure(
+            Constraints(minWidth = constraints.minHeight, maxWidth = constraints.maxHeight, minHeight = constraints.minWidth, maxHeight = constraints.maxWidth),
+        )
+        layout(placeable.height, placeable.width) { placeable.place(-placeable.width, 0) }
+    }
 private const val GIMBAL_VIEW = "view.gimbalIndicator"
 
 internal data class RcCameraChannels(val tilt: Int, val pan: Int, val zoom: Int, val light: Int, val record: Int) {
@@ -57,8 +81,7 @@ private fun channelSetting(name: String): Int {
 private fun PwmSlider(label: String, channel: Int, pwm: Int, onPwm: (Int) -> Unit) {
     var lastSent by remember(channel) { mutableLongStateOf(0L) }
     val latest by rememberUpdatedState(pwm)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(64.dp))
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Slider(
             value = pwm.toFloat(),
             onValueChange = { raw ->
@@ -72,8 +95,9 @@ private fun PwmSlider(label: String, channel: Int, pwm: Int, onPwm: (Int) -> Uni
             },
             onValueChangeFinished = { send(channel, latest) },
             valueRange = PWM_MIN.toFloat()..PWM_MAX.toFloat(),
-            modifier = Modifier.width(180.dp),
+            modifier = Modifier.railSlider(),
         )
+        Text(label, style = MaterialTheme.typography.labelMedium)
     }
 }
 
@@ -92,8 +116,8 @@ private fun GimbalTiltSlider(pitch: Double?) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     var lastSent by remember { mutableLongStateOf(0L) }
     val shown = dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("${kotlin.math.round(shown).toInt()}\u00b0", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(64.dp))
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("${kotlin.math.round(shown).toInt()}\u00b0", style = MaterialTheme.typography.labelMedium)
         Slider(
             value = shown,
             onValueChange = { next ->
@@ -109,7 +133,7 @@ private fun GimbalTiltSlider(pitch: Double?) {
                 dragging = null
             },
             valueRange = GIMBAL_TILT_MIN..GIMBAL_TILT_MAX,
-            modifier = Modifier.width(180.dp),
+            modifier = Modifier.railSlider().semantics { contentDescription = "Gimbal tilt" },
         )
     }
 }
@@ -145,12 +169,18 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     }
     val recording = cameraRecording(channels.record, channelRecording, streamRecording)
     val rcGimbal = !gimbalManager && (channels.tilt > 0 || channels.pan > 0)
-    Column(modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        if (gimbal != null) GimbalTiltSlider(gimbal.pitchDegrees)
-        if (!gimbalManager && channels.tilt > 0) PwmSlider("Tilt", channels.tilt, tilt) { tilt = it }
-        if (!gimbalManager && channels.pan > 0) PwmSlider("Pan", channels.pan, pan) { pan = it }
-        if (channels.zoom > 0) PwmSlider("Zoom", channels.zoom, zoom) { zoom = it }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(
+        modifier.padding(horizontal = 4.dp, vertical = 4.dp).width(RAIL_COLUMN_WIDTH),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (gimbal != null) GimbalTiltSlider(gimbal.pitchDegrees)
+            if (!gimbalManager && channels.tilt > 0) PwmSlider("Tilt", channels.tilt, tilt) { tilt = it }
+            if (!gimbalManager && channels.pan > 0) PwmSlider("Pan", channels.pan, pan) { pan = it }
+            if (channels.zoom > 0) PwmSlider("Zoom", channels.zoom, zoom) { zoom = it }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             if (channels.record > 0) {
                 FilterChip(selected = recording, onClick = {
                     val next = !recording

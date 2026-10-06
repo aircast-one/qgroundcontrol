@@ -113,12 +113,13 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
         color = osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)),
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+        RcCameraControls()
         Column(
             Modifier.padding(horizontal = 6.dp, vertical = 8.dp).widthIn(max = CAMERA_RAIL_MAX_WIDTH),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-        RcCameraControls()
         panel.shutters.map { shutter ->
             ShutterButton(panel, shutter) { action -> offMainDetached { refused = Qgc.refusalOf(action) } }
         }
@@ -208,6 +209,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
+        }
         }
         }
     }

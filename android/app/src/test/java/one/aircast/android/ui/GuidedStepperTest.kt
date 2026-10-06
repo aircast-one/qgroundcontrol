@@ -6,6 +6,21 @@ import org.junit.Test
 
 class GuidedStepperTest {
     @Test
+    fun `the hold names its target and says anyway only for a non-blocking warning`() {
+        assertEquals("Take off \u00b7 3.0 m", guidedCommitLabel("Take off \u00b7 3.0 m", null))
+        assertEquals("Take off anyway \u00b7 3.0 m", guidedCommitLabel("Take off \u00b7 3.0 m", Readiness("GPS off", blocks = false)))
+        assertEquals("Take off \u00b7 3.0 m", guidedCommitLabel("Take off \u00b7 3.0 m", Readiness("GPS off", blocks = true)))
+        assertEquals("Hold to take off anyway \u00b7 3.0 m", holdLabel(guidedCommitLabel("Take off \u00b7 3.0 m", Readiness("GPS off", blocks = false))))
+    }
+
+    @Test
+    fun `takeoff presets are the common heights the vehicle allows`() {
+        assertEquals(listOf(5.0, 10.0, 20.0, 50.0), guidedPresets("m", 3.0, 121.9))
+        assertEquals(listOf(5.0, 10.0), guidedPresets("m", 3.0, 15.0))
+        assertEquals(listOf(15.0, 30.0, 60.0, 150.0), guidedPresets("ft", 10.0, 400.0))
+    }
+
+    @Test
     fun `quick picks climb ten and twenty from the target and stop at the maximum`() {
         assertEquals(
             listOf("+10 m" to 52.0, "+20 m" to 62.0, "Max 120 m" to 120.0),

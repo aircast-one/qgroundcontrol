@@ -185,6 +185,16 @@ class FlyReadinessTest {
     }
 
     @Test
+    fun aReadinessIssueBlocksOnlyWhenTheVehicleCannotArm() {
+        assertEquals(Readiness("Not ready. 2 checks need attention before arming.", blocks = false), guidedReadiness(state(ready = false)))
+        assertEquals(
+            Readiness("Not ready. 2 checks need attention before arming. $READINESS_BLOCKED", blocks = true),
+            guidedReadiness(state(ready = false).copy(canArm = false)),
+        )
+        assertNull(guidedReadiness(state()))
+    }
+
+    @Test
     fun disarmingSaysWhetherTheVehicleFlew() {
         assertEquals("Landed and disarmed", disarmNotice(wasArmed = true, flewWhileArmed = true, armedNow = false))
         assertEquals("Disarmed", disarmNotice(wasArmed = true, flewWhileArmed = false, armedNow = false))

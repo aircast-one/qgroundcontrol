@@ -50,6 +50,16 @@ internal fun readinessWarning(state: FlyState?): String? =
         ?.let { listOfNotNull(it.stateText.ifBlank { null }, (if (notReadyToFly(it) && it.summaryDetail == ALL_CHECKS_PASSED) SETUP_NOT_COMPLETE else it.summaryDetail).ifBlank { null }).joinToString(". ") }
         ?.ifBlank { null }
 
+internal data class Readiness(val text: String, val blocks: Boolean)
+
+internal const val READINESS_BLOCKED = "The vehicle will refuse to arm until this is fixed."
+
+internal fun guidedReadiness(state: FlyState?): Readiness? =
+    readinessWarning(state)?.let { text ->
+        val blocks = state?.canArm == false
+        Readiness(if (blocks) "${text.removeSuffix(".")}. $READINESS_BLOCKED" else text, blocks)
+    }
+
 internal fun disarmNotice(wasArmed: Boolean, flewWhileArmed: Boolean, armedNow: Boolean): String? =
     if (wasArmed && !armedNow) (if (flewWhileArmed) "Landed and disarmed" else "Disarmed") else null
 

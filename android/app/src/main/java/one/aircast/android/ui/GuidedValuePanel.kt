@@ -21,6 +21,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import one.aircast.map.aircast
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -66,6 +67,8 @@ internal fun GuidedValuePanel(
             flyScreen.guidedPanels++
             onDispose { flyScreen.guidedPanels-- }
         }
+        val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
+        val readiness = remember(flyJson) { guidedReadiness(flyState(flyJson)) }
         val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.map.VEHICLES_VIEW)
         val vehicles = remember(vehiclesJson) { one.aircast.map.vehicleChoices(vehiclesJson) }
         Column(
@@ -83,16 +86,38 @@ internal fun GuidedValuePanel(
                 if (sentence.isNotBlank()) {
                     Text(sentence, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
-                readinessWarning(remember(flyJson) { flyState(flyJson) })?.let { warning ->
-                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
-                        Text(warning, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(12.dp))
+                readiness?.let { warning ->
+                    Surface(
+                        color = if (warning.blocks) MaterialTheme.colorScheme.errorContainer else MaterialTheme.aircast.warningContainer,
+                        contentColor = if (warning.blocks) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
+                        shape = MaterialTheme.shapes.medium,
+                    ) {
+                        Text(warning.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(12.dp))
                     }
                 }
                 content()
             }
-            HoldToConfirm(label = holdLabel(commitLabel), enabled = commitEnabled, onConfirm = onCommit)
+            HoldToConfirm(label = holdLabel(guidedCommitLabel(commitLabel, readiness)), enabled = commitEnabled && readiness?.blocks != true, onConfirm = onCommit)
             TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
+        }
+    }
+}
+
+internal fun guidedCommitLabel(label: String, readiness: Readiness?): String {
+    val (action, target) = label.split(" \u00b7 ", limit = 2).let { it.first() to it.getOrNull(1) }
+    val anyway = if (readiness != null && !readiness.blocks) "$action anyway" else action
+    return listOfNotNull(anyway, target).joinToString(" \u00b7 ")
+}
+
+internal fun guidedPresets(unit: String, minimum: Double, maximum: Double): List<Double> =
+    (if (unit == "ft") listOf(15.0, 30.0, 60.0, 150.0) else listOf(5.0, 10.0, 20.0, 50.0)).filter { it in minimum..maximum }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun GuidedPresets(value: Double, minimum: Double, maximum: Double, unit: String, onValue: (Double) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        guidedPresets(unit, minimum, maximum).map { preset ->
+            FilterChip(selected = preset == value, onClick = { onValue(preset) }, label = { Text("${guidedValueText(preset, unit).removeSuffix(".0")} $unit") })
         }
     }
 }
