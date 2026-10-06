@@ -27,11 +27,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import one.aircast.android.R
 import kotlinx.coroutines.delay
-import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.VideoCommands
 import one.aircast.android.bridge.offMainDetached
 
 private const val PROLONGED_SECONDS = 8
-private const val VIDEO_RESTART = "video.restart"
 private const val VIDEO_SETTINGS_PAGE = "Video"
 private val PANEL_MAX_WIDTH = 360.dp
 
@@ -139,7 +138,7 @@ private fun NoVideoStreamPanel(video: VideoReading?, settings: NoVideoButton?) {
             detail = noVideoDetail(video, seconds),
             primary = NoVideoButton("Retry") {
                 seconds = 0
-                offMainDetached { Qgc.invoke(VIDEO_RESTART) }
+                offMainDetached { VideoCommands.restart() }
             },
             secondary = settings,
             compactTitle = "No video",

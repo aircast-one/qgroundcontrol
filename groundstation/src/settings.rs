@@ -556,6 +556,7 @@ pub fn grouped_video_sources(options: Option<&Value>) -> Value {
         option["group"] = json!(match () {
             _ if !crate::video::source_chosen(&raw) => "",
             _ if crate::settingsstore::URL_SOURCES.iter().any(|(served, _)| *served == raw) => "Video streams",
+            _ if crate::videostate::DEVICE_CAMERAS.contains(&raw.as_str()) => "This device",
             _ => "Vehicle and radio presets",
         });
         option
