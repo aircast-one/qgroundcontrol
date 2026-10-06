@@ -110,6 +110,8 @@ import one.aircast.map.TrackPoint
 import one.aircast.android.ui.VideoSourceLayer
 import one.aircast.android.ui.VideoSurface
 import one.aircast.android.ui.FlyScreen
+import one.aircast.android.ui.FlyPortrait
+import androidx.compose.foundation.layout.RowScope
 import one.aircast.android.ui.PinnedEmergencyStop
 import one.aircast.android.ui.flyIsPortrait
 import org.mavlink.qgroundcontrol.QGCBridge
@@ -288,7 +290,7 @@ fun AircastShell(hostView: android.view.View?) {
     val videoExpanded = flyView != one.aircast.android.ui.FlyView.Map
     var videoFullScreen by remember { mutableStateOf(false) }
 
-    val flightActions = remember { movableContentOf<one.aircast.android.ui.FlyDeckLayout> { layout -> FlightActions(layout = layout) } }
+    val flightActions = remember { movableContentOf<one.aircast.android.ui.FlyDeckLayout> { layout -> FlightActions(layout = layout, center = { one.aircast.android.ui.CameraShutters() }) } }
     val flyVideo = remember {
         movableContentOf<Modifier, Boolean> { mod, expanded ->
             VideoSurface(modifier = mod, expanded = expanded, fullScreen = videoFullScreen, onClick = { flyView = one.aircast.android.ui.flyViewSwapped(flyView) }, onDoubleTap = { videoFullScreen = !videoFullScreen })
@@ -305,7 +307,7 @@ fun AircastShell(hostView: android.view.View?) {
                 topInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) flyScreen.mapInsets.top else 0,
                 bottomInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) flyScreen.mapInsets.bottom else 0,
                 logoEndInsetPx = with(androidx.compose.ui.platform.LocalDensity.current) { one.aircast.android.ui.MAP_LAYERS_CLEARANCE.roundToPx() }.takeIf { flyView == one.aircast.android.ui.FlyView.Map },
-                pip = flyView == one.aircast.android.ui.FlyView.Video,
+                pip = flyView == one.aircast.android.ui.FlyView.Video && !flyIsPortrait(),
                 onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
                 onMissionItemClick = { waypointTapped = it },
                 onRoiClick = { roiTapped = it },
@@ -314,7 +316,7 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
     val flyVideoSourceLayer = remember { movableContentOf { LayoutWidget("videoSource") { VideoSourceLayer() } } }
-    val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer() } } }
+    val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer(shutters = !flyIsPortrait()) } } }
     val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
     val flyAttitude = remember {
         movableContentOf {
@@ -487,7 +489,7 @@ fun AircastShell(hostView: android.view.View?) {
             bottomBar = {
                 Column {
                 LogReplayBar()
-                if (!landscape) NavigationBar {
+                if (!landscape && !onFly) NavigationBar {
                     tabs.forEach { entry ->
                         NavigationBarItem(
                             selected = tab == entry,
@@ -502,42 +504,61 @@ fun AircastShell(hostView: android.view.View?) {
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
                 hostView?.let { view -> AndroidView(factory = { view }, modifier = Modifier.fillMaxSize()) }
-                if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.BottomCenter).zIndex(2f).then(if (flyLandscape) Modifier.windowInsetsPadding(WindowInsets.navigationBars) else Modifier).padding(8.dp).widthIn(max = 560.dp))
+                if (tab == Tab.Fly) OverlayEditBar(Modifier.align(Alignment.BottomCenter).zIndex(2f).then(if (onFly) Modifier.windowInsetsPadding(WindowInsets.navigationBars) else Modifier).padding(8.dp).widthIn(max = 560.dp))
 
                 if (onFly) {
-                    FlyScreen(
-                        view = shownFlyView,
-                        onView = { flyView = it },
-                        landscape = flyLandscape,
-                        status = {
-                            if (flyLandscape) one.aircast.android.ui.FlyTabMenu(tabs.filter { it != Tab.Fly }.map { it.label to { selectTab(it) } })
-                            LayoutWidget("vehicleState", hideable = false) { VehicleStateChip() }
-                            LayoutWidget("vtolState", hideable = false) { VtolStateCell() }
-                            ControlRequestPrompt()
-                            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { LayoutWidget("statusPill", hideable = false) { StatusPill() } }
-                        },
-                        video = { mod, expanded -> flyVideo(mod, expanded) },
-                        map = { mod -> flyMap(mod) },
-                        keyRow = {
-                            flyVideoSourceLayer()
-                            flyObstacleArc()
-                        },
-                        rail = { flyCameraControlLayer() },
-                        heading = { flyAttitude() },
-                        keyRowEnd = { LayoutWidget("emergencyStop", hideable = false) { PinnedEmergencyStop() } },
-                        overlays = {
-                            LayoutWidget("messageBanner", hideable = false) { one.aircast.android.ui.VehicleMessageBanner() }
-                            LayoutWidget("fleet") { one.aircast.android.ui.FleetCard() }
-                            LayoutWidget("missionProgress") { one.aircast.android.ui.MissionProgressCard() }
-                            LayoutWidget("obstacleReadout") { ObstacleReadout() }
-                            LayoutWidget("terrainProgress") { TerrainProgress() }
-                            flyOrbitReadout()
-                            flyFollowMeReadout()
-                            flyTrafficReadout()
-                            flyRcControlsLayer()
-                        },
-                        actions = { layout -> flightActions(layout) },
-                    )
+                    val flyStatus: @Composable RowScope.() -> Unit = {
+                        one.aircast.android.ui.FlyTabMenu(tabs.filter { it != Tab.Fly }.map { it.label to { selectTab(it) } })
+                        LayoutWidget("vehicleState", hideable = false) { VehicleStateChip() }
+                        LayoutWidget("vtolState", hideable = false) { VtolStateCell() }
+                        ControlRequestPrompt()
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { LayoutWidget("statusPill", hideable = false) { StatusPill() } }
+                    }
+                    val flyKeyRow: @Composable () -> Unit = {
+                        flyVideoSourceLayer()
+                        flyObstacleArc()
+                    }
+                    val flyKeyRowEnd: @Composable () -> Unit = { LayoutWidget("emergencyStop", hideable = false) { PinnedEmergencyStop() } }
+                    val flyOverlays: @Composable () -> Unit = {
+                        LayoutWidget("messageBanner", hideable = false) { one.aircast.android.ui.VehicleMessageBanner() }
+                        LayoutWidget("fleet") { one.aircast.android.ui.FleetCard() }
+                        LayoutWidget("missionProgress") { one.aircast.android.ui.MissionProgressCard() }
+                        LayoutWidget("obstacleReadout") { ObstacleReadout() }
+                        LayoutWidget("terrainProgress") { TerrainProgress() }
+                        flyOrbitReadout()
+                        flyFollowMeReadout()
+                        flyTrafficReadout()
+                        flyRcControlsLayer()
+                    }
+                    if (flyLandscape) {
+                        FlyScreen(
+                            view = shownFlyView,
+                            onView = { flyView = it },
+                            landscape = true,
+                            status = flyStatus,
+                            video = { mod, expanded -> flyVideo(mod, expanded) },
+                            map = { mod -> flyMap(mod) },
+                            keyRow = flyKeyRow,
+                            rail = { flyCameraControlLayer() },
+                            heading = { flyAttitude() },
+                            keyRowEnd = flyKeyRowEnd,
+                            overlays = flyOverlays,
+                            actions = { layout -> flightActions(layout) },
+                        )
+                    } else {
+                        FlyPortrait(
+                            view = shownFlyView,
+                            onView = { flyView = it },
+                            status = flyStatus,
+                            video = { mod, expanded -> flyVideo(mod, expanded) },
+                            map = { mod -> flyMap(mod) },
+                            keyRow = flyKeyRow,
+                            keyRowEnd = flyKeyRowEnd,
+                            rail = { flyCameraControlLayer() },
+                            overlays = flyOverlays,
+                            actions = { layout -> flightActions(layout) },
+                        )
+                    }
                 }
                 if (onFly) one.aircast.android.ui.ConnectingCard(Modifier.align(Alignment.Center))
 

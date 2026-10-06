@@ -83,7 +83,7 @@ private const val REC_BLINK_MS = 600
 internal val RECORD_RED = Color(0xFFE53935)
 
 @Composable
-fun CameraControlLayer(modifier: Modifier = Modifier) {
+fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) {
     val hasVehicle = hasVehicle()
     val shown by qgcBool(settingControl(SHOW_PHOTO_VIDEO_CONTROL))
     val cameraJson by qgcPath(CAMERA_VIEW)
@@ -121,7 +121,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-        panel.shutters.map { shutter ->
+        if (shutters) panel.shutters.map { shutter ->
             ShutterButton(panel, shutter) { action -> offMainDetached { refused = Qgc.refusalOf(action) } }
         }
 
@@ -210,6 +210,35 @@ fun CameraControlLayer(modifier: Modifier = Modifier) {
             )
         }
         }
+        }
+    }
+}
+
+@Composable
+fun CameraShutters() {
+    val hasVehicle = hasVehicle()
+    val shown by qgcBool(settingControl(SHOW_PHOTO_VIDEO_CONTROL))
+    val cameraJson by qgcPath(CAMERA_VIEW)
+    val panel = remember(cameraJson) { cameraReading(cameraJson)?.panel?.takeIf { it.visible } }
+    var refused by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(refused) {
+        if (refused != null) {
+            delay(REFUSAL_MS)
+            refused = null
+        }
+    }
+
+    if (!hasVehicle || !shown || panel == null) {
+        return
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        panel.shutters.map { shutter ->
+            ShutterButton(panel, shutter) { action -> offMainDetached { refused = Qgc.refusalOf(action) } }
+        }
+        refused?.let { sentence ->
+            Text(sentence, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
     }
 }

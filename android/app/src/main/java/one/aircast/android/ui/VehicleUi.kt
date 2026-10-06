@@ -330,7 +330,7 @@ internal fun scaledNumber(scale: Float): TextStyle = TelemetryNumber.copy(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeckLayout.Bottom) {
+fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeckLayout.Bottom, center: @Composable () -> Unit = {}) {
     val flyScreen = LocalFlyScreenState.current
     val stateJson by qgcPath(FLY_STATE)
     val state = remember(stateJson) { flyState(stateJson) }
@@ -506,17 +506,16 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         TelemetryRow(valuesShown = armed)
 
         if (pending == null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                deck.forEach { (id, primary) ->
-                    entries.firstOrNull { it.id == id }?.let { entry ->
-                        DeckButton(entry, primary, Modifier.weight(1f))
-                    }
+            val more = DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }
+            val buttons = deck.mapNotNull { (id, primary) -> entries.firstOrNull { it.id == id }?.let { it to primary } } + (more to false)
+            val leading = (buttons.size + 1) / 2
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                val button: @Composable (Pair<DeckEntry, Boolean>) -> Unit = { (entry, primary) ->
+                    DeckButton(entry, primary, if (entry === more && deck.isNotEmpty()) Modifier.width(64.dp) else Modifier.weight(1f))
                 }
-                DeckButton(
-                    DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true },
-                    primary = false,
-                    modifier = if (deck.isEmpty()) Modifier.weight(1f) else Modifier.width(64.dp),
-                )
+                buttons.take(leading).map { button(it) }
+                center()
+                buttons.drop(leading).map { button(it) }
             }
         }
     }
