@@ -19,4 +19,10 @@ class PipRulesTest {
         org.junit.Assert.assertEquals(FlyView.ThreeD, flyViewAllowed(null, FlyView.ThreeD))
         org.junit.Assert.assertEquals(FlyView.Video, flyViewAllowed(false, FlyView.Video))
     }
+
+    @org.junit.Test
+    fun `landscape opens on the compass dial like DJI Fly, portrait keeps its picture-in-picture`() {
+        org.junit.Assert.assertEquals("LandscapeMapShown" to false, pipExpandedKey(landscape = true))
+        org.junit.Assert.assertEquals("IsPIPVisible" to true, pipExpandedKey(landscape = false))
+    }
 }

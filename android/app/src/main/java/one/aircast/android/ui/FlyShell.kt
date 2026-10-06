@@ -102,12 +102,16 @@ private val TOP_SCRIM_HEIGHT = 96.dp
 private const val TOP_SCRIM_ALPHA = 0.6f
 private val PIP_TOGGLE_SIZE = 28.dp
 private const val PIP_EXPANDED_KEY = "IsPIPVisible"
+private const val LANDSCAPE_MAP_SHOWN_KEY = "LandscapeMapShown"
 
-internal fun loadPipExpanded(context: Context): Boolean =
-    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).getBoolean(PIP_EXPANDED_KEY, true)
+internal fun pipExpandedKey(landscape: Boolean): Pair<String, Boolean> =
+    if (landscape) LANDSCAPE_MAP_SHOWN_KEY to false else PIP_EXPANDED_KEY to true
 
-internal fun savePipExpanded(context: Context, expanded: Boolean) =
-    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).edit().putBoolean(PIP_EXPANDED_KEY, expanded).apply()
+internal fun loadPipExpanded(context: Context, landscape: Boolean): Boolean =
+    pipExpandedKey(landscape).let { (key, default) -> context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).getBoolean(key, default) }
+
+internal fun savePipExpanded(context: Context, landscape: Boolean, expanded: Boolean) =
+    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).edit().putBoolean(pipExpandedKey(landscape).first, expanded).apply()
 
 internal fun videoPipShown(hasVideo: Boolean, expanded: Boolean): Boolean = hasVideo && expanded
 
@@ -219,10 +223,10 @@ internal fun FlyScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val videoJson by one.aircast.android.bridge.qgcPath(VIDEO_VIEW)
     val hasVideo = videoJson?.optBoolean("available") == true
-    var pipExpanded by remember { mutableStateOf(loadPipExpanded(context)) }
+    var pipExpanded by remember(landscape) { mutableStateOf(loadPipExpanded(context, landscape)) }
     val togglePip: () -> Unit = {
         pipExpanded = !pipExpanded
-        savePipExpanded(context, pipExpanded)
+        savePipExpanded(context, landscape, pipExpanded)
     }
     val layout = LocalFlyScreenState.current.layout
     val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
