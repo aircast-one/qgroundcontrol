@@ -14,7 +14,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -80,8 +80,8 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
             delay(OFFLINE_POLL_MS)
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        val shown = status ?: return@ModalBottomSheet
+    AircastSheet(onDismissRequest = onDismiss) {
+        val shown = status ?: return@AircastSheet
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(shown.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp))
             Row(

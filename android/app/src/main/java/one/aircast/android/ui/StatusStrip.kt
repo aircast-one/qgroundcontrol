@@ -25,7 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -209,7 +209,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
         val compact = LocalCompactStatus.current && !layout.editing
         val keys = if (compact) ordered.take(COMPACT_STATUS_CELLS) else ordered
         if (overflow) {
-            ModalBottomSheet(onDismissRequest = { overflow = false }) {
+            AircastSheet(onDismissRequest = { overflow = false }) {
                 CompositionLocalProvider(LocalCompactStatus provides false) {
                     Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Text("Status", style = MaterialTheme.typography.titleLarge)
@@ -263,13 +263,13 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     }
 
     if (rtkSettings) {
-        ModalBottomSheet(onDismissRequest = { rtkSettings = false }) {
+        AircastSheet(onDismissRequest = { rtkSettings = false }) {
             RtkSettingsSheetContent(rtk)
         }
     }
 
     if (batterySettings) {
-        ModalBottomSheet(onDismissRequest = { batterySettings = false }) {
+        AircastSheet(onDismissRequest = { batterySettings = false }) {
             indicatorParameterWait(setupJson)?.let {
                 Text(it, Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
             } ?: ParameterForm(BATTERY_SETTINGS_PAGE)
@@ -277,7 +277,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     }
 
     if (batteryDisplay) {
-        ModalBottomSheet(onDismissRequest = { batteryDisplay = false }) {
+        AircastSheet(onDismissRequest = { batteryDisplay = false }) {
             BatteryDisplaySettings()
         }
     }
@@ -323,7 +323,7 @@ internal fun instrumentTitle(instrument: StripDetail): String = when (instrument
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun InstrumentSheet(title: String, rows: List<DetailRow>, headline: BatteryHeadline? = null, action: (@Composable () -> Unit)? = null, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AircastSheet(onDismissRequest = onDismiss) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,

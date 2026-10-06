@@ -10,7 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -124,7 +124,7 @@ internal fun RtkIndicatorCell(status: RtkStatus?) {
     Text("RTK", style = MaterialTheme.typography.labelMedium, modifier = Modifier.clickable { open = true })
 
     if (open) {
-        ModalBottomSheet(onDismissRequest = { open = false }) {
+        AircastSheet(onDismissRequest = { open = false }) {
             Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),

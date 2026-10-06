@@ -463,6 +463,7 @@ fun AircastShell(hostView: android.view.View?) {
             }
             onDispose { }
         }
+        androidx.compose.runtime.CompositionLocalProvider(one.aircast.map.LocalImmersive provides flyLandscape) {
         Row(Modifier.fillMaxSize()) {
         if (landscape && !flyLandscape) {
             NavigationRail(Modifier.fillMaxHeight(), windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)) {
@@ -574,6 +575,7 @@ fun AircastShell(hostView: android.view.View?) {
                     }
                 }
             }
+        }
         }
         }
     }

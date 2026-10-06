@@ -29,7 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Button
@@ -297,7 +297,7 @@ private fun CameraDetailsSheet(
     onSelect: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AircastSheet(onDismissRequest = onDismiss) {
         Text(
             camera.title.ifBlank { "Camera" },
             Modifier.padding(horizontal = 16.dp),

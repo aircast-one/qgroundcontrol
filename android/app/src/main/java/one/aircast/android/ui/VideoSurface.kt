@@ -79,6 +79,11 @@ internal fun FlyNoVideoMessage() {
     }
 }
 
+internal fun centredRegion(region: Rect, centreX: Float, minWidth: Float): Rect {
+    val half = minOf(centreX - region.left, region.right - centreX)
+    return if (half * 2 >= minWidth) region.copy(left = centreX - half, right = centreX + half) else region
+}
+
 internal fun messageRegion(free: Rect, obstacles: List<Rect>, gap: Float, minWidth: Float, minHeight: Float): Rect? {
     val fits = { room: Rect -> room.width >= minWidth && room.height >= minHeight }
     return obstacles.filterNot { it.isEmpty }

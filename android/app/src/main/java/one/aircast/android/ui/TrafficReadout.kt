@@ -10,7 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -57,7 +57,7 @@ fun TrafficReadout(modifier: Modifier = Modifier) {
     }
 
     if (listed && reading.contacts.isNotEmpty()) {
-        ModalBottomSheet(onDismissRequest = { listed = false }) {
+        AircastSheet(onDismissRequest = { listed = false }) {
             Text(
                 trafficSummary(reading),
                 Modifier.padding(horizontal = 20.dp),

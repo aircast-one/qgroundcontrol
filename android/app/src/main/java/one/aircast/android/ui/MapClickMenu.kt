@@ -15,7 +15,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -159,7 +159,7 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
         return
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AircastSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             val pending = confirming
             if (pending == null) {
@@ -291,7 +291,7 @@ internal fun setWaypointMessage(sequence: Int): String = "Adjust current waypoin
 internal fun SetWaypointSheet(sequence: Int, onDismiss: () -> Unit) {
     var refusal by remember(sequence) { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AircastSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -415,7 +415,7 @@ internal fun RoiSheet(at: TrackPoint, onDismiss: () -> Unit) {
             run(SET_ROI_PATH, arrayOf(JSONObject().put("latitude", latitude).put("longitude", longitude)))
         }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AircastSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),

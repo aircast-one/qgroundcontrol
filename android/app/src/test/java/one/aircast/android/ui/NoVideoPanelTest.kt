@@ -67,3 +67,17 @@ class NoVideoPanelTest {
         assertNull(messageRegion(rect(0f, 0f, 150f, 600f), emptyList(), 10f, 200f, 50f))
     }
 }
+
+class CentredRegionTest {
+    @org.junit.Test
+    fun `a message beside the mini-map still centres on the screen when it fits`() {
+        val room = androidx.compose.ui.geometry.Rect(410f, 100f, 1990f, 900f)
+        org.junit.Assert.assertEquals(androidx.compose.ui.geometry.Rect(410f, 100f, 1590f, 900f), centredRegion(room, 1000f, 400f))
+    }
+
+    @org.junit.Test
+    fun `a room too lopsided to centre in keeps its own shape`() {
+        val room = androidx.compose.ui.geometry.Rect(900f, 100f, 1990f, 900f)
+        org.junit.Assert.assertEquals(room, centredRegion(room, 1000f, 400f))
+    }
+}

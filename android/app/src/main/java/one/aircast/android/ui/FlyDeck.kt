@@ -44,7 +44,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -204,7 +204,7 @@ internal fun guidedIcon(id: String): Int = when (id) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MoreActionsSheet(tiles: List<MoreTile>, onDismiss: () -> Unit, footer: @Composable () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AircastSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())

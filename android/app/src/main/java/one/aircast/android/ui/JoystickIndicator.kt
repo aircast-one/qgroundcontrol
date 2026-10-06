@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,7 +46,7 @@ internal fun JoystickIndicatorCell() {
     Text("Joystick", style = MaterialTheme.typography.labelMedium, color = tint, maxLines = 1, modifier = Modifier.clickable { open = true })
 
     if (open) {
-        ModalBottomSheet(onDismissRequest = { open = false }) {
+        AircastSheet(onDismissRequest = { open = false }) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(badge.heading, style = MaterialTheme.typography.titleMedium)
                 Text("Enabled:  ${badge.enabledText}", style = MaterialTheme.typography.bodyMedium, color = tint)

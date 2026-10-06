@@ -10,6 +10,7 @@
 #   probe.sh mock [opt...]       start a simulated vehicle, e.g. mock camera gimbal video=h264 pattern=smpte
 #   probe.sh ui <cmd> [value]    drive the app UI: state, tab, fly-view, orientation,
 #                                layout-edit, layout-reset, open, back  (debug builds only)
+#   probe.sh ui shot <file>      screenshot; ui text prints the screen's text; ui tap <label>
 #
 # The deep link MUST name the activity: two installed apps claim aircast-qgc://
 # (this head and the QML QGCActivity), so an untargeted intent opens a chooser
@@ -95,6 +96,14 @@ mock)
     ;;
 ui)
     [ -n "${2:-}" ] || { echo "usage: probe.sh ui <cmd> [value]" >&2; exit 2; }
+    case "$2" in
+    shot) exec "$(dirname "$0")/ui.sh" shot "${3:?usage: probe.sh ui shot <file>}" ;;
+    text) exec "$(dirname "$0")/ui.sh" text ;;
+    tap)
+        at="$("$(dirname "$0")/ui.sh" find "text=${3:?usage: probe.sh ui tap <label>}")" || { echo "REFUSED: nothing labelled \"$3\" on screen" >&2; exit 1; }
+        exec "$(dirname "$0")/ui.sh" tap $at
+        ;;
+    esac
     if [ "$2" = "back" ]; then
         adb shell dumpsys activity activities | grep -q "topResumedActivity=.*$APP/" \
             || { echo "REFUSED: $APP is not in front - a back press would land in another app" >&2; exit 1; }
@@ -109,7 +118,7 @@ ui)
     case "$answer" in error:*) exit 1 ;; esac
     ;;
 *)
-    sed -n '2,15p' "$0"
+    sed -n '2,16p' "$0"
     exit 2
     ;;
 esac

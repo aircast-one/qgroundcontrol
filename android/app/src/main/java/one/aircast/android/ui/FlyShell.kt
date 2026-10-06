@@ -495,6 +495,7 @@ private fun FlyChromeLayout(
             bottom = height - AircastSpace.s3.toPx() - if (messageAboveBottom) bottomHeight else 0,
         )
         val region = messageRegion(free, obstacles().map { it.translate(-origin) }, AircastSpace.s3.toPx(), NO_VIDEO_PILL_WIDTH.toPx(), NO_VIDEO_PILL_HEIGHT.toPx())
+            ?.let { room -> centredRegion(room, width / 2f, NO_VIDEO_PILL_WIDTH.toPx()) }
         val messages = region?.let { room -> messageSlot.map { it.measure(Constraints.fixed(room.width.toInt(), room.height.toInt())) } }.orEmpty()
         layout(width, height) {
             region?.let { room -> messages.forEach { it.place(room.left.toInt(), room.top.toInt()) } }

@@ -17,7 +17,7 @@ import androidx.compose.material3.SnackbarData
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.foundation.shape.RoundedCornerShape
 
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -222,7 +222,7 @@ private fun VehicleMessageLog(
 
     editing?.let { name -> ParameterEditDialog(name, EDIT_PARAMETER_TITLE) { editing = null } }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AircastSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
             Text(if (blocking.isEmpty()) "Messages" else "Why it will not arm", style = MaterialTheme.typography.headlineSmall)
             Text(severitySummary(lines), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

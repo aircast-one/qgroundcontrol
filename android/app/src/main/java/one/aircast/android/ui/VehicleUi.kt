@@ -58,7 +58,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.Switch
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
@@ -714,7 +714,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     }
 
     if (settings) {
-        ModalBottomSheet(onDismissRequest = { settings = false }) {
+        AircastSheet(onDismissRequest = { settings = false }) {
             ParameterForm(FLIGHT_MODE_SETTINGS_PAGE)
         }
     }
@@ -869,12 +869,12 @@ private fun InstrumentSheet(
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    AircastSheet(onDismissRequest = onDismiss) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
         Text(instrumentChoiceNote(chosen), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp))
         if (groups.isEmpty()) {
             FootNote(emptyCatalogueText(connected))
-            return@ModalBottomSheet
+            return@AircastSheet
         }
         LazyColumn(Modifier.fillMaxWidth()) {
             shownFirst(groups, shownAtOpen).forEach { group ->

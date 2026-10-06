@@ -18,7 +18,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -159,7 +159,7 @@ internal fun GimbalIndicatorCell() {
     )
 
     if (open) {
-        ModalBottomSheet(onDismissRequest = { open = false }) {
+        AircastSheet(onDismissRequest = { open = false }) {
             Column(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -196,7 +196,7 @@ internal fun GimbalIndicatorCell() {
     }
 
     if (settingsOpen) {
-        ModalBottomSheet(onDismissRequest = { settingsOpen = false }) {
+        AircastSheet(onDismissRequest = { settingsOpen = false }) {
             GimbalSettings()
         }
     }

@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.ui.res.painterResource
 import one.aircast.android.R
 import androidx.compose.ui.graphics.TransformOrigin
@@ -203,7 +203,7 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
             }
         }
         if (options) {
-            ModalBottomSheet(onDismissRequest = { options = false }) {
+            AircastSheet(onDismissRequest = { options = false }) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Gimbal", style = MaterialTheme.typography.titleLarge)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

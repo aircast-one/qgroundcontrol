@@ -22,7 +22,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
@@ -235,7 +235,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     }
 
     if (picking) {
-        ModalBottomSheet(
+        AircastSheet(
             onDismissRequest = { picking = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         ) {

@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import one.aircast.map.AircastSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,7 +33,7 @@ internal fun SupportForwardingCell() {
     var open by remember { mutableStateOf(false) }
     Text("Support", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.success, modifier = Modifier.clickable { open = true })
     if (open) {
-        ModalBottomSheet(onDismissRequest = { open = false }) {
+        AircastSheet(onDismissRequest = { open = false }) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Mavlink traffic is being forwarded to a support server", style = MaterialTheme.typography.bodyMedium)
                 Text("Server name:  ${host?.toString().orEmpty()}", style = MaterialTheme.typography.bodyMedium)

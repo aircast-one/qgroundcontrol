@@ -53,7 +53,6 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -1455,7 +1454,7 @@ internal fun PlanMapContent(
         }
 
         if (listOpen) {
-            ModalBottomSheet(onDismissRequest = { listOpen = false }) {
+            AircastSheet(onDismissRequest = { listOpen = false }) {
                 val rows = itemRows(allItems, surveyStatsMap)
                 ItemListHeading(rows, missionSummaryText(missionSummaryView), Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
