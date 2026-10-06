@@ -149,6 +149,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
     }
 
     private var multicastLock: WifiManager.MulticastLock? = null
+    private val debugUiReceiver = DebugUiReceiver()
     private var hostView: android.view.View? = null
 
     @Suppress("unused")
@@ -184,6 +185,9 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
                 ) { AircastShell(hostView) }
             }
         }
+        if (BuildConfig.DEBUG) {
+            androidx.core.content.ContextCompat.registerReceiver(this, debugUiReceiver, android.content.IntentFilter(DEBUG_UI_ACTION), androidx.core.content.ContextCompat.RECEIVER_EXPORTED)
+        }
         GamepadInput.start(this, lifecycleScope)
         one.aircast.android.ui.VirtualStickSender.start(lifecycleScope)
     }
@@ -214,6 +218,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 
     override fun onDestroy() {
         if (live === this) live = null
+        if (BuildConfig.DEBUG) unregisterReceiver(debugUiReceiver)
         HostPlatform.stop(this)
         multicastLock?.takeIf { it.isHeld }?.release()
         super.onDestroy()
@@ -247,6 +252,32 @@ fun AircastShell(hostView: android.view.View?) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var flyView by remember { mutableStateOf(one.aircast.android.ui.loadFlyView(context)) }
     LaunchedEffect(flyView) { one.aircast.android.ui.saveFlyView(context, flyView) }
+    LaunchedEffect(Unit) {
+        DebugUi.commands.collect { command ->
+            when (command) {
+                is DebugCommand.ShowTab -> tab = command.tab
+                is DebugCommand.ShowFlyView -> {
+                    tab = Tab.Fly
+                    flyView = command.view
+                }
+                is DebugCommand.Orient -> (context as? Activity)?.requestedOrientation = command.orientation
+                is DebugCommand.EditLayout -> if (command.on) overlayLayout.startEditing() else overlayLayout.editing = false
+                DebugCommand.ResetLayout -> overlayLayout.reset()
+                is DebugCommand.Deck -> flyScreen.deckRequest = command.id
+            }
+        }
+    }
+    val debugLandscape = !one.aircast.android.ui.flyIsPortrait()
+    androidx.compose.runtime.SideEffect {
+        DebugUi.state = org.json.JSONObject()
+            .put("tab", tab.name)
+            .put("flyView", flyView.name)
+            .put("landscape", debugLandscape)
+            .put("layoutEditing", overlayLayout.editing)
+            .put("layoutLocked", overlayLayout.locked)
+            .put("guidedPanelOpen", flyScreen.guidedPanelOpen)
+            .toString()
+    }
     val videoExpanded = flyView != one.aircast.android.ui.FlyView.Map
     var videoFullScreen by remember { mutableStateOf(false) }
 

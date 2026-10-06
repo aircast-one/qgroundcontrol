@@ -5,6 +5,9 @@
 #   probe.sh get <path>          read a bridge path or a view
 #   probe.sh set <path> <json>   write a bridge path
 #   probe.sh raw <route> [args]  any debug-api route, e.g. raw /status
+#   probe.sh mock [opt...]       start a simulated vehicle, e.g. mock camera gimbal video=h264
+#   probe.sh ui <cmd> [value]    drive the app UI: state, tab, fly-view, orientation,
+#                                layout-edit, layout-reset, deck  (debug builds only)
 #
 # The deep link MUST name the activity: two installed apps claim aircast-qgc://
 # (this head and the QML QGCActivity), so an untargeted intent opens a chooser
@@ -16,7 +19,7 @@
 # an empty response reads exactly like a refusal, so get/set re-enable first.
 export PATH="$PATH:$HOME/Library/Android/sdk/platform-tools"
 PORT="${QGC_DEBUG_PORT:-8790}"
-APP="one.aircast.app"
+APP="${APP:-one.aircast.app}"
 ACTIVITY="one.aircast.android.MainActivity"
 HEADER="X-QGC-Debug-Api: 1"
 LEGACY="one.aircast.android"
@@ -66,8 +69,21 @@ raw)
     curl -s --max-time 8 -H "$HEADER" "http://127.0.0.1:$PORT$2"
     echo ""
     ;;
+mock)
+    shift
+    query="autopilot=${MOCK_AUTOPILOT:-px4}$(printf '&%s' "$@")"
+    "$0" raw "/links/mocklink?$query"
+    ;;
+ui)
+    [ -n "${2:-}" ] || { echo "usage: probe.sh ui <cmd> [value]" >&2; exit 2; }
+    answer="$(adb shell am broadcast -a one.aircast.android.DEBUG_UI -p "$APP" --es cmd "$2" ${3:+--es value "$3"} \
+        | sed -n 's/^Broadcast completed: result=[-0-9]*, data="\(.*\)"$/\1/p')"
+    [ -n "$answer" ] || { echo "REFUSED: no answer from $APP - is a debug build running?" >&2; exit 1; }
+    echo "$answer"
+    case "$answer" in error:*) exit 1 ;; esac
+    ;;
 *)
-    sed -n '2,10p' "$0"
+    sed -n '2,13p' "$0"
     exit 2
     ;;
 esac

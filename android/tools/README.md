@@ -11,6 +11,7 @@ copy there.
 | script | what it does |
 |---|---|
 | `handset-ip.sh` | The handset's Wi-Fi address, from `adb`. |
+| `probe.sh` | The debug API without a single tap. `mock camera gimbal video=h264` starts a simulated vehicle with a camera, gimbal and a served test stream; `ui fly-view Video`, `ui orientation landscape`, `ui tab Plan`, `ui layout-edit off`, `ui deck rtl` drive the app; `ui state` answers JSON. `orientation` turns the app, never the phone's rotation setting. Set `APP=one.aircast.app.core QGC_DEBUG_PORT=8777` for a core debug build. |
 | `ui.sh` | `front`, `tap`, `swipe`, `text`, `key`, `shot`. Every input checks `topResumedActivity` first and refuses rather than guess: `am start` returns before the window is up, and a tap sent into that gap lands in whatever the user had open. |
 | `apmvehicle.py` | An ArduPilot-shaped MAVLink vehicle: heartbeats, GPS, battery, RC, vibration, two camera components, log download, and a print for every command it receives. Its environment knobs are the point of it — see the table below. |
 | `device-lock.sh` | `take`/`drop` around `/tmp/aircast-device.lock`, and stops the handset dozing while held. |

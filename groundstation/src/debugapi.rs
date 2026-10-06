@@ -80,7 +80,7 @@ pub const ROUTES: &[(&str, Route, &str)] = &[
     ("/links", Route::Links, ""),
     ("/links/connect", Route::LinkConnect, "host,port,name"),
     ("/links/disconnect", Route::LinkDisconnect, "name"),
-    ("/links/mocklink", Route::MockLink, "autopilot,add"),
+    ("/links/mocklink", Route::MockLink, "autopilot,add,camera,gimbal,proximity,statustext,video"),
     ("/mission/upload", Route::MissionUpload, "file"),
     ("/mission/download", Route::MissionDownload, "file"),
     ("/logging", Route::Logging, "rules"),
@@ -155,6 +155,16 @@ fn given<'a>(pairs: &'a [(String, String)], key: &str) -> Option<&'a str> {
 
 fn present(pairs: &[(String, String)], key: &str) -> bool {
     pairs.iter().any(|(k, _)| k == key)
+}
+
+pub const MOCK_VIDEO_STREAMS: &[(&str, i64)] = &[("none", 0), ("h264", 1), ("h265", 2), ("rtsp", 3), ("mpegts-udp", 4), ("mpegts-tcp", 5)];
+
+fn mock_video_stream(name: &str) -> Option<i64> {
+    MOCK_VIDEO_STREAMS.iter().find(|(known, _)| known.eq_ignore_ascii_case(name)).map(|(_, kind)| *kind)
+}
+
+fn switched_on(pairs: &[(String, String)], key: &str) -> bool {
+    first(pairs, key).is_some_and(|v| v.is_empty() || matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
 }
 
 fn bridge_body(answer: String) -> Value {
@@ -376,11 +386,27 @@ impl DebugApi {
             "apm" | "arducopter" => AUTOPILOT_ARDUPILOTMEGA,
             other => return refuse(format!("autopilot must be px4 or apm, got: {other}")),
         };
+        let video_stream_type = match given(pairs, "video").map(mock_video_stream) {
+            None => 0,
+            Some(Some(kind)) => kind,
+            Some(None) => return refuse(format!("video must be one of {}", MOCK_VIDEO_STREAMS.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(", "))),
+        };
         let config = LinkConfig {
             name: MOCK_LINK_NAME.to_string(),
             auto_connect: false,
             high_latency: false,
-            kind: Kind::Mock { firmware_type: firmware, vehicle_type: VEHICLE_TYPE_QUADROTOR, send_status_text: false, increment_vehicle_id: true, failure_mode: 0, enable_camera: false, enable_gimbal: false, enable_proximity: false, apm_start_fresh_params: false, video_stream_type: 0 },
+            kind: Kind::Mock {
+                firmware_type: firmware,
+                vehicle_type: VEHICLE_TYPE_QUADROTOR,
+                send_status_text: switched_on(pairs, "statustext"),
+                increment_vehicle_id: true,
+                failure_mode: 0,
+                enable_camera: switched_on(pairs, "camera") || video_stream_type != 0,
+                enable_gimbal: switched_on(pairs, "gimbal"),
+                enable_proximity: switched_on(pairs, "proximity"),
+                apm_start_fresh_params: false,
+                video_stream_type,
+            },
         };
         let mut request = crate::linkconfig::to_json(&config);
         request["dynamic"] = json!(true);
@@ -780,6 +806,20 @@ mod tests {
             "the core owns no Mock transport, so without the flag the host has to sniff the kind and a straight forward answers a Rust Debug dump of an internal enum"
         );
         assert_eq!((AUTOPILOT_PX4, AUTOPILOT_ARDUPILOTMEGA, VEHICLE_TYPE_QUADROTOR), (12, 3, 2), "the constants are the MAVLink numbers, pinned here rather than asserted against themselves");
+    }
+
+    #[test]
+    fn a_mock_link_can_carry_a_camera_gimbal_and_test_video() {
+        let api = DebugApi::new();
+        let host = Fake { mock_available: true, ..Fake::default() };
+        get(&api, &host, "/links/mocklink", "autopilot=px4");
+        get(&api, &host, "/links/mocklink", "autopilot=px4&add=1&camera&gimbal=1&proximity=yes&statustext=on");
+        get(&api, &host, "/links/mocklink", "autopilot=px4&add=1&video=h264");
+        let opened = host.calls();
+        assert!(opened[0].contains("\"enableCamera\":false") && opened[0].contains("\"videoStreamType\":0"), "a bare mock link stays as plain as before");
+        assert!(["\"enableCamera\":true", "\"enableGimbal\":true", "\"enableProximity\":true", "\"sendStatusText\":true"].iter().all(|flag| opened[1].contains(flag)), "a present flag with no value, 1, yes and on all switch an option on");
+        assert!(opened[2].contains("\"videoStreamType\":1") && opened[2].contains("\"enableCamera\":true"), "a served stream needs the camera that announces it");
+        assert_eq!(get(&api, &host, "/links/mocklink", "autopilot=px4&add=1&video=vp9").body["error"], "video must be one of none, h264, h265, rtsp, mpegts-udp, mpegts-tcp");
     }
 
     #[test]
