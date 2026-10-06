@@ -17,6 +17,11 @@ import one.aircast.android.R
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
+import one.aircast.map.AircastSpace
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -327,7 +332,6 @@ internal fun scaledNumber(scale: Float): TextStyle = TelemetryNumber.copy(
 @Composable
 fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeckLayout.Bottom) {
     val flyScreen = LocalFlyScreenState.current
-    val side = layout == FlyDeckLayout.Side
     val stateJson by qgcPath(FLY_STATE)
     val state = remember(stateJson) { flyState(stateJson) }
     val available = state?.connected == true
@@ -381,7 +385,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     PreflightChecklistReset(checklist, available)
 
     if (!available) {
-        Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (layout != FlyDeckLayout.Rail) Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
 
@@ -397,7 +401,83 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     }
     val openAltitude: (Boolean) -> Unit = { pauses -> openValue(altitudeValue(pauses)) }
 
-    Column(modifier.then(if (side) Modifier.verticalScroll(rememberScrollState()) else Modifier).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val liveActions = actionsJson?.toString()
+    val confirming = pending
+    val showingSent = sentIsStillShowing(sentName, sentSnapshot, liveActions)
+
+    val entries = flightDeckEntries(
+        FlightDeckContext(
+            offers = offers,
+            armed = armed,
+            scope = scope,
+            confirm = { pending = it },
+            openValue = openValue,
+            report = { refusal = it },
+            withdraw = { refusal = withdrawn(refusal, it) },
+            openChecklist = checklist::open.takeIf { useChecklist },
+        ),
+    )
+    val deck = deckIds(entries.map { it.id }.toSet(), armed)
+    deckRest = entries.filter { entry -> deck.none { it.first == entry.id } }
+    deckShown = deck.map { it.first }.toSet()
+    LaunchedEffect(flyScreen.deckRequest) {
+        when (val asked = flyScreen.deckRequest) {
+            null -> Unit
+            ARM_REQUEST -> entries.firstOrNull { it.id == ARM_REQUEST && it.enabled }?.onClick?.invoke()
+                ?: armedStopOffer(offers, armed)?.let { pending = emergencyStopAction(it) }
+                ?: run { refusal = deckRequestRefusal(offers[if (armed) "disarm" else "arm"]) }
+            else -> offers[asked]?.takeIf { it.ready }?.let { offer ->
+                guidedCommand(offer.id, resumeFrom)?.let { command ->
+                    pending = GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, run = command)
+                }
+            }
+        }
+        flyScreen.deckRequest = null
+    }
+
+    if (layout == FlyDeckLayout.Rail) {
+        Box(modifier.fillMaxSize()) {
+            if (pending == null && guidedValue == null && editingLoiter == null) {
+                Column(
+                    Modifier.align(Alignment.TopStart).padding(start = AircastSpace.s3, top = AircastSpace.s2),
+                    verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    deck.map { (id, primary) ->
+                        entries.firstOrNull { it.id == id }?.let { entry -> RailDeckButton(entry, primary) }
+                    }
+                    RailDeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false)
+                }
+            }
+            if (refusal != null || confirming != null || showingSent) {
+                Surface(
+                    Modifier.align(Alignment.Center).widthIn(max = DECISION_CARD_WIDTH).padding(AircastSpace.s3),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                ) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        refusal?.let { message -> Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
+                        if (confirming != null) {
+                            ConfirmTrack(
+                                action = confirming,
+                                onSent = {
+                                    sentName = confirming.name
+                                    sentSnapshot = liveActions
+                                    pending = null
+                                },
+                                onCancel = { pending = null },
+                            )
+                        } else if (showingSent) {
+                            SentNotice(sentName.orEmpty(), onDismiss = { sentName = null })
+                        }
+                    }
+                }
+            }
+            Box(Modifier.align(Alignment.BottomCenter).widthIn(max = RAIL_TELEMETRY_WIDTH).padding(bottom = AircastSpace.s2).osdShadow()) {
+                CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(columns = RAIL_TELEMETRY_COLUMNS, valuesShown = armed) }
+            }
+        }
+    } else Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
         refusal?.let { message ->
             Text(
@@ -407,10 +487,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-
-        val liveActions = actionsJson?.toString()
-        val confirming = pending
-        val showingSent = sentIsStillShowing(sentName, sentSnapshot, liveActions)
 
         if (confirming != null) {
             ConfirmTrack(
@@ -426,47 +502,9 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             SentNotice(sentName.orEmpty(), onDismiss = { sentName = null })
         }
 
-        val entries = flightDeckEntries(
-            FlightDeckContext(
-                offers = offers,
-                armed = armed,
-                scope = scope,
-                confirm = { pending = it },
-                openValue = openValue,
-                report = { refusal = it },
-                withdraw = { refusal = withdrawn(refusal, it) },
-                openChecklist = checklist::open.takeIf { useChecklist },
-            ),
-        )
-        val deck = deckIds(entries.map { it.id }.toSet(), armed)
-        deckRest = entries.filter { entry -> deck.none { it.first == entry.id } }
-        deckShown = deck.map { it.first }.toSet()
-        LaunchedEffect(flyScreen.deckRequest) {
-            when (val asked = flyScreen.deckRequest) {
-                null -> Unit
-                ARM_REQUEST -> entries.firstOrNull { it.id == ARM_REQUEST && it.enabled }?.onClick?.invoke()
-                    ?: armedStopOffer(offers, armed)?.let { pending = emergencyStopAction(it) }
-                    ?: run { refusal = deckRequestRefusal(offers[if (armed) "disarm" else "arm"]) }
-                else -> offers[asked]?.takeIf { it.ready }?.let { offer ->
-                    guidedCommand(offer.id, resumeFrom)?.let { command ->
-                        pending = GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, run = command)
-                    }
-                }
-            }
-            flyScreen.deckRequest = null
-        }
+        TelemetryRow(valuesShown = armed)
 
-        if (!side) TelemetryRow(valuesShown = armed)
-
-        if (side) {
-            if (pending == null) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                deck.forEach { (id, primary) ->
-                    entries.firstOrNull { it.id == id }?.let { entry -> DeckButton(entry, primary, Modifier.fillMaxWidth()) }
-                }
-                DeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false, modifier = Modifier.fillMaxWidth())
-            }
-            TelemetryRow(columns = 1, valuesShown = armed)
-        } else if (pending == null) {
+        if (pending == null) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 deck.forEach { (id, primary) ->
                     entries.firstOrNull { it.id == id }?.let { entry ->
@@ -482,13 +520,14 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         }
     }
 
-    guidedValue?.let { open -> GuidedValueFlow(open) { guidedValue = null } }
+    val rail = layout == FlyDeckLayout.Rail
+    guidedValue?.let { open -> DecisionHost(rail) { GuidedValueFlow(open) { guidedValue = null } } }
 
     LaunchedEffect(loiter == null) {
         if (loiter == null) editingLoiter = null
     }
     editingLoiter?.let { offer ->
-        LoiterRadiusPanel(offer, mapClickUnits(mapClickJson), onRefused = { refusal = it }) { editingLoiter = null }
+        DecisionHost(rail) { LoiterRadiusPanel(offer, mapClickUnits(mapClickJson), onRefused = { refusal = it }) { editingLoiter = null } }
     }
 
     if (showMore) {
@@ -532,6 +571,21 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     if (showGripper && gripper.isNotEmpty()) GripperPanel(gripper) { showGripper = false }
 
 
+}
+
+private val DECISION_CARD_WIDTH = 460.dp
+private val RAIL_TELEMETRY_WIDTH = 440.dp
+private const val RAIL_TELEMETRY_COLUMNS = 8
+
+@Composable
+private fun DecisionHost(rail: Boolean, content: @Composable () -> Unit) {
+    if (rail) {
+        Box(Modifier.fillMaxSize().padding(AircastSpace.s3), contentAlignment = Alignment.Center) {
+            Box(Modifier.widthIn(max = DECISION_CARD_WIDTH)) { content() }
+        }
+    } else {
+        content()
+    }
 }
 
 @Composable

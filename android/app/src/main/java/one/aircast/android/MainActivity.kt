@@ -77,6 +77,7 @@ import androidx.core.view.WindowCompat
 import android.app.Activity
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.DisposableEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -414,8 +415,20 @@ fun AircastShell(hostView: android.view.View?) {
                 else -> tab = entry
             }
         }
+        val immersiveView = LocalView.current
+        DisposableEffect(flyLandscape) {
+            val window = (immersiveView.context as? Activity)?.window
+            val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, immersiveView) }
+            if (flyLandscape) {
+                controller?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                controller?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+            onDispose { }
+        }
         Row(Modifier.fillMaxSize()) {
-        if (landscape) {
+        if (landscape && !flyLandscape) {
             NavigationRail(Modifier.fillMaxHeight(), windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)) {
                 tabs.forEach { entry ->
                     NavigationRailItem(
@@ -458,6 +471,7 @@ fun AircastShell(hostView: android.view.View?) {
                         onView = { flyView = it },
                         landscape = flyLandscape,
                         status = {
+                            if (flyLandscape) one.aircast.android.ui.FlyTabMenu(tabs.filter { it != Tab.Fly }.map { it.label to { selectTab(it) } })
                             LayoutWidget("vehicleState", hideable = false) { VehicleStateChip() }
                             LayoutWidget("vtolState", hideable = false) { VtolStateCell() }
                             ControlRequestPrompt()
@@ -470,12 +484,12 @@ fun AircastShell(hostView: android.view.View?) {
                             flyObstacleArc()
                         },
                         rail = { flyCameraControlLayer() },
+                        heading = { flyAttitude() },
                         keyRowEnd = { LayoutWidget("emergencyStop", hideable = false) { PinnedEmergencyStop() } },
                         overlays = {
                             LayoutWidget("messageBanner", hideable = false) { one.aircast.android.ui.VehicleMessageBanner() }
                             LayoutWidget("fleet") { one.aircast.android.ui.FleetCard() }
                             LayoutWidget("missionProgress") { one.aircast.android.ui.MissionProgressCard() }
-                            flyAttitude()
                             LayoutWidget("obstacleReadout") { ObstacleReadout() }
                             LayoutWidget("terrainProgress") { TerrainProgress() }
                             flyOrbitReadout()
