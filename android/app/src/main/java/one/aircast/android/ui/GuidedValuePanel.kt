@@ -97,8 +97,17 @@ internal fun GuidedValuePanel(
                 }
                 content()
             }
-            HoldToConfirm(label = holdLabel(guidedCommitLabel(commitLabel, readiness)), enabled = commitEnabled && readiness?.blocks != true, onConfirm = onCommit)
-            TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
+            val hold = holdLabel(guidedCommitLabel(commitLabel, readiness))
+            val holdEnabled = commitEnabled && readiness?.blocks != true
+            if (flyIsPortrait()) {
+                HoldToConfirm(label = hold, enabled = holdEnabled, onConfirm = onCommit)
+                TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HoldToConfirm(label = hold, enabled = holdEnabled, modifier = Modifier.weight(1f), onConfirm = onCommit)
+                    TextButton(onClick = onCancel) { Text("Cancel") }
+                }
+            }
         }
     }
 }

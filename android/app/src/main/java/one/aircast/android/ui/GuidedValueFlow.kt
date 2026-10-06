@@ -132,13 +132,13 @@ internal fun GuidedValueFlow(open: OpenGuidedValue, onClose: () -> Unit) {
             open.settled = value
         }
         GuidedStepper(open.target, open.reading.label, unit, open.range.start, open.range.endInclusive, settle)
+        if (kind.presets) GuidedPresets(open.target, open.range.start, open.range.endInclusive, unit, settle)
         Slider(
             value = open.target.toFloat(),
             onValueChange = { open.target = guidedRounded(it.toDouble(), unit) },
             onValueChangeFinished = { open.settled = open.target },
             valueRange = open.range.start.toFloat()..open.range.endInclusive.toFloat(),
         )
-        if (kind.presets) GuidedPresets(open.target, open.range.start, open.range.endInclusive, unit, settle)
         if (kind.quickPicks) GuidedQuickPicks(open.target, open.range.start, open.range.endInclusive, unit, settle)
         rangeLabel(open.range.start, open.range.endInclusive, unit)?.let { RangeHint(it) }
     }
