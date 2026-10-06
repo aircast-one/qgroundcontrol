@@ -211,6 +211,10 @@ internal fun FlyScreen(
         pipExpanded = !pipExpanded
         savePipExpanded(context, pipExpanded)
     }
+    val layout = LocalFlyScreenState.current.layout
+    val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
+    val armed = flyState(flyJson)?.armed == true
+    LaunchedEffect(armed) { layout.lockWhileArmed(armed) }
     val stage: @Composable (Modifier) -> Unit = { stageModifier ->
         Box(stageModifier) {
             val mapIsPip = view == FlyView.Video
@@ -279,13 +283,17 @@ internal fun FlyScreen(
             }
             if (view == FlyView.Map) {
                 var layers by remember { mutableStateOf(false) }
-                Surface(
-                    onClick = { layers = true },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3).size(48.dp).holdToEditLayout(),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_layers), "Map layers") }
+                Box(Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3)) {
+                    LayoutWidget("mapLayers", hideable = false) {
+                        Surface(
+                            onClick = { layers = true },
+                            modifier = Modifier.size(48.dp),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        ) {
+                            Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_layers), "Map layers") }
+                        }
+                    }
                 }
                 if (layers) MapLayersSheet { layers = false }
             }
@@ -330,7 +338,7 @@ internal fun FlyScreen(
                 },
                 bottomAlignment = Alignment.Start,
                 overlaysAboveBottom = true,
-                message = if (videoMessage) ({ Box(Modifier.holdToEditLayout()) { FlyNoVideoMessage() } }) else null,
+                message = if (videoMessage) ({ FlyNoVideoMessage() }) else null,
                 messageAboveBottom = !landscape,
                 obstacles = { flyScreen.obstacles.values },
                 onInsets = { insets -> if (insets != flyScreen.mapInsets) flyScreen.mapInsets = insets },

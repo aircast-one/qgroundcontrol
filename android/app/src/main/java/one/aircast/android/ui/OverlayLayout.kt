@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -79,6 +80,8 @@ private const val INDICATOR_ORDER = "FlyViewIndicatorOrder"
 internal class OverlayLayoutState(private val prefs: SharedPreferences) {
     private val stored = prefs.all
     var editing by mutableStateOf(false)
+    var locked by mutableStateOf(false)
+        private set
     var hidden by mutableStateOf(hiddenKeys(stored))
         private set
     var indicatorOrder by mutableStateOf(storedIndicatorOrder(stored))
@@ -86,6 +89,15 @@ internal class OverlayLayoutState(private val prefs: SharedPreferences) {
     var valueSize by mutableStateOf(ValueSize.Default)
     var offsets by mutableStateOf(storedOffsets(stored))
         private set
+
+    fun startEditing() {
+        if (!locked) editing = true
+    }
+
+    fun lockWhileArmed(armed: Boolean) {
+        locked = armed
+        if (armed) editing = false
+    }
 
     fun setHidden(key: String, hide: Boolean) {
         prefs.edit().putBoolean(HIDDEN_PREFIX + key, hide).apply()
@@ -193,7 +205,7 @@ private fun Modifier.onHold(action: () -> Unit): Modifier = pointerInput(Unit) {
 @Composable
 internal fun Modifier.holdToEditLayout(): Modifier {
     val layout = LocalFlyScreenState.current.layout
-    return if (layout.editing) this else onHold { layout.editing = true }
+    return if (layout.editing || layout.locked) this else onHold { layout.startEditing() }
 }
 
 @Composable
@@ -286,6 +298,15 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
             shadowElevation = 2.dp,
         ) {
             Icon(if (hidden) Icons.Default.Add else Icons.Default.Close, contentDescription = if (hidden) "Show" else "Hide", modifier = Modifier.padding(4.dp))
+        }
+        if (decorated && !hideable) Surface(
+            modifier = Modifier.align(Alignment.TopEnd).size(BADGE_SIZE),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            shadowElevation = 2.dp,
+        ) {
+            Icon(Icons.Default.Lock, contentDescription = "Always shown", modifier = Modifier.padding(5.dp))
         }
     }
 }
