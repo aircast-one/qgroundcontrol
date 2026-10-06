@@ -191,6 +191,12 @@ private fun Modifier.onHold(action: () -> Unit): Modifier = pointerInput(Unit) {
 }
 
 @Composable
+internal fun Modifier.holdToEditLayout(): Modifier {
+    val layout = LocalFlyScreenState.current.layout
+    return if (layout.editing) this else onHold { layout.editing = true }
+}
+
+@Composable
 private fun jiggleAngle(key: String): Float {
     val swing by rememberInfiniteTransition(label = "jiggle").animateFloat(
         initialValue = -JIGGLE_DEGREES,
@@ -260,7 +266,7 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
         Modifier
             .offset(moved.first.dp, moved.second.dp)
             .then(if (movable) keptOnScreen(placedKey) else Modifier)
-            .then(if ((movable || hideable) && !editing) Modifier.onHold { layout.editing = true } else Modifier)
+            .holdToEditLayout()
             .graphicsLayer { rotationZ = if (decorated) angle else 0f }
             .then(if (avoided) Modifier.avoidedByVideoMessage(key) else Modifier),
     ) {

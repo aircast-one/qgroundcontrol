@@ -266,13 +266,13 @@ internal fun FlyScreen(
                             .clickable { onView(FlyView.Map) },
                     )
                 }
-                Box(Modifier.zIndex(3f).align(Alignment.BottomEnd).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).size(MAP_PIP_SIZE).avoidedByVideoMessage(MAP_PIP_KEY)) {
+                Box(Modifier.zIndex(3f).align(Alignment.BottomEnd).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).size(MAP_PIP_SIZE).avoidedByVideoMessage(MAP_PIP_KEY).holdToEditLayout()) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
                     if (pipExpanded) LayoutPipEditor(MAP_PIP_KEY, CircleShape, Modifier.matchParentSize())
                 }
             }
             if (videoIsPip && hasVideo) {
-                Box(Modifier.zIndex(3f).align(Alignment.TopEnd).then(pipCorner).then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = true)).size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)) {
+                Box(Modifier.zIndex(3f).align(Alignment.TopEnd).then(pipCorner).then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = true)).size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT).holdToEditLayout()) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.TopEnd))
                     if (pipExpanded) LayoutPipEditor(VIDEO_PIP_KEY, MaterialTheme.shapes.medium, Modifier.matchParentSize())
                 }
@@ -281,7 +281,7 @@ internal fun FlyScreen(
                 var layers by remember { mutableStateOf(false) }
                 Surface(
                     onClick = { layers = true },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3).size(48.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3).size(48.dp).holdToEditLayout(),
                     shape = CircleShape,
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
@@ -330,7 +330,7 @@ internal fun FlyScreen(
                 },
                 bottomAlignment = Alignment.Start,
                 overlaysAboveBottom = true,
-                message = if (videoMessage) ({ FlyNoVideoMessage() }) else null,
+                message = if (videoMessage) ({ Box(Modifier.holdToEditLayout()) { FlyNoVideoMessage() } }) else null,
                 messageAboveBottom = !landscape,
                 obstacles = { flyScreen.obstacles.values },
                 onInsets = { insets -> if (insets != flyScreen.mapInsets) flyScreen.mapInsets = insets },
