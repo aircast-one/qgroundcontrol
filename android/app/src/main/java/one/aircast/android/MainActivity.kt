@@ -16,7 +16,6 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.activity.compose.BackHandler
 import one.aircast.android.ui.ConnectionLocks
-import one.aircast.android.ui.DeviceCameraHost
 import one.aircast.android.ui.videoReading
 import one.aircast.android.ui.VIDEO_VIEW
 import one.aircast.android.bridge.qgcPath
@@ -173,7 +172,6 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 
         setContent {
             ConnectionLocks()
-            DeviceCameraHost()
             AppFontScale {
                 val context = androidx.compose.ui.platform.LocalContext.current
                 val flyScreen = remember { one.aircast.android.ui.FlyScreenState(one.aircast.android.ui.OverlayLayoutState(one.aircast.android.ui.overlayLayoutStore(context))) }

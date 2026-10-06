@@ -869,13 +869,8 @@ const STREAM_SOURCE_ORDER: [&str; 6] = ["RTSP Video Stream", "UDP h.264 Video St
 
 const FIXED_SOURCES: [&str; 4] = [crate::videostate::SOURCE_3DR_SOLO, crate::videostate::SOURCE_PARROT_DISCOVERY, crate::videostate::SOURCE_YUNEEC_MANTIS_G, crate::videostate::SOURCE_HERELINK_HOTSPOT];
 
-#[cfg(target_os = "android")]
-const PLATFORM_CAMERAS: &[&str] = crate::videostate::DEVICE_CAMERAS;
-#[cfg(not(target_os = "android"))]
-const PLATFORM_CAMERAS: &[&str] = &[];
-
 fn stream_sources() -> Vec<String> {
-    std::iter::once(VIDEO_DISABLED).chain(STREAM_SOURCE_ORDER).chain(FIXED_SOURCES).chain(PLATFORM_CAMERAS.iter().copied()).map(str::to_string).collect()
+    std::iter::once(VIDEO_DISABLED).chain(STREAM_SOURCE_ORDER).chain(FIXED_SOURCES).map(str::to_string).collect()
 }
 
 pub fn offered_video_source(values: BTreeMap<String, Setting>) -> BTreeMap<String, Setting> {

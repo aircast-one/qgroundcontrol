@@ -32,10 +32,6 @@ pub const SOURCE_PARROT_DISCOVERY: &str = "Parrot Discovery";
 pub const SOURCE_YUNEEC_MANTIS_G: &str = "Yuneec Mantis G";
 pub const SOURCE_HERELINK_AIR_UNIT: &str = "Herelink AirUnit";
 pub const SOURCE_HERELINK_HOTSPOT: &str = "Herelink Hotspot";
-pub const SOURCE_BACK_CAMERA: &str = "Back Camera";
-pub const SOURCE_FRONT_CAMERA: &str = "Front Camera";
-pub const DEVICE_CAMERAS: &[&str] = &[SOURCE_BACK_CAMERA, SOURCE_FRONT_CAMERA];
-pub const DEVICE_CAMERA_SCHEME: &str = "ahc://";
 
 pub const STREAM_SOURCES: &[&str] = &[
     SOURCE_UDP_H264,
@@ -95,16 +91,10 @@ pub fn source_token(source: &str) -> &'static str {
         SOURCE_YUNEEC_MANTIS_G => "yuneecMantisG",
         SOURCE_HERELINK_AIR_UNIT => "herelinkAirUnit",
         SOURCE_HERELINK_HOTSPOT => "herelinkHotspot",
-        SOURCE_BACK_CAMERA => "backCamera",
-        SOURCE_FRONT_CAMERA => "frontCamera",
         SOURCE_DISABLED => "disabled",
         SOURCE_NO_VIDEO => "noVideo",
         _ => "unknown",
     }
-}
-
-pub fn device_camera(uri: &str) -> Option<u32> {
-    uri.strip_prefix(DEVICE_CAMERA_SCHEME)?.parse().ok()
 }
 
 pub fn requires_restart(source: &str) -> bool {
@@ -115,7 +105,7 @@ pub fn source_usable(source: &str, url: &str) -> bool {
     match source {
         SOURCE_NO_VIDEO | SOURCE_DISABLED => false,
         _ if needs_url(source) => !url.is_empty(),
-        SOURCE_HERELINK_AIR_UNIT | SOURCE_HERELINK_HOTSPOT | SOURCE_BACK_CAMERA | SOURCE_FRONT_CAMERA => true,
+        SOURCE_HERELINK_AIR_UNIT | SOURCE_HERELINK_HOTSPOT => true,
         _ => false,
     }
 }
@@ -144,8 +134,6 @@ pub fn source_uri(source: &str, url: &str) -> String {
         SOURCE_YUNEEC_MANTIS_G => "rtsp://192.168.42.1:554/live".to_string(),
         SOURCE_HERELINK_AIR_UNIT => "rtsp://192.168.0.10:8554/H264Video".to_string(),
         SOURCE_HERELINK_HOTSPOT => "rtsp://192.168.43.1:8554/fpv_stream".to_string(),
-        SOURCE_BACK_CAMERA => format!("{DEVICE_CAMERA_SCHEME}0"),
-        SOURCE_FRONT_CAMERA => format!("{DEVICE_CAMERA_SCHEME}1"),
         _ => String::new(),
     }
 }

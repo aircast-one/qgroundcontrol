@@ -24,7 +24,6 @@ struct Host {
     progress: Option<Watch>,
     flowing: bool,
     problem: Option<(String, String)>,
-    camera_rotation: u32,
 }
 
 const FILE_EXTENSIONS: [&str; 3] = ["mkv", "mov", "mp4"];
@@ -32,7 +31,6 @@ const DEFAULT_RECORDING_FORMAT: i64 = 2;
 const DEFAULT_MAX_VIDEO_MB: u64 = 10240;
 const BAD_FORMAT_MESSAGE: &str = "Invalid video format defined.";
 const NO_SAVE_PATH_MESSAGE: &str = "Unabled to record video. Video save path must be specified in Settings.";
-const DEVICE_CAMERA_RECORDING_MESSAGE: &str = "Recording is not available for this device's own camera.";
 
 static HOST: Mutex<Option<Host>> = Mutex::new(None);
 
@@ -127,9 +125,6 @@ pub fn start_recording() -> Result<(), Option<&'static str>> {
 fn begin_recording() -> Result<(), Option<&'static str>> {
     let mut guard = synced();
     let host = guard.as_mut().ok_or(None)?;
-    if crate::videostate::device_camera(&host.state.desired_uri(MAIN_RECEIVER)).is_some() {
-        return Err(Some(DEVICE_CAMERA_RECORDING_MESSAGE));
-    }
     match host.state.record_refusal() {
         Some(crate::videostate::REFUSED_BAD_FORMAT) => return Err(Some(BAD_FORMAT_MESSAGE)),
         Some(crate::videostate::REFUSED_NO_SAVE_PATH) => return Err(Some(NO_SAVE_PATH_MESSAGE)),
@@ -227,22 +222,6 @@ const WHEP_LOW_LATENCY_JITTER_MS: i64 = 40;
 const WHEP_LATENCY_PREFIX: &str = "whep_latency_";
 const WHEP_VIDEO_CAPS: &str = "application/x-rtp,media=(string)video,encoding-name=(string)H264,payload=(int)96,clock-rate=(int)90000;application/x-rtp,media=(string)video,encoding-name=(string)H265,payload=(int)97,clock-rate=(int)90000";
 
-fn flip_method(rotation: &str) -> &'static str {
-    match rotation {
-        "90" => "clockwise",
-        "180" => "rotate-180",
-        "270" => "counterclockwise",
-        _ => "none",
-    }
-}
-
-fn oriented(uri: &str, rotation: u32) -> String {
-    match crate::videostate::device_camera(uri) {
-        Some(_) => format!("{uri}?rotation={rotation}"),
-        None => uri.to_string(),
-    }
-}
-
 pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String> {
     let retransmit = latency_ms >= RETRANSMISSION_MIN_LATENCY_MS && !low_latency;
     let jitter = match low_latency {
@@ -271,11 +250,6 @@ pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String>
             let endpoint = uri.replacen("wheps://", "https://", 1).replacen("whep://", "http://", 1);
             let webrtc_latency_ms = if low_latency { WHEP_LOW_LATENCY_JITTER_MS } else { latency_ms };
             format!("whepsrc name={WHEP_LATENCY_PREFIX}{webrtc_latency_ms} whep-endpoint={} video-caps={} audio-caps=EMPTY timeout={WHEP_TIMEOUT_S}", quoted(&endpoint), quoted(WHEP_VIDEO_CAPS))
-        }
-        ("ahc", rest) => {
-            let (device, rotation) = rest.split_once("?rotation=").unwrap_or((rest, "0"));
-            let device: u32 = device.parse().ok()?;
-            return Some(format!("ahcsrc device={device} ! {RECORD_TEE} ! glupload ! glcolorconvert ! glvideoflip method={} ! {NATIVE_SINK} sync=false", flip_method(rotation)));
         }
         _ => return None,
     };
@@ -443,8 +417,7 @@ fn object(host: &Host) -> Value {
         "cameraStatuses": (0..settings.count()).map(|i| status_text(state.receiver_status(i))).collect::<Vec<_>>(),
         "cameraConnecting": (0..settings.count()).map(|i| state.camera_connecting(i)).collect::<Vec<_>>(),
         "cameraRecording": (0..settings.count()).map(|i| state.camera_recording(i)).collect::<Vec<_>>(),
-        "nativePipeline": (host.wanted && state.has_video()).then(|| pipeline(&oriented(&uri, host.camera_rotation), latency, settings.low_latency)).flatten(),
-        "deviceCamera": crate::videostate::device_camera(&uri),
+        "nativePipeline": (host.wanted && state.has_video()).then(|| pipeline(&uri, latency, settings.low_latency)).flatten(),
         "nativeRecording": host.recording_file,
         "nativeRecordingFormat": recording_format(),
         "streamProblem": host.problem.as_ref().filter(|(at, _)| *at == uri).map_or("", |(_, text)| text.as_str()),
@@ -472,10 +445,6 @@ pub fn unbuildable_outcome(uri: &str) -> Outcome {
 
 pub fn stream_problem_text() -> String {
     get("video.streamProblem").and_then(|value| value.get("value")?.as_str().map(str::to_string)).unwrap_or_default()
-}
-
-pub fn device_camera() -> Option<u64> {
-    get("video.deviceCamera")?.get("value")?.as_u64()
 }
 
 pub fn native_pipeline() -> Option<String> {
@@ -624,10 +593,6 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             Some(json!({ "ok": true }))
         }
         "video.setNativeRendering" | "video.initNative" => Some(json!({ "ok": true })),
-        "video.setDeviceCameraRotation" => {
-            host.camera_rotation = given.get(0).and_then(Value::as_u64).map_or(0, |degrees| (degrees % 360) as u32);
-            Some(json!({ "ok": true }))
-        }
         "video.restart" => {
             RESTART.store(true, std::sync::atomic::Ordering::Relaxed);
             if !host.wanted {
@@ -731,18 +696,6 @@ mod tests {
         assert!(pipeline("mpegts://0.0.0.0:5600", 80, false).unwrap().contains("tsdemux ! capsfilter caps=\"video/x-h264;video/x-h265\" ! tee"), "only a video pad of the transport stream reaches the tee");
         assert_eq!(crate::videostate::source_uri(crate::videostate::SOURCE_WEBRTC, "sfu.host/whep/x"), "http://sfu.host/whep/x", "QUrl::fromUserInput supplies the scheme");
         assert_eq!(pipeline("bogus", 80, false), None);
-    }
-
-    #[test]
-    fn a_device_camera_is_read_raw_turned_upright_and_never_decoded() {
-        let back = crate::videostate::source_uri(crate::videostate::SOURCE_BACK_CAMERA, "");
-        assert_eq!(pipeline(&oriented(&back, 0), 80, false).unwrap(), "ahcsrc device=0 ! tee name=nativerec ! queue ! glupload ! glcolorconvert ! glvideoflip method=none ! videoconvert ! appsink name=nativesink sync=false");
-        let front = crate::videostate::source_uri(crate::videostate::SOURCE_FRONT_CAMERA, "");
-        assert!(pipeline(&oriented(&front, 270), 80, false).unwrap().starts_with("ahcsrc device=1 ! tee name=nativerec ! queue ! glupload ! glcolorconvert ! glvideoflip method=counterclockwise ! "));
-        assert!(pipeline(&oriented(&back, 90), 80, false).unwrap().contains("method=clockwise"));
-        assert!(pipeline(&oriented(&back, 180), 80, false).unwrap().contains("method=rotate-180"));
-        assert_eq!(oriented("rtsp://cam/main", 90), "rtsp://cam/main", "only a device camera is turned");
-        assert_eq!(pipeline("ahc://front", 80, false), None, "the camera is picked by index");
     }
 
     #[test]
