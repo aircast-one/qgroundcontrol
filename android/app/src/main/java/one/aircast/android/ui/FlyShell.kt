@@ -407,7 +407,6 @@ internal fun FlyScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     ) {
-                        LayoutWidget("viewSwitcher", hideable = false) { FlyViewSwitcher(view, onView) }
                         CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { heading() }
                     }
                     Box(

@@ -186,7 +186,7 @@ fun VehicleTitle() {
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShown: Boolean = true) {
+fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShown: Boolean = true, chooser: Boolean = true) {
     val flyScreen = LocalFlyScreenState.current
     val context = LocalContext.current
     val classView by qgcPath(INSTRUMENTS_VIEW)
@@ -311,7 +311,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
                 }
             }
         }
-        IconButton(onClick = { flyScreen.choosingReadings = true }) {
+        if (chooser) IconButton(onClick = { flyScreen.choosingReadings = true }) {
             Icon(
                 painter = painterResource(R.drawable.ic_tune),
                 contentDescription = "Readings",
@@ -475,7 +475,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 }
             }
             Box(Modifier.align(Alignment.BottomCenter).widthIn(max = RAIL_TELEMETRY_WIDTH).padding(bottom = AircastSpace.s2).osdShadow()) {
-                CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(columns = RAIL_TELEMETRY_COLUMNS, valuesShown = true) }
+                CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(columns = RAIL_TELEMETRY_COLUMNS, valuesShown = true, chooser = false) }
             }
         }
     } else Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
