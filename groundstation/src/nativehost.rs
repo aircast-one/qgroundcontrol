@@ -143,7 +143,6 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
     let arguments: Vec<String> = (0..usize::try_from(argc).unwrap_or(0)).map(|i| read(if argv.is_null() { std::ptr::null() } else { unsafe { *argv.add(i) } })).collect();
     let chosen = options(&arguments);
     crate::mocklink::set_available(cfg!(debug_assertions) || chosen.debug_build);
-    crate::units::set_measurement_system(chosen.measurement_system);
     crate::applog::install();
     unsafe {
         crate::abi::qgc_core_set_application_name(text(&chosen.application).as_ptr());

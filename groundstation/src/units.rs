@@ -1,11 +1,8 @@
-use std::sync::atomic::{AtomicU8, Ordering};
-
 use serde_json::{Value, json};
 
 pub const METRIC: u8 = 0;
 pub const IMPERIAL_US: u8 = 1;
 
-static MEASUREMENT_SYSTEM: AtomicU8 = AtomicU8::new(METRIC);
 
 const FEET_TO_METERS: f64 = 0.3048;
 const MILES_TO_METERS: f64 = 1609.344;
@@ -13,10 +10,6 @@ const HOUR_SECONDS: f64 = 3600.0;
 const KNOTS_TO_KPH: f64 = 1.852;
 const OUNCES_TO_GRAMS: f64 = 28.3495;
 const POUNDS_TO_GRAMS: f64 = 453.592;
-
-pub fn set_measurement_system(system: u8) {
-    MEASUREMENT_SYSTEM.store(system, Ordering::Relaxed);
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -99,7 +92,7 @@ fn choice(kind: Kind, stored: &impl Fn(&str) -> Option<String>, system: u8) -> u
 }
 
 fn chosen(kind: Kind) -> Option<Conversion> {
-    conversion(kind, choice(kind, &crate::settingsstore::stored_text, MEASUREMENT_SYSTEM.load(Ordering::Relaxed)))
+    conversion(kind, choice(kind, &crate::settingsstore::stored_text, METRIC))
 }
 
 const PER_PIXEL_CENTIMETRES: Conversion = Conversion { name: "cm/px", shown: |v| v, base: |v| v };
@@ -124,7 +117,7 @@ pub fn cooking_with(raw_units: &str, stored: impl Fn(&str) -> Option<String>, sy
 }
 
 pub fn cooking(raw_units: &str) -> Option<Conversion> {
-    cooking_with(raw_units, crate::settingsstore::stored_text, MEASUREMENT_SYSTEM.load(Ordering::Relaxed))
+    cooking_with(raw_units, crate::settingsstore::stored_text, METRIC)
 }
 
 const BUILT_IN: [(&str, Conversion); 6] = [
@@ -221,7 +214,7 @@ pub fn fact_metadata(setting: &str) -> Option<crate::factmeta::MetaData> {
         name: setting.to_string(),
         short_description: short.to_string(),
         enums,
-        default: Some(json!(kind.default_choice(MEASUREMENT_SYSTEM.load(Ordering::Relaxed)))),
+        default: Some(json!(kind.default_choice(METRIC))),
         qgc_reboot_required: true,
         ..crate::px4meta::bare(crate::factmeta::ValueType::Uint32)
     })
@@ -244,11 +237,11 @@ fn unit_system(stored: &impl Fn(&str) -> Option<String>, system: u8) -> usize {
 
 pub fn get(path: &str) -> Option<String> {
     if path == "settings.unitsSettings.unitSystem" {
-        return Some(json!({ "kind": "value", "value": unit_system(&crate::settingsstore::stored_text, MEASUREMENT_SYSTEM.load(Ordering::Relaxed)) }).to_string());
+        return Some(json!({ "kind": "value", "value": unit_system(&crate::settingsstore::stored_text, METRIC) }).to_string());
     }
     if let Some(setting) = path.strip_prefix("settings.unitsSettings.").and_then(|rest| rest.strip_suffix(".rawValue")) {
         let kind = kind_of_setting(setting)?;
-        return Some(json!({ "kind": "value", "value": choice(kind, &crate::settingsstore::stored_text, MEASUREMENT_SYSTEM.load(Ordering::Relaxed)) }).to_string());
+        return Some(json!({ "kind": "value", "value": choice(kind, &crate::settingsstore::stored_text, METRIC) }).to_string());
     }
     let kind = name_of(path.strip_prefix("units.")?)?;
     Some(json!({ "kind": "value", "value": chosen(kind).map_or(kind.base(), |c| c.name) }).to_string())

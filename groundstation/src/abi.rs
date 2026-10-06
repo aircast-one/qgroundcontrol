@@ -653,11 +653,6 @@ pub unsafe extern "C" fn qgc_core_set_map_cache_path(path: *const c_char) {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn qgc_core_measurement_system(system: u8) {
-    crate::units::set_measurement_system(system);
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_tile_open(path: *const c_char) -> *mut c_char {
     let opened = crate::tilecache::Cache::serve(std::path::Path::new(&text(path)));
     let answer = match &opened {
