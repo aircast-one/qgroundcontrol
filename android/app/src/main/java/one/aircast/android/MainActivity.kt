@@ -247,6 +247,12 @@ fun AircastShell(hostView: android.view.View?) {
     LaunchedEffect(navigation.settingsPage) {
         if (navigation.settingsPage != null) navigation.settingsOpen = true
     }
+    val vehicleNow = one.aircast.android.ui.hasVehicle()
+    var hadVehicle by remember { mutableStateOf(vehicleNow) }
+    LaunchedEffect(vehicleNow) {
+        if (vehicleNow && !hadVehicle) navigation.settingsOpen = false
+        hadVehicle = vehicleNow
+    }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var popEpoch by remember { mutableIntStateOf(0) }
     val context = androidx.compose.ui.platform.LocalContext.current

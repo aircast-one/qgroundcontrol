@@ -5,10 +5,7 @@ import one.aircast.android.bridge.LinkCommands
 import one.aircast.android.bridge.AccountCommands
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -1014,6 +1011,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
 
     var notice by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var advanced by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     fun attempt(action: String, settled: () -> Boolean, call: () -> Boolean) {
         scope.launch {
@@ -1102,19 +1100,27 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
             }
         }
 
-        item(key = "footer") { footer() }
-        item(key = "fabSpace") { Spacer(Modifier.height(88.dp)) }
+        item(key = "advanced") {
+            TextButton(onClick = { advanced = !advanced }, modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+                Text(if (advanced) "Hide advanced" else "Advanced")
+                Icon(
+                    if (advanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                )
+            }
+        }
+        if (advanced) {
+            item(key = "addLink") {
+                OutlinedButton(onClick = { adding = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                    Icon(painterResource(R.drawable.ic_add), null)
+                    Text("Add link\u2026", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            item(key = "footer") { footer() }
+        }
     }
 
     }
-    ExtendedFloatingActionButton(
-        onClick = { adding = true },
-        icon = { Icon(painterResource(R.drawable.ic_add), null) },
-        text = { Text("Add link\u2026") },
-        containerColor = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp).semantics { contentDescription = "Add link\u2026" },
-    )
     }
 
 

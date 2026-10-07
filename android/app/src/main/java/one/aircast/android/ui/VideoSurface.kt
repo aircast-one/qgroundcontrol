@@ -69,6 +69,10 @@ private fun NoVideoArea(underFlyChrome: Boolean, compact: Boolean, video: VideoR
 
 @Composable
 internal fun FlyNoVideoMessage() {
+    if (!hasVehicle()) {
+        LookingForAircraft()
+        return
+    }
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
     BoxWithConstraints(Modifier.fillMaxSize()) {

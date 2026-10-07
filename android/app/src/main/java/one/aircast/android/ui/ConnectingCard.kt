@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
+import one.aircast.map.aircast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -85,3 +88,26 @@ internal fun ConnectingCard(modifier: Modifier = Modifier) {
         }
     }
 }
+
+internal const val LOOKING_TITLE = "Looking for your aircraft"
+internal const val LOOKING_HINT = "Turn on the aircraft. Aircast connects by itself over Wi-Fi or a telemetry radio."
+private const val CONNECTION_SETTINGS = "Connections"
+
+@Composable
+internal fun LookingForAircraft() {
+    val navigation = LocalAppNavigation.current
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.widthIn(max = LOOKING_MAX_WIDTH).padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            androidx.compose.material3.CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp, color = MaterialTheme.aircast.outdoorForeground)
+            Text(LOOKING_TITLE, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
+            Text(LOOKING_HINT, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
+            TextButton(onClick = { navigation.settingsPage = CONNECTION_SETTINGS }) { Text("Connection settings") }
+        }
+    }
+}
+
+private val LOOKING_MAX_WIDTH = 360.dp

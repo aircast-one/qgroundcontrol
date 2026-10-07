@@ -30,3 +30,11 @@ class SettingsSheetTest {
         org.junit.Assert.assertEquals(null, one.aircast.android.Tab.from("settings"))
     }
 }
+
+class LookingForAircraftTest {
+    @org.junit.Test
+    fun `the empty state says what to do, not what is missing`() {
+        org.junit.Assert.assertEquals("Looking for your aircraft", LOOKING_TITLE)
+        org.junit.Assert.assertTrue(LOOKING_HINT.startsWith("Turn on the aircraft"))
+    }
+}
