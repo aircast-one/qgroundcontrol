@@ -239,7 +239,7 @@ fun AircastShell(hostView: android.view.View?) {
     val overlayLayout = flyScreen.layout
     LaunchedEffect(tab) { if (tab != Tab.Fly) overlayLayout.editing = false }
     LaunchedEffect(navigation.setupPage) {
-        if (navigation.setupPage != null) navigation.openAircraft()
+        if (navigation.setupPage != null && !navigation.settingsOpen) navigation.openAircraft()
     }
     LaunchedEffect(navigation.settingsPage) {
         if (navigation.settingsPage != null) navigation.settingsOpen = true

@@ -58,3 +58,13 @@ class LookingForAircraftTest {
         org.junit.Assert.assertTrue(LOOKING_HINT.startsWith("Turn on the aircraft"))
     }
 }
+
+class TabSetupPagesTest {
+    @org.junit.Test
+    fun `flight-relevant setup pages surface in the tab a pilot looks in`() {
+        org.junit.Assert.assertEquals(listOf("Safety"), tabSetupPages(SettingsGroup.Safety))
+        org.junit.Assert.assertEquals(listOf("Flight Modes"), tabSetupPages(SettingsGroup.Control))
+        org.junit.Assert.assertEquals(emptyList<String>(), tabSetupPages(SettingsGroup.Camera))
+        org.junit.Assert.assertEquals(5, SettingsGroup.entries.size)
+    }
+}

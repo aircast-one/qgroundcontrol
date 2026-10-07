@@ -52,16 +52,32 @@ internal fun openingGroup(requested: String?): SettingsGroup = requested?.let { 
 
 @Composable
 internal fun SettingsSheet(requested: String?, aircraft: Boolean, onClose: () -> Unit) {
-    var group by rememberSaveable(requested, aircraft) { mutableStateOf(if (aircraft) SettingsGroup.Aircraft else openingGroup(requested)) }
+    var group by rememberSaveable(requested, aircraft) { mutableStateOf(if (aircraft) SettingsGroup.General else openingGroup(requested)) }
+    var setupOpen by rememberSaveable(aircraft) { mutableStateOf(aircraft) }
     var page by rememberSaveable(requested) { mutableStateOf(requested) }
     var query by rememberSaveable { mutableStateOf<String?>(null) }
     val navigation = LocalAppNavigation.current
-    androidx.compose.runtime.DisposableEffect(group) {
-        navigation.settingsShowing = group
+    LaunchedEffect(navigation.settingsPage) {
+        navigation.settingsPage?.let { asked ->
+            group = pageLook(asked).group
+            page = asked
+            setupOpen = false
+            query = null
+            navigation.settingsPage = null
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(group, setupOpen) {
+        navigation.settingsShowing = group.takeUnless { setupOpen }
         onDispose { navigation.settingsShowing = null }
     }
     androidx.activity.compose.BackHandler(onBack = onClose)
     androidx.activity.compose.BackHandler(enabled = query != null) { query = null }
+    androidx.activity.compose.BackHandler(enabled = setupOpen && query == null) { setupOpen = false }
+    val openSetup: (String?) -> Unit = { component ->
+        navigation.setupPage = component
+        setupOpen = true
+        query = null
+    }
     Surface(Modifier.fillMaxSize().zIndex(SETTINGS_SHEET_LAYER).pointerInput(Unit) {}, color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Row(
@@ -77,26 +93,30 @@ internal fun SettingsSheet(requested: String?, aircraft: Boolean, onClose: () ->
                 } ?: run {
                     Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
                         SettingsGroup.entries.map { entry ->
-                            SheetTab(entry.title, entry == group) {
+                            SheetTab(entry.title, entry == group && !setupOpen) {
                                 group = entry
                                 page = null
+                                setupOpen = false
                             }
                         }
                     }
                     IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_search), "Search settings") }
                 }
-                StatusPill()
                 IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_close), "Close settings") }
             }
-            key(group, page, query != null) {
+            key(group, page, query != null, setupOpen) {
                 when {
-                    query != null -> SettingsSearch(query.orEmpty(), Modifier.weight(1f)) { title ->
+                    query != null -> SettingsSearch(query.orEmpty(), Modifier.weight(1f), openSetup) { title ->
                         group = pageLook(title).group
                         page = title
                         query = null
+                        setupOpen = false
                     }
-                    group == SettingsGroup.Aircraft -> SetupScreen(Modifier.weight(1f))
-                    else -> SettingsScreen(group, page?.takeIf { pageLook(it).group == group }, Modifier.weight(1f))
+                    setupOpen -> Column(Modifier.weight(1f)) {
+                        PageTopBar(AIRCRAFT_SETUP, "Back to settings") { setupOpen = false }
+                        SetupScreen(Modifier.weight(1f))
+                    }
+                    else -> SettingsScreen(group, page?.takeIf { pageLook(it).group == group }, Modifier.weight(1f), openSetup)
                 }
             }
         }

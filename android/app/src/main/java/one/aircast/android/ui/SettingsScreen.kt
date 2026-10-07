@@ -157,7 +157,7 @@ internal fun activeLinksGlance(view: JSONObject?): String =
 
 internal fun activeLinksText(count: Int): String = if (count > 0) "$count active" else ""
 
-internal enum class SettingsGroup(val title: String) { Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), Aircraft("Aircraft"), General("General") }
+internal enum class SettingsGroup(val title: String) { Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), General("General") }
 
 internal data class PageLook(val group: SettingsGroup, val inline: Boolean = false)
 
@@ -314,8 +314,27 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
     }
 }
 
+internal const val AIRCRAFT_SETUP = "Aircraft setup"
+
+internal fun tabSetupPages(group: SettingsGroup): List<String> = when (group) {
+    SettingsGroup.Safety -> listOf("Safety")
+    SettingsGroup.Control -> listOf(FLIGHT_MODES_PAGE)
+    else -> emptyList()
+}
+
 @Composable
-internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier: Modifier = Modifier) {
+private fun TabSetupRows(group: SettingsGroup, onOpenSetup: (String?) -> Unit) {
+    val setupJson by qgcPath(SETUP)
+    val names = remember(setupJson) { setupComponents(setupJson).map { it.name }.toSet() }
+    if (names.isEmpty()) return
+    tabSetupPages(group).filter { it in names }.map { name ->
+        SetupRow(title = sentenceCase(name), status = "", onClick = { onOpenSetup(name) })
+    }
+    if (group == SettingsGroup.General) SetupRow(title = AIRCRAFT_SETUP, status = "", onClick = { onOpenSetup(null) })
+}
+
+@Composable
+internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}) {
     var everyPage by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
     var open by rememberSaveable(group) { mutableStateOf(initialPage?.takeUnless { pageLook(it).inline }) }
 
@@ -332,7 +351,7 @@ internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             val column = Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH)
             if (current == null) {
-                SettingsTab(group, everyPage, column) { open = it }
+                SettingsTab(group, everyPage, column, onOpenSetup) { open = it }
             } else {
                 Column(column) {
                     PageTopBar(heading.value?.title ?: pageTitle(current.title), "Back", headingBack)
@@ -348,7 +367,7 @@ internal val LIST_PANE_WIDTH = 380.dp
 internal val DETAIL_PANE_MAX_WIDTH = 720.dp
 
 @Composable
-private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>, modifier: Modifier, onOpen: (String) -> Unit) {
+private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>, modifier: Modifier, onOpenSetup: (String?) -> Unit, onOpen: (String) -> Unit) {
     val linksJson by qgcPath("view.links")
     val pages = remember(group, everyPage) { tabPages(group, everyPage) }
     Column(modifier.verticalScroll(rememberScrollState())) {
@@ -365,6 +384,7 @@ private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>
                 }
             }
         }
+        TabSetupRows(group, onOpenSetup)
     }
 }
 
@@ -387,7 +407,9 @@ internal fun inlineHeadingMissing(pageTitle: String, sections: List<SettingsSect
     sections.first().let { section -> section.group != UNITS_GROUP && blockHeading(pageTitle, section, section.blocks.first()).isBlank() }
 
 @Composable
-internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpen: (String) -> Unit) {
+internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}, onOpen: (String) -> Unit) {
+    val setupJson by qgcPath(SETUP)
+    val setupHits = remember(setupJson, query) { setupComponents(setupJson).filter { query.isNotBlank() && setupMatches(it.name, query) } }
     var pages by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
     LaunchedEffect(Unit) {
         pages = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
@@ -420,11 +442,15 @@ internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpen
         if (!searching) return@LazyColumn
 
         val pageHits = pages.filter { pageMatches(it, query) }
-        if (hits.isEmpty() && pageHits.isEmpty()) {
+        if (hits.isEmpty() && pageHits.isEmpty() && setupHits.isEmpty()) {
             item(key = "none") { FootNote("No settings match “${query.trim()}”.") }
             return@LazyColumn
         }
 
+        if (setupHits.isNotEmpty()) item(key = "setupHead") { SectionHeader(AIRCRAFT_SETUP) }
+        items(setupHits, key = { "setup${it.name}" }) { component ->
+            SetupRow(title = sentenceCase(component.name), onClick = { onOpenSetup(component.name) })
+        }
         if (pageHits.isNotEmpty()) item(key = "pagesHead") { SectionHeader("Pages") }
         items(pageHits, key = { "page${it.title}" }) { entry ->
             SetupRow(title = pageTitle(entry.title), onClick = { onOpen(entry.title) })
