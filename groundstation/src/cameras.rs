@@ -1,3 +1,5 @@
+use std::sync::{Mutex, PoisonError};
+
 use serde_json::{Value, json};
 
 use crate::router::Backend;
@@ -6,6 +8,7 @@ use crate::videostate::{
 };
 
 pub const CAMERAS_FACT: &str = "cameras";
+pub const ACTIVE_FACT: &str = "activeVideoSource";
 pub const CAMERAS_PATH: &str = "settings.videoSettings.cameras";
 pub const ACTIVE_PATH: &str = "settings.videoSettings.activeVideoSource";
 pub const DEPS: &[&str] = &[CAMERAS_PATH, ACTIVE_PATH, "video.cameraStatuses", "video.cameraFromDrone", "video.activeVideoSource", "video.cameraNames", "video.cameraSources", "video.cameraUrls"];
@@ -21,6 +24,7 @@ const NO_SUCH_CAMERA: &str = "There is no camera at that position.";
 const NEEDS_KIND: &str = "Pick the kind of stream this camera sends.";
 const NEEDS_ADDRESS: &str = "This kind of stream needs an address.";
 const RTSP_SCHEME: &str = "An RTSP address starts with rtsp://.";
+const WHEP_SCHEME: &str = "A WebRTC address starts with http:// or https://.";
 const DOUBLED_SCHEME: &str = "Leave the scheme off. The app adds it, and a doubled one fails to resolve.";
 const SCHEME_ADDED: [&str; 4] = [SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_MPEGTS, SOURCE_TCP];
 
@@ -67,7 +71,8 @@ pub fn problem(source: &str, url: &str) -> Option<&'static str> {
     match () {
         _ if source.is_empty() || source == SOURCE_DISABLED || !kind_names().iter().any(|kind| kind == source) => Some(NEEDS_KIND),
         _ if needs_url(source) && url.is_empty() => Some(NEEDS_ADDRESS),
-        _ if source == SOURCE_RTSP && !url.to_lowercase().starts_with("rtsp") => Some(RTSP_SCHEME),
+        _ if source == SOURCE_RTSP && scheme_of(source, url).is_none() => Some(RTSP_SCHEME),
+        _ if source == SOURCE_WEBRTC && url.contains("://") && scheme_of(source, url).is_none() => Some(WHEP_SCHEME),
         _ if url.contains("://") && SCHEME_ADDED.contains(&source) => Some(DOUBLED_SCHEME),
         _ => None,
     }
@@ -85,13 +90,17 @@ fn schemes(source: &str) -> &'static [&'static str] {
     }
 }
 
+fn scheme_of(source: &str, url: &str) -> Option<&'static str> {
+    schemes(source).iter().copied().find(|scheme| url.get(..scheme.len()).is_some_and(|head| head.eq_ignore_ascii_case(scheme)))
+}
+
 pub fn normalized(camera: Camera) -> Camera {
-    let lowered = camera.url.to_lowercase();
-    let own = SCHEME_ADDED.contains(&camera.source.as_str()).then(|| schemes(&camera.source).iter().find(|scheme| lowered.starts_with(**scheme))).flatten();
-    match own {
-        Some(scheme) => Camera { url: camera.url[scheme.len()..].to_string(), ..camera },
-        None => camera,
-    }
+    let url = match scheme_of(&camera.source, &camera.url) {
+        Some(scheme) if SCHEME_ADDED.contains(&camera.source.as_str()) => camera.url[scheme.len()..].to_string(),
+        Some(scheme) => format!("{scheme}{}", &camera.url[scheme.len()..]),
+        None => camera.url.clone(),
+    };
+    Camera { url, ..camera }
 }
 
 fn kind_names() -> Vec<String> {
@@ -140,7 +149,10 @@ pub fn title(name: &str, slot: usize) -> String {
 }
 
 pub fn with_named(cameras: &[Camera], camera: Camera) -> (Vec<Camera>, usize) {
-    let found = cameras.iter().position(|existing| !camera.name.is_empty() && existing.name == camera.name);
+    let found = cameras.iter().position(|existing| match camera.name.is_empty() {
+        true => existing.source == camera.source && existing.url == camera.url,
+        false => existing.name == camera.name,
+    });
     match found {
         Some(at) => (cameras.iter().enumerate().map(|(index, existing)| if index == at { camera.clone() } else { existing.clone() }).collect(), at),
         None => (cameras.iter().cloned().chain(std::iter::once(camera)).collect(), cameras.len()),
@@ -150,7 +162,8 @@ pub fn with_named(cameras: &[Camera], camera: Camera) -> (Vec<Camera>, usize) {
 fn url_host(url: &str) -> &str {
     let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
     let authority = rest.split(['/', '?']).next().unwrap_or(rest);
-    authority.rsplit_once('@').map_or(authority, |(_, host)| host).rsplit_once(':').map_or(authority, |(host, _)| host)
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+    host_port.rsplit_once(':').map_or(host_port, |(host, _)| host)
 }
 
 pub fn with_device(cameras: &[Camera], host: &str, device: Vec<Camera>) -> Vec<Camera> {
@@ -166,11 +179,11 @@ pub fn active_after_removal(active: i64, removed: usize) -> i64 {
     }
 }
 
-pub fn active_after_add(shown: i64, stored: usize, total: usize) -> i64 {
+pub fn active_after_add(active: i64, stored: usize) -> i64 {
     match () {
-        _ if total == 0 => 0,
-        _ if shown >= stored as i64 => shown + 1,
-        _ => shown,
+        _ if stored == 0 => 0,
+        _ if active >= stored as i64 => active + 1,
+        _ => active,
     }
 }
 
@@ -184,44 +197,56 @@ pub fn active_after_move(active: i64, from: usize, to: usize) -> i64 {
     }
 }
 
+static EDITING: Mutex<()> = Mutex::new(());
+
+fn listed() -> (Option<Vec<Camera>>, i64) {
+    let read = crate::settingsstore::raw_settings(&[CAMERAS_PATH, ACTIVE_PATH]);
+    (parse(read[0].as_str().unwrap_or_default()), read[1].as_i64().unwrap_or(0))
+}
+
 pub fn stored() -> Option<Vec<Camera>> {
-    let text = crate::settingsstore::raw_setting(CAMERAS_PATH).and_then(|value| value.as_str().map(str::to_string)).unwrap_or_default();
-    parse(&text)
+    listed().0
 }
 
-fn active() -> i64 {
-    crate::settingsstore::raw_setting(ACTIVE_PATH).and_then(|value| value.as_i64()).unwrap_or(0)
+pub fn edit<T>(backend: Option<&dyn Backend>, change: impl FnOnce(&[Camera], i64) -> (Option<(Vec<Camera>, i64)>, T)) -> Option<T> {
+    let _editing = EDITING.lock().unwrap_or_else(PoisonError::into_inner);
+    let (cameras, active) = listed();
+    let (write, answer) = change(&cameras?, active);
+    if let Some((next, next_active)) = write {
+        commit(backend, &next, next_active);
+    }
+    Some(answer)
 }
 
-fn shown(backend: &dyn Backend) -> (i64, usize) {
-    let video = crate::read::object(&backend.get_fields("video", "activeVideoSource,cameraNames"));
-    let total = video.get("cameraNames").and_then(Value::as_array).map_or(0, Vec::len);
-    (crate::read::integer(&video, "activeVideoSource").unwrap_or_else(active), total)
-}
-
-pub fn store(cameras: &[Camera], active: i64) {
-    crate::settingsstore::set_raw(CAMERAS_PATH, &json!(encode(cameras)));
-    crate::settingsstore::set_raw(ACTIVE_PATH, &json!(active));
-}
-
-fn store_through(backend: &dyn Backend, cameras: &[Camera], active: i64) {
-    crate::settingsstore::set(backend, CAMERAS_PATH, &json!({ "value": encode(cameras) }).to_string());
-    crate::settingsstore::set(backend, ACTIVE_PATH, &json!({ "value": active }).to_string());
+fn commit(backend: Option<&dyn Backend>, cameras: &[Camera], active: i64) {
+    let encoded = encode(cameras);
+    crate::settingsstore::set_raw_together(&[(CAMERAS_PATH, json!(encoded)), (ACTIVE_PATH, json!(active))]);
+    if let Some(backend) = backend.filter(|_| crate::qthost::present()) {
+        backend.set(CAMERAS_PATH, &json!({ "value": encoded }).to_string());
+        backend.set(ACTIVE_PATH, &json!({ "value": active }).to_string());
+    }
 }
 
 pub fn adopt(camera: Camera) {
-    if let Some(cameras) = stored() {
-        let (next, at) = with_named(&cameras, camera);
-        store(&next, at as i64);
-    }
+    edit(None, |cameras, _| {
+        let (next, at) = with_named(cameras, camera);
+        (Some((next, at as i64)), ())
+    });
+}
+
+fn device_adopted(cameras: &[Camera], host: &str, device: Vec<Camera>) -> Option<(Vec<Camera>, i64)> {
+    let count = device.len();
+    let next = with_device(cameras, host, device);
+    let at = (next.len() - count) as i64;
+    (count > 0).then_some((next, at))
 }
 
 pub fn adopt_device(host: &str, device: Vec<Camera>) {
-    if let Some(cameras) = stored().filter(|_| !device.is_empty()) {
-        let count = device.len();
-        let next = with_device(&cameras, host, device);
-        store(&next, (next.len() - count) as i64);
-    }
+    edit(None, |cameras, _| (device_adopted(cameras, host, device), ()));
+}
+
+pub fn default_when_empty(camera: Camera) -> bool {
+    edit(None, |cameras, _| (cameras.is_empty().then(|| (vec![camera], 0)), cameras.is_empty())).unwrap_or(false)
 }
 
 fn refused(reason: &str) -> Value {
@@ -239,61 +264,59 @@ fn index_arg(args: &Value, at: usize, count: usize) -> Option<usize> {
 pub fn invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {
     owns(path).then_some(())?;
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
-    let Some(cameras) = stored() else { return Some(refused(UNREADABLE)) };
-    let (current, total) = shown(backend);
-    Some(match path {
-        CAMERAS_ADD => {
-            let camera = normalized(Camera::new(&text_arg(&given, 0), &text_arg(&given, 1), &text_arg(&given, 2)));
-            match problem(&camera.source, &camera.url) {
-                Some(reason) => refused(reason),
-                None => {
-                    let next: Vec<Camera> = cameras.iter().cloned().chain(std::iter::once(camera)).collect();
-                    store_through(backend, &next, active_after_add(current, cameras.len(), total));
-                    json!({ "ok": true, "slot": cameras.len() })
-                }
-            }
-        }
-        CAMERAS_UPDATE => match index_arg(&given, 0, cameras.len()) {
-            None => refused(NO_SUCH_CAMERA),
+    Some(edit(Some(backend), |cameras, active| changed(path, &given, cameras, active)).unwrap_or_else(|| refused(UNREADABLE)))
+}
+
+type Change = (Option<(Vec<Camera>, i64)>, Value);
+
+fn changed(path: &str, given: &Value, cameras: &[Camera], active: i64) -> Change {
+    let refusal = |reason: &str| (None, refused(reason));
+    let checked = |camera: Camera, write: &dyn Fn(Camera) -> Change| match problem(&camera.source, &camera.url) {
+        Some(reason) => refusal(reason),
+        None => write(camera),
+    };
+    match path {
+        CAMERAS_ADD => checked(normalized(Camera::new(&text_arg(given, 0), &text_arg(given, 1), &text_arg(given, 2))), &|camera| {
+            let next = cameras.iter().cloned().chain(std::iter::once(camera)).collect();
+            (Some((next, active_after_add(active, cameras.len()))), json!({ "ok": true, "slot": cameras.len() }))
+        }),
+        CAMERAS_UPDATE => match index_arg(given, 0, cameras.len()) {
+            None => refusal(NO_SUCH_CAMERA),
+            Some(at) => checked(normalized(Camera::new(&text_arg(given, 1), &text_arg(given, 2), &text_arg(given, 3))), &|camera| {
+                let next = cameras.iter().enumerate().map(|(index, existing)| if index == at { camera.clone() } else { existing.clone() }).collect();
+                (Some((next, active)), json!({ "ok": true, "slot": at }))
+            }),
+        },
+        CAMERAS_REMOVE => match index_arg(given, 0, cameras.len()) {
+            None => refusal(NO_SUCH_CAMERA),
             Some(at) => {
-                let camera = normalized(Camera::new(&text_arg(&given, 1), &text_arg(&given, 2), &text_arg(&given, 3)));
-                match problem(&camera.source, &camera.url) {
-                    Some(reason) => refused(reason),
-                    None => {
-                        let next: Vec<Camera> = cameras.iter().enumerate().map(|(index, existing)| if index == at { camera.clone() } else { existing.clone() }).collect();
-                        store_through(backend, &next, current);
-                        json!({ "ok": true, "slot": at })
-                    }
-                }
+                let next = cameras.iter().enumerate().filter(|(index, _)| *index != at).map(|(_, camera)| camera.clone()).collect();
+                (Some((next, active_after_removal(active, at))), json!({ "ok": true }))
             }
         },
-        CAMERAS_REMOVE => match index_arg(&given, 0, cameras.len()) {
-            None => refused(NO_SUCH_CAMERA),
-            Some(at) => {
-                let next: Vec<Camera> = cameras.iter().enumerate().filter(|(index, _)| *index != at).map(|(_, camera)| camera.clone()).collect();
-                store_through(backend, &next, active_after_removal(current, at));
-                json!({ "ok": true })
-            }
-        },
-        CAMERAS_MOVE => match (index_arg(&given, 0, cameras.len()), index_arg(&given, 1, cameras.len())) {
+        CAMERAS_MOVE => match (index_arg(given, 0, cameras.len()), index_arg(given, 1, cameras.len())) {
             (Some(from), Some(to)) => {
                 let moving = cameras[from].clone();
                 let without: Vec<Camera> = cameras.iter().enumerate().filter(|(index, _)| *index != from).map(|(_, camera)| camera.clone()).collect();
-                let next: Vec<Camera> = without[..to].iter().cloned().chain(std::iter::once(moving)).chain(without[to..].iter().cloned()).collect();
-                store_through(backend, &next, active_after_move(current, from, to));
-                json!({ "ok": true, "slot": to })
+                let next = without[..to].iter().cloned().chain(std::iter::once(moving)).chain(without[to..].iter().cloned()).collect();
+                (Some((next, active_after_move(active, from, to))), json!({ "ok": true, "slot": to }))
             }
-            _ => refused(NO_SUCH_CAMERA),
+            _ => refusal(NO_SUCH_CAMERA),
         },
-        _ => return None,
-    })
+        _ => (None, Value::Null),
+    }
 }
 
 pub fn cameras_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let video = crate::read::object(&backend.get_fields("video", "activeVideoSource,cameraStatuses,cameraFromDrone,cameraNames,cameraSources,cameraUrls"));
+    let (cameras, active) = listed();
+    view_of(&video, cameras, active)
+}
+
+fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64) -> Value {
     let strings = |key: &str| -> Vec<String> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default() };
     let drone_flags: Vec<bool> = video.get("cameraFromDrone").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default();
-    let active = crate::read::integer(&video, "activeVideoSource").unwrap_or_else(active);
+    let active = crate::read::integer(video, "activeVideoSource").unwrap_or(stored_active);
     let (names, sources, urls) = (strings("cameraNames"), strings("cameraSources"), strings("cameraUrls"));
     let drone: Vec<Value> = drone_flags
         .iter()
@@ -304,7 +327,7 @@ pub fn cameras_view(backend: &dyn Backend, _args: &[String]) -> Value {
             json!({ "slot": slot, "stored": Value::Null, "title": title(&camera.name, slot), "name": camera.name, "source": camera.source, "url": camera.url, "summary": summary(&camera), "problem": Value::Null, "fromDrone": true, "active": slot as i64 == active })
         })
         .collect();
-    match stored() {
+    match stored {
         None => json!({ "kind": "object", "class": "Cameras", "readable": false, "reason": UNREADABLE, "cameras": drone, "active": active, "kinds": kinds() }),
         Some(cameras) => {
             let mine = cameras.iter().enumerate().map(|(slot, camera)| {
@@ -385,10 +408,68 @@ mod tests {
 
     #[test]
     fn adding_a_camera_leaves_the_one_on_screen_on_screen() {
-        assert_eq!(active_after_add(0, 0, 0), 0, "the first camera of an empty list is the one shown");
-        assert_eq!(active_after_add(1, 3, 3), 1, "a stored camera keeps its place");
-        assert_eq!(active_after_add(3, 3, 5), 4, "a drone camera moves down one as the new camera goes in before it");
-        assert_eq!(active_after_add(0, 3, 3), 0, "a stale setting resolved to the first camera stays on the first, not the new one");
+        assert_eq!(active_after_add(0, 0), 0, "the first camera of an empty list is the one shown");
+        assert_eq!(active_after_add(1, 3), 1, "a stored camera keeps its place");
+        assert_eq!(active_after_add(3, 3), 4, "a remembered drone camera moves down one as the new camera goes in before it");
+    }
+
+    fn list(cameras: &[Camera]) -> Value {
+        json!(cameras.iter().map(|camera| json!([camera.name, camera.source, camera.url])).collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn every_edit_keeps_the_camera_on_screen_and_refuses_without_writing() {
+        let front = cam("Front", SOURCE_RTSP, "rtsp://a/front");
+        let belly = cam("Belly", SOURCE_RTSP, "rtsp://a/belly");
+        let three = vec![front.clone(), belly.clone(), cam("Tail", SOURCE_RTSP, "rtsp://a/tail")];
+        let (write, answer) = changed(CAMERAS_ADD, &json!(["Nose", SOURCE_RTSP, "rtsp://a/nose"]), &three, 3);
+        assert_eq!((write.map(|(next, active)| (next.len(), active)), answer["slot"].as_u64()), (Some((4, 4)), Some(3)), "a drone camera picked earlier stays picked after an add");
+        let (write, answer) = changed(CAMERAS_ADD, &json!(["Nose", SOURCE_RTSP, ""]), &three, 0);
+        assert_eq!((write, answer["reason"].as_str()), (None, Some(NEEDS_ADDRESS)), "a refusal writes nothing");
+        let (write, _) = changed(CAMERAS_ADD, &json!(["", SOURCE_UDP_H264, "UDP://0.0.0.0:5600"]), &[], 2);
+        assert_eq!(write, Some((vec![cam("", SOURCE_UDP_H264, "0.0.0.0:5600")], 0)), "the address is cleaned before it is checked and the first camera is shown");
+        let (write, _) = changed(CAMERAS_UPDATE, &json!([1, "Belly", SOURCE_WEBRTC, "HTTPS://a/belly/whep"]), &three, 2);
+        assert_eq!(write.map(|(next, active)| (next[1].url.clone(), active)), Some(("https://a/belly/whep".to_string(), 2)));
+        assert_eq!(changed(CAMERAS_REMOVE, &json!([0]), &three, 2).0.map(|(next, active)| (next.len(), active)), Some((2, 1)));
+        assert_eq!(changed(CAMERAS_MOVE, &json!([2, 0]), &three, 0).0.map(|(_, active)| active), Some(1));
+        assert_eq!(changed(CAMERAS_REMOVE, &json!([5]), &three, 0), (None, refused(NO_SUCH_CAMERA)));
+        assert_eq!(list(&changed(CAMERAS_MOVE, &json!([0, 1]), &three, 0).0.unwrap().0)[0][0], json!("Belly"));
+    }
+
+    #[test]
+    fn a_stream_address_needs_the_scheme_its_kind_plays() {
+        assert_eq!(problem(SOURCE_RTSP, "rtsp:/10.0.0.5/live"), Some(RTSP_SCHEME));
+        assert_eq!(problem(SOURCE_RTSP, "RTSP://10.0.0.5/live"), None);
+        assert_eq!(problem(SOURCE_WEBRTC, "rtsp://10.0.0.5/live"), Some(WHEP_SCHEME), "a WebRTC camera is not quietly played as RTSP");
+        assert_eq!(problem(SOURCE_WEBRTC, "10.0.0.5:8889/cam/whep"), None, "a bare WHEP address gets http:// added");
+        assert_eq!(normalized(cam("", SOURCE_WEBRTC, "HTTP://cam/whep")).url, "http://cam/whep", "the player matches lowercase schemes");
+    }
+
+    #[test]
+    fn a_device_is_found_by_its_host_with_or_without_credentials_and_port() {
+        assert_eq!(url_host("rtsp://admin:pw@10.0.0.5/live"), "10.0.0.5");
+        assert_eq!(url_host("rtsp://admin:pw@10.0.0.5:554/live"), "10.0.0.5");
+        assert_eq!(url_host("10.0.0.5:5600"), "10.0.0.5");
+        let mine = vec![cam("Phone", SOURCE_BACK_CAMERA, ""), cam("old", SOURCE_RTSP, "rtsp://admin:pw@10.0.0.5/old")];
+        assert_eq!(device_adopted(&mine, "10.0.0.5", vec![cam("front", SOURCE_RTSP, "rtsp://10.0.0.5/front")]), Some((vec![cam("Phone", SOURCE_BACK_CAMERA, ""), cam("front", SOURCE_RTSP, "rtsp://10.0.0.5/front")], 1)), "the device's first camera is shown");
+        assert_eq!(device_adopted(&mine, "10.0.0.5", Vec::new()), None, "a device with no cameras changes nothing");
+    }
+
+    #[test]
+    fn an_unnamed_camera_offered_twice_is_kept_once() {
+        let list = vec![cam("", SOURCE_RTSP, "rtsp://a/live")];
+        assert_eq!(with_named(&list, cam("", SOURCE_RTSP, "rtsp://a/live")), (list.clone(), 0));
+        assert_eq!(with_named(&list, cam("", SOURCE_RTSP, "rtsp://a/other")).1, 1);
+    }
+
+    #[test]
+    fn the_view_lists_drone_cameras_after_the_operators_and_says_when_the_list_is_unreadable() {
+        let video = json!({ "activeVideoSource": 1, "cameraFromDrone": [false, true], "cameraNames": ["Front", "SIYI A8"], "cameraSources": [SOURCE_RTSP, SOURCE_UDP_H264], "cameraUrls": ["rtsp://a/front", "0.0.0.0:5600"] });
+        let shown = view_of(&video, Some(vec![cam("Front", SOURCE_RTSP, "rtsp://a/front")]), 0);
+        let rows = shown["cameras"].as_array().unwrap();
+        assert_eq!(rows.iter().map(|row| (row["title"].clone(), row["stored"].clone(), row["fromDrone"].clone(), row["active"].clone())).collect::<Vec<_>>(), vec![(json!("Front"), json!(0), json!(false), json!(false)), (json!("SIYI A8"), Value::Null, json!(true), json!(true))]);
+        let unreadable = view_of(&video, None, 0);
+        assert_eq!((unreadable["readable"].clone(), unreadable["reason"].clone(), unreadable["cameras"].as_array().map(Vec::len)), (json!(false), json!(UNREADABLE), Some(1)), "drone cameras still show while the operator's list cannot be read");
     }
 
     #[test]

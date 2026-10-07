@@ -1,12 +1,14 @@
 #include "VideoSettings.h"
-#include "VideoManager.h"
 
 #include "QGCLoggingCategory.h"
 #include <QtCore/QSettings>
 #include <QtCore/QVariantList>
 #include <QtCore/QJsonDocument>
+#include <QtCore/QJsonParseError>
 #include <QtCore/QJsonObject>
 #include <QtCore/QUrl>
+
+#include <algorithm>
 
 QGC_LOGGING_CATEGORY(VideoSettingsLog, "Settings.VideoSettings")
 
@@ -120,14 +122,37 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, multiViewEnabled)
     return _multiViewEnabledFact;
 }
 
-QJsonArray VideoSettings::cameraList()
+std::optional<QJsonArray> VideoSettings::cameraList()
 {
-    return QJsonDocument::fromJson(cameras()->rawValue().toString().toUtf8()).array();
+    const QByteArray text = cameras()->rawValue().toString().trimmed().toUtf8();
+    if (text.isEmpty()) {
+        return QJsonArray{};
+    }
+    QJsonParseError error;
+    const QJsonDocument parsed = QJsonDocument::fromJson(text, &error);
+    if ((error.error != QJsonParseError::NoError) || !parsed.isArray()) {
+        return std::nullopt;
+    }
+    return parsed.array();
+}
+
+bool VideoSettings::camerasReadable()
+{
+    return cameraList().has_value();
+}
+
+QJsonArray VideoSettings::_allCameras()
+{
+    QJsonArray all = cameraList().value_or(QJsonArray{});
+    for (const QJsonValue &entry : std::as_const(_droneCameras)) {
+        all.append(entry);
+    }
+    return all;
 }
 
 QJsonObject VideoSettings::_cameraAt(int index)
 {
-    const QJsonArray list = cameraList();
+    const QJsonArray list = _allCameras();
     return (index >= 0 && index < list.size()) ? list.at(index).toObject() : QJsonObject{};
 }
 
@@ -138,6 +163,56 @@ QJsonObject VideoSettings::camera(const QString &title, const QString &source, c
         {QStringLiteral("source"), source.trimmed()},
         {QStringLiteral("url"), url.trimmed()},
     };
+}
+
+int VideoSettings::storedCameraCount()
+{
+    return cameraList().value_or(QJsonArray{}).size();
+}
+
+bool VideoSettings::cameraFromDrone(int index)
+{
+    return (index >= storedCameraCount()) && (index < videoSourceCount());
+}
+
+bool VideoSettings::setDroneCameras(const QJsonArray &drone)
+{
+    if (drone == _droneCameras) {
+        return false;
+    }
+    _droneCameras = drone;
+    emit streamConfiguredChanged(streamConfigured());
+    return true;
+}
+
+int VideoSettings::activeAfterAdd(int active, int stored)
+{
+    if (stored == 0) {
+        return 0;
+    }
+    return (active >= stored) ? active + 1 : active;
+}
+
+int VideoSettings::activeAfterRemoval(int active, int removed)
+{
+    if (active == removed) {
+        return 0;
+    }
+    return (active > removed) ? active - 1 : active;
+}
+
+int VideoSettings::activeAfterMove(int active, int from, int to)
+{
+    if (active == from) {
+        return to;
+    }
+    if ((from < to) && (active > from) && (active <= to)) {
+        return active - 1;
+    }
+    if ((to < from) && (active >= to) && (active < from)) {
+        return active + 1;
+    }
+    return active;
 }
 
 void VideoSettings::storeCameras(const QJsonArray &list, int active)
@@ -153,30 +228,35 @@ void VideoSettings::storeCameras(const QJsonArray &list, int active)
 
 void VideoSettings::adoptCamera(const QString &title, const QString &source, const QString &url)
 {
+    std::optional<QJsonArray> list = cameraList();
+    if (!list) {
+        return;
+    }
     const QJsonObject adopted = camera(title, source, url);
-    QJsonArray list = cameraList();
-    int at = list.size();
-    for (int i = 0; i < list.size(); ++i) {
-        if (!adopted.value(QStringLiteral("name")).toString().isEmpty() && list.at(i).toObject().value(QStringLiteral("name")) == adopted.value(QStringLiteral("name"))) {
-            at = i;
-            break;
-        }
-    }
-    if (at < list.size()) {
-        list.replace(at, adopted);
+    const QString adoptedName = adopted.value(QStringLiteral("name")).toString();
+    const auto named = std::find_if(list->begin(), list->end(), [&adoptedName, &adopted](const QJsonValue &entry) {
+        const QJsonObject existing = entry.toObject();
+        return adoptedName.isEmpty()
+            ? (existing.value(QStringLiteral("source")) == adopted.value(QStringLiteral("source"))) && (existing.value(QStringLiteral("url")) == adopted.value(QStringLiteral("url")))
+            : (existing.value(QStringLiteral("name")).toString() == adoptedName);
+    });
+    const int at = static_cast<int>(std::distance(list->begin(), named));
+    if (at < list->size()) {
+        list->replace(at, adopted);
     } else {
-        list.append(adopted);
+        list->append(adopted);
     }
-    storeCameras(list, at);
+    storeCameras(*list, at);
 }
 
 void VideoSettings::adoptDeviceCameras(const QString &host, const QJsonArray &device)
 {
-    if (device.isEmpty()) {
+    const std::optional<QJsonArray> listed = cameraList();
+    if (device.isEmpty() || !listed) {
         return;
     }
     QJsonArray list;
-    for (const QJsonValue &entry : cameraList()) {
+    for (const QJsonValue &entry : *listed) {
         if (QUrl(entry.toObject().value(QStringLiteral("url")).toString()).host() != host) {
             list.append(entry);
         }
@@ -188,20 +268,52 @@ void VideoSettings::adoptDeviceCameras(const QString &host, const QJsonArray &de
     storeCameras(list, first);
 }
 
-int VideoSettings::videoSourceCount()
+int VideoSettings::addCamera(const QString &title, const QString &source, const QString &url)
 {
-    return cameraList().size();
+    std::optional<QJsonArray> list = cameraList();
+    if (!list) {
+        return -1;
+    }
+    const int at = list->size();
+    list->append(camera(title, source, url));
+    storeCameras(*list, activeAfterAdd(activeVideoSource()->rawValue().toInt(), at));
+    return at;
 }
 
-bool VideoSettings::_isStreamSource(const QString &source)
+void VideoSettings::updateCamera(int index, const QString &title, const QString &source, const QString &url)
 {
-    static const QStringList streamSources = {
-        videoSourceUDPH264, videoSourceUDPH265, videoSourceRTSP, videoSourceTCP,
-        videoSourceMPEGTS, videoSourceWebRTC, videoSource3DRSolo,
-        videoSourceParrotDiscovery, videoSourceYuneecMantisG,
-        videoSourceHerelinkAirUnit, videoSourceHerelinkHotspot,
-    };
-    return streamSources.contains(source);
+    std::optional<QJsonArray> list = cameraList();
+    if (!list || (index < 0) || (index >= list->size())) {
+        return;
+    }
+    list->replace(index, camera(title, source, url));
+    storeCameras(*list, activeVideoSource()->rawValue().toInt());
+}
+
+void VideoSettings::removeCamera(int index)
+{
+    std::optional<QJsonArray> list = cameraList();
+    if (!list || (index < 0) || (index >= list->size())) {
+        return;
+    }
+    list->removeAt(index);
+    storeCameras(*list, activeAfterRemoval(activeVideoSource()->rawValue().toInt(), index));
+}
+
+void VideoSettings::moveCamera(int from, int to)
+{
+    std::optional<QJsonArray> list = cameraList();
+    if (!list || (from < 0) || (from >= list->size()) || (to < 0) || (to >= list->size())) {
+        return;
+    }
+    const QJsonValue moving = list->takeAt(from);
+    list->insert(to, moving);
+    storeCameras(*list, activeAfterMove(activeVideoSource()->rawValue().toInt(), from, to));
+}
+
+int VideoSettings::videoSourceCount()
+{
+    return _allCameras().size();
 }
 
 bool VideoSettings::_sourceNeedsUrl(const QString &source)
@@ -225,8 +337,21 @@ bool VideoSettings::sourceEnabled(int index)
 
 bool VideoSettings::sourceUsable(int index)
 {
+    if ((index < 0) || (index >= videoSourceCount())) {
+        return false;
+    }
     const QString source = videoSourceNameAt(index);
-    return sourceConfigured(index) && (source != QString::fromUtf8(videoDisabled)) && (source != QString::fromUtf8(videoSourceNoVideo)) && !source.isEmpty();
+    if (_sourceNeedsUrl(source)) {
+        return !videoUrlAt(index).isEmpty();
+    }
+    if ((source == QString::fromUtf8(videoSourceHerelinkAirUnit)) || (source == QString::fromUtf8(videoSourceHerelinkHotspot))) {
+        return true;
+    }
+#ifndef QGC_HEADLESS_CORE
+    return UVCReceiver::enabled() && UVCReceiver::deviceExists(source);
+#else
+    return false;
+#endif
 }
 
 QList<int> VideoSettings::switchableIndices()
@@ -266,6 +391,12 @@ QString VideoSettings::currentVideoSourceName()
 QString VideoSettings::currentVideoUrl()
 {
     return videoUrlAt(currentIndex());
+}
+
+QString VideoSettings::storedActiveSourceName()
+{
+    const int active = activeVideoSource()->rawValue().toInt();
+    return (active < storedCameraCount()) ? videoSourceNameAt(active) : QString();
 }
 
 QString VideoSettings::videoSourceNameAt(int index)
@@ -375,32 +506,7 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, rtspTimeout)
 
 bool VideoSettings::streamConfigured(void)
 {
-    if(VideoManager::instance()->autoStreamConfigured()) {
-        qCDebug(VideoSettingsLog) << "Stream auto configured";
-        return true;
-    }
-    QString vSource = currentVideoSourceName();
-    if(vSource == videoSourceNoVideo || vSource == videoDisabled) {
-        return false;
-    }
-    if (_sourceNeedsUrl(vSource)) {
-        return !currentVideoUrl().isEmpty();
-    }
-    if(vSource == videoSourceHerelinkAirUnit) {
-        qCDebug(VideoSettingsLog) << "Stream configured for Herelink Air Unit";
-        return true;
-    }
-    if(vSource == videoSourceHerelinkHotspot) {
-        qCDebug(VideoSettingsLog) << "Stream configured for Herelink Hotspot";
-        return true;
-    }
-#ifndef QGC_HEADLESS_CORE
-    if (UVCReceiver::enabled() && UVCReceiver::deviceExists(vSource)) {
-        qCDebug(VideoSettingsLog) << "Stream configured for UVC";
-        return true;
-    }
-#endif
-    return false;
+    return sourceUsable(currentIndex());
 }
 
 void VideoSettings::_configChanged(QVariant)

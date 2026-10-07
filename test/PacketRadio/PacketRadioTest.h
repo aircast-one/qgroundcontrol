@@ -8,6 +8,7 @@ class PacketRadioTest : public UnitTest
 
 private slots:
     void _videoSettingsRoundTripTest();
+    void _radioGivesBackOnlyItsOwnCameraTest();
     void _keyPathTest();
     void _selectAdapterTest();
 };

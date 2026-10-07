@@ -471,12 +471,45 @@ pub fn raw_setting(path: &str) -> Option<Value> {
     Some(raw(at.group, &at.fact, &at.meta))
 }
 
-fn raw(group: &str, fact: &str, meta: &MetaData) -> Value {
-    let held = match stored().as_ref().and_then(|values| values.get(&key(group, fact)).cloned()) {
+pub fn raw_settings(paths: &[&str]) -> Vec<Value> {
+    let addressed: Vec<Option<Addressed>> = paths.iter().map(|path| address(path)).collect();
+    let values = stored();
+    addressed.iter().map(|at| at.as_ref().map_or(Value::Null, |at| held_in(values.as_ref(), at.group, &at.fact, &at.meta))).collect()
+}
+
+pub fn set_raw_together(writes: &[(&str, Value)]) {
+    let spelled: Vec<(String, String)> = writes
+        .iter()
+        .filter_map(|(path, given)| {
+            let at = address(path)?;
+            typed(&at.meta.value_type, given).map(|value| (key(at.group, &at.fact), spelling(&value)))
+        })
+        .collect();
+    if let Some(values) = stored().as_mut() {
+        spelled.into_iter().for_each(|(key, text)| {
+            values.insert(key, Setting::Text(text));
+        });
+    }
+    persist();
+}
+
+fn held_in(values: Option<&BTreeMap<String, Setting>>, group: &str, fact: &str, meta: &MetaData) -> Value {
+    let held = match values.and_then(|values| values.get(&key(group, fact)).cloned()) {
         Some(Setting::Text(text)) => typed(&meta.value_type, &Value::String(text)),
         _ => None,
     };
     held.or_else(|| default_of(meta)).unwrap_or(Value::Null)
+}
+
+fn raw(group: &str, fact: &str, meta: &MetaData) -> Value {
+    held_in(stored().as_ref(), group, fact, meta)
+}
+
+fn spelling(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        other => other.to_string(),
+    }
 }
 
 fn unit_for(meta: &MetaData) -> Option<crate::units::Conversion> {
@@ -722,10 +755,7 @@ fn store_raw(at: &Addressed, raw_given: &Value) {
     if let Some(given) = typed(&at.meta.value_type, raw_given) {
         let before = raw(at.group, &at.fact, &at.meta);
         let new = if before == given { given } else { validated(at.group, &at.fact, given) };
-        let spelled = match &new {
-            Value::String(text) => text.clone(),
-            other => other.to_string(),
-        };
+        let spelled = spelling(&new);
         if let Some(values) = stored().as_mut() {
             values.insert(key(at.group, &at.fact), Setting::Text(spelled));
             follow_ups(at.group, &at.fact, &new).into_iter().filter(|_| before != new).for_each(|(fact, value)| {

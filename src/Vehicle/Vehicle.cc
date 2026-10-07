@@ -351,7 +351,7 @@ void Vehicle::_commonInit(LinkInterface* link)
     connect(&_flightTimeUpdater, &QTimer::timeout, this, &Vehicle::_updateFlightTime);
 
     VideoSettings *const videoSettings = SettingsManager::instance()->videoSettings();
-    if (sub() && videoSettings->cameraList().isEmpty()) {
+    if (sub() && (videoSettings->cameraList() == QJsonArray{})) {
         videoSettings->storeCameras(QJsonArray{VideoSettings::camera(QString(), QString::fromUtf8(VideoSettings::videoSourceUDPH264), QStringLiteral("0.0.0.0:5600"))}, 0);
         videoSettings->lowLatencyMode()->setRawValue(true);
     }

@@ -38,16 +38,24 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import one.aircast.android.bridge.CameraCommands
 import one.aircast.android.bridge.VideoCommands
-import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcPath
 
 private const val CAMERA_UNDO_WINDOW_MS = 6000L
 
 private data class CameraDraft(val stored: Int?, val name: String, val source: String, val url: String, val refusal: String? = null)
 
-private data class RemovedCamera(val slot: Int, val name: String, val source: String, val url: String, val title: String)
+private data class RemovedCamera(val slot: Int, val name: String, val source: String, val url: String, val title: String, val active: Boolean)
+
+private fun undoRemoval(gone: RemovedCamera, storedCount: Int): String? {
+    val restored = CameraCommands.add(gone.name, gone.source, gone.url)
+        ?: if (gone.slot < storedCount) CameraCommands.move(storedCount, gone.slot) else null
+    if (restored == null && gone.active) VideoCommands.setActiveSource(gone.slot)
+    return restored
+}
 
 @Composable
 fun CamerasEditor(modifier: Modifier = Modifier) {
@@ -59,10 +67,18 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
     var draft by remember { mutableStateOf<CameraDraft?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var removed by remember { mutableStateOf<RemovedCamera?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val change: (() -> String?, (String?) -> Unit) -> Unit = { action, after ->
+        busy = true
+        offMainInOrder {
+            after(action())
+            busy = false
+        }
+    }
 
     LaunchedEffect(removed) {
         if (removed != null) {
-            kotlinx.coroutines.delay(CAMERA_UNDO_WINDOW_MS)
+            delay(CAMERA_UNDO_WINDOW_MS)
             removed = null
         }
     }
@@ -80,29 +96,26 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
         cameras.map { camera ->
             CameraRow(
                 camera = camera,
-                canMoveUp = camera.stored != null && camera.stored > 0,
-                canMoveDown = camera.stored != null && camera.stored < storedCount - 1,
+                canMoveUp = !busy && camera.stored != null && camera.stored > 0,
+                canMoveDown = !busy && camera.stored != null && camera.stored < storedCount - 1,
                 onEdit = { draft = camera.stored?.let { CameraDraft(it, camera.name, camera.source, camera.url) } }.takeIf { camera.stored != null && editable },
-                onShow = { offMainDetached { VideoCommands.setActiveSource(camera.slot) } }.takeIf { !camera.active && camera.problem == null },
-                onMove = { offset -> camera.stored?.let { from -> offMainDetached { notice = CameraCommands.move(from, from + offset) } } },
+                onShow = { offMainInOrder { VideoCommands.setActiveSource(camera.slot) } }.takeIf { !camera.active && camera.problem == null },
+                onMove = { offset -> camera.stored?.let { from -> change({ CameraCommands.move(from, from + offset) }) { notice = it } } },
             )
             HorizontalDivider()
         }
         removed?.let { gone ->
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Removed ${gone.title}.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                TextButton(onClick = {
+                TextButton(enabled = !busy, onClick = {
                     removed = null
-                    offMainDetached {
-                        notice = CameraCommands.add(gone.name, gone.source, gone.url)
-                            ?: CameraCommands.move(storedCount, gone.slot).takeIf { gone.slot < storedCount }
-                    }
+                    change({ undoRemoval(gone, storedCount) }) { notice = it }
                 }) { Text("Undo") }
             }
         }
         Button(
             onClick = { draft = CameraDraft(null, "", reading?.kinds?.firstOrNull()?.raw.orEmpty(), "") },
-            enabled = editable,
+            enabled = editable && !busy,
             modifier = Modifier.padding(16.dp),
         ) { Text("Add camera") }
     }
@@ -111,23 +124,23 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
         CameraDialog(
             draft = current,
             kinds = reading?.kinds.orEmpty(),
+            busy = busy,
             onChange = { draft = it },
             onDismiss = { draft = null },
             onSave = {
-                offMainDetached {
-                    val refusal = current.stored?.let { CameraCommands.update(it, current.name, current.source, current.url) }
+                change({
+                    current.stored?.let { CameraCommands.update(it, current.name, current.source, current.url) }
                         ?: CameraCommands.add(current.name, current.source, current.url)
-                    draft = refusal?.let { current.copy(refusal = it) }
-                }
+                }) { refusal -> draft = refusal?.let { current.copy(refusal = it) } }
             },
             onRemove = current.stored?.let { slot ->
-                {
-                    val title = cameras.firstOrNull { it.stored == slot }?.title.orEmpty()
-                    offMainDetached {
-                        val refusal = CameraCommands.remove(slot)
-                        notice = refusal
-                        if (refusal == null) removed = RemovedCamera(slot, current.name, current.source, current.url, title)
-                        draft = null
+                cameras.firstOrNull { it.stored == slot }?.let { entry ->
+                    {
+                        change({ CameraCommands.remove(slot) }) { refusal ->
+                            notice = refusal
+                            if (refusal == null) removed = RemovedCamera(slot, entry.name, entry.source, entry.url, entry.title, entry.active)
+                            draft = null
+                        }
                     }
                 }
             },
@@ -175,11 +188,13 @@ private fun CameraRow(
 private fun CameraDialog(
     draft: CameraDraft,
     kinds: List<CameraKind>,
+    busy: Boolean,
     onChange: (CameraDraft) -> Unit,
     onDismiss: () -> Unit,
     onSave: () -> Unit,
     onRemove: (() -> Unit)?,
 ) {
+    val save = { if (!busy) onSave() }
     val kind = kinds.firstOrNull { it.raw == draft.source }
     val needsUrl = kind?.needsUrl == true
     var showMore by remember { mutableStateOf(kind?.more == true) }
@@ -196,7 +211,7 @@ private fun CameraDialog(
                 isError = draft.refusal != null,
                 supportingText = draft.refusal?.let { refusal -> { Text(refusal) } },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onSave() }),
+                keyboardActions = KeyboardActions(onDone = { save() }),
             )
         }
     }
@@ -212,17 +227,17 @@ private fun CameraDialog(
                     label = { Text("Name") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = if (needsUrl) ImeAction.Next else ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { onSave() }),
+                    keyboardActions = KeyboardActions(onDone = { save() }),
                 )
                 common.map { (name, members) -> group(name, members) }
                 if (more.isNotEmpty() && !showMore) TextButton(onClick = { showMore = true }) { Text("More types") }
                 if (showMore) more.map { (name, members) -> group(name, members) }
             }
         },
-        confirmButton = { TextButton(onClick = onSave) { Text("Save") } },
+        confirmButton = { TextButton(onClick = save, enabled = !busy) { Text("Save") } },
         dismissButton = {
             Row {
-                onRemove?.let { remove -> TextButton(onClick = remove) { Text("Remove", color = MaterialTheme.colorScheme.error) } }
+                onRemove?.let { remove -> TextButton(onClick = remove, enabled = !busy) { Text("Remove", color = MaterialTheme.colorScheme.error) } }
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }
         },

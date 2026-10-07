@@ -54,6 +54,14 @@ struct CameraList: Equatable {
     let kinds: [CameraKind]
 
     static let empty = CameraList([:])
+    static let unanswered = "The camera list change was not answered."
+
+    static func refusal(_ answer: [String: Any]) -> String? {
+        guard (answer["ok"] as? NSNumber)?.boolValue != true else { return nil }
+        return (answer["reason"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? unanswered
+    }
+
+    var storedCount: Int { entries.filter { $0.stored != nil }.count }
 
     init(_ view: [String: Any]) {
         readable = (view["readable"] as? NSNumber)?.boolValue ?? true

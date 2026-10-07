@@ -1,7 +1,10 @@
 #pragma once
 
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonObject>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
+#include <QtCore/QPair>
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtCore/QVariant>
@@ -88,6 +91,7 @@ private:
     void _applyAdaptiveLink();
     void _applyVideoSettings(const QString &codec);
     void _restoreVideoSettings();
+    static QPair<QJsonArray, int> _withoutRadio(const QJsonArray &cameras, int active, const QJsonObject &replaced, const QJsonObject &shown);
     void _setStatus(Status status);
     void _updateAdapters(const std::vector<DeviceId> &devices);
     static std::vector<DeviceId> _enumerate();
@@ -112,7 +116,7 @@ private:
     qlonglong _lastRtpPackets = 0;
 
     bool _videoOverridden = false;
-    QVariant _savedCameras;
-    QVariant _savedActiveVideoSource;
+    QJsonObject _replacedCamera;
+    QJsonObject _shownCamera;
     QVariant _savedLowLatency;
 };

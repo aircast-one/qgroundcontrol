@@ -4087,6 +4087,11 @@ func checkVideoSources() {
     let unreadable = CameraList(["class": "Cameras", "readable": false as NSNumber, "reason": "Unreadable", "cameras": [Any](), "kinds": [Any]()])
     expect(!unreadable.readable && unreadable.reason == "Unreadable", "the core's refusal reason reaches the head")
     expect(CameraList.empty.readable && CameraList.empty.entries.isEmpty, "no answer reads as no cameras")
+    expect(list.storedCount == 1, "only the operator's own cameras can be reordered")
+    expect(CameraList.refusal(["ok": true as NSNumber]) == nil, "an accepted change is no failure")
+    expect(CameraList.refusal(["ok": false as NSNumber, "reason": "This kind of stream needs an address."]) ?? "",
+           "This kind of stream needs an address.", "the core's reason is what the operator reads")
+    expect(CameraList.refusal([:]) ?? "", CameraList.unanswered, "a change nobody answered says so rather than looking accepted")
 }
 
 checkVideoSources()

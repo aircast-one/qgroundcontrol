@@ -12,6 +12,8 @@
 #include "wfbng_link.h"
 
 #include <QtCore/QFile>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonObject>
 #include <QtCore/QFileInfo>
 #include <QtCore/QTemporaryDir>
 #include <QtTest/QTest>
@@ -81,6 +83,40 @@ void PacketRadioTest::_videoSettingsRoundTripTest()
     QCOMPARE(video->cameras()->rawValue().toString(), mine);
     QCOMPARE(video->currentIndex(), 0);
     QVERIFY(!video->lowLatencyMode()->rawValue().toBool());
+
+    manager._applyVideoSettings(QStringLiteral("H264"));
+    QCOMPARE(video->addCamera(QStringLiteral("Belly"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://10.0.0.5:8554/belly")), 2);
+    manager._restoreVideoSettings();
+    QCOMPARE(video->videoSourceCount(), 2);
+    QCOMPARE(video->cameraName(0), QStringLiteral("Front"));
+    QCOMPARE(video->cameraName(1), QStringLiteral("Belly"));
+    QCOMPARE(video->activeVideoSource()->rawValue().toInt(), 0);
+
+    video->cameras()->setRawValue(QStringLiteral("{not a list"));
+    manager._applyVideoSettings(QStringLiteral("H264"));
+    manager._restoreVideoSettings();
+    QCOMPARE(video->cameras()->rawValue().toString(), QStringLiteral("{not a list"));
+}
+
+void PacketRadioTest::_radioGivesBackOnlyItsOwnCameraTest()
+{
+    const QString rtsp = QString::fromUtf8(VideoSettings::videoSourceRTSP);
+    const QJsonObject front = VideoSettings::camera(QStringLiteral("Front"), rtsp, QStringLiteral("rtsp://10.0.0.5/front"));
+    const QJsonObject belly = VideoSettings::camera(QStringLiteral("Belly"), rtsp, QStringLiteral("rtsp://10.0.0.5/belly"));
+    const QJsonObject radio = VideoSettings::camera(QStringLiteral("Packet radio"), QString::fromUtf8(VideoSettings::videoSourceUDPH264), QStringLiteral("0.0.0.0:5600"));
+    const QJsonObject operatorsRadio = VideoSettings::camera(QStringLiteral("Packet radio"), rtsp, QStringLiteral("rtsp://10.0.0.7/radio"));
+
+    const auto [restored, shown] = PacketRadioManager::_withoutRadio(QJsonArray{front, radio}, 1, operatorsRadio, front);
+    QCOMPARE(restored, (QJsonArray{front, operatorsRadio}));
+    QCOMPARE(shown, 0);
+
+    const auto [kept, picked] = PacketRadioManager::_withoutRadio(QJsonArray{radio, front, belly}, 2, QJsonObject{}, front);
+    QCOMPARE(kept, (QJsonArray{front, belly}));
+    QCOMPARE(picked, 1);
+
+    const auto [untouched, same] = PacketRadioManager::_withoutRadio(QJsonArray{front, belly}, 1, QJsonObject{}, front);
+    QCOMPARE(untouched, (QJsonArray{front, belly}));
+    QCOMPARE(same, 1);
 }
 
 void PacketRadioTest::_keyPathTest()

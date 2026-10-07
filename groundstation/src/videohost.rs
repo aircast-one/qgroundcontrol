@@ -47,7 +47,7 @@ fn text(name: &str) -> String {
 pub fn settings_from(text: &dyn Fn(&str) -> String, flag: &dyn Fn(&str, bool) -> bool, number: &dyn Fn(&str, i64) -> i64) -> Settings {
     Settings {
         cameras: crate::cameras::parse(&text(crate::cameras::CAMERAS_FACT)).unwrap_or_default().into_iter().map(|camera| SourceSlot { source: camera.source, url: camera.url, name: camera.name, drone: false }).collect(),
-        active_source: number("activeVideoSource", 0),
+        active_source: number(crate::cameras::ACTIVE_FACT, 0),
         multi_view: flag("multiViewEnabled", false),
         stream_enabled: flag("streamEnabled", true),
         low_latency: flag("lowLatencyMode", false),
@@ -71,7 +71,13 @@ pub fn with_drone(settings: Settings, drone: &[(String, u8, u8, String)]) -> Set
 }
 
 fn stored_settings() -> Settings {
-    let settings = settings_from(&text, &|name, default| setting(name).as_bool().unwrap_or(default), &|name, default| setting(name).as_i64().unwrap_or(default));
+    let list = crate::settingsstore::raw_settings(&[crate::cameras::CAMERAS_PATH, crate::cameras::ACTIVE_PATH]);
+    let read = |name: &str| match name {
+        crate::cameras::CAMERAS_FACT => list[0].clone(),
+        crate::cameras::ACTIVE_FACT => list[1].clone(),
+        _ => setting(name),
+    };
+    let settings = settings_from(&|name| read(name).as_str().unwrap_or_default().trim().to_string(), &|name, default| read(name).as_bool().unwrap_or(default), &|name, default| read(name).as_i64().unwrap_or(default));
     Settings { save_path_set: crate::settingsstore::video_save_path().is_some(), recording_format_valid: extension(recording_format()).is_some(), ..settings }
 }
 

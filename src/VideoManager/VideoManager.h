@@ -5,6 +5,7 @@
 
 #include <QtCore/QFuture>
 #include <QtCore/QHash>
+#include <QtCore/QJsonArray>
 #include <QtCore/QMutex>
 #include <QtCore/QPointer>
 #include <QtCore/QPromise>
@@ -27,6 +28,7 @@ class QNetworkAccessManager;
 class SubtitleWriter;
 class VideoCloudFailover;
 class Vehicle;
+class QGCVideoStreamInfo;
 class VideoReceiver;
 class VideoSettings;
 
@@ -196,6 +198,8 @@ private:
     void _initVideoReceiver(VideoReceiver *receiver, QQuickWindow *window);
 #endif
     bool _updateAutoStream(VideoReceiver *receiver);
+    QJsonArray _droneCameras() const;
+    static QPair<QString, QString> _announcedSource(const QGCVideoStreamInfo *info);
     bool _updateUVC(VideoReceiver *receiver);
     bool _updateSettings(VideoReceiver *receiver);
     bool _updateVideoUri(VideoReceiver *receiver, const QString &uri);

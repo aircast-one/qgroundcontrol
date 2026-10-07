@@ -12,6 +12,7 @@
 #include "AircastCloudLink.h"
 #include "LinkInterface.h"
 #include "LinkManager.h"
+#include "LogManager.h"
 #include "QGCApplication.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
@@ -28,6 +29,8 @@
 #include <QtNetwork/QTcpSocket>
 #include <QtCore/QRegularExpression>
 #include <QtTest/QTest>
+
+#include <algorithm>
 
 namespace {
 
@@ -46,9 +49,10 @@ public:
                     ? QByteArrayLiteral("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                     : QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ")
                         + QByteArray::number(body.size()) + QByteArrayLiteral("\r\nConnection: close\r\n\r\n") + body;
-                const auto respond = [socket, response]() {
+                const auto respond = [this, socket, response]() {
                     socket->write(response);
                     socket->disconnectFromHost();
+                    answered++;
                 };
                 if (responseDelayMs > 0) {
                     QTimer::singleShot(responseDelayMs, socket, respond);
@@ -63,6 +67,7 @@ public:
     QString hostWithPort() const { return QStringLiteral("127.0.0.1:%1").arg(_server.serverPort()); }
 
     int responseDelayMs = 0;
+    int answered = 0;
 
     void setDevice(const QStringList &cameras, const QStringList &telemetryEndpoints)
     {
@@ -112,9 +117,13 @@ void _removeAircastLinkConfigs()
         LinkManager::instance()->removeConfiguration(config);
     }
 
-    for (int attempt = 0; (attempt < 50) && !LinkManager::instance()->links().isEmpty(); ++attempt) {
-        QTest::qWait(20);
-    }
+    const auto aircastLinkOpen = []() {
+        const QList<SharedLinkInterfacePtr> links = LinkManager::instance()->links();
+        return std::any_of(links.begin(), links.end(), [](const SharedLinkInterfacePtr &link) {
+            return link->linkConfiguration() && link->linkConfiguration()->name().startsWith(kLinkName);
+        });
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(!aircastLinkOpen(), 1000);
 }
 
 void _applySetupDeepLink(const FakeAircastd &device)
@@ -250,12 +259,19 @@ void AircastDeviceSetupTest::_clientOnlyTelemetryEndpointCreatesNoLink()
     device.setDevice({QStringLiteral("cam1")}, {QStringLiteral("udpc:10.0.0.5:14550")});
 
     expectLogMessage("API.QGCApplication", QtWarningMsg, QRegularExpression(QStringLiteral("no udps/tcps telemetry endpoint")));
+    const qsizetype logged = LogManager::capturedMessages().size();
     _applySetupDeepLink(device);
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
     QTRY_COMPARE_WITH_TIMEOUT(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/cam1"), 5000);
 
-    QTest::qWait(200);
+    const auto warned = [logged]() {
+        const QList<LogEntry> messages = LogManager::capturedMessages();
+        return std::any_of(messages.begin() + qMin(logged, messages.size()), messages.end(), [](const LogEntry &entry) {
+            return entry.message.contains(QStringLiteral("no udps/tcps telemetry endpoint"));
+        });
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(warned(), 5000);
     verifyExpectedLogMessage();
     QCOMPARE(_aircastLinkConfigs().size(), 0);
 }
@@ -275,7 +291,7 @@ void AircastDeviceSetupTest::_staleReplyFromSupersededSetupIsIgnored()
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
     QTRY_COMPARE_WITH_TIMEOUT(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"), 5000);
 
-    QTest::qWait(deviceA.responseDelayMs + 200);
+    QTRY_COMPARE_WITH_TIMEOUT(deviceA.answered, 2, 5000);
     QCOMPARE(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"));
     QCOMPARE(videoSettings->cameraName(videoSettings->currentIndex()), QStringLiteral("fresh (127.0.0.1)"));
 

@@ -53,32 +53,46 @@ SettingsPage {
 
         ListModel { id: camerasModel }
 
+        property bool readable: true
+
         function parseCameras() {
-            try { return JSON.parse(_videoSettings.cameras.rawValue || "[]") }
-            catch (e) { console.warn("VideoSettings: invalid cameras JSON:", e); return [] }
+            try {
+                const parsed = JSON.parse(_videoSettings.cameras.rawValue || "[]")
+                return Array.isArray(parsed) ? parsed : null
+            } catch (e) {
+                return null
+            }
         }
 
         function camRow(camIndex, name, source, url) {
             return { camIndex: camIndex, camName: name, camSource: source, camUrl: url }
         }
 
-        function reload() {
-            camerasModel.clear()
-            parseCameras().forEach((cam, i) => camerasModel.append(camRow(i, cam.name || "", cam.source || _videoSettings.disabledVideoSource, cam.url || "")))
+        function rowsOf(cameras) {
+            return cameras.map((cam, i) => camRow(i, cam.name || "", cam.source || _videoSettings.disabledVideoSource, cam.url || ""))
         }
 
-        function storeCameras(cameras) {
-            _videoSettings.cameras.rawValue = JSON.stringify(cameras)
+        function reload() {
+            const cameras = parseCameras()
+            readable = cameras !== null
+            const rows = rowsOf(cameras || [])
+            const same = rows.length === camerasModel.count && rows.every((row, i) => {
+                const shown = camerasModel.get(i)
+                return shown.camName === row.camName && shown.camSource === row.camSource && shown.camUrl === row.camUrl
+            })
+            if (same) {
+                return
+            }
+            camerasModel.clear()
+            rows.forEach(row => camerasModel.append(row))
         }
 
         function saveCamera(camIndex, name, source, url) {
-            const cameras = parseCameras()
-            if (cameras.length !== camerasModel.count) {
-                reload()
+            if (!readable || camIndex >= camerasModel.count) {
                 return
             }
             camerasModel.set(camIndex, camRow(camIndex, name, source, url))
-            storeCameras(cameras.map((cam, i) => i === camIndex ? { name: name, source: source, url: url } : cam))
+            _videoSettings.updateCamera(camIndex, name, source, url)
         }
 
         function urlForSource(source, currentUrl) {
@@ -86,18 +100,14 @@ SettingsPage {
         }
 
         function addCamera() {
-            const cameras = parseCameras()
-            storeCameras([...cameras, { name: "", source: _videoSettings.disabledVideoSource, url: "" }])
-            selectedIndex = cameras.length
+            const at = _videoSettings.addCamera("", _videoSettings.disabledVideoSource, "")
+            if (at >= 0) {
+                selectedIndex = at
+            }
         }
 
         function removeCamera(camIndex) {
-            storeCameras(parseCameras().filter((_, i) => i !== camIndex))
-            if (_videoManager.activeVideoSource === camIndex) {
-                _videoManager.setActiveVideoSource(0)
-            } else if (_videoManager.activeVideoSource > camIndex) {
-                _videoManager.setActiveVideoSource(_videoManager.activeVideoSource - 1)
-            }
+            _videoSettings.removeCamera(camIndex)
             selectedIndex = -1
         }
 
@@ -258,11 +268,19 @@ SettingsPage {
                 }
             }
 
+            QGCLabel {
+                width:     parent.width
+                visible:   !camList.readable
+                text:      qsTr("The saved camera list cannot be read, so it is left as it is.")
+                color:     camList._qgcPal.colorRed
+                wrapMode:  Text.WordWrap
+            }
+
             PlanGroupRow {
                 objectName:  "addCameraRow"
                 text:        "＋  " + qsTr("Add Camera")
                 textColor:   camList._qgcPal.primaryButton
-                interactive: true
+                interactive: camList.readable
                 onClicked:   camList.addCamera()
             }
         }

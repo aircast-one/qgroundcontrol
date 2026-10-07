@@ -7,6 +7,8 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonObject>
 
+#include <optional>
+
 class VideoSettings : public SettingsGroup
 {
     Q_OBJECT
@@ -63,11 +65,23 @@ public:
     bool     sourceUsable           (int index);
     QList<int> tileCameraIndices     ();
 
-    QJsonArray cameraList           ();
+    std::optional<QJsonArray> cameraList();
+    Q_INVOKABLE bool camerasReadable();
     void     storeCameras           (const QJsonArray &cameras, int active);
     void     adoptCamera            (const QString &title, const QString &source, const QString &url);
     void     adoptDeviceCameras     (const QString &host, const QJsonArray &device);
+    Q_INVOKABLE int  addCamera      (const QString &title, const QString &source, const QString &url);
+    Q_INVOKABLE void updateCamera   (int index, const QString &title, const QString &source, const QString &url);
+    Q_INVOKABLE void removeCamera   (int index);
+    Q_INVOKABLE void moveCamera     (int from, int to);
+    int      storedCameraCount      ();
+    bool     cameraFromDrone        (int index);
+    bool     setDroneCameras        (const QJsonArray &drone);
+    QString  storedActiveSourceName ();
     static QJsonObject camera       (const QString &title, const QString &source, const QString &url);
+    static int activeAfterAdd       (int active, int stored);
+    static int activeAfterRemoval   (int active, int removed);
+    static int activeAfterMove      (int active, int from, int to);
 
     QString  rtspVideoSource        () { return videoSourceRTSP; }
     QString  udp264VideoSource      () { return videoSourceUDPH264; }
@@ -102,7 +116,9 @@ private slots:
 private:
     void _setForceVideoDecodeList();
     QJsonObject _cameraAt           (int index);
-    static bool _isStreamSource     (const QString &source);
+    QJsonArray _allCameras          ();
     static bool _sourceNeedsUrl     (const QString &source);
+
+    QJsonArray _droneCameras;
 
 };

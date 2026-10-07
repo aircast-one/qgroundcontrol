@@ -385,23 +385,62 @@ void PacketRadioManager::_applyAdaptiveLink()
     _link->set_alink_tx_power(settings->alinkTxPower()->rawValue().toInt());
 }
 
+namespace {
+
+const QString kRadioCamera = QStringLiteral("Packet radio");
+
+int indexNamed(const QJsonArray &cameras, const QString &name)
+{
+    const auto found = std::find_if(cameras.begin(), cameras.end(), [&name](const QJsonValue &entry) {
+        return entry.toObject().value(QStringLiteral("name")).toString() == name;
+    });
+    return (found == cameras.end()) ? -1 : static_cast<int>(std::distance(cameras.begin(), found));
+}
+
+}
+
 void PacketRadioManager::_applyVideoSettings(const QString &codec)
 {
     VideoSettings *video = SettingsManager::instance()->videoSettings();
+    const std::optional<QJsonArray> cameras = video->cameraList();
+    if (!cameras) {
+        return;
+    }
 
     if (!_videoOverridden) {
-        _savedCameras = video->cameras()->rawValue();
-        _savedActiveVideoSource = video->activeVideoSource()->rawValue();
+        const int replaced = indexNamed(*cameras, kRadioCamera);
+        const int shown = video->activeVideoSource()->rawValue().toInt();
+        _replacedCamera = (replaced >= 0) ? cameras->at(replaced).toObject() : QJsonObject{};
+        _shownCamera = ((shown >= 0) && (shown < cameras->size())) ? cameras->at(shown).toObject() : QJsonObject{};
         _savedLowLatency = video->lowLatencyMode()->rawValue();
         _videoOverridden = true;
     }
 
     const QString source = (codec == QStringLiteral("H265")) ? VideoSettings::videoSourceUDPH265
                                                              : VideoSettings::videoSourceUDPH264;
-    video->adoptCamera(QStringLiteral("Packet radio"), source, QStringLiteral("0.0.0.0:%1").arg(kVideoPort));
+    video->adoptCamera(kRadioCamera, source, QStringLiteral("0.0.0.0:%1").arg(kVideoPort));
     if (!video->lowLatencyMode()->rawValue().toBool()) {
         video->lowLatencyMode()->setRawValue(true);
     }
+}
+
+QPair<QJsonArray, int> PacketRadioManager::_withoutRadio(const QJsonArray &cameras, int active, const QJsonObject &replaced, const QJsonObject &shown)
+{
+    const int at = indexNamed(cameras, kRadioCamera);
+    if (at < 0) {
+        return {cameras, active};
+    }
+    QJsonArray next = cameras;
+    if (replaced.isEmpty()) {
+        next.removeAt(at);
+    } else {
+        next.replace(at, replaced);
+    }
+    if (active == at) {
+        const auto found = std::find(next.begin(), next.end(), QJsonValue(shown));
+        return {next, (shown.isEmpty() || (found == next.end())) ? 0 : static_cast<int>(std::distance(next.begin(), found))};
+    }
+    return {next, (replaced.isEmpty() && (active > at)) ? active - 1 : active};
 }
 
 void PacketRadioManager::_restoreVideoSettings()
@@ -409,11 +448,15 @@ void PacketRadioManager::_restoreVideoSettings()
     if (!_videoOverridden) {
         return;
     }
-    VideoSettings *video = SettingsManager::instance()->videoSettings();
-    video->cameras()->setRawValue(_savedCameras);
-    video->activeVideoSource()->setRawValue(_savedActiveVideoSource);
-    video->lowLatencyMode()->setRawValue(_savedLowLatency);
     _videoOverridden = false;
+    VideoSettings *video = SettingsManager::instance()->videoSettings();
+    video->lowLatencyMode()->setRawValue(_savedLowLatency);
+    const std::optional<QJsonArray> cameras = video->cameraList();
+    if (!cameras) {
+        return;
+    }
+    const auto [next, active] = _withoutRadio(*cameras, video->activeVideoSource()->rawValue().toInt(), _replacedCamera, _shownCamera);
+    video->storeCameras(next, active);
 }
 
 QString PacketRadioManager::_resolveKeyPath()

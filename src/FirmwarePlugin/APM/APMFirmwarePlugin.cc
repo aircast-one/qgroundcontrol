@@ -481,7 +481,7 @@ void APMFirmwarePlugin::initializeVehicle(Vehicle *vehicle)
         initializeStreamRates(vehicle);
     }
 
-    if (SettingsManager::instance()->videoSettings()->currentVideoSourceName() == VideoSettings::videoSource3DRSolo) {
+    if (SettingsManager::instance()->videoSettings()->storedActiveSourceName() == QString::fromUtf8(VideoSettings::videoSource3DRSolo)) {
         _soloVideoHandshake();
     }
 }

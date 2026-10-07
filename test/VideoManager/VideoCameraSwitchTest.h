@@ -12,5 +12,11 @@ private slots:
     void _widgetRoles();
     void _tileCameraNumbers();
     void _urlWhitespaceIsTrimmed();
+    void _currentCameraFallsBackToTheFirstUsable();
+    void _adoptingReplacesTheSameCamera();
+    void _deviceSetupReplacesOnlyThatHost();
+    void _listEditsKeepTheCameraOnScreen();
+    void _droneCameraIsLiveOnly();
+    void _unreadableListIsLeftAlone();
     void _videoStatsReadLikeTheWatchPage();
 };

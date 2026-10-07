@@ -425,9 +425,7 @@ const SEVERITY_CRITICAL: u8 = 2;
 const TYPE_SUBMARINE: u8 = 12;
 
 fn sub_video_defaults() {
-    let listed = crate::settingsstore::raw_setting(crate::cameras::CAMERAS_PATH).and_then(|v| v.as_str().map(crate::cameras::parse)).flatten();
-    if listed.is_some_and(|cameras| cameras.is_empty()) {
-        crate::cameras::store(&[crate::cameras::Camera::new("", crate::videostate::SOURCE_UDP_H264, "0.0.0.0:5600")], 0);
+    if crate::cameras::default_when_empty(crate::cameras::Camera::new("", crate::videostate::SOURCE_UDP_H264, "0.0.0.0:5600")) {
         crate::settingsstore::written("Video/lowLatencyMode", "true");
     }
 }

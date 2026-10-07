@@ -72,6 +72,16 @@ void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
     QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 1);
     QCOMPARE(video->videoSourceCount(), 2);
 
+    const QJsonObject renamed = VideoSettings::camera(QStringLiteral("Nose"), QString::fromUtf8(VideoSettings::videoSourceRTSP), SkydroidH16Links::cameraUrl(SkydroidH16Links::kCameraPaths.first()));
+    video->storeCameras(QJsonArray{SkydroidH16Links::cameras().at(1), renamed}, 1);
+    QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 0);
+    QCOMPARE(video->cameraName(1), QStringLiteral("Nose"));
+    QCOMPARE(video->activeVideoSource()->rawValue().toInt(), 1);
+
+    video->cameras()->setRawValue(QStringLiteral("{not a list"));
+    QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 0);
+    QCOMPARE(video->cameras()->rawValue().toString(), QStringLiteral("{not a list"));
+
     video->storeCameras(QJsonArray{VideoSettings::camera(QStringLiteral("Mine"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://10.0.0.5/mine"))}, 0);
     QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 0);
     QCOMPARE(video->videoUrlAt(0), QStringLiteral("rtsp://10.0.0.5/mine"));

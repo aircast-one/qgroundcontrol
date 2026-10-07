@@ -122,6 +122,9 @@ struct SettingsView: View {
                                  HStack(spacing: Overlay.step) {
                                      if camera.active {
                                          Text("On screen").font(.caption).foregroundColor(.accentColor)
+                                     } else if camera.problem == nil {
+                                         Button("Show") { video.showCamera(camera) }
+                                             .fixedSize()
                                      }
                                      if camera.stored == nil {
                                          Text("From the drone").font(.caption).foregroundColor(.secondary)
@@ -132,6 +135,12 @@ struct SettingsView: View {
                                              }
                                              .frame(width: 200)
                                          }
+                                         Button { video.moveCamera(camera, by: -1) } label: { Image(systemName: "chevron.up") }
+                                             .disabled((camera.stored ?? 0) == 0)
+                                             .help("Move \(camera.title) up")
+                                         Button { video.moveCamera(camera, by: 1) } label: { Image(systemName: "chevron.down") }
+                                             .disabled((camera.stored ?? 0) >= video.cameraList.storedCount - 1)
+                                             .help("Move \(camera.title) down")
                                          Button("Remove") { video.removeCamera(camera) }
                                              .fixedSize()
                                      }

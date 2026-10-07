@@ -3,6 +3,7 @@ use std::sync::{LazyLock, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use serde_json::{Value, json};
 
+use crate::cameras::{Camera, with_named};
 use crate::packetradio::{ANTENNA_COUNT, Adapter, DEFAULT_KEY_FILE, Key, Out, POLL_INTERVAL_MS, PacketRadio, Settings, Status};
 
 pub trait Radio {
@@ -24,16 +25,37 @@ pub struct Poll {
     pub packets_lost: i32,
 }
 
+pub type CameraEdit<'a> = &'a dyn Fn(&[Camera], i64) -> Option<(Vec<Camera>, i64)>;
+
 pub trait Store {
     fn read(&self, key: &str) -> Option<String>;
     fn write(&self, key: &str, value: Option<&str>);
+    fn edit_cameras(&self, change: CameraEdit) -> Option<(Vec<Camera>, i64)>;
 }
 
-const VIDEO_CAMERAS: &str = "Video/cameras";
-const VIDEO_ACTIVE: &str = "Video/activeVideoSource";
 const VIDEO_LOW_LATENCY: &str = "Video/lowLatencyMode";
-const VIDEO_KEYS: [&str; 3] = [VIDEO_CAMERAS, VIDEO_ACTIVE, VIDEO_LOW_LATENCY];
 pub const RADIO_CAMERA: &str = "Packet radio";
+
+#[derive(Debug, Clone, PartialEq)]
+struct SavedVideo {
+    replaced: Option<Camera>,
+    shown: Option<Camera>,
+    low_latency: Option<String>,
+}
+
+fn without_radio(cameras: &[Camera], active: i64, replaced: Option<&Camera>, shown: Option<&Camera>) -> Option<(Vec<Camera>, i64)> {
+    let at = cameras.iter().position(|camera| camera.name == RADIO_CAMERA)?;
+    let next: Vec<Camera> = match replaced {
+        Some(previous) => cameras.iter().enumerate().map(|(index, camera)| if index == at { previous.clone() } else { camera.clone() }).collect(),
+        None => cameras.iter().enumerate().filter(|(index, _)| *index != at).map(|(_, camera)| camera.clone()).collect(),
+    };
+    let restored = match () {
+        _ if active == at as i64 => shown.and_then(|camera| next.iter().position(|kept| kept == camera)).map_or(0, |index| index as i64),
+        _ if replaced.is_none() && active > at as i64 => active - 1,
+        _ => active,
+    };
+    Some((next, restored))
+}
 
 #[derive(Default)]
 pub struct Driver {
@@ -41,7 +63,7 @@ pub struct Driver {
     last: Option<Settings>,
     retry_due: Option<u64>,
     poll_due: Option<u64>,
-    saved_video: Option<Vec<(&'static str, Option<String>)>>,
+    saved_video: Option<SavedVideo>,
 }
 
 fn link_fields(settings: &Settings) -> (u8, i64, &str, bool, &str) {
@@ -108,17 +130,28 @@ impl Driver {
             Out::StopPolling => self.poll_due = None,
             Out::Adaptive { enabled, tx_power } => radio.adaptive(enabled, tx_power),
             Out::ApplyVideo { source, host, port, low_latency, save_previous } => {
-                if save_previous || self.saved_video.is_none() {
-                    self.saved_video = Some(VIDEO_KEYS.iter().map(|key| (*key, store.read(key))).collect());
+                let radio = Camera::new(RADIO_CAMERA, source, &format!("{host}:{port}"));
+                let low_latency_before = store.read(VIDEO_LOW_LATENCY);
+                let before = store.edit_cameras(&|cameras, _| {
+                    let (next, at) = with_named(cameras, radio.clone());
+                    Some((next, at as i64))
+                });
+                if let Some((cameras, active)) = before {
+                    if save_previous || self.saved_video.is_none() {
+                        self.saved_video = Some(SavedVideo {
+                            replaced: cameras.iter().find(|camera| camera.name == RADIO_CAMERA).cloned(),
+                            shown: usize::try_from(active).ok().and_then(|at| cameras.get(at)).cloned(),
+                            low_latency: low_latency_before,
+                        });
+                    }
+                    store.write(VIDEO_LOW_LATENCY, Some(if low_latency { "true" } else { "false" }));
                 }
-                let listed = crate::cameras::parse(&store.read(VIDEO_CAMERAS).unwrap_or_default()).unwrap_or_default();
-                let (cameras, at) = crate::cameras::with_named(&listed, crate::cameras::Camera::new(RADIO_CAMERA, source, &format!("{host}:{port}")));
-                store.write(VIDEO_CAMERAS, Some(&crate::cameras::encode(&cameras)));
-                store.write(VIDEO_ACTIVE, Some(&at.to_string()));
-                store.write(VIDEO_LOW_LATENCY, Some(if low_latency { "true" } else { "false" }));
             }
             Out::RestoreVideo => {
-                self.saved_video.take().into_iter().flatten().for_each(|(key, value)| store.write(key, value.as_deref()));
+                if let Some(saved) = self.saved_video.take() {
+                    store.edit_cameras(&|cameras, active| without_radio(cameras, active, saved.replaced.as_ref(), saved.shown.as_ref()));
+                    store.write(VIDEO_LOW_LATENCY, saved.low_latency.as_deref());
+                }
             }
             Out::Status(_) | Out::Statistics | Out::Adapters => {}
         });
@@ -352,6 +385,10 @@ impl Store for SettingsStore {
             None => crate::settingsstore::forgotten(key),
         }
     }
+
+    fn edit_cameras(&self, change: CameraEdit) -> Option<(Vec<Camera>, i64)> {
+        crate::cameras::edit(None, |cameras, active| (change(cameras, active), (cameras.to_vec(), active)))
+    }
 }
 
 static NATIVE: OnceLock<Native> = OnceLock::new();
@@ -471,6 +508,9 @@ mod tests {
     #[derive(Default)]
     struct Memory(RefCell<BTreeMap<String, String>>);
 
+    const VIDEO_CAMERAS: &str = "Video/cameras";
+    const VIDEO_ACTIVE: &str = "Video/activeVideoSource";
+
     impl Store for Memory {
         fn read(&self, key: &str) -> Option<String> {
             self.0.borrow().get(key).cloned()
@@ -480,6 +520,15 @@ mod tests {
                 Some(text) => self.0.borrow_mut().insert(key.to_string(), text.to_string()),
                 None => self.0.borrow_mut().remove(key),
             };
+        }
+        fn edit_cameras(&self, change: CameraEdit) -> Option<(Vec<Camera>, i64)> {
+            let cameras = crate::cameras::parse(&self.read(VIDEO_CAMERAS).unwrap_or_default())?;
+            let active = self.read(VIDEO_ACTIVE).and_then(|text| text.parse().ok()).unwrap_or(0);
+            if let Some((next, at)) = change(&cameras, active) {
+                self.write(VIDEO_CAMERAS, Some(&crate::cameras::encode(&next)));
+                self.write(VIDEO_ACTIVE, Some(&at.to_string()));
+            }
+            Some((cameras, active))
         }
     }
 
@@ -507,8 +556,37 @@ mod tests {
         driver.tick(&radio, &store, &Settings { enabled: false, ..enabled() }, Some("/k/default.key"), 2 * POLL_INTERVAL_MS);
         assert_eq!(driver.machine.status(), Status::Disabled);
         assert_eq!(store.read(VIDEO_CAMERAS), Some(mine), "the operator's own cameras come back as they were");
-        assert_eq!(store.read(VIDEO_ACTIVE), None, "a setting that was never written is forgotten again, not left pointing at the radio");
+        assert_eq!(store.read(VIDEO_ACTIVE).as_deref(), Some("0"), "and the camera that was on screen is on screen again");
         assert_eq!(radio.calls.borrow().last().map(String::as_str), Some("stop"));
+    }
+
+    #[test]
+    fn turning_the_radio_off_takes_only_the_radio_camera_away() {
+        let front = Camera::new("Front", "RTSP Video Stream", "rtsp://10.0.0.5:8554/front");
+        let radio = Camera::new(RADIO_CAMERA, "UDP h.265 Video Stream", "0.0.0.0:5600");
+        let belly = Camera::new("Belly", "RTSP Video Stream", "rtsp://10.0.0.5:8554/belly");
+        let during = [front.clone(), radio.clone(), belly.clone()];
+        assert_eq!(without_radio(&during, 1, None, Some(&front)), Some((vec![front.clone(), belly.clone()], 0)), "a camera added while the radio ran survives, and the camera shown before comes back");
+        assert_eq!(without_radio(&during, 2, None, Some(&front)), Some((vec![front.clone(), belly.clone()], 1)), "a camera the operator picked meanwhile stays on screen");
+        let older = Camera::new(RADIO_CAMERA, "UDP h.264 Video Stream", "0.0.0.0:5700");
+        assert_eq!(without_radio(&during, 1, Some(&older), Some(&older)), Some((vec![front.clone(), older.clone(), belly.clone()], 1)), "a camera the radio replaced by name is put back");
+        assert_eq!(without_radio(&[front.clone(), belly.clone()], 1, None, Some(&front)), None, "an operator who removed the radio camera keeps the list as it is");
+    }
+
+    #[test]
+    fn a_camera_list_that_cannot_be_read_is_left_alone_by_the_radio() {
+        let radio = Fake { devices: vec![Adapter { display_name: "RTL8812AU [1:2]".into(), known: true }], ..Fake::default() };
+        let store = Memory::default();
+        store.write(VIDEO_CAMERAS, Some("{not a list"));
+        let mut driver = Driver::default();
+        driver.tick(&radio, &store, &enabled(), Some("/k/default.key"), 0);
+        *radio.rtp.borrow_mut() = 5;
+        *radio.codec.borrow_mut() = Some("H265".into());
+        driver.tick(&radio, &store, &enabled(), Some("/k/default.key"), POLL_INTERVAL_MS);
+        assert_eq!(driver.machine.status(), Status::Receiving);
+        assert_eq!(store.read(VIDEO_CAMERAS).as_deref(), Some("{not a list"), "nothing replaces what could not be read");
+        driver.tick(&radio, &store, &Settings { enabled: false, ..enabled() }, Some("/k/default.key"), 2 * POLL_INTERVAL_MS);
+        assert_eq!(store.read(VIDEO_CAMERAS).as_deref(), Some("{not a list"), "nor is anything restored over it");
     }
 
     #[test]

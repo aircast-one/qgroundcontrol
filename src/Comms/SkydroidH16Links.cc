@@ -41,15 +41,33 @@ UDPConfiguration *makeAutoUdpConfig(const QString &name, quint16 localPort)
     return config;
 }
 
-bool isH16Managed(VideoSettings *video)
+QString urlOf(const QJsonValue &entry)
 {
-    const QJsonArray listed = video->cameraList();
-    return std::all_of(listed.begin(), listed.end(), [](const QJsonValue &entry) {
-        const QString url = entry.toObject().value(QStringLiteral("url")).toString().trimmed();
-        return std::any_of(SkydroidH16Links::kCameraPaths.begin(), SkydroidH16Links::kCameraPaths.end(), [&url](const QString &path) {
-            return url == SkydroidH16Links::cameraUrl(path);
-        });
+    return entry.toObject().value(QStringLiteral("url")).toString().trimmed();
+}
+
+bool isH16Url(const QString &url)
+{
+    return std::any_of(SkydroidH16Links::kCameraPaths.begin(), SkydroidH16Links::kCameraPaths.end(), [&url](const QString &path) {
+        return url == SkydroidH16Links::cameraUrl(path);
     });
+}
+
+bool isH16Managed(const QJsonArray &listed)
+{
+    return std::all_of(listed.begin(), listed.end(), [](const QJsonValue &entry) { return isH16Url(urlOf(entry)); });
+}
+
+QJsonArray missingH16Cameras(const QJsonArray &listed)
+{
+    QJsonArray missing;
+    for (const QJsonValue &camera : SkydroidH16Links::cameras()) {
+        const bool present = std::any_of(listed.begin(), listed.end(), [&camera](const QJsonValue &entry) { return urlOf(entry) == urlOf(camera); });
+        if (!present) {
+            missing.append(camera);
+        }
+    }
+    return missing;
 }
 
 }
@@ -88,8 +106,14 @@ bool SkydroidH16Links::isThisRemote()
 int SkydroidH16Links::ensure(LinkManager *linkManager, AutoConnectSettings *autoConnect, VideoSettings *video)
 {
     int added = 0;
-    if (isH16Managed(video) && (video->cameraList() != cameras())) {
-        video->storeCameras(cameras(), 0);
+    const std::optional<QJsonArray> listed = video->cameraList();
+    const QJsonArray missing = (listed && isH16Managed(*listed)) ? missingH16Cameras(*listed) : QJsonArray{};
+    if (!missing.isEmpty()) {
+        QJsonArray next = *listed;
+        for (const QJsonValue &camera : missing) {
+            next.append(camera);
+        }
+        video->storeCameras(next, video->activeVideoSource()->rawValue().toInt());
         video->multiViewEnabled()->setRawValue(true);
         added++;
     }

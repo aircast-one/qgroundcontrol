@@ -35,9 +35,20 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         askCameras("cameras.remove", [slot])
     }
 
+    func moveCamera(_ camera: VideoSource, by offset: Int) {
+        guard let slot = camera.stored else { return }
+        askCameras("cameras.move", [slot, slot + offset])
+    }
+
+    func showCamera(_ camera: VideoSource) {
+        Bridge.invoke("video.setActiveVideoSource", [camera.slot])
+        refresh()
+        loadSources()
+    }
+
     @discardableResult
     private func askCameras(_ action: String, _ args: [Any]) -> Bool {
-        writeFailure = CameraRefusal.sentence(Bridge.invoke(action, args))
+        writeFailure = CameraList.refusal(Bridge.invoke(action, args))
         loadSources()
         return writeFailure == nil
     }

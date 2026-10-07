@@ -227,9 +227,9 @@ void VideoManager::init(QQuickWindow *mainWindow)
     }
 #endif
 
-    (void) connect(_videoSettings->cameras(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->cameras(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged, Qt::QueuedConnection);
     (void) connect(_videoSettings->cameras(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
-    (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged, Qt::QueuedConnection);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_holdStallRestartWhileSwitching);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
@@ -636,6 +636,9 @@ QString VideoManager::activeSourceLabel() const
 void VideoManager::setActiveVideoSource(int index)
 {
     const int count = _videoSettings->videoSourceCount();
+    if (count == 0) {
+        return;
+    }
     const int clamped = qBound(0, index, count - 1);
     if (clamped == _videoSettings->activeVideoSource()->rawValue().toInt()) {
         return;
@@ -736,7 +739,12 @@ QVariantList VideoManager::cameraUsable() const
 
 QVariantList VideoManager::cameraFromDrone() const
 {
-    return QVariantList(_videoSettings->videoSourceCount(), false);
+    QVariantList drone;
+    const int count = _videoSettings->videoSourceCount();
+    for (int i = 0; i < count; ++i) {
+        drone.append(_videoSettings->cameraFromDrone(i));
+    }
+    return drone;
 }
 
 QStringList VideoManager::cameraNames() const
@@ -1044,6 +1052,9 @@ void VideoManager::_videoSourceChanged()
 {
     QList<VideoReceiver*> changedReceivers;
     QGCCameraManager* camMgr = _activeVehicle ? _activeVehicle->cameraManager() : nullptr;
+    if (_videoSettings->setDroneCameras(_droneCameras())) {
+        emit activeVideoSourceChanged();
+    }
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
         QGCVideoStreamInfo* info = nullptr;
         if (camMgr) {
@@ -1129,14 +1140,42 @@ bool VideoManager::_updateUVC(VideoReceiver *)
 
 bool VideoManager::autoStreamConfigured() const
 {
-    for (VideoReceiver *receiver : _videoReceivers) {
-        QGCVideoStreamInfo *pInfo = receiver->videoStreamInfo();
-        if (!receiver->isThermal() && pInfo && !pInfo->isThermal()) {
-            return !pInfo->uri().isEmpty();
-        }
-    }
+    return _videoSettings->cameraFromDrone(_videoSettings->currentIndex());
+}
 
-    return false;
+QPair<QString, QString> VideoManager::_announcedSource(const QGCVideoStreamInfo *info)
+{
+    switch (info->type()) {
+    case VIDEO_STREAM_TYPE_RTSP:
+        return {QString::fromUtf8(VideoSettings::videoSourceRTSP), info->uri()};
+    case VIDEO_STREAM_TYPE_TCP_MPEG:
+        return {QString::fromUtf8(VideoSettings::videoSourceTCP), info->uri()};
+    case VIDEO_STREAM_TYPE_RTPUDP:
+        if (info->encoding() == VIDEO_STREAM_ENCODING_H265) {
+            return {QString::fromUtf8(VideoSettings::videoSourceUDPH265), info->uri().contains("udp265://") ? info->uri() : QStringLiteral("udp265://0.0.0.0:%1").arg(info->uri())};
+        }
+        return {QString::fromUtf8(VideoSettings::videoSourceUDPH264), info->uri().contains("udp://") ? info->uri() : QStringLiteral("udp://0.0.0.0:%1").arg(info->uri())};
+    case VIDEO_STREAM_TYPE_MPEG_TS:
+        return {QString::fromUtf8(VideoSettings::videoSourceMPEGTS), info->uri().contains("mpegts://") ? info->uri() : QStringLiteral("mpegts://0.0.0.0:%1").arg(info->uri())};
+    default:
+        qCWarning(VideoManagerLog) << "Unknown VIDEO_STREAM_TYPE";
+        return {QString(), info->uri()};
+    }
+}
+
+QJsonArray VideoManager::_droneCameras() const
+{
+    QGCCameraManager *camMgr = _activeVehicle ? _activeVehicle->cameraManager() : nullptr;
+    const QGCVideoStreamInfo *info = camMgr ? camMgr->currentStreamInstance() : nullptr;
+    if (!info || info->isThermal() || info->uri().isEmpty()) {
+        return {};
+    }
+    const auto [source, uri] = _announcedSource(info);
+    if (source.isEmpty()) {
+        return {};
+    }
+    const bool keepsScheme = (source == QString::fromUtf8(VideoSettings::videoSourceRTSP)) || (source == QString::fromUtf8(VideoSettings::videoSourceWebRTC));
+    return QJsonArray{VideoSettings::camera(info->name(), source, keepsScheme ? uri : uri.section(QStringLiteral("://"), -1))};
 }
 
 bool VideoManager::_updateAutoStream(VideoReceiver *receiver)
@@ -1148,52 +1187,17 @@ bool VideoManager::_updateAutoStream(VideoReceiver *receiver)
 
     qCDebug(VideoManagerLog) << QString("Configure stream (%1):").arg(receiver->name()) << pInfo->uri();
 
-    QString source, url;
-    switch (pInfo->type()) {
-    case VIDEO_STREAM_TYPE_RTSP:
-        source = VideoSettings::videoSourceRTSP;
-        url = pInfo->uri();
-        break;
-    case VIDEO_STREAM_TYPE_TCP_MPEG:
-        source = VideoSettings::videoSourceTCP;
-        url = pInfo->uri();
-        break;
-    case VIDEO_STREAM_TYPE_RTPUDP:
-        if (pInfo->encoding() == VIDEO_STREAM_ENCODING_H265) {
-            source = VideoSettings::videoSourceUDPH265;
-            url = pInfo->uri().contains("udp265://") ? pInfo->uri() : QStringLiteral("udp265://0.0.0.0:%1").arg(pInfo->uri());
-        } else {
-            source = VideoSettings::videoSourceUDPH264;
-            url = pInfo->uri().contains("udp://") ? pInfo->uri() : QStringLiteral("udp://0.0.0.0:%1").arg(pInfo->uri());
-        }
-        break;
-    case VIDEO_STREAM_TYPE_MPEG_TS:
-        source = VideoSettings::videoSourceMPEGTS;
-        url = pInfo->uri().contains("mpegts://") ? pInfo->uri() : QStringLiteral("mpegts://0.0.0.0:%1").arg(pInfo->uri());
-        break;
-    default:
-        qCWarning(VideoManagerLog) << "Unknown VIDEO_STREAM_TYPE";
-        source = VideoSettings::videoSourceNoVideo;
-        url = pInfo->uri();
-        break;
-    }
-
     if (receiver->isThermal()) {
-        const bool changed = _updateVideoUri(receiver, url);
+        const bool changed = _updateVideoUri(receiver, _announcedSource(pInfo).second);
         if (changed) {
             emit autoStreamConfiguredChanged();
         }
         return changed;
     }
 
-    if (source == VideoSettings::videoSourceNoVideo) {
+    if (!_videoSettings->setDroneCameras(_droneCameras())) {
         return false;
     }
-    const QJsonObject announced = VideoSettings::camera(pInfo->name().isEmpty() ? tr("Drone camera") : pInfo->name(), source, (source == VideoSettings::videoSourceRTSP) ? url : url.section(QStringLiteral("://"), -1));
-    if (_videoSettings->cameraList().contains(announced)) {
-        return false;
-    }
-    _videoSettings->adoptCamera(announced.value(QStringLiteral("name")).toString(), source, announced.value(QStringLiteral("url")).toString());
     emit autoStreamConfiguredChanged();
     return true;
 }
