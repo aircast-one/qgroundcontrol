@@ -1,9 +1,13 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -80,29 +84,36 @@ internal fun SettingsSheet(requested: String?, aircraft: Boolean, onClose: () ->
     }
     Surface(Modifier.fillMaxSize().zIndex(SETTINGS_SHEET_LAYER).pointerInput(Unit) {}, color = MaterialTheme.colorScheme.surface) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s1),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-            ) {
-                query?.let { typed ->
-                    val focus = remember { FocusRequester() }
-                    LaunchedEffect(Unit) { focus.requestFocus() }
-                    SearchPill(typed, { query = it }, "Search settings", Modifier.weight(1f).focusRequester(focus))
-                    TextButton(onClick = { query = null }) { Text("Cancel") }
-                } ?: run {
-                    Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
-                        SettingsGroup.entries.map { entry ->
-                            SheetTab(entry.title, entry == group && !setupOpen) {
-                                group = entry
-                                page = null
-                                setupOpen = false
+            val pickTab: (SettingsGroup) -> Unit = { entry ->
+                group = entry
+                page = null
+                setupOpen = false
+            }
+            BoxWithConstraints {
+                val stacked = maxWidth < STACKED_HEADER_WIDTH
+                Column {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s1),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                    ) {
+                        query?.let { typed ->
+                            val focus = remember { FocusRequester() }
+                            LaunchedEffect(Unit) { focus.requestFocus() }
+                            SearchPill(typed, { query = it }, "Search settings", Modifier.weight(1f).focusRequester(focus))
+                            TextButton(onClick = { query = null }) { Text("Cancel") }
+                        } ?: run {
+                            if (stacked) {
+                                Text("Settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(start = AircastSpace.s2))
+                            } else {
+                                SheetTabs(group.takeUnless { setupOpen }, Modifier.weight(1f), pickTab)
                             }
+                            IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_search), "Search settings") }
                         }
+                        IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_close), "Close settings") }
                     }
-                    IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_search), "Search settings") }
+                    if (stacked && query == null) SheetTabs(group.takeUnless { setupOpen }, Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s2), pickTab)
                 }
-                IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_close), "Close settings") }
             }
             key(group, page, query != null, setupOpen) {
                 when {
@@ -124,9 +135,20 @@ internal fun SettingsSheet(requested: String?, aircraft: Boolean, onClose: () ->
 }
 
 @Composable
+private fun SheetTabs(selected: SettingsGroup?, modifier: Modifier, onPick: (SettingsGroup) -> Unit) {
+    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
+        SettingsGroup.entries.map { entry -> SheetTab(entry.title, entry == selected) { onPick(entry) } }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun SheetTab(title: String, selected: Boolean, onClick: () -> Unit) {
+    val shown = remember { BringIntoViewRequester() }
+    LaunchedEffect(selected) { if (selected) shown.bringIntoView() }
     Column(
         Modifier
+            .bringIntoViewRequester(shown)
             .selectable(selected = selected, role = Role.Tab, onClick = onClick)
             .heightIn(min = 48.dp)
             .padding(horizontal = AircastSpace.s2, vertical = AircastSpace.s1),
@@ -147,6 +169,8 @@ private fun SheetTab(title: String, selected: Boolean, onClick: () -> Unit) {
         )
     }
 }
+
+private val STACKED_HEADER_WIDTH = 600.dp
 
 private const val SETTINGS_SHEET_LAYER = 10f
 

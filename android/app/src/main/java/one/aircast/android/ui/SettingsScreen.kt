@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 
 import androidx.compose.foundation.background
 
@@ -736,6 +738,7 @@ internal fun FactRow(
     }
 
     val rowToggles = !segmented && fact.isBool && fact.acceptsWrite && !editOnDesktop(fact)
+    val rows: @Composable (Boolean) -> Unit = { beside ->
     Column {
     Row(
         Modifier
@@ -773,6 +776,7 @@ internal fun FactRow(
             }
         }
 
+        if (beside) Segments(fact, ::write)
         if (!segmented) Box(Modifier.widthIn(max = 190.dp), contentAlignment = Alignment.CenterEnd) {
             when {
                 editOnDesktop(fact) -> Column(
@@ -807,21 +811,7 @@ internal fun FactRow(
             }
         }
     }
-    if (segmented) {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            fact.enumStrings.forEachIndexed { index, option ->
-                val boolOption = fact.enumValues.getOrNull(index)?.toBooleanStrictOrNull()?.takeIf { fact.isBool }
-                FilterChip(
-                    selected = boolOption?.let { it == fact.boolValue } ?: (index == fact.enumIndex),
-                    onClick = { write { boolOption?.let { Qgc.set(fact.path, it != fact.inverted) } ?: Qgc.set("${fact.path}.enumIndex", index) } },
-                    label = { Text(sentenceCase(option)) },
-                )
-            }
-        }
-    }
+    if (segmented && !beside) Segments(fact, ::write, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp))
     refusal?.let {
         Text(
             text = it,
@@ -831,9 +821,27 @@ internal fun FactRow(
         )
     }
     }
+    }
+    if (segmented) BoxWithConstraints { rows(maxWidth >= SEGMENTS_BESIDE_MIN_WIDTH) } else rows(false)
+}
+
+@Composable
+private fun Segments(fact: Fact, write: (() -> Boolean) -> Unit, modifier: Modifier = Modifier) {
+    SingleChoiceSegmentedButtonRow(modifier) {
+        fact.enumStrings.forEachIndexed { index, option ->
+            val boolOption = fact.enumValues.getOrNull(index)?.toBooleanStrictOrNull()?.takeIf { fact.isBool }
+            SegmentedButton(
+                selected = boolOption?.let { it == fact.boolValue } ?: (index == fact.enumIndex),
+                onClick = { write { boolOption?.let { Qgc.set(fact.path, it != fact.inverted) } ?: Qgc.set("${fact.path}.enumIndex", index) } },
+                shape = SegmentedButtonDefaults.itemShape(index, fact.enumStrings.size),
+                icon = {},
+            ) { Text(sentenceCase(option), maxLines = 1) }
+        }
+    }
 }
 
 internal const val SEGMENT_LABEL_BUDGET = 28
+internal val SEGMENTS_BESIDE_MIN_WIDTH = 560.dp
 internal val NUMBER_VALUE_WIDTH = 160.dp
 internal val CHOICE_VALUE_WIDTH = 220.dp
 
