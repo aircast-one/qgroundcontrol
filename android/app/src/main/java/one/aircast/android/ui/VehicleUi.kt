@@ -520,7 +520,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             SentNotice(sentName.orEmpty(), onDismiss = { sentName = null })
         }
 
-        TelemetryRow(valuesShown = armed)
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TelemetryRow(valuesShown = true, chooser = false, compact = true) }
 
         if (pending == null) {
             val more = DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }

@@ -140,7 +140,7 @@ internal fun FlyPortrait(
                         .padding(end = AircastSpace.s3, top = buttonsTop),
                 )
                 Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE)) { rail() }
-                CompassDial(PORTRAIT_DIAL_SIZE, Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE))
+                OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE))
             }
         }
         Surface(
