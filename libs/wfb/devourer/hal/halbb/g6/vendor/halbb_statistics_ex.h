@@ -190,4 +190,3 @@ struct bb_info;
 /*@--------------------------[Prptotype]-------------------------------------*/
 void halbb_pmac_statistics_ex(struct bb_info *bb_0, bool en, enum phl_phy_idx phy_idx);
 #endif
-

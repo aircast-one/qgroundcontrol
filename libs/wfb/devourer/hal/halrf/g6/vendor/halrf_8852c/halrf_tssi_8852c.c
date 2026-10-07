@@ -149,7 +149,7 @@ void _halrf_tssi_rf_setting_8852c(struct rf_info *rf,
 
 	RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "======> %s\n", __func__);
 
-	if (channel >= 1 && channel <= 14)	
+	if (channel >= 1 && channel <= 14)
 		halrf_wrf(rf, path, 0x7f, 0x00002, 0x1);
 	else
 		halrf_wrf(rf, path, 0x7f, 0x00100, 0x1);
@@ -302,7 +302,7 @@ void _halrf_tssi_set_sys_8852c(struct rf_info *rf,
 			halrf_wreg(rf, 0x320c, 0x000000ff, 0x33);
 			halrf_wreg(rf, 0x32c0, 0x0ff00000, 0x33);
 			halrf_wreg(rf, 0x78f8, 0x40000000, 0x1);
-		} else {	
+		} else {
 			halrf_wreg(rf, 0x320c, 0x000000ff, 0x44);
 			halrf_wreg(rf, 0x32c0, 0x0ff00000, 0x44);
 			halrf_wreg(rf, 0x78f8, 0x40000000, 0x0);
@@ -459,7 +459,7 @@ void _halrf_tssi_ini_txpwr_ctrl_bb_8852c(struct rf_info *rf,
 			halrf_wreg(rf, 0x7854, 0x3fffffff, 0x000115f2);
 			halrf_wreg(rf, 0x7858, 0x7fffffff, 0x0000121);
 		}
-		
+
 		halrf_wreg(rf, 0x7860, 0x80000000, 0x0);
 		halrf_wreg(rf, 0x7864, 0x07ffffff, 0x00801ff);
 		halrf_wreg(rf, 0x7898, MASKDWORD, 0x00000000);
@@ -516,7 +516,7 @@ void _halrf_tssi_ini_txpwr_ctrl_bb_he_tb_8852c(struct rf_info *rf,
 {
 	RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "======>%s   phy=%d   path=%d\n", __func__, phy, path);
 
-	if (path == RF_PATH_A) {		
+	if (path == RF_PATH_A) {
 		halrf_wreg(rf, 0x58a0, MASKDWORD, 0x000000fe);
 		halrf_wreg(rf, 0x58e4, 0x0000007f, 0x1f);
 	} else {
@@ -527,7 +527,7 @@ void _halrf_tssi_ini_txpwr_ctrl_bb_he_tb_8852c(struct rf_info *rf,
 
 void _halrf_tssi_set_dck_8852c(struct rf_info *rf,
 					enum phl_phy_idx phy, enum rf_path path)
-{	
+{
 	u32 band = rf->hal_com->band[phy].cur_chandef.band;
 
 	RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "======> %s   band=%d   phy=%d   path=%d\n",
@@ -553,7 +553,7 @@ void _halrf_tssi_set_dck_8852c(struct rf_info *rf,
 				halrf_wreg(rf, 0x5814, 0x003c0000, 0x6);
 			}
 			halrf_wreg(rf, 0x5814, 0x18000000, 0x0);
-		}	
+		}
 	} else {
 		/*Clear SW DCK Result*/
 		halrf_wreg(rf, 0x78c4, 0x3ffc0000, 0x0);
@@ -587,7 +587,7 @@ void _halrf_tssi_set_bbgain_split_8852c(struct rf_info *rf,
 		halrf_wreg(rf, 0x5818, 0x08000000, 0x1);
 		halrf_wreg(rf, 0x58d4, 0xf0000000, 0x7);
 		halrf_wreg(rf, 0x58f0, 0x000c0000, 0x1);
-		halrf_wreg(rf, 0x58f0, 0xfff00000, 0x400);		
+		halrf_wreg(rf, 0x58f0, 0xfff00000, 0x400);
 	} else {
 		halrf_wreg(rf, 0x7818, 0x08000000, 0x1);
 		halrf_wreg(rf, 0x78d4, 0xf0000000, 0x7);
@@ -636,7 +636,7 @@ void _halrf_tssi_set_tmeter_tbl_8852c(struct rf_info *rf,
 
 			halrf_wreg(rf, (0x5c00 + i), MASKDWORD, thermal_offset_tmp);
 			halrf_wreg(rf, (0x7c00 + i), MASKDWORD, thermal_offset_tmp);
-			
+
 			RF_DBG(rf, DBG_RF_TX_PWR_TRACK,
 			       "[TSSI] write addr:0x%x value=0x%08x\n",
 			       (0x5c00 + i), thermal_offset_tmp);
@@ -955,7 +955,7 @@ void _halrf_tssi_set_dac_gain_tbl_8852c(struct rf_info *rf,
 		halrf_wreg(rf, 0x5ab4, MASKDWORD, 0x00000000);
 		halrf_wreg(rf, 0x5ab8, MASKDWORD, 0x00000000);
 		halrf_wreg(rf, 0x5abc, MASKDWORD, 0x00000000);
-		halrf_wreg(rf, 0x5ac0, MASKDWORD, 0x00000000);		
+		halrf_wreg(rf, 0x5ac0, MASKDWORD, 0x00000000);
 	} else {
 		halrf_wreg(rf, 0x78b0, 0x00000fff, 0x000);
 		halrf_wreg(rf, 0x78b0, 0x00000800, 0x1);
@@ -1165,7 +1165,7 @@ void _halrf_tssi_slope_cal_8852c(struct rf_info *rf,
 		halrf_wreg(rf, tssi_trigger[path], 0x80000000, 0x1);
 
 		_halrf_tssi_hw_tx_8852c(rf, phy, path, 100, 5000, power_high[j], rate, bw, true);
-		
+
 		for (k = 0; halrf_rreg(rf, tssi_cw_rpt_addr[path], BIT(16)) == 0; k++) {
 			halrf_delay_us(rf, 1);
 
@@ -1185,7 +1185,7 @@ void _halrf_tssi_slope_cal_8852c(struct rf_info *rf,
 		halrf_wreg(rf, tssi_trigger[path], 0x80000000, 0x1);
 
 		_halrf_tssi_hw_tx_8852c(rf, phy, path, 100, 5000, power_low[j], rate, bw, true);
-		
+
 		for (k = 0; halrf_rreg(rf, tssi_cw_rpt_addr[path], BIT(16)) == 0; k++) {
 			halrf_delay_us(rf, 1);
 
@@ -1203,11 +1203,11 @@ void _halrf_tssi_slope_cal_8852c(struct rf_info *rf,
 		tssi_cw_rpt_offset[j] = tssi_cw_rpt_high - tssi_cw_rpt_low;
 
 		RF_DBG(rf, DBG_RF_TX_PWR_TRACK,
-			"[TSSI PA K] power_high[%d]=%d  power_low[%d]=%d\n", 
+			"[TSSI PA K] power_high[%d]=%d  power_low[%d]=%d\n",
 			j, power_high[j], j, power_low[j]);
 
 		RF_DBG(rf, DBG_RF_TX_PWR_TRACK,
-			"[TSSI PA K] tssi_cw_rpt_offset[%d](0x%x) = tssi_cw_rpt_high(0x%x) - tssi_cw_rpt_low(0x%x)\n", 
+			"[TSSI PA K] tssi_cw_rpt_offset[%d](0x%x) = tssi_cw_rpt_high(0x%x) - tssi_cw_rpt_low(0x%x)\n",
 			j, tssi_cw_rpt_offset[j], tssi_cw_rpt_high, tssi_cw_rpt_low);
 
 		//halrf_set_pseudo_cw(rf, i, power_low[j], false);
@@ -1725,7 +1725,7 @@ void _halrf_tssi_run_slope_8852c(struct rf_info *rf,
 		halrf_wreg(rf, 0x5820, 0x80000000, 0x1);
 	} else {
 		halrf_wreg(rf, 0x7820, 0x80000000, 0x0);
-		halrf_wreg(rf, 0x7820, 0x80000000, 0x1);		
+		halrf_wreg(rf, 0x7820, 0x80000000, 0x1);
 	}
 }
 
@@ -2035,7 +2035,7 @@ void _halrf_tssi_set_tssi_track_8852c(struct rf_info *rf,
 		halrf_wreg(rf, 0x7864, 0x000003ff, 0x1ff);
 		halrf_wreg(rf, 0x7864, 0x000ffc00, 0x200);
 		halrf_wreg(rf, 0x7820, 0x00000fff, 0x080);
-		halrf_wreg(rf, 0x7814, 0x01000000, 0x0);		
+		halrf_wreg(rf, 0x7814, 0x01000000, 0x0);
 	}
 }
 
@@ -2303,7 +2303,7 @@ u32 _halrf_tssi_get_6g_efuse_group_8852c(struct rf_info *rf,
 		offset_index = 0x0102;
 	else if (channel > 21 && channel < 25)
 		offset_index = 0x0203;
-	
+
 	else if (channel > 37 && channel < 41)
 		offset_index = 0x0405;
 	else if (channel > 45 && channel < 49)
@@ -2375,17 +2375,17 @@ s8 _halrf_tssi_get_ofdm_efuse_tssi_de_8852c(struct rf_info *rf,
 		RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "======> %s   group_idx=0x%x(%d)\n",
 			__func__, group_idx, group_idx);
 
-		if (group_idx >= 0x0506) {			
+		if (group_idx >= 0x0506) {
 			tmp_idx = (group_idx & 0xff00) >> 8;
-			if (tmp_idx < TSSI_EFUSE_NUM) 
+			if (tmp_idx < TSSI_EFUSE_NUM)
 				first_de = tssi_info->tssi_efuse[path][EFUSE_TSSI_MCS][tmp_idx];
 			//	first_de = tssi_info->tssi_efuse[path][EFUSE_TSSI_MCS][(group_idx & 0xff00) >> 8];
 
 			tmp_idx = group_idx & 0xff;
-			if (tmp_idx < TSSI_EFUSE_NUM) 
+			if (tmp_idx < TSSI_EFUSE_NUM)
 				second_de = tssi_info->tssi_efuse[path][EFUSE_TSSI_MCS][tmp_idx];
 			//	second_de = tssi_info->tssi_efuse[path][EFUSE_TSSI_MCS][group_idx & 0xff];
-			
+
 
 			final_de = (first_de + second_de) / 2;
 
@@ -2414,7 +2414,7 @@ s8 _halrf_tssi_get_ofdm_efuse_tssi_de_8852c(struct rf_info *rf,
 			if (tmp_idx < TSSI_EFUSE_NUM)
 				second_de = tssi_info->tssi_efuse[path][EFUSE_TSSI_6G][tmp_idx];
 			//	second_de = tssi_info->tssi_efuse[path][EFUSE_TSSI_6G][group_idx & 0xff];
-			
+
 
 			final_de = (first_de + second_de) / 2;
 
@@ -2619,7 +2619,7 @@ s8 _halrf_tssi_get_ofdm_tssi_trim_de_8852c(struct rf_info *rf,
 			if (tmp_idx < TSSI_HIDE_EFUSE_NUM)
 				second_de = tssi_info->tssi_trim[path][tmp_idx];
 				//second_de = tssi_info->tssi_trim[path][group_idx & 0xff];
-			
+
 			final_de = (first_de + second_de) / 2;
 
 			RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "[TSSI Trim] Trim_first_de=%d Trim_second_de=%d Trim_final_de=%d\n",
@@ -3466,7 +3466,7 @@ void halrf_tssi_backup_txagc_8852c(struct rf_info *rf, enum phl_phy_idx phy, boo
 		halrf_wreg(rf, 0x7818 , 0x10000000, 0x0);
 		halrf_wreg(rf, 0x7818 , 0x10000000, 0x1);
 
-		return;	
+		return;
 	}
 
 	halrf_hal_bb_backup_info(rf, phy);
@@ -3512,7 +3512,7 @@ void halrf_tssi_backup_txagc_8852c(struct rf_info *rf, enum phl_phy_idx phy, boo
 #if 0
 	/*Path B*/
 	tx_couter[RF_PATH_B] = halrf_rreg(rf, 0x1a40, 0xffff);
-	
+
 	_halrf_tssi_hw_tx_8852c(rf, phy, RF_PATH_B, 1000, 100, xdbm, HT_MF_FMT, 0, true);
 	halrf_delay_ms(rf, 15);
 	_halrf_tssi_hw_tx_8852c(rf, phy, RF_PATH_B, 1000, 100, xdbm, HT_MF_FMT, 0, false);
@@ -3844,7 +3844,7 @@ void halrf_tssi_get_efuse_8852c(struct rf_info *rf,
 			RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "[TSSI][Efuse] FLASH_INFO_RF_5G_BW160M_BW40M_TSSI_POWER_DIFF_A_%d   value=0x%x\n",
 				j, flash_tmp);
 		}
-		
+
 		/*path s0 slope GAIN DIFF*/
 		for (i = FLASH_INFO_RF_2G_CCK_TSSI_GAIN_DIFF_A_8852C_1, j = 0; i <= FLASH_INFO_RF_2G_CCK_TSSI_GAIN_DIFF_A_8852C_6; i++, j++) {
 			halrf_efuse_get_info(rf, i, &flash_tmp, 1);
@@ -3968,7 +3968,7 @@ void halrf_tssi_get_efuse_8852c(struct rf_info *rf,
 			RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "[TSSI][Efuse] FLASH_INFO_RF_5G_BW160M_BW40M_TSSI_POWER_DIFF_B_%d   value=0x%x\n",
 				j, flash_tmp);
 		}
-		
+
 
 		/*path s1 slope GAIN DIFF*/
 		for (i = FLASH_INFO_RF_2G_CCK_TSSI_GAIN_DIFF_B_8852C_1, j = 0; i <= FLASH_INFO_RF_2G_CCK_TSSI_GAIN_DIFF_B_8852C_6; i++, j++) {
@@ -4087,7 +4087,7 @@ bool halrf_tssi_check_efuse_data_8852c(struct rf_info *rf,
 		return false;
 	}
 
-	return true;	
+	return true;
 }
 
 void halrf_set_tssi_de_for_tx_verify_8852c(struct rf_info *rf,
@@ -4189,7 +4189,7 @@ void halrf_set_tssi_de_offset_8852c(struct rf_info *rf,
 		ofmd_de = _halrf_tssi_get_ofdm_efuse_tssi_de_8852c(rf, phy, RF_PATH_A);
 		tssi_trim = _halrf_tssi_get_ofdm_tssi_trim_de_8852c(rf, phy, RF_PATH_A);
 		tssi_tmp = ofmd_de + tssi_trim + s_tssi_de_offset;
-		
+
 		halrf_wreg(rf, 0x5828, 0x003ff000, tssi_tmp & 0x3ff);	/*5M*/
 		halrf_wreg(rf, 0x5830, 0x003ff000, tssi_tmp & 0x3ff);	/*10M*/
 		halrf_wreg(rf, 0x5838, 0x003ff000, tssi_tmp & 0x3ff);	/*20M*/
@@ -4214,7 +4214,7 @@ void halrf_set_tssi_de_offset_8852c(struct rf_info *rf,
 		RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "[TSSI] tssi_tmp(%d) = tssi_efuse_CCK(%d) + tssi_trim(%d) + s_tssi_de_offset(%d) path=%d\n",
 			tssi_tmp, tssi_info->tssi_efuse[RF_PATH_A][EFUSE_TSSI_CCK][group_idx],
 			tssi_trim, s_tssi_de_offset, path);
-		
+
 		halrf_wreg(rf, 0x7858, 0x003ff000, tssi_tmp & 0x3ff);	/*CCK long*/
 		halrf_wreg(rf, 0x7860, 0x003ff000, tssi_tmp & 0x3ff);	/*CCK short*/
 
@@ -4292,7 +4292,7 @@ void halrf_tssi_enable_8852c(struct rf_info *rf,
 		_halrf_tssi_set_tssi_track_8852c(rf, phy, i);
 		_halrf_tssi_set_txagc_offset_mv_avg_8852c(rf, phy, i);
 
-		if (i == RF_PATH_A) { 
+		if (i == RF_PATH_A) {
 			halrf_wreg(rf, 0x58e4, 0x00004000, 0x0);
 			halrf_wreg(rf, 0x5820, 0x80000000, 0x0);
 			halrf_wreg(rf, 0x5820, 0x80000000, 0x1);
@@ -4589,7 +4589,7 @@ void halrf_tssi_set_efuse_to_de_8852c(struct rf_info *rf,
 
 		RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "[TSSI] Set TSSI MCS DE 40M 0x%x[21:12]=0x%x\n",
 			addr_mcs_40m[i], halrf_rreg(rf, addr_mcs_40m[i], addr_mcs_bitmask[i]));
-		
+
 		/*Save TSSI data for WINCLI*/
 		tssi_info->curr_tssi_efuse_cck_de[i] = tssi_info->tssi_efuse[i][EFUSE_TSSI_CCK][group_idx];
 		tssi_info->curr_tssi_efuse_ofdm_de[i] = ofmd_de;
@@ -4612,7 +4612,7 @@ void halrf_tssi_set_efuse_to_slope_8852c(struct rf_info *rf,
 	u32 addr_gain_diff_bitmask[2] = {0x0000ff00, 0x0000ff00};
 	u32 addr_cw_diff[2] = {0x5610, 0x7610};
 	u32 addr_cw_diff_bitmask[2] = {0x0003fe00, 0x0003fe00};
-	
+
 	u32 i, group_idx;
 	s32 tmp;
 	s8 ofmd_gain_diff, ofmd_cw_diff;
@@ -4625,7 +4625,7 @@ void halrf_tssi_set_efuse_to_slope_8852c(struct rf_info *rf,
 #if 0
 		for (i = 0; i < TSSI_PATH_MAX_8852C; i++) {
 			halrf_wreg(rf, addr_gain_diff[i], addr_gain_diff_bitmask[i], 0x8);
-			
+
 			halrf_wreg(rf, addr_cw_diff[i], addr_cw_diff_bitmask[i], 0x8);
 
 			RF_DBG(rf, DBG_RF_TX_PWR_TRACK, "[TSSI] Set TSSI OFDM Slope Gain Diff 0x%x[15:8]=0x%x\n",
@@ -4678,7 +4678,7 @@ void halrf_tssi_set_efuse_to_slope_8852c(struct rf_info *rf,
 		RF_DBG(rf, DBG_RF_TX_PWR_TRACK,
 			"[TSSI] ofmd_gain_diff=0x%x   ofmd_cw_diff=0x%x   path=%d\n",
 			ofmd_gain_diff, ofmd_cw_diff, i);
-		
+
 		halrf_wreg(rf, addr_gain_diff[i], addr_gain_diff_bitmask[i],
 			(u32)(ofmd_gain_diff & 0xff));
 
@@ -4741,7 +4741,7 @@ void halrf_tssi_default_txagc_8852c(struct rf_info *rf,
 			if (rf->hal_com->cv == CAV)
 				_halrf_tssi_sw_dck_8852c(rf, phy, i);
 		}
-		
+
 		RF_DBG(rf, DBG_RF_TX_PWR_TRACK,
 			"======>%s 1 SCAN_END Set 0x5818[7:0]=0x%x 0x7818[7:0]=0x%x\n",
 			__func__,
@@ -4860,7 +4860,7 @@ void halrf_tssi_scan_ch_8852c(struct rf_info *rf, enum rf_path path)
 		//halrf_wreg(rf, tssi_mv_avg[path], 0x00004000, 0x0);
 
 		halrf_wreg(rf, tssi_trk_man[path], 0x000000ff, 0xe8);
-		
+
 		//halrf_wreg(rf, tssi_trk_man[path], BIT(28), 0x0);
 		//halrf_wreg(rf, tssi_trk_man[path], BIT(28), 0x1);
 
@@ -4982,7 +4982,7 @@ void halrf_get_tssi_info_8852c(struct rf_info *rf,
 		tssi_info->curr_tssi_trim_de[RF_PATH_B],
 		tssi_info->curr_tssi_ofdm_de_diff_160m[RF_PATH_B],
 		tssi_info->tssi_de_160m_adc_wa_160m);
-	
+
 	RF_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used, " %-25s = %x\n",
 		 "RF Para Ver", halrf_get_radio_ver_from_reg(rf));
 

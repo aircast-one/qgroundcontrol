@@ -161,7 +161,7 @@ public class QGCActivity extends QtActivity {
             if (cursor != null && cursor.moveToFirst()) {
                 final int nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                 if (nameIndex >= 0) {
-                    displayName = cursor.getString(nameIndex);                    
+                    displayName = cursor.getString(nameIndex);
                     displayName = sanitizeFilename(displayName);
                 }
             }

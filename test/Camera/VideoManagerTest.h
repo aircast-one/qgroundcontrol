@@ -9,4 +9,3 @@ class VideoManagerTest : public UnitTest
 private slots:
     void _videoOutputQmlTypeAvailableInUnitTestMode_test();
 };
-

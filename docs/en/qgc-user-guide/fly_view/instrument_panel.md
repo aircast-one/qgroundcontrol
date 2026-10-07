@@ -24,4 +24,3 @@ By default this is the vehicle, but you can use the selector to choose a particu
 
 
 The selection list on the top right is used to select a particular telemetry value for the vehicle or sensor.
-

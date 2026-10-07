@@ -108,4 +108,3 @@ Ayarlanabilir seçenekler şunlardır:
 ### İstatistikler
 
 _Statistics_ bölümü, hesaplanan tarama alanını, fotoğraf aralığını, fotoğraflar arası boşluğu ve planlanan fotoğraf sayısını gösterir.
-

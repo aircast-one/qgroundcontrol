@@ -13,7 +13,7 @@
  *
  *****************************************************************************/
 
- 
+
 #include "halrf_precomp.h"
 
 void halrf_set_pseudo_cw(struct rf_info *rf, enum rf_path path,
@@ -177,4 +177,3 @@ void halrf_set_pmac_tx(struct rf_info *rf, enum phl_phy_idx phy_idx,
 #endif
 }
 #endif
-

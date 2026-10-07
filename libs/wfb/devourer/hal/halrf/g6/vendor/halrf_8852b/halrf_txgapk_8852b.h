@@ -38,7 +38,7 @@
 #define TXGAPK_DEBUGMASK_8852B		0x100EE
 
 #define TXGAP_TB_ADDR_8852B			0x10033
-	
+
 #define TXGAP_TB_VAL_8852B			0x1003F
 /*---------------------------End Define Parameters----------------------------*/
 

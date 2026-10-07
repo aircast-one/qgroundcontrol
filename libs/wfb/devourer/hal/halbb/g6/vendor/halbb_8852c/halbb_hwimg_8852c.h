@@ -47,4 +47,3 @@ bool halbb_cfg_bb_gain_ax_8852c(struct bb_info *bb, bool is_form_folder,
 u32 halbb_get_8852c_phy_reg_ver(void);
 
 #endif /* end of HWIMG_SUPPORT*/
-

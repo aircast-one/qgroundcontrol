@@ -20,4 +20,3 @@ void TransectStyleComplexItemTestBase::cleanup()
 
     OfflineMissionTest::cleanup();
 }
-

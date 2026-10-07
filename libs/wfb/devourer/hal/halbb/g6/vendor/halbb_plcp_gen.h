@@ -86,7 +86,7 @@ struct com_pre_fec_par {
 	u32 n_ma : 6;
 	u32 m_ma : 5;
 	u32 tb_trig : 1;
-	u32 n_hesigb_sym : 8;	
+	u32 n_hesigb_sym : 8;
 	u32 n_usr_refine : 8;
 	u32 tb_trig_t_pe : 3;
 	u32 tb_ldpc_extra : 1;
@@ -150,7 +150,7 @@ struct plcp_tx_pre_fec_padding_setting_in_t {
 	u32 max_tx_time_0p4us : 14;
 	u32 n_user : 8;
 
-	u32 ndp : 1; 
+	u32 ndp : 1;
 	u32 he_er_u106ru_en : 1; //done
 	u32 rsvd2 : 6;
 	u32 tb_l_len : 12;
@@ -250,4 +250,3 @@ enum plcp_sts halbb_tx_plcp_cal(struct bb_info *bb,
 
 
 #endif
-

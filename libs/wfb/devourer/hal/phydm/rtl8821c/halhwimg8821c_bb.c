@@ -4576,4 +4576,3 @@ odm_read_and_config_mp_8821c_phy_reg_pg_type0x28(struct dm_struct *dm)
 }
 
 #endif /* end of HWIMG_SUPPORT*/
-

@@ -352,7 +352,7 @@ struct bb_physts_rslt_14_info {
 	u8 rxinfo_ndp_en;
 	u8 n_user;
 	struct bb_physts_user_info_ie_14 bb_physts_uer_info[MU_USER_MAX];
-	
+
 };
 
 struct bb_physts_user_info_ie_15{
@@ -360,7 +360,7 @@ struct bb_physts_user_info_ie_15{
 	u8 mcs;
 	u8 fec_type;
 	u8 is_bf;
-	
+
 	u8 n_sts_ru_total;
 	u8 n_sts;
 	u8 pilot_exist;
@@ -388,7 +388,7 @@ struct bb_physts_rslt_15_info {
 	u8 *ie_15_addr;
 	u8 n_user;
 	struct bb_physts_user_info_ie_15 bb_physts_uer_info[MU_USER_MAX];
-	
+
 };
 
 struct bb_physts_rslt_16_info {
@@ -412,14 +412,14 @@ struct bb_physts_cmn_info_ie_17 {
 	bool ndp;
 	u8 pri_exp_rssi_dbm;
 	u8 dbw_idx;
-	
+
 	u8 rsvd;
-		
+
 	u16 rxtime;
 };
 
 struct bb_physts_user_info_ie_17 {
-	u8 u_id;	
+	u8 u_id;
 	u8 ru_alloc;
 	u8 n_sts_ru_tot;
 
@@ -433,7 +433,7 @@ struct bb_physts_user_info_ie_17 {
 	u8 rsvd2;
 
 	bool dcm_en;
-	
+
 	u8 rsvd3;
 };
 

@@ -95,7 +95,7 @@ void halbb_ic_hw_setting_non_io(struct bb_info *bb);
 void halbb_ic_hw_setting_low_io(struct bb_info *bb);
 void halbb_ic_hw_setting_dbcc(struct bb_info *bb);
 void halbb_ic_hw_setting(struct bb_info *bb);
-void halbb_ic_hw_setting_dbg(struct bb_info *bb, char input[][16], 
+void halbb_ic_hw_setting_dbg(struct bb_info *bb, char input[][16],
 			     u32 *_used, char *output, u32 *_out_len);
 #ifdef HALBB_PATH_DIV_SUPPORT
 void halbb_ctrl_tx_path_div(struct bb_info * bb, enum bb_path tx_path_1ss);

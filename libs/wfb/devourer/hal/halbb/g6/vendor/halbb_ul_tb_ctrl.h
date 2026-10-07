@@ -56,4 +56,3 @@ void halbb_ul_tb_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 void halbb_ul_tb_ctrl_init(struct bb_info *bb);
 void halbb_cr_cfg_ul_tb_init(struct bb_info *bb);
 #endif
-

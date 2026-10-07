@@ -94,7 +94,7 @@ struct halrf_ex_rt_rpt_v1 {
 
 /* TXGAPK Report */
 struct halrf_ex_txgapk_rpt_v1 {
-	u32 txgapk_dz_max_nctl_cnt; 
+	u32 txgapk_dz_max_nctl_cnt;
 	s32 txgapk_dz_track_d[2][17];
 	s32 txgapk_dz_power_d[2][17];
 };
@@ -166,7 +166,7 @@ struct halrf_rfk_dz_rpt {
 	u32 iqk_dz_s1_rxsram[4][1280]; //group/value
 
 //TXGAPK
-	u32 txgapk_dz_max_nctl_cnt; 
+	u32 txgapk_dz_max_nctl_cnt;
 	s32 txgapk_dz_track_d[2][17];
 	s32 txgapk_dz_power_d[2][17];
 };
@@ -189,4 +189,3 @@ enum rtw_hal_status halrf_query_rf_diag_buf(void *rf_void, u8 *ver, u8 *buf, u32
 
 enum rtw_hal_status halrf_query_rfdz_info(void *rf_void, u8 *rt_rpt_buf, u32 rt_buf_len, u8 *rfk_rpt_buf, u32 rfk_buf_len);
 #endif
-

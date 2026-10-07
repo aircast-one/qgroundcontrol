@@ -6826,7 +6826,7 @@ void halrf_bb_reset_trigger(struct rf_info *rf, enum phl_phy_idx phy_idx)
 	    rf->ic_type == RF_RTL8834A || rf->ic_type == RF_RTL8730A ||
 	    rf->ic_type == RF_RTL8720E)
 		return;
-	
+
 	halrf_bb_reset(rf, phy_idx);
 }
 
@@ -6992,4 +6992,3 @@ bool halrf_SRAM_MBIST_DS(void *rf_void)
 #endif // HALRF_MBIST
 
 #endif
-

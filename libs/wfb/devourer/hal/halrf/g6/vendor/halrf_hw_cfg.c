@@ -1016,7 +1016,3 @@ void halrf_cfg_radio_b_w_bt_status(void *rf_void, bool bt_connect)
 
 
 }
-
-
-
-

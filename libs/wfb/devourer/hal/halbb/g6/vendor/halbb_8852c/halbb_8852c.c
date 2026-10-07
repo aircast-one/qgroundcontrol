@@ -272,8 +272,8 @@ bool halbb_set_pd_lower_bound_8852c(struct bb_info *bb, u8 bound,
 				      enum channel_width bw,
 				      enum phl_phy_idx phy_idx)
 {
-	/* 
-	Range of bound value: 
+	/*
+	Range of bound value:
 	BW20: 95~33
 	BW40: 92~30
 	BW80: 89~27

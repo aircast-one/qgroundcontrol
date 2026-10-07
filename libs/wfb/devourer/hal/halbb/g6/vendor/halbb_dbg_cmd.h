@@ -37,7 +37,7 @@ enum bb_scanf_type
 #define DCMD_SCAN_LIMIT 10
 
 /*@--------------------------[Enum]------------------------------------------*/
- 
+
 enum bb_scanf_type
 {
 	DCMD2_DECIMAL	= 1,

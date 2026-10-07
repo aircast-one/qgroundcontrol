@@ -13464,4 +13464,3 @@ odm_read_and_config_mp_8822e_txpwr_lmt_type5(struct dm_struct *dm)
 }
 
 #endif /* end of HWIMG_SUPPORT*/
-

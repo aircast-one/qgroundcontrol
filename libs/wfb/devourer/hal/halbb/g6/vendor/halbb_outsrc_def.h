@@ -108,7 +108,7 @@ enum ru_sizes_list {
 };
 
 enum packet_format_t{
-	B_MODE_FMT 	= 0, 
+	B_MODE_FMT 	= 0,
 	LEGACY_FMT,
 	HT_MF_FMT,
 	HT_GF_FMT,

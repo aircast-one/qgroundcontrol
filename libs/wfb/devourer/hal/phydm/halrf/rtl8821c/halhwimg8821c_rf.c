@@ -7718,4 +7718,3 @@ odm_read_and_config_mp_8821c_txpwr_lmt_lowpower(struct dm_struct *dm)
 }
 
 #endif /* end of HWIMG_SUPPORT*/
-

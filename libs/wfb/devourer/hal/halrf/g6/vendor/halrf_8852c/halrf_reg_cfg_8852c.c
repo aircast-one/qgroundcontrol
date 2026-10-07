@@ -57,7 +57,7 @@ void halrf_cfg_rf_nctl_8852c(struct rf_info *rf, u32 addr, u32 mask, u32 data)
 		halrf_delay_us(rf, 1);
 	else
 		halrf_wreg(rf, addr, mask, data);
-	
+
 	RF_DBG(rf, DBG_RF_INIT, "[RFK] %08X %08X\n", addr, data);
 }
 

@@ -12,4 +12,3 @@ private slots:
     void _updateNoChange_test();
     void _updateChangedFieldsEmitsSignal_test();
 };
-

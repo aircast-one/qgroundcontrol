@@ -34,13 +34,13 @@
 #define HALRF_TAS_DELTA 8 /* 2 dBm, unit: 0.25 dBm (multiply by 4) */
 #define HALRF_TAS_UNDEF 0xFF
 #define HALRF_TAS_MAX_TH 0x7F
- 
+
 enum halrf_tas_state {
 	HALRF_TAS_STATE_DPR_ON = 0,
 	HALRF_TAS_STATE_DPR_OFF = 1,
 	HALRF_TAS_STATE_STATIC_SAR = 2,
 };
- 
+
 enum halrf_tas_p_idx {
 	HALRF_PATTERN_1 = 0,
 	HALRF_PATTERN_2 = 1,
@@ -63,7 +63,7 @@ struct halrf_tas_fw_info {
     u32 tas_cur_idx;
     s16 tas_txpwr_his[20];
 };
- 
+
 struct halrf_tas_info {
 	u32 tas_mv_avg;
 	s16 txpwr_his[HALRF_TAS_MV_AVG_WINDOW];

@@ -476,7 +476,7 @@ void halbb_set_crystal_cap(struct bb_info *bb, u8 crystal_cap)
 
 	rtw_hal_mac_get_xcap(hal, SC_XO, &sc_xo_val);
 	rtw_hal_mac_get_xcap(hal, SC_XI, &sc_xi_val);
-	
+
 	BB_DBG(bb, DBG_CFO_TRK, "Set sc_xi/xo= {0x%x, 0x%x}\n", sc_xi_val, sc_xo_val);
 
 	bb_cfo_trk->crystal_cap = (u8)sc_xi_val;
@@ -806,7 +806,7 @@ halbb_cfo_counter_rst(struct bb_info *bb)
 
 		if (!is_sta_active(sta))
 			continue;
-		
+
 		cfo_t = &sta->hal_sta->cfo_stat;
 
 		cfo_t->cfo_tail = 0;
@@ -838,10 +838,10 @@ halbb_cfo_trk_abort(struct bb_info *bb)
 	if (bb->pause_ability & BB_CFO_TRK) {
 		cfo_avg = halbb_avg_cfo_calc(bb);
 		halbb_print_sign_frac_digit(bb, cfo_avg, 32, 2, bb->dbg_buf, HALBB_SNPRINT_SIZE);
-		
+
 		BB_DBG(bb, DBG_CFO_TRK, "Return: Pause CFO_TRK in LV=%d\n",
 		       bb->pause_lv_table.lv_cfo);
-		
+
 		BB_DBG(bb, DBG_CFO_TRK, "Xcap=0x%x, cfo_avg=%s\n",
 		       cfo_trk->crystal_cap, bb->dbg_buf);
 
@@ -1031,7 +1031,7 @@ void halbb_cfo_dm(struct bb_info *bb)
 	if (cfo_trk->cfo_pkt_cnt == 0) {
 		cfo_trk->no_pkt_cnt++;
 		BB_DBG(bb, DBG_CFO_TRK, "Pkt cnt doesn't change\n");
-		
+
 		if (cfo_trk->no_pkt_cnt >= NO_PKT_RETURN_TH) {
 			BB_DBG(bb, DBG_CFO_TRK, "bb_cfo_trk->no_pkt_cnt=%d\n",
 			       cfo_trk->no_pkt_cnt);
@@ -1270,13 +1270,13 @@ void halbb_cfo_trk_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 
 	} else if (_os_strcmp(input[1], "data_only") == 0) {
 		HALBB_SCAN(input[2], DCMD_DECIMAL, &var[0]);
-		
+
 		bb_cfo_trk->cfo_trk_by_data_en = (bool)var[0];
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
 			    "cfo_trk_by_data_en: %d\n", bb_cfo_trk->cfo_trk_by_data_en);
 	} else if (_os_strcmp(input[1], "dyn_acc") == 0) {
 		HALBB_SCAN(input[2], DCMD_DECIMAL, &var[0]);
-		
+
 		bb_cfo_trk->cfo_dyn_acc_en = (bool)var[0];
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
 			    "cfo_dyn_acc_en: %d\n", bb_cfo_trk->cfo_dyn_acc_en);
@@ -1497,7 +1497,7 @@ void halbb_cr_cfg_cfo_trk_init(struct bb_info *bb)
 		break;
 
 	#endif
-	
+
 	default:
 		BB_WARNING("[%s] BBCR Hook FAIL!\n", __func__);
 		if (bb->bb_dbg_i.cr_fake_init_hook_en) {

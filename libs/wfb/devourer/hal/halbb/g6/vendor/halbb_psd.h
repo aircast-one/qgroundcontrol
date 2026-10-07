@@ -61,7 +61,7 @@ struct bb_psd_cr_info {
 	u32 psd_source_sel_m;
 	u32 psd_en;
 	u32 psd_en_m;
-	
+
 };
 
 struct bb_psd_info {
@@ -114,4 +114,3 @@ void halbb_psd_deinit(struct bb_info *bb);
 bool halbb_get_psd_result(struct bb_info *bb, u32 *psd_data, u16 *psd_len);
 void halbb_cr_cfg_psd_init(struct bb_info *bb);
 #endif
-

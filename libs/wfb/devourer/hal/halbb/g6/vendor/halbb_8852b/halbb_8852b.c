@@ -196,7 +196,7 @@ void halbb_set_tmac_tx_8852b(struct bb_info *bb, enum phl_phy_idx phy_idx)
 	halbb_set_reg_cmn(bb, 0x0980, BIT(16), 0, phy_idx);
 	halbb_set_reg_cmn(bb, 0x0988, 0xfff, 0, phy_idx);
 	halbb_set_reg_cmn(bb, 0x0994, 0xf0, 0, phy_idx);
-	
+
 	// PDP bypass from TMAC
 	halbb_set_reg_cmn(bb, 0x09a4, BIT(10), 0, phy_idx);
 	// TMAC Tx path
@@ -233,7 +233,7 @@ void halbb_ic_hw_setting_8852b(struct bb_info *bb)
 {
 	bool btg_en;
 	struct bb_env_mntr_info *env = &bb->bb_env_mntr_i;
-	struct bb_link_info *link = &bb->bb_link_i;	
+	struct bb_link_info *link = &bb->bb_link_i;
 	struct rtw_phl_stainfo_t *sta = NULL;
 	struct rtw_rssi_info *sta_rssi = NULL;
 #ifdef HALBB_STATISTICS_SUPPORT
@@ -246,12 +246,12 @@ void halbb_ic_hw_setting_8852b(struct bb_info *bb)
 	u16 rssi_b = 0;
 	u16 rssi_path_diff = 0;
 	u32 id = bb->phl_com->id.id & 0xFFFF;
-	
+
 	BB_DBG(bb, DBG_PHY_CONFIG, "<====== %s ======>\n", __func__);
 
 	if (!link->is_linked)
 		return;
-	
+
 	if (!link->is_one_entry_only)
 		return;
 
@@ -263,7 +263,7 @@ void halbb_ic_hw_setting_8852b(struct bb_info *bb)
 
 	btg_en = (bb->hal_com->band[0].cur_chandef.band == BAND_ON_24G) &&
 		((bb->rx_path == RF_PATH_B) || (bb->rx_path == RF_PATH_AB)) ? true : false;
-	
+
 	if (btg_en && bb->bb_link_i.is_linked && (bb->bb_ch_i.rssi_min < (75 << 1))) {// if rssi < -35 dbm
 		halbb_set_reg(bb, 0x4aa4, BIT(18), 0x0);
 		BB_DBG(bb, DBG_PHY_CONFIG, "[BT] BTG enable, Is linked\n");
@@ -294,7 +294,7 @@ void halbb_ic_hw_setting_8852b(struct bb_info *bb)
 #ifdef HALBB_STATISTICS_SUPPORT
 	cnt_diff = cca->cnt_ofdm_cca - fa->cnt_ofdm_fail;
 #endif
-	// dynamic setting for anti-interference 
+	// dynamic setting for anti-interference
 /*	if (env->nhm_ratio > 20) {
 		halbb_set_reg(bb, 0x46F8, 0xffffffff, 0x13c6);
 		halbb_set_reg(bb, 0x4440, BIT(31), 0x1);
@@ -306,8 +306,8 @@ bool halbb_set_pd_lower_bound_8852b(struct bb_info *bb, u8 bound,
 				      enum channel_width bw,
 				      enum phl_phy_idx phy_idx)
 {
-	/* 
-	Range of bound value: 
+	/*
+	Range of bound value:
 	BW20: 95~33
 	BW40: 92~30
 	BW80: 89~27
@@ -400,7 +400,7 @@ bool halbb_set_pd_lower_bound_cck_8852b(struct bb_info *bb, u8 bound,
 		BB_DBG(bb, DBG_PHY_CONFIG, "[PD Bound] CCK pd_lower_bound CV not support!\n");
 		return false;
 	}
-	
+
 	if (bound == 0) {
 		halbb_set_reg_cmn(bb, 0x23b0, BIT(23), 0, phy_idx);
 		BB_DBG(bb, DBG_PHY_CONFIG,

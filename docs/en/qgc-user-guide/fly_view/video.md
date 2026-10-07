@@ -51,4 +51,3 @@ To record video with QGroundControl application elements displayed, you should u
 
 Start/stop video recording _on the camera itself_ using the [camera instrument page](hud.md#camera_instrument_page).
 First toggle to video mode, then select the red button to start recording.
-

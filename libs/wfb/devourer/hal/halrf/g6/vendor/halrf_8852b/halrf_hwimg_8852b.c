@@ -255,7 +255,7 @@ void halrf_config_8852b_nctl_reg(struct rf_info *rf)
 	u32	array_len = 0x0;
 	u32 *array = NULL;
 	u32	v1 = 0, v2 = 0;
-	u32 	cnt = 0x0; 
+	u32 	cnt = 0x0;
 	RF_DBG(rf, DBG_RF_INIT, "[RFK]===> %s\n", __func__);
 
 //5. iqkdpk clk&rst
@@ -264,18 +264,18 @@ void halrf_config_8852b_nctl_reg(struct rf_info *rf)
 	halrf_wreg(rf, 0x58ac, 0x08000000, 0x1);
 	halrf_wreg(rf, 0x78ac, 0x08000000, 0x1);
 	halrf_wreg(rf, 0x0c60, 0x00000002, 0x1);
-	
+
 	array_len = sizeof(array_mp_8852b_nctl_reg) / sizeof(u32);
 	array = (u32 *) &array_mp_8852b_nctl_reg;
 
-	// check 0x8080	
-	halrf_wreg(rf, 0x8000, MASKDWORD, 0x8); 
+	// check 0x8080
+	halrf_wreg(rf, 0x8000, MASKDWORD, 0x8);
 	while(cnt < 1000) {
-		cnt++;		
-		halrf_wreg(rf, 0x8080, MASKDWORD, 0x4);	
+		cnt++;
+		halrf_wreg(rf, 0x8080, MASKDWORD, 0x4);
 		halrf_delay_us(rf, 1);
 		if(halrf_rreg(rf, 0x8080, MASKDWORD) == 0x4)
-			break;		
+			break;
 	}
 	halrf_write_fwofld_start(rf);
 	while ((i + 1) < array_len) {
@@ -357,7 +357,7 @@ bool halrf_sel_headline_8852b(struct rf_info *rf, u32 *array, u32 array_len,
 	/*case_idx:3 {RFE:Match, cv:Max_in_table}*/
 	RF_DBG(rf, DBG_RF_INIT, "[3] CHK {RFE:Match, cv:Max_in_Table}\n");
 	for (i = 0; i < *headline_size; i += 2) {
-		rfe_para = (array[i] & 0x00ff0000) >> 16; 
+		rfe_para = (array[i] & 0x00ff0000) >> 16;
 		cv_para = array[i] & 0x0ff;
 		if (rfe_para == rfe_drv) {
 			if (cv_para >= cv_max) {
@@ -376,7 +376,7 @@ bool halrf_sel_headline_8852b(struct rf_info *rf, u32 *array, u32 array_len,
 	/*case_idx:4 {RFE:Dont Care, cv:Max_in_table}*/
 	RF_DBG(rf, DBG_RF_INIT, "[4] CHK {RFE:Dont_Care, cv:Max_in_Table}\n");
 	for (i = 0; i < *headline_size; i += 2) {
-		rfe_para = (array[i] & 0x00ff0000) >> 16; 
+		rfe_para = (array[i] & 0x00ff0000) >> 16;
 		cv_para = array[i] & 0x0ff;
 		if (rfe_para == DONT_CARE_8852B) {
 			if (cv_para >= cv_max) {
@@ -464,7 +464,7 @@ halrf_config_8852b_radio_a_reg(struct rf_info *rf, enum phl_phy_idx phy)
 				RF_DBG(rf, DBG_RF_INIT, "END\n");
 			} else {/*8:if , 9:else if*/
 
-				tmp_val = (v1 & 0xff0000) >> 16; 
+				tmp_val = (v1 & 0xff0000) >> 16;
 				if (tmp_val == DONT_CARE_8852b) {
 					is_rfe_match = true; /*dont care condition*/
 				} else {
@@ -722,7 +722,7 @@ halrf_config_8852b_radio_b_reg(struct rf_info *rf, enum phl_phy_idx phy)
 				RF_DBG(rf, DBG_RF_INIT, "END\n");
 			} else {/*8:if , 9:else if*/
 
-				tmp_val = (v1 & 0xff0000) >> 16; 
+				tmp_val = (v1 & 0xff0000) >> 16;
 				if (tmp_val == DONT_CARE_8852b) {
 					is_rfe_match = true; /*dont care condition*/
 				} else {

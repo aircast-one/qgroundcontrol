@@ -25,7 +25,7 @@
 #ifndef __HALRF_RFK_INIT_8822C_H__
 #define __HALRF_RFK_INIT_8822C_H__
 
-static u32 array_mp_8822c_cal_init[] = {	
+static u32 array_mp_8822c_cal_init[] = {
 	0x1b00, 0x00000008,
 	0x1b00, 0x00A70008,
 	0x1b00, 0x00150008,

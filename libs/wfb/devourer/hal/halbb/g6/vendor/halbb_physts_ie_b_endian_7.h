@@ -28,7 +28,7 @@
  /*@--------------------------[Define] ---------------------------------------*/
 
  /*@--------------------------[Enum]------------------------------------------*/
- 
+
  /*@--------------------------[Structure]-------------------------------------*/
 
 struct physts_7_ie_0_info {
@@ -65,7 +65,7 @@ struct physts_7_ie_0_info {
 	u8 antdiv_rslt_a:1;
 
 	u8 dagc_a_l;
-	
+
 	u8 dagc_b_l:6;
 	u8 dagc_a_m:2;
 
@@ -75,29 +75,29 @@ struct physts_7_ie_0_info {
 	u8 rpl_td_a_l;
 	u8 rpl_td_b_l:7;
 	u8 rpl_td_a_m:1;
-	
+
 	u8 rpl_td_c_l:6;
 	u8 rpl_td_b_m:2;
-	
+
 	u8 rsvd_2_dummy_5bit:5;
 	u8 rpl_td_c_m:3;
 	/*[DW5]*/
 	u8 rpl_td_d_l;
-	
+
 	u8 is_6g_idx:1;
 	u8 rsvd_3_dummy_6bit:6;
 	u8 rpl_td_d_m:1;
 
 	u8 ch_idx;
-	
+
 	u8 rsvd_4_dummy_6bit:6;
 	u8 band:2;
 	/*[DW6]*/
 	u8 dagc_c_l;
-	
+
 	u8 dagc_d_l:6;
 	u8 dagc_c_m:2;
-	
+
 	u8 rsvd_5_dummy_4bit:4;
 	u8 dagc_d_m:4;
 	u8 rsvd_6;

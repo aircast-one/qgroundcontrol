@@ -9,9 +9,9 @@ diff --git a/include/valijson/adapters/qtjson_adapter.hpp b/include/valijson/ada
 +            result = m_value.toInteger();
              return true;
          }
- 
+
 @@ -417,8 +417,8 @@
- 
+
      bool isInteger() const
      {
 -        //toInt returns the default value (0, 1) if the value is not a whole number
@@ -19,5 +19,5 @@ diff --git a/include/valijson/adapters/qtjson_adapter.hpp b/include/valijson/ada
 +        //toInteger returns the default value (0, 1) if the value is not a whole number representable as qint64
 +        return m_value.isDouble() && (m_value.toInteger(0) == m_value.toInteger(1));
      }
- 
+
      bool isNull() const

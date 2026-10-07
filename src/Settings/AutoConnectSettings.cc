@@ -131,5 +131,3 @@ DECLARE_SETTINGSFACT_NO_FUNC(AutoConnectSettings, autoConnectNmeaBaud)
     }
     return _autoConnectNmeaBaudFact;
 }
-
-

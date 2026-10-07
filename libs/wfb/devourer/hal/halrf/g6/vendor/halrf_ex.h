@@ -237,11 +237,11 @@ bool halrf_iqk_get_ther_rek(void *rf_void);
 
 void halrf_psd_init(void *rf_void, enum phl_phy_idx phy,
 			u8 path, u8 iq_path, u32 avg, u32 fft);
-			
-void halrf_psd_restore(void *rf_void, enum phl_phy_idx phy);	
-			
+
+void halrf_psd_restore(void *rf_void, enum phl_phy_idx phy);
+
 u32 halrf_psd_get_point_data(void *rf_void, enum phl_phy_idx phy, s32 point);
-			
+
 void halrf_psd_query(void *rf_void, enum phl_phy_idx phy,
 			u32 point, u32 start_point, u32 stop_point, u32 *outbuf);
 

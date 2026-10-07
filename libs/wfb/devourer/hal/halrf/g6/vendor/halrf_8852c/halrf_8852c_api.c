@@ -132,7 +132,7 @@ void halrf_wlan_tx_power_control_8852c(struct rf_info *rf,
 bool halrf_wl_tx_power_control_8852c(struct rf_info *rf, u32 tx_power_val)
 {
 	struct halrf_pwr_info *pwr = &rf->pwr_info;
-	u32 result; 
+	u32 result;
 	s32 tmp_pwr;
 	u8 phy = 0;
 	u32 all_time_control = 0;
@@ -400,7 +400,7 @@ void halrf_syn1_onoff_8852c(struct rf_info *rf, enum phl_phy_idx phy, u8 path, b
 {
 	if(path != RF_PATH_B)
 		return;
-	
+
 	if (syn1_turn_on) {
 		//Re-write LUT_SYNMODE_S1 to turn on SYN1 when exit 2x2 mode (DBCC or 1x1)
 		halrf_wrf(rf, RF_PATH_B, 0xED, MASKRF, 0x00010);      //LUT write enable ED[4]=1
@@ -423,7 +423,7 @@ void halrf_syn1_onoff_8852c(struct rf_info *rf, enum phl_phy_idx phy, u8 path, b
 		//Re-write LUT_SYNMODE_S1 to turn off SYN1 at 2x2 mode
 		//need to go back to default LUT_SYNMODE_S1 table if it is not 2x2 mode
 		halrf_wrf(rf, RF_PATH_B, 0xED, MASKRF, 0x00010);	    //LUT write enable ED[4]=1
-		
+
 		halrf_wrf(rf, RF_PATH_B, 0x33, MASKRF, 0x00001);	   //write register WA 33[2:0]=001
 		halrf_wrf(rf, RF_PATH_B, 0x3F, MASKRF, 0x0000A);	   //write register WD 3F[3:0]=1010: 3F[2]=POW_SYN=0
 		halrf_wrf(rf, RF_PATH_B, 0x33, MASKRF, 0x00002);	   //write register WA 33[2:0]=010
@@ -436,7 +436,7 @@ void halrf_syn1_onoff_8852c(struct rf_info *rf, enum phl_phy_idx phy, u8 path, b
 		halrf_wrf(rf, RF_PATH_B, 0x3F, MASKRF, 0x0000A);	   //write register WD 3F[3:0]=1010: 3F[2]=POW_SYN=0
 		halrf_wrf(rf, RF_PATH_B, 0x33, MASKRF, 0x00007);	   //write register WA 33[2:0]=111
 		halrf_wrf(rf, RF_PATH_B, 0x3F, MASKRF, 0x0000A);	   //write register WD 3F[3:0]=1010: 3F[2]=POW_SYN=0
-		
+
 		halrf_wrf(rf, RF_PATH_B, 0xED, MASKRF, 0x00000);	    //LUT write disable ED[4]=0
 	}
 	return;
@@ -507,7 +507,7 @@ void halrf_set_gpio_8852c(struct rf_info *rf, enum phl_phy_idx phy)
 		halrf_set_gpio_func(rf, RTW_MAC_GPIO_WL_RFE_CTRL, 6);
 		halrf_set_gpio_func(rf, RTW_MAC_GPIO_WL_RFE_CTRL, 7);
 		halrf_set_gpio_func(rf, RTW_MAC_GPIO_WL_RFE_CTRL, 10);
-	} 
+	}
 
 	if (rfe_type == 53 || rfe_type == 54 || rfe_type == 63 || rfe_type == 64) {
 		/*Set BB GPIO Setting*/
@@ -519,7 +519,7 @@ void halrf_set_gpio_8852c(struct rf_info *rf, enum phl_phy_idx phy)
 		halrf_gpio_setting(rf, 1, 0x2, true, HALRF_TRSW_RFM);
 		halrf_gpio_setting(rf, 2, 0x2, true, HALRF_LNAON_RFM);
 		halrf_gpio_setting(rf, 3, 0x2, false, HALRF_PAPE_RFM);
-		
+
 		/*Set MAC GPIO Setting*/
 		halrf_set_gpio_func(rf, RTW_MAC_GPIO_WL_RFE_CTRL, 1);
 		halrf_set_gpio_func(rf, RTW_MAC_GPIO_WL_RFE_CTRL, 2);
@@ -642,7 +642,7 @@ void do_bkup_kip_8852c(struct rf_info *rf, u8 path)
 			break;
 		}
 		bkup_kip_val_8852c[path][i] = halrf_rreg(rf, bkup_kip_reg_8852c[i] + (path << 8), MASKDWORD);
-		
+
 		RF_DBG(rf, DBG_RF_RFK, "[RFK] Backup KIP(S%d) 0x%x = %x\n", path, bkup_kip_reg_8852c[i] + (path << 8), bkup_kip_val_8852c[path][i]);
 	}
 }
@@ -679,20 +679,20 @@ void do_bkup_rf_8852c(struct rf_info *rf, u8 path)
 			break;
 		}
 		bkup_rf_val_8852c[path][i] = halrf_rrf(rf, path, bkup_rf_reg_8852c[i], MASKRF);
-		
+
 		RF_DBG(rf, DBG_RF_RFK, "[RFK] Backup RF S%d 0x%x = %x\n",
 			path, bkup_rf_reg_8852c[i], bkup_rf_val_8852c[path][i]);
 	}
 }
 
-void do_reload_kip_8852c(struct rf_info *rf, u8 path) 
+void do_reload_kip_8852c(struct rf_info *rf, u8 path)
 {
 	u32 i;
 	u32 num = ARRAY_SIZE(bkup_kip_reg_8852c);
 
 	for (i = 0; i < num; i++) {
 		halrf_wreg(rf, bkup_kip_reg_8852c[i] + (path << 8), MASKDWORD, bkup_kip_val_8852c[path][i]);
-		
+
 		RF_DBG(rf, DBG_RF_RFK, "[RFK] Reload KIP(S%d) 0x%x = %x\n",path, bkup_kip_reg_8852c[i] + (path << 8),
 			bkup_kip_val_8852c[path][i]);
 	}
@@ -719,7 +719,7 @@ void do_reload_rf_8852c(struct rf_info *rf, u8 path)
 
 	for (i = 0; i < num; i++) {
 		halrf_wrf(rf, path, bkup_rf_reg_8852c[i], MASKRF, bkup_rf_val_8852c[path][i]);
-		
+
 			RF_DBG(rf, DBG_RF_RFK, "[RFK] Reload RF S%d 0x%x = %x\n",
 				path, bkup_rf_reg_8852c[i], bkup_rf_val_8852c[path][i]);
 	}
@@ -756,13 +756,13 @@ void halrf_adie_pow_ctrl_8852c(struct rf_info *rf, bool rf_off, bool others_off)
 		halrf_delay_us(rf, 1000);
 		halrf_wrf(rf, RF_PATH_A, 0x0, MASKRF,0x0);
 		halrf_wrf(rf, RF_PATH_B, 0x0, MASKRF,0x0);
-	} 
-	
+	}
+
 	if (others_off) {
 		/*ARFC off*/
 		/*XTAL off*/
 		rtw_hal_mac_set_xsi((rf)->hal_com, 0x0, 0x0);
-	} 
+	}
 #endif
 }
 
@@ -794,7 +794,7 @@ void halrf_afe_pow_ctrl_8852c(struct rf_info *rf, bool adda_off, bool pll_off)
 }
 
 #ifdef HALRF_MCC_DBCC
-bool halrf_chlk_reload_check_8852c(struct rf_info *rf, enum phl_phy_idx phy) 
+bool halrf_chlk_reload_check_8852c(struct rf_info *rf, enum phl_phy_idx phy)
 {
 	struct halrf_dbcc_info *dbcc_info = &rf->dbcc_info;
 	struct halrf_mcc_info *mcc_info = &rf->mcc_info;
@@ -845,7 +845,7 @@ bool halrf_chlk_reload_check_8852c(struct rf_info *rf, enum phl_phy_idx phy)
 			((dbcc_info->ch[i][0] == kch) && (dbcc_info->band[i][0] == kband)))
 			break;
 	}
-	
+
 	if (i < 2) {
 		idx = i;
 	} else {

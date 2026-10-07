@@ -115,4 +115,3 @@ In overview:
 1. Tune the other axes.
 1. Switch to the other controllers and repeat the process.
    Screenshots of the tuning pages are shown below.
-

@@ -47,7 +47,7 @@
 		do {\
 			_os_dbgdump("[RF]" fmt, ##__VA_ARGS__);\
 		} while (0)
-		
+
 	#define RF_WARNING(fmt, ...)     \
 		do {\
 			_os_dbgdump("[WARNING][RF]" fmt, ##__VA_ARGS__);\
@@ -69,13 +69,13 @@
 	#define RF_WARNING
 	#define RF_DBG_CNSL		/*Print on Consol,CLI */
 	#define RF_DBG_VAST		/*Print to Comport, Debug View*/
-#endif	
+#endif
 
 
 /*@--------------------------[Enum]------------------------------------------*/
- 
+
 /*@--------------------------[Structure]-------------------------------------*/
- 
+
 /*@--------------------------[Prptotype]-------------------------------------*/
 struct rf_info;
 void halrf_dbg_setting_init(struct rf_info *rf);

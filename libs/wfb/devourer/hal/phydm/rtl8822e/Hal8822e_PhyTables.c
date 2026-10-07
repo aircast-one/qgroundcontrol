@@ -20011,4 +20011,3 @@ const u32 array_mp_8822e_cal_init[] = {
 	0x1b80, 0x00000002
 };
 const u32 array_mp_8822e_cal_init_len = sizeof(array_mp_8822e_cal_init) / sizeof(u32);
-

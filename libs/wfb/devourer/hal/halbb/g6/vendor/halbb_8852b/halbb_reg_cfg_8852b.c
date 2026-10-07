@@ -92,7 +92,7 @@ void halbb_cfg_bb_gain_8852b(struct bb_info *bb, u32 addr, u32 data)
 	u8 path = (u8)((addr & 0xff00) >> 8);
 	u8 type;
 	u8 i = 0;
-	
+
 	if (band_idx >= BB_GAIN_BAND_NUM)
 		return;
 

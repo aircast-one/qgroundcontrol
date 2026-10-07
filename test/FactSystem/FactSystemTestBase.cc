@@ -46,4 +46,3 @@ void FactSystemTestBase::_parameter_specific_component_id_test()
     QCOMPARE(factValue.isValid(), true);
     QCOMPARE(factValue.toInt(), 4);
 }
-

@@ -318,4 +318,3 @@ odm_get_version_mp_8821c_mac_reg(void)
 }
 
 #endif /* end of HWIMG_SUPPORT*/
-

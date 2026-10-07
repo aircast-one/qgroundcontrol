@@ -366,7 +366,7 @@ void rtl8814a_set_FwPwrModeInIPS_cmd(PADAPTER padapter, u8 cmd_param)
 		RTW_INFO("%s: issue H2C to FW when entering IPS\n", __func__);
 
 		parm[0] = 0x1;/* suggest by Isaac.Hsu*/
-		
+
 		rtw_hal_fill_h2c_cmd(padapter, /* H2C_FWLPS_IN_IPS_, */
 				     H2C_INACTIVE_PS_,
 				     H2C_INACTIVE_PS_LEN, parm);
@@ -667,7 +667,7 @@ C2HTxRPTHandler_8814(
 		RTW_WARN("%s,%d: No gotc2h!\n", __FUNCTION__, __LINE__);
 		return;
 	}
-	
+
 	adapter_ognl = rtw_get_iface_by_id(GET_PRIMARY_ADAPTER(Adapter), pstapriv->c2h_adapter_id);
 	if(!adapter_ognl) {
 		RTW_WARN("%s: No adapter!\n", __FUNCTION__);
@@ -679,7 +679,7 @@ C2HTxRPTHandler_8814(
 		RTW_WARN("%s: No corresponding sta_info!\n", __FUNCTION__);
 		return;
 	}
-	
+
 	macid = GET_8814A_C2H_TC2H_APREQ_TXRPT_MACID1(CmdBuf);
 	TxOK = GET_8814A_C2H_TC2H_APREQ_TXRPT_TXOK1(CmdBuf);
 	TxFail = GET_8814A_C2H_TC2H_APREQ_TXRPT_TXFAIL1(CmdBuf);
@@ -706,7 +706,7 @@ C2HSPC_STAT_8814(
 		RTW_WARN("%s, %d: No gotc2h!\n", __FUNCTION__, __LINE__);
 		return;
 	}
-	
+
 	adapter_ognl = rtw_get_iface_by_id(GET_PRIMARY_ADAPTER(Adapter), pstapriv->c2h_adapter_id);
 	if(!adapter_ognl) {
 		RTW_WARN("%s: No adapter!\n", __FUNCTION__);

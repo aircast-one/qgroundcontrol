@@ -101,4 +101,3 @@ void QGCVideoStreamInfoTest::_updateChangedFieldsEmitsSignal_test()
 }
 
 UT_REGISTER_TEST(QGCVideoStreamInfoTest, TestLabel::Unit)
-

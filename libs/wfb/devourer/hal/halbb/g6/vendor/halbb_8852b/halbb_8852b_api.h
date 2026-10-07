@@ -187,7 +187,7 @@ bool halbb_set_txpwr_dbm_8852b(struct bb_info *bb, s16 power_dbm,
 			       enum phl_phy_idx phy_idx);
 
 void halbb_reset_bb_hw_cnt_8852b(struct bb_info *bb);
-	
+
 s16 halbb_get_txpwr_dbm_8852b(struct bb_info *bb, enum phl_phy_idx phy_idx);
 
 s16 halbb_get_txinfo_txpwr_dbm_8852b(struct bb_info *bb);
@@ -223,7 +223,7 @@ void halbb_ctrl_btc_preagc_8852b(struct bb_info *bb, bool bt_en);
 
 bool halbb_set_txsc_8852b(struct bb_info *bb, u8 txsc, enum phl_phy_idx phy_idx);
 
-bool halbb_set_bss_color_8852b(struct bb_info *bb, u8 bss_color, 
+bool halbb_set_bss_color_8852b(struct bb_info *bb, u8 bss_color,
 			       enum phl_phy_idx phy_idx);
 
 bool halbb_set_sta_id_8852b(struct bb_info *bb, u16 sta_id,

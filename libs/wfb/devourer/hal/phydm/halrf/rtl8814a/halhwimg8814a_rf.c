@@ -24867,4 +24867,3 @@ odm_read_and_config_mp_8814a_txpwr_lmt_type9(struct dm_struct *dm)
 }
 
 #endif /* end of HWIMG_SUPPORT*/
-

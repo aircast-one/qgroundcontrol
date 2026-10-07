@@ -40,4 +40,3 @@ extern u32 array_length_mp_8814a_fw_wowlan;
 #endif
 
 #endif
-

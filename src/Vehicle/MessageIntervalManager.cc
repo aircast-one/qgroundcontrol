@@ -123,4 +123,3 @@ void MessageIntervalManager::setMessageRate(uint8_t compId, uint16_t msgId, int3
         static_cast<float>(msgId),
         interval);
 }
-

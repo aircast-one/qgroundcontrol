@@ -81,4 +81,3 @@ void halbb_fwofld_nbi_tone_idx(struct bb_info *bb, u8 central_ch, u8 pri_ch,
 			       enum channel_width bw, enum band_type band,
 			       enum rf_path path);
 #endif
-

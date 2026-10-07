@@ -367,4 +367,3 @@ halbb_get_8852c_phy_reg_ver(void)
 }
 
 #endif /* end of HWIMG_SUPPORT*/
-

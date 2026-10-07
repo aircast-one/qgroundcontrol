@@ -22,4 +22,3 @@ Most of the settings that are displayed depend on the camera (they are defined i
 
 The video page is used to enable/disable video streaming.
 When enabled, you can start/stop the video stream, enable a grid overlay, change how the image fits the screen, and record the video locally with QGC.
-

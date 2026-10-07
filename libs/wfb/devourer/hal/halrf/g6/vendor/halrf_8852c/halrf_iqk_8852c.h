@@ -103,4 +103,3 @@ u32 halrf_iqk_get_rximr_8852c(struct rf_info *rf, u8 path, u32 idx);
 
 #endif
 #endif /*  __HALRF_IQK_8852CH__ */
-

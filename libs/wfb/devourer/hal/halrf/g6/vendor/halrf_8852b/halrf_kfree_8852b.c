@@ -92,7 +92,7 @@ void _halrf_set_thermal_trim_8852b(struct rf_info *rf,
 
 	if (thermal_a == 0xff && thermal_b == 0xff) {
 		RF_DBG(rf, DBG_RF_THER_TRIM, "Ther_A, Ther_B=0xff no PG Return!!!\n");
-		return; 
+		return;
 	}
 
 	thermal_a = thermal_a & 0xf;
@@ -131,7 +131,7 @@ void _halrf_set_pa_bias_trim_8852b(struct rf_info *rf,
 
 	if (pa_bias_a == 0xff && pa_bias_b == 0xff) {
 		RF_DBG(rf, DBG_RF_PABIAS_TRIM, "PA_Bias_A, PA_Bias_B=0xff no PG Return!!!\n");
-		return; 
+		return;
 	}
 
 	pa_bias_a_2g = pa_bias_a & 0xf;
@@ -235,7 +235,7 @@ void halrf_get_efuse_trim_8852b(struct rf_info *rf,
 	_halrf_set_pa_bias_trim_8852b(rf, phy);
 
 	halrf_write_fwofld_end(rf);	/*FW Offload End*/
-	
+
 	_halrf_get_tssi_trim_8852b(rf, phy);
 }
 

@@ -328,7 +328,7 @@ bool halrf_get_efuse_info_8852b(struct rf_info *rf, u8 *efuse_map,
 		if (id == EFUSE_INFO_RF_XTAL) {
 			if (*((u8 *)value) == 0xff)
 				hal_mem_set(hal, value, 0x3f, 1);
-		}	
+		}
 	}
 
 	return true;

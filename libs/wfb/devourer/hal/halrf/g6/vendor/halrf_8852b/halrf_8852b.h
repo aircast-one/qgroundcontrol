@@ -43,7 +43,7 @@ void halrf_dpk_init_8852b(struct rf_info *rf);
 bool halrf_ctrl_ch_8852b(struct rf_info *rf,  u8 central_ch);
 bool halrf_ctrl_bw_8852b(struct rf_info *rf, enum channel_width bw);
 void halrf_rxbb_bw_8852b(struct rf_info *rf, enum phl_phy_idx phy, enum channel_width bw);
-void halrf_fw_ntfy_8852b(struct rf_info *rf, enum phl_phy_idx phy_idx); 
+void halrf_fw_ntfy_8852b(struct rf_info *rf, enum phl_phy_idx phy_idx);
 void halrf_disconnect_notify_8852b(struct rf_info *rf, struct rtw_chan_def *chandef  ) ;
 bool halrf_check_mcc_ch_8852b(struct rf_info *rf, struct rtw_chan_def *chandef) ;
 void halrf_quick_checkrf_8852b(struct rf_info *rf);

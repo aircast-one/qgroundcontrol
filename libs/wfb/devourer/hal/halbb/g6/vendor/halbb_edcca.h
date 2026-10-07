@@ -280,4 +280,3 @@ void halbb_edcca_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 void halbb_edcca_cmn_log(struct bb_info *bb);
 void halbb_edcca_self_diag(struct bb_info *bb);
 #endif
-

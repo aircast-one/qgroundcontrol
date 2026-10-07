@@ -674,4 +674,3 @@ bool halrf_get_efuse_info_8852c(struct rf_info *rf, u8 *efuse_map,
 
 #endif	/*RF_8852C_SUPPORT*/
 #endif	/*_HALRF_EFUSE_8852C_H_*/
-

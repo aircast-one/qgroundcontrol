@@ -27,7 +27,7 @@
 void halbb_cfg_timers(struct bb_info *bb, enum bb_timer_cfg_t cfg,
 		      struct halbb_timer_info *timer)
 {
-	BB_DBG(bb, DBG_INIT, "[%s] %s timer, event=%d\n", __func__, 
+	BB_DBG(bb, DBG_INIT, "[%s] %s timer, event=%d\n", __func__,
 	       ((cfg == BB_SET_TIMER) ? "SET" : ((cfg == BB_CANCEL_TIMER) ? "CANCEL" : ("RLS"))),
 	       timer->event_idx);
 
@@ -206,7 +206,7 @@ void halbb_rfio_set_reg_cmn(struct bb_info *bb, u32 addr, u32 mask, u32 val, enu
 
 	if (mask != MASKDWORD) {
 		shift = halbb_cal_bit_shift(mask);
-		
+
 		ori_val = halbb_rfio_get_cr(bb, addr, mask);
 		val_mod = ((ori_val) & (~mask)) | (((val << shift)) & mask);
 	}
@@ -362,7 +362,7 @@ void halbb_set_reg_curr_phy(struct bb_info *bb, u32 addr, u32 mask, u32 val)
 
 	if (mask != MASKDWORD) {
 		shift = halbb_cal_bit_shift(mask);
-		
+
 		ori_val = halbb_get_cr(bb, addr, mask);
 		val_mod = ((ori_val) & (~mask)) | (((val << shift)) & mask);
 	}
@@ -389,7 +389,7 @@ void halbb_set_reg_cmn(struct bb_info *bb, u32 addr, u32 mask, u32 val, enum phl
 
 	if (mask != MASKDWORD) {
 		shift = halbb_cal_bit_shift(mask);
-		
+
 		ori_val = halbb_get_cr(bb, addr, mask);
 		val_mod = ((ori_val) & (~mask)) | (((val << shift)) & mask);
 	}
@@ -405,7 +405,7 @@ void halbb_set_reg_phy0_1(struct bb_info *bb, u32 addr, u32 mask, u32 val)
 
 	/*if (mask != MASKDWORD) {
 		shift = halbb_cal_bit_shift(mask);
-		
+
 		ori_val = halbb_get_cr(bb, addr, mask);
 		val_mod = ((ori_val) & (~mask)) | (((val << shift)) & mask);
 	}
@@ -551,7 +551,7 @@ u32 halbb_c2h_mu_gptbl_rpt(struct bb_info *bb, u16 len, u8 *c2h)
 	struct hal_mu_score_tbl *mu_sc_tbl = &bb->hal_com->bb_mu_score_tbl;
 	u16 mu_score = 0;
 
-	/* 
+	/*
 	Need to do MU protect to prevent error c2h sending
 	this function will be return to prevent error c2h
 	*/
@@ -587,7 +587,7 @@ u32 halbb_c2h_mu_gptbl_rpt(struct bb_info *bb, u16 len, u8 *c2h)
 				k++;
 			}
 		}
-#endif 
+#endif
 
 	return val;
 }
@@ -609,7 +609,7 @@ void halbb_fw_ctrl_rtyrpt(struct bb_info *bb, u8 rpt_rtycnt, u8 en_fw_rpt)
 	u32 *bb_h2c = (u32 *) fwmn_i;
 	u8 cmdlen = sizeof(struct bb_fw_dbg_cmn_info);
 	bool ret_val = false;
-	
+
 	fwmn_i->fw_cmn_info |= (en_fw_rpt & 0x01);
 	fwmn_i->fw_rty_rpt_ctrl = rpt_rtycnt;
 	BB_DBG(bb, DBG_FW_INFO, "FW CTRL RTYRPT: %d %d\n", fwmn_i->fw_cmn_info, fwmn_i->fw_rty_rpt_ctrl);
@@ -626,19 +626,19 @@ u32 halbb_c2h_fw_trig_tx_rpt(struct bb_info *bb, u16 len, u8 *c2h)
 	struct bb_c2h_fw_tx_rpt *fw_tx_i = &bb->bb_fwtx_c2h_i;
 	bool tx_stat = c2h[0] & BIT(0);
 	u32 val = (u32)false;
-	
+
 	if (tx_stat) {
 		BB_DBG(bb, DBG_FW_INFO, "[FW][C2H] Tx done\n");
 	} else {
 		BB_DBG(bb, DBG_FW_INFO, "[FW][C2H] Tx fail\n");
 	}
 
-	// PD hit enable 
+	// PD hit enable
 	halbb_set_reg(bb, 0xa3c, BIT(9), 0);
 	halbb_set_reg(bb, 0xabc, BIT(9), 0);
-		
+
 	fw_tx_i->tx_done = tx_stat;
-	
+
 	val = (u32)true;
 	return val;
 }*/
@@ -647,7 +647,7 @@ u32 halbb_c2h_fw_h2c_test(struct bb_info *bb, u16 len, u8 *c2h)
 {
 	u16 i;
 	u32 val = (u32)false;
-	
+
 	for (i = 0; i < len; i++) {
 		BB_DBG(bb, DBG_FW_INFO, "FW H2C and C2H test: %d\n", c2h[i]);
 	}
@@ -858,7 +858,7 @@ halbb_config_cmac_tbl_ax(struct bb_info *bb, struct rtw_phl_stainfo_t *phl_sta_i
 
 	if (NULL == phl_sta_i)
 		return ret;
-	
+
 	band_idx = phl_sta_i->rlink->hw_band;
 	rf_num = bb->phl_com->phy_cap[band_idx].tx_path_num;
 
@@ -968,22 +968,22 @@ bool halbb_set_pwr_by_rate_tbl(struct bb_info *bb, struct rtw_phl_stainfo_t *phl
 {
 	struct halbb_pwr_by_rate_tbl pwr_t = {{0}};
 	u8 i = 0;
-	enum rtw_data_rate ru_pwr_rate[PWR_TBL_NUM] = {RTW_DATA_RATE_HE_NSS1_MCS0, 
-		RTW_DATA_RATE_HE_NSS1_MCS1, RTW_DATA_RATE_HE_NSS1_MCS2, 
-		RTW_DATA_RATE_HE_NSS1_MCS3, RTW_DATA_RATE_HE_NSS1_MCS4, 
-		RTW_DATA_RATE_HE_NSS1_MCS5, RTW_DATA_RATE_HE_NSS1_MCS6, 
-		RTW_DATA_RATE_HE_NSS1_MCS7, RTW_DATA_RATE_HE_NSS1_MCS8, 
-		RTW_DATA_RATE_HE_NSS1_MCS9, RTW_DATA_RATE_HE_NSS1_MCS10, 
-		RTW_DATA_RATE_HE_NSS1_MCS11, RTW_DATA_RATE_HE_NSS2_MCS0, 
-		RTW_DATA_RATE_HE_NSS2_MCS1, RTW_DATA_RATE_HE_NSS2_MCS2, 
-		RTW_DATA_RATE_HE_NSS2_MCS3, RTW_DATA_RATE_HE_NSS2_MCS4, 
-		RTW_DATA_RATE_HE_NSS2_MCS5, RTW_DATA_RATE_HE_NSS2_MCS6, 
-		RTW_DATA_RATE_HE_NSS2_MCS7, RTW_DATA_RATE_HE_NSS2_MCS8, 
-		RTW_DATA_RATE_HE_NSS2_MCS9, RTW_DATA_RATE_HE_NSS2_MCS10, 
-		RTW_DATA_RATE_HE_NSS2_MCS11, RTW_DATA_RATE_HE_NSS1_MCS0, 
-		RTW_DATA_RATE_HE_NSS1_MCS1, RTW_DATA_RATE_HE_NSS1_MCS3, 
-		RTW_DATA_RATE_HE_NSS1_MCS4, RTW_DATA_RATE_HE_NSS2_MCS0, 
-		RTW_DATA_RATE_HE_NSS2_MCS1, RTW_DATA_RATE_HE_NSS2_MCS3, 
+	enum rtw_data_rate ru_pwr_rate[PWR_TBL_NUM] = {RTW_DATA_RATE_HE_NSS1_MCS0,
+		RTW_DATA_RATE_HE_NSS1_MCS1, RTW_DATA_RATE_HE_NSS1_MCS2,
+		RTW_DATA_RATE_HE_NSS1_MCS3, RTW_DATA_RATE_HE_NSS1_MCS4,
+		RTW_DATA_RATE_HE_NSS1_MCS5, RTW_DATA_RATE_HE_NSS1_MCS6,
+		RTW_DATA_RATE_HE_NSS1_MCS7, RTW_DATA_RATE_HE_NSS1_MCS8,
+		RTW_DATA_RATE_HE_NSS1_MCS9, RTW_DATA_RATE_HE_NSS1_MCS10,
+		RTW_DATA_RATE_HE_NSS1_MCS11, RTW_DATA_RATE_HE_NSS2_MCS0,
+		RTW_DATA_RATE_HE_NSS2_MCS1, RTW_DATA_RATE_HE_NSS2_MCS2,
+		RTW_DATA_RATE_HE_NSS2_MCS3, RTW_DATA_RATE_HE_NSS2_MCS4,
+		RTW_DATA_RATE_HE_NSS2_MCS5, RTW_DATA_RATE_HE_NSS2_MCS6,
+		RTW_DATA_RATE_HE_NSS2_MCS7, RTW_DATA_RATE_HE_NSS2_MCS8,
+		RTW_DATA_RATE_HE_NSS2_MCS9, RTW_DATA_RATE_HE_NSS2_MCS10,
+		RTW_DATA_RATE_HE_NSS2_MCS11, RTW_DATA_RATE_HE_NSS1_MCS0,
+		RTW_DATA_RATE_HE_NSS1_MCS1, RTW_DATA_RATE_HE_NSS1_MCS3,
+		RTW_DATA_RATE_HE_NSS1_MCS4, RTW_DATA_RATE_HE_NSS2_MCS0,
+		RTW_DATA_RATE_HE_NSS2_MCS1, RTW_DATA_RATE_HE_NSS2_MCS3,
 		RTW_DATA_RATE_HE_NSS2_MCS4};
 	u32 *pval = (u32 *)&pwr_t;
 	u8 cmdlen = sizeof(pwr_t);

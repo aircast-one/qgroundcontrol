@@ -48,9 +48,9 @@ struct dpk_bkup_para {
 	enum channel_width	bw;
 	u8	ch;
 	u8	path_ok;
-	u8	txagc_dpk;		/*txagc@dpk with path*/	
-	u8	ther_dpk;		/*thermal@dpk with path*/	
-	//u8	trk_idx_dpk;		/*track_idx@dpk with path*/	
+	u8	txagc_dpk;		/*txagc@dpk with path*/
+	u8	ther_dpk;		/*thermal@dpk with path*/
+	//u8	trk_idx_dpk;		/*track_idx@dpk with path*/
 	//u8	ther_tssi;		/*thermal@tssi with path*/
 	u8	gs;
 	u16	pwsf;
@@ -116,4 +116,3 @@ struct halrf_dpk_info {
 };
 
 #endif /*__HALRF_DPK_H__*/
-

@@ -6,13 +6,13 @@
   targetNamespace="http://www.opengis.net/kml/2.2"
   elementFormDefault="qualified"
   version="2.2.0">
-  
+
   <annotation>
     <appinfo>ogckml22.xsd 2008-01-23</appinfo>
     <documentation>XML Schema Document for OGC KML version 2.2. Copyright (c)
       2008 Open Geospatial Consortium.
     </documentation>
-  </annotation>  
+  </annotation>
 
   <!-- import atom:author and atom:link -->
   <import namespace="http://www.w3.org/2005/Atom"
@@ -70,12 +70,12 @@
   <simpleType name="colorType">
     <annotation>
       <documentation><![CDATA[
-        
+
         aabbggrr
-        
+
         ffffffff: opaque white
         ff000000: opaque black
-        
+
         ]]></documentation>
     </annotation>
     <restriction base="hexBinary">

@@ -103,4 +103,3 @@ CompassMot only works well if you have a battery current monitor because the mag
 1. **CompassMot** 버튼을 클릭합니다.
 
 2. 화면의 대화상자를 따라 진행합니다.
-

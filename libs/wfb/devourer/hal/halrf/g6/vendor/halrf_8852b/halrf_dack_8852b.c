@@ -57,7 +57,7 @@ void halrf_drck_8852b(struct rf_info *rf)
 	u32 c = 10000;
 	u32 rck_d;
 
-	RF_DBG(rf, DBG_RF_DACK, "[DACK]Ddie RCK start!!!\n");	
+	RF_DBG(rf, DBG_RF_DACK, "[DACK]Ddie RCK start!!!\n");
 
 	halrf_write_fwofld_start(rf);		/*FW Offload Start*/
 
@@ -380,13 +380,13 @@ void halrf_addck_8852b(struct rf_info *rf)
 	halrf_wreg(rf, 0x12b8, BIT(30), 0x1);
 	halrf_wreg(rf, 0x032c, BIT(30), 0x0);
 	/*4.Reset calibration*/
-	halrf_wreg(rf, 0x032c, BIT(22), 0x0);	
+	halrf_wreg(rf, 0x032c, BIT(22), 0x0);
 	halrf_wreg(rf, 0x032c, BIT(22), 0x1);
 
 	halrf_wreg(rf, 0x030c, 0x0f000000, 0xf);
 	halrf_delay_us(rf, 100);
 	/*2.ADC input not from RXBB & ADC input short*/
-	halrf_wreg(rf, 0x032c, BIT(16), 0x0);	
+	halrf_wreg(rf, 0x032c, BIT(16), 0x0);
 	halrf_wreg(rf, 0xc0d4, BIT(1), 0x1);
 	/*3.release ADC reset*/
 	halrf_wreg(rf, 0x030c, 0x0f000000, 0x3);
@@ -474,13 +474,13 @@ void halrf_addck_8852b(struct rf_info *rf)
 	halrf_wreg(rf, 0x32b8, BIT(30), 0x1);
 	halrf_wreg(rf, 0x032c, BIT(30), 0x0);
 	/*4.Reset calibration*/
-	halrf_wreg(rf, 0x032c, BIT(22), 0x0);	
+	halrf_wreg(rf, 0x032c, BIT(22), 0x0);
 	halrf_wreg(rf, 0x032c, BIT(22), 0x1);
 
 	halrf_wreg(rf, 0x030c, 0x0f000000, 0xf);
 	halrf_delay_us(rf, 100);
 	/*2.ADC input not from RXBB & ADC input short*/
-	halrf_wreg(rf, 0x032c, BIT(16), 0x0);	
+	halrf_wreg(rf, 0x032c, BIT(16), 0x0);
 	halrf_wreg(rf, 0xc1d4, BIT(1), 0x1);
 	/*3.release ADC reset*/
 	halrf_wreg(rf, 0x030c, 0x0f000000, 0x3);
@@ -493,7 +493,7 @@ void halrf_addck_8852b(struct rf_info *rf)
 	halrf_write_fwofld_start(rf);		/*FW Offload Start*/
 
 	/*average 128 times*/
-//	halrf_wreg(rf, 0xc1f4, BIT(7) | BIT(6), 0x3);	
+//	halrf_wreg(rf, 0xc1f4, BIT(7) | BIT(6), 0x3);
 	/*5.trigger dc offset calibration*/
 	halrf_wreg(rf, 0xc1f4, BIT(11), 0x1);
 	halrf_wreg(rf, 0xc1f4, BIT(11), 0x0);
@@ -541,7 +541,7 @@ void halrf_addck_8852b(struct rf_info *rf)
 	}
 #endif
 	halrf_write_fwofld_end(rf);		/*FW Offload End*/
-	
+
 	RF_DBG(rf, DBG_RF_DACK, "[DACK]ADDCK c = %d\n", c);
 	RF_DBG(rf, DBG_RF_DACK, "[DACK]after S1 ADDCK\n");
 	halrf_check_addc_8852b(rf, RF_PATH_B);
@@ -580,7 +580,7 @@ void halrf_check_dadc_8852b(struct rf_info *rf, enum rf_path path)
 	}
 
 	halrf_write_fwofld_end(rf);		/*FW Offload End*/
-	
+
 	halrf_check_addc_8852b(rf, path);
 
 	halrf_write_fwofld_start(rf);		/*FW Offload Start*/
@@ -815,7 +815,7 @@ void halrf_dack_8852b_s1(struct rf_info *rf)
 				dack->msbk_timeout[1] = true;
 #ifdef HALRF_DZ_LOG
 				rfk_dz->dack_dz_code |= DZ_MSBK1_TIMEOUT;
-#endif				
+#endif
 				break;
 			}
 		}
@@ -968,12 +968,12 @@ void halrf_dac_cal_8852b(struct rf_info *rf, bool force)
 	rfk_dz->dack_dz_code = 0x0;
 #endif
 	dack->dack_done = false;
-	RF_DBG(rf, DBG_RF_DACK, "[DACK]DACK start!!!\n");	
-	
+	RF_DBG(rf, DBG_RF_DACK, "[DACK]DACK start!!!\n");
+
 	halrf_btc_rfk_ntfy(rf, phy_map, RF_BTC_DACK, RFK_ONESHOT_START);
 #ifdef HALRF_CONFIG_FW_IO_OFLD_SUPPORT
 	if (rf->phl_com->dev_cap.io_ofld)
-		halrf_write_fwofld_start(rf);		
+		halrf_write_fwofld_start(rf);
 #endif
 	halrf_afe_init_8852b(rf);
 	halrf_dack_reset_8852b(rf);
@@ -1000,4 +1000,3 @@ void halrf_dac_cal_8852b(struct rf_info *rf, bool force)
 	RF_DBG(rf, DBG_RF_DACK, "[DACK]DACK finish!!!\n");
 }
 #endif
-

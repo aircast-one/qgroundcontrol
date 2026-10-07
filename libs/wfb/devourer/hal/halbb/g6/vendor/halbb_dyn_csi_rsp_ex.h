@@ -37,4 +37,3 @@ bool halbb_dyn_csi_rsp_rlt_get(struct bb_info *bb);
 bool halbb_dcr_rssi_chk(struct bb_info * bb);
 
 #endif
-

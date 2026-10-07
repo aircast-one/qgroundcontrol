@@ -65,7 +65,7 @@ void halbb_set_pmac_tx(struct bb_info *bb, struct halbb_pmac_info *tx_info,
 				halbb_set_pmac_tx_8852b(bb, tx_info, phy_idx);
 		#else
 			halbb_set_pmac_tx_8852b(bb, tx_info, phy_idx);
-		#endif	
+		#endif
 		break;
 	#endif
 
@@ -127,7 +127,7 @@ void halbb_set_tmac_tx(struct bb_info *bb, enum phl_phy_idx phy_idx)
 		halbb_set_tmac_tx_8852a_2(bb, phy_idx);
 		break;
 	#endif
-	
+
 	#ifdef BB_8852B_SUPPORT
 	case BB_RTL8852B:
 		halbb_set_tmac_tx_8852b(bb, phy_idx);
@@ -834,7 +834,7 @@ void halbb_dpd_bypass(struct bb_info *bb, bool pdp_bypass,
 		halbb_dpd_bypass_8851b(bb, pdp_bypass, phy_idx);
 		break;
 	#endif
-	
+
 	default:
 		break;
 	}
@@ -843,7 +843,7 @@ void halbb_dpd_bypass(struct bb_info *bb, bool pdp_bypass,
 void halbb_backup_info(struct bb_info *bb_0, enum phl_phy_idx phy_idx)
 {
 	struct bb_info *bb = bb_0;
-		
+
 #ifdef HALBB_DBCC_SUPPORT
 	HALBB_GET_PHY_PTR(bb_0, bb, phy_idx);
 #endif
@@ -1036,13 +1036,13 @@ enum rtw_hal_status halbb_set_txsb(struct bb_info *bb, u8 txsb,
 	return rpt;
 }
 
-bool halbb_set_bss_color(struct bb_info *bb, u8 bss_color, 
+bool halbb_set_bss_color(struct bb_info *bb, u8 bss_color,
 			 enum phl_phy_idx phy_idx)
 {
 	bool rpt = true;
 
 	switch (bb->ic_type) {
-	
+
 	#ifdef BB_8852A_2_SUPPORT
 		case BB_RTL8852A:
 			rpt = halbb_set_bss_color_8852a_2(bb, bss_color, phy_idx);
@@ -1098,7 +1098,7 @@ bool halbb_set_sta_id(struct bb_info *bb, u16 sta_id, enum phl_phy_idx phy_idx)
 	bool rpt = true;
 
 	switch (bb->ic_type) {
-	
+
 	#ifdef BB_8852A_2_SUPPORT
 		case BB_RTL8852A:
 			rpt = halbb_set_sta_id_8852a_2(bb, sta_id, phy_idx);
@@ -1224,11 +1224,10 @@ void halbb_pmac_tx_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 	} else if (_os_strcmp(input[1], "trig_tx") == 0) {
 		if (_os_strcmp(input[2], "1") == 0)
 			txinfo->en_pmac_tx = 1;
-		else if (_os_strcmp(input[2], "2") == 0) 
+		else if (_os_strcmp(input[2], "2") == 0)
 			txinfo->en_pmac_tx = 0;
 		halbb_set_pmac_tx(bb, txinfo, bb->bb_phy_idx);
 	}
 	*_used = used;
 	*_out_len = out_len;
 }
-

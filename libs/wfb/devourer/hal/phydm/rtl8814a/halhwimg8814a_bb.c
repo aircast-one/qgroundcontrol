@@ -8038,4 +8038,3 @@ odm_read_and_config_mp_8814a_phy_reg_pg_type9(struct dm_struct *dm)
 }
 
 #endif /* end of HWIMG_SUPPORT*/
-

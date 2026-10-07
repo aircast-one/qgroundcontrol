@@ -86,7 +86,7 @@ enum halrf_event_func {
 
 
 /*@--------------------------[Structure]-------------------------------------*/
- 
+
 /*@--------------------------[Prptotype]-------------------------------------*/
 struct rf_info;
 
@@ -99,7 +99,7 @@ void halrf_bkp(struct rf_info *rf, u32 *bp_reg, u32 *bp, u32 reg_num);
 void halrf_bkprf(struct rf_info *rf, u32 *bp_reg, u32 bp[][4], u32 reg_num, u32 path_num);
 
 void halrf_reload_bkp(struct rf_info *rf, u32 *bp_reg, u32 *bp, u32 reg_num);
-	
+
 void halrf_reload_bkprf(struct rf_info *rf,
 		       u32 *bp_reg,
 		       u32 bp[][4],

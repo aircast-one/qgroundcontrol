@@ -89,4 +89,3 @@ The configurable options are:
 ### Statistics
 
 The _Statistics_ section shows the calculated survey area, photo interval, photo spacing and planned photo count.
-

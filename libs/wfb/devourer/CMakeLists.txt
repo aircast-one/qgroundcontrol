@@ -528,5 +528,3 @@ if(DEVOURER_KESTREL)
     target_sources(devourer PRIVATE $<TARGET_OBJECTS:kestrel_halrf>)
     target_include_directories(devourer PRIVATE hal/halrf/g6)
 endif()
-
-

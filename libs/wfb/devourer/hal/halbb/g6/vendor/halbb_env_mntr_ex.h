@@ -223,4 +223,3 @@ u8 halbb_env_mntr_result(struct bb_info *bb, struct env_mntr_rpt *rpt, enum phl_
 u8 halbb_env_mntr_get_802_11_k_rsni(struct bb_info *bb, s8 rcpi, s8 anpi);
 
 #endif
-

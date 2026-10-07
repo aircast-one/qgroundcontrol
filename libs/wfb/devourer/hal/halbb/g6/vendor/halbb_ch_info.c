@@ -35,7 +35,7 @@ void halbb_ch_trig_select(struct bb_info *bb, u8 event)
  	if (event == CH_RPT_TRIG_ONCE) {
 		ch_physts->ch_info_event = CH_RPT_TRIG_ONCE;
 		ch_physts->ch_info_state = CH_RPT_START_TO_WAIT;
-	}	
+	}
 	else if (event == CH_RPT_TRIG_ALWAYS) {
 		ch_physts->ch_info_event = CH_RPT_TRIG_ALWAYS;
 		ch_physts->ch_info_state = CH_RPT_ALWAYS_ON;
@@ -45,7 +45,7 @@ void halbb_ch_trig_select(struct bb_info *bb, u8 event)
 		       event);
 		return;
 	}
-	
+
 	BB_DBG(bb, DBG_CH_INFO, "Trig_event = %d\n", ch_physts->ch_info_event);
 }
 
@@ -60,7 +60,7 @@ bool halbb_ch_info_valid_chk_8852a(struct bb_info *bb, struct physts_rxd *desc)
 
 	if (bb->ic_type != BB_RTL8852A)
 		return true;
-	
+
 	/* [bug_idx=2&5] To avoid rxsc!= ch_info. -> partial ch_info. = 0*/
 	if (!(psts_8->is_ch_info_len_valid && psts_8->rxsc == 0)) {
 		BB_DBG(bb, DBG_CH_INFO, "valid=%d, rxsc = %d\n",
@@ -72,13 +72,13 @@ bool halbb_ch_info_valid_chk_8852a(struct bb_info *bb, struct physts_rxd *desc)
 	if (physts->bb_physts_rslt_1_i.bw_idx == CHANNEL_WIDTH_40 &&
 	    desc->data_rate >= BB_HE_1SS_MCS0) {
 		err_len = 62 * ch_rpt->bb_ch_rpt_size_i.per_tone_ch_rpt_size;
-	
+
 		if (ch_physts->ch_info_len != err_len) {
 			BB_DBG(bb, DBG_CH_INFO, "ch_info_len(%d) != err_len(%d)\n",
 			       ch_physts->ch_info_len, err_len);
 			return false;
 		}
-	
+
 		ch_physts->ch_info_len = 32 * ch_rpt->bb_ch_rpt_size_i.per_tone_ch_rpt_size;
 	}
 
@@ -86,13 +86,13 @@ bool halbb_ch_info_valid_chk_8852a(struct bb_info *bb, struct physts_rxd *desc)
 	if (physts->bb_physts_rslt_1_i.bw_idx == CHANNEL_WIDTH_20 &&
 	    desc->data_rate >= BB_HE_1SS_MCS0) {
 		err_len = 64 * ch_rpt->bb_ch_rpt_size_i.per_tone_ch_rpt_size;
-	
+
 		if (ch_physts->ch_info_len != err_len) {
 			BB_DBG(bb, DBG_CH_INFO, "ch_info_len(%d) != err_len(%d)\n",
 			       ch_physts->ch_info_len, err_len);
 			return false;
 		}
-	
+
 		ch_physts->ch_info_len = 16 * ch_rpt->bb_ch_rpt_size_i.per_tone_ch_rpt_size;
 	}
 #endif
@@ -238,7 +238,7 @@ void halbb_ch_info_print(struct bb_info *bb)
 			shift_tone = tone_num - (4/(size->n_c << (size->n_r - 1)));
 		}
 		#endif
-	}		
+	}
 
 	for (i = 0; i < tone_num; i++) {
 		BB_TRACE("[Tone_idx=%d]\n", i);
@@ -624,7 +624,7 @@ void halbb_ch_info_self_test(struct bb_info *bb)
 		 1 << cfg->ch_i_cmprs, grp_num_tab[cfg->ch_i_grp_num],
 		 size.n_r, size.n_c,
 		 cfg->ch_i_ele_bitmap,
-		 size.per_tone_ch_rpt_size); 
+		 size.per_tone_ch_rpt_size);
 	BB_TRACE("[Lgcy/HT/VHT]\n");
 	for (i = 0; i < CH_INFO_BW_NUM; i++) {
 		BB_TRACE("  [%03dM] Len=%04d Byte, tone_num=%03d\n",
@@ -659,7 +659,7 @@ enum bb_ch_info_t halbb_ch_info_get_data(struct bb_info *bb, struct physts_rxd *
 	seq = hdr->seq_num;
 
 	drv->seg_idx_curr = seq;
-	
+
 
 	if (hdr->set_valid == 0) {
 		BB_DBG(bb, DBG_CH_INFO, "[FAIL][1] valid=%d\n", hdr->set_valid);
@@ -701,12 +701,12 @@ enum bb_ch_info_t halbb_ch_info_get_data(struct bb_info *bb, struct physts_rxd *
 		addr += ch_rpt->phy_info_len;
 		drv->raw_data_len -= ch_rpt->phy_info_len;  /*ex: 88 - 8 = 80*/
 
-		ch_rpt->csi_raw_data_total_len = (hdr->total_len_m << 16 | hdr->total_len_l) 
+		ch_rpt->csi_raw_data_total_len = (hdr->total_len_m << 16 | hdr->total_len_l)
 						 - ch_rpt->ch_rpt_hdr_len - ch_rpt->phy_info_len; /*@320 - 16 = 304*/
 		rxsc = (u8)phy_info->rxsc;
 		halbb_ch_info_modify_ack_rxsc(bb, desc, ch_rpt->csi_raw_data_total_len, &rxsc);
 		phy_info->rxsc = rxsc & 0xf;
-		
+
 		BB_DBG(bb, DBG_CH_INFO, "  *csi_raw_data_total_len=%d\n", ch_rpt->csi_raw_data_total_len);
 
 		BB_DBG(bb, DBG_CH_INFO, "[SEG_0 Hdr] len: %d(csi_data) = %d(all) - %d(csi_hdr) - %d(seg0_hdr)\n",
@@ -741,7 +741,7 @@ enum bb_ch_info_t halbb_ch_info_get_data(struct bb_info *bb, struct physts_rxd *
 
 	if (ch_rpt->print_en)
 		halbb_print_buff_64(bb, addr, (u16)drv->raw_data_len);
-	
+
 	return csi_rpt;
 }
 
@@ -936,7 +936,7 @@ bool halbb_ch_info_buf_alloc(struct bb_info *bb)
 
 	if (!buf->octet)
 		return false;
-	
+
 	return true;
 }
 
@@ -1023,7 +1023,7 @@ void halbb_ch_info_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
 			    "cfg para3 {0:LS, 1:CS}\n");
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
-			    "cfg para4 {0:Trigger Once, 1:Trigger Always}\n\n");		
+			    "cfg para4 {0:Trigger Once, 1:Trigger Always}\n\n");
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
 			    "filter rxsc {en} {rxsc_idx}\n\n");
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
@@ -1174,7 +1174,7 @@ void halbb_ch_info_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 
 			cfg->ch_i_grp_num = (u8)val[1];
 			cfg->ch_i_grp_num_he = (u8)val[1];
-			
+
 			cfg->ch_i_ele_bitmap = val[2];
 
 		} else if (_os_strcmp(input[2], "para2") == 0) {
@@ -1189,7 +1189,7 @@ void halbb_ch_info_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 		} else if (_os_strcmp(input[2], "para4") == 0) {
 			halbb_ch_trig_select (bb, (u8)val[0]);
 			BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
-				    "Trigger Event=%d\n", ch_physts->ch_info_event);	
+				    "Trigger Event=%d\n", ch_physts->ch_info_event);
 		} else if (_os_strcmp(input[2], "blk") == 0) {
 			cfg->ch_i_blk_start_idx = (u8)val[0];
 			cfg->ch_i_blk_end_idx = (u8)val[1];
@@ -1214,7 +1214,7 @@ void halbb_ch_info_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 				    1 << cfg->ch_i_cmprs, grp_num_tab[cfg->ch_i_grp_num],
 				    size->n_r, size->n_c,
 				    cfg->ch_i_ele_bitmap,
-				    size->per_tone_ch_rpt_size);		    
+				    size->per_tone_ch_rpt_size);
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
 				    "[Lgcy/HT/VHT]\n");
 		for (i = 0; i < CH_INFO_BW_NUM; i++) {
@@ -1261,7 +1261,7 @@ void halbb_ch_info_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 		ch_rpt_hdr.set_valid = 1;
 		ch_rpt_hdr.segment_size = TEST_CH_SEG_LEN >> 3;
 		ch_rpt_hdr.seq_num= seg_idx;
-		
+
 		if (seg_idx == TEST_CH_INFO_MAX_SEG - 1) {
 			ch_rpt_hdr.is_pkt_end = 1;
 		} else {
@@ -1333,7 +1333,7 @@ void halbb_ch_info_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 			ch_rpt->raw_data_len_acc = 0;
 			ch_rpt->test_buf_curr = ch_rpt->test_buf;
 		}
-			
+
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
 			 "[ACC] remnant=%d, raw_data_len_acc=%d\n",
 			ch_rpt->total_len_remnant, ch_rpt->raw_data_len_acc);
@@ -1371,7 +1371,7 @@ void halbb_ch_info_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 void halbb_cr_cfg_ch_info_init(struct bb_info *bb)
 {
 	struct bb_ch_info_cr_info *cr = &bb->bb_cmn_hooker->bb_ch_info_cr_i;
-	
+
 	switch (bb->cr_type) {
 
 	#ifdef HALBB_COMPILE_AP_SERIES
@@ -1453,7 +1453,7 @@ void halbb_ch_info_modify_ack_rxsc(struct bb_info *bb, struct physts_rxd *desc, 
 	u16 calc_tone_num = 0;
 	u8 bwidx = 0;
 	enum channel_width cbw = bb->hal_com->band[0].cur_chandef.bw;
-	
+
 	if (!(desc->data_rate <= BB_24M && desc->data_rate >= BB_06M))
 		return;
 
@@ -1495,26 +1495,26 @@ bool halbb_ch_info_calc_pertone_snr(struct bb_info *bb, u8 snrvalue, u16 *addr, 
 	u32 ch_sum[4] = {0};
 	u32 ch_bin_grp[4][CH_INFO_SNR_BIN_NUM] = {0};
 	u8 ch_bin_snr[4][CH_INFO_SNR_BIN_NUM] = {0};
-	
+
 	halbb_mem_cpy(bb, snr->ch_info_snr, ch_bin_snr, 4 * CH_INFO_SNR_BIN_NUM * sizeof(u8)); /*reset buffer*/
 	calc_tone_num = HALBB_DIV(len, size->per_tone_ch_rpt_size);
 	per_bin_tone_num = HALBB_CEIL(calc_tone_num, CH_INFO_SNR_BIN_NUM);
 	BB_DBG(bb, DBG_CH_INFO, "[%s], snr=%d, calc_tone_num=%d, per_bin_tone_num=%d\n", __func__, snrvalue, calc_tone_num, per_bin_tone_num);
-	
+
 	/*Only for legacy tonenum now*/
 	if (!(calc_tone_num == 52 || calc_tone_num == 26)) {
 		BB_WARNING("error, tone_num too small\n");
 		return false;
 	}
-	
+
 	if (calc_tone_num >= 128) {
 		BB_WARNING("tone_num too large, avoid calc overflow error\n");
 		return false;
 	}
-	
+
 	if (size->data_byte == 2) {
 		rpt_tmp_16 = (u16*)addr;
-		
+
 		for (i = 0; i < calc_tone_num; i++) {
 			bin_num_index = HALBB_DIV(i, per_bin_tone_num);
 			for (j = 0; j < size->n_c; j++) {
@@ -1535,7 +1535,7 @@ bool halbb_ch_info_calc_pertone_snr(struct bb_info *bb, u8 snrvalue, u16 *addr, 
 
 		for (i = 0; i < calc_tone_num; i++) {
 			bin_num_index = HALBB_DIV(i, per_bin_tone_num);
-		
+
 			for (j = 0; j < size->n_c; j++) {
 				for (k = 0; k < size->n_r; k++) {
 					re_tmp = (u16)ABS_8(rpt_tmp_8[rpt_idx + 1]);
@@ -1588,7 +1588,7 @@ u8 halbb_ch_info_ack_verify(struct bb_info *bb, u16 *addr, u8 datasize, u16 len)
 	u16 *addr_16;
 	u8 *addr_8;
 	bool iscablelink = false;
-	
+
 	if (datasize == 1) {
 		addr_8 = (u8 *)addr;
 		for (i = 0; i < tone_num; i++) {
@@ -1596,10 +1596,10 @@ u8 halbb_ch_info_ack_verify(struct bb_info *bb, u16 *addr, u8 datasize, u16 len)
 				+((u8)ABS_8(addr_8[i*8+6]))+((u8)ABS_8(addr_8[i*8+7]));
 			h12h21 =((u8)ABS_8(addr_8[i*8+2]))+((u8)ABS_8(addr_8[i*8+3]))
 				+((u8)ABS_8(addr_8[i*8+4]))+((u8)ABS_8(addr_8[i*8+5]));
-			
+
 			chdiff = DIFF_2(h11h22, h12h21);
 			BB_DBG(bb, DBG_CH_INFO, "CH Info Verify 1byte: H11H22 = %d, H12H21= %d ,Diff= %d\n", h11h22, h12h21, chdiff);
-			
+
 			if (chdiff > 40)
 				utility += 2;
 			else if (chdiff > 25)
@@ -1616,7 +1616,7 @@ u8 halbb_ch_info_ack_verify(struct bb_info *bb, u16 *addr, u8 datasize, u16 len)
 				+((u16)ABS_16(addr_16[i*8+6]))+((u16)ABS_16(addr_16[i*8+7]));
 			h12h21 =((u16)ABS_16(addr_16[i*8+2]))+((u16)ABS_16(addr_16[i*8+3]))
 				+((u16)ABS_16(addr_16[i*8+4]))+((u16)ABS_16(addr_16[i*8+5]));
-		
+
 			chdiff = DIFF_2(h11h22, h12h21);
 			BB_DBG(bb, DBG_CH_INFO, "CH Info Verify 2byte: H11H22 = %d, H12H21= %d ,Diff= %d\n", h11h22, h12h21, chdiff);
 

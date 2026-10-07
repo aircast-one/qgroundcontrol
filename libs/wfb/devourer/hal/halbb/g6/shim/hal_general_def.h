@@ -489,4 +489,3 @@ enum mlo_dbcc_mode_type { /* for HALBB/HALRF reference */
 };
 
 #endif /* _HAL_GENERAL_DEF_H_*/
-

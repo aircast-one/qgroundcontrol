@@ -3603,4 +3603,3 @@ void halbb_cr_cfg_physts_init(struct bb_info *bb)
 }
 
 #endif
-

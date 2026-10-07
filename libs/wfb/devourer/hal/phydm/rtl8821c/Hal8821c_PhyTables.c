@@ -6821,4 +6821,3 @@ const u32 array_mp_8821c_radioa[] = {
 
 };
 const u32 array_mp_8821c_radioa_len = sizeof(array_mp_8821c_radioa) / sizeof(u32);
-

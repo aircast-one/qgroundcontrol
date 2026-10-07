@@ -14,10 +14,10 @@
  *****************************************************************************/
 #include "halrf_precomp.h"
 
-void halrf_show_rf_ic_info(struct rf_info *rf) 
+void halrf_show_rf_ic_info(struct rf_info *rf)
 {
 	char *ic_name = NULL;
-	
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 	case RF_RTL8852A:
@@ -88,7 +88,7 @@ void halrf_cmn_info_self_init(struct rf_info *rf)
 	#ifdef CONFIG_RTL8852D
 	RF_DBG(rf, DBG_RF_INIT, "[HALRF] CONFIG_RTL8852D is defined !!\n");
 	#endif
-	
+
 	#ifdef CONFIG_RTL8832D
 	RF_DBG(rf, DBG_RF_INIT, "[HALRF] CONFIG_RTL8832D is defined !!\n");
 	#endif
@@ -109,7 +109,7 @@ void halrf_cmn_info_self_init(struct rf_info *rf)
 
 #ifdef RF_8842A_SUPPORT
 	else if (hal_i->chip_id == CHIP_WIFI6_8842A) {
-		if (hal_i->aid == RF_AID_RL6967A) 
+		if (hal_i->aid == RF_AID_RL6967A)
 			rf->ic_type = RF_RTL8842A; //B cut
 		else
 			rf->ic_type = RF_RTL8852C; //A cut
@@ -185,7 +185,7 @@ void halrf_cmn_info_self_init(struct rf_info *rf)
 	rf->rf_sys_up_time = 0;
 	rf->rf_watchdog_en = true;
 	rf->rf_ic_api_en = true;
-	
+
 
 	//log
 	halrf_show_rf_ic_info(rf);
@@ -287,7 +287,7 @@ void halrf_rfk_self_init(struct rf_info *rf)
 	txgapk_info->is_gapk_init = false;
 
 	rf->chlk_map = 0xffffffff;
-	
+
 	/*[RXDCK_init*/
 	halrf_rx_dck_init(rf);
 
@@ -357,18 +357,18 @@ void halrf_rfability_init(struct rf_info *rf)
 			 HAL_RF_TX_PWR_TRACK |
 			 HAL_RF_IQK |
 			/*HAL_RF_LCK |*/
-			 HAL_RF_DPK | 
+			 HAL_RF_DPK |
 			 HAL_RF_DACK |
-			 HAL_RF_TXGAPK | 
-			 HAL_RF_DPK_TRACK | 
-			 HAL_RF_RXDCK | 
+			 HAL_RF_TXGAPK |
+			 HAL_RF_DPK_TRACK |
+			 HAL_RF_RXDCK |
 			/*HAL_RF_RXGAINK |*/
 			 HAL_RF_THER_TRIM |
 			 HAL_RF_PABIAS_TRIM |
 			 HAL_RF_TSSI_TRIM |
 			/*HAL_RF_XTAL_TRACK |*/
 			 HAL_RF_TX_SHAPE |
-			 HAL_RF_WATCHDOG | 
+			 HAL_RF_WATCHDOG |
 			 HAL_RF_TAS |
 			0;
 		break;
@@ -381,8 +381,8 @@ void halrf_rfability_init(struct rf_info *rf)
 			HAL_RF_LCK |
 			HAL_RF_DPK |
 			HAL_RF_DACK |
-			HAL_RF_TXGAPK | 
-			HAL_RF_DPK_TRACK | 
+			HAL_RF_TXGAPK |
+			HAL_RF_DPK_TRACK |
 			HAL_RF_RXDCK |
 			/* HAL_RF_RXGAINK |*/
 			/* HAL_RF_THER_TRIM | */
@@ -391,7 +391,7 @@ void halrf_rfability_init(struct rf_info *rf)
 			/* HAL_RF_XTAL_TRACK | */
 			/* HAL_RF_TX_SHAPE | */
 			HAL_RF_RXDCK_TRACK |
-			HAL_RF_WATCHDOG | 
+			HAL_RF_WATCHDOG |
 			0;
 		break;
 #endif
@@ -645,7 +645,7 @@ void halrf_rfe_init(struct rf_info *rf)
 		/*5G FEM check*/
 		if (rfe_type == 9 || rfe_type == 10 || rfe_type == 11 ||
 		    rfe_type == 12 || rfe_type == 15 || rfe_type == 16 ||
-		    rfe_type == 17 || rfe_type == 18 || rfe_type == 37 || 
+		    rfe_type == 17 || rfe_type == 18 || rfe_type == 37 ||
 		    rfe_type == 38 || rfe_type == 51 || rfe_type == 52 ||
 		    rfe_type == 53 || rfe_type == 54) {
 			rf->fem.epa_5g = 1;
@@ -774,7 +774,7 @@ enum rtw_hal_status halrf_init(struct rtw_phl_com_t *phl_com,
 	rf->cmn_dbg_msg_period = 2;
 	rf->cmn_dbg_msg_cnt = 0;
 	halrf_dbg_setting_init(rf);
-	
+
 	#if 0 //move to halrf_ic_cfg_init
 	halrf_cmn_info_self_init(rf);
 	/*init. HW cap*/
@@ -796,7 +796,7 @@ void halrf_deinit(struct rtw_phl_com_t *phl_com,
 	if(halrf)
 		halrf_mutex_deinit(halrf, &halrf->rf_lock);
 
-	if(halrf) {	
+	if(halrf) {
 		hal_mem_free(hal_com, halrf, sizeof(struct rf_info));
 	}
 }
@@ -804,7 +804,7 @@ void halrf_deinit(struct rtw_phl_com_t *phl_com,
 enum rtw_hal_status halrf_ic_cfg_init(void *rf_void)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-	
+
 	RF_TRACE("halrf_ic_cfg_init aid = 0x%x !!\n",rf->hal_com->aid );
 
 	halrf_cmn_info_self_init(rf);
@@ -812,4 +812,4 @@ enum rtw_hal_status halrf_ic_cfg_init(void *rf_void)
 	halrf_set_rfability(rf);
 
 	return RTW_HAL_STATUS_SUCCESS;
-}			
+}

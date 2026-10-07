@@ -126,4 +126,3 @@ QVariant LogEntry::columnHeaderData(int section)
     }
     return {};
 }
-

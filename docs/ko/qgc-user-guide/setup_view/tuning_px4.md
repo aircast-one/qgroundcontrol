@@ -123,4 +123,3 @@ It is designed to be read/used in conjustion with the [PX4 Manual PID Tuning Gui
 
 7. 다른 컨트롤러로 전환하고 프로세스를 반복합니다.
    튜닝 페이지의 캡쳐 화면은 아래와 같습니다.
-

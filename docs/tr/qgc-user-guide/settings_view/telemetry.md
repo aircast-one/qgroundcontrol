@@ -90,4 +90,3 @@ Use the checkboxes and buttons to select logs, and either delete or upload them.
 :::tip
 You can change the parameters in _MAVLink 2 Log Uploads_ above to specify separate descriptions for uploaded logs.
 :::
-

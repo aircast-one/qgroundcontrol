@@ -174,4 +174,3 @@ u32 odm_get_version_mp_8814a_phy_reg_pg_type9(void);
 
 #endif
 #endif /* end of HWIMG_SUPPORT*/
-

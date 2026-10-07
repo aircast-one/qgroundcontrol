@@ -32,8 +32,8 @@
 #define HALRF_DBG_CNSL_CMD
 #define HALRF_KIP_CR_CHECK
 #define HALRF_EVENT_DUMP_LOG
-// #define HALRF_FT 
-// #define HALRF_MBIST 
+// #define HALRF_FT
+// #define HALRF_MBIST
 #define HALRF_MCC_DBCC
 
 /*H2C cmd ID*/
@@ -185,7 +185,7 @@ enum halrf_dbg_comp {
 	DBG_RF_CHK = BIT(31)
 };
 
- 
+
 /*@--------------------------[Structure]-------------------------------------*/
 
 struct rfk_location {
@@ -234,7 +234,7 @@ struct halrf_op5k_info {
 
 #define HALRF_FCS_FW_RELOAD 0
 
-#if defined(RF_8852C_SUPPORT) 
+#if defined(RF_8852C_SUPPORT)
 #define RFK_REG 3136
 #elif defined (RF_8852B_SUPPORT)
 #define RFK_REG 2560
@@ -245,10 +245,10 @@ struct halrf_op5k_info {
 #define FCS_TO_FW_DATA_SIZE 400
 
 struct halrf_iqk_ops {
-	u8 (*iqk_kpath)(struct rf_info *rf, enum phl_phy_idx phy_idx);	
+	u8 (*iqk_kpath)(struct rf_info *rf, enum phl_phy_idx phy_idx);
 	bool (*iqk_mcc_page_sel)(struct rf_info *rf, enum phl_phy_idx phy,  u8 path);
-	void (*iqk_get_ch_info)(struct rf_info *rf, enum phl_phy_idx phy,  u8 path);	
-	void (*iqk_preset)(struct rf_info *rf, u8 path);	
+	void (*iqk_get_ch_info)(struct rf_info *rf, enum phl_phy_idx phy,  u8 path);
+	void (*iqk_preset)(struct rf_info *rf, u8 path);
 	void (*iqk_macbb_setting)(struct rf_info *rf, enum phl_phy_idx phy_idx, u8 path);
 	void (*iqk_start_iqk)(struct rf_info *rf, enum phl_phy_idx phy_idx, u8 path);
 	void (*iqk_restore)(struct rf_info *rf, u8 path);
@@ -261,8 +261,8 @@ struct halrf_fcs_info {
 	u32 rst_index;
 	u32	fcs_ch[RF_FCS_NUM]; // ch
 	u32 lok1[RF_FCS_NUM][2]; // 0x5C ch/path
-	u32 lok2[RF_FCS_NUM][2]; // 0x58 ch/path	
-	u32 lok3[RF_FCS_NUM][2]; // 0x55 ch/path	
+	u32 lok2[RF_FCS_NUM][2]; // 0x58 ch/path
+	u32 lok3[RF_FCS_NUM][2]; // 0x55 ch/path
 	u32 rf_reg[RF_FCS_NUM][RFK_REG]; // ch/reg
 };
 #endif
@@ -296,18 +296,18 @@ struct halrf_rx_dck_info {
 
 #ifdef HALRF_MCC_DBCC
 struct halrf_mcc_info {
-	u8 ch[2];  
-	u8 band[2];  
-	u8 table_idx;  
-	
+	u8 ch[2];
+	u8 band[2];
+	u8 table_idx;
+
 	bool is_init;
 };
 #endif
 
 struct halrf_dbcc_info {
-	u8 ch[2][2]; /*idx : path*/  
-	u8 band[2][2];  
-	u8 table_idx;  
+	u8 ch[2][2]; /*idx : path*/
+	u8 band[2][2];
+	u8 table_idx;
 	bool prek_is_dbcc;
 	bool is_free[2];
 };
@@ -330,7 +330,7 @@ struct halrf_rfk_ops {
 	void (*ops_afe_pow_ctrl)(struct rf_info *rf, bool adda_off, bool pll_off);
 	void (*ops_set_gpio_by_ch)(struct rf_info *rf, enum phl_phy_idx phy, enum band_type band);
 	bool (*ops_chlk_reload_check)(struct rf_info *rf, enum phl_phy_idx phy);
-	void (*ops_long_pkt_comp)(struct rf_info *rf, enum phl_phy_idx phy);	
+	void (*ops_long_pkt_comp)(struct rf_info *rf, enum phl_phy_idx phy);
 };
 
 
@@ -413,7 +413,7 @@ struct rf_info {
 	bool		is_coex;
 	/*[watchdog]*/
 	bool		is_watchdog_stop;
-	/*[thermal rek indictor]*/	
+	/*[thermal rek indictor]*/
 	bool rfk_do_thr_rek;
 #ifdef HALRF_KIP_CR_CHECK
 	/*reg check*/
@@ -443,7 +443,7 @@ struct rf_info {
 
 	_os_mutex	rf_lock;
 	u32 chlk_map;
-	u32 kip_table[2][4];	
+	u32 kip_table[2][4];
 	/*@=== [HALRF Structure] ============================================*/
 	struct halrf_pwr_track_info	pwr_track;
 	struct halrf_tssi_info		tssi;
@@ -459,7 +459,7 @@ struct rf_info {
 	struct halrf_fem_info	fem;
 	struct rf_dbg_cmd_info	rf_dbg_cmd_i;
 	struct halrf_kfree_info	kfree_info;
-#ifdef HALRF_PSD_SUPPORT	
+#ifdef HALRF_PSD_SUPPORT
 	struct halrf_psd_data	psd;
 #endif	/*HALRF_PSD_SUPPORT*/
 	struct rfk_location		iqk_loc[2];	/*S0/S1*/
@@ -495,4 +495,3 @@ void halrf_si_reset(struct rf_info *rf);
 void halrf_bb_reset_trigger(struct rf_info *rf, enum phl_phy_idx phy_idx);
 
 #endif
-

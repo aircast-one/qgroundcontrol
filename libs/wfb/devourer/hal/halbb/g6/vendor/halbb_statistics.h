@@ -319,7 +319,7 @@ struct bb_info;
 /*@--------------------------[Prptotype]-------------------------------------*/
 
 void halbb_set_crc32_cnt3_format(struct bb_info *bb, u8 usr_type_sel);
-void halbb_crc32_cnt_dbg(struct bb_info *bb, char input[][16], u32 *_used, 
+void halbb_crc32_cnt_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 			 char *output, u32 *_out_len);
 void halbb_statistics_reset(struct bb_info *bb);
 void halbb_statistics_init(struct bb_info *bb);
@@ -332,4 +332,3 @@ u32 halbb_get_fw_c2h_statistics(struct bb_info *bb_0, u16 len, u8 *c2h);
 void halbb_fw_h2c_statistics_en(struct bb_info *bb, u8 fw_rpt_mode);
 #endif
 #endif
-

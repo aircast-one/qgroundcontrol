@@ -108,4 +108,3 @@ Enabling _Terrain Following_ makes the vehicle maintain a constant height relati
 ### 통계
 
 _통계_ 섹션에는 계산된 조사 영역, 사진 간격, 사진 간격 및 계획된 사진 수가 표시됩니다.
-

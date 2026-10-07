@@ -79,4 +79,3 @@ void halbb_query_phy_utility_info(struct bb_info *bb, struct bb_bkp_phy_utility_
 void halbb_auto_debug_en(struct bb_info *bb, enum bb_auto_dbg_t dbg_type, bool en);
 #endif
 #endif
-

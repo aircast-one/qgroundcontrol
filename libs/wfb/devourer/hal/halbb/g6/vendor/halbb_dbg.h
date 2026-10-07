@@ -70,7 +70,7 @@
 		do {\
 			_os_dbgdump("[BB]" fmt, ##__VA_ARGS__);\
 		} while (0)
-		
+
 	#define BB_WARNING(fmt, ...)     \
 		do {\
 			_os_dbgdump("[WARNING][BB]" fmt, ##__VA_ARGS__);\

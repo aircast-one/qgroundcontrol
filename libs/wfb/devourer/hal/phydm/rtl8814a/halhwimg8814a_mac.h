@@ -39,4 +39,3 @@ u32 odm_get_version_mp_8814a_mac_reg(void);
 
 #endif
 #endif /* end of HWIMG_SUPPORT*/
-

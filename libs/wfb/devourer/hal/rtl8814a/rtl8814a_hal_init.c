@@ -1035,7 +1035,7 @@ hal_EfuseParseBTCoexistInfo8814A(
 	}
 
 	RTW_INFO("EEPROMBluetoothCoexist = %d, EEPROMBluetoothAntNum = %s\n",
-		pHalData->EEPROMBluetoothCoexist, 
+		pHalData->EEPROMBluetoothCoexist,
 			(pHalData->EEPROMBluetoothAntNum == Ant_x1) ? "Ant_x1" : "Ant_x2");
 }
 

@@ -245,7 +245,7 @@ struct bb_snif_info {
 	u32* snif_l_sig;
 	u16 snif_l_sig_len; /*24 Bit*/
 	/*HT/VHT/HE*/
-	u32* snif_sig_a1; 
+	u32* snif_sig_a1;
 	u16 snif_sig_a1_len; /*24/24/26*/
 	u32* snif_sig_a2;
 	u16 snif_sig_a2_len; /*24/24/26*/

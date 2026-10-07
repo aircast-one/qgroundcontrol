@@ -47,4 +47,3 @@ void halbb_spatial_reuse_en_cmn(struct bb_info *bb_0, bool sr_en, enum phl_phy_i
 bool halbb_spatial_reuse_is_en_cmn(struct bb_info *bb_0, enum phl_phy_idx phy_idx);
 
 #endif
-

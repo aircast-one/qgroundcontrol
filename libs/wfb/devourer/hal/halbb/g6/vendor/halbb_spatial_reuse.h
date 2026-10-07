@@ -68,4 +68,3 @@ void halbb_spatial_reuse_dbg(struct bb_info *bb, char input[][16],
 							 u32 *_used, char *output, u32 *_out_len);
 
 #endif
-

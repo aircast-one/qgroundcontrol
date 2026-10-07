@@ -158,12 +158,12 @@ bool halbb_init_cr_default(struct bb_info *bb, bool is_form_folder, u32 folder_l
 			   u32 *folder_array, enum phl_phy_idx phy_idx);
 bool halbb_init_gain_table(struct bb_info *bb, bool is_form_folder, u32 folder_len,
 				 u32 *folder_array, enum phl_phy_idx phy_idx);
-void halbb_rx_gain_table_dbg(struct bb_info *bb, char input[][16], 
+void halbb_rx_gain_table_dbg(struct bb_info *bb, char input[][16],
 			     u32 *_used, char *output, u32 *_out_len);
-void halbb_rx_op1db_table_dbg(struct bb_info *bb, char input[][16], 
+void halbb_rx_op1db_table_dbg(struct bb_info *bb, char input[][16],
 			      u32 *_used, char *output, u32 *_out_len);
 void halbb_hw_cfg_init(struct bb_info *bb);
-void halbb_hw_cfg_dbg(struct bb_info *bb, char input[][16], 
+void halbb_hw_cfg_dbg(struct bb_info *bb, char input[][16],
 			     u32 *_used, char *output, u32 *_out_len);
 void halbb_cr_cfg_hw_cfg_init(struct bb_info *bb);
 

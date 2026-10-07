@@ -344,4 +344,3 @@ u32 halbb_get_fw_ra_dbgrpt_wifi7(struct bb_info *bb, u16 len, u8 *c2h);
 u32 halbb_get_txsts_rpt(struct bb_info *bb, u16 len, u8 *c2h);
 void halbb_get_ra_dbgreg(struct bb_info *bb);
 #endif
-

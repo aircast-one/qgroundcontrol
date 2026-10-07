@@ -96,7 +96,7 @@ void _halrf_set_thermal_trim_8852c(struct rf_info *rf,
 
 	if (thermal_a == 0xff && thermal_b == 0xff) {
 		RF_DBG(rf, DBG_RF_THER_TRIM, "Ther_A, Ther_B=0xff no PG Return!!!\n");
-		return; 
+		return;
 	}
 
 	if (thermal_a & BIT(0))
@@ -162,7 +162,7 @@ void _halrf_set_pa_bias_trim_8852c(struct rf_info *rf,
 
 	if (pa_bias_a == 0xff && pa_bias_b == 0xff) {
 		RF_DBG(rf, DBG_RF_PABIAS_TRIM, "PA_Bias_A, PA_Bias_B=0xff no PG Return!!!\n");
-		return; 
+		return;
 	}
 
 	pa_bias_a_2g = pa_bias_a & 0xf;

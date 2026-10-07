@@ -1355,7 +1355,7 @@ void halbb_clm_input_option_sel(struct bb_info *bb, enum clm_opt_input option)
 		return;
 
 	env->clm_input_opt = option;
-	
+
 	BB_DBG(bb, DBG_ENV_MNTR, "Update CLM input opt ((%d)) -> ((%d))\n",
 	       env->clm_input_opt, option);
 
@@ -1534,7 +1534,7 @@ void halbb_clm_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used,
 			    *_out_len - *_used,
 			    "   CLM Trigger(1900ms): {1}\n");
-		
+
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used,
 			    *_out_len - *_used,
 			    "===[CLM Adv-Trigger] ===\n");
@@ -1555,7 +1555,7 @@ void halbb_clm_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
 			    "CLM input : 0:p20, 1:s20, 2:s40, 3:s80, 4:s160, 5:dbg, 6:txon_cca, 7:s20_s40_s80_s160, 8:s20_s40_s80_s160_p20\n");
 		return;
-	} 
+	}
 
 	if (var[0] == 100) { /*Get CLM results */
 		BB_DBG_CNSL(*_out_len, *_used, output + *_used,
@@ -2746,7 +2746,7 @@ bool halbb_fahm_result(struct bb_info *bb, struct fahm_report *rpt)
 		rpt->fahm_pwr = env->fahm_pwr;
 		rpt->fahm_pwr_0p5= env->fahm_pwr_0p5;
 		rpt->fahm_rpt_result = true;
-		halbb_mem_cpy(bb, &rpt->fahm_rpt[0], &env->fahm_rpt[0], 
+		halbb_mem_cpy(bb, &rpt->fahm_rpt[0], &env->fahm_rpt[0],
 			      FAHM_RPT_NUM);
 	} else {
 		rpt->fahm_ratio = ENV_MNTR_FAIL_BYTE;
@@ -3753,7 +3753,7 @@ void halbb_idle_time_pwr_physts(struct bb_info *bb, struct physts_rxd *desc,
 
 	if (is_cck_rate)
 		idle_pwr = physts->bb_physts_rslt_0_i.avg_idle_noise_pwr_cck;
-	else 
+	else
 		idle_pwr = physts->bb_physts_rslt_1_i.avg_idle_noise_pwr;
 
 	BB_DBG(bb, DBG_PHY_STS, "cck=%d, idle_pwr=%d.%d, nhm_pwr=%d\n",
@@ -3765,7 +3765,7 @@ void halbb_idle_time_pwr_physts(struct bb_info *bb, struct physts_rxd *desc,
 	if (env->idle_pwr_physts != 0)
 		env->idle_pwr_physts = MA_ACC(env->idle_pwr_physts, idle_pwr, 2,
 					      RSSI_MA_L);
-	else 
+	else
 		env->idle_pwr_physts = idle_pwr << RSSI_MA_L;
 
 	BB_DBG(bb, DBG_PHY_STS, "idle_pwr_physts=%d (%d.%03d)\n",
@@ -5727,4 +5727,3 @@ void halbb_cr_cfg_env_mntr_init(struct bb_info *bb)
 
 
 #endif
-

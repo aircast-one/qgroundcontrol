@@ -26,16 +26,15 @@
 
 void halrf_psd_init_8852b(struct rf_info *rf, enum phl_phy_idx phy,
 			u8 path, u8 iq_path, u32 avg, u32 fft);
-			
-void halrf_psd_restore_8852b(struct rf_info *rf, enum phl_phy_idx phy);	
-			
+
+void halrf_psd_restore_8852b(struct rf_info *rf, enum phl_phy_idx phy);
+
 u32 halrf_psd_get_point_data_8852b(struct rf_info *rf,
 			enum phl_phy_idx phy, s32 point);
-			
+
 void halrf_psd_query_8852b(struct rf_info *rf, enum phl_phy_idx phy,
 			u32 point, u32 start_point, u32 stop_point, u32 *outbuf);
 
 #endif	/*HALRF_PSD_SUPPORT*/
 #endif	/*RF_8852B_SUPPORT*/
 #endif	/*_HALRF_PSD_TSSI_8852B_H_*/
-

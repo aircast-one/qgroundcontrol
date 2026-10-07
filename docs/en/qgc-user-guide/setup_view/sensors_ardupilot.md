@@ -108,4 +108,3 @@ To perform **CompassMot** calibration:
 1. Click the **CompassMot** sensor button.
 
 1. Follow the onscreen prompts.
-

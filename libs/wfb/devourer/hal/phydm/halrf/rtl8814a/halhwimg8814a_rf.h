@@ -391,4 +391,3 @@ u32 odm_get_version_mp_8814a_txpwr_lmt_type9(void);
 
 #endif
 #endif /* end of HWIMG_SUPPORT*/
-

@@ -220,13 +220,13 @@ void iqk_start_iqk(struct rf_info *rf, enum phl_phy_idx phy_idx, u8 path)
 
 void halrf_iqk_init(struct rf_info *rf)
 {
-	
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 	case RF_RTL8852A:
 		iqk_init_8852ab(rf);
 	break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 	case RF_RTL8852B:
 		iqk_init_8852b(rf);
@@ -327,7 +327,7 @@ void halrf_doiqk(struct rf_info *rf, bool force, enum phl_phy_idx phy_idx,
 
 void halrf_drv_iqk(struct rf_info *rf, enum phl_phy_idx phy_idx, bool force) {
 
-	/*drv_iqk*/ 	
+	/*drv_iqk*/
 	RF_DBG(rf, DBG_RF_IQK, "[IQK]====  DRV IQK ==== \n");
 	switch (iqk_kpath(rf, phy_idx)) {
 	case RF_A:
@@ -394,31 +394,31 @@ void halrf_iqk_get_ch_info(struct rf_info *rf, enum phl_phy_idx phy_idx, u8 path
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
-			iqk_get_ch_info_8852ab(rf, phy_idx, path); 
+			iqk_get_ch_info_8852ab(rf, phy_idx, path);
 		break;
 #endif
 
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
-			iqk_get_ch_info_8852b(rf, phy_idx, path); 
+			iqk_get_ch_info_8852b(rf, phy_idx, path);
 		break;
 #endif
 
 #ifdef RF_8852BT_SUPPORT
 		case RF_RTL8852BT:
-			iqk_get_ch_info_8852bt(rf, phy_idx, path); 
+			iqk_get_ch_info_8852bt(rf, phy_idx, path);
 		break;
 #endif
 
 #ifdef RF_8852BPT_SUPPORT
 		case RF_RTL8852BPT:
-			halrf_iqk_get_ch_info_8852bpt(rf, phy_idx, path); 
+			halrf_iqk_get_ch_info_8852bpt(rf, phy_idx, path);
 		break;
 #endif
 
 #ifdef RF_8852C_SUPPORT
 		case RF_RTL8852C:
-			iqk_get_ch_info_8852c(rf, phy_idx, path); 
+			iqk_get_ch_info_8852c(rf, phy_idx, path);
 		break;
 #endif
 
@@ -430,31 +430,31 @@ void halrf_iqk_get_ch_info(struct rf_info *rf, enum phl_phy_idx phy_idx, u8 path
 
 void halrf_iqk_set_info(struct rf_info *rf, enum phl_phy_idx phy_idx, u8 path)
 {
-	
+
 		switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
-			iqk_set_info_8852ab(rf, phy_idx, path); 
+			iqk_set_info_8852ab(rf, phy_idx, path);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
-			iqk_set_info_8852b(rf, phy_idx, path); 
+			iqk_set_info_8852b(rf, phy_idx, path);
 		break;
 #endif
 #ifdef RF_8852BT_SUPPORT
 		case RF_RTL8852BT:
-			iqk_set_info_8852bt(rf, phy_idx, path); 
+			iqk_set_info_8852bt(rf, phy_idx, path);
 		break;
 #endif
 #ifdef RF_8852BPT_SUPPORT
 		case RF_RTL8852BPT:
-			halrf_iqk_set_info_8852bpt(rf, phy_idx, path); 
+			halrf_iqk_set_info_8852bpt(rf, phy_idx, path);
 		break;
 #endif
 #ifdef RF_8852C_SUPPORT
 		case RF_RTL8852C:
-			iqk_set_info_8852c(rf, phy_idx, path); 
+			iqk_set_info_8852c(rf, phy_idx, path);
 		break;
 #endif
 
@@ -468,32 +468,32 @@ void halrf_iqk_set_info(struct rf_info *rf, enum phl_phy_idx phy_idx, u8 path)
 u8 halrf_get_fw_iqk_times(struct rf_info *rf)
 {
 	struct halrf_iqk_info *iqk_info = &rf->iqk;
-	u8 times =0x0;	
+	u8 times =0x0;
 
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
-			times = halrf_get_iqk_times_8852ab(rf); 
+			times = halrf_get_iqk_times_8852ab(rf);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
-			times = halrf_get_iqk_times_8852b(rf); 
+			times = halrf_get_iqk_times_8852b(rf);
 		break;
 #endif
 #ifdef RF_8852BT_SUPPORT
 		case RF_RTL8852BT:
-			times = halrf_get_iqk_times_8852bt(rf); 
+			times = halrf_get_iqk_times_8852bt(rf);
 		break;
 #endif
 #ifdef RF_8852BPT_SUPPORT
 		case RF_RTL8852BPT:
-			times = halrf_get_iqk_times_8852bpt(rf); 
+			times = halrf_get_iqk_times_8852bpt(rf);
 		break;
 #endif
 #ifdef RF_8852C_SUPPORT
 		case RF_RTL8852C:
-			times = halrf_get_iqk_times_8852c(rf); 
+			times = halrf_get_iqk_times_8852c(rf);
 		break;
 #endif
 
@@ -505,7 +505,7 @@ u8 halrf_get_fw_iqk_times(struct rf_info *rf)
 
 
 bool halrf_fw_iqk(struct rf_info *rf, enum phl_phy_idx phy_idx, bool force) {
-	
+
 	struct halrf_iqk_info *iqk_info = &rf->iqk;
 	u32 data_to_fw[2] = {0};
 	u16 len = (u16) (sizeof(data_to_fw) / sizeof(u32))*4;
@@ -515,20 +515,20 @@ bool halrf_fw_iqk(struct rf_info *rf, enum phl_phy_idx phy_idx, bool force) {
 	data_to_fw[0] = (u32) phy_idx;
 	data_to_fw[1] = (u32) rf->hal_com->dbcc_en;
 #if 0
-	halrf_btc_rfk_ntfy(rf, ((BIT(phy_idx) << 4) | RF_AB), RF_BTC_IQK, RFK_ONESHOT_START);		
+	halrf_btc_rfk_ntfy(rf, ((BIT(phy_idx) << 4) | RF_AB), RF_BTC_IQK, RFK_ONESHOT_START);
 #endif
-	RF_DBG(rf, DBG_RF_IQK, "[IQK] phy_idx  = 0x%x\n", data_to_fw[0]);		
+	RF_DBG(rf, DBG_RF_IQK, "[IQK] phy_idx  = 0x%x\n", data_to_fw[0]);
 	RF_DBG(rf, DBG_RF_IQK, "[IQK] dbcc_en = 0x%x\n", data_to_fw[1]);
-	halrf_iqk_get_ch_info(rf, phy_idx, RF_PATH_A);	
-	halrf_iqk_get_ch_info(rf, phy_idx, RF_PATH_B);		
+	halrf_iqk_get_ch_info(rf, phy_idx, RF_PATH_A);
+	halrf_iqk_get_ch_info(rf, phy_idx, RF_PATH_B);
 	halrf_fill_h2c_cmd(rf, len, FWCMD_H2C_IQK_OFFLOAD, 0xa, H2CB_TYPE_DATA, (u32 *) data_to_fw);
-	isfail = halrf_check_fwiqk_done(rf);	
+	isfail = halrf_check_fwiqk_done(rf);
 	iqk_info->iqk_times = halrf_get_fw_iqk_times(rf);
-	halrf_iqk_set_info(rf, phy_idx, RF_PATH_A);	
+	halrf_iqk_set_info(rf, phy_idx, RF_PATH_A);
 	halrf_iqk_set_info(rf, phy_idx, RF_PATH_B);
 #if 0
 	halrf_btc_rfk_ntfy(rf, ((BIT(phy_idx) << 4) | RF_AB), RF_BTC_IQK, RFK_ONESHOT_STOP);
-#endif	
+#endif
 	RF_DBG(rf, DBG_RF_IQK, "[IQK]====  FW IQK FINISH ==== \n");
 	return isfail;
 }
@@ -567,13 +567,13 @@ void halrf_iqk(struct rf_info *rf, enum phl_phy_idx phy_idx, bool force)
 u32 halrf_get_iqk_ver(struct rf_info *rf)
 {
 	u32 tmp = 0x0;
-	
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 	case RF_RTL8852A:
 		tmp = halrf_get_iqk_ver_8852a();
 	break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 	case RF_RTL8852B:
 		tmp =halrf_get_iqk_ver_8852b();
@@ -624,13 +624,13 @@ u32 halrf_get_iqk_ver(struct rf_info *rf)
 void halrf_iqk_toneleakage(void *rf_void, u8 path)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-		
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			halrf_iqk_toneleakage_8852ab(rf, path);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_iqk_toneleakage_8852b(rf, path);
@@ -687,13 +687,13 @@ void halrf_iqk_toneleakage(void *rf_void, u8 path)
 void halrf_iqk_tx_bypass(void *rf_void, u8 path)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-	
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			halrf_iqk_tx_bypass_8852ab(rf, path);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_iqk_tx_bypass_8852b(rf, path);
@@ -749,13 +749,13 @@ void halrf_iqk_tx_bypass(void *rf_void, u8 path)
 void halrf_iqk_rx_bypass(void *rf_void, u8 path)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-		
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			halrf_iqk_rx_bypass_8852ab(rf, path);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_iqk_rx_bypass_8852b(rf, path);
@@ -816,7 +816,7 @@ void halrf_iqk_lok_bypass(void *rf_void, u8 path)
 		case RF_RTL8852A:
 			halrf_iqk_lok_bypass_8852ab(rf, path);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_iqk_lok_bypass_8852b(rf, path);
@@ -871,13 +871,13 @@ void halrf_iqk_lok_bypass(void *rf_void, u8 path)
 void halrf_nbiqk_enable(void *rf_void, bool iqk_nbiqk_en)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-				
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			halrf_nbiqk_enable_8852ab(rf, iqk_nbiqk_en);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_nbiqk_enable_8852b(rf, iqk_nbiqk_en);
@@ -933,13 +933,13 @@ void halrf_nbiqk_enable(void *rf_void, bool iqk_nbiqk_en)
 void halrf_iqk_xym_enable(void *rf_void, bool iqk_xym_en)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-					
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			halrf_iqk_xym_enable_8852ab(rf, iqk_xym_en);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_iqk_xym_enable_8852b(rf, iqk_xym_en);
@@ -995,13 +995,13 @@ void halrf_iqk_xym_enable(void *rf_void, bool iqk_xym_en)
 void halrf_iqk_fft_enable(void *rf_void, bool iqk_fft_en)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-						
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			halrf_iqk_fft_enable_8852ab(rf, iqk_fft_en);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_iqk_fft_enable_8852b(rf, iqk_fft_en);
@@ -1041,13 +1041,13 @@ void halrf_iqk_fft_enable(void *rf_void, bool iqk_fft_en)
 void halrf_iqk_cfir_enable(void *rf_void, bool iqk_cfir_en)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-							
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 	case RF_RTL8852A:
 		halrf_iqk_cfir_enable_8852ab(rf, iqk_cfir_en);
 	break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 	case RF_RTL8852B:
 		halrf_iqk_cfir_enable_8852b(rf, iqk_cfir_en);
@@ -1097,13 +1097,13 @@ void halrf_iqk_cfir_enable(void *rf_void, bool iqk_cfir_en)
 void halrf_iqk_sram_enable(void *rf_void, bool iqk_sram_en)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-								
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			halrf_iqk_sram_enable_8852ab(rf, iqk_sram_en);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_iqk_sram_enable_8852b(rf, iqk_sram_en);
@@ -1159,13 +1159,13 @@ void halrf_iqk_sram_enable(void *rf_void, bool iqk_sram_en)
 void halrf_iqk_reload(void *rf_void, u8 path)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-									
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 		halrf_iqk_reload_8852ab(rf, path);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_iqk_reload_8852b(rf, path);
@@ -1205,13 +1205,13 @@ void halrf_iqk_reload(void *rf_void, u8 path)
 void halrf_iqk_dbcc(void *rf_void, u8 path)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-										
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			halrf_iqk_dbcc_8852ab(rf, path);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			halrf_iqk_dbcc_8852b(rf, path);
@@ -1259,7 +1259,7 @@ u8 halrf_iqk_get_mcc_ch0(void *rf_void)
 		case RF_RTL8852A:
 			 tmp = halrf_iqk_get_mcc_ch0_8852ab(rf);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 		 	tmp = halrf_iqk_get_mcc_ch0_8852b(rf);
@@ -1302,13 +1302,13 @@ u8 halrf_iqk_get_mcc_ch1(void *rf_void)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
 	u8 tmp = 0x0;
-	
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			tmp=  halrf_iqk_get_mcc_ch0_8852ab(rf);
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			tmp =  halrf_iqk_get_mcc_ch0_8852b(rf);
@@ -1350,13 +1350,13 @@ u8 halrf_iqk_get_mcc_ch1(void *rf_void)
 void halrf_enable_fw_iqk(void *rf_void, bool is_fw_iqk)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
-		
+
 	switch (rf->ic_type) {
 #ifdef RF_8852A_SUPPORT
 	case RF_RTL8852A:
 		halrf_enable_fw_iqk_8852ab(rf, is_fw_iqk);
 	break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 	case RF_RTL8852B:
 		halrf_enable_fw_iqk_8852b(rf, is_fw_iqk);
@@ -1409,7 +1409,7 @@ u8 halrf_iqk_get_rxevm(void *rf_void)
 	case RF_RTL8852A:
 		rxevm = 0x0;
 	break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 	case RF_RTL8852B:
 		rxevm = halrf_iqk_get_rxevm_8852b(rf);
@@ -1461,14 +1461,14 @@ u32 halrf_iqk_get_rximr(void *rf_void, u8 path, u32 idx)
 {
 	struct rf_info *rf = (struct rf_info *)rf_void;
 	u32 rximr =0x0;
-	
+
 	switch (rf->ic_type) {
 
 #ifdef RF_8852A_SUPPORT
 		case RF_RTL8852A:
 			rximr = 0x0;
 		break;
-#endif		
+#endif
 #ifdef RF_8852B_SUPPORT
 		case RF_RTL8852B:
 			rximr = halrf_iqk_get_rximr_8852b(rf, path, idx);

@@ -1222,4 +1222,3 @@ halbb_buffer_init(struct rtw_phl_com_t *phl_com,
 
 	return (u32)hal_status;
 }
-

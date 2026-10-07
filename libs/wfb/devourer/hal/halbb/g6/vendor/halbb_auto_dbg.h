@@ -57,4 +57,3 @@ void halbb_diagnostic_event_notify(struct bb_info *bb, enum habb_fun_t type, u8 
 
 #endif
 #endif
-

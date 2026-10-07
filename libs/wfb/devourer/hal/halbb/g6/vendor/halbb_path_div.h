@@ -117,4 +117,3 @@ void halbb_pathdiv_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 			      char *output, u32 *_out_len);
 void halbb_set_pathdiv_pause_val(struct bb_info *bb, u32 *val_buf, u8 val_len);
 #endif
-

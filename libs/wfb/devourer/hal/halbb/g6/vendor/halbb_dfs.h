@@ -298,7 +298,7 @@ struct bb_rdr_info_gen2 {
 	u8 dfs_sub20_1_pw_m;
 
 	u8 RSVD_l;
-	
+
 	u8 RSVD_m : 4;
 	u8 dfs_seq_num_l : 4;
 
@@ -328,7 +328,7 @@ struct bb_rdr_info_gen2 {
 	u8 dfs_sub20_1_pw_m;
 
 	u8 RSVD_l;
-	
+
 	u8 dfs_seq_num_l : 4;
 	u8 RSVD_m : 4;
 

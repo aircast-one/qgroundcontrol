@@ -192,5 +192,3 @@ The loss rate should be in the low single digits (i.e. maximum of 2 or 3):
 
 There is a much smaller possibility that issues are caused by bugs in either flight stack or QGC.
 To analyze this possibility you can turn on [Console Logging](../settings_view/console_logging.md) for Plan upload/download and review the protocol message traffic.
-
-

@@ -633,7 +633,7 @@ bool halrf_get_efuse_info_8852c(struct rf_info *rf, u8 *efuse_map,
 		case EFUSE_INFO_RF_6G_BW40M_A_TSSI_DE_30:
 			offset = EFUSE_INFO_RF_6G_BW40M_A_TSSI_DE_30_8852C_ADDR;
 			default_value = EFUSE_INFO_RF_TSSI_DE_8852C_VALUE;
-			break;	
+			break;
 		case EFUSE_INFO_RF_6G_BW40M_A_TSSI_DE_31:
 			offset = EFUSE_INFO_RF_6G_BW40M_A_TSSI_DE_31_8852C_ADDR;
 			default_value = EFUSE_INFO_RF_TSSI_DE_8852C_VALUE;
@@ -762,7 +762,7 @@ bool halrf_get_efuse_info_8852c(struct rf_info *rf, u8 *efuse_map,
 		case EFUSE_INFO_RF_6G_BW40M_B_TSSI_DE_30:
 			offset = EFUSE_INFO_RF_6G_BW40M_B_TSSI_DE_30_8852C_ADDR;
 			default_value = EFUSE_INFO_RF_TSSI_DE_8852C_VALUE;
-			break;	
+			break;
 		case EFUSE_INFO_RF_6G_BW40M_B_TSSI_DE_31:
 			offset = EFUSE_INFO_RF_6G_BW40M_B_TSSI_DE_31_8852C_ADDR;
 			default_value = EFUSE_INFO_RF_TSSI_DE_8852C_VALUE;
@@ -891,7 +891,7 @@ bool halrf_get_efuse_info_8852c(struct rf_info *rf, u8 *efuse_map,
 		case EFUSE_INFO_RF_6G_BW40M_C_TSSI_DE_30:
 			offset = EFUSE_INFO_RF_6G_BW40M_C_TSSI_DE_30_8852C_ADDR;
 			default_value = EFUSE_INFO_RF_TSSI_DE_8852C_VALUE;
-			break;	
+			break;
 		case EFUSE_INFO_RF_6G_BW40M_C_TSSI_DE_31:
 			offset = EFUSE_INFO_RF_6G_BW40M_C_TSSI_DE_31_8852C_ADDR;
 			default_value = EFUSE_INFO_RF_TSSI_DE_8852C_VALUE;
@@ -1020,7 +1020,7 @@ bool halrf_get_efuse_info_8852c(struct rf_info *rf, u8 *efuse_map,
 		case EFUSE_INFO_RF_6G_BW40M_D_TSSI_DE_30:
 			offset = EFUSE_INFO_RF_6G_BW40M_D_TSSI_DE_30_8852C_ADDR;
 			default_value = EFUSE_INFO_RF_TSSI_DE_8852C_VALUE;
-			break;	
+			break;
 		case EFUSE_INFO_RF_6G_BW40M_D_TSSI_DE_31:
 			offset = EFUSE_INFO_RF_6G_BW40M_D_TSSI_DE_31_8852C_ADDR;
 			default_value = EFUSE_INFO_RF_TSSI_DE_8852C_VALUE;
@@ -1077,7 +1077,7 @@ bool halrf_get_efuse_info_8852c(struct rf_info *rf, u8 *efuse_map,
 					efuse_map + EFUSE_INFO_RF_COUNTRY_CODE1_8852C_ADDR, 1);
 				hal_mem_cpy(hal, &country_code_tmp2,
 					efuse_map + EFUSE_INFO_RF_COUNTRY_CODE2_8852C_ADDR, 1);
-				*((u16 *)value) = (u16)(((country_code_tmp1 << 8) | country_code_tmp2) & 0xffff);	
+				*((u16 *)value) = (u16)(((country_code_tmp1 << 8) | country_code_tmp2) & 0xffff);
 				break;
 			default:
 				break;

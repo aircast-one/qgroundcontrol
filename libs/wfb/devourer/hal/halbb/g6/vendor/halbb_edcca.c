@@ -322,21 +322,21 @@ void halbb_edcca_thre_calc(struct bb_info *bb)
 
 	halbb_set_edcca_thre(bb);
 
-	/*    The EDT(energy detection level) specified in the different regulation is under below (2024.3) 
+	/*    The EDT(energy detection level) specified in the different regulation is under below (2024.3)
 				CE		FCC		UK		SRRC
 		2.4G	-57				-57		-57
 		5G		-62				-67		-62
-		6G		-72		-62		-72	
+		6G		-72		-62		-72
 
 		The current EDCCA TH for homologation in the different regulation is under below
 		(Usually, we add 3dB margin to avoid pwdB inaccuracy)
 				CE		FCC		UK		SRRC
 		2.4G	-60				-60		-60
 		5G		-65				-70		-65
-		6G		-75		-75		-75	
+		6G		-75		-75		-75
 
 		Due to the filtering loss, we need to give 13dBm margin for FCC 6G case.
-		However, this bug only happens in AX IC, so it should be changed to 3dBm margin 
+		However, this bug only happens in AX IC, so it should be changed to 3dBm margin
 		in later BE IC.
 	*/
 
@@ -723,19 +723,19 @@ void halbb_fw_edcca(struct bb_info *bb)
 	fw_edcca_i->mode = bb_edcca->edcca_mode;
 	fw_edcca_i->band = bb->hal_com->band[bb->bb_phy_idx].cur_chandef.band;
 
-	BB_DBG(bb, DBG_EDCCA, "[FW EDCCA H2C] Mode=%d, Band=%d\n", 
+	BB_DBG(bb, DBG_EDCCA, "[FW EDCCA H2C] Mode=%d, Band=%d\n",
 				fw_edcca_i->mode, fw_edcca_i->band);
 	/*8852BP FW EDCCA don't need edcca th*/
 	if ((bb->ic_sub_type != BB_IC_SUB_TYPE_8852B_8852BP) && (bb->ic_sub_type != BB_IC_SUB_TYPE_8852B_8852BPT))
-		BB_DBG(bb, DBG_EDCCA, "[FW EDCCA H2C] Adapt-5G_th=-%d, Adapt-2.4G_th=-%d,Carrier-sense_th=-%d\n", 
-					fw_edcca_i->pwr_th_5g, fw_edcca_i->pwr_th_2p4, 
+		BB_DBG(bb, DBG_EDCCA, "[FW EDCCA H2C] Adapt-5G_th=-%d, Adapt-2.4G_th=-%d,Carrier-sense_th=-%d\n",
+					fw_edcca_i->pwr_th_5g, fw_edcca_i->pwr_th_2p4,
 					fw_edcca_i->pwr_th_cs);
-	
+
 	BB_DBG(bb, DBG_FW_INFO, "[FW][H2C] h2c conent[0]=%x\n", bb_h2c[0]);
 	BB_DBG(bb, DBG_FW_INFO, "[FW][H2C] h2c conent[1]=%x\n", bb_h2c[1]);
 
 #if defined(BB_8852C_SUPPORT) || defined(BB_8852B_SUPPORT)
-	ret_val = halbb_fill_h2c_cmd(bb, cmdlen, DM_H2C_FW_EDCCA, 
+	ret_val = halbb_fill_h2c_cmd(bb, cmdlen, DM_H2C_FW_EDCCA,
 					     HALBB_H2C_DM, bb_h2c);
 	if (ret_val == false)
 		BB_WARNING(" H2C cmd: FW Tx error!!\n");
@@ -753,7 +753,7 @@ void halbb_fw_i(struct bb_info *bb, u8 enable)
 
 	fw_edcca_i->enable = enable;
 
-	ret_val = halbb_fill_h2c_cmd(bb, cmdlen, DM_H2C_FW_EDCCA, 
+	ret_val = halbb_fill_h2c_cmd(bb, cmdlen, DM_H2C_FW_EDCCA,
 					     HALBB_H2C_DM, bb_h2c);
 
 	BB_DBG(bb, DBG_FW_INFO, "[Hsuan][Drv] is_i_only=%d\n", fw_edcca_i->enable);
@@ -770,7 +770,7 @@ void halbb_edcca_self_diag(struct bb_info *bb)
 	if (link->tx_tp > 10 && env_mntr->env_mntr_rpt_bg.edcca_clm_ratio > 50)
 		halbb_diagnostic_event_notify(bb, F_EDCCA, TX_HANG);
 
-#endif 
+#endif
 }
 
 
@@ -1039,7 +1039,7 @@ void halbb_edcca_dbg(struct bb_info *bb, char input[][16], u32 *_used,
 		BB_DBG_CNSL(out_len, used, output + used, out_len - used,
 			    "Set EDCCA mode = %s\n",
 			    (bb_edcca->edcca_mode == EDCCA_NORMAL_MODE) ?
-			    "Normal mode" : (bb_edcca->edcca_mode == EDCCA_ADAPT_MODE) ?"Adaptivity mode": 
+			    "Normal mode" : (bb_edcca->edcca_mode == EDCCA_ADAPT_MODE) ?"Adaptivity mode":
 			    (bb_edcca->edcca_mode == EDCCA_CARRIER_SENSE_MODE) ? "Carrier Sense mode" : "CBP mode");
 
 		if (!(((hal->cv == CAV) && (bb->ic_type == BB_RTL8852C)) ||
@@ -1180,7 +1180,7 @@ void halbb_edcca_init(struct bb_info *bb)
 
 	if(phl_is_mp_mode(bb->phl_com))
 		return;
-	
+
 #ifdef HALBB_FW_OFLD_SUPPORT
 	BB_DBG(bb, DBG_PHY_STS, "[%s][phy=%d]skip_io_init_en = %d\n",
 	       __func__, bb->bb_phy_idx, bb->bb_cmn_hooker->skip_io_init_en);

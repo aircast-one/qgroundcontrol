@@ -91,7 +91,7 @@ void halrf_wmac(struct rf_info *rf, u32 addr, u32 mask, u32 val)
 u32 halrf_rmac32(struct rf_info *rf, u32 addr)
 {
 	u32 reg_val = 0;
-	
+
 #if defined(HALRF_CONFIG_FW_DBCC_OFLD_SUPPORT) || defined(HALRF_CONFIG_FW_IO_OFLD_SUPPORT)
 	if (rf->fw_ofld_start == true)
 		halrf_write_fwofld_end(rf);
@@ -114,7 +114,7 @@ void halrf_wreg(struct rf_info *rf, u32 addr, u32 mask, u32 val)
 	fw_ofld = 1;
 #endif
 //	u32 page_temp;
-//	u32 offset_temp;	
+//	u32 offset_temp;
 //	u32 temp = 0;
 
 //	page_temp = addr & 0xff00;
@@ -183,7 +183,7 @@ u32 halrf_rrf(struct rf_info *rf, enum rf_path path, u32 addr, u32 mask)
 {
 	static u32 operate2 = 0;
 	u32 val = 0;
-	
+
 	if (_os_atomic_inc_return(rf->hal_com->drv_priv, (void*)&operate2) > 1) {
 		RF_WARNING("RF read race %x %x %x!!!!!!!!!!!!!!", path, addr, mask);
 	}
@@ -202,7 +202,7 @@ u32 halrf_rrf(struct rf_info *rf, enum rf_path path, u32 addr, u32 mask)
 void halrf_wrf(struct rf_info *rf, enum rf_path path, u32 addr, u32 mask, u32 val)
 {
 	static u32 operate2 = 0;
-	
+
 #if defined(HALRF_CONFIG_FW_DBCC_OFLD_SUPPORT) || defined(HALRF_CONFIG_FW_IO_OFLD_SUPPORT)
 	struct rtw_mac_cmd cmd = {0};
 //	u32 fw_ofld = rf->phl_com->dev_cap.fw_cap.offload_cap & BIT(0);
@@ -438,4 +438,3 @@ void halrf_fill_h2c_cmd(struct rf_info *rf, u16 cmdlen, u8 cmdid,
 		RF_DBG(rf, DBG_RF_IQK, "Error H2C CLASS=%d, ID=%d\n", classid, cmdid);
 	}
 }
-

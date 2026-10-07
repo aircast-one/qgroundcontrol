@@ -48,4 +48,3 @@ Video stream recording is controlled on the [video stream instrument page](hud.m
 
 Start/stop video recording _on the camera itself_ using the [camera instrument page](hud.md#camera_instrument_page).
 先切换到视频模式，然后选择红色按钮开始录制。
-

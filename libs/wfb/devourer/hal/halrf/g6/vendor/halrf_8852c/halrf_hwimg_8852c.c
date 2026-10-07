@@ -94,7 +94,7 @@ void *_halrf_power_limit_table_addr_8852c(struct rf_info *rf, u8 ru, u8 band)
 			if (rf->phl_com->hci_type == RTW_HCI_USB) {
 				if (band == PW_LMT_TBL)
 					return (void *) array_mp_8852c_txpwr_lmt;
-				else 
+				else
 					return (void *) array_mp_8852c_txpwr_lmt_6g_usb;
 			} else {
 				if (band == PW_LMT_TBL)
@@ -106,7 +106,7 @@ void *_halrf_power_limit_table_addr_8852c(struct rf_info *rf, u8 ru, u8 band)
 			if (rf->phl_com->hci_type == RTW_HCI_USB) {
 				if (band == PW_LMT_TBL)
 					return (void *) array_mp_8852c_txpwr_lmt_ru;
-				else 
+				else
 					return (void *) array_mp_8852c_txpwr_lmt_ru_6g_usb;
 			} else {
 				if (band == PW_LMT_TBL)
@@ -280,7 +280,7 @@ void halrf_config_8852c_nctl_reg(struct rf_info *rf)
 	u32	array_len = 0x0;
 	u32 *array = NULL;
 	u32	v1 = 0, v2 = 0;
-	u32 	cnt = 0x0; 
+	u32 	cnt = 0x0;
 
 
 	RF_DBG(rf, DBG_RF_INIT, "[RFK]===> %s\n", __func__);
@@ -292,14 +292,14 @@ void halrf_config_8852c_nctl_reg(struct rf_info *rf)
 	array_len = sizeof(array_mp_8852c_nctl_reg) / sizeof(u32);
 	array = (u32 *) &array_mp_8852c_nctl_reg;
 
-	// check 0x8080	
-	halrf_wreg(rf, 0x8000, MASKDWORD, 0x8); 
+	// check 0x8080
+	halrf_wreg(rf, 0x8000, MASKDWORD, 0x8);
 	while(cnt < 1000) {
-		cnt++;		
-		halrf_wreg(rf, 0x8080, MASKDWORD, 0x4);	
+		cnt++;
+		halrf_wreg(rf, 0x8080, MASKDWORD, 0x4);
 		halrf_delay_us(rf, 1);
 		if(halrf_rreg(rf, 0x8080, MASKDWORD) == 0x4)
-			break;		
+			break;
 	}
 #ifdef HALRF_CONFIG_FW_IO_OFLD_SUPPORT
 	if (rf->phl_com->dev_cap.io_ofld)
@@ -388,7 +388,7 @@ bool halrf_sel_headline_8852c(struct rf_info *rf, u32 *array, u32 array_len,
 	/*case_idx:3 {RFE:Match, cv:Max_in_table}*/
 	RF_DBG(rf, DBG_RF_INIT, "[3] CHK {RFE:Match, cv:Max_in_Table}\n");
 	for (i = 0; i < *headline_size; i += 2) {
-		rfe_para = (array[i] & 0x00ff0000) >> 16; 
+		rfe_para = (array[i] & 0x00ff0000) >> 16;
 		cv_para = array[i] & 0x0ff;
 		if (rfe_para == rfe_drv) {
 			if (cv_para >= cv_max) {
@@ -407,7 +407,7 @@ bool halrf_sel_headline_8852c(struct rf_info *rf, u32 *array, u32 array_len,
 	/*case_idx:4 {RFE:Dont Care, cv:Max_in_table}*/
 	RF_DBG(rf, DBG_RF_INIT, "[4] CHK {RFE:Dont_Care, cv:Max_in_Table}\n");
 	for (i = 0; i < *headline_size; i += 2) {
-		rfe_para = (array[i] & 0x00ff0000) >> 16; 
+		rfe_para = (array[i] & 0x00ff0000) >> 16;
 		cv_para = array[i] & 0x0ff;
 		if (rfe_para == DONT_CARE_8852C) {
 			if (cv_para >= cv_max) {
@@ -1076,7 +1076,7 @@ void halrf_cfg_8852c_radio_b_w_bt_status(struct rf_info *rf, bool bt_connect)
 	} else {
 		array_len = sizeof(array_mp_8852c_radiob_with_bt_discon) / sizeof(u32);
 		array = (u32 *) &array_mp_8852c_radiob_with_bt_discon;
-	}	
+	}
 
 	while ((i + 1) < array_len) {
 		v1 = array[i];
@@ -1085,6 +1085,6 @@ void halrf_cfg_8852c_radio_b_w_bt_status(struct rf_info *rf, bool bt_connect)
 		i += 2;
 	}
 
-}	
+}
 
 #endif

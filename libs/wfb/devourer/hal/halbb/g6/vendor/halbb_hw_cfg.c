@@ -96,7 +96,7 @@ bool halbb_sel_headline(struct bb_info *bb, u32 *array, u32 array_len,
 	/*case_idx:3 {RFE:Match, CUT:Max_in_table}*/
 	BB_DBG(bb, DBG_INIT, "[3] CHK {RFE:Match, CUT:Max_in_Table}\n");
 	for (i = 0; i < *headline_size; i += 2) {
-		rfe_para = (array[i] & 0x00ff0000) >> 16; 
+		rfe_para = (array[i] & 0x00ff0000) >> 16;
 		cut_para = array[i] & 0x0ff;
 		if (rfe_para == rfe_drv) {
 			if (cut_para >= cut_max) {
@@ -116,7 +116,7 @@ bool halbb_sel_headline(struct bb_info *bb, u32 *array, u32 array_len,
 	/*case_idx:4 {RFE:Dont Care, CUT:Max_in_table}*/
 	BB_DBG(bb, DBG_INIT, "[4] CHK {RFE:Dont_Care, CUT:Max_in_Table}\n");
 	for (i = 0; i < *headline_size; i += 2) {
-		rfe_para = (array[i] & 0x00ff0000) >> 16; 
+		rfe_para = (array[i] & 0x00ff0000) >> 16;
 		cut_para = array[i] & 0x0ff;
 		if (rfe_para == BB_DONT_CARE) {
 			if (cut_para >= cut_max &&
@@ -125,7 +125,7 @@ bool halbb_sel_headline(struct bb_info *bb, u32 *array, u32 array_len,
 				*headline_idx = (u8)(i >> 1);
 				BB_DBG(bb, DBG_INIT, "cut_max:%d\n", cut_max);
 				case_match = true;
-				
+
 			}
 		}
 	}
@@ -297,13 +297,13 @@ void halbb_set_lna_tia_gain_bbcr_gt2(struct bb_info *bb, u8 fc_ch, enum band_typ
 		hw_cfg->curr_5g_6g_cfg_band_gt2 = band_gt2;
 	}
 
-	BB_DBG(bb, DBG_PHY_CONFIG, "[%s] fc_ch=%d, band=%d, bw_tab_idx=%d, path=%d\n", 
+	BB_DBG(bb, DBG_PHY_CONFIG, "[%s] fc_ch=%d, band=%d, bw_tab_idx=%d, path=%d\n",
 		__func__, fc_ch, band_gt2, bw_gt2, path);
 
 	/*LNA*/
 	for (lna_idx = 0; lna_idx < BB_GT2_LNA_NUM; lna_idx++) {
 		val = gain->lna_gain[band_gt2][bw_gt2][path][lna_idx];
-		
+
 		halbb_set_reg_cmn(bb, cr->lna_gain_cr[tab_idx][path][lna_idx], cr->lna_gain_cr_m[tab_idx][lna_idx], val, bb->bb_phy_idx);
 	}
 	/*TIA*/
@@ -363,7 +363,7 @@ void halbb_fill_in_gain_table_gt2(struct bb_info *bb, u32 addr, u32 data)
 			for (i = 0; i < 2; i++)
 				gain_2->tia_gain[band_gt2][bw_gt2][path][i] = (data >> (8 * i)) & 0xff;
 		}
-	} 
+	}
 #if 0
 	else if (BB_GT2_FUNC_RPL == 1) {
 		halbb_cfg_bb_rpl_ofst(bb, band_gt2, path, addr, data);
@@ -1031,7 +1031,7 @@ bool halbb_init_gain_table(struct bb_info *bb, bool is_form_folder, u32 folder_l
 	#ifdef BB_8852C_SUPPORT
 	case BB_RTL8852C:
 		result &= halbb_cfg_bb_gain_ax_8852c(bb, is_form_folder,
-						       folder_len, folder_array);	
+						       folder_len, folder_array);
 		#ifdef HALBB_FW_OFLD_SUPPORT
 		if (halbb_check_fw_ofld(bb)) {
 			halbb_fwofld_set_gain_cr_init_8852c(bb);
@@ -1069,7 +1069,7 @@ bool halbb_init_gain_table(struct bb_info *bb, bool is_form_folder, u32 folder_l
 		if (bb->bb_80211spec == BB_BE_IC) {
 			result &= halbb_cfg_bb_gain_gt2(bb, is_form_folder,
 							folder_len, folder_array);
-		} else	
+		} else
 		#endif
 		{
 			BB_WARNING("[%s] ic=%d\n", __func__, bb->hal_com->chip_id);
@@ -1210,7 +1210,7 @@ bool halbb_init_bb_cr_per_phy(struct bb_info *bb, enum phl_phy_idx phy_idx)
 	return rpt;
 }
 
-void halbb_rx_gain_table_dbg(struct bb_info *bb, char input[][16], 
+void halbb_rx_gain_table_dbg(struct bb_info *bb, char input[][16],
 			     u32 *_used, char *output, u32 *_out_len)
 {
 	struct bb_hw_cfg_info *hw_cfg = &bb->bb_hw_cfg_i;
@@ -1251,7 +1251,7 @@ void halbb_rx_gain_table_dbg(struct bb_info *bb, char input[][16],
 			for (j = 0; j < BB_GT2_PATH_NUM; j++) {
 				BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
 					    "    [path = %d]\n", j);
-				
+
 				for (k = 0; k < BB_GT2_LNA_NUM; k++) {
 					val_32 = halbb_get_reg_cmn(bb, cr->lna_gain_cr[i][j][k], cr->lna_gain_cr_m[i][k], bb->bb_phy_idx);
 					BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
@@ -1389,13 +1389,13 @@ void halbb_rx_gain_table_dbg(struct bb_info *bb, char input[][16],
 					gain->tia_gain[i][j][0],
 					gain->tia_gain[i][j][1]);
 			}
-		} 
+		}
 	} else if (_os_strcmp(input[1], "set") == 0) {
 		HALBB_SCAN(input[3], DCMD_DECIMAL, &val[0]);
 		HALBB_SCAN(input[4], DCMD_DECIMAL, &val[1]);
 		HALBB_SCAN(input[5], DCMD_DECIMAL, &val[2]);
 		HALBB_SCAN(input[6], DCMD_DECIMAL, &val[3]);
-		
+
 		if (_os_strcmp(input[2], "lna") == 0) {
 			if (val[0] >= BB_GAIN_BAND_NUM ||
 			    val[1] >= HALBB_MAX_PATH ||
@@ -1408,7 +1408,7 @@ void halbb_rx_gain_table_dbg(struct bb_info *bb, char input[][16],
 			BB_DBG_CNSL(*_out_len, *_used, output + *_used, *_out_len - *_used,
 		 		"Set lna_gain[%d][%d][%d] = %d\n",
 		 		val[0], val[1], val[2], val[3]);
-			
+
 		} else if (_os_strcmp(input[2], "tia") == 0) {
 			if (val[0] >= BB_GAIN_BAND_NUM ||
 			    val[1] >= HALBB_MAX_PATH ||
@@ -1536,7 +1536,7 @@ void halbb_hw_cfg_init(struct bb_info *bb)
 	hw_cfg->gain_table_init_ready_2g_b = false;
 }
 
-void halbb_hw_cfg_dbg(struct bb_info *bb, char input[][16], 
+void halbb_hw_cfg_dbg(struct bb_info *bb, char input[][16],
 			     u32 *_used, char *output, u32 *_out_len)
 {
 #ifdef HALBB_BAND_SWH_CR_SEQ_SUPPORT

@@ -21723,4 +21723,3 @@ const u32 array_mp_8822b_radiob[] = {
 
 };
 const u32 array_mp_8822b_radiob_len = sizeof(array_mp_8822b_radiob) / sizeof(u32);
-

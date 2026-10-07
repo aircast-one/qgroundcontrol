@@ -76,7 +76,7 @@ void _dpk_reload_kip_8852b(
 	struct rf_info *rf,
 	u32 *reg,
 	u32 reg_bkup[][DPK_KIP_REG_NUM_8852B],
-	u8 path) 
+	u8 path)
 {
 	u8 i;
 
@@ -91,7 +91,7 @@ void _dpk_reload_kip_8852b(
 void _dpk_reload_bb_8852b(
 	struct rf_info *rf,
 	u32 *reg,
-	u32 reg_bkup[DPK_BB_REG_NUM_8852B]) 
+	u32 reg_bkup[DPK_BB_REG_NUM_8852B])
 {
 	u8 i;
 
@@ -287,7 +287,7 @@ void _dpk_bb_afe_setting_8852b(
 		halrf_wreg(rf, 0xc0d8, BIT(13), 0x1);
 		halrf_wreg(rf, 0xc1d8, BIT(13), 0x1);
 	}
-	
+
 	//halrf_write_fwofld_end(rf);		/*FW Offload End*/
 }
 
@@ -372,7 +372,7 @@ void _dpk_tpg_sel_8852b(
 		halrf_wreg(rf, 0x806c, BIT(2) | BIT (1), 0x1);
 
 	RF_DBG(rf, DBG_RF_DPK, "[DPK] TPG Select for %s\n",
-	       dpk->bp[path][kidx].bw == CHANNEL_WIDTH_80 ? "80M" : 
+	       dpk->bp[path][kidx].bw == CHANNEL_WIDTH_80 ? "80M" :
 	       (dpk->bp[path][kidx].bw == CHANNEL_WIDTH_40 ? "40M" : "20M"));
 }
 
@@ -381,7 +381,7 @@ void _dpk_kip_pwr_clk_on_8852b(
 	enum rf_path path)
 {
 	/*cip power on*/
-	halrf_wreg(rf, 0x8008, MASKDWORD, 0x00000080);	
+	halrf_wreg(rf, 0x8008, MASKDWORD, 0x00000080);
 	/*320M*/
 	halrf_wreg(rf, 0x8088, MASKDWORD, 0x807f030a);
 	halrf_wreg(rf, 0x8120 + (path << 8), MASKDWORD, 0xce000a08);
@@ -519,7 +519,7 @@ void _dpk_lbk_rxiqk_8852b(
 
 	//cur_rxbb = (u8)halrf_rrf(rf, path, 0x00, MASKRFRXBB);
 	//rf_18 = halrf_rrf(rf, path, 0x18, MASKRF);
-	
+
 //	halrf_write_fwofld_start(rf);		/*FW Offload Start*/
 
 	halrf_wreg(rf, 0x8074, BIT(31), 0x1); /*RxSRAM_ctrl_sel 0:MDPK; 1:IQK*/
@@ -544,7 +544,7 @@ void _dpk_lbk_rxiqk_8852b(
 	halrf_wrf(rf, path, 0x1e, MASKRF, 0x80014); /*POW IQKPLL, 9.25MHz offset for IQKPLL*/
 
 	for (i = 0; i < 70; i++)
-		halrf_delay_us(rf, 1); /*IQKPLL's settling time*/	
+		halrf_delay_us(rf, 1); /*IQKPLL's settling time*/
 
 	halrf_wreg(rf, 0x5864, BIT(29), 0x1);
 	halrf_wreg(rf, 0x802c, 0x0FFF0000, 0x025); /*[27:16] Rx_tone_idx=0x025 (9.25MHz)*/
@@ -858,7 +858,7 @@ u8 _dpk_pas_check_8852b(
 		fail = 1;
 		RF_DBG(rf, DBG_RF_DPK, "[DPK] PAS check Fail!!\n");
 	}
-	
+
 	return fail;
 }
 
@@ -886,7 +886,7 @@ void _dpk_gainloss_8852b(
 	//_dpk_table_select_8852b(rf, path, kidx, 1);
 
 //	halrf_write_fwofld_start(rf);		/*FW Offload Start*/
-	
+
 	_dpk_one_shot_8852b(rf, phy, path, GAIN_LOSS);
 
 	/*for GL result, move to here due to IO fw offload*/
@@ -960,7 +960,7 @@ u8 _dpk_pas_read_8852b(
 
 		if ((val2_i * val2_i + val2_q * val2_q) != 0) /*to avoid BSOD issue*/
 			RF_DBG(rf, DBG_RF_DPK, "[DPK] PAS_delta = 0x%x\n",
-				(val1_i * val1_i + val1_q * val1_q) / 
+				(val1_i * val1_i + val1_q * val1_q) /
 				(val2_i * val2_i + val2_q * val2_q));
 	} else {
 		for (i = 0; i < 32; i++) {
@@ -1005,7 +1005,7 @@ u8 _dpk_agc_8852b(
 
 	tmp_rxbb = (u8)halrf_rrf(rf, path, 0x00, MASKRFRXBB);
 	rf_18 = halrf_rrf(rf, path, 0x18, MASKRF);
-	
+
 	do {
 		switch (i) {
 		case 0: /*SYNC and Dgain*/
@@ -1030,7 +1030,7 @@ u8 _dpk_agc_8852b(
 
 				break;
 			}
-	
+
 			dgain = _dpk_dgain_read_8852b(rf);
 			offset = _dpk_dgain_mapping_8852b(rf, dgain);
 
@@ -1083,7 +1083,7 @@ u8 _dpk_agc_8852b(
 				i = 3; /*GL > criterion*/
 			else if (tmp_gl_idx == 0)
 				i = 4; /*GL < criterion*/
-			else 
+			else
 				i = 5;
 
 			gl_cnt++;
@@ -1163,7 +1163,7 @@ u8 _dpk_agc_8852b(
 		default:
 			goout = 1;
 			break;
-		}	
+		}
 	} while (!goout && (agc_cnt < 6));
 
 	if (gl_cnt >= 6) {
@@ -1424,7 +1424,7 @@ void _dpk_fill_result_8852b(
 
 	/*========== release all setting for K==========*/
 	//halrf_wreg(rf, 0x81c8, MASKDWORD, 0x0);
-	halrf_wreg(rf, 0x81a0 + (path << 8), MASKDWORD, 0x0);			
+	halrf_wreg(rf, 0x81a0 + (path << 8), MASKDWORD, 0x0);
 
 	halrf_wreg(rf, 0x8070, 0x80000000, 0x0); /*BIT(31)*/
 
@@ -1667,7 +1667,7 @@ u8 _dpk_max_txagc_check_8852b(
 	iid = rf->phl_com->id.id & 0xff;
 
 	RF_DBG(rf, DBG_RF_DPK, "[DPK] phl_com->id.id = 0x%x\n", rf->phl_com->id.id);
-		
+
 	if ((tpu->pwr_lmt_en == false) || (iid != 0x0a) || (cid != 0x0) || dpk->is_dpk_pwr_unlmt) {
 		dpk->max_dpk_txagc[RF_PATH_A] = 0x3f;
 		dpk->max_dpk_txagc[RF_PATH_B] = 0x3f;
@@ -1735,7 +1735,7 @@ void halrf_dpk_8852b(
 #else
 	_dpk_information_8852b(rf, 0, RF_PATH_A);
 	_dpk_bb_afe_setting_8852b(rf, 0, RF_PATH_A);
-	
+
 	//_dpk_main_8852b(rf, 0, 0, 1, RF_PATH_A);
 	_dpk_set_tx_pwr_8852b(rf, 1, RF_PATH_A);
 	_dpk_rf_setting_8852b(rf, 1, RF_PATH_A);
@@ -1744,7 +1744,7 @@ void halrf_dpk_8852b(
 	_dpk_cip_setting_8852b(rf, RF_PATH_A);
 	_dpk_manual_txcfir_8852b(rf, RF_PATH_A, true);
 	_dpk_bypass_rxcfir_8852b(rf, RF_PATH_A, true);
-	
+
 	//_dpk_sync_8852b(rf, RF_PATH_A);
 	//_dpk_dgain_read_8852b(rf);
 	//_dpk_gainloss_8852b(rf, RF_PATH_A);

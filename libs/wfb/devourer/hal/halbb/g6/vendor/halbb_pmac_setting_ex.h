@@ -124,7 +124,7 @@ enum rtw_hal_status halbb_set_txsc(struct bb_info *bb, u8 txsc,
 enum rtw_hal_status halbb_set_txsb(struct bb_info *bb, u8 txsb,
 				   enum phl_phy_idx phy_idx);
 
-bool halbb_set_bss_color(struct bb_info *bb, u8 bss_color, 
+bool halbb_set_bss_color(struct bb_info *bb, u8 bss_color,
 			 enum phl_phy_idx phy_idx);
 
 bool halbb_set_sta_id(struct bb_info *bb, u16 sta_id, enum phl_phy_idx phy_idx);

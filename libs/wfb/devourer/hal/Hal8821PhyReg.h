@@ -5,7 +5,7 @@
 
 // Tables are copied from svpcom/rtl8812au branch v5.2.20-rssi-fix-but-sometimes-crash
 // at fee069b so 8811AU/8821AU uses the matching PHY/RF image.
-static uint32_t array_mp_8821a_mac_reg[] = { 
+static uint32_t array_mp_8821a_mac_reg[] = {
 		0x421, 0x0000000F,
 		0x428, 0x0000000A,
 		0x429, 0x00000010,
@@ -107,7 +107,7 @@ static uint32_t array_mp_8821a_mac_reg[] = {
 
 };
 
-static uint32_t array_mp_8821a_agc_tab[] = { 
+static uint32_t array_mp_8821a_agc_tab[] = {
 		0x81C, 0xBF000001,
 		0x81C, 0xBF020001,
 		0x81C, 0xBF040001,
@@ -361,7 +361,7 @@ static uint32_t array_mp_8821a_agc_tab[] = {
 
 };
 
-static uint32_t array_mp_8821a_phy_reg[] = { 
+static uint32_t array_mp_8821a_phy_reg[] = {
 		0x800, 0x0020D090,
 		0x804, 0x080112E0,
 		0x808, 0x0E028211,
@@ -537,7 +537,7 @@ static uint32_t array_mp_8821a_phy_reg[] = {
 
 };
 
-static uint32_t array_mp_8821a_radioa[] = { 
+static uint32_t array_mp_8821a_radioa[] = {
 		0x018, 0x0001712A,
 		0x056, 0x00051CF2,
 		0x066, 0x00040000,

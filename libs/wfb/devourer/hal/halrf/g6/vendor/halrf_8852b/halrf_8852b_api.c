@@ -114,7 +114,7 @@ void halrf_wlan_tx_power_control_8852b(struct rf_info *rf,
 bool halrf_wl_tx_power_control_8852b(struct rf_info *rf, u32 tx_power_val)
 {
 	struct halrf_pwr_info *pwr = &rf->pwr_info;
-	u32 result; 
+	u32 result;
 	s32 tmp_pwr;
 	u8 phy = 0;
 	u32 all_time_control = 0;
@@ -260,7 +260,7 @@ s8 halrf_get_ther_protected_threshold_8852b(struct rf_info *rf)
 		return -1;	/*Tx duty reduce*/
 	else if (tmp < therml_max - 2)
 		return 1;	/*Tx duty up*/
-	else 
+	else
 		return 0;	/*Tx duty the same*/
 }
 #endif	/*HALRF_THERMAL_PROTECT_SUPPORT*/
@@ -414,7 +414,7 @@ void halrf_si_reset_8852b(struct rf_info *rf)
         /*enable hwsi trigger*/
         halrf_wreg(rf, 0x1200, 0x70000000, 0x0);
         halrf_wreg(rf, 0x3200, 0x70000000, 0x0);
-        /*release D die HW SI*/   
+        /*release D die HW SI*/
         halrf_wreg(rf, 0x12ac, BIT(0), 0x1);
         halrf_wreg(rf, 0x32ac, BIT(0), 0x1);
 }
@@ -471,7 +471,7 @@ bool halrf_chlk_reload_check_8852b(struct rf_info *rf, enum phl_phy_idx phy)
 			((dbcc_info->ch[i][0] == kch) && (dbcc_info->band[i][0] == kband)))
 			break;
 	}
-	
+
 	if (i < 2) {
 		idx = i;
 	} else {
