@@ -105,7 +105,7 @@ private const val PIP_EXPANDED_KEY = "IsPIPVisible"
 private const val LANDSCAPE_MAP_SHOWN_KEY = "LandscapeMapShown"
 
 internal fun pipExpandedKey(landscape: Boolean): Pair<String, Boolean> =
-    if (landscape) LANDSCAPE_MAP_SHOWN_KEY to false else PIP_EXPANDED_KEY to true
+    if (landscape) LANDSCAPE_MAP_SHOWN_KEY to true else PIP_EXPANDED_KEY to true
 
 internal fun loadPipExpanded(context: Context, landscape: Boolean): Boolean =
     pipExpandedKey(landscape).let { (key, default) -> context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).getBoolean(key, default) }
