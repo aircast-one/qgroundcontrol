@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -75,8 +76,11 @@ private const val MANAGER = "vehicle.cameraManager"
 internal const val SHOW_PHOTO_VIDEO_CONTROL = "settings.flyViewSettings.showPhotoVideoControl"
 private const val CAMERA_SCRIM_ALPHA = 0.55f
 private val SHUTTER_SIZE = 56.dp
-private val SHUTTER_STOP_SIZE = 18.dp
-private val SHUTTER_CORE_SIZE = 38.dp
+private val SHUTTER_STOP_SIZE = 20.dp
+private val SHUTTER_DOT_SIZE = 26.dp
+private val SHUTTER_RING = 4.dp
+private val SHUTTER_STOP_CORNER = 4.dp
+private val SHUTTER_SHADOW = 2.dp
 private val CAMERA_TARGET = 48.dp
 private val CAMERA_RAIL_MAX_WIDTH = 120.dp
 private val REC_DOT_SIZE = 8.dp
@@ -112,7 +116,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.extraLarge,
-        color = osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)),
+        color = if (flyIsPortrait()) osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)) else Color.Transparent,
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -122,38 +126,6 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-        if (shutters) panel.shutters.map { shutter ->
-            ShutterButton(panel, shutter) { action -> offMainDetached { refused = Qgc.refusalOf(action) } }
-        }
-
-        if (camera.hasModes) {
-            Column(
-                Modifier.background(osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)), CircleShape).padding(2.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                listOf(false to R.drawable.ic_photo_camera, true to R.drawable.ic_videocam).map { (video, icon) ->
-                    val selected = panel.inPhotoMode != video
-                    Surface(
-                        onClick = {
-                            if (modeTapSwitches(camera, video)) offMainDetached {
-                                refused = Qgc.refusalOf(CAMERA_SET_MODE, if (video) "video" else "photo")
-                            }
-                        },
-                        enabled = if (video) panel.selectVideoEnabled else panel.selectPhotoEnabled,
-                        shape = CircleShape,
-                        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-                        contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.aircast.outdoorForeground,
-                    ) {
-                        Icon(
-                            painterResource(icon),
-                            if (video) "Video" else "Photo",
-                            Modifier.padding(8.dp).size(20.dp),
-                        )
-                    }
-                }
-            }
-        }
-
         zoomText(camera)?.let { label ->
             Surface(
                 onClick = { details = true },
@@ -164,6 +136,29 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
                 modifier = Modifier.semantics { contentDescription = "Zoom $label" },
             ) {
                 Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+            }
+        }
+
+        if (shutters) panel.shutters.map { shutter ->
+            ShutterButton(panel, shutter) { action -> offMainDetached { refused = Qgc.refusalOf(action) } }
+        }
+
+        if (camera.hasModes) {
+            val toVideo = panel.inPhotoMode
+            IconButton(
+                onClick = {
+                    if (modeTapSwitches(camera, toVideo)) offMainDetached {
+                        refused = Qgc.refusalOf(CAMERA_SET_MODE, if (toVideo) "video" else "photo")
+                    }
+                },
+                enabled = if (toVideo) panel.selectVideoEnabled else panel.selectPhotoEnabled,
+                modifier = Modifier.size(CAMERA_TARGET),
+            ) {
+                Icon(
+                    painterResource(if (toVideo) R.drawable.ic_videocam else R.drawable.ic_photo_camera),
+                    if (toVideo) "Switch to video" else "Switch to photo",
+                    Modifier.size(24.dp).osdShadow(),
+                )
             }
         }
 
@@ -236,22 +231,21 @@ fun CameraShutters() {
 @Composable
 private fun ShutterButton(panel: CameraPanel, shutter: CameraShutter, onPress: (String) -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        val white = MaterialTheme.aircast.outdoorForeground
         Surface(
             onClick = { shutter.action?.let(onPress) },
             enabled = shutter.enabled,
             modifier = Modifier.size(SHUTTER_SIZE).semantics { contentDescription = shutter.label },
             shape = CircleShape,
-            color = Color.Transparent,
-            border = BorderStroke(3.dp, MaterialTheme.aircast.outdoorForeground),
+            color = if (shutter.video) Color.Transparent else white,
+            border = if (shutter.video) BorderStroke(SHUTTER_RING, white) else null,
+            shadowElevation = SHUTTER_SHADOW,
         ) {
-            Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) {
+            if (shutter.video) Box(contentAlignment = Alignment.Center) {
                 Box(
                     Modifier
-                        .size(if (shutter.recording) SHUTTER_STOP_SIZE else SHUTTER_CORE_SIZE)
-                        .background(
-                            if (shutter.video) RECORD_RED else MaterialTheme.aircast.outdoorForeground,
-                            if (shutter.recording) MaterialTheme.shapes.extraSmall else CircleShape,
-                        ),
+                        .size(if (shutter.recording) SHUTTER_STOP_SIZE else SHUTTER_DOT_SIZE)
+                        .background(RECORD_RED, if (shutter.recording) RoundedCornerShape(SHUTTER_STOP_CORNER) else CircleShape),
                 )
             }
         }
