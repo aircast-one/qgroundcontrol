@@ -91,6 +91,7 @@ private val MINIMAP_HEIGHT = 112.dp
 private const val COMPASS_DIAL_KEY = "compassDial"
 private val ACTION_RAIL_CLEARANCE = 72.dp
 private val STOP_CLEARANCE = 56.dp
+private val RAIL_CLEARANCE = STOP_CLEARANCE + AircastSpace.s3 * 2
 private val TOP_SCRIM_HEIGHT = 96.dp
 private const val TOP_SCRIM_ALPHA = 0.6f
 private val PIP_TOGGLE_SIZE = 28.dp
@@ -174,7 +175,6 @@ internal fun FlyScreen(
     video: @Composable (Modifier, Boolean) -> Unit,
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
-    keyRowEnd: @Composable () -> Unit,
     rail: @Composable () -> Unit,
     overlays: @Composable () -> Unit,
     actions: @Composable (FlyDeckLayout) -> Unit,
@@ -377,7 +377,7 @@ internal fun FlyScreen(
                     }
                 },
                 bottom = {
-                    Box(Modifier.padding(AircastSpace.s3)) { keyRowEnd() }
+
                 },
                 bottomAlignment = Alignment.End,
                 overlaysAboveBottom = true,
@@ -392,11 +392,8 @@ internal fun FlyScreen(
                     .fillMaxHeight()
                     .align(Alignment.CenterEnd)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(
-                        top = STATUS_ROW_HEIGHT + AircastSpace.s4,
-                        bottom = STOP_CLEARANCE + AircastSpace.s3 * 2,
-                        end = AircastSpace.s3,
-                    ),
+                    .padding(vertical = RAIL_CLEARANCE, horizontal = 0.dp)
+                    .padding(end = AircastSpace.s3),
                 contentAlignment = Alignment.Center,
             ) {
                 CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { rail() }

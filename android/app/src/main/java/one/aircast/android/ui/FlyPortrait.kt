@@ -65,7 +65,6 @@ internal fun FlyPortrait(
     video: @Composable (Modifier, Boolean) -> Unit,
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
-    keyRowEnd: @Composable () -> Unit,
     rail: @Composable () -> Unit,
     overlays: @Composable () -> Unit,
     actions: @Composable (FlyDeckLayout) -> Unit,
@@ -127,7 +126,6 @@ internal fun FlyPortrait(
                         .padding(start = AircastSpace.s3, top = buttonsTop + MAP_BUTTON_SIZE + AircastSpace.s2, end = AircastSpace.s3),
                     verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                 ) {
-                    keyRowEnd()
                     overlays()
                 }
                 MapButtons(

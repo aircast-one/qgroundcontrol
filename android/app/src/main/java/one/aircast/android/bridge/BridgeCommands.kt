@@ -28,6 +28,8 @@ private const val MISSION_COMPLETE_DISMISS = "missionComplete.dismiss"
 private const val VIDEO_NATIVE_RENDERING = "video.setNativeRendering"
 private const val VIDEO_INIT_NATIVE = "video.initNative"
 private const val VIDEO_ACTIVE_SOURCE = "video.setActiveVideoSource"
+private const val VIDEO_START_RECORDING = "video.startRecording"
+private const val VIDEO_STOP_RECORDING = "video.stopRecording"
 private const val VIDEO_RESTART = "video.restart"
 private const val VIDEO_DEVICE_CAMERA_ROTATION = "video.setDeviceCameraRotation"
 private const val VEHICLE_FIELDS = "vehicle"
@@ -82,6 +84,7 @@ internal object VideoCommands {
     fun setNativeRendering(native: Boolean): Boolean = Qgc.invoke(VIDEO_NATIVE_RENDERING, native)
     fun initNative(): Boolean = Qgc.invoke(VIDEO_INIT_NATIVE)
     fun setActiveSource(slot: Int): Boolean = Qgc.invoke(VIDEO_ACTIVE_SOURCE, slot)
+    fun setRecording(recording: Boolean): Boolean = Qgc.invoke(if (recording) VIDEO_START_RECORDING else VIDEO_STOP_RECORDING)
     fun restart(): Boolean = Qgc.invoke(VIDEO_RESTART)
     fun setDeviceCameraRotation(degrees: Int): Boolean = Qgc.invoke(VIDEO_DEVICE_CAMERA_ROTATION, degrees)
 }

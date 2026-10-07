@@ -111,7 +111,6 @@ import one.aircast.android.ui.VideoSurface
 import one.aircast.android.ui.FlyScreen
 import one.aircast.android.ui.FlyPortrait
 import androidx.compose.foundation.layout.RowScope
-import one.aircast.android.ui.PinnedEmergencyStop
 import one.aircast.android.ui.flyIsPortrait
 import org.mavlink.qgroundcontrol.QGCBridge
 
@@ -510,7 +509,6 @@ fun AircastShell(hostView: android.view.View?) {
                         flyVideoSourceLayer()
                         flyObstacleArc()
                     }
-                    val flyKeyRowEnd: @Composable () -> Unit = { LayoutWidget("emergencyStop", hideable = false) { PinnedEmergencyStop() } }
                     val flyOverlays: @Composable () -> Unit = {
                         LayoutWidget("messageBanner", hideable = false) { one.aircast.android.ui.VehicleMessageBanner() }
                         LayoutWidget("fleet") { one.aircast.android.ui.FleetCard() }
@@ -531,7 +529,6 @@ fun AircastShell(hostView: android.view.View?) {
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
                             rail = { flyCameraControlLayer() },
-                            keyRowEnd = flyKeyRowEnd,
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
                         )
@@ -543,7 +540,6 @@ fun AircastShell(hostView: android.view.View?) {
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
-                            keyRowEnd = flyKeyRowEnd,
                             rail = { flyCameraControlLayer() },
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },

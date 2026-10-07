@@ -8,6 +8,7 @@ class OsdLabelTest {
     fun `the flying readings shorten to DJI's letters and anything else keeps its name`() {
         assertEquals(listOf("D", "H", "H.S", "V.S"), listOf("Distance to home", "Alt (Rel)", "Ground Speed", "Climb Rate").map(::osdLabel))
         assertEquals("FLIGHT TIME", osdLabel("Flight time"))
+        assertEquals(listOf("D", "H", "H.S", "V.S"), listOf("distanceToHome", "altitudeRelative", "groundSpeed", "climbRate").map(::osdLabel))
     }
 }
 
@@ -53,5 +54,13 @@ class FlightTimeReadTest {
     fun `the seconds come out of the fact the bridge wraps them in`() {
         assertEquals(10.325, flightTimeSeconds(org.json.JSONObject("""{"kind":"value","value":{"kind":"fact","value":10.325}}""")))
         assertEquals(null, flightTimeSeconds(org.json.JSONObject("""{"kind":"value","value":null}""")))
+    }
+}
+
+class StreamShutterTest {
+    @Test
+    fun `the stream shutter is a video shutter that says what a tap will do`() {
+        assertEquals(Triple("Start recording", false, true), streamShutter(false).let { Triple(it.label, it.recording, it.video) })
+        assertEquals(Triple("Stop recording", true, true), streamShutter(true).let { Triple(it.label, it.recording, it.video) })
     }
 }

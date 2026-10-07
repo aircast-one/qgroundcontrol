@@ -61,6 +61,8 @@ import kotlinx.coroutines.channels.Channel
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.offMainInOrder
+import one.aircast.android.bridge.VideoCommands
 import one.aircast.android.bridge.qgcBool
 import one.aircast.android.bridge.qgcPath
 import one.aircast.android.bridge.settingControl
@@ -104,12 +106,15 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
         }
     }
 
-    if (!hasVehicle || !shown) {
+    if (!shown) {
         return
     }
 
-    val panel = camera?.panel?.takeIf { it.visible } ?: run {
-        RcCameraControls(modifier)
+    val panel = camera?.panel?.takeIf { hasVehicle && it.visible } ?: run {
+        Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+            RcCameraControls()
+            if (shutters) StreamShutter()
+        }
         return
     }
 
@@ -121,11 +126,10 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
         RcCameraControls()
-        Column(
-            Modifier.padding(horizontal = 6.dp, vertical = 8.dp).widthIn(max = CAMERA_RAIL_MAX_WIDTH),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        ShutterCentredRail(
+            centre = if (shutters && panel.shutters.isNotEmpty()) SHUTTER_SIZE else 0.dp,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp).widthIn(max = CAMERA_RAIL_MAX_WIDTH),
+            above = {
         zoomText(camera)?.let { label ->
             Surface(
                 onClick = { details = true },
@@ -139,10 +143,13 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
             }
         }
 
+            },
+            shutter = {
         if (shutters) panel.shutters.map { shutter ->
-            ShutterButton(panel, shutter) { action -> offMainDetached { refused = Qgc.refusalOf(action) } }
+            ShutterButton(shutterCaption(panel, shutter), shutter) { offMainDetached { refused = shutter.action?.let(Qgc::refusalOf) } }
         }
-
+            },
+            below = {
         if (camera.hasModes) {
             val toVideo = panel.inPhotoMode
             IconButton(
@@ -194,7 +201,8 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
-        }
+            },
+        )
         }
     }
 }
@@ -204,7 +212,7 @@ fun CameraShutters() {
     val hasVehicle = hasVehicle()
     val shown by qgcBool(settingControl(SHOW_PHOTO_VIDEO_CONTROL))
     val cameraJson by qgcPath(CAMERA_VIEW)
-    val panel = remember(cameraJson) { cameraReading(cameraJson)?.panel?.takeIf { it.visible } }
+    val panel = remember(cameraJson, hasVehicle) { cameraReading(cameraJson)?.panel?.takeIf { hasVehicle && it.visible } }
     var refused by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(refused) {
@@ -214,13 +222,17 @@ fun CameraShutters() {
         }
     }
 
-    if (!hasVehicle || !shown || panel == null) {
+    if (!shown) {
+        return
+    }
+    if (panel == null) {
+        StreamShutter()
         return
     }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         panel.shutters.map { shutter ->
-            ShutterButton(panel, shutter) { action -> offMainDetached { refused = Qgc.refusalOf(action) } }
+            ShutterButton(shutterCaption(panel, shutter), shutter) { offMainDetached { refused = shutter.action?.let(Qgc::refusalOf) } }
         }
         refused?.let { sentence ->
             Text(sentence, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -228,12 +240,66 @@ fun CameraShutters() {
     }
 }
 
+private val RAIL_GAP = 8.dp
+
 @Composable
-private fun ShutterButton(panel: CameraPanel, shutter: CameraShutter, onPress: (String) -> Unit) {
+private fun ShutterCentredRail(
+    centre: androidx.compose.ui.unit.Dp,
+    modifier: Modifier,
+    above: @Composable () -> Unit,
+    shutter: @Composable () -> Unit,
+    below: @Composable () -> Unit,
+) {
+    val column: @Composable (@Composable () -> Unit) -> Unit = { content ->
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(RAIL_GAP)) { content() }
+    }
+    androidx.compose.ui.layout.Layout(
+        contents = listOf({ column(above) }, { column(shutter) }, { column(below) }),
+        modifier = modifier,
+    ) { (top, middle, bottom), constraints ->
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val up = top.first().measure(loose)
+        val mid = middle.first().measure(loose)
+        val down = bottom.first().measure(loose)
+        val gap = RAIL_GAP.roundToPx()
+        val half = centre.roundToPx() / 2
+        val reach = maxOf(half + (if (up.height > 0) gap + up.height else 0), mid.height - half + (if (down.height > 0) gap + down.height else 0))
+        val width = maxOf(up.width, mid.width, down.width)
+        layout(width, reach * 2) {
+            val midTop = reach - half
+            up.place((width - up.width) / 2, midTop - gap - up.height)
+            mid.place((width - mid.width) / 2, midTop)
+            down.place((width - down.width) / 2, midTop + mid.height + gap)
+        }
+    }
+}
+
+internal const val VIDEO_RECORDING_STATE = "video.recording"
+
+internal fun streamShutter(recording: Boolean): CameraShutter = CameraShutter(
+    label = if (recording) "Stop recording" else "Start recording",
+    recording = recording,
+    enabled = true,
+    action = null,
+    video = true,
+    readout = "",
+    readoutActive = false,
+)
+
+@Composable
+private fun StreamShutter() {
+    val videoJson by qgcPath(VIDEO_VIEW)
+    val recording by qgcBool(VIDEO_RECORDING_STATE)
+    if (videoReading(videoJson)?.decoding != true) return
+    ShutterButton(null, streamShutter(recording)) { offMainInOrder { VideoCommands.setRecording(!recording) } }
+}
+
+@Composable
+private fun ShutterButton(caption: String?, shutter: CameraShutter, onPress: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         val white = MaterialTheme.aircast.outdoorForeground
         Surface(
-            onClick = { shutter.action?.let(onPress) },
+            onClick = onPress,
             enabled = shutter.enabled,
             modifier = Modifier.size(SHUTTER_SIZE).semantics { contentDescription = shutter.label },
             shape = CircleShape,
@@ -249,7 +315,7 @@ private fun ShutterButton(panel: CameraPanel, shutter: CameraShutter, onPress: (
                 )
             }
         }
-        shutterCaption(panel, shutter)?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+        caption?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
         shutterReadout(shutter)?.let { readout ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (shutter.video) {

@@ -187,7 +187,7 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     val gimbalManager = gimbalJson?.optBoolean("shown") == true
     val vehiclesJson by qgcPath(one.aircast.map.VEHICLES_VIEW)
     val vehicleId = activeVehicleId(vehiclesJson)
-    val streamRecording by qgcBool("video.recording")
+    val streamRecording by qgcBool(VIDEO_RECORDING_STATE)
     var tilt by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
     var pan by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
     var zoom by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
@@ -223,7 +223,7 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
                 val next = !recording
                 channelRecording = next
                 send(channels.record, if (next) PWM_MAX else PWM_MIN)
-                offMainInOrder { Qgc.invoke(if (next) "video.startRecording" else "video.stopRecording") }
+                offMainInOrder { one.aircast.android.bridge.VideoCommands.setRecording(next) }
             }, label = { Text("Record") })
         }
         if (channels.light > 0 || gimbal != null || rcGimbal) {

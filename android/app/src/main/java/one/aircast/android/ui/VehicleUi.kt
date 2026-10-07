@@ -610,6 +610,10 @@ private val OSD_LABELS = mapOf(
     "airspeed" to "A.S",
     "distance to operator" to "D.OP",
     "heading" to "HDG",
+    "distancetohome" to "D",
+    "altituderelative" to "H",
+    "groundspeed" to "H.S",
+    "climbrate" to "V.S",
 )
 
 internal fun osdLabel(label: String): String = OSD_LABELS[label.trim().lowercase()] ?: label.uppercase()
