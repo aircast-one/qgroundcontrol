@@ -13,6 +13,7 @@
 #include "LinkInterface.h"
 #include "LinkManager.h"
 #include "LogManager.h"
+#include "QGCLoggingCategoryManager.h"
 #include "QGCApplication.h"
 #include "QmlObjectListModel.h"
 #include "SettingsManager.h"
@@ -24,6 +25,7 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QScopeGuard>
 #include <QtCore/QTimer>
 #include <QtNetwork/QTcpServer>
 #include <QtNetwork/QTcpSocket>
@@ -49,10 +51,9 @@ public:
                     ? QByteArrayLiteral("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                     : QByteArrayLiteral("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ")
                         + QByteArray::number(body.size()) + QByteArrayLiteral("\r\nConnection: close\r\n\r\n") + body;
-                const auto respond = [this, socket, response]() {
+                const auto respond = [socket, response]() {
                     socket->write(response);
                     socket->disconnectFromHost();
-                    answered++;
                 };
                 if (responseDelayMs > 0) {
                     QTimer::singleShot(responseDelayMs, socket, respond);
@@ -67,7 +68,6 @@ public:
     QString hostWithPort() const { return QStringLiteral("127.0.0.1:%1").arg(_server.serverPort()); }
 
     int responseDelayMs = 0;
-    int answered = 0;
 
     void setDevice(const QStringList &cameras, const QStringList &telemetryEndpoints)
     {
@@ -285,13 +285,24 @@ void AircastDeviceSetupTest::_staleReplyFromSupersededSetupIsIgnored()
     FakeAircastd deviceB;
     deviceB.setDevice({QStringLiteral("fresh")}, {QStringLiteral("udps:0.0.0.0:14551")});
 
+    QGCLoggingCategoryManager::instance()->setCategoryEnabled(QStringLiteral("API.QGCApplication"), true);
+    const auto quiet = qScopeGuard([]() { QGCLoggingCategoryManager::instance()->setCategoryEnabled(QStringLiteral("API.QGCApplication"), false); });
+    ignoreLogMessage("API.QGCApplication", QtDebugMsg, QRegularExpression(QStringLiteral("Aircast device setup")));
+    const qsizetype logged = LogManager::capturedMessages().size();
     _applySetupDeepLink(deviceA);
     _applySetupDeepLink(deviceB);
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
     QTRY_COMPARE_WITH_TIMEOUT(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"), 5000);
 
-    QTRY_COMPARE_WITH_TIMEOUT(deviceA.answered, 2, 5000);
+    const QString staleHost = deviceA.hostWithPort();
+    const auto ignoredStale = [logged, staleHost]() {
+        const QList<LogEntry> messages = LogManager::capturedMessages();
+        return std::count_if(messages.begin() + qMin(logged, messages.size()), messages.end(), [&staleHost](const LogEntry &entry) {
+            return entry.message.contains(QStringLiteral("ignored a reply from a superseded setup")) && entry.message.contains(staleHost);
+        });
+    };
+    QTRY_COMPARE_WITH_TIMEOUT(ignoredStale(), 2, 5000);
     QCOMPARE(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"));
     QCOMPARE(videoSettings->cameraName(videoSettings->currentIndex()), QStringLiteral("fresh (127.0.0.1)"));
 

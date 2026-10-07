@@ -54,6 +54,12 @@ SettingsPage {
         ListModel { id: camerasModel }
 
         property bool readable: true
+        property var  refusals: ({})
+        property bool adding:   false
+        property string draftName:    ""
+        property string draftSource:  _videoSettings.rtspVideoSource
+        property string draftUrl:     ""
+        property string draftRefusal: ""
 
         function parseCameras() {
             try {
@@ -69,40 +75,61 @@ SettingsPage {
         }
 
         function rowsOf(cameras) {
-            return cameras.map((cam, i) => camRow(i, cam.name || "", cam.source || _videoSettings.disabledVideoSource, cam.url || ""))
+            return cameras.map((cam, i) => camRow(i, cam.name || "", cam.source || "", cam.url || ""))
         }
 
         function reload() {
             const cameras = parseCameras()
             readable = cameras !== null
             const rows = rowsOf(cameras || [])
-            const same = rows.length === camerasModel.count && rows.every((row, i) => {
-                const shown = camerasModel.get(i)
-                return shown.camName === row.camName && shown.camSource === row.camSource && shown.camUrl === row.camUrl
-            })
-            if (same) {
+            if (rows.length !== camerasModel.count) {
+                refusals = ({})
+                camerasModel.clear()
+                rows.forEach(row => camerasModel.append(row))
                 return
             }
-            camerasModel.clear()
-            rows.forEach(row => camerasModel.append(row))
+            rows.forEach((row, i) => {
+                const shown = camerasModel.get(i)
+                if (shown.camName !== row.camName || shown.camSource !== row.camSource || shown.camUrl !== row.camUrl) {
+                    camerasModel.set(i, row)
+                }
+            })
+        }
+
+        function refuse(camIndex, refusal) {
+            const next = Object.assign({}, refusals)
+            if (refusal === "") {
+                delete next[camIndex]
+            } else {
+                next[camIndex] = refusal
+            }
+            refusals = next
         }
 
         function saveCamera(camIndex, name, source, url) {
             if (!readable || camIndex >= camerasModel.count) {
                 return
             }
-            camerasModel.set(camIndex, camRow(camIndex, name, source, url))
-            _videoSettings.updateCamera(camIndex, name, source, url)
+            refuse(camIndex, _videoSettings.updateCamera(camIndex, name, source, url))
         }
 
         function urlForSource(source, currentUrl) {
             return _sourceNeedsUrl(source) ? currentUrl : ""
         }
 
+        function startAdding() {
+            draftName = ""
+            draftSource = _videoSettings.rtspVideoSource
+            draftUrl = ""
+            draftRefusal = ""
+            selectedIndex = -1
+            adding = true
+        }
+
         function addCamera() {
-            const at = _videoSettings.addCamera("", _videoSettings.rtspVideoSource, "")
-            if (at >= 0) {
-                selectedIndex = at
+            draftRefusal = _videoSettings.addCamera(draftName, draftSource, draftUrl)
+            if (draftRefusal === "") {
+                adding = false
             }
         }
 
@@ -258,6 +285,14 @@ SettingsPage {
                             }
                         }
 
+                        QGCLabel {
+                            width:     parent.width
+                            visible:   text !== ""
+                            text:      camList.refusals[camEntry._index] || ""
+                            color:     camList._qgcPal.colorRed
+                            wrapMode:  Text.WordWrap
+                        }
+
                         PlanGroupRow {
                             text:        qsTr("Remove Camera")
                             textColor:   camList._qgcPal.colorRed
@@ -276,12 +311,105 @@ SettingsPage {
                 wrapMode:  Text.WordWrap
             }
 
+            Column {
+                x:       camList._indent
+                width:   parent.width - camList._indent
+                visible: camList.adding
+
+                PlanGroupRow {
+                    text: qsTr("Name")
+
+                    QGCTextField {
+                        objectName:             "draftNameField"
+                        anchors.verticalCenter: parent.verticalCenter
+                        width:                  ScreenTools.defaultFontPixelWidth * 20
+                        showFrame:              false
+                        horizontalAlignment:    TextInput.AlignRight
+                        text:                   camList.draftName
+                        placeholderText:        qsTr("Camera %1").arg(camerasModel.count + 1)
+                        onTextChanged:          camList.draftName = text
+                    }
+                }
+
+                PlanGroupRow {
+                    id:          draftSourceRow
+                    text:        qsTr("Source")
+                    interactive: true
+                    onClicked:   draftSourceMenu.openFrom(draftSourceRow)
+
+                    QGCLabel {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text:                   _sourceDisplay(camList.draftSource)
+                        color:                  Qt.alpha(camList._qgcPal.text, 0.6)
+                    }
+
+                    OverlayPopover {
+                        id: draftSourceMenu
+
+                        Repeater {
+                            model: _videoSettings.offeredSources()
+
+                            OverlayMenuItem {
+                                text:      _sourceDisplay(modelData)
+                                checkable: true
+                                checked:   modelData === camList.draftSource
+                                onClicked: {
+                                    draftSourceMenu.close()
+                                    camList.draftSource = modelData
+                                    camList.draftRefusal = ""
+                                }
+                            }
+                        }
+                    }
+                }
+
+                PlanGroupRow {
+                    text:    qsTr("URL")
+                    visible: _sourceNeedsUrl(camList.draftSource)
+
+                    QGCTextField {
+                        objectName:             "draftUrlField"
+                        anchors.verticalCenter: parent.verticalCenter
+                        width:                  Math.min(_fieldWidth, parent.width * 0.6)
+                        showFrame:              false
+                        horizontalAlignment:    TextInput.AlignRight
+                        text:                   camList.draftUrl
+                        placeholderText:        qsTr("Stream URL")
+                        onTextChanged:          camList.draftUrl = text
+                        onAccepted:             camList.addCamera()
+                    }
+                }
+
+                QGCLabel {
+                    width:     parent.width
+                    visible:   text !== ""
+                    text:      camList.draftRefusal
+                    color:     camList._qgcPal.colorRed
+                    wrapMode:  Text.WordWrap
+                }
+
+                PlanGroupRow {
+                    objectName:  "draftSaveRow"
+                    text:        qsTr("Save Camera")
+                    textColor:   camList._qgcPal.primaryButton
+                    interactive: true
+                    onClicked:   camList.addCamera()
+                }
+
+                PlanGroupRow {
+                    text:        qsTr("Cancel")
+                    interactive: true
+                    onClicked:   camList.adding = false
+                }
+            }
+
             PlanGroupRow {
                 objectName:  "addCameraRow"
                 text:        "＋  " + qsTr("Add Camera")
                 textColor:   camList._qgcPal.primaryButton
+                visible:     !camList.adding
                 interactive: camList.readable
-                onClicked:   camList.addCamera()
+                onClicked:   camList.startAdding()
             }
         }
     }

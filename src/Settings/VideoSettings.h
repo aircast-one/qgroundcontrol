@@ -72,8 +72,8 @@ public:
     void     storeCameras           (const QJsonArray &cameras, int active);
     void     adoptCamera            (const QString &title, const QString &source, const QString &url);
     void     adoptDeviceCameras     (const QString &host, const QJsonArray &device);
-    Q_INVOKABLE int  addCamera      (const QString &title, const QString &source, const QString &url);
-    Q_INVOKABLE void updateCamera   (int index, const QString &title, const QString &source, const QString &url);
+    Q_INVOKABLE QString addCamera   (const QString &title, const QString &source, const QString &url);
+    Q_INVOKABLE QString updateCamera(int index, const QString &title, const QString &source, const QString &url);
     Q_INVOKABLE void removeCamera   (int index);
     Q_INVOKABLE void moveCamera     (int from, int to);
     int      storedCameraCount      ();
@@ -81,7 +81,11 @@ public:
     bool     setDroneCameras        (const QJsonArray &drone);
     QString  storedActiveSourceName ();
     static QJsonObject camera       (const QString &title, const QString &source, const QString &url);
+    QString  problem                (const QString &source, const QString &url);
+    static QString normalizedUrl    (const QString &source, const QString &url);
+    static QString urlHost          (const QString &url);
     static int activeAfterAdd       (int active, int stored);
+    static int activeAfterAppend    (int active, int stored, int appended);
     static int activeAfterRemoval   (int active, int removed);
     static int activeAfterMove      (int active, int from, int to);
 
@@ -120,6 +124,9 @@ private:
     QJsonObject _cameraAt           (int index);
     QJsonArray _allCameras          ();
     static bool _sourceNeedsUrl     (const QString &source);
+    static QStringList _schemes     (const QString &source);
+    static QString _schemeOf        (const QString &source, const QString &url);
+    static bool _schemeAdded        (const QString &source);
 
     QJsonArray _droneCameras;
 

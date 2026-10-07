@@ -41,9 +41,8 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func showCamera(_ camera: VideoSource) {
-        Bridge.invoke("video.setActiveVideoSource", [camera.slot])
+        askCameras("video.setActiveVideoSource", [camera.slot])
         refresh()
-        loadSources()
     }
 
     @discardableResult

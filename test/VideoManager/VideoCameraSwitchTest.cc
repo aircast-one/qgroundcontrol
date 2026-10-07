@@ -1,4 +1,5 @@
 #include "VideoCameraSwitchTest.h"
+#include "Fact.h"
 #include "SettingsManager.h"
 #include "VideoManager.h"
 #include "VideoReceiver.h"
@@ -49,6 +50,7 @@ public:
 
     ~ThreeCameraFixture()
     {
+        (void) _settings->setDroneCameras(QJsonArray{});
         _settings->cameras()->setRawValue(_savedCameras);
         _settings->activeVideoSource()->setRawValue(_savedActive);
         _settings->multiViewEnabled()->setRawValue(_savedMultiView);
@@ -241,8 +243,8 @@ void VideoCameraSwitchTest::_listEditsKeepTheCameraOnScreen()
     QCOMPARE(settings->activeVideoSource()->rawValue().toInt(), 0);
 
     settings->activeVideoSource()->setRawValue(3);
-    const int added = settings->addCamera(QStringLiteral("new"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://new"));
-    QCOMPARE(added, 1);
+    QCOMPARE(settings->addCamera(QStringLiteral("new"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://new")), QString());
+    QCOMPARE(settings->storedCameraCount(), 2);
     QCOMPARE(settings->activeVideoSource()->rawValue().toInt(), 4);
     QCOMPARE(settings->cameraName(settings->currentIndex()), QStringLiteral("cam1"));
 
@@ -288,7 +290,8 @@ void VideoCameraSwitchTest::_unreadableListIsLeftAlone()
     QVERIFY(!settings->camerasReadable());
     settings->adoptCamera(QStringLiteral("x"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://x"));
     settings->adoptDeviceCameras(QStringLiteral("10.0.0.5"), QJsonArray{VideoSettings::camera(QStringLiteral("y"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://10.0.0.5/y"))});
-    QCOMPARE(settings->addCamera(QStringLiteral("z"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://z")), -1);
+    QVERIFY(!settings->addCamera(QStringLiteral("z"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://z")).isEmpty());
+    QVERIFY(!settings->updateCamera(0, QStringLiteral("z"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://z")).isEmpty());
     settings->removeCamera(0);
     QCOMPARE(settings->cameras()->rawValue().toString(), QStringLiteral("{not a list"));
 }
@@ -305,17 +308,86 @@ void VideoCameraSwitchTest::_onlyPlayableKindsAreOffered()
     QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoSourceYuneecMantisG)));
     QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoDisabled)));
 
-    QCOMPARE(settings->addCamera(QStringLiteral("solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()), -1);
+    const QString unplayable = QStringLiteral("This kind of camera cannot show video in this app.");
+    QCOMPARE(settings->addCamera(QStringLiteral("solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()), unplayable);
     QCOMPARE(settings->videoSourceCount(), 3);
 
-    settings->updateCamera(0, QStringLiteral("cam1"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString());
+    QCOMPARE(settings->updateCamera(0, QStringLiteral("cam1"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()), unplayable);
     QCOMPARE(settings->videoSourceNameAt(0), QString::fromUtf8(VideoSettings::videoSourceRTSP));
+    QCOMPARE(settings->addCamera(QStringLiteral("off"), QString::fromUtf8(VideoSettings::videoDisabled), QString()), QStringLiteral("Pick the kind of stream this camera sends."));
+}
 
-    QJsonArray withSolo = settings->cameraList().value();
-    withSolo.replace(0, VideoSettings::camera(QStringLiteral("old solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()));
-    settings->storeCameras(withSolo, 0);
-    settings->updateCamera(0, QStringLiteral("renamed solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString());
-    QCOMPARE(settings->cameraName(0), QStringLiteral("renamed solo"));
+void VideoCameraSwitchTest::_addressesAreCheckedAndCleanedLikeTheCore()
+{
+    ThreeCameraFixture fixture;
+    VideoSettings *settings = fixture.settings();
+    const QString rtsp = QString::fromUtf8(VideoSettings::videoSourceRTSP);
+    const QString udp = QString::fromUtf8(VideoSettings::videoSourceUDPH264);
+    const QString webrtc = QString::fromUtf8(VideoSettings::videoSourceWebRTC);
+
+    QCOMPARE(VideoSettings::normalizedUrl(udp, QStringLiteral("UDP://0.0.0.0:5600")), QStringLiteral("0.0.0.0:5600"));
+    QCOMPARE(VideoSettings::normalizedUrl(QString::fromUtf8(VideoSettings::videoSourceUDPH265), QStringLiteral("udp://0.0.0.0:5600")), QStringLiteral("0.0.0.0:5600"));
+    QCOMPARE(VideoSettings::normalizedUrl(QString::fromUtf8(VideoSettings::videoSourceTCP), QStringLiteral("tcp://10.0.0.5:5600")), QStringLiteral("10.0.0.5:5600"));
+    QCOMPARE(VideoSettings::normalizedUrl(rtsp, QStringLiteral("RTSP://10.0.0.5/live")), QStringLiteral("rtsp://10.0.0.5/live"));
+    QCOMPARE(VideoSettings::normalizedUrl(webrtc, QStringLiteral("HTTP://cam/whep")), QStringLiteral("http://cam/whep"));
+
+    QCOMPARE(settings->problem(rtsp, QString()), QStringLiteral("This kind of stream needs an address."));
+    QCOMPARE(settings->problem(rtsp, QStringLiteral("rtsp:/10.0.0.5/live")), QStringLiteral("An RTSP address starts with rtsp://."));
+    QCOMPARE(settings->problem(webrtc, QStringLiteral("rtsp://10.0.0.5/live")), QStringLiteral("A WebRTC address starts with http:// or https://."));
+    QCOMPARE(settings->problem(webrtc, QStringLiteral("10.0.0.5:8889/cam/whep")), QString());
+    QCOMPARE(settings->problem(udp, QStringLiteral("rtsp://x")), QStringLiteral("Leave the scheme off. The app adds it, and a doubled one fails to resolve."));
+
+    QCOMPARE(settings->addCamera(QStringLiteral("radio"), udp, QStringLiteral("udp://0.0.0.0:5600")), QString());
+    QCOMPARE(settings->videoUrlAt(3), QStringLiteral("0.0.0.0:5600"));
+    QCOMPARE(settings->addCamera(QStringLiteral("empty"), rtsp, QString()), QStringLiteral("This kind of stream needs an address."));
+    QCOMPARE(settings->storedCameraCount(), 4);
+    QCOMPARE(settings->updateCamera(0, QStringLiteral("cam1"), rtsp, QStringLiteral("RTSP://10.0.0.5/one")), QString());
+    QCOMPARE(settings->videoUrlAt(0), QStringLiteral("rtsp://10.0.0.5/one"));
+    QCOMPARE(settings->updateCamera(9, QStringLiteral("x"), rtsp, QStringLiteral("rtsp://x")), QStringLiteral("There is no camera at that position."));
+
+    QCOMPARE(VideoSettings::urlHost(QStringLiteral("rtsp://admin:pw@10.0.0.5/live")), QStringLiteral("10.0.0.5"));
+    QCOMPARE(VideoSettings::urlHost(QStringLiteral("rtsp://admin:pw@10.0.0.5:554/live")), QStringLiteral("10.0.0.5"));
+    QCOMPARE(VideoSettings::urlHost(QStringLiteral("10.0.0.5:5600")), QStringLiteral("10.0.0.5"));
+
+    settings->storeCameras(QJsonArray{
+        VideoSettings::camera(QStringLiteral("tcp"), QString::fromUtf8(VideoSettings::videoSourceTCP), QStringLiteral("10.0.0.5:5600")),
+        VideoSettings::camera(QStringLiteral("other"), rtsp, QStringLiteral("rtsp://10.0.0.9/cam")),
+    }, 0);
+    settings->adoptDeviceCameras(QStringLiteral("10.0.0.5"), QJsonArray{VideoSettings::camera(QStringLiteral("front"), rtsp, QStringLiteral("rtsp://10.0.0.5:8554/front"))});
+    QCOMPARE(settings->videoSourceCount(), 2);
+    QCOMPARE(settings->cameraName(0), QStringLiteral("other"));
+    QCOMPARE(settings->cameraName(1), QStringLiteral("front"));
+}
+
+void VideoCameraSwitchTest::_droneCameraNamesFollowTheCore()
+{
+    QCOMPARE(VideoManager::_droneCameraName(QStringLiteral("SIYI A8"), QStringLiteral("Stream 1-1"), true, 100), QStringLiteral("SIYI A8 · Stream 1-1"));
+    QCOMPARE(VideoManager::_droneCameraName(QStringLiteral("SIYI A8"), QStringLiteral("Stream 1-1"), false, 100), QStringLiteral("SIYI A8"));
+    QCOMPARE(VideoManager::_droneCameraName(QStringLiteral("SIYI A8"), QString(), true, 100), QStringLiteral("SIYI A8"));
+    QCOMPARE(VideoManager::_droneCameraName(QString(), QStringLiteral("Front"), false, 100), QStringLiteral("Front"));
+    QCOMPARE(VideoManager::_droneCameraName(QString(), QString(), false, 101), QStringLiteral("Drone camera 101"));
+}
+
+void VideoCameraSwitchTest::_storedListAndIndexAreSeenTogether()
+{
+    ThreeCameraFixture fixture;
+    VideoSettings *settings = fixture.settings();
+    QList<int> activeSeenWithList;
+    QStringList listSeenWithActive;
+    const QMetaObject::Connection onList = connect(settings->cameras(), &Fact::rawValueChanged, this, [settings, &activeSeenWithList]() {
+        activeSeenWithList.append(settings->activeVideoSource()->rawValue().toInt());
+    });
+    const QMetaObject::Connection onActive = connect(settings->activeVideoSource(), &Fact::rawValueChanged, this, [settings, &listSeenWithActive]() {
+        listSeenWithActive.append(settings->cameraName(0));
+    });
+
+    VideoManager::instance()->storeCameras(QStringLiteral(R"([{"name":"cam3","source":"RTSP Video Stream","url":"rtsp://two"},{"name":"cam1","source":"RTSP Video Stream","url":"rtsp://zero"}])"), 1);
+    (void) disconnect(onList);
+    (void) disconnect(onActive);
+
+    QCOMPARE(activeSeenWithList, QList<int>{1});
+    QCOMPARE(listSeenWithActive, QStringList{QStringLiteral("cam3")});
+    QCOMPARE(settings->cameraName(settings->currentIndex()), QStringLiteral("cam1"));
 }
 
 void VideoCameraSwitchTest::_videoStatsReadLikeTheWatchPage()

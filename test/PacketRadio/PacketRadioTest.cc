@@ -85,7 +85,8 @@ void PacketRadioTest::_videoSettingsRoundTripTest()
     QVERIFY(!video->lowLatencyMode()->rawValue().toBool());
 
     manager._applyVideoSettings(QStringLiteral("H264"));
-    QCOMPARE(video->addCamera(QStringLiteral("Belly"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://10.0.0.5:8554/belly")), 2);
+    QCOMPARE(video->addCamera(QStringLiteral("Belly"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://10.0.0.5:8554/belly")), QString());
+    QCOMPARE(video->storedCameraCount(), 3);
     manager._restoreVideoSettings();
     QCOMPARE(video->videoSourceCount(), 2);
     QCOMPARE(video->cameraName(0), QStringLiteral("Front"));
@@ -96,6 +97,15 @@ void PacketRadioTest::_videoSettingsRoundTripTest()
     manager._applyVideoSettings(QStringLiteral("H264"));
     manager._restoreVideoSettings();
     QCOMPARE(video->cameras()->rawValue().toString(), QStringLiteral("{not a list"));
+
+    video->cameras()->setRawValue(mine);
+    video->lowLatencyMode()->setRawValue(false);
+    manager._applyVideoSettings(QStringLiteral("H264"));
+    QVERIFY(video->lowLatencyMode()->rawValue().toBool());
+    video->cameras()->setRawValue(QStringLiteral("{broken while the radio ran"));
+    manager._restoreVideoSettings();
+    QCOMPARE(video->cameras()->rawValue().toString(), QStringLiteral("{broken while the radio ran"));
+    QVERIFY(!video->lowLatencyMode()->rawValue().toBool());
 }
 
 void PacketRadioTest::_radioGivesBackOnlyItsOwnCameraTest()

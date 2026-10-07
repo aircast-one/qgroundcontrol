@@ -113,7 +113,7 @@ int SkydroidH16Links::ensure(LinkManager *linkManager, AutoConnectSettings *auto
         for (const QJsonValue &camera : missing) {
             next.append(camera);
         }
-        video->storeCameras(next, video->activeVideoSource()->rawValue().toInt());
+        video->storeCameras(next, VideoSettings::activeAfterAppend(video->activeVideoSource()->rawValue().toInt(), listed->size(), missing.size()));
         video->multiViewEnabled()->setRawValue(true);
         added++;
     }

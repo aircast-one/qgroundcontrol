@@ -19,5 +19,8 @@ private slots:
     void _droneCameraIsLiveOnly();
     void _unreadableListIsLeftAlone();
     void _onlyPlayableKindsAreOffered();
+    void _addressesAreCheckedAndCleanedLikeTheCore();
+    void _droneCameraNamesFollowTheCore();
+    void _storedListAndIndexAreSeenTogether();
     void _videoStatsReadLikeTheWatchPage();
 };

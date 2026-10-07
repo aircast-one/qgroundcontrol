@@ -71,10 +71,10 @@ pub fn with_drone(settings: Settings, drone: &[(String, u8, u8, String)]) -> Set
 }
 
 fn stored_settings() -> Settings {
-    let list = crate::settingsstore::raw_settings(&[crate::cameras::CAMERAS_PATH, crate::cameras::ACTIVE_PATH]);
+    let [cameras, active] = crate::settingsstore::raw_settings([crate::cameras::CAMERAS_PATH, crate::cameras::ACTIVE_PATH]);
     let read = |name: &str| match name {
-        crate::cameras::CAMERAS_FACT => list[0].clone(),
-        crate::cameras::ACTIVE_FACT => list[1].clone(),
+        crate::cameras::CAMERAS_FACT => cameras.clone(),
+        crate::cameras::ACTIVE_FACT => active.clone(),
         _ => setting(name),
     };
     let settings = settings_from(&|name| read(name).as_str().unwrap_or_default().trim().to_string(), &|name, default| read(name).as_bool().unwrap_or(default), &|name, default| read(name).as_i64().unwrap_or(default));

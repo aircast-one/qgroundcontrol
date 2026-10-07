@@ -18,10 +18,12 @@ pub const CAMERAS_UPDATE: &str = "cameras.update";
 pub const CAMERAS_REMOVE: &str = "cameras.remove";
 pub const CAMERAS_MOVE: &str = "cameras.move";
 const CAMERAS_OWNED: [&str; 4] = [CAMERAS_ADD, CAMERAS_UPDATE, CAMERAS_REMOVE, CAMERAS_MOVE];
+const QT_STORE_CAMERAS: &str = "video.storeCameras";
 
 const UNREADABLE: &str = "The camera list is not a readable list, so its cameras cannot be shown. Changing it now would replace it.";
 const NO_SUCH_CAMERA: &str = "There is no camera at that position.";
 const NEEDS_KIND: &str = "Pick the kind of stream this camera sends.";
+const CANNOT_PLAY: &str = "This kind of camera cannot show video in this app.";
 const NEEDS_ADDRESS: &str = "This kind of stream needs an address.";
 const RTSP_SCHEME: &str = "An RTSP address starts with rtsp://.";
 const WHEP_SCHEME: &str = "A WebRTC address starts with http:// or https://.";
@@ -68,8 +70,11 @@ pub fn encode(cameras: &[Camera]) -> String {
 }
 
 pub fn problem(source: &str, url: &str) -> Option<&'static str> {
+    let offered = kind_names().iter().any(|kind| kind == source);
+    let known = source != SOURCE_DISABLED && crate::settingsstore::camera_sources().iter().any(|kind| kind == source);
     match () {
-        _ if source.is_empty() || source == SOURCE_DISABLED || !kind_names().iter().any(|kind| kind == source) => Some(NEEDS_KIND),
+        _ if !offered && known => Some(CANNOT_PLAY),
+        _ if !offered => Some(NEEDS_KIND),
         _ if needs_url(source) && url.is_empty() => Some(NEEDS_ADDRESS),
         _ if source == SOURCE_RTSP && scheme_of(source, url).is_none() => Some(RTSP_SCHEME),
         _ if source == SOURCE_WEBRTC && url.contains("://") && scheme_of(source, url).is_none() => Some(WHEP_SCHEME),
@@ -200,8 +205,8 @@ pub fn active_after_move(active: i64, from: usize, to: usize) -> i64 {
 static EDITING: Mutex<()> = Mutex::new(());
 
 fn listed() -> (Option<Vec<Camera>>, i64) {
-    let read = crate::settingsstore::raw_settings(&[CAMERAS_PATH, ACTIVE_PATH]);
-    (parse(read[0].as_str().unwrap_or_default()), read[1].as_i64().unwrap_or(0))
+    let [cameras, active] = crate::settingsstore::raw_settings([CAMERAS_PATH, ACTIVE_PATH]);
+    (parse(cameras.as_str().unwrap_or_default()), active.as_i64().unwrap_or(0))
 }
 
 pub fn stored() -> Option<Vec<Camera>> {
@@ -209,22 +214,22 @@ pub fn stored() -> Option<Vec<Camera>> {
 }
 
 pub fn edit<T>(backend: Option<&dyn Backend>, change: impl FnOnce(&[Camera], i64) -> (Option<(Vec<Camera>, i64)>, T)) -> Option<T> {
-    let _editing = EDITING.lock().unwrap_or_else(PoisonError::into_inner);
-    let (cameras, active) = listed();
-    let (write, answer) = change(&cameras?, active);
-    if let Some((next, next_active)) = write {
-        commit(backend, &next, next_active);
+    let (answer, written) = {
+        let _editing = EDITING.lock().unwrap_or_else(PoisonError::into_inner);
+        let (cameras, active) = listed();
+        let (write, answer) = change(&cameras?, active);
+        (answer, write.map(|(next, next_active)| committed(&next, next_active)))
+    };
+    if let (Some(backend), Some((encoded, active))) = (backend.filter(|_| crate::qthost::present()), written) {
+        backend.invoke(QT_STORE_CAMERAS, &json!([encoded, active]).to_string());
     }
     Some(answer)
 }
 
-fn commit(backend: Option<&dyn Backend>, cameras: &[Camera], active: i64) {
+fn committed(cameras: &[Camera], active: i64) -> (String, i64) {
     let encoded = encode(cameras);
     crate::settingsstore::set_raw_together(&[(CAMERAS_PATH, json!(encoded)), (ACTIVE_PATH, json!(active))]);
-    if let Some(backend) = backend.filter(|_| crate::qthost::present()) {
-        backend.set(CAMERAS_PATH, &json!({ "value": encoded }).to_string());
-        backend.set(ACTIVE_PATH, &json!({ "value": active }).to_string());
-    }
+    (encoded, active)
 }
 
 pub fn adopt(camera: Camera) {
@@ -405,7 +410,8 @@ mod tests {
         let preset = listed.iter().find(|kind| kind["group"] == GROUP_PRESETS).unwrap();
         assert_eq!(preset["more"], json!(true), "vehicle presets wait behind More types");
         assert!(listed.iter().all(|kind| kind["raw"] != SOURCE_3DR_SOLO), "a kind that can never start is not offered");
-        assert_eq!(problem(SOURCE_3DR_SOLO, ""), Some(NEEDS_KIND), "nor accepted when asked for directly");
+        assert_eq!(problem(SOURCE_3DR_SOLO, ""), Some(CANNOT_PLAY), "nor accepted when asked for directly, and the reason says the kind cannot play rather than that none was picked");
+        assert_eq!(problem("No such kind", ""), Some(NEEDS_KIND));
     }
 
     #[test]

@@ -861,6 +861,7 @@ void QGCApplication::_setupFromDevice(const QString &host)
         connect(reply, &QNetworkReply::finished, this, [this, reply, host, bareHost, path, apply, generation]() {
             reply->deleteLater();
             if (generation != _deviceSetupGeneration) {
+                qCDebug(QGCApplicationLog) << "Aircast device setup: ignored a reply from a superseded setup" << host << path;
                 return;
             }
             if (reply->error() != QNetworkReply::NoError) {
@@ -881,6 +882,7 @@ void QGCApplication::_fetchDeviceWatchVia(const QString &host, const QJsonObject
     connect(reply, &QNetworkReply::finished, this, [this, reply, host, config, generation]() {
         reply->deleteLater();
         if (generation != _deviceSetupGeneration) {
+            qCDebug(QGCApplicationLog) << "Aircast device setup: ignored a reply from a superseded setup" << host << QStringLiteral("/api/watch/via");
             return;
         }
         const QJsonObject via = reply->error() == QNetworkReply::NoError

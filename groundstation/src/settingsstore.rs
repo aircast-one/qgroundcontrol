@@ -471,26 +471,58 @@ pub fn raw_setting(path: &str) -> Option<Value> {
     Some(raw(at.group, &at.fact, &at.meta))
 }
 
-pub fn raw_settings(paths: &[&str]) -> Vec<Value> {
-    let addressed: Vec<Option<Addressed>> = paths.iter().map(|path| address(path)).collect();
-    let values = stored();
-    addressed.iter().map(|at| at.as_ref().map_or(Value::Null, |at| held_in(values.as_ref(), at.group, &at.fact, &at.meta))).collect()
+pub fn raw_settings<const N: usize>(paths: [&str; N]) -> [Value; N] {
+    let addressed = paths.map(address);
+    read_from(stored().as_ref(), &addressed)
+}
+
+fn read_from<const N: usize>(values: Option<&BTreeMap<String, Setting>>, addressed: &[Option<Addressed>; N]) -> [Value; N] {
+    std::array::from_fn(|index| addressed[index].as_ref().map_or(Value::Null, |at| held_in(values, at.group, &at.fact, &at.meta)))
 }
 
 pub fn set_raw_together(writes: &[(&str, Value)]) {
-    let spelled: Vec<(String, String)> = writes
-        .iter()
-        .filter_map(|(path, given)| {
-            let at = address(path)?;
-            typed(&at.meta.value_type, given).map(|value| (key(at.group, &at.fact), spelling(&value)))
-        })
-        .collect();
+    let prepared: Vec<Prepared> = writes.iter().filter_map(|(path, given)| prepared(&address(path)?, given)).collect();
+    written_together(&prepared);
+}
+
+struct Prepared {
+    group: &'static str,
+    fact: String,
+    entries: Vec<(String, String)>,
+    changed: bool,
+}
+
+fn prepared(at: &Addressed, raw_given: &Value) -> Option<Prepared> {
+    let given = typed(&at.meta.value_type, raw_given)?;
+    let before = raw(at.group, &at.fact, &at.meta);
+    let new = if before == given { given } else { validated(at.group, &at.fact, given) };
+    let changed = before != new;
+    let follow = follow_ups(at.group, &at.fact, &new).into_iter().filter(|_| changed).map(|(fact, value)| (key(at.group, fact), value));
+    let entries = std::iter::once((key(at.group, &at.fact), spelling(&new))).chain(follow).collect();
+    Some(Prepared { group: at.group, fact: at.fact.clone(), entries, changed })
+}
+
+fn write_into(values: &mut BTreeMap<String, Setting>, prepared: &[Prepared]) {
+    prepared.iter().flat_map(|write| write.entries.iter()).for_each(|(key, text)| {
+        values.insert(key.clone(), Setting::Text(text.clone()));
+    });
+}
+
+fn written_together(prepared: &[Prepared]) {
     if let Some(values) = stored().as_mut() {
-        spelled.into_iter().for_each(|(key, text)| {
-            values.insert(key, Setting::Text(text));
-        });
+        write_into(values, prepared);
     }
     persist();
+    prepared.iter().filter(|write| write.changed).for_each(|write| after_write(write.group, &write.fact));
+}
+
+fn after_write(group: &str, fact: &str) {
+    match (group, fact) {
+        ("App", "androidDontSaveToSDCard" | "savePath") => create_save_directories(),
+        ("App", "offlineEditingFirmwareClass" | "offlineEditingVehicleClass") => crate::coreplan::offline_types_changed(),
+        ("App", "defaultMissionItemAltitude") => crate::coreplan::default_altitude_changed(),
+        _ => {}
+    }
 }
 
 fn held_in(values: Option<&BTreeMap<String, Setting>>, group: &str, fact: &str, meta: &MetaData) -> Value {
@@ -752,26 +784,8 @@ pub fn get_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Str
 }
 
 fn store_raw(at: &Addressed, raw_given: &Value) {
-    if let Some(given) = typed(&at.meta.value_type, raw_given) {
-        let before = raw(at.group, &at.fact, &at.meta);
-        let new = if before == given { given } else { validated(at.group, &at.fact, given) };
-        let spelled = spelling(&new);
-        if let Some(values) = stored().as_mut() {
-            values.insert(key(at.group, &at.fact), Setting::Text(spelled));
-            follow_ups(at.group, &at.fact, &new).into_iter().filter(|_| before != new).for_each(|(fact, value)| {
-                values.insert(key(at.group, fact), Setting::Text(value));
-            });
-        }
-        persist();
-        if at.group == "App" && matches!(at.fact.as_str(), "androidDontSaveToSDCard" | "savePath") && before != new {
-            create_save_directories();
-        }
-        if at.group == "App" && matches!(at.fact.as_str(), "offlineEditingFirmwareClass" | "offlineEditingVehicleClass") && before != new {
-            crate::coreplan::offline_types_changed();
-        }
-        if at.group == "App" && at.fact == "defaultMissionItemAltitude" && before != new {
-            crate::coreplan::default_altitude_changed();
-        }
+    if let Some(write) = prepared(at, raw_given) {
+        written_together(&[write]);
     }
 }
 
@@ -939,6 +953,22 @@ impl<B: Backend> Backend for Owner<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn writes_made_together_are_validated_followed_up_and_read_back_together() {
+        let writes = [
+            prepared(&address(crate::cameras::CAMERAS_PATH).unwrap(), &json!("[{\"name\":\"Front\"}]")).unwrap(),
+            prepared(&address(crate::cameras::ACTIVE_PATH).unwrap(), &json!(2)).unwrap(),
+            prepared(&address("settings.remoteIDSettings.region").unwrap(), &json!(crate::remoteid::REGION_EU)).unwrap(),
+        ];
+        let mut values = BTreeMap::new();
+        write_into(&mut values, &writes);
+        let read = read_from(Some(&values), &[crate::cameras::CAMERAS_PATH, crate::cameras::ACTIVE_PATH].map(address));
+        assert_eq!(read, [json!("[{\"name\":\"Front\"}]"), json!(2)], "the camera list and its index come back as one reading");
+        assert!(writes[2].entries.len() > 1, "a write made together still carries the follow-ups a single write would");
+        assert_eq!(prepared(&address("settings.batteryIndicatorSettings.threshold2").unwrap(), &json!(95)).unwrap().entries[0].1, "79", "and is validated like one");
+        assert_eq!(read_from(None, &["settings.nothing.here"].map(address)), [Value::Null], "a path the store does not know reads as nothing");
+    }
+
     #[test]
     fn battery_thresholds_settle_like_battery_indicator_settings_validators() {
         assert_eq!(battery_threshold1(85, 60), 85);

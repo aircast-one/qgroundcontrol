@@ -6,11 +6,33 @@
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonParseError>
 #include <QtCore/QJsonObject>
-#include <QtCore/QUrl>
+#include <QtCore/QRegularExpression>
+#include <QtCore/QSignalBlocker>
 
 #include <algorithm>
 
 QGC_LOGGING_CATEGORY(VideoSettingsLog, "Settings.VideoSettings")
+
+namespace {
+
+constexpr const char *kUnreadable     = QT_TRANSLATE_NOOP("VideoSettings", "The camera list is not a readable list, so its cameras cannot be shown. Changing it now would replace it.");
+constexpr const char *kNoSuchCamera   = QT_TRANSLATE_NOOP("VideoSettings", "There is no camera at that position.");
+constexpr const char *kNeedsKind      = QT_TRANSLATE_NOOP("VideoSettings", "Pick the kind of stream this camera sends.");
+constexpr const char *kUnplayable     = QT_TRANSLATE_NOOP("VideoSettings", "This kind of camera cannot show video in this app.");
+constexpr const char *kNeedsAddress   = QT_TRANSLATE_NOOP("VideoSettings", "This kind of stream needs an address.");
+constexpr const char *kRtspScheme     = QT_TRANSLATE_NOOP("VideoSettings", "An RTSP address starts with rtsp://.");
+constexpr const char *kWhepScheme     = QT_TRANSLATE_NOOP("VideoSettings", "A WebRTC address starts with http:// or https://.");
+constexpr const char *kDoubledScheme  = QT_TRANSLATE_NOOP("VideoSettings", "Leave the scheme off. The app adds it, and a doubled one fails to resolve.");
+
+void announce(Fact *fact)
+{
+    const QVariant raw = fact->rawValue();
+    emit fact->valueChanged(fact->cookedValue());
+    emit fact->containerRawValueChanged(raw);
+    emit fact->rawValueChanged(raw);
+}
+
+}
 
 #ifdef QGC_GST_STREAMING
 #include "GStreamer.h"
@@ -187,10 +209,15 @@ bool VideoSettings::setDroneCameras(const QJsonArray &drone)
 
 int VideoSettings::activeAfterAdd(int active, int stored)
 {
+    return activeAfterAppend(active, stored, 1);
+}
+
+int VideoSettings::activeAfterAppend(int active, int stored, int appended)
+{
     if (stored == 0) {
         return 0;
     }
-    return (active >= stored) ? active + 1 : active;
+    return (active >= stored) ? active + appended : active;
 }
 
 int VideoSettings::activeAfterRemoval(int active, int removed)
@@ -218,11 +245,23 @@ int VideoSettings::activeAfterMove(int active, int from, int to)
 void VideoSettings::storeCameras(const QJsonArray &list, int active)
 {
     const QString text = QString::fromUtf8(QJsonDocument(list).toJson(QJsonDocument::Compact));
-    if (cameras()->rawValue().toString() != text) {
-        cameras()->setRawValue(text);
+    const bool listChanged = cameras()->rawValue().toString() != text;
+    const bool activeChanged = activeVideoSource()->rawValue().toInt() != active;
+    {
+        const QSignalBlocker holdList(cameras());
+        const QSignalBlocker holdActive(activeVideoSource());
+        if (listChanged) {
+            cameras()->setRawValue(text);
+        }
+        if (activeChanged) {
+            activeVideoSource()->setRawValue(active);
+        }
     }
-    if (activeVideoSource()->rawValue().toInt() != active) {
-        activeVideoSource()->setRawValue(active);
+    if (listChanged) {
+        announce(cameras());
+    }
+    if (activeChanged) {
+        announce(activeVideoSource());
     }
 }
 
@@ -255,9 +294,10 @@ void VideoSettings::adoptDeviceCameras(const QString &host, const QJsonArray &de
     if (device.isEmpty() || !listed) {
         return;
     }
+    const QString bare = urlHost(host);
     QJsonArray list;
     for (const QJsonValue &entry : *listed) {
-        if (QUrl(entry.toObject().value(QStringLiteral("url")).toString()).host() != host) {
+        if (urlHost(entry.toObject().value(QStringLiteral("url")).toString()) != bare) {
             list.append(entry);
         }
     }
@@ -268,29 +308,124 @@ void VideoSettings::adoptDeviceCameras(const QString &host, const QJsonArray &de
     storeCameras(list, first);
 }
 
-int VideoSettings::addCamera(const QString &title, const QString &source, const QString &url)
+QString VideoSettings::addCamera(const QString &title, const QString &source, const QString &url)
 {
     std::optional<QJsonArray> list = cameraList();
-    if (!list || !offeredSource(source)) {
-        return -1;
+    if (!list) {
+        return tr(kUnreadable);
+    }
+    const QString kind = source.trimmed();
+    const QString address = normalizedUrl(kind, url.trimmed());
+    const QString refusal = problem(kind, address);
+    if (!refusal.isEmpty()) {
+        return refusal;
     }
     const int at = list->size();
-    list->append(camera(title, source, url));
+    list->append(camera(title, kind, address));
     storeCameras(*list, activeAfterAdd(activeVideoSource()->rawValue().toInt(), at));
-    return at;
+    return QString();
 }
 
-void VideoSettings::updateCamera(int index, const QString &title, const QString &source, const QString &url)
+QString VideoSettings::updateCamera(int index, const QString &title, const QString &source, const QString &url)
 {
     std::optional<QJsonArray> list = cameraList();
-    if (!list || (index < 0) || (index >= list->size())) {
-        return;
+    if (!list) {
+        return tr(kUnreadable);
     }
-    if (!offeredSource(source) && (source != list->at(index).toObject().value(QStringLiteral("source")).toString())) {
-        return;
+    if ((index < 0) || (index >= list->size())) {
+        return tr(kNoSuchCamera);
     }
-    list->replace(index, camera(title, source, url));
+    const QString kind = source.trimmed();
+    const QString address = normalizedUrl(kind, url.trimmed());
+    const QString refusal = problem(kind, address);
+    if (!refusal.isEmpty()) {
+        return refusal;
+    }
+    list->replace(index, camera(title, kind, address));
     storeCameras(*list, activeVideoSource()->rawValue().toInt());
+    return QString();
+}
+
+QString VideoSettings::problem(const QString &source, const QString &url)
+{
+    if (!offeredSource(source)) {
+        const bool known = !source.isEmpty()
+            && (source != QString::fromUtf8(videoDisabled))
+            && (source != QString::fromUtf8(videoSourceNoVideo))
+            && videoSource()->enumValues().contains(source);
+        return known ? tr(kUnplayable) : tr(kNeedsKind);
+    }
+    if (_sourceNeedsUrl(source) && url.isEmpty()) {
+        return tr(kNeedsAddress);
+    }
+    if ((source == QString::fromUtf8(videoSourceRTSP)) && _schemeOf(source, url).isEmpty()) {
+        return tr(kRtspScheme);
+    }
+    if ((source == QString::fromUtf8(videoSourceWebRTC)) && url.contains(QStringLiteral("://")) && _schemeOf(source, url).isEmpty()) {
+        return tr(kWhepScheme);
+    }
+    if (url.contains(QStringLiteral("://")) && _schemeAdded(source)) {
+        return tr(kDoubledScheme);
+    }
+    return QString();
+}
+
+QStringList VideoSettings::_schemes(const QString &source)
+{
+    if (source == QString::fromUtf8(videoSourceRTSP)) {
+        return {QStringLiteral("rtsp://"), QStringLiteral("rtsps://")};
+    }
+    if (source == QString::fromUtf8(videoSourceWebRTC)) {
+        return {QStringLiteral("http://"), QStringLiteral("https://")};
+    }
+    if (source == QString::fromUtf8(videoSourceUDPH264)) {
+        return {QStringLiteral("udp://")};
+    }
+    if (source == QString::fromUtf8(videoSourceUDPH265)) {
+        return {QStringLiteral("udp265://"), QStringLiteral("udp://")};
+    }
+    if (source == QString::fromUtf8(videoSourceMPEGTS)) {
+        return {QStringLiteral("mpegts://"), QStringLiteral("udp://")};
+    }
+    if (source == QString::fromUtf8(videoSourceTCP)) {
+        return {QStringLiteral("tcp://")};
+    }
+    return {};
+}
+
+QString VideoSettings::_schemeOf(const QString &source, const QString &url)
+{
+    const QStringList schemes = _schemes(source);
+    const auto found = std::find_if(schemes.cbegin(), schemes.cend(), [&url](const QString &scheme) {
+        return url.startsWith(scheme, Qt::CaseInsensitive);
+    });
+    return (found == schemes.cend()) ? QString() : *found;
+}
+
+bool VideoSettings::_schemeAdded(const QString &source)
+{
+    return (source == QString::fromUtf8(videoSourceUDPH264)) || (source == QString::fromUtf8(videoSourceUDPH265))
+        || (source == QString::fromUtf8(videoSourceMPEGTS)) || (source == QString::fromUtf8(videoSourceTCP));
+}
+
+QString VideoSettings::normalizedUrl(const QString &source, const QString &url)
+{
+    const QString scheme = _schemeOf(source, url);
+    if (scheme.isEmpty()) {
+        return url;
+    }
+    return _schemeAdded(source) ? url.mid(scheme.size()) : (scheme + url.mid(scheme.size()));
+}
+
+QString VideoSettings::urlHost(const QString &url)
+{
+    const qsizetype schemeEnd = url.indexOf(QStringLiteral("://"));
+    const QString rest = (schemeEnd < 0) ? url : url.mid(schemeEnd + 3);
+    const qsizetype pathStart = rest.indexOf(QRegularExpression(QStringLiteral("[/?]")));
+    const QString authority = (pathStart < 0) ? rest : rest.left(pathStart);
+    const QString hostPort = authority.section(QLatin1Char('@'), -1);
+    const qsizetype colon = hostPort.lastIndexOf(QLatin1Char(':'));
+    return (colon < 0) ? hostPort : hostPort.left(colon);
 }
 
 void VideoSettings::removeCamera(int index)

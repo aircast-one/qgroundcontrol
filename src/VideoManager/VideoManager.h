@@ -42,7 +42,7 @@ class VideoManager : public QObject
     Q_PROPERTY(bool     gstreamerEnabled        READ gstreamerEnabled                           CONSTANT)
     Q_PROPERTY(bool     qtmultimediaEnabled     READ qtmultimediaEnabled                        CONSTANT)
     Q_PROPERTY(bool     uvcEnabled              READ uvcEnabled                                 CONSTANT)
-    Q_PROPERTY(bool     autoStreamConfigured    READ autoStreamConfigured                       NOTIFY autoStreamConfiguredChanged)
+    Q_PROPERTY(bool     autoStreamConfigured    READ autoStreamConfigured                       NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     decoding                READ decoding                                   NOTIFY decodingChanged)
     Q_PROPERTY(QStringList cameraStatuses       READ cameraStatuses                             NOTIFY camerasChanged)
     Q_PROPERTY(QVariantList cameraConnecting    READ cameraConnecting                           NOTIFY camerasChanged)
@@ -76,7 +76,6 @@ class VideoManager : public QObject
     friend class VideoManagerInitTest;
     friend class VideoManagerTest;
     friend class VideoCameraSwitchTest;
-    friend class VehicleCameraControlTest;
 
 public:
     explicit VideoManager(QObject *parent = nullptr);
@@ -90,6 +89,7 @@ public:
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void stopVideo();
     Q_INVOKABLE void setActiveVideoSource(int index);
+    Q_INVOKABLE void storeCameras(const QString &list, int active);
     Q_INVOKABLE void setNativeRendering(bool nativeRendering);
     Q_INVOKABLE void switchActiveVideoSource();
     Q_INVOKABLE int maxVideoTiles() const;
@@ -156,7 +156,6 @@ signals:
     void activeVideoSourceChanged();
     void camerasChanged();
     void aspectRatioChanged();
-    void autoStreamConfiguredChanged();
     void decodingChanged();
     void fullScreenChanged();
     void hasVideoChanged();

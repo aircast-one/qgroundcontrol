@@ -241,13 +241,14 @@ UT_REGISTER_TEST(VehicleCameraControlTest, TestLabel::Integration, TestLabel::Ve
 
 void VehicleCameraControlTest::_everyAnnouncedStreamIsADroneCamera()
 {
+    VideoManager *video = VideoManager::instance();
     VideoSettings *settings = SettingsManager::instance()->videoSettings();
     const QVariant stored = settings->cameras()->rawValue();
     const QVariant active = settings->activeVideoSource()->rawValue();
-    const auto droneCameras = [] {
-        const QVariantList fromDrone = VideoManager::instance()->cameraFromDrone();
-        const QStringList names = VideoManager::instance()->cameraNames();
-        const QStringList urls = VideoManager::instance()->cameraUrls();
+    const auto droneCameras = [video] {
+        const QVariantList fromDrone = video->cameraFromDrone();
+        const QStringList names = video->cameraNames();
+        const QStringList urls = video->cameraUrls();
         QStringList listed;
         for (int i = 0; i < fromDrone.size(); ++i) {
             if (fromDrone.at(i).toBool()) {
@@ -274,16 +275,17 @@ void VehicleCameraControlTest::_everyAnnouncedStreamIsADroneCamera()
     QVERIFY(_vehicle);
     _mockLink = qobject_cast<MockLink*>(linkConfig->link());
     QVERIFY(_mockLink);
-    VideoManager::instance()->_setActiveVehicle(_vehicle);
 
     QCOMPARE_TRUE_WAIT(droneCameras().size(), 2, TestTimeout::longMs());
-    const QStringList listed = droneCameras();
-    QVERIFY2(listed.at(0).contains(QStringLiteral("Stream 1-1 @ ")) && listed.at(1).contains(QStringLiteral("Stream 1-2 @ ")), qPrintable(listed.join(QStringLiteral(", "))));
-    QVERIFY2(!listed.at(0).contains(QStringLiteral("://")), "a UDP stream is listed without the scheme the app adds");
+    QCOMPARE(droneCameras(), (QStringList{QStringLiteral("MockCam 1 · Stream 1-1 @ 127.0.0.1:5600"), QStringLiteral("MockCam 1 · Stream 1-2 @ 127.0.0.1:5600")}));
     QCOMPARE(settings->cameras()->rawValue(), stored);
     QCOMPARE(settings->activeVideoSource()->rawValue(), active);
 
-    VideoManager::instance()->_setActiveVehicle(nullptr);
+    QSignalSpy spyGone(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged);
+    _mockLink->disconnect();
+    _mockLink = nullptr;
+    QVERIFY(UnitTest::waitForSignal(spyGone, TestTimeout::longMs(), QStringLiteral("activeVehicleChanged")));
+    _vehicle = nullptr;
     QCOMPARE(droneCameras().size(), 0);
 }
 

@@ -39,10 +39,11 @@ void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
     const QVariant savedMultiView = video->multiViewEnabled()->rawValue();
     video->multiViewEnabled()->setRawValue(false);
     autoConnect->autoConnectUDP()->setRawValue(true);
-    video->cameras()->setRawValue(QStringLiteral("[]"));
+    video->storeCameras(QJsonArray{}, 5);
     const int before = LinkManager::instance()->linkConfigurations()->count();
 
     QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 3);
+    QCOMPARE(video->activeVideoSource()->rawValue().toInt(), 0);
     QCOMPARE(LinkManager::instance()->linkConfigurations()->count(), before + 2);
     QVERIFY(!autoConnect->autoConnectUDP()->rawValue().toBool());
     QCOMPARE(video->videoSourceCount(), 2);
@@ -68,9 +69,10 @@ void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
     QCOMPARE(LinkManager::instance()->linkConfigurations()->count(), before + 2);
     QVERIFY(!video->multiViewEnabled()->rawValue().toBool());
 
-    video->storeCameras(QJsonArray{SkydroidH16Links::cameras().first()}, 0);
+    video->storeCameras(QJsonArray{SkydroidH16Links::cameras().first()}, 1);
     QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 1);
     QCOMPARE(video->videoSourceCount(), 2);
+    QCOMPARE(video->activeVideoSource()->rawValue().toInt(), 2);
 
     const QJsonObject renamed = VideoSettings::camera(QStringLiteral("Nose"), QString::fromUtf8(VideoSettings::videoSourceRTSP), SkydroidH16Links::cameraUrl(SkydroidH16Links::kCameraPaths.first()));
     video->storeCameras(QJsonArray{SkydroidH16Links::cameras().at(1), renamed}, 1);

@@ -126,9 +126,7 @@ struct SettingsView: View {
                                          Button("Show") { video.showCamera(camera) }
                                              .fixedSize()
                                      }
-                                     if camera.stored == nil {
-                                         Text("From the drone").font(.caption).foregroundColor(.secondary)
-                                     } else {
+                                     if let stored = camera.stored {
                                          if video.cameraList.needsUrl(camera) {
                                              ValueField(value: camera.url, units: "") { entered in
                                                  video.updateCamera(camera, url: entered)
@@ -136,13 +134,15 @@ struct SettingsView: View {
                                              .frame(width: 200)
                                          }
                                          Button { video.moveCamera(camera, by: -1) } label: { Image(systemName: "chevron.up") }
-                                             .disabled((camera.stored ?? 0) == 0)
+                                             .disabled(stored == 0)
                                              .help("Move \(camera.title) up")
                                          Button { video.moveCamera(camera, by: 1) } label: { Image(systemName: "chevron.down") }
-                                             .disabled((camera.stored ?? 0) >= video.cameraList.storedCount - 1)
+                                             .disabled(stored >= video.cameraList.storedCount - 1)
                                              .help("Move \(camera.title) down")
                                          Button("Remove") { video.removeCamera(camera) }
                                              .fixedSize()
+                                     } else {
+                                         Text("From the drone").font(.caption).foregroundColor(.secondary)
                                      }
                                  }
                              })

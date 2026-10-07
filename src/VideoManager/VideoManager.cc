@@ -31,6 +31,7 @@
 #include <QtCore/QDir>
 #include <QtCore/QEventLoop>
 #include <QtCore/QFutureWatcher>
+#include <QtCore/QJsonDocument>
 #include <QtCore/QPointer>
 #include <QtCore/QRunnable>
 #include <QtCore/QTimer>
@@ -92,6 +93,8 @@ VideoManager::VideoManager(QObject *parent)
         QGC::showAppMessage(toCloud ? tr("Video can't reach the device directly - playing the cloud copy.")
                                     : tr("Video is back on the direct stream from the device."));
     });
+
+    (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &VideoManager::_setActiveVehicle);
 
     QTimer *statsTimer = new QTimer(this);
     statsTimer->setInterval(1000);
@@ -246,9 +249,6 @@ void VideoManager::init(QQuickWindow *mainWindow)
         }
     });
     VideoBackend::bindDebugLevelFact(SettingsManager::instance()->appSettings()->gstDebugLevel(), this);
-    (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &VideoManager::_setActiveVehicle);
-
-    (void) connect(this, &VideoManager::autoStreamConfiguredChanged, this, &VideoManager::_videoSourceChanged);
 
     if (VideoBackend::needsAsyncInit() && _initState.load() == InitState::NotStarted) {
         startVideoBackendInit();
@@ -645,6 +645,16 @@ void VideoManager::setActiveVideoSource(int index)
         return;
     }
     _videoSettings->activeVideoSource()->setRawValue(clamped);
+}
+
+void VideoManager::storeCameras(const QString &list, int active)
+{
+    const QJsonDocument parsed = QJsonDocument::fromJson(list.toUtf8());
+    if (!parsed.isArray()) {
+        qCWarning(VideoManagerLog) << "storeCameras was handed a list that is not a JSON array";
+        return;
+    }
+    _videoSettings->storeCameras(parsed.array(), active);
 }
 
 void VideoManager::switchActiveVideoSource()
@@ -1218,24 +1228,16 @@ QString VideoManager::_droneCameraUrl(const QString &source, const QString &uri)
 bool VideoManager::_updateAutoStream(VideoReceiver *receiver)
 {
     const QGCVideoStreamInfo *pInfo = receiver->videoStreamInfo();
-    if (!pInfo) {
+    if (!pInfo || !receiver->isThermal()) {
         return false;
     }
 
     qCDebug(VideoManagerLog) << QString("Configure stream (%1):").arg(receiver->name()) << pInfo->uri();
 
-    if (receiver->isThermal()) {
-        const bool changed = _updateVideoUri(receiver, _announcedSource(pInfo).second);
-        if (changed) {
-            emit autoStreamConfiguredChanged();
-        }
-        return changed;
-    }
-
-    if (!_videoSettings->setDroneCameras(_droneCameras())) {
+    if (!_updateVideoUri(receiver, _announcedSource(pInfo).second)) {
         return false;
     }
-    emit autoStreamConfiguredChanged();
+    _videoSourceChanged();
     return true;
 }
 

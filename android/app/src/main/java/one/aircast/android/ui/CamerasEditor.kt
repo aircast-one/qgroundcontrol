@@ -69,10 +69,11 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
     var notice by remember { mutableStateOf<String?>(null) }
     var removed by remember { mutableStateOf<RemovedCamera?>(null) }
     var pending by remember { mutableStateOf(false) }
-    var settlingFrom by remember { mutableStateOf<Any?>(null) }
-    val busy = pending || (settlingFrom != null && settlingFrom === view)
+    var settlingFrom by remember { mutableStateOf<List<Triple<String, String, String>>?>(null) }
+    val storedNow = reading?.stored?.map { Triple(it.name, it.source, it.url) }
+    val busy = pending || (settlingFrom != null && settlingFrom == storedNow)
     val change: (() -> String?, (String?) -> Unit) -> Unit = { action, after ->
-        val before = view
+        val before = storedNow
         pending = true
         offMainInOrder {
             val refusal = action()
