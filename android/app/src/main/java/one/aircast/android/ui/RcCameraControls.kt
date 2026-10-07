@@ -38,6 +38,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.offMainDetached
@@ -116,13 +118,26 @@ private fun sendTilt(pitch: Float) {
 private const val GIMBAL_REFUSAL_MS = 4000L
 internal const val GIMBAL_TILT_MIN = -90f
 internal const val GIMBAL_TILT_MAX = 30f
+private const val GIMBAL_IDLE_MS = 3000L
+private const val GIMBAL_IDLE_ALPHA = 0.35f
+private const val GIMBAL_TRACK_ALPHA = 0.8f
+private const val GIMBAL_REST_ALPHA = 0.25f
 
 @Composable
 private fun GimbalTiltSlider(pitch: Double?) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     var lastSent by remember { mutableLongStateOf(0L) }
     val shown = dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    var active by remember { mutableStateOf(true) }
+    LaunchedEffect(shown, dragging) {
+        active = true
+        if (dragging == null) {
+            kotlinx.coroutines.delay(GIMBAL_IDLE_MS)
+            active = false
+        }
+    }
+    val fade by androidx.compose.animation.core.animateFloatAsState(if (active) 1f else GIMBAL_IDLE_ALPHA, label = "gimbalFade")
+    Column(Modifier.alpha(fade), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("${kotlin.math.round(shown).toInt()}\u00b0", style = MaterialTheme.typography.labelMedium)
         Slider(
             value = shown,
@@ -139,6 +154,11 @@ private fun GimbalTiltSlider(pitch: Double?) {
                 dragging = null
             },
             valueRange = GIMBAL_TILT_MIN..GIMBAL_TILT_MAX,
+            colors = androidx.compose.material3.SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = Color.White.copy(alpha = GIMBAL_TRACK_ALPHA),
+                inactiveTrackColor = Color.White.copy(alpha = GIMBAL_REST_ALPHA),
+            ),
             modifier = Modifier.railSlider().semantics { contentDescription = "Gimbal tilt" },
         )
     }

@@ -148,11 +148,75 @@ fun AttitudeInstrument(modifier: Modifier = Modifier) {
     }
 }
 
+private const val OSD_DIAL_SCRIM = 0.4f
+private const val OSD_DIAL_RING_ALPHA = 0.7f
+private const val OSD_DIAL_HORIZON_ALPHA = 0.45f
+private const val OSD_CHEVRON_TIP = 0.42f
+private const val OSD_CHEVRON_WING = 0.3f
+private const val OSD_CHEVRON_NOTCH = 0.14f
+private val OSD_NORTH = Color(0xFFFF4D4D)
+
 @Composable
 internal fun CompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     val view by qgcPath(ATTITUDE_PATH)
     val reading = remember(view) { attitude(view) ?: NO_VEHICLE_ATTITUDE }
     InstrumentDial(reading, horizon = true, compass = true, size = size, modifier = modifier)
+}
+
+@Composable
+internal fun OsdCompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
+    val view by qgcPath(ATTITUDE_PATH)
+    val reading = remember(view) { attitude(view) ?: NO_VEHICLE_ATTITUDE }
+    val measurer = rememberTextMeasurer()
+    val white = Color.White
+    val home = MaterialTheme.aircast.success
+    val north = TextStyle(color = OSD_NORTH, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    val homeStyle = TextStyle(color = MaterialTheme.aircast.onSuccess, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    val headingStyle = TextStyle(color = white, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+    Canvas(modifier.size(size).semantics { contentDescription = "Heading ${reading.headingText}" }) {
+        val radius = this.size.minDimension / 2f
+        drawCircle(Color.Black.copy(alpha = OSD_DIAL_SCRIM), radius)
+        clipPath(Path().apply { addOval(Rect(center, radius)) }) {
+            rotate(-reading.roll) {
+                translate(top = pitchOffset(reading.pitch, radius * HORIZON_FRACTION)) {
+                    drawLine(white.copy(alpha = OSD_DIAL_HORIZON_ALPHA), Offset(center.x - radius, center.y), Offset(center.x + radius, center.y), strokeWidth = 1.5.dp.toPx())
+                }
+            }
+        }
+        drawCircle(white.copy(alpha = OSD_DIAL_RING_ALPHA), radius - 1.dp.toPx(), style = Stroke(1.5.dp.toPx()))
+        (0 until 360 step 30).map { degrees ->
+            drawLine(
+                white.copy(alpha = OSD_DIAL_RING_ALPHA),
+                pointOnRing(center, radius - 2.dp.toPx(), degrees.toFloat()),
+                pointOnRing(center, radius - (if (degrees % 90 == 0) 8.dp else 5.dp).toPx(), degrees.toFloat()),
+                strokeWidth = 1.5.dp.toPx(),
+            )
+        }
+        val n = measurer.measure("N", north)
+        val northAt = pointOnRing(center, radius - 15.dp.toPx(), 0f)
+        drawText(n, topLeft = northAt - Offset(n.size.width / 2f, n.size.height / 2f))
+        reading.headingToHome?.let { bearing ->
+            val at = pointOnRing(center, radius - 8.dp.toPx(), bearing)
+            val letter = measurer.measure("H", homeStyle)
+            drawCircle(home, radius = 7.dp.toPx(), center = at)
+            drawText(letter, topLeft = at - Offset(letter.size.width / 2f, letter.size.height / 2f))
+        }
+        rotate(reading.heading) {
+            val chevron = Path().apply {
+                moveTo(center.x, center.y - radius * OSD_CHEVRON_TIP)
+                lineTo(center.x + radius * OSD_CHEVRON_WING, center.y + radius * OSD_CHEVRON_WING)
+                lineTo(center.x, center.y + radius * OSD_CHEVRON_NOTCH)
+                lineTo(center.x - radius * OSD_CHEVRON_WING, center.y + radius * OSD_CHEVRON_WING)
+                close()
+            }
+            drawPath(chevron, white)
+            drawPath(chevron, Color.Black.copy(alpha = OSD_DIAL_SCRIM), style = Stroke(1.dp.toPx()))
+        }
+        if (reading.headingText.isNotBlank()) {
+            val text = measurer.measure(reading.headingText, headingStyle)
+            drawText(text, topLeft = Offset(center.x - text.size.width / 2f, center.y + radius * 0.5f))
+        }
+    }
 }
 
 @Composable

@@ -303,7 +303,7 @@ internal fun FlyScreen(
                             .clip(CircleShape)
                             .clickable(onClickLabel = "Show the map") { togglePip() }
                             .semantics { contentDescription = "Compass" },
-                    ) { CompassDial(MINIMAP_HEIGHT) }
+                    ) { OsdCompassDial(MINIMAP_HEIGHT) }
                 }
                 if (pipExpanded || !landscape) Box(Modifier.zIndex(3f).align(mapPipAlign).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).then(mapPipSize).avoidedByVideoMessage(MAP_PIP_KEY).holdToEditLayout()) {
                     PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))

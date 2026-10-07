@@ -186,7 +186,7 @@ fun VehicleTitle() {
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShown: Boolean = true, chooser: Boolean = true) {
+fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShown: Boolean = true, chooser: Boolean = true, compact: Boolean = false) {
     val flyScreen = LocalFlyScreenState.current
     val context = LocalContext.current
     val classView by qgcPath(INSTRUMENTS_VIEW)
@@ -264,6 +264,23 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     }
 
     if (shown.isEmpty()) return
+
+    if (compact) {
+        Row(modifier.alpha(if (silent) 0.45f else 1f), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5), verticalAlignment = Alignment.CenterVertically) {
+            shown.map { instrument ->
+                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
+                    Text(osdLabel(instrument.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = OSD_LABEL_ALPHA), modifier = Modifier.alignByBaseline())
+                    Text(
+                        "${instrument.value}${instrument.units}",
+                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
+                        color = displayColour(displayFor(displays, instrument), instrument.raw)?.let { Color(it) } ?: MaterialTheme.aircast.outdoorForeground,
+                        modifier = Modifier.alignByBaseline(),
+                    )
+                }
+            }
+        }
+        return
+    }
 
     androidx.compose.animation.AnimatedVisibility(
         visible = valuesShown,
@@ -475,7 +492,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 }
             }
             Box(Modifier.align(Alignment.BottomCenter).widthIn(max = RAIL_TELEMETRY_WIDTH).padding(bottom = AircastSpace.s2).osdShadow()) {
-                CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(columns = RAIL_TELEMETRY_COLUMNS, valuesShown = true, chooser = false) }
+                CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(valuesShown = true, chooser = false, compact = true) }
             }
         }
     } else Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -574,8 +591,22 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
 }
 
 private val DECISION_CARD_WIDTH = 460.dp
-private val RAIL_TELEMETRY_WIDTH = 440.dp
-private const val RAIL_TELEMETRY_COLUMNS = 8
+private val RAIL_TELEMETRY_WIDTH = 560.dp
+private const val OSD_LABEL_ALPHA = 0.75f
+
+private val OSD_LABELS = mapOf(
+    "distance to home" to "D",
+    "alt (rel)" to "H",
+    "altitude" to "H",
+    "ground speed" to "H.S",
+    "climb rate" to "V.S",
+    "air speed" to "A.S",
+    "airspeed" to "A.S",
+    "distance to operator" to "D.OP",
+    "heading" to "HDG",
+)
+
+internal fun osdLabel(label: String): String = OSD_LABELS[label.trim().lowercase()] ?: label.uppercase()
 
 @Composable
 private fun DecisionHost(rail: Boolean, content: @Composable () -> Unit) {

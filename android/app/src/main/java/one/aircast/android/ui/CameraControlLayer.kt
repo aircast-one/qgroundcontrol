@@ -76,6 +76,7 @@ internal const val SHOW_PHOTO_VIDEO_CONTROL = "settings.flyViewSettings.showPhot
 private const val CAMERA_SCRIM_ALPHA = 0.55f
 private val SHUTTER_SIZE = 56.dp
 private val SHUTTER_STOP_SIZE = 18.dp
+private val SHUTTER_CORE_SIZE = 38.dp
 private val CAMERA_TARGET = 48.dp
 private val CAMERA_RAIL_MAX_WIDTH = 120.dp
 private val REC_DOT_SIZE = 8.dp
@@ -257,7 +258,7 @@ private fun ShutterButton(panel: CameraPanel, shutter: CameraShutter, onPress: (
             Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) {
                 Box(
                     Modifier
-                        .size(if (shutter.recording) SHUTTER_STOP_SIZE else SHUTTER_SIZE)
+                        .size(if (shutter.recording) SHUTTER_STOP_SIZE else SHUTTER_CORE_SIZE)
                         .background(
                             if (shutter.video) RECORD_RED else MaterialTheme.aircast.outdoorForeground,
                             if (shutter.recording) MaterialTheme.shapes.extraSmall else CircleShape,

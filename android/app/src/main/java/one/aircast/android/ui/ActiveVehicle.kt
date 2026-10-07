@@ -71,6 +71,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.layout.Box
 import one.aircast.map.vehicleTelemetryLine
 import one.aircast.map.vehicleChoices
+import androidx.compose.ui.graphics.Color
+
+private const val STATUS_BAR_SCRIM_ALPHA = 0.45f
 
 internal data class MvAction(
     val id: String,
@@ -148,21 +151,40 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     androidx.compose.foundation.layout.Box(modifier) {
     FlightModeMenu(expanded = modeMenu && !disconnected, onDismiss = { modeMenu = false }, onStatus = { statusSettings = true }, onMessages = { why = true })
     val tone = if (blocker != null) ChipTone.Error else chipTone(fly, lost)
+    val statusBar = !flyIsPortrait()
     androidx.compose.material3.Surface(
         shape = MaterialTheme.shapes.small,
-        color = osdBackdrop(
+        color = if (statusBar) {
             when (tone) {
-                ChipTone.Error -> MaterialTheme.colorScheme.errorContainer
-                ChipTone.Neutral -> MaterialTheme.colorScheme.surfaceContainerHigh
-                ChipTone.Warning -> MaterialTheme.aircast.warningContainer
-                ChipTone.Success -> MaterialTheme.aircast.successContainer
-            },
-        ),
-        contentColor = when (tone) {
-            ChipTone.Error -> osdTint(MaterialTheme.colorScheme.onErrorContainer, MaterialTheme.colorScheme.error)
-            ChipTone.Neutral -> MaterialTheme.colorScheme.onSurface
-            ChipTone.Warning -> MaterialTheme.aircast.warning
-            ChipTone.Success -> MaterialTheme.aircast.success
+                ChipTone.Error -> MaterialTheme.colorScheme.error
+                ChipTone.Neutral -> Color.Black.copy(alpha = STATUS_BAR_SCRIM_ALPHA)
+                ChipTone.Warning -> MaterialTheme.aircast.warning
+                ChipTone.Success -> MaterialTheme.aircast.success
+            }
+        } else {
+            osdBackdrop(
+                when (tone) {
+                    ChipTone.Error -> MaterialTheme.colorScheme.errorContainer
+                    ChipTone.Neutral -> MaterialTheme.colorScheme.surfaceContainerHigh
+                    ChipTone.Warning -> MaterialTheme.aircast.warningContainer
+                    ChipTone.Success -> MaterialTheme.aircast.successContainer
+                },
+            )
+        },
+        contentColor = if (statusBar) {
+            when (tone) {
+                ChipTone.Error -> MaterialTheme.colorScheme.onError
+                ChipTone.Neutral -> MaterialTheme.aircast.outdoorForeground
+                ChipTone.Warning -> MaterialTheme.aircast.onWarning
+                ChipTone.Success -> MaterialTheme.aircast.onSuccess
+            }
+        } else {
+            when (tone) {
+                ChipTone.Error -> osdTint(MaterialTheme.colorScheme.onErrorContainer, MaterialTheme.colorScheme.error)
+                ChipTone.Neutral -> MaterialTheme.colorScheme.onSurface
+                ChipTone.Warning -> MaterialTheme.aircast.warning
+                ChipTone.Success -> MaterialTheme.aircast.success
+            }
         },
         onClick = {
             when {

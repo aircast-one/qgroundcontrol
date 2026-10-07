@@ -31,7 +31,7 @@ fun TrafficReadout(modifier: Modifier = Modifier) {
     val reading = remember(view) { trafficReading(view) } ?: return
     var listed by remember { mutableStateOf(false) }
 
-    if (!trafficShown(reading)) {
+    if (!trafficShown(reading) || !flyIsPortrait() && trafficLevel(reading) == TrafficLevel.Good) {
         return
     }
 

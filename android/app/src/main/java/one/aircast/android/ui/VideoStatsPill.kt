@@ -1,6 +1,5 @@
 package one.aircast.android.ui
 
-import androidx.compose.foundation.layout.PaddingValues
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -26,7 +25,6 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 
 internal const val VIDEO_STATS_VIEW = "view.videoStats"
-private val LANDSCAPE_STATS_TOP = 56.dp
 private const val VIDEO_STATS_POLL_MS = 1000L
 
 internal fun videoStatsText(view: org.json.JSONObject?): String = view?.optString("text").orEmpty()
@@ -40,8 +38,7 @@ internal fun VideoStatsPill(modifier: Modifier) {
             delay(VIDEO_STATS_POLL_MS)
         }
     }
-    if (text.isBlank()) return
-    val portrait = flyIsPortrait()
+    if (text.isBlank() || !flyIsPortrait()) return
     Box(modifier) {
         Text(
             text,
@@ -49,8 +46,8 @@ internal fun VideoStatsPill(modifier: Modifier) {
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier
-                .align(if (portrait) Alignment.BottomStart else Alignment.TopCenter)
-                .padding(if (portrait) PaddingValues(8.dp) else PaddingValues(top = LANDSCAPE_STATS_TOP))
+                .align(Alignment.BottomStart)
+                .padding(8.dp)
                 .background(Color(0f, 0f, 0f, 0.6f), RoundedCornerShape(50))
                 .padding(horizontal = 10.dp, vertical = 4.dp),
         )
