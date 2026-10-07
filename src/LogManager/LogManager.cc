@@ -8,18 +8,22 @@
 #include <QtCore/QPointer>
 #include <QtCore/QSaveFile>
 #include <QtCore/QThread>
+#include <QtCore/QUrl>
+#include <QtCore/QUuid>
 #include <QtQml/QJSEngine>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
 
+#include "AppSettings.h"
 #include "LogFormatter.h"
+#include "LogManagerSettings.h"
 #include "LogModel.h"
+#include "OtlpLogExporter.h"
 #include "QGCFileWriter.h"
 #include "QGCLoggingCategory.h"
-#include "AppSettings.h"
-#include "LogManagerSettings.h"
 #include "SettingsManager.h"
+#include "VideoSettings.h"
 
 QGC_LOGGING_CATEGORY(LogManagerLog, "Utilities.LogManager")
 
@@ -34,7 +38,11 @@ static QMutex s_captureMutex;
 static QList<LogEntry> s_capturedMessages;
 
 // Elapsed timer started at static-init time (matches Qt's %{time process} epoch).
-static QElapsedTimer s_elapsedTimer = []() { QElapsedTimer t; t.start(); return t; }();
+static QElapsedTimer s_elapsedTimer = []() {
+    QElapsedTimer t;
+    t.start();
+    return t;
+}();
 
 // ---------------------------------------------------------------------------
 // Qt message handler
@@ -93,8 +101,8 @@ LogManager::LogManager(QObject* parent) : QObject(parent)
     _model = new LogModel(this);
     _fileWriter = new QGCFileWriter(this);
 
-    (void)connect(_fileWriter, &QGCFileWriter::errorOccurred, this, [this](const QString& msg) { _setIoError(msg); });
-    (void)connect(_fileWriter, &QGCFileWriter::fileSizeChanged, this, [this](qint64 size) {
+    (void) connect(_fileWriter, &QGCFileWriter::errorOccurred, this, [this](const QString& msg) { _setIoError(msg); });
+    (void) connect(_fileWriter, &QGCFileWriter::fileSizeChanged, this, [this](qint64 size) {
         if (size >= _maxLogFileSize) {
             _rotateLogs();
         }
@@ -102,7 +110,7 @@ LogManager::LogManager(QObject* parent) : QObject(parent)
 
     _flushTimer.setInterval(kFlushIntervalMSecs);
     _flushTimer.setSingleShot(false);
-    (void)connect(&_flushTimer, &QTimer::timeout, this, &LogManager::_flushToDisk);
+    (void) connect(&_flushTimer, &QTimer::timeout, this, &LogManager::_flushToDisk);
     _flushTimer.start();
 }
 
@@ -177,29 +185,28 @@ void LogManager::init()
 
     // --- Log directory ---
     setLogDirectory(appSettings->logSavePath());
-    (void)connect(appSettings, &AppSettings::savePathsChanged, this, [this, appSettings]() {
-        setLogDirectory(appSettings->logSavePath());
-    });
+    (void) connect(appSettings, &AppSettings::savePathsChanged, this,
+                   [this, appSettings]() { setLogDirectory(appSettings->logSavePath()); });
 
     // --- Disk logging settings ---
     _setDiskLoggingEnabled(logSettings->diskLoggingEnabled()->rawValue().toBool());
-    (void)connect(logSettings->diskLoggingEnabled(), &Fact::rawValueChanged, this, [this, logSettings]() {
+    (void) connect(logSettings->diskLoggingEnabled(), &Fact::rawValueChanged, this, [this, logSettings]() {
         _setDiskLoggingEnabled(logSettings->diskLoggingEnabled()->rawValue().toBool());
     });
 
     // --- Disk log rotation settings ---
     _maxLogFileSize = logSettings->diskLoggingMaxFileSizeMB()->rawValue().toInt() * 1024 * 1024;
-    (void)connect(logSettings->diskLoggingMaxFileSizeMB(), &Fact::rawValueChanged, this, [this, logSettings]() {
+    (void) connect(logSettings->diskLoggingMaxFileSizeMB(), &Fact::rawValueChanged, this, [this, logSettings]() {
         _maxLogFileSize = logSettings->diskLoggingMaxFileSizeMB()->rawValue().toInt() * 1024 * 1024;
     });
 
     _maxBackupFiles = logSettings->diskLoggingMaxBackupFiles()->rawValue().toInt();
-    (void)connect(logSettings->diskLoggingMaxBackupFiles(), &Fact::rawValueChanged, this, [this, logSettings]() {
+    (void) connect(logSettings->diskLoggingMaxBackupFiles(), &Fact::rawValueChanged, this, [this, logSettings]() {
         _maxBackupFiles = logSettings->diskLoggingMaxBackupFiles()->rawValue().toInt();
     });
 
     // --- Elapsed time display setting ---
-    (void)connect(appSettings->showAppLogTimestampAsElapsedTime(), &Fact::rawValueChanged, _model, [this]() {
+    (void) connect(appSettings->showAppLogTimestampAsElapsedTime(), &Fact::rawValueChanged, _model, [this]() {
         const int rows = _model->rowCount();
         if (rows > 0) {
             const auto col = static_cast<int>(LogEntry::TimestampColumn);
@@ -207,8 +214,60 @@ void LogManager::init()
         }
     });
 
+    _initRemoteLogging();
+
     _replayEarlyEntries();
     _initialized = true;
+}
+
+// ---------------------------------------------------------------------------
+// Remote diagnostics
+// ---------------------------------------------------------------------------
+
+// The log a ground station keeps is half the story of a flight; the aircraft
+// ships the other half to the same collector. This sends ours, under the same
+// switch model: an endpoint and a token stored here, and nothing leaves the
+// machine until someone turns it on.
+void LogManager::_initRemoteLogging()
+{
+    auto* logSettings = SettingsManager::instance()->logManagerSettings();
+    _otlp = new OtlpLogExporter(this);
+    _otlp->setIdentity(QStringLiteral("aircast-qgc"), QCoreApplication::applicationVersion(),
+                       QUuid::createUuid().toString(QUuid::WithoutBraces));
+
+    auto* videoSettings = SettingsManager::instance()->videoSettings();
+    const auto apply = [this, logSettings, videoSettings]() {
+        // No key ships with this application. A ground station has no cloud
+        // account of its own, so it asks the aircraft it is paired with for a
+        // short-lived one; a token typed in here is for a collector of your
+        // own and wins.
+        _otlp->setDeviceHost(_deviceHost(videoSettings));
+        _otlp->configure(logSettings->remoteLoggingEndpoint()->rawValue().toString(),
+                         logSettings->remoteLoggingToken()->rawValue().toString(),
+                         logSettings->remoteLoggingEnabled()->rawValue().toBool());
+    };
+    apply();
+    for (Fact* fact : {logSettings->remoteLoggingEnabled(), logSettings->remoteLoggingEndpoint(),
+                       logSettings->remoteLoggingToken(), videoSettings->whepUrl(), videoSettings->rtspUrl()}) {
+        (void) connect(fact, &Fact::rawValueChanged, this, [apply]() { apply(); });
+    }
+}
+
+// The device is the host already carrying this session's video: a ground
+// station is paired with one aircraft at a time, and its address is the one
+// thing the video settings always know.
+QString LogManager::_deviceHost(VideoSettings* videoSettings)
+{
+    if (!videoSettings) {
+        return {};
+    }
+    for (Fact* fact : {videoSettings->whepUrl(), videoSettings->rtspUrl()}) {
+        const QUrl url(fact->rawValue().toString().trimmed());
+        if (!url.host().isEmpty()) {
+            return url.host();
+        }
+    }
+    return {};
 }
 
 // ---------------------------------------------------------------------------
@@ -259,6 +318,9 @@ void LogManager::_dispatchToSinks(const LogEntry& entry)
     _model->enqueue(entry);
     if (_diskLoggingEnabled) {
         _pendingDiskWrites.append(entry);
+    }
+    if (_otlp) {
+        _otlp->enqueue(entry);
     }
 }
 
@@ -395,15 +457,15 @@ void LogManager::_rotateLogs()
         const QString from = QStringLiteral("%1/%2.%3.%4").arg(dir, name).arg(i).arg(ext);
         const QString to = QStringLiteral("%1/%2.%3.%4").arg(dir, name).arg(i + 1).arg(ext);
         if (QFile::exists(to)) {
-            (void)QFile::remove(to);
+            (void) QFile::remove(to);
         }
         if (QFile::exists(from)) {
-            (void)QFile::rename(from, to);
+            (void) QFile::rename(from, to);
         }
     }
 
     const QString firstBackup = QStringLiteral("%1/%2.1.%3").arg(dir, name, ext);
-    (void)QFile::rename(path, firstBackup);
+    (void) QFile::rename(path, firstBackup);
 
     _fileWriter->setFilePath(path);
 }
@@ -436,8 +498,8 @@ void LogManager::_exportEntries(QList<LogEntry> entries, const QString& destFile
         bool success = false;
         QSaveFile file(destFile);
         if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            const int fmt = destFile.endsWith(QStringLiteral(".csv"), Qt::CaseInsensitive)
-                ? LogFormatter::CSV : LogFormatter::PlainText;
+            const int fmt = destFile.endsWith(QStringLiteral(".csv"), Qt::CaseInsensitive) ? LogFormatter::CSV
+                                                                                           : LogFormatter::PlainText;
             const QByteArray content = LogFormatter::format(entries, fmt);
             file.write(content);
             success = file.commit();

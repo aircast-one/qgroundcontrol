@@ -18,4 +18,7 @@ public:
     DEFINE_SETTINGFACT(diskLoggingMaxFileSizeMB)
     DEFINE_SETTINGFACT(diskLoggingMaxBackupFiles)
     DEFINE_SETTINGFACT(saveFormat)
+    DEFINE_SETTINGFACT(remoteLoggingEnabled)
+    DEFINE_SETTINGFACT(remoteLoggingEndpoint)
+    DEFINE_SETTINGFACT(remoteLoggingToken)
 };

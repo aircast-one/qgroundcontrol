@@ -14,6 +14,8 @@
 class QJSEngine;
 class QQmlEngine;
 class LogModel;
+class OtlpLogExporter;
+class VideoSettings;
 class QGCFileWriter;
 
 class LogManager : public QObject
@@ -24,9 +26,9 @@ class LogManager : public QObject
 
     Q_MOC_INCLUDE("LogModel.h")
 
-    Q_PROPERTY(LogModel*    model       READ model      CONSTANT)
-    Q_PROPERTY(bool         hasError    READ hasError   NOTIFY hasErrorChanged)
-    Q_PROPERTY(QString      lastError   READ lastError  NOTIFY lastErrorChanged)
+    Q_PROPERTY(LogModel* model READ model CONSTANT)
+    Q_PROPERTY(bool hasError READ hasError NOTIFY hasErrorChanged)
+    Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
 
 public:
     ~LogManager();
@@ -77,6 +79,8 @@ private:
     static void msgHandler(QtMsgType type, const QMessageLogContext& context, const QString& msg);
     void log(QtMsgType type, const QMessageLogContext& context, const QString& message);
     static LogEntry buildEntry(QtMsgType type, const QMessageLogContext& context, const QString& message);
+    void _initRemoteLogging();
+    static QString _deviceHost(VideoSettings* videoSettings);
 
     void _dispatchToSinks(const LogEntry& entry);
     void _replayEarlyEntries();
@@ -98,6 +102,7 @@ private:
     void _emitSuppressedSummary(const QString& category, int count);
 
     LogModel* _model = nullptr;
+    OtlpLogExporter* _otlp = nullptr;
     QGCFileWriter* _fileWriter = nullptr;
 
     QFuture<void> _exportFuture;

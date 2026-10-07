@@ -9,6 +9,8 @@ qt_add_library(QGCLogManager STATIC
     LogModel.h
     LogManager.cc
     LogManager.h
+    OtlpLogExporter.cc
+    OtlpLogExporter.h
 )
 
 qt_add_qml_module(QGCLogManager
@@ -37,6 +39,7 @@ target_link_libraries(QGCLogManager
         Qt6::QmlIntegration
     PRIVATE
         Qt6::Concurrent
+        Qt6::Network
         Qt6::Quick
         QGCFileSystem
         QGCLogging

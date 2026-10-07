@@ -41,6 +41,33 @@
             "default": 0,
             "label": "Save Format",
             "group": "Log Viewer"
+        },
+        {
+            "name": "remoteLoggingEnabled",
+            "shortDesc": "Stream this application's log to an observability endpoint so support can diagnose issues remotely.",
+            "longDesc": "Logs ship only while this is on. The endpoint and token are stored on this machine; nothing is sent anywhere else.",
+            "type": "bool",
+            "default": false,
+            "label": "Enable",
+            "group": "Remote diagnostics"
+        },
+        {
+            "name": "remoteLoggingEndpoint",
+            "shortDesc": "OTLP endpoint (host:port) the log is shipped to.",
+            "longDesc": "Aircast's collector is filled in. A bare host:port is treated as HTTPS, except on the plaintext OTLP ports 4317 and 4318.",
+            "type": "string",
+            "default": "otel.aircast.one:443",
+            "label": "OTLP endpoint",
+            "group": "Remote diagnostics"
+        },
+        {
+            "name": "remoteLoggingToken",
+            "shortDesc": "Bearer token the collector requires.",
+            "longDesc": "Support issues this. It is sent as an Authorization header and stored on this machine only.",
+            "type": "string",
+            "default": "",
+            "label": "Bearer token",
+            "group": "Remote diagnostics"
         }
     ]
 }
