@@ -19,10 +19,4 @@ class PipRulesTest {
         org.junit.Assert.assertEquals(FlyView.ThreeD, flyViewAllowed(null, FlyView.ThreeD))
         org.junit.Assert.assertEquals(FlyView.Video, flyViewAllowed(false, FlyView.Video))
     }
-
-    @org.junit.Test
-    fun `landscape opens on the mini-map like DJI Fly and remembers its choice apart from portrait`() {
-        org.junit.Assert.assertEquals("LandscapeMapShown" to true, pipExpandedKey(landscape = true))
-        org.junit.Assert.assertEquals("IsPIPVisible" to true, pipExpandedKey(landscape = false))
-    }
 }

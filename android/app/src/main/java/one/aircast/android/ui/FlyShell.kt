@@ -58,8 +58,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -75,7 +73,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -86,13 +83,8 @@ private const val FLY_STORE = "fly"
 private const val FLY_VIEW_KEY = "view"
 private const val FLY_SCRIM_ALPHA = 0.55f
 private val STATUS_ROW_HEIGHT = 32.dp
-private val SEGMENT_HEIGHT = 32.dp
-internal val MAP_PIP_SIZE = 120.dp
 private const val MAP_PIP_KEY = "mapPip"
 private const val VIDEO_PIP_KEY = "videoPip"
-private val VIDEO_PIP_WIDTH = 156.dp
-private val VIDEO_PIP_HEIGHT = 96.dp
-private val MAP_LAYERS_BUTTON = 48.dp
 private val MINIMAP_WIDTH = 184.dp
 private val MINIMAP_HEIGHT = 112.dp
 private const val COMPASS_DIAL_KEY = "compassDial"
@@ -101,17 +93,13 @@ private val STOP_CLEARANCE = 56.dp
 private val TOP_SCRIM_HEIGHT = 96.dp
 private const val TOP_SCRIM_ALPHA = 0.6f
 private val PIP_TOGGLE_SIZE = 28.dp
-private const val PIP_EXPANDED_KEY = "IsPIPVisible"
 private const val LANDSCAPE_MAP_SHOWN_KEY = "LandscapeMapShown"
 
-internal fun pipExpandedKey(landscape: Boolean): Pair<String, Boolean> =
-    if (landscape) LANDSCAPE_MAP_SHOWN_KEY to true else PIP_EXPANDED_KEY to true
+internal fun loadPipExpanded(context: Context): Boolean =
+    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).getBoolean(LANDSCAPE_MAP_SHOWN_KEY, true)
 
-internal fun loadPipExpanded(context: Context, landscape: Boolean): Boolean =
-    pipExpandedKey(landscape).let { (key, default) -> context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).getBoolean(key, default) }
-
-internal fun savePipExpanded(context: Context, landscape: Boolean, expanded: Boolean) =
-    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).edit().putBoolean(pipExpandedKey(landscape).first, expanded).apply()
+internal fun savePipExpanded(context: Context, expanded: Boolean) =
+    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).edit().putBoolean(LANDSCAPE_MAP_SHOWN_KEY, expanded).apply()
 
 internal fun videoPipShown(hasVideo: Boolean, expanded: Boolean): Boolean = hasVideo && expanded
 
@@ -167,278 +155,200 @@ internal fun flyIsPortrait(): Boolean =
     LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
 
 @Composable
-internal fun FlyViewSwitcher(view: FlyView, onView: (FlyView) -> Unit, modifier: Modifier = Modifier) {
-    Surface(
-        modifier,
-        shape = CircleShape,
-        color = osdBackdrop(Color.Black.copy(alpha = FLY_SCRIM_ALPHA)),
-        contentColor = MaterialTheme.aircast.outdoorForeground,
-    ) {
-        Row(
-            Modifier.padding(3.dp).selectableGroup(),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val viewer3dJson by one.aircast.android.bridge.qgcPath(VIEWER3D_VIEW)
-            val enabled3d = viewer3dEnabled(viewer3dJson)
-            LaunchedEffect(enabled3d, view) { flyViewAllowed(enabled3d, view).takeIf { it != view }?.let(onView) }
-            val offered = flyViewsOffered(enabled3d, view)
-            offered.map { entry ->
-                val selected = entry == view
-                Surface(
-                    shape = CircleShape,
-                    color = if (selected) osdBackdrop(MaterialTheme.colorScheme.secondaryContainer) else Color.Transparent,
-                    contentColor = if (selected) osdTint(MaterialTheme.colorScheme.onSecondaryContainer, MaterialTheme.aircast.outdoorForeground) else MaterialTheme.aircast.outdoorForeground,
-                    modifier = Modifier.selectable(selected = selected, role = Role.Tab) { onView(entry) },
-                ) {
-                    Row(
-                        Modifier.height(SEGMENT_HEIGHT).padding(start = if (selected) AircastSpace.s3 else AircastSpace.s2, end = if (selected) AircastSpace.s3 else AircastSpace.s2),
-                        horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(painterResource(entry.icon), entry.label, Modifier.size(18.dp))
-                        if (selected) Text(entry.label, style = MaterialTheme.typography.labelLarge)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 internal fun FlyScreen(
     view: FlyView,
     onView: (FlyView) -> Unit,
-    landscape: Boolean,
     status: @Composable RowScope.() -> Unit,
     video: @Composable (Modifier, Boolean) -> Unit,
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
     keyRowEnd: @Composable () -> Unit,
     rail: @Composable () -> Unit,
-    heading: @Composable () -> Unit,
     overlays: @Composable () -> Unit,
     actions: @Composable (FlyDeckLayout) -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val videoJson by one.aircast.android.bridge.qgcPath(VIDEO_VIEW)
     val hasVideo = videoJson?.optBoolean("available") == true
-    var pipExpanded by remember(landscape) { mutableStateOf(loadPipExpanded(context, landscape)) }
+    var pipExpanded by remember { mutableStateOf(loadPipExpanded(context)) }
     val togglePip: () -> Unit = {
         pipExpanded = !pipExpanded
-        savePipExpanded(context, landscape, pipExpanded)
+        savePipExpanded(context, pipExpanded)
     }
     val layout = LocalFlyScreenState.current.layout
     val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
     val armed = flyState(flyJson)?.armed == true
     LaunchedEffect(armed) { layout.lockWhileArmed(armed) }
-    val stage: @Composable (Modifier) -> Unit = { stageModifier ->
-        Box(stageModifier) {
-            val mapIsPip = view == FlyView.Video
-            val videoIsPip = view == FlyView.Map
-            val mapShown = view == FlyView.Map || (mapIsPip && pipExpanded)
-            val videoShown = view != FlyView.ThreeD && (view != FlyView.Map || videoPipShown(hasVideo, pipExpanded))
-            if (view == FlyView.ThreeD) one.aircast.map.Viewer3DPane(Modifier.fillMaxSize())
-            val pipCorner = Modifier.windowInsetsPadding(WindowInsets.statusBars)
-                .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, end = AircastSpace.s3)
-            val mapPipAlign = if (landscape) Alignment.BottomStart else Alignment.BottomEnd
-            val mapPipShape = if (landscape) MaterialTheme.shapes.medium else CircleShape
-            val mapPipSize = if (landscape) Modifier.size(MINIMAP_WIDTH, MINIMAP_HEIGHT) else Modifier.size(MAP_PIP_SIZE)
-            val videoPipAlign = if (landscape) Alignment.BottomStart else Alignment.TopEnd
-            val videoPipPlace = if (landscape) Modifier.padding(AircastSpace.s3) else pipCorner
-            val videoPipSize = if (landscape) Modifier.size(MINIMAP_WIDTH, MINIMAP_HEIGHT) else Modifier.size(VIDEO_PIP_WIDTH, VIDEO_PIP_HEIGHT)
+    Box(Modifier.fillMaxSize()) {
+        val mapIsPip = view == FlyView.Video
+        val videoIsPip = view == FlyView.Map
+        val mapShown = view == FlyView.Map || (mapIsPip && pipExpanded)
+        val videoShown = view != FlyView.ThreeD && (view != FlyView.Map || videoPipShown(hasVideo, pipExpanded))
+        if (view == FlyView.ThreeD) one.aircast.map.Viewer3DPane(Modifier.fillMaxSize())
+        val pipAlign = Alignment.BottomStart
+        val mapPipShape = MaterialTheme.shapes.medium
+        val pipSize = Modifier.size(MINIMAP_WIDTH, MINIMAP_HEIGHT)
 
-            if (mapShown) {
-                map(
-                    if (mapIsPip) {
-                        Modifier
-                            .zIndex(1f)
-                            .align(mapPipAlign)
-                            .padding(AircastSpace.s3)
-                            .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
-                            .then(mapPipSize)
-                            .clip(mapPipShape)
-                            .border(2.dp, MaterialTheme.colorScheme.onSurface, mapPipShape)
-                    } else {
-                        Modifier.fillMaxSize()
-                    },
-                )
-            }
-            if (videoShown) {
-                video(
-                    if (videoIsPip) {
-                        Modifier
-                            .zIndex(1f)
-                            .align(videoPipAlign)
-                            .then(videoPipPlace)
-                            .then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = false))
-                            .then(videoPipSize)
-                            .clip(MaterialTheme.shapes.medium)
-                    } else {
-                        Modifier.fillMaxSize()
-                    },
-                    !videoIsPip,
-                )
-            }
-            if (mapIsPip) {
-                if (pipExpanded) {
-                    Box(
-                        Modifier
-                            .zIndex(2f)
-                            .align(mapPipAlign)
-                            .padding(AircastSpace.s3)
-                            .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
-                            .then(mapPipSize)
-                            .clip(mapPipShape)
-                            .clickable { onView(FlyView.Map) },
-                    )
-                }
-                if (landscape && !pipExpanded) {
-                    Box(
-                        Modifier
-                            .zIndex(3f)
-                            .align(Alignment.BottomStart)
-                            .padding(AircastSpace.s3)
-                            .avoidedByVideoMessage(COMPASS_DIAL_KEY)
-                            .clip(CircleShape)
-                            .clickable(onClickLabel = "Show the map") { togglePip() }
-                            .semantics { contentDescription = "Compass" },
-                    ) { OsdCompassDial(MINIMAP_HEIGHT) }
-                }
-                if (pipExpanded || !landscape) Box(Modifier.zIndex(3f).align(mapPipAlign).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).then(mapPipSize).avoidedByVideoMessage(MAP_PIP_KEY).holdToEditLayout()) {
-                    PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
-                    if (pipExpanded) LayoutPipEditor(MAP_PIP_KEY, mapPipShape, Modifier.matchParentSize())
-                }
-            }
-            if (videoIsPip && hasVideo) {
-                Box(Modifier.zIndex(3f).align(videoPipAlign).then(videoPipPlace).then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = true)).then(videoPipSize).holdToEditLayout()) {
-                    PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else if (landscape) Alignment.BottomStart else Alignment.TopEnd))
-                    if (pipExpanded) LayoutPipEditor(VIDEO_PIP_KEY, MaterialTheme.shapes.medium, Modifier.matchParentSize())
-                }
-            }
-            if (view == FlyView.Map) {
-                var layers by remember { mutableStateOf(false) }
-                Box(if (landscape) Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MINIMAP_HEIGHT + AircastSpace.s3 * 2) else Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3)) {
-                    LayoutWidget("mapLayers", hideable = false) {
-                        Surface(
-                            onClick = { layers = true },
-                            modifier = Modifier.size(48.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        ) {
-                            Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_layers), "Map layers") }
-                        }
-                    }
-                }
-                if (layers) MapLayersSheet { layers = false }
-            }
-
-            if (landscape) {
-                Box(
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .height(TOP_SCRIM_HEIGHT)
-                        .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Black.copy(alpha = TOP_SCRIM_ALPHA), Color.Transparent))),
-                )
-            }
-            val flyScreen = LocalFlyScreenState.current
-            val videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
-            CompositionLocalProvider(LocalFlyOsd provides (view == FlyView.Video)) {
-                FlyChromeLayout(
-                    modifier = Modifier.fillMaxSize(),
-                    top = {
-                        Column(
-                            Modifier
-                                .windowInsetsPadding(WindowInsets.statusBars)
-                                .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
-                            verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                        ) {
-                            CompositionLocalProvider(LocalCompactStatus provides landscape) {
-                                Row(
-                                    Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
-                                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    content = status,
-                                )
-                            }
-                            if (!landscape) Row(Modifier.padding(top = AircastSpace.s2)) {
-                                LayoutWidget("viewSwitcher", hideable = false) { FlyViewSwitcher(view, onView) }
-                            }
-                            Row(
-                                Modifier.horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) { keyRow() }
-                        }
-                    },
-                    overlays = {
-                        Column(
-                            Modifier.fillMaxWidth().clipToBounds().padding(start = if (landscape) ACTION_RAIL_CLEARANCE else AircastSpace.s3, end = AircastSpace.s3),
-                            verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                        ) {
-                            CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) {
-                                if (!landscape) heading()
-                                overlays()
-                            }
-                        }
-                    },
-                    bottom = {
-                        Box(Modifier.padding(AircastSpace.s3)) { keyRowEnd() }
-                    },
-                    bottomAlignment = if (landscape) Alignment.End else Alignment.Start,
-                    overlaysAboveBottom = true,
-                    message = if (videoMessage) ({ Box(Modifier.osdShadow()) { FlyNoVideoMessage() } }) else null,
-                    messageAboveBottom = !landscape,
-                    obstacles = { flyScreen.obstacles.values },
-                    onInsets = { insets -> if (insets != flyScreen.mapInsets) flyScreen.mapInsets = insets },
-                )
-                Box(
+        if (mapShown) {
+            map(
+                if (mapIsPip) {
                     Modifier
                         .zIndex(1f)
-                        .fillMaxHeight()
-                        .align(Alignment.CenterEnd)
-                        .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(
-                            top = STATUS_ROW_HEIGHT + AircastSpace.s4 + when {
-                                landscape -> 0.dp
-                                videoIsPip && hasVideo && pipExpanded -> VIDEO_PIP_HEIGHT + AircastSpace.s3
-                                else -> 0.dp
-                            },
-                            bottom = when {
-                                landscape -> STOP_CLEARANCE
-                                mapIsPip && pipExpanded -> MAP_PIP_SIZE
-                                else -> MAP_LAYERS_BUTTON
-                            } + AircastSpace.s3 * 2,
-                            end = AircastSpace.s3,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { rail() }
-                }
-                if (landscape) {
-                    Box(
-                        Modifier
-                            .zIndex(2f)
-                            .fillMaxSize()
-                            .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, bottom = 0.dp),
-                    ) { actions(FlyDeckLayout.Rail) }
-                }
+                        .align(pipAlign)
+                        .padding(AircastSpace.s3)
+                        .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
+                        .then(pipSize)
+                        .clip(mapPipShape)
+                        .border(2.dp, MaterialTheme.colorScheme.onSurface, mapPipShape)
+                } else {
+                    Modifier.fillMaxSize()
+                },
+            )
+        }
+        if (videoShown) {
+            video(
+                if (videoIsPip) {
+                    Modifier
+                        .zIndex(1f)
+                        .align(pipAlign)
+                        .padding(AircastSpace.s3)
+                        .then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = false))
+                        .then(pipSize)
+                        .clip(MaterialTheme.shapes.medium)
+                } else {
+                    Modifier.fillMaxSize()
+                },
+                !videoIsPip,
+            )
+        }
+        if (mapIsPip) {
+            if (pipExpanded) {
+                Box(
+                    Modifier
+                        .zIndex(2f)
+                        .align(pipAlign)
+                        .padding(AircastSpace.s3)
+                        .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
+                        .then(pipSize)
+                        .clip(mapPipShape)
+                        .clickable { onView(FlyView.Map) },
+                )
+            }
+            if (!pipExpanded) {
+                Box(
+                    Modifier
+                        .zIndex(3f)
+                        .align(Alignment.BottomStart)
+                        .padding(AircastSpace.s3)
+                        .avoidedByVideoMessage(COMPASS_DIAL_KEY)
+                        .clip(CircleShape)
+                        .clickable(onClickLabel = "Show the map") { togglePip() }
+                        .semantics { contentDescription = "Compass" },
+                ) { OsdCompassDial(MINIMAP_HEIGHT) }
+            }
+            if (pipExpanded) Box(Modifier.zIndex(3f).align(pipAlign).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).then(pipSize).avoidedByVideoMessage(MAP_PIP_KEY).holdToEditLayout()) {
+                PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
+                if (pipExpanded) LayoutPipEditor(MAP_PIP_KEY, mapPipShape, Modifier.matchParentSize())
             }
         }
-    }
-
-    if (landscape) {
-        stage(Modifier.fillMaxSize())
-    } else {
-        Column(Modifier.fillMaxSize()) {
-            stage(Modifier.fillMaxWidth().weight(1f))
-            run {
-                Surface(
-                    Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                ) { actions(FlyDeckLayout.Bottom) }
+        if (videoIsPip && hasVideo) {
+            Box(Modifier.zIndex(3f).align(pipAlign).padding(AircastSpace.s3).then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = true)).then(pipSize).holdToEditLayout()) {
+                PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomStart))
+                if (pipExpanded) LayoutPipEditor(VIDEO_PIP_KEY, MaterialTheme.shapes.medium, Modifier.matchParentSize())
             }
+        }
+        if (view == FlyView.Map) {
+            var layers by remember { mutableStateOf(false) }
+            Box(Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MINIMAP_HEIGHT + AircastSpace.s3 * 2)) {
+                LayoutWidget("mapLayers", hideable = false) {
+                    Surface(
+                        onClick = { layers = true },
+                        modifier = Modifier.size(48.dp),
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_layers), "Map layers") }
+                    }
+                }
+            }
+            if (layers) MapLayersSheet { layers = false }
+        }
+
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(TOP_SCRIM_HEIGHT)
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Black.copy(alpha = TOP_SCRIM_ALPHA), Color.Transparent))),
+        )
+        val flyScreen = LocalFlyScreenState.current
+        val videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
+        CompositionLocalProvider(LocalFlyOsd provides (view == FlyView.Video)) {
+            FlyChromeLayout(
+                modifier = Modifier.fillMaxSize(),
+                top = {
+                    Column(
+                        Modifier
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
+                        verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                    ) {
+                        CompositionLocalProvider(LocalCompactStatus provides true) {
+                            Row(
+                                Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
+                                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                                verticalAlignment = Alignment.CenterVertically,
+                                content = status,
+                            )
+                        }
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) { keyRow() }
+                    }
+                },
+                overlays = {
+                    Column(
+                        Modifier.fillMaxWidth().clipToBounds().padding(start = ACTION_RAIL_CLEARANCE, end = AircastSpace.s3),
+                        verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                    ) {
+                        CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) {
+                            overlays()
+                        }
+                    }
+                },
+                bottom = {
+                    Box(Modifier.padding(AircastSpace.s3)) { keyRowEnd() }
+                },
+                bottomAlignment = Alignment.End,
+                overlaysAboveBottom = true,
+                message = if (videoMessage) ({ Box(Modifier.osdShadow()) { FlyNoVideoMessage() } }) else null,
+                messageAboveBottom = false,
+                obstacles = { flyScreen.obstacles.values },
+                onInsets = { insets -> if (insets != flyScreen.mapInsets) flyScreen.mapInsets = insets },
+            )
+            Box(
+                Modifier
+                    .zIndex(1f)
+                    .fillMaxHeight()
+                    .align(Alignment.CenterEnd)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(
+                        top = STATUS_ROW_HEIGHT + AircastSpace.s4,
+                        bottom = STOP_CLEARANCE + AircastSpace.s3 * 2,
+                        end = AircastSpace.s3,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { rail() }
+            }
+            Box(
+                Modifier
+                    .zIndex(2f)
+                    .fillMaxSize()
+                    .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, bottom = 0.dp),
+            ) { actions(FlyDeckLayout.Rail) }
         }
     }
 }

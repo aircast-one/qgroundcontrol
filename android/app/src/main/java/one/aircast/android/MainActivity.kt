@@ -89,7 +89,6 @@ import one.aircast.android.ui.AnalyzeScreen
 import one.aircast.android.ui.CameraControlLayer
 import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.FollowMeReadout
-import one.aircast.android.ui.AttitudeInstrument
 import one.aircast.android.ui.MapClickMenu
 import one.aircast.android.ui.MapPoint
 import one.aircast.android.ui.FirstRunDialog
@@ -318,13 +317,6 @@ fun AircastShell(hostView: android.view.View?) {
     val flyVideoSourceLayer = remember { movableContentOf { LayoutWidget("videoSource") { VideoSourceLayer() } } }
     val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer(shutters = !flyIsPortrait()) } } }
     val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
-    val flyAttitude = remember {
-        movableContentOf {
-            LayoutWidget("instrumentPanel") {
-                AttitudeInstrument()
-            }
-        }
-    }
     val flyOrbitReadout = remember { movableContentOf { LayoutWidget("orbit") { OrbitReadout() } } }
     val flyFollowMeReadout = remember { movableContentOf { LayoutWidget("followMe") { FollowMeReadout() } } }
     val flyTrafficReadout = remember { movableContentOf { LayoutWidget("traffic") { TrafficReadout() } } }
@@ -534,13 +526,11 @@ fun AircastShell(hostView: android.view.View?) {
                         FlyScreen(
                             view = shownFlyView,
                             onView = { flyView = it },
-                            landscape = true,
                             status = flyStatus,
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
                             rail = { flyCameraControlLayer() },
-                            heading = { flyAttitude() },
                             keyRowEnd = flyKeyRowEnd,
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },

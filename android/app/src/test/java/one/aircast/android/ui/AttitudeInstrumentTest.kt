@@ -34,7 +34,5 @@ class AttitudeInstrumentTest {
     fun `pitch moves the horizon by the span QGC uses`() {
         assertEquals(40f, pitchOffset(45f, 20f))
         assertEquals(0f, pitchOffset(0f, 20f))
-        assertFalse(0 in ladderAngles())
-        assertEquals(36, ladderAngles().size)
     }
 }

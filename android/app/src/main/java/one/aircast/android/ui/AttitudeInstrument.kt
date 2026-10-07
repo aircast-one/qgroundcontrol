@@ -1,40 +1,22 @@
 package one.aircast.android.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
-import one.aircast.android.bridge.Qgc
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.drawText
@@ -49,24 +31,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 internal const val ATTITUDE_PATH = "view.attitude"
-private val INSTRUMENT_SIZE = 132.dp
 private const val HORIZON_FRACTION = 0.72f
 private const val PITCH_SPAN_DEGREES = 45f
-private const val LADDER_STEP_DEGREES = 5
-internal const val HOME_LETTER = "L"
-private val CARDINALS = listOf(0 to "N", 90 to "E", 180 to "S", 270 to "W")
-private val HEADING_COLOUR = Color(0xFFEE3424)
-internal val COURSE_COLOUR = Color(0xFF24D3EE)
-private val ROLL_POINTER_COLOUR = Color(0xFFED1C24)
-private val HEADING_SHADE = Color(0xFFC72B27)
-private const val HEADING_TEXT_DROP = 0.48f
-private const val COG_TIP = 0.054f
-private const val COG_BASE = 0.254f
-private const val COG_HALF_WIDTH = 0.075f
-private val HORIZON_SKY = Color.hsl(216f, 0.5f, 0.55f)
-private val HORIZON_GROUND = Color.hsl(90f, 0.75f, 0.25f)
-private val HORIZON_GROUND_NEAR = Color.hsl(90f, 0.5f, 0.45f)
-internal val ROLL_TICKS = listOf(-60, -45, -30, -15, 0, 15, 30, 45, 60)
 
 internal data class Attitude(
     val roll: Float,
@@ -101,51 +67,9 @@ internal fun attitude(view: JSONObject?): Attitude? =
 internal fun pitchOffset(pitch: Float, horizonRadius: Float): Float =
     pitch * (horizonRadius * 2f) / PITCH_SPAN_DEGREES
 
-internal fun ladderAngles(): List<Int> =
-    (-90..90 step LADDER_STEP_DEGREES).filter { it != 0 }
-
 private fun pointOnRing(center: Offset, radius: Float, degrees: Float): Offset {
     val radians = Math.toRadians(degrees.toDouble())
     return Offset(center.x + radius * sin(radians).toFloat(), center.y - radius * cos(radians).toFloat())
-}
-
-internal enum class InstrumentStyle { Integrated, Horizontal, Vertical }
-
-private const val INSTRUMENT_STYLE_PATH = "settings.flyViewSettings.instrumentQmlFile2"
-private const val STYLE_POLL_MS = 1000L
-private val SPLIT_SIZE = 96.dp
-private val LARGE_SIZE = 132.dp
-
-internal fun instrumentStyle(file: String?): InstrumentStyle = when {
-    file?.contains("HorizontalCompassAttitude") == true -> InstrumentStyle.Horizontal
-    file?.contains("VerticalCompassAttitude") == true -> InstrumentStyle.Vertical
-    else -> InstrumentStyle.Integrated
-}
-
-@Composable
-fun AttitudeInstrument(modifier: Modifier = Modifier) {
-    val view by qgcPath(ATTITUDE_PATH)
-    val reading = remember(view) { attitude(view) ?: NO_VEHICLE_ATTITUDE }
-    var style by remember { mutableStateOf(InstrumentStyle.Integrated) }
-
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            style = withContext(Dispatchers.Default) { instrumentStyle(Qgc.get(INSTRUMENT_STYLE_PATH)?.opt("value")?.toString()) }
-            delay(STYLE_POLL_MS)
-        }
-    }
-
-    when (style) {
-        InstrumentStyle.Integrated -> HeadingTape(reading, modifier)
-        InstrumentStyle.Horizontal -> Row(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            InstrumentDial(reading, horizon = true, compass = false, size = SPLIT_SIZE)
-            InstrumentDial(reading, horizon = false, compass = true, size = SPLIT_SIZE)
-        }
-        InstrumentStyle.Vertical -> Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            InstrumentDial(reading, horizon = true, compass = false, size = LARGE_SIZE)
-            InstrumentDial(reading, horizon = false, compass = true, size = LARGE_SIZE)
-        }
-    }
 }
 
 private const val OSD_DIAL_SCRIM = 0.4f
@@ -155,13 +79,6 @@ private const val OSD_CHEVRON_TIP = 0.42f
 private const val OSD_CHEVRON_WING = 0.3f
 private const val OSD_CHEVRON_NOTCH = 0.14f
 private val OSD_NORTH = Color(0xFFFF4D4D)
-
-@Composable
-internal fun CompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
-    val view by qgcPath(ATTITUDE_PATH)
-    val reading = remember(view) { attitude(view) ?: NO_VEHICLE_ATTITUDE }
-    InstrumentDial(reading, horizon = true, compass = true, size = size, modifier = modifier)
-}
 
 @Composable
 internal fun OsdCompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
@@ -217,158 +134,4 @@ internal fun OsdCompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifie
             drawText(text, topLeft = Offset(center.x - text.size.width / 2f, center.y + radius * 0.5f))
         }
     }
-}
-
-@Composable
-private fun InstrumentDial(reading: Attitude, horizon: Boolean, compass: Boolean, size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
-    val measurer = rememberTextMeasurer()
-    val sky = HORIZON_SKY
-    val ground = HORIZON_GROUND
-    val ink = MaterialTheme.colorScheme.onSurface
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val mission = MaterialTheme.aircast.mission
-    val home = MaterialTheme.aircast.success
-    val scale = size / INSTRUMENT_SIZE
-    val label = TextStyle(color = ink, fontSize = 10.sp * scale)
-    val headingStyle = TextStyle(color = ink, fontSize = 13.sp * scale)
-    val homeStyle = TextStyle(color = MaterialTheme.aircast.onSuccess, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-
-    Surface(
-        modifier = modifier
-            .size(size)
-            .semantics { contentDescription = "Attitude and heading ${reading.headingText}" },
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.85f),
-    ) {
-        Canvas(Modifier.size(size)) {
-            val outer = this.size.minDimension / 2f
-            val ball = if (compass) outer * HORIZON_FRACTION else outer - 2.dp.toPx()
-            val dial = if (reading.noseUp) -reading.heading else 0f
-
-            if (horizon) drawHorizon(reading, ball, sky, ground, ink, label, measurer)
-
-            if (compass) rotate(dial) {
-                (0 until 360 step 10).forEach { degrees ->
-                    val long = degrees % 30 == 0
-                    drawLine(
-                        muted,
-                        pointOnRing(center, outer - 2.dp.toPx(), degrees.toFloat()),
-                        pointOnRing(center, outer - (if (long) 8.dp else 5.dp).toPx(), degrees.toFloat()),
-                        strokeWidth = 1.dp.toPx(),
-                    )
-                }
-                CARDINALS.forEach { (degrees, letter) ->
-                    val text = measurer.measure(letter, label)
-                    val at = pointOnRing(center, outer - 14.dp.toPx() * scale, degrees.toFloat())
-                    rotate(-dial, at) {
-                        drawText(text, topLeft = at - Offset(text.size.width / 2f, text.size.height / 2f))
-                    }
-                }
-                reading.courseOverGround?.let { course ->
-                    rotate(course) {
-                        val tip = center.y - outer * (1f - COG_TIP)
-                        val base = center.y - outer * (1f - COG_BASE)
-                        val wing = outer * COG_HALF_WIDTH
-                        drawPath(Path().apply { moveTo(center.x, tip); lineTo(center.x - wing, base); lineTo(center.x + wing, base); close() }, COURSE_COLOUR)
-                    }
-                }
-                reading.headingToNextWaypoint?.let { drawBearing(it, outer, mission, dashed = true) }
-                reading.headingToHome?.let {
-                    val at = pointOnRing(center, outer - 7.dp.toPx(), it)
-                    val letter = measurer.measure(HOME_LETTER, homeStyle)
-                    drawCircle(home, radius = 7.dp.toPx(), center = at)
-                    rotate(-dial, at) {
-                        drawText(letter, topLeft = at - Offset(letter.size.width / 2f, letter.size.height / 2f))
-                    }
-                }
-                rotate(reading.heading) {
-                    val half = outer / 3f
-                    val top = Offset(center.x, center.y - half)
-                    val bottom = center.y + half
-                    val notch = center.y + half * 0.5f
-                    val right = Path().apply { moveTo(top.x, top.y); lineTo(center.x + half, bottom); lineTo(center.x, notch); close() }
-                    val left = Path().apply { moveTo(top.x, top.y); lineTo(center.x - half, bottom); lineTo(center.x, notch); close() }
-                    drawPath(right, HEADING_COLOUR)
-                    drawPath(left, HEADING_SHADE)
-                    drawPath(right, ink, style = Stroke(1.dp.toPx()))
-                    drawPath(left, ink, style = Stroke(1.dp.toPx()))
-                }
-            }
-
-            if (compass) {
-                val headingText = measurer.measure(reading.headingText, headingStyle)
-                val below = if (horizon) ball * 0.45f else outer * HEADING_TEXT_DROP
-                drawText(headingText, topLeft = Offset(center.x - headingText.size.width / 2f, center.y + below))
-            }
-        }
-    }
-}
-
-private fun DrawScope.drawBearing(bearing: Float, outer: Float, colour: Color, dashed: Boolean) {
-    drawLine(
-        colour,
-        pointOnRing(center, outer * 0.78f, bearing),
-        pointOnRing(center, outer - 1.dp.toPx(), bearing),
-        strokeWidth = 2.dp.toPx(),
-        pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())) else null,
-    )
-}
-
-private fun DrawScope.drawHorizon(
-    reading: Attitude,
-    radius: Float,
-    sky: Color,
-    ground: Color,
-    ink: Color,
-    label: TextStyle,
-    measurer: TextMeasurer,
-) {
-    val disc = Path().apply { addOval(Rect(center, radius)) }
-    clipPath(disc) {
-        rotate(-reading.roll) {
-            translate(top = pitchOffset(reading.pitch, radius)) {
-                drawRect(sky, topLeft = Offset(center.x - radius * 3, center.y - radius * 6), size = Size(radius * 6, radius * 6))
-                drawRect(
-                    Brush.verticalGradient(listOf(HORIZON_GROUND_NEAR, ground), startY = center.y, endY = center.y + radius * 2),
-                    topLeft = Offset(center.x - radius * 3, center.y),
-                    size = Size(radius * 6, radius * 6),
-                )
-                drawLine(ink, Offset(center.x - radius * 3, center.y), Offset(center.x + radius * 3, center.y), strokeWidth = 1.dp.toPx())
-                ladderAngles().forEach { degrees ->
-                    val y = center.y - pitchOffset(degrees.toFloat(), radius)
-                    val half = radius * (if (degrees % 10 == 0) 0.35f else 0.2f)
-                    drawLine(ink.copy(alpha = 0.8f), Offset(center.x - half, y), Offset(center.x + half, y), strokeWidth = 1.dp.toPx())
-                    if (degrees % 10 == 0) {
-                        val text = measurer.measure(degrees.toString(), label)
-                        drawText(text, topLeft = Offset(center.x + half + 2.dp.toPx(), y - text.size.height / 2f))
-                    }
-                }
-            }
-        }
-    }
-    drawCircle(ink.copy(alpha = 0.5f), radius = radius, center = center, style = Stroke(1.dp.toPx()))
-    rotate(-reading.roll) {
-        ROLL_TICKS.forEach { degrees ->
-            drawLine(
-                ink,
-                pointOnRing(center, radius - 1.dp.toPx(), degrees.toFloat()),
-                pointOnRing(center, radius - 6.dp.toPx(), degrees.toFloat()),
-                strokeWidth = 1.5f.dp.toPx(),
-            )
-        }
-    }
-    val pointerTip = Offset(center.x, center.y - radius + 7.dp.toPx())
-    val pointerBase = center.y - radius + 1.dp.toPx()
-    drawPath(
-        Path().apply {
-            moveTo(pointerTip.x, pointerTip.y)
-            lineTo(pointerTip.x - 4.dp.toPx(), pointerBase)
-            lineTo(pointerTip.x + 4.dp.toPx(), pointerBase)
-            close()
-        },
-        ROLL_POINTER_COLOUR,
-    )
-    drawLine(ink, Offset(center.x - radius * 0.45f, center.y), Offset(center.x - radius * 0.15f, center.y), strokeWidth = 3.dp.toPx())
-    drawLine(ink, Offset(center.x + radius * 0.15f, center.y), Offset(center.x + radius * 0.45f, center.y), strokeWidth = 3.dp.toPx())
-    drawCircle(ink, radius = 2.dp.toPx(), center = center)
 }
