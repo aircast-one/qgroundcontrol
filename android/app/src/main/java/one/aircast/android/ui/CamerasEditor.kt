@@ -1,6 +1,10 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -9,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
@@ -29,6 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.CameraCommands
 import one.aircast.android.bridge.VideoCommands
@@ -47,7 +55,7 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
     val reading = remember(view) { camerasReading(view) }
     val cameras = reading?.cameras.orEmpty()
     val storedCount = reading?.stored?.size ?: 0
-    val editable = reading?.readable != false
+    val editable = reading?.readable == true
     var draft by remember { mutableStateOf<CameraDraft?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var removed by remember { mutableStateOf<RemovedCamera?>(null) }
@@ -60,9 +68,9 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
     }
 
     Column(modifier) {
-        if (!editable) ErrorLine(reading?.reason.orEmpty())
+        reading?.takeIf { !it.readable }?.let { ErrorLine(it.reason) }
         notice?.let { ErrorLine(it) }
-        if (cameras.isEmpty()) {
+        if (reading != null && cameras.isEmpty()) {
             Text(
                 "No cameras yet. Add every camera this ground station should show, then switch between them on the Fly view.",
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -159,10 +167,10 @@ private fun CameraRow(
             IconButton(onClick = { onMove(-1) }, enabled = canMoveUp) { Icon(Icons.Default.KeyboardArrowUp, "Move ${camera.title} up") }
             IconButton(onClick = { onMove(1) }, enabled = canMoveDown) { Icon(Icons.Default.KeyboardArrowDown, "Move ${camera.title} down") }
         }
+        onEdit?.let { edit -> IconButton(onClick = edit) { Icon(Icons.Default.Edit, "Edit ${camera.title}") } }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun CameraDialog(
     draft: CameraDraft,
@@ -173,41 +181,42 @@ private fun CameraDialog(
     onRemove: (() -> Unit)?,
 ) {
     val kind = kinds.firstOrNull { it.raw == draft.source }
+    val needsUrl = kind?.needsUrl == true
+    var showMore by remember { mutableStateOf(kind?.more == true) }
+    val (more, common) = kinds.groupBy { it.group }.toList().partition { (_, members) -> members.all { it.more } }
+    val group: @Composable (String, List<CameraKind>) -> Unit = { name, members ->
+        KindGroup(name, members, draft.source) { onChange(draft.copy(source = it, refusal = null)) }
+        if (needsUrl && members.any { it.raw == draft.source }) {
+            OutlinedTextField(
+                value = draft.url,
+                onValueChange = { typed -> onChange(draft.copy(url = typed, source = inferredKind(kinds, draft.source, typed), refusal = null)) },
+                label = { Text("Address") },
+                placeholder = { Text(kind?.hint.orEmpty()) },
+                singleLine = true,
+                isError = draft.refusal != null,
+                supportingText = draft.refusal?.let { refusal -> { Text(refusal) } },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onSave() }),
+            )
+        }
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (draft.stored == null) "New camera" else "Edit camera") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (!needsUrl) draft.refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                 OutlinedTextField(
                     value = draft.name,
                     onValueChange = { onChange(draft.copy(name = it, refusal = null)) },
                     label = { Text("Name") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = if (needsUrl) ImeAction.Next else ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { onSave() }),
                 )
-                kinds.groupBy { it.group }.map { (group, members) ->
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(group, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            members.map { option ->
-                                FilterChip(
-                                    selected = option.raw == draft.source,
-                                    onClick = { onChange(draft.copy(source = option.raw, refusal = null)) },
-                                    label = { Text(kindLabel(option.label)) },
-                                )
-                            }
-                        }
-                    }
-                }
-                if (kind?.needsUrl == true) {
-                    OutlinedTextField(
-                        value = draft.url,
-                        onValueChange = { onChange(draft.copy(url = it, refusal = null)) },
-                        label = { Text("Address") },
-                        placeholder = { Text(kind.hint) },
-                        singleLine = true,
-                    )
-                }
-                draft.refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                common.map { (name, members) -> group(name, members) }
+                if (more.isNotEmpty() && !showMore) TextButton(onClick = { showMore = true }) { Text("More types") }
+                if (showMore) more.map { (name, members) -> group(name, members) }
             }
         },
         confirmButton = { TextButton(onClick = onSave) { Text("Save") } },
@@ -218,4 +227,17 @@ private fun CameraDialog(
             }
         },
     )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun KindGroup(name: String, members: List<CameraKind>, selected: String, onPick: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            members.map { option ->
+                FilterChip(selected = option.raw == selected, onClick = { onPick(option.raw) }, label = { Text(kindLabel(option.label)) })
+            }
+        }
+    }
 }

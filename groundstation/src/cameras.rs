@@ -73,6 +73,27 @@ pub fn problem(source: &str, url: &str) -> Option<&'static str> {
     }
 }
 
+fn schemes(source: &str) -> &'static [&'static str] {
+    match source {
+        SOURCE_RTSP => &["rtsp://", "rtsps://"],
+        SOURCE_WEBRTC => &["http://", "https://"],
+        SOURCE_UDP_H264 => &["udp://"],
+        SOURCE_UDP_H265 => &["udp265://", "udp://"],
+        SOURCE_MPEGTS => &["mpegts://", "udp://"],
+        SOURCE_TCP => &["tcp://"],
+        _ => &[],
+    }
+}
+
+pub fn normalized(camera: Camera) -> Camera {
+    let lowered = camera.url.to_lowercase();
+    let own = SCHEME_ADDED.contains(&camera.source.as_str()).then(|| schemes(&camera.source).iter().find(|scheme| lowered.starts_with(**scheme))).flatten();
+    match own {
+        Some(scheme) => Camera { url: camera.url[scheme.len()..].to_string(), ..camera },
+        None => camera,
+    }
+}
+
 fn kind_names() -> Vec<String> {
     crate::settingsstore::camera_sources()
 }
@@ -98,7 +119,7 @@ fn hint(source: &str) -> &'static str {
 pub fn kinds() -> Vec<Value> {
     kind_names()
         .into_iter()
-        .map(|source| json!({ "raw": source, "label": source, "group": group(&source), "needsUrl": needs_url(&source), "hint": hint(&source) }))
+        .map(|source| json!({ "raw": source, "label": source, "group": group(&source), "more": group(&source) == GROUP_PRESETS, "needsUrl": needs_url(&source), "hint": hint(&source), "schemes": schemes(&source) }))
         .collect()
 }
 
@@ -145,6 +166,14 @@ pub fn active_after_removal(active: i64, removed: usize) -> i64 {
     }
 }
 
+pub fn active_after_add(shown: i64, stored: usize, total: usize) -> i64 {
+    match () {
+        _ if total == 0 => 0,
+        _ if shown >= stored as i64 => shown + 1,
+        _ => shown,
+    }
+}
+
 pub fn active_after_move(active: i64, from: usize, to: usize) -> i64 {
     let (from, to) = (from as i64, to as i64);
     match () {
@@ -162,6 +191,12 @@ pub fn stored() -> Option<Vec<Camera>> {
 
 fn active() -> i64 {
     crate::settingsstore::raw_setting(ACTIVE_PATH).and_then(|value| value.as_i64()).unwrap_or(0)
+}
+
+fn shown(backend: &dyn Backend) -> (i64, usize) {
+    let video = crate::read::object(&backend.get_fields("video", "activeVideoSource,cameraNames"));
+    let total = video.get("cameraNames").and_then(Value::as_array).map_or(0, Vec::len);
+    (crate::read::integer(&video, "activeVideoSource").unwrap_or_else(active), total)
 }
 
 pub fn store(cameras: &[Camera], active: i64) {
@@ -205,15 +240,15 @@ pub fn invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {
     owns(path).then_some(())?;
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let Some(cameras) = stored() else { return Some(refused(UNREADABLE)) };
-    let current = active();
+    let (current, total) = shown(backend);
     Some(match path {
         CAMERAS_ADD => {
-            let camera = Camera::new(&text_arg(&given, 0), &text_arg(&given, 1), &text_arg(&given, 2));
+            let camera = normalized(Camera::new(&text_arg(&given, 0), &text_arg(&given, 1), &text_arg(&given, 2)));
             match problem(&camera.source, &camera.url) {
                 Some(reason) => refused(reason),
                 None => {
                     let next: Vec<Camera> = cameras.iter().cloned().chain(std::iter::once(camera)).collect();
-                    store_through(backend, &next, if cameras.is_empty() { 0 } else { current });
+                    store_through(backend, &next, active_after_add(current, cameras.len(), total));
                     json!({ "ok": true, "slot": cameras.len() })
                 }
             }
@@ -221,7 +256,7 @@ pub fn invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {
         CAMERAS_UPDATE => match index_arg(&given, 0, cameras.len()) {
             None => refused(NO_SUCH_CAMERA),
             Some(at) => {
-                let camera = Camera::new(&text_arg(&given, 1), &text_arg(&given, 2), &text_arg(&given, 3));
+                let camera = normalized(Camera::new(&text_arg(&given, 1), &text_arg(&given, 2), &text_arg(&given, 3)));
                 match problem(&camera.source, &camera.url) {
                     Some(reason) => refused(reason),
                     None => {
@@ -342,5 +377,26 @@ mod tests {
         let rtsp = listed.iter().find(|kind| kind["raw"] == SOURCE_RTSP).unwrap();
         assert_eq!((rtsp["group"].as_str(), rtsp["needsUrl"].as_bool(), rtsp["hint"].as_str()), (Some(GROUP_STREAMS), Some(true), Some("rtsp://192.168.1.10:8554/live")));
         assert!(listed.iter().all(|kind| kind["raw"] != SOURCE_DISABLED), "no camera is of kind disabled");
+        assert_eq!(rtsp["schemes"], json!(["rtsp://", "rtsps://"]), "a typed rtsp:// address can pick its own kind");
+        assert_eq!(rtsp["more"], json!(false));
+        let solo = listed.iter().find(|kind| kind["group"] == GROUP_PRESETS).unwrap();
+        assert_eq!(solo["more"], json!(true), "vehicle presets wait behind More types");
+    }
+
+    #[test]
+    fn adding_a_camera_leaves_the_one_on_screen_on_screen() {
+        assert_eq!(active_after_add(0, 0, 0), 0, "the first camera of an empty list is the one shown");
+        assert_eq!(active_after_add(1, 3, 3), 1, "a stored camera keeps its place");
+        assert_eq!(active_after_add(3, 3, 5), 4, "a drone camera moves down one as the new camera goes in before it");
+        assert_eq!(active_after_add(0, 3, 3), 0, "a stale setting resolved to the first camera stays on the first, not the new one");
+    }
+
+    #[test]
+    fn an_address_typed_with_the_scheme_the_app_adds_is_kept_without_it() {
+        assert_eq!(normalized(cam("", SOURCE_UDP_H264, "UDP://0.0.0.0:5600")).url, "0.0.0.0:5600");
+        assert_eq!(normalized(cam("", SOURCE_UDP_H265, "udp://0.0.0.0:5600")).url, "0.0.0.0:5600");
+        assert_eq!(normalized(cam("", SOURCE_TCP, "tcp://10.0.0.5:5600")).url, "10.0.0.5:5600");
+        assert_eq!(normalized(cam("", SOURCE_RTSP, "rtsp://10.0.0.5/live")).url, "rtsp://10.0.0.5/live", "RTSP keeps its scheme");
+        assert_eq!(problem(SOURCE_UDP_H264, &normalized(cam("", SOURCE_UDP_H264, "rtsp://x")).url), Some(DOUBLED_SCHEME), "another kind's scheme is still refused");
     }
 }

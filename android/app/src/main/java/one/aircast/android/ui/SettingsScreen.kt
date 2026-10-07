@@ -75,6 +75,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -94,6 +95,7 @@ import org.json.JSONObject
 
 private const val SETTINGS_VIEW = "view.settings"
 private const val SEARCH_SETTLE_MS = 250L
+private const val PREVIEW_HEIGHT_SHARE = 0.4f
 
 internal const val UNITS_GROUP = "unitsSettings"
 internal const val VIDEO_GROUP = "videoSettings"
@@ -515,11 +517,14 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
         return
     }
 
+    val previewMaxWidth = (LocalConfiguration.current.screenHeightDp * PREVIEW_HEIGHT_SHARE * 16f / 9f).dp
     Column(modifier.verticalScroll(rememberScrollState())) {
         if (page.showsVideoSources) {
             VideoSurface(
                 Modifier
+                    .align(Alignment.CenterHorizontally)
                     .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .widthIn(max = previewMaxWidth)
                     .fillMaxWidth()
                     .aspectRatio(16f / 9f)
                     .clip(MaterialTheme.shapes.large)

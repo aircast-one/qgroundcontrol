@@ -5,7 +5,15 @@ import org.json.JSONObject
 
 internal const val CAMERAS_VIEW = "view.cameras"
 
-internal data class CameraKind(val raw: String, val label: String, val group: String, val needsUrl: Boolean, val hint: String)
+internal data class CameraKind(
+    val raw: String,
+    val label: String,
+    val group: String,
+    val needsUrl: Boolean,
+    val hint: String,
+    val more: Boolean = false,
+    val schemes: List<String> = emptyList(),
+)
 
 internal data class CameraEntry(
     val slot: Int,
@@ -52,9 +60,24 @@ internal fun camerasReading(view: JSONObject?): CamerasReading? {
             )
         },
         kinds = view.objects("kinds").map { kind ->
-            CameraKind(kind.optText("raw"), kind.optText("label"), kind.optText("group"), kind.optBoolean("needsUrl"), kind.optText("hint"))
+            CameraKind(
+                raw = kind.optText("raw"),
+                label = kind.optText("label"),
+                group = kind.optText("group"),
+                needsUrl = kind.optBoolean("needsUrl"),
+                hint = kind.optText("hint"),
+                more = kind.optBoolean("more"),
+                schemes = kind.optJSONArray("schemes")?.let { array -> (0 until array.length()).map { array.optString(it) } }.orEmpty(),
+            )
         },
     )
+}
+
+internal fun inferredKind(kinds: List<CameraKind>, current: String, address: String): String {
+    val typed = address.trim().lowercase()
+    val scheme = typed.substringBefore("://", "").takeIf { it.isNotEmpty() }?.let { "$it://" } ?: return current
+    val accepts = kinds.firstOrNull { it.raw == current }?.schemes.orEmpty()
+    return if (scheme in accepts) current else kinds.firstOrNull { scheme in it.schemes }?.raw ?: current
 }
 
 internal fun kindLabel(label: String): String = sentenceCase(label.removeSuffix(" Video Stream").ifBlank { label })
