@@ -22,6 +22,7 @@ internal sealed interface DebugCommand {
 
 private val ORIENTATIONS = mapOf(
     "landscape" to ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+    "reverse-landscape" to ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,
     "portrait" to ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
     "auto" to ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
 )

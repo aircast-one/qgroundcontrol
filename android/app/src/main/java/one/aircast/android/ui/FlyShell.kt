@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
@@ -203,36 +204,38 @@ internal fun FlyScreen(
         val pipSize = Modifier.size(MINIMAP_WIDTH, MINIMAP_HEIGHT)
         val mapPipSize = if (mini == MiniMap.Thumb) Modifier.size(MINIMAP_THUMB) else pipSize
 
-        if (mapShown) {
+        if (mapShown && !mapIsPip) map(Modifier.fillMaxSize())
+        if (videoShown && !videoIsPip) video(Modifier.fillMaxSize(), true)
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(TOP_SCRIM_HEIGHT)
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Black.copy(alpha = TOP_SCRIM_ALPHA), Color.Transparent))),
+        )
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout)) {
+        if (mapShown && mapIsPip) {
             map(
-                if (mapIsPip) {
-                    Modifier
-                        .zIndex(1f)
-                        .align(pipAlign)
-                        .padding(AircastSpace.s3)
-                        .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
-                        .then(mapPipSize)
-                        .clip(mapPipShape)
-                        .border(2.dp, MaterialTheme.colorScheme.onSurface, mapPipShape)
-                } else {
-                    Modifier.fillMaxSize()
-                },
+                Modifier
+                    .zIndex(1f)
+                    .align(pipAlign)
+                    .padding(AircastSpace.s3)
+                    .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
+                    .then(mapPipSize)
+                    .clip(mapPipShape)
+                    .border(2.dp, MaterialTheme.colorScheme.onSurface, mapPipShape),
             )
         }
-        if (videoShown) {
+        if (videoShown && videoIsPip) {
             video(
-                if (videoIsPip) {
-                    Modifier
-                        .zIndex(1f)
-                        .align(pipAlign)
-                        .padding(AircastSpace.s3)
-                        .then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = false))
-                        .then(pipSize)
-                        .clip(MaterialTheme.shapes.medium)
-                } else {
-                    Modifier.fillMaxSize()
-                },
-                !videoIsPip,
+                Modifier
+                    .zIndex(1f)
+                    .align(pipAlign)
+                    .padding(AircastSpace.s3)
+                    .then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = false))
+                    .then(pipSize)
+                    .clip(MaterialTheme.shapes.medium),
+                false,
             )
         }
         if (mapIsPip) {
@@ -299,13 +302,6 @@ internal fun FlyScreen(
             if (layers) MapLayersSheet { layers = false }
         }
 
-        Box(
-            Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(TOP_SCRIM_HEIGHT)
-                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Black.copy(alpha = TOP_SCRIM_ALPHA), Color.Transparent))),
-        )
         val flyScreen = LocalFlyScreenState.current
         val videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
         CompositionLocalProvider(LocalFlyOsd provides (view == FlyView.Video)) {
@@ -384,6 +380,7 @@ internal fun FlyScreen(
             ) {
                 CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(valuesShown = true, chooser = false, compact = true, stacked = true) }
             }
+        }
         }
     }
 }
