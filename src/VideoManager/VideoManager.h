@@ -15,7 +15,6 @@
 #include <QtQuick/QQuickItem>
 #include <QtQuick/QQuickWindow>
 #endif
-// #include <QtQmlIntegration/QtQmlIntegration>
 #include <QtQmlIntegration/QtQmlIntegration>
 
 #ifdef QGC_UNITTEST_BUILD
@@ -46,6 +45,12 @@ class VideoManager : public QObject
     Q_PROPERTY(QStringList cameraStatuses       READ cameraStatuses                             NOTIFY camerasChanged)
     Q_PROPERTY(QVariantList cameraConnecting    READ cameraConnecting                           NOTIFY camerasChanged)
     Q_PROPERTY(QVariantList cameraRecording     READ cameraRecording                            NOTIFY recordingChanged)
+    Q_PROPERTY(QVariantList cameraConfigured    READ cameraConfigured                           NOTIFY camerasChanged)
+    Q_PROPERTY(QVariantList cameraUsable        READ cameraUsable                               NOTIFY camerasChanged)
+    Q_PROPERTY(QVariantList cameraFromDrone     READ cameraFromDrone                            NOTIFY camerasChanged)
+    Q_PROPERTY(QStringList cameraNames          READ cameraNames                                NOTIFY camerasChanged)
+    Q_PROPERTY(QStringList cameraSources        READ cameraSources                              NOTIFY camerasChanged)
+    Q_PROPERTY(QStringList cameraUrls           READ cameraUrls                                 NOTIFY camerasChanged)
     Q_PROPERTY(int      activeVideoSource       READ activeVideoSource                          NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     hasMultipleVideoSources READ hasMultipleVideoSources                    NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(QString  activeSourceLabel       READ activeSourceLabel                          NOTIFY activeVideoSourceChanged)
@@ -92,11 +97,14 @@ public:
 #endif
     Q_INVOKABLE QString cameraName(int index) const;
     QStringList cameraStatuses() const;
-    /// True per camera index while a connection attempt is in flight, as opposed to a state
-    /// that will not change on its own (no URL, bad URL). Only the former earns a spinner.
     QVariantList cameraConnecting() const;
     QVariantList cameraRecording() const;
-    /// Decoded-frame counter and last-frame timestamp for the camera at `index` (0 when unknown).
+    QVariantList cameraConfigured() const;
+    QVariantList cameraUsable() const;
+    QVariantList cameraFromDrone() const;
+    QStringList cameraNames() const;
+    QStringList cameraSources() const;
+    QStringList cameraUrls() const;
     quint64 cameraFramesDecoded(int index) const;
     quint64 cameraBytesReceived(int index) const;
     qint64 cameraSecondsSinceLastFrame(int index) const;
@@ -238,7 +246,6 @@ private:
     Vehicle *_activeVehicle = nullptr;
 
     std::atomic<InitState> _initState = InitState::NotStarted;
-    // Orders _backendInitFuture publication against cross-thread waiters.
     QMutex _initFutureMutex;
     QFuture<bool> _backendInitFuture;
     bool _initialized = false;

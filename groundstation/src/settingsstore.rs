@@ -114,7 +114,6 @@ fn platform_meta(group: &str, fact: &str, meta: MetaData) -> MetaData {
             enums: text_enums(crate::maptypes::map_type_list(&raw_setting("settings.flightMapSettings.mapProvider").and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default())),
             ..meta
         },
-        ("Video", "videoSource") => MetaData { enums: text_enums(stream_sources()), default: Some(json!(VIDEO_DISABLED)), ..meta },
         ("FlightMap", "elevationMapProvider") => MetaData { enums: text_enums(crate::maptypes::ELEVATION_PROVIDERS.iter().map(|p| p.to_string()).collect()), ..meta },
         _ => meta,
     }
@@ -396,7 +395,7 @@ pub fn open(path: &std::path::Path) {
         true => (cleared_on_boot(read), false),
         false => {
             let (values, upgraded) = versioned(cleared_on_boot(read));
-            (offered_video_source(values), upgraded)
+            (values, upgraded)
         }
     };
     if upgraded {
@@ -874,59 +873,8 @@ const PLATFORM_CAMERAS: &[&str] = crate::videostate::DEVICE_CAMERAS;
 #[cfg(not(target_os = "android"))]
 const PLATFORM_CAMERAS: &[&str] = &[];
 
-fn stream_sources() -> Vec<String> {
-    std::iter::once(VIDEO_DISABLED).chain(STREAM_SOURCE_ORDER).chain(FIXED_SOURCES).chain(PLATFORM_CAMERAS.iter().copied()).map(str::to_string).collect()
-}
-
-pub fn offered_video_source(values: BTreeMap<String, Setting>) -> BTreeMap<String, Setting> {
-    let field = key("Video", "videoSource");
-    let stale = matches!(values.get(&field), Some(Setting::Text(source)) if !stream_sources().contains(source));
-    match stale {
-        true => values.into_iter().chain(std::iter::once((field, Setting::Text(VIDEO_DISABLED.to_string())))).collect(),
-        false => values,
-    }
-}
-pub const URL_SOURCES: [(&str, &str); 6] = [
-    ("UDP h.264 Video Stream", "udpUrl"),
-    ("UDP h.265 Video Stream", "udpUrl"),
-    ("MPEG-TS Video Stream", "udpUrl"),
-    ("RTSP Video Stream", "rtspUrl"),
-    ("TCP-MPEG2 Video Stream", "tcpUrl"),
-    ("WebRTC (WHEP) Video Stream", "whepUrl"),
-];
-
-fn setting_text(fact: &str) -> Option<String> {
-    let meta = metadata("Video", fact)?;
-    Some(crate::control::raw_text(&raw("Video", fact, &meta)))
-}
-
-fn video_source_at(index: i64, source: Option<String>, setting: &impl Fn(&str) -> Option<String>) -> Option<(String, String)> {
-    let primary = || {
-        let source = source.clone()?;
-        let url = URL_SOURCES.iter().find(|(name, _)| *name == source).and_then(|(_, fact)| setting(fact)).unwrap_or_default();
-        Some((source, url.trim().to_string()))
-    };
-    let extras: Vec<Value> = serde_json::from_str(&setting("extraVideoSources")?).unwrap_or_default();
-    match (index > 0, usize::try_from(index - 1).ok().and_then(|at| extras.get(at))) {
-        (false, _) => primary(),
-        (true, Some(extra)) => Some((extra["source"].as_str().unwrap_or("").to_string(), extra["url"].as_str().unwrap_or("").trim().to_string())),
-        (true, None) => primary().map(|(source, _)| (source, String::new())),
-    }
-}
-
-fn video_answer(path: &str, args: &str, source: Option<String>, setting: impl Fn(&str) -> Option<String>) -> Option<String> {
-    let index = serde_json::from_str::<Value>(args).ok()?.get(0)?.as_i64()?;
-    let (source, url) = video_source_at(index, source, &setting)?;
-    let result = match path {
-        "settings.videoSettings.sourceEnabled" => source != VIDEO_DISABLED,
-        "settings.videoSettings.sourceConfigured" => !URL_SOURCES.iter().any(|(name, _)| *name == source) || !url.is_empty(),
-        _ => return None,
-    };
-    Some(json!({ "ok": true, "result": result }).to_string())
-}
-
-pub fn video_invoke(path: &str, args: &str) -> Option<String> {
-    video_answer(path, args, Some(stored_text("Video/videoSource").unwrap_or_else(|| VIDEO_DISABLED.to_string())), setting_text)
+pub fn camera_sources() -> Vec<String> {
+    STREAM_SOURCE_ORDER.iter().chain(FIXED_SOURCES.iter()).chain(PLATFORM_CAMERAS.iter()).map(|source| source.to_string()).collect()
 }
 
 pub struct Owner<B>(pub B);
@@ -942,7 +890,7 @@ impl<B: Backend> Backend for Owner<B> {
         enabled().then(|| set(&self.0, path, value)).flatten().unwrap_or_else(|| self.0.set(path, value))
     }
     fn invoke(&self, path: &str, args: &str) -> String {
-        enabled().then(|| crate::units::invoke(path, args).or_else(|| video_invoke(path, args)).or_else(|| owned_invoke(path, args))).flatten().unwrap_or_else(|| self.0.invoke(path, args))
+        enabled().then(|| crate::units::invoke(path, args).or_else(|| owned_invoke(path, args))).flatten().unwrap_or_else(|| self.0.invoke(path, args))
     }
     fn watch(&self, paths: &[String]) {
         self.0.watch(paths);
@@ -990,15 +938,11 @@ mod tests {
     }
 
     #[test]
-    fn without_qt_the_video_source_offers_qgcs_stream_sources_in_its_order() {
+    fn a_camera_can_be_any_stream_kind_or_preset_qgc_lists_and_never_disabled() {
         let qt: serde_json::Map<String, Value> = serde_json::from_str(include_str!("../tests/fixtures/settings-facts-by-qt.json")).unwrap();
-        let listed: Vec<String> = qt["settings.videoSettings.videoSource"]["enumStrings"].as_array().unwrap().iter().filter_map(|v| v.as_str().map(str::to_string)).take(11).collect();
-        assert_eq!(stream_sources(), listed, "the stream and fixed-camera sources VideoSettings lists before the platform's cameras");
-        let stale: BTreeMap<String, Setting> = [(key("Video", "videoSource"), Setting::Text("Gone Camera".into()))].into_iter().collect();
-        assert_eq!(offered_video_source(stale).get(&key("Video", "videoSource")), Some(&Setting::Text(VIDEO_DISABLED.into())), "a stored source no longer offered falls back to Disabled, as VideoSettings::videoSource does");
-        let kept: BTreeMap<String, Setting> = [(key("Video", "videoSource"), Setting::Text("Herelink Hotspot".into()))].into_iter().collect();
-        assert_eq!(offered_video_source(kept.clone()), kept);
-        assert!(STREAM_SOURCE_ORDER.iter().all(|name| URL_SOURCES.iter().any(|(source, _)| source == name)), "every offered stream has a URL setting");
+        let listed: Vec<String> = qt["settings.videoSettings.videoSource"]["enumStrings"].as_array().unwrap().iter().filter_map(|v| v.as_str().map(str::to_string)).skip(1).take(10).collect();
+        assert_eq!(camera_sources(), listed, "the stream and fixed-camera kinds VideoSettings lists after Disabled and before the platform's cameras");
+        assert!(!camera_sources().iter().any(|source| source == VIDEO_DISABLED));
     }
 
     #[test]
@@ -1206,22 +1150,6 @@ mod tests {
         assert_eq!(fact["defaultValueString"], "6.56");
         let speed = fact_json(&metadata("App", "offlineEditingCruiseSpeed").unwrap(), &json!(15.0), crate::units::cooking_with("m/s", |_| None, crate::units::IMPERIAL_US));
         assert_eq!(speed["units"], "mph");
-    }
-
-    #[test]
-    fn a_video_source_is_enabled_unless_disabled_and_configured_once_its_url_is_set() {
-        let setting = |fact: &str| match fact {
-            "rtspUrl" => Some(String::new()),
-            "extraVideoSources" => Some(json!([{ "source": "Video Stream Disabled", "url": "" }, { "source": "UDP h.264 Video Stream", "url": "0.0.0.0:5601" }]).to_string()),
-            _ => None,
-        };
-        let ask = |path: &str, index: i64, source: Option<&str>| video_answer(&format!("settings.videoSettings.{path}"), &format!("[{index}]"), source.map(str::to_string), setting).map(|r| crate::read::object(&r)["result"].clone());
-        let rtsp = Some("RTSP Video Stream");
-        assert_eq!((ask("sourceEnabled", 0, rtsp), ask("sourceConfigured", 0, rtsp)), (Some(json!(true)), Some(json!(false))), "an RTSP source with no URL is on but not configured");
-        assert_eq!(ask("sourceEnabled", 1, rtsp), Some(json!(false)));
-        assert_eq!(ask("sourceConfigured", 2, rtsp), Some(json!(true)));
-        assert_eq!(ask("sourceConfigured", 9, rtsp), Some(json!(false)), "past the extras Qt names the primary source but gives it no URL");
-        assert_eq!(ask("sourceEnabled", 0, Some(VIDEO_DISABLED)), Some(json!(false)), "VideoSettings defaults videoSource to disabled whenever a source exists, and RTSP always does");
     }
 
     #[test]

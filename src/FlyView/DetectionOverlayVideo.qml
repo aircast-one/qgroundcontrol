@@ -1,14 +1,3 @@
-/****************************************************************************
- *
- * Aircast detection overlay — draws object-detection boxes over the video.
- *
- * The video is untouched: aircastd relays boxes as JSON on the same host that
- * serves the RTSP stream, and this overlay polls them and paints them on top.
- * Geometry matches the painted video rect (this Item is sized to it by the
- * caller), so normalized 0..1 box coords map straight onto width/height.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
@@ -16,10 +5,12 @@ import QGroundControl
 Item {
     id: root
 
-    // The URL QGC is playing. Aircast serves detections on the same host.
-    property string videoUrl:     QGroundControl.settingsManager.videoSettings.rtspUrl.rawValue
-    property int    pollInterval: 100    // ms — 10 Hz
-    property int    staleAfterMs: 1000   // hide boxes if the newest frame is older than this
+    property string videoUrl: {
+        const vm = QGroundControl.videoManager
+        return vm.activeVideoSource >= 0 && vm.activeVideoSource < vm.cameraUrls.length ? vm.cameraUrls[vm.activeVideoSource] : ""
+    }
+    property int    pollInterval: 100
+    property int    staleAfterMs: 1000
 
     readonly property var    _parsed:  _parse(videoUrl)
     readonly property string _apiBase: _parsed.host ? "http://" + _parsed.host : ""
@@ -28,9 +19,6 @@ Item {
 
     visible: _apiBase !== "" && _camera !== ""
 
-    // rtsp://[user:pass@]host[:port]/path/<camera>[/whep|/whip][?query]
-    // -> { host, camera }. Aircast streams are rtsp://host:8554/<camera>, so the
-    // camera is the last path segment (ignoring a trailing whep/whip for WebRTC).
     function _parse(u) {
         var m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@\/]*@)?([^\/:?#]+)/i.exec(u || "")
         if (!m) return { host: "", camera: "" }

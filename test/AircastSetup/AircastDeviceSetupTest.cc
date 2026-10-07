@@ -31,7 +31,6 @@
 
 namespace {
 
-/// Minimal in-process aircastd: serves canned JSON for the device API paths.
 class FakeAircastd : public QObject
 {
 public:
@@ -63,8 +62,6 @@ public:
 
     QString hostWithPort() const { return QStringLiteral("127.0.0.1:%1").arg(_server.serverPort()); }
 
-    /// Delays every HTTP response by this many milliseconds, to deterministically make this device
-    /// the "slow, superseded" one in a race against another FakeAircastd.
     int responseDelayMs = 0;
 
     void setDevice(const QStringList &cameras, const QStringList &telemetryEndpoints)
@@ -109,11 +106,6 @@ QList<LinkConfiguration*> _aircastLinkConfigs()
 void _removeAircastLinkConfigs()
 {
     for (LinkConfiguration *config : _aircastLinkConfigs()) {
-        // The setup deep link connects the configuration it creates.
-        // removeConfiguration does not tear down a connection that is still in
-        // progress, so without this the link outlives the test and later suites --
-        // VehicleLinkManagerTest opens by asserting the link list is empty -- fail
-        // in a way that looks like flakiness because it depends on suite order.
         if (LinkInterface *const link = config->link()) {
             link->disconnect();
         }
@@ -130,7 +122,7 @@ void _applySetupDeepLink(const FakeAircastd &device)
     qgcApp()->handleDeepLink(QUrl(QStringLiteral("aircast-qgc://setup?host=%1").arg(device.hostWithPort())));
 }
 
-} // namespace
+}
 
 void AircastDeviceSetupTest::_configuresCamerasAndTelemetryFromDevice()
 {
@@ -140,16 +132,14 @@ void AircastDeviceSetupTest::_configuresCamerasAndTelemetryFromDevice()
     _applySetupDeepLink(device);
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
-    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->rtspUrl()->rawValue().toString(), QStringLiteral("rtsp://127.0.0.1:8554/cam1"), 5000);
-    QCOMPARE(videoSettings->videoSource()->rawValue().toString(), QString::fromUtf8(VideoSettings::videoSourceRTSP));
-    QCOMPARE(videoSettings->primaryCameraName()->rawValue().toString(), QStringLiteral("cam1 (127.0.0.1)"));
-
-    const QJsonArray extras = QJsonDocument::fromJson(videoSettings->extraVideoSources()->rawValue().toString().toUtf8()).array();
-    QCOMPARE(extras.size(), 1);
-    const QJsonObject extra = extras.first().toObject();
-    QCOMPARE(extra.value(QStringLiteral("name")).toString(), QStringLiteral("cam2 (127.0.0.1)"));
-    QCOMPARE(extra.value(QStringLiteral("source")).toString(), QString::fromUtf8(VideoSettings::videoSourceWebRTC));
-    QCOMPARE(extra.value(QStringLiteral("url")).toString(), QStringLiteral("http://127.0.0.1:8889/cam2/whep"));
+    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/cam1"), 5000);
+    const int first = videoSettings->currentIndex();
+    QCOMPARE(videoSettings->videoSourceNameAt(first), QString::fromUtf8(VideoSettings::videoSourceRTSP));
+    QCOMPARE(videoSettings->cameraName(first), QStringLiteral("cam1 (127.0.0.1)"));
+    QCOMPARE(videoSettings->videoSourceCount(), first + 2);
+    QCOMPARE(videoSettings->cameraName(first + 1), QStringLiteral("cam2 (127.0.0.1)"));
+    QCOMPARE(videoSettings->videoSourceNameAt(first + 1), QString::fromUtf8(VideoSettings::videoSourceRTSP));
+    QCOMPARE(videoSettings->videoUrlAt(first + 1), QStringLiteral("rtsp://127.0.0.1:8554/cam2"));
 
     QTRY_COMPARE_WITH_TIMEOUT(_aircastLinkConfigs().size(), 1, 5000);
     LinkConfiguration *linkConfig = _aircastLinkConfigs().first();
@@ -176,13 +166,12 @@ void AircastDeviceSetupTest::_camerasTheDeviceSteersToCloudflareAreWatchedThroug
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
     const QString cloudflare = QStringLiteral("http://%1/whep/cloudflare/").arg(device.hostWithPort());
-    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->whepUrl()->rawValue().toString(), cloudflare + QStringLiteral("cam1"), 5000);
-    QCOMPARE(videoSettings->videoSource()->rawValue().toString(), QString::fromUtf8(VideoSettings::videoSourceWebRTC));
-
-    const QJsonArray extras = QJsonDocument::fromJson(videoSettings->extraVideoSources()->rawValue().toString().toUtf8()).array();
-    QCOMPARE(extras.size(), 2);
-    QCOMPARE(extras.at(0).toObject().value(QStringLiteral("url")).toString(), QStringLiteral("http://127.0.0.1:8889/cam2/whep"));
-    QCOMPARE(extras.at(1).toObject().value(QStringLiteral("url")).toString(), cloudflare + QStringLiteral("cam3"));
+    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->currentVideoUrl(), cloudflare + QStringLiteral("cam1"), 5000);
+    const int first = videoSettings->currentIndex();
+    QCOMPARE(videoSettings->videoSourceNameAt(first), QString::fromUtf8(VideoSettings::videoSourceWebRTC));
+    QCOMPARE(videoSettings->videoSourceCount(), first + 3);
+    QCOMPARE(videoSettings->videoUrlAt(first + 1), QStringLiteral("rtsp://127.0.0.1:8554/cam2"));
+    QCOMPARE(videoSettings->videoUrlAt(first + 2), cloudflare + QStringLiteral("cam3"));
 
     _removeAircastLinkConfigs();
 }
@@ -244,13 +233,7 @@ void AircastDeviceSetupTest::_reapplyReplacesExistingLink()
     _applySetupDeepLink(device);
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
-    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->rtspUrl()->rawValue().toString(), QStringLiteral("rtsp://127.0.0.1:8554/front"), 5000);
-    // _applyDeviceTelemetry removes the existing configuration and constructs a new one
-    // (QGCApplication.cc:923 and :930), and the count is already 1 from the first apply - so the
-    // count check passes at once against the OLD config, and capturing the pointer before polling
-    // watches an object that is about to be torn down. Its host list empties as it goes, which is
-    // the failure this test produced twice: size 0 against an expected 1, after waiting the full
-    // five seconds for a pointer that could never change. The whole read has to be inside the retry.
+    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/front"), 5000);
     const auto reappliedHost = []() {
         const QList<LinkConfiguration*> configs = _aircastLinkConfigs();
         const UDPConfiguration *const udpConfig = configs.size() == 1 ? qobject_cast<UDPConfiguration*>(configs.first()) : nullptr;
@@ -270,10 +253,8 @@ void AircastDeviceSetupTest::_clientOnlyTelemetryEndpointCreatesNoLink()
     _applySetupDeepLink(device);
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
-    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->rtspUrl()->rawValue().toString(), QStringLiteral("rtsp://127.0.0.1:8554/cam1"), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/cam1"), 5000);
 
-    // The camera and telemetry replies land independently; give the telemetry
-    // handler a bounded window to (wrongly) create a link before asserting.
     QTest::qWait(200);
     verifyExpectedLogMessage();
     QCOMPARE(_aircastLinkConfigs().size(), 0);
@@ -281,9 +262,6 @@ void AircastDeviceSetupTest::_clientOnlyTelemetryEndpointCreatesNoLink()
 
 void AircastDeviceSetupTest::_staleReplyFromSupersededSetupIsIgnored()
 {
-    // deviceA is slow to respond; deviceB responds immediately. Firing deviceA's
-    // deep link and then immediately superseding it with deviceB's must leave
-    // deviceB's config in place even once deviceA's late reply finally arrives.
     FakeAircastd deviceA;
     deviceA.responseDelayMs = 300;
     deviceA.setDevice({QStringLiteral("stale")}, {QStringLiteral("udps:0.0.0.0:14550")});
@@ -295,12 +273,11 @@ void AircastDeviceSetupTest::_staleReplyFromSupersededSetupIsIgnored()
     _applySetupDeepLink(deviceB);
 
     VideoSettings *videoSettings = SettingsManager::instance()->videoSettings();
-    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->rtspUrl()->rawValue().toString(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"), 5000);
+    QTRY_COMPARE_WITH_TIMEOUT(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"), 5000);
 
-    // Let deviceA's delayed reply land, then confirm it did not clobber deviceB's config.
     QTest::qWait(deviceA.responseDelayMs + 200);
-    QCOMPARE(videoSettings->rtspUrl()->rawValue().toString(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"));
-    QCOMPARE(videoSettings->primaryCameraName()->rawValue().toString(), QStringLiteral("fresh (127.0.0.1)"));
+    QCOMPARE(videoSettings->currentVideoUrl(), QStringLiteral("rtsp://127.0.0.1:8554/fresh"));
+    QCOMPARE(videoSettings->cameraName(videoSettings->currentIndex()), QStringLiteral("fresh (127.0.0.1)"));
 
     QTRY_COMPARE_WITH_TIMEOUT(_aircastLinkConfigs().size(), 1, 5000);
     const UDPConfiguration *udpConfig = qobject_cast<UDPConfiguration*>(_aircastLinkConfigs().first());

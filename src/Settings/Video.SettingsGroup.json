@@ -12,58 +12,13 @@
             "keywords": "video source,camera,stream"
         },
         {
-            "name": "udpUrl",
-            "shortDesc": "Network address and port for UDP video stream (e.g. 0.0.0.0:5600).",
-            "longDesc": "UDP url address and port to bind to for video stream. Example: 0.0.0.0:5600",
-            "type": "string",
-            "default": "0.0.0.0:5600",
-            "label": "UDP URL",
-            "keywords": "udp,mpegts,video url,stream url"
-        },
-        {
-            "name": "rtspUrl",
-            "shortDesc": "Network address for RTSP video stream (e.g. rtsp://192.168.42.1:554/live).",
-            "longDesc": "RTSP url address and port to bind to for video stream. Example: rtsp://192.168.42.1:554/live",
-            "type": "string",
-            "default": "",
-            "label": "RTSP URL",
-            "keywords": "rtsp,video url,stream url"
-        },
-        {
-            "name": "tcpUrl",
-            "shortDesc": "Network address and port for TCP video stream (e.g. 192.168.143.200:3001).",
-            "longDesc": "TCP url address and port to bind to for video stream. Example: 192.168.143.200:3001",
-            "type": "string",
-            "default": "",
-            "label": "TCP URL",
-            "keywords": "tcp,video url,stream url"
-        },
-        {
-            "name": "whepUrl",
-            "shortDesc": "WebRTC WHEP endpoint url for video stream (e.g. https://sfu.example.com/whep/stream).",
-            "longDesc": "WebRTC WHEP endpoint url for video stream. Example: https://sfu.example.com/whep/stream",
-            "type": "string",
-            "default": "",
-            "label": "WHEP URL",
-            "keywords": "whep,webrtc,video url,stream url"
-        },
-        {
-            "name": "primaryCameraName",
-            "shortDesc": "Optional display name for the primary camera (Camera 1).",
-            "longDesc": "Optional display name for the primary camera (Camera 1).",
-            "type": "string",
-            "default": "",
-            "label": "Camera 1 name",
-            "keywords": "camera name"
-        },
-        {
-            "name": "extraVideoSources",
-            "shortDesc": "Additional camera streams beyond Camera 1.",
-            "longDesc": "JSON array of additional camera streams beyond Camera 1. Each entry is an object with 'name', 'source' and 'url' keys.",
+            "name": "cameras",
+            "shortDesc": "The cameras this ground station can show.",
+            "longDesc": "JSON array of cameras, in the order they are offered. Each entry is an object with 'name', 'source' and 'url' keys.",
             "type": "string",
             "default": "[]",
-            "label": "Additional video sources",
-            "keywords": "camera,multi camera,extra camera"
+            "label": "Cameras",
+            "keywords": "camera,cameras,multi camera"
         },
         {
             "name": "activeVideoSource",

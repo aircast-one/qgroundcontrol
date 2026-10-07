@@ -56,25 +56,30 @@ DeviceId makeDevice(const char *name, bool known)
 void PacketRadioTest::_videoSettingsRoundTripTest()
 {
     VideoSettings *video = SettingsManager::instance()->videoSettings();
-    FactRestorer restore({video->videoSource(), video->udpUrl(), video->lowLatencyMode()});
+    FactRestorer restore({video->cameras(), video->activeVideoSource(), video->lowLatencyMode()});
 
-    video->videoSource()->setRawValue(VideoSettings::videoSourceRTSP);
-    video->udpUrl()->setRawValue(QStringLiteral("127.0.0.1:1234"));
+    const QString mine = QStringLiteral(R"([{"name":"Front","source":"RTSP Video Stream","url":"rtsp://10.0.0.5:8554/front"}])");
+    video->cameras()->setRawValue(mine);
+    video->activeVideoSource()->setRawValue(0);
     video->lowLatencyMode()->setRawValue(false);
 
     PacketRadioManager manager;
 
     manager._applyVideoSettings(QStringLiteral("H265"));
-    QCOMPARE(video->videoSource()->rawValue().toString(), QString(VideoSettings::videoSourceUDPH265));
-    QCOMPARE(video->udpUrl()->rawValue().toString(), QStringLiteral("0.0.0.0:5600"));
+    QCOMPARE(video->videoSourceCount(), 2);
+    QCOMPARE(video->cameraName(1), QStringLiteral("Packet radio"));
+    QCOMPARE(video->videoSourceNameAt(1), QString(VideoSettings::videoSourceUDPH265));
+    QCOMPARE(video->videoUrlAt(1), QStringLiteral("0.0.0.0:5600"));
+    QCOMPARE(video->currentIndex(), 1);
     QVERIFY(video->lowLatencyMode()->rawValue().toBool());
 
     manager._applyVideoSettings(QStringLiteral("H264"));
-    QCOMPARE(video->videoSource()->rawValue().toString(), QString(VideoSettings::videoSourceUDPH264));
+    QCOMPARE(video->videoSourceCount(), 2);
+    QCOMPARE(video->videoSourceNameAt(1), QString(VideoSettings::videoSourceUDPH264));
 
     manager._restoreVideoSettings();
-    QCOMPARE(video->videoSource()->rawValue().toString(), QString(VideoSettings::videoSourceRTSP));
-    QCOMPARE(video->udpUrl()->rawValue().toString(), QStringLiteral("127.0.0.1:1234"));
+    QCOMPARE(video->cameras()->rawValue().toString(), mine);
+    QCOMPARE(video->currentIndex(), 0);
     QVERIFY(!video->lowLatencyMode()->rawValue().toBool());
 }
 

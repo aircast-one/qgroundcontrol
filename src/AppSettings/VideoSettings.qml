@@ -26,17 +26,10 @@ SettingsPage {
     property bool   _videoAutoStreamConfig: _videoManager.autoStreamConfigured
     property real   _fieldWidth:            ScreenTools.defaultFontPixelWidth * 40
 
-    function _primaryUrlFact(source) {
-        if (source === _videoSettings.udp264VideoSource || source === _videoSettings.udp265VideoSource || source === _videoSettings.mpegtsVideoSource)
-            return _videoSettings.udpUrl
-        if (source === _videoSettings.rtspVideoSource)   return _videoSettings.rtspUrl
-        if (source === _videoSettings.tcpVideoSource)    return _videoSettings.tcpUrl
-        if (source === _videoSettings.webrtcVideoSource) return _videoSettings.whepUrl
-        return null
+    function _sourceNeedsUrl(src) {
+        return [_videoSettings.udp264VideoSource, _videoSettings.udp265VideoSource, _videoSettings.mpegtsVideoSource,
+                _videoSettings.rtspVideoSource, _videoSettings.tcpVideoSource, _videoSettings.webrtcVideoSource].indexOf(src) >= 0
     }
-    function _sourceNeedsUrl(src) { return _primaryUrlFact(src) !== null }
-    function _primaryUrl() { var f = _primaryUrlFact(_videoSettings.videoSource.rawValue); return f ? f.rawValue : "" }
-    function _setPrimaryUrl(source, url) { var f = _primaryUrlFact(source); if (f) f.rawValue = url }
 
     function _sourceLabel(enumString) {
         return enumString === _videoSettings.disabledVideoSource ? qsTr("Disabled") : enumString.replace(/ Video Stream$/, "")
@@ -60,9 +53,9 @@ SettingsPage {
 
         ListModel { id: camerasModel }
 
-        function parseExtras() {
-            try { return JSON.parse(_videoSettings.extraVideoSources.rawValue || "[]") }
-            catch (e) { console.warn("VideoSettings: invalid extraVideoSources JSON:", e); return [] }
+        function parseCameras() {
+            try { return JSON.parse(_videoSettings.cameras.rawValue || "[]") }
+            catch (e) { console.warn("VideoSettings: invalid cameras JSON:", e); return [] }
         }
 
         function camRow(camIndex, name, source, url) {
@@ -70,56 +63,42 @@ SettingsPage {
         }
 
         function reload() {
-            const known = _videoSettings.videoSource.enumValues
-            const extras = parseExtras().map((cam, i) => camRow(i + 1, cam.name || "",
-                known.indexOf(cam.source || "") < 0 ? _videoSettings.disabledVideoSource : cam.source, cam.url || ""))
             camerasModel.clear()
-            camerasModel.append(camRow(0, _videoSettings.primaryCameraName.rawValue, _videoSettings.videoSource.rawValue, _primaryUrl()))
-            extras.forEach(cam => camerasModel.append(cam))
+            parseCameras().forEach((cam, i) => camerasModel.append(camRow(i, cam.name || "", cam.source || _videoSettings.disabledVideoSource, cam.url || "")))
+        }
+
+        function storeCameras(cameras) {
+            _videoSettings.cameras.rawValue = JSON.stringify(cameras)
         }
 
         function saveCamera(camIndex, name, source, url) {
-            const extras = camIndex === 0 ? null : parseExtras()
-            if (extras && extras.length !== camerasModel.count - 1) {
+            const cameras = parseCameras()
+            if (cameras.length !== camerasModel.count) {
                 reload()
                 return
             }
             camerasModel.set(camIndex, camRow(camIndex, name, source, url))
-            if (camIndex === 0) {
-                _videoSettings.primaryCameraName.rawValue = name
-                _setPrimaryUrl(source, url)
-                _videoSettings.videoSource.rawValue = source
-            } else {
-                _videoSettings.extraVideoSources.rawValue = JSON.stringify(
-                    extras.map((cam, i) => i === camIndex - 1 ? { name: name, source: source, url: url } : cam))
-            }
+            storeCameras(cameras.map((cam, i) => i === camIndex ? { name: name, source: source, url: url } : cam))
         }
 
-        function urlForSource(camIndex, source, currentUrl) {
-            const fact = camIndex === 0 ? _primaryUrlFact(source) : null
-            return fact ? fact.rawValue : _sourceNeedsUrl(source) ? currentUrl : ""
+        function urlForSource(source, currentUrl) {
+            return _sourceNeedsUrl(source) ? currentUrl : ""
         }
 
         function addCamera() {
-            const arr = parseExtras()
-            _videoSettings.extraVideoSources.rawValue = JSON.stringify([...arr, { name: "", source: _videoSettings.disabledVideoSource, url: "" }])
-            camerasModel.append(camRow(arr.length + 1, "", _videoSettings.disabledVideoSource, ""))
-            selectedIndex = arr.length + 1
+            const cameras = parseCameras()
+            storeCameras([...cameras, { name: "", source: _videoSettings.disabledVideoSource, url: "" }])
+            selectedIndex = cameras.length
         }
 
         function removeCamera(camIndex) {
-            _videoSettings.extraVideoSources.rawValue = JSON.stringify(parseExtras().filter((_, i) => i !== camIndex - 1))
+            storeCameras(parseCameras().filter((_, i) => i !== camIndex))
             if (_videoManager.activeVideoSource === camIndex) {
                 _videoManager.setActiveVideoSource(0)
             } else if (_videoManager.activeVideoSource > camIndex) {
                 _videoManager.setActiveVideoSource(_videoManager.activeVideoSource - 1)
             }
             selectedIndex = -1
-            reload()
-        }
-
-        function reloadIfStale() {
-            if (camerasModel.count === 0 || camerasModel.get(0).camSource !== _videoSettings.videoSource.rawValue) reload()
         }
 
         function confirmRemove(camIndex, name) {
@@ -130,8 +109,8 @@ SettingsPage {
         Component.onCompleted: reload()
 
         Connections {
-            target: _videoSettings.videoSource
-            function onRawValueChanged() { camList.reloadIfStale() }
+            target: _videoSettings.cameras
+            function onRawValueChanged() { camList.reload() }
         }
 
         Column {
@@ -152,7 +131,6 @@ SettingsPage {
                     readonly property string _url:    model.camUrl
 
                     readonly property bool   _open:     camList.selectedIndex === _index
-                    readonly property bool   _locked:   _index === 0 && _videoAutoStreamConfig
                     readonly property bool   _needsUrl: _sourceNeedsUrl(_source) && _url === ""
                     readonly property string _title:    _name !== "" ? _name : qsTr("Camera %1").arg(_index + 1)
 
@@ -194,7 +172,6 @@ SettingsPage {
 
                         PlanGroupRow {
                             text:    qsTr("Name")
-                            enabled: !camEntry._locked
 
                             QGCTextField {
                                 id:                     nameField
@@ -213,9 +190,7 @@ SettingsPage {
                             id:          sourceRow
                             objectName:  "camSourceRow"
                             text:        qsTr("Source")
-                            description: camEntry._locked ? qsTr("Configured automatically over MAVLink.") : ""
-                            interactive: !camEntry._locked
-                            enabled:     !camEntry._locked
+                            interactive: true
                             onClicked:   sourceMenu.openFrom(sourceRow)
 
                             QGCLabel {
@@ -248,7 +223,7 @@ SettingsPage {
                                             const source = _videoSettings.videoSource.enumValues[index]
                                             if (source !== camEntry._source) {
                                                 camList.saveCamera(camEntry._index, camEntry._name, source,
-                                                                   camList.urlForSource(camEntry._index, source, camEntry._url))
+                                                                   camList.urlForSource(source, camEntry._url))
                                             }
                                         }
                                     }
@@ -258,7 +233,6 @@ SettingsPage {
 
                         PlanGroupRow {
                             text:    qsTr("URL")
-                            enabled: !camEntry._locked
                             visible: _sourceNeedsUrl(camEntry._source)
 
                             QGCTextField {
@@ -278,7 +252,6 @@ SettingsPage {
                             text:        qsTr("Remove Camera")
                             textColor:   camList._qgcPal.colorRed
                             interactive: true
-                            visible:     camEntry._index > 0
                             onClicked:   camList.confirmRemove(camEntry._index, camEntry._title)
                         }
                     }

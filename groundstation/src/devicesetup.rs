@@ -1,5 +1,6 @@
-use serde_json::{Value, json};
+use serde_json::Value;
 
+use crate::cameras::Camera;
 use crate::linkconfig::{Kind, LinkConfig};
 
 pub const STREAM_CONFIG: &str = "/api/stream/config";
@@ -13,20 +14,17 @@ pub fn bare_host(host: &str) -> &str {
     host.split(':').next().unwrap_or(host)
 }
 
-pub fn camera_writes(host: &str, config: &Value, via: &Value) -> Vec<(&'static str, String)> {
+pub fn device_cameras(host: &str, config: &Value, via: &Value) -> Vec<Camera> {
     let bare = bare_host(host);
     let cams: Vec<&String> = config.get("paths").and_then(Value::as_object).map(|paths| paths.iter().filter(|(_, p)| p.get("source").and_then(Value::as_str).is_some_and(|s| !s.is_empty())).map(|(name, _)| name).collect()).unwrap_or_default();
-    let Some(primary) = cams.first() else { return Vec::new() };
-    let cloudflare = |cam: &str| via.get(cam).and_then(Value::as_str) == Some(CLOUDFLARE);
-    let whep = |cam: &str| if cloudflare(cam) { format!("http://{host}/whep/{CLOUDFLARE}/{cam}") } else { format!("http://{bare}:8889/{cam}/whep") };
-    let source = match cloudflare(primary) {
-        true => vec![("settings.videoSettings.whepUrl", whep(primary)), ("settings.videoSettings.videoSource", VIDEO_SOURCE_WEBRTC.to_string())],
-        false => vec![("settings.videoSettings.rtspUrl", format!("rtsp://{bare}:8554/{primary}")), ("settings.videoSettings.videoSource", VIDEO_SOURCE_RTSP.to_string())],
-    };
-    let extras: Vec<Value> = cams.iter().skip(1).map(|cam| json!({ "name": format!("{cam} ({bare})"), "source": VIDEO_SOURCE_WEBRTC, "url": whep(cam) })).collect();
-    source
-        .into_iter()
-        .chain([("settings.videoSettings.primaryCameraName", format!("{primary} ({bare})")), ("settings.videoSettings.extraVideoSources", Value::Array(extras).to_string())])
+    cams.iter()
+        .map(|cam| {
+            let name = format!("{cam} ({bare})");
+            match via.get(cam.as_str()).and_then(Value::as_str) == Some(CLOUDFLARE) {
+                true => Camera::new(&name, VIDEO_SOURCE_WEBRTC, &format!("http://{host}/whep/{CLOUDFLARE}/{cam}")),
+                false => Camera::new(&name, VIDEO_SOURCE_RTSP, &format!("rtsp://{bare}:8554/{cam}")),
+            }
+        })
         .collect()
 }
 
@@ -57,18 +55,17 @@ pub fn fetch(host: &str, path: &str) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
-    fn cameras_follow_apply_device_cameras() {
+    fn every_device_camera_becomes_a_camera_of_the_same_kind() {
         let config = json!({ "paths": { "front": { "source": "rtsp://cam" }, "rear": { "source": "rtsp://cam2" }, "idle": { "source": "" } } });
-        let direct = camera_writes("10.0.0.5:8080", &config, &json!({}));
-        assert_eq!(direct[0], ("settings.videoSettings.rtspUrl", "rtsp://10.0.0.5:8554/front".to_string()));
-        assert_eq!(direct[1].1, VIDEO_SOURCE_RTSP);
-        assert_eq!(direct[2], ("settings.videoSettings.primaryCameraName", "front (10.0.0.5)".to_string()));
-        assert_eq!(serde_json::from_str::<Value>(&direct[3].1).unwrap(), json!([{ "name": "rear (10.0.0.5)", "source": VIDEO_SOURCE_WEBRTC, "url": "http://10.0.0.5:8889/rear/whep" }]));
-        let cloud = camera_writes("10.0.0.5:8080", &config, &json!({ "front": "cloudflare" }));
-        assert_eq!(cloud[0], ("settings.videoSettings.whepUrl", "http://10.0.0.5:8080/whep/cloudflare/front".to_string()), "the cloudflare path goes through the device's own port");
-        assert!(camera_writes("h", &json!({ "paths": {} }), &json!({})).is_empty(), "no camera, nothing written");
+        let direct = device_cameras("10.0.0.5:8080", &config, &json!({}));
+        assert_eq!(direct, vec![Camera::new("front (10.0.0.5)", VIDEO_SOURCE_RTSP, "rtsp://10.0.0.5:8554/front"), Camera::new("rear (10.0.0.5)", VIDEO_SOURCE_RTSP, "rtsp://10.0.0.5:8554/rear")], "no camera is second class: each one is reached the same way");
+        let cloud = device_cameras("10.0.0.5:8080", &config, &json!({ "front": "cloudflare" }));
+        assert_eq!(cloud[0], Camera::new("front (10.0.0.5)", VIDEO_SOURCE_WEBRTC, "http://10.0.0.5:8080/whep/cloudflare/front"), "the cloudflare path goes through the device's own port");
+        assert_eq!(cloud[1].source, VIDEO_SOURCE_RTSP);
+        assert!(device_cameras("h", &json!({ "paths": {} }), &json!({})).is_empty(), "no camera, nothing added");
     }
 
     #[test]

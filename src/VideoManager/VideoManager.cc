@@ -125,9 +125,6 @@ void VideoManager::startVideoBackendInit()
         return;
     }
 
-    // CAS-gate NotStarted -> Pending: init() (GUI thread) and waitForVideoBackendReady() (other threads)
-    // both enter here; without it both launch VideoBackend::initialize() -> double-init SIGABRT.
-    // The mutex holds back waiters until _backendInitFuture is assigned.
     QMutexLocker lock(&_initFutureMutex);
     InitState expected = InitState::NotStarted;
     if (!_initState.compare_exchange_strong(expected, InitState::Pending)) {
@@ -136,7 +133,6 @@ void VideoManager::startVideoBackendInit()
     }
 
     const VideoBackend::EnvPrepResult envResult = VideoBackend::prepareEnvironment();
-    // Snapshot argv + env result here on the GUI thread; QCoreApplication::arguments() is not thread-safe.
     _backendInitFuture = QtConcurrent::run(&VideoBackend::initialize, QCoreApplication::arguments(), envResult);
 
     _backendInitFuture.then(this, [this](bool success) {
@@ -231,27 +227,17 @@ void VideoManager::init(QQuickWindow *mainWindow)
     }
 #endif
 
-    (void) connect(_videoSettings->videoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
-    (void) connect(_videoSettings->udpUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
-    (void) connect(_videoSettings->rtspUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
-    (void) connect(_videoSettings->tcpUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
-    (void) connect(_videoSettings->whepUrl(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
-    (void) connect(_videoSettings->extraVideoSources(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
-    (void) connect(_videoSettings->extraVideoSources(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_videoSettings->cameras(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
+    (void) connect(_videoSettings->cameras(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_holdStallRestartWhileSwitching);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
-    (void) connect(_videoSettings->primaryCameraName(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(this, &VideoManager::activeVideoSourceChanged, this, &VideoManager::camerasChanged);
     (void) connect(_videoSettings->aspectRatio(), &Fact::rawValueChanged, this, &VideoManager::aspectRatioChanged);
     (void) connect(_videoSettings->lowLatencyMode(), &Fact::rawValueChanged, this, [this](const QVariant &value) { Q_UNUSED(value); _restartAllVideos(); });
-    // rtpJitterLatencyMs needs a pipeline restart; route through _videoSourceChanged so _updateSettings
-    // pushes the new value to each receiver and restarts exactly once (no double restart).
     (void) connect(_videoSettings->rtpJitterLatencyMs(), &Fact::rawValueChanged, this, [this](const QVariant &value) { Q_UNUSED(value); _videoSourceChanged(); });
-    // autoReconnect is a live setting — push without restart so an in-flight reconnect
-    // can be cancelled mid-backoff.
     (void) connect(_videoSettings->rtspAutoReconnect(), &Fact::rawValueChanged, this, [this](const QVariant &value) {
         const bool enabled = value.toBool();
         for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
@@ -376,8 +362,6 @@ void VideoManager::_createVideoReceivers()
     }
 
     for (const QString &streamName : videoStreamList) {
-        // Skip only names that already initialized; a once-failed receiver was removed from the
-        // list, so re-entry retries it instead of being blocked by an all-or-nothing guard.
         if (existing.contains(streamName)) {
             continue;
         }
@@ -498,13 +482,11 @@ void VideoManager::grabImage(const QString &imageFile)
 
     for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
         receiver->takeScreenshot(_imageFile);
-        // QSharedPointer<QQuickItemGrabResult> result = receiver->widget()->grabToImage(const QSize &targetSize = QSize())
     }
 }
 
 double VideoManager::aspectRatio() const
 {
-    // Live decoded resolution wins — set by VideoReceiver::videoSizeChanged once frames flow.
     if (!_videoSize.isEmpty()) {
         return static_cast<double>(_videoSize.width()) / _videoSize.height();
     }
@@ -732,6 +714,61 @@ QVariantList VideoManager::cameraConnecting() const
     return connecting;
 }
 
+QVariantList VideoManager::cameraConfigured() const
+{
+    QVariantList configured;
+    const int count = _videoSettings->videoSourceCount();
+    for (int i = 0; i < count; ++i) {
+        configured.append(_videoSettings->sourceConfigured(i));
+    }
+    return configured;
+}
+
+QVariantList VideoManager::cameraUsable() const
+{
+    QVariantList usable;
+    const int count = _videoSettings->videoSourceCount();
+    for (int i = 0; i < count; ++i) {
+        usable.append(_videoSettings->sourceUsable(i));
+    }
+    return usable;
+}
+
+QVariantList VideoManager::cameraFromDrone() const
+{
+    return QVariantList(_videoSettings->videoSourceCount(), false);
+}
+
+QStringList VideoManager::cameraNames() const
+{
+    QStringList names;
+    const int count = _videoSettings->videoSourceCount();
+    for (int i = 0; i < count; ++i) {
+        names.append(_videoSettings->cameraName(i));
+    }
+    return names;
+}
+
+QStringList VideoManager::cameraSources() const
+{
+    QStringList sources;
+    const int count = _videoSettings->videoSourceCount();
+    for (int i = 0; i < count; ++i) {
+        sources.append(_videoSettings->videoSourceNameAt(i));
+    }
+    return sources;
+}
+
+QStringList VideoManager::cameraUrls() const
+{
+    QStringList urls;
+    const int count = _videoSettings->videoSourceCount();
+    for (int i = 0; i < count; ++i) {
+        urls.append(_videoSettings->videoUrlAt(i));
+    }
+    return urls;
+}
+
 QVariantList VideoManager::cameraRecording() const
 {
     QVariantList recording;
@@ -763,7 +800,6 @@ bool VideoManager::_cameraConnecting(int index) const
         if (state.decoding) {
             return false;
         }
-        // Streaming without frames yet is still progress being made.
         return state.streaming || state.connecting;
     }
     return false;
@@ -930,10 +966,6 @@ void VideoManager::_rebindWidgets()
         if (receiver->isThermal()) {
             continue;
         }
-        // A native head that has asked to render video itself must not also be handed a
-        // QML item. On Android the QML fly view is still hosted, so init() finds its video
-        // item by name and _widgetForCamera returns it — which silently kept the native
-        // sink from ever being created, however the flag was set.
 #ifndef QGC_HEADLESS_CORE
         QQuickItem *desired =
             _nativeRendering ? nullptr : _widgetForCamera(_cameraIndexForReceiver(receiver));
@@ -1023,8 +1055,6 @@ void VideoManager::_videoSourceChanged()
         }
     }
 
-    // hasVideo/isStreamSource/isUvc derive from the ACTIVE camera's source type; with pinned
-    // URIs a switch changes no receiver settings, so re-emit unconditionally.
     emit hasVideoChanged();
     emit isStreamSourceChanged();
     emit isUvcChanged();
@@ -1032,10 +1062,6 @@ void VideoManager::_videoSourceChanged()
 
     if (!changedReceivers.isEmpty()) {
         if (hasVideo()) {
-            // A camera switch stops one receiver and starts another. Some air units serve a
-            // single video encoder shared across their streams and will not feed a new stream
-            // until the previous one is fully torn down. So stop first, then release the
-            // incoming starts a short beat later.
             QList<VideoReceiver*> toStart;
             bool stoppedAny = false;
             for (VideoReceiver *receiver : std::as_const(changedReceivers)) {
@@ -1064,13 +1090,13 @@ void VideoManager::_videoSourceChanged()
             stopVideo();
         }
 
-        qCDebug(VideoManagerLog) << "New Video Source:" << _videoSettings->videoSource()->rawValue().toString();
+        qCDebug(VideoManagerLog) << "New Video Source:" << _videoSettings->currentVideoSourceName();
     }
 
     _rebindWidgets();
 }
 
-bool VideoManager::_updateUVC(VideoReceiver * /*receiver*/)
+bool VideoManager::_updateUVC(VideoReceiver *)
 {
     bool result = false;
 
@@ -1127,9 +1153,6 @@ bool VideoManager::_updateAutoStream(VideoReceiver *receiver)
     case VIDEO_STREAM_TYPE_RTSP:
         source = VideoSettings::videoSourceRTSP;
         url = pInfo->uri();
-        if (source == VideoSettings::videoSourceRTSP) {
-            _videoSettings->rtspUrl()->setRawValue(url);
-        }
         break;
     case VIDEO_STREAM_TYPE_TCP_MPEG:
         source = VideoSettings::videoSourceTCP;
@@ -1155,16 +1178,24 @@ bool VideoManager::_updateAutoStream(VideoReceiver *receiver)
         break;
     }
 
-    const bool settingsChanged = _updateVideoUri(receiver, url);
-    if (settingsChanged) {
-        if (!receiver->isThermal()) {
-            _videoSettings->videoSource()->setRawValue(source);
+    if (receiver->isThermal()) {
+        const bool changed = _updateVideoUri(receiver, url);
+        if (changed) {
+            emit autoStreamConfiguredChanged();
         }
-
-        emit autoStreamConfiguredChanged();
+        return changed;
     }
 
-    return settingsChanged;
+    if (source == VideoSettings::videoSourceNoVideo) {
+        return false;
+    }
+    const QJsonObject announced = VideoSettings::camera(pInfo->name().isEmpty() ? tr("Drone camera") : pInfo->name(), source, (source == VideoSettings::videoSourceRTSP) ? url : url.section(QStringLiteral("://"), -1));
+    if (_videoSettings->cameraList().contains(announced)) {
+        return false;
+    }
+    _videoSettings->adoptCamera(announced.value(QStringLiteral("name")).toString(), source, announced.value(QStringLiteral("url")).toString());
+    emit autoStreamConfiguredChanged();
+    return true;
 }
 
 bool VideoManager::_updateVideoUri(VideoReceiver *receiver, const QString &uri)
@@ -1209,7 +1240,6 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
     const bool autoReconnect = _videoSettings->rtspAutoReconnect()->rawValue().toBool();
     if (autoReconnect != receiver->autoReconnect()) {
         receiver->setAutoReconnect(autoReconnect);
-        // No settingsChanged: autoReconnect is live, doesn't require pipeline restart.
     }
 
     if (receiver->isThermal()) {
@@ -1222,10 +1252,6 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
     if (cameraIndex < 0) {
         settingsChanged |= _updateVideoUri(receiver, QString());
         return settingsChanged;
-    }
-
-    if (receiver->name() == QLatin1String(kMainReceiverName) && cameraIndex == 0) {
-        settingsChanged |= _updateAutoStream(receiver);
     }
 
     const QString source = _videoSettings->videoSourceNameAt(cameraIndex);
@@ -1292,7 +1318,6 @@ void VideoManager::_setActiveVehicle(Vehicle *vehicle)
         }
 
         for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-            // disconnect(receiver->videoStreamInfo(), &QGCVideoStreamInfo::infoChanged, ))
             receiver->setVideoStreamInfo(nullptr);
         }
     }
@@ -1318,7 +1343,6 @@ void VideoManager::_setActiveVehicle(Vehicle *vehicle)
             } else {
                 receiver->setVideoStreamInfo(nullptr);
             }
-            // connect(receiver->videoStreamInfo(), &QGCVideoStreamInfo::infoChanged, ))
         }
     } else {
         setfullScreen(false);
@@ -1350,7 +1374,6 @@ void VideoManager::_restartVideo(VideoReceiver *receiver)
 
     if (receiver->started()) {
         _stopReceiver(receiver);
-        // onStopComplete Signal Will Restart It
     } else {
         _startReceiver(receiver);
     }
@@ -1425,7 +1448,6 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver)
         return;
     }
 
-    // Register before any setup so re-entry is blocked at every point below; error paths remove it.
     _videoReceivers.append(receiver);
     if (!receiver->isThermal()) {
         _cloudFailover->watch(receiver);
@@ -1438,14 +1460,11 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         return;
     }
 
-    // Register before any setup so re-entry is blocked at every point below; error paths remove it.
     _videoReceivers.append(receiver);
     if (!receiver->isThermal()) {
         _cloudFailover->watch(receiver);
     }
 
-    // The thermal stream keeps its fixed widget; all camera receivers get their widget
-    // assigned by role (main view vs tile) in _rebindWidgets().
     if (receiver->isThermal() && window) {
         QQuickItem *widget = window->findChild<QQuickItem*>(receiver->name());
         if (!widget) {
@@ -1531,7 +1550,6 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         if (!receiver->isThermal()) {
             _receiverState[receiver->name()].decoding = active;
             emit camerasChanged();
-            // The main-view visibility tracks the active camera's receiver; tiles must not clobber it.
             if (_cameraIndexForReceiver(receiver) == _videoSettings->currentIndex()) {
                 _decoding = active;
                 emit decodingChanged();

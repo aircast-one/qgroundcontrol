@@ -4061,101 +4061,32 @@ func checkVideoStatus() {
 checkVideoStatus()
 
 func checkVideoSources() {
-    let live = "[{\"name\":\"\",\"source\":\"RTSP Video Stream\",\"url\":\"\"},"
-        + "{\"name\":\"0.0.0.0:5691\",\"source\":\"UDP h.264 Video Stream\",\"url\":\"\"},"
-        + "{\"name\":\"\",\"source\":\"Video Stream Disabled\",\"url\":\"\"}]"
+    let list = CameraList([
+        "class": "Cameras", "readable": true as NSNumber, "reason": "",
+        "cameras": [
+            ["slot": 0 as NSNumber, "stored": 0 as NSNumber, "title": "Nose", "name": "Nose",
+             "source": "RTSP Video Stream", "url": "rtsp://cam/live", "summary": "rtsp://cam/live",
+             "problem": NSNull(), "fromDrone": false as NSNumber, "active": true as NSNumber],
+            ["slot": 1 as NSNumber, "stored": NSNull(), "title": "Gimbal", "name": "Gimbal",
+             "source": "UDP h.264 Video Stream", "url": "0.0.0.0:5600", "summary": "0.0.0.0:5600",
+             "problem": "", "fromDrone": true as NSNumber, "active": false as NSNumber],
+        ],
+        "kinds": [
+            ["raw": "RTSP Video Stream", "label": "RTSP Video Stream", "needsUrl": true as NSNumber, "hint": "rtsp://"],
+            ["raw": "Back camera", "label": "Back camera", "needsUrl": false as NSNumber, "hint": ""],
+        ],
+    ])
+    expect(list.entries.count == 2, "every camera the core lists is read")
+    expect(list.entries[0].stored == 0 && list.entries[0].active, "a stored camera keeps its slot and says it is on screen")
+    expect(list.entries[1].stored == nil && list.entries[1].fromDrone, "a drone camera has no stored slot to edit")
+    expect(list.entries[1].problem == nil, "an empty problem is no problem")
+    expect(list.kinds.first?.label ?? "", "RTSP", "kind labels drop the Video Stream suffix")
+    expect(list.needsUrl(list.entries[0]), "an RTSP camera asks for an address")
+    expect(list.needsUrl(list.entries[1]), "a kind the core does not list still asks for one")
 
-    func camera(_ slot: Int, enabled: Bool, configured: Bool) -> VideoCamera? {
-        VideoCamera(["slot": slot as NSNumber, "title": "Camera \(slot + 1)", "status": "",
-                     "enabled": enabled as NSNumber, "configured": configured as NSNumber])
-    }
-    let answered = [camera(1, enabled: true, configured: false),
-                    camera(2, enabled: true, configured: false),
-                    camera(3, enabled: false, configured: false)].compactMap { $0 }
-
-    let sources = VideoSources.decode(live, cameras: answered)
-    expect(sources.count == 3, "every configured slot is read")
-    expect(sources[0].title, "Camera 1", "an unnamed slot is named by its number")
-    expect(sources[1].title, "0.0.0.0:5691", "a named one keeps its name")
-    expect(!sources[2].enabled, "a disabled slot is off")
-    expect(sources[2].summary, "Off", "and says so rather than complaining about an address")
-    expect(sources[0].misconfigured, "an enabled slot with no address cannot work")
-    expect(!sources[2].misconfigured, "a disabled one is not misconfigured, just off")
-    expect(sources[1].summary, "No address", "which is what the row reports")
-
-    let offset = VideoSources.decode(live, cameras: answered)
-    expect(offset[0].enabled && !offset[0].configured,
-           "extra slot 0 takes its answer from camera slot 1: VideoSettings numbers the main "
-           + "videoSource fact as slot 0, so reading camera slot 0 here would report the wrong "
-           + "camera's state for every row")
-
-    let webcam = "[{\"name\":\"\",\"source\":\"FaceTime HD Camera\",\"url\":\"\"}]"
-    let attached = VideoSources.decode(webcam,
-                                       cameras: [camera(1, enabled: true, configured: true)]
-                                           .compactMap { $0 })
-    expect(!attached[0].misconfigured,
-           "a source that needs no address is not broken for having none; this head used to call "
-           + "every empty url misconfigured, so a webcam, a Herelink and a 3DR Solo were each "
-           + "shown as faulty and offered for repair")
-    expect(attached[0].summary, "FaceTime HD Camera",
-           "and the row names it rather than reporting a blank address")
-
-    let unanswered = VideoSources.decode(live)
-    expect(!unanswered[0].misconfigured && !unanswered[2].misconfigured,
-           "a slot the core has not answered for yet accuses nothing; an absent reply must not "
-           + "read as a fault, which is the direction that puts a repair button on a good camera")
-
-    expect(VideoSources.decode("not json").isEmpty, "a corrupt setting yields no slots, not a crash")
-    expect(VideoSources.decode("").isEmpty, "nor does an empty one")
-
-    expect(VideoSources.readable(""),
-           "an empty setting is READABLE -- it says there are no extra sources, which is a fact "
-           + "about the configuration rather than a failure to read it")
-    expect(!VideoSources.readable("not json"),
-           "but an unparseable one is not, and the difference matters because write() encodes "
-           + "whatever list it holds: one edit after the corruption and [] replaces the operator's "
-           + "cameras permanently. A display bug becomes a data-loss bug at that line")
-    expect(!VideoSources.readable("{\"name\":\"Nose\"}"),
-           "valid JSON that is not an array is unreadable too -- an object is not a list of "
-           + "sources, and parsing successfully is not the same as parsing into the right shape")
-    expect(VideoSources.readable("[]"),
-           "and an explicit empty array is readable: somebody configured no extras")
-
-    let served = VideoSources.readability(["readable": false as NSNumber, "stored": "was here"],
-                                          stored: "")
-    expect(!served.readable && served.stored == "was here",
-           "the core's answer is preferred when it is there, and it carries the ORIGINAL text -- "
-           + "which is the difference between refusing safely and helping, because an operator "
-           + "who can see what is stored can retype it")
-
-    let older = VideoSources.readability(nil, stored: "not json")
-    expect(!older.readable,
-           "but a core that does not serve extraSources leaves the head's own parse deciding. "
-           + "The write gate depends on this answer, and a gate that fails OPEN on a missing "
-           + "field is not a gate")
-
-    expect(VideoSources.looksLikeAddress("0.0.0.0:5691"), "a host and port is an address")
-    expect(VideoSources.looksLikeAddress("rtsp://camera/live"), "so is a URL")
-    expect(!VideoSources.looksLikeAddress("Front camera"), "a human name is not")
-    expect(!VideoSources.looksLikeAddress("nose:cam"), "nor is a colon without a port number")
-    expect(!VideoSources.looksLikeAddress(""), "nor is nothing")
-
-    let repaired = VideoSources.repairs(sources[1])
-    expect(repaired?.url ?? "", "0.0.0.0:5691",
-           "an address typed into the name is offered as the address")
-    expect(repaired?.name ?? "?", "", "and stops being the name")
-    expect(VideoSources.repairs(sources[0]) == nil,
-           "a slot with no address anywhere has nothing to move")
-    expect(VideoSources.repairs(sources[2]) == nil, "and a disabled slot is left alone")
-
-    var fixed = sources[1]
-    fixed.url = "0.0.0.0:5691"
-    let updated = VideoSources.replacing(sources, at: 1, with: fixed)
-    expect(updated.count == 3, "replacing a slot keeps the others")
-    expect(updated[1].url, "0.0.0.0:5691", "and changes the one asked for")
-    expect(updated[0].url, "", "leaving its neighbours alone")
-    expect(VideoSources.encode(updated).contains("0.0.0.0:5691"),
-           "the encoded setting carries the address back to the vehicle settings")
+    let unreadable = CameraList(["class": "Cameras", "readable": false as NSNumber, "reason": "Unreadable", "cameras": [Any](), "kinds": [Any]()])
+    expect(!unreadable.readable && unreadable.reason == "Unreadable", "the core's refusal reason reaches the head")
+    expect(CameraList.empty.readable && CameraList.empty.entries.isEmpty, "no answer reads as no cameras")
 }
 
 checkVideoSources()

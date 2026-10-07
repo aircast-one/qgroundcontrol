@@ -834,20 +834,14 @@ void QGCApplication::_applyDeepLink(const QUrl &url)
     }
 
     if (!whep.isEmpty()) {
-        videoSettings->whepUrl()->setRawValue(whep);
-        videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceWebRTC));
+        videoSettings->adoptCamera(name, QString::fromUtf8(VideoSettings::videoSourceWebRTC), whep);
     } else if (!rtsp.isEmpty()) {
-        videoSettings->rtspUrl()->setRawValue(rtsp);
-        videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
+        videoSettings->adoptCamera(name, QString::fromUtf8(VideoSettings::videoSourceRTSP), rtsp);
     } else {
         if (debug.isEmpty()) {
             qCWarning(QGCApplicationLog) << "aircast-qgc deep link has no whep/rtsp query" << url.toString();
         }
         return;
-    }
-
-    if (!name.isEmpty()) {
-        videoSettings->primaryCameraName()->setRawValue(name);
     }
 
     qCDebug(QGCApplicationLog) << "Applied aircast-qgc deep link" << url.toString();
@@ -914,34 +908,14 @@ void QGCApplication::_applyDeviceCameras(const QString &host, const QJsonObject 
     if (!videoSettings) {
         return;
     }
-    const auto viaCloudflare = [&via](const QString &cam) {
-        return via.value(cam).toString() == QStringLiteral("cloudflare");
-    };
-    const auto whepUrl = [this, &host, &viaCloudflare](const QString &cam) {
-        return viaCloudflare(cam)
-            ? QStringLiteral("http://%1/whep/cloudflare/%2").arg(_deviceSetupHost, cam)
-            : QStringLiteral("http://%1:8889/%2/whep").arg(host, cam);
-    };
-
-    const QString primary = cams.first();
-    if (viaCloudflare(primary)) {
-        videoSettings->whepUrl()->setRawValue(whepUrl(primary));
-        videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceWebRTC));
-    } else {
-        videoSettings->rtspUrl()->setRawValue(QStringLiteral("rtsp://%1:8554/%2").arg(host, primary));
-        videoSettings->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
+    QJsonArray device;
+    for (const QString &cam : cams) {
+        const QString name = QStringLiteral("%1 (%2)").arg(cam, host);
+        device.append(via.value(cam).toString() == QStringLiteral("cloudflare")
+            ? VideoSettings::camera(name, QString::fromUtf8(VideoSettings::videoSourceWebRTC), QStringLiteral("http://%1/whep/cloudflare/%2").arg(_deviceSetupHost, cam))
+            : VideoSettings::camera(name, QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://%1:8554/%2").arg(host, cam)));
     }
-    videoSettings->primaryCameraName()->setRawValue(QStringLiteral("%1 (%2)").arg(primary, host));
-
-    QJsonArray extras;
-    for (int i = 1; i < cams.size(); ++i) {
-        extras.append(QJsonObject{
-            {QStringLiteral("name"), QStringLiteral("%1 (%2)").arg(cams.at(i), host)},
-            {QStringLiteral("source"), QString::fromUtf8(VideoSettings::videoSourceWebRTC)},
-            {QStringLiteral("url"), whepUrl(cams.at(i))},
-        });
-    }
-    videoSettings->extraVideoSources()->setRawValue(QString::fromUtf8(QJsonDocument(extras).toJson(QJsonDocument::Compact)));
+    videoSettings->adoptDeviceCameras(host, device);
 
     qCDebug(QGCApplicationLog) << "Aircast device setup: configured" << cams.size() << "camera(s) from" << host;
 }

@@ -191,15 +191,10 @@ pub extern "C" fn qgc_shutdown() {
     crate::settingsstore::persist();
 }
 
-fn write_setting(path: &str, value: &str) {
-    let payload = json!({ "value": value }).to_string();
-    taken(unsafe { crate::abi::qgc_core_set(text(path).as_ptr(), text(&payload).as_ptr()) });
-}
-
 fn setup_from_device(host: &str) {
     if let Some(config) = crate::devicesetup::fetch(host, crate::devicesetup::STREAM_CONFIG) {
         let via = crate::devicesetup::fetch(host, crate::devicesetup::WATCH_VIA).unwrap_or(Value::Null);
-        crate::devicesetup::camera_writes(host, &config, &via).iter().for_each(|(path, value)| write_setting(path, value));
+        crate::cameras::adopt_device(crate::devicesetup::bare_host(host), crate::devicesetup::device_cameras(host, &config, &via));
     }
     let Some(telemetry) = crate::devicesetup::fetch(host, crate::devicesetup::TELEMETRY_CONFIG) else { return };
     if let Some((api_base, link)) = crate::devicesetup::cloud_link(host, &telemetry) {
@@ -217,11 +212,13 @@ pub unsafe extern "C" fn qgc_handle_deep_link(link: *const c_char) {
     if let Some(host) = deep_link_device(&link) {
         std::thread::spawn(move || setup_from_device(&host));
     }
-    let Some((debug, writes)) = deep_link_writes(&link) else { return };
+    let Some((debug, camera)) = deep_link_writes(&link) else { return };
     if let Some(port) = debug {
         start_debug_server(port);
     }
-    writes.iter().for_each(|(path, value)| write_setting(path, value));
+    if let Some(camera) = camera {
+        crate::cameras::adopt(camera);
+    }
 }
 
 #[unsafe(no_mangle)]

@@ -29,10 +29,11 @@ pub trait Store {
     fn write(&self, key: &str, value: Option<&str>);
 }
 
-const VIDEO_SOURCE: &str = "Video/videoSource";
-const VIDEO_UDP_URL: &str = "Video/udpUrl";
+const VIDEO_CAMERAS: &str = "Video/cameras";
+const VIDEO_ACTIVE: &str = "Video/activeVideoSource";
 const VIDEO_LOW_LATENCY: &str = "Video/lowLatencyMode";
-const VIDEO_KEYS: [&str; 3] = [VIDEO_SOURCE, VIDEO_UDP_URL, VIDEO_LOW_LATENCY];
+const VIDEO_KEYS: [&str; 3] = [VIDEO_CAMERAS, VIDEO_ACTIVE, VIDEO_LOW_LATENCY];
+pub const RADIO_CAMERA: &str = "Packet radio";
 
 #[derive(Default)]
 pub struct Driver {
@@ -110,8 +111,10 @@ impl Driver {
                 if save_previous || self.saved_video.is_none() {
                     self.saved_video = Some(VIDEO_KEYS.iter().map(|key| (*key, store.read(key))).collect());
                 }
-                store.write(VIDEO_SOURCE, Some(source));
-                store.write(VIDEO_UDP_URL, Some(&format!("{host}:{port}")));
+                let listed = crate::cameras::parse(&store.read(VIDEO_CAMERAS).unwrap_or_default()).unwrap_or_default();
+                let (cameras, at) = crate::cameras::with_named(&listed, crate::cameras::Camera::new(RADIO_CAMERA, source, &format!("{host}:{port}")));
+                store.write(VIDEO_CAMERAS, Some(&crate::cameras::encode(&cameras)));
+                store.write(VIDEO_ACTIVE, Some(&at.to_string()));
                 store.write(VIDEO_LOW_LATENCY, Some(if low_latency { "true" } else { "false" }));
             }
             Out::RestoreVideo => {
@@ -488,7 +491,8 @@ mod tests {
     fn a_radio_turned_on_starts_polls_takes_over_video_and_gives_it_back_when_turned_off() {
         let radio = Fake { devices: vec![Adapter { display_name: "RTL8812AU [1:2]".into(), known: true }], ..Fake::default() };
         let store = Memory::default();
-        store.write(VIDEO_SOURCE, Some("RTSP Video Stream"));
+        let mine = crate::cameras::encode(&[crate::cameras::Camera::new("Front", "RTSP Video Stream", "rtsp://10.0.0.5:8554/front")]);
+        store.write(VIDEO_CAMERAS, Some(&mine));
         let mut driver = Driver::default();
         driver.tick(&radio, &store, &enabled(), Some("/k/default.key"), 0);
         assert_eq!(driver.machine.status(), Status::Listening);
@@ -497,12 +501,13 @@ mod tests {
         *radio.codec.borrow_mut() = Some("H265".into());
         driver.tick(&radio, &store, &enabled(), Some("/k/default.key"), POLL_INTERVAL_MS);
         assert_eq!(driver.machine.status(), Status::Receiving);
-        assert_eq!(store.read(VIDEO_SOURCE).as_deref(), Some(crate::packetradio::video_source("H265")));
-        assert_eq!(store.read(VIDEO_UDP_URL).as_deref(), Some("0.0.0.0:5600"));
+        let taken = crate::cameras::parse(&store.read(VIDEO_CAMERAS).unwrap()).unwrap();
+        assert_eq!(taken[1], crate::cameras::Camera::new(RADIO_CAMERA, crate::packetradio::video_source("H265"), "0.0.0.0:5600"), "the radio joins the cameras rather than replacing one");
+        assert_eq!(store.read(VIDEO_ACTIVE).as_deref(), Some("1"), "and is what the operator sees");
         driver.tick(&radio, &store, &Settings { enabled: false, ..enabled() }, Some("/k/default.key"), 2 * POLL_INTERVAL_MS);
         assert_eq!(driver.machine.status(), Status::Disabled);
-        assert_eq!(store.read(VIDEO_SOURCE).as_deref(), Some("RTSP Video Stream"));
-        assert_eq!(store.read(VIDEO_UDP_URL), None, "a setting that was never written is forgotten again, not left at the radio's port");
+        assert_eq!(store.read(VIDEO_CAMERAS), Some(mine), "the operator's own cameras come back as they were");
+        assert_eq!(store.read(VIDEO_ACTIVE), None, "a setting that was never written is forgotten again, not left pointing at the radio");
         assert_eq!(radio.calls.borrow().last().map(String::as_str), Some("stop"));
     }
 

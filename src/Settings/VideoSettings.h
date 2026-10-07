@@ -5,6 +5,7 @@
 #include "SettingsGroup.h"
 
 #include <QtCore/QJsonArray>
+#include <QtCore/QJsonObject>
 
 class VideoSettings : public SettingsGroup
 {
@@ -16,12 +17,7 @@ public:
     DEFINE_SETTING_NAME_GROUP()
 
     DEFINE_SETTINGFACT(videoSource)
-    DEFINE_SETTINGFACT(udpUrl)
-    DEFINE_SETTINGFACT(tcpUrl)
-    DEFINE_SETTINGFACT(rtspUrl)
-    DEFINE_SETTINGFACT(whepUrl)
-    DEFINE_SETTINGFACT(primaryCameraName)
-    DEFINE_SETTINGFACT(extraVideoSources)
+    DEFINE_SETTINGFACT(cameras)
     DEFINE_SETTINGFACT(activeVideoSource)
     DEFINE_SETTINGFACT(multiViewEnabled)
     DEFINE_SETTINGFACT(aspectRatio)
@@ -61,15 +57,17 @@ public:
     QString  videoUrlAt             (int index);
     QString  cameraName             (int index);
 
-    /// Indices that hold a real, playable source (always includes Camera 1). Disabled
-    /// additional cameras are excluded so they don't appear as switch targets.
     QList<int> switchableIndices     ();
     Q_INVOKABLE bool sourceConfigured (int index);
     Q_INVOKABLE bool sourceEnabled    (int index);
-
-    /// Switchable indices except the active one, in order — the cameras shown as
-    /// picture-in-picture tiles when multi-view is enabled.
+    bool     sourceUsable           (int index);
     QList<int> tileCameraIndices     ();
+
+    QJsonArray cameraList           ();
+    void     storeCameras           (const QJsonArray &cameras, int active);
+    void     adoptCamera            (const QString &title, const QString &source, const QString &url);
+    void     adoptDeviceCameras     (const QString &host, const QJsonArray &device);
+    static QJsonObject camera       (const QString &title, const QString &source, const QString &url);
 
     QString  rtspVideoSource        () { return videoSourceRTSP; }
     QString  udp264VideoSource      () { return videoSourceUDPH264; }
@@ -79,9 +77,6 @@ public:
     QString  webrtcVideoSource      () { return videoSourceWebRTC; }
     QString  disabledVideoSource    () { return videoDisabled; }
 
-    /// Remove hardware forced-decoder options absent from the running GStreamer registry, and
-    /// reset the active choice to Default if it was pruned. Call after the video backend has
-    /// initialized (the registry is empty until then).
     void pruneUnavailableDecoders();
 
     static constexpr const char* videoSourceNoVideo           = QT_TRANSLATE_NOOP("VideoSettings", "No Video Available");
@@ -105,13 +100,9 @@ private slots:
     void _configChanged             (QVariant value);
 
 private:
-    void _setDefaults               ();
     void _setForceVideoDecodeList();
-    QJsonArray _extraSourcesArray   ();
+    QJsonObject _cameraAt           (int index);
     static bool _isStreamSource     (const QString &source);
     static bool _sourceNeedsUrl     (const QString &source);
-
-private:
-    bool _noVideo = false;
 
 };

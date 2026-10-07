@@ -6,9 +6,9 @@
 #include "UDPLink.h"
 #include "VideoSettings.h"
 
-#include <QtCore/QJsonArray>
-#include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+
+#include <algorithm>
 
 #ifdef Q_OS_ANDROID
 #include <QtCore/QJniObject>
@@ -43,19 +43,16 @@ UDPConfiguration *makeAutoUdpConfig(const QString &name, quint16 localPort)
 
 bool isH16Managed(VideoSettings *video)
 {
-    const QString url = video->rtspUrl()->rawValue().toString().trimmed();
-    if (url.isEmpty()) {
-        return true;
-    }
-    for (const QString &path : SkydroidH16Links::kCameraPaths) {
-        if (url == SkydroidH16Links::cameraUrl(path)) {
-            return true;
-        }
-    }
-    return false;
+    const QJsonArray listed = video->cameraList();
+    return std::all_of(listed.begin(), listed.end(), [](const QJsonValue &entry) {
+        const QString url = entry.toObject().value(QStringLiteral("url")).toString().trimmed();
+        return std::any_of(SkydroidH16Links::kCameraPaths.begin(), SkydroidH16Links::kCameraPaths.end(), [&url](const QString &path) {
+            return url == SkydroidH16Links::cameraUrl(path);
+        });
+    });
 }
 
-} // namespace
+}
 
 QString SkydroidH16Links::cameraUrl(const QString &path)
 {
@@ -67,17 +64,13 @@ QString SkydroidH16Links::cameraName(int index)
     return QObject::tr("Camera %1").arg(index + 1);
 }
 
-QString SkydroidH16Links::extraCamerasJson()
+QJsonArray SkydroidH16Links::cameras()
 {
-    QJsonArray extras;
-    for (int i = 1; i < kCameraPaths.size(); ++i) {
-        QJsonObject camera;
-        camera.insert(QStringLiteral("name"), cameraName(i));
-        camera.insert(QStringLiteral("source"), QString::fromUtf8(VideoSettings::videoSourceRTSP));
-        camera.insert(QStringLiteral("url"), cameraUrl(kCameraPaths.at(i)));
-        extras.append(camera);
+    QJsonArray listed;
+    for (int i = 0; i < kCameraPaths.size(); ++i) {
+        listed.append(VideoSettings::camera(cameraName(i), QString::fromUtf8(VideoSettings::videoSourceRTSP), cameraUrl(kCameraPaths.at(i))));
     }
-    return QString::fromUtf8(QJsonDocument(extras).toJson(QJsonDocument::Compact));
+    return listed;
 }
 
 bool SkydroidH16Links::isThisRemote()
@@ -95,18 +88,10 @@ bool SkydroidH16Links::isThisRemote()
 int SkydroidH16Links::ensure(LinkManager *linkManager, AutoConnectSettings *autoConnect, VideoSettings *video)
 {
     int added = 0;
-    if (isH16Managed(video)) {
-        if (video->rtspUrl()->rawValue().toString().trimmed().isEmpty()) {
-            video->videoSource()->setRawValue(QString::fromUtf8(VideoSettings::videoSourceRTSP));
-            video->rtspUrl()->setRawValue(cameraUrl(kCameraPaths.first()));
-            video->primaryCameraName()->setRawValue(cameraName(0));
-            added++;
-        }
-        if (video->extraVideoSources()->rawValue().toString() != extraCamerasJson()) {
-            video->extraVideoSources()->setRawValue(extraCamerasJson());
-            video->multiViewEnabled()->setRawValue(true);
-            added++;
-        }
+    if (isH16Managed(video) && (video->cameraList() != cameras())) {
+        video->storeCameras(cameras(), 0);
+        video->multiViewEnabled()->setRawValue(true);
+        added++;
     }
     if (!hasUdpConfigOnLocalPort(linkManager, kTelemetryLocalPort)) {
         linkManager->addConfiguration(makeAutoUdpConfig(kTelemetryLinkName, kTelemetryLocalPort));

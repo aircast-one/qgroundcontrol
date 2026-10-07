@@ -108,11 +108,13 @@ internal fun FlyPortrait(
                 )
             }
             if (split) {
-                Box(Modifier.fillMaxWidth().height(videoHeight)) {
-                    if (reading?.decoding != true) Box(Modifier.matchParentSize().osdShadow()) { FlyNoVideoMessage() }
+                Column(Modifier.fillMaxWidth().height(videoHeight)) {
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        if (reading?.decoding != true) Box(Modifier.matchParentSize().osdShadow()) { FlyNoVideoMessage() }
+                    }
                     CompositionLocalProvider(LocalFlyOsd provides true) {
                         Row(
-                            Modifier.align(Alignment.BottomStart).padding(AircastSpace.s2).horizontalScroll(rememberScrollState()),
+                            Modifier.padding(AircastSpace.s2).horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                             verticalAlignment = Alignment.CenterVertically,
                         ) { keyRow() }

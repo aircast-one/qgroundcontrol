@@ -10,6 +10,7 @@
 #include "QGCHostNotices.h"
 #include "SysStatusSensorInfo.h"
 #include "SettingsManager.h"
+#include "VideoSettings.h"
 #include "AppSettings.h"
 #include "QGCMAVLink.h"
 #include "SettingsFact.h"
@@ -76,8 +77,6 @@ QJsonObject take(char *owned)
     return object;
 }
 
-// The qgc_qt_* entry points answer from QGCBridgeCore without the core's claims in front of it, and
-// their strings are Qt's to free.
 QJsonObject takeQt(char *owned)
 {
     const QJsonObject object = QJsonDocument::fromJson(QByteArray(owned)).object();
@@ -446,7 +445,6 @@ void QGCCoreCTest::_inspectorListsMessages()
     const QJsonObject first = view.value(QStringLiteral("messages")).toArray().first().toObject();
     QVERIFY(!first.value(QStringLiteral("name")).toString().isEmpty());
     QVERIFY(first.value(QStringLiteral("path")).toString().startsWith(QStringLiteral("mavlinkInspector.activeSystem.messages.")));
-    // QGCMAVLinkSystem selects the first message it hears, so the fields arrive without a selection.
     QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_bridge_get("view.inspector")).value(QStringLiteral("fields")).toArray().isEmpty(), 5000);
     const QJsonObject field = take(qgc_bridge_get("view.inspector")).value(QStringLiteral("fields")).toArray().first().toObject();
     QVERIFY(!field.value(QStringLiteral("name")).toString().isEmpty());
@@ -855,13 +853,16 @@ void QGCCoreCTest::_coreGuidedTakeoffReachesThePeer()
 
 void QGCCoreCTest::_detectionsFollowTheRtspUrl()
 {
-    const QString before = take(qgc_bridge_get("settings.videoSettings.rtspUrl.rawValue")).value(QStringLiteral("value")).toString();
-    const auto restore = qScopeGuard([before]() {
-        take(qgc_bridge_set("settings.videoSettings.rtspUrl", "{\"value\":\"\"}"));
+    VideoSettings *const video = SettingsManager::instance()->videoSettings();
+    const QVariant savedCameras = video->cameras()->rawValue();
+    const QVariant savedActive = video->activeVideoSource()->rawValue();
+    const auto restore = qScopeGuard([video, savedCameras, savedActive]() {
+        video->cameras()->setRawValue(QStringLiteral("[]"));
         take(qgc_bridge_get("view.detections"));
-        take(qgc_bridge_set("settings.videoSettings.rtspUrl", QJsonDocument(QJsonObject{{QStringLiteral("value"), before}}).toJson(QJsonDocument::Compact).constData()));
+        video->cameras()->setRawValue(savedCameras);
+        video->activeVideoSource()->setRawValue(savedActive);
     });
-    QVERIFY(take(qgc_bridge_set("settings.videoSettings.rtspUrl", "{\"value\":\"rtsp://127.0.0.1:8554/front/whep\"}")).value(QStringLiteral("ok")).toBool(false));
+    video->storeCameras(QJsonArray{VideoSettings::camera(QStringLiteral("Front"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://127.0.0.1:8554/front/whep"))}, 0);
     const QJsonObject detections = take(qgc_bridge_get("view.detections"));
     QCOMPARE(detections.value(QStringLiteral("class")).toString(), QStringLiteral("Detections"));
     QCOMPARE(detections.value(QStringLiteral("available")).toBool(false), true);
@@ -869,7 +870,7 @@ void QGCCoreCTest::_detectionsFollowTheRtspUrl()
     QCOMPARE(detections.value(QStringLiteral("camera")).toString(), QStringLiteral("front"));
     QCOMPARE(detections.value(QStringLiteral("stale")).toBool(false), true);
     QVERIFY(detections.value(QStringLiteral("boxes")).toArray().isEmpty());
-    QVERIFY(take(qgc_bridge_set("settings.videoSettings.rtspUrl", "{\"value\":\"\"}")).value(QStringLiteral("ok")).toBool(false));
+    video->cameras()->setRawValue(QStringLiteral("[]"));
     QCOMPARE(take(qgc_bridge_get("view.detections")).value(QStringLiteral("available")).toBool(true), false);
 }
 
@@ -1449,7 +1450,7 @@ const char *const kViewPaths[] = {
     "view.cameraProtocol", "view.joystickMapping",
     "view.operatorControl", "view.orbit", "view.vehicleLinks", "view.debugApi(GET,/native/windows)", "view.packetRadio(receiving)",
     "view.gpsRtkBase(trimble)", "view.mavlinkConsole", "view.itemCamera(1)", "view.itemFacts(1)", "view.itemFacts(4)", "view.videoSource(RTSP Video Stream,rtsp://127.0.0.1:8554/live,12)",
-    "view.gps", "view.terrainDownload", "view.firmware", "view.hostNotices", "view.hostNotices(0)", "view.firmwareUpgrade",
+    "view.gps", "view.terrainDownload", "view.firmware", "view.hostNotices", "view.hostNotices(0)", "view.firmwareUpgrade", "view.cameras",
 };
 
 QList<QByteArray> viewPathsWithFixtures()
@@ -1693,6 +1694,18 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
     }
     QList<QJsonObject> states { snapshotOfEveryView(viewPaths.constData(), viewPaths.size()) };
 
+    VideoSettings *const video = SettingsManager::instance()->videoSettings();
+    const QVariant savedCameras = video->cameras()->rawValue();
+    const QVariant savedActive = video->activeVideoSource()->rawValue();
+    const auto restoreCameras = qScopeGuard([video, savedCameras, savedActive]() {
+        video->cameras()->setRawValue(savedCameras);
+        video->activeVideoSource()->setRawValue(savedActive);
+    });
+    video->storeCameras(QJsonArray{
+        VideoSettings::camera(QStringLiteral("Front"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://127.0.0.1:8554/front")),
+        VideoSettings::camera(QStringLiteral("Belly"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QString()),
+    }, 0);
+
     _connectMockLink(MAV_AUTOPILOT_PX4);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("view.guidedActions")).value(QStringLiteral("connected")).toBool(false), 5000);
     QVERIFY2(!take(qgc_bridge_get("view.coreVehicle")).value(QStringLiteral("available")).toBool(false), "the core hub now holds a vehicle while the recording runs, so the seven core views named in kArgumentsNotRecorded can be recorded with a real id after all - record them with it and delete those entries, because the reason each one carries is now false");
@@ -1767,12 +1780,8 @@ void QGCCoreCTest::_viewShapesMatchTheRecordedContract()
 
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.missionSummary")).value(QStringLiteral("distanceMetres")).toDouble(0.0) > 0.0, 10000);
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_core_get("view.adsbTraffic")).value(QStringLiteral("ownPositionKnown")).toBool(false), 10000);
-    // view.hostNotices is empty until something posts, and an empty list pins no element shape and
-    // records destination and latestId as always null.
     QVERIFY(take(qgc_bridge_invoke("host.postNotice", "[\"message\", \"Recorder\", \"A message notice\"]")).value(QStringLiteral("ok")).toBool(false));
     QVERIFY(take(qgc_bridge_invoke("host.postNotice", "[\"navigation\", \"plan\", \"\"]")).value(QStringLiteral("ok")).toBool(false));
-    // view.inspector serves the selected message's fields; waiting for them keeps a recording that
-    // ran before the first message from pinning an empty list the element shape is absent from.
     QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_core_get("view.inspector")).value(QStringLiteral("fields")).toArray().isEmpty(), 5000);
     const auto preflightSettled = []() {
         const QJsonObject once = take(qgc_core_get("view.preflight"));
@@ -2009,8 +2018,6 @@ QString roundedCoordinates(const QJsonArray &points)
 void QGCCoreCTest::_serialConfigurationsCanBeCreatedByPath()
 {
     ignoreLogMessage("Comms.LinkManager", QtWarningMsg, QRegularExpression(QStringLiteral("createSerialConfiguration: bad name")));
-    // The core claims the path and refuses a nameless link itself, with the field and a reason, where
-    // LinkManager only logged "bad name" and answered a dispatched call with a false result.
     const QJsonObject refusedName = take(qgc_bridge_invoke("links.createSerialConfiguration", "[\"\",\"/dev/nonexistent\",57600]"));
     QCOMPARE(refusedName.value(QStringLiteral("ok")).toBool(true), false);
     QVERIFY(!refusedName.value(QStringLiteral("reason")).toString().isEmpty());
@@ -2833,9 +2840,6 @@ void QGCCoreCTest::_structureScanFlightPathMatchesTheRecordedOracle()
     const auto compact = [](const QJsonArray &array) { return QJsonDocument(array).toJson(QJsonDocument::Compact); };
     const QString item = QStringLiteral("plan.missionController.visualItems.1");
 
-    // The negative distances fly inside the structure, and DistanceToSurface declares a minimum of 0.1,
-    // so the core refuses them as QGC's own field would. This oracle pins the geometry QGC computes
-    // either side of the structure, so it writes to the Fact directly.
     const auto setFact = [&](const QString &path, const QJsonValue &value) {
         const QByteArray body = QJsonDocument(QJsonObject { { QStringLiteral("value"), value } }).toJson(QJsonDocument::Compact);
         QVERIFY2(takeQt(qgc_qt_set(path.toUtf8().constData(), body.constData())).value(QStringLiteral("ok")).toBool(false), qPrintable(path));
@@ -3286,8 +3290,6 @@ void QGCCoreCTest::_aLargeSurveyMakesTheRoundTripUnchanged()
     const QList<Sent> uploaded = spell(vehicle->missionManager()->missionItems());
     QVERIFY2(uploaded.count() > 200, qPrintable(QStringLiteral("this survey is meant to be larger than a vehicle's usual mission and it came to %1 items").arg(uploaded.count())));
 
-    // The mission lands before the fence and rally sends behind it, and the core refuses to clear a
-    // plan mid-sync, so the clear waits for the whole upload rather than the mission's part of it.
     QTRY_VERIFY_WITH_TIMEOUT(!take(qgc_bridge_get("plan.syncInProgress")).value(QStringLiteral("value")).toBool(true), 30000);
     restore();
     QTRY_VERIFY_WITH_TIMEOUT(take(qgc_bridge_get("plan.missionController.visualItems.count")).value(QStringLiteral("value")).toInt(-1) <= 1, 5000);

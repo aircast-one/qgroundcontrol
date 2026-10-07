@@ -114,7 +114,6 @@ internal const val CONNECTIONS_PAGE = "Connections"
 
 private val PAGE_GLANCES = mapOf(
     "Maps" to listOf("settings.flightMapSettings.mapProvider", "settings.flightMapSettings.mapType"),
-    "Video" to listOf("settings.videoSettings.videoSource"),
 )
 
 internal fun glanceText(displays: List<String>): String = displays.filter { it.isNotBlank() }.map(::sentenceCase).joinToString(" · ")
@@ -125,6 +124,10 @@ private fun pageGlance(title: String): String {
     if (title == GENERAL_PAGE) {
         val system by qgcDouble("settings.unitsSettings.unitSystem")
         return if (system.isNaN()) "" else unitSystemLabel(system.toInt())
+    }
+    if (title == VIDEO_PAGE) {
+        val cameras by qgcPath(CAMERAS_VIEW)
+        return camerasGlance(camerasReading(cameras))
     }
     val paths = PAGE_GLANCES[title] ?: return ""
     val displays = paths.map { path ->
@@ -155,7 +158,7 @@ internal val PAGE_NOTES = mapOf(
     "General" to "Appearance, sound, units and the defaults a new mission starts from",
     "Fly View" to "What the flight screen shows, the battery indicator and gimbal control",
     "Plan View" to "Defaults and rules for building a mission",
-    "Video" to "Stream source and address, and the cameras to switch between",
+    "Video" to "The cameras this ground station shows, and how it plays them",
     "Maps" to "Which provider draws the map, and how much imagery is kept on this device",
     "Connections" to "Serial, UDP and TCP links to the vehicle, and which kinds connect on their own",
     "MAVLink" to "Telemetry logging, how often the vehicle is asked to send each message, and forwarding",
@@ -550,6 +553,7 @@ private fun SettingsControls(
                 return@forEach
             }
             blockHeading(page.title, section, block).takeIf { it.isNotBlank() }?.let { SectionHeader(sentenceCase(it)) }
+            if (section.group == VIDEO_GROUP && block.title == CAMERAS_BLOCK && page.showsVideoSources) CamerasEditor()
             FactRuns(block.facts, onWrite)
             if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
             if (section.group == REMOTE_ID_GROUP && block.title == GCS_LOCATION_BLOCK) GcsPositionStatus()
@@ -558,7 +562,6 @@ private fun SettingsControls(
         section.note
             .takeIf { it.isNotBlank() && section.group !in GROUPS_WITH_A_HEAD_EDITOR }
             ?.let { FootNote(it) }
-        if (section.group == VIDEO_GROUP && page.showsVideoSources) ExtraVideoSourcesEditor()
         if (section.group == FLY_VIEW_GROUP) RcControlsEditor()
         if (section.group == VIEWER_3D_GROUP) OsmFilePicker(onWrite)
         if (section.group == OFFLINE_MAPS_GROUP) OfflineMapsSection()
@@ -568,6 +571,7 @@ private fun SettingsControls(
 }
 
 internal const val ADVANCED_BLOCK = "Advanced"
+internal const val CAMERAS_BLOCK = "Cameras"
 
 @Composable
 private fun AdvancedBlock(key: String, content: @Composable () -> Unit) {

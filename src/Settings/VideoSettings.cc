@@ -6,6 +6,7 @@
 #include <QtCore/QVariantList>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QUrl>
 
 QGC_LOGGING_CATEGORY(VideoSettingsLog, "Settings.VideoSettings")
 
@@ -21,7 +22,6 @@ static constexpr bool kGstEnabled = false;
 
 DECLARE_SETTINGGROUP(Video, "Video")
 {
-    // Setup enum values for videoSource settings into meta data
     QVariantList videoSourceList;
     videoSourceList.append(videoSourceRTSP);
     videoSourceList.append(videoSourceUDPH264);
@@ -29,7 +29,6 @@ DECLARE_SETTINGGROUP(Video, "Video")
     videoSourceList.append(videoSourceTCP);
     videoSourceList.append(videoSourceMPEGTS);
 #ifdef QGC_GST_STREAMING
-    // WHEP is implemented only in the GStreamer receiver; QMediaPlayer can't consume it
     videoSourceList.append(videoSourceWebRTC);
 #endif
     videoSourceList.append(videoSource3DRSolo);
@@ -50,14 +49,12 @@ DECLARE_SETTINGGROUP(Video, "Video")
         videoSourceList.append(device);
     }
     if (videoSourceList.count() == 0) {
-        _noVideo = true;
         videoSourceList.append(videoSourceNoVideo);
         setUserVisible(false);
     } else {
         videoSourceList.insert(0, videoDisabled);
     }
 
-    // make translated strings
     QStringList videoSourceCookedList;
     for (const QVariant& videoSource: videoSourceList) {
         videoSourceCookedList.append( VideoSettings::tr(videoSource.toString().toStdString().c_str()) );
@@ -67,7 +64,6 @@ DECLARE_SETTINGGROUP(Video, "Video")
 
     _setForceVideoDecodeList();
 
-    // Migrate legacy gpuZeroCopyEnabled (pre-rename) into the new force-CPU semantics.
     {
         QSettings settings;
         settings.beginGroup(settingsGroup);
@@ -83,17 +79,6 @@ DECLARE_SETTINGGROUP(Video, "Video")
         settings.endGroup();
     }
 
-    // Set default value for videoSource
-    _setDefaults();
-}
-
-void VideoSettings::_setDefaults()
-{
-    if (_noVideo) {
-        _nameToMetaDataMap[videoSourceName]->setRawDefaultValue(videoSourceNoVideo);
-    } else {
-        _nameToMetaDataMap[videoSourceName]->setRawDefaultValue(videoDisabled);
-    }
 }
 
 DECLARE_SETTINGSFACT(VideoSettings, aspectRatio)
@@ -106,39 +91,15 @@ DECLARE_SETTINGSFACT(VideoSettings, enableStorageLimit)
 DECLARE_SETTINGSFACT(VideoSettings, streamEnabled)
 DECLARE_SETTINGSFACT(VideoSettings, disableWhenDisarmed)
 
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, videoSource)
-{
-    if (!_videoSourceFact) {
-        _videoSourceFact = _createSettingsFact(videoSourceName);
-        //-- Check for sources no longer available
-        if(!_videoSourceFact->enumValues().contains(_videoSourceFact->rawValue().toString())) {
-            if (_noVideo) {
-                _videoSourceFact->setRawValue(videoSourceNoVideo);
-            } else {
-                _videoSourceFact->setRawValue(videoDisabled);
-            }
-        }
-        connect(_videoSourceFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
-    }
-    return _videoSourceFact;
-}
+DECLARE_SETTINGSFACT(VideoSettings, videoSource)
 
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, primaryCameraName)
+DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, cameras)
 {
-    if (!_primaryCameraNameFact) {
-        _primaryCameraNameFact = _createSettingsFact(primaryCameraNameName);
-        connect(_primaryCameraNameFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
+    if (!_camerasFact) {
+        _camerasFact = _createSettingsFact(camerasName);
+        connect(_camerasFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
     }
-    return _primaryCameraNameFact;
-}
-
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, extraVideoSources)
-{
-    if (!_extraVideoSourcesFact) {
-        _extraVideoSourcesFact = _createSettingsFact(extraVideoSourcesName);
-        connect(_extraVideoSourcesFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
-    }
-    return _extraVideoSourcesFact;
+    return _camerasFact;
 }
 
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, activeVideoSource)
@@ -159,14 +120,77 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, multiViewEnabled)
     return _multiViewEnabledFact;
 }
 
-QJsonArray VideoSettings::_extraSourcesArray()
+QJsonArray VideoSettings::cameraList()
 {
-    return QJsonDocument::fromJson(extraVideoSources()->rawValue().toString().toUtf8()).array();
+    return QJsonDocument::fromJson(cameras()->rawValue().toString().toUtf8()).array();
+}
+
+QJsonObject VideoSettings::_cameraAt(int index)
+{
+    const QJsonArray list = cameraList();
+    return (index >= 0 && index < list.size()) ? list.at(index).toObject() : QJsonObject{};
+}
+
+QJsonObject VideoSettings::camera(const QString &title, const QString &source, const QString &url)
+{
+    return QJsonObject{
+        {QStringLiteral("name"), title.trimmed()},
+        {QStringLiteral("source"), source.trimmed()},
+        {QStringLiteral("url"), url.trimmed()},
+    };
+}
+
+void VideoSettings::storeCameras(const QJsonArray &list, int active)
+{
+    const QString text = QString::fromUtf8(QJsonDocument(list).toJson(QJsonDocument::Compact));
+    if (cameras()->rawValue().toString() != text) {
+        cameras()->setRawValue(text);
+    }
+    if (activeVideoSource()->rawValue().toInt() != active) {
+        activeVideoSource()->setRawValue(active);
+    }
+}
+
+void VideoSettings::adoptCamera(const QString &title, const QString &source, const QString &url)
+{
+    const QJsonObject adopted = camera(title, source, url);
+    QJsonArray list = cameraList();
+    int at = list.size();
+    for (int i = 0; i < list.size(); ++i) {
+        if (!adopted.value(QStringLiteral("name")).toString().isEmpty() && list.at(i).toObject().value(QStringLiteral("name")) == adopted.value(QStringLiteral("name"))) {
+            at = i;
+            break;
+        }
+    }
+    if (at < list.size()) {
+        list.replace(at, adopted);
+    } else {
+        list.append(adopted);
+    }
+    storeCameras(list, at);
+}
+
+void VideoSettings::adoptDeviceCameras(const QString &host, const QJsonArray &device)
+{
+    if (device.isEmpty()) {
+        return;
+    }
+    QJsonArray list;
+    for (const QJsonValue &entry : cameraList()) {
+        if (QUrl(entry.toObject().value(QStringLiteral("url")).toString()).host() != host) {
+            list.append(entry);
+        }
+    }
+    const int first = list.size();
+    for (const QJsonValue &entry : device) {
+        list.append(entry);
+    }
+    storeCameras(list, first);
 }
 
 int VideoSettings::videoSourceCount()
 {
-    return 1 + _extraSourcesArray().size();
+    return cameraList().size();
 }
 
 bool VideoSettings::_isStreamSource(const QString &source)
@@ -191,8 +215,7 @@ bool VideoSettings::_sourceNeedsUrl(const QString &source)
 
 bool VideoSettings::sourceConfigured(int index)
 {
-    const QString source = videoSourceNameAt(index);
-    return !_sourceNeedsUrl(source) || !videoUrlAt(index).isEmpty();
+    return (index >= 0) && (index < videoSourceCount()) && (!_sourceNeedsUrl(videoSourceNameAt(index)) || !videoUrlAt(index).isEmpty());
 }
 
 bool VideoSettings::sourceEnabled(int index)
@@ -200,13 +223,19 @@ bool VideoSettings::sourceEnabled(int index)
     return videoSourceNameAt(index) != QString::fromUtf8(videoDisabled);
 }
 
+bool VideoSettings::sourceUsable(int index)
+{
+    const QString source = videoSourceNameAt(index);
+    return sourceConfigured(index) && (source != QString::fromUtf8(videoDisabled)) && (source != QString::fromUtf8(videoSourceNoVideo)) && !source.isEmpty();
+}
+
 QList<int> VideoSettings::switchableIndices()
 {
-    QList<int> indices{0};
-    const QJsonArray extras = _extraSourcesArray();
-    for (int i = 0; i < extras.size(); ++i) {
-        if (_isStreamSource(extras.at(i).toObject().value(QStringLiteral("source")).toString()) && sourceConfigured(i + 1)) {
-            indices.append(i + 1);
+    QList<int> indices;
+    const int count = videoSourceCount();
+    for (int i = 0; i < count; ++i) {
+        if (sourceUsable(i)) {
+            indices.append(i);
         }
     }
     return indices;
@@ -222,10 +251,11 @@ QList<int> VideoSettings::tileCameraIndices()
 int VideoSettings::currentIndex()
 {
     const int index = activeVideoSource()->rawValue().toInt();
-    if ((index <= 0) || (index >= videoSourceCount())) {
-        return 0;
+    if (sourceUsable(index)) {
+        return index;
     }
-    return sourceConfigured(index) ? index : 0;
+    const QList<int> usable = switchableIndices();
+    return usable.isEmpty() ? 0 : usable.first();
 }
 
 QString VideoSettings::currentVideoSourceName()
@@ -240,51 +270,18 @@ QString VideoSettings::currentVideoUrl()
 
 QString VideoSettings::videoSourceNameAt(int index)
 {
-    if (index <= 0) {
-        return videoSource()->rawValue().toString();
-    }
-    const QJsonArray extras = _extraSourcesArray();
-    if ((index - 1) >= extras.size()) {
-        return videoSource()->rawValue().toString();
-    }
-    return extras.at(index - 1).toObject().value(QStringLiteral("source")).toString();
+    const QJsonObject entry = _cameraAt(index);
+    return entry.isEmpty() ? QString::fromUtf8(videoDisabled) : entry.value(QStringLiteral("source")).toString().trimmed();
 }
 
 QString VideoSettings::cameraName(int index)
 {
-    if (index <= 0) {
-        return primaryCameraName()->rawValue().toString();
-    }
-    const QJsonArray extras = _extraSourcesArray();
-    if ((index - 1) >= extras.size()) {
-        return QString();
-    }
-    return extras.at(index - 1).toObject().value(QStringLiteral("name")).toString();
+    return _cameraAt(index).value(QStringLiteral("name")).toString().trimmed();
 }
 
 QString VideoSettings::videoUrlAt(int index)
 {
-    if (index <= 0) {
-        const QString source = videoSource()->rawValue().toString();
-        if (source == videoSourceUDPH264 || source == videoSourceUDPH265 || source == videoSourceMPEGTS) {
-            return udpUrl()->rawValue().toString().trimmed();
-        }
-        if (source == videoSourceRTSP) {
-            return rtspUrl()->rawValue().toString().trimmed();
-        }
-        if (source == videoSourceTCP) {
-            return tcpUrl()->rawValue().toString().trimmed();
-        }
-        if (source == videoSourceWebRTC) {
-            return whepUrl()->rawValue().toString().trimmed();
-        }
-        return QString();
-    }
-    const QJsonArray extras = _extraSourcesArray();
-    if ((index - 1) >= extras.size()) {
-        return QString();
-    }
-    return extras.at(index - 1).toObject().value(QStringLiteral("url")).toString().trimmed();
+    return _cameraAt(index).value(QStringLiteral("url")).toString().trimmed();
 }
 
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, forceVideoDecoder)
@@ -345,8 +342,6 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, forceCpuVideoPath)
     return _forceCpuVideoPathFact;
 }
 
-// videoConversionElement / disablePixelAspectRatio are read by VideoBackend::createSink()
-// into a VideoSinkConfig and passed as construct-only bin properties — no env-var indirection.
 DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, videoConversionElement)
 {
     if (!_videoConversionElementFact) {
@@ -378,64 +373,23 @@ DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, rtspTimeout)
     return _rtspTimeoutFact;
 }
 
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, udpUrl)
-{
-    if (!_udpUrlFact) {
-        _udpUrlFact = _createSettingsFact(udpUrlName);
-        connect(_udpUrlFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
-    }
-    return _udpUrlFact;
-}
-
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, rtspUrl)
-{
-    if (!_rtspUrlFact) {
-        _rtspUrlFact = _createSettingsFact(rtspUrlName);
-        connect(_rtspUrlFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
-    }
-    return _rtspUrlFact;
-}
-
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, tcpUrl)
-{
-    if (!_tcpUrlFact) {
-        _tcpUrlFact = _createSettingsFact(tcpUrlName);
-        connect(_tcpUrlFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
-    }
-    return _tcpUrlFact;
-}
-
-DECLARE_SETTINGSFACT_NO_FUNC(VideoSettings, whepUrl)
-{
-    if (!_whepUrlFact) {
-        _whepUrlFact = _createSettingsFact(whepUrlName);
-        connect(_whepUrlFact, &Fact::valueChanged, this, &VideoSettings::_configChanged);
-    }
-    return _whepUrlFact;
-}
-
 bool VideoSettings::streamConfigured(void)
 {
-    //-- First, check if it's autoconfigured
     if(VideoManager::instance()->autoStreamConfigured()) {
         qCDebug(VideoSettingsLog) << "Stream auto configured";
         return true;
     }
-    //-- Check if it's disabled (evaluate whichever source is currently active)
     QString vSource = currentVideoSourceName();
     if(vSource == videoSourceNoVideo || vSource == videoDisabled) {
         return false;
     }
-    //-- Stream sources that require a URL are configured once that URL is set
     if (_sourceNeedsUrl(vSource)) {
         return !currentVideoUrl().isEmpty();
     }
-    //-- If Herelink Air unit, good to go
     if(vSource == videoSourceHerelinkAirUnit) {
         qCDebug(VideoSettingsLog) << "Stream configured for Herelink Air Unit";
         return true;
     }
-    //-- If Herelink Hotspot, good to go
     if(vSource == videoSourceHerelinkHotspot) {
         qCDebug(VideoSettingsLog) << "Stream configured for Herelink Hotspot";
         return true;
@@ -507,8 +461,6 @@ void VideoSettings::pruneUnavailableDecoders()
     FactMetaData* const metaData = metaIt.value();
     bool pruned = false;
     for (const auto family : hardwareFamilies) {
-        // removeEnumInfo() qWarns on an absent value, so skip families not in the enum; values are
-        // stored as QVariant(int), so match that representation.
         const QVariant familyValue = static_cast<int>(family);
         if (!available.contains(family) && metaData->enumValues().contains(familyValue)) {
             metaData->removeEnumInfo(familyValue);
@@ -518,7 +470,6 @@ void VideoSettings::pruneUnavailableDecoders()
 
     Fact* const fact = forceVideoDecoder();
     if (pruned) {
-        // Backend init is async — refresh any live FactComboBox bound to this fact.
         emit fact->enumsChanged();
     }
     if (!metaData->enumValues().contains(fact->rawValue())) {

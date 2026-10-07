@@ -27,31 +27,28 @@ const UDPConfiguration *udpConfigOnPort(quint16 localPort)
     return nullptr;
 }
 
-} // namespace
+}
 
 void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
 {
     AutoConnectSettings *autoConnect = SettingsManager::instance()->autoConnectSettings();
     VideoSettings *video = SettingsManager::instance()->videoSettings();
     const QVariant savedAutoConnectUdp = autoConnect->autoConnectUDP()->rawValue();
-    const QVariant savedVideoSource = video->videoSource()->rawValue();
-    const QVariant savedRtspUrl = video->rtspUrl()->rawValue();
-    const QVariant savedExtras = video->extraVideoSources()->rawValue();
-    const QVariant savedPrimaryName = video->primaryCameraName()->rawValue();
+    const QVariant savedCameras = video->cameras()->rawValue();
+    const QVariant savedActive = video->activeVideoSource()->rawValue();
     const QVariant savedMultiView = video->multiViewEnabled()->rawValue();
     video->multiViewEnabled()->setRawValue(false);
     autoConnect->autoConnectUDP()->setRawValue(true);
-    video->rtspUrl()->setRawValue(QString());
-    video->extraVideoSources()->setRawValue(QStringLiteral("[]"));
+    video->cameras()->setRawValue(QStringLiteral("[]"));
     const int before = LinkManager::instance()->linkConfigurations()->count();
 
-    QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 4);
+    QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 3);
     QCOMPARE(LinkManager::instance()->linkConfigurations()->count(), before + 2);
     QVERIFY(!autoConnect->autoConnectUDP()->rawValue().toBool());
-    QCOMPARE(video->videoSource()->rawValue().toString(), QString::fromUtf8(VideoSettings::videoSourceRTSP));
-    QCOMPARE(video->rtspUrl()->rawValue().toString(), SkydroidH16Links::cameraUrl(SkydroidH16Links::kCameraPaths.first()));
-    QCOMPARE(video->primaryCameraName()->rawValue().toString(), QStringLiteral("Camera 1"));
     QCOMPARE(video->videoSourceCount(), 2);
+    QCOMPARE(video->videoSourceNameAt(0), QString::fromUtf8(VideoSettings::videoSourceRTSP));
+    QCOMPARE(video->videoUrlAt(0), SkydroidH16Links::cameraUrl(SkydroidH16Links::kCameraPaths.first()));
+    QCOMPARE(video->cameraName(0), QStringLiteral("Camera 1"));
     QCOMPARE(video->cameraName(1), QStringLiteral("Camera 2"));
     QCOMPARE(video->videoUrlAt(1), SkydroidH16Links::cameraUrl(SkydroidH16Links::kCameraPaths.at(1)));
     QVERIFY(video->multiViewEnabled()->rawValue().toBool());
@@ -71,23 +68,20 @@ void SkydroidH16LinksTest::_ensureCreatesBothLinksOnce()
     QCOMPARE(LinkManager::instance()->linkConfigurations()->count(), before + 2);
     QVERIFY(!video->multiViewEnabled()->rawValue().toBool());
 
-    video->extraVideoSources()->setRawValue(QStringLiteral("[]"));
+    video->storeCameras(QJsonArray{SkydroidH16Links::cameras().first()}, 0);
     QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 1);
     QCOMPARE(video->videoSourceCount(), 2);
 
-    video->rtspUrl()->setRawValue(QStringLiteral("rtsp://10.0.0.5/mine"));
-    video->extraVideoSources()->setRawValue(QStringLiteral("[]"));
+    video->storeCameras(QJsonArray{VideoSettings::camera(QStringLiteral("Mine"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://10.0.0.5/mine"))}, 0);
     QCOMPARE(SkydroidH16Links::ensure(LinkManager::instance(), autoConnect, video), 0);
-    QCOMPARE(video->rtspUrl()->rawValue().toString(), QStringLiteral("rtsp://10.0.0.5/mine"));
+    QCOMPARE(video->videoUrlAt(0), QStringLiteral("rtsp://10.0.0.5/mine"));
     QCOMPARE(video->videoSourceCount(), 1);
 
     LinkManager::instance()->removeConfiguration(const_cast<UDPConfiguration *>(telemetry));
     LinkManager::instance()->removeConfiguration(const_cast<UDPConfiguration *>(camera));
     autoConnect->autoConnectUDP()->setRawValue(savedAutoConnectUdp);
-    video->videoSource()->setRawValue(savedVideoSource);
-    video->rtspUrl()->setRawValue(savedRtspUrl);
-    video->extraVideoSources()->setRawValue(savedExtras);
-    video->primaryCameraName()->setRawValue(savedPrimaryName);
+    video->cameras()->setRawValue(savedCameras);
+    video->activeVideoSource()->setRawValue(savedActive);
     video->multiViewEnabled()->setRawValue(savedMultiView);
 }
 

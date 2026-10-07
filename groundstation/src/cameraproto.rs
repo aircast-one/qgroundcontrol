@@ -1181,6 +1181,30 @@ impl Cameras {
         self.cameras.iter().map(|camera| camera.info.model.clone()).collect()
     }
 
+    pub fn video_streams(&self) -> Vec<(String, u8, u8, String)> {
+        self.cameras
+            .iter()
+            .flat_map(|camera| {
+                let listed = camera.listed_streams();
+                let several = listed.len() > 1;
+                listed
+                    .into_iter()
+                    .filter(|stream| !stream.uri.trim().is_empty())
+                    .map(|stream| {
+                        let model = camera.info.model.trim();
+                        let name = match (model.is_empty(), stream.name.trim()) {
+                            (true, "") => format!("Drone camera {}", camera.compid),
+                            (true, stream_name) => stream_name.to_string(),
+                            (false, stream_name) if several && !stream_name.is_empty() => format!("{model} · {stream_name}"),
+                            (false, _) => model.to_string(),
+                        };
+                        (name, stream.kind, stream.encoding, stream.uri.clone())
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
     pub fn compid_at(&self, index: usize) -> Option<u8> {
         self.cameras.get(index).map(|camera| camera.compid)
     }

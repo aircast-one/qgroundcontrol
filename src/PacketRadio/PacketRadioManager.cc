@@ -390,21 +390,15 @@ void PacketRadioManager::_applyVideoSettings(const QString &codec)
     VideoSettings *video = SettingsManager::instance()->videoSettings();
 
     if (!_videoOverridden) {
-        _savedVideoSource = video->videoSource()->rawValue();
-        _savedUdpUrl = video->udpUrl()->rawValue();
+        _savedCameras = video->cameras()->rawValue();
+        _savedActiveVideoSource = video->activeVideoSource()->rawValue();
         _savedLowLatency = video->lowLatencyMode()->rawValue();
         _videoOverridden = true;
     }
 
     const QString source = (codec == QStringLiteral("H265")) ? VideoSettings::videoSourceUDPH265
                                                              : VideoSettings::videoSourceUDPH264;
-    if (video->videoSource()->rawValue().toString() != source) {
-        video->videoSource()->setRawValue(source);
-    }
-    const QString url = QStringLiteral("0.0.0.0:%1").arg(kVideoPort);
-    if (video->udpUrl()->rawValue().toString() != url) {
-        video->udpUrl()->setRawValue(url);
-    }
+    video->adoptCamera(QStringLiteral("Packet radio"), source, QStringLiteral("0.0.0.0:%1").arg(kVideoPort));
     if (!video->lowLatencyMode()->rawValue().toBool()) {
         video->lowLatencyMode()->setRawValue(true);
     }
@@ -416,8 +410,8 @@ void PacketRadioManager::_restoreVideoSettings()
         return;
     }
     VideoSettings *video = SettingsManager::instance()->videoSettings();
-    video->videoSource()->setRawValue(_savedVideoSource);
-    video->udpUrl()->setRawValue(_savedUdpUrl);
+    video->cameras()->setRawValue(_savedCameras);
+    video->activeVideoSource()->setRawValue(_savedActiveVideoSource);
     video->lowLatencyMode()->setRawValue(_savedLowLatency);
     _videoOverridden = false;
 }

@@ -5,19 +5,14 @@ use crate::router::Backend;
 
 pub const VIDEO_DEPS: &[&str] = &[
     "video.isStreamSource",
-    "video.hasMultipleVideoSources","settings.videoSettings.extraVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording", "settings.videoSettings.videoSource", "settings.videoSettings.udpUrl", "settings.videoSettings.rtspUrl", "settings.videoSettings.tcpUrl", "settings.videoSettings.whepUrl", "settings.videoSettings.streamEnabled"];
+    "video.hasMultipleVideoSources", "video.hasVideo", "video.decoding", "video.streaming", "video.recording", "video.activeVideoSource", "video.videoSize", "video.cameraStatuses", "video.cameraConnecting", "video.cameraRecording", "video.cameraConfigured", "video.cameraFromDrone", "video.cameraNames", "video.cameraSources", "video.cameraUrls", "settings.videoSettings.cameras", "settings.videoSettings.streamEnabled"];
 
-pub fn no_video_text(source: &str, udp: &str, rtsp: &str, tcp: &str, whep: &str) -> String {
-    if source.contains("UDP") || source.contains("MPEG-TS") {
-        return format!("No video on UDP port {}", udp.rsplit(':').next().unwrap_or(udp));
+pub fn no_video_text(source: &str, url: &str) -> String {
+    match () {
+        _ if source.contains("UDP") || source.contains("MPEG-TS") => format!("No video on UDP port {}", url.rsplit(':').next().unwrap_or(url)),
+        _ if url.is_empty() => format!("No video from {source}"),
+        _ => format!("No video from {url}"),
     }
-    let url = match () {
-        _ if source.contains("RTSP") => rtsp,
-        _ if source.contains("TCP") => tcp,
-        _ if source.contains("WHEP") => whep,
-        _ => "",
-    };
-    format!("No video from {}", if url.is_empty() { source } else { url })
 }
 pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasVideoStream,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,supportsTrackingRect,supportsTrackingPoint,streamLabels,currentStream";
 pub const CAMERA_DEPS: &[&str] = &[
@@ -67,13 +62,6 @@ const VIDEO_MODE: i64 = 1;
 const SURVEY_MODE: i64 = 2;
 const IDLE_CLOCK: &str = "00:00:00";
 
-pub(crate) fn slot_flag(backend: &dyn Backend, path: &str, slot: usize) -> bool {
-    crate::read::result_flag(&backend.invoke(path, &json!([slot]).to_string()))
-}
-
-pub fn source_chosen(source: &str) -> bool {
-    !source.is_empty() && source != crate::videostate::SOURCE_DISABLED && source != crate::videostate::SOURCE_NO_VIDEO
-}
 
 pub fn video_summary(build_shows_video: bool, available: bool, decoding: bool, recording: bool, connecting: bool, configured: usize) -> &'static str {
     match (build_shows_video, available, decoding, recording, connecting, configured) {
@@ -102,52 +90,28 @@ fn shot_points(backend: &dyn Backend) -> Vec<Value> {
         .unwrap_or_default()
 }
 
-fn extra_sources(backend: &dyn Backend) -> Value {
-    let stored = text(&object(&backend.get("settings.videoSettings.extraVideoSources")), "valueString");
-    let trimmed = stored.trim();
-    if trimmed.is_empty() {
-        return json!({ "readable": true, "sources": [], "stored": stored });
-    }
-    let listed = serde_json::from_str::<Value>(trimmed).ok().and_then(|parsed| parsed.as_array().cloned());
-    match listed {
-        Some(entries) => json!({
-            "readable": true,
-            "sources": entries.iter().enumerate().map(|(slot, entry)| json!({
-                "slot": slot,
-                "name": text(entry, "name"),
-                "source": text(entry, "source"),
-                "url": text(entry, "url"),
-            })).collect::<Vec<_>>(),
-            "stored": stored,
-        }),
-        None => json!({
-            "readable": false,
-            "sources": [],
-            "stored": stored,
-            "reason": "The extra video sources setting is not a readable list, so the cameras it holds cannot be shown. Editing them now would replace it.",
-        }),
-    }
-}
-
 pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let setting = |name: &str| object(&backend.get(&format!("settings.videoSettings.{name}"))).get("value").cloned().unwrap_or(Value::Null);
-    let setting_text = |name: &str| setting(name).as_str().unwrap_or_default().to_string();
-    let video = object(&backend.get_fields("video", "hasVideo,gstreamerEnabled,isStreamSource,decoding,streaming,recording,activeVideoSource,videoSize,hasMultipleVideoSources,cameraStatuses,cameraConnecting,cameraRecording"));
+    let video = object(&backend.get_fields("video", "hasVideo,gstreamerEnabled,isStreamSource,decoding,streaming,recording,activeVideoSource,videoSize,hasMultipleVideoSources,cameraStatuses,cameraConnecting,cameraRecording,cameraConfigured,cameraFromDrone,cameraNames,cameraSources,cameraUrls"));
     let strings = |key: &str| -> Vec<String> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default() };
     let flags = |key: &str| -> Vec<bool> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default() };
     let (statuses, connecting, recording_flags) = (strings("cameraStatuses"), flags("cameraConnecting"), flags("cameraRecording"));
+    let (configured_flags, drone_flags, names, sources, urls) = (flags("cameraConfigured"), flags("cameraFromDrone"), strings("cameraNames"), strings("cameraSources"), strings("cameraUrls"));
+    let active = integer(&video, "activeVideoSource").unwrap_or(0);
+    let at = |list: &Vec<String>| usize::try_from(active).ok().and_then(|index| list.get(index).cloned()).unwrap_or_default();
     let cameras: Vec<Value> = statuses
         .iter()
         .enumerate()
         .map(|(slot, status)| {
             json!({
                 "slot": slot,
-                "title": crate::read::ok_result(&backend.invoke("video.cameraName", &json!([slot]).to_string())).and_then(|v| v.as_str().map(str::to_string)).filter(|n| !n.is_empty()).unwrap_or_else(|| format!("Camera {}", slot + 1)),
+                "title": crate::cameras::title(names.get(slot).map_or("", String::as_str), slot),
                 "status": status,
                 "connecting": connecting.get(slot).copied().unwrap_or(false),
                 "recording": recording_flags.get(slot).copied().unwrap_or(false),
-                "enabled": slot_flag(backend, "settings.videoSettings.sourceEnabled", slot),
-                "configured": slot_flag(backend, "settings.videoSettings.sourceEnabled", slot) && slot_flag(backend, "settings.videoSettings.sourceConfigured", slot),
+                "enabled": true,
+                "configured": configured_flags.get(slot).copied().unwrap_or(false),
+                "fromDrone": drone_flags.get(slot).copied().unwrap_or(false),
             })
         })
         .collect();
@@ -172,17 +136,16 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "streaming": flag(&video, "streaming"),
         "recording": recording,
         "sourceSize": source_size,
-        "activeSource": integer(&video, "activeVideoSource").unwrap_or(0),
+        "activeSource": active,
         "multipleSources": flag(&video, "hasMultipleVideoSources"),
         "anyConnecting": any_connecting,
         "configuredCount": configured,
         "summary": video_summary(flag(&video, "gstreamerEnabled"), available, decoding, recording, any_connecting, configured),
         "streamEnabled": setting("streamEnabled").as_bool().unwrap_or(true),
-        "sourceChosen": source_chosen(setting_text("videoSource").as_str()),
+        "sourceChosen": !statuses.is_empty(),
         "noVideoReason": crate::videohost::stream_problem_text(),
-        "noVideoText": no_video_text(setting_text("videoSource").as_str(), setting_text("udpUrl").as_str(), setting_text("rtspUrl").as_str(), setting_text("tcpUrl").as_str(), setting_text("whepUrl").as_str()),
+        "noVideoText": no_video_text(&at(&sources), &at(&urls)),
         "cameras": cameras,
-        "extraSources": extra_sources(backend),
         "nativePipeline": crate::videohost::native_pipeline(),
         "deviceCamera": crate::videohost::device_camera(),
         "nativeRecording": crate::videohost::native_recording(),
@@ -387,16 +350,16 @@ mod tests {
 
     #[test]
     fn no_video_names_the_port_or_url_the_source_listens_on() {
-        assert_eq!(no_video_text("UDP h.264 Video Stream", "0.0.0.0:5600", "", "", ""), "No video on UDP port 5600");
-        assert_eq!(no_video_text("RTSP Video Stream", "", "rtsp://cam/live", "", ""), "No video from rtsp://cam/live");
-        assert_eq!(no_video_text("Herelink", "", "", "", ""), "No video from Herelink");
+        assert_eq!(no_video_text("UDP h.264 Video Stream", "0.0.0.0:5600"), "No video on UDP port 5600");
+        assert_eq!(no_video_text("RTSP Video Stream", "rtsp://cam/live"), "No video from rtsp://cam/live");
+        assert_eq!(no_video_text("Herelink", ""), "No video from Herelink");
     }
 
-    struct Fake { video: Value, camera: Value, enabled: Vec<bool>, configured: Vec<bool> }
+    struct Fake { video: Value, camera: Value }
 
     impl Fake {
         fn new(video: Value, camera: Value) -> Fake {
-            Fake { video, camera, enabled: Vec::new(), configured: Vec::new() }
+            Fake { video, camera }
         }
     }
 
@@ -420,14 +383,8 @@ mod tests {
             }
         }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, path: &str, args: &str) -> String {
-            let slot = serde_json::from_str::<Vec<usize>>(args).ok().and_then(|a| a.first().copied()).unwrap_or(0);
-            let answer = |slots: &[bool]| json!({ "ok": true, "result": slots.get(slot).copied().unwrap_or(false) }).to_string();
-            match path {
-                "settings.videoSettings.sourceEnabled" => answer(&self.enabled),
-                "settings.videoSettings.sourceConfigured" => answer(&self.configured),
-                _ => String::new(),
-            }
+        fn invoke(&self, _path: &str, _args: &str) -> String {
+            String::new()
         }
         fn watch(&self, _p: &[String]) {}
     }
@@ -617,58 +574,19 @@ mod tests {
             video_summary(false, true, true, false, false, 1),
             "only the build flag may claim a build limitation, whatever the stream is doing"
         );
-        let two_slots = Fake { enabled: vec![true, true, false], configured: vec![true, false, true], ..Fake::new(json!({ "kind": "object", "gstreamerEnabled": true, "hasVideo": true, "decoding": false, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": ["Connecting", "Waiting", "Waiting"], "cameraConnecting": [true, false, false], "cameraRecording": [] }), json!({ "kind": "null" })) };
-        let view = video_view(&two_slots, &[]);
-        assert!(view["extraSources"]["readable"].is_boolean(), "video_view has to CARRY the block; a head reads view.video and never calls extra_sources, so testing that function alone leaves the wiring unpinned - fifth time tonight");
+        let three = Fake::new(json!({ "kind": "object", "gstreamerEnabled": true, "hasVideo": true, "decoding": false, "videoSize": { "width": 640, "height": 480 }, "activeVideoSource": 2, "cameraStatuses": ["Connecting", "Waiting", "Waiting"], "cameraConnecting": [true, false, false], "cameraRecording": [], "cameraConfigured": [true, false, false], "cameraFromDrone": [false, false, true], "cameraNames": ["Nose", "", "SIYI A8"], "cameraSources": ["RTSP Video Stream", "RTSP Video Stream", "UDP h.264 Video Stream"], "cameraUrls": ["rtsp://a/nose", "", "0.0.0.0:5600"] }), json!({ "kind": "null" }));
+        let view = video_view(&three, &[]);
         assert_eq!(view["sourceSize"], Value::Null, "a size only counts while a frame is decoding");
         let decoding = video_view(&Fake::new(json!({ "kind": "object", "gstreamerEnabled": true, "hasVideo": true, "decoding": true, "videoSize": { "width": 640, "height": 480 }, "cameraStatuses": [], "cameraConnecting": [], "cameraRecording": [] }), json!({ "kind": "null" })), &[]);
         assert_eq!(decoding["sourceSize"], json!({ "width": 640, "height": 480 }));
         assert_eq!(view["cameras"][0]["configured"], true);
-        assert_eq!(view["cameras"][1]["configured"], false, "an enabled slot with no address is not configured");
-        assert_eq!(view["cameras"][2]["configured"], false, "a disabled slot needs no address, so asking only whether it is configured would call it ready");
-        assert_eq!(view["cameras"][2]["enabled"], false);
+        assert_eq!(view["cameras"][1]["configured"], false, "a camera with no address is not configured");
+        assert_eq!((view["cameras"][0]["title"].clone(), view["cameras"][1]["title"].clone()), (json!("Nose"), json!("Camera 2")), "an unnamed camera is named by its place in the list");
+        assert_eq!(view["cameras"][2]["fromDrone"], true, "a camera the drone announced is marked so the operator knows where it came from");
+        assert_eq!(view["noVideoText"], "No video on UDP port 5600", "the no-video sentence describes the camera on screen, whichever it is");
+        assert_eq!(view["sourceChosen"], true);
         assert_eq!(view["configuredCount"], 1);
         assert_eq!(view["summary"], "Waiting for a stream.");
-    }
-
-    #[test]
-    fn an_unreadable_source_list_is_not_an_empty_one() {
-        struct Stored(&'static str);
-        impl Backend for Stored {
-            fn get(&self, path: &str) -> String {
-                match path {
-                    "settings.videoSettings.extraVideoSources" => json!({ "kind": "fact", "name": "extraVideoSources", "valueString": self.0 }).to_string(),
-                    _ => json!({ "kind": "null" }).to_string(),
-                }
-            }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
-            fn watch(&self, _p: &[String]) {}
-        }
-
-        let two = extra_sources(&Stored(r#"[{"name":"Nose","source":"RTSP","url":"rtsp://a"},{"name":"Belly","source":"UDP","url":"udp://b"}]"#));
-        assert_eq!(two["readable"], true);
-        assert_eq!(two["sources"].as_array().unwrap().len(), 2);
-        assert_eq!(two["sources"][1]["name"], "Belly");
-        assert_eq!(two["sources"][1]["slot"], 1);
-
-        let none = extra_sources(&Stored("[]"));
-        assert_eq!(none["readable"], true, "an empty list is a readable answer: the operator has configured no extras");
-        assert_eq!(none["sources"].as_array().unwrap().len(), 0);
-
-        let unset = extra_sources(&Stored(""));
-        assert_eq!(unset["readable"], true, "an unset setting is not a corrupt one");
-
-        let broken = extra_sources(&Stored(r#"[{"name":"Nose","url":"rtsp://a"#));
-        assert_eq!(broken["readable"], false, "VideoSourceModel.swift returns [] here, which is the same value as no-extras - so an operator's cameras vanish looking exactly like a fresh install");
-        assert_eq!(broken["sources"].as_array().unwrap().len(), 0);
-        assert!(broken["stored"].as_str().unwrap().contains("Nose"), "the stored text travels so a head can show what is there and offer a repair; encode() over an empty list destroys it");
-        assert!(broken["reason"].as_str().unwrap().contains("replace"));
-
-        let wrong_shape = extra_sources(&Stored(r#"{"name":"Nose"}"#));
-        assert_eq!(wrong_shape["readable"], false, "valid JSON that is not an array is not a list of sources either");
-        assert_ne!(broken["readable"], none["readable"], "the whole point is that these two answer differently");
     }
 
     #[test]

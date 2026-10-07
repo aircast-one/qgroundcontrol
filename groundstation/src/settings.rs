@@ -4,7 +4,7 @@ use crate::control::decode;
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", "video.autoStreamConfigured", PERSISTENCE_OFF];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", "video.cameraStatuses", PERSISTENCE_OFF];
 const PERSISTENCE_OFF: &str = "settings.appSettings.disableAllPersistence";
 
 struct Page {
@@ -66,6 +66,8 @@ const HIDDEN: &[&str] = &[
     "detectionsHttpPort",
     "favoriteParameters",
     "activeVideoSource",
+    "videoSource",
+    "cameras",
     "rtpJitterLatencyMs",
     "rtspAutoReconnect",
     "forceCpuVideoPath",
@@ -97,7 +99,7 @@ const HIDDEN: &[&str] = &[
     "showMissionItemStatus",
     "showGimbalOnlyWhenSet",
 ];
-const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls"), ("extraVideoSources", "additional cameras")];
+const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls")];
 
 fn choices_json(fact: &Value, labels: Vec<String>, raws: Vec<Value>) -> Value {
     let current = fact.get("value").cloned().unwrap_or(Value::Null);
@@ -397,8 +399,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Files", &["savePath", "androidDontSaveToSDCard", "disableAllPersistence"]),
     ]),
     ("videoSettings", &[
-        ("Stream", &["videoSource", "udpUrl", "rtspUrl", "tcpUrl", "whepUrl", "streamEnabled"]),
-        ("Cameras", &["primaryCameraName", "multiViewEnabled"]),
+        ("Cameras", &["streamEnabled", "multiViewEnabled"]),
         ("Display", &["videoFit", "gridLines", "showRecControl"]),
         ("Local Video Storage", &["videoSavePath", "recordingFormat", "disableWhenDisarmed", "enableStorageLimit", "maxVideoSize"]),
         (ADVANCED_BLOCK, &["rtspTimeout", "lowLatencyMode", "forceVideoDecoder", "aspectRatio"]),
@@ -525,66 +526,15 @@ fn section_applies(group: &str, backend: Option<&dyn Backend>) -> bool {
     }
 }
 
-pub const AUTO_CONFIGURED: &str = "Configured automatically over MAVLink.";
-pub const STREAM_ADDRESS_NEEDED: &str = "Enter this address to show video.";
-
 pub const ADVANCED_BLOCK: &str = "Advanced";
-pub const NO_SOURCE_LABEL: &str = "None";
-
-pub fn source_label(label: &Value) -> Value {
-    match label.as_str() == Some(crate::videostate::SOURCE_DISABLED) {
-        true => json!(NO_SOURCE_LABEL),
-        false => label.clone(),
-    }
-}
-
-pub const VIDEO_SOURCE_PATH: &str = "settings.videoSettings.videoSource";
-
-pub fn video_source_control(mut control: Value) -> Value {
-    control["options"] = grouped_video_sources(control.get("options"));
-    control["display"] = source_label(&control["display"]);
-    control
-}
-
-pub fn grouped_video_sources(options: Option<&Value>) -> Value {
-    let listed = options.and_then(Value::as_array).cloned().unwrap_or_default();
-    json!(listed.into_iter().map(|mut option| {
-        let raw = option.get("raw").and_then(Value::as_str).unwrap_or_default().to_string();
-        if let Some(label) = option.get("label").map(source_label) {
-            option["label"] = label;
-        }
-        option["group"] = json!(match () {
-            _ if !crate::video::source_chosen(&raw) => "",
-            _ if crate::settingsstore::URL_SOURCES.iter().any(|(served, _)| *served == raw) => "Video streams",
-            _ if crate::videostate::DEVICE_CAMERAS.contains(&raw.as_str()) => "This device",
-            _ => "Vehicle and radio presets",
-        });
-        option
-    }).collect::<Vec<_>>())
-}
-
-pub fn stream_address_problem(name: &str, source: &str, value: &str) -> Option<&'static str> {
-    let url_fact = crate::settingsstore::URL_SOURCES.iter().find(|(served, _)| *served == source).map(|(_, fact)| *fact);
-    (url_fact == Some(name) && value.trim().is_empty()).then_some(STREAM_ADDRESS_NEEDED)
-}
-const PRIMARY_CAMERA: [&str; 6] = ["videoSource", "primaryCameraName", "udpUrl", "rtspUrl", "tcpUrl", "whepUrl"];
-
-fn auto_locked(control: Value) -> Value {
-    match control.get("name").and_then(Value::as_str).is_some_and(|name| PRIMARY_CAMERA.contains(&name)) {
-        true => Value::Object(control.as_object().cloned().unwrap_or_default().into_iter().chain([("enabled".to_string(), json!(false)), ("disabledReason".to_string(), json!(AUTO_CONFIGURED))]).collect()),
-        false => control,
-    }
-}
 
 const STREAM_ONLY: [&str; 4] = ["rtspTimeout", "disableWhenDisarmed", "lowLatencyMode", "aspectRatio"];
 
-pub fn video_row_shown(name: &str, source: &str, stream_source: bool, auto_configured: bool) -> bool {
-    let url_fact = crate::settingsstore::URL_SOURCES.iter().find(|(served, _)| *served == source).map(|(_, fact)| *fact);
+pub fn video_row_shown(name: &str, stream_source: bool, has_cameras: bool) -> bool {
     match name {
-        "udpUrl" | "rtspUrl" | "tcpUrl" | "whepUrl" => url_fact == Some(name),
         "forceVideoDecoder" => stream_source,
-        "streamEnabled" => crate::video::source_chosen(source),
-        _ if STREAM_ONLY.contains(&name) => stream_source && !auto_configured,
+        "streamEnabled" => has_cameras,
+        _ if STREAM_ONLY.contains(&name) => stream_source,
         _ => true,
     }
 }
@@ -609,9 +559,8 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
     let Some(backend) = backend else { return json!({ "title": title, "group": group, "path": path }) };
     let facts: Vec<Value> = object(&backend.get(&path)).get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
     let video = (group == "videoSettings").then(|| {
-        let manager = object(&backend.get_fields("video", "isStreamSource,autoStreamConfigured"));
-        let source = facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some("videoSource")).and_then(|f| f.get("value")).and_then(Value::as_str).unwrap_or_default().to_string();
-        (source, flag(&manager, "isStreamSource"), flag(&manager, "autoStreamConfigured"))
+        let manager = object(&backend.get_fields("video", "isStreamSource,cameraStatuses"));
+        (flag(&manager, "isStreamSource"), manager.get("cameraStatuses").and_then(Value::as_array).is_some_and(|cameras| !cameras.is_empty()))
     });
     let persistence_off = group == "mavlinkSettings" && object(&backend.get(PERSISTENCE_OFF)).get("value").and_then(Value::as_bool) == Some(true);
     let apm_streams = group != "mavlinkSettings" || section_applies("apmMavlinkStreamRateSettings", Some(backend));
@@ -621,7 +570,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .filter(|f| slice_shows(slice, f.get("name").and_then(Value::as_str).unwrap_or_default()))
         .filter(|f| !(persistence_off && f.get("name").and_then(Value::as_str).is_some_and(|n| LOGGING_ROWS.contains(&n))))
         .filter(|f| apm_streams || f.get("name").and_then(Value::as_str) != Some("apmStartMavlinkStreams"))
-        .filter(|f| video.as_ref().is_none_or(|(source, stream, auto)| video_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), source, *stream, *auto)))
+        .filter(|f| video.as_ref().is_none_or(|(stream, cameras)| video_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), *stream, *cameras)))
         .filter(|f| {
             let named = f.get("name").and_then(Value::as_str).unwrap_or_default();
             !HIDDEN_WHEN.iter().any(|(hidden, requires, when)| {
@@ -642,12 +591,6 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .map(|mut control| {
             let named = control.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
             control["keywords"] = json!(fact_keywords(group, &named));
-            if named == "videoSource" {
-                control = video_source_control(control);
-            }
-            if let Some(problem) = video.as_ref().and_then(|(source, _, _)| stream_address_problem(&named, source, control.get("valueString").and_then(Value::as_str).unwrap_or_default())) {
-                control["problem"] = json!(problem);
-            }
             qml_labelled(group, inverted(control))
         })
         .collect();
@@ -657,10 +600,6 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .flat_map(|(_, from)| object(&backend.get(&format!("settings.{from}"))).get("facts").and_then(Value::as_array).cloned().unwrap_or_default())
         .collect();
     let shown = gated(group, &shown, &[facts.clone(), borrowed].concat());
-    let shown = match video.as_ref().is_some_and(|(_, _, auto)| *auto) {
-        true => shown.into_iter().map(auto_locked).collect(),
-        false => shown,
-    };
     let desktop_only: Vec<&str> = facts.iter().filter_map(|f| f.get("name").and_then(Value::as_str)).filter_map(|n| DESKTOP_ONLY.iter().find(|(d, _)| *d == n).map(|(_, label)| *label)).collect();
     let note = match desktop_only.is_empty() {
         true => String::new(),
@@ -912,17 +851,13 @@ mod tests {
     }
 
     #[test]
-    fn video_rows_follow_the_source_like_video_settings() {
-        assert!(video_row_shown("rtspUrl", "RTSP Video Stream", true, false));
-        let locked = auto_locked(json!({ "name": "videoSource", "enabled": true }));
-        assert_eq!((locked["enabled"].clone(), locked["disabledReason"].clone()), (json!(false), json!(AUTO_CONFIGURED)), "VideoSettings.qml locks camera 0's name, source and URL while _videoAutoStreamConfig");
-        assert_eq!(auto_locked(json!({ "name": "streamEnabled", "enabled": true }))["enabled"], true);
-        assert!(!video_row_shown("udpUrl", "RTSP Video Stream", true, false), "only the selected source's URL");
-        assert!(video_row_shown("udpUrl", "MPEG-TS Video Stream", true, false));
-        assert!(!video_row_shown("whepUrl", "Video Stream Disabled", false, false));
-        assert!(!video_row_shown("lowLatencyMode", "RTSP Video Stream", true, true), "auto-configured streams hide the stream rows");
-        assert!(!video_row_shown("rtspTimeout", "UVC Device", false, false), "and so does a source that is not a stream");
-        assert!(video_row_shown("videoFit", "UVC Device", false, false));
+    fn video_rows_follow_the_cameras_on_offer() {
+        assert!(video_row_shown("lowLatencyMode", true, true));
+        assert!(!video_row_shown("rtspTimeout", false, true), "a camera that is not a stream has no stream rows");
+        assert!(!video_row_shown("forceVideoDecoder", false, true));
+        assert!(!video_row_shown("streamEnabled", false, false), "nothing to enable before a camera exists");
+        assert!(video_row_shown("streamEnabled", false, true));
+        assert!(video_row_shown("videoFit", false, false));
     }
 
     #[test]
@@ -1395,31 +1330,12 @@ mod tests {
         assert!(general["helpLinks"].as_array().unwrap().is_empty());
     }
     #[test]
-    fn an_empty_stream_address_is_flagged_and_stream_enabled_waits_for_a_source() {
-        assert_eq!(stream_address_problem("rtspUrl", "RTSP Video Stream", "  "), Some(STREAM_ADDRESS_NEEDED));
-        assert_eq!(stream_address_problem("rtspUrl", "RTSP Video Stream", "rtsp://10.0.0.1/live"), None);
-        assert_eq!(stream_address_problem("udpUrl", "RTSP Video Stream", ""), None, "only the address the chosen source reads is required");
-        assert!(!video_row_shown("streamEnabled", "Video Stream Disabled", false, false));
-        assert!(!video_row_shown("streamEnabled", "No Video Available", false, false));
-        assert!(video_row_shown("streamEnabled", "RTSP Video Stream", true, false));
-    }
-
-    #[test]
-    fn the_stream_address_sits_right_under_the_source_and_tuning_waits_in_advanced() {
+    fn the_video_page_opens_on_the_cameras_and_tuning_waits_in_advanced() {
         let video = SUBSECTIONS.iter().find(|(group, _)| *group == "videoSettings").map(|(_, blocks)| *blocks).unwrap();
-        assert_eq!(video[0].1[..2], ["videoSource", "udpUrl"], "the one input the job needs follows the source, not the camera name");
+        assert_eq!(video[0], ("Cameras", &["streamEnabled", "multiViewEnabled"][..]), "the camera list leads the page, and no camera is set up in a separate block of its own");
+        assert!(["videoSource", "cameras"].iter().all(|name| HIDDEN.contains(name)), "the camera list is edited by its own editor, not as rows");
         let advanced = video.iter().find(|(title, _)| *title == ADVANCED_BLOCK).unwrap().1;
         assert!(["rtspTimeout", "lowLatencyMode", "forceVideoDecoder", "aspectRatio"].iter().all(|name| advanced.contains(name)));
-    }
-
-    #[test]
-    fn video_sources_are_grouped_into_streams_and_presets() {
-        let grouped = grouped_video_sources(Some(&json!([{ "raw": "Video Stream Disabled", "label": "Video Stream Disabled" }, { "raw": "RTSP Video Stream", "label": "RTSP Video Stream" }, { "raw": "Herelink Hotspot" }])));
-        assert_eq!(grouped[0]["group"], "");
-        assert_eq!(grouped[0]["label"], "None", "a source called disabled read like the opposite of the Video stream enabled switch below it");
-        assert_eq!(grouped[1]["label"], "RTSP Video Stream");
-        assert_eq!(grouped[1]["group"], "Video streams");
-        assert_eq!(grouped[2]["group"], "Vehicle and radio presets");
     }
 
 }

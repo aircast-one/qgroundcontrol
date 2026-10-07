@@ -312,8 +312,6 @@ void CameraControlTest::_removingAControlOffersUndo()
     QVERIFY(QMetaObject::invokeMethod(undoButton, "clicked"));
     QVERIFY(settings->rcControls()->rawValue().toString().contains(QStringLiteral("Spray")));
 
-    // Undo must restore the row at its original position (index 0), not append it at the end -
-    // otherwise every other row's position shifts under the user after a single mis-click.
     QQuickItem* const restoredLabel = findItemByName(view.rootObject(), QStringLiteral("rcControlLabel0"));
     QVERIFY(restoredLabel);
     QCOMPARE(restoredLabel->property("text").toString(), QStringLiteral("Spray"));
@@ -341,8 +339,6 @@ void CameraControlTest::_scrollToItemPositionsTheFlickableAtTheSection()
 
     QVERIFY(QMetaObject::invokeMethod(page, "scrollToItem", Q_ARG(QVariant, QVariant::fromValue(group))));
 
-    // Custom RC Controls sits well down a long settings page - jumping to it should move the
-    // flickable well past the top, not leave the user to scroll there themselves.
     QVERIFY(flickable->property("contentY").toReal() > 0.0);
 }
 
@@ -363,8 +359,6 @@ void CameraControlTest::_pendingScrollFlagScrollsOnPageOpen()
     view.engine()->rootContext()->setContextProperty(QStringLiteral("globals"), &globals);
     QVERIFY(loadTestView(view, QStringLiteral("qrc:/unittest/CameraControlSettingsTest.qml")));
 
-    // The actual scroll is deferred behind Qt.callLater until the ColumnLayout settles - pump
-    // the event loop so that queued call has actually run before checking the result.
     QCoreApplication::processEvents();
     QCoreApplication::processEvents();
 
@@ -372,7 +366,6 @@ void CameraControlTest::_pendingScrollFlagScrollsOnPageOpen()
     QVERIFY(flickable);
     QVERIFY(flickable->property("contentY").toReal() > 0.0);
 
-    // Consumed once used, so simply reopening Settings later doesn't jump the user around.
     QVERIFY(!qsettings.value(QStringLiteral("scrollToRcControls")).toBool());
 }
 
@@ -579,12 +572,8 @@ void CameraControlTest::_addingAControlHighlightsItInTheFlyView()
     QVERIFY(rcLayer);
     QCOMPARE(rcLayer->property("_justAddedChannel").toInt(), 7);
 
-    // Consumed once picked up, so revisiting the fly view later doesn't replay a stale pulse.
     QCOMPARE(qsettings.value(QStringLiteral("rcControlJustAdded")).toString(), QString());
 
-    // Stop the highlight pulse before the Repeater tears the slider down: restoreRcControls
-    // flushes the deferred delete synchronously, and a NumberAnimation still mid-flight against
-    // an item that just got destroyed is exactly the crash the app hit in production.
     rcLayer->setProperty("_justAddedChannel", -1);
     restoreRcControls(settings, saved);
 }
@@ -650,8 +639,6 @@ void CameraControlTest::_momentarySwitchReleasesWhenEditModeInterruptsThePress()
     QVERIFY(QMetaObject::invokeMethod(momentary, "pressed"));
     QVERIFY(momentary->property("checked").toBool());
 
-    // The same long-press that arms edit mode disables this button's own MouseArea mid-press,
-    // so no onReleased signal ever fires. The channel must not stay latched at max PWM.
     overlayRig->setProperty("editMode", true);
     QVERIFY(!momentary->property("checked").toBool());
 
@@ -722,8 +709,8 @@ void CameraControlTest::_aimDragDrivesTheGimbal()
 void CameraControlTest::_shutterAppearsForAMappedRecordChannel()
 {
     VideoSettings* const videoSettings = SettingsManager::instance()->videoSettings();
-    const QVariant savedSource = videoSettings->videoSource()->rawValue();
-    videoSettings->videoSource()->setRawValue(videoSettings->disabledVideoSource());
+    const QVariant savedCameras = videoSettings->cameras()->rawValue();
+    videoSettings->cameras()->setRawValue(QStringLiteral("[]"));
 
     {
         ChannelMappingScope mapping(0, 0, 0, 0, 0);
@@ -761,7 +748,7 @@ void CameraControlTest::_shutterAppearsForAMappedRecordChannel()
     QVERIFY(QMetaObject::invokeMethod(layer, "toggleRecording"));
     QVERIFY(!layer->property("_recording").toBool());
 
-    videoSettings->videoSource()->setRawValue(savedSource);
+    videoSettings->cameras()->setRawValue(savedCameras);
 }
 void CameraControlTest::_pinchAndSliderShareOneZoomValue()
 {
@@ -817,8 +804,8 @@ void CameraControlTest::_yawModeButtonOnlyWithAGimbalManager()
 void CameraControlTest::_shutterFollowsTheRecordChannelWhenTheStreamIsDead()
 {
     VideoSettings* const videoSettings = SettingsManager::instance()->videoSettings();
-    const QVariant savedSource = videoSettings->videoSource()->rawValue();
-    videoSettings->videoSource()->setRawValue(videoSettings->rtspVideoSource());
+    const QVariant savedCameras = videoSettings->cameras()->rawValue();
+    videoSettings->cameras()->setRawValue(QStringLiteral(R"([{"name":"","source":"RTSP Video Stream","url":""}])"));
 
     ChannelMappingScope mapping(0, 0, 0, 0, 11);
 
@@ -842,7 +829,7 @@ void CameraControlTest::_shutterFollowsTheRecordChannelWhenTheStreamIsDead()
     QVERIFY(QMetaObject::invokeMethod(layer, "toggleRecording"));
     QVERIFY(!layer->property("_recording").toBool());
 
-    videoSettings->videoSource()->setRawValue(savedSource);
+    videoSettings->cameras()->setRawValue(savedCameras);
 }
 void CameraControlTest::_aimAreaMustNotHoldOntoTouchPoints()
 {

@@ -59,20 +59,20 @@ pub fn deep_link_device(link: &str) -> Option<String> {
     parsed.query_pairs().find(|(k, _)| k == "host").map(|(_, v)| v.into_owned()).filter(|v| !v.is_empty())
 }
 
-pub fn deep_link_writes(link: &str) -> Option<(Option<u16>, Vec<(&'static str, String)>)> {
+pub fn deep_link_writes(link: &str) -> Option<(Option<u16>, Option<crate::cameras::Camera>)> {
     let parsed = url::Url::parse(link).ok().filter(|u| u.scheme() == DEEP_LINK_SCHEME)?;
     let query = |key: &str| parsed.query_pairs().find(|(k, _)| k == key).map(|(_, v)| v.into_owned()).filter(|v| !v.is_empty());
     let debug = query("debug").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0);
     if query("host").is_some() {
-        return Some((debug, Vec::new()));
+        return Some((debug, None));
     }
-    let source = match (query("whep"), query("rtsp")) {
-        (Some(whep), _) => vec![("settings.videoSettings.whepUrl", whep), ("settings.videoSettings.videoSource", VIDEO_SOURCE_WEBRTC.to_string())],
-        (None, Some(rtsp)) => vec![("settings.videoSettings.rtspUrl", rtsp), ("settings.videoSettings.videoSource", VIDEO_SOURCE_RTSP.to_string())],
-        (None, None) => return Some((debug, Vec::new())),
+    let name = query("name").unwrap_or_default();
+    let camera = match (query("whep"), query("rtsp")) {
+        (Some(whep), _) => Some(crate::cameras::Camera::new(&name, VIDEO_SOURCE_WEBRTC, &whep)),
+        (None, Some(rtsp)) => Some(crate::cameras::Camera::new(&name, VIDEO_SOURCE_RTSP, &rtsp)),
+        (None, None) => None,
     };
-    let named = query("name").map(|name| ("settings.videoSettings.primaryCameraName", name));
-    Some((debug, source.into_iter().chain(named).collect()))
+    Some((debug, camera))
 }
 
 #[cfg(test)]
@@ -83,11 +83,11 @@ mod tests {
     fn a_deep_link_sets_the_video_source_and_the_debug_port_as_qgc_application_does() {
         let (debug, writes) = deep_link_writes("aircast-qgc://open?whep=https%3A%2F%2Fcam%2Fwhep&name=Front&debug=8777").unwrap();
         assert_eq!(debug, Some(8777));
-        assert_eq!(writes, vec![("settings.videoSettings.whepUrl", "https://cam/whep".to_string()), ("settings.videoSettings.videoSource", VIDEO_SOURCE_WEBRTC.to_string()), ("settings.videoSettings.primaryCameraName", "Front".to_string())]);
-        assert_eq!(deep_link_writes("aircast-qgc://open?rtsp=rtsp%3A%2F%2Fh%3A8554%2Flive").unwrap().1[1].1, VIDEO_SOURCE_RTSP);
+        assert_eq!(writes, Some(crate::cameras::Camera::new("Front", VIDEO_SOURCE_WEBRTC, "https://cam/whep")));
+        assert_eq!(deep_link_writes("aircast-qgc://open?rtsp=rtsp%3A%2F%2Fh%3A8554%2Flive").unwrap().1.unwrap().source, VIDEO_SOURCE_RTSP);
         assert_eq!(deep_link_writes("https://example.com/?whep=x"), None, "only the app's own scheme is honoured");
-        assert_eq!(deep_link_writes("aircast-qgc://open?debug=0"), Some((None, Vec::new())));
-        assert_eq!(deep_link_writes("aircast-qgc://open?host=10.0.0.5%3A8080&whep=x"), Some((None, Vec::new())), "a device host sets up from the device and ignores a stream given alongside it");
+        assert_eq!(deep_link_writes("aircast-qgc://open?debug=0"), Some((None, None)));
+        assert_eq!(deep_link_writes("aircast-qgc://open?host=10.0.0.5%3A8080&whep=x"), Some((None, None)), "a device host sets up from the device and ignores a stream given alongside it");
         assert_eq!(deep_link_device("aircast-qgc://open?host=10.0.0.5%3A8080").as_deref(), Some("10.0.0.5:8080"));
     }
 

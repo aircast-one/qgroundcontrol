@@ -2,7 +2,6 @@ use serde_json::{Value, json};
 
 use crate::read::{flag, integer, object};
 use crate::router::Backend;
-use crate::video::slot_flag;
 
 struct Sources {
     count: usize,
@@ -11,12 +10,13 @@ struct Sources {
 }
 
 fn sources(backend: &dyn Backend) -> Sources {
-    let video = object(&backend.get_fields("video", "cameraStatuses,activeVideoSource"));
+    let video = object(&backend.get_fields("video", "cameraStatuses,activeVideoSource,cameraUsable"));
     let count = video.get("cameraStatuses").and_then(Value::as_array).map_or(0, Vec::len);
+    let usable: Vec<bool> = video.get("cameraUsable").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default();
     Sources {
         count,
         active: integer(&video, "activeVideoSource"),
-        configured: (0..count).map(|slot| slot_flag(backend, "settings.videoSettings.sourceEnabled", slot) && slot_flag(backend, "settings.videoSettings.sourceConfigured", slot)).collect(),
+        configured: (0..count).map(|slot| usable.get(slot).copied().unwrap_or(false)).collect(),
     }
 }
 
@@ -27,7 +27,7 @@ fn set_refusal(slot: Option<i64>, state: &Sources) -> Option<(&'static str, Stri
     match () {
         _ if state.count == 0 => Some(("noSources", "There are no video sources.".to_string())),
         _ if slot < 0 || slot as usize >= state.count => Some(("noSuchSource", format!("Video sources run from 0 to {}.", state.count - 1))),
-        _ if slot > 0 && !state.configured[slot as usize] => Some(("notConfigured", format!("Camera {} is not set up.", slot + 1))),
+        _ if !state.configured[slot as usize] => Some(("notConfigured", format!("Camera {} is not set up.", slot + 1))),
         _ => None,
     }
 }
@@ -55,7 +55,7 @@ pub fn set(backend: &dyn Backend, path: &str, args: &str) -> Value {
 
 pub fn switch(backend: &dyn Backend, path: &str) -> Value {
     let before = sources(backend);
-    if 1 + before.configured.iter().skip(1).filter(|c| **c).count() <= 1 {
+    if before.configured.iter().filter(|c| **c).count() <= 1 {
         return json!({ "ok": false, "refusal": "nothingToSwitch", "reason": "There is only one video source to show." });
     }
     let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
@@ -83,14 +83,10 @@ mod tests {
     impl Backend for Video {
         fn get(&self, _p: &str) -> String { String::new() }
         fn get_fields(&self, _p: &str, _f: &str) -> String {
-            json!({ "kind": "object", "cameraStatuses": vec!["ok"; self.configured.len()], "activeVideoSource": *self.active.borrow() }).to_string()
+            json!({ "kind": "object", "cameraStatuses": vec!["ok"; self.configured.len()], "cameraUsable": self.configured, "activeVideoSource": *self.active.borrow() }).to_string()
         }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, p: &str, a: &str) -> String {
-            if p.starts_with("settings.videoSettings.") {
-                let slot = object(a)[0].as_u64().unwrap_or(99) as usize;
-                return json!({ "ok": true, "result": self.configured.get(slot).copied().unwrap_or(false) }).to_string();
-            }
             if self.obeys {
                 let next = match p.ends_with("switchActiveVideoSource") {
                     true => (*self.active.borrow() + 1) % self.configured.len() as i64,
@@ -115,9 +111,9 @@ mod tests {
         assert_eq!((&moved["ok"], &moved["activeSource"]), (&json!(true), &json!(1)));
         assert_eq!(switch(&video, "video.switchActiveVideoSource")["ok"], true);
 
-        let primary_unset = Video { active: RefCell::new(0), configured: vec![false, true], obeys: true };
-        assert_eq!(switch(&primary_unset, "video.switchActiveVideoSource")["ok"], true, "switchableIndices always holds slot 0 and adds each configured extra, so the primary's own setup is not what decides whether there is something to switch to");
-        assert_eq!(set_refusal(Some(0), &sources(&primary_unset)), None, "and the primary slot is always selectable");
+        let first_unset = Video { active: RefCell::new(1), configured: vec![false, true], obeys: true };
+        assert_eq!(switch(&first_unset, "video.switchActiveVideoSource")["refusal"], "nothingToSwitch", "no camera is the primary: one that is not set up is not something to switch to, whatever its place in the list");
+        assert_eq!(set_refusal(Some(0), &sources(&first_unset)).map(|r| r.0), Some("notConfigured"), "and the first camera is refused like any other when it cannot show");
         let single = Video { active: RefCell::new(0), configured: vec![true, false], obeys: true };
         assert_eq!(switch(&single, "video.switchActiveVideoSource")["refusal"], "nothingToSwitch", "switchActiveVideoSource returns in silence with one switchable source");
         let deaf = Video { active: RefCell::new(0), configured: vec![true, true], obeys: false };

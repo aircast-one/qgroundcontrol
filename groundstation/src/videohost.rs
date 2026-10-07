@@ -2,7 +2,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::videostate::{MAIN_RECEIVER, Out, Outcome, PrimaryUrls, Settings, SourceSlot, Status, TILE_RECEIVER_PREFIX, VideoState};
+use crate::videostate::{MAIN_RECEIVER, Out, Outcome, Settings, SourceSlot, Status, TILE_RECEIVER_PREFIX, VideoState};
 
 const RECORD_TEE: &str = "tee name=nativerec ! queue";
 #[cfg(not(target_os = "android"))]
@@ -18,7 +18,6 @@ struct Host {
     restart_at_ms: Option<u64>,
     reported: (bool, bool, u32, u32),
     recording_file: Option<String>,
-    auto_stream: Option<(u8, u8, String)>,
     vehicle: Option<u8>,
     timeout_s: u32,
     progress: Option<Watch>,
@@ -46,13 +45,8 @@ fn text(name: &str) -> String {
 }
 
 pub fn settings_from(text: &dyn Fn(&str) -> String, flag: &dyn Fn(&str, bool) -> bool, number: &dyn Fn(&str, i64) -> i64) -> Settings {
-    let extras = serde_json::from_str::<Value>(&text("extraVideoSources")).ok().and_then(|v| v.as_array().cloned()).unwrap_or_default();
-    let field = |entry: &Value, key: &str| entry.get(key).and_then(Value::as_str).unwrap_or_default().trim().to_string();
     Settings {
-        primary_source: text("videoSource"),
-        primary_name: text("primaryCameraName"),
-        primary_urls: PrimaryUrls { udp: text("udpUrl"), rtsp: text("rtspUrl"), tcp: text("tcpUrl"), whep: text("whepUrl") },
-        extras: extras.iter().map(|entry| SourceSlot { source: field(entry, "source"), url: field(entry, "url"), name: field(entry, "name") }).collect(),
+        cameras: crate::cameras::parse(&text(crate::cameras::CAMERAS_FACT)).unwrap_or_default().into_iter().map(|camera| SourceSlot { source: camera.source, url: camera.url, name: camera.name, drone: false }).collect(),
         active_source: number("activeVideoSource", 0),
         multi_view: flag("multiViewEnabled", false),
         stream_enabled: flag("streamEnabled", true),
@@ -62,6 +56,18 @@ pub fn settings_from(text: &dyn Fn(&str) -> String, flag: &dyn Fn(&str, bool) ->
         rtsp_timeout_s: u32::try_from(number("rtspTimeout", 8)).unwrap_or(8),
         reconnect_disabled: !flag("rtspAutoReconnect", true),
     }
+}
+
+pub fn with_drone(settings: Settings, drone: &[(String, u8, u8, String)]) -> Settings {
+    let announced = drone.iter().filter_map(|(name, kind, encoding, uri)| {
+        let (source, uri) = crate::videostate::auto_stream_source(*kind, *encoding, uri);
+        let url = match source {
+            crate::videostate::SOURCE_RTSP | crate::videostate::SOURCE_WEBRTC => uri.clone(),
+            _ => uri.split_once("://").map_or(uri.as_str(), |(_, rest)| rest).to_string(),
+        };
+        (!uri.is_empty()).then(|| SourceSlot { source: source.to_string(), url, name: name.clone(), drone: true })
+    });
+    Settings { cameras: settings.cameras.into_iter().chain(announced).collect(), ..settings }
 }
 
 fn stored_settings() -> Settings {
@@ -365,9 +371,9 @@ fn send_stream_switches(switches: Vec<(u8, bool)>) {
 }
 
 fn synced() -> MutexGuard<'static, Option<Host>> {
-    let (auto_stream, active) = {
+    let (drone, active) = {
         let hub = crate::hub::lock();
-        (hub.active().and_then(crate::hub::Vehicle::auto_stream), hub.active_id())
+        (hub.active().map(crate::hub::Vehicle::drone_streams).unwrap_or_default(), hub.active_id())
     };
     let mut guard = HOST.lock().unwrap_or_else(PoisonError::into_inner);
     let host = guard.get_or_insert_with(Host::default);
@@ -378,15 +384,7 @@ fn synced() -> MutexGuard<'static, Option<Host>> {
         send_stream_switches(stream_switches(was, active, &outs));
         apply(host, outs, now_ms);
     }
-    if auto_stream != host.auto_stream {
-        host.auto_stream = auto_stream.clone();
-        let outs = match auto_stream {
-            Some((kind, encoding, uri)) => host.state.on_auto_stream(kind, encoding, &uri),
-            None => host.state.on_auto_stream(0, 0, ""),
-        };
-        apply(host, outs, now_ms);
-    }
-    let settings = stored_settings();
+    let settings = with_drone(stored_settings(), &drone);
     if settings != host.state.settings {
         let outs = host.state.on_settings(settings);
         apply(host, outs, now_ms);
@@ -444,6 +442,12 @@ fn object(host: &Host) -> Value {
         "cameraStatuses": (0..settings.count()).map(|i| status_text(state.receiver_status(i))).collect::<Vec<_>>(),
         "cameraConnecting": (0..settings.count()).map(|i| state.camera_connecting(i)).collect::<Vec<_>>(),
         "cameraRecording": (0..settings.count()).map(|i| state.camera_recording(i)).collect::<Vec<_>>(),
+        "cameraConfigured": (0..settings.count()).map(|i| settings.configured(i)).collect::<Vec<_>>(),
+        "cameraUsable": (0..settings.count()).map(|i| settings.usable(i)).collect::<Vec<_>>(),
+        "cameraFromDrone": (0..settings.count()).map(|i| settings.from_drone(i)).collect::<Vec<_>>(),
+        "cameraNames": (0..settings.count()).map(|i| settings.name_at(i).unwrap_or("")).collect::<Vec<_>>(),
+        "cameraSources": (0..settings.count()).map(|i| settings.source_at(i)).collect::<Vec<_>>(),
+        "cameraUrls": (0..settings.count()).map(|i| settings.url_at(i)).collect::<Vec<_>>(),
         "nativePipeline": (host.wanted && state.has_video()).then(|| pipeline(&oriented(&uri, host.camera_rotation), latency, settings.low_latency)).flatten(),
         "deviceCamera": crate::videostate::device_camera(&uri),
         "nativeRecording": host.recording_file,
@@ -724,6 +728,24 @@ mod tests {
     }
 
     #[test]
+    fn the_drones_streams_join_the_operators_cameras_on_addresses_a_pipeline_can_open() {
+        let mine = Settings { cameras: vec![SourceSlot { source: crate::videostate::SOURCE_RTSP.to_string(), url: "rtsp://10.0.0.5:8554/front".to_string(), name: "Front".to_string(), drone: false }], ..Settings::default() };
+        let announced = vec![
+            ("SIYI A8".to_string(), crate::videostate::STREAM_TYPE_RTP_UDP, crate::videostate::ENCODING_H265, "5600".to_string()),
+            ("Gimbal".to_string(), crate::videostate::STREAM_TYPE_RTSP, 0, "rtsp://192.168.144.25:8554/main".to_string()),
+            ("Belly".to_string(), crate::videostate::STREAM_TYPE_TCP_MPEG, 0, "1.2.3.4:5600".to_string()),
+            ("Odd".to_string(), 200, 0, "garbage-uri".to_string()),
+        ];
+        let joined = with_drone(mine, &announced);
+        assert_eq!(joined.cameras.len(), 4, "a stream of a type nobody knows is never started on the text the air vehicle sent");
+        assert_eq!(joined.cameras[0].name, "Front", "the operator's own cameras keep their places ahead of the drone's");
+        assert!(joined.cameras[1..].iter().all(|camera| camera.drone));
+        assert_eq!(crate::videostate::source_uri(&joined.cameras[1].source, &joined.cameras[1].url), "udp265://0.0.0.0:5600", "a bare port becomes a listen address, and the scheme is not doubled");
+        assert_eq!(crate::videostate::source_uri(&joined.cameras[2].source, &joined.cameras[2].url), "rtsp://192.168.144.25:8554/main");
+        assert_eq!(crate::videostate::source_uri(&joined.cameras[3].source, &joined.cameras[3].url), "tcp://1.2.3.4:5600");
+    }
+
+    #[test]
     fn a_uri_becomes_a_pipeline_ending_in_the_native_sink() {
         assert_eq!(pipeline("udp://0.0.0.0:5600", 80, false).unwrap(), "udpsrc address=0.0.0.0 port=5600 buffer-size=8388608 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! rtpjitterbuffer latency=80 do-lost=true do-retransmission=true drop-on-latency=true rtx-delay=25 rtx-max-retries=1 ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=true");
         assert_eq!(pipeline("udp://0.0.0.0:5600", 80, true).unwrap(), "udpsrc address=0.0.0.0 port=5600 buffer-size=8388608 caps=\"application/x-rtp, media=(string)video, clock-rate=(int)90000, encoding-name=(string)H264\" ! tee name=nativerec ! queue ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false", "low latency drops the jitter buffer and the clock sync, as GstVideoReceiver does with _buffer -1");
@@ -753,8 +775,7 @@ mod tests {
     fn the_main_receiver_is_started_and_reports_drive_the_camera_status() {
         let settings = settings_from(
             &|name| match name {
-                "videoSource" => "UDP h.264 Video Stream".to_string(),
-                "udpUrl" => "0.0.0.0:5600".to_string(),
+                "cameras" => r#"[{"name":"","source":"UDP h.264 Video Stream","url":"0.0.0.0:5600"}]"#.to_string(),
                 _ => String::new(),
             },
             &|_, default| default,

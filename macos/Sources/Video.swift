@@ -11,46 +11,35 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
 
     @Published private(set) var camera = CameraControl.absent
     @Published private(set) var cameraLabels: [String] = []
-    @Published private(set) var sources: [VideoSource] = []
+    @Published private(set) var cameraList = CameraList.empty
 
     private var askedForNative = false
 
-    private static let sourcesPath = "settings.videoSettings.extraVideoSources"
-
     func loadSources() {
-        // Read through view.control and written by the fact path, which the core claims, so the
-        // setting has one spelling on each side of the core rather than a raw read beside it.
-        let fact = Bridge.group("view.control(\(VideoStore.sourcesPath))")
-        let cameras = ((Bridge.group("view.video")["cameras"] as? [Any]) ?? [])
-            .compactMap(VideoCamera.init)
-        let raw = (fact["valueString"] as? String) ?? ""
-        let answer = VideoSources.readability(Bridge.group("view.video")["extraSources"], stored: raw)
-        if answer.readable != sourcesReadable { sourcesReadable = answer.readable }
-        if answer.stored != storedSources { storedSources = answer.stored }
-        let stored = raw
-        let listed = VideoSources.decode(stored, cameras: cameras)
-        if listed != sources { sources = listed }
+        let read = CameraList(Bridge.group("view.cameras"))
+        if read != cameraList { cameraList = read }
     }
 
-    @Published private(set) var sourcesReadable = true
-    @Published private(set) var storedSources = ""
+    @discardableResult
+    func addCamera(name: String, source: String, url: String) -> Bool {
+        askCameras("cameras.add", [name, source, url])
+    }
 
-    // Refuses rather than writing, because the list it would write is [] -- the empty list decode
-    // hands back for a string it could not parse, which would replace the operator's configuration
-    // with nothing and make the loss permanent.
-    func write(_ replacement: VideoSource) {
-        guard sourcesReadable else {
-            writeFailure = VideoSources.unreadable
-            return
-        }
-        let updated = VideoSources.replacing(sources, at: replacement.slot, with: replacement)
-        write(VideoStore.sourcesPath, VideoSources.encode(updated), "the video source")
+    func updateCamera(_ camera: VideoSource, url: String) {
+        guard let slot = camera.stored else { return }
+        askCameras("cameras.update", [slot, camera.name, camera.source, url])
+    }
+
+    func removeCamera(_ camera: VideoSource) {
+        guard let slot = camera.stored else { return }
+        askCameras("cameras.remove", [slot])
+    }
+
+    @discardableResult
+    private func askCameras(_ action: String, _ args: [Any]) -> Bool {
+        writeFailure = CameraRefusal.sentence(Bridge.invoke(action, args))
         loadSources()
-    }
-
-    func repair(_ source: VideoSource) {
-        guard let repaired = VideoSources.repairs(source) else { return }
-        write(repaired)
+        return writeFailure == nil
     }
 
     func useNativeRendering() {
@@ -63,8 +52,6 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
 
     private var watchPoll: Timer?
 
-    // view.video is built entirely from video.* -- the manager and the settings, not one vehicle
-    // path -- so a source configured while no vehicle is talking must still reach the Fly view.
     func startWatching() {
         guard watchPoll == nil else { return }
         refresh()
@@ -96,10 +83,6 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         if read.labels != cameraLabels { cameraLabels = read.labels }
     }
 
-    // The guards stay, and they are not the same check the core makes. They decide whether the
-    // control is OFFERED -- a greyed-out shutter beats a live one that will be refused. The core's
-    // answer covers the window the guard cannot: view.camera is up to half a second old here, so a
-    // photo that started since the last poll leaves the button live and only the core knows.
     func setCameraMode(photo: Bool) {
         guard camera.canChangeMode else { return }
         ask("camera.setMode", [photo ? "photo" : "video"])
@@ -113,9 +96,6 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         captureNotice = CaptureStart(answer)?.notice ?? ""
     }
 
-    // The gate is the core's canStopPhoto, which is true only in the two interval states --
-    // exactly what stopTakePhoto itself refuses outside of. Nothing in QGC's QML ever called it,
-    // so before this a head that started an unlimited timelapse had no way to end it.
     func stopPhoto() {
         guard camera.canStopPhoto else { return }
         ask("camera.stopPhoto", [])
@@ -135,7 +115,6 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         return answer
     }
 
-    // The C++ owns the rotation order and persists the choice; the head only asks for the next one.
     func switchSource() {
         guard status.offersSwitch else { return }
         Bridge.invoke("video.switchActiveVideoSource")
@@ -158,8 +137,6 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
 
     private var detectionPoll: Timer?
 
-    // The boxes come from the camera host, not the vehicle, so they cannot ride the telemetry
-    // change that drives refresh(): a silent vehicle would freeze them on screen.
     func startDetections() {
         guard detectionPoll == nil else { return }
         refreshDetections()
@@ -276,9 +253,9 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
                     "lapseUnlimited": camera.lapseUnlimited,
                     "captureNotice": captureNotice,
                     "reportsStorage": camera.reportsStorage],
-         "sources": sources.map { ["slot": $0.slot, "name": $0.name, "source": $0.source,
-                                   "url": $0.url, "summary": $0.summary,
-                                   "misconfigured": $0.misconfigured] },
+         "sources": cameraList.entries.map { ["slot": $0.slot, "stored": $0.stored ?? -1, "name": $0.name,
+                                              "source": $0.source, "url": $0.url, "summary": $0.summary,
+                                              "problem": $0.problem ?? "", "fromDrone": $0.fromDrone] },
          "nativeFrames": nativeFrames, "nativeSize": nativeSize, "nativeError": nativeError]
     }
 
@@ -289,21 +266,20 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
             loadSources()
         case "setSourceUrl":
             guard let slot = Int(args["slot"] ?? ""),
-                  let existing = sources.first(where: { $0.slot == slot }) else {
-                return ["ok": false, "error": "no source slot \(args["slot"] ?? "")"]
+                  let existing = cameraList.entries.first(where: { $0.stored == slot }) else {
+                return ["ok": false, "error": "no stored camera \(args["slot"] ?? "")"]
             }
-            var replacement = existing
-            replacement.url = args["url"] ?? ""
-            write(replacement)
-        case "repairSource":
+            updateCamera(existing, url: args["url"] ?? "")
+        case "addCamera":
+            guard addCamera(name: args["name"] ?? "", source: args["source"] ?? "", url: args["url"] ?? "") else {
+                return ["ok": false, "error": writeFailure ?? "", "state": probeState()]
+            }
+        case "removeCamera":
             guard let slot = Int(args["slot"] ?? ""),
-                  let existing = sources.first(where: { $0.slot == slot }) else {
-                return ["ok": false, "error": "no source slot \(args["slot"] ?? "")"]
+                  let existing = cameraList.entries.first(where: { $0.stored == slot }) else {
+                return ["ok": false, "error": "no stored camera \(args["slot"] ?? "")"]
             }
-            guard VideoSources.repairs(existing) != nil else {
-                return ["ok": false, "error": "slot \(slot) has nothing to repair"]
-            }
-            repair(existing)
+            removeCamera(existing)
         case "startNative":
             guard let pipeline = args["pipeline"], !pipeline.isEmpty else {
                 return ["ok": false, "error": "startNative needs a pipeline"]

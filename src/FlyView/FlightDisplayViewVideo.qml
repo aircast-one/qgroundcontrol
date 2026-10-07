@@ -45,12 +45,6 @@ Item {
 
     property double _thermalHeightFactor: 0.85
 
-        // A placeholder has to be unmistakably a placeholder. This used to be a full-bleed
-        // photograph of farmland - photorealistic aerial imagery in the exact place the
-        // aircraft's camera feed goes, which a pilot glancing across the screen reads as a live
-        // picture until they stop and read the pill. Absent content gets a neutral surface and
-        // a symbol saying what is missing, never content that could be mistaken for the real
-        // thing.
         Rectangle {
             id:             noVideo
             anchors.fill:   parent
@@ -80,16 +74,14 @@ Item {
             readonly property bool receivingData: QGroundControl.videoManager.streaming
 
             readonly property string noVideoText: {
-                const settings = QGroundControl.settingsManager.videoSettings
-                const source   = settings.videoSource.rawValue
+                const vm     = QGroundControl.videoManager
+                const active = vm.activeVideoSource
+                const source = active >= 0 && active < vm.cameraSources.length ? vm.cameraSources[active] : ""
+                const url    = active >= 0 && active < vm.cameraUrls.length ? vm.cameraUrls[active] : ""
                 if (source.indexOf("UDP") >= 0 || source.indexOf("MPEG-TS") >= 0) {
-                    return qsTr("No video on UDP port %1").arg(settings.udpUrl.rawValue.split(":").pop())
+                    return qsTr("No video on UDP port %1").arg(url.split(":").pop())
                 }
-                const url = source.indexOf("RTSP") >= 0 ? settings.rtspUrl.rawValue
-                          : source.indexOf("TCP")  >= 0 ? settings.tcpUrl.rawValue
-                          : source.indexOf("WHEP") >= 0 ? settings.whepUrl.rawValue
-                                                        : ""
-                return url !== "" ? qsTr("No video from %1").arg(url) : qsTr("No video from %1").arg(source)
+                return qsTr("No video from %1").arg(url !== "" ? url : source)
             }
 
             property int elapsedSecs: 0
@@ -151,8 +143,6 @@ Item {
                 anchors.centerIn:   parent
                 spacing:            ScreenTools.defaultFontPixelHeight / 2
 
-                // Part of the stack, not a separate object hovering above a card: symbol,
-                // title, cause, actions is one composition.
                 QGCColoredImage {
                     anchors.horizontalCenter: parent.horizontalCenter
                     source:             "/InstrumentValueIcons/video-camera.svg"
@@ -170,8 +160,6 @@ Item {
                     anchors.horizontalCenter:   parent.horizontalCenter
                     spacing:                    ScreenTools.defaultFontPixelWidth
 
-                    // Only while it is genuinely still trying. Once the title settles to
-                    // "No Video Signal" a spinner beside it says the opposite of the words.
                     QGCSpinner {
                         anchors.verticalCenter: parent.verticalCenter
                         color:                  noVideoGlass.contentColor
@@ -182,9 +170,6 @@ Item {
                     QGCLabel {
                         id:                     noVideoLabel
                         anchors.verticalCenter: parent.verticalCenter
-                        // Titles the state once it is clearly a state rather than a moment. The
-                        // trailing ellipsis promises this is about to finish - true for the
-                        // first few seconds, a lie by the time the detail line appears.
                         text:                   !noVideo.streamEnabled ? qsTr("Video off")
                                               : noVideo.prolonged      ? qsTr("No Video Signal")
                                                                        : noVideo.statusText
@@ -263,15 +248,12 @@ Item {
             anchors.fill:       videoContentArea
             visible:            _showStreamLoader
             sourceComponent:    videoOutputComponent
-
-            property bool videoDisabled: QGroundControl.settingsManager.videoSettings.videoSource.rawValue === QGroundControl.settingsManager.videoSettings.disabledVideoSource
         }
         Component {
             id: videoOutputComponent
             FlightDisplayViewVideoOutput {
             }
         }
-        //-- UVC Video (USB Camera or Video Device)
         Loader {
             id:             cameraLoader
             anchors.fill:   videoContentArea
@@ -286,7 +268,6 @@ Item {
             anchors.centerIn:   parent
             visible:           _showStreamLoader || _showUvcLoader
 
-            // grid lines
             Item {
                 anchors.fill:   parent
                 visible:        _showGrid && !QGroundControl.videoManager.fullScreen

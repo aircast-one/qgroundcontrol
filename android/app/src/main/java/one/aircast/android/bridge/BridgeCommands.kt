@@ -32,6 +32,10 @@ private const val VIDEO_START_RECORDING = "video.startRecording"
 private const val VIDEO_STOP_RECORDING = "video.stopRecording"
 private const val VIDEO_RESTART = "video.restart"
 private const val VIDEO_DEVICE_CAMERA_ROTATION = "video.setDeviceCameraRotation"
+private const val CAMERAS_ADD = "cameras.add"
+private const val CAMERAS_UPDATE = "cameras.update"
+private const val CAMERAS_REMOVE = "cameras.remove"
+private const val CAMERAS_MOVE = "cameras.move"
 private const val VEHICLE_FIELDS = "vehicle"
 private const val ESC_CALIBRATION_START = "escCalibration.start"
 private const val ESC_CALIBRATION_CLOSE = "escCalibration.close"
@@ -87,6 +91,13 @@ internal object VideoCommands {
     fun setRecording(recording: Boolean): Boolean = Qgc.invoke(if (recording) VIDEO_START_RECORDING else VIDEO_STOP_RECORDING)
     fun restart(): Boolean = Qgc.invoke(VIDEO_RESTART)
     fun setDeviceCameraRotation(degrees: Int): Boolean = Qgc.invoke(VIDEO_DEVICE_CAMERA_ROTATION, degrees)
+}
+
+internal object CameraCommands {
+    fun add(name: String, source: String, url: String): String? = Qgc.refusalOf(CAMERAS_ADD, name, source, url)
+    fun update(slot: Int, name: String, source: String, url: String): String? = Qgc.refusalOf(CAMERAS_UPDATE, slot, name, source, url)
+    fun remove(slot: Int): String? = Qgc.refusalOf(CAMERAS_REMOVE, slot)
+    fun move(from: Int, to: Int): String? = Qgc.refusalOf(CAMERAS_MOVE, from, to)
 }
 
 internal object SetupCommands {

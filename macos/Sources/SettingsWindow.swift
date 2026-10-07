@@ -103,55 +103,45 @@ struct SettingsView: View {
     private var videoSources: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionLabel(text: "Cameras")
-            // Showing what is stored is the difference between refusing safely and helping. The
-            // configuration is not gone -- it is unparseable -- and an operator who can see the
-            // text can retype it. A bare refusal leaves them with a blank list and no reason to
-            // believe anything survived.
-            if !video.sourcesReadable {
+            if !video.cameraList.readable {
                 GroupCard {
-                    GroupRow(title: "Saved cameras", value: "")
-                    Text(VideoSources.unreadable)
+                    Text(video.cameraList.reason)
                         .font(.caption)
                         .foregroundColor(.red)
-                    if !video.storedSources.isEmpty {
-                        Text(video.storedSources)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .lineLimit(6)
-                    }
                 }
             }
             GroupCard {
-                ForEach(Array(video.sources.enumerated()), id: \.element.id) { row, source in
-                    GroupRow(title: source.title,
-                             description: source.enabled
-                                 ? (source.misconfigured
-                                     ? "\(source.source) \u{00B7} no address"
-                                     : source.source)
-                                 : source.source,
+                if video.cameraList.entries.isEmpty {
+                    GroupRow(title: "No cameras yet", value: "", showSeparator: false)
+                }
+                ForEach(Array(video.cameraList.entries.enumerated()), id: \.element.id) { row, camera in
+                    GroupRow(title: camera.title,
+                             description: camera.problem ?? camera.summary,
                              showSeparator: row > 0,
                              trailing: {
                                  HStack(spacing: Overlay.step) {
-                                     if VideoSources.repairs(source) != nil {
-                                         Button("Use name") { video.repair(source) }
+                                     if camera.active {
+                                         Text("On screen").font(.caption).foregroundColor(.accentColor)
+                                     }
+                                     if camera.stored == nil {
+                                         Text("From the drone").font(.caption).foregroundColor(.secondary)
+                                     } else {
+                                         if video.cameraList.needsUrl(camera) {
+                                             ValueField(value: camera.url, units: "") { entered in
+                                                 video.updateCamera(camera, url: entered)
+                                             }
+                                             .frame(width: 200)
+                                         }
+                                         Button("Remove") { video.removeCamera(camera) }
                                              .fixedSize()
-                                             .help("The address was typed into this camera's name; move it to the address")
                                      }
-                                     ValueField(value: source.url, units: "") { entered in
-                                         var replacement = source
-                                         replacement.url = entered
-                                         video.write(replacement)
-                                     }
-                                     .frame(width: 200)
-                                     .disabled(!source.enabled)
                                  }
                              })
                 }
             }
-            Text("A camera needs an address before it can show anything.")
-                .font(.caption).foregroundColor(.secondary)
-                .padding(.horizontal, Overlay.horizontalPadding)
-                .padding(.top, Overlay.unit * 0.35)
+            NewCameraRow(kinds: video.cameraList.kinds) { name, source, url in
+                video.addCamera(name: name, source: source, url: url)
+            }
         }
         .onAppear(perform: video.loadSources)
     }
@@ -224,10 +214,6 @@ struct SearchField: NSViewRepresentable {
 struct FactControl: View {
     let fact: SettingsControl
     let write: (Any) -> Void
-    // Defaulted so the one call site opts in rather than every future one being forced to.
-    // I had recorded "a channel changes its signature at every call site" as the reason not to
-    // build this. There is exactly ONE call site, in this file, and it was an estimate standing
-    // in for a measurement.
     var refuse: (String) -> Void = { _ in }
 
     @State private var draft = ""
@@ -286,10 +272,6 @@ struct FactControl: View {
         case .text:
             write(draft)
         case .number:
-            // NOT replacingOccurrences(of: ",", with: "."). That turned an operator's 1,500
-            // into Double("1.500") -- one point five -- in a field that sets altitudes and
-            // speeds. A comma cannot be resolved without knowing the operator's locale, and
-            // guessing wrong by a factor of a thousand is worse than refusing.
             if let refused = Measure.numberRefusal(draft) {
                 refuse(refused)
                 draft = fact.valueString
@@ -394,6 +376,46 @@ extension SettingsPage {
         case "Firmware Upgrade": return .red
         case "3D Viewer": return .cyan
         default: return .gray
+        }
+    }
+}
+
+private struct NewCameraRow: View {
+    let kinds: [CameraKind]
+    let add: (String, String, String) -> Bool
+
+    @State private var name = ""
+    @State private var picked = ""
+    @State private var url = ""
+
+    var body: some View {
+        let chosen = kinds.first { $0.raw == picked } ?? kinds.first
+        GroupCard {
+            GroupRow(title: "Add camera", showSeparator: false, trailing: {
+                HStack(spacing: Overlay.step) {
+                    TextField("Name", text: $name)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 140)
+                    Picker("", selection: Binding(get: { chosen?.raw ?? "" }, set: { picked = $0 })) {
+                        ForEach(kinds) { kind in
+                            Text(kind.label).tag(kind.raw)
+                        }
+                    }
+                    .labelsHidden()
+                    .fixedSize()
+                    if chosen?.needsUrl == true {
+                        TextField(chosen?.hint ?? "", text: $url)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 200)
+                    }
+                    Button("Add") {
+                        guard let chosen, add(name, chosen.raw, url) else { return }
+                        name = ""
+                        url = ""
+                    }
+                    .disabled(chosen == nil)
+                }
+            })
         }
     }
 }

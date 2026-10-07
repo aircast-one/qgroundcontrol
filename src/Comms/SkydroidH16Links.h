@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QtCore/QJsonArray>
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 
@@ -24,7 +25,7 @@ namespace SkydroidH16Links
 
     QString cameraUrl(const QString &path);
     QString cameraName(int index);
-    QString extraCamerasJson();
+    QJsonArray cameras();
 
     bool isThisRemote();
     int ensure(LinkManager *linkManager, AutoConnectSettings *autoConnect, VideoSettings *video);

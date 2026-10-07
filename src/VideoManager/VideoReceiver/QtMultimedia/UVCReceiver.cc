@@ -23,7 +23,6 @@ UVCReceiver::UVCReceiver(QObject *parent)
     , _imageCapture(new QImageCapture(this))
     , _mediaDevices(new QMediaDevices(this))
 {
-    // qCDebug(UVCReceiverLog) << this;
 
     _captureSession->setCamera(_camera);
     _captureSession->setImageCapture(_imageCapture);
@@ -38,7 +37,6 @@ UVCReceiver::UVCReceiver(QObject *parent)
 
 UVCReceiver::~UVCReceiver()
 {
-    // qCDebug(UVCReceiverLog) << this;
 }
 
 bool UVCReceiver::enabled()
@@ -93,7 +91,7 @@ void UVCReceiver::checkPermission()
 
 QString UVCReceiver::getSourceId()
 {
-    const QString videoSource = SettingsManager::instance()->videoSettings()->videoSource()->rawValue().toString();
+    const QString videoSource = SettingsManager::instance()->videoSettings()->currentVideoSourceName();
     const QCameraDevice cameraDevice = findCameraDevice(videoSource);
     if (cameraDevice.isNull()) {
         return QString();

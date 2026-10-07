@@ -425,9 +425,9 @@ const SEVERITY_CRITICAL: u8 = 2;
 const TYPE_SUBMARINE: u8 = 12;
 
 fn sub_video_defaults() {
-    let source = crate::settingsstore::raw_setting("settings.videoSettings.videoSource").and_then(|v| v.as_str().map(str::to_string));
-    if source.as_deref() == Some(crate::settingsstore::VIDEO_DISABLED) {
-        crate::settingsstore::written("Video/videoSource", crate::videostate::SOURCE_UDP_H264);
+    let listed = crate::settingsstore::raw_setting(crate::cameras::CAMERAS_PATH).and_then(|v| v.as_str().map(crate::cameras::parse)).flatten();
+    if listed.is_some_and(|cameras| cameras.is_empty()) {
+        crate::cameras::store(&[crate::cameras::Camera::new("", crate::videostate::SOURCE_UDP_H264, "0.0.0.0:5600")], 0);
         crate::settingsstore::written("Video/lowLatencyMode", "true");
     }
 }
@@ -1702,8 +1702,8 @@ impl Vehicle {
         announced.map_or_else(|| crate::modes::name(self.autopilot, self.vehicle_type, self.base_mode, self.custom_mode), |m| m.name.clone())
     }
 
-    pub fn auto_stream(&self) -> Option<(u8, u8, String)> {
-        self.cameras.selected().and_then(|camera| camera.current_stream()).filter(|stream| !stream.thermal()).map(|stream| (stream.kind, stream.encoding, stream.uri.clone()))
+    pub fn drone_streams(&self) -> Vec<(String, u8, u8, String)> {
+        self.cameras.video_streams()
     }
 
     pub fn on_high_latency_link(&self) -> bool {

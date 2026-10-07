@@ -25,6 +25,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 
 internal const val GENERAL_PAGE = "General"
+internal const val VIDEO_PAGE = "Video"
 internal const val CLEAR_SETTINGS_NEXT_BOOT = "settings.appSettings.clearSettingsNextBoot"
 
 internal fun resetPending(value: Any?): Boolean = value == true || value == 1 || value == "true"

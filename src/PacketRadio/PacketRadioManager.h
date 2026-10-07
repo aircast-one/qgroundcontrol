@@ -112,7 +112,7 @@ private:
     qlonglong _lastRtpPackets = 0;
 
     bool _videoOverridden = false;
-    QVariant _savedVideoSource;
-    QVariant _savedUdpUrl;
+    QVariant _savedCameras;
+    QVariant _savedActiveVideoSource;
     QVariant _savedLowLatency;
 };

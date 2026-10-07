@@ -94,13 +94,14 @@ void VideoTileTest::_tuckPersistsAcrossReload()
 void VideoTileTest::_extraCameraTileAttachedToPip()
 {
     VideoSettings* const videoSettings = SettingsManager::instance()->videoSettings();
-    const QVariant savedSources = videoSettings->extraVideoSources()->rawValue();
+    const QVariant savedCameras = videoSettings->cameras()->rawValue();
+    const QVariant savedActive = videoSettings->activeVideoSource()->rawValue();
     const QVariant savedMultiView = videoSettings->multiViewEnabled()->rawValue();
-    const QVariant savedVideoSource = videoSettings->videoSource()->rawValue();
 
-    videoSettings->videoSource()->setRawValue(videoSettings->rtspVideoSource());
-    videoSettings->extraVideoSources()->setRawValue(
-        QStringLiteral(R"([{"name":"Cam2","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/2"}])"));
+    videoSettings->cameras()->setRawValue(QStringLiteral(R"([
+        {"name":"Cam1","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/1"},
+        {"name":"Cam2","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/2"}])"));
+    videoSettings->activeVideoSource()->setRawValue(0);
     videoSettings->multiViewEnabled()->setRawValue(true);
 
     const std::unique_ptr<QQmlPropertyMap> globals(QQmlPropertyMap::create());
@@ -123,8 +124,8 @@ void VideoTileTest::_extraCameraTileAttachedToPip()
     QVERIFY(railRect.left() > pipRect.right());
     QCOMPARE(railRect.bottom(), pipRect.bottom());
 
-    videoSettings->videoSource()->setRawValue(savedVideoSource);
-    videoSettings->extraVideoSources()->setRawValue(savedSources);
+    videoSettings->cameras()->setRawValue(savedCameras);
+    videoSettings->activeVideoSource()->setRawValue(savedActive);
     videoSettings->multiViewEnabled()->setRawValue(savedMultiView);
 }
 
@@ -159,12 +160,13 @@ void VideoTileTest::_focusLayoutOverflowsIntoMore()
     clearQmlGlobalSettings({"VideoRailGrid"});
 
     VideoSettings* const videoSettings = SettingsManager::instance()->videoSettings();
-    const QVariant savedSources = videoSettings->extraVideoSources()->rawValue();
+    const QVariant savedCameras = videoSettings->cameras()->rawValue();
+    const QVariant savedActive = videoSettings->activeVideoSource()->rawValue();
     const QVariant savedMultiView = videoSettings->multiViewEnabled()->rawValue();
-    const QVariant savedVideoSource = videoSettings->videoSource()->rawValue();
 
-    videoSettings->videoSource()->setRawValue(videoSettings->rtspVideoSource());
-    videoSettings->extraVideoSources()->setRawValue(QStringLiteral(R"([
+    videoSettings->activeVideoSource()->setRawValue(0);
+    videoSettings->cameras()->setRawValue(QStringLiteral(R"([
+        {"name":"Cam1","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/1"},
         {"name":"Cam2","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/2"},
         {"name":"Cam3","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/3"},
         {"name":"Cam4","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/4"},
@@ -193,14 +195,11 @@ void VideoTileTest::_focusLayoutOverflowsIntoMore()
     QVERIFY(tile->x() > 0 || tile->y() > 0);
 
     QVERIFY(QMetaObject::invokeMethod(layer, "setGrid", Q_ARG(QVariant, QVariant(false))));
-    videoSettings->videoSource()->setRawValue(savedVideoSource);
-    videoSettings->extraVideoSources()->setRawValue(savedSources);
+    videoSettings->cameras()->setRawValue(savedCameras);
+    videoSettings->activeVideoSource()->setRawValue(savedActive);
     videoSettings->multiViewEnabled()->setRawValue(savedMultiView);
 }
 
-// The "no video" pill carries Retry and Video Settings. Nothing in the rig knows about it
-// unless FlyViewVideo says so, and a registration that silently never happens looks exactly
-// like one that works - the chips simply sit on top of the buttons.
 void VideoTileTest::_statusPillRegistersAsAnObstacleOwnedByThePip()
 {
     QQuickView view;
@@ -218,8 +217,6 @@ void VideoTileTest::_statusPillRegistersAsAnObstacleOwnedByThePip()
     QCOMPARE(statics.count(), 1);
     QCOMPARE(statics.first().value<QQuickItem*>(), pill);
 
-    // Owned by the pip because the pill lives inside the video, and the video is sometimes the
-    // pip itself. Without the owner the rig pushes the pip away from its own contents.
     QCOMPARE(owners.count(), 1);
     QCOMPARE(owners.first().value<QQuickItem*>(), pip);
 }

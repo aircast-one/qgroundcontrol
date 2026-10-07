@@ -379,11 +379,7 @@ fn links_field(name: &str) -> Option<Value> {
 }
 
 fn video_camera_name(index: i64) -> String {
-    let setting = |name: &str| crate::settingsstore::raw_setting(&format!("settings.videoSettings.{name}")).and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
-    let name = match usize::try_from(index - 1) {
-        Err(_) => setting("primaryCameraName"),
-        Ok(extra) => serde_json::from_str::<Value>(&setting("extraVideoSources")).ok().and_then(|sources| sources.get(extra)?.get("name")?.as_str().map(str::to_string)).unwrap_or_default(),
-    };
+    let name = usize::try_from(index).ok().and_then(|at| crate::cameras::stored()?.into_iter().nth(at)).map(|camera| camera.name).unwrap_or_default();
     if name.is_empty() { format!("Camera {}", index + 1) } else { name }
 }
 

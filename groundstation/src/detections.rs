@@ -3,10 +3,9 @@ use std::io::{BufRead, BufReader};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use crate::read::value_string;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["settings.videoSettings.rtspUrl.rawValue", "settings.appSettings.detectionsHttpPort.rawValue"];
+pub const DEPS: &[&str] = &["video.cameraUrls", "settings.appSettings.detectionsHttpPort.rawValue", "video.activeVideoSource"];
 pub const STALE_MS: u64 = 1000;
 const RETRY: Duration = Duration::from_secs(1);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -184,7 +183,10 @@ fn follow(source: Source, generation: u64) {
 
 pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let port = crate::read::value_number(&backend.get(DEPS[1])).filter(|p| *p > 0.0 && *p <= 65535.0).map(|p| p as u16);
-    let source = parse(&value_string(&backend.get(DEPS[0])), port);
+    let video = crate::read::object(&backend.get_fields("video", "activeVideoSource,cameraUrls"));
+    let active = crate::read::integer(&video, "activeVideoSource").and_then(|index| usize::try_from(index).ok()).unwrap_or(0);
+    let url = video.get("cameraUrls").and_then(Value::as_array).and_then(|urls| urls.get(active)).and_then(Value::as_str).unwrap_or_default().to_string();
+    let source = parse(&url, port);
     let mut feed = lock();
     if feed.retarget(source.clone())
         && let Some(source) = source

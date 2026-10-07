@@ -55,8 +55,6 @@ pub const URL_SOURCES: &[&str] = &[SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_MPEG
 
 pub const NEGOTIATING_SOURCES: &[&str] = &[SOURCE_RTSP, SOURCE_WEBRTC];
 
-pub const SETTING_VIDEO_SOURCE: &str = "videoSource";
-pub const SETTING_RTSP_URL: &str = "rtspUrl";
 
 pub const REFUSED_SOURCE_OUT_OF_RANGE: &str = "sourceOutOfRange";
 pub const REFUSED_SOURCE_UNCONFIGURED: &str = "sourceUnconfigured";
@@ -249,39 +247,12 @@ pub struct SourceSlot {
     pub source: String,
     pub url: String,
     pub name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct PrimaryUrls {
-    pub udp: String,
-    pub rtsp: String,
-    pub tcp: String,
-    pub whep: String,
-}
-
-pub fn primary_url<'a>(source: &str, urls: &'a PrimaryUrls) -> &'a str {
-    match source {
-        SOURCE_UDP_H264 | SOURCE_UDP_H265 | SOURCE_MPEGTS => &urls.udp,
-        SOURCE_RTSP => &urls.rtsp,
-        SOURCE_TCP => &urls.tcp,
-        SOURCE_WEBRTC => &urls.whep,
-        _ => "",
-    }
-}
-
-pub fn receiver_slot(receiver: &str) -> Option<usize> {
-    match receiver {
-        MAIN_RECEIVER => Some(0),
-        _ => receiver.strip_prefix(TILE_RECEIVER_PREFIX).and_then(|slot| slot.parse::<usize>().ok()).map(|slot| slot + 1),
-    }
+    pub drone: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Settings {
-    pub primary_source: String,
-    pub primary_name: String,
-    pub primary_urls: PrimaryUrls,
-    pub extras: Vec<SourceSlot>,
+    pub cameras: Vec<SourceSlot>,
     pub active_source: i64,
     pub multi_view: bool,
     pub stream_enabled: bool,
@@ -294,32 +265,23 @@ pub struct Settings {
 
 impl Settings {
     pub fn count(&self) -> usize {
-        1 + self.extras.len()
-    }
-
-    fn extra(&self, index: usize) -> Option<&SourceSlot> {
-        index.checked_sub(1).and_then(|slot| self.extras.get(slot))
+        self.cameras.len()
     }
 
     pub fn source_at(&self, index: usize) -> &str {
-        self.extra(index).map(|slot| slot.source.as_str()).unwrap_or(&self.primary_source)
+        self.cameras.get(index).map_or(SOURCE_DISABLED, |camera| camera.source.as_str())
     }
 
     pub fn url_at(&self, index: usize) -> &str {
-        match self.extra(index) {
-            Some(slot) => &slot.url,
-            None if index == 0 => primary_url(&self.primary_source, &self.primary_urls),
-            None => "",
-        }
+        self.cameras.get(index).map_or("", |camera| camera.url.as_str())
     }
 
     pub fn name_at(&self, index: usize) -> Option<&str> {
-        let name = match self.extra(index) {
-            Some(slot) => slot.name.as_str(),
-            None if index == 0 => self.primary_name.as_str(),
-            None => "",
-        };
-        Some(name).filter(|name| !name.is_empty())
+        self.cameras.get(index).map(|camera| camera.name.as_str()).filter(|name| !name.is_empty())
+    }
+
+    pub fn from_drone(&self, index: usize) -> bool {
+        self.cameras.get(index).is_some_and(|camera| camera.drone)
     }
 
     pub fn enabled(&self, index: usize) -> bool {
@@ -327,28 +289,25 @@ impl Settings {
     }
 
     pub fn configured(&self, index: usize) -> bool {
-        !needs_url(self.source_at(index)) || !self.url_at(index).is_empty()
+        index < self.count() && (!needs_url(self.source_at(index)) || !self.url_at(index).is_empty())
+    }
+
+    pub fn usable(&self, index: usize) -> bool {
+        index < self.count() && source_usable(self.source_at(index), self.url_at(index))
     }
 
     pub fn current_index(&self) -> usize {
-        let asked = self.active_source;
-        match asked > 0 && asked < self.count() as i64 {
-            true => {
-                let index = asked as usize;
-                match self.configured(index) {
-                    true => index,
-                    false => 0,
-                }
-            }
-            false => 0,
-        }
+        usize::try_from(self.active_source)
+            .ok()
+            .filter(|index| self.usable(*index))
+            .or_else(|| (0..self.count()).find(|index| self.usable(*index)))
+            .unwrap_or(0)
     }
 
     pub fn active_refusal(&self) -> Option<&'static str> {
         let asked = self.active_source;
         match asked {
-            0 => None,
-            asked if asked < 0 || asked >= self.count() as i64 => Some(REFUSED_SOURCE_OUT_OF_RANGE),
+            asked if asked < 0 || asked >= self.count() as i64 => (asked != 0).then_some(REFUSED_SOURCE_OUT_OF_RANGE),
             asked if !self.configured(asked as usize) => Some(REFUSED_SOURCE_UNCONFIGURED),
             _ => None,
         }
@@ -359,13 +318,11 @@ impl Settings {
     }
 
     pub fn clamp_active(&self, asked: i64) -> usize {
-        asked.clamp(0, self.count() as i64 - 1) as usize
+        asked.clamp(0, (self.count() as i64 - 1).max(0)) as usize
     }
 
     pub fn switchable(&self) -> Vec<usize> {
-        std::iter::once(0)
-            .chain((1..self.count()).filter(|index| is_stream_source(self.source_at(*index)) && self.configured(*index)))
-            .collect()
+        (0..self.count()).filter(|index| self.usable(*index)).collect()
     }
 
     pub fn tiles(&self) -> Vec<usize> {
@@ -384,7 +341,10 @@ impl Settings {
     }
 
     pub fn camera_index_for_receiver(&self, receiver: &str) -> Option<usize> {
-        receiver_slot(receiver).filter(|index| self.shown(*index))
+        match receiver {
+            MAIN_RECEIVER => (self.count() > 0).then(|| self.current_index()),
+            _ => receiver.strip_prefix(TILE_RECEIVER_PREFIX).and_then(|slot| slot.parse::<usize>().ok()).and_then(|slot| self.tile_camera_number(slot)).map(|number| number - 1),
+        }
     }
 }
 
@@ -429,7 +389,6 @@ pub enum Out {
 #[derive(Debug, Default)]
 pub struct VideoState {
     pub settings: Settings,
-    pub auto_stream_uri: Option<String>,
     pub streaming: bool,
     pub decoding: bool,
     pub recording: bool,
@@ -440,27 +399,20 @@ pub struct VideoState {
 }
 
 impl VideoState {
-    pub fn auto_stream_configured(&self) -> bool {
-        self.auto_stream_uri.as_ref().is_some_and(|uri| !uri.is_empty())
-    }
-
     pub fn url_at(&self, index: usize) -> &str {
-        match (index, self.auto_stream_uri.as_deref()) {
-            (0, Some(uri)) if !uri.is_empty() => uri,
-            _ => self.settings.url_at(index),
-        }
+        self.settings.url_at(index)
     }
 
     pub fn configured(&self, index: usize) -> bool {
-        !needs_url(self.settings.source_at(index)) || !self.url_at(index).is_empty()
+        self.settings.configured(index)
     }
 
     pub fn usable(&self, index: usize) -> bool {
-        source_usable(self.settings.source_at(index), self.url_at(index))
+        self.settings.usable(index)
     }
 
     pub fn stream_configured(&self) -> bool {
-        self.auto_stream_configured() || self.usable(self.settings.current_index())
+        self.usable(self.settings.current_index())
     }
 
     pub fn has_video(&self) -> bool {
@@ -468,7 +420,11 @@ impl VideoState {
     }
 
     pub fn is_stream_source(&self) -> bool {
-        is_stream_source(self.settings.source_at(self.settings.current_index())) || self.auto_stream_configured()
+        is_stream_source(self.settings.source_at(self.settings.current_index()))
+    }
+
+    pub fn from_drone(&self) -> bool {
+        self.settings.from_drone(self.settings.current_index())
     }
 
     pub fn has_multiple_sources(&self) -> bool {
@@ -476,11 +432,10 @@ impl VideoState {
     }
 
     pub fn desired_uri(&self, receiver: &str) -> String {
-        let Some(index) = self.settings.camera_index_for_receiver(receiver) else { return String::new() };
-        match (index, self.auto_stream_uri.as_ref()) {
-            (0, Some(uri)) if receiver == MAIN_RECEIVER => uri.clone(),
-            _ => source_uri(self.settings.source_at(index), self.settings.url_at(index)),
-        }
+        self.settings
+            .camera_index_for_receiver(receiver)
+            .map(|index| source_uri(self.settings.source_at(index), self.settings.url_at(index)))
+            .unwrap_or_default()
     }
 
     fn camera_receiver(receiver: &str) -> bool {
@@ -518,7 +473,13 @@ impl VideoState {
             .collect();
         moved.iter().for_each(|name| {
             let uri = self.desired_uri(name);
-            self.receivers.entry(name.clone()).and_modify(|receiver| receiver.uri = uri);
+            self.receivers.entry(name.clone()).and_modify(|receiver| {
+                receiver.uri = uri;
+                receiver.streaming = false;
+                receiver.decoding = false;
+                receiver.size = None;
+                receiver.last_frame_s = None;
+            });
         });
         let changed = match latency_changed {
             true => names.clone(),
@@ -536,36 +497,12 @@ impl VideoState {
         std::iter::once(Out::CamerasChanged).chain(self.refresh()).chain(restarts).chain(cleared).collect()
     }
 
-    pub fn on_auto_stream(&mut self, stream_type: u8, encoding: u8, uri: &str) -> Vec<Out> {
-        let (source, url) = match uri.is_empty() {
-            true => (SOURCE_NO_VIDEO, String::new()),
-            false => auto_stream_source(stream_type, encoding, uri),
-        };
-        let (settings, persisted): (Settings, Vec<Out>) = match url.is_empty() {
-            true => {
-                self.auto_stream_uri = None;
-                (self.settings.clone(), Vec::new())
-            }
-            false => {
-                self.auto_stream_uri = Some(url.clone());
-                let rtsp = (source == SOURCE_RTSP).then(|| Out::SetSetting { name: SETTING_RTSP_URL, value: url.clone() });
-                let writes = std::iter::once(Out::SetSetting { name: SETTING_VIDEO_SOURCE, value: source.to_string() }).chain(rtsp).collect();
-                (Settings { primary_source: source.to_string(), ..self.settings.clone() }, writes)
-            }
-        };
-        self.on_settings(settings).into_iter().chain(persisted).collect()
-    }
-
     pub fn on_vehicle(&mut self, present: bool) -> Vec<Out> {
         let was = std::mem::replace(&mut self.vehicle_present, present);
         let stream: Vec<Out> = was.then_some(Out::StopCameraStream).into_iter().chain(present.then_some(Out::StartCameraStream)).collect();
         match present {
             true => stream,
-            false => {
-                self.auto_stream_uri = None;
-                let settings = self.settings.clone();
-                stream.into_iter().chain(self.on_settings(settings)).chain(self.set_full_screen(false)).collect()
-            }
+            false => stream.into_iter().chain(self.set_full_screen(false)).collect(),
         }
     }
 
@@ -635,7 +572,7 @@ impl VideoState {
         if !self.has_video() {
             return Vec::new();
         }
-        let index = receiver_slot(receiver).filter(|index| *index < self.settings.count()).unwrap_or_else(|| self.settings.current_index());
+        let index = self.settings.camera_index_for_receiver(receiver).unwrap_or_else(|| self.settings.current_index());
         let source = self.settings.source_at(index).to_string();
         let timeout_s = start_timeout_s(&source, self.settings.rtsp_timeout_s);
         let low_latency = self.settings.low_latency;
@@ -864,6 +801,7 @@ impl VideoState {
                 json!({
                     "slot": index,
                     "name": self.settings.name_at(index),
+                    "fromDrone": self.settings.from_drone(index),
                     "source": self.settings.source_at(index),
                     "sourceToken": source_token(self.settings.source_at(index)),
                     "requiresRestart": requires_restart(self.settings.source_at(index)),
@@ -890,7 +828,7 @@ impl VideoState {
             "hasVideo": self.has_video(),
             "streamEnabled": self.settings.stream_enabled,
             "streamConfigured": self.stream_configured(),
-            "autoStreamConfigured": self.auto_stream_configured(),
+            "fromDrone": self.from_drone(),
             "streamSource": self.is_stream_source(),
             "streaming": self.streaming,
             "decoding": self.decoding,
@@ -942,15 +880,17 @@ pub fn video_source_view(_backend: &dyn Backend, args: &[String]) -> Value {
 mod tests {
     use super::*;
 
+    fn cam(source: &str, url: &str, name: &str) -> SourceSlot {
+        SourceSlot { source: source.to_string(), url: url.to_string(), name: name.to_string(), drone: false }
+    }
+
+    fn only(camera: SourceSlot) -> Settings {
+        Settings { cameras: vec![camera], ..settings() }
+    }
+
     fn settings() -> Settings {
         Settings {
-            primary_source: SOURCE_RTSP.to_string(),
-            primary_name: String::new(),
-            primary_urls: PrimaryUrls { rtsp: "rtsp://10.0.0.1:8554/live".to_string(), ..PrimaryUrls::default() },
-            extras: vec![
-                SourceSlot { source: SOURCE_UDP_H265.to_string(), url: "0.0.0.0:5601".to_string(), name: "Thermal side".to_string() },
-                SourceSlot { source: SOURCE_RTSP.to_string(), url: String::new(), name: String::new() },
-            ],
+            cameras: vec![cam(SOURCE_RTSP, "rtsp://10.0.0.1:8554/live", ""), cam(SOURCE_UDP_H265, "0.0.0.0:5601", "Thermal side"), cam(SOURCE_RTSP, "", "")],
             active_source: 0,
             multi_view: false,
             stream_enabled: true,
@@ -979,18 +919,19 @@ mod tests {
         assert!(needs_url(SOURCE_WEBRTC) && needs_url(SOURCE_RTSP) && needs_url(SOURCE_MPEGTS), "the six url kinds are the ones that stay unconfigured until an address is typed");
         assert!(!needs_url(SOURCE_HERELINK_AIR_UNIT), "a fixed-address source is configured the moment it is picked");
         assert!(is_stream_source(SOURCE_HERELINK_HOTSPOT) && !is_stream_source(SOURCE_DISABLED));
-        let mut state = VideoState { settings: Settings { primary_source: SOURCE_RTSP.to_string(), stream_enabled: true, ..Settings::default() }, ..VideoState::default() };
+        let mut state = VideoState { settings: Settings { cameras: vec![cam(SOURCE_RTSP, "", "")], stream_enabled: true, ..Settings::default() }, ..VideoState::default() };
         assert!(!state.stream_configured(), "rtsp with no url is not configured");
         assert!(!state.has_video());
-        state.settings.primary_urls.rtsp = "rtsp://1.2.3.4/live".to_string();
+        state.settings.cameras[0].url = "rtsp://1.2.3.4/live".to_string();
         assert!(state.has_video(), "stream enabled plus a configured source is the whole of hasVideo");
         state.settings.stream_enabled = false;
         assert!(!state.has_video(), "the enable switch alone can take video away");
-        state.settings.primary_source = SOURCE_HERELINK_AIR_UNIT.to_string();
+        state.settings.cameras[0].source = SOURCE_HERELINK_AIR_UNIT.to_string();
         state.settings.stream_enabled = true;
         assert!(state.stream_configured(), "herelink needs no url");
-        state.settings.primary_source = SOURCE_NO_VIDEO.to_string();
+        state.settings.cameras[0].source = SOURCE_NO_VIDEO.to_string();
         assert!(!state.stream_configured());
+        assert!(!VideoState { settings: Settings { stream_enabled: true, ..Settings::default() }, ..VideoState::default() }.has_video(), "no cameras at all is no video, not a crash on camera zero");
     }
 
     #[test]
@@ -1004,7 +945,7 @@ mod tests {
         assert_eq!(view["cameras"][1]["frameAge"], "notBound");
         assert_eq!(view["cameras"][1]["configured"], true, "and the row stays self-consistent: configured, enabled, switchable and simply not on screen");
         assert_eq!(view["cameras"][0]["shown"], true);
-        let blank = wire(Settings { primary_source: SOURCE_NO_VIDEO.to_string(), ..settings() }, &[MAIN_RECEIVER]);
+        let blank = wire(only(cam(SOURCE_NO_VIDEO, "", "")), &[MAIN_RECEIVER]);
         assert_eq!(blank.camera_status(0), Status::NoVideoSource, "noVideoSource is reserved for a slot whose source really is none");
         let multi = wire(Settings { multi_view: true, ..settings() }, &[MAIN_RECEIVER]);
         assert_eq!(multi.camera_status(1), Status::NoReceiver, "a shown camera the host never registered a receiver for is a fourth answer again");
@@ -1012,7 +953,7 @@ mod tests {
 
     #[test]
     fn a_source_that_can_never_start_says_so_instead_of_looking_ready() {
-        let solo = wire(Settings { primary_source: SOURCE_3DR_SOLO.to_string(), ..settings() }, &[MAIN_RECEIVER]);
+        let solo = wire(only(cam(SOURCE_3DR_SOLO, "", "")), &[MAIN_RECEIVER]);
         assert!(!solo.has_video(), "the three fixed-address sources outside herelink are not accepted by streamConfigured, so they never produce a frame");
         assert!(solo.configured(0), "they need no url, so the configured question answers yes");
         assert!(!solo.usable(0), "usable is the per-slot mirror of streamConfigured, so one row can no longer contradict hasVideo");
@@ -1021,7 +962,7 @@ mod tests {
         assert_eq!(view["cameras"][0]["usable"], false);
         assert_eq!(view["cameras"][0]["status"], "unsupportedSource");
         assert_eq!(view["hasVideo"], false);
-        let blank = wire(Settings { primary_source: SOURCE_NO_VIDEO.to_string(), ..settings() }, &[MAIN_RECEIVER]);
+        let blank = wire(only(cam(SOURCE_NO_VIDEO, "", "")), &[MAIN_RECEIVER]);
         assert!(!blank.usable(0) && blank.snapshot(0)["cameras"][0]["usable"] == false, "no-video and disabled are unusable too, where configured alone called them ready");
         assert!(wired().usable(1), "a configured udp camera stays usable");
     }
@@ -1067,16 +1008,6 @@ mod tests {
     }
 
     #[test]
-    fn the_primary_camera_reads_the_url_belonging_to_its_own_source_kind() {
-        let urls = PrimaryUrls { udp: "0.0.0.0:5600".to_string(), rtsp: "rtsp://a/live".to_string(), tcp: "1.2.3.4:5600".to_string(), whep: "http://a/whep".to_string() };
-        assert_eq!(primary_url(SOURCE_UDP_H265, &urls), "0.0.0.0:5600", "both udp kinds and mpeg-ts share the one udp url field");
-        assert_eq!(primary_url(SOURCE_MPEGTS, &urls), "0.0.0.0:5600");
-        assert_eq!(primary_url(SOURCE_RTSP, &urls), "rtsp://a/live");
-        assert_eq!(primary_url(SOURCE_WEBRTC, &urls), "http://a/whep");
-        assert_eq!(primary_url(SOURCE_HERELINK_HOTSPOT, &urls), "", "a fixed-address source reads no url field");
-    }
-
-    #[test]
     fn the_timeouts_are_the_cpp_numbers_and_only_negotiating_sources_get_the_long_one() {
         assert_eq!(start_timeout_s(SOURCE_UDP_H264, 12), 3, "a plain udp stream gets the three second start budget");
         assert_eq!(start_timeout_s(SOURCE_RTSP, 12), 12, "rtsp may fall back to tcp after five seconds, so it gets the configured budget");
@@ -1093,14 +1024,17 @@ mod tests {
         assert_eq!(state.settings.next_switchable(), Some(1));
         let on_second = VideoState { settings: Settings { active_source: 1, ..settings() }, ..VideoState::default() };
         assert_eq!(on_second.settings.current_index(), 1);
-        assert_eq!(on_second.settings.next_switchable(), Some(0), "the switch wraps back round to the primary camera");
+        assert_eq!(on_second.settings.next_switchable(), Some(0), "the switch wraps back round to the first camera");
         let unconfigured = VideoState { settings: Settings { active_source: 2, ..settings() }, ..VideoState::default() };
-        assert_eq!(unconfigured.settings.current_index(), 0, "an active camera that is not configured falls back to the primary");
+        assert_eq!(unconfigured.settings.current_index(), 0, "an active camera that cannot show falls back to the first one that can");
+        let first_broken = VideoState { settings: Settings { cameras: vec![cam(SOURCE_RTSP, "", ""), cam(SOURCE_UDP_H264, "0.0.0.0:5600", "")], ..settings() }, ..VideoState::default() };
+        assert_eq!(first_broken.settings.current_index(), 1, "no camera is the primary: when the first cannot show, the next that can is on screen");
+        assert!(first_broken.has_video());
         let out_of_range = VideoState { settings: Settings { active_source: 9, ..settings() }, ..VideoState::default() };
         assert_eq!(out_of_range.settings.current_index(), 0);
         assert_eq!(out_of_range.settings.clamp_active(9), 2, "setting the active camera clamps into the slot range instead of refusing");
         assert_eq!(out_of_range.settings.clamp_active(-4), 0);
-        let single = VideoState { settings: Settings { extras: Vec::new(), ..settings() }, ..VideoState::default() };
+        let single = VideoState { settings: only(cam(SOURCE_RTSP, "rtsp://10.0.0.1:8554/live", "")), ..VideoState::default() };
         assert_eq!(single.settings.next_switchable(), None, "one camera cannot be switched away from");
         assert!(!single.has_multiple_sources());
     }
@@ -1129,25 +1063,30 @@ mod tests {
         assert_eq!(multi.settings.tile_camera_number(1), None, "an empty tile has no camera, which is not camera zero");
         let crowded = Settings {
             multi_view: true,
-            extras: (0..10).map(|slot| SourceSlot { source: SOURCE_UDP_H264.to_string(), url: format!("0.0.0.0:56{slot:02}"), name: String::new() }).collect(),
+            cameras: std::iter::once(cam(SOURCE_RTSP, "rtsp://10.0.0.1:8554/live", "")).chain((0..10).map(|slot| cam(SOURCE_UDP_H264, &format!("0.0.0.0:56{slot:02}"), ""))).collect(),
             ..settings()
         };
-        assert_eq!(crowded.tiles().len(), 10, "ten configured extras are all switchable, so the cap is the only thing that can stop the eleventh tile");
+        assert_eq!(crowded.tiles().len(), 10, "ten more configured cameras are all switchable, so the cap is the only thing that can stop the eleventh tile");
         assert_eq!(crowded.tile_camera_number(7), Some(9));
         assert_eq!(crowded.tile_camera_number(8), None, "the eight tile widgets are the whole of the multi view, so slot eight carries nothing however many cameras are configured");
     }
 
     #[test]
-    fn a_receiver_belongs_to_one_pinned_camera_and_is_invisible_when_its_camera_is_not_shown() {
+    fn the_main_receiver_shows_the_camera_on_screen_and_tiles_show_the_rest() {
         let state = wired();
         assert_eq!(state.settings.camera_index_for_receiver(MAIN_RECEIVER), Some(0));
-        assert_eq!(state.settings.camera_index_for_receiver("extraVideo0"), None, "in single view only the active camera's receiver is bound");
+        assert_eq!(state.settings.camera_index_for_receiver("extraVideo0"), None, "in single view only the main receiver is bound");
         assert_eq!(state.settings.camera_index_for_receiver(THERMAL_RECEIVER), None, "the thermal receiver is no camera slot");
-        assert_eq!(state.settings.camera_index_for_receiver("extraVideo7"), None, "a slot past the configured cameras is bound to nothing");
-        let multi = Settings { multi_view: true, ..settings() };
-        assert_eq!(multi.camera_index_for_receiver("extraVideo0"), Some(1), "multi view binds every camera's receiver at once");
-        assert_eq!(receiver_slot("extraVideo3"), Some(4), "the pinning itself is independent of what is on screen");
-        assert_eq!(receiver_slot(THERMAL_RECEIVER), None);
+        assert_eq!(state.settings.camera_index_for_receiver("extraVideo7"), None, "a tile past the cameras on offer is bound to nothing");
+        let second = Settings { active_source: 1, ..settings() };
+        assert_eq!(second.camera_index_for_receiver(MAIN_RECEIVER), Some(1), "the main receiver follows the camera the operator picked, so a host that plays only one stream plays the right one");
+        let multi = Settings { multi_view: true, active_source: 1, ..settings() };
+        assert_eq!(multi.camera_index_for_receiver("extraVideo0"), Some(0), "multi view puts every other camera in a tile");
+        assert_eq!(Settings::default().camera_index_for_receiver(MAIN_RECEIVER), None, "with no camera the main receiver shows nothing");
+        let mut state = wired();
+        let switched = state.on_settings(Settings { active_source: 1, ..settings() });
+        assert!(switched.contains(&Out::StopReceiver { receiver: MAIN_RECEIVER.to_string() }) || switched.iter().any(|out| matches!(out, Out::StartReceiver { receiver, .. } if receiver == MAIN_RECEIVER)), "switching camera restarts the main receiver on the new camera's address");
+        assert_eq!(state.desired_uri(MAIN_RECEIVER), "udp265://0.0.0.0:5601");
     }
 
     #[test]
@@ -1172,7 +1111,7 @@ mod tests {
 
     #[test]
     fn a_receiver_with_no_address_is_told_so_instead_of_being_started() {
-        let mut state = wire(Settings { primary_source: SOURCE_RTSP.to_string(), stream_enabled: true, ..Settings::default() }, &[MAIN_RECEIVER]);
+        let mut state = wire(Settings { cameras: vec![cam(SOURCE_RTSP, "", "")], stream_enabled: true, ..Settings::default() }, &[MAIN_RECEIVER]);
         let out = state.start_receiver(MAIN_RECEIVER);
         assert!(!out.iter().any(|o| matches!(o, Out::StartReceiver { .. })), "an empty uri must not be started");
         assert_eq!(state.camera_status(0), Status::NoStreamUrl);
@@ -1190,7 +1129,8 @@ mod tests {
     fn a_stop_after_the_stream_is_switched_off_cannot_resurrect_the_receiver() {
         let mut state = wired();
         state.on_start_complete(MAIN_RECEIVER, Outcome::Ok, 0);
-        let gone = state.on_settings(Settings { stream_enabled: false, primary_urls: PrimaryUrls { rtsp: "rtsp://10.0.0.9:8554/live".to_string(), ..PrimaryUrls::default() }, ..settings() });
+        let moved = Settings { stream_enabled: false, ..settings() };
+        let gone = state.on_settings(Settings { cameras: std::iter::once(cam(SOURCE_RTSP, "rtsp://10.0.0.9:8554/live", "")).chain(moved.cameras.iter().skip(1).cloned()).collect(), ..moved });
         assert!(gone.contains(&Out::StopReceiver { receiver: MAIN_RECEIVER.to_string() }), "turning the stream off while a url also moved stops every receiver");
         let stopped = state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
         assert!(stopped.contains(&Out::RestartAfter { receiver: MAIN_RECEIVER.to_string(), delay_ms: RESTART_DELAY_MS }));
@@ -1398,33 +1338,16 @@ mod tests {
     }
 
     #[test]
-    fn a_vehicle_stream_configures_the_source_and_losing_the_vehicle_clears_it() {
-        let mut state = wire(Settings { primary_source: SOURCE_DISABLED.to_string(), ..settings() }, &[MAIN_RECEIVER]);
-        assert!(!state.has_video());
-        state.on_auto_stream(STREAM_TYPE_RTP_UDP, ENCODING_H265, "5600");
-        assert_eq!(state.settings.primary_source, SOURCE_UDP_H265);
-        assert_eq!(state.auto_stream_uri.as_deref(), Some("udp265://0.0.0.0:5600"), "a bare port from the vehicle becomes a full listen uri");
-        assert!(state.has_video() && state.is_stream_source(), "an auto configured stream is configured whatever the source setting said");
-        state.on_vehicle(false);
-        assert!(!state.auto_stream_configured(), "the auto stream flag has to clear when the vehicle that supplied it goes");
-        assert!(!state.has_video());
-    }
-
-    #[test]
-    fn an_auto_configured_stream_is_persisted_and_never_reads_as_unconfigured() {
-        let mut state = wire(Settings { primary_source: SOURCE_DISABLED.to_string(), ..settings() }, &[MAIN_RECEIVER]);
-        let out = state.on_auto_stream(STREAM_TYPE_RTSP, 0, "rtsp://1.2.3.4/live");
-        assert!(
-            out.contains(&Out::SetSetting { name: SETTING_VIDEO_SOURCE, value: SOURCE_RTSP.to_string() }),
-            "the cpp stuck because it wrote the setting, so the port has to ask the host to persist it or the next settings push reverts it"
-        );
-        assert!(out.contains(&Out::SetSetting { name: SETTING_RTSP_URL, value: "rtsp://1.2.3.4/live".to_string() }), "and the rtsp url write is the second thing the cpp did");
-        assert!(state.configured(0), "while the vehicle stream plays, the camera showing it must not report itself unconfigured");
-        assert_eq!(state.url_at(0), "rtsp://1.2.3.4/live");
+    fn a_camera_the_drone_announces_is_a_camera_like_any_other_and_says_where_it_came_from() {
+        let drone = SourceSlot { drone: true, ..cam(SOURCE_UDP_H265, "0.0.0.0:5600", "SIYI A8") };
+        let state = wire(Settings { cameras: vec![drone.clone()], ..settings() }, &[MAIN_RECEIVER]);
+        assert!(state.has_video() && state.is_stream_source() && state.from_drone(), "with nothing configured the drone's own camera is on screen");
+        assert_eq!(state.desired_uri(MAIN_RECEIVER), "udp265://0.0.0.0:5600");
         let view = state.snapshot(0);
-        assert_eq!(view["cameras"][0]["configured"], true);
-        assert_eq!(view["cameras"][0]["usable"], true);
-        assert_eq!(view["cameras"][0]["status"], "connecting", "and it reads as a camera coming up, not as one nobody typed an address for");
+        assert_eq!((view["fromDrone"].clone(), view["cameras"][0]["fromDrone"].clone()), (json!(true), json!(true)));
+        let mine_first = Settings { cameras: settings().cameras.into_iter().chain(std::iter::once(drone)).collect(), ..settings() };
+        assert_eq!(mine_first.current_index(), 0, "a drone camera joins the list and never takes the screen from the camera the operator picked");
+        assert_eq!(mine_first.switchable(), vec![0, 1, 3], "and it can be switched to like any other");
     }
 
     #[test]
@@ -1444,27 +1367,6 @@ mod tests {
         );
         assert_eq!(auto_stream_source(STREAM_TYPE_MPEG_TS, 0, "5600"), (SOURCE_MPEGTS, "mpegts://0.0.0.0:5600".to_string()));
         assert_eq!(auto_stream_source(9, 0, "whatever"), (SOURCE_NO_VIDEO, String::new()), "an unknown stream type is not guessed at, and it carries no url either");
-    }
-
-    #[test]
-    fn a_tcp_vehicle_stream_starts_on_a_uri_a_pipeline_can_parse() {
-        let mut state = wire(Settings { primary_source: SOURCE_DISABLED.to_string(), ..settings() }, &[MAIN_RECEIVER]);
-        let out = state.on_auto_stream(STREAM_TYPE_TCP_MPEG, 0, "1.2.3.4:5600");
-        assert!(out.contains(&Out::StartReceiver { receiver: MAIN_RECEIVER.to_string(), timeout_s: 3, low_latency: false }));
-        assert_eq!(state.auto_stream_uri.as_deref(), Some("tcp://1.2.3.4:5600"), "the whole of the vehicle's video is lost if the receiver is started on an address with no scheme");
-    }
-
-    #[test]
-    fn an_unknown_stream_type_is_never_started_on_the_string_the_vehicle_sent() {
-        let mut state = wire(Settings { primary_source: SOURCE_DISABLED.to_string(), ..settings() }, &[MAIN_RECEIVER]);
-        let out = state.on_auto_stream(200, 0, "garbage-uri");
-        assert!(!state.auto_stream_configured(), "an unrecognised stream type must not escalate a refusal to a start on unvalidated text from the air vehicle");
-        assert!(!out.iter().any(|o| matches!(o, Out::StartReceiver { .. })));
-        assert!(!state.has_video());
-        assert_eq!(state.settings.primary_source, SOURCE_DISABLED, "and it leaves the source the operator chose alone");
-        let view = state.snapshot(0);
-        assert_eq!(view["streamSource"], false, "the snapshot cannot say noVideo and streamSource and hasVideo all at once");
-        assert_eq!(view["hasVideo"], false);
     }
 
     #[test]
