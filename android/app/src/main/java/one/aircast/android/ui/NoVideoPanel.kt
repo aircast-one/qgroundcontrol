@@ -64,11 +64,20 @@ internal data class NoVideoButton(val label: String, val onClick: () -> Unit)
 
 private fun videoSettingsButton(navigation: AppNavigationState) = NoVideoButton("Video settings") { navigation.settingsPage = VIDEO_SETTINGS_PAGE }
 
-internal val LocalNoVideoCompact = staticCompositionLocalOf { false }
+internal enum class NoVideoSize { Full, Pill, Thumb }
+
+internal val LocalNoVideoSize = staticCompositionLocalOf { NoVideoSize.Full }
 
 @Composable
 private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoButton? = null, secondary: NoVideoButton? = null, compactTitle: String = title) {
-    if (LocalNoVideoCompact.current) {
+    if (LocalNoVideoSize.current == NoVideoSize.Thumb) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(painterResource(R.drawable.ic_videocam_off), contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(compactTitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        return
+    }
+    if (LocalNoVideoSize.current == NoVideoSize.Pill) {
         Surface(shape = MaterialTheme.shapes.extraLarge, color = osdBackdrop(MaterialTheme.colorScheme.surfaceContainerHigh)) {
             Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(painterResource(R.drawable.ic_videocam_off), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)

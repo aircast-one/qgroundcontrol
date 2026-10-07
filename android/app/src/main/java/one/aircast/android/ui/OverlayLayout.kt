@@ -270,7 +270,7 @@ internal fun LayoutWidget(key: String, movable: Boolean = true, hideable: Boolea
     if (hidden && !editing) return
     val avoided = LocalAvoidedByVideoMessage.current
     val placedKey = layoutKey(key)
-    val moved = layout.offsets[placedKey] ?: (0f to 0f)
+    val moved = layout.offsets[placedKey]?.takeIf { movable } ?: (0f to 0f)
     val angle = if (editing) jiggleAngle(key) else 0f
     var shown by remember { mutableStateOf(false) }
     val decorated = editing && shown

@@ -2,6 +2,7 @@ package one.aircast.android.ui
 
 import androidx.compose.runtime.getValue
 import one.aircast.map.ObstacleVideoOverlay
+import one.aircast.map.aircast
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.foundation.Canvas
@@ -60,10 +61,10 @@ private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this 
 }
 
 @Composable
-private fun NoVideoArea(underFlyChrome: Boolean, compact: Boolean, video: VideoReading?, linksToSettings: Boolean) {
+private fun NoVideoArea(underFlyChrome: Boolean, thumb: Boolean, video: VideoReading?, linksToSettings: Boolean) {
     if (underFlyChrome) return
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CompositionLocalProvider(LocalNoVideoCompact provides compact) { NoVideoPanel(video, linksToSettings = linksToSettings) }
+        CompositionLocalProvider(LocalNoVideoSize provides if (thumb) NoVideoSize.Thumb else NoVideoSize.Full) { NoVideoPanel(video, linksToSettings = linksToSettings) }
     }
 }
 
@@ -78,7 +79,7 @@ internal fun FlyNoVideoMessage() {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
         Box(Modifier.fillMaxSize(), contentAlignment = if (compact) Alignment.TopEnd else Alignment.Center) {
-            CompositionLocalProvider(LocalNoVideoCompact provides compact) { NoVideoPanel(video) }
+            CompositionLocalProvider(LocalNoVideoSize provides if (compact) NoVideoSize.Pill else NoVideoSize.Full) { NoVideoPanel(video) }
         }
     }
 }
@@ -123,7 +124,7 @@ fun VideoSurface(
     if (video?.available == false) {
         if (!expanded) return
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
-            NoVideoArea(!settingsPreview && expanded && !fullScreen, compact = !expanded, video = video, linksToSettings = !settingsPreview)
+            NoVideoArea(!settingsPreview && expanded && !fullScreen, thumb = false, video = video, linksToSettings = !settingsPreview)
         }
         return
     }
@@ -181,9 +182,9 @@ fun VideoSurface(
         if (video?.decoding != true) {
             Surface(
                 Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                color = if (expanded) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.aircast.outdoorBackground,
             ) {
-                NoVideoArea(!settingsPreview && expanded && !fullScreen, compact = !expanded, video = video, linksToSettings = !settingsPreview)
+                NoVideoArea(!settingsPreview && expanded && !fullScreen, thumb = !expanded, video = video, linksToSettings = !settingsPreview)
             }
         }
 

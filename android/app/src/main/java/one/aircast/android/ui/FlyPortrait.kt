@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,8 +35,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import one.aircast.android.R
@@ -51,7 +53,9 @@ private const val MAP_BUTTON_SCRIM_ALPHA = 0.55f
 private val PORTRAIT_PIP_WIDTH = 160.dp
 private val PORTRAIT_PIP_HEIGHT = 90.dp
 private val PORTRAIT_DIAL_SIZE = 120.dp
-private val PORTRAIT_STATUS_HEIGHT = 32.dp
+private val PORTRAIT_BAR_HEIGHT = 64.dp
+private const val BAR_SCRIM_ALPHA = 0.7f
+private const val PIP_BORDER_ALPHA = 0.5f
 private val MAP_BUTTON_SIZE = 40.dp
 private val MAP_ATTRIBUTION_CLEARANCE = 28.dp
 
@@ -74,41 +78,36 @@ internal fun FlyPortrait(
     val hasVideo = reading?.available == true
     val split = portraitSplit(view, hasVideo)
     val flyScreen = LocalFlyScreenState.current
-    LaunchedEffect(Unit) { flyScreen.mapInsets = MapInsets(top = 0, bottom = 0) }
-    val buttonsTop = AircastSpace.s3 + if (!split && hasVideo) PORTRAIT_PIP_HEIGHT + AircastSpace.s3 else 0.dp
+    val barTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + PORTRAIT_BAR_HEIGHT
+    val barTopPx = with(LocalDensity.current) { barTop.roundToPx() }
+    LaunchedEffect(split, barTopPx) { flyScreen.mapInsets = MapInsets(top = if (split) 0 else barTopPx, bottom = 0) }
     val videoHeight = LocalConfiguration.current.screenWidthDp.dp / VIDEO_ASPECT
-    val mapTop = if (split) videoHeight else 0.dp
+    val videoTop = barTop
+    val mapTop = if (split) barTop + videoHeight else 0.dp
+    val controlsTop = if (split) mapTop else barTop
+    val buttonsTop = AircastSpace.s3 + if (!split && hasVideo) PORTRAIT_PIP_HEIGHT + AircastSpace.s3 else 0.dp
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.aircast.outdoorBackground)) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2)
-                .heightIn(min = PORTRAIT_STATUS_HEIGHT),
-            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-            verticalAlignment = Alignment.CenterVertically,
-            content = status,
-        )
         Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
             if (view == FlyView.ThreeD) Viewer3DPane(Modifier.fillMaxSize().padding(top = mapTop)) else map(Modifier.fillMaxSize().padding(top = mapTop))
             if (hasVideo) {
                 video(
                     if (split) {
-                        Modifier.fillMaxWidth().height(videoHeight)
+                        Modifier.padding(top = videoTop).fillMaxWidth().height(videoHeight)
                     } else {
                         Modifier
                             .align(Alignment.TopEnd)
+                            .padding(top = barTop)
                             .padding(AircastSpace.s3)
                             .size(PORTRAIT_PIP_WIDTH, PORTRAIT_PIP_HEIGHT)
                             .clip(MaterialTheme.shapes.medium)
-                            .border(2.dp, MaterialTheme.aircast.outdoorForeground, MaterialTheme.shapes.medium)
+                            .border(1.dp, MaterialTheme.aircast.outdoorForeground.copy(alpha = PIP_BORDER_ALPHA), MaterialTheme.shapes.medium)
                     },
                     split,
                 )
             }
             if (split) {
-                Column(Modifier.fillMaxWidth().height(videoHeight)) {
+                Column(Modifier.padding(top = videoTop).fillMaxWidth().height(videoHeight)) {
                     Box(Modifier.fillMaxWidth().weight(1f)) {
                         if (reading?.decoding != true) Box(Modifier.matchParentSize().osdShadow()) { FlyNoVideoMessage() }
                     }
@@ -121,7 +120,7 @@ internal fun FlyPortrait(
                     }
                 }
             }
-            Box(Modifier.fillMaxSize().padding(top = mapTop)) {
+            Box(Modifier.fillMaxSize().padding(top = controlsTop)) {
                 Column(
                     Modifier
                         .align(Alignment.TopStart)
@@ -142,6 +141,17 @@ internal fun FlyPortrait(
                 Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE)) { rail() }
                 OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE))
             }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = BAR_SCRIM_ALPHA), Color.Transparent)))
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .height(PORTRAIT_BAR_HEIGHT)
+                    .padding(horizontal = AircastSpace.s3),
+                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                verticalAlignment = Alignment.CenterVertically,
+                content = status,
+            )
         }
         Surface(
             Modifier.fillMaxWidth(),

@@ -404,11 +404,12 @@ fun AircastShell(hostView: android.view.View?) {
     }
 
     val darkBars = one.aircast.android.ui.appDarkTheme()
+    val overMap = tab == Tab.Fly && one.aircast.android.ui.flyIsPortrait()
     val view = LocalView.current
     SideEffect {
         (view.context as? Activity)?.window?.let { window ->
             WindowCompat.getInsetsController(window, view).apply {
-                isAppearanceLightStatusBars = !darkBars
+                isAppearanceLightStatusBars = !darkBars && !overMap
                 isAppearanceLightNavigationBars = !darkBars
             }
         }
@@ -516,10 +517,10 @@ fun AircastShell(hostView: android.view.View?) {
                 if (onFly) {
                     val flyStatus: @Composable RowScope.() -> Unit = {
                         one.aircast.android.ui.FlyTabMenu(tabs.filter { it != Tab.Fly }.map { it.label to { selectTab(it) } } + ("Settings" to { navigation.settingsOpen = true }))
-                        LayoutWidget("vehicleState", hideable = false) { VehicleStateChip() }
-                        LayoutWidget("vtolState", hideable = false) { VtolStateCell() }
+                        LayoutWidget("vehicleState", movable = false, hideable = false) { VehicleStateChip() }
+                        LayoutWidget("vtolState", movable = false, hideable = false) { VtolStateCell() }
                         ControlRequestPrompt()
-                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { LayoutWidget("statusPill", hideable = false) { StatusPill() } }
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { LayoutWidget("statusPill", movable = false, hideable = false) { StatusPill() } }
                         one.aircast.android.ui.FlySettingsButton()
                     }
                     val flyKeyRow: @Composable () -> Unit = {
