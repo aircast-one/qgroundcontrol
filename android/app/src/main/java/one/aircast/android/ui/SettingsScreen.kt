@@ -176,7 +176,7 @@ internal val PAGE_NOTES = mapOf(
     "3D Viewer" to "OpenStreetMap buildings drawn in 3D around the vehicle",
 )
 
-internal enum class SettingsGroup(val title: String) { Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), General("General") }
+internal enum class SettingsGroup(val title: String) { Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), Aircraft("Aircraft"), General("General") }
 
 internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int)
 

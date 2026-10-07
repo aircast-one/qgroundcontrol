@@ -39,9 +39,14 @@ import one.aircast.map.aircast
 internal fun openingGroup(requested: String?): SettingsGroup = requested?.let { pageLook(it).group } ?: SettingsGroup.Safety
 
 @Composable
-internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
-    var group by rememberSaveable(requested) { mutableStateOf(openingGroup(requested)) }
+internal fun SettingsSheet(requested: String?, aircraft: Boolean, onClose: () -> Unit) {
+    var group by rememberSaveable(requested, aircraft) { mutableStateOf(if (aircraft) SettingsGroup.Aircraft else openingGroup(requested)) }
     val initialPage = remember(requested) { requested }
+    val navigation = LocalAppNavigation.current
+    androidx.compose.runtime.DisposableEffect(group) {
+        navigation.settingsShowing = group
+        onDispose { navigation.settingsShowing = null }
+    }
     androidx.activity.compose.BackHandler(onBack = onClose)
     Surface(Modifier.fillMaxSize().zIndex(SETTINGS_SHEET_LAYER).pointerInput(Unit) {}, color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -55,10 +60,13 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                             FilterChip(selected = entry == group, onClick = { group = entry }, label = { Text(entry.title) })
                         }
                     }
-                    StatusPill()
                     IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_close), "Close settings") }
                 }
-                key(group) { SettingsScreen(group, initialPage.takeIf { group == openingGroup(requested) }, Modifier.weight(1f)) }
+                Row(Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s3), horizontalArrangement = Arrangement.Start) { StatusPill() }
+                key(group) {
+                    if (group == SettingsGroup.Aircraft) SetupScreen(Modifier.weight(1f))
+                    else SettingsScreen(group, initialPage.takeIf { group == openingGroup(requested) }, Modifier.weight(1f))
+                }
             }
     }
 }

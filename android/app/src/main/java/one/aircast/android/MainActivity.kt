@@ -101,7 +101,6 @@ import one.aircast.android.ui.TerrainProgress
 import one.aircast.android.ui.OrbitReadout
 import one.aircast.android.ui.PlanTab
 import one.aircast.android.ui.RcControlsLayer
-import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.TrafficReadout
 import one.aircast.map.FlyMap
 import one.aircast.map.TrackPoint
@@ -128,14 +127,12 @@ internal fun visibleTabs(advanced: Boolean): List<Tab> = Tab.entries.filter { ad
 enum class Tab(val label: String, @DrawableRes val icon: Int) {
     Fly("Fly", R.drawable.ic_flight),
     Plan("Plan", R.drawable.ic_map),
-    Setup("Setup", R.drawable.ic_build),
     Analyze("Analyze", R.drawable.ic_analytics);
 
     companion object {
         fun from(destination: String): Tab? = when (destination.lowercase()) {
             "fly" -> Fly
             "plan" -> Plan
-            "setup" -> Setup
             "analyze" -> Analyze
             else -> null
         }
@@ -242,7 +239,7 @@ fun AircastShell(hostView: android.view.View?) {
     val overlayLayout = flyScreen.layout
     LaunchedEffect(tab) { if (tab != Tab.Fly) overlayLayout.editing = false }
     LaunchedEffect(navigation.setupPage) {
-        if (navigation.setupPage != null) tab = Tab.Setup
+        if (navigation.setupPage != null) navigation.openAircraft()
     }
     LaunchedEffect(navigation.settingsPage) {
         if (navigation.settingsPage != null) navigation.settingsOpen = true
@@ -250,7 +247,7 @@ fun AircastShell(hostView: android.view.View?) {
     val vehicleNow = one.aircast.android.ui.hasVehicle()
     var hadVehicle by remember { mutableStateOf(vehicleNow) }
     LaunchedEffect(vehicleNow) {
-        if (vehicleNow && !hadVehicle) navigation.settingsOpen = false
+        if (vehicleNow && !hadVehicle && navigation.settingsShowing == one.aircast.android.ui.SettingsGroup.Transmission) navigation.settingsOpen = false
         hadVehicle = vehicleNow
     }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
@@ -348,7 +345,9 @@ fun AircastShell(hostView: android.view.View?) {
         batch.unknownKinds.forEach {
             android.util.Log.w("HostNotices", "unrecognised notice kind '$it' - showing it rather than guessing")
         }
-        batch.destination?.let { destination -> Tab.from(destination)?.let { tab = it } ?: run { navigation.settingsOpen = true } }
+        batch.destination?.let { destination ->
+            Tab.from(destination)?.let { tab = it } ?: if (destination.equals("setup", ignoreCase = true)) navigation.openAircraft() else navigation.settingsOpen = true
+        }
         val now = System.currentTimeMillis()
         val banners = one.aircast.android.ui.quietBanners(batch.banners, shownAt, now)
         shownAt = shownAt + banners.associateWith { now }
@@ -423,7 +422,7 @@ fun AircastShell(hostView: android.view.View?) {
     AircastTheme(dark = darkBars) {
         one.aircast.android.ui.CloseGuard(enabled = tab == Tab.Fly && !fullScreen)
         one.aircast.android.ui.GimbalTakeControlDialog()
-        appMessages.firstOrNull()?.let { shown -> one.aircast.android.ui.AppMessageDialog(shown, onOpenSetup = { tab = Tab.Setup }) { appMessages = appMessages.drop(1) } }
+        appMessages.firstOrNull()?.let { shown -> one.aircast.android.ui.AppMessageDialog(shown, onOpenSetup = { navigation.openAircraft() }) { appMessages = appMessages.drop(1) } }
         val barColor = MaterialTheme.colorScheme.surface.toArgb()
         SideEffect {
             (view.context as? Activity)?.window?.let { window ->
@@ -586,7 +585,8 @@ fun AircastShell(hostView: android.view.View?) {
                 }
                 if (navigation.settingsOpen) {
                     val requested = remember { navigation.settingsPage.also { navigation.settingsPage = null } }
-                    one.aircast.android.ui.SettingsSheet(requested) { navigation.settingsOpen = false }
+                    val aircraft = remember { navigation.aircraftRequested.also { navigation.aircraftRequested = false } }
+                    one.aircast.android.ui.SettingsSheet(requested, aircraft) { navigation.settingsOpen = false }
                 }
                 MissionCompleteDialog()
                 ResumeFailedPrompt()
@@ -594,7 +594,6 @@ fun AircastShell(hostView: android.view.View?) {
 
                 key(popEpoch) {
                     when (tab) {
-                        Tab.Setup -> Surface(Modifier.fillMaxSize()) { SetupScreen() }
                         Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab() }
                         Tab.Analyze -> AnalyzeScreen(
                             page = analyzePage,

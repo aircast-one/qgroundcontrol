@@ -20,7 +20,7 @@ class DebugUiTest {
     fun `a bad command names what it accepts instead of guessing`() {
         assertEquals("cmd must be one of $DEBUG_COMMANDS", debugCommand("rotate", null).exceptionOrNull()?.message)
         assertEquals("orientation must be one of landscape, reverse-landscape, portrait, auto", debugCommand("orientation", "sideways").exceptionOrNull()?.message)
-        assertEquals("tab must be one of Fly, Plan, Setup, Analyze", debugCommand("tab", "Home").exceptionOrNull()?.message)
+        assertEquals("tab must be one of Fly, Plan, Analyze", debugCommand("tab", "Home").exceptionOrNull()?.message)
         assertEquals(
             "open needs a sheet (more, readings, camera, gimbal, status, modes, settings) or a flight action id, e.g. takeoff, rtl, land",
             debugCommand("open", "").exceptionOrNull()?.message,
