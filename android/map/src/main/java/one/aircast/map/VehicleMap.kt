@@ -504,6 +504,13 @@ fun VehicleMap(
         style?.let { applyPip(it, pip) }
     }
 
+    LaunchedEffect(map, pip) {
+        map?.uiSettings?.let { settings ->
+            settings.isLogoEnabled = !pip
+            settings.isAttributionEnabled = !pip
+        }
+    }
+
     LaunchedEffect(map, cameraBottomPx) {
         map?.setPadding(0, 0, 0, cameraBottomPx)
     }

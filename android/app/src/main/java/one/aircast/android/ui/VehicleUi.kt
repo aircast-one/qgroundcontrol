@@ -471,7 +471,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     deck.map { (id, primary) ->
-                        entries.firstOrNull { it.id == id }?.let { entry -> RailDeckButton(entry, primary) }
+                        entries.firstOrNull { it.id == id }?.let { entry -> RailDeckButton(entry, primary, labelled = armed) }
                     }
                     RailDeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false)
                 }
@@ -556,7 +556,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     if (showMore) {
         val checklistPast = checklistOffered(armed)
         MoreActionsSheet(
-            tiles = deckRest.filter { it.id != CHECKLIST }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
+            tiles = listOfNotNull(armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } }) +
+                deckRest.filter { it.id != CHECKLIST }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
                 listOfNotNull(
                     MoreTile("Checklist", R.drawable.ic_check_circle, checklistPast == null) { checklist.open() }
                         .takeIf { preflightOffered(preflightJson) },
@@ -598,6 +599,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
 
 private val DECISION_CARD_WIDTH = 460.dp
 private const val OSD_LABEL_ALPHA = 0.75f
+internal const val STOP_MOTORS = "Stop motors"
 private val RAIL_LIFT = 56.dp
 
 private val OSD_LABELS = mapOf(

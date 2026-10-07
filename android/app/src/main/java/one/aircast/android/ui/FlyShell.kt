@@ -404,6 +404,7 @@ internal fun FlyScreen(
                     .fillMaxSize()
                     .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, bottom = 0.dp),
             ) { actions(FlyDeckLayout.Rail) }
+            if (hasVehicle()) {
             val besideMini = if (mapIsPip) miniWidth(mini) else if (hasVideo && pipExpanded) MINIMAP_WIDTH else PIP_TOGGLE_SIZE
             Box(
                 Modifier
@@ -413,6 +414,7 @@ internal fun FlyScreen(
                     .osdShadow(),
             ) {
                 CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(valuesShown = true, chooser = false, compact = true, stacked = true) }
+            }
             }
         }
         }

@@ -215,7 +215,7 @@ fun FlyMap(
                 }
             },
         )
-        centre?.takeIf { zoom > 0.0 }?.let { at ->
+        centre?.takeIf { zoom > 0.0 && !pip }?.let { at ->
             val density = androidx.compose.ui.platform.LocalDensity.current
             ScaleBarView(
                 at.latitude,

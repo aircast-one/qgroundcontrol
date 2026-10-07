@@ -60,7 +60,27 @@ class FlightTimeReadTest {
 class StreamShutterTest {
     @Test
     fun `the stream shutter is a video shutter that says what a tap will do`() {
-        assertEquals(Triple("Start recording", false, true), streamShutter(false).let { Triple(it.label, it.recording, it.video) })
-        assertEquals(Triple("Stop recording", true, true), streamShutter(true).let { Triple(it.label, it.recording, it.video) })
+        assertEquals(Triple("Start recording", false, true), streamShutter(false, true, null).let { Triple(it.label, it.recording, it.video) })
+        assertEquals(Triple("Stop recording", true, true), streamShutter(true, true, 5).let { Triple(it.label, it.recording, it.video) })
+    }
+
+    @Test
+    fun `a stream that cannot record shows a dead shutter, but one already recording can still stop`() {
+        assertEquals(false, streamShutter(false, recordable = false, elapsedSeconds = null).enabled)
+        assertEquals(true, streamShutter(true, recordable = false, elapsedSeconds = 3).enabled)
+    }
+
+    @Test
+    fun `the stream recording clock reads like the camera's`() {
+        assertEquals("REC 00:01:05", shutterReadout(streamShutter(true, true, 65)))
+        assertEquals(null, shutterReadout(streamShutter(false, true, null)))
+        assertEquals("01:00:00", recordClock(3600))
+    }
+}
+
+class RailLabelTest {
+    @Test
+    fun `rail labels drop the hold instruction`() {
+        assertEquals(listOf("Land", "Return", "Take off"), listOf("Hold to land", "Return", "Hold to take off").map(::railLabel))
     }
 }

@@ -83,6 +83,7 @@ private val SHUTTER_DOT_SIZE = 26.dp
 private val SHUTTER_RING = 4.dp
 private val SHUTTER_STOP_CORNER = 4.dp
 private val SHUTTER_SHADOW = 2.dp
+private const val DISABLED_SHUTTER_ALPHA = 0.38f
 private val CAMERA_TARGET = 48.dp
 private val CAMERA_RAIL_MAX_WIDTH = 120.dp
 private val REC_DOT_SIZE = 8.dp
@@ -150,6 +151,11 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
         }
             },
             below = {
+        if (shutters) Text(
+            if (panel.inPhotoMode) "PHOTO" else "VIDEO",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.osdShadow(),
+        )
         if (camera.hasModes) {
             val toVideo = panel.inPhotoMode
             IconButton(
@@ -276,14 +282,19 @@ private fun ShutterCentredRail(
 
 internal const val VIDEO_RECORDING_STATE = "video.recording"
 
-internal fun streamShutter(recording: Boolean): CameraShutter = CameraShutter(
+internal const val STREAM_NOT_RECORDABLE = "Can't record this camera"
+private const val RECORD_CLOCK_TICK_MS = 1000L
+
+internal fun recordClock(seconds: Long): String = "%02d:%02d:%02d".format(seconds / 3600, seconds / 60 % 60, seconds % 60)
+
+internal fun streamShutter(recording: Boolean, recordable: Boolean, elapsedSeconds: Long?): CameraShutter = CameraShutter(
     label = if (recording) "Stop recording" else "Start recording",
     recording = recording,
-    enabled = true,
+    enabled = recordable || recording,
     action = null,
     video = true,
-    readout = "",
-    readoutActive = false,
+    readout = elapsedSeconds?.let(::recordClock).orEmpty(),
+    readoutActive = recording && elapsedSeconds != null,
 )
 
 @Composable
@@ -291,7 +302,19 @@ private fun StreamShutter() {
     val videoJson by qgcPath(VIDEO_VIEW)
     val recording by qgcBool(VIDEO_RECORDING_STATE)
     if (videoReading(videoJson)?.decoding != true) return
-    ShutterButton(null, streamShutter(recording)) { offMainInOrder { VideoCommands.setRecording(!recording) } }
+    val recordable = videoJson?.isNull("deviceCamera") != false
+    val elapsed by produceState<Long?>(null, recording) {
+        val started = android.os.SystemClock.elapsedRealtime()
+        value = if (recording) 0L else null
+        while (recording) {
+            delay(RECORD_CLOCK_TICK_MS)
+            value = (android.os.SystemClock.elapsedRealtime() - started) / RECORD_CLOCK_TICK_MS
+        }
+    }
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        ShutterButton(null, streamShutter(recording, recordable, elapsed)) { offMainInOrder { VideoCommands.setRecording(!recording) } }
+        if (!recordable) Text(STREAM_NOT_RECORDABLE, style = MaterialTheme.typography.labelSmall, modifier = Modifier.osdShadow())
+    }
 }
 
 @Composable
@@ -301,7 +324,7 @@ private fun ShutterButton(caption: String?, shutter: CameraShutter, onPress: () 
         Surface(
             onClick = onPress,
             enabled = shutter.enabled,
-            modifier = Modifier.size(SHUTTER_SIZE).semantics { contentDescription = shutter.label },
+            modifier = Modifier.size(SHUTTER_SIZE).alpha(if (shutter.enabled) 1f else DISABLED_SHUTTER_ALPHA).semantics { contentDescription = shutter.label },
             shape = CircleShape,
             color = if (shutter.video) Color.Transparent else white,
             border = if (shutter.video) BorderStroke(SHUTTER_RING, white) else null,

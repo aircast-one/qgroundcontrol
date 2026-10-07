@@ -162,8 +162,11 @@ private val RAIL_BUTTON_SIZE = 48.dp
 private val RAIL_ICON_SIZE = 24.dp
 private val RAIL_PRIMARY_ICON_SIZE = 32.dp
 
+internal fun railLabel(label: String): String = label.removePrefix("Hold to ").replaceFirstChar { it.uppercase() }
+
 @Composable
-internal fun RailDeckButton(entry: DeckEntry, primary: Boolean) {
+internal fun RailDeckButton(entry: DeckEntry, primary: Boolean, labelled: Boolean = false) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
     Surface(
         modifier = Modifier.size(RAIL_BUTTON_SIZE).alpha(if (entry.enabled) 1f else DISABLED_ALPHA),
         shape = CircleShape,
@@ -171,6 +174,14 @@ internal fun RailDeckButton(entry: DeckEntry, primary: Boolean) {
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
         DeckPress(entry) { Icon(painterResource(entry.icon), entry.label, Modifier.size(if (primary) RAIL_PRIMARY_ICON_SIZE else RAIL_ICON_SIZE).osdShadow()) }
+    }
+    if (labelled) Text(
+        railLabel(entry.label),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.aircast.outdoorForeground,
+        maxLines = 1,
+        modifier = Modifier.osdShadow(),
+    )
     }
 }
 
