@@ -82,7 +82,6 @@ private val SHUTTER_STOP_SIZE = 20.dp
 private val SHUTTER_DOT_SIZE = 26.dp
 private val SHUTTER_RING = 4.dp
 private val SHUTTER_STOP_CORNER = 4.dp
-private val SHUTTER_SHADOW = 2.dp
 private const val DISABLED_SHUTTER_ALPHA = 0.38f
 private val CAMERA_TARGET = 48.dp
 private val CAMERA_RAIL_MAX_WIDTH = 120.dp
@@ -131,6 +130,9 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
             centre = if (shutters && panel.shutters.isNotEmpty()) SHUTTER_SIZE else 0.dp,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp).widthIn(max = CAMERA_RAIL_MAX_WIDTH),
             above = {
+        IconButton(onClick = { details = true }, modifier = Modifier.size(CAMERA_TARGET)) {
+            Icon(painterResource(R.drawable.ic_settings), "Camera settings", Modifier.size(22.dp))
+        }
         zoomText(camera)?.let { label ->
             Surface(
                 onClick = { details = true },
@@ -179,9 +181,6 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
             Text(text = plan, style = MaterialTheme.typography.labelSmall)
         }
 
-        IconButton(onClick = { details = true }, modifier = Modifier.size(CAMERA_TARGET)) {
-            Icon(painterResource(R.drawable.ic_settings), "Camera settings", Modifier.size(22.dp))
-        }
 
         if (details) {
             CameraDetailsSheet(
@@ -328,7 +327,6 @@ private fun ShutterButton(caption: String?, shutter: CameraShutter, onPress: () 
             shape = CircleShape,
             color = if (shutter.video) Color.Transparent else white,
             border = if (shutter.video) BorderStroke(SHUTTER_RING, white) else null,
-            shadowElevation = SHUTTER_SHADOW,
         ) {
             if (shutter.video) Box(contentAlignment = Alignment.Center) {
                 Box(
