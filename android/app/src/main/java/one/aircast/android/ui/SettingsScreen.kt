@@ -66,6 +66,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +80,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.floor
@@ -143,8 +146,6 @@ private val PAGE_TITLES = mapOf(CONNECTIONS_PAGE to "Links", "ADSB Server" to "A
 
 internal fun pageTitle(title: String): String = PAGE_TITLES[title] ?: sentenceCase(title)
 
-internal fun pageSubtitle(title: String, glance: String): String = glance.ifBlank { PAGE_NOTES[title].orEmpty() }
-
 internal fun activeLinkCount(view: JSONObject?): Int =
     view?.optJSONArray("links")?.let { links -> (0 until links.length()).count { links.optJSONObject(it)?.optBoolean("connected") == true } } ?: 0
 
@@ -156,57 +157,47 @@ internal fun activeLinksGlance(view: JSONObject?): String =
 
 internal fun activeLinksText(count: Int): String = if (count > 0) "$count active" else ""
 
-internal val PAGE_NOTES = mapOf(
-    "General" to "Appearance, sound, units and the defaults a new mission starts from",
-    "Fly View" to "What the flight screen shows, the battery indicator and gimbal control",
-    "Plan View" to "Defaults and rules for building a mission",
-    "Video" to "The cameras this ground station shows, and how it plays them",
-    "Maps" to "Which provider draws the map, and how much imagery is kept on this device",
-    "Connections" to "Serial, UDP and TCP links to the vehicle, and which kinds connect on their own",
-    "MAVLink" to "Telemetry logging, how often the vehicle is asked to send each message, and forwarding",
-    "ADSB Server" to "The SBS-1 receiver the traffic readout draws from",
-    "Packet Radio" to "Video and telemetry over a wfb-ng radio on a USB Wi-Fi adapter",
-    "Remote ID" to "Operator and aircraft identification, which some regions require in flight",
-    "RTK GPS" to "Base station accuracy and position",
-    "NTRIP / RTK" to "Correction stream from a caster for centimetre GPS",
-    "PX4 Log Transfer" to "Stream the vehicle's log to this device while it flies",
-    "About" to "Version and where to get help",
-    "App Logging" to "Writing the app's log to disk, and how the log viewer shows time",
-    "Console" to "The app's own log, for diagnosing a problem",
-    "3D Viewer" to "OpenStreetMap buildings drawn in 3D around the vehicle",
-)
-
 internal enum class SettingsGroup(val title: String) { Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), Aircraft("Aircraft"), General("General") }
 
-internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int)
+internal data class PageLook(val group: SettingsGroup, val inline: Boolean = false)
 
 internal val PAGE_LOOKS = mapOf(
-    "Remote ID" to PageLook(SettingsGroup.Safety, R.drawable.ic_shield),
-    "ADSB Server" to PageLook(SettingsGroup.Safety, R.drawable.ic_navigation),
-    "Fly View" to PageLook(SettingsGroup.Control, R.drawable.ic_flight),
-    "Flight Modes" to PageLook(SettingsGroup.Control, R.drawable.ic_toggle_on),
-    "Plan View" to PageLook(SettingsGroup.Control, R.drawable.ic_route),
-    "Maps" to PageLook(SettingsGroup.Control, R.drawable.ic_map),
-    "3D Viewer" to PageLook(SettingsGroup.Control, R.drawable.ic_explore),
-    "Video" to PageLook(SettingsGroup.Camera, R.drawable.ic_videocam),
-    "Connections" to PageLook(SettingsGroup.Transmission, R.drawable.ic_link),
-    "MAVLink" to PageLook(SettingsGroup.Transmission, R.drawable.ic_swap_horiz),
-    "Packet Radio" to PageLook(SettingsGroup.Transmission, R.drawable.ic_wifi),
-    "RTK GPS" to PageLook(SettingsGroup.Transmission, R.drawable.ic_satellite_alt),
-    "NTRIP / RTK" to PageLook(SettingsGroup.Transmission, R.drawable.ic_satellite_alt),
-    "General" to PageLook(SettingsGroup.General, R.drawable.ic_tune),
-    "PX4 Log Transfer" to PageLook(SettingsGroup.General, R.drawable.ic_download),
-    "Firmware Upgrade" to PageLook(SettingsGroup.General, R.drawable.ic_developer_board),
-    "App Logging" to PageLook(SettingsGroup.General, R.drawable.ic_description),
-    "Console" to PageLook(SettingsGroup.General, R.drawable.ic_terminal),
-    "About" to PageLook(SettingsGroup.General, R.drawable.ic_description),
+    "ADSB Server" to PageLook(SettingsGroup.Safety, inline = true),
+    "Remote ID" to PageLook(SettingsGroup.Safety),
+    "Fly View" to PageLook(SettingsGroup.Control, inline = true),
+    "Flight Modes" to PageLook(SettingsGroup.Control),
+    "Plan View" to PageLook(SettingsGroup.Control, inline = true),
+    "Maps" to PageLook(SettingsGroup.Control),
+    "3D Viewer" to PageLook(SettingsGroup.Control),
+    "Video" to PageLook(SettingsGroup.Camera, inline = true),
+    "Connections" to PageLook(SettingsGroup.Transmission),
+    "MAVLink" to PageLook(SettingsGroup.Transmission),
+    "Packet Radio" to PageLook(SettingsGroup.Transmission),
+    "RTK GPS" to PageLook(SettingsGroup.Transmission),
+    "NTRIP / RTK" to PageLook(SettingsGroup.Transmission),
+    "General" to PageLook(SettingsGroup.General, inline = true),
+    "PX4 Log Transfer" to PageLook(SettingsGroup.General),
+    "Firmware Upgrade" to PageLook(SettingsGroup.General),
+    "App Logging" to PageLook(SettingsGroup.General),
+    "Console" to PageLook(SettingsGroup.General),
+    "About" to PageLook(SettingsGroup.General),
 )
 
-internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(SettingsGroup.General, R.drawable.ic_settings)
+internal val BLOCK_HOMES = mapOf(("Fly View" to "Guided Commands") to SettingsGroup.Safety)
 
-internal fun groupedPages(pages: List<SettingsPageEntry>): List<Pair<SettingsGroup, List<SettingsPageEntry>>> =
-    pages.groupBy { pageLook(it.title).group }.toList().sortedBy { it.first.ordinal }
-        .map { (group, entries) -> group to entries.sortedBy { PAGE_LOOKS.keys.indexOf(it.title).takeIf { at -> at >= 0 } ?: Int.MAX_VALUE } }
+internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(SettingsGroup.General)
+
+internal fun blockGroup(page: String, block: SettingsBlock): SettingsGroup = BLOCK_HOMES[page to block.title] ?: pageLook(page).group
+
+internal fun tabPages(group: SettingsGroup, pages: List<SettingsPageEntry>): List<SettingsPageEntry> {
+    val lends = BLOCK_HOMES.filterValues { it == group }.keys.map { it.first }
+    val own = pages.filter { pageLook(it.title).group == group }
+        .sortedBy { PAGE_LOOKS.keys.indexOf(it.title).takeIf { at -> at >= 0 } ?: Int.MAX_VALUE }
+    return pages.filter { it.title in lends && pageLook(it.title).group != group } + own
+}
+
+internal fun sectionsIn(group: SettingsGroup, page: String, sections: List<SettingsSectionRows>): List<SettingsSectionRows> =
+    sections.map { section -> section.copy(blocks = section.blocks.filter { blockGroup(page, it) == group }) }.filter { it.blocks.isNotEmpty() }
 
 internal data class HelpLink(val name: String, val url: String, val host: String)
 
@@ -326,53 +317,29 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
 @Composable
 internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier: Modifier = Modifier) {
     var everyPage by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
-    val pages = remember(everyPage, group) { everyPage.filter { pageLook(it.title).group == group } }
-    var open by rememberSaveable(group) { mutableStateOf(initialPage) }
+    var open by rememberSaveable(group) { mutableStateOf(initialPage?.takeUnless { pageLook(it).inline }) }
 
     LaunchedEffect(Unit) {
         everyPage = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
     }
-    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp >= LIST_DETAIL_MIN_WIDTH
-    LaunchedEffect(pages, wide) {
-        if (open == null) (if (wide) pages.firstOrNull() else pages.singleOrNull())?.let { open = it.title }
-    }
 
     BackHandler(enabled = open != null) { open = null }
 
-    val current = pages.firstOrNull { it.title == open }
-    val body = remember(current) {
-        current?.let { shown -> androidx.compose.runtime.movableContentOf { at: Modifier -> SettingsPageBody(shown, at) } }
-    }
+    val current = everyPage.firstOrNull { it.title == open }
     val heading = remember { mutableStateOf<PageHeading?>(null) }
-    val headingTitle = heading.value?.title
     val headingBack: () -> Unit = { heading.value?.back?.invoke() ?: run { open = null } }
     CompositionLocalProvider(LocalPageHeading provides heading) {
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        if (maxWidth >= LIST_DETAIL_MIN_WIDTH) {
-            Row(Modifier.fillMaxSize()) {
-                SettingsList(pages, Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow), selected = open) { open = it }
-                Box(Modifier.weight(1f).fillMaxHeight()) {
-                    if (current == null) {
-                        EmptyState(R.drawable.ic_settings, "Settings", "Choose a group on the left.")
-                    } else {
-                        CompositionLocalProvider(LocalTwoPane provides true) {
-                            Column(Modifier.fillMaxSize()) {
-                                PageTopBar(headingTitle ?: pageTitle(current.title), "Back", headingBack)
-                                body?.invoke(Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH))
-                            }
-                        }
-                    }
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            val column = Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH)
+            if (current == null) {
+                SettingsTab(group, everyPage, column) { open = it }
+            } else {
+                Column(column) {
+                    PageTopBar(heading.value?.title ?: pageTitle(current.title), "Back", headingBack)
+                    SettingsPageBody(current, Modifier.fillMaxSize())
                 }
             }
-        } else if (current == null) {
-            SettingsList(pages) { open = it }
-        } else {
-            Column(Modifier.fillMaxSize()) {
-                PageTopBar(headingTitle ?: pageTitle(current.title), "Back", headingBack)
-                body?.invoke(Modifier.fillMaxSize())
-            }
         }
-    }
     }
 }
 
@@ -381,17 +348,52 @@ internal val LIST_PANE_WIDTH = 380.dp
 internal val DETAIL_PANE_MAX_WIDTH = 720.dp
 
 @Composable
-private fun SettingsList(
-    pages: List<SettingsPageEntry>,
-    modifier: Modifier = Modifier,
-    selected: String? = null,
-    onOpen: (String) -> Unit,
-) {
-    var search by rememberSaveable { mutableStateOf("") }
+private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>, modifier: Modifier, onOpen: (String) -> Unit) {
     val linksJson by qgcPath("view.links")
-    val activeLinks = remember(linksJson) { activeLinkCount(linksJson) }
+    val pages = remember(group, everyPage) { tabPages(group, everyPage) }
+    Column(modifier.verticalScroll(rememberScrollState())) {
+        pages.forEach { page ->
+            key(page.title) {
+                if (pageLook(page.title).inline || pageLook(page.title).group != group) {
+                    InlinePage(page, group)
+                } else {
+                    SetupRow(
+                        title = pageTitle(page.title),
+                        status = if (page.title == CONNECTIONS_PAGE) activeLinksGlance(linksJson) else pageGlance(page.title),
+                        onClick = { onOpen(page.title) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InlinePage(page: SettingsPageEntry, group: SettingsGroup) {
+    var sections by remember(page.title) { mutableStateOf<List<SettingsSectionRows>?>(null) }
+    var reloads by remember(page.title) { mutableIntStateOf(0) }
+    LaunchedEffect(page.title, reloads) {
+        sections = withContext(Dispatchers.Default) { settingsSections(Qgc.get(settingsPagePath(page.title))) }
+    }
+    val shown = sections?.let { sectionsIn(group, page.title, it) }?.takeIf { it.isNotEmpty() } ?: return
+    val home = pageLook(page.title).group == group
+    if (home && page.showsVideoSources) VideoPreview()
+    if (inlineHeadingMissing(page.title, shown)) SectionHeader(pageTitle(page.title))
+    SettingsControls(page, shown, home) { reloads++ }
+    if (home && page.title == GENERAL_PAGE) ResetAllSettingsRow()
+}
+
+internal fun inlineHeadingMissing(pageTitle: String, sections: List<SettingsSectionRows>): Boolean =
+    sections.first().let { section -> section.group != UNITS_GROUP && blockHeading(pageTitle, section, section.blocks.first()).isBlank() }
+
+@Composable
+internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpen: (String) -> Unit) {
+    var pages by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
+    LaunchedEffect(Unit) {
+        pages = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
+    }
     var hits by remember { mutableStateOf(emptyList<SettingsSectionRows>()) }
-    val searching = search.isNotBlank()
+    val searching = query.isNotBlank()
     val pagePaths = remember(pages) { pages.map { settingsPagePath(it.title) } }
     DisposableEffect(pagePaths, searching) {
         if (searching) Qgc.watch(pagePaths)
@@ -400,7 +402,7 @@ private fun SettingsList(
     val values by Qgc.values.collectAsState()
     val served by remember(pagePaths) { derivedStateOf { pagePaths.map { values[it] } } }
 
-    LaunchedEffect(search, pages, served) {
+    LaunchedEffect(query, pages, served) {
         if (!searching) {
             hits = emptyList()
             return@LaunchedEffect
@@ -408,51 +410,24 @@ private fun SettingsList(
         delay(SEARCH_SETTLE_MS)
         hits = withContext(Dispatchers.Default) {
             pages.zip(served).flatMap { (page, json) ->
-                matchesIn(page.title, settingsSections(json ?: Qgc.get(settingsPagePath(page.title))), search)
+                matchesIn(page.title, settingsSections(json ?: Qgc.get(settingsPagePath(page.title))), query)
             }
         }
     }
 
-    LazyColumn(modifier.fillMaxSize()) {
-        item(key = "search") {
-            SearchPill(search, { search = it }, "Search settings")
-        }
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    LazyColumn(Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH)) {
+        if (!searching) return@LazyColumn
 
-        if (search.isBlank()) {
-            groupedPages(pages).forEach { (_, entries) ->
-                items(entries, key = { it.title }) { entry ->
-                    val glance = if (entry.title == CONNECTIONS_PAGE) activeLinksGlance(linksJson) else pageGlance(entry.title)
-                    SetupRow(
-                        title = pageTitle(entry.title),
-                        status = if (entry.title == CONNECTIONS_PAGE) activeLinksText(activeLinks) else "",
-                        state = SetupState.Neutral,
-                        subtitle = pageSubtitle(entry.title, glance),
-                        onClick = { onOpen(entry.title) },
-                        icon = pageLook(entry.title).icon,
-                        selected = entry.title == selected,
-                    )
-                }
-            }
-            return@LazyColumn
-        }
-
-        val pageHits = pages.filter { pageMatches(it, search) }
+        val pageHits = pages.filter { pageMatches(it, query) }
         if (hits.isEmpty() && pageHits.isEmpty()) {
-            item(key = "none") { FootNote("No settings match “${search.trim()}”.") }
+            item(key = "none") { FootNote("No settings match “${query.trim()}”.") }
             return@LazyColumn
         }
 
         if (pageHits.isNotEmpty()) item(key = "pagesHead") { SectionHeader("Pages") }
         items(pageHits, key = { "page${it.title}" }) { entry ->
-            SetupRow(
-                title = pageTitle(entry.title),
-                status = "",
-                state = SetupState.Neutral,
-                subtitle = "",
-                onClick = { onOpen(entry.title) },
-                icon = pageLook(entry.title).icon,
-                selected = entry.title == selected,
-            )
+            SetupRow(title = pageTitle(entry.title), onClick = { onOpen(entry.title) })
         }
 
         hits.forEach { section ->
@@ -461,6 +436,25 @@ private fun SettingsList(
                 FactRow(fact)
             }
         }
+    }
+    }
+}
+
+@Composable
+private fun VideoPreview() {
+    val previewMaxWidth = (LocalConfiguration.current.screenHeightDp * PREVIEW_HEIGHT_SHARE * 16f / 9f).dp
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        VideoSurface(
+            Modifier
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .widthIn(max = previewMaxWidth)
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(MaterialTheme.shapes.large)
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+            expanded = true,
+            settingsPreview = true,
+        )
     }
 }
 
@@ -507,22 +501,8 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
         return
     }
 
-    val previewMaxWidth = (LocalConfiguration.current.screenHeightDp * PREVIEW_HEIGHT_SHARE * 16f / 9f).dp
     Column(modifier.verticalScroll(rememberScrollState())) {
-        if (page.showsVideoSources) {
-            VideoSurface(
-                Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .widthIn(max = previewMaxWidth)
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .clip(MaterialTheme.shapes.large)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                expanded = true,
-                settingsPreview = true,
-            )
-        }
+        if (page.showsVideoSources) VideoPreview()
         SettingsControls(page, sections) { reloads++ }
         if (page.title == GENERAL_PAGE) ResetAllSettingsRow()
     }
@@ -532,10 +512,11 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
 private fun SettingsControls(
     page: SettingsPageEntry,
     sections: List<SettingsSectionRows>,
+    home: Boolean = true,
     onWrite: () -> Unit,
 ) {
-    if (page.showsNtrip) NtripStatusSection(onWrite)
-    if (page.showsPacketRadio) PacketRadioSection(onWrite)
+    if (home && page.showsNtrip) NtripStatusSection(onWrite)
+    if (home && page.showsPacketRadio) PacketRadioSection(onWrite)
     sections.forEach { section ->
         if (section.group == UNITS_GROUP) {
             SectionHeader(section.title)
@@ -554,6 +535,7 @@ private fun SettingsControls(
             if (section.group == REMOTE_ID_GROUP && block.title == GCS_LOCATION_BLOCK) GcsPositionStatus()
             if (section.group == MAVLINK_GROUP && block.title == SIGNING_AFTER_BLOCK) SigningKeysSection()
         }
+        if (!home) return@forEach
         section.note
             .takeIf { it.isNotBlank() && section.group !in GROUPS_WITH_A_HEAD_EDITOR }
             ?.let { FootNote(it) }
@@ -578,8 +560,8 @@ private fun AdvancedBlock(key: String, content: @Composable () -> Unit) {
             .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(ADVANCED_BLOCK, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
-        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = if (open) "Hide advanced settings" else "Show advanced settings", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.rotate(if (open) 180f else 0f))
+        Text(ADVANCED_BLOCK, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = if (open) "Hide advanced settings" else "Show advanced settings", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.rotate(if (open) 180f else 0f))
     }
     if (open) content()
 }
@@ -596,7 +578,7 @@ internal fun FactRuns(facts: List<Fact>, onWrite: () -> Unit = {}) {
         )
     }
     val inert = blockInertNote(facts)
-    CompositionLocalProvider(LocalBlockRebootNote provides shared, LocalRunInertNote provides inert) { FactRunRows(facts, onWrite) }
+    CompositionLocalProvider(LocalBlockRebootNote provides shared, LocalRunInertNote provides inert) { facts.forEach { FactRow(it, onWrite = onWrite) } }
     inert?.let {
         Text(
             text = it,
@@ -614,38 +596,8 @@ internal val LocalRunInertNote = compositionLocalOf<String?> { null }
 internal fun blockInertNote(facts: List<Fact>): String? =
     facts.filterNot { it.enabled }.takeIf { it.size > 1 }?.map(::inertNote)?.distinct()?.singleOrNull()
 
-internal fun sharedInertNote(run: List<Fact>): String? =
-    run.takeIf { facts -> facts.size > 1 && facts.none { it.enabled } }?.map(::inertNote)?.distinct()?.singleOrNull()
-
 internal fun sharedRebootNote(facts: List<Fact>): String? =
     facts.mapNotNull(::factRebootNote).takeIf { it.size > 1 }?.distinct()?.singleOrNull()
-
-@Composable
-private fun FactRunRows(facts: List<Fact>, onWrite: () -> Unit) {
-    fieldRuns(facts).forEach { run ->
-        if (run.size == 1) {
-            FactRow(run.first(), onWrite = onWrite)
-        } else {
-            val blockInert = LocalRunInertNote.current
-            val inert = sharedInertNote(run)?.takeIf { it != blockInert }
-            CompositionLocalProvider(LocalRunInertNote provides (inert ?: blockInert)) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    run.forEach { fact ->
-                        FactRow(fact, subtitle = factSubtitle(fact), fieldModifier = Modifier.weight(1f).padding(vertical = 8.dp), onWrite = onWrite)
-                    }
-                }
-            }
-            inert?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 32.dp, end = 16.dp, bottom = 8.dp),
-                )
-            }
-        }
-    }
-}
 
 internal const val NTRIP_MOUNTPOINT_BLOCK = "Mountpoint"
 
@@ -706,12 +658,18 @@ internal fun FactRow(
 
     if (asField) {
         Column(fieldModifier) {
-            val inside = title.takeIf { it.length <= FIELD_LABEL_BUDGET }
-            if (inside == null) Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor, modifier = Modifier.padding(bottom = 8.dp))
-            when {
-                fact.isBitmask -> BitmaskPicker(fact, ::write, inside)
-                fact.isEnum && !fact.valueIsOffTheEnumList -> EnumField(fact, inside, ::write)
-                else -> FactTextField(fact, onWrite, inside, onRejected)
+            if (valueOnTheRight(fact)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor, modifier = Modifier.weight(1f))
+                    if (fact.isEnum && !fact.valueIsOffTheEnumList) {
+                        EnumField(fact, Modifier.width(CHOICE_VALUE_WIDTH), ::write)
+                    } else {
+                        FactTextField(fact, onWrite, onRejected, onTheRight = true)
+                    }
+                }
+            } else {
+                Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor, modifier = Modifier.padding(bottom = 8.dp))
+                if (fact.isBitmask) BitmaskPicker(fact, ::write) else FactTextField(fact, onWrite, onRejected)
             }
             fact.slider?.takeIf { !fact.isEnum && !fact.isBitmask }?.let { slider -> FieldSlider((fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull(), slider, fact.acceptsWrite) { value -> write { Qgc.set(fact.path, value) } } }
             val runInert = LocalRunInertNote.current
@@ -831,10 +789,8 @@ internal fun FactRow(
 }
 
 internal const val SEGMENT_LABEL_BUDGET = 28
-internal const val PAIRED_LABEL_BUDGET = 24
-internal const val FIELD_LABEL_BUDGET = 40
-internal const val PAIRED_OPTION_BUDGET = 16
-internal const val PAIRED_UNITS_BUDGET = 6
+internal val NUMBER_VALUE_WIDTH = 160.dp
+internal val CHOICE_VALUE_WIDTH = 220.dp
 
 internal fun sentenceCase(label: String): String = one.aircast.map.sentenceCase(label)
 
@@ -845,21 +801,7 @@ internal fun shownUnits(units: String): String = if (units.lowercase() in SECOND
 internal fun showsAsField(fact: Fact): Boolean =
     !fact.readOnly && !editOnDesktop(fact) && !fact.isBool
 
-internal fun pairsAsField(fact: Fact): Boolean =
-    fact.shortLabel.length in 1..PAIRED_LABEL_BUDGET && showsAsField(fact) && when {
-        fact.isEnum -> !fact.valueIsOffTheEnumList &&
-            !showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings) &&
-            fact.enumStrings.all { it.length <= PAIRED_OPTION_BUDGET }
-        fact.isString -> !isSecret(fact) && fact.valueString.length in 1..PAIRED_OPTION_BUDGET
-        else -> !fact.isBitmask && fact.enumStrings.isEmpty() && fact.units.length <= PAIRED_UNITS_BUDGET
-    }
-
-internal fun fieldRuns(facts: List<Fact>, pairable: (Fact) -> Boolean = { true }): List<List<Fact>> =
-    facts.fold(emptyList()) { runs, fact ->
-        val last = runs.lastOrNull()
-        val pairs = { candidate: Fact -> pairsAsField(candidate) && pairable(candidate) }
-        if (last != null && last.size == 1 && pairs(last.first()) && pairs(fact)) runs.dropLast(1) + listOf(last + fact) else runs + listOf(listOf(fact))
-    }
+internal fun valueOnTheRight(fact: Fact): Boolean = !fact.isString && !fact.isBitmask
 
 internal fun showsAsSegments(isEnum: Boolean, offList: Boolean, writable: Boolean, options: List<String>): Boolean =
     isEnum && !offList && writable && options.size in 2..4 && options.sumOf { it.length } <= SEGMENT_LABEL_BUDGET
@@ -878,7 +820,7 @@ internal fun bitmaskEntryEnabled(fact: Fact, raw: Long, index: Int): Boolean =
     !(fact.firstEntryIsAll && index > 0 && fact.bitmaskValues.isNotEmpty() && raw and fact.bitmaskValues[0] != 0L)
 
 @Composable
-private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit, label: String? = null) {
+private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
     var editing by remember(fact.path) { mutableStateOf(false) }
     val raw = bitmaskRaw(fact)
 
@@ -888,7 +830,6 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit, label: Str
             onValueChange = {},
             readOnly = true,
             maxLines = 3,
-            label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
             trailingIcon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -932,8 +873,8 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit, label: Str
 }
 
 @Composable
-private fun EnumField(fact: Fact, label: String?, write: (() -> Boolean) -> Unit) {
-    ChoiceField(label, shownEnumLabel(fact), fact.enumStrings.map(::sentenceCase), enabled = fact.enabled, groups = fact.enumGroups) { index ->
+private fun EnumField(fact: Fact, modifier: Modifier, write: (() -> Boolean) -> Unit) {
+    ChoiceField(null, shownEnumLabel(fact), fact.enumStrings.map(::sentenceCase), modifier, enabled = fact.enabled, groups = fact.enumGroups) { index ->
         // qtpaths: settings.appSettings.indoorPalette.enumIndex, vehicle.parameterManager.getParameter(-1,RTL_TYPE).enumIndex
         write { fact.enumValues.getOrNull(index)?.toLongOrNull()?.takeIf { fact.rawChoice }?.let { Qgc.set(fact.path, it) } ?: Qgc.set("${fact.path}.enumIndex", index) }
     }
@@ -1054,7 +995,7 @@ internal fun shownText(fact: Fact): String =
     if (fact.name == ASPECT_RATIO) fact.valueString.toDoubleOrNull()?.let(::ratioText) ?: fieldText(fact) else fieldText(fact)
 
 @Composable
-private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRejected: () -> Unit = {}) {
+private fun FactTextField(fact: Fact, onWrite: () -> Unit, onRejected: () -> Unit = {}, onTheRight: Boolean = false) {
     var editing by remember(fact.path) { mutableStateOf<String?>(null) }
     var rejection by remember(fact.path) { mutableStateOf<String?>(null) }
     var revealed by remember(fact.path) { mutableStateOf(false) }
@@ -1099,11 +1040,11 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, label: String?, onRej
             }
         }
     }
-    Column {
+    Column(if (onTheRight) Modifier.width(NUMBER_VALUE_WIDTH) else Modifier) {
         OutlinedTextField(
             value = editing ?: shownText(fact),
             enabled = fact.enabled,
-            label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+            textStyle = if (onTheRight) LocalTextStyle.current.copy(textAlign = TextAlign.End) else LocalTextStyle.current,
             suffix = fact.units.takeIf { it.isNotBlank() }?.let { { Text(shownUnits(it)) } },
             visualTransformation = if (secret && !revealed) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
             leadingIcon = if (secret) {

@@ -16,11 +16,17 @@ class FieldRunsTest {
     )
 
     @Test
-    fun aSettingWithNoEffectYetStillDrawsAsAFieldAndPairs() {
+    fun aSettingWithNoEffectYetStillDrawsAsAField() {
         val host = text("host", isString = false).copy(enabled = false, disabledReason = "Has no effect while the ADS-B server connection is off.")
         assertEquals(true, showsAsField(host))
-        assertEquals(listOf(listOf("host", "port")), fieldRuns(listOf(host, host.copy(name = "port"))).map { run -> run.map { it.name } })
         assertEquals(false, showsAsField(host.copy(readOnly = true)))
+    }
+
+    @Test
+    fun numbersAndChoicesSitRightOfTheirLabelWhileTextTakesTheWholeRow() {
+        assertEquals(true, valueOnTheRight(text("alt", isString = false, units = "m")))
+        assertEquals(true, valueOnTheRight(choice("units")))
+        assertEquals(false, valueOnTheRight(text("url")))
     }
 
     @Test
@@ -67,22 +73,6 @@ class FieldRunsTest {
     }
 
     @Test
-    fun consecutiveShortChoicesShareARow() =
-        assertEquals(listOf(listOf("a", "b"), listOf("c", "d"), listOf("e")), fieldRuns(listOf("a", "b", "c", "d", "e").map { choice(it) }).map { run -> run.map { it.name } })
-
-    @Test
-    fun anythingElseBreaksThePair() =
-        assertEquals(listOf(listOf("a"), listOf("t"), listOf("b"), listOf("long")), fieldRuns(listOf(choice("a"), text("t"), choice("b"), choice("long", listOf("A choice far too long", "x", "y", "z", "w")))).map { run -> run.map { it.name } })
-
-    @Test
-    fun aChoiceWithoutAShortLabelStandsAlone() =
-        assertEquals(2, fieldRuns(listOf(choice("a", label = ""), choice("b"))).size)
-
-    @Test
-    fun shortNumbersPairButWideUnitsDoNot() =
-        assertEquals(listOf(listOf("speed", "alt"), listOf("rate")), fieldRuns(listOf(text("speed", false, "m/s"), text("alt", false, "m"), text("rate", false, "degrees/second"))).map { run -> run.map { it.name } })
-
-    @Test
     fun aRowLabelReadsInSentenceCaseKeepingAcronymsAndNames() {
         assertEquals("Mute audio output", sentenceCase("Mute Audio Output"))
         assertEquals("Use preflight checklist", sentenceCase("Use Preflight Checklist"))
@@ -96,23 +86,6 @@ class FieldRunsTest {
         assertEquals("Time offset (seconds)", sentenceCase("Time Offset (seconds)"))
         assertEquals("Auto-center throttle", sentenceCase("Auto-Center throttle"))
         assertEquals("Left-handed mode", sentenceCase("Left-Handed mode"))
-    }
-
-    @Test
-    fun aShortTextValuePairsAndALongOrEmptyOneKeepsTheRow() {
-        val host = text("host").copy(valueString = "127.0.0.1")
-        val port = text("port", isString = false).copy(valueString = "30003")
-        assertEquals(listOf(listOf("host", "port")), fieldRuns(listOf(host, port)).map { run -> run.map { it.name } })
-        val url = text("url").copy(valueString = "rtsp://192.168.144.25:8554/main.264")
-        assertEquals(listOf(listOf("url"), listOf("port")), fieldRuns(listOf(url, port)).map { run -> run.map { it.name } })
-    }
-
-    @Test
-    fun aPairOffForTheSameReasonSaysItOnce() {
-        val off = text("host").copy(enabled = false, disabledReason = "Has no effect while the ADS-B server connection is off.")
-        assertEquals("Has no effect while the ADS-B server connection is off.", sharedInertNote(listOf(off, off.copy(name = "port"))))
-        org.junit.Assert.assertNull(sharedInertNote(listOf(off, off.copy(name = "port", enabled = true))))
-        org.junit.Assert.assertNull(sharedInertNote(listOf(off, off.copy(name = "port", disabledReason = "Other"))))
     }
 
     @Test

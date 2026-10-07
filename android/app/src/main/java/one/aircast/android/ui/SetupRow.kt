@@ -70,8 +70,8 @@ internal fun SectionHeader(text: String, image: String = "") {
         }
         Text(
             text = text,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -91,7 +91,7 @@ internal fun SetupRow(
 ) {
     val row = Modifier
         .fillMaxWidth()
-        .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+        .background(if (selected) MaterialTheme.colorScheme.surfaceContainerHighest else Color.Transparent)
         .let { if (onClick == null) it else it.clickable(onClick = onClick) }
         .heightIn(min = 72.dp)
         .padding(horizontal = 16.dp, vertical = 12.dp)

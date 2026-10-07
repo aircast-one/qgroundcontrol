@@ -65,14 +65,6 @@ class SettingsViewTest {
         assertEquals("MavlinkActionsSection draws the pickers and the folder note", emptyList<String>(), sections.first().blocks.flatMap { it.facts }.map { it.name })
     }
 
-    @Test
-    fun `every page the head offers carries a line saying what is in it`() {
-        assertTrue(
-            "a page with no note reads as a bare word in the list",
-            PAGES_WITHOUT_A_SCREEN.keys.none { it in PAGE_NOTES },
-        )
-    }
-
     private val general = JSONObject(
         """
         {"title":"General","sections":[
@@ -217,12 +209,6 @@ class SettingsViewTest {
         org.junit.Assert.assertEquals("Bing · Hybrid", glanceText(listOf("Bing", "Hybrid")))
         org.junit.Assert.assertEquals("", glanceText(listOf("", " ")))
         org.junit.Assert.assertEquals("Video stream disabled · Google · Satellite", glanceText(listOf("Video Stream Disabled", "Google", "Satellite")))
-    }
-
-    @Test
-    fun aPageRowReadsItsCurrentStateUnderTheTitleAndFallsBackToWhatThePageHolds() {
-        org.junit.Assert.assertEquals("Bing · Hybrid", pageSubtitle("Maps", "Bing · Hybrid"))
-        org.junit.Assert.assertEquals(PAGE_NOTES["Maps"], pageSubtitle("Maps", ""))
     }
 
     @Test

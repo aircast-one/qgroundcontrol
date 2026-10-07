@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -198,21 +199,7 @@ internal fun ParameterForm(
                     )
                 }
             }
-            val runs = fieldRuns(section.facts) { fact ->
-                fact.slider == null && fact.controlKind != DIALOG_CONTROL && fact.controlKind != LABEL_CONTROL && fact.controlKind != BUTTON_CONTROL &&
-                    !fact.indent && fact.path !in section.calculators && fact.name !in highlighted
-            }
-            items(runs.size, key = { runs[it].first().path }) { index ->
-                val run = runs[index]
-                if (run.size > 1) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        run.forEach { fact ->
-                            FactRow(fact, fieldModifier = Modifier.weight(1f).padding(vertical = 8.dp)) { reloads++ }
-                        }
-                    }
-                    return@items
-                }
-                val fact = run.first()
+            items(section.facts, key = { it.path }) { fact ->
                 Column(Modifier.padding(start = if (fact.indent) INDENT else 0.dp)) {
                     if (fact.controlKind == DIALOG_CONTROL) {
                         OutlinedButton(enabled = fact.enabled, onClick = { calibratingEscs = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) { Text(fact.title) }

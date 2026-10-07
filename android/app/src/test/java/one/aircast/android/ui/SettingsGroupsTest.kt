@@ -6,18 +6,37 @@ import org.junit.Test
 class SettingsGroupsTest {
     private fun page(title: String) = SettingsPageEntry(title, showsLinks = false, showsVideoSources = false, sectionCount = 0)
 
+    private val every = listOf(page("General"), page("Remote ID"), page("Fly View"), page("ADSB Server"), page("Video"), page("Connections"), page("Something new"))
+
     @Test
-    fun pagesGroupAndOrderInDesignOrder() {
-        val grouped = groupedPages(listOf(page("General"), page("Fly View"), page("Video"), page("Connections"), page("Something new"), page("Also new")))
-        assertEquals(
-            listOf(
-                SettingsGroup.Control to listOf("Fly View"),
-                SettingsGroup.Camera to listOf("Video"),
-                SettingsGroup.Transmission to listOf("Connections"),
-                SettingsGroup.General to listOf("General", "Something new", "Also new"),
-            ),
-            grouped.map { (group, pages) -> group to pages.map { it.title } },
-        )
+    fun eachTabListsItsPagesInDesignOrderAndUnknownPagesLandInGeneral() {
+        assertEquals(listOf("Fly View"), tabPages(SettingsGroup.Control, every).map { it.title })
+        assertEquals(listOf("Connections"), tabPages(SettingsGroup.Transmission, every).map { it.title })
+        assertEquals(listOf("General", "Something new"), tabPages(SettingsGroup.General, every).map { it.title })
+    }
+
+    @Test
+    fun safetyOpensWithTheGuidedLimitsItBorrowsFromFlyView() =
+        assertEquals(listOf("Fly View", "ADSB Server", "Remote ID"), tabPages(SettingsGroup.Safety, every).map { it.title })
+
+    private fun block(title: String) = SettingsBlock(title, listOf(one.aircast.android.bridge.Fact(
+        path = "settings.flyViewSettings.$title", name = title, description = "", units = "", valueString = "", value = 0,
+        enumStrings = emptyList(), enumIndex = -1, isBool = true, isString = false, readOnly = false,
+    )))
+
+    private val flyView = listOf(SettingsSectionRows("Fly View", "flyViewSettings", "", listOf(block("Guided Commands"), block("Map and compass"))))
+
+    @Test
+    fun guidedCommandsMoveToSafetyAndLeaveTheRestOfFlyViewInControl() {
+        assertEquals(listOf("Guided Commands"), sectionsIn(SettingsGroup.Safety, "Fly View", flyView).flatMap { it.blocks }.map { it.title })
+        assertEquals(listOf("Map and compass"), sectionsIn(SettingsGroup.Control, "Fly View", flyView).flatMap { it.blocks }.map { it.title })
+        assertEquals(emptyList<SettingsSectionRows>(), sectionsIn(SettingsGroup.Camera, "Fly View", flyView))
+    }
+
+    @Test
+    fun anInlinePageWhoseFirstBlockIsUntitledIsHeadedByThePageName() {
+        assertEquals(false, inlineHeadingMissing("Fly View", flyView))
+        assertEquals(true, inlineHeadingMissing("ADSB Server", listOf(SettingsSectionRows("ADSB Server", "adsbVehicleManagerSettings", "", listOf(block(""))))))
     }
 }
 
