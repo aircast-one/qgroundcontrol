@@ -8,6 +8,7 @@
 #include "QGCCorePlugin.h"
 #include "QGCLoggingCategory.h"
 #include "QGCVideoStreamInfo.h"
+#include "QmlObjectListModel.h"
 #include "SettingsManager.h"
 #include "AircastAccount.h"
 #include "SubtitleWriter.h"
@@ -1166,16 +1167,52 @@ QPair<QString, QString> VideoManager::_announcedSource(const QGCVideoStreamInfo 
 QJsonArray VideoManager::_droneCameras() const
 {
     QGCCameraManager *camMgr = _activeVehicle ? _activeVehicle->cameraManager() : nullptr;
-    const QGCVideoStreamInfo *info = camMgr ? camMgr->currentStreamInstance() : nullptr;
-    if (!info || info->isThermal() || info->uri().isEmpty()) {
-        return {};
+    QJsonArray drone;
+    if (!camMgr) {
+        return drone;
     }
-    const auto [source, uri] = _announcedSource(info);
-    if (source.isEmpty()) {
-        return {};
+    const QmlObjectListModel *cameras = camMgr->cameras();
+    for (int c = 0; c < cameras->count(); ++c) {
+        MavlinkCameraControlInterface *camera = cameras->value<MavlinkCameraControlInterface*>(c);
+        if (!camera) {
+            continue;
+        }
+        const QmlObjectListModel *streams = camera->streams();
+        QList<const QGCVideoStreamInfo*> listed;
+        for (int i = 0; streams && (i < streams->count()); ++i) {
+            const QGCVideoStreamInfo *info = streams->value<QGCVideoStreamInfo*>(i);
+            if (info && !info->isThermal()) {
+                listed.append(info);
+            }
+        }
+        const bool several = listed.size() > 1;
+        const QString model = camera->modelName().trimmed();
+        for (const QGCVideoStreamInfo *info : std::as_const(listed)) {
+            if (info->uri().trimmed().isEmpty()) {
+                continue;
+            }
+            const auto [source, uri] = _announcedSource(info);
+            if (source.isEmpty() || uri.isEmpty()) {
+                continue;
+            }
+            drone.append(VideoSettings::camera(_droneCameraName(model, info->name().trimmed(), several, camera->compID()), source, _droneCameraUrl(source, uri)));
+        }
     }
+    return drone;
+}
+
+QString VideoManager::_droneCameraName(const QString &model, const QString &stream, bool several, int compId)
+{
+    if (model.isEmpty()) {
+        return stream.isEmpty() ? QStringLiteral("Drone camera %1").arg(compId) : stream;
+    }
+    return (several && !stream.isEmpty()) ? QStringLiteral("%1 · %2").arg(model, stream) : model;
+}
+
+QString VideoManager::_droneCameraUrl(const QString &source, const QString &uri)
+{
     const bool keepsScheme = (source == QString::fromUtf8(VideoSettings::videoSourceRTSP)) || (source == QString::fromUtf8(VideoSettings::videoSourceWebRTC));
-    return QJsonArray{VideoSettings::camera(info->name(), source, keepsScheme ? uri : uri.section(QStringLiteral("://"), -1))};
+    return keepsScheme ? uri : uri.section(QStringLiteral("://"), -1);
 }
 
 bool VideoManager::_updateAutoStream(VideoReceiver *receiver)
@@ -1320,10 +1357,6 @@ void VideoManager::_setActiveVehicle(Vehicle *vehicle)
             }
             (void) disconnect(cameraManager, &QGCCameraManager::streamChanged, this, &VideoManager::_videoSourceChanged);
         }
-
-        for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-            receiver->setVideoStreamInfo(nullptr);
-        }
     }
 
     _activeVehicle = vehicle;
@@ -1336,21 +1369,10 @@ void VideoManager::_setActiveVehicle(Vehicle *vehicle)
                 pCamera->resumeStream();
             }
         }
-
-        for (VideoReceiver *receiver : std::as_const(_videoReceivers)) {
-            if (_activeVehicle->cameraManager()) {
-                if (receiver->isThermal()) {
-                    receiver->setVideoStreamInfo(_activeVehicle->cameraManager()->thermalStreamInstance());
-                } else {
-                    receiver->setVideoStreamInfo(_activeVehicle->cameraManager()->currentStreamInstance());
-                }
-            } else {
-                receiver->setVideoStreamInfo(nullptr);
-            }
-        }
     } else {
         setfullScreen(false);
     }
+    _videoSourceChanged();
 }
 
 void VideoManager::_communicationLostChanged(bool connectionLost)

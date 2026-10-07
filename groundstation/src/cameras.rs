@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use crate::router::Backend;
 use crate::videostate::{
-    DEVICE_CAMERAS, SOURCE_DISABLED, SOURCE_MPEGTS, SOURCE_RTSP, SOURCE_TCP, SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_WEBRTC, needs_url,
+    DEVICE_CAMERAS, SOURCE_DISABLED, SOURCE_MPEGTS, SOURCE_RTSP, SOURCE_TCP, SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_WEBRTC, needs_url, source_usable,
 };
 
 pub const CAMERAS_FACT: &str = "cameras";
@@ -104,7 +104,7 @@ pub fn normalized(camera: Camera) -> Camera {
 }
 
 fn kind_names() -> Vec<String> {
-    crate::settingsstore::camera_sources()
+    crate::settingsstore::camera_sources().into_iter().filter(|source| needs_url(source) || source_usable(source, "")).collect()
 }
 
 fn group(source: &str) -> &'static str {
@@ -341,7 +341,7 @@ fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64) -> Va
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::videostate::{SOURCE_BACK_CAMERA, SOURCE_HERELINK_HOTSPOT};
+    use crate::videostate::{SOURCE_3DR_SOLO, SOURCE_BACK_CAMERA, SOURCE_HERELINK_HOTSPOT};
 
     fn cam(name: &str, source: &str, url: &str) -> Camera {
         Camera::new(name, source, url)
@@ -402,8 +402,10 @@ mod tests {
         assert!(listed.iter().all(|kind| kind["raw"] != SOURCE_DISABLED), "no camera is of kind disabled");
         assert_eq!(rtsp["schemes"], json!(["rtsp://", "rtsps://"]), "a typed rtsp:// address can pick its own kind");
         assert_eq!(rtsp["more"], json!(false));
-        let solo = listed.iter().find(|kind| kind["group"] == GROUP_PRESETS).unwrap();
-        assert_eq!(solo["more"], json!(true), "vehicle presets wait behind More types");
+        let preset = listed.iter().find(|kind| kind["group"] == GROUP_PRESETS).unwrap();
+        assert_eq!(preset["more"], json!(true), "vehicle presets wait behind More types");
+        assert!(listed.iter().all(|kind| kind["raw"] != SOURCE_3DR_SOLO), "a kind that can never start is not offered");
+        assert_eq!(problem(SOURCE_3DR_SOLO, ""), Some(NEEDS_KIND), "nor accepted when asked for directly");
     }
 
     #[test]

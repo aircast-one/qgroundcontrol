@@ -100,7 +100,7 @@ SettingsPage {
         }
 
         function addCamera() {
-            const at = _videoSettings.addCamera("", _videoSettings.disabledVideoSource, "")
+            const at = _videoSettings.addCamera("", _videoSettings.rtspVideoSource, "")
             if (at >= 0) {
                 selectedIndex = at
             }
@@ -221,16 +221,16 @@ SettingsPage {
                                 id: sourceMenu
 
                                 Repeater {
-                                    model: _videoSettings.videoSource.enumStrings
+                                    model: _videoSettings.offeredSources()
 
                                     OverlayMenuItem {
-                                        text:      _sourceLabel(modelData)
+                                        text:      _sourceDisplay(modelData)
                                         checkable: true
-                                        checked:   _videoSettings.videoSource.enumValues[index] === camEntry._source
+                                        checked:   modelData === camEntry._source
 
                                         onClicked: {
                                             sourceMenu.close()
-                                            const source = _videoSettings.videoSource.enumValues[index]
+                                            const source = modelData
                                             if (source !== camEntry._source) {
                                                 camList.saveCamera(camEntry._index, camEntry._name, source,
                                                                    camList.urlForSource(source, camEntry._url))

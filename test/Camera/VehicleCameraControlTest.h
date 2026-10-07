@@ -16,6 +16,7 @@ private slots:
 
     UT_PARAMETERIZED_TEST(_testCameraCapFlags);
     void _testZoomTriggersCameraSettingsRequest();
+    void _everyAnnouncedStreamIsADroneCamera();
 
 private:
     MockLink* _mockLink = nullptr;

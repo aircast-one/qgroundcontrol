@@ -271,7 +271,7 @@ void VideoSettings::adoptDeviceCameras(const QString &host, const QJsonArray &de
 int VideoSettings::addCamera(const QString &title, const QString &source, const QString &url)
 {
     std::optional<QJsonArray> list = cameraList();
-    if (!list) {
+    if (!list || !offeredSource(source)) {
         return -1;
     }
     const int at = list->size();
@@ -284,6 +284,9 @@ void VideoSettings::updateCamera(int index, const QString &title, const QString 
 {
     std::optional<QJsonArray> list = cameraList();
     if (!list || (index < 0) || (index >= list->size())) {
+        return;
+    }
+    if (!offeredSource(source) && (source != list->at(index).toObject().value(QStringLiteral("source")).toString())) {
         return;
     }
     list->replace(index, camera(title, source, url));
@@ -341,8 +344,13 @@ bool VideoSettings::sourceUsable(int index)
         return false;
     }
     const QString source = videoSourceNameAt(index);
+    return _sourceNeedsUrl(source) ? !videoUrlAt(index).isEmpty() : offeredSource(source);
+}
+
+bool VideoSettings::offeredSource(const QString &source)
+{
     if (_sourceNeedsUrl(source)) {
-        return !videoUrlAt(index).isEmpty();
+        return true;
     }
     if ((source == QString::fromUtf8(videoSourceHerelinkAirUnit)) || (source == QString::fromUtf8(videoSourceHerelinkHotspot))) {
         return true;
@@ -352,6 +360,18 @@ bool VideoSettings::sourceUsable(int index)
 #else
     return false;
 #endif
+}
+
+QStringList VideoSettings::offeredSources()
+{
+    QStringList offered;
+    const QVariantList values = videoSource()->enumValues();
+    for (const QVariant &value : values) {
+        if (offeredSource(value.toString())) {
+            offered.append(value.toString());
+        }
+    }
+    return offered;
 }
 
 QList<int> VideoSettings::switchableIndices()

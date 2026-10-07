@@ -293,6 +293,31 @@ void VideoCameraSwitchTest::_unreadableListIsLeftAlone()
     QCOMPARE(settings->cameras()->rawValue().toString(), QStringLiteral("{not a list"));
 }
 
+void VideoCameraSwitchTest::_onlyPlayableKindsAreOffered()
+{
+    ThreeCameraFixture fixture;
+    VideoSettings *settings = fixture.settings();
+    const QStringList offered = settings->offeredSources();
+    QVERIFY(offered.contains(QString::fromUtf8(VideoSettings::videoSourceRTSP)));
+    QVERIFY(offered.contains(QString::fromUtf8(VideoSettings::videoSourceUDPH264)));
+    QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoSource3DRSolo)));
+    QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoSourceParrotDiscovery)));
+    QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoSourceYuneecMantisG)));
+    QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoDisabled)));
+
+    QCOMPARE(settings->addCamera(QStringLiteral("solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()), -1);
+    QCOMPARE(settings->videoSourceCount(), 3);
+
+    settings->updateCamera(0, QStringLiteral("cam1"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString());
+    QCOMPARE(settings->videoSourceNameAt(0), QString::fromUtf8(VideoSettings::videoSourceRTSP));
+
+    QJsonArray withSolo = settings->cameraList().value();
+    withSolo.replace(0, VideoSettings::camera(QStringLiteral("old solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()));
+    settings->storeCameras(withSolo, 0);
+    settings->updateCamera(0, QStringLiteral("renamed solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString());
+    QCOMPARE(settings->cameraName(0), QStringLiteral("renamed solo"));
+}
+
 void VideoCameraSwitchTest::_videoStatsReadLikeTheWatchPage()
 {
     QCOMPARE(VideoManager::formatVideoStats(279, 25, 1080), QStringLiteral("279 ms · 25 fps · 1080p"));

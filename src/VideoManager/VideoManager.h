@@ -76,6 +76,7 @@ class VideoManager : public QObject
     friend class VideoManagerInitTest;
     friend class VideoManagerTest;
     friend class VideoCameraSwitchTest;
+    friend class VehicleCameraControlTest;
 
 public:
     explicit VideoManager(QObject *parent = nullptr);
@@ -199,6 +200,8 @@ private:
 #endif
     bool _updateAutoStream(VideoReceiver *receiver);
     QJsonArray _droneCameras() const;
+    static QString _droneCameraName(const QString &model, const QString &stream, bool several, int compId);
+    static QString _droneCameraUrl(const QString &source, const QString &uri);
     static QPair<QString, QString> _announcedSource(const QGCVideoStreamInfo *info);
     bool _updateUVC(VideoReceiver *receiver);
     bool _updateSettings(VideoReceiver *receiver);

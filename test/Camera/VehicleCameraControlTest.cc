@@ -8,7 +8,10 @@
 #include "MockLink.h"
 #include "MultiVehicleManager.h"
 #include "QGCCameraManager.h"
+#include "SettingsManager.h"
 #include "Vehicle.h"
+#include "VideoManager.h"
+#include "VideoSettings.h"
 
 void VehicleCameraControlTest::initTestCase()
 {
@@ -44,7 +47,6 @@ void VehicleCameraControlTest::cleanup()
 
 void VehicleCameraControlTest::_testCameraCapFlags_data()
 {
-    // MockConfiguration camera flags
     QTest::addColumn<bool>("captureVideo");
     QTest::addColumn<bool>("captureImage");
     QTest::addColumn<bool>("hasModes");
@@ -55,7 +57,6 @@ void VehicleCameraControlTest::_testCameraCapFlags_data()
     QTest::addColumn<bool>("hasTrackingPoint");
     QTest::addColumn<bool>("hasTrackingRectangle");
 
-    // Expected VehicleCameraControl properties
     QTest::addColumn<bool>("expectedCapturesVideo");
     QTest::addColumn<bool>("expectedCapturesPhotos");
     QTest::addColumn<bool>("expectedHasModes");
@@ -65,12 +66,7 @@ void VehicleCameraControlTest::_testCameraCapFlags_data()
     QTest::addColumn<bool>("expectedVideoInPhotoMode");
     QTest::addColumn<bool>("expectedHasTracking");
 
-    // Note: xCapVid and xCapImg (capturesVideo/capturesPhotos) are "virtual" capabilities that account for
-    // local gstreamer support. When a camera has a video stream (HAS_VIDEO_STREAM), QGC can locally record
-    // video via gstreamer and screen-grab photos from the stream, even if the camera itself doesn't support
-    // native video recording or photo capture. See "video-stream-only" and "stream-no-native-capture" rows.
 
-    //                                       capVid   capImg   modes    stream   imgInVid vidInImg zoom     trkPt    trkRect   xCapVid  xCapImg  xModes   xZoom    xStream  xImgVid  xVidImg  xTrack
     QTest::newRow("all-caps")                << true  << true  << true  << true  << true  << true  << true  << true  << true   << true  << true  << true  << true  << true  << true  << true  << true;
     QTest::newRow("no-caps")                 << false << false << false << false << false << false << false << false << false  << false << false << false << false << false << false << false << false;
     QTest::newRow("photo-only")              << false << true  << false << false << false << false << false << false << false  << false << true  << false << false << false << false << false << false;
@@ -88,7 +84,6 @@ void VehicleCameraControlTest::_testCameraCapFlags_data()
 
 void VehicleCameraControlTest::_testCameraCapFlags()
 {
-    // Fetch test data
     QFETCH(bool, captureVideo);
     QFETCH(bool, captureImage);
     QFETCH(bool, hasModes);
@@ -108,7 +103,6 @@ void VehicleCameraControlTest::_testCameraCapFlags()
     QFETCH(bool, expectedVideoInPhotoMode);
     QFETCH(bool, expectedHasTracking);
 
-    // Create MockConfiguration with camera enabled and custom flags
     auto* mockConfig = new MockConfiguration(QStringLiteral("CameraCapFlagsTest"));
     mockConfig->setFirmwareType(MAV_AUTOPILOT_PX4);
     mockConfig->setVehicleType(MAV_TYPE_QUADROTOR);
@@ -124,7 +118,6 @@ void VehicleCameraControlTest::_testCameraCapFlags()
     mockConfig->setCameraHasTrackingPoint(hasTrackingPoint);
     mockConfig->setCameraHasTrackingRectangle(hasTrackingRectangle);
 
-    // Connect MockLink
     QSignalSpy spyVehicle(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged);
     QVERIFY(spyVehicle.isValid());
 
@@ -140,7 +133,6 @@ void VehicleCameraControlTest::_testCameraCapFlags()
     _mockLink = qobject_cast<MockLink*>(linkConfig->link());
     QVERIFY(_mockLink);
 
-    // Wait for initial connect sequence to complete
     if (!_vehicle->isInitialConnectComplete()) {
         QSignalSpy spyConnect(_vehicle, &Vehicle::initialConnectComplete);
         QVERIFY(spyConnect.isValid());
@@ -148,15 +140,11 @@ void VehicleCameraControlTest::_testCameraCapFlags()
                  "Timeout waiting for initial connect");
     }
 
-    // Wait for camera manager to discover cameras
     QGCCameraManager* cameraManager = _vehicle->cameraManager();
     QVERIFY(cameraManager);
 
-    // MockLinkCamera creates two cameras; wait for both to be discovered
     QVERIFY_TRUE_WAIT(cameraManager->cameras()->count() >= 2, TestTimeout::longMs());
 
-    // Find Camera 1 (MAV_COMP_ID_CAMERA) which has our configured flags.
-    // Camera 2 (MAV_COMP_ID_CAMERA2) is always photo-only and not what we're testing.
     MavlinkCameraControlInterface* camera = nullptr;
     for (int i = 0; i < cameraManager->cameras()->count(); i++) {
         auto* cam = qobject_cast<MavlinkCameraControlInterface*>(cameraManager->cameras()->get(i));
@@ -167,7 +155,6 @@ void VehicleCameraControlTest::_testCameraCapFlags()
     }
     QVERIFY2(camera, "Camera 1 (MAV_COMP_ID_CAMERA) not found in camera list");
 
-    // Verify capability properties match expected values
     QCOMPARE(camera->capturesVideo(),     expectedCapturesVideo);
     QCOMPARE(camera->capturesPhotos(),    expectedCapturesPhotos);
     QCOMPARE(camera->hasModes(),          expectedHasModes);
@@ -177,15 +164,11 @@ void VehicleCameraControlTest::_testCameraCapFlags()
     QCOMPARE(camera->videoInPhotoMode(),  expectedVideoInPhotoMode);
     QCOMPARE(camera->hasTracking(),       expectedHasTracking);
 
-    // hasFocus is always false since MockLinkCamera doesn't support CAMERA_CAP_FLAGS_HAS_BASIC_FOCUS
     QCOMPARE(camera->hasFocus(), false);
 }
 
 void VehicleCameraControlTest::_testZoomTriggersCameraSettingsRequest()
 {
-    // A spec-minimal camera does not broadcast CAMERA_SETTINGS after a zoom change,
-    // so QGC must re-request it itself once a zoom command is accepted. Otherwise
-    // the zoom level (and FOV) shown by QGC goes stale after the first zoom.
 
     auto* mockConfig = new MockConfiguration(QStringLiteral("CameraZoomSettingsTest"));
     mockConfig->setFirmwareType(MAV_AUTOPILOT_PX4);
@@ -232,27 +215,20 @@ void VehicleCameraControlTest::_testZoomTriggersCameraSettingsRequest()
     QVERIFY2(camera, "Camera 1 (MAV_COMP_ID_CAMERA) not found in camera list");
     QVERIFY(camera->hasZoom());
 
-    // Wait for the initial CAMERA_SETTINGS exchange to settle: the mock reports zoom
-    // level 1.0, so once QGC shows it the initial request/retry cycle is complete.
     QVERIFY_TRUE_WAIT(qFuzzyCompare(camera->zoomLevel(), 1.0), TestTimeout::longMs());
 
-    // QGC alternates between REQUEST_MESSAGE and the deprecated REQUEST_CAMERA_SETTINGS
-    // on retries (dual-transport migration), so accept either as a settings request.
     auto settingsRequestCount = [this]() {
         return _mockLink->receivedRequestMessageCount(MAV_COMP_ID_CAMERA, MAVLINK_MSG_ID_CAMERA_SETTINGS)
              + _mockLink->receivedMavCommandCount(MAV_CMD_REQUEST_CAMERA_SETTINGS, MAV_COMP_ID_CAMERA);
     };
 
-    // An accepted zoom command must cause QGC to re-request CAMERA_SETTINGS on its own
     const int baselineAfterConnect = settingsRequestCount();
     camera->setZoomLevel(50.0);
     QTRY_VERIFY2_WITH_TIMEOUT(settingsRequestCount() > baselineAfterConnect,
                               "QGC did not re-request CAMERA_SETTINGS after setZoomLevel was accepted",
                               TestTimeout::longMs());
-    // And the fresh settings update QGC's stale zoom level
     QVERIFY_TRUE_WAIT(qFuzzyCompare(camera->zoomLevel(), 50.0), TestTimeout::longMs());
 
-    // Continuous zoom (start/stop) must trigger a refresh as well
     const int baselineAfterSetZoom = settingsRequestCount();
     camera->startZoom(1);
     camera->stopZoom();
@@ -262,3 +238,52 @@ void VehicleCameraControlTest::_testZoomTriggersCameraSettingsRequest()
 }
 
 UT_REGISTER_TEST(VehicleCameraControlTest, TestLabel::Integration, TestLabel::Vehicle)
+
+void VehicleCameraControlTest::_everyAnnouncedStreamIsADroneCamera()
+{
+    VideoSettings *settings = SettingsManager::instance()->videoSettings();
+    const QVariant stored = settings->cameras()->rawValue();
+    const QVariant active = settings->activeVideoSource()->rawValue();
+    const auto droneCameras = [] {
+        const QVariantList fromDrone = VideoManager::instance()->cameraFromDrone();
+        const QStringList names = VideoManager::instance()->cameraNames();
+        const QStringList urls = VideoManager::instance()->cameraUrls();
+        QStringList listed;
+        for (int i = 0; i < fromDrone.size(); ++i) {
+            if (fromDrone.at(i).toBool()) {
+                listed.append(names.value(i) + QStringLiteral(" @ ") + urls.value(i));
+            }
+        }
+        return listed;
+    };
+
+    auto *mockConfig = new MockConfiguration(QStringLiteral("DroneStreamsTest"));
+    mockConfig->setFirmwareType(MAV_AUTOPILOT_PX4);
+    mockConfig->setVehicleType(MAV_TYPE_QUADROTOR);
+    mockConfig->setDynamic(true);
+    mockConfig->setEnableCamera(true);
+    mockConfig->setCameraCaptureVideo(true);
+    mockConfig->setCameraHasVideoStream(true);
+
+    QSignalSpy spyVehicle(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged);
+    QVERIFY(spyVehicle.isValid());
+    SharedLinkConfigurationPtr linkConfig = LinkManager::instance()->addConfiguration(mockConfig);
+    QVERIFY(LinkManager::instance()->createConnectedLink(linkConfig));
+    QVERIFY(UnitTest::waitForSignal(spyVehicle, TestTimeout::longMs(), QStringLiteral("activeVehicleChanged")));
+    _vehicle = MultiVehicleManager::instance()->activeVehicle();
+    QVERIFY(_vehicle);
+    _mockLink = qobject_cast<MockLink*>(linkConfig->link());
+    QVERIFY(_mockLink);
+    VideoManager::instance()->_setActiveVehicle(_vehicle);
+
+    QCOMPARE_TRUE_WAIT(droneCameras().size(), 2, TestTimeout::longMs());
+    const QStringList listed = droneCameras();
+    QVERIFY2(listed.at(0).contains(QStringLiteral("Stream 1-1 @ ")) && listed.at(1).contains(QStringLiteral("Stream 1-2 @ ")), qPrintable(listed.join(QStringLiteral(", "))));
+    QVERIFY2(!listed.at(0).contains(QStringLiteral("://")), "a UDP stream is listed without the scheme the app adds");
+    QCOMPARE(settings->cameras()->rawValue(), stored);
+    QCOMPARE(settings->activeVideoSource()->rawValue(), active);
+
+    VideoManager::instance()->_setActiveVehicle(nullptr);
+    QCOMPARE(droneCameras().size(), 0);
+}
+

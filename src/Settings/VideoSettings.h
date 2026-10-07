@@ -63,6 +63,8 @@ public:
     Q_INVOKABLE bool sourceConfigured (int index);
     Q_INVOKABLE bool sourceEnabled    (int index);
     bool     sourceUsable           (int index);
+    Q_INVOKABLE bool offeredSource  (const QString &source);
+    Q_INVOKABLE QStringList offeredSources();
     QList<int> tileCameraIndices     ();
 
     std::optional<QJsonArray> cameraList();

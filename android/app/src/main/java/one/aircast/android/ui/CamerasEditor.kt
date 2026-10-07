@@ -45,6 +45,7 @@ import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcPath
 
 private const val CAMERA_UNDO_WINDOW_MS = 6000L
+private const val CAMERA_LIST_SETTLE_MS = 2000L
 
 private data class CameraDraft(val stored: Int?, val name: String, val source: String, val url: String, val refusal: String? = null)
 
@@ -67,12 +68,24 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
     var draft by remember { mutableStateOf<CameraDraft?>(null) }
     var notice by remember { mutableStateOf<String?>(null) }
     var removed by remember { mutableStateOf<RemovedCamera?>(null) }
-    var busy by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf(false) }
+    var settlingFrom by remember { mutableStateOf<Any?>(null) }
+    val busy = pending || (settlingFrom != null && settlingFrom === view)
     val change: (() -> String?, (String?) -> Unit) -> Unit = { action, after ->
-        busy = true
+        val before = view
+        pending = true
         offMainInOrder {
-            after(action())
-            busy = false
+            val refusal = action()
+            after(refusal)
+            settlingFrom = before.takeIf { refusal == null }
+            pending = false
+        }
+    }
+
+    LaunchedEffect(settlingFrom) {
+        if (settlingFrom != null) {
+            delay(CAMERA_LIST_SETTLE_MS)
+            settlingFrom = null
         }
     }
 
