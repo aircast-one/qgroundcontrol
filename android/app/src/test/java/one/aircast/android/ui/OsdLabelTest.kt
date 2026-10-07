@@ -37,3 +37,21 @@ class DjiChromeTest {
         assertEquals(MiniMap.Thumb, miniMapNamed("Unknown"))
     }
 }
+
+class FlightTimeTest {
+    @Test
+    fun `flight time reads as DJI's minutes and seconds`() {
+        assertEquals("00'00\"", flightTimeText(null))
+        assertEquals("00'00\"", flightTimeText(0.0))
+        assertEquals("01'15\"", flightTimeText(75.4))
+        assertEquals("72'05\"", flightTimeText(4325.0))
+    }
+}
+
+class FlightTimeReadTest {
+    @Test
+    fun `the seconds come out of the fact the bridge wraps them in`() {
+        assertEquals(10.325, flightTimeSeconds(org.json.JSONObject("""{"kind":"value","value":{"kind":"fact","value":10.325}}""")))
+        assertEquals(null, flightTimeSeconds(org.json.JSONObject("""{"kind":"value","value":null}""")))
+    }
+}

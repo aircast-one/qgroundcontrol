@@ -50,8 +50,10 @@ import one.aircast.android.bridge.offMainDetached
 import one.aircast.map.aircast
 import one.aircast.map.optText
 import org.json.JSONObject
+import kotlinx.coroutines.isActive
 
 private const val BATTERY = "view.battery"
+private const val VEHICLE_FLIGHT_TIME = "vehicle.flightTime"
 private const val GPS_VIEW = "view.gps"
 
 
@@ -192,6 +194,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                     else InlineCell(it.text, batteryLevelColour(it.level), R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
                 }
             },
+            "flightTime" to { if (LocalCompactStatus.current) FlightTimeCell() },
             "gps" to {
                 gps?.let {
                     InlineCell(fix?.let { satsText(it, satellites) } ?: NO_COUNT, fix?.let { gpsColour(it) } ?: Color.Unspecified, R.drawable.ic_satellite_alt) { detail = StripDetail.Gps }
@@ -390,6 +393,33 @@ private val BATTERY_RING_STROKE = 3.dp
 private const val BATTERY_RING_TRACK_ALPHA = 0.25f
 
 internal fun batteryPercent(text: String): Int? = compactStatusText(text).removeSuffix("%").toIntOrNull()?.coerceIn(0, 100)
+
+internal fun flightTimeText(seconds: Double?): String {
+    val whole = seconds?.takeIf { it.isFinite() && it > 0 }?.toInt() ?: 0
+    return "%02d'%02d\"".format(whole / 60, whole % 60)
+}
+
+private const val FLIGHT_TIME_POLL_MS = 1000L
+
+internal fun flightTimeSeconds(view: JSONObject?): Double? =
+    view?.optJSONObject("value")?.opt("value")?.let { (it as? Number)?.toDouble() }
+
+@Composable
+private fun FlightTimeCell() {
+    var seconds by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(Unit) {
+        while (kotlinx.coroutines.currentCoroutineContext().isActive) {
+            seconds = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { flightTimeSeconds(Qgc.get(VEHICLE_FLIGHT_TIME)) }
+            kotlinx.coroutines.delay(FLIGHT_TIME_POLL_MS)
+        }
+    }
+    Text(
+        flightTimeText(seconds),
+        style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+        color = MaterialTheme.aircast.outdoorForeground,
+        modifier = Modifier.semantics { contentDescription = "Flight time" },
+    )
+}
 
 @Composable
 private fun BatteryRing(text: String, colour: Color, onClick: () -> Unit) {
