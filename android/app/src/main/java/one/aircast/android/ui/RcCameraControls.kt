@@ -2,6 +2,8 @@ package one.aircast.android.ui
 
 import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -38,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
@@ -119,7 +120,6 @@ private const val GIMBAL_REFUSAL_MS = 4000L
 internal const val GIMBAL_TILT_MIN = -90f
 internal const val GIMBAL_TILT_MAX = 30f
 private const val GIMBAL_IDLE_MS = 3000L
-private const val GIMBAL_IDLE_ALPHA = 0.35f
 private const val GIMBAL_TRACK_ALPHA = 0.8f
 private const val GIMBAL_REST_ALPHA = 0.25f
 
@@ -129,16 +129,23 @@ private fun GimbalTiltSlider(pitch: Double?) {
     var lastSent by remember { mutableLongStateOf(0L) }
     val shown = dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
     var active by remember { mutableStateOf(true) }
-    LaunchedEffect(shown, dragging) {
+    var wake by remember { mutableIntStateOf(0) }
+    LaunchedEffect(shown, dragging, wake) {
         active = true
         if (dragging == null) {
             kotlinx.coroutines.delay(GIMBAL_IDLE_MS)
             active = false
         }
     }
-    val fade by androidx.compose.animation.core.animateFloatAsState(if (active) 1f else GIMBAL_IDLE_ALPHA, label = "gimbalFade")
-    Column(Modifier.alpha(fade), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("${kotlin.math.round(shown).toInt()}\u00b0", style = MaterialTheme.typography.labelMedium)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            "${kotlin.math.round(shown).toInt()}\u00b0",
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.clickable(onClickLabel = "Tilt the gimbal") { wake++ },
+        )
+        Box(Modifier.width(RAIL_SLIDER_THICKNESS).height(RAIL_SLIDER_LENGTH)) {
+        if (!active) Box(Modifier.matchParentSize().clickable(onClickLabel = "Tilt the gimbal") { wake++ })
+        androidx.compose.animation.AnimatedVisibility(visible = active, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
         Slider(
             value = shown,
             onValueChange = { next ->
@@ -161,6 +168,8 @@ private fun GimbalTiltSlider(pitch: Double?) {
             ),
             modifier = Modifier.railSlider().semantics { contentDescription = "Gimbal tilt" },
         )
+        }
+        }
     }
 }
 

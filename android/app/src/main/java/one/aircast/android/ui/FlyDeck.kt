@@ -34,7 +34,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.platform.LocalContext
 import one.aircast.android.R
 import one.aircast.android.bridge.qgcPath
@@ -161,19 +160,17 @@ internal fun DeckButton(entry: DeckEntry, primary: Boolean, modifier: Modifier =
 
 private val RAIL_BUTTON_SIZE = 48.dp
 private val RAIL_ICON_SIZE = 24.dp
-private const val RAIL_SCRIM_ALPHA = 0.45f
-private const val RAIL_BORDER_ALPHA = 0.4f
+private val RAIL_PRIMARY_ICON_SIZE = 32.dp
 
 @Composable
 internal fun RailDeckButton(entry: DeckEntry, primary: Boolean) {
     Surface(
         modifier = Modifier.size(RAIL_BUTTON_SIZE).alpha(if (entry.enabled) 1f else DISABLED_ALPHA),
         shape = CircleShape,
-        color = if (primary) MaterialTheme.colorScheme.primary else Color.Black.copy(alpha = RAIL_SCRIM_ALPHA),
-        contentColor = if (primary) MaterialTheme.colorScheme.onPrimary else MaterialTheme.aircast.outdoorForeground,
-        border = if (primary) null else BorderStroke(1.dp, MaterialTheme.aircast.outdoorForeground.copy(alpha = RAIL_BORDER_ALPHA)),
+        color = Color.Transparent,
+        contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
-        DeckPress(entry) { Icon(painterResource(entry.icon), entry.label, Modifier.size(RAIL_ICON_SIZE)) }
+        DeckPress(entry) { Icon(painterResource(entry.icon), entry.label, Modifier.size(if (primary) RAIL_PRIMARY_ICON_SIZE else RAIL_ICON_SIZE).osdShadow()) }
     }
 }
 

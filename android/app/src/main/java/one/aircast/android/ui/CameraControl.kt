@@ -318,12 +318,6 @@ internal fun thermalOpacityIsOffered(reading: ThermalReading?): Boolean =
 
 internal const val CAMERA_RESET = "vehicle.cameraManager.currentCameraInstance.resetSettings"
 
-internal fun zoomStep(camera: CameraReading, by: Double): Double? {
-    if (!camera.hasZoom) return null
-    val wanted = (camera.zoomLevel + by).coerceIn(ZOOM_LOWEST, ZOOM_HIGHEST)
-    return wanted.takeIf { it != camera.zoomLevel }
-}
-
 internal fun zoomText(camera: CameraReading): String? =
     if (camera.hasZoom) "${camera.zoomLevel.toInt()}%" else null
 

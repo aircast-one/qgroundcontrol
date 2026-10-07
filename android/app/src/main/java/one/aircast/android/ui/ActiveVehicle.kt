@@ -73,7 +73,11 @@ import one.aircast.map.vehicleTelemetryLine
 import one.aircast.map.vehicleChoices
 import androidx.compose.ui.graphics.Color
 
-private const val STATUS_BAR_SCRIM_ALPHA = 0.45f
+private const val STATUS_BAR_SCRIM_ALPHA = 0.55f
+
+internal fun osdModeText(title: String): String = title.substringBefore(" \u00b7 ")
+
+internal fun osdStatusNote(title: String): String? = title.substringAfter(" \u00b7 ", "").ifBlank { null }
 
 internal data class MvAction(
     val id: String,
@@ -155,12 +159,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     androidx.compose.material3.Surface(
         shape = MaterialTheme.shapes.small,
         color = if (statusBar) {
-            when (tone) {
-                ChipTone.Error -> MaterialTheme.colorScheme.error
-                ChipTone.Neutral -> Color.Black.copy(alpha = STATUS_BAR_SCRIM_ALPHA)
-                ChipTone.Warning -> MaterialTheme.aircast.warning
-                ChipTone.Success -> MaterialTheme.aircast.success
-            }
+            Color.Transparent
         } else {
             osdBackdrop(
                 when (tone) {
@@ -172,12 +171,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             )
         },
         contentColor = if (statusBar) {
-            when (tone) {
-                ChipTone.Error -> MaterialTheme.colorScheme.onError
-                ChipTone.Neutral -> MaterialTheme.aircast.outdoorForeground
-                ChipTone.Warning -> MaterialTheme.aircast.onWarning
-                ChipTone.Success -> MaterialTheme.aircast.onSuccess
-            }
+            MaterialTheme.aircast.outdoorForeground
         } else {
             when (tone) {
                 ChipTone.Error -> osdTint(MaterialTheme.colorScheme.onErrorContainer, MaterialTheme.colorScheme.error)
@@ -201,13 +195,28 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp))
+        val title = activeVehicleTitle(choices, subtitle)
         Text(
-            text = activeVehicleTitle(choices, subtitle),
-            style = MaterialTheme.typography.labelLarge,
+            text = if (statusBar) osdModeText(title) else title,
+            style = if (statusBar) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
+        if (statusBar) osdStatusNote(title)?.let { note ->
+            androidx.compose.material3.Surface(
+                shape = MaterialTheme.shapes.small,
+                color = Color.Black.copy(alpha = STATUS_BAR_SCRIM_ALPHA),
+                contentColor = when (tone) {
+                    ChipTone.Error -> MaterialTheme.colorScheme.error
+                    ChipTone.Neutral -> MaterialTheme.aircast.outdoorForeground
+                    ChipTone.Warning -> MaterialTheme.aircast.warning
+                    ChipTone.Success -> MaterialTheme.aircast.success
+                },
+            ) {
+                Text(note, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+            }
+        }
         if (flyScreen.pendingMode != null) {
             androidx.compose.material3.CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
         } else if (choices.ambiguous || taken) {

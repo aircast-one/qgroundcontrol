@@ -40,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.Dp
 import one.aircast.android.bridge.qgcPath
@@ -184,7 +186,12 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val cells: List<Pair<String, @Composable () -> Unit>> = listOf(
-            "battery" to { batteries.forEach { InlineCell(it.text, batteryLevelColour(it.level), R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery } } },
+            "battery" to {
+                batteries.map {
+                    if (LocalCompactStatus.current) BatteryRing(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery }
+                    else InlineCell(it.text, batteryLevelColour(it.level), R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
+                }
+            },
             "gps" to {
                 gps?.let {
                     InlineCell(fix?.let { satsText(it, satellites) } ?: NO_COUNT, fix?.let { gpsColour(it) } ?: Color.Unspecified, R.drawable.ic_satellite_alt) { detail = StripDetail.Gps }
@@ -377,6 +384,33 @@ private fun InlineCell(text: String, colour: Color, @DrawableRes icon: Int? = nu
 }
 
 internal val LocalCompactStatus = androidx.compose.runtime.compositionLocalOf { false }
+
+private val BATTERY_RING_SIZE = 30.dp
+private val BATTERY_RING_STROKE = 3.dp
+private const val BATTERY_RING_TRACK_ALPHA = 0.25f
+
+internal fun batteryPercent(text: String): Int? = compactStatusText(text).removeSuffix("%").toIntOrNull()?.coerceIn(0, 100)
+
+@Composable
+private fun BatteryRing(text: String, colour: Color, onClick: () -> Unit) {
+    val percent = batteryPercent(text) ?: return InlineCell(text, colour, R.drawable.ic_battery_5_bar, onClick)
+    val ring = if (colour == Color.Unspecified) MaterialTheme.aircast.success else colour
+    val track = MaterialTheme.aircast.outdoorForeground.copy(alpha = BATTERY_RING_TRACK_ALPHA)
+    Box(
+        Modifier.size(BATTERY_RING_SIZE).clickable(onClickLabel = "Battery") { onClick() }.semantics { contentDescription = "Battery $percent%" },
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+            val stroke = androidx.compose.ui.graphics.drawscope.Stroke(BATTERY_RING_STROKE.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            val inset = BATTERY_RING_STROKE.toPx() / 2f
+            val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+            val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+            drawArc(track, 0f, 360f, false, topLeft = topLeft, size = arcSize, style = stroke)
+            drawArc(ring, -90f, 360f * percent / 100f, false, topLeft = topLeft, size = arcSize, style = stroke)
+        }
+        Text("$percent", style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.aircast.outdoorForeground)
+    }
+}
 internal const val COMPACT_STATUS_CELLS = 4
 
 internal fun compactStatusText(text: String): String =

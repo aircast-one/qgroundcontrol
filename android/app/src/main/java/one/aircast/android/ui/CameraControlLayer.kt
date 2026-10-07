@@ -68,7 +68,7 @@ import androidx.compose.runtime.produceState
 import one.aircast.android.bridge.Fact
 
 private const val REFUSAL_MS = 4000L
-private const val ZOOM_TICK = 10.0
+private const val ZOOM_CHIP_BORDER_ALPHA = 0.4f
 
 private const val MANAGER = "vehicle.cameraManager"
 
@@ -155,26 +155,15 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
         }
 
         zoomText(camera)?.let { label ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(
-                    onClick = {
-                        zoomStep(camera, ZOOM_TICK)?.let { level ->
-                            offMainDetached { refused = Qgc.writeRefusal(CAMERA_ZOOM, level) }
-                        }
-                    },
-                    enabled = zoomStep(camera, ZOOM_TICK) != null,
-                    modifier = Modifier.size(CAMERA_TARGET).semantics { contentDescription = "Zoom in" },
-                ) { Text("+", style = MaterialTheme.typography.titleLarge) }
-                Text(label, style = MaterialTheme.typography.labelLarge)
-                IconButton(
-                    onClick = {
-                        zoomStep(camera, -ZOOM_TICK)?.let { level ->
-                            offMainDetached { refused = Qgc.writeRefusal(CAMERA_ZOOM, level) }
-                        }
-                    },
-                    enabled = zoomStep(camera, -ZOOM_TICK) != null,
-                    modifier = Modifier.size(CAMERA_TARGET).semantics { contentDescription = "Zoom out" },
-                ) { Text("\u2212", style = MaterialTheme.typography.titleLarge) }
+            Surface(
+                onClick = { details = true },
+                shape = CircleShape,
+                color = osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)),
+                contentColor = MaterialTheme.aircast.outdoorForeground,
+                border = BorderStroke(1.dp, MaterialTheme.aircast.outdoorForeground.copy(alpha = ZOOM_CHIP_BORDER_ALPHA)),
+                modifier = Modifier.semantics { contentDescription = "Zoom $label" },
+            ) {
+                Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
             }
         }
 

@@ -93,13 +93,24 @@ private val STOP_CLEARANCE = 56.dp
 private val TOP_SCRIM_HEIGHT = 96.dp
 private const val TOP_SCRIM_ALPHA = 0.6f
 private val PIP_TOGGLE_SIZE = 28.dp
-private const val LANDSCAPE_MAP_SHOWN_KEY = "LandscapeMapShown"
+private const val MINI_MAP_KEY = "LandscapeMiniMap"
+private val MINIMAP_THUMB = 56.dp
 
-internal fun loadPipExpanded(context: Context): Boolean =
-    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).getBoolean(LANDSCAPE_MAP_SHOWN_KEY, true)
+internal enum class MiniMap { Thumb, Map, Compass }
 
-internal fun savePipExpanded(context: Context, expanded: Boolean) =
-    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).edit().putBoolean(LANDSCAPE_MAP_SHOWN_KEY, expanded).apply()
+internal fun miniMapNamed(name: String?): MiniMap = MiniMap.entries.firstOrNull { it.name == name } ?: MiniMap.Thumb
+
+internal fun loadMiniMap(context: Context): MiniMap =
+    miniMapNamed(context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).getString(MINI_MAP_KEY, null))
+
+internal fun saveMiniMap(context: Context, mini: MiniMap) =
+    context.getSharedPreferences(FLY_STORE, Context.MODE_PRIVATE).edit().putString(MINI_MAP_KEY, mini.name).apply()
+
+internal fun miniWidth(mini: MiniMap): androidx.compose.ui.unit.Dp = when (mini) {
+    MiniMap.Thumb -> MINIMAP_THUMB
+    MiniMap.Map -> MINIMAP_WIDTH
+    MiniMap.Compass -> MINIMAP_HEIGHT
+}
 
 internal fun videoPipShown(hasVideo: Boolean, expanded: Boolean): Boolean = hasVideo && expanded
 
@@ -170,11 +181,13 @@ internal fun FlyScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val videoJson by one.aircast.android.bridge.qgcPath(VIDEO_VIEW)
     val hasVideo = videoJson?.optBoolean("available") == true
-    var pipExpanded by remember { mutableStateOf(loadPipExpanded(context)) }
-    val togglePip: () -> Unit = {
-        pipExpanded = !pipExpanded
-        savePipExpanded(context, pipExpanded)
+    var mini by remember { mutableStateOf(loadMiniMap(context)) }
+    val showMini: (MiniMap) -> Unit = { next ->
+        mini = next
+        saveMiniMap(context, next)
     }
+    val pipExpanded = mini != MiniMap.Thumb
+    val togglePip: () -> Unit = { showMini(if (pipExpanded) MiniMap.Thumb else MiniMap.Map) }
     val layout = LocalFlyScreenState.current.layout
     val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
     val armed = flyState(flyJson)?.armed == true
@@ -182,12 +195,13 @@ internal fun FlyScreen(
     Box(Modifier.fillMaxSize()) {
         val mapIsPip = view == FlyView.Video
         val videoIsPip = view == FlyView.Map
-        val mapShown = view == FlyView.Map || (mapIsPip && pipExpanded)
+        val mapShown = view == FlyView.Map || (mapIsPip && mini != MiniMap.Compass)
         val videoShown = view != FlyView.ThreeD && (view != FlyView.Map || videoPipShown(hasVideo, pipExpanded))
         if (view == FlyView.ThreeD) one.aircast.map.Viewer3DPane(Modifier.fillMaxSize())
         val pipAlign = Alignment.BottomStart
         val mapPipShape = MaterialTheme.shapes.medium
         val pipSize = Modifier.size(MINIMAP_WIDTH, MINIMAP_HEIGHT)
+        val mapPipSize = if (mini == MiniMap.Thumb) Modifier.size(MINIMAP_THUMB) else pipSize
 
         if (mapShown) {
             map(
@@ -197,7 +211,7 @@ internal fun FlyScreen(
                         .align(pipAlign)
                         .padding(AircastSpace.s3)
                         .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
-                        .then(pipSize)
+                        .then(mapPipSize)
                         .clip(mapPipShape)
                         .border(2.dp, MaterialTheme.colorScheme.onSurface, mapPipShape)
                 } else {
@@ -222,19 +236,22 @@ internal fun FlyScreen(
             )
         }
         if (mapIsPip) {
-            if (pipExpanded) {
+            if (mini != MiniMap.Compass) {
                 Box(
                     Modifier
                         .zIndex(2f)
                         .align(pipAlign)
                         .padding(AircastSpace.s3)
                         .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
-                        .then(pipSize)
+                        .then(mapPipSize)
                         .clip(mapPipShape)
-                        .clickable { onView(FlyView.Map) },
+                        .clickable(onClickLabel = if (mini == MiniMap.Thumb) "Show the mini-map" else "Show the map full screen") {
+                            if (mini == MiniMap.Thumb) showMini(MiniMap.Map) else onView(FlyView.Map)
+                        }
+                        .semantics { contentDescription = if (mini == MiniMap.Thumb) "Map" else "Mini-map" },
                 )
             }
-            if (!pipExpanded) {
+            if (mini == MiniMap.Compass) {
                 Box(
                     Modifier
                         .zIndex(3f)
@@ -242,13 +259,21 @@ internal fun FlyScreen(
                         .padding(AircastSpace.s3)
                         .avoidedByVideoMessage(COMPASS_DIAL_KEY)
                         .clip(CircleShape)
-                        .clickable(onClickLabel = "Show the map") { togglePip() }
+                        .clickable(onClickLabel = "Show the map") { showMini(MiniMap.Map) }
                         .semantics { contentDescription = "Compass" },
                 ) { OsdCompassDial(MINIMAP_HEIGHT) }
             }
-            if (pipExpanded) Box(Modifier.zIndex(3f).align(pipAlign).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).then(pipSize).avoidedByVideoMessage(MAP_PIP_KEY).holdToEditLayout()) {
-                PipToggle(pipExpanded, togglePip, Modifier.align(if (pipExpanded) Alignment.TopStart else Alignment.BottomEnd))
-                if (pipExpanded) LayoutPipEditor(MAP_PIP_KEY, mapPipShape, Modifier.matchParentSize())
+            if (mini == MiniMap.Map) Box(Modifier.zIndex(3f).align(pipAlign).padding(AircastSpace.s3).then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true)).then(pipSize).avoidedByVideoMessage(MAP_PIP_KEY).holdToEditLayout()) {
+                PipToggle(true, togglePip, Modifier.align(Alignment.TopStart))
+                Surface(
+                    onClick = { showMini(MiniMap.Compass) },
+                    modifier = Modifier.align(Alignment.TopEnd).size(PIP_TOGGLE_SIZE),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_explore), "Show the compass", Modifier.size(18.dp)) }
+                }
+                LayoutPipEditor(MAP_PIP_KEY, mapPipShape, Modifier.matchParentSize())
             }
         }
         if (videoIsPip && hasVideo) {
@@ -259,7 +284,7 @@ internal fun FlyScreen(
         }
         if (view == FlyView.Map) {
             var layers by remember { mutableStateOf(false) }
-            Box(Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MINIMAP_HEIGHT + AircastSpace.s3 * 2)) {
+            Box(Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = (if (hasVideo && pipExpanded) MINIMAP_HEIGHT else PIP_TOGGLE_SIZE) + AircastSpace.s3 * 2)) {
                 LayoutWidget("mapLayers", hideable = false) {
                     Surface(
                         onClick = { layers = true },
@@ -349,6 +374,16 @@ internal fun FlyScreen(
                     .fillMaxSize()
                     .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, bottom = 0.dp),
             ) { actions(FlyDeckLayout.Rail) }
+            val besideMini = if (mapIsPip) miniWidth(mini) else if (hasVideo && pipExpanded) MINIMAP_WIDTH else PIP_TOGGLE_SIZE
+            Box(
+                Modifier
+                    .zIndex(2f)
+                    .align(Alignment.BottomStart)
+                    .padding(start = besideMini + AircastSpace.s3 * 2, bottom = AircastSpace.s3)
+                    .osdShadow(),
+            ) {
+                CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(valuesShown = true, chooser = false, compact = true, stacked = true) }
+            }
         }
     }
 }

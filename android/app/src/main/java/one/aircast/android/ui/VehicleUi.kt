@@ -186,7 +186,7 @@ fun VehicleTitle() {
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShown: Boolean = true, chooser: Boolean = true, compact: Boolean = false) {
+fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShown: Boolean = true, chooser: Boolean = true, compact: Boolean = false, stacked: Boolean = false) {
     val flyScreen = LocalFlyScreenState.current
     val context = LocalContext.current
     val classView by qgcPath(INSTRUMENTS_VIEW)
@@ -266,17 +266,26 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     if (shown.isEmpty()) return
 
     if (compact) {
-        Row(modifier.alpha(if (silent) 0.45f else 1f), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5), verticalAlignment = Alignment.CenterVertically) {
-            shown.map { instrument ->
-                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
-                    Text(osdLabel(instrument.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = OSD_LABEL_ALPHA), modifier = Modifier.alignByBaseline())
-                    Text(
-                        "${instrument.value}${instrument.units}",
-                        style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
-                        color = displayColour(displayFor(displays, instrument), instrument.raw)?.let { Color(it) } ?: MaterialTheme.aircast.outdoorForeground,
-                        modifier = Modifier.alignByBaseline(),
-                    )
-                }
+        val reading: @Composable (Instrument, TextStyle) -> Unit = { instrument, style ->
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
+                Text(osdLabel(instrument.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = OSD_LABEL_ALPHA), modifier = Modifier.alignByBaseline())
+                Text(
+                    "${instrument.value}${instrument.units}",
+                    style = style.copy(fontFeatureSettings = "tnum"),
+                    color = displayColour(displayFor(displays, instrument), instrument.raw)?.let { Color(it) } ?: MaterialTheme.aircast.outdoorForeground,
+                    modifier = Modifier.alignByBaseline(),
+                )
+            }
+        }
+        if (stacked) {
+            val (speeds, places) = shown.partition { osdIsSpeed(it.label) }
+            Column(modifier.alpha(if (silent) 0.45f else 1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (speeds.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) { speeds.map { reading(it, MaterialTheme.typography.labelLarge) } }
+                if (places.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) { places.map { reading(it, MaterialTheme.typography.titleLarge) } }
+            }
+        } else {
+            Row(modifier.alpha(if (silent) 0.45f else 1f), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5), verticalAlignment = Alignment.CenterVertically) {
+                shown.map { reading(it, MaterialTheme.typography.titleMedium) }
             }
         }
         return
@@ -457,7 +466,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         Box(modifier.fillMaxSize()) {
             if (pending == null && guidedValue == null && editingLoiter == null) {
                 Column(
-                    Modifier.align(Alignment.TopStart).padding(start = AircastSpace.s3, top = AircastSpace.s2),
+                    Modifier.align(Alignment.CenterStart).padding(start = AircastSpace.s3, bottom = RAIL_LIFT),
                     verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
@@ -490,9 +499,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                         }
                     }
                 }
-            }
-            Box(Modifier.align(Alignment.BottomCenter).widthIn(max = RAIL_TELEMETRY_WIDTH).padding(bottom = AircastSpace.s2).osdShadow()) {
-                CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(valuesShown = true, chooser = false, compact = true) }
             }
         }
     } else Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -591,8 +597,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
 }
 
 private val DECISION_CARD_WIDTH = 460.dp
-private val RAIL_TELEMETRY_WIDTH = 560.dp
 private const val OSD_LABEL_ALPHA = 0.75f
+private val RAIL_LIFT = 56.dp
 
 private val OSD_LABELS = mapOf(
     "distance to home" to "D",
@@ -607,6 +613,8 @@ private val OSD_LABELS = mapOf(
 )
 
 internal fun osdLabel(label: String): String = OSD_LABELS[label.trim().lowercase()] ?: label.uppercase()
+
+internal fun osdIsSpeed(label: String): Boolean = osdLabel(label) in setOf("H.S", "V.S", "A.S")
 
 @Composable
 private fun DecisionHost(rail: Boolean, content: @Composable () -> Unit) {
