@@ -176,33 +176,33 @@ internal val PAGE_NOTES = mapOf(
     "3D Viewer" to "OpenStreetMap buildings drawn in 3D around the vehicle",
 )
 
-internal enum class SettingsGroup(val title: String) { Connection("Connection"), Flying("Flying"), App("App"), More("More") }
+internal enum class SettingsGroup(val title: String) { Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), General("General") }
 
 internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int)
 
 internal val PAGE_LOOKS = mapOf(
-    "Connections" to PageLook(SettingsGroup.Connection, R.drawable.ic_link),
-    "Video" to PageLook(SettingsGroup.Connection, R.drawable.ic_videocam),
-    "MAVLink" to PageLook(SettingsGroup.Connection, R.drawable.ic_swap_horiz),
-    "Packet Radio" to PageLook(SettingsGroup.Connection, R.drawable.ic_wifi),
-    "ADSB Server" to PageLook(SettingsGroup.Connection, R.drawable.ic_navigation),
-    "RTK GPS" to PageLook(SettingsGroup.Connection, R.drawable.ic_satellite_alt),
-    "NTRIP / RTK" to PageLook(SettingsGroup.Connection, R.drawable.ic_satellite_alt),
-    "Remote ID" to PageLook(SettingsGroup.Connection, R.drawable.ic_shield),
-    "Fly View" to PageLook(SettingsGroup.Flying, R.drawable.ic_flight),
-    "Plan View" to PageLook(SettingsGroup.Flying, R.drawable.ic_route),
-    "Maps" to PageLook(SettingsGroup.Flying, R.drawable.ic_map),
-    "Flight Modes" to PageLook(SettingsGroup.Flying, R.drawable.ic_toggle_on),
-    "3D Viewer" to PageLook(SettingsGroup.Flying, R.drawable.ic_explore),
-    "General" to PageLook(SettingsGroup.App, R.drawable.ic_tune),
-    "PX4 Log Transfer" to PageLook(SettingsGroup.App, R.drawable.ic_download),
-    "Firmware Upgrade" to PageLook(SettingsGroup.App, R.drawable.ic_developer_board),
-    "App Logging" to PageLook(SettingsGroup.App, R.drawable.ic_description),
-    "Console" to PageLook(SettingsGroup.App, R.drawable.ic_terminal),
-    "About" to PageLook(SettingsGroup.App, R.drawable.ic_description),
+    "Remote ID" to PageLook(SettingsGroup.Safety, R.drawable.ic_shield),
+    "ADSB Server" to PageLook(SettingsGroup.Safety, R.drawable.ic_navigation),
+    "Fly View" to PageLook(SettingsGroup.Control, R.drawable.ic_flight),
+    "Flight Modes" to PageLook(SettingsGroup.Control, R.drawable.ic_toggle_on),
+    "Plan View" to PageLook(SettingsGroup.Control, R.drawable.ic_route),
+    "Maps" to PageLook(SettingsGroup.Control, R.drawable.ic_map),
+    "3D Viewer" to PageLook(SettingsGroup.Control, R.drawable.ic_explore),
+    "Video" to PageLook(SettingsGroup.Camera, R.drawable.ic_videocam),
+    "Connections" to PageLook(SettingsGroup.Transmission, R.drawable.ic_link),
+    "MAVLink" to PageLook(SettingsGroup.Transmission, R.drawable.ic_swap_horiz),
+    "Packet Radio" to PageLook(SettingsGroup.Transmission, R.drawable.ic_wifi),
+    "RTK GPS" to PageLook(SettingsGroup.Transmission, R.drawable.ic_satellite_alt),
+    "NTRIP / RTK" to PageLook(SettingsGroup.Transmission, R.drawable.ic_satellite_alt),
+    "General" to PageLook(SettingsGroup.General, R.drawable.ic_tune),
+    "PX4 Log Transfer" to PageLook(SettingsGroup.General, R.drawable.ic_download),
+    "Firmware Upgrade" to PageLook(SettingsGroup.General, R.drawable.ic_developer_board),
+    "App Logging" to PageLook(SettingsGroup.General, R.drawable.ic_description),
+    "Console" to PageLook(SettingsGroup.General, R.drawable.ic_terminal),
+    "About" to PageLook(SettingsGroup.General, R.drawable.ic_description),
 )
 
-internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(SettingsGroup.More, R.drawable.ic_settings)
+internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(SettingsGroup.General, R.drawable.ic_settings)
 
 internal fun groupedPages(pages: List<SettingsPageEntry>): List<Pair<SettingsGroup, List<SettingsPageEntry>>> =
     pages.groupBy { pageLook(it.title).group }.toList().sortedBy { it.first.ordinal }
@@ -324,19 +324,17 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
 }
 
 @Composable
-fun SettingsScreen(modifier: Modifier = Modifier) {
-    val navigation = LocalAppNavigation.current
-    var pages by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
-    var open by rememberSaveable { mutableStateOf<String?>(null) }
-    LaunchedEffect(navigation.settingsPage) {
-        navigation.settingsPage?.let { requested ->
-            open = requested
-            navigation.settingsPage = null
-        }
-    }
+internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier: Modifier = Modifier) {
+    var everyPage by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
+    val pages = remember(everyPage, group) { everyPage.filter { pageLook(it.title).group == group } }
+    var open by rememberSaveable(group) { mutableStateOf(initialPage) }
 
     LaunchedEffect(Unit) {
-        pages = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
+        everyPage = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
+    }
+    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp >= LIST_DETAIL_MIN_WIDTH
+    LaunchedEffect(pages, wide) {
+        if (open == null) (if (wide) pages.firstOrNull() else pages.singleOrNull())?.let { open = it.title }
     }
 
     BackHandler(enabled = open != null) { open = null }
@@ -416,20 +414,12 @@ private fun SettingsList(
     }
 
     LazyColumn(modifier.fillMaxSize()) {
-        item(key = "title") {
-            Text(
-                "Settings",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 4.dp),
-            )
-        }
         item(key = "search") {
             SearchPill(search, { search = it }, "Search settings")
         }
 
         if (search.isBlank()) {
-            groupedPages(pages).forEach { (group, entries) ->
-                item(key = "group${group.name}") { SectionHeader(group.title) }
+            groupedPages(pages).forEach { (_, entries) ->
                 items(entries, key = { it.title }) { entry ->
                     val glance = if (entry.title == CONNECTIONS_PAGE) activeLinksGlance(linksJson) else pageGlance(entry.title)
                     SetupRow(

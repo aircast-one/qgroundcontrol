@@ -42,7 +42,7 @@ internal fun debugCommand(cmd: String?, value: String?): Result<DebugCommand> = 
     "layout-edit" -> named(value, SWITCHES, "layout-edit").map { DebugCommand.EditLayout(it) }
     "layout-reset" -> Result.success(DebugCommand.ResetLayout)
     "open" -> value?.takeIf { it.isNotBlank() }?.let { Result.success(DebugCommand.Open(it)) }
-        ?: Result.failure(IllegalArgumentException("open needs a sheet (${REQUESTABLE_SHEETS.joinToString(", ")}) or a flight action id, e.g. takeoff, rtl, land"))
+        ?: Result.failure(IllegalArgumentException("open needs a sheet (${(REQUESTABLE_SHEETS + "settings").joinToString(", ")}) or a flight action id, e.g. takeoff, rtl, land"))
     else -> Result.failure(IllegalArgumentException("cmd must be one of $DEBUG_COMMANDS"))
 }
 

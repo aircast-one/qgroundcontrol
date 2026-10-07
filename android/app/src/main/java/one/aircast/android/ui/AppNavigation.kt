@@ -10,6 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 
 internal class AppNavigationState {
     var settingsPage by mutableStateOf<String?>(null)
+    var settingsOpen by mutableStateOf(false)
     var setupPage by mutableStateOf<String?>(null)
     var blockedReason by mutableStateOf<String?>(null)
 }

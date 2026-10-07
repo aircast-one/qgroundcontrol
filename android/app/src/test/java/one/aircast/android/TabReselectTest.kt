@@ -25,8 +25,8 @@ class TabReselectTest {
 
     @Test
     fun `switching to a different tab is not a re-selection at all`() {
-        assertFalse(reselectClearsAnalyze(Tab.Settings, Tab.Analyze))
-        assertFalse(reselectClearsAnalyze(Tab.Analyze, Tab.Settings))
+        assertFalse(reselectClearsAnalyze(Tab.Setup, Tab.Analyze))
+        assertFalse(reselectClearsAnalyze(Tab.Analyze, Tab.Setup))
     }
 
     @Test

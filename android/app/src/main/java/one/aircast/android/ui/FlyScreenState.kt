@@ -26,7 +26,7 @@ internal class FlyScreenState(val layout: OverlayLayoutState) {
 
 internal val LocalFlyScreenState = staticCompositionLocalOf<FlyScreenState> { error("FlyScreenState is provided by AircastShell") }
 
-internal val REQUESTABLE_SHEETS = setOf("more", "readings", "camera", "gimbal", "indicators", "status", "modes")
+internal val REQUESTABLE_SHEETS = setOf("more", "readings", "camera", "gimbal", "status", "modes")
 
 @androidx.compose.runtime.Composable
 internal fun OpenOnRequest(name: String, open: () -> Unit) {

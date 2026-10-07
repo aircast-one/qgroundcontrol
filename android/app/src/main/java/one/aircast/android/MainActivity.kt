@@ -101,7 +101,6 @@ import one.aircast.android.ui.TerrainProgress
 import one.aircast.android.ui.OrbitReadout
 import one.aircast.android.ui.PlanTab
 import one.aircast.android.ui.RcControlsLayer
-import one.aircast.android.ui.SettingsScreen
 import one.aircast.android.ui.SetupScreen
 import one.aircast.android.ui.TrafficReadout
 import one.aircast.map.FlyMap
@@ -130,16 +129,15 @@ enum class Tab(val label: String, @DrawableRes val icon: Int) {
     Fly("Fly", R.drawable.ic_flight),
     Plan("Plan", R.drawable.ic_map),
     Setup("Setup", R.drawable.ic_build),
-    Analyze("Analyze", R.drawable.ic_analytics),
-    Settings("Settings", R.drawable.ic_settings);
+    Analyze("Analyze", R.drawable.ic_analytics);
 
     companion object {
-        fun from(destination: String) = when (destination.lowercase()) {
+        fun from(destination: String): Tab? = when (destination.lowercase()) {
             "fly" -> Fly
             "plan" -> Plan
             "setup" -> Setup
             "analyze" -> Analyze
-            else -> Settings
+            else -> null
         }
     }
 }
@@ -247,7 +245,7 @@ fun AircastShell(hostView: android.view.View?) {
         if (navigation.setupPage != null) tab = Tab.Setup
     }
     LaunchedEffect(navigation.settingsPage) {
-        if (navigation.settingsPage != null) tab = Tab.Settings
+        if (navigation.settingsPage != null) navigation.settingsOpen = true
     }
     var analyzePage by remember { mutableStateOf<AnalyzePage?>(null) }
     var popEpoch by remember { mutableIntStateOf(0) }
@@ -267,6 +265,7 @@ fun AircastShell(hostView: android.view.View?) {
                 DebugCommand.ResetLayout -> overlayLayout.reset()
                 is DebugCommand.Open -> when (command.target) {
                     "readings" -> flyScreen.choosingReadings = true
+                    "settings" -> navigation.settingsOpen = true
                     in one.aircast.android.ui.REQUESTABLE_SHEETS -> flyScreen.requestedSheet = command.target
                     else -> flyScreen.deckRequest = command.target
                 }
@@ -343,7 +342,7 @@ fun AircastShell(hostView: android.view.View?) {
         batch.unknownKinds.forEach {
             android.util.Log.w("HostNotices", "unrecognised notice kind '$it' - showing it rather than guessing")
         }
-        batch.destination?.let { tab = Tab.from(it) }
+        batch.destination?.let { destination -> Tab.from(destination)?.let { tab = it } ?: run { navigation.settingsOpen = true } }
         val now = System.currentTimeMillis()
         val banners = one.aircast.android.ui.quietBanners(batch.banners, shownAt, now)
         shownAt = shownAt + banners.associateWith { now }
@@ -470,6 +469,12 @@ fun AircastShell(hostView: android.view.View?) {
                         label = { Text(entry.label) },
                     )
                 }
+                NavigationRailItem(
+                    selected = false,
+                    onClick = { navigation.settingsOpen = true },
+                    icon = { Icon(painterResource(R.drawable.ic_settings), "Settings") },
+                    label = { Text("Settings") },
+                )
             }
         }
         Scaffold(
@@ -489,6 +494,12 @@ fun AircastShell(hostView: android.view.View?) {
                             label = { Text(entry.label) },
                         )
                     }
+                    NavigationBarItem(
+                        selected = false,
+                        onClick = { navigation.settingsOpen = true },
+                        icon = { Icon(painterResource(R.drawable.ic_settings), "Settings") },
+                        label = { Text("Settings") },
+                    )
                 }
                 }
             },
@@ -499,11 +510,12 @@ fun AircastShell(hostView: android.view.View?) {
 
                 if (onFly) {
                     val flyStatus: @Composable RowScope.() -> Unit = {
-                        one.aircast.android.ui.FlyTabMenu(tabs.filter { it != Tab.Fly }.map { it.label to { selectTab(it) } })
+                        one.aircast.android.ui.FlyTabMenu(tabs.filter { it != Tab.Fly }.map { it.label to { selectTab(it) } } + ("Settings" to { navigation.settingsOpen = true }))
                         LayoutWidget("vehicleState", hideable = false) { VehicleStateChip() }
                         LayoutWidget("vtolState", hideable = false) { VtolStateCell() }
                         ControlRequestPrompt()
                         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { LayoutWidget("statusPill", hideable = false) { StatusPill() } }
+                        one.aircast.android.ui.FlySettingsButton()
                     }
                     val flyKeyRow: @Composable () -> Unit = {
                         flyVideoSourceLayer()
@@ -566,13 +578,16 @@ fun AircastShell(hostView: android.view.View?) {
                 roiTapped?.takeIf { tab == Tab.Fly }?.let { at ->
                     RoiSheet(at) { roiTapped = null }
                 }
+                if (navigation.settingsOpen) {
+                    val requested = remember { navigation.settingsPage.also { navigation.settingsPage = null } }
+                    one.aircast.android.ui.SettingsSheet(requested) { navigation.settingsOpen = false }
+                }
                 MissionCompleteDialog()
                 ResumeFailedPrompt()
                 FirstRunDialog()
 
                 key(popEpoch) {
                     when (tab) {
-                        Tab.Settings -> Surface(Modifier.fillMaxSize()) { SettingsScreen() }
                         Tab.Setup -> Surface(Modifier.fillMaxSize()) { SetupScreen() }
                         Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab() }
                         Tab.Analyze -> AnalyzeScreen(
