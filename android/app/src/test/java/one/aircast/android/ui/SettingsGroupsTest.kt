@@ -34,9 +34,13 @@ class SettingsGroupsTest {
     }
 
     @Test
-    fun anInlinePageWhoseFirstBlockIsUntitledIsHeadedByThePageName() {
-        assertEquals(false, inlineHeadingMissing("Fly View", flyView))
-        assertEquals(true, inlineHeadingMissing("ADSB Server", listOf(SettingsSectionRows("ADSB Server", "adsbVehicleManagerSettings", "", listOf(block(""))))))
+    fun borrowedBlocksAreHeadedByTheirOwnNames() =
+        assertEquals("Guided commands", borrowedTitle(sectionsIn(SettingsGroup.Safety, "Fly View", flyView)))
+
+    @Test
+    fun everyKnownPageCarriesItsOwnIconAndUnknownPagesFallBackToSettings() {
+        assertEquals(PAGE_LOOKS.size, PAGE_LOOKS.values.count { it.icon != 0 })
+        assertEquals(one.aircast.android.R.drawable.ic_settings, pageLook("Something new").icon)
     }
 }
 

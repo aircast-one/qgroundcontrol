@@ -5,6 +5,8 @@ import one.aircast.android.bridge.settingControl
 import one.aircast.android.bridge.qgcPath
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.FilterChip
@@ -159,33 +161,33 @@ internal fun activeLinksText(count: Int): String = if (count > 0) "$count active
 
 internal enum class SettingsGroup(val title: String) { Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), General("General") }
 
-internal data class PageLook(val group: SettingsGroup, val inline: Boolean = false)
+internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int, val inline: Boolean = false)
 
 internal val PAGE_LOOKS = mapOf(
-    "ADSB Server" to PageLook(SettingsGroup.Safety, inline = true),
-    "Remote ID" to PageLook(SettingsGroup.Safety),
-    "Fly View" to PageLook(SettingsGroup.Control, inline = true),
-    "Flight Modes" to PageLook(SettingsGroup.Control),
-    "Plan View" to PageLook(SettingsGroup.Control, inline = true),
-    "Maps" to PageLook(SettingsGroup.Control),
-    "3D Viewer" to PageLook(SettingsGroup.Control),
-    "Video" to PageLook(SettingsGroup.Camera, inline = true),
-    "Connections" to PageLook(SettingsGroup.Transmission),
-    "MAVLink" to PageLook(SettingsGroup.Transmission),
-    "Packet Radio" to PageLook(SettingsGroup.Transmission),
-    "RTK GPS" to PageLook(SettingsGroup.Transmission),
-    "NTRIP / RTK" to PageLook(SettingsGroup.Transmission),
-    "General" to PageLook(SettingsGroup.General, inline = true),
-    "PX4 Log Transfer" to PageLook(SettingsGroup.General),
-    "Firmware Upgrade" to PageLook(SettingsGroup.General),
-    "App Logging" to PageLook(SettingsGroup.General),
-    "Console" to PageLook(SettingsGroup.General),
-    "About" to PageLook(SettingsGroup.General),
+    "ADSB Server" to PageLook(SettingsGroup.Safety, R.drawable.ic_navigation, inline = true),
+    "Remote ID" to PageLook(SettingsGroup.Safety, R.drawable.ic_shield),
+    "Fly View" to PageLook(SettingsGroup.Control, R.drawable.ic_flight, inline = true),
+    "Flight Modes" to PageLook(SettingsGroup.Control, R.drawable.ic_toggle_on),
+    "Plan View" to PageLook(SettingsGroup.Control, R.drawable.ic_route, inline = true),
+    "Maps" to PageLook(SettingsGroup.Control, R.drawable.ic_map),
+    "3D Viewer" to PageLook(SettingsGroup.Control, R.drawable.ic_explore),
+    "Video" to PageLook(SettingsGroup.Camera, R.drawable.ic_videocam, inline = true),
+    "Connections" to PageLook(SettingsGroup.Transmission, R.drawable.ic_link),
+    "MAVLink" to PageLook(SettingsGroup.Transmission, R.drawable.ic_swap_horiz),
+    "Packet Radio" to PageLook(SettingsGroup.Transmission, R.drawable.ic_wifi),
+    "RTK GPS" to PageLook(SettingsGroup.Transmission, R.drawable.ic_satellite_alt),
+    "NTRIP / RTK" to PageLook(SettingsGroup.Transmission, R.drawable.ic_satellite_alt),
+    "General" to PageLook(SettingsGroup.General, R.drawable.ic_tune, inline = true),
+    "PX4 Log Transfer" to PageLook(SettingsGroup.General, R.drawable.ic_download),
+    "Firmware Upgrade" to PageLook(SettingsGroup.General, R.drawable.ic_developer_board),
+    "App Logging" to PageLook(SettingsGroup.General, R.drawable.ic_description),
+    "Console" to PageLook(SettingsGroup.General, R.drawable.ic_terminal),
+    "About" to PageLook(SettingsGroup.General, R.drawable.ic_help),
 )
 
 internal val BLOCK_HOMES = mapOf(("Fly View" to "Guided Commands") to SettingsGroup.Safety)
 
-internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(SettingsGroup.General)
+internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(SettingsGroup.General, R.drawable.ic_settings)
 
 internal fun blockGroup(page: String, block: SettingsBlock): SettingsGroup = BLOCK_HOMES[page to block.title] ?: pageLook(page).group
 
@@ -325,12 +327,12 @@ internal fun tabSetupPages(group: SettingsGroup): List<String> = when (group) {
 @Composable
 private fun TabSetupRows(group: SettingsGroup, onOpenSetup: (String?) -> Unit) {
     val setupJson by qgcPath(SETUP)
-    val names = remember(setupJson) { setupComponents(setupJson).map { it.name }.toSet() }
-    if (names.isEmpty()) return
-    tabSetupPages(group).filter { it in names }.map { name ->
-        SetupRow(title = sentenceCase(name), status = "", onClick = { onOpenSetup(name) })
+    val components = remember(setupJson) { setupComponents(setupJson) }
+    if (components.isEmpty()) return
+    tabSetupPages(group).mapNotNull { name -> components.firstOrNull { it.name == name } }.map { component ->
+        SetupRow(title = sentenceCase(component.name), status = "", icon = setupIcon(component.known, component.className), onClick = { onOpenSetup(component.name) })
     }
-    if (group == SettingsGroup.General) SetupRow(title = AIRCRAFT_SETUP, status = "", onClick = { onOpenSetup(null) })
+    if (group == SettingsGroup.General) SetupRow(title = AIRCRAFT_SETUP, status = "", icon = R.drawable.ic_build, onClick = { onOpenSetup(null) })
 }
 
 @Composable
@@ -379,6 +381,7 @@ private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>
                     SetupRow(
                         title = pageTitle(page.title),
                         status = if (page.title == CONNECTIONS_PAGE) activeLinksGlance(linksJson) else pageGlance(page.title),
+                        icon = pageLook(page.title).icon,
                         onClick = { onOpen(page.title) },
                     )
                 }
@@ -397,14 +400,26 @@ private fun InlinePage(page: SettingsPageEntry, group: SettingsGroup) {
     }
     val shown = sections?.let { sectionsIn(group, page.title, it) }?.takeIf { it.isNotEmpty() } ?: return
     val home = pageLook(page.title).group == group
+    PageHeader(pageLook(page.title).icon, if (home) pageTitle(page.title) else borrowedTitle(shown))
     if (home && page.showsVideoSources) VideoPreview()
-    if (inlineHeadingMissing(page.title, shown)) SectionHeader(pageTitle(page.title))
-    SettingsControls(page, shown, home) { reloads++ }
+    SettingsControls(page, shown, home, blockHeadings = home) { reloads++ }
     if (home && page.title == GENERAL_PAGE) ResetAllSettingsRow()
 }
 
-internal fun inlineHeadingMissing(pageTitle: String, sections: List<SettingsSectionRows>): Boolean =
-    sections.first().let { section -> section.group != UNITS_GROUP && blockHeading(pageTitle, section, section.blocks.first()).isBlank() }
+internal fun borrowedTitle(sections: List<SettingsSectionRows>): String =
+    sections.flatMap { it.blocks }.map { sentenceCase(it.title) }.filter { it.isNotBlank() }.distinct().joinToString(" \u00b7 ")
+
+@Composable
+private fun PageHeader(@DrawableRes icon: Int, title: String) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 28.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(painterResource(icon), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium)
+    }
+}
 
 @Composable
 internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}, onOpen: (String) -> Unit) {
@@ -449,11 +464,11 @@ internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpen
 
         if (setupHits.isNotEmpty()) item(key = "setupHead") { SectionHeader(AIRCRAFT_SETUP) }
         items(setupHits, key = { "setup${it.name}" }) { component ->
-            SetupRow(title = sentenceCase(component.name), onClick = { onOpenSetup(component.name) })
+            SetupRow(title = sentenceCase(component.name), icon = setupIcon(component.known, component.className), onClick = { onOpenSetup(component.name) })
         }
         if (pageHits.isNotEmpty()) item(key = "pagesHead") { SectionHeader("Pages") }
         items(pageHits, key = { "page${it.title}" }) { entry ->
-            SetupRow(title = pageTitle(entry.title), onClick = { onOpen(entry.title) })
+            SetupRow(title = pageTitle(entry.title), icon = pageLook(entry.title).icon, onClick = { onOpen(entry.title) })
         }
 
         hits.forEach { section ->
@@ -539,6 +554,7 @@ private fun SettingsControls(
     page: SettingsPageEntry,
     sections: List<SettingsSectionRows>,
     home: Boolean = true,
+    blockHeadings: Boolean = true,
     onWrite: () -> Unit,
 ) {
     if (home && page.showsNtrip) NtripStatusSection(onWrite)
@@ -554,7 +570,7 @@ private fun SettingsControls(
                 AdvancedBlock("${section.group}#${block.title}") { FactRuns(block.facts, onWrite) }
                 return@forEach
             }
-            blockHeading(page.title, section, block).takeIf { it.isNotBlank() }?.let { SectionHeader(sentenceCase(it)) }
+            blockHeading(page.title, section, block).takeIf { blockHeadings && it.isNotBlank() }?.let { SectionHeader(sentenceCase(it)) }
             if (section.group == VIDEO_GROUP && block.title == CAMERAS_BLOCK && page.showsVideoSources) CamerasEditor()
             FactRuns(block.facts, onWrite)
             if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
@@ -684,9 +700,15 @@ internal fun FactRow(
 
     if (asField) {
         Column(fieldModifier) {
+            val runInert = LocalRunInertNote.current
+            val note = (subtitle.split(" · ") + listOfNotNull(inertNote(fact).takeIf { !fact.enabled && it != runInert }))
+                .filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
             if (valueOnTheRight(fact)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor, modifier = Modifier.weight(1f))
+                    Column(Modifier.weight(1f)) {
+                        Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor)
+                        if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     if (fact.isEnum && !fact.valueIsOffTheEnumList) {
                         EnumField(fact, Modifier.width(CHOICE_VALUE_WIDTH), ::write)
                     } else {
@@ -698,10 +720,7 @@ internal fun FactRow(
                 if (fact.isBitmask) BitmaskPicker(fact, ::write) else FactTextField(fact, onWrite, onRejected)
             }
             fact.slider?.takeIf { !fact.isEnum && !fact.isBitmask }?.let { slider -> FieldSlider((fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull(), slider, fact.acceptsWrite) { value -> write { Qgc.set(fact.path, value) } } }
-            val runInert = LocalRunInertNote.current
-            val note = (subtitle.split(" · ") + listOfNotNull(inertNote(fact).takeIf { !fact.enabled && it != runInert }))
-                .filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
-            if (note.isNotBlank()) {
+            if (note.isNotBlank() && !valueOnTheRight(fact)) {
                 Text(
                     text = note,
                     style = MaterialTheme.typography.bodySmall,
