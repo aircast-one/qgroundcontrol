@@ -1,5 +1,9 @@
 package one.aircast.android.ui
 
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+
+import androidx.compose.material.icons.Icons
+
 import androidx.annotation.DrawableRes
 import one.aircast.android.bridge.VehicleCommands
 import one.aircast.android.bridge.offMainInOrder
@@ -175,6 +179,8 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     val satellites = gps?.satellites?.toString() ?: ""
     var detail by remember { mutableStateOf<StripDetail?>(null) }
     var batterySettings by remember { mutableStateOf(false) }
+    var allStatus by remember { mutableStateOf(false) }
+    OpenOnRequest("status-all") { allStatus = true }
     var batteryDisplay by remember { mutableStateOf(false) }
     var rtkSettings by remember { mutableStateOf(false) }
     val layout = LocalFlyScreenState.current.layout
@@ -216,6 +222,16 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
         val ordered = orderedKeys(cells.map { it.first }, layout.indicatorOrder)
         val compact = LocalCompactStatus.current && !layout.editing
         val keys = if (compact) ordered.take(COMPACT_STATUS_CELLS) else ordered
+        if (allStatus) {
+            AircastSheet(onDismissRequest = { allStatus = false }) {
+                CompositionLocalProvider(LocalCompactStatus provides false) {
+                    Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text("Status", style = MaterialTheme.typography.titleLarge)
+                        ordered.map { key -> byKey[key]?.invoke() }
+                    }
+                }
+            }
+        }
         keys.forEach { key ->
             LayoutWidget("indicator-$key", movable = false) {
                 Row(Modifier.leadingGap(STRIP_GAP), verticalAlignment = Alignment.CenterVertically) {
@@ -224,6 +240,13 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                     if (layout.editing) TextButton(onClick = { movedKey(keys, key, 1)?.let { layout.saveIndicatorOrder(it) } }) { Text("\u203A") }
                 }
             }
+        }
+        if (compact) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "All status",
+                modifier = Modifier.leadingGap(STRIP_GAP).clickable(onClickLabel = "All status") { allStatus = true },
+            )
         }
 
     }
