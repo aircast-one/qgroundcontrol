@@ -55,6 +55,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -321,7 +322,7 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
 internal const val AIRCRAFT_SETUP = "Aircraft setup"
 
 internal fun tabSetupPages(group: SettingsGroup): List<String> = when (group) {
-    SettingsGroup.Safety -> listOf("Safety")
+    SettingsGroup.Safety -> listOf("Safety", "Sensors")
     SettingsGroup.Control -> listOf(FLIGHT_MODES_PAGE)
     else -> emptyList()
 }
@@ -357,7 +358,7 @@ internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier
     val current = everyPage.firstOrNull { it.title == open }
     val heading = remember { mutableStateOf<PageHeading?>(null) }
     val headingBack: () -> Unit = { heading.value?.back?.invoke() ?: run { open = null } }
-    CompositionLocalProvider(LocalPageHeading provides heading) {
+    CompositionLocalProvider(LocalPageHeading provides heading, LocalDetailBehindHelp provides true) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             val column = Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH)
             if (current == null) {
@@ -409,7 +410,9 @@ private fun InlinePage(page: SettingsPageEntry, group: SettingsGroup) {
     }
     val shown = sections?.let { sectionsIn(group, page.title, it) }?.takeIf { it.isNotEmpty() } ?: return
     val home = pageLook(page.title).group == group
-    PageHeader(pageLook(page.title).icon, if (home) pageTitle(page.title) else borrowedTitle(shown))
+    if (!(home && pageTitle(page.title).equals(group.title, ignoreCase = true))) {
+        PageHeader(pageLook(page.title).icon, if (home) pageTitle(page.title) else borrowedTitle(shown))
+    }
     if (home && page.showsVideoSources) VideoPreview()
     SettingsControls(page, shown, home, blockHeadings = home) { reloads++ }
     if (home && page.title == GENERAL_PAGE) ResetAllSettingsRow()
@@ -644,6 +647,25 @@ internal val LocalBlockRebootNote = compositionLocalOf<String?> { null }
 
 internal val LocalRunInertNote = compositionLocalOf<String?> { null }
 
+internal val LocalDetailBehindHelp = compositionLocalOf { false }
+
+@Composable
+private fun FactTitle(title: String, color: Color, helpOpen: Boolean?, onHelp: () -> Unit, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyLarge, color = color, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
+        helpOpen?.let { open ->
+            IconButton(onClick = onHelp, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    painterResource(R.drawable.ic_help),
+                    if (open) "Hide help" else "Help",
+                    tint = if (open) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
 internal fun blockInertNote(facts: List<Fact>): String? =
     facts.filterNot { it.enabled }.takeIf { it.size > 1 }?.map(::inertNote)?.distinct()?.singleOrNull()
 
@@ -694,6 +716,10 @@ internal fun FactRow(
 ) {
     val scope = rememberCoroutineScope()
     var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
+    var helpOpen by remember(fact.path) { mutableStateOf(false) }
+    val helpBehind = LocalDetailBehindHelp.current && fact.detail.isNotBlank() && subtitle.split(" · ").contains(fact.detail)
+    val helpToggle: Boolean? = helpOpen.takeIf { helpBehind }
+    val subtitle = if (helpBehind && !helpOpen) subtitle.split(" · ").filter { it != fact.detail }.joinToString(" · ") else subtitle
 
     val segmented = !editOnDesktop(fact) && !fact.isBitmask &&
         showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings)
@@ -715,7 +741,7 @@ internal fun FactRow(
             if (valueOnTheRight(fact)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Column(Modifier.weight(1f)) {
-                        Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor)
+                        FactTitle(title, titleColor, helpToggle, { helpOpen = !helpOpen })
                         if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (fact.isEnum && !fact.valueIsOffTheEnumList) {
@@ -725,7 +751,7 @@ internal fun FactRow(
                     }
                 }
             } else {
-                Text(title, style = MaterialTheme.typography.bodyLarge, color = titleColor, modifier = Modifier.padding(bottom = 8.dp))
+                FactTitle(title, titleColor, helpToggle, { helpOpen = !helpOpen }, Modifier.padding(bottom = 8.dp))
                 if (fact.isBitmask) BitmaskPicker(fact, ::write) else FactTextField(fact, onWrite, onRejected)
             }
             fact.slider?.takeIf { !fact.isEnum && !fact.isBitmask }?.let { slider -> FieldSlider((fact.value as? Number)?.toFloat() ?: fact.valueString.toFloatOrNull(), slider, fact.acceptsWrite) { value -> write { Qgc.set(fact.path, value) } } }
@@ -757,13 +783,7 @@ internal fun FactRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = titleColor,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
+            FactTitle(title, titleColor, helpToggle, { helpOpen = !helpOpen }, maxLines = 3)
             val rowNote = subtitle.split(" · ").filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
             if (rowNote.isNotBlank() && !rowNote.equals(title, ignoreCase = true)) {
                 Text(
