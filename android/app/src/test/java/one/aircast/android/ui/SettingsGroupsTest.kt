@@ -63,12 +63,43 @@ class LookingForAircraftTest {
     }
 }
 
-class TabSetupPagesTest {
+class TabSetupRowsTest {
+    private fun component(name: String) = SetupComponent(index = 0, name = name, needsAttention = false)
+
     @org.junit.Test
-    fun `flight-relevant setup pages surface in the tab a pilot looks in`() {
-        org.junit.Assert.assertEquals(listOf("Safety", "Sensors"), tabSetupPages(SettingsGroup.Safety))
-        org.junit.Assert.assertEquals(listOf("Flight Modes"), tabSetupPages(SettingsGroup.Control))
-        org.junit.Assert.assertEquals(emptyList<String>(), tabSetupPages(SettingsGroup.Camera))
-        org.junit.Assert.assertEquals(5, SettingsGroup.entries.size)
+    fun `a tab lists only the setup pages the vehicle reports, in tab order`() {
+        val reported = listOf(component("Flight Modes"), component(SENSORS), component("Power"))
+        org.junit.Assert.assertEquals(listOf(SENSORS), tabSetupComponents(SettingsGroup.Safety, reported).map { it.name })
+        org.junit.Assert.assertEquals(listOf(FLIGHT_MODES_PAGE), tabSetupComponents(SettingsGroup.Control, reported).map { it.name })
+        org.junit.Assert.assertEquals(emptyList<SetupComponent>(), tabSetupComponents(SettingsGroup.Camera, reported))
+        org.junit.Assert.assertEquals(emptyList<SetupComponent>(), tabSetupComponents(SettingsGroup.Safety, emptyList()))
+    }
+
+    @org.junit.Test
+    fun `search finds setup pages by name and nothing for a blank query`() {
+        val reported = listOf(component("Flight Modes"), component("Flight Behavior"), component(SENSORS))
+        org.junit.Assert.assertEquals(listOf("Flight Modes", "Flight Behavior"), setupSearchHits(reported, "flight").map { it.name })
+        org.junit.Assert.assertEquals(emptyList<SetupComponent>(), setupSearchHits(reported, "  "))
+    }
+}
+
+class ShownSubtitleTest {
+    @org.junit.Test
+    fun `the description hides behind help until opened and units stay`() {
+        org.junit.Assert.assertEquals(ShownSubtitle("m", true), shownSubtitle("Loiter radius · m", "Loiter radius", helpBehind = true, helpOpen = false))
+        org.junit.Assert.assertEquals(ShownSubtitle("Loiter radius · m", true), shownSubtitle("Loiter radius · m", "Loiter radius", helpBehind = true, helpOpen = true))
+        org.junit.Assert.assertEquals(ShownSubtitle("", true), shownSubtitle("Loiter radius", "Loiter radius", helpBehind = true, helpOpen = false))
+    }
+
+    @org.junit.Test
+    fun `a description containing the separator still hides whole`() {
+        org.junit.Assert.assertEquals(ShownSubtitle("m", true), shownSubtitle("Speed · climb · m", "Speed · climb", helpBehind = true, helpOpen = false))
+    }
+
+    @org.junit.Test
+    fun `no help outside settings, without a description, or for a custom subtitle`() {
+        org.junit.Assert.assertEquals(ShownSubtitle("Loiter radius · m", false), shownSubtitle("Loiter radius · m", "Loiter radius", helpBehind = false, helpOpen = false))
+        org.junit.Assert.assertEquals(ShownSubtitle("m", false), shownSubtitle("m", "", helpBehind = true, helpOpen = false))
+        org.junit.Assert.assertEquals(ShownSubtitle("Custom", false), shownSubtitle("Custom", "Loiter radius", helpBehind = true, helpOpen = false))
     }
 }

@@ -55,12 +55,19 @@ import one.aircast.map.aircast
 internal fun openingGroup(requested: String?): SettingsGroup = requested?.let { pageLook(it).group } ?: SettingsGroup.Safety
 
 @Composable
-internal fun SettingsSheet(requested: String?, aircraft: Boolean, onClose: () -> Unit) {
-    var group by rememberSaveable(requested, aircraft) { mutableStateOf(if (aircraft) SettingsGroup.General else openingGroup(requested)) }
-    var setupOpen by rememberSaveable(aircraft) { mutableStateOf(aircraft) }
+internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
+    val navigation = LocalAppNavigation.current
+    var group by rememberSaveable(requested) { mutableStateOf(if (navigation.aircraftRequested) SettingsGroup.General else openingGroup(requested)) }
+    var setupOpen by rememberSaveable { mutableStateOf(navigation.aircraftRequested) }
     var page by rememberSaveable(requested) { mutableStateOf(requested) }
     var query by rememberSaveable { mutableStateOf<String?>(null) }
-    val navigation = LocalAppNavigation.current
+    LaunchedEffect(navigation.aircraftRequested) {
+        if (navigation.aircraftRequested) {
+            setupOpen = true
+            query = null
+            navigation.aircraftRequested = false
+        }
+    }
     LaunchedEffect(navigation.settingsPage) {
         navigation.settingsPage?.let { asked ->
             group = pageLook(asked).group

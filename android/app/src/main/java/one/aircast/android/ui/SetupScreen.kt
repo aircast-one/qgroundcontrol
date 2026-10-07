@@ -527,7 +527,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         val detail = movableDetail
         if (maxWidth >= LIST_DETAIL_MIN_WIDTH) {
-            LaunchedEffect(components) {
+            LaunchedEffect(components, navigation.setupPage) {
                 if (opened == null && !parametersOpen && navigation.setupPage == null) {
                     components.firstOrNull { headCanOpen(setupPage(setupJson, it.name), it.name) }?.let { opened = it to null }
                 }

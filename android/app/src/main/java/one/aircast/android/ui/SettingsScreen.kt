@@ -164,7 +164,7 @@ internal fun activeLinksText(count: Int): String = if (count > 0) "$count active
 
 internal enum class SettingsGroup(val title: String) { Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), General("General") }
 
-internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int, val inline: Boolean = false)
+internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int, val inline: Boolean = false, val tabHome: Boolean = false)
 
 internal val PAGE_LOOKS = mapOf(
     "ADSB Server" to PageLook(SettingsGroup.Safety, R.drawable.ic_navigation, inline = true),
@@ -180,7 +180,7 @@ internal val PAGE_LOOKS = mapOf(
     "Packet Radio" to PageLook(SettingsGroup.Transmission, R.drawable.ic_wifi),
     "RTK GPS" to PageLook(SettingsGroup.Transmission, R.drawable.ic_satellite_alt),
     "NTRIP / RTK" to PageLook(SettingsGroup.Transmission, R.drawable.ic_satellite_alt),
-    "General" to PageLook(SettingsGroup.General, R.drawable.ic_tune, inline = true),
+    "General" to PageLook(SettingsGroup.General, R.drawable.ic_tune, inline = true, tabHome = true),
     "PX4 Log Transfer" to PageLook(SettingsGroup.General, R.drawable.ic_download),
     "Firmware Upgrade" to PageLook(SettingsGroup.General, R.drawable.ic_developer_board),
     "App Logging" to PageLook(SettingsGroup.General, R.drawable.ic_description),
@@ -322,17 +322,22 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
 internal const val AIRCRAFT_SETUP = "Aircraft setup"
 
 internal fun tabSetupPages(group: SettingsGroup): List<String> = when (group) {
-    SettingsGroup.Safety -> listOf("Safety", "Sensors")
+    SettingsGroup.Safety -> listOf(SAFETY_SETUP_PAGE, SENSORS)
     SettingsGroup.Control -> listOf(FLIGHT_MODES_PAGE)
     else -> emptyList()
 }
+
+internal fun tabSetupComponents(group: SettingsGroup, components: List<SetupComponent>): List<SetupComponent> =
+    tabSetupPages(group).mapNotNull { name -> components.firstOrNull { it.name == name } }
+
+internal fun setupSearchHits(components: List<SetupComponent>, query: String): List<SetupComponent> =
+    if (query.isBlank()) emptyList() else components.filter { setupMatches(it.name, query) }
 
 @Composable
 private fun TabSetupRows(group: SettingsGroup, onOpenSetup: (String?) -> Unit) {
     val setupJson by qgcPath(SETUP)
     val components = remember(setupJson) { setupComponents(setupJson) }
-    if (components.isEmpty()) return
-    tabSetupPages(group).mapNotNull { name -> components.firstOrNull { it.name == name } }.map { component ->
+    tabSetupComponents(group, components).map { component ->
         SetupRow(title = sentenceCase(component.name), status = "", icon = setupIcon(component.known, component.className), onClick = { onOpenSetup(component.name) })
     }
 }
@@ -410,7 +415,7 @@ private fun InlinePage(page: SettingsPageEntry, group: SettingsGroup) {
     }
     val shown = sections?.let { sectionsIn(group, page.title, it) }?.takeIf { it.isNotEmpty() } ?: return
     val home = pageLook(page.title).group == group
-    if (!(home && pageTitle(page.title).equals(group.title, ignoreCase = true))) {
+    if (!(home && pageLook(page.title).tabHome)) {
         PageHeader(pageLook(page.title).icon, if (home) pageTitle(page.title) else borrowedTitle(shown))
     }
     if (home && page.showsVideoSources) VideoPreview()
@@ -436,7 +441,7 @@ private fun PageHeader(@DrawableRes icon: Int, title: String) {
 @Composable
 internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}, onOpen: (String) -> Unit) {
     val setupJson by qgcPath(SETUP)
-    val setupHits = remember(setupJson, query) { setupComponents(setupJson).filter { query.isNotBlank() && setupMatches(it.name, query) } }
+    val setupHits = remember(setupJson, query) { setupSearchHits(setupComponents(setupJson), query) }
     var pages by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
     LaunchedEffect(Unit) {
         pages = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
@@ -649,12 +654,22 @@ internal val LocalRunInertNote = compositionLocalOf<String?> { null }
 
 internal val LocalDetailBehindHelp = compositionLocalOf { false }
 
+internal const val SUBTITLE_SEPARATOR = " · "
+
+internal data class ShownSubtitle(val text: String, val hasHelp: Boolean)
+
+internal fun shownSubtitle(subtitle: String, detail: String, helpBehind: Boolean, helpOpen: Boolean): ShownSubtitle {
+    val hasHelp = helpBehind && detail.isNotBlank() && (subtitle == detail || subtitle.startsWith(detail + SUBTITLE_SEPARATOR))
+    val text = if (hasHelp && !helpOpen) subtitle.removePrefix(detail).removePrefix(SUBTITLE_SEPARATOR) else subtitle
+    return ShownSubtitle(text, hasHelp)
+}
+
 @Composable
 private fun FactTitle(title: String, color: Color, helpOpen: Boolean?, onHelp: () -> Unit, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         Text(title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyLarge, color = color, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
         helpOpen?.let { open ->
-            IconButton(onClick = onHelp, modifier = Modifier.size(32.dp)) {
+            IconButton(onClick = onHelp) {
                 Icon(
                     painterResource(R.drawable.ic_help),
                     if (open) "Hide help" else "Help",
@@ -717,9 +732,8 @@ internal fun FactRow(
     val scope = rememberCoroutineScope()
     var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
     var helpOpen by remember(fact.path) { mutableStateOf(false) }
-    val helpBehind = LocalDetailBehindHelp.current && fact.detail.isNotBlank() && subtitle.split(" · ").contains(fact.detail)
-    val helpToggle: Boolean? = helpOpen.takeIf { helpBehind }
-    val subtitle = if (helpBehind && !helpOpen) subtitle.split(" · ").filter { it != fact.detail }.joinToString(" · ") else subtitle
+    val shown = shownSubtitle(subtitle, fact.detail, LocalDetailBehindHelp.current, helpOpen)
+    val helpToggle: Boolean? = helpOpen.takeIf { shown.hasHelp }
 
     val segmented = !editOnDesktop(fact) && !fact.isBitmask &&
         showsAsSegments(fact.isEnum, fact.valueIsOffTheEnumList, fact.acceptsWrite, fact.enumStrings)
@@ -736,7 +750,7 @@ internal fun FactRow(
     if (asField) {
         Column(fieldModifier) {
             val runInert = LocalRunInertNote.current
-            val note = (subtitle.split(" · ") + listOfNotNull(inertNote(fact).takeIf { !fact.enabled && it != runInert }))
+            val note = (shown.text.split(SUBTITLE_SEPARATOR) + listOfNotNull(inertNote(fact).takeIf { !fact.enabled && it != runInert }))
                 .filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
             if (valueOnTheRight(fact)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -784,7 +798,7 @@ internal fun FactRow(
     ) {
         Column(Modifier.weight(1f)) {
             FactTitle(title, titleColor, helpToggle, { helpOpen = !helpOpen }, maxLines = 3)
-            val rowNote = subtitle.split(" · ").filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
+            val rowNote = shown.text.split(SUBTITLE_SEPARATOR).filter { it.isNotBlank() && it != fact.units }.joinToString(" · ")
             if (rowNote.isNotBlank() && !rowNote.equals(title, ignoreCase = true)) {
                 Text(
                     text = rowNote,
