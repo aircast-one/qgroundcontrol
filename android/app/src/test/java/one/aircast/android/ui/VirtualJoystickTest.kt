@@ -30,4 +30,14 @@ class VirtualJoystickTest {
         org.junit.Assert.assertEquals("values follow the current layout, not the one in force when the stick was held", stickValues(state.copy(leftHandedMode = true), held, null), joystickValues(stickAxes(0.2f, 0.3f, true), stickAxes(0.5f, 0.5f, false), true))
         org.junit.Assert.assertEquals("a released throttle stays where it was without auto-centre", androidx.compose.ui.geometry.Offset(0.5f, 0.3f), released(held, false))
     }
+
+    @org.junit.Test
+    fun `held sticks are dropped when the joystick hides or throttle auto-centre flips, and kept otherwise`() {
+        val shown = VirtualJoystickState(show = true, sending = true, autoCenterThrottle = false, leftHandedMode = false, leftPositiveOnly = true, rightPositiveOnly = false, periodMs = 40)
+        org.junit.Assert.assertTrue(sticksReset(shown, shown.copy(show = false)))
+        org.junit.Assert.assertTrue(sticksReset(shown, shown.copy(autoCenterThrottle = true)))
+        org.junit.Assert.assertTrue(sticksReset(null, null))
+        org.junit.Assert.assertFalse(sticksReset(shown, shown.copy(sending = false)))
+        org.junit.Assert.assertFalse(sticksReset(shown, shown.copy(leftHandedMode = true)))
+    }
 }

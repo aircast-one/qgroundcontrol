@@ -605,7 +605,7 @@ fun AircastShell(hostView: android.view.View?) {
                     one.aircast.android.ui.SettingsSheet(requested) { navigation.settingsOpen = false }
                 }
                 MissionCompleteDialog()
-                ResumeFailedPrompt()
+                if (onFly) ResumeFailedPrompt()
                 FirstRunDialog()
 
                 key(popEpoch) {

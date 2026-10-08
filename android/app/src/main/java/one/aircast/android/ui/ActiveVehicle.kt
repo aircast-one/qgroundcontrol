@@ -1,7 +1,6 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
-import one.aircast.android.bridge.SetupCommands
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -11,7 +10,6 @@ import androidx.compose.ui.res.painterResource
 import one.aircast.android.R
 import one.aircast.map.aircast
 import androidx.compose.foundation.layout.width
-import kotlinx.coroutines.isActive
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
@@ -30,11 +28,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.CoroutineScope
@@ -111,14 +109,22 @@ internal fun mvReasonFor(action: MvAction): String? =
 
 internal const val STATUS_SETTINGS_PAGE = "Status Settings"
 internal const val CLOSE_VEHICLE = "vehicle.closeVehicle"
-private const val LOAD_POLL_MS = 500L
 
 internal fun readinessSubtitle(state: FlyState?, blocker: String?, failing: Int): String? =
     blocker?.let { listOfNotNull(state?.mode?.ifBlank { null }, chipBlocker(it) + if (failing > 1) " +${failing - 1}" else "").joinToString(" \u00b7 ") }
 
-internal fun loadingProgress(fields: org.json.JSONObject?): Float? =
-    fields?.takeIf { it.has("initialConnectComplete") && !it.optBoolean("initialConnectComplete") }
-        ?.let { it.optDouble("loadProgress", 0.0).toFloat().coerceIn(0f, 1f) }
+internal const val VEHICLE_CONNECT_COMPLETE = "vehicle.initialConnectComplete"
+internal const val VEHICLE_LOAD_PROGRESS = "vehicle.loadProgress"
+
+internal fun loadingProgress(complete: Any?, progress: Any?): Float? =
+    (complete as? Boolean)?.takeIf { !it }?.let { ((progress as? Number)?.toFloat() ?: 0f).coerceIn(0f, 1f) }
+
+@Composable
+internal fun rememberVehicleLoading(): Float? {
+    val complete by qgcValue(VEHICLE_CONNECT_COMPLETE)
+    val progress by qgcValue(VEHICLE_LOAD_PROGRESS)
+    return loadingProgress(complete, progress)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -232,14 +238,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { modeMenu = true },
             )
         }
-        var loading by remember { mutableStateOf<Float?>(null) }
-        androidx.compose.runtime.LaunchedEffect(choices.choices.size) {
-            while (isActive) {
-                loading = withContext(Dispatchers.Default) { loadingProgress(SetupCommands.vehicleFields(listOf("initialConnectComplete", "loadProgress"))) }
-                kotlinx.coroutines.delay(LOAD_POLL_MS)
-            }
-        }
-        loading?.let { progress ->
+        rememberVehicleLoading()?.let { progress ->
             Column(Modifier.padding(start = 8.dp)) {
                 Text("Loading vehicle", style = MaterialTheme.typography.labelSmall)
                 androidx.compose.material3.LinearProgressIndicator(progress = { progress }, modifier = Modifier.width(72.dp))

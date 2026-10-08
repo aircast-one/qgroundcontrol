@@ -29,9 +29,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
 import org.json.JSONObject
@@ -67,7 +70,10 @@ internal fun virtualJoystick(view: JSONObject?): VirtualJoystickState? =
 
 internal data class StickAxes(val x: Double, val y: Double)
 
-private const val STATE_REFRESH_MS = 500L
+internal data class StickStates(val previous: VirtualJoystickState?, val current: VirtualJoystickState?)
+
+internal fun sticksReset(previous: VirtualJoystickState?, current: VirtualJoystickState?): Boolean =
+    current?.show != true || current.autoCenterThrottle != previous?.autoCenterThrottle
 
 internal fun restingLeft(autoCenterThrottle: Boolean): Offset = Offset(0.5f, restingY(autoCenterThrottle))
 
@@ -90,25 +96,23 @@ object VirtualStickSender {
 
     fun start(scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch(Dispatchers.IO) {
-            var state: VirtualJoystickState? = null
-            var readAt = 0L
-            while (isActive) {
-                val now = System.currentTimeMillis()
-                if (now - readAt >= STATE_REFRESH_MS) {
-                    val fresh = virtualJoystick(Qgc.get(VIRTUAL_JOYSTICK_PATH))
-                    if (fresh?.show != true || fresh.autoCenterThrottle != state?.autoCenterThrottle) {
+            Qgc.watch(listOf(VIRTUAL_JOYSTICK_PATH))
+            Qgc.values
+                .map { virtualJoystick(it[VIRTUAL_JOYSTICK_PATH]) }
+                .distinctUntilChanged()
+                .runningFold(StickStates(null, null)) { states, next -> StickStates(states.current, next) }
+                .collectLatest { states ->
+                    if (sticksReset(states.previous, states.current)) {
                         left = null
                         right = null
                     }
-                    state = fresh
-                    readAt = now
+                    states.current?.takeIf { it.show && it.sending }?.let { sending ->
+                        while (isActive) {
+                            Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *stickValues(sending, left, right).toTypedArray())
+                            delay(sending.periodMs)
+                        }
+                    }
                 }
-                val current = state
-                if (current != null && current.show && current.sending) {
-                    Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *stickValues(current, left, right).toTypedArray())
-                }
-                delay(current?.periodMs ?: DEFAULT_PERIOD_MS)
-            }
         }
     }
 }

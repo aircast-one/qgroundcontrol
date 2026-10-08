@@ -9,20 +9,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.qgcPath
 import org.json.JSONObject
 import kotlin.math.ceil
 
-private const val CONTROL_PROMPT_POLL_MS = 500L
 private const val REVERT_ALLOW_TAKEOVER = "vehicle.startTimerRevertAllowTakeover"
 
 internal data class IncomingControlRequest(val systemId: Int, val timeoutMs: Long, val remainingMs: Long)
@@ -41,18 +37,13 @@ internal fun secondsLeft(ms: Long): Int = ceil(ms / 1000.0).toInt()
 
 @Composable
 internal fun ControlRequestPrompt() {
-    var prompt by remember { mutableStateOf(ControlPrompt(null, null)) }
+    val view by qgcPath(OPERATOR_CONTROL_VIEW)
+    val prompt = remember(view) { controlPrompt(view) }
     var ignored by remember { mutableStateOf<Int?>(null) }
     var revertIgnored by remember { mutableStateOf(false) }
     var allowedFrom by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            prompt = withContext(Dispatchers.Default) { controlPrompt(Qgc.get(OPERATOR_CONTROL_VIEW)) }
-            if (prompt.incoming == null) ignored = null
-            if (prompt.revertMs == null) revertIgnored = false
-            delay(CONTROL_PROMPT_POLL_MS)
-        }
-    }
+    LaunchedEffect(prompt.incoming == null) { if (prompt.incoming == null) ignored = null }
+    LaunchedEffect(prompt.revertMs == null) { if (prompt.revertMs == null) revertIgnored = false }
 
     val incoming = prompt.incoming?.takeIf { it.systemId != ignored }
     if (incoming != null) {
