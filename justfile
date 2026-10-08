@@ -113,10 +113,6 @@ android:
     ./tools/android/studio.py
     if [ -d "/Applications/Android Studio.app" ]; then open -a "Android Studio" android; else echo "Android Studio is not installed; open the android/ folder in it once it is"; fi
 
-# Keep the closed-testing Google Group on the Play closed track (PLAY_TESTERS_TRACK, default alpha)
-play-testers:
-    ./tools/android/play-testers.sh
-
 # Run the Android head's Kotlin unit tests
 android-checks:
     ./tools/android/studio.py
