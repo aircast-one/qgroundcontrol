@@ -68,8 +68,8 @@ class TabSetupRowsTest {
 
     @org.junit.Test
     fun `a tab lists only the setup pages the vehicle reports, in tab order`() {
-        val reported = listOf(component("Flight Modes"), component(SENSORS), component("Power"))
-        org.junit.Assert.assertEquals(listOf(SENSORS), tabSetupComponents(SettingsGroup.Safety, reported).map { it.name })
+        val reported = listOf(component("Flight Modes"), component(SAFETY_SETUP_PAGE), component("Power"))
+        org.junit.Assert.assertEquals(listOf(SAFETY_SETUP_PAGE), tabSetupComponents(SettingsGroup.Safety, reported).map { it.name })
         org.junit.Assert.assertEquals(listOf(FLIGHT_MODES_PAGE), tabSetupComponents(SettingsGroup.Control, reported).map { it.name })
         org.junit.Assert.assertEquals(emptyList<SetupComponent>(), tabSetupComponents(SettingsGroup.Camera, reported))
         org.junit.Assert.assertEquals(emptyList<SetupComponent>(), tabSetupComponents(SettingsGroup.Safety, emptyList()))

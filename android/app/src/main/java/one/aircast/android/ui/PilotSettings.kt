@@ -1,6 +1,18 @@
 package one.aircast.android.ui
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +63,38 @@ internal fun PilotSettings(group: SettingsGroup) {
     shown.groupBy { it.setting.section }.map { (section, rows) ->
         SectionHeader(section)
         rows.map { PilotFactRow(it.fact, it.setting.hint) }
+    }
+}
+
+private val SENSOR_CHECKS = listOf("compass", "accelerometer", "gyro")
+private const val SENSORS_SECTION = "Sensors"
+private const val CALIBRATED = "Calibrated"
+
+internal fun sensorChecks(state: CalibrationState?): List<CalibrationRoutine> =
+    SENSOR_CHECKS.mapNotNull { id -> state?.routines?.firstOrNull { it.id == id } }
+
+internal fun sensorHealthy(routine: CalibrationRoutine): Boolean = routine.status == CALIBRATED
+
+@Composable
+internal fun SensorChecks(onCalibrate: () -> Unit) {
+    val json by qgcPath(CALIBRATION)
+    val checks = sensorChecks(calibrationState(json))
+    if (checks.isEmpty()) return
+    SectionHeader(SENSORS_SECTION)
+    checks.map { routine ->
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(sentenceCase(routine.title), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(
+                if (sensorHealthy(routine)) "Normal" else routine.status.ifBlank { "Not checked" },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (sensorHealthy(routine)) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            )
+            TextButton(onClick = onCalibrate, enabled = routine.enabled) { Text("Calibrate") }
+        }
     }
 }
 

@@ -72,6 +72,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -321,7 +322,8 @@ internal fun FlyScreen(
                 PipToggle(false, togglePip, Modifier.zIndex(3f).align(pipAlign).windowInsetsPadding(WindowInsets.displayCutout).padding(AircastSpace.s3))
             }
         }
-        Box(Modifier.zIndex(1f).fillMaxSize().windowInsetsPadding(WindowInsets.displayCutout)) {
+        val settingsOver = LocalAppNavigation.current.settingsOpen
+        Box(Modifier.zIndex(1f).fillMaxSize().graphicsLayer { alpha = if (settingsOver) 0f else 1f }.windowInsetsPadding(WindowInsets.displayCutout)) {
         if (view == FlyView.Map) {
             var layers by remember { mutableStateOf(false) }
             Box(Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = (if (hasVideo && pipExpanded) MINIMAP_HEIGHT else PIP_TOGGLE_SIZE) + AircastSpace.s3 * 2)) {

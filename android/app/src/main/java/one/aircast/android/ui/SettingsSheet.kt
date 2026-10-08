@@ -42,6 +42,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -110,7 +111,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
         returnQuery = query?.takeIf { it.isNotBlank() }
         query = null
     }
-    Surface(Modifier.fillMaxSize().zIndex(SETTINGS_SHEET_LAYER).pointerInput(Unit) {}, color = MaterialTheme.colorScheme.surface) {
+    Surface(Modifier.fillMaxSize().zIndex(SETTINGS_SHEET_LAYER).pointerInput(Unit) {}, color = MaterialTheme.colorScheme.surface.copy(alpha = if (LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) SETTINGS_PANEL_ALPHA else 1f)) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             val pickTab: (SettingsGroup) -> Unit = { entry ->
                 group = entry
@@ -206,6 +207,7 @@ private fun SheetTab(title: String, selected: Boolean, onClick: () -> Unit) {
 private val STACKED_HEADER_WIDTH = 600.dp
 
 private const val SETTINGS_SHEET_LAYER = 10f
+private const val SETTINGS_PANEL_ALPHA = 0.9f
 
 @Composable
 internal fun FlySettingsButton() {

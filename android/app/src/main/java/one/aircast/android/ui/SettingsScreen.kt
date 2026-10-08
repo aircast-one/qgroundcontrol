@@ -323,7 +323,7 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
 internal const val AIRCRAFT_SETUP = "Aircraft setup"
 
 internal fun tabSetupPages(group: SettingsGroup): List<String> = when (group) {
-    SettingsGroup.Safety -> listOf(SAFETY_SETUP_PAGE, SENSORS)
+    SettingsGroup.Safety -> listOf(SAFETY_SETUP_PAGE)
     SettingsGroup.Control -> listOf(FLIGHT_MODES_PAGE)
     else -> emptyList()
 }
@@ -406,6 +406,7 @@ private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>
     Column(modifier.verticalScroll(rememberScrollState())) {
         if (group == SettingsGroup.General) AircraftSetupRow(onOpenSetup)
         PilotSettings(group)
+        if (group == SettingsGroup.Safety) SensorChecks { onOpenSetup(SENSORS) }
         if (foldsInline) {
             val (folded, shown) = pages.partition(drawnInline)
             shown.map { pageEntry(it) }

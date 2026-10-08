@@ -67,4 +67,17 @@ class PilotSettingsTest {
         assertEquals(listOf(SENSORS), here.map { it.name })
         assertEquals(listOf("Airframe", "PID Tuning"), desktop.map { it.name })
     }
+
+    @Test
+    fun `safety lists compass, IMU and gyro in DJI's order with their health`() {
+        val view = org.json.JSONObject("""{"class":"Calibration","routines":[
+            {"id":"gyro","title":"Gyroscope","status":"Calibrated"},
+            {"id":"levelHorizon","title":"Level Horizon","status":""},
+            {"id":"compass","title":"Compass","status":"Not calibrated"},
+            {"id":"accelerometer","title":"Accelerometer","status":"Calibrated"}]}""")
+        val checks = sensorChecks(calibrationState(view))
+        assertEquals(listOf("compass", "accelerometer", "gyro"), checks.map { it.id })
+        assertEquals(listOf(false, true, true), checks.map(::sensorHealthy))
+        assertEquals(emptyList<CalibrationRoutine>(), sensorChecks(null))
+    }
 }
