@@ -193,9 +193,11 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     ) {
         val cells: List<Pair<String, @Composable () -> Unit>> = listOf(
             "battery" to {
-                batteries.map {
-                    if (LocalCompactStatus.current) BatteryRing(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery }
-                    else InlineCell(it.text, batteryLevelColour(it.level), R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
+                Row(horizontalArrangement = Arrangement.spacedBy(BATTERY_GAP), verticalAlignment = Alignment.CenterVertically) {
+                    batteries.map {
+                        if (LocalCompactStatus.current) BatteryRing(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery }
+                        else InlineCell(it.text, batteryLevelColour(it.level), R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
+                    }
                 }
             },
             "flightTime" to { if (LocalCompactStatus.current) FlightTimeCell() },
@@ -448,6 +450,8 @@ private fun BatteryRing(text: String, colour: Color, onClick: () -> Unit) {
         Text("$percent", style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.aircast.outdoorForeground)
     }
 }
+private val BATTERY_GAP = 6.dp
+
 internal const val COMPACT_STATUS_CELLS = 4
 
 internal fun compactStatusText(text: String): String =
