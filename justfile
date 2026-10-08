@@ -118,6 +118,18 @@ android-checks:
     ./tools/android/studio.py
     ./tools/android/gradle.sh :app:testQtDebugUnitTest :map-spike:test
 
+# Fetch the pinned iOS dependencies, generate the Xcode project and open it
+ios:
+    ./ios/fetch-deps.sh
+    cd ios && xcodegen generate
+    open ios/Aircast.xcodeproj
+
+# Build the iOS head for the simulator and run its unit tests
+ios-checks:
+    ./ios/fetch-deps.sh
+    cd ios && xcodegen generate
+    cd ios && xcodebuild -project Aircast.xcodeproj -scheme Aircast -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath {{justfile_directory()}}/build-ios/dd test
+
 # Build documentation
 docs:
     npm run docs:build

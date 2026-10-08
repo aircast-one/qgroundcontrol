@@ -172,7 +172,7 @@ fn open_udp(port: u16) -> Option<Running> {
     Some(Running::Udp(running))
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 fn open_serial(port: &str, baud: u32) -> Option<Running> {
     let lines = Mutex::new(Lines::default());
     let dead = Arc::new(AtomicBool::new(false));
@@ -197,11 +197,6 @@ fn open_serial(port: &str, baud: u32) -> Option<Running> {
     })
     .ok()?;
     Some(Running::Serial { close: Box::new(move || link.close()), dead })
-}
-
-#[cfg(target_os = "ios")]
-fn open_serial(_port: &str, _baud: u32) -> Option<Running> {
-    None
 }
 
 pub fn maintain() {

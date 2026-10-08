@@ -358,10 +358,10 @@ fn apply(event: Event) {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct Serial(Box<dyn serialport::SerialPort>);
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 impl Port for Serial {
     fn write(&mut self, bytes: &[u8]) -> Result<(), String> {
         use std::io::Write;
@@ -415,7 +415,7 @@ fn begin_erase(report: &mut dyn FnMut(Event)) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn ports() -> Vec<Value> {
     serialport::available_ports()
         .unwrap_or_default()
@@ -431,7 +431,7 @@ fn ports() -> Vec<Value> {
         .collect()
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 fn ports() -> Vec<Value> {
     crate::platformserial::ports()
         .into_iter()
@@ -439,7 +439,7 @@ fn ports() -> Vec<Value> {
         .collect()
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn open(port: &str) -> Result<Serial, String> {
     serialport::new(port, BAUD)
         .data_bits(serialport::DataBits::Eight)
@@ -451,27 +451,27 @@ fn open(port: &str) -> Result<Serial, String> {
         .map_err(|e| format!("Open failed on port {port}: {e}"))
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(target_os = "android", target_os = "ios", test))]
 const FLASH_SERIAL_ID: u32 = 0xfff0_0002;
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(target_os = "android", target_os = "ios", test))]
 type Inbox = std::sync::Arc<(Mutex<(std::collections::VecDeque<u8>, Option<String>)>, std::sync::Condvar)>;
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(target_os = "android", target_os = "ios", test))]
 struct Usb {
     serial: crate::platformserial::PlatformSerial,
     inbox: Inbox,
     port: String,
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(target_os = "android", target_os = "ios", test))]
 impl Drop for Usb {
     fn drop(&mut self) {
         self.serial.close();
     }
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(target_os = "android", target_os = "ios", test))]
 impl Port for Usb {
     fn write(&mut self, bytes: &[u8]) -> Result<(), String> {
         match self.serial.write(bytes) {
@@ -504,19 +504,19 @@ impl Port for Usb {
     }
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 fn open(port: &str) -> Result<Usb, String> {
     open_usb(port)
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(target_os = "android", target_os = "ios", test))]
 fn open_usb(port: &str) -> Result<Usb, String> {
     let inbox: Inbox = std::sync::Arc::new((Mutex::new((std::collections::VecDeque::new(), None)), std::sync::Condvar::new()));
     let serial = usb_serial(port, BAUD, inbox.clone())?;
     Ok(Usb { serial, inbox, port: port.to_string() })
 }
 
-#[cfg(any(target_os = "android", test))]
+#[cfg(any(target_os = "android", target_os = "ios", test))]
 fn usb_serial(port: &str, baud: u32, fed: Inbox) -> Result<crate::platformserial::PlatformSerial, String> {
     crate::platformserial::PlatformSerial::open(FLASH_SERIAL_ID, port, baud, 8, 1, 0, move |event| {
         let (lock, ready) = &*fed;
@@ -704,7 +704,7 @@ mod tests {
         assert!(events.iter().any(|e| matches!(e, Event::Progress(p) if (*p - 1.0).abs() < f64::EPSILON)));
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
     fn a_px4_file_flashes_over_a_real_serial_device_to_a_board_on_the_other_end() {
         use serialport::SerialPort;

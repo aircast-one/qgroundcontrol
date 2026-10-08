@@ -1,0 +1,9 @@
+module QGCCore {
+    header "../../src/Bridge/QGCBridgeC.h"
+    header "../../src/Bridge/QGCCoreC.h"
+    header "../../src/Bridge/QGCEntry.h"
+    header "../../src/Bridge/QGCMapTileC.h"
+    header "../../src/Bridge/QGCVideoC.h"
+    header "GStreamerPlugins.h"
+    export *
+}
