@@ -218,8 +218,9 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
             "battery" to {
                 Row(horizontalArrangement = Arrangement.spacedBy(BATTERY_GAP), verticalAlignment = Alignment.CenterVertically) {
                     batteries.map {
-                        if (LocalCompactStatus.current) BatteryRing(it.text, batteryLevelColour(it.level), if (LocalNarrowStatus.current) "" else packCountText(it.packs)) { detail = StripDetail.Battery }
-                        else InlineCell(listOf(it.text, packCountText(it.packs)).filter(String::isNotEmpty).joinToString(" "), batteryLevelColour(it.level), R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
+                        val colour = if (live) batteryLevelColour(it.level) else MaterialTheme.colorScheme.outline
+                        if (LocalCompactStatus.current) BatteryRing(it.text, colour, if (LocalNarrowStatus.current) "" else packCountText(it.packs)) { detail = StripDetail.Battery }
+                        else InlineCell(listOf(it.text, packCountText(it.packs)).filter(String::isNotEmpty).joinToString(" "), colour, R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
                     }
                 }
             },
