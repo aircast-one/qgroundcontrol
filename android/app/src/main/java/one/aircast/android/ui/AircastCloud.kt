@@ -31,7 +31,6 @@ import one.aircast.android.bridge.offMainDetached
 import one.aircast.map.optText
 import org.json.JSONObject
 
-internal const val AIRCAST_CLOUD_LINK = "aircastCloud"
 internal const val AIRCAST_CLOUD_NAME = "Aircast cloud"
 private const val ACCOUNT = "account"
 private const val ACCOUNT_POLL_MS = 1000L

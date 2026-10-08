@@ -11,7 +11,7 @@ class MockLinkFieldsTest {
     fun `mock links are started from Add link, not a settings page of their own`() {
         val view = JSONObject("""{"pages":[{"title":"Mock Link","sections":[]}]}""")
         assertTrue(settingsPages(view).isEmpty())
-        assertEquals(listOf("udp", "tcp", "serial", MOCK_LINK), addableLinkTypes(JSONObject("""{"linkTypeIds":["serial","udp","tcp","mock"]}""")))
+        assertEquals(listOf(LinkType.Udp, LinkType.Tcp, LinkType.Serial, LinkType.Mock), addableLinkTypes(JSONObject("""{"linkTypeIds":["serial","udp","tcp","mock"]}""")))
     }
 
     @Test

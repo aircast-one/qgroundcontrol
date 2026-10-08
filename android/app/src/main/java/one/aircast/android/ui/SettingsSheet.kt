@@ -55,6 +55,8 @@ import one.aircast.android.R
 import one.aircast.map.AircastSpace
 import one.aircast.map.aircast
 
+internal fun sheetDrilled(openPage: String?, setupOpen: Boolean): Boolean = openPage != null || setupOpen
+
 internal fun openingGroup(requested: String?): SettingsGroup = requested?.let { pageLook(it).group } ?: SettingsGroup.Safety
 
 @Composable
@@ -105,6 +107,9 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
     androidx.activity.compose.BackHandler(onBack = onClose)
     androidx.activity.compose.BackHandler(enabled = query != null) { query = null }
     androidx.activity.compose.BackHandler(enabled = setupOpen && query == null, onBack = closeSetup)
+    val initialPage = page?.takeIf { pageLook(it).group == group }
+    var openPage by rememberSaveable(group, page, query != null, setupOpen) { mutableStateOf(initialPage?.takeUnless { pageLook(it).inline }) }
+    val closePage: () -> Unit = { backToSearch.takeIf { returnQuery != null && openPage == initialPage }?.invoke() ?: run { openPage = null } }
     val openSetup: (String?) -> Unit = { component ->
         navigation.setupPage = component
         setupFromTab = component != null
@@ -135,7 +140,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
             }
             BoxWithConstraints {
                 val stacked = maxWidth < STACKED_HEADER_WIDTH
-                val drilled = navigation.settingsPageOpen || setupOpen
+                val drilled = sheetDrilled(openPage, setupOpen)
                 Column {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s1),
@@ -176,7 +181,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                         CompositionLocalProvider(LocalPageHeading provides heading) { SetupScreen(Modifier.weight(1f)) }
                         androidx.activity.compose.BackHandler(enabled = setupFromTab && query == null, onBack = back)
                     }
-                    else -> SettingsScreen(group, page?.takeIf { pageLook(it).group == group }, Modifier.weight(1f), onLeaveInitialPage = backToSearch.takeIf { returnQuery != null }, onOpenSetup = openSetup)
+                    else -> SettingsScreen(group, openPage, { openPage = it }, closePage, Modifier.weight(1f), onOpenSetup = openSetup)
                 }
             }
         }

@@ -91,10 +91,10 @@ class LinksScreenTest {
 
     @Test
     fun `a link names itself from what it points at`() {
-        assertEquals("UDP 14550", autoLinkName("udp", "", "14550"))
-        assertEquals("UDP 14550", autoLinkName("udp", "10.0.0.4", "14550"))
-        assertEquals("TCP 10.0.0.4:5760", autoLinkName("tcp", "10.0.0.4", "5760"))
-        assertEquals("TCP", autoLinkName("tcp", "", "5760"))
+        assertEquals("UDP 14550", autoLinkName(LinkType.Udp, "", "14550"))
+        assertEquals("UDP 14550", autoLinkName(LinkType.Udp, "10.0.0.4", "14550"))
+        assertEquals("TCP 10.0.0.4:5760", autoLinkName(LinkType.Tcp, "10.0.0.4", "5760"))
+        assertEquals("TCP", autoLinkName(LinkType.Tcp, "", "5760"))
     }
 
     @Test
@@ -106,18 +106,18 @@ class LinksScreenTest {
 
     @Test
     fun `a port outside the valid range is refused`() {
-        assertEquals("Enter a port between 1 and 65535, or leave it blank for 14550", linkFormError("udp", "", "0"))
-        assertEquals("Enter a port between 1 and 65535, or leave it blank for 14550", linkFormError("udp", "", "70000"))
-        assertEquals("Enter a port between 1 and 65535, or leave it blank for 14550", linkFormError("udp", "", "abc"))
+        assertEquals("Enter a port between 1 and 65535, or leave it blank for 14550", linkFormError(LinkType.Udp, "", "0"))
+        assertEquals("Enter a port between 1 and 65535, or leave it blank for 14550", linkFormError(LinkType.Udp, "", "70000"))
+        assertEquals("Enter a port between 1 and 65535, or leave it blank for 14550", linkFormError(LinkType.Udp, "", "abc"))
     }
 
     @Test
     fun `tcp without an address is refused and udp without one is fine`() {
         assertEquals(
             "A TCP link needs the address of the device to call.",
-            linkFormError("tcp", "", "5760"),
+            linkFormError(LinkType.Tcp, "", "5760"),
         )
-        assertNull(linkFormError("udp", "", "14550"))
+        assertNull(linkFormError(LinkType.Udp, "", "14550"))
     }
 }
 
@@ -167,9 +167,9 @@ class SerialLinkFormTest {
     fun `the automatic name is the port's leaf`() {
         assertEquals("Holybro radio (ttyUSB0)", autoSerialName("Holybro radio (ttyUSB0)"))
         assertEquals("a port with no display name is suggested as plain Serial, as SerialSettings does", "Serial", autoSerialName(""))
-        assertEquals("5760", portFor("tcp", "14550"))
-        assertEquals("14551", portFor("udp", "14551"))
-        assertNull("a blank UDP port means the configured listen port", linkFormError("udp", "", "", "14551"))
+        assertEquals("5760", portFor(LinkType.Tcp, "14550"))
+        assertEquals("14551", portFor(LinkType.Udp, "14551"))
+        assertNull("a blank UDP port means the configured listen port", linkFormError(LinkType.Udp, "", "", "14551"))
     }
 
     @Test
@@ -182,7 +182,7 @@ class SerialLinkFormTest {
 }
 
 class LinkEditRulesTest {
-    private fun row(connected: Boolean = false, editing: String = "portOnly") = LinkRow(
+    private fun row(connected: Boolean = false, editing: LinkEditing = LinkEditing.PortOnly) = LinkRow(
         index = 0, name = "UDP 14550", statusLine = "", connected = connected,
         heard = false, lastError = "", editing = editing,
     )
@@ -199,37 +199,37 @@ class LinkEditRulesTest {
 
     @Test
     fun `a kind the core has no form for is not editable`() {
-        assertFalse(linkIsEditable(row(editing = "none")))
+        assertFalse(linkIsEditable(row(editing = LinkEditing.None)))
     }
 
     @Test
     fun `each link kind shows its own icon`() {
-        assertEquals(one.aircast.android.R.drawable.ic_wifi, linkIcon("udp"))
-        assertEquals(one.aircast.android.R.drawable.ic_usb, linkIcon("serial"))
-        assertEquals(one.aircast.android.R.drawable.ic_bluetooth, linkIcon("bluetooth"))
-        assertEquals(one.aircast.android.R.drawable.ic_lan, linkIcon("tcp"))
-        assertEquals(one.aircast.android.R.drawable.ic_cloud, linkIcon(AIRCAST_CLOUD_LINK))
-        assertEquals(one.aircast.android.R.drawable.ic_history, linkIcon(REPLAY_LINK))
-        assertEquals(one.aircast.android.R.drawable.ic_science, linkIcon(MOCK_LINK))
-        assertEquals(one.aircast.android.R.drawable.ic_link, linkIcon("something new"))
-        assertEquals("tcp", linkRows(JSONObject("""{"configured":[{"index":0,"type":"tcp"}]}""")).single().type)
+        assertEquals(one.aircast.android.R.drawable.ic_wifi, linkIcon(LinkType.Udp))
+        assertEquals(one.aircast.android.R.drawable.ic_usb, linkIcon(LinkType.Serial))
+        assertEquals(one.aircast.android.R.drawable.ic_bluetooth, linkIcon(LinkType.Bluetooth))
+        assertEquals(one.aircast.android.R.drawable.ic_lan, linkIcon(LinkType.Tcp))
+        assertEquals(one.aircast.android.R.drawable.ic_cloud, linkIcon(LinkType.AircastCloud))
+        assertEquals(one.aircast.android.R.drawable.ic_history, linkIcon(LinkType.LogReplay))
+        assertEquals(one.aircast.android.R.drawable.ic_science, linkIcon(LinkType.Mock))
+        assertEquals(one.aircast.android.R.drawable.ic_link, linkIcon(LinkType.Other))
+        assertEquals(LinkType.Tcp, linkRows(JSONObject("""{"configured":[{"index":0,"type":"tcp"}]}""")).single().type)
     }
 
     @Test
     fun `udp writes its own port property and not tcp's`() {
-        val writes = editWrites("portOnly", "n", "", 14551, "", 0, false, false)
+        val writes = editWrites(LinkEditing.PortOnly, "n", "", 14551, "", 0, false, false)
         assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to false, "highLatency" to false, "localPort" to 14551), writes)
     }
 
     @Test
     fun `tcp writes host and port`() {
-        val writes = editWrites("hostAndPort", "n", "1.2.3.4", 5760, "", 0, true, false)
+        val writes = editWrites(LinkEditing.HostAndPort, "n", "1.2.3.4", 5760, "", 0, true, false)
         assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to true, "highLatency" to false, "host" to "1.2.3.4", "port" to 5760), writes)
     }
 
     @Test
     fun `serial writes the port name, baud and the advanced framing`() {
-        val writes = editWrites("serial", "n", "", 0, "/dev/ttyUSB0", 57600, false, true, SerialFraming(dataBits = 7, stopBits = 2, parity = 2, flowControl = 1))
+        val writes = editWrites(LinkEditing.Serial, "n", "", 0, "/dev/ttyUSB0", 57600, false, true, SerialFraming(dataBits = 7, stopBits = 2, parity = 2, flowControl = 1))
         assertEquals(
             listOf<Pair<String, Any>>(
                 "name" to "n", "autoConnect" to false, "highLatency" to true, "portName" to "/dev/ttyUSB0", "baud" to 57600,
@@ -241,7 +241,7 @@ class LinkEditRulesTest {
 
     @Test
     fun `an unknown kind still renames and writes nothing else`() {
-        assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to false, "highLatency" to false), editWrites("none", "n", "h", 1, "p", 2, false, false))
+        assertEquals(listOf<Pair<String, Any>>("name" to "n", "autoConnect" to false, "highLatency" to false), editWrites(LinkEditing.None, "n", "h", 1, "p", 2, false, false))
     }
 
     @Test
@@ -265,20 +265,20 @@ class LinkEditRulesTest {
 
     @org.junit.Test
     fun `a saved bluetooth link is edited by picking another device, as BluetoothSettings does`() {
-        org.junit.Assert.assertTrue(linkIsEditable(LinkRow(index = 0, name = "HC-05", statusLine = "", connected = false, heard = false, lastError = "", editing = "device")))
+        org.junit.Assert.assertTrue(linkIsEditable(LinkRow(index = 0, name = "HC-05", statusLine = "", connected = false, heard = false, lastError = "", editing = LinkEditing.Device)))
         org.junit.Assert.assertEquals(
             "the device is set by address through setDeviceByAddress, not written as a field",
             listOf("name" to "HC-05", "autoConnect" to false, "highLatency" to false),
-            editWrites("device", "HC-05", "", 0, "", 0, false, false),
+            editWrites(LinkEditing.Device, "HC-05", "", 0, "", 0, false, false),
         )
     }
 
     @org.junit.Test
     fun `a saved log replay link is edited by choosing another log, as LogReplaySettings does`() {
-        org.junit.Assert.assertTrue(linkIsEditable(LinkRow(index = 0, name = "Replay", statusLine = "", connected = false, heard = false, lastError = "", editing = "logFile")))
+        org.junit.Assert.assertTrue(linkIsEditable(LinkRow(index = 0, name = "Replay", statusLine = "", connected = false, heard = false, lastError = "", editing = LinkEditing.LogFile)))
         org.junit.Assert.assertEquals(
             listOf("name" to "Replay", "autoConnect" to false, "highLatency" to false, "filename" to "/data/r.tlog"),
-            editWrites("logFile", "Replay", "", 0, "", 0, false, false, logFile = "/data/r.tlog"),
+            editWrites(LinkEditing.LogFile, "Replay", "", 0, "", 0, false, false, logFile = "/data/r.tlog"),
         )
     }
 }
@@ -307,10 +307,10 @@ class UdpServerFormTest {
 
     @Test
     fun formErrorsPointAtTheFieldThatFailed() {
-        assertEquals("port", linkFormErrorField("udp", "", "70000", "14550"))
-        assertEquals("port", linkFormErrorField("tcp", "10.0.0.2", "abc"))
-        assertEquals("host", linkFormErrorField("tcp", "", "5760"))
-        assertEquals(null, linkFormErrorField("udp", "", "", "14550"))
-        assertEquals(null, linkFormErrorField("tcp", "10.0.0.2", "5760"))
+        assertEquals("port", linkFormErrorField(LinkType.Udp, "", "70000", "14550"))
+        assertEquals("port", linkFormErrorField(LinkType.Tcp, "10.0.0.2", "abc"))
+        assertEquals("host", linkFormErrorField(LinkType.Tcp, "", "5760"))
+        assertEquals(null, linkFormErrorField(LinkType.Udp, "", "", "14550"))
+        assertEquals(null, linkFormErrorField(LinkType.Tcp, "10.0.0.2", "5760"))
     }
 }

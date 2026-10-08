@@ -22,6 +22,6 @@ class AutoLinksTest {
     fun `a link with no address reads without a stray separator, and a mock link reads as simulated`() {
         assertEquals("automatic", autoLinkSubtitle(AutoLink("Serial", "", false)))
         assertEquals("UDP port 14550 \u00b7 automatic", autoLinkSubtitle(AutoLink("UDP", "UDP port 14550", false)))
-        assertEquals("Simulated", autoLinkSubtitle(AutoLink("PX4 MultiRotor MockLink", "", true, MOCK_LINK)))
+        assertEquals("Simulated", autoLinkSubtitle(AutoLink("PX4 MultiRotor MockLink", "", true, LinkType.Mock)))
     }
 }

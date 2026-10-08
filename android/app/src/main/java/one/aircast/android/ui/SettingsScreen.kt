@@ -23,7 +23,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -344,30 +343,23 @@ private fun AircraftSetupRow(onOpenSetup: (String?) -> Unit) {
 }
 
 @Composable
-internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier: Modifier = Modifier, onLeaveInitialPage: (() -> Unit)? = null, onOpenSetup: (String?) -> Unit = {}) {
+internal fun SettingsScreen(group: SettingsGroup, open: String?, onOpen: (String) -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}) {
     var everyPage by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
-    var open by rememberSaveable(group) { mutableStateOf(initialPage?.takeUnless { pageLook(it).inline }) }
 
     LaunchedEffect(Unit) {
         everyPage = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
     }
 
-    val closePage: () -> Unit = { onLeaveInitialPage?.takeIf { open == initialPage }?.invoke() ?: run { open = null } }
-    BackHandler(enabled = open != null, onBack = closePage)
+    BackHandler(enabled = open != null, onBack = onClose)
 
     val current = everyPage.firstOrNull { it.title == open }
-    val navigation = LocalAppNavigation.current
-    DisposableEffect(current != null) {
-        navigation.settingsPageOpen = current != null
-        onDispose { navigation.settingsPageOpen = false }
-    }
     val heading = remember { mutableStateOf<PageHeading?>(null) }
-    val headingBack: () -> Unit = { heading.value?.back?.invoke() ?: closePage() }
+    val headingBack: () -> Unit = { heading.value?.back?.invoke() ?: onClose() }
     CompositionLocalProvider(LocalPageHeading provides heading, LocalSettingsList provides true) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             val column = Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH)
             if (current == null) {
-                SettingsTab(group, everyPage, column, onOpenSetup) { open = it }
+                SettingsTab(group, everyPage, column, onOpenSetup, onOpen)
             } else {
                 Column(column) {
                     PageTopBar(heading.value?.title ?: pageTitle(current.title), "Back", headingBack)
