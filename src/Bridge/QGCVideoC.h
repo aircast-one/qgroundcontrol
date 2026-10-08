@@ -31,9 +31,6 @@ bool qgc_video_start_recording(int channel, const char *file, int format);
 void qgc_video_stop_recording(int channel);
 bool qgc_video_recording(int channel);
 
-typedef void (*qgc_video_frame_callback)(int channel, const uint8_t *pixels, int width, int height, int stride);
-void qgc_video_set_frame_callback(qgc_video_frame_callback callback);
-
 typedef void (*qgc_video_pipeline_callback)(int channel, void *pipeline);
 void qgc_video_set_pipeline_callback(qgc_video_pipeline_callback callback);
 

@@ -16,6 +16,9 @@
 #include <gst/gst.h>
 #include <gst/video/video.h>
 #include <gst/video/videooverlay.h>
+#ifdef __ANDROID__
+#include <gst/gl/gl.h>
+#endif
 #endif
 
 #ifndef QGC_VIDEO_FORMAT
@@ -56,6 +59,7 @@ struct Channel {
     GstElement *pipeline = nullptr;
     GstElement *sink = nullptr;
     GstElement *overlaySink = nullptr;
+    gulong renderProbe = 0;
     GstElement *appsink = nullptr;
     Recording recording;
     std::mutex drainMutex;
@@ -94,7 +98,6 @@ struct Channel {
 };
 
 std::array<Channel, QGC_VIDEO_CHANNELS> channels;
-std::atomic<qgc_video_frame_callback> frameCallback{nullptr};
 std::atomic<qgc_video_pipeline_callback> pipelineCallback{nullptr};
 
 Channel *channelAt(int channel)
@@ -103,11 +106,6 @@ Channel *channelAt(int channel)
 }
 
 #ifdef QGC_GST_STREAMING
-int indexOf(const Channel *channel)
-{
-    return static_cast<int>(channel - channels.data());
-}
-
 const char *muxerFor(int format)
 {
     switch (format) {
@@ -360,9 +358,6 @@ GstFlowReturn onNewSample(GstAppSink *appsink, gpointer data)
                 channel->frameStride = static_cast<int>(GST_VIDEO_INFO_PLANE_STRIDE(&info, 0));
                 channel->latestFrame.assign(map.data, map.data + map.size);
                 channel->frameCount += 1;
-                if (const qgc_video_frame_callback callback = frameCallback.load()) {
-                    callback(indexOf(channel), channel->latestFrame.data(), channel->frameWidth, channel->frameHeight, channel->frameStride);
-                }
             }
             gst_buffer_unmap(buffer, &map);
         }
@@ -386,6 +381,121 @@ void adoptAppsink(Channel &channel, GstAppSink *appsink)
     gst_app_sink_set_callbacks(appsink, &callbacks, &channel, nullptr);
 }
 
+GstPadProbeReturn onRendered(GstPad *, GstPadProbeInfo *info, gpointer data)
+{
+    Channel *const channel = static_cast<Channel *>(data);
+    if (GST_PAD_PROBE_INFO_TYPE(info) & GST_PAD_PROBE_TYPE_BUFFER) {
+        {
+            const std::lock_guard<std::mutex> lock(channel->frameMutex);
+            channel->frameCount += 1;
+        }
+        const std::lock_guard<std::mutex> lock(channel->overlayMutex);
+        return channel->overlayWindow ? GST_PAD_PROBE_OK : GST_PAD_PROBE_DROP;
+    }
+    GstEvent *const event = GST_PAD_PROBE_INFO_EVENT(info);
+    GstCaps *caps = nullptr;
+    GstVideoInfo video;
+    if (GST_EVENT_TYPE(event) == GST_EVENT_CAPS) {
+        gst_event_parse_caps(event, &caps);
+        if (gst_video_info_from_caps(&video, caps)) {
+            const std::lock_guard<std::mutex> lock(channel->frameMutex);
+            channel->frameWidth = GST_VIDEO_INFO_WIDTH(&video);
+            channel->frameHeight = GST_VIDEO_INFO_HEIGHT(&video);
+        }
+    }
+    return GST_PAD_PROBE_OK;
+}
+
+template <typename Use>
+void withSinkPad(GstElement *sink, Use &&use)
+{
+    if (GstPad *const pad = gst_element_get_static_pad(sink, "sink")) {
+        use(pad);
+        gst_object_unref(pad);
+    }
+}
+
+void watchOverlay(Channel &channel, GstElement *sink)
+{
+    channel.overlaySink = GST_ELEMENT(gst_object_ref(sink));
+    channel.ownFrames(sink);
+    withSinkPad(sink, [&channel](GstPad *pad) {
+        channel.renderProbe = gst_pad_add_probe(pad, static_cast<GstPadProbeType>(GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM), onRendered, &channel, nullptr);
+    });
+    if (channel.overlayWindow) {
+        gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(sink), reinterpret_cast<guintptr>(channel.overlayWindow));
+    }
+}
+
+void awaitRender(GstElement *sink)
+{
+    withSinkPad(sink, [](GstPad *pad) {
+        GST_PAD_STREAM_LOCK(pad);
+        GST_PAD_STREAM_UNLOCK(pad);
+    });
+}
+
+GstBuffer *cpuReadable(GstBuffer *buffer, GstCaps *caps)
+{
+#ifdef __ANDROID__
+    GstMemory *const memory = gst_buffer_peek_memory(buffer, 0);
+    if (gst_is_gl_memory(memory) && reinterpret_cast<GstGLMemory *>(memory)->tex_target == GST_GL_TEXTURE_TARGET_EXTERNAL_OES) {
+        GstGLColorConvert *const convert = gst_gl_color_convert_new(reinterpret_cast<GstGLBaseMemory *>(memory)->context);
+        GstCaps *const flat = gst_caps_copy(caps);
+        gst_caps_set_simple(flat, "texture-target", G_TYPE_STRING, "2D", nullptr);
+        GstBuffer *const converted = gst_gl_color_convert_set_caps(convert, caps, flat) ? gst_gl_color_convert_perform(convert, buffer) : nullptr;
+        gst_caps_unref(flat);
+        gst_object_unref(convert);
+        return converted;
+    }
+#else
+    (void)caps;
+#endif
+    return gst_buffer_ref(buffer);
+}
+
+bool copyRenderedFrame(Channel &channel, void *destination, int capacity, int *width, int *height, int *stride)
+{
+    GstElement *sink = nullptr;
+    {
+        const std::lock_guard<std::mutex> lock(channel.overlayMutex);
+        sink = channel.overlaySink ? GST_ELEMENT(gst_object_ref(channel.overlaySink)) : nullptr;
+    }
+    GstSample *sample = nullptr;
+    if (sink) {
+        g_object_get(sink, "last-sample", &sample, nullptr);
+        gst_object_unref(sink);
+    }
+    GstCaps *const caps = sample ? gst_sample_get_caps(sample) : nullptr;
+    GstBuffer *const buffer = sample ? gst_sample_get_buffer(sample) : nullptr;
+    GstBuffer *const readable = (caps && buffer) ? cpuReadable(buffer, caps) : nullptr;
+    GstVideoInfo info;
+    GstVideoFrame frame;
+    const bool mapped = readable && destination && gst_video_info_from_caps(&info, caps) && gst_video_frame_map(&frame, &info, readable, GST_MAP_READ);
+    const int rowBytes = mapped ? GST_VIDEO_FRAME_PLANE_STRIDE(&frame, 0) : 0;
+    const int rows = mapped ? GST_VIDEO_FRAME_HEIGHT(&frame) : 0;
+    const bool fits = mapped && capacity >= rowBytes * rows;
+    if (fits) {
+        memcpy(destination, GST_VIDEO_FRAME_PLANE_DATA(&frame, 0), static_cast<size_t>(rowBytes) * rows);
+        const std::pair<int *, int> outputs[] = {{width, GST_VIDEO_FRAME_WIDTH(&frame)}, {height, rows}, {stride, rowBytes}};
+        for (const auto &[output, value] : outputs) {
+            if (output) {
+                *output = value;
+            }
+        }
+    }
+    if (mapped) {
+        gst_video_frame_unmap(&frame);
+    }
+    if (readable) {
+        gst_buffer_unref(readable);
+    }
+    if (sample) {
+        gst_sample_unref(sample);
+    }
+    return fits;
+}
+
 void dropAppsink(GstElement *appsink)
 {
     GstAppSinkCallbacks none = {};
@@ -393,10 +503,11 @@ void dropAppsink(GstElement *appsink)
     gst_object_unref(appsink);
 }
 
-void releaseOverlay(GstElement *&sink)
+void releaseOverlay(Channel &channel)
 {
-    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(sink), 0);
-    gst_object_unref(std::exchange(sink, nullptr));
+    withSinkPad(channel.overlaySink, [&channel](GstPad *pad) { gst_pad_remove_probe(pad, std::exchange(channel.renderProbe, 0)); });
+    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(channel.overlaySink), 0);
+    gst_object_unref(std::exchange(channel.overlaySink, nullptr));
 }
 
 void releaseElsewhere(const Channel &keeper, GstElement *element)
@@ -408,7 +519,7 @@ void releaseElsewhere(const Channel &keeper, GstElement *element)
         {
             const std::lock_guard<std::mutex> lock(other.overlayMutex);
             if (other.overlaySink == element) {
-                releaseOverlay(other.overlaySink);
+                releaseOverlay(other);
             }
         }
         if (other.appsink == element) {
@@ -423,12 +534,7 @@ void releaseElsewhere(const Channel &keeper, GstElement *element)
 
 int qgc_video_abi_version(void)
 {
-    return 2;
-}
-
-void qgc_video_set_frame_callback(qgc_video_frame_callback callback)
-{
-    frameCallback.store(callback);
+    return 3;
 }
 
 void qgc_video_set_pipeline_callback(qgc_video_pipeline_callback callback)
@@ -443,11 +549,18 @@ bool qgc_video_set_window(int channel, void *native_window)
         return false;
     }
 #ifdef QGC_GST_STREAMING
-    const std::lock_guard<std::mutex> lock(target->overlayMutex);
-    target->overlayWindow = native_window;
-    if (target->overlaySink) {
-        gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(target->overlaySink),
-                                            reinterpret_cast<guintptr>(native_window));
+    GstElement *parked = nullptr;
+    {
+        const std::lock_guard<std::mutex> lock(target->overlayMutex);
+        target->overlayWindow = native_window;
+        if (target->overlaySink && native_window) {
+            gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(target->overlaySink), reinterpret_cast<guintptr>(native_window));
+        }
+        parked = (target->overlaySink && !native_window) ? GST_ELEMENT(gst_object_ref(target->overlaySink)) : nullptr;
+    }
+    if (parked) {
+        awaitRender(parked);
+        gst_object_unref(parked);
     }
     target->lastError.clear();
     return true;
@@ -475,12 +588,9 @@ bool qgc_video_attach_overlay(int channel, void *element)
     const std::lock_guard<std::mutex> lock(target->overlayMutex);
     if (target->overlaySink != sink) {
         if (target->overlaySink) {
-            releaseOverlay(target->overlaySink);
+            releaseOverlay(*target);
         }
-        target->overlaySink = GST_ELEMENT(gst_object_ref(sink));
-        if (target->overlayWindow) {
-            gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(sink), reinterpret_cast<guintptr>(target->overlayWindow));
-        }
+        watchOverlay(*target, sink);
     }
     target->lastError.clear();
     return true;
@@ -534,7 +644,7 @@ void qgc_video_detach_appsink(int channel)
     }
     const std::lock_guard<std::mutex> lock(target->overlayMutex);
     if (target->overlaySink) {
-        releaseOverlay(target->overlaySink);
+        releaseOverlay(*target);
     }
 #endif
 }
@@ -581,7 +691,7 @@ bool qgc_video_start(int channel, const char *pipelineDescription)
 
     target->sink = gst_bin_get_by_name(GST_BIN(target->pipeline), "nativesink");
     if (!target->sink) {
-        target->lastError = "the pipeline has no appsink named nativesink";
+        target->lastError = "the pipeline has no sink named nativesink";
         qgc_video_stop(channel);
         return false;
     }
@@ -602,7 +712,12 @@ bool qgc_video_start(int channel, const char *pipelineDescription)
         gst_object_unref(tee);
     }
 
-    adoptAppsink(*target, GST_APP_SINK(target->sink));
+    if (GST_IS_APP_SINK(target->sink)) {
+        adoptAppsink(*target, GST_APP_SINK(target->sink));
+    } else if (!qgc_video_attach_overlay(channel, target->sink)) {
+        qgc_video_stop(channel);
+        return false;
+    }
 
     if (const qgc_video_pipeline_callback callback = pipelineCallback.load()) {
         callback(channel, target->pipeline);
@@ -753,6 +868,12 @@ void qgc_video_stop(int channel)
     if (target->pipeline) {
         gst_element_set_state(target->pipeline, GST_STATE_NULL);
     }
+    {
+        const std::lock_guard<std::mutex> lock(target->overlayMutex);
+        if (target->overlaySink && target->overlaySink == target->sink) {
+            releaseOverlay(*target);
+        }
+    }
     target->disownFrames(target->sink);
     if (target->sink) {
         gst_object_unref(target->sink);
@@ -838,8 +959,16 @@ bool qgc_video_copy_frame(int channel, void *destination, int capacity, int *wid
     if (!target) {
         return false;
     }
-    const std::lock_guard<std::mutex> lock(target->frameMutex);
-    if (target->latestFrame.empty() || !destination || capacity < static_cast<int>(target->latestFrame.size())) {
+    std::unique_lock<std::mutex> lock(target->frameMutex);
+    if (target->latestFrame.empty()) {
+        lock.unlock();
+#ifdef QGC_GST_STREAMING
+        return copyRenderedFrame(*target, destination, capacity, width, height, stride);
+#else
+        return false;
+#endif
+    }
+    if (!destination || capacity < static_cast<int>(target->latestFrame.size())) {
         return false;
     }
     memcpy(destination, target->latestFrame.data(), target->latestFrame.size());

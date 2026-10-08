@@ -11,9 +11,9 @@
 #include <algorithm>
 #include <array>
 #include <cstdlib>
-#include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 extern "C" void gst_init_static_plugins(void);
 
@@ -22,8 +22,7 @@ namespace {
 struct Window {
     std::mutex mutex;
     ANativeWindow *window = nullptr;
-    int width = 0;
-    int height = 0;
+    std::vector<ANativeWindow *> retired;
 };
 
 std::array<Window, QGC_VIDEO_CHANNELS> windows;
@@ -34,34 +33,6 @@ jobject applicationClassLoader = nullptr;
 Window *windowAt(int channel)
 {
     return (channel >= 0 && channel < QGC_VIDEO_CHANNELS) ? &windows[static_cast<size_t>(channel)] : nullptr;
-}
-
-void drawFrame(int channel, const uint8_t *pixels, int width, int height, int stride)
-{
-    Window *const target = windowAt(channel);
-    if (!target) {
-        return;
-    }
-    const std::lock_guard<std::mutex> lock(target->mutex);
-    if (!target->window || width <= 0 || height <= 0) {
-        return;
-    }
-    if (width != target->width || height != target->height) {
-        ANativeWindow_setBuffersGeometry(target->window, width, height, WINDOW_FORMAT_RGBA_8888);
-        target->width = width;
-        target->height = height;
-    }
-    ANativeWindow_Buffer buffer;
-    if (ANativeWindow_lock(target->window, &buffer, nullptr) != 0) {
-        return;
-    }
-    const int rows = std::min(height, buffer.height);
-    const int rowBytes = std::min(stride, buffer.stride * 4);
-    auto *destination = static_cast<uint8_t *>(buffer.bits);
-    for (int row = 0; row < rows; ++row) {
-        memcpy(destination + static_cast<size_t>(row) * buffer.stride * 4, pixels + static_cast<size_t>(row) * stride, rowBytes);
-    }
-    ANativeWindow_unlockAndPost(target->window);
 }
 
 bool hardwareDecoder(const gchar *name)
@@ -133,8 +104,20 @@ GstGLDisplay *sharedGlDisplay()
     return display;
 }
 
-void shareGlDisplay(int, void *pipeline)
+void releaseRetiredWindows(int channel)
 {
+    Window *const target = windowAt(channel);
+    if (!target) {
+        return;
+    }
+    const std::lock_guard<std::mutex> lock(target->mutex);
+    std::for_each(target->retired.begin(), target->retired.end(), ANativeWindow_release);
+    target->retired.clear();
+}
+
+void preparePipeline(int channel, void *pipeline)
+{
+    releaseRetiredWindows(channel);
     GstGLDisplay *const display = sharedGlDisplay();
     if (!display) {
         return;
@@ -184,8 +167,7 @@ __attribute__((visibility("default"))) bool qgc_video_android_init(JavaVM *vm, j
         gst_init(nullptr, nullptr);
         gst_init_static_plugins();
         preferHardwareDecoders();
-        qgc_video_set_frame_callback(drawFrame);
-        qgc_video_set_pipeline_callback(shareGlDisplay);
+        qgc_video_set_pipeline_callback(preparePipeline);
     });
     return gst_is_initialized();
 }
@@ -219,12 +201,13 @@ __attribute__((visibility("default"))) bool qgc_video_android_set_surface(JNIEnv
     }
     ANativeWindow *const next = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
     const std::lock_guard<std::mutex> lock(target->mutex);
-    if (target->window) {
-        ANativeWindow_release(target->window);
+    qgc_video_set_window(channel, next);
+    if (target->window == next && next) {
+        ANativeWindow_release(next);
+    } else if (target->window) {
+        target->retired.push_back(target->window);
     }
     target->window = next;
-    target->width = 0;
-    target->height = 0;
     return surface == nullptr || next != nullptr;
 }
 

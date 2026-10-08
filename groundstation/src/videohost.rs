@@ -8,12 +8,12 @@ const RECORD_TEE: &str = "tee name=nativerec ! queue";
 #[cfg(not(target_os = "android"))]
 const NATIVE_SINK: &str = "videoconvert ! appsink name=nativesink";
 #[cfg(target_os = "android")]
-const NATIVE_SINK: &str = "glupload ! glcolorconvert ! video/x-raw(memory:GLMemory),format=RGBA,texture-target=2D ! gldownload ! videoconvert ! appsink name=nativesink";
+const NATIVE_SINK: &str = "glupload ! glcolorconvert ! glimagesink name=nativesink qos=false max-lateness=-1";
 
 pub const VIDEO_CHANNELS: usize = 2;
 pub const MAIN_CHANNEL: usize = 0;
 pub const PIP_CHANNEL: usize = 1;
-pub const VIDEO_ABI_VERSION: i32 = 2;
+pub const VIDEO_ABI_VERSION: i32 = 3;
 const CHANNEL_RECEIVERS: [&str; VIDEO_CHANNELS] = [MAIN_RECEIVER, PIP_RECEIVER];
 
 #[derive(Default)]
@@ -1053,7 +1053,7 @@ mod tests {
 
     #[test]
     fn the_native_channels_and_abi_are_the_numbers_the_c_header_defines() {
-        assert_eq!((MAIN_CHANNEL, PIP_CHANNEL, VIDEO_CHANNELS, VIDEO_ABI_VERSION), (0, 1, 2, 2));
+        assert_eq!((MAIN_CHANNEL, PIP_CHANNEL, VIDEO_CHANNELS, VIDEO_ABI_VERSION), (0, 1, 2, 3));
         let header = include_str!("../../src/Bridge/QGCVideoC.h");
         ["#define QGC_VIDEO_MAIN 0", "#define QGC_VIDEO_PIP 1", "#define QGC_VIDEO_CHANNELS 2", "int qgc_video_abi_version(void);"].iter().for_each(|line| assert!(header.contains(line), "QGCVideoC.h no longer says {line}"));
         assert_eq!(CHANNEL_RECEIVERS, [MAIN_RECEIVER, PIP_RECEIVER]);
