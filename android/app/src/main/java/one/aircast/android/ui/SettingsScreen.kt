@@ -84,6 +84,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.floor
+import androidx.compose.runtime.produceState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -224,6 +225,14 @@ internal data class SettingsSectionRows(
 
 internal fun settingsPagePath(title: String): String = "$SETTINGS_VIEW($title)"
 
+@Composable
+internal fun rememberSettingsPages(): List<SettingsPageEntry> {
+    val everyPage by produceState(emptyList<SettingsPageEntry>()) {
+        value = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
+    }
+    return everyPage
+}
+
 internal fun editOnDesktop(fact: Fact): Boolean = !controlIsUnderstood(fact.controlKind)
 
 internal fun inertNote(fact: Fact): String = when {
@@ -343,13 +352,7 @@ private fun AircraftSetupRow(onOpenSetup: (String?) -> Unit) {
 }
 
 @Composable
-internal fun SettingsScreen(group: SettingsGroup, open: String?, onOpen: (String) -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}) {
-    var everyPage by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
-
-    LaunchedEffect(Unit) {
-        everyPage = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
-    }
-
+internal fun SettingsScreen(group: SettingsGroup, everyPage: List<SettingsPageEntry>, open: String?, onOpen: (String) -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}) {
     BackHandler(enabled = open != null, onBack = onClose)
 
     val current = everyPage.firstOrNull { it.title == open }
@@ -715,6 +718,7 @@ internal fun FactRow(
     subtitle: String = listOf(fact.detail, factSubtitle(fact)).filter { it.isNotBlank() }.joinToString(" · "),
     titleColor: Color = Color.Unspecified,
     fieldModifier: Modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    warning: String? = null,
     onRejected: () -> Unit = {},
     onWrite: () -> Unit = {},
 ) {
@@ -745,7 +749,7 @@ internal fun FactRow(
                 Column {
                     FactTitle(title, titleColor, null, {})
                     if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LocalRowWarning.current?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning) }
+                    warning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning) }
                 }
             }, onOpen = { editing = true }, onWrite = onWrite)
             if (editing) ValueDetailsSheet(fact, title = title, onWrite = onWrite) { editing = false }
@@ -759,7 +763,7 @@ internal fun FactRow(
             Column(Modifier.weight(1f)) {
                 FactTitle(title, titleColor, null, {})
                 if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LocalRowWarning.current?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning) }
+                warning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning) }
             }
             Text(valueText(fact), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Icon(painterResource(R.drawable.ic_chevron_right), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

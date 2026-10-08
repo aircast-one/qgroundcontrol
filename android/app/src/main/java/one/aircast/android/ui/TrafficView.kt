@@ -99,6 +99,15 @@ internal fun trafficReal(reading: TrafficReading): Int = reading.contacts.count 
 
 internal fun trafficSynthetic(reading: TrafficReading): Int = reading.contacts.count { it.simulated }
 
+private fun feedFault(reading: TrafficReading): String? = when {
+    reading.errorToken == "connectFailed" -> "Traffic server unreachable"
+    reading.errorToken == "linkLost" -> "Traffic feed dropped"
+    reading.errorToken.isNotBlank() -> "Traffic feed failed"
+    !reading.available -> "No traffic receiver"
+    !reading.receiving -> "No traffic feed"
+    else -> null
+}
+
 internal fun trafficSummary(reading: TrafficReading): String {
     val real = trafficReal(reading)
     val synthetic = trafficSynthetic(reading)
@@ -106,12 +115,7 @@ internal fun trafficSummary(reading: TrafficReading): String {
         real > 0 && synthetic > 0 -> "Traffic: $real aircraft \u00b7 $synthetic simulated"
         real > 0 -> "Traffic: $real aircraft"
         synthetic > 0 -> "Traffic: $synthetic simulated"
-        reading.errorToken == "connectFailed" -> "Traffic server unreachable"
-        reading.errorToken == "linkLost" -> "Traffic feed dropped"
-        reading.errorToken.isNotBlank() -> "Traffic feed failed"
-        !reading.available -> "No traffic receiver"
-        !reading.receiving -> "No traffic feed"
-        else -> "Traffic clear"
+        else -> feedFault(reading) ?: "Traffic clear"
     }
 }
 
@@ -190,15 +194,6 @@ internal fun trafficThreatText(contact: TrafficContact, units: TrafficUnits): St
         trafficHeightText(contact, units),
     ).filter { it.isNotBlank() }.joinToString(" \u00b7 ")
 
-private fun trafficFault(reading: TrafficReading): String = when {
-    reading.errorToken == "connectFailed" -> "Traffic server unreachable"
-    reading.errorToken == "linkLost" -> "Traffic feed dropped"
-    reading.errorToken.isNotBlank() -> "Traffic feed failed"
-    !reading.available -> "No traffic receiver"
-    !reading.receiving -> "No traffic feed"
-    else -> "Collision alerts unknown for ${reading.alertUnknown} aircraft"
-}
-
 internal fun trafficAlert(reading: TrafficReading): TrafficAlert? {
     val level = trafficLevel(reading)
     if (!trafficShown(reading) || level == TrafficLevel.Good) return null
@@ -206,7 +201,7 @@ internal fun trafficAlert(reading: TrafficReading): TrafficAlert? {
     val title = when (level) {
         TrafficLevel.Critical -> "Aircraft ${trafficEmergencyText(reading.emergency).ifBlank { "in emergency" }}"
         TrafficLevel.Warning -> "Aircraft nearby"
-        else -> trafficFault(reading)
+        else -> feedFault(reading) ?: "Collision alerts unknown for ${reading.alertUnknown} aircraft"
     }
     return TrafficAlert(level, title, threat?.let { trafficThreatText(it, reading.units) }.orEmpty())
 }

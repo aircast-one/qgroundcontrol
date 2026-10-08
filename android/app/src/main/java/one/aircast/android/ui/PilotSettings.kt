@@ -149,9 +149,7 @@ private fun PilotFactRow(shown: Fact, setting: PilotSetting) {
     val fact by produceState(shown, name, live, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name)?.copy(shortLabel = shown.shortLabel) } ?: shown
     }
-    androidx.compose.runtime.CompositionLocalProvider(LocalRowWarning provides setting.whenUnlimited?.takeIf { factNumber(fact) == 0f }) {
-        FactRow(pilotChoices(fact), subtitle = setting.hint, onWrite = { revision++ })
-    }
+    FactRow(pilotChoices(fact), subtitle = setting.hint, warning = setting.whenUnlimited?.takeIf { factNumber(fact) == 0f }, onWrite = { revision++ })
 }
 
 private val PILOT_CHOICES = mapOf(

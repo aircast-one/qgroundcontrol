@@ -171,10 +171,11 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                 }
             }
             if (query == null && !setupOpen) {
+                val everyPage = rememberSettingsPages()
                 SettingsPager(group, swipeable = openPage == null, onSettled = pickTab, modifier = Modifier.weight(1f)) { shown ->
                     val current = shown == group
                     key(page.takeIf { current }) {
-                        SettingsScreen(shown, openPage.takeIf { current }, { openPage = it }, closePage, Modifier.fillMaxSize(), onOpenSetup = openSetup)
+                        SettingsScreen(shown, everyPage, openPage.takeIf { current }, { openPage = it }, closePage, Modifier.fillMaxSize(), onOpenSetup = openSetup)
                     }
                 }
             } else key(group, page, query != null, setupOpen) {

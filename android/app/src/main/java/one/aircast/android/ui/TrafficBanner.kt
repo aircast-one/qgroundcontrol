@@ -41,7 +41,7 @@ internal fun TrafficBanner(modifier: Modifier = Modifier) {
     val reading = remember(view) { trafficReading(view) }
     var listed by remember { mutableStateOf(false) }
     OpenOnRequest(TRAFFIC_SHEET) { listed = true }
-    reading?.takeIf { listed && it.contacts.isNotEmpty() }?.let { TrafficSheet(it) { listed = false } }
+    reading?.takeIf { listed }?.let { TrafficSheet(it) { listed = false } }
 
     val alert = reading?.let(::trafficAlert) ?: return
     val urgent = alert.level >= TrafficLevel.Warning
