@@ -102,12 +102,15 @@ internal fun vehicleCoordinate(coordinate: JSONObject?): JSONObject? =
     coordinate?.takeIf { it.optBoolean("valid", true) && it.has("latitude") && it.has("longitude") }
         ?.let { JSONObject().put("latitude", it.optDouble("latitude")).put("longitude", it.optDouble("longitude")).put("altitude", 0) }
 
-private fun setToVehicleHeading(index: Int): String? =
-    vehicleHeading(VehicleCommands.heading())?.let { PlanCommands.setLandingHeading(index, it) } ?: "The vehicle has not reported its heading."
+private fun setToVehicleHeading(index: Int): String? {
+    val heading = vehicleHeading(VehicleCommands.heading()) ?: return "The vehicle has not reported its heading."
+    return PlanCommands.setLandingHeading(index, heading)
+}
 
-private fun setToVehicleLocation(index: Int): String? =
-    vehicleCoordinate(VehicleCommands.coordinate()?.let { it.optJSONObject("value") ?: it })
-        ?.let { PlanCommands.setLandingCoordinate(index, it) } ?: "The vehicle has no position yet."
+private fun setToVehicleLocation(index: Int): String? {
+    val coordinate = vehicleCoordinate(VehicleCommands.coordinate()?.let { it.optJSONObject("value") ?: it }) ?: return "The vehicle has no position yet."
+    return PlanCommands.setLandingCoordinate(index, coordinate)
+}
 
 internal fun areaHelp(view: JSONObject?): String? = view?.optText("areaHelp")?.takeIf { it.isNotBlank() }
 
