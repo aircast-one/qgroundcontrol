@@ -13,6 +13,7 @@ internal class AppNavigationState {
     var settingsOpen by mutableStateOf(false)
     var aircraftRequested by mutableStateOf(false)
     var settingsShowing by mutableStateOf<SettingsGroup?>(null)
+    var settingsPageOpen by mutableStateOf(false)
 
     fun openAircraft() {
         aircraftRequested = true

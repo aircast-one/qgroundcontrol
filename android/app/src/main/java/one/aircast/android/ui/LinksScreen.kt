@@ -146,6 +146,10 @@ internal fun linkIcon(type: String): Int = when (type) {
     "serial" -> R.drawable.ic_usb
     "udp" -> R.drawable.ic_wifi
     BLUETOOTH_LINK -> R.drawable.ic_bluetooth
+    "tcp" -> R.drawable.ic_lan
+    AIRCAST_CLOUD_LINK -> R.drawable.ic_cloud
+    REPLAY_LINK -> R.drawable.ic_history
+    MOCK_LINK -> R.drawable.ic_science
     else -> R.drawable.ic_link
 }
 
@@ -715,35 +719,87 @@ private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Uni
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+internal data class LinkKind(val id: String, val title: String, val detail: String, val about: String)
+
+internal val PILOT_LINK_ORDER = listOf("udp", "serial", BLUETOOTH_LINK, AIRCAST_CLOUD_LINK, "tcp")
+internal val TOOL_LINK_ORDER = listOf(REPLAY_LINK, MOCK_LINK)
+
+internal fun linkKind(id: String): LinkKind = when (id) {
+    "udp" -> LinkKind(id, "Wi-Fi or network", "Wi-Fi or Ethernet (UDP)", "Listens on a port for telemetry from the aircraft or its radio.")
+    "serial" -> LinkKind(id, "USB radio", "Telemetry radio on USB", "A radio plugged into this device over USB.")
+    BLUETOOTH_LINK -> LinkKind(id, "Bluetooth radio", "Paired telemetry radio", "A radio paired with or near this device over Bluetooth.")
+    AIRCAST_CLOUD_LINK -> LinkKind(id, "Aircast Cloud", "Backup link via your account", "A backup link to the aircraft through your Aircast account.")
+    "tcp" -> LinkKind(id, "Network server (TCP)", "A listening ground station", "Calls out to a device that is listening, such as a ground station or bridge.")
+    REPLAY_LINK -> LinkKind(id, "Replay a flight log", "Play back a saved log", "Plays back a saved telemetry log as if the vehicle were connected.")
+    MOCK_LINK -> LinkKind(id, "Simulated vehicle", "Try the app without hardware", "A simulated vehicle for trying the app without hardware. It is not saved, so it ends when the app restarts.")
+    else -> LinkKind(id, linkTypeLabel(id), "", "")
+}
+
+internal fun pilotLinkKinds(offered: List<String>, radioPlugged: Boolean): List<String> =
+    PILOT_LINK_ORDER.filter { it in offered }.sortedBy { if (radioPlugged && it == "serial") 0 else 1 }
+
+internal fun toolLinkKinds(offered: List<String>): List<String> = TOOL_LINK_ORDER.filter { it in offered }
+
 @Composable
 private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Modifier = Modifier) {
-    var type by remember { mutableStateOf("udp") }
+    var type by remember { mutableStateOf<String?>(null) }
+    val linksJson by qgcPath(LINKS_VIEW)
+    val ports = remember(linksJson) { serialPortChoices(linksJson) }
+    val offered = remember(linksJson) { addableLinkTypes(linksJson) }
+    var cloudOffered by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { cloudOffered = withContext(Dispatchers.Default) { accountState(AccountCommands.state()) != null } }
+    val choices = offered + listOf(AIRCAST_CLOUD_LINK).filter { cloudOffered && it in linkTypeIds(linksJson) }
+    val askBluetooth = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { }
+
+    type?.let { chosen ->
+        AddLinkDetails(chosen, onBack = { type = null }, onAdded = onAdded, modifier = modifier)
+        return
+    }
+
+    BackHandler(onBack = onDismiss)
+    OverridePageHeading("Add link", onDismiss)
+    val pick: (String) -> Unit = { id ->
+        if (id == BLUETOOTH_LINK) askBluetooth.launch(bluetoothPermissions(android.os.Build.VERSION.SDK_INT))
+        type = id
+    }
+    Column(modifier.fillMaxSize()) {
+        if (LocalPageHeading.current == null) PageTopBar("Add link", "Back to links", onDismiss)
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            SectionHeader("Connect over")
+            pilotLinkKinds(choices, ports.isNotEmpty()).map(::linkKind).map { kind ->
+                SetupRow(title = kind.title, subtitle = kind.detail, icon = linkIcon(kind.id), onClick = { pick(kind.id) })
+            }
+            toolLinkKinds(choices).takeIf { it.isNotEmpty() }?.let { tools ->
+                SectionHeader("Other")
+                tools.map(::linkKind).map { kind ->
+                    SetupRow(title = kind.title, subtitle = kind.detail, icon = linkIcon(kind.id), onClick = { pick(kind.id) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddLinkDetails(type: String, onBack: () -> Unit, onAdded: () -> Unit, modifier: Modifier = Modifier) {
+    val linksJson by qgcPath(LINKS_VIEW)
+    val ports = remember(linksJson) { serialPortChoices(linksJson) }
+    val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
+    val taken = remember(linksJson) { linkRows(linksJson).map { it.name } }
+    val udpListen by one.aircast.android.bridge.qgcValue(UDP_LISTEN_PORT)
+    val udpDefault = (udpListen as? Number)?.toInt()?.takeIf { it in 1..65535 }?.toString() ?: DEFAULT_PORT
     var name by remember { mutableStateOf("") }
     var host by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf("") }
+    var port by remember { mutableStateOf(portFor(type, udpDefault)) }
     var servers by remember { mutableStateOf(emptyList<String>()) }
     var replayLog by remember { mutableStateOf<android.net.Uri?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val logPicker = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) replayLog = uri
     }
-    var portName by remember { mutableStateOf("") }
+    var portName by remember(ports) { mutableStateOf(ports.singleOrNull()?.port.orEmpty()) }
     var baud by remember { mutableIntStateOf(DEFAULT_BAUD) }
-    var advancedSerial by remember { mutableStateOf(false) }
     var newFraming by remember { mutableStateOf(SerialFraming()) }
-    var portsOpen by remember { mutableStateOf(false) }
-    var baudsOpen by remember { mutableStateOf(false) }
-    val linksJson by qgcPath(LINKS_VIEW)
-    val ports = remember(linksJson) { serialPortChoices(linksJson) }
-    val bauds = remember(linksJson) { serialBauds(linksJson).ifEmpty { listOf(DEFAULT_BAUD) } }
-    val taken = remember(linksJson) { linkRows(linksJson).map { it.name } }
-    val offered = remember(linksJson) { addableLinkTypes(linksJson) }
-    val udpListen by one.aircast.android.bridge.qgcValue(UDP_LISTEN_PORT)
-    val udpDefault = (udpListen as? Number)?.toInt()?.takeIf { it in 1..65535 }?.toString() ?: DEFAULT_PORT
-    var typeChosen by remember { mutableStateOf(false) }
-    LaunchedEffect(offered, ports.isNotEmpty()) {
-        if (!typeChosen && "serial" in offered && ports.isNotEmpty()) type = "serial"
-    }
+    var advanced by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var autoConnect by remember { mutableStateOf(false) }
@@ -753,238 +809,169 @@ private fun AddLinkPage(onDismiss: () -> Unit, onAdded: () -> Unit, modifier: Mo
     var apiBase by remember { mutableStateOf("") }
     var deviceId by remember { mutableStateOf("") }
     var cloudErrors by remember { mutableStateOf(false) }
-    var cloudOffered by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { cloudOffered = withContext(Dispatchers.Default) { accountState(AccountCommands.state()) != null } }
-    val choices = offered + listOf(AIRCAST_CLOUD_LINK).filter { cloudOffered && it in linkTypeIds(linksJson) }
-    val askBluetooth = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()) { }
     val scope = rememberCoroutineScope()
-    val fieldError = error?.takeIf { (type == "udp" || type == "tcp") && it == linkFormError(type, host, port.ifBlank { portFor(type, udpDefault) }, udpDefault) }
-        ?.let { linkFormErrorField(type, host, port.ifBlank { portFor(type, udpDefault) }, udpDefault) }
+    val shownPort = port.ifBlank { portFor(type, udpDefault) }
+    val fieldError = error?.takeIf { (type == "udp" || type == "tcp") && it == linkFormError(type, host, shownPort, udpDefault) }
+        ?.let { linkFormErrorField(type, host, shownPort, udpDefault) }
+    val suggestedName = when (type) {
+        "serial" -> autoSerialName(portLabel(ports, portName))
+        REPLAY_LINK -> REPLAY_LINK_NAME
+        AIRCAST_CLOUD_LINK -> AIRCAST_CLOUD_NAME
+        BLUETOOTH_LINK -> device?.name.orEmpty()
+        else -> autoLinkName(type, host, shownPort)
+    }
+    val wide = Modifier.fillMaxWidth()
 
-    BackHandler(onBack = onDismiss)
-    OverridePageHeading("Add link", onDismiss)
+    BackHandler(onBack = onBack)
+    OverridePageHeading(linkKind(type).title, onBack)
     Column(modifier.fillMaxSize()) {
-        if (LocalPageHeading.current == null) PageTopBar("Add link", "Back to links", onDismiss)
-            Column(
-                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    choices.forEach { id ->
-                        FilterChip(
-                            selected = type == id,
-                            onClick = {
-                                type = id
-                                typeChosen = true
-                                port = ""
-                                if (id == BLUETOOTH_LINK) askBluetooth.launch(bluetoothPermissions(android.os.Build.VERSION.SDK_INT))
-                            },
-                            label = { Text(linkTypeLabel(id)) },
-                        )
-                    }
+        if (LocalPageHeading.current == null) PageTopBar(linkKind(type).title, "Back to link types", onBack)
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(linkKind(type).about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            when (type) {
+                MOCK_LINK -> MockLinkFields(mock) { mock = it }
+                REPLAY_LINK -> OutlinedButton(onClick = { logPicker.launch(arrayOf("*/*")) }, modifier = wide) {
+                    Text(replayLog?.lastPathSegment?.substringAfterLast('/') ?: "Choose a log file")
                 }
-                Text(
-                    text = when (type) {
-                        "udp" -> "Listens on a port. Add a server address only to send to a " +
-                            "specific device."
-                        "serial" -> "A radio plugged into this device over USB."
-                        BLUETOOTH_LINK -> "A radio paired with or near this device over Bluetooth."
-                        AIRCAST_CLOUD_LINK -> "A backup link to the aircraft through your Aircast account."
-                        REPLAY_LINK -> "Plays back a saved telemetry log as if the vehicle were connected."
-                        MOCK_LINK -> "A simulated vehicle for trying the app without hardware. It is not saved, so it ends when the app restarts."
-                        else -> "Calls out to a device that is listening, such as a ground station."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (type != MOCK_LINK) OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Name (optional)") },
-                    placeholder = {
-                        Text(
-                            when (type) {
-                                "serial" -> autoSerialName(portLabel(ports, portName))
-                                REPLAY_LINK -> REPLAY_LINK_NAME
-                                else -> autoLinkName(type, host, port.ifBlank { portFor(type, udpDefault) })
-                            },
-                        )
-                    },
-                    singleLine = true,
-                )
-                if (type == MOCK_LINK) {
-                    MockLinkFields(mock) { mock = it }
-                } else if (type == REPLAY_LINK) {
-                    OutlinedButton(onClick = { logPicker.launch(arrayOf("*/*")) }) {
-                        Text(replayLog?.lastPathSegment?.substringAfterLast('/') ?: "Choose a log file")
-                    }
-                } else if (type == AIRCAST_CLOUD_LINK) {
-                    AircastCloudFields(apiBase, deviceId, cloudErrors, { apiBase = it }, { deviceId = it })
-                } else if (type == BLUETOOTH_LINK) {
-                    BluetoothPicker(device) { device = it }
-                } else if (type == "serial" && ports.isEmpty()) {
+                AIRCAST_CLOUD_LINK -> AircastCloudFields(apiBase, deviceId, cloudErrors, { apiBase = it }, { deviceId = it })
+                BLUETOOTH_LINK -> BluetoothPicker(device) { device = it }
+                "serial" -> if (ports.isEmpty()) {
                     Text(
-                        text = "Nothing is plugged in. Connect a radio over USB and it will " +
-                            "appear here.",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Nothing is plugged in. Connect a radio over USB and it will appear here.",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                } else if (type == "serial") {
-                    Box {
-                        OutlinedButton(onClick = { portsOpen = true }) {
-                            Text(ports.firstOrNull { it.port == portName }?.label ?: "Choose a port")
-                        }
-                        DropdownMenu(expanded = portsOpen, onDismissRequest = { portsOpen = false }) {
-                            ports.forEach { choice ->
-                                DropdownMenuItem(
-                                    text = { Text(choice.label) },
-                                    onClick = { portName = choice.port; portsOpen = false },
-                                )
-                            }
-                        }
-                    }
-                    Box {
-                        OutlinedButton(onClick = { baudsOpen = true }) { Text("$baud baud") }
-                        DropdownMenu(expanded = baudsOpen, onDismissRequest = { baudsOpen = false }) {
-                            bauds.forEach { rate ->
-                                DropdownMenuItem(
-                                    text = { Text("$rate") },
-                                    onClick = { baud = rate; baudsOpen = false },
-                                )
-                            }
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = advancedSerial, onCheckedChange = { advancedSerial = it })
-                        Text("Advanced settings")
-                    }
-                    if (advancedSerial) SerialFramingControls(newFraming) { newFraming = it }
-                } else if (type == "udp") {
+                } else {
+                    ChoiceField("USB port", ports.firstOrNull { it.port == portName }?.label ?: "Choose a port", ports.map { it.label }, wide) { portName = ports[it].port }
+                    ChoiceField("Baud rate", "$baud", bauds.map(Int::toString), wide) { baud = bauds[it] }
+                }
+                "udp" -> OutlinedTextField(
+                    value = port,
+                    onValueChange = { port = it; if (fieldError == "port") error = null },
+                    label = { Text("Listening port") },
+                    isError = fieldError == "port",
+                    supportingText = fieldError?.takeIf { it == "port" }?.let { { Text(error.orEmpty()) } },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = wide,
+                )
+                else -> {
+                    OutlinedTextField(
+                        value = host,
+                        onValueChange = { host = it; if (fieldError == "host") error = null },
+                        label = { Text("Host address") },
+                        placeholder = { Text("Example: 192.168.1.10") },
+                        isError = fieldError == "host",
+                        supportingText = fieldError?.takeIf { it == "host" }?.let { { Text(error.orEmpty()) } },
+                        singleLine = true,
+                        modifier = wide,
+                    )
                     OutlinedTextField(
                         value = port,
                         onValueChange = { port = it; if (fieldError == "port") error = null },
                         label = { Text("Port") },
-                        placeholder = { Text(udpDefault) },
                         isError = fieldError == "port",
-                        supportingText = { Text(if (fieldError == "port") error.orEmpty() else "Leave blank for $udpDefault") },
+                        supportingText = fieldError?.takeIf { it == "port" }?.let { { Text(error.orEmpty()) } },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = wide,
                     )
-                    UdpAutoConnectSwitch()
-                    ServerList(
+                }
+            }
+            if (type != MOCK_LINK) {
+                Row(
+                    Modifier.fillMaxWidth().clickable { advanced = !advanced }.heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Advanced", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Icon(
+                        if (advanced) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (advanced) "Hide advanced options" else "Show advanced options",
+                    )
+                }
+                if (advanced) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Name") },
+                        placeholder = { Text(suggestedName) },
+                        singleLine = true,
+                        modifier = wide,
+                    )
+                    if (type == "udp") ServerList(
                         servers,
                         onAdd = { typed ->
-                            val local = port.ifBlank { udpDefault }
-                            error = if (udpServer(typed, local) == null) "Enter a server as an address, or address:port." else null
-                            servers = withServer(servers, typed, local)
+                            error = if (udpServer(typed, shownPort) == null) "Enter a server as an address, or address:port." else null
+                            servers = withServer(servers, typed, shownPort)
                         },
                         onRemove = { gone -> servers = servers.filterNot { it == gone } },
                     )
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = host,
-                            onValueChange = { host = it; if (fieldError == "host") error = null },
-                            label = { Text(if (type == "tcp") "Host" else "Host (optional)", maxLines = 1) },
-                            isError = fieldError == "host",
-                            supportingText = { if (fieldError == "host") Text(error.orEmpty()) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1.6f),
-                        )
-                        OutlinedTextField(
-                            value = port,
-                            onValueChange = { port = it; if (fieldError == "port") error = null },
-                            label = { Text("Port") },
-                            placeholder = { Text(portFor(type, udpDefault)) },
-                            isError = fieldError == "port",
-                            supportingText = { Text(if (fieldError == "port") error.orEmpty() else "Default ${portFor(type, udpDefault)}") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-                if (type != MOCK_LINK) LinkOptions(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
-                if (fieldError == null) error?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    if (type == "serial" && ports.isNotEmpty()) SerialFramingControls(newFraming) { newFraming = it }
+                    LinkFlagSwitches(autoConnect, highLatency, { autoConnect = it }, { highLatency = it })
                 }
             }
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-        ) {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-            Button(
-                enabled = !busy,
-                onClick = {
-                    cloudErrors = type == AIRCAST_CLOUD_LINK
-                    val invalid = if (type == MOCK_LINK) {
-                        null
-                    } else if (type == AIRCAST_CLOUD_LINK) {
-                        if (cloudApiBaseValid(apiBase) && cloudDeviceValid(deviceId)) null else ""
-                    } else if (type == BLUETOOTH_LINK) {
-                        if (device == null) "Pick a Bluetooth device." else null
-                    } else if (type == REPLAY_LINK) {
-                        if (replayLog == null) "Choose a log file to replay." else null
-                    } else if (type == "serial") {
-                        serialFormError(portName, baud, taken, name, ports.isNotEmpty())
-                    } else {
-                        linkFormError(type, host, port.ifBlank { portFor(type, udpDefault) }, udpDefault)
-                    }
-                    error = invalid?.ifBlank { null }
-                    if (invalid == null) {
-                        busy = true
-                        val chosen = name.trim().ifBlank {
-                            uniqueLinkName(
-                                when (type) {
-                                    AIRCAST_CLOUD_LINK -> AIRCAST_CLOUD_NAME
-                                    REPLAY_LINK -> REPLAY_LINK_NAME
-                                    BLUETOOTH_LINK -> device?.name.orEmpty()
-                                    "serial" -> autoSerialName(portLabel(ports, portName))
-                                    else -> autoLinkName(type, host, port.ifBlank { portFor(type, udpDefault) })
-                                },
-                                taken,
-                            )
-                        }
-                        scope.launch {
-                            val added = withContext(Dispatchers.Default) {
-                                if (type == MOCK_LINK) return@withContext LinkCommands.startMock(mockLinkArguments(mock))
-                                if (type == AIRCAST_CLOUD_LINK) {
-                                    AccountCommands.setApiBase(apiBase)
-                                    LinkCommands.createAircastCloud(chosen, apiBase, deviceId)
-                                } else if (type == REPLAY_LINK) {
-                                    val staged = stagedReplayLog(context, chosen, replayLog!!)
-                                    val created = staged != null && LinkCommands.createLogReplay(chosen, staged)
-                                    if (!created) staged?.let { java.io.File(it).delete() }
-                                    created && connectNamed(chosen)
-                                } else if (type == BLUETOOTH_LINK) {
-                                    val picked = device!!
-                                    LinkCommands.createBluetooth(chosen, picked.name, picked.address)
-                                } else if (type == "serial") {
-                                    LinkCommands.createSerial(chosen, portName, baud) &&
-                                        writeNewLinkFraming(chosen, newFraming) &&
-                                        connectNamed(chosen)
-                                } else if (type == "udp") {
-                                    Qgc.invokeResult(
-                                        "links.createAndConnectLink", type, chosen, "", port.ifBlank { udpDefault }.toInt(),
-                                    ) == true && addServers(chosen, servers)
-                                } else {
-                                    Qgc.invokeResult(
-                                        "links.createAndConnectLink", type, chosen, host, port.ifBlank { portFor(type, udpDefault) }.toInt(),
-                                    ) == true
-                                }.also { created -> if (created) writeNewLinkFlags(chosen, autoConnect, highLatency) }
-                            }
-                            busy = false
-                            if (added) {
-                                onAdded()
-                            } else {
-                                error = if (type == MOCK_LINK) "Could not start the simulated vehicle." else "Could not add that link. The name may already be in use."
-                            }
-                        }
-                    }
-                },
-            ) { Text(if (busy) "Adding…" else if (type == MOCK_LINK) "Start" else "Add and connect") }
+            if (fieldError == null) error?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
         }
+        Button(
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 52.dp),
+            onClick = {
+                cloudErrors = type == AIRCAST_CLOUD_LINK
+                val invalid = when (type) {
+                    MOCK_LINK -> null
+                    AIRCAST_CLOUD_LINK -> if (cloudApiBaseValid(apiBase) && cloudDeviceValid(deviceId)) null else ""
+                    BLUETOOTH_LINK -> if (device == null) "Pick a Bluetooth device." else null
+                    REPLAY_LINK -> if (replayLog == null) "Choose a log file to replay." else null
+                    "serial" -> serialFormError(portName, baud, taken, name, ports.isNotEmpty())
+                    else -> linkFormError(type, host, shownPort, udpDefault)
+                }
+                error = invalid?.ifBlank { null }
+                if (invalid == null) {
+                    busy = true
+                    val chosen = name.trim().ifBlank { uniqueLinkName(suggestedName, taken) }
+                    scope.launch {
+                        val added = withContext(Dispatchers.Default) {
+                            if (type == MOCK_LINK) return@withContext LinkCommands.startMock(mockLinkArguments(mock))
+                            if (type == AIRCAST_CLOUD_LINK) {
+                                AccountCommands.setApiBase(apiBase)
+                                LinkCommands.createAircastCloud(chosen, apiBase, deviceId)
+                            } else if (type == REPLAY_LINK) {
+                                val staged = stagedReplayLog(context, chosen, replayLog!!)
+                                val created = staged != null && LinkCommands.createLogReplay(chosen, staged)
+                                if (!created) staged?.let { java.io.File(it).delete() }
+                                created && connectNamed(chosen)
+                            } else if (type == BLUETOOTH_LINK) {
+                                val picked = device!!
+                                LinkCommands.createBluetooth(chosen, picked.name, picked.address)
+                            } else if (type == "serial") {
+                                LinkCommands.createSerial(chosen, portName, baud) &&
+                                    writeNewLinkFraming(chosen, newFraming) &&
+                                    connectNamed(chosen)
+                            } else if (type == "udp") {
+                                Qgc.invokeResult(
+                                    "links.createAndConnectLink", type, chosen, "", shownPort.toInt(),
+                                ) == true && addServers(chosen, servers)
+                            } else {
+                                Qgc.invokeResult(
+                                    "links.createAndConnectLink", type, chosen, host, shownPort.toInt(),
+                                ) == true
+                            }.also { created -> if (created) writeNewLinkFlags(chosen, autoConnect, highLatency) }
+                        }
+                        busy = false
+                        if (added) {
+                            onAdded()
+                        } else {
+                            error = if (type == MOCK_LINK) "Could not start the simulated vehicle." else "Could not add that link. The name may already be in use."
+                        }
+                    }
+                }
+            },
+        ) { Text(if (busy) "Connecting…" else if (type == MOCK_LINK) "Start" else "Connect") }
     }
 }
 
@@ -1244,26 +1231,30 @@ private fun UdpServers(index: Int, initial: List<String>) {
 @Composable
 private fun ServerList(servers: List<String>, onAdd: (String) -> Unit, onRemove: (String) -> Unit) {
     var typed by remember { mutableStateOf("") }
+    val add = {
+        onAdd(typed.trim())
+        typed = ""
+    }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Server addresses (optional)", style = MaterialTheme.typography.labelLarge)
         servers.forEach { server ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(server, modifier = Modifier.weight(1f))
-                TextButton(onClick = { onRemove(server) }) { Text("Remove") }
+                androidx.compose.material3.IconButton(onClick = { onRemove(server) }) { Icon(painterResource(R.drawable.ic_close), "Remove $server") }
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = typed,
-                onValueChange = { typed = it },
-                placeholder = { Text("Example: 127.0.0.1:14550") },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(enabled = typed.isNotBlank(), onClick = {
-                onAdd(typed.trim())
-                typed = ""
-            }) { Text("Add server") }
-        }
+        OutlinedTextField(
+            value = typed,
+            onValueChange = { typed = it },
+            label = { Text("Also send to") },
+            placeholder = { Text("127.0.0.1:14550") },
+            supportingText = { Text("Optional. One address per device that should get telemetry too.") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { if (typed.isNotBlank()) add() }),
+            trailingIcon = {
+                androidx.compose.material3.IconButton(enabled = typed.isNotBlank(), onClick = add) { Icon(painterResource(R.drawable.ic_add), "Add address") }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

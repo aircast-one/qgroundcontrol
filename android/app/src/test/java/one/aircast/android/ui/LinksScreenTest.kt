@@ -203,11 +203,15 @@ class LinkEditRulesTest {
     }
 
     @Test
-    fun `each link shows the Penpot icon for its kind`() {
+    fun `each link kind shows its own icon`() {
         assertEquals(one.aircast.android.R.drawable.ic_wifi, linkIcon("udp"))
         assertEquals(one.aircast.android.R.drawable.ic_usb, linkIcon("serial"))
         assertEquals(one.aircast.android.R.drawable.ic_bluetooth, linkIcon("bluetooth"))
-        assertEquals(one.aircast.android.R.drawable.ic_link, linkIcon("tcp"))
+        assertEquals(one.aircast.android.R.drawable.ic_lan, linkIcon("tcp"))
+        assertEquals(one.aircast.android.R.drawable.ic_cloud, linkIcon(AIRCAST_CLOUD_LINK))
+        assertEquals(one.aircast.android.R.drawable.ic_history, linkIcon(REPLAY_LINK))
+        assertEquals(one.aircast.android.R.drawable.ic_science, linkIcon(MOCK_LINK))
+        assertEquals(one.aircast.android.R.drawable.ic_link, linkIcon("something new"))
         assertEquals("tcp", linkRows(JSONObject("""{"configured":[{"index":0,"type":"tcp"}]}""")).single().type)
     }
 

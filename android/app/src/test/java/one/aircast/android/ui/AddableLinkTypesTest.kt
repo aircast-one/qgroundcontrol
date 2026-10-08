@@ -61,4 +61,20 @@ class AddableLinkTypesTest {
             listOf("udp", "tcp", "serial", BLUETOOTH_LINK, REPLAY_LINK, AIRCAST_CLOUD_LINK).map(::linkTypeLabel),
         )
     }
+
+    @Test
+    fun `add link lists pilot links first, puts a plugged-in USB radio on top, and keeps replay and simulation apart`() {
+        val offered = listOf("udp", "tcp", "serial", BLUETOOTH_LINK, REPLAY_LINK, MOCK_LINK, AIRCAST_CLOUD_LINK)
+        assertEquals(listOf("udp", "serial", BLUETOOTH_LINK, AIRCAST_CLOUD_LINK, "tcp"), pilotLinkKinds(offered, radioPlugged = false))
+        assertEquals(listOf("serial", "udp", BLUETOOTH_LINK, AIRCAST_CLOUD_LINK, "tcp"), pilotLinkKinds(offered, radioPlugged = true))
+        assertEquals(listOf(REPLAY_LINK, MOCK_LINK), toolLinkKinds(offered))
+        assertEquals(listOf("udp"), pilotLinkKinds(listOf("udp", REPLAY_LINK), radioPlugged = true))
+    }
+
+    @Test
+    fun `every link kind reads in pilot words with a short line that fits one row`() {
+        (PILOT_LINK_ORDER + TOOL_LINK_ORDER).map(::linkKind).map { kind ->
+            org.junit.Assert.assertTrue(kind.id, kind.title.isNotBlank() && kind.about.isNotBlank() && kind.detail.length <= 32)
+        }
+    }
 }

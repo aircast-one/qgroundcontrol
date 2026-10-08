@@ -356,6 +356,11 @@ internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier
     BackHandler(enabled = open != null, onBack = closePage)
 
     val current = everyPage.firstOrNull { it.title == open }
+    val navigation = LocalAppNavigation.current
+    DisposableEffect(current != null) {
+        navigation.settingsPageOpen = current != null
+        onDispose { navigation.settingsPageOpen = false }
+    }
     val heading = remember { mutableStateOf<PageHeading?>(null) }
     val headingBack: () -> Unit = { heading.value?.back?.invoke() ?: closePage() }
     CompositionLocalProvider(LocalPageHeading provides heading, LocalSettingsList provides true) {

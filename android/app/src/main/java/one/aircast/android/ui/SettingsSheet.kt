@@ -135,6 +135,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
             }
             BoxWithConstraints {
                 val stacked = maxWidth < STACKED_HEADER_WIDTH
+                val drilled = navigation.settingsPageOpen || setupOpen
                 Column {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s1),
@@ -147,7 +148,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                             SearchPill(typed, { query = it }, "Search settings", Modifier.weight(1f).focusRequester(focus))
                             TextButton(onClick = { query = null }) { Text("Cancel") }
                         } ?: run {
-                            if (stacked) {
+                            if (stacked || drilled) {
                                 Text("Settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(start = AircastSpace.s2))
                             } else {
                                 SheetTabs(group.takeUnless { setupOpen }, Modifier.weight(1f), pickTab)
@@ -156,7 +157,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                         }
                         IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_close), "Close settings") }
                     }
-                    if (stacked && query == null) SheetTabs(group.takeUnless { setupOpen }, Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s2), pickTab)
+                    if (stacked && query == null && !drilled) SheetTabs(group.takeUnless { setupOpen }, Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s2), pickTab)
                 }
             }
             key(group, page, query != null, setupOpen) {
