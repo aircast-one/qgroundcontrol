@@ -362,7 +362,7 @@ internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier
     val current = everyPage.firstOrNull { it.title == open }
     val heading = remember { mutableStateOf<PageHeading?>(null) }
     val headingBack: () -> Unit = { heading.value?.back?.invoke() ?: closePage() }
-    CompositionLocalProvider(LocalPageHeading provides heading, LocalDetailBehindHelp provides true) {
+    CompositionLocalProvider(LocalPageHeading provides heading, LocalSettingsList provides true) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             val column = Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH)
             if (current == null) {
@@ -664,7 +664,7 @@ internal val LocalBlockRebootNote = compositionLocalOf<String?> { null }
 
 internal val LocalRunInertNote = compositionLocalOf<String?> { null }
 
-internal val LocalDetailBehindHelp = compositionLocalOf { false }
+internal val LocalSettingsList = compositionLocalOf { false }
 
 internal const val SUBTITLE_SEPARATOR = " · "
 
@@ -744,7 +744,7 @@ internal fun FactRow(
     val scope = rememberCoroutineScope()
     var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
     var helpOpen by remember(fact.path) { mutableStateOf(false) }
-    val shown = shownSubtitle(subtitle, fact.detail, LocalDetailBehindHelp.current, helpOpen)
+    val shown = shownSubtitle(subtitle, fact.detail, LocalSettingsList.current, helpOpen)
     val helpToggle: Boolean? = helpOpen.takeIf { shown.hasHelp }
 
     val segmented = !editOnDesktop(fact) && !fact.isBitmask &&
@@ -757,6 +757,25 @@ internal fun FactRow(
             refusal = writeRefusal(accepted)
             if (accepted) onWrite()
         }
+    }
+
+    if (asField && LocalSettingsList.current && opensAsValue(fact)) {
+        var editing by remember(fact.path) { mutableStateOf(false) }
+        Row(
+            Modifier.fillMaxWidth().clickable { editing = true }.heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                FactTitle(title, titleColor, helpToggle, { helpOpen = !helpOpen })
+                val note = shown.text.split(SUBTITLE_SEPARATOR).filter { it.isNotBlank() && it != fact.units }.joinToString(SUBTITLE_SEPARATOR)
+                if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(valueText(fact), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            Icon(painterResource(R.drawable.ic_chevron_right), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (editing) ValueDetailsSheet(fact, title = title, onWrite = onWrite) { editing = false }
+        return
     }
 
     if (asField) {
@@ -990,17 +1009,25 @@ private fun EnumField(fact: Fact, modifier: Modifier, write: (() -> Boolean) -> 
 internal fun ChoiceField(label: String?, value: String, options: List<String>, modifier: Modifier = Modifier, enabled: Boolean = true, groups: List<String> = emptyList(), onPick: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
 
-    Box(modifier) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = {},
-            readOnly = true,
-            enabled = enabled,
-            singleLine = true,
-            label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
-            trailingIcon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
-            modifier = Modifier.fillMaxWidth(),
-        )
+    val plain = LocalSettingsList.current && label == null
+    Box(modifier, contentAlignment = Alignment.CenterEnd) {
+        if (plain) {
+            Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(value, style = MaterialTheme.typography.bodyLarge, color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            OutlinedTextField(
+                value = value,
+                onValueChange = {},
+                readOnly = true,
+                enabled = enabled,
+                singleLine = true,
+                label = label?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } },
+                trailingIcon = { Icon(Icons.Default.KeyboardArrowDown, contentDescription = null) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Box(Modifier.matchParentSize().clickable(enabled = enabled) { expanded = true })
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEachIndexed { index, option ->

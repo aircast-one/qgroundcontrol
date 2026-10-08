@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -196,6 +197,8 @@ internal fun ParameterEditDialog(name: String, title: String = name, onDismiss: 
 
 internal const val VALUE_DETAILS_TITLE = "Value Details"
 
+private const val APP_SETTING_PREFIX = "settings."
+
 internal const val EDIT_PARAMETER_TITLE = "Edit parameter"
 
 internal fun valueDetailsNotes(fact: Fact): List<String> = listOfNotNull(
@@ -205,19 +208,21 @@ internal fun valueDetailsNotes(fact: Fact): List<String> = listOfNotNull(
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-internal fun ValueDetailsSheet(fact: Fact, onWrite: () -> Unit, onDismiss: () -> Unit) {
+internal fun ValueDetailsSheet(fact: Fact, title: String = VALUE_DETAILS_TITLE, onWrite: () -> Unit, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
     val default = fact.defaultValueString.toDoubleOrNull()?.takeIf { !fact.readOnly }
     AircastSheet(onDismissRequest = onDismiss) {
+        androidx.compose.runtime.CompositionLocalProvider(LocalSettingsList provides false) {
         Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(VALUE_DETAILS_TITLE, style = MaterialTheme.typography.titleLarge)
-            FactRow(fact = fact, title = fact.heading, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = onWrite)
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            if (opensAsValue(fact)) ValueControls(fact, onWrite)
+            FactRow(fact = fact, title = if (opensAsValue(fact)) "Type a value" else fact.heading, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = onWrite)
             valueDetailsNotes(fact).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            if (!fact.readOnly) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
+            if (!fact.readOnly && !fact.path.startsWith(APP_SETTING_PREFIX)) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
             refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 default?.let { value ->
@@ -233,6 +238,7 @@ internal fun ValueDetailsSheet(fact: Fact, onWrite: () -> Unit, onDismiss: () ->
                 }
                 Button(onClick = onDismiss) { Text("Done") }
             }
+        }
         }
     }
 }

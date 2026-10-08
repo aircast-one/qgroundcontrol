@@ -2,6 +2,9 @@ package one.aircast.android.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,11 +55,12 @@ internal fun PilotSettings(group: SettingsGroup) {
 @Composable
 private fun PilotFactRow(shown: Fact) {
     val name = shown.name
+    var revision by remember { mutableIntStateOf(0) }
     val live by qgcPath(parameterPath(name))
-    val fact by produceState(shown, name, live) {
+    val fact by produceState(shown, name, live, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name)?.copy(shortLabel = shown.shortLabel) } ?: shown
     }
-    FactRow(fact)
+    FactRow(fact, onWrite = { revision++ })
 }
 
 private val PILOT_LABELS = mapOf(
