@@ -37,7 +37,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Constraints
+import one.aircast.map.MAP_SCALE_CLEARANCE
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -56,12 +59,11 @@ private val PORTRAIT_PIP_WIDTH = 160.dp
 private val PORTRAIT_PIP_HEIGHT = 90.dp
 private val PORTRAIT_DIAL_SIZE = 120.dp
 private val PORTRAIT_BAR_HEIGHT = 64.dp
-private const val BAR_SCRIM_ALPHA = 0.7f
+private const val SCRIM_ALPHA = 0.7f
 private const val PIP_BORDER_ALPHA = 0.5f
 private const val DECK_SCRIM_START = 0.4f
 private val MAP_BUTTON_SIZE = 40.dp
 private val MAP_ATTRIBUTION_CLEARANCE = 28.dp
-private val MAP_SCALE_CLEARANCE = 72.dp
 private val PORTRAIT_CAMERA_PIP_WIDTH = 96.dp
 private val PORTRAIT_CAMERA_PIP_HEIGHT = 54.dp
 
@@ -90,7 +92,6 @@ internal fun FlyPortrait(
     val barTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + PORTRAIT_BAR_HEIGHT
     val barTopPx = with(LocalDensity.current) { barTop.roundToPx() }
     var deckHeightPx by remember { mutableIntStateOf(0) }
-    val deckHeight = with(LocalDensity.current) { deckHeightPx.toDp() }
     LaunchedEffect(split, barTopPx, deckHeightPx) { flyScreen.mapInsets = MapInsets(top = if (split) 0 else barTopPx, bottom = deckHeightPx) }
     val videoHeight = LocalConfiguration.current.screenWidthDp.dp / VIDEO_ASPECT
     val videoTop = barTop
@@ -132,31 +133,44 @@ internal fun FlyPortrait(
                 }
             }
             if (split) shownPipCamera()?.let { camera -> CameraPipThumbnail(camera, Modifier.padding(top = videoTop).padding(AircastSpace.s2).size(PORTRAIT_CAMERA_PIP_WIDTH, PORTRAIT_CAMERA_PIP_HEIGHT)) }
-            Box(Modifier.fillMaxSize().padding(top = controlsTop, bottom = deckHeight)) {
-                Column(
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = AircastSpace.s3, top = buttonsTop + MAP_BUTTON_SIZE + AircastSpace.s2, end = AircastSpace.s3),
-                    verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                ) {
-                    overlays()
-                }
-                MapButtons(
-                    view = view,
-                    split = split,
-                    hasVideo = hasVideo,
-                    onView = onView,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(end = AircastSpace.s3, top = buttonsTop),
-                )
-                Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE)) { rail(split) }
-                OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE))
-            }
+            ControlsAboveDeck(
+                controls = {
+                    Box(Modifier.fillMaxSize().padding(top = controlsTop)) {
+                        Column(
+                            Modifier
+                                .align(Alignment.TopStart)
+                                .padding(start = AircastSpace.s3, top = buttonsTop + MAP_BUTTON_SIZE + AircastSpace.s2, end = AircastSpace.s3),
+                            verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                        ) {
+                            overlays()
+                        }
+                        MapButtons(
+                            view = view,
+                            split = split,
+                            hasVideo = hasVideo,
+                            onView = onView,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(end = AircastSpace.s3, top = buttonsTop),
+                        )
+                        Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE)) { rail(split) }
+                        OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE))
+                    }
+                },
+                deck = {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .onSizeChanged { deckHeightPx = it.height }
+                            .background(Brush.verticalGradient(0f to Color.Transparent, DECK_SCRIM_START to Color.Black.copy(alpha = SCRIM_ALPHA)))
+                            .windowInsetsPadding(WindowInsets.navigationBars),
+                    ) { actions(FlyDeckLayout.Bottom) }
+                },
+            )
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = BAR_SCRIM_ALPHA), Color.Transparent)))
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = SCRIM_ALPHA), Color.Transparent)))
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .height(PORTRAIT_BAR_HEIGHT)
                     .padding(horizontal = AircastSpace.s3),
@@ -164,14 +178,19 @@ internal fun FlyPortrait(
                 verticalAlignment = Alignment.CenterVertically,
                 content = status,
             )
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .onSizeChanged { deckHeightPx = it.height }
-                    .background(Brush.verticalGradient(0f to Color.Transparent, DECK_SCRIM_START to Color.Black.copy(alpha = BAR_SCRIM_ALPHA)))
-                    .windowInsetsPadding(WindowInsets.navigationBars),
-            ) { actions(FlyDeckLayout.Bottom) }
+        }
+    }
+}
+
+@Composable
+private fun ControlsAboveDeck(controls: @Composable () -> Unit, deck: @Composable () -> Unit) {
+    Layout(contents = listOf(controls, deck), modifier = Modifier.fillMaxSize()) { (controlsMeasurables, deckMeasurables), constraints ->
+        val deckPlaceable = deckMeasurables.single().measure(constraints.copy(minWidth = constraints.maxWidth, minHeight = 0))
+        val controlsHeight = (constraints.maxHeight - deckPlaceable.height).coerceAtLeast(0)
+        val controlsPlaceable = controlsMeasurables.single().measure(Constraints.fixed(constraints.maxWidth, controlsHeight))
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            controlsPlaceable.place(0, 0)
+            deckPlaceable.place(0, constraints.maxHeight - deckPlaceable.height)
         }
     }
 }

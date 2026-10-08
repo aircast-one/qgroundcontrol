@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -230,6 +231,9 @@ fun FlyMap(
 }
 
 private val SCALE_ABOVE_LOGO = 40.dp
+private val SCALE_BAR_HEIGHT = 32.dp
+
+val MAP_SCALE_CLEARANCE: Dp = SCALE_ABOVE_LOGO + SCALE_BAR_HEIGHT
 
 internal fun pipZoom(mainZoom: Double, pip: Boolean): Double? = when {
     mainZoom <= 0.0 -> null
