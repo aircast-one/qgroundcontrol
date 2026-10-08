@@ -11,7 +11,7 @@ const WATCHED_PER_VEHICLE: [&str; 9] = ["armed", "flying", "flightMode", "coordi
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
 fn proximity(backend: &dyn Backend, index: i64) -> Value {
-    let group = object(&backend.get(&format!("vehicles.vehicles.{index}.distanceSensors")));
+    let group = backend.value(&format!("vehicles.vehicles.{index}.distanceSensors"));
     match flag(&group, "telemetryAvailable") {
         true => json!({ "shown": true, "maxMeters": crate::proximity::max_meters(&group), "sectors": crate::proximity::sectors(&group) }),
         false => Value::Null,
@@ -19,7 +19,7 @@ fn proximity(backend: &dyn Backend, index: i64) -> Value {
 }
 
 fn shown_fact(backend: &dyn Backend, index: i64, name: &str) -> Option<String> {
-    let fact = object(&backend.get(&format!("vehicles.vehicles.{index}.{name}")));
+    let fact = backend.value(&format!("vehicles.vehicles.{index}.{name}"));
     let spelled = fact.get("valueString").and_then(Value::as_str).filter(|s| !s.trim().is_empty() && !s.starts_with("--"))?;
     let units = fact.get("units").and_then(Value::as_str).unwrap_or_default();
     Some([spelled, crate::instruments::display_units(units)].iter().filter(|part| !part.is_empty()).copied().collect::<Vec<_>>().join(" "))
@@ -35,7 +35,7 @@ pub fn telemetry(read: &Value, value_of: &dyn Fn(&str) -> Option<String>) -> Vec
 }
 
 fn heading(backend: &dyn Backend, index: i64) -> Option<f64> {
-    let fact = object(&backend.get(&format!("vehicles.vehicles.{index}.heading")));
+    let fact = backend.value(&format!("vehicles.vehicles.{index}.heading"));
     fact.get("rawValue").or_else(|| fact.get("value")).and_then(Value::as_f64).filter(|h| h.is_finite()).map(|h| h.rem_euclid(360.0))
 }
 
@@ -63,9 +63,9 @@ const MV_ACTIONS: [(&str, &str, &str, &str); 4] = [
 ];
 
 fn selected_ids(backend: &dyn Backend) -> Vec<i64> {
-    let count = integer(&object(&backend.get("vehicles.selectedVehicles.count")), "value").unwrap_or(0).max(0);
+    let count = integer(&backend.value("vehicles.selectedVehicles.count"), "value").unwrap_or(0).max(0);
     (0..count)
-        .filter_map(|index| integer(&object(&backend.get_fields(&format!("vehicles.selectedVehicles.{index}"), "id")), "id"))
+        .filter_map(|index| integer(&backend.value_fields(&format!("vehicles.selectedVehicles.{index}"), "id"), "id"))
         .collect()
 }
 
@@ -105,15 +105,15 @@ fn mv_actions(listed: &[Value]) -> Value {
 }
 
 pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let count = integer(&object(&backend.get("vehicles.vehicles.count")), "value").unwrap_or(0).max(0);
+    let count = integer(&backend.value("vehicles.vehicles.count"), "value").unwrap_or(0).max(0);
     VEHICLES_SEEN.store(usize::try_from(count).unwrap_or(0), Ordering::Relaxed);
-    let active = integer(&object(&backend.get_fields("vehicle", "id")), "id");
+    let active = integer(&backend.value_fields("vehicle", "id"), "id");
     let chosen_ids = selected_ids(backend);
     let listed: Vec<Value> = (0..count)
         .map(|index| {
-            let read = object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), FIELDS));
-            let link = object(&backend.get_fields(&format!("vehicles.vehicles.{index}.vehicleLinkManager"), "primaryLinkName,communicationLost,communicationLostEnabled"));
-            let supports = object(&backend.get_fields(&format!("vehicles.vehicles.{index}.supports"), "pauseVehicle"));
+            let read = backend.value_fields(&format!("vehicles.vehicles.{index}"), FIELDS);
+            let link = backend.value_fields(&format!("vehicles.vehicles.{index}.vehicleLinkManager"), "primaryLinkName,communicationLost,communicationLostEnabled");
+            let supports = backend.value_fields(&format!("vehicles.vehicles.{index}.supports"), "pauseVehicle");
             let id = integer(&read, "id");
             json!({
                 "id": id,
@@ -181,7 +181,7 @@ pub fn write_fleet_mode(backend: &dyn Backend, path: &str, value: &str) -> Value
     let given = serde_json::from_str::<Value>(value).unwrap_or(Value::Null);
     let asked = given.get("value").and_then(Value::as_str).map(str::to_string);
     let index = fleet_mode_target(path).unwrap_or_default();
-    let listed = object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), "id,flightMode,flightModes,flightModeSetAvailable"));
+    let listed = backend.value_fields(&format!("vehicles.vehicles.{index}"), "id,flightMode,flightModes,flightModeSetAvailable");
     if let Some((token, reason)) = fleet_mode_refusal(&listed, given.get("vehicle").and_then(Value::as_i64), asked.as_deref()) {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
     }

@@ -10,7 +10,7 @@ struct Sources {
 }
 
 fn sources(backend: &dyn Backend) -> Sources {
-    let video = object(&backend.get_fields("video", "cameraStatuses,activeVideoSource,cameraUsable"));
+    let video = backend.value_fields("video", "cameraStatuses,activeVideoSource,cameraUsable");
     let count = video.get("cameraStatuses").and_then(Value::as_array).map_or(0, Vec::len);
     let usable: Vec<bool> = video.get("cameraUsable").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default();
     Sources {

@@ -61,9 +61,9 @@ fn signing_rows(status: &crate::signing::Status) -> Vec<(&'static str, String)> 
 }
 
 pub fn link_status_view(backend: &dyn crate::router::Backend, _args: &[String]) -> serde_json::Value {
-    use crate::read::{flag, object};
-    let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-    let fields = object(&backend.get_fields("vehicle", "mavlinkSentCount,mavlinkReceivedCount,mavlinkLossCount,mavlinkLossPercent"));
+    use crate::read::flag;
+    let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let fields = backend.value_fields("vehicle", "mavlinkSentCount,mavlinkReceivedCount,mavlinkLossCount,mavlinkLossPercent");
     let whole = |key: &str| fields.get(key).and_then(serde_json::Value::as_f64).map_or("0".to_string(), |v| format!("{}", v as u64));
     let percent = fields.get("mavlinkLossPercent").and_then(serde_json::Value::as_f64).unwrap_or(0.0);
     serde_json::json!({

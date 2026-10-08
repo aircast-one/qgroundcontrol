@@ -90,7 +90,7 @@ pub fn owns_raw(path: &str) -> bool {
 }
 
 pub fn write_raw(backend: &dyn Backend, path: &str, value: &str, write: impl FnOnce() -> String) -> String {
-    let fact = object(&backend.get(path.strip_suffix(RAW_VALUE).unwrap_or(path)));
+    let fact = backend.value(path.strip_suffix(RAW_VALUE).unwrap_or(path));
     let written = write();
     if raw_write_changed(&fact, value, &object(&written)) {
         announce_reboot(&fact);
@@ -118,7 +118,7 @@ fn is_fact(fact: &Value) -> bool {
 pub fn validate(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let fact_path = path.strip_suffix(VALIDATE).unwrap_or(path);
-    let fact = object(&backend.get(fact_path));
+    let fact = backend.value(fact_path);
     if !is_fact(&fact) {
         return object(&backend.invoke(path, args));
     }
@@ -150,7 +150,7 @@ fn enum_index_refusal(fact: &Value, index: Option<i64>) -> Option<String> {
 }
 
 fn write_enum_index(backend: &dyn Backend, path: &str, value: &str) -> Value {
-    let fact = object(&backend.get(path.strip_suffix(ENUM_INDEX).unwrap_or(path)));
+    let fact = backend.value(path.strip_suffix(ENUM_INDEX).unwrap_or(path));
     if !is_fact(&fact) {
         return object(&backend.set(path, value));
     }
@@ -192,7 +192,7 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     }
     let renamed = crate::renamed::write_path(path);
     let path = renamed.as_deref().unwrap_or(path);
-    let fact = object(&backend.get(path));
+    let fact = backend.value(path);
     if fact.get("kind").and_then(Value::as_str) != Some("fact") {
         let mut answered = object(&backend.set(path, value));
         if !flag(&answered, "ok") && answered.get("reason").and_then(Value::as_str).is_none_or(str::is_empty) {

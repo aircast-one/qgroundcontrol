@@ -48,7 +48,7 @@ pub fn start_prompt(connected: bool, joystick: bool, px4: bool) -> Value {
 }
 
 pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let cal = object(&backend.get("radioCal"));
+    let cal = backend.value("radioCal");
     let connected = cal.get("kind").and_then(Value::as_str) == Some("object");
     let channel_count = integer(&cal, "channelCount").unwrap_or(0);
     let minimum = integer(&cal, "minChannelCount").unwrap_or(0);
@@ -67,12 +67,12 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .unwrap_or_default();
     let live = channels.iter().filter(|c| c["live"] == true).count();
-    let px4 = crate::read::flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware");
+    let px4 = crate::read::flag(&backend.value_fields("vehicle", "px4Firmware"), "px4Firmware");
     let sticks: Vec<Value> = STICKS
         .iter()
         .zip(crate::rccal::FUNCTIONS)
         .map(|((key, title), function)| {
-            let channel = object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{})", function.map_param(px4))))
+            let channel = backend.value(&format!("vehicle.parameterManager.getParameter(-1,{})", function.map_param(px4)))
                 .get("value")
                 .and_then(Value::as_f64)
                 .map(|n| n as i64)
@@ -156,7 +156,7 @@ fn refusal(action: Action, state: Calibration) -> Option<(&'static str, String)>
 }
 
 pub fn act(backend: &dyn Backend, action: Action, path: &str) -> Value {
-    if let Some((token, reason)) = refusal(action, calibration(&object(&backend.get("radioCal")))) {
+    if let Some((token, reason)) = refusal(action, calibration(&backend.value("radioCal"))) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
     let dispatched = crate::read::flag(&object(&backend.invoke(path, "[]")), "ok");
@@ -172,7 +172,7 @@ pub fn write_transmitter_mode(backend: &dyn Backend, path: &str, value: &str) ->
     let Some(mode) = asked.filter(|m| m.fract() == 0.0 && (1.0..=4.0).contains(m)).map(|m| m as i64) else {
         return json!({ "ok": false, "result": false, "refusal": "outOfRange", "reason": "A transmitter mode is 1, 2, 3 or 4." });
     };
-    if calibration(&object(&backend.get("radioCal"))).calibrating {
+    if calibration(&backend.value("radioCal")).calibrating {
         return json!({ "ok": false, "result": false, "refusal": "calibrating", "reason": "Finish or cancel the calibration before changing the transmitter mode." });
     }
     let answered = crate::read::flag(&object(&backend.set(path, &json!({ "value": mode }).to_string())), "ok");
@@ -189,7 +189,7 @@ pub fn write_centered_throttle(backend: &dyn Backend, path: &str, value: &str) -
     let Some(centered) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool()) else {
         return json!({ "ok": false, "result": false, "refusal": "malformed", "reason": "Centered throttle is on or off." });
     };
-    if calibration(&object(&backend.get("radioCal"))).calibrating {
+    if calibration(&backend.value("radioCal")).calibrating {
         return json!({ "ok": false, "result": false, "refusal": "calibrating", "reason": "Finish or cancel the calibration before changing the throttle position." });
     }
     let answered = crate::read::flag(&object(&backend.set(path, &json!({ "value": centered }).to_string())), "ok");

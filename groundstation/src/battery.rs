@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::instruments::display_units;
-use crate::read::{object, value_number};
+use crate::read::value_number;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -94,14 +94,14 @@ pub fn indicator_lines(pack: &Pack, value_display: i64) -> Vec<String> {
 }
 
 fn pack_count(backend: &dyn Backend) -> usize {
-    let count = value_number(&backend.get("vehicle.batteries.count")).map(|n| n as usize).unwrap_or(0).min(MAX_PACKS);
+    let count = value_number(&backend.value("vehicle.batteries.count")).map(|n| n as usize).unwrap_or(0).min(MAX_PACKS);
     PACKS_SEEN.fetch_max(count, Ordering::Relaxed);
     count
 }
 
 fn remembered(backend: &dyn Backend, index: usize) -> impl Fn(&str) -> Value + '_ {
     let read: std::cell::RefCell<std::collections::HashMap<String, Value>> = std::cell::RefCell::default();
-    move |name: &str| read.borrow_mut().entry(name.to_string()).or_insert_with(|| object(&backend.get(&pack_fact_path(index, name)))).clone()
+    move |name: &str| read.borrow_mut().entry(name.to_string()).or_insert_with(|| backend.value(&pack_fact_path(index, name))).clone()
 }
 
 fn pack(fact: &dyn Fn(&str) -> Value) -> Pack {
@@ -242,9 +242,9 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let readers: Vec<_> = (0..pack_count(backend)).map(|index| remembered(backend, index)).collect();
     let packs: Vec<Pack> = readers.iter().map(|read| pack(read)).collect();
     let popup_packs: Vec<PopupPack> = readers.iter().map(|read| popup_pack(read)).collect();
-    let threshold1 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0);
-    let threshold2 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold2.rawValue")).unwrap_or(60.0);
-    let value_display = value_number(&backend.get("settings.batteryIndicatorSettings.valueDisplay.rawValue")).map(|v| v as i64).unwrap_or(0);
+    let threshold1 = value_number(&backend.value("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0);
+    let threshold2 = value_number(&backend.value("settings.batteryIndicatorSettings.threshold2.rawValue")).unwrap_or(60.0);
+    let value_display = value_number(&backend.value("settings.batteryIndicatorSettings.valueDisplay.rawValue")).map(|v| v as i64).unwrap_or(0);
     let numbered = packs.len() > 1;
     let described: Vec<Value> = packs
         .iter()
@@ -280,7 +280,7 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "available": !described.is_empty(),
         "level": worst,
         "text": described.first().map(|p| p["text"].clone()).unwrap_or(Value::String(String::new())),
-        "indicatorPacks": indicator_packs(&described, object(&backend.get(COMBINE_PACKS)).get("value").and_then(Value::as_bool).unwrap_or(COMBINE_PACKS_UNSET)),
+        "indicatorPacks": indicator_packs(&described, backend.value(COMBINE_PACKS).get("value").and_then(Value::as_bool).unwrap_or(COMBINE_PACKS_UNSET)),
         "packs": described,
         "headline": headline(&popup_packs),
     })

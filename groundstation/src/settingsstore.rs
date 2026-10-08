@@ -156,7 +156,7 @@ fn with_property(fact: Value, property: &str) -> Value {
     }
 }
 
-fn whole_group(backend: &dyn Backend, path: &str) -> Option<String> {
+fn whole_group(backend: &dyn Backend, path: &str) -> Option<Value> {
     let object = path.strip_prefix("settings.").filter(|rest| !rest.contains('.'))?;
     let group = OBJECTS.iter().find(|(name, _)| *name == object)?.1;
     let names = crate::settingsorder::ORDER.iter().find(|(name, _)| *name == group)?.1;
@@ -168,7 +168,7 @@ fn whole_group(backend: &dyn Backend, path: &str) -> Option<String> {
             Some(with_property(described(backend, &at, &fact_path), fact))
         })
         .collect();
-    Some(json!({ "kind": "object", "class": format!("{group}Settings"), "facts": facts, "children": [] }).to_string())
+    Some(json!({ "kind": "object", "class": format!("{group}Settings"), "facts": facts, "children": [] }))
 }
 
 fn integer(value_type: &ValueType) -> bool {
@@ -378,17 +378,48 @@ fn stored() -> std::sync::MutexGuard<'static, Option<BTreeMap<String, Setting>>>
     STORED.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+static REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn revision() -> u64 {
+    REVISION.load(std::sync::atomic::Ordering::Acquire)
+}
+
+struct Changing(std::sync::MutexGuard<'static, Option<BTreeMap<String, Setting>>>);
+
+impl std::ops::Deref for Changing {
+    type Target = Option<BTreeMap<String, Setting>>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Changing {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Drop for Changing {
+    fn drop(&mut self) {
+        REVISION.fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+}
+
+fn changing() -> Changing {
+    Changing(stored())
+}
+
 static PATH: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
 
 pub fn written(key: &str, text: &str) {
-    if let Some(values) = stored().as_mut() {
+    if let Some(values) = changing().as_mut() {
         values.insert(key.to_string(), Setting::Text(text.to_string()));
     }
     persist();
 }
 
 pub fn forgotten(key: &str) {
-    if let Some(values) = stored().as_mut() {
+    if let Some(values) = changing().as_mut() {
         values.remove(key);
     }
     persist();
@@ -432,7 +463,7 @@ pub fn open(path: &std::path::Path) {
     if upgraded {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &settings_reset_notice(&crate::noticeboard::application_name()));
     }
-    *stored() = Some(values);
+    *changing() = Some(values);
     *PATH.lock().unwrap_or_else(PoisonError::into_inner) = Some(path.to_path_buf());
     persist();
 }
@@ -451,7 +482,7 @@ pub fn persist() {
 
 pub fn replace_group(group: &str, entries: BTreeMap<String, Setting>) {
     let prefix = format!("{group}/");
-    if let Some(values) = stored().as_mut() {
+    if let Some(values) = changing().as_mut() {
         values.retain(|key, _| !key.starts_with(&prefix));
         values.extend(entries);
     }
@@ -540,7 +571,7 @@ fn write_into(values: &mut BTreeMap<String, Setting>, prepared: &[Prepared]) {
 }
 
 fn written_together(prepared: &[Prepared]) {
-    if let Some(values) = stored().as_mut() {
+    if let Some(values) = changing().as_mut() {
         write_into(values, prepared);
     }
     persist();
@@ -616,7 +647,7 @@ fn described(backend: &dyn Backend, at: &Addressed, path: &str) -> Value {
     let fact_path = path.split('.').take(3).collect::<Vec<_>>().join(".");
     match crate::qthost::present().then(|| runtime_fields(&fact_path)).flatten() {
         Some(keys) => {
-            let host = crate::read::object(&backend.get_fields(&fact_path, &keys.join(",")));
+            let host = backend.value_fields(&fact_path, &keys.join(","));
             let mut merged = mine;
             keys.iter().filter_map(|k| host.get(*k).map(|v| (*k, v.clone()))).for_each(|(k, v)| merged[k] = v);
             merged
@@ -629,12 +660,12 @@ fn unexposed(path: &str) -> bool {
     path.strip_prefix("settings.").is_some_and(|short| UNEXPOSED.iter().any(|name| short == *name || short.starts_with(&format!("{name}."))))
 }
 
-pub fn get(backend: &dyn Backend, path: &str) -> Option<String> {
+pub fn get(backend: &dyn Backend, path: &str) -> Option<Value> {
     if unexposed(path) {
-        return Some(json!({ "found": false, "kind": "value", "value": null }).to_string());
+        return Some(json!({ "found": false, "kind": "value", "value": null }));
     }
     if path == "settings.remoteIDSettings.operatorIDValidForRegion" {
-        return Some(json!({ "kind": "value", "value": operator_id_valid_for_region() }).to_string());
+        return Some(json!({ "kind": "value", "value": operator_id_valid_for_region() }));
     }
     if let Some(whole) = whole_group(backend, path) {
         return Some(whole);
@@ -642,8 +673,8 @@ pub fn get(backend: &dyn Backend, path: &str) -> Option<String> {
     let at = address(path)?;
     let fact = described(backend, &at, path);
     match &at.field {
-        None => Some(fact.to_string()),
-        Some(field) => fact.get(field.as_str()).map(|v| json!({ "kind": "value", "value": v }).to_string()),
+        None => Some(fact),
+        Some(field) => fact.get(field.as_str()).map(|v| json!({ "kind": "value", "value": v })),
     }
 }
 
@@ -667,7 +698,7 @@ fn child_save_path(root: &str, directory: &str) -> String {
     }
 }
 
-fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<String> {
+fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Value> {
     let object = path.strip_prefix("settings.").filter(|rest| !rest.contains('.'))?;
     let group = OBJECTS.iter().find(|(name, _)| *name == object)?.1;
     let all: Vec<&str> = fields.split(',').map(str::trim).filter(|f| !f.is_empty()).collect();
@@ -692,7 +723,7 @@ fn object_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Stri
     let facts = facts.filter(|f| !f.is_empty() || !saved.is_empty())?;
     let mut answer = json!({ "kind": "object", "class": format!("{group}Settings"), "facts": facts, "children": [] });
     saved.into_iter().for_each(|(name, value)| answer[name] = value);
-    Some(answer.to_string())
+    Some(answer)
 }
 
 pub fn file() -> Option<std::path::PathBuf> {
@@ -789,14 +820,14 @@ pub fn log_save_path() -> Option<String> {
     Some(child_save_path(&root, "Logs")).filter(|path| !path.is_empty())
 }
 
-fn save_path(path: &str) -> Option<String> {
+fn save_path(path: &str) -> Option<Value> {
     let name = path.strip_prefix("settings.appSettings.")?;
     let (_, directory) = SAVE_DIRECTORIES.iter().find(|(n, _)| *n == name)?;
     let root = stored_text(&key("App", "savePath"))?;
-    Some(json!({ "kind": "value", "value": child_save_path(&root, directory) }).to_string())
+    Some(json!({ "kind": "value", "value": child_save_path(&root, directory) }))
 }
 
-pub fn get_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<String> {
+pub fn get_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Value> {
     if let Some(answered) = object_fields(backend, path, fields) {
         return Some(answered);
     }
@@ -811,7 +842,7 @@ pub fn get_fields(backend: &dyn Backend, path: &str, fields: &str) -> Option<Str
     if !unknown.is_empty() {
         answer["unknownFields"] = json!(unknown);
     }
-    Some(answer.to_string())
+    Some(answer)
 }
 
 fn store_raw(at: &Addressed, raw_given: &Value) {
@@ -956,10 +987,16 @@ pub struct Owner<B>(pub B);
 
 impl<B: Backend> Backend for Owner<B> {
     fn get(&self, path: &str) -> String {
-        enabled().then(|| crate::units::get(path).or_else(|| save_path(path)).or_else(|| get(&self.0, path))).flatten().unwrap_or_else(|| self.0.get(path))
+        self.value(path).to_string()
     }
     fn get_fields(&self, path: &str, fields: &str) -> String {
-        enabled().then(|| crate::units::fields(path, fields).or_else(|| get_fields(&self.0, path, fields))).flatten().unwrap_or_else(|| self.0.get_fields(path, fields))
+        self.value_fields(path, fields).to_string()
+    }
+    fn value(&self, path: &str) -> Value {
+        enabled().then(|| crate::units::get(path).or_else(|| save_path(path)).or_else(|| get(&self.0, path))).flatten().unwrap_or_else(|| self.0.value(path))
+    }
+    fn value_fields(&self, path: &str, fields: &str) -> Value {
+        enabled().then(|| crate::units::fields(path, fields).or_else(|| get_fields(&self.0, path, fields))).flatten().unwrap_or_else(|| self.0.value_fields(path, fields))
     }
     fn set(&self, path: &str, value: &str) -> String {
         enabled().then(|| set(&self.0, path, value)).flatten().unwrap_or_else(|| self.0.set(path, value))
@@ -974,7 +1011,7 @@ impl<B: Backend> Backend for Owner<B> {
         self.0.core_guided(action)
     }
     fn remember_setting(&self, key: &str, value: &Value) {
-        if let Some(values) = stored().as_mut() {
+        if let Some(values) = changing().as_mut() {
             values.insert(key.to_string(), Setting::Text(value.as_str().map_or_else(|| value.to_string(), str::to_string)));
         }
         persist();
@@ -1135,7 +1172,7 @@ mod tests {
 
     #[test]
     fn a_whole_group_serves_full_facts_a_settings_page_can_edit() {
-        let group: Value = serde_json::from_str(&get(&Silent, "settings.appSettings").unwrap()).unwrap();
+        let group: Value = get(&Silent, "settings.appSettings").unwrap();
         let facts = group["facts"].as_array().unwrap();
         let muted = facts.iter().find(|f| f["property"] == "audioMuted").unwrap();
         assert_eq!(muted["readOnly"], json!(false), "a compact fact without readOnly decodes as read-only and the page cannot edit it");

@@ -32,10 +32,10 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let Some((index, member)) = target(path) else {
         return refused("malformed", "That is not a mission item position the core writes.".to_string());
     };
-    if flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress") {
+    if flag(&backend.value_fields("plan", "syncInProgress"), "syncInProgress") {
         return refused("busy", "Wait for the sync to finish before changing the plan.".to_string());
     }
-    let item = object(&backend.get_fields(&format!("{POSITION_ITEMS}{index}"), member));
+    let item = backend.value_fields(&format!("{POSITION_ITEMS}{index}"), member);
     if item.get("kind").and_then(Value::as_str) != Some("object") || item.get(member).is_none() {
         return refused("noSuchItem", format!("Item {index} has no {member} to set."));
     }
@@ -58,8 +58,8 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     };
     let answered = flag(&object(&backend.set(path, &json!({ "value": sent }).to_string())), "ok");
     if answered && member == "launchCoordinate" {
-        let same = flag(&object(&backend.get_fields(&format!("{POSITION_ITEMS}{index}"), "launchTakeoffAtSameLocation")), "launchTakeoffAtSameLocation");
-        let fixed_wing = flag(&object(&backend.get_fields("plan.controllerVehicle", "fixedWing")), "fixedWing");
+        let same = flag(&backend.value_fields(&format!("{POSITION_ITEMS}{index}"), "launchTakeoffAtSameLocation"), "launchTakeoffAtSameLocation");
+        let fixed_wing = flag(&backend.value_fields("plan.controllerVehicle", "fixedWing"), "fixedWing");
         if leaves_wizard_after_launch(same, fixed_wing) {
             backend.set(&format!("{POSITION_ITEMS}{index}.{WIZARD}"), &json!({ "value": false }).to_string());
         }
@@ -87,10 +87,10 @@ pub fn write_specify_speed(backend: &dyn Backend, path: &str, value: &str) -> Va
     let Some(on) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool()) else {
         return refused("malformed", "specifyFlightSpeed is true or false.".to_string());
     };
-    if flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress") {
+    if flag(&backend.value_fields("plan", "syncInProgress"), "syncInProgress") {
         return refused("busy", "Wait for the sync to finish before changing the plan.".to_string());
     }
-    let section = object(&backend.get_fields(&format!("{POSITION_ITEMS}{index}.speedSection"), "available"));
+    let section = backend.value_fields(&format!("{POSITION_ITEMS}{index}.speedSection"), "available");
     if section.get("kind").and_then(Value::as_str) != Some("object") {
         return refused("noSuchItem", format!("Item {index} has no speed to set."));
     }

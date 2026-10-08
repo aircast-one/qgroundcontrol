@@ -6,15 +6,15 @@ use crate::router::Backend;
 const CONFIGURATIONS: &str = "links.linkConfigurations";
 
 fn configured_names(backend: &dyn Backend) -> Option<Vec<String>> {
-    let model = object(&backend.get(CONFIGURATIONS));
+    let model = backend.value(CONFIGURATIONS);
     let elements = model.get("elements")?.as_array()?;
     Some(elements.iter().map(|e| e.get("name").and_then(Value::as_str).unwrap_or("").to_string()).collect())
 }
 
 pub(crate) fn armed_vehicle_links(backend: &dyn Backend) -> Vec<String> {
-    let vehicle = object(&backend.get_fields("vehicle", "armed"));
+    let vehicle = backend.value_fields("vehicle", "armed");
     match crate::read::flag(&vehicle, "armed") {
-        true => object(&backend.get_fields("vehicle.vehicleLinkManager", "linkNames")).get("linkNames").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
+        true => backend.value_fields("vehicle.vehicleLinkManager", "linkNames").get("linkNames").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
         false => Vec::new(),
     }
 }

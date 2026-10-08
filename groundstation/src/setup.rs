@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::control::decode;
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 use crate::sensors;
 
@@ -175,7 +175,7 @@ pub fn readiness(connected: bool, parameters_ready: bool, components: &[(String,
 }
 
 pub fn setup_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "px4Firmware"));
+    let vehicle = backend.value_fields("vehicle", "px4Firmware");
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let px4 = flag(&vehicle, "px4Firmware");
     match args.first() {
@@ -216,7 +216,7 @@ pub fn prerequisite(component: &Component, all: &[Component], rc_in_mode: Option
 }
 
 fn rc_in_mode(backend: &dyn Backend, px4: bool) -> Option<i64> {
-    px4.then(|| crate::read::value_number(&backend.get("vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue")).map(|m| m as i64)).flatten()
+    px4.then(|| crate::read::value_number(&backend.value("vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue")).map(|m| m as i64)).flatten()
 }
 
 pub fn opened_component(backend: &dyn Backend, name: &str, px4: bool) -> Option<(String, Option<String>)> {
@@ -265,13 +265,13 @@ pub fn setup_complete(backend: &dyn Backend) -> bool {
 }
 
 fn vehicle_components(backend: &dyn Backend) -> Vec<Component> {
-    let state = object(&backend.get_fields("vehicle", "armed,flying,rover"));
+    let state = backend.value_fields("vehicle", "armed,flying,rover");
     let (armed, flying, rover) = (flag(&state, "armed"), flag(&state, "flying"), flag(&state, "rover"));
-    let listed = object(&backend.get(COMPONENTS));
+    let listed = backend.value(COMPONENTS);
     let count = listed.get("value").and_then(Value::as_array).map(|elements| elements.len()).unwrap_or(0);
     (0..count)
         .filter_map(|index| {
-            let component = object(&backend.get_fields(&format!("{COMPONENTS}.{index}"), "name,class,requiresSetup,setupComplete,allowSetupWhileArmed,allowSetupWhileFlying,KnownVehicleComponent"));
+            let component = backend.value_fields(&format!("{COMPONENTS}.{index}"), "name,class,requiresSetup,setupComplete,allowSetupWhileArmed,allowSetupWhileFlying,KnownVehicleComponent");
             let name = component.get("name").and_then(Value::as_str).filter(|name| !name.is_empty())?;
             Some(Component {
                 name: name.to_string(),
@@ -292,7 +292,7 @@ fn parameter_state(backend: &dyn Backend, connected: bool) -> (bool, &'static st
     if !connected {
         return (false, "noVehicle", "");
     }
-    let manager = object(&backend.get_fields("vehicle.parameterManager", "parametersReady,requestUnanswered,parameterDownloadSkipped,missingParameters"));
+    let manager = backend.value_fields("vehicle.parameterManager", "parametersReady,requestUnanswered,parameterDownloadSkipped,missingParameters");
     match (flag(&manager, "parametersReady"), flag(&manager, "requestUnanswered")) {
         (true, _) if flag(&manager, "missingParameters") => (true, INCOMPLETE, "The vehicle didn't return its full parameter list, so some setup options are unavailable."),
         (true, _) => (true, "", ""),
@@ -305,7 +305,7 @@ fn parameter_state(backend: &dyn Backend, connected: bool) -> (bool, &'static st
 fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
     let components = vehicle_components(backend);
     let rc_in_mode = rc_in_mode(backend, px4);
-    let faults: Vec<String> = sensors::sensors(&object(&backend.get("vehicle.sysStatusSensorInfo"))).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
+    let faults: Vec<String> = sensors::sensors(&backend.value("vehicle.sysStatusSensorInfo")).into_iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n).collect();
     let named: Vec<(String, bool)> = components.iter().map(|c| (c.name.clone(), !c.setup_complete)).collect();
     let (parameters_ready, parameters_reason, parameters_text) = parameter_state(backend, connected);
     let incomplete = parameters_reason == INCOMPLETE;
@@ -314,7 +314,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         false => readiness(connected, parameters_ready, &named, &faults),
     };
     let sub_frame = components.iter().any(|c| c.class_name == "APMSubFrameComponent");
-    let safety_unsupported = connected && !px4 && !apm_safety_supported(&crate::read::text(&object(&backend.get_fields("vehicle", "vehicleTypeString")), "vehicleTypeString"));
+    let safety_unsupported = connected && !px4 && !apm_safety_supported(&crate::read::text(&backend.value_fields("vehicle", "vehicleTypeString"), "vehicleTypeString"));
     let flow_images = connected && crate::hub::lock().active_id().is_some_and(|id| crate::flowimage::image_index(id) > 0);
     let components: Vec<Component> = if incomplete { Vec::new() } else { components };
     json!({
@@ -325,7 +325,7 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
         "parametersReason": parameters_reason,
         "parametersText": parameters_text,
         "firmware": if !connected { "none" } else if px4 { "px4" } else { "apm" },
-        "vehicleId": connected.then(|| object(&backend.get("vehicle.id")).get("value").cloned()).flatten(),
+        "vehicleId": connected.then(|| backend.value("vehicle.id").get("value").cloned()).flatten(),
         "ready": ready,
         "setupComplete": (connected && parameters_ready).then(|| incomplete || setup_complete_of(&named)),
         "headline": headline,
@@ -412,7 +412,7 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
     let Some(sections) = sections_for(page, px4) else { return crate::read::refused(&format!("no setup page is called {page} for this firmware; the pages a vehicle offers depend on which plugin built them")) };
     let read = |name: &str| {
         let path = format!("vehicle.parameterManager.getParameter(-1,{name})");
-        let fact = object(&backend.get(&path));
+        let fact = backend.value(&path);
         let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
         present.then(|| decode(&fact, &path))
     };
@@ -420,7 +420,7 @@ fn page_json(backend: &dyn Backend, page: &str, px4: bool) -> Value {
         ("Flight Modes", false) => crate::vehicleconfig::page(backend, crate::vehicleconfig::SIMPLE_MODES, false)["sections"].as_array().cloned().unwrap_or_default(),
         _ => Vec::new(),
     };
-    let shape = object(&backend.get_fields("vehicle", "vtol,fixedWing"));
+    let shape = backend.value_fields("vehicle", "vtol,fixedWing");
     let (vtol, fixed_wing) = (crate::read::flag(&shape, "vtol"), crate::read::flag(&shape, "fixedWing"));
     let listed: Vec<Value> = sections
         .iter()

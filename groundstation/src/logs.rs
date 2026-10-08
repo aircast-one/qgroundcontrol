@@ -76,16 +76,16 @@ fn answered(vehicle: Option<i64>, requesting: bool) -> bool {
 }
 
 pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs,sortAscending,selectedCount,transport"));
+    let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let root = backend.value_fields("logDownload", "requestingList,downloadingLogs,sortAscending,selectedCount,transport");
     let ftp = crate::read::text(&root, "transport") == FTP_TRANSPORT;
-    let saving = object(&backend.get_fields("settings.appSettings", "logSavePath,savePath"));
+    let saving = backend.value_fields("settings.appSettings", "logSavePath,savePath");
     let save_path = saving.get("logSavePath").and_then(Value::as_str).unwrap_or("").to_string();
     let chosen = crate::read::text(saving.get("savePath").unwrap_or(&Value::Null), "valueString");
     let requesting = flag(&root, "requestingList");
-    let vehicle = object(&backend.get("vehicle.id")).get("value").and_then(Value::as_i64);
+    let vehicle = backend.value("vehicle.id").get("value").and_then(Value::as_i64);
     let downloading = flag(&root, "downloadingLogs");
-    let entries: Vec<Value> = object(&backend.get("logDownload.model"))
+    let entries: Vec<Value> = backend.value("logDownload.model")
         .get("elements")
         .and_then(Value::as_array)
         .map(|elements| {
@@ -184,12 +184,12 @@ fn refusal(action: Action, state: Controller) -> Option<(&'static str, &'static 
 
 pub fn act(backend: &dyn Backend, action: Action, path: &str, args: &str) -> Value {
     let chosen = serde_json::from_str::<Value>(args).ok().and_then(|a| a.as_array()?.first()?.as_str().map(str::to_string)).filter(|p| !p.trim().is_empty());
-    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs,selectedCount,transport"));
-    let saving = object(&backend.get_fields("settings.appSettings", "logSavePath"));
+    let root = backend.value_fields("logDownload", "requestingList,downloadingLogs,selectedCount,transport");
+    let saving = backend.value_fields("settings.appSettings", "logSavePath");
     let state = Controller {
-        connected: flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
+        connected: flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable"),
         busy: flag(&root, "requestingList") || flag(&root, "downloadingLogs"),
-        entries: object(&backend.get("logDownload.model")).get("elements").and_then(Value::as_array).map_or(0, Vec::len),
+        entries: backend.value("logDownload.model").get("elements").and_then(Value::as_array).map_or(0, Vec::len),
         selected: root.get("selectedCount").and_then(Value::as_u64).unwrap_or(0) as usize,
         save_path: chosen.is_some() || saving.get("logSavePath").and_then(Value::as_str).is_some_and(|p| !p.is_empty()),
         ftp: crate::read::text(&root, "transport") == FTP_TRANSPORT,
@@ -218,17 +218,17 @@ pub fn write_selected(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let (Some(index), Some(on)) = (selection_index(path), serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool())) else {
         return refused("malformed", "A log is selected with true and cleared with false.".to_string());
     };
-    let root = object(&backend.get_fields("logDownload", "requestingList,downloadingLogs"));
+    let root = backend.value_fields("logDownload", "requestingList,downloadingLogs");
     if flag(&root, "downloadingLogs") || flag(&root, "requestingList") {
         return refused("busy", "Wait for the current list or download to finish before changing the selection.".to_string());
     }
     let count = |model: &Value| model.get("elements").and_then(Value::as_array).map_or(0, Vec::len);
-    let model = object(&backend.get("logDownload.model"));
+    let model = backend.value("logDownload.model");
     if index >= count(&model) {
         return refused("noSuchLog", format!("There is no log at position {index}."));
     }
     let answered = flag(&object(&backend.set(path, &json!({ "value": on }).to_string())), "ok");
-    let held = object(&backend.get("logDownload.model")).get("elements").and_then(|e| e.get(index)).map(|e| flag(e, "selected"));
+    let held = backend.value("logDownload.model").get("elements").and_then(|e| e.get(index)).map(|e| flag(e, "selected"));
     let took = answered && held == Some(on);
     json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The log list did not keep that selection.") } })
 }

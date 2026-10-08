@@ -9,7 +9,7 @@ use crate::router::Backend;
 const SELECTED_COUNT: &str = "vehicles.selectedVehicles.count";
 
 fn selected(backend: &dyn Backend) -> i64 {
-    integer(&object(&backend.get(SELECTED_COUNT)), "value").unwrap_or(0).max(0)
+    integer(&backend.value(SELECTED_COUNT), "value").unwrap_or(0).max(0)
 }
 
 pub fn deselect_all(backend: &dyn Backend, path: &str) -> Value {
@@ -63,8 +63,8 @@ pub fn fleet_command(backend: &dyn Backend, path: &str) -> Value {
     let Some((index, command)) = fleet_target(path) else {
         return json!({ "ok": false, "refusal": "malformed", "reason": "That is not a fleet command the core sends." });
     };
-    let vehicle = object(&backend.get_fields(&format!("{FLEET_SELECTION}{index}"), "id,armed,flying"));
-    let pause_supported = flag(&object(&backend.get_fields(&format!("{FLEET_SELECTION}{index}.supports"), "pauseVehicle")), "pauseVehicle");
+    let vehicle = backend.value_fields(&format!("{FLEET_SELECTION}{index}"), "id,armed,flying");
+    let pause_supported = flag(&backend.value_fields(&format!("{FLEET_SELECTION}{index}.supports"), "pauseVehicle"), "pauseVehicle");
     let id = integer(&vehicle, "id");
     if let Some((token, reason)) = fleet_refusal(command, &vehicle, pause_supported) {
         return json!({ "ok": false, "refusal": token, "reason": reason, "vehicle": id });
@@ -91,7 +91,7 @@ pub fn fleet_arm(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let Some(arm) = given.get("value").and_then(truth).or_else(|| truth(&given)) else {
         return json!({ "ok": false, "refusal": "malformed", "reason": "Arming needs true or false." });
     };
-    let id = integer(&object(&backend.get_fields(&format!("{FLEET_SELECTION}{index}"), "id")), "id");
+    let id = integer(&backend.value_fields(&format!("{FLEET_SELECTION}{index}"), "id"), "id");
     let Some(id) = id else {
         return json!({ "ok": false, "refusal": "noSuchVehicle", "reason": "No vehicle is selected at that position." });
     };

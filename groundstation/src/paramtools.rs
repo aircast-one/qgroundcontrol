@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -22,13 +22,13 @@ fn tool(path: &str, label: &str, title: &str, message: &str) -> Value {
 }
 
 fn autoconfig_exists(backend: &dyn Backend) -> bool {
-    object(&backend.get(AUTOCONFIG)).get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty())
+    backend.value(AUTOCONFIG).get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty())
 }
 
 pub fn parameter_tools_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware,px4Firmware"));
+    let vehicle = backend.value_fields("vehicle", "apmFirmware,px4Firmware");
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
-    let ready = connected && flag(&object(&backend.get("vehicle.parameterManager.parametersReady")), "value");
+    let ready = connected && flag(&backend.value("vehicle.parameterManager.parametersReady"), "value");
     let apm = flag(&vehicle, "apmFirmware");
     let tools: Vec<Value> = [
         Some(tool(REFRESH, "Refresh", "", "")),

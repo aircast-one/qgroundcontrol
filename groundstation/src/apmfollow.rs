@@ -68,7 +68,7 @@ fn path(name: &str) -> String {
 }
 
 fn raw(backend: &dyn Backend, name: &str) -> Option<f64> {
-    let fact = object(&backend.get(&path(name)));
+    let fact = backend.value(&path(name));
     let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
     present.then(|| fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64)).flatten()
 }
@@ -78,7 +78,7 @@ fn write(backend: &dyn Backend, name: &str, value: f64) -> bool {
 }
 
 fn rover(backend: &dyn Backend) -> bool {
-    flag(&object(&backend.get_fields("vehicle", "rover")), "rover")
+    flag(&backend.value_fields("vehicle", "rover"), "rover")
 }
 
 pub fn follow_view(backend: &dyn Backend, _args: &[String]) -> Value {

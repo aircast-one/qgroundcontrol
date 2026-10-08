@@ -182,8 +182,8 @@ fn follow(source: Source, generation: u64) {
 }
 
 pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let port = crate::read::value_number(&backend.get(DEPS[1])).filter(|p| *p > 0.0 && *p <= 65535.0).map(|p| p as u16);
-    let video = crate::read::object(&backend.get_fields("video", "activeVideoSource,cameraUrls"));
+    let port = crate::read::value_number(&backend.value(DEPS[1])).filter(|p| *p > 0.0 && *p <= 65535.0).map(|p| p as u16);
+    let video = backend.value_fields("video", "activeVideoSource,cameraUrls");
     let active = crate::read::integer(&video, "activeVideoSource").and_then(|index| usize::try_from(index).ok()).unwrap_or(0);
     let url = video.get("cameraUrls").and_then(Value::as_array).and_then(|urls| urls.get(active)).and_then(Value::as_str).unwrap_or_default().to_string();
     let source = parse(&url, port);

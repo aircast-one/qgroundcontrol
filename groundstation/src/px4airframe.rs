@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -72,7 +72,7 @@ pub fn current_names(autostart: i64) -> Option<(String, String)> {
 }
 
 fn fact_value(backend: &dyn Backend, path: &str) -> Option<f64> {
-    let fact = object(&backend.get(path));
+    let fact = backend.value(path);
     (fact.get("kind").and_then(Value::as_str) == Some("fact")).then(|| fact.get("rawValue").or_else(|| fact.get("value")).and_then(Value::as_f64)).flatten()
 }
 
@@ -112,7 +112,7 @@ pub fn airframe_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn vehicle_count(backend: &dyn Backend) -> i64 {
-    object(&backend.get("vehicles.vehicles.count")).get("value").and_then(Value::as_i64).unwrap_or(0)
+    backend.value("vehicles.vehicles.count").get("value").and_then(Value::as_i64).unwrap_or(0)
 }
 
 pub fn apply(backend: &dyn Backend, args: &str) -> Value {

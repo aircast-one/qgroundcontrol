@@ -2,7 +2,6 @@ use std::sync::{Mutex, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -32,7 +31,7 @@ fn connecting_stalled(name: &str, now: u64) -> bool {
 }
 
 fn auto_connect(backend: &dyn Backend, name: &str) -> bool {
-    crate::read::value_number(&backend.get(&format!("settings.autoConnectSettings.{name}.rawValue"))).is_none_or(|v| v != 0.0)
+    crate::read::value_number(&backend.value(&format!("settings.autoConnectSettings.{name}.rawValue"))).is_none_or(|v| v != 0.0)
 }
 
 pub struct Offline {
@@ -85,7 +84,7 @@ pub fn offline(links: &[Value], watched: &[&str], stalled_for: impl FnOnce(&str)
 }
 
 pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let model = object(&backend.get("links.linkConfigurations"));
+    let model = backend.value("links.linkConfigurations");
     let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| crate::links::link_json(i, el)).collect()).unwrap_or_default();
     let watched: Vec<&str> = [("autoConnectPixhawk", "USB"), ("autoConnectSiKRadio", "SiK radio"), ("autoConnectUDP", "Wi\u{2011}Fi")]
         .into_iter()

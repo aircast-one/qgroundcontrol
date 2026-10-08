@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use crate::read::{flag, integer, object, text, value_number};
+use crate::read::{flag, integer, text, value_number};
 use crate::router::Backend;
 
 pub const SETTING: &str = "settings.appSettings.followTarget.rawValue";
@@ -451,7 +451,7 @@ pub fn tick(backend: &dyn Backend, now_ms: u64) {
         }
         *last = Some(last.filter(|last| now_ms.saturating_sub(*last) < 2 * MOTION_INTERVAL_MS).map_or(now_ms, |last| last + MOTION_INTERVAL_MS));
     }
-    let mode = Mode::from_setting(value_number(&backend.get(SETTING)));
+    let mode = Mode::from_setting(value_number(&backend.value(SETTING)));
     if !matches!(mode, Some(Mode::Always | Mode::FollowMe)) {
         return;
     }
@@ -475,8 +475,8 @@ pub fn tick(backend: &dyn Backend, now_ms: u64) {
 }
 
 pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {
-    let stamp = value_number(&backend.get(GCS_TIMESTAMP)).filter(|t| *t > 0.0)? as u64;
-    let position = object(&backend.get(GCS_POSITION));
+    let stamp = value_number(&backend.value(GCS_TIMESTAMP)).filter(|t| *t > 0.0)? as u64;
+    let position = backend.value(GCS_POSITION);
     let coordinate = position.get("value").filter(|v| v.is_object()).unwrap_or(&position).clone();
     let read = |key: &str| finite(coordinate.get(key).and_then(Value::as_f64));
     Some(Fix {
@@ -484,27 +484,27 @@ pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {
         latitude: read("latitude").unwrap_or(f64::NAN),
         longitude: read("longitude").unwrap_or(f64::NAN),
         altitude_amsl_m: read("altitude"),
-        heading_deg: match object(&backend.get(GCS_DIRECTION)) {
+        heading_deg: match backend.value(GCS_DIRECTION) {
             served if served.get("kind").and_then(Value::as_str) == Some("value") => finite(served.get("value").and_then(Value::as_f64)),
-            _ => value_number(&backend.get(GCS_HEADING)),
+            _ => value_number(&backend.value(GCS_HEADING)),
         },
-        ground_speed_m_s: value_number(&backend.get(GCS_GROUND_SPEED)),
+        ground_speed_m_s: value_number(&backend.value(GCS_GROUND_SPEED)),
         vertical_speed_down_m_s: None,
-        horizontal_accuracy_m: value_number(&backend.get(GCS_HORIZONTAL_ACCURACY)),
+        horizontal_accuracy_m: value_number(&backend.value(GCS_HORIZONTAL_ACCURACY)),
         vertical_accuracy_m: None,
         age_ms: wall_ms.saturating_sub(stamp),
     })
 }
 
 pub fn fleet_of(backend: &dyn Backend) -> Vec<Target> {
-    let count = integer(&object(&backend.get("vehicles.vehicles.count")), "value").unwrap_or(0).max(0);
+    let count = integer(&backend.value("vehicles.vehicles.count"), "value").unwrap_or(0).max(0);
     VEHICLES_SEEN.store(usize::try_from(count).unwrap_or(0), Ordering::Relaxed);
-    (0..count).filter_map(|index| target_of(&object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), FIELDS)))).collect()
+    (0..count).filter_map(|index| target_of(&backend.value_fields(&format!("vehicles.vehicles.{index}"), FIELDS))).collect()
 }
 
 pub fn follow_me_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let fix = gcs_fix(backend, crate::hub::now_us() / 1000);
-    snapshot(value_number(&backend.get(SETTING)), &fleet_of(backend), fix.as_ref())
+    snapshot(value_number(&backend.value(SETTING)), &fleet_of(backend), fix.as_ref())
 }
 
 #[cfg(test)]

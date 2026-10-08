@@ -159,7 +159,7 @@ fn path(name: &str) -> String {
 }
 
 fn fact(backend: &dyn Backend, name: &str) -> Option<Value> {
-    let fact = object(&backend.get(&path(name)));
+    let fact = backend.value(&path(name));
     let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
     present.then_some(fact)
 }
@@ -205,7 +205,7 @@ fn px4_view(backend: &dyn Backend) -> Value {
 }
 
 pub fn sensor_settings_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware,px4Firmware,sub"));
+    let vehicle = backend.value_fields("vehicle", "apmFirmware,px4Firmware,sub");
     if flag(&vehicle, "px4Firmware") {
         return px4_view(backend);
     }
@@ -263,7 +263,7 @@ pub fn set_priority(backend: &dyn Backend, args: &str) -> Value {
 }
 
 pub fn factory_reset(backend: &dyn Backend) -> Value {
-    if !flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware") {
+    if !flag(&backend.value_fields("vehicle", "px4Firmware"), "px4Firmware") {
         return json!({ "ok": false, "reason": "Factory reset is offered for PX4 vehicles only." });
     }
     crate::guided::dispatch(backend, Some(json!({ "action": "factoryReset" })), crate::guided::active_id(backend), "", "[]")

@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::altitude::merge;
-use crate::read::{Unit, flag, object, result_number, value_number};
+use crate::read::{Unit, flag, result_number, value_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -41,11 +41,11 @@ pub fn takeoff_view(backend: &dyn Backend, args: &[String]) -> Value {
 }
 
 pub(crate) fn range_meters(backend: &dyn Backend) -> Option<(f64, f64)> {
-    if !flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable") {
+    if !flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable") {
         return None;
     }
     let minimum = result_number(&backend.invoke("vehicle.minimumTakeoffAltitudeMeters", "[]")).filter(|m| *m > 0.0).unwrap_or(FALLBACK_MINIMUM_METERS);
-    let maximum = value_number(&backend.get("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
+    let maximum = value_number(&backend.value("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
     (maximum > minimum).then_some((minimum, maximum))
 }
 

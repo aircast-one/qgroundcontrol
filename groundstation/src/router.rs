@@ -11,6 +11,12 @@ pub trait Backend {
     fn set(&self, path: &str, value: &str) -> String;
     fn invoke(&self, path: &str, args: &str) -> String;
     fn watch(&self, paths: &[String]);
+    fn value(&self, path: &str) -> serde_json::Value {
+        crate::read::object(&self.get(path))
+    }
+    fn value_fields(&self, path: &str, fields: &str) -> serde_json::Value {
+        crate::read::object(&self.get_fields(path, fields))
+    }
     fn core_guided(&self, _action: &serde_json::Value) -> Option<Result<(), String>> {
         None
     }
@@ -21,6 +27,7 @@ pub trait Backend {
 struct Watching {
     clients: BTreeMap<String, BTreeSet<String>>,
     last: BTreeMap<String, String>,
+    inputs: BTreeMap<String, Vec<crate::changedriven::Input>>,
     upstream: Vec<String>,
 }
 
@@ -107,6 +114,7 @@ impl<B: Backend> Core<B> {
             };
             let asked = watching.asked();
             watching.last.retain(|path, _| asked.contains(path));
+            watching.inputs.retain(|path, _| asked.contains(path));
             let fresh = paths.iter().filter(|path| !held.contains(*path) && view::lookup(path).is_some()).cloned().collect();
             (asked, fresh)
         };
@@ -114,6 +122,7 @@ impl<B: Backend> Core<B> {
         let mut watching = self.watching.lock().unwrap();
         fresh.iter().for_each(|path| {
             watching.last.remove(path);
+            watching.inputs.remove(path);
         });
     }
 
@@ -142,18 +151,40 @@ impl<B: Backend> Core<B> {
 
     pub fn poll(&self) -> Vec<(String, String)> {
         crate::connectnotices::announce(&self.backend);
-        let asked = self.watching.lock().unwrap().asked();
-        let rendered: Vec<(String, String)> = crate::vehiclefacade::one_pass(|| {
+        let (asked, kept): (BTreeSet<String>, BTreeMap<String, (String, Vec<crate::changedriven::Input>)>) = {
+            let watching = self.watching.lock().unwrap();
+            let kept = watching.inputs.iter().filter_map(|(path, inputs)| Some((path.clone(), (watching.last.get(path)?.clone(), inputs.clone())))).collect();
+            (watching.asked(), kept)
+        };
+        let rendered: Vec<(String, String, Option<Vec<crate::changedriven::Input>>)> = crate::vehiclefacade::one_pass(|| {
             asked
                 .iter()
                 .map(|path| match view::lookup(path) {
-                    Some(v) => (path.clone(), v.render(&self.backend, path)),
-                    None => (path.clone(), self.get(path)),
+                    Some(v) if crate::changedriven::gated(path) => match kept.get(path).filter(|(_, inputs)| crate::changedriven::unchanged(inputs)) {
+                        Some((json, inputs)) => (path.clone(), json.clone(), Some(inputs.clone())),
+                        None => {
+                            let recorder = crate::changedriven::Recorder::new(&self.backend);
+                            let json = v.render(&recorder, path);
+                            (path.clone(), json, recorder.inputs())
+                        }
+                    },
+                    Some(v) => (path.clone(), v.render(&self.backend, path), None),
+                    None => (path.clone(), self.get(path), None),
                 })
                 .collect()
         });
         let mut watching = self.watching.lock().unwrap();
-        rendered.into_iter().filter(|(path, json)| watching.last.insert(path.clone(), json.clone()).as_deref() != Some(json.as_str())).collect()
+        rendered
+            .into_iter()
+            .filter(|(path, json, inputs)| {
+                match inputs {
+                    Some(inputs) => watching.inputs.insert(path.clone(), inputs.clone()),
+                    None => watching.inputs.remove(path),
+                };
+                watching.last.insert(path.clone(), json.clone()).as_deref() != Some(json.as_str())
+            })
+            .map(|(path, json, _)| (path, json))
+            .collect()
     }
 
     pub fn on_event(&self, path: &str, json: &str) -> Vec<(String, String)> {
@@ -178,7 +209,10 @@ impl<B: Backend> Core<B> {
             let mut watching = self.watching.lock().unwrap();
             let changed = recomputed
                 .into_iter()
-                .filter(|(p, j)| watching.last.insert(p.clone(), j.clone()).as_deref() != Some(j.as_str()))
+                .filter(|(p, j)| {
+                    watching.inputs.remove(p);
+                    watching.last.insert(p.clone(), j.clone()).as_deref() != Some(j.as_str())
+                })
                 .collect();
             (changed, watching.asked())
         };

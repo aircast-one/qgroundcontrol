@@ -43,7 +43,7 @@ fn start_refusal(camera: &Value, asked: Option<&Request>) -> Option<(&'static st
 pub fn start(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let asked = request(&given);
-    let camera = object(&backend.get_fields(CAMERA, "supportsTrackingRect,supportsTrackingPoint,trackingEnabled"));
+    let camera = backend.value_fields(CAMERA, "supportsTrackingRect,supportsTrackingPoint,trackingEnabled");
     if let Some((token, reason)) = start_refusal(&camera, asked.as_ref()) {
         return json!({ "ok": false, "result": Value::Null, "refusal": token, "reason": reason });
     }
@@ -113,7 +113,7 @@ pub fn tracking_image(status: u8, mode: u8, point: (f32, f32, f32), rect: (f32, 
 const THERMAL_MODES: std::ops::RangeInclusive<i64> = 0..=3;
 
 fn camera(backend: &dyn Backend) -> Value {
-    object(&backend.get_fields(CAMERA, "hasTracking,trackingEnabled,thermalStreamInstance"))
+    backend.value_fields(CAMERA, "hasTracking,trackingEnabled,thermalStreamInstance")
 }
 
 fn present(camera: &Value) -> bool {
@@ -191,7 +191,7 @@ pub fn select_camera(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let Some(index) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()).filter(|v| v.fract() == 0.0).map(|v| v as i64) else {
         return refused("malformed", "A camera is chosen by its position in the list.".to_string());
     };
-    let manager = object(&backend.get_fields("vehicle.cameraManager", "cameraLabels,currentCamera"));
+    let manager = backend.value_fields("vehicle.cameraManager", "cameraLabels,currentCamera");
     let count = manager.get("cameraLabels").and_then(Value::as_array).map_or(0, Vec::len) as i64;
     if count == 0 {
         return refused("noCamera", "This vehicle reports no camera to switch to.".to_string());
@@ -200,7 +200,7 @@ pub fn select_camera(backend: &dyn Backend, path: &str, value: &str) -> Value {
         return refused("noSuchCamera", format!("The cameras are numbered 0 to {}.", count - 1));
     }
     let answered = flag(&object(&backend.set(path, &json!({ "value": index }).to_string())), "ok");
-    let held = crate::read::integer(&object(&backend.get_fields("vehicle.cameraManager", "currentCamera")), "currentCamera");
+    let held = crate::read::integer(&backend.value_fields("vehicle.cameraManager", "currentCamera"), "currentCamera");
     let took = answered && held == Some(index);
     json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The camera manager kept the camera it had.") } })
 }

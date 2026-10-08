@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{integer, object, text};
+use crate::read::{integer, text};
 use crate::router::Backend;
 
 // SetupScreen.kt read six raw Vehicle properties to spell one line - "PX4 1.15.0 beta" - and kept
@@ -28,7 +28,7 @@ pub fn summary(firmware_type: &str, version: Option<&str>, version_type: &str) -
 }
 
 pub fn firmware_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", FIELDS));
+    let vehicle = backend.value_fields("vehicle", FIELDS);
     let available = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let firmware_type = text(&vehicle, "firmwareTypeString");
     let version_type = text(&vehicle, "firmwareVersionTypeString");

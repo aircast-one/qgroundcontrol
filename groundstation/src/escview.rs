@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.escs.count"];
@@ -60,7 +59,7 @@ pub fn summary(escs: &[Value]) -> Value {
 }
 
 pub fn esc_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let listed = object(&backend.get("vehicle.escs"));
+    let listed = backend.value("vehicle.escs");
     summary(&listed.get("elements").and_then(Value::as_array).cloned().unwrap_or_default())
 }
 

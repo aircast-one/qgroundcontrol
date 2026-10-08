@@ -4,7 +4,6 @@ use serde_json::{Value, json};
 
 use crate::control::decode;
 use crate::filejobs::Outcome;
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady"];
@@ -124,7 +123,7 @@ struct Enable {
 
 fn enable(backend: &dyn Backend) -> Enable {
     let path = format!("vehicle.parameterManager.getParameter(-1,{SCRIPTING_ENABLE_PARAM})");
-    let fact = object(&backend.get(&path));
+    let fact = backend.value(&path);
     let supported = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
     let enabled = fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).is_some_and(|v| v != 0.0);
     Enable { path, fact, supported, enabled }

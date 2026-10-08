@@ -13,7 +13,7 @@ pub enum Forwarding {
 }
 
 fn configurations(backend: &dyn Backend) -> Option<Vec<Value>> {
-    object(&backend.get(LINKS)).get("elements")?.as_array().cloned()
+    backend.value(LINKS).get("elements")?.as_array().cloned()
 }
 
 fn connected(element: &Value) -> bool {
@@ -70,8 +70,8 @@ fn forwarding_refusal(action: Forwarding, forwarding: bool, host: &str) -> Optio
 }
 
 pub fn support_forwarding(backend: &dyn Backend, action: Forwarding, path: &str) -> Value {
-    let forwarding = flag(&object(&backend.get_fields("links", "mavlinkSupportForwardingEnabled")), "mavlinkSupportForwardingEnabled");
-    let host = object(&backend.get(SUPPORT_HOST)).get("value").and_then(Value::as_str).unwrap_or("").to_string();
+    let forwarding = flag(&backend.value_fields("links", "mavlinkSupportForwardingEnabled"), "mavlinkSupportForwardingEnabled");
+    let host = backend.value(SUPPORT_HOST).get("value").and_then(Value::as_str).unwrap_or("").to_string();
     if let Some((token, reason)) = forwarding_refusal(action, forwarding, &host) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }

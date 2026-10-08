@@ -311,7 +311,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "roiSupported": state.roi_supported,
         "roiActive": state.roi_active,
         "resumeFailedIndex": (crate::vehiclefacade::switched_on() && state.can_resume()).then(|| crate::hub::lock().active().and_then(|v| v.resume_failed)).flatten(),
-        "roi": state.roi_active.then(|| crate::read::object(&backend.get("vehicle.roiCoord"))).and_then(|at| {
+        "roi": state.roi_active.then(|| backend.value("vehicle.roiCoord")).and_then(|at| {
             Some(json!({ "latitude": at.get("latitude")?.as_f64()?, "longitude": at.get("longitude")?.as_f64()? }))
         }),
         "forwardFlight": state.forward_flight,
@@ -352,20 +352,20 @@ pub fn goto_loiter_radius(backend: &dyn Backend) -> f64 {
 }
 
 fn read_state(backend: &dyn Backend) -> GuidedState {
-    let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
+    let vehicles = backend.value_fields("vehicles", "activeVehicleAvailable");
     if !flag(&vehicles, "activeVehicleAvailable") {
         return GuidedState::default();
     }
-    let vehicle = object(&backend.get_fields(
+    let vehicle = backend.value_fields(
         "vehicle",
         "id,armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
-    ));
-    let supports = object(&backend.get_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude,smartRTL"));
-    let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission"));
-    let mission = object(&backend.get_fields("planFly.missionController", "containsItems"));
-    let flying = object(&backend.get_fields("planFly.missionController", "currentMissionIndex,resumeMissionIndex"));
-    let items = object(&backend.get_fields("planFly.missionController.visualItems", "count"));
-    let app = object(&backend.get_fields("settings.appSettings", "useChecklist,enforceChecklist"));
+    );
+    let supports = backend.value_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude,smartRTL");
+    let report = backend.value_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission");
+    let mission = backend.value_fields("planFly.missionController", "containsItems");
+    let flying = backend.value_fields("planFly.missionController", "currentMissionIndex,resumeMissionIndex");
+    let items = backend.value_fields("planFly.missionController.visualItems", "count");
+    let app = backend.value_fields("settings.appSettings", "useChecklist,enforceChecklist");
     let mode = text(&vehicle, "flightMode");
     let same_mode = |key: &str| !mode.is_empty() && text(&vehicle, key) == mode;
     let use_checklist = fact_flag(&app, "useChecklist");
@@ -389,7 +389,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         vtol_in_fwd_flight,
         forward_flight,
         goto_loiter_radius: match forward_flight {
-            true => value_number(&backend.get("settings.flyViewSettings.forwardFlightGoToLocationLoiterRad.rawValue")).unwrap_or(0.0),
+            true => value_number(&backend.value("settings.flyViewSettings.forwardFlightGoToLocationLoiterRad.rawValue")).unwrap_or(0.0),
             false => 0.0,
         },
         speed_limits: if forward_flight { flag(&vehicle, "haveFWSpeedLimits") } else { flag(&vehicle, "haveMRSpeedLimits") }
@@ -465,9 +465,9 @@ pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, arg
     };
     let (state, vehicle) = match offered {
         [Action::EmergencyStop] => {
-            let read = object(&backend.get_fields("vehicle", "armed,id"));
+            let read = backend.value_fields("vehicle", "armed,id");
             let state = GuidedState {
-                connected: flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
+                connected: flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable"),
                 armed: flag(&read, "armed"),
                 ..GuidedState::default()
             };
@@ -482,7 +482,7 @@ pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, arg
 }
 
 pub fn active_id(backend: &dyn Backend) -> Option<i64> {
-    integer(&object(&backend.get_fields("vehicle", "id")), "id")
+    integer(&backend.value_fields("vehicle", "id"), "id")
 }
 
 fn core_action(offered: &[Action], args: &str, state: &GuidedState) -> Option<Value> {

@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -49,7 +48,7 @@ pub fn sensors(info: &Value) -> Vec<(String, &'static str)> {
 }
 
 pub fn sensors_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let listed = sensors(&object(&backend.get("vehicle.sysStatusSensorInfo")));
+    let listed = sensors(&backend.value("vehicle.sysStatusSensorInfo"));
     let failing: Vec<&str> = listed.iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n.as_str()).collect();
     json!({
         "kind": "object",
@@ -57,7 +56,7 @@ pub fn sensors_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "available": !listed.is_empty(),
         "status": if listed.is_empty() { "No vehicle is reporting sensor status." } else { "" },
         "failing": failing,
-        "healthChecksSupported": crate::read::flag(&object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported")), "supported"),
+        "healthChecksSupported": crate::read::flag(&backend.value_fields("vehicle.healthAndArmingCheckReport", "supported"), "supported"),
         "sensors": listed.iter().map(|(name, s)| json!({ "name": name, "state": s, "label": state_label(s) })).collect::<Vec<_>>(),
     })
 }

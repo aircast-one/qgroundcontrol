@@ -464,7 +464,7 @@ pub fn qt_links(backend: &dyn crate::router::Backend) -> Vec<Value> {
     if crate::corelinks::owned() {
         return Vec::new();
     }
-    let model = crate::read::object(&backend.get("links.linkConfigurations"));
+    let model = backend.value("links.linkConfigurations");
     model
         .get("elements")
         .and_then(Value::as_array)

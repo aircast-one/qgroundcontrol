@@ -658,8 +658,8 @@ fn port_number(json: &str) -> Option<u16> {
 }
 
 pub fn adsb_traffic_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let enabled = truthy(&object(&backend.get(DEPS[0])), "value");
-    let host = value_string(&backend.get(DEPS[1])).trim().to_string();
+    let enabled = truthy(&backend.value(DEPS[0]), "value");
+    let host = value_string(&backend.value(DEPS[1])).trim().to_string();
     let source = port_number(&backend.get(DEPS[2])).filter(|_| !host.is_empty()).map(|port| Source { host, port });
     let now_ms = crate::hub::now_ms();
     let own_report = own(&backend.get(DEPS[3]));

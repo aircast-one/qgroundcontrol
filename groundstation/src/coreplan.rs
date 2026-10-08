@@ -259,8 +259,8 @@ pub fn set_map_center_hint(latitude: f64, longitude: f64) {
 
 fn edit_defaults(backend: &dyn Backend) -> Option<plandoc::EditDefaults> {
     let map_center = *MAP_CENTER_HINT.lock().unwrap_or_else(PoisonError::into_inner);
-    let vtol_transition_distance = crate::read::value_number(&backend.get("settings.planViewSettings.vtolTransitionDistance.rawValue")).unwrap_or(plandoc::VTOL_TRANSITION_DISTANCE_DEFAULT);
-    crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))).map(|mission_item_altitude| plandoc::EditDefaults { mission_item_altitude, map_center, vtol_transition_distance })
+    let vtol_transition_distance = crate::read::value_number(&backend.value("settings.planViewSettings.vtolTransitionDistance.rawValue")).unwrap_or(plandoc::VTOL_TRANSITION_DISTANCE_DEFAULT);
+    crate::read::value_number(&backend.value(&format!("{DEFAULT_ALTITUDE}.rawValue"))).map(|mission_item_altitude| plandoc::EditDefaults { mission_item_altitude, map_center, vtol_transition_distance })
 }
 
 fn insert_at(backend: &dyn Backend, args: &str, land: bool) -> Value {
@@ -318,7 +318,7 @@ fn insert_landing(backend: &dyn Backend, args: &str) -> Value {
             land: (latitude, longitude),
             ardupilot: plandoc::firmware(doc.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
             relative: true,
-            transition_distance: crate::read::value_number(&backend.get("settings.planViewSettings.vtolTransitionDistance.rawValue")),
+            transition_distance: crate::read::value_number(&backend.value("settings.planViewSettings.vtolTransitionDistance.rawValue")),
         });
         let kind = if vtol { crate::landingpattern::VTOL_PATTERN } else { crate::landingpattern::FIXED_WING_PATTERN };
         Ok(plandoc::insert_complex(doc, kind, built, (latitude, longitude), index))
@@ -462,7 +462,7 @@ fn items(backend: &dyn Backend, args: &str) -> Value {
     let Some(document) = held().document.clone() else {
         return refused("There is no plan.");
     };
-    let rover = crate::read::flag(&crate::read::object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover");
+    let rover = crate::read::flag(&backend.value_fields("plan.controllerVehicle", "rover"), "rover");
     match crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::horizontal(backend), &crate::read::Unit::speed(backend), rover) {
         Ok(view) => json!({ "ok": true, "view": view }),
         Err(reason) => refused(reason),
@@ -818,7 +818,7 @@ pub fn host_watches() -> Vec<String> {
 }
 
 fn host_syncing(backend: &dyn Backend) -> bool {
-    crate::read::object(&backend.get(HOST_SYNC)).get("value").and_then(Value::as_bool) == Some(true)
+    backend.value(HOST_SYNC).get("value").and_then(Value::as_bool) == Some(true)
 }
 
 fn follow_vehicle() {
@@ -1189,7 +1189,7 @@ pub fn view(backend: &dyn Backend) -> Value {
         let state = held();
         (state.document.clone().unwrap_or_else(empty_document), state.selected, state.clean.clone())
     };
-    let rover = crate::read::flag(&crate::read::object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover");
+    let rover = crate::read::flag(&backend.value_fields("plan.controllerVehicle", "rover"), "rover");
     crate::missionitems::document_view(&document, selected, &crate::read::Unit::vertical(backend), &crate::read::Unit::horizontal(backend), &crate::read::Unit::speed(backend), rover)
         .map(|view| marked_edited(view, &document, clean.as_ref()))
         .unwrap_or_else(|reason| json!({ "kind": "object", "class": "MissionItems", "available": false, "items": [], "selected": -1, "reason": reason }))
@@ -1352,7 +1352,7 @@ fn select(args: &str) -> Value {
 }
 
 fn setting_number(backend: &dyn Backend, name: &str) -> Option<f64> {
-    crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue")))
+    crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue")))
 }
 
 fn fresh_document(backend: &dyn Backend) -> Document {
@@ -1753,7 +1753,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                     let moved_home = Document { home: Some([latitude, longitude, current.home.map_or(0.0, |h| h[2])]), ..current.clone() };
                     let moved_item = |doc: &Document| plandoc::set_param(doc, index, 5, latitude).and_then(|moved| plandoc::set_param(&moved, index, 6, longitude)).ok_or_else(|| format!("Item {index} has no position to move."));
                     let same_location = launch_at_takeoff(&current, index);
-                    let transition_distance = crate::read::value_number(&backend.get("settings.planViewSettings.vtolTransitionDistance.rawValue")).unwrap_or(plandoc::VTOL_TRANSITION_DISTANCE_DEFAULT);
+                    let transition_distance = crate::read::value_number(&backend.value("settings.planViewSettings.vtolTransitionDistance.rawValue")).unwrap_or(plandoc::VTOL_TRANSITION_DISTANCE_DEFAULT);
                     match (index, property) {
                         (0, _) => Ok(moved_home),
                         (_, "launchCoordinate") => plandoc::set_launch(&current, index, latitude, longitude, same_location, transition_distance).ok_or_else(|| format!("Item {index} is not a takeoff.")),
@@ -1778,7 +1778,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
         "speedSection.specifyFlightSpeed" => {
             let on = given.as_ref().and_then(Value::as_bool).unwrap_or(false);
             let keep = plandoc::specified_speed(&current, index);
-            let setting = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
+            let setting = |name: &str, default: f64| crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
             let default = speed_in_force(&current, index.saturating_sub(1), setting("offlineEditingHoverSpeed", 5.0), setting("offlineEditingCruiseSpeed", 15.0));
             let speed = on.then(|| keep.unwrap_or(default));
             answer(plandoc::set_speed(&current, index, speed).ok_or_else(|| format!("Item {index} carries no speed.")))
@@ -1852,7 +1852,7 @@ fn fence_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> 
         "plan.rallyPointController.addPoint" => match point_of(given.get(0)) {
             Some(at) => {
                 let fixed_wing = held().document.as_ref().is_some_and(|d| plandoc::vehicle_class(d.vehicle_type) == crate::cmdinfo::VehicleClass::FixedWing);
-                let altitude = crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))).unwrap_or(0.0);
+                let altitude = crate::read::value_number(&backend.value(&format!("{DEFAULT_ALTITUDE}.rawValue"))).unwrap_or(0.0);
                 fence_edit(|f, r| Some((f.clone(), crate::fencedoc::add_rally(r, at, fixed_wing, altitude))), "")
             }
             None => refused("A rally point needs a latitude and a longitude."),
@@ -1882,7 +1882,7 @@ fn fence_set(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     Some(match path {
         "plan.geoFenceController.breachReturnPoint" => match point_of(Some(&given)) {
             Some(at) => {
-                let default = held().breach_altitude.or_else(|| crate::read::value_number(&backend.get(&format!("{DEFAULT_ALTITUDE}.rawValue"))));
+                let default = held().breach_altitude.or_else(|| crate::read::value_number(&backend.value(&format!("{DEFAULT_ALTITUDE}.rawValue"))));
                 fence_edit(
                     |f, r| {
                         let kept = f.get("breachReturn").and_then(|b| b.get(2)).and_then(Value::as_f64).or(default);
@@ -2565,7 +2565,7 @@ pub fn summary_fields(backend: &dyn Backend) -> Option<Value> {
         return None;
     }
     let document = held().document.clone().unwrap_or_else(empty_document);
-    let speed = |name: &str| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue")));
+    let speed = |name: &str| crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue")));
     let speeds = crate::missionitems::Speeds {
         hover: speed("offlineEditingHoverSpeed").unwrap_or(5.0),
         cruise: speed("offlineEditingCruiseSpeed").unwrap_or(15.0),
@@ -2809,18 +2809,18 @@ pub fn launch_altitude_field(shown: f64, units: &str, path: &str) -> Value {
 }
 
 fn vehicle_has_home(backend: &dyn Backend) -> bool {
-    crate::read::flag(&crate::read::object(&backend.get("vehicle.homePosition")), "valid")
+    crate::read::flag(&backend.value("vehicle.homePosition"), "valid")
 }
 
 pub fn mission_speed_section(backend: &dyn Backend) -> Value {
     let document = held().document.clone().unwrap_or_else(empty_document);
-    let speed = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
+    let speed = |name: &str, default: f64| crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
     speed_section(&document, 0, &document.settings_sections, true, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0))
 }
 
 pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     let document = held().document.clone().unwrap_or_else(empty_document);
-    let speed = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
+    let speed = |name: &str, default: f64| crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
     let (vertical, horizontal) = (crate::read::Unit::vertical(backend), crate::read::Unit::horizontal(backend));
     let facts = document_facts(&document, index, speed("offlineEditingHoverSpeed", 5.0), speed("offlineEditingCruiseSpeed", 15.0), (&vertical, &horizontal));
     let launch = (index == 0 && !vehicle_has_home(backend)).then(|| document.home.map(|home| launch_altitude_field(vertical.show(home[2]), &vertical.name, &format!("{ITEM_ROOT}.0.{LAUNCH_ALTITUDE}")))).flatten();
@@ -3036,7 +3036,7 @@ pub fn survey_stats_inputs(backend: &dyn Backend, index: usize) -> Option<(Value
     let Some((document, at)) = held().document.clone().zip(index.checked_sub(1)) else { return not_survey() };
     let Some(plandoc::Item::Complex { json: item, .. }) = document.items.get(at) else { return not_survey() };
     let kind = item.get("complexItemType").and_then(Value::as_str).unwrap_or("");
-    let setting = |name: &str, default: f64| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
+    let setting = |name: &str, default: f64| crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(default);
     let speed = speed_in_force(&document, at, setting("offlineEditingHoverSpeed", 5.0), setting("offlineEditingCruiseSpeed", 15.0));
     let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).unwrap_or(0.0);
     let per_second = |metres: f64| if speed == 0.0 { 0.0 } else { metres / speed };

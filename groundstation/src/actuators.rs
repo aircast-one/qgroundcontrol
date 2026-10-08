@@ -4,7 +4,6 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 use crate::control::decode;
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", crate::coreplan::CHANGED];
@@ -689,7 +688,7 @@ fn parameter_path(name: &str) -> String {
 }
 
 fn fact(backend: &dyn Backend, name: &str) -> Option<Value> {
-    let read = object(&backend.get(&parameter_path(name)));
+    let read = backend.value(&parameter_path(name));
     (read.get("kind").and_then(Value::as_str) == Some("fact")).then_some(read)
 }
 

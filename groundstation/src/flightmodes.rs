@@ -136,12 +136,12 @@ pub fn hidden_modes_setting(vehicle: &Value) -> Option<String> {
 }
 
 fn hidden_modes(backend: &dyn Backend, setting: Option<&str>) -> Vec<String> {
-    let listed = setting.map(|path| text(&object(&backend.get(path)), "value")).unwrap_or_default();
+    let listed = setting.map(|path| text(&backend.value(path), "value")).unwrap_or_default();
     listed.split(',').filter(|mode| !mode.is_empty()).map(str::to_string).collect()
 }
 
 pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "flightMode,flightModes,advancedFlightModes,armed,flying,flightModeSetAvailable,px4Firmware,apmFirmware,vtol,fixedWing,multiRotor,rover,sub,airship"));
+    let vehicle = backend.value_fields("vehicle", "flightMode,flightModes,advancedFlightModes,armed,flying,flightModeSetAvailable,px4Firmware,apmFirmware,vtol,fixedWing,multiRotor,rover,sub,airship");
     let hidden_setting = hidden_modes_setting(&vehicle);
     let hidden = hidden_modes(backend, hidden_setting.as_deref());
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");

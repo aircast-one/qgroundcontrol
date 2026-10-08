@@ -378,6 +378,10 @@ fn carried() -> Option<Rc<Known>> {
     crate::hub::lock().active().map(known)
 }
 
+pub fn battery_inputs() -> (Option<u8>, Vec<(u8, crate::batteryfacts::BatteryFacts)>) {
+    carried().map_or((None, Vec::new()), |known| (Some(known.id), known.batteries.clone()))
+}
+
 fn fleet_member(path: &str) -> Option<(usize, &str)> {
     let rest = path.strip_prefix("vehicles.vehicles.")?;
     let (index, tail) = rest.split_once('.').map_or((rest, ""), |(i, t)| (i, t));
@@ -1038,11 +1042,14 @@ pub(crate) fn firmware_limit(path: &str, autopilot: u8, vtol: bool, param: &dyn 
     }
 }
 
-fn merged(answered: serde_json::Map<String, Value>, host: String) -> String {
-    serde_json::from_str::<Value>(&host).ok().filter(|h| h["kind"] == "object").map_or(host, |mut h| {
-        answered.into_iter().for_each(|(k, v)| h[k.as_str()] = v);
-        h.to_string()
-    })
+fn merged(answered: serde_json::Map<String, Value>, host: Value) -> Value {
+    match host["kind"] == "object" {
+        true => answered.into_iter().fold(host, |mut h, (k, v)| {
+            h[k.as_str()] = v;
+            h
+        }),
+        false => host,
+    }
 }
 
 fn answer_get(path: &str, known: &Known) -> Option<Value> {
@@ -1531,79 +1538,79 @@ impl<B: Backend> Facade<B> {
 }
 
 impl<B: Backend> Backend for Facade<B> {
-    fn get(&self, path: &str) -> String {
+    fn value(&self, path: &str) -> Value {
         if path == "core.qtReads" {
-            return tally().to_string();
+            return tally();
         }
         if let Some(answer) = crate::noticeboard::get(path) {
-            return answer.to_string();
+            return answer;
         }
         if let Some(answer) = crate::account::get(path) {
-            return answer.to_string();
+            return answer;
         }
         if let Some(answer) = crate::geotagcontroller::get(path) {
-            return answer.to_string();
+            return answer;
         }
         if let Some(answer) = crate::videohost::get(path) {
-            return answer.to_string();
+            return answer;
         }
         if let Some(fact) = (path == "plan.geoFenceController.breachReturnAltitude").then(crate::coreplan::breach_altitude_fact).flatten() {
-            return fact.to_string();
+            return fact;
         }
         if path == "vehicle" && switched_on() && !crate::qthost::present() {
             if no_vehicle() {
-                return json!({ "kind": "null" }).to_string();
+                return json!({ "kind": "null" });
             }
-            let mut whole: Value = serde_json::from_str(&self.get_fields("vehicle", &format!("{VEHICLE_OBJECT_FIELDS},{}", VEHICLE_FACTS.join(",")))).unwrap_or(Value::Null);
+            let mut whole: Value = self.value_fields("vehicle", &format!("{VEHICLE_OBJECT_FIELDS},{}", VEHICLE_FACTS.join(",")));
             whole["class"] = json!("Vehicle");
-            return whole.to_string();
+            return whole;
         }
         if let Some((prefix, field)) = path.rsplit_once('.').filter(|(prefix, _)| switched_on() && !crate::qthost::present() && no_vehicle() && !names_a_vehicle(prefix)) {
             if let Some(value) = offline_field(prefix, field) {
-                return json!({ "kind": "value", "value": value }).to_string();
+                return json!({ "kind": "value", "value": value });
             }
         }
         if let Some(answer) = crate::corelinks::get(path) {
-            return answer.to_string();
+            return answer;
         }
         let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().fleet_count() }));
         let count = count.or_else(|| (path == "vehicles.selectedVehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().selected_count() })));
         if let Some(answer) = path.starts_with("logDownload").then(|| onboard_log_get(path)).flatten() {
-            return answer.to_string();
+            return answer;
         }
         if let Some(list) = (path == VEHICLE_COMPONENTS).then(vehicle_components).flatten() {
-            return json!({ "kind": "value", "value": list }).to_string();
+            return json!({ "kind": "value", "value": list });
         }
         if let Some((component, Some(field))) = vehicle_component(path) {
             return match component.get(field).filter(|_| field != "class") {
                 Some(value) => json!({ "kind": "value", "value": value }),
                 None => json!({ "kind": "value", "value": null, "found": false }),
             }
-            .to_string();
+            ;
         }
         if let Some(value) = path.strip_prefix("corePlugin.options.").and_then(core_option) {
-            return json!({ "kind": "value", "value": value }).to_string();
+            return json!({ "kind": "value", "value": value });
         }
         if let Some(value) = path.rsplit_once('.').and_then(|(object, field)| crate::coreplan::controller_fields(object)?.get(field).cloned()) {
-            return json!({ "kind": "value", "value": value }).to_string();
+            return json!({ "kind": "value", "value": value });
         }
         if let Some(field) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.") {
-            let recording = || crate::read::flag(&crate::read::object(&self.0.get_fields("video", "recording")), "recording");
+            let recording = || crate::read::flag(&self.0.value_fields("video", "recording"), "recording");
             if let Some(value) = current_camera_fields(recording).or_else(simulated_camera_fields).and_then(|mut fields| fields.remove(field)) {
-                return json!({ "kind": "value", "value": value }).to_string();
+                return json!({ "kind": "value", "value": value });
             }
         }
         if let Some(value) = path.strip_prefix("vehicle.healthAndArmingCheckReport.").and_then(|name| arming_checks()?.get(name).cloned()) {
             return match value.get("kind") {
-                Some(_) => value.to_string(),
-                None => json!({ "kind": "value", "value": value }).to_string(),
+                Some(_) => value,
+                None => json!({ "kind": "value", "value": value }),
             };
         }
         if let Some(answer) = inspector_get(path) {
-            return answer.to_string();
+            return answer;
         }
         if calibration_without_vehicle(path) {
-            return json!({ "kind": "null" }).to_string();
+            return json!({ "kind": "null" });
         }
         if let Some(sensors) = path.strip_prefix("sensorsCal").filter(|_| switched_on()).and_then(|rest| {
             let sensors = crate::hub::lock().sensors_json()?;
@@ -1613,7 +1620,7 @@ impl<B: Backend> Backend for Facade<B> {
                 None => None,
             }
         }) {
-            return sensors.to_string();
+            return sensors;
         }
         if let Some(radio) = path.strip_prefix("radioCal").filter(|_| switched_on()).and_then(|rest| {
             let radio = crate::hub::lock().radio_json()?;
@@ -1623,13 +1630,13 @@ impl<B: Backend> Backend for Facade<B> {
                 None => None,
             }
         }) {
-            return radio.to_string();
+            return radio;
         }
         if let Some(formatted) = (path == "vehicle.formattedMessages" && switched_on()).then(|| crate::hub::lock().active().map(|v| v.message_log.formatted())).flatten() {
-            return json!({ "kind": "value", "value": formatted }).to_string();
+            return json!({ "kind": "value", "value": formatted });
         }
         if let Some(lines) = (path == "mavlinkConsole.lines").then(shell_lines).flatten() {
-            return json!({ "kind": "value", "value": lines }).to_string();
+            return json!({ "kind": "value", "value": lines });
         }
         if let Some(value) = path.strip_prefix("positionManager.").filter(|_| switched_on()).and_then(|name| crate::gcsposition::lock().property(name)) {
             return match (path, value) {
@@ -1640,30 +1647,30 @@ impl<B: Backend> Backend for Facade<B> {
                 }
                 (_, value) => json!({ "kind": "value", "value": value }),
             }
-            .to_string();
+            ;
         }
         if let Some(field) = path.strip_prefix("links.").filter(|_| switched_on()).and_then(links_field) {
-            return json!({ "kind": "value", "value": field }).to_string();
+            return json!({ "kind": "value", "value": field });
         }
         let absent = (switched_on() && (path == "vehicle" || path.starts_with("vehicle.")) && no_vehicle()).then(|| json!({ "kind": "null" }));
         let absent = absent.or_else(|| (switched_on() && selected_member(path).is_some_and(|(index, _)| crate::hub::lock().selected_member(index).is_none())).then(|| json!({ "kind": "null" })));
         count.or(absent).or_else(|| switched_on().then(|| answer_parameter(path)).flatten()).or_else(|| resolved(path).and_then(|(path, known)| answer_get(&path, &known).or_else(|| answer_scalar(&path, &known)))).map_or_else(
             || {
                 fell_through("get", path);
-                self.0.get(path)
+                self.0.value(path)
             },
-            |v| v.to_string(),
+            |v| v,
         )
     }
-    fn get_fields(&self, asked_path: &str, fields: &str) -> String {
+    fn value_fields(&self, asked_path: &str, fields: &str) -> Value {
         if let Some(controller) = (asked_path == "logDownload").then(|| onboard_logs(|logs| logs.controller_json())).flatten() {
             let wanted = fields_of(fields);
             let mut object: serde_json::Map<String, Value> = controller.as_object().cloned().unwrap_or_default().into_iter().filter(|(k, _)| wanted.contains(&k.as_str())).collect();
             object.insert("kind".to_string(), json!("object"));
-            return Value::Object(object).to_string();
+            return Value::Object(object);
         }
         if asked_path == CAMERA_INSTANCE {
-            let recording = || crate::read::flag(&crate::read::object(&self.0.get_fields("video", "recording")), "recording");
+            let recording = || crate::read::flag(&self.0.value_fields("video", "recording"), "recording");
             if let Some(mut answered) = current_camera_fields(recording).or_else(simulated_camera_fields) {
                 let wanted = fields_of(fields);
                 let missing: Vec<&str> = wanted.iter().filter(|f| !answered.contains_key(**f)).copied().collect();
@@ -1671,32 +1678,32 @@ impl<B: Backend> Backend for Facade<B> {
                 if missing.is_empty() {
                     let mut object = Value::Object(answered);
                     object["kind"] = json!("object");
-                    return object.to_string();
+                    return object;
                 }
                 fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
-                return merged(answered, self.0.get_fields(asked_path, &missing.join(",")));
+                return merged(answered, self.0.value_fields(asked_path, &missing.join(",")));
             }
         }
         if let Some(element) = crate::corelinks::get(asked_path).or_else(|| crate::geotagcontroller::get(asked_path)).or_else(|| crate::videohost::get(asked_path)).filter(|e| e["kind"] == "object") {
-            return only_fields(element, &fields_of(fields)).to_string();
+            return only_fields(element, &fields_of(fields));
         }
         if asked_path == "host" {
-            return only_fields(crate::noticeboard::lock().object(), &fields_of(fields)).to_string();
+            return only_fields(crate::noticeboard::lock().object(), &fields_of(fields));
         }
         if let Some((component, None)) = vehicle_component(asked_path) {
-            return only_fields(component, &fields_of(fields)).to_string();
+            return only_fields(component, &fields_of(fields));
         }
         if let Some(options) = (asked_path == "corePlugin.options").then(|| fields_of(fields).into_iter().map(|f| Some((f.to_string(), json!(core_option(f)?)))).collect::<Option<serde_json::Map<String, Value>>>()).flatten() {
-            return object_of(options).to_string();
+            return object_of(options);
         }
         if switched_on() && (asked_path == "vehicle" || asked_path.starts_with("vehicle.")) && no_vehicle() {
-            return json!({ "kind": "null" }).to_string();
+            return json!({ "kind": "null" });
         }
         if switched_on() && !crate::qthost::present() && no_vehicle() {
             let offline: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), offline_field(asked_path, f)?))).collect();
             if let Some(mut object) = offline.map(Value::Object) {
                 object["kind"] = json!("object");
-                return object.to_string();
+                return object;
             }
         }
         if let Some(Value::Object(mut answered)) = crate::coreplan::controller_fields(asked_path) {
@@ -1704,43 +1711,43 @@ impl<B: Backend> Backend for Facade<B> {
             let missing: Vec<&str> = wanted.iter().filter(|f| !answered.contains_key(**f)).copied().collect();
             answered.retain(|k, _| wanted.contains(&k.as_str()) || k == "kind");
             if missing.is_empty() {
-                return Value::Object(answered).to_string();
+                return Value::Object(answered);
             }
             fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
-            let host: Value = serde_json::from_str(&self.0.get_fields(asked_path, &missing.join(","))).unwrap_or(Value::Null);
+            let host: Value = self.0.value_fields(asked_path, &missing.join(","));
             host.as_object().filter(|h| h.get("kind") == Some(&json!("object"))).into_iter().flatten().for_each(|(k, v)| {
                 answered.entry(k.clone()).or_insert_with(|| v.clone());
             });
-            return Value::Object(answered).to_string();
+            return Value::Object(answered);
         }
         if let Some(lines) = (asked_path == "mavlinkConsole" && fields_of(fields) == ["lines"]).then(shell_lines).flatten() {
-            return json!({ "kind": "object", "lines": lines }).to_string();
+            return json!({ "kind": "object", "lines": lines });
         }
         if calibration_without_vehicle(asked_path) {
-            return json!({ "kind": "null" }).to_string();
+            return json!({ "kind": "null" });
         }
         if let Some(sensors) = (asked_path == "sensorsCal" && switched_on()).then(|| crate::hub::lock().sensors_json()).flatten() {
-            return only_fields(sensors, &fields_of(fields)).to_string();
+            return only_fields(sensors, &fields_of(fields));
         }
         if let Some(radio) = (asked_path == "radioCal" && switched_on()).then(|| crate::hub::lock().radio_json()).flatten() {
-            return only_fields(radio, &fields_of(fields)).to_string();
+            return only_fields(radio, &fields_of(fields));
         }
         if let Some(report) = (asked_path == "vehicle.healthAndArmingCheckReport").then(arming_checks).flatten() {
             let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), report.get(f)?.clone()))).collect();
             if let Some(mut object) = answered.map(Value::Object) {
                 object["kind"] = json!("object");
-                return object.to_string();
+                return object;
             }
         }
         if let Some(answer) = inspector_get(asked_path) {
-            return only_fields(answer, &fields_of(fields)).to_string();
+            return only_fields(answer, &fields_of(fields));
         }
         if asked_path == "positionManager" && switched_on() {
             let position = crate::gcsposition::lock();
             let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), position.property(f)?))).collect();
             if let Some(mut object) = answered.map(Value::Object) {
                 object["kind"] = json!("object");
-                return object.to_string();
+                return object;
             }
         }
         if asked_path == "links" && switched_on() {
@@ -1749,18 +1756,18 @@ impl<B: Backend> Backend for Facade<B> {
             if missing.is_empty() {
                 let mut object = Value::Object(answered);
                 object["kind"] = json!("object");
-                return object.to_string();
+                return object;
             }
             let asked = missing.iter().map(|(f, _)| *f).collect::<Vec<_>>().join(",");
             fell_through("fields", &format!("links [{asked}]"));
-            return merged(answered, self.0.get_fields(asked_path, &asked));
+            return merged(answered, self.0.value_fields(asked_path, &asked));
         }
         let resolved = resolved(asked_path);
         let path = resolved.as_ref().map_or(asked_path, |(path, _)| path.as_str());
         let known = resolved.as_ref().map(|(_, known)| known);
         let group = (path == "vehicle.radioStatus").then_some(known).flatten().and_then(|known| crate::vehiclefact::spec_group_fields(&crate::vehiclefact::RADIO, fields, |n| known.radio.raw(n)));
         if let Some(answered) = group {
-            return answered.to_string();
+            return answered;
         }
         let avoidance = (path == "vehicle.objectAvoidance").then_some(known).flatten().and_then(|known| {
             let now = crate::hub::now_ms();
@@ -1773,7 +1780,7 @@ impl<B: Backend> Backend for Facade<B> {
             Some(object)
         });
         if let Some(answered) = avoidance {
-            return answered.to_string();
+            return answered;
         }
         let (mut answered, missing) = known.map_or_else(|| (serde_json::Map::new(), fields_of(fields).into_iter().map(String::from).collect()), |known| answer_fields(path, fields, known));
         let facts: Vec<Value> = match path {
@@ -1786,19 +1793,26 @@ impl<B: Backend> Backend for Facade<B> {
             if !facts.is_empty() {
                 object["facts"] = json!(facts);
             }
-            return object.to_string();
+            return object;
         }
         let asked = if answered.is_empty() && facts.is_empty() { fields.to_string() } else { missing.join(",") };
         fell_through("fields", &format!("{asked_path} [{asked}]"));
-        let host = merged(answered, self.0.get_fields(asked_path, &asked));
-        match facts.is_empty() {
+        let host = merged(answered, self.0.value_fields(asked_path, &asked));
+        match facts.is_empty() || host["kind"] != "object" {
             true => host,
-            false => serde_json::from_str::<Value>(&host).ok().filter(|h| h["kind"] == "object").map_or(host, |mut h| {
-                let theirs = h.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
-                h["facts"] = json!(theirs.into_iter().chain(facts).collect::<Vec<_>>());
-                h.to_string()
-            }),
+            false => {
+                let theirs = host.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
+                let mut host = host;
+                host["facts"] = json!(theirs.into_iter().chain(facts).collect::<Vec<_>>());
+                host
+            }
         }
+    }
+    fn get(&self, path: &str) -> String {
+        self.value(path).to_string()
+    }
+    fn get_fields(&self, path: &str, fields: &str) -> String {
+        self.value_fields(path, fields).to_string()
     }
     fn set(&self, path: &str, value: &str) -> String {
         match crate::factwrite::owns_raw(path) {
@@ -2213,8 +2227,8 @@ mod tests {
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
         let known = Known { id: 1, parameters_ready: true, pending_writes: false, parameters_unanswered: false, parameters_missing: false, parameter_download_skipped: false, lost: false, home: None, roi: None, remote: Value::Null, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), gps2: crate::gpsfacts::GpsFacts::default(), integrity_stale: true, vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), aircast: Default::default(), obstacle: Default::default(), avoidance_enabled: false, temperature: Default::default(), local: Default::default(), local_setpoint: Default::default(), wind: Default::default(), setpoint: Default::default(), orbit: None, hygrometer: Default::default(), gimbals: Vec::new(), generator: Default::default(), efi: Default::default(), rpm: Default::default(), sub_info: Default::default(), terrain_blocks: (0, 0), escs: Default::default(), trigger_points: Default::default(), mission_indices: (-1, 0, 1), links: (Vec::new(), None), cameras: (Vec::new(), 0), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }), autotune: crate::autotune::Autotune::default(), plan_contents: (false, false) };
         assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
-        assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 }).to_string()), json!({ "kind": "object", "rcRSSI": 255, "armed": false }).to_string());
-        assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" }).to_string()), json!({ "kind": "null" }).to_string(), "a host with no such object keeps its answer");
+        assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 })), json!({ "kind": "object", "rcRSSI": 255, "armed": false }));
+        assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" })), json!({ "kind": "null" }), "a host with no such object keeps its answer");
         assert_eq!(answer_fields("planFly.missionController", "containsItems", &known).0.get("containsItems"), Some(&json!(false)), "the vehicle's mission is home alone, as MissionController::containsItems counts visualItems past the first");
         assert_eq!(answer_get("vehicle.id", &known), Some(json!({ "kind": "value", "value": 1 })));
         assert_eq!(answer_fields("vehicle", "coordinate", &known).0.get("coordinate"), Some(&Value::Null), "an unknown position reads as null nested, as the bridge spells it");

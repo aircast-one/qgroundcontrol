@@ -1,7 +1,6 @@
 use serde_json::{Value, json};
 
 use crate::label::capitalised;
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.id", "vehicle.batteries.count", crate::gimbal::GIMBAL_CHANGED];
@@ -36,7 +35,7 @@ fn title(group: &str) -> String {
 }
 
 fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
-    facts_of(&object(&backend.get(&format!("vehicle.{group}"))), &format!("{group}/"))
+    facts_of(&backend.value(&format!("vehicle.{group}")), &format!("{group}/"))
 }
 
 fn catalogued() -> Option<(Vec<Value>, Value)> {
@@ -61,7 +60,7 @@ pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value 
     if let Some((groups, vehicle)) = catalogued() {
         return instrument_groups(backend, true, groups, &vehicle);
     }
-    let vehicle = object(&backend.get("vehicle"));
+    let vehicle = backend.value("vehicle");
     let available = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let groups: Vec<Value> = vehicle
         .get("children")
@@ -82,12 +81,12 @@ pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value 
 }
 
 fn instrument_groups(backend: &dyn Backend, available: bool, groups: Vec<Value>, vehicle: &Value) -> Value {
-    let packs = crate::read::value_number(&backend.get("vehicle.batteries.count")).unwrap_or(0.0).max(0.0) as i64;
+    let packs = crate::read::value_number(&backend.value("vehicle.batteries.count")).unwrap_or(0.0).max(0.0) as i64;
     let pack_groups: Vec<Value> = (0..packs)
         .filter_map(|pack| {
             let group = format!("batteries.{pack}");
-            let facts = facts_of(&object(&backend.get(&format!("vehicle.{group}"))), &format!("{group}/"));
-            let id = crate::read::value_number(&backend.get(&format!("vehicle.{group}.id"))).map_or(pack, |id| id as i64);
+            let facts = facts_of(&backend.value(&format!("vehicle.{group}")), &format!("{group}/"));
+            let id = crate::read::value_number(&backend.value(&format!("vehicle.{group}.id"))).map_or(pack, |id| id as i64);
             (!facts.is_empty()).then(|| json!({ "group": group, "title": format!("Battery{id}"), "facts": facts }))
         })
         .collect();

@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, flag, object, refused};
+use crate::read::{Unit, flag, refused};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.dirty",
@@ -43,7 +43,7 @@ pub fn survey_stats_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(index) = args.first().and_then(|a| a.parse::<usize>().ok()) else { return refused("view.surveyStats needs the index of the item in the plan, as view.surveyStats(3) - the position in the list, not the sequence number") };
     let item_path = format!("plan.missionController.visualItems.{index}");
     let (survey, calc) = crate::coreplan::survey_stats_inputs(backend, index)
-        .unwrap_or_else(|| (object(&backend.get_fields(&item_path, "isSurveyItem,cameraShots,timeBetweenShots,coveredArea,complexDistance,layers,bottomFlightAlt,topFlightAlt")), object(&backend.get(&format!("{item_path}.cameraCalc")))));
+        .unwrap_or_else(|| (backend.value_fields(&item_path, "isSurveyItem,cameraShots,timeBetweenShots,coveredArea,complexDistance,layers,bottomFlightAlt,topFlightAlt"), backend.value(&format!("{item_path}.cameraCalc"))));
     let is_survey = flag(&survey, "isSurveyItem");
     let number = |key: &str| survey.get(key).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
     let fact = |property: &str| calc.get("facts").and_then(Value::as_array).and_then(|f| f.iter().find(|x| x.get("property").and_then(Value::as_str) == Some(property)));

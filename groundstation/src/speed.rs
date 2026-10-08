@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::altitude::merge;
-use crate::read::{Unit, flag, object, result_number};
+use crate::read::{Unit, flag, result_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -82,7 +82,7 @@ pub fn change(backend: &dyn Backend, path: &str, args: &str) -> Value {
 }
 
 fn range_meters_second(backend: &dyn Backend) -> Option<Range> {
-    let vehicle = object(&backend.get_fields("vehicle", "vtolInFwdFlight,fixedWing"));
+    let vehicle = backend.value_fields("vehicle", "vtolInFwdFlight,fixedWing");
     if vehicle.get("kind") != Some(&Value::String("object".into())) {
         return None;
     }
@@ -92,7 +92,7 @@ fn range_meters_second(backend: &dyn Backend) -> Option<Range> {
         true => {
             let minimum = number("vehicle.minimumEquivalentAirspeed")?;
             let maximum = number("vehicle.maximumEquivalentAirspeed")?;
-            let flying_at = crate::read::value_number(&backend.get("vehicle.airSpeed.rawValue")).filter(|v| v.is_finite());
+            let flying_at = crate::read::value_number(&backend.value("vehicle.airSpeed.rawValue")).filter(|v| v.is_finite());
             Range { label: "Airspeed", command: "guidedModeChangeEquivalentAirspeedMetersSecond", minimum, maximum, initial: flying_at.unwrap_or((minimum + maximum) / 2.0) }
         }
         false => {

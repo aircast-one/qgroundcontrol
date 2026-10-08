@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, flag, format_measure, object};
+use crate::read::{Unit, flag, format_measure};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -21,7 +21,7 @@ fn centre_of(circle: &Value) -> Option<Value> {
 }
 
 pub fn orbit_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "orbitActive"));
+    let vehicle = backend.value_fields("vehicle", "orbitActive");
     if vehicle.get("kind").and_then(Value::as_str) != Some("object") {
         return json!({
             "kind": "object",
@@ -31,9 +31,9 @@ pub fn orbit_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "reason": "No vehicle is connected.",
         });
     }
-    let lost = flag(&object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost")), "communicationLost");
+    let lost = flag(&backend.value_fields("vehicle.vehicleLinkManager", "communicationLost"), "communicationLost");
     let orbiting = (!lost).then(|| flag(&vehicle, "orbitActive"));
-    let circle = object(&backend.get("vehicle.orbitMapCircle"));
+    let circle = backend.value("vehicle.orbitMapCircle");
     let unit = Unit::horizontal(backend);
     let radius = circle
         .get("facts")

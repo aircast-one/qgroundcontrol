@@ -42,7 +42,7 @@ pub fn map_type_list(provider: &str) -> Vec<String> {
 }
 
 fn setting(backend: &dyn Backend, name: &str) -> String {
-    crate::read::object(&backend.get(&format!("settings.flightMapSettings.{name}.rawValue"))).get("value").and_then(Value::as_str).unwrap_or_default().to_string()
+    backend.value(&format!("settings.flightMapSettings.{name}.rawValue")).get("value").and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
 pub fn map_types_view(backend: &dyn Backend, _args: &[String]) -> Value {

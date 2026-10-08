@@ -1,14 +1,14 @@
 use serde_json::{Value, json};
 
 use crate::label::humanise;
-use crate::read::{object, refused};
+use crate::read::refused;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[];
 
 pub fn control_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(path) = args.first().filter(|p| !p.is_empty()) else { return refused("view.control needs the path of a fact, as view.control(settings.appSettings.audioMuted)") };
-    let fact = object(&backend.get(path));
+    let fact = backend.value(path);
     match fact.get("kind").and_then(Value::as_str) {
         Some("fact") => decode(&fact, path),
         Some("value") => fact.get("value").filter(|value| !value.is_null()).map_or(json!({ "kind": "null" }), |value| plain(value.clone(), path)),

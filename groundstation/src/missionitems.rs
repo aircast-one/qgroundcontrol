@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, flag, format_measure, integer, object, text};
+use crate::read::{Unit, flag, format_measure, integer, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -48,17 +48,17 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
     let horizontal = Unit::horizontal(backend);
     let speed = Unit::speed(backend);
     let shapes = args.iter().any(|arg| arg == "geometry");
-    let count = integer(&object(&backend.get("plan.missionController.visualItems.count")), "value").unwrap_or(0);
-    let has_items = flag(&object(&backend.get_fields("plan.missionController", "containsItems")), "containsItems");
+    let count = integer(&backend.value("plan.missionController.visualItems.count"), "value").unwrap_or(0);
+    let has_items = flag(&backend.value_fields("plan.missionController", "containsItems"), "containsItems");
     if count <= 0 {
         return json!({ "kind": "object", "class": "MissionItems", "available": false, "linksStartToHome": false, "items": [], "selected": -1, "reason": "This plan has no items yet." });
     }
-    let current = integer(&object(&backend.get("plan.missionController.currentPlanViewVIIndex")), "value").unwrap_or(-1);
-    let listed = object(&backend.get_fields("plan.missionController.visualItems", FIELDS));
+    let current = integer(&backend.value("plan.missionController.currentPlanViewVIIndex"), "value").unwrap_or(-1);
+    let listed = backend.value_fields("plan.missionController.visualItems", FIELDS);
     let items: Vec<Value> = match listed.get("elements").and_then(Value::as_array) {
         Some(elements) => elements.iter().enumerate().map(|(index, element)| item(element, index as i64, &vertical, &horizontal, &speed)).collect(),
         None => (0..count)
-            .map(|index| item(&object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS)), index, &vertical, &horizontal, &speed))
+            .map(|index| item(&backend.value_fields(&format!("plan.missionController.visualItems.{index}"), FIELDS), index, &vertical, &horizontal, &speed))
             .collect(),
     };
     let items: Vec<Value> = match walked(&items) {
@@ -87,7 +87,7 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
             })
             .collect(),
     };
-    let rover = flag(&object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover");
+    let rover = flag(&backend.value_fields("plan.controllerVehicle", "rover"), "rover");
     json!({
         "kind": "object",
         "class": "MissionItems",
@@ -993,12 +993,12 @@ fn editable(backend: &dyn Backend, current: i64) -> Value {
 
 pub(crate) fn speed_section(backend: &dyn Backend, index: i64) -> Value {
     let path = format!("plan.missionController.visualItems.{index}.speedSection");
-    let section = object(&backend.get_fields(&path, "available,specifyFlightSpeed"));
+    let section = backend.value_fields(&path, "available,specifyFlightSpeed");
     if section.get("kind").and_then(Value::as_str) != Some("object") {
         return Value::Null;
     }
     let value_path = format!("{path}.flightSpeed");
-    let speed = object(&backend.get(&value_path));
+    let speed = backend.value(&value_path);
     let is_fact = speed.get("kind").and_then(Value::as_str) == Some("fact");
     json!({
         "available": flag(&section, "available"),
@@ -1126,7 +1126,7 @@ fn layer_altitudes(item: &Value, layers: i64) -> Option<Vec<f64>> {
 }
 
 fn path_at(backend: &dyn Backend, path: &str) -> Vec<Value> {
-    object(&backend.get(path))
+    backend.value(path)
         .get("value")
         .and_then(Value::as_array)
         .map(|points| {
@@ -1142,7 +1142,7 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str, vertical: &Unit) -
     let Some(shape) = crate::missionkinds::lookup(kind).and_then(|kind| kind.geometry) else {
         return Value::Null;
     };
-    let vertices = object(&backend.get(&format!("plan.missionController.visualItems.{index}.{}.path", shape.1)));
+    let vertices = backend.value(&format!("plan.missionController.visualItems.{index}.{}.path", shape.1));
     let listed: Vec<Value> = vertices
         .get("value")
         .and_then(Value::as_array)
@@ -1153,7 +1153,7 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str, vertical: &Unit) -
                 .collect()
         })
         .unwrap_or_default();
-    let transects: Vec<Value> = object(&backend.get(&format!("plan.missionController.visualItems.{index}.visualTransectPoints")))
+    let transects: Vec<Value> = backend.value(&format!("plan.missionController.visualItems.{index}.visualTransectPoints"))
         .get("value")
         .and_then(Value::as_array)
         .map(|points| {
@@ -1165,7 +1165,7 @@ fn geometry_of(backend: &dyn Backend, index: i64, kind: &str, vertical: &Unit) -
         .unwrap_or_default();
     let base = format!("plan.missionController.visualItems.{index}");
     let flown_loop = path_at(backend, &format!("{base}.flightPolygon.path"));
-    let item = object(&backend.get(&base));
+    let item = backend.value(&base);
     let layers = fact_number(&item, "layers").map(|count| count as i64);
     let stack = layers.and_then(|count| layer_altitudes(&item, count));
     match listed.is_empty() {
@@ -1218,9 +1218,9 @@ fn fields_of(backend: &dyn Backend, index: i64) -> Value {
         return Value::Null;
     }
     let path = format!("plan.missionController.visualItems.{index}");
-    let own = editable_facts(&object(&backend.get(&path)), &path);
+    let own = editable_facts(&backend.value(&path), &path);
     let camera_path = format!("{path}.cameraCalc");
-    let camera = editable_facts(&object(&backend.get(&camera_path)), &camera_path);
+    let camera = editable_facts(&backend.value(&camera_path), &camera_path);
     let fields: Vec<Value> = own.into_iter().chain(camera).collect();
     match fields.is_empty() {
         true => Value::Null,

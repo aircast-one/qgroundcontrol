@@ -17,7 +17,7 @@ fn path(name: &str) -> String {
 }
 
 fn fact(backend: &dyn Backend, name: &str) -> Option<Value> {
-    let fact = object(&backend.get(&path(name)));
+    let fact = backend.value(&path(name));
     (fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty())).then_some(fact)
 }
 

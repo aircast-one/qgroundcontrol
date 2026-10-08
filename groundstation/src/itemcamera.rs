@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{enum_choice, enum_labels, flag, object, shown_text};
+use crate::read::{enum_choice, enum_labels, flag, shown_text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -46,8 +46,8 @@ pub fn item_camera_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(index) = args.first().and_then(|a| a.trim().parse::<usize>().ok()) else {
         return json!({ "kind": "object", "class": "ItemCamera", "available": false, "reason": "A mission item index is required." });
     };
-    let section = crate::coreplan::camera_section(index).unwrap_or_else(|| object(&backend.get(&format!("plan.missionController.visualItems.{index}.cameraSection"))));
-    let apm = flag(&object(&backend.get_fields("plan.controllerVehicle", "apmFirmware")), "apmFirmware");
+    let section = crate::coreplan::camera_section(index).unwrap_or_else(|| backend.value(&format!("plan.missionController.visualItems.{index}.cameraSection")));
+    let apm = flag(&backend.value_fields("plan.controllerVehicle", "apmFirmware"), "apmFirmware");
     let present = section.get("kind").and_then(Value::as_str) == Some("object") && mission_start_camera_shown(index, apm, crate::advancedui::shown());
     let specified = flag(&section, "specifyGimbal");
     let action = fact(&section, "cameraAction").and_then(|f| f.get("value")).and_then(Value::as_i64);

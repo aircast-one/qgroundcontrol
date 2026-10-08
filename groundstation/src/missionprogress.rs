@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, integer, object};
+use crate::read::{flag, integer};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -26,20 +26,20 @@ pub fn fraction(progress: &Progress) -> f64 {
 }
 
 pub fn last_sequence(backend: &dyn Backend) -> i64 {
-    let count = integer(&object(&backend.get("planFly.missionController.visualItems.count")), "value").unwrap_or(0);
+    let count = integer(&backend.value("planFly.missionController.visualItems.count"), "value").unwrap_or(0);
     (count > 0)
-        .then(|| integer(&object(&backend.get_fields(&format!("planFly.missionController.visualItems.{}", count - 1), "lastSequenceNumber")), "lastSequenceNumber").unwrap_or(count - 1))
+        .then(|| integer(&backend.value_fields(&format!("planFly.missionController.visualItems.{}", count - 1), "lastSequenceNumber"), "lastSequenceNumber").unwrap_or(count - 1))
         .unwrap_or(0)
 }
 
 pub fn mission_progress_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let available = flag(&object(&backend.get("vehicles.activeVehicleAvailable")), "value");
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flightMode,missionFlightMode"));
+    let available = flag(&backend.value("vehicles.activeVehicleAvailable"), "value");
+    let vehicle = backend.value_fields("vehicle", "armed,flightMode,missionFlightMode");
     let text = |key: &str| vehicle.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
-    let current = integer(&object(&backend.get_fields("planFly.missionController", "currentMissionIndex")), "currentMissionIndex").unwrap_or(-1);
+    let current = integer(&backend.value_fields("planFly.missionController", "currentMissionIndex"), "currentMissionIndex").unwrap_or(-1);
     let progress = Progress { current, last: last_sequence(backend) };
     let visible = available && shown(flag(&vehicle, "armed"), &text("flightMode"), &text("missionFlightMode"), &progress);
-    let distance = object(&backend.get("vehicle.distanceToNextWP"));
+    let distance = backend.value("vehicle.distanceToNextWP");
     json!({
         "kind": "object",
         "class": "MissionProgress",

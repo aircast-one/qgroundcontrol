@@ -612,10 +612,10 @@ pub fn apm_version_vehicle(vehicle: &Value) -> Option<&'static str> {
 }
 
 pub fn update_available(backend: &dyn crate::router::Backend) -> Option<String> {
-    let vehicle = crate::read::object(&backend.get_fields("vehicle", VERSION_FIELDS));
+    let vehicle = backend.value_fields("vehicle", VERSION_FIELDS);
     let running = crate::firmwareinfo::version(crate::read::integer(&vehicle, "firmwareMajorVersion"), crate::read::integer(&vehicle, "firmwareMinorVersion"), crate::read::integer(&vehicle, "firmwarePatchVersion"))?;
     let latest = match crate::qthost::present() {
-        true => crate::read::object(&backend.get("vehicle.latestStableFirmwareVersion")).get("value").and_then(Value::as_str).map(str::to_string)?,
+        true => backend.value("vehicle.latestStableFirmwareVersion").get("value").and_then(Value::as_str).map(str::to_string)?,
         false => {
             let official = crate::read::text(&vehicle, "firmwareVersionTypeString").is_empty();
             let px4 = crate::read::flag(&vehicle, "px4Firmware");

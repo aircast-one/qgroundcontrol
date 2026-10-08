@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{integer, object};
+use crate::read::integer;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[crate::noticeboard::NOTICES_CHANGED];
@@ -11,7 +11,7 @@ fn banner(title: &str, text: &str, app: &str) -> String {
 }
 
 pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let host = object(&backend.get_fields("host", "notices,dropped"));
+    let host = backend.value_fields("host", "notices,dropped");
     let app = crate::noticeboard::application_name();
     let through = args.first().and_then(|a| a.trim().parse::<i64>().ok()).unwrap_or(-1);
     let notices: Vec<Value> = host

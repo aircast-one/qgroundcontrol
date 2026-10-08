@@ -47,8 +47,8 @@ pub fn empty_text(available: bool, any: bool) -> &'static str {
 }
 
 pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
-    let system = crate::read::integer(&object(&backend.get("mavlinkInspector.activeSystem.id")), "value");
+    let model = backend.value_fields("mavlinkInspector.activeSystem.messages", FIELDS);
+    let system = crate::read::integer(&backend.value("mavlinkInspector.activeSystem.id"), "value");
     let messages: Vec<Value> = model
         .get("elements")
         .and_then(Value::as_array)
@@ -84,7 +84,7 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .unwrap_or_default();
     let available = model.get("kind").and_then(Value::as_str) == Some("object");
-    let systems: Vec<Value> = object(&backend.get_fields("mavlinkInspector.systems", "id"))
+    let systems: Vec<Value> = backend.value_fields("mavlinkInspector.systems", "id")
         .get("elements")
         .and_then(Value::as_array)
         .map(|elements| elements.iter().filter_map(|e| e.get("id").and_then(Value::as_i64)).map(|id| json!({ "id": id, "title": format!("System {id}") })).collect())
@@ -109,7 +109,7 @@ pub fn inspector_view(backend: &dyn Backend, _args: &[String]) -> Value {
 // it took out of this view a line earlier. Serving the list here keeps the two from ever describing
 // different messages, and drops elements without a name as the head did.
 fn selected_fields(backend: &dyn Backend, index: u64) -> Vec<Value> {
-    object(&backend.get_fields(&format!("mavlinkInspector.activeSystem.messages.{index}.fields"), "name,type,value"))
+    backend.value_fields(&format!("mavlinkInspector.activeSystem.messages.{index}.fields"), "name,type,value")
         .get("elements")
         .and_then(Value::as_array)
         .map(|elements| {
@@ -142,7 +142,7 @@ fn rate_refusal(rate: Option<i64>, available: bool, selected: Option<&Value>) ->
 
 pub fn set_message_interval(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let rate = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_i64());
-    let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
+    let model = backend.value_fields("mavlinkInspector.activeSystem.messages", FIELDS);
     let available = model.get("kind").and_then(Value::as_str) == Some("object");
     let selected = selected_message(&model);
     if let Some((token, reason)) = rate_refusal(rate, available, selected) {
@@ -167,7 +167,7 @@ pub fn write_selected(backend: &dyn Backend, value: &str) -> Value {
     let Some(index) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64()) else {
         return refused("malformed", "A message is selected by its position in the list.".to_string());
     };
-    let model = object(&backend.get_fields("mavlinkInspector.activeSystem.messages", FIELDS));
+    let model = backend.value_fields("mavlinkInspector.activeSystem.messages", FIELDS);
     let count = model.get("elements").and_then(Value::as_array).map_or(0, Vec::len) as i64;
     if model.get("kind").and_then(Value::as_str) != Some("object") {
         return refused("noVehicle", "No vehicle is being inspected.".to_string());
@@ -176,7 +176,7 @@ pub fn write_selected(backend: &dyn Backend, value: &str) -> Value {
         return refused("noSuchMessage", format!("There is no message at position {index}."));
     }
     let answered = crate::read::flag(&object(&backend.set(SELECTED, &json!({ "value": index }).to_string())), "ok");
-    let held = crate::read::integer(&object(&backend.get_fields("mavlinkInspector.activeSystem", "selected")), "selected");
+    let held = crate::read::integer(&backend.value_fields("mavlinkInspector.activeSystem", "selected"), "selected");
     let took = answered && held == Some(index);
     json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The inspector did not select that message.") } })
 }

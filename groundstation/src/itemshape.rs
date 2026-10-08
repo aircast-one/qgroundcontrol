@@ -41,10 +41,10 @@ fn editable_shape(backend: &dyn Backend, target: Option<(usize, &str)>) -> Resul
     let Some((index, property)) = target else {
         return Err(refused("malformed", "That is not a mission item shape the core edits.".to_string()));
     };
-    if flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress") {
+    if flag(&backend.value_fields("plan", "syncInProgress"), "syncInProgress") {
         return Err(refused("busy", "Wait for the sync to finish before changing the plan.".to_string()));
     }
-    let shape = object(&backend.get_fields(&format!("{SHAPE_ITEMS}{index}.{property}"), "count"));
+    let shape = backend.value_fields(&format!("{SHAPE_ITEMS}{index}.{property}"), "count");
     match shape.get("kind").and_then(Value::as_str) {
         Some("object") => Ok(shape),
         _ => Err(refused("noSuchShape", format!("Item {index} has no {property} to edit."))),
@@ -127,10 +127,10 @@ pub fn split(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let Some((shape_path, ring)) = split_target(path) else {
         return refused("malformed", "That is not a shape the core splits.".to_string());
     };
-    if flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress") {
+    if flag(&backend.value_fields("plan", "syncInProgress"), "syncInProgress") {
         return refused("busy", "Wait for the sync to finish before changing the plan.".to_string());
     }
-    let shape = object(&backend.get_fields(shape_path, "count"));
+    let shape = backend.value_fields(shape_path, "count");
     if shape.get("kind").and_then(Value::as_str) != Some("object") {
         return refused("noSuchShape", format!("There is no shape at {shape_path}."));
     }

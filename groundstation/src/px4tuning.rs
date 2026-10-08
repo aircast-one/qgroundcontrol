@@ -4,7 +4,6 @@ use regex::Regex;
 use serde_json::{Value, json};
 
 use crate::control::decode;
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.vehicleTypeString", "vehicle.parameterManager.parametersReady", "vehicle.px4Firmware", "vehicle.apmFirmware", "vehicle.multiRotor"];
@@ -180,12 +179,12 @@ fn parameter_path(name: &str) -> String {
 
 fn control(backend: &dyn Backend, name: &str) -> Option<Value> {
     let path = parameter_path(name);
-    let fact = object(&backend.get(&path));
+    let fact = backend.value(&path);
     (fact.get("kind").and_then(Value::as_str) == Some("fact")).then(|| decode(&fact, &path))
 }
 
 fn vehicle_pages(backend: &dyn Backend) -> &'static [Page] {
-    let vehicle = object(&backend.get_fields("vehicle", "vehicleTypeString,px4Firmware,apmFirmware,multiRotor"));
+    let vehicle = backend.value_fields("vehicle", "vehicleTypeString,px4Firmware,apmFirmware,multiRotor");
     let named = vehicle.get("vehicleTypeString").and_then(Value::as_str).unwrap_or("");
     let vehicle_type = (0..=u8::MAX).find(|t| !named.is_empty() && crate::vehiclefacade::mav_type_text(*t) == named).map_or(0, i64::from);
     match (crate::read::flag(&vehicle, "px4Firmware"), crate::read::flag(&vehicle, "apmFirmware") && crate::read::flag(&vehicle, "multiRotor")) {
@@ -230,7 +229,7 @@ pub fn tuning_view(backend: &dyn Backend, _args: &[String]) -> Value {
             })
         })
         .collect();
-    let modes = object(&backend.get_fields("vehicle", "pauseFlightMode,stabilizedFlightMode"));
+    let modes = backend.value_fields("vehicle", "pauseFlightMode,stabilizedFlightMode");
     let mode = |key: &str| modes.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     json!({
         "kind": "object",

@@ -74,9 +74,9 @@ pub fn merge(base: Value, extra: Value) -> Value {
 }
 
 pub(crate) fn range_meters(backend: &dyn Backend) -> Option<Range> {
-    let current = value_number(&backend.get("vehicle.altitudeRelative.rawValue"))?;
-    let minimum = value_number(&backend.get("settings.flyViewSettings.guidedMinimumAltitude.rawValue"))?;
-    let maximum = value_number(&backend.get("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
+    let current = value_number(&backend.value("vehicle.altitudeRelative.rawValue"))?;
+    let minimum = value_number(&backend.value("settings.flyViewSettings.guidedMinimumAltitude.rawValue"))?;
+    let maximum = value_number(&backend.value("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
     (maximum > minimum).then_some(Range { current, minimum, maximum })
 }
 

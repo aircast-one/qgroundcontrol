@@ -36,12 +36,12 @@ struct Fence {
 fn fence(backend: &dyn Backend) -> Fence {
     Fence {
         supported: crate::plan::capability(backend, "geoFenceController"),
-        syncing: flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress"),
+        syncing: flag(&backend.value_fields("plan", "syncInProgress"), "syncInProgress"),
     }
 }
 
 fn count(backend: &dyn Backend, shape: Shape) -> usize {
-    object(&backend.get(shape.list())).get("elements").and_then(Value::as_array).map_or(0, Vec::len)
+    backend.value(shape.list()).get("elements").and_then(Value::as_array).map_or(0, Vec::len)
 }
 
 pub(crate) fn point(value: Option<&Value>) -> Option<(f64, f64)> {
@@ -111,7 +111,7 @@ pub fn write_breach_return(backend: &dyn Backend, path: &str, value: &str) -> Va
     let given = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned()).unwrap_or(Value::Null);
     if given.is_null() {
         let answered = flag(&object(&backend.set(path, &json!({ "value": Value::Null }).to_string())), "ok");
-        let cleared = answered && crate::read::nested_coordinate_at(&object(&backend.get_fields(FENCE_CONTROLLER, "breachReturnPoint")), "breachReturnPoint").is_none();
+        let cleared = answered && crate::read::nested_coordinate_at(&backend.value_fields(FENCE_CONTROLLER, "breachReturnPoint"), "breachReturnPoint").is_none();
         return json!({ "ok": cleared, "result": cleared, "refusal": Value::Null, "reason": match cleared { true => Value::Null, false => json!("The geofence kept its breach return point.") } });
     }
     let Some((latitude, longitude)) = point(Some(&given)) else {
@@ -126,7 +126,7 @@ pub fn write_breach_return(backend: &dyn Backend, path: &str, value: &str) -> Va
         written["altitude"] = json!(altitude);
     }
     let answered = flag(&object(&backend.set(path, &json!({ "value": written }).to_string())), "ok");
-    let held = crate::read::nested_coordinate_at(&object(&backend.get_fields(FENCE_CONTROLLER, "breachReturnPoint")), "breachReturnPoint");
+    let held = crate::read::nested_coordinate_at(&backend.value_fields(FENCE_CONTROLLER, "breachReturnPoint"), "breachReturnPoint");
     let took = answered && held.is_some_and(|(lat, lon)| (lat - latitude).abs() < 1e-9 && (lon - longitude).abs() < 1e-9);
     json!({
         "ok": took,
@@ -173,12 +173,12 @@ fn owner_count(backend: &dyn Backend, owner: Owner) -> usize {
     match owner {
         Owner::Polygon => count(backend, Shape::Polygon),
         Owner::Circle => count(backend, Shape::Circle),
-        Owner::Rally => object(&backend.get(RALLY_POINTS)).get("elements").and_then(Value::as_array).map_or(0, Vec::len),
+        Owner::Rally => backend.value(RALLY_POINTS).get("elements").and_then(Value::as_array).map_or(0, Vec::len),
     }
 }
 
 fn syncing(backend: &dyn Backend) -> bool {
-    flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress")
+    flag(&backend.value_fields("plan", "syncInProgress"), "syncInProgress")
 }
 
 pub fn member_action(backend: &dyn Backend, path: &str, args: &str) -> Value {
@@ -193,7 +193,7 @@ pub fn member_action(backend: &dyn Backend, path: &str, args: &str) -> Value {
         return refused("noSuchShape", format!("There is no fence polygon at position {index}."));
     }
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
-    let vertices = crate::read::integer(&object(&backend.get_fields(&format!("plan.geoFenceController.polygons.{index}"), "count")), "count").unwrap_or(0);
+    let vertices = crate::read::integer(&backend.value_fields(&format!("plan.geoFenceController.polygons.{index}"), "count"), "count").unwrap_or(0);
     let Some(vertex) = given.get(0).and_then(Value::as_i64).filter(|v| (0..vertices).contains(v)) else {
         return refused("noSuchVertex", format!("The polygon has vertices 0 to {}.", vertices - 1));
     };

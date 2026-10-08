@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, object, value_number};
+use crate::read::{Unit, value_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -35,7 +35,7 @@ const SECONDS_PER_HOUR: i64 = 3600;
 const UNKNOWN: &str = "\u{2014}";
 
 pub fn imperial(backend: &dyn Backend) -> bool {
-    value_number(&backend.get("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET)
+    value_number(&backend.value("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET)
 }
 
 pub fn distance_text(metres: f64, imperial: bool) -> String {
@@ -228,16 +228,16 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         .and_then(|view| view.get("items").and_then(Value::as_array).cloned());
     let imperial = imperial(backend);
     let mission = crate::coreplan::summary_fields(backend).unwrap_or_else(|| {
-        object(&backend.get_fields(
+        backend.value_fields(
             "plan.missionController",
             "containsItems,missionTotalDistance,missionPlannedDistance,missionTime,missionHoverDistance,missionCruiseDistance,missionMaxTelemetry,minAMSLAltitude,maxAMSLAltitude",
-        ))
+        )
     });
     let has_items = mission.get("containsItems").and_then(Value::as_bool).unwrap_or(false);
     let metres = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
     let seconds = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
 
-    let airframe = object(&backend.get_fields("plan.controllerVehicle", "multiRotor,vtol"));
+    let airframe = backend.value_fields("plan.controllerVehicle", "multiRotor,vtol");
     let vtol = crate::read::flag(&airframe, "vtol");
     let hovers = vtol || crate::read::flag(&airframe, "multiRotor");
     let cruises = vtol || !crate::read::flag(&airframe, "multiRotor");
@@ -260,15 +260,15 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
         "durationComputedSeconds": walked
             .as_ref()
             .and_then(|items| {
-                let vehicle = object(&backend.get_fields("plan.controllerVehicle", "multiRotor,vtol"));
-                let speed = |name: &str| value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(0.0);
+                let vehicle = backend.value_fields("plan.controllerVehicle", "multiRotor,vtol");
+                let speed = |name: &str| value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue"))).unwrap_or(0.0);
                 flown_seconds(items, speed("offlineEditingHoverSpeed"), speed("offlineEditingCruiseSpeed"), speed("offlineEditingAscentSpeed"), crate::read::flag(&vehicle, "multiRotor"), crate::read::flag(&vehicle, "vtol"))
             }),
         "durationInputs": walked.as_ref().map(|items| json!({
-            "hover": value_number(&backend.get("settings.appSettings.offlineEditingHoverSpeed.rawValue")),
-            "cruise": value_number(&backend.get("settings.appSettings.offlineEditingCruiseSpeed.rawValue")),
-            "ascent": value_number(&backend.get("settings.appSettings.offlineEditingAscentSpeed.rawValue")),
-            "multiRotor": crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "multiRotor")), "multiRotor"),
+            "hover": value_number(&backend.value("settings.appSettings.offlineEditingHoverSpeed.rawValue")),
+            "cruise": value_number(&backend.value("settings.appSettings.offlineEditingCruiseSpeed.rawValue")),
+            "ascent": value_number(&backend.value("settings.appSettings.offlineEditingAscentSpeed.rawValue")),
+            "multiRotor": crate::read::flag(&backend.value_fields("plan.controllerVehicle", "multiRotor"), "multiRotor"),
             "distance": flown_distance(items),
         })),
         "altitudeBandComputed": walked.as_ref().and_then(|items| altitude_band(items)).map(|(low, high)| json!([low, high])),

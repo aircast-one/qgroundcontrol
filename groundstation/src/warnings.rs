@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object, text};
+use crate::read::{flag, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -66,7 +66,7 @@ fn arming_problems(backend: &dyn Backend, supported: bool) -> Option<Vec<Value>>
     if !supported {
         return None;
     }
-    let model = object(&backend.get("vehicle.healthAndArmingCheckReport.problemsForCurrentMode"));
+    let model = backend.value("vehicle.healthAndArmingCheckReport.problemsForCurrentMode");
     Some(
         model
             .get("elements")
@@ -105,11 +105,11 @@ pub fn warnings_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn read_state(backend: &dyn Backend) -> State {
-    let vehicle = object(&backend.get_fields("vehicle", "requiresGpsFix,armed,prearmError,coordinate,allSensorsHealthy,readyToFlyAvailable,readyToFly"));
+    let vehicle = backend.value_fields("vehicle", "requiresGpsFix,armed,prearmError,coordinate,allSensorsHealthy,readyToFlyAvailable,readyToFly");
     if vehicle.get("kind") != Some(&Value::String("object".into())) {
         return State::default();
     }
-    let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported"));
+    let report = backend.value_fields("vehicle.healthAndArmingCheckReport", "supported");
     State {
         connected: true,
         requires_gps_fix: flag(&vehicle, "requiresGpsFix"),

@@ -2,7 +2,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::{LazyLock, Mutex, PoisonError};
 
-use crate::read::{flag, integer, object};
+use crate::read::{flag, integer};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.id", "vehicle.armed", "vehicle.coordinate"];
@@ -145,8 +145,8 @@ fn qt_snapshot(backend: &dyn Backend, vehicle: i64, armed: bool, tail: bool) -> 
 
 pub fn track_view(backend: &dyn Backend, args: &[String]) -> Value {
     let tail = args.first().is_some_and(|arg| arg == "tail");
-    let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
-    let vehicle = object(&backend.get_fields("vehicle", "id,armed"));
+    let vehicles = backend.value_fields("vehicles", "activeVehicleAvailable");
+    let vehicle = backend.value_fields("vehicle", "id,armed");
     let present = flag(&vehicles, "activeVehicleAvailable") && vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let Some(id) = present.then(|| integer(&vehicle, "id")).flatten() else { return Track::default().snapshot(None, tail) };
     if crate::qthost::present() {

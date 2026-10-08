@@ -1,7 +1,6 @@
 use serde_json::{Value, json};
 
 use crate::qtjson::{to_int, validate_keys};
-use crate::read::object;
 use crate::router::Backend;
 
 const ACTIONS_FILE_TYPE: &str = "MavlinkActions";
@@ -83,7 +82,7 @@ pub fn parse(path: &str, text: &str) -> Result<Vec<Action>, String> {
 }
 
 fn text(backend: &dyn Backend, path: &str) -> String {
-    object(&backend.get(path)).get("value").and_then(Value::as_str).unwrap_or("").to_string()
+    backend.value(path).get("value").and_then(Value::as_str).unwrap_or("").to_string()
 }
 
 pub fn joystick_actions(backend: &dyn Backend) -> Vec<Action> {
@@ -136,7 +135,7 @@ type Cached = std::collections::HashMap<String, (std::path::PathBuf, Option<std:
 static CACHE: std::sync::LazyLock<std::sync::Mutex<Cached>> = std::sync::LazyLock::new(Default::default);
 
 pub fn mavlink_actions_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = crate::read::flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
+    let vehicle = crate::read::flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
     json!({
         "kind": "object",
         "class": "MavlinkActions",

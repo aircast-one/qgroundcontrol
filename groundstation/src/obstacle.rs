@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, flag as read_flag, format_measure, integer, object, result_flag};
+use crate::read::{Unit, flag as read_flag, format_measure, integer, result_flag};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -69,16 +69,16 @@ pub fn overlay_drawing(ring: &[i64], increment: Option<f64>, max_distance: i64, 
 }
 
 pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let avoidance = object(&backend.get_fields(
+    let avoidance = backend.value_fields(
         "vehicle.objectAvoidance",
         "available,enabled,distances,increment,minDistance,maxDistance,angleOffset,msSinceUpdate",
-    ));
+    );
     let flag = |key: &str| avoidance.get(key).and_then(Value::as_bool) == Some(true);
     let whole = |key: &str| integer(&avoidance, key);
     let real = |key: &str| avoidance.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
-    let overlay = read_flag(&object(&backend.get("settings.flyViewSettings.showObstacleDistanceOverlay.rawValue")), "value");
+    let overlay = read_flag(&backend.value("settings.flyViewSettings.showObstacleDistanceOverlay.rawValue"), "value");
     let available = flag("available") && overlay;
-    let ready = read_flag(&object(&backend.get("vehicle.parameterManager.parametersReady")), "value");
+    let ready = read_flag(&backend.value("vehicle.parameterManager.parametersReady"), "value");
     let supported = ready.then(|| result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, AVOIDANCE_PARAM]).to_string())));
     let ring: Vec<i64> = avoidance.get("distances").and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
     let (max_distance, min_distance) = (whole("maxDistance").unwrap_or(0), whole("minDistance").unwrap_or(0));

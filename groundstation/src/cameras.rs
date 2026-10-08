@@ -418,8 +418,8 @@ fn shorts(cameras: &[(usize, &str)]) -> Vec<String> {
 }
 
 pub fn cameras_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let video = crate::read::object(&backend.get_fields("video", "activeVideoSource,cameraSignals,cameraFromDrone,cameraNames,cameraSources,cameraUrls,pipSlot"));
-    let switched = |path: &str, default: bool| crate::read::object(&backend.get(path)).get("value").and_then(Value::as_bool).unwrap_or(default);
+    let video = backend.value_fields("video", "activeVideoSource,cameraSignals,cameraFromDrone,cameraNames,cameraSources,cameraUrls,pipSlot");
+    let switched = |path: &str, default: bool| backend.value(path).get("value").and_then(Value::as_bool).unwrap_or(default);
     let (cameras, active) = listed();
     view_of(&video, cameras, active, switched(MULTI_VIEW_PATH, false) && switched(STREAM_ENABLED_PATH, true))
 }

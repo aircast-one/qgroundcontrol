@@ -173,7 +173,7 @@ fn zoom(backend: &dyn Backend, value: &str) -> Value {
     let Some(asked) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()) else {
         return json!({ "ok": false, "result": false, "reason": "A zoom level has to be a number." });
     };
-    let camera = object(&backend.get_fields(CAMERA, "modelName,hasZoom"));
+    let camera = backend.value_fields(CAMERA, "modelName,hasZoom");
     if !crate::video::camera_present(&camera) {
         return json!({ "ok": false, "result": false, "reason": "No camera is connected." });
     }
@@ -360,7 +360,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
 }
 
 fn step(backend: &dyn Backend, path: &str) -> Value {
-    let plan = object(&backend.get_fields("plan", "canUndo,canRedo,undoTracking"));
+    let plan = backend.value_fields("plan", "canUndo,canRedo,undoTracking");
     let undoing = path == UNDO;
     let word = if undoing { "undo" } else { "redo" };
     if !crate::read::flag(&plan, "undoTracking") {
@@ -566,17 +566,17 @@ fn orbit(backend: &dyn Backend, args: &str) -> Value {
     let Some(clockwise) = args.get(3).and_then(Value::as_bool) else {
         return json!({ "ok": false, "reason": "An orbit has to turn one way or the other." });
     };
-    if !crate::read::flag(&object(&backend.get_fields("vehicle.supports", "orbitMode")), "orbitMode") {
+    if !crate::read::flag(&backend.value_fields("vehicle.supports", "orbitMode"), "orbitMode") {
         return json!({ "ok": false, "reason": "This vehicle does not support orbiting." });
     }
-    let limit = |name: &str| crate::read::value_number(&backend.get(&format!("settings.flyViewSettings.{name}.rawValue")));
+    let limit = |name: &str| crate::read::value_number(&backend.value(&format!("settings.flyViewSettings.{name}.rawValue")));
     match (limit("guidedMinimumAltitude"), limit("guidedMaximumAltitude")) {
         (Some(lowest), Some(highest)) if above_home < lowest || above_home > highest => {
             return json!({ "ok": false, "reason": format!("An orbit has to be between {lowest} and {highest} metres above the launch point.") });
         }
         _ => {}
     }
-    let home = object(&backend.get("vehicle.homePosition"));
+    let home = backend.value("vehicle.homePosition");
     if home.get("valid").and_then(Value::as_bool) != Some(true) {
         return json!({ "ok": false, "reason": "The vehicle has not reported where it launched from, so there is nothing to measure the orbit height against." });
     }
@@ -616,7 +616,7 @@ fn activate(backend: &dyn Backend, args: &str) -> Value {
     }
     let count = serde_json::from_str::<Value>(&backend.get("vehicles.vehicles.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64)).unwrap_or(0);
     let found = (0..count).find(|index| {
-        crate::read::integer(&object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), "id")), "id") == Some(wanted)
+        crate::read::integer(&backend.value_fields(&format!("vehicles.vehicles.{index}"), "id"), "id") == Some(wanted)
     });
     let Some(index) = found else {
         return json!({ "ok": false, "reason": format!("no vehicle {wanted} is connected") });
@@ -667,7 +667,7 @@ fn offered_patterns(backend: &dyn Backend) -> Option<Vec<String>> {
     if crate::coreplan::enabled() {
         return Some(crate::plan::offered_patterns(backend).into_iter().map(str::to_string).collect());
     }
-    let controller = object(&backend.get_fields("plan.missionController", "complexMissionItems"));
+    let controller = backend.value_fields("plan.missionController", "complexMissionItems");
     controller.get("complexMissionItems")?.as_array().map(|items| items.iter().filter_map(|item| item.as_str().or_else(|| item.get("canonicalName")?.as_str())).map(str::to_string).collect())
 }
 
@@ -751,7 +751,7 @@ fn send_console(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let Some(command) = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)) else {
         return json!({ "ok": false, "refusal": "malformed", "reason": "A console command is text." });
     };
-    if !crate::read::flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable") {
+    if !crate::read::flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable") {
         return json!({ "ok": false, "refusal": "noVehicle", "reason": "No vehicle is connected, so nothing will read the command." });
     }
     let dispatched = crate::read::flag(&object(&backend.invoke(path, &json!([command]).to_string())), "ok");
@@ -773,7 +773,7 @@ fn shape(backend: &dyn Backend, kind: &crate::missionkinds::Kind, index: i64, la
         if written.get("ok").and_then(Value::as_bool) != Some(true) {
             return Err("the takeoff would not take a launch position, and a takeoff without one cannot be flown".to_string());
         }
-        let home = object(&backend.get_fields("plan.missionController.visualItems.0", "coordinate"));
+        let home = backend.value_fields("plan.missionController.visualItems.0", "coordinate");
         return match home.get("coordinate").and_then(|at| at.get("valid")).and_then(Value::as_bool) {
             Some(true) => Ok(()),
             _ => Err("the launch position was accepted and the plan still has no launch point, so nothing the takeoff is measured from exists".to_string()),

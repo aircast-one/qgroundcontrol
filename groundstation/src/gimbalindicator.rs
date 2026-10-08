@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -23,12 +23,12 @@ pub const GIMBAL_ON_SCREEN: &str = "gimbal.onScreen";
 pub const GIMBAL_PITCH: &str = "gimbal.pitch";
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
-    let fact = object(&backend.get(&format!("settings.gimbalControllerSettings.{name}")));
+    let fact = backend.value(&format!("settings.gimbalControllerSettings.{name}"));
     fact.get("value").is_some_and(|v| v.as_bool().unwrap_or_else(|| v.as_f64().is_some_and(|n| n != 0.0)))
 }
 
 fn number_setting(backend: &dyn Backend, name: &str) -> Option<f64> {
-    crate::read::value_number(&backend.get(&format!("settings.gimbalControllerSettings.{name}.rawValue")))
+    crate::read::value_number(&backend.value(&format!("settings.gimbalControllerSettings.{name}.rawValue")))
 }
 
 fn angle(value: &Value) -> Option<String> {
@@ -130,7 +130,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         GIMBAL_TILT_90 => crate::guided::dispatch(backend, Some(op("tilt90", Value::Null)), vehicle, &qt_path("sendPitchBodyYaw"), "[-90, 0]"),
         GIMBAL_PITCH => match given.get(0).and_then(Value::as_f64).filter(|v| v.is_finite()) {
             Some(pitch) => {
-                let qt_body_yaw = crate::read::value_number(&backend.get(&qt_path("activeGimbal.bodyYaw"))).filter(|v| v.is_finite());
+                let qt_body_yaw = crate::read::value_number(&backend.value(&qt_path("activeGimbal.bodyYaw"))).filter(|v| v.is_finite());
                 let qt_args = qt_body_yaw.map_or_else(|| "[]".to_string(), |yaw| json!([pitch, yaw, false]).to_string());
                 crate::guided::dispatch(backend, Some(op("pitch", json!({ "pitch": pitch }))), vehicle, &qt_path("sendPitchBodyYaw"), &qt_args)
             }
@@ -166,7 +166,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             args,
         ),
         _ => {
-            let home = object(&backend.get("vehicle.homePosition"));
+            let home = backend.value("vehicle.homePosition");
             match (flag(&home, "valid"), home.get("latitude").and_then(Value::as_f64), home.get("longitude").and_then(Value::as_f64)) {
                 (true, Some(latitude), Some(longitude)) => crate::mapclick::send(
                     backend,

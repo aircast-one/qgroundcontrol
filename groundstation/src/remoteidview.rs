@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{object, value_number, value_string};
+use crate::read::{value_number, value_string};
 use crate::remoteid::{GcsFix, Settings};
 use crate::router::Backend;
 
@@ -73,7 +73,7 @@ pub fn status_json(f: &Flags, arm_error: &str) -> Value {
 }
 
 pub fn status_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let manager = object(&backend.get(MANAGER));
+    let manager = backend.value(MANAGER);
     let connected = manager.get("kind").and_then(Value::as_str) == Some("object");
     let yes = |key: &str| manager.get(key).and_then(Value::as_bool).unwrap_or(false);
     let set = settings(backend);
@@ -93,15 +93,15 @@ pub fn status_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn settings(backend: &dyn Backend) -> Settings {
-    let number = |name: &str| value_number(&backend.get(&fact_path(name))).unwrap_or(0.0);
-    let text = |name: &str| value_string(&backend.get(&fact_path(name)));
-    let flag = |name: &str| object(&backend.get(&fact_path(name))).get("value").and_then(Value::as_bool).unwrap_or(false);
+    let number = |name: &str| value_number(&backend.value(&fact_path(name))).unwrap_or(0.0);
+    let text = |name: &str| value_string(&backend.value(&fact_path(name)));
+    let flag = |name: &str| backend.value(&fact_path(name)).get("value").and_then(Value::as_bool).unwrap_or(false);
     let region = number("region") as i64;
     Settings {
         region,
         operator_id: text(if region == 1 { "operatorIDEU" } else { "operatorIDFAA" }),
         operator_id_type: number("operatorIDType") as i64,
-        operator_id_valid: object(&backend.get(&format!("{GROUP}.operatorIDValidForRegion"))).get("value").and_then(Value::as_bool).unwrap_or(false),
+        operator_id_valid: backend.value(&format!("{GROUP}.operatorIDValidForRegion")).get("value").and_then(Value::as_bool).unwrap_or(false),
         send_operator_id: flag("sendOperatorID"),
         basic_id: text("basicID"),
         basic_id_type: number("basicIDType") as i64,
@@ -123,11 +123,11 @@ pub fn settings(backend: &dyn Backend) -> Settings {
 }
 
 pub fn fix(backend: &dyn Backend, wall_ms: u64) -> GcsFix {
-    let position = object(&backend.get(GCS_POSITION));
+    let position = backend.value(GCS_POSITION);
     let coordinate = position.get("value").filter(|v| v.is_object()).unwrap_or(&position);
     let valid = coordinate.get("valid").and_then(Value::as_bool).unwrap_or(false);
     let read = |key: &str| coordinate.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
-    let stamp = value_number(&backend.get(GCS_TIMESTAMP)).filter(|t| *t > 0.0).map(|t| t as u64);
+    let stamp = value_number(&backend.value(GCS_TIMESTAMP)).filter(|t| *t > 0.0).map(|t| t as u64);
     GcsFix { valid: valid && stamp.is_some(), latitude: read("latitude"), longitude: read("longitude"), altitude: read("altitude"), age_ms: stamp.map(|t| wall_ms.saturating_sub(t)).unwrap_or(u64::MAX), positioning_error: crate::gcsposition::positioning_failed() }
 }
 

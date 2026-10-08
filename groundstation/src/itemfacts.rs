@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object, refused};
+use crate::read::{flag, refused};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -42,7 +42,7 @@ fn listed(backend: &dyn Backend, item: &str) -> Vec<Value> {
     LISTS
         .iter()
         .flat_map(|list| {
-            let read = object(&backend.get(&format!("{item}.{list}")));
+            let read = backend.value(&format!("{item}.{list}"));
             let elements = read.get("elements").and_then(Value::as_array).cloned().unwrap_or_default();
             elements
                 .into_iter()
@@ -74,7 +74,7 @@ fn qt_area_help(backend: &dyn Backend, item: &str, read: &Value) -> Option<&'sta
         .into_iter()
         .find(|(class, _, _)| read.get("class").and_then(Value::as_str) == Some(*class))
         .map(|(_, kind, shape)| (kind, shape))?;
-    area_help(kind, flag(&object(&backend.get(&format!("{item}.{shape}"))), "isValid"))
+    area_help(kind, flag(&backend.value(&format!("{item}.{shape}")), "isValid"))
 }
 
 fn qt_entry_point(item: &str, read: &Value) -> Option<Value> {
@@ -123,7 +123,7 @@ fn strings(read: &Value, key: &str) -> Vec<String> {
 }
 
 fn camera(backend: &dyn Backend, item: &str, structure: bool) -> Value {
-    let read = object(&backend.get(&format!("{item}.cameraCalc")));
+    let read = backend.value(&format!("{item}.cameraCalc"));
     if read.get("kind").and_then(Value::as_str) != Some("object") {
         return Value::Null;
     }
@@ -169,7 +169,7 @@ fn camera(backend: &dyn Backend, item: &str, structure: bool) -> Value {
         "customName": text("xlatCustomCameraName"),
         "custom": custom,
         "distanceMode": read.get("distanceMode").cloned().unwrap_or(Value::Null),
-        "distanceModes": crate::altitudemodes::transect_distance_modes(manual, flag(&object(&backend.get_fields("plan.controllerVehicle.supports", "terrainFrame")), "terrainFrame")),
+        "distanceModes": crate::altitudemodes::transect_distance_modes(manual, flag(&backend.value_fields("plan.controllerVehicle.supports", "terrainFrame"), "terrainFrame")),
         "distanceModePath": format!("{item}.cameraCalc.distanceMode"),
         "valueSetIsDistance": value_set_is_distance(&facts),
         "valueSetIsDistancePath": format!("{item}.cameraCalc.valueSetIsDistance"),
@@ -226,7 +226,7 @@ pub fn command_info(read: &Value) -> [(String, Value); 6] {
 }
 
 fn qt_vehicle_class(backend: &dyn Backend) -> crate::cmdinfo::VehicleClass {
-    let vehicle = object(&backend.get_fields("plan.controllerVehicle", "vtol,fixedWing"));
+    let vehicle = backend.value_fields("plan.controllerVehicle", "vtol,fixedWing");
     match (flag(&vehicle, "vtol"), flag(&vehicle, "fixedWing")) {
         (true, _) => crate::cmdinfo::VehicleClass::Vtol,
         (_, true) => crate::cmdinfo::VehicleClass::FixedWing,
@@ -242,7 +242,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         return crate::coreplan::item_facts(backend, index);
     }
     let item = format!("{ITEM_ROOT}.{index}");
-    let read = object(&backend.get(&item));
+    let read = backend.value(&item);
     let available = read.get("kind").and_then(Value::as_str) == Some("object");
     let simple = flag(&read, "isSimpleItem");
     let lists = match available {
@@ -288,7 +288,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
             ),
             false => None,
         },
-        "launchAltitude": match index == 0 && !crate::read::flag(&object(&backend.get("vehicle.homePosition")), "valid") {
+        "launchAltitude": match index == 0 && !crate::read::flag(&backend.value("vehicle.homePosition"), "valid") {
             true => crate::read::fact_property(&read, LAUNCH_ALTITUDE).map(|fact| field(fact, &item, LAUNCH_ALTITUDE, "Settings")),
             false => None,
         },
@@ -299,7 +299,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
             false => Value::Null,
         },
     });
-    let controller = object(&backend.get_fields("plan.controllerVehicle", "vtol,apmFirmware"));
+    let controller = backend.value_fields("plan.controllerVehicle", "vtol,apmFirmware");
     let wizard = wizard_info(simple && flag(&read, "isTakeoffItem") && flag(&read, "wizardMode"), flag(&controller, "vtol"));
     match built {
         Value::Object(map) => without_hidden_mission_speed(Value::Object(map.into_iter().chain(info).chain(wizard).collect()), index, flag(&controller, "vtol"), flag(&controller, "apmFirmware")),
@@ -309,7 +309,7 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 fn qt_previous_coordinate(backend: &dyn Backend, index: usize) -> Option<(f64, f64)> {
     (1..index).rev().find_map(|before| {
-        let read = object(&backend.get_fields(&format!("{ITEM_ROOT}.{before}"), "isSimpleItem,specifiesCoordinate,isStandaloneCoordinate,coordinate"));
+        let read = backend.value_fields(&format!("{ITEM_ROOT}.{before}"), "isSimpleItem,specifiesCoordinate,isStandaloneCoordinate,coordinate");
         let placed = flag(&read, "isSimpleItem") && flag(&read, "specifiesCoordinate") && !flag(&read, "isStandaloneCoordinate");
         let at = read.get("coordinate")?;
         placed.then(|| at.get("latitude")?.as_f64().zip(at.get("longitude")?.as_f64())).flatten()

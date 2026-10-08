@@ -10,18 +10,18 @@ const PWM: std::ops::RangeInclusive<i64> = 800..=2200;
 const CAMERA_CHANNELS: [&str; 5] = ["gimbalTiltChannel", "gimbalPanChannel", "cameraZoomChannel", "cameraLightChannel", "cameraRecordChannel"];
 
 fn configured_channels(backend: &dyn Backend) -> Vec<i64> {
-    let text = object(&backend.get(CONTROLS)).get("value").and_then(Value::as_str).unwrap_or("[]").to_string();
+    let text = backend.value(CONTROLS).get("value").and_then(Value::as_str).unwrap_or("[]").to_string();
     let controls: Vec<i64> = serde_json::from_str::<Value>(&text)
         .ok()
         .and_then(|v| v.as_array().cloned())
         .map(|controls| controls.iter().filter_map(|c| c.get("channel")?.as_i64()).collect())
         .unwrap_or_default();
-    let camera = CAMERA_CHANNELS.iter().filter_map(|name| crate::read::value_number(&backend.get(&format!("settings.flyViewSettings.{name}.rawValue"))).map(|c| c as i64).filter(|c| *c > 0));
+    let camera = CAMERA_CHANNELS.iter().filter_map(|name| crate::read::value_number(&backend.value(&format!("settings.flyViewSettings.{name}.rawValue"))).map(|c| c as i64).filter(|c| *c > 0));
     controls.into_iter().chain(camera).collect()
 }
 
 fn connected(backend: &dyn Backend) -> bool {
-    flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable")
+    flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable")
 }
 
 fn override_refusal(channel: Option<i64>, pwm: Option<i64>, connected: bool, configured: &[i64]) -> Option<(&'static str, String)> {
@@ -39,7 +39,7 @@ fn override_refusal(channel: Option<i64>, pwm: Option<i64>, connected: bool, con
 
 pub(crate) fn on_core(backend: &dyn Backend, mut action: Value) -> Option<bool> {
     crate::vehiclefacade::switched_on().then_some(())?;
-    action["vehicle"] = object(&backend.get("vehicle.id")).get("value").cloned().filter(Value::is_u64)?;
+    action["vehicle"] = backend.value("vehicle.id").get("value").cloned().filter(Value::is_u64)?;
     backend.core_guided(&action).map(|started| started.is_ok())
 }
 

@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -143,7 +143,7 @@ fn takeover_revert_ms() -> Option<u64> {
 }
 
 pub fn operator_control_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", FIELDS));
+    let vehicle = backend.value_fields("vehicle", FIELDS);
     if vehicle.get("kind").and_then(Value::as_str) != Some("object") {
         return json!({
             "kind": "object",
@@ -159,7 +159,7 @@ pub fn operator_control_view(backend: &dyn Backend, _args: &[String]) -> Value {
     }
     let known = flag(&vehicle, "firstControlStatusReceived");
     let holder = integer(&vehicle, "gcsMain");
-    let ours = crate::read::value_number(&backend.get("settings.mavlinkSettings.gcsMavlinkSystemID.rawValue")).map(|id| id as i64);
+    let ours = crate::read::value_number(&backend.value("settings.mavlinkSettings.gcsMavlinkSystemID.rawValue")).map(|id| id as i64);
     let answered = |yes: bool| known.then_some(yes);
     json!({
         "kind": "object",

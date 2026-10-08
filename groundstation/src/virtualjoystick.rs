@@ -16,17 +16,17 @@ pub const JOYSTICK_VALUE: &str = "vehicle.virtualTabletJoystickValue";
 pub const SEND_PERIOD_MS: u64 = 40;
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
-    object(&backend.get(&format!("settings.appSettings.{name}"))).get("value").and_then(Value::as_bool).unwrap_or(false)
+    backend.value(&format!("settings.appSettings.{name}")).get("value").and_then(Value::as_bool).unwrap_or(false)
 }
 
 fn sending(backend: &dyn Backend) -> bool {
-    let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
-    flag(&vehicles, "activeVehicleAvailable") && flag(&object(&backend.get_fields("vehicle", "initialConnectComplete")), "initialConnectComplete")
+    let vehicles = backend.value_fields("vehicles", "activeVehicleAvailable");
+    flag(&vehicles, "activeVehicleAvailable") && flag(&backend.value_fields("vehicle", "initialConnectComplete"), "initialConnectComplete")
 }
 
 pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "rover"));
-    let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
+    let vehicle = backend.value_fields("vehicle", "rover");
+    let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
     let rover = connected && flag(&vehicle, "rover");
     let left_handed = setting(backend, "virtualJoystickLeftHandedMode");
     json!({

@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.aircastLink.quality", "vehicle.aircastLink.radioType", "vehicle.aircastLink.status", "vehicle.aircastLink.videoBitrate"];
@@ -27,11 +26,11 @@ pub fn bitrate_text(kbps: i64) -> String {
 }
 
 fn history(backend: &dyn Backend, group: &Value, name: &str) -> Value {
-    group.get(name).cloned().filter(Value::is_array).unwrap_or_else(|| object(&backend.get(&format!("vehicle.aircastLink.{name}"))).get("value").cloned().unwrap_or(json!([])))
+    group.get(name).cloned().filter(Value::is_array).unwrap_or_else(|| backend.value(&format!("vehicle.aircastLink.{name}")).get("value").cloned().unwrap_or(json!([])))
 }
 
 pub fn aircast_link_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let group = object(&backend.get("vehicle.aircastLink"));
+    let group = backend.value("vehicle.aircastLink");
     let quality = raw(&group, "quality").filter(|q| *q != QUALITY_UNKNOWN);
     let bitrate = raw(&group, "videoBitrate").unwrap_or(0);
     json!({

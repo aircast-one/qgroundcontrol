@@ -53,7 +53,7 @@ pub fn bar(metres_across: f64, imperial: bool) -> Option<(String, f64)> {
 }
 
 pub fn map_scale_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let imperial = value_number(&backend.get("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET);
+    let imperial = value_number(&backend.value("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET);
     let across = args.first().and_then(|a| a.parse::<f64>().ok());
     let drawn = across.and_then(|m| bar(m, imperial));
     json!({

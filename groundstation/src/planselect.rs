@@ -4,12 +4,12 @@ use crate::read::{flag, integer, object};
 use crate::router::Backend;
 
 fn sequences(backend: &dyn Backend) -> Option<Vec<i64>> {
-    let listed = object(&backend.get_fields("plan.missionController.visualItems", "sequenceNumber"));
+    let listed = backend.value_fields("plan.missionController.visualItems", "sequenceNumber");
     listed.get("elements")?.as_array().map(|items| items.iter().filter_map(|item| item.get("sequenceNumber")?.as_i64()).collect())
 }
 
 fn selected(backend: &dyn Backend) -> Option<i64> {
-    integer(&object(&backend.get_fields("plan.missionController", "currentPlanViewSeqNum")), "currentPlanViewSeqNum")
+    integer(&backend.value_fields("plan.missionController", "currentPlanViewSeqNum"), "currentPlanViewSeqNum")
 }
 
 pub fn select(backend: &dyn Backend, path: &str, args: &str) -> Value {
@@ -43,7 +43,7 @@ pub fn write_undo_tracking(backend: &dyn Backend, path: &str, value: &str) -> Va
             crate::coreplan::note_undo_tracking(on);
             on
         }),
-        false => object(&backend.get_fields("plan", "undoTracking")).get("undoTracking").and_then(Value::as_bool),
+        false => backend.value_fields("plan", "undoTracking").get("undoTracking").and_then(Value::as_bool),
     };
     let took = answered && held == Some(on);
     json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The plan did not keep that undo setting.") } })

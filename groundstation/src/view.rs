@@ -476,8 +476,8 @@ fn dependencies_view(_backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn messages_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let items = messages::parse(&value_string(&backend.get("vehicle.formattedMessages")));
-    let unread = crate::read::integer(&crate::read::object(&backend.get_fields("vehicle", "messageCount")), "messageCount").unwrap_or(0).clamp(0, items.len() as i64);
+    let items = messages::parse(&value_string(&backend.value("vehicle.formattedMessages")));
+    let unread = crate::read::integer(&backend.value_fields("vehicle", "messageCount"), "messageCount").unwrap_or(0).clamp(0, items.len() as i64);
     json!({ "kind": "object", "class": "VehicleMessages", "order": ORDER, "count": items.len(), "unread": unread, "items": items })
 }
 
@@ -518,6 +518,7 @@ mod deps_cover_reads {
             ("cameradef", include_str!("cameradef.rs")),
             ("cameratrack", include_str!("cameratrack.rs")),
             ("cameraproto", include_str!("cameraproto.rs")),
+            ("changedriven", include_str!("changedriven.rs")),
             ("camsettings", include_str!("camsettings.rs")),
             ("onboardlogs", include_str!("onboardlogs.rs")),
             ("shell", include_str!("shell.rs")),
@@ -817,6 +818,7 @@ mod deps_cover_reads {
 
     fn literal_reads(body: &str) -> Vec<(String, String)> {
         body.match_indices("get_fields(")
+            .chain(body.match_indices("value_fields("))
             .filter_map(|(at, _)| {
                 let tail = &body[at..];
                 let close = tail.find(')')?;
@@ -836,9 +838,11 @@ mod deps_cover_reads {
     }
 
     fn whole_reads(body: &str) -> Vec<String> {
-        body.match_indices("backend.get(\"")
-            .filter_map(|(at, _)| {
-                let tail = &body[at + "backend.get(\"".len()..];
+        ["backend.get(\"", "backend.value(\""]
+            .iter()
+            .flat_map(|call| body.match_indices(call).map(move |(at, _)| at + call.len()))
+            .filter_map(|start| {
+                let tail = &body[start..];
                 let close = tail.find('"')?;
                 tail[close + 1..].starts_with(')').then(|| tail[..close].to_string())
             })

@@ -8,7 +8,7 @@ const ALLOW_TAKEOVER: &str = "settings.flyViewSettings.requestControlAllowTakeov
 const TIMEOUT_BOUNDS: (i64, i64) = (3, 60);
 
 fn timeout_setting(backend: &dyn Backend) -> (i64, (i64, i64)) {
-    let fact = crate::control::decode(&object(&backend.get(TIMEOUT)), TIMEOUT);
+    let fact = crate::control::decode(&backend.value(TIMEOUT), TIMEOUT);
     let bound = |key: &str, fallback: i64| fact.get(key).and_then(Value::as_f64).map_or(fallback, |v| v as i64);
     let bounds = (bound("min", TIMEOUT_BOUNDS.0), bound("max", TIMEOUT_BOUNDS.1));
     (fact.get("value").and_then(Value::as_f64).map_or(10, |v| v as i64), bounds)
@@ -27,7 +27,7 @@ pub fn request(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let view = crate::operatorcontrol::operator_control_view(backend, &[]);
     let (setting, bounds) = timeout_setting(backend);
-    let allow_takeover = given.get(0).and_then(Value::as_bool).unwrap_or_else(|| flag(&object(&backend.get(ALLOW_TAKEOVER)), "value"));
+    let allow_takeover = given.get(0).and_then(Value::as_bool).unwrap_or_else(|| flag(&backend.value(ALLOW_TAKEOVER), "value"));
     let timeout = given.get(1).and_then(Value::as_f64).filter(|v| v.fract() == 0.0).map(|v| v as i64).unwrap_or(match view["takeoverAllowed"] == true || view["inControl"] == true {
         true => 0,
         false => setting,

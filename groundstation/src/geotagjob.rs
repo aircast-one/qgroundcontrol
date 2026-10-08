@@ -79,7 +79,7 @@ fn refusal(action: Action, state: &Job) -> Option<(&'static str, &'static str)> 
 }
 
 pub fn act(backend: &dyn Backend, action: Action, path: &str) -> Value {
-    let controller = object(&backend.get_fields(CONTROLLER, "inProgress,logFile,imageDirectory,saveDirectory"));
+    let controller = backend.value_fields(CONTROLLER, "inProgress,logFile,imageDirectory,saveDirectory");
     if controller.get("kind").and_then(Value::as_str) != Some("object") {
         return json!({ "ok": false, "refusal": "unavailable", "reason": "The geotagging controller is not available." });
     }
@@ -99,7 +99,7 @@ pub fn write(backend: &dyn Backend, field: Field, path: &str, value: &str) -> Va
         return json!({ "ok": false, "result": false, "refusal": "notText", "reason": "A path has to be text." });
     };
     let property = field.property();
-    let controller = object(&backend.get_fields(CONTROLLER, &format!("inProgress,{property}")));
+    let controller = backend.value_fields(CONTROLLER, &format!("inProgress,{property}"));
     if flag(&controller, "inProgress") {
         return json!({ "ok": false, "result": false, "refusal": "busy", "reason": "Wait for tagging to finish, or cancel it, before changing paths." });
     }
@@ -107,7 +107,7 @@ pub fn write(backend: &dyn Backend, field: Field, path: &str, value: &str) -> Va
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason, "path": asked });
     }
     let dispatched = flag(&object(&backend.set(path, &json!({ "value": asked }).to_string())), "ok");
-    let held = text(&object(&backend.get_fields(CONTROLLER, property)), property);
+    let held = text(&backend.value_fields(CONTROLLER, property), property);
     let took = dispatched && held == asked;
     json!({
         "ok": took,

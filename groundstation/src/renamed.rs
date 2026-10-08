@@ -38,7 +38,7 @@ fn split(path: &str) -> Option<(&str, &str)> {
 pub fn read(backend: &dyn Backend, path: &str) -> Option<String> {
     let (object_path, old) = split(path)?;
     let (_, new) = renames(object_path).iter().find(|(name, _)| *name == old)?;
-    let controller = object(&backend.get_fields(object_path, new));
+    let controller = backend.value_fields(object_path, new);
     if controller.get("kind").and_then(Value::as_str) != Some("object") {
         return Some(json!({ "kind": "null" }).to_string());
     }

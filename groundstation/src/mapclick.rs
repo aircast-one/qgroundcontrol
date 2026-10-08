@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, integer, object};
+use crate::read::{flag, integer};
 use crate::router::Backend;
 
 // A click on the fly map sends one of five vehicle commands with the clicked point. Vehicle checks
@@ -83,7 +83,7 @@ fn goto_shown(in_goto_mode: bool) -> Option<GotoMark> {
 }
 
 fn goto_vehicle(backend: &dyn Backend) -> (Value, bool) {
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,px4Firmware,orbitActive,flightMode,gotoFlightMode"));
+    let vehicle = backend.value_fields("vehicle", "armed,flying,px4Firmware,orbitActive,flightMode,gotoFlightMode");
     let in_goto_mode = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
     (vehicle, in_goto_mode)
 }
@@ -95,7 +95,7 @@ fn loiter_circle_shown(backend: &dyn Backend, vehicle: &Value) -> bool {
 fn loiter_offer(backend: &dyn Backend) -> Option<GotoMark> {
     let (vehicle, in_goto_mode) = goto_vehicle(backend);
     let mark = goto_shown(in_goto_mode).filter(|_| in_goto_mode)?;
-    let guided = flag(&object(&backend.get_fields("vehicle.supports", "guidedMode")), "guidedMode");
+    let guided = flag(&backend.value_fields("vehicle.supports", "guidedMode"), "guidedMode");
     let shown = flag(&vehicle, "armed") && flag(&vehicle, "flying") && guided && loiter_circle_shown(backend, &vehicle) && !crate::guided::mission_active(backend);
     shown.then_some(mark)
 }
@@ -125,16 +125,16 @@ struct Offer {
 }
 
 fn offers(backend: &dyn Backend) -> Vec<Offer> {
-    let vehicle = object(&backend.get_fields("vehicle", "flying,sensorsPresentBits,flightMode,gotoFlightMode"));
-    let supports = object(&backend.get_fields("vehicle.supports", "roiMode,orbitMode"));
+    let vehicle = backend.value_fields("vehicle", "flying,sensorsPresentBits,flightMode,gotoFlightMode");
+    let supports = backend.value_fields("vehicle.supports", "roiMode,orbitMode");
     if vehicle.get("kind").and_then(Value::as_str) != Some("object") {
         return vec![];
     }
     let flying = flag(&vehicle, "flying");
     let gps = integer(&vehicle, "sensorsPresentBits").unwrap_or(GPS_SENSOR_BIT) & GPS_SENSOR_BIT != 0;
     let in_goto_mode = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
-    let confirm_in_guided = crate::read::value_number(&backend.get("settings.flyViewSettings.goToLocationRequiresConfirmInGuided.rawValue")).is_none_or(|v| v != 0.0);
-    let home = object(&backend.get("vehicle.homePosition"));
+    let confirm_in_guided = crate::read::value_number(&backend.value("settings.flyViewSettings.goToLocationRequiresConfirmInGuided.rawValue")).is_none_or(|v| v != 0.0);
+    let home = backend.value("vehicle.homePosition");
     let home_known = flag(&home, "valid") && home.get("altitude").and_then(Value::as_f64).is_some_and(f64::is_finite);
     let orbit = flying && flag(&supports, "orbitMode") && home_known && !crate::guided::mission_active(backend);
     [
@@ -191,8 +191,8 @@ struct Aircraft {
 }
 
 fn aircraft(backend: &dyn Backend) -> Aircraft {
-    let vehicle = object(&backend.get_fields("vehicle", "flying,sensorsPresentBits"));
-    let supports = object(&backend.get_fields("vehicle.supports", "roiMode,changeHeading"));
+    let vehicle = backend.value_fields("vehicle", "flying,sensorsPresentBits");
+    let supports = backend.value_fields("vehicle.supports", "roiMode,changeHeading");
     Aircraft {
         connected: vehicle.get("kind").and_then(Value::as_str) == Some("object"),
         flying: flag(&vehicle, "flying"),
@@ -214,9 +214,9 @@ fn click_refusal(click: Click, a: Aircraft) -> Option<(&'static str, &'static st
 }
 
 fn roi_action(backend: &dyn Backend, latitude: f64, longitude: f64, altitude: f64) -> Value {
-    match flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware") {
+    match flag(&backend.value_fields("vehicle", "px4Firmware"), "px4Firmware") {
         true => {
-            let home = object(&backend.get("vehicle.homePosition")).get("altitude").and_then(Value::as_f64).unwrap_or(f64::NAN);
+            let home = backend.value("vehicle.homePosition").get("altitude").and_then(Value::as_f64).unwrap_or(f64::NAN);
             let terrain = crate::terrainservice::height_now(latitude, longitude).ok().flatten().unwrap_or(home);
             json!({ "action": "roi", "latitude": latitude, "longitude": longitude, "altitude": terrain, "frame": crate::guidedcmd::FRAME_GLOBAL })
         }

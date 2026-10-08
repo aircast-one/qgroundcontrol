@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::instruments::display_units;
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 // Both heads read vehicle.gps as a raw FactGroup and rebuilt the same detail rows from it: which
@@ -104,9 +104,9 @@ fn whole(reading: Option<&Reading>) -> Option<i64> {
 }
 
 pub fn gps_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let active = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-    let available = active && object(&backend.get("vehicle.gps.telemetryAvailable"))["value"] == true;
-    let fact = |name: &str| available.then(|| reading(&object(&backend.get(&format!("vehicle.gps.{name}"))))).flatten();
+    let active = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let available = active && backend.value("vehicle.gps.telemetryAvailable")["value"] == true;
+    let fact = |name: &str| available.then(|| reading(&backend.value(&format!("vehicle.gps.{name}")))).flatten();
     let lock = fact("lock");
     let count = fact("count");
     json!({

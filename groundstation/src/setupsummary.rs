@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::{Value, json};
 
-use crate::read::{flag, object, text};
+use crate::read::{flag, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.autopilotPlugin.vehicleComponents", "vehicle.multiRotor", "vehicle.fixedWing", "vehicle.vtol", "vehicle.airship", "vehicle.vehicleTypeString", "vehicle.rover", "vehicle.sub", "vehicle.apmFirmware", "vehicle.firmwareMajorVersion", "vehicle.firmwareMinorVersion", "vehicle.firmwarePatchVersion", "vehicle.firmwareVersionTypeString", "vehicle.gitHash", "vehicle.firmwareCustomMajorVersion", "vehicle.firmwareCustomMinorVersion", "vehicle.firmwareCustomPatchVersion"];
@@ -477,7 +477,7 @@ pub fn firmware_text(major: i64, minor: i64, patch: i64, kind: &str) -> String {
 }
 
 fn vehicle(backend: &dyn Backend) -> Vehicle {
-    let read = object(&backend.get_fields("vehicle", "multiRotor,fixedWing,vtol,airship,vehicleTypeString,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash,firmwareCustomMajorVersion,firmwareCustomMinorVersion,firmwareCustomPatchVersion"));
+    let read = backend.value_fields("vehicle", "multiRotor,fixedWing,vtol,airship,vehicleTypeString,rover,sub,apmFirmware,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash,firmwareCustomMajorVersion,firmwareCustomMinorVersion,firmwareCustomPatchVersion");
     let part = |key: &str| read.get(key).and_then(Value::as_i64).unwrap_or(-1);
     Vehicle {
         multi_rotor: flag(&read, "multiRotor"),
@@ -496,11 +496,11 @@ fn vehicle(backend: &dyn Backend) -> Vehicle {
 }
 
 fn parameter(backend: &dyn Backend, name: &str) -> Option<Value> {
-    Some(object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))).filter(|f| f.get("kind").and_then(Value::as_str) == Some("fact") && !text(f, "name").is_empty())
+    Some(backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})"))).filter(|f| f.get("kind").and_then(Value::as_str) == Some("fact") && !text(f, "name").is_empty())
 }
 
 fn component_classes(backend: &dyn Backend) -> Vec<Value> {
-    object(&backend.get(COMPONENTS)).get("value").and_then(Value::as_array).cloned().unwrap_or_default()
+    backend.value(COMPONENTS).get("value").and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
 pub const PAGE: &str = "Summary";

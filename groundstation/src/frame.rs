@@ -40,7 +40,7 @@ fn token(vehicle: &Value) -> &'static str {
 // fact, and taking it from either would be a second snapshot at a different instant. Null means
 // the link is not being monitored, which is neither lost nor fine: a head must not read it as fine.
 fn contact_lost(backend: &dyn Backend) -> Option<bool> {
-    let link = object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled"));
+    let link = backend.value_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled");
     flag(&link, "communicationLostEnabled").then(|| flag(&link, "communicationLost"))
 }
 
@@ -50,9 +50,9 @@ fn motors(vehicle: &Value, parameters_ready: bool) -> Option<i64> {
 }
 
 pub fn frame_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let ready = flag(&object(&backend.get("vehicle.parameterManager.parametersReady")), "value");
+    let ready = flag(&backend.value("vehicle.parameterManager.parametersReady"), "value");
     let lost = contact_lost(backend);
-    let vehicle = object(&backend.get_fields("vehicle", FIELDS));
+    let vehicle = backend.value_fields("vehicle", FIELDS);
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     json!({
         "kind": "object",

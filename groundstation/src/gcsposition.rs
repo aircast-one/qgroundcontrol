@@ -392,7 +392,7 @@ pub fn lock() -> MutexGuard<'static, GcsPosition> {
 pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let wall = wall_now();
     let hosted = lock().hosted && crate::vehiclefacade::switched_on();
-    let read = (!hosted).then(|| crate::read::object(&backend.get_fields("positionManager", "gcsPosition,gcsHeading,gcsPositionHorizontalAccuracy,gcsPositionTimestamp,gcsPositionSource")));
+    let read = (!hosted).then(|| backend.value_fields("positionManager", "gcsPosition,gcsHeading,gcsPositionHorizontalAccuracy,gcsPositionTimestamp,gcsPositionSource"));
     let mut position = lock();
     if let Some(read) = read {
         fill_from_host(&mut position, &read);
@@ -433,14 +433,14 @@ fn fill_from_host(position: &mut GcsPosition, read: &Value) {
 // The vehicle's coordinate is held after the link drops, so a distance drawn from
 // it would keep counting against a position the vehicle left long ago.
 fn live_vehicle(backend: &dyn Backend) -> Option<(f64, f64)> {
-    let lost = crate::read::object(&backend.get("vehicle.vehicleLinkManager.communicationLost"))
+    let lost = backend.value("vehicle.vehicleLinkManager.communicationLost")
         .get("value")
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if lost {
         return None;
     }
-    let read = |path: &str| crate::read::object(&backend.get(path)).get("value").and_then(Value::as_f64).filter(|value| value.is_finite());
+    let read = |path: &str| backend.value(path).get("value").and_then(Value::as_f64).filter(|value| value.is_finite());
     read("vehicle.latitude").zip(read("vehicle.longitude")).filter(|(latitude, longitude)| *latitude != 0.0 || *longitude != 0.0)
 }
 

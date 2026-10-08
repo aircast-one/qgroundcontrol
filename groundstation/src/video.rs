@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, integer, object, text};
+use crate::read::{flag, integer, text};
 use crate::router::Backend;
 
 pub const VIDEO_DEPS: &[&str] = &[
@@ -75,7 +75,7 @@ pub fn video_summary(build_shows_video: bool, available: bool, decoding: bool, r
 }
 
 fn shot_points(backend: &dyn Backend) -> Vec<Value> {
-    object(&backend.get("vehicle.cameraTriggerPoints"))
+    backend.value("vehicle.cameraTriggerPoints")
         .get("elements")
         .and_then(Value::as_array)
         .map(|listed| {
@@ -91,8 +91,8 @@ fn shot_points(backend: &dyn Backend) -> Vec<Value> {
 }
 
 pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let setting = |name: &str| object(&backend.get(&format!("settings.videoSettings.{name}"))).get("value").cloned().unwrap_or(Value::Null);
-    let video = object(&backend.get_fields("video", "hasVideo,gstreamerEnabled,isStreamSource,decoding,streaming,recording,activeVideoSource,videoSize,hasMultipleVideoSources,cameraStatuses,cameraConnecting,cameraRecording,cameraConfigured,cameraFromDrone,cameraNames,cameraSources,cameraUrls"));
+    let setting = |name: &str| backend.value(&format!("settings.videoSettings.{name}")).get("value").cloned().unwrap_or(Value::Null);
+    let video = backend.value_fields("video", "hasVideo,gstreamerEnabled,isStreamSource,decoding,streaming,recording,activeVideoSource,videoSize,hasMultipleVideoSources,cameraStatuses,cameraConnecting,cameraRecording,cameraConfigured,cameraFromDrone,cameraNames,cameraSources,cameraUrls");
     let strings = |key: &str| -> Vec<String> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default() };
     let flags = |key: &str| -> Vec<bool> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default() };
     let (statuses, connecting, recording_flags) = (strings("cameraStatuses"), flags("cameraConnecting"), flags("cameraRecording"));
@@ -251,17 +251,17 @@ fn stream_labels(camera: &Value) -> Vec<String> {
 }
 
 pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let manager = object(&backend.get_fields("vehicle.cameraManager", "cameraLabels"));
+    let manager = backend.value_fields("vehicle.cameraManager", "cameraLabels");
     let labels: Vec<&str> = manager
         .get("cameraLabels")
         .and_then(Value::as_array)
         .map(|names| names.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
-    let camera = object(&backend.get_fields("vehicle.cameraManager.currentCameraInstance", CAMERA_FIELDS));
+    let camera = backend.value_fields("vehicle.cameraManager.currentCameraInstance", CAMERA_FIELDS);
     let model = text(&camera, "modelName");
     let present = camera_present(&camera);
     let thermal_available = present && camera.get("thermalStreamInstance").is_some_and(|stream| stream.is_object());
-    let shots = integer(&object(&backend.get_fields("vehicle.cameraTriggerPoints", "count")), "count").unwrap_or(0);
+    let shots = integer(&backend.value_fields("vehicle.cameraTriggerPoints", "count"), "count").unwrap_or(0);
     let vendor = text(&camera, "vendor");
     let mode = integer(&camera, "cameraMode").unwrap_or(UNDEFINED_MODE);
     let photo_status = match integer(&camera, "capturePhotosState") { Some(2) => PHOTO_CAPTURE_IN_PROGRESS, Some(3) => PHOTO_CAPTURE_INTERVAL_IN_PROGRESS, _ => PHOTO_CAPTURE_IDLE };
@@ -282,7 +282,7 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "model": model,
         "labels": labels,
         "choices": labels.len(),
-        "selected": crate::read::value_number(&backend.get("vehicle.cameraManager.currentCamera")).map(|n| n as i64),
+        "selected": crate::read::value_number(&backend.value("vehicle.cameraManager.currentCamera")).map(|n| n as i64),
         "vendor": vendor,
         "mode": mode,
         "modeKnown": mode != UNDEFINED_MODE,

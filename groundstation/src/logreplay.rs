@@ -4,7 +4,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use crate::linkconfig::{Kind, LinkConfig};
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::replay::Replay;
 use crate::router::Backend;
 use crate::transport::LinkId;
@@ -127,7 +127,7 @@ fn args(text: &str) -> Vec<Value> {
 }
 
 fn start(backend: &dyn Backend, path: &str) -> Value {
-    if flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable") {
+    if flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable") {
         return json!({ "ok": false, "reason": CLOSE_FIRST });
     }
     let config = LinkConfig { name: short_name(path), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: path.to_string() } };
@@ -201,8 +201,8 @@ pub fn owns(path: &str) -> bool {
 }
 
 pub fn log_replay_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let shown = flag(&object(&backend.get(SHOW_BAR)), "value");
-    let vehicle = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
+    let shown = flag(&backend.value(SHOW_BAR), "value");
+    let vehicle = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
     let controller = lock();
     let session = controller.session.as_ref();
     json!({

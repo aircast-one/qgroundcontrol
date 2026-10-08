@@ -28,7 +28,7 @@ fn path(name: &str) -> String {
 }
 
 pub fn fact(backend: &dyn Backend, name: &str) -> Option<Value> {
-    let fact = object(&backend.get(&path(name)));
+    let fact = backend.value(&path(name));
     let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
     present.then_some(fact)
 }
@@ -102,7 +102,7 @@ pub fn esp_bridge_view(backend: &dyn Backend, _args: &[String]) -> Value {
     refresh_status(ip.clone(), crate::hub::now_ms());
     let counts = STATUS.lock().unwrap_or_else(PoisonError::into_inner).counts.clone();
     let count = |key: &str| counts.as_ref().and_then(|c| c.get(key).cloned()).unwrap_or(Value::Null);
-    let vehicle = object(&backend.get_fields("vehicle", "messagesReceived,messagesLost,messagesSent"));
+    let vehicle = backend.value_fields("vehicle", "messagesReceived,messagesLost,messagesSent");
     let decoded = |name: &str| fact(backend, name).map(|f| decode(&f, &path(name)));
     let has_sta = fact(backend, "WIFI_SSIDSTA1").is_some();
     let busy = crate::hub::lock().active().is_some_and(|v| v.esp_wait.is_some());

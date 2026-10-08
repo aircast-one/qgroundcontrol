@@ -79,7 +79,7 @@ fn parameter_path(component: i64, name: &str) -> String {
 }
 
 fn fact(backend: &dyn Backend, component: i64, name: &str) -> Option<Value> {
-    let read = object(&backend.get(&parameter_path(component, name)));
+    let read = backend.value(&parameter_path(component, name));
     let present = read.get("kind").and_then(Value::as_str) == Some("fact") && read.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
     present.then_some(read)
 }
@@ -99,7 +99,7 @@ fn names(backend: &dyn Backend, component: i64) -> Vec<String> {
 }
 
 pub fn save(backend: &dyn Backend) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "id,firmwareType,vehicleType,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash"));
+    let vehicle = backend.value_fields("vehicle", "id,firmwareType,vehicleType,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash");
     let Some(id) = integer(&vehicle, "id") else { return json!({ "ok": false, "reason": "No vehicle is connected." }) };
     let whole = |key: &str| integer(&vehicle, key).unwrap_or(0);
     let header = [
@@ -156,7 +156,7 @@ fn shown(read: &Value, raw: f64) -> String {
 
 pub fn review(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)).unwrap_or_default();
-    let Some(vehicle_id) = integer(&object(&backend.get_fields("vehicle", "id")), "id") else { return json!({ "ok": false, "reason": "No vehicle is connected." }) };
+    let Some(vehicle_id) = integer(&backend.value_fields("vehicle", "id"), "id") else { return json!({ "ok": false, "reason": "No vehicle is connected." }) };
     let parsed = parse(&given);
     if parsed.is_empty() {
         return json!({ "ok": false, "reason": "No valid parameters found in file. Check that the file is in QGC or Mission Planner format." });

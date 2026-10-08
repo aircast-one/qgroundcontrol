@@ -22,7 +22,7 @@ fn frame_refusal(raw: Option<i64>, inputs: &Inputs) -> Option<(&'static str, Str
 
 pub fn write_global(backend: &dyn Backend, value: &str) -> Value {
     let raw = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()).filter(|v| v.fract() == 0.0).map(|v| v as i64);
-    let current = integer(&object(&backend.get_fields("plan.missionController", "globalAltitudeFrame")), "globalAltitudeFrame").unwrap_or(-1);
+    let current = integer(&backend.value_fields("plan.missionController", "globalAltitudeFrame"), "globalAltitudeFrame").unwrap_or(-1);
     if let Some((token, reason)) = frame_refusal(raw, &read_inputs(backend, true, current)) {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
     }
@@ -31,7 +31,7 @@ pub fn write_global(backend: &dyn Backend, value: &str) -> Value {
         true => flag(&crate::coreplan::act(backend, crate::coreplan::CORE_SET_ALTITUDE_MODE, &json!([raw]).to_string()), "ok"),
         false => {
             let answered = flag(&object(&backend.set(FRAME, &json!({ "value": raw }).to_string())), "ok");
-            let held = integer(&object(&backend.get_fields("plan.missionController", "globalAltitudeFrame")), "globalAltitudeFrame");
+            let held = integer(&backend.value_fields("plan.missionController", "globalAltitudeFrame"), "globalAltitudeFrame");
             answered && held == Some(raw)
         }
     };
@@ -60,7 +60,7 @@ pub fn write_distance_mode(backend: &dyn Backend, path: &str, value: &str) -> Va
         return refused("malformed", "Name the item as plan.missionController.visualItems.<index>.cameraCalc.".to_string());
     };
     let calc_path = format!("{ITEM_FRAMES}{index}.cameraCalc");
-    let calc = object(&backend.get_fields(&calc_path, "distanceMode"));
+    let calc = backend.value_fields(&calc_path, "distanceMode");
     let Some(current) = integer(&calc, "distanceMode") else {
         return refused("noSuchItem", format!("Item {index} has no camera distance to measure."));
     };
@@ -70,7 +70,7 @@ pub fn write_distance_mode(backend: &dyn Backend, path: &str, value: &str) -> Va
     }
     let raw = raw.unwrap_or_default();
     let answered = flag(&object(&backend.set(path, &json!({ "value": raw }).to_string())), "ok");
-    let took = answered && integer(&object(&backend.get_fields(&calc_path, "distanceMode")), "distanceMode") == Some(raw);
+    let took = answered && integer(&backend.value_fields(&calc_path, "distanceMode"), "distanceMode") == Some(raw);
     json!({ "ok": took, "result": took, "refusal": Value::Null, "reason": match took { true => Value::Null, false => json!("The item did not keep that altitude mode.") } })
 }
 

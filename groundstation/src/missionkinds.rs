@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{object, refused};
+use crate::read::refused;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.complexMissionItems", "plan.missionController.homePositionSet", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed", "plan.missionController.hasLandItem", "plan.controllerVehicle.multiRotor", "plan.controllerVehicle.rover", crate::coreplan::CHANGED, "settings.planViewSettings.takeoffItemNotRequired", "settings.planViewSettings.allowMultipleLandingPatterns"];
@@ -139,10 +139,10 @@ pub fn insert_state(document: &crate::plandoc::Document, spans: &[(i64, i64)], s
 }
 
 pub fn insertable(backend: &dyn Backend) -> Insertable {
-    let mission = object(&backend.get_fields(
+    let mission = backend.value_fields(
         "plan.missionController",
         if crate::coreplan::enabled() { "homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem,insertBeforeTakeoff" } else { "complexMissionItems,homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem" },
-    ));
+    );
     let answered = |key: &str, unset: bool| mission.get(key).and_then(Value::as_bool).unwrap_or(unset);
     Insertable {
         at_sequence: mission.get("currentPlanViewSeqNum").and_then(Value::as_i64).filter(|sequence| *sequence >= 0),
@@ -153,8 +153,8 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
         fly_through: answered("flyThroughCommandsAllowed", true),
         has_land: answered("hasLandItem", false),
         before_takeoff: mission.get("insertBeforeTakeoff").and_then(Value::as_bool),
-        multi_rotor: crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "multiRotor")), "multiRotor"),
-        rover: crate::read::flag(&object(&backend.get_fields("plan.controllerVehicle", "rover")), "rover"),
+        multi_rotor: crate::read::flag(&backend.value_fields("plan.controllerVehicle", "multiRotor"), "multiRotor"),
+        rover: crate::read::flag(&backend.value_fields("plan.controllerVehicle", "rover"), "rover"),
         patterns: if crate::coreplan::enabled() { Some(crate::plan::offered_patterns(backend).into_iter().map(str::to_string).collect()) } else { mission.get("complexMissionItems").and_then(Value::as_array).map(|names| {
             names.iter().filter_map(|name| name.as_str().or_else(|| name.get("canonicalName").and_then(Value::as_str))).map(str::to_string).collect()
         }) },

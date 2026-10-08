@@ -63,14 +63,14 @@ fn param_path(name: &str) -> String {
 }
 
 fn version(backend: &dyn Backend) -> Version {
-    let fields = object(&backend.get_fields("vehicle", "firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion"));
+    let fields = backend.value_fields("vehicle", "firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion");
     let part = |key: &str| fields.get(key).and_then(Value::as_i64).unwrap_or(-1);
     (part("firmwareMajorVersion"), part("firmwareMinorVersion"), part("firmwarePatchVersion"))
 }
 
 pub fn apm_sub_frame_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "sub,apmFirmware"));
-    let config = object(&backend.get(&param_path(FRAME_CONFIG)));
+    let vehicle = backend.value_fields("vehicle", "sub,apmFirmware");
+    let config = backend.value(&param_path(FRAME_CONFIG));
     let present = config.get("kind").and_then(Value::as_str) == Some("fact") && config.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
     if !(present && flag(&vehicle, "sub") && flag(&vehicle, "apmFirmware")) {
         return json!({ "kind": "object", "class": "ApmSubFrame", "available": false });

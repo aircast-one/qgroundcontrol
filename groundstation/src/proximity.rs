@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -50,7 +49,7 @@ pub fn sectors(group: &Value) -> Vec<Value> {
 }
 
 pub fn proximity_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let group = object(&backend.get("vehicle.distanceSensors"));
+    let group = backend.value("vehicle.distanceSensors");
     json!({
         "kind": "object",
         "class": "ProximityRadar",

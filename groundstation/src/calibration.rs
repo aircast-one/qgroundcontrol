@@ -68,7 +68,7 @@ fn gated_as(method: &str) -> &str {
 }
 
 fn coordinate(backend: &dyn Backend, path: &str) -> Value {
-    let point = object(&backend.get(path));
+    let point = backend.value(path);
     let valid = flag(&point, "valid") && point.get("latitude").and_then(Value::as_f64).is_some();
     json!({ "valid": valid, "latitude": if valid { point["latitude"].clone() } else { Value::Null }, "longitude": if valid { point["longitude"].clone() } else { Value::Null } })
 }
@@ -81,7 +81,7 @@ const COMPASS_PARAMS: [(&str, &str, &str); 3] = [
 
 fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
     let exists = crate::read::result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, name]).to_string()));
-    exists.then(|| object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))).and_then(|fact| fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64))
+    exists.then(|| backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})"))).and_then(|fact| fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64))
 }
 
 pub fn fitness_bands(external: bool) -> (f64, f64, f64) {
@@ -124,7 +124,7 @@ pub fn compass_priority_mask(priorities: &[Option<f64>]) -> u8 {
 fn priority_mask(backend: &dyn Backend) -> u8 {
     let priorities: Vec<Option<f64>> = PRIORITY_PARAMS
         .iter()
-        .map(|name| object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})"))).get("rawValue").and_then(Value::as_f64))
+        .map(|name| backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})")).get("rawValue").and_then(Value::as_f64))
         .collect();
     compass_priority_mask(&priorities)
 }
@@ -217,8 +217,8 @@ fn completed_dialog(cal: &Value) -> &'static str {
 }
 
 pub fn calibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let cal = object(&backend.get("sensorsCal"));
-    let vehicle = object(&backend.get_fields("vehicle", "px4Firmware,multiRotor,rover,sub,fixedWing"));
+    let cal = backend.value("sensorsCal");
+    let vehicle = backend.value_fields("vehicle", "px4Firmware,multiRotor,rover,sub,fixedWing");
     let classes = vehicle.get("multiRotor").map(|_| Classes {
         multi_rotor: flag(&vehicle, "multiRotor"),
         rover: flag(&vehicle, "rover"),
@@ -300,8 +300,8 @@ fn refusal(action: Action, state: Session, cal: &Value, classes: Option<&Classes
 }
 
 pub fn act(backend: &dyn Backend, action: Action, path: &str, args: &str) -> Value {
-    let cal = object(&backend.get("sensorsCal"));
-    let vehicle = object(&backend.get_fields("vehicle", "px4Firmware,multiRotor,rover,sub,fixedWing"));
+    let cal = backend.value("sensorsCal");
+    let vehicle = backend.value_fields("vehicle", "px4Firmware,multiRotor,rover,sub,fixedWing");
     let classes = vehicle.get("multiRotor").map(|_| Classes {
         multi_rotor: flag(&vehicle, "multiRotor"),
         rover: flag(&vehicle, "rover"),

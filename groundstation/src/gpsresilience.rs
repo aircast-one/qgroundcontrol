@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 
-use crate::read::object;
 use crate::router::Backend;
 
 const INTEGRITY_FACTS: [&str; 3] = ["jammingState", "spoofingState", "authenticationState"];
@@ -27,7 +26,7 @@ struct State {
 }
 
 fn read(backend: &dyn Backend, group: &str, state: &str) -> State {
-    let fact = object(&backend.get(&format!("{group}.{state}")));
+    let fact = backend.value(&format!("{group}.{state}"));
     let is_fact = fact.get("kind").and_then(Value::as_str) == Some("fact");
     State {
         value: is_fact.then(|| fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64)).flatten().map(|v| v as i64),

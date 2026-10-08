@@ -1,7 +1,6 @@
 use serde_json::{Value, json};
 
 use crate::control::decode;
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -20,7 +19,7 @@ pub fn shown_ids(text: &str) -> Vec<i64> {
 }
 
 fn shown_text(backend: &dyn Backend) -> String {
-    object(&backend.get(SHOWN_PATH)).get("value").and_then(Value::as_str).unwrap_or_default().to_string()
+    backend.value(SHOWN_PATH).get("value").and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
 pub fn first_run_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -29,7 +28,7 @@ pub fn first_run_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .iter()
         .filter_map(|(name, label)| {
             let path = format!("settings.appSettings.{name}");
-            let fact = object(&backend.get(&path));
+            let fact = backend.value(&path);
             (fact.get("kind").and_then(Value::as_str) == Some("fact")).then(|| {
                 let mut control = decode(&fact, &path);
                 control["label"] = json!(label);
@@ -57,7 +56,7 @@ pub fn mark_shown(backend: &dyn Backend) -> Value {
         return json!({ "ok": true });
     }
     [("preferredFirmwareClass", "offlineEditingFirmwareClass"), ("preferredVehicleClass", "offlineEditingVehicleClass")].iter().for_each(|(preferred, offline)| {
-        let chosen = object(&backend.get(&format!("settings.appSettings.{preferred}")));
+        let chosen = backend.value(&format!("settings.appSettings.{preferred}"));
         if let Some(class) = chosen.get("rawValue").or(chosen.get("value")).and_then(Value::as_i64).filter(|class| *class != 0) {
             crate::factwrite::write(backend, &format!("settings.appSettings.{offline}"), &json!({ "value": class }).to_string());
         }

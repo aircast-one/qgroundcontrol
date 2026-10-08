@@ -144,13 +144,13 @@ struct Read {
 }
 
 fn read(backend: &dyn Backend) -> Option<Read> {
-    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware,sub,multiRotor,rover"));
-    let class_fact = object(&backend.get(&param_path(FRAME_CLASS)));
+    let vehicle = backend.value_fields("vehicle", "apmFirmware,sub,multiRotor,rover");
+    let class_fact = backend.value(&param_path(FRAME_CLASS));
     (flag(&vehicle, "apmFirmware") && !flag(&vehicle, "sub") && present(&class_fact)).then(|| Read {
         copter: flag(&vehicle, "multiRotor"),
         rover: flag(&vehicle, "rover"),
         class_fact,
-        type_fact: object(&backend.get(&param_path(FRAME_TYPE))),
+        type_fact: backend.value(&param_path(FRAME_TYPE)),
     })
 }
 

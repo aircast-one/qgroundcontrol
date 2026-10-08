@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object, text};
+use crate::read::{flag, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -23,7 +23,7 @@ fn strings(read: &Value, key: &str) -> Vec<String> {
 }
 
 pub fn vehicle_links_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let manager = object(&backend.get_fields("vehicle.vehicleLinkManager", FIELDS));
+    let manager = backend.value_fields("vehicle.vehicleLinkManager", FIELDS);
     if manager.get("kind").and_then(Value::as_str) != Some("object") {
         return json!({
             "kind": "object",

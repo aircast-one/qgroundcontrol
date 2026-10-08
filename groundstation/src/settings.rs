@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::control::decode;
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", PERSISTENCE_OFF];
@@ -118,7 +118,7 @@ fn choices_json(fact: &Value, labels: Vec<String>, raws: Vec<Value>) -> Value {
 fn with_choices(backend: &dyn Backend, fact: &Value) -> Value {
     match fact.get("name").and_then(Value::as_str) {
         Some("autoConnectNmeaPort") => {
-            let ports = object(&backend.get_fields("links", "serialPorts,serialPortStrings"));
+            let ports = backend.value_fields("links", "serialPorts,serialPortStrings");
             let listed = crate::links::serial_ports(ports.get("serialPorts"), ports.get("serialPortStrings"));
             let current = fact.get("value").and_then(Value::as_str).filter(|v| !v.is_empty()).map(str::to_string);
             let extra = current.filter(|c| !listed.iter().any(|p| p["port"].as_str() == Some(c.as_str())));
@@ -521,8 +521,8 @@ pub fn apm_streams_apply(connected: bool, apm_firmware: bool) -> bool {
 fn section_applies(group: &str, backend: Option<&dyn Backend>) -> bool {
     match (group, backend) {
         ("apmMavlinkStreamRateSettings", Some(backend)) => apm_streams_apply(
-            flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable"),
-            flag(&object(&backend.get_fields("vehicle", "apmFirmware")), "apmFirmware"),
+            flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable"),
+            flag(&backend.value_fields("vehicle", "apmFirmware"), "apmFirmware"),
         ),
         _ => true,
     }
@@ -558,9 +558,9 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
     let group = slice.split_once('#').map_or(slice, |(group, _)| group);
     let path = format!("settings.{group}");
     let Some(backend) = backend else { return json!({ "title": title, "group": group, "path": path }) };
-    let facts: Vec<Value> = object(&backend.get(&path)).get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
-    let stream_source = (group == "videoSettings").then(|| flag(&object(&backend.get_fields("video", "isStreamSource")), "isStreamSource"));
-    let persistence_off = group == "mavlinkSettings" && object(&backend.get(PERSISTENCE_OFF)).get("value").and_then(Value::as_bool) == Some(true);
+    let facts: Vec<Value> = backend.value(&path).get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
+    let stream_source = (group == "videoSettings").then(|| flag(&backend.value_fields("video", "isStreamSource"), "isStreamSource"));
+    let persistence_off = group == "mavlinkSettings" && backend.value(PERSISTENCE_OFF).get("value").and_then(Value::as_bool) == Some(true);
     let apm_streams = group != "mavlinkSettings" || section_applies("apmMavlinkStreamRateSettings", Some(backend));
     let shown: Vec<Value> = facts
         .iter()
@@ -595,7 +595,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
     let borrowed: Vec<Value> = GATED_FROM
         .iter()
         .filter(|(gated_group, _)| *gated_group == group)
-        .flat_map(|(_, from)| object(&backend.get(&format!("settings.{from}"))).get("facts").and_then(Value::as_array).cloned().unwrap_or_default())
+        .flat_map(|(_, from)| backend.value(&format!("settings.{from}")).get("facts").and_then(Value::as_array).cloned().unwrap_or_default())
         .collect();
     let shown = gated(group, &shown, &[facts.clone(), borrowed].concat());
     let desktop_only: Vec<&str> = facts.iter().filter_map(|f| f.get("name").and_then(Value::as_str)).filter_map(|n| DESKTOP_ONLY.iter().find(|(d, _)| *d == n).map(|(_, label)| *label)).collect();
@@ -690,8 +690,8 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
     match args.first() {
         Some(title) => PAGES.iter().find(|p| p.title == title).map(|p| page_json(p, Some(backend))).unwrap_or(json!({ "kind": "null" })),
         None => {
-            let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-            let px4 = flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware");
+            let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+            let px4 = flag(&backend.value_fields("vehicle", "px4Firmware"), "px4Firmware");
             json!({ "kind": "object", "class": "Settings", "pages": PAGES.iter().filter(|p| page_shown(p, connected, px4)).map(|p| page_json(p, None)).collect::<Vec<_>>() })
         }
     }

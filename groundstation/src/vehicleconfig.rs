@@ -69,7 +69,7 @@ pub fn has(page: &str, px4: bool) -> bool {
 }
 
 fn config(backend: &dyn Backend, page: &str, px4: bool) -> Option<Value> {
-    let sub = !px4 && page == FLIGHT_SAFETY && flag(&object(&backend.get_fields("vehicle", "sub")), "sub");
+    let sub = !px4 && page == FLIGHT_SAFETY && flag(&backend.value_fields("vehicle", "sub"), "sub");
     let page = if sub { FLIGHT_SAFETY_SUB } else { page };
     CONFIGS.iter().find(|(name, firmware, _)| *name == page && *firmware == px4).and_then(|(_, _, text)| serde_json::from_str(text).ok())
 }
@@ -302,7 +302,7 @@ impl<'a> Scope<'a> {
     }
 
     fn fact(&self, name: &str) -> Option<Value> {
-        let fact = object(&self.backend.get(&parameter_path(name)));
+        let fact = self.backend.value(&parameter_path(name));
         present(&fact).then_some(fact)
     }
 
@@ -475,7 +475,7 @@ impl<'a> Scope<'a> {
 static PAGE_STATE: std::sync::Mutex<BTreeMap<String, bool>> = std::sync::Mutex::new(BTreeMap::new());
 
 fn state_key(backend: &dyn Backend, state: &str) -> String {
-    let vehicle = crate::read::object(&backend.get("vehicle.id")).get("value").cloned().unwrap_or(Value::Null);
+    let vehicle = backend.value("vehicle.id").get("value").cloned().unwrap_or(Value::Null);
     format!("{vehicle}#{state}")
 }
 
@@ -499,7 +499,7 @@ pub fn page_opened(backend: &dyn Backend, args: &str) -> Value {
     if !blocked {
         page_state().retain(|key, _| !keys.contains(key));
     }
-    let ready = !crate::qthost::present() && crate::read::object(&backend.get("vehicle.parameterManager.parametersReady"))["value"] == true;
+    let ready = !crate::qthost::present() && backend.value("vehicle.parameterManager.parametersReady")["value"] == true;
     let prerequisite = || absent(backend, at(DEFAULT_COMPONENT, component.as_ref().map(|(class, _)| crate::vehiclefacade::prerequisite_lookups(class)).unwrap_or_default()));
     let missing = match (ready, opened == crate::setupsummary::PAGE, blocked) {
         (false, _, _) => vec![],
@@ -544,7 +544,7 @@ fn sensor_settings_dialog_lookups(backend: &dyn Backend, calibrating: bool) -> V
 
 fn px4_orientation_dialog_lookups(backend: &dyn Backend) -> Vec<String> {
     let exists = |name: &str| parameter_exists(backend, DEFAULT_COMPONENT, name);
-    let mags_disabled = exists("SYS_HAS_MAG") && crate::read::value_number(&backend.get("vehicle.parameterManager.getParameter(-1,SYS_HAS_MAG).rawValue")) == Some(0.0);
+    let mags_disabled = exists("SYS_HAS_MAG") && crate::read::value_number(&backend.value("vehicle.parameterManager.getParameter(-1,SYS_HAS_MAG).rawValue")) == Some(0.0);
     match mags_disabled {
         true => vec![],
         false => (0..PX4_MAX_MAG_INDEX).map_while(|index| exists(&format!("CAL_MAG{index}_ID")).then(|| format!("CAL_MAG{index}_ROT"))).collect(),
@@ -612,7 +612,7 @@ fn present(fact: &Value) -> bool {
 }
 
 fn parameter_exists(backend: &dyn Backend, component: i64, name: &str) -> bool {
-    present(&object(&backend.get(&format!("vehicle.parameterManager.getParameter({component},{name})"))))
+    present(&backend.value(&format!("vehicle.parameterManager.getParameter({component},{name})")))
 }
 
 fn at<S: Into<String>>(component: i64, names: impl IntoIterator<Item = S>) -> Vec<(i64, String)> {
@@ -621,7 +621,7 @@ fn at<S: Into<String>>(component: i64, names: impl IntoIterator<Item = S>) -> Ve
 
 fn reported_lookups(backend: &dyn Backend, page: &str, px4: bool) -> Vec<(i64, String)> {
     let exists = |name: &str| parameter_exists(backend, DEFAULT_COMPONENT, name);
-    let vehicle = object(&backend.get_fields("vehicle", "sub,multiRotor,vtol,fixedWing,motorCount"));
+    let vehicle = backend.value_fields("vehicle", "sub,multiRotor,vtol,fixedWing,motorCount");
     match (page, px4) {
         ("Heli", false) => at(DEFAULT_COMPONENT, crate::setup::sections_for("Heli", false).unwrap_or_default().iter().flat_map(|s| s.parameters.iter().copied()).filter(|p| !p.starts_with("label:"))),
         ("Flight Modes", false) => {
@@ -631,7 +631,7 @@ fn reported_lookups(backend: &dyn Backend, page: &str, px4: bool) -> Vec<(i64, S
         }
         ("Flight Modes", true) => {
             let switches = PX4_SWITCH_LOOKUPS.iter().copied().chain(flag(&vehicle, "vtol").then_some(("RC_MAP_TRANS_SW", "RC_TRANS_TH"))).chain(flag(&vehicle, "fixedWing").then_some(("RC_MAP_FLAPS", "")));
-            let mode_channel = crate::read::value_number(&backend.get("vehicle.parameterManager.getParameter(-1,RC_MAP_FLTMODE).rawValue")).map_or(0, |channel| channel as i64);
+            let mode_channel = crate::read::value_number(&backend.value("vehicle.parameterManager.getParameter(-1,RC_MAP_FLTMODE).rawValue")).map_or(0, |channel| channel as i64);
             let channel_reads = (mode_channel > 0).then(|| ["REV", "MIN", "MAX"].map(|suffix| format!("RC{mode_channel}_{suffix}"))).into_iter().flatten();
             at(DEFAULT_COMPONENT, PX4_MODE_LOOKUPS.iter().copied().chain(switches.flat_map(|(switch, threshold)| std::iter::once(switch).chain(Some(threshold).filter(|t| !t.is_empty())))).map(str::to_string).chain(channel_reads))
         }
@@ -647,7 +647,7 @@ fn reported_lookups(backend: &dyn Backend, page: &str, px4: bool) -> Vec<(i64, S
         }
         ("Follow Me", false) => at(DEFAULT_COMPONENT, ["FOLL_ENABLE"]),
         ("WiFi Bridge", _) => at(i64::from(crate::espbridge::COMPONENT), ESP_CONTROLLER_LOOKUPS.iter().chain(ESP_PAGE_LOOKUPS).copied()),
-        ("Syslink", _) => at(crate::read::integer(&object(&backend.get("vehicle.id")), "value").unwrap_or(DEFAULT_COMPONENT), SYSLINK_LOOKUPS.iter().copied()),
+        ("Syslink", _) => at(crate::read::integer(&backend.value("vehicle.id"), "value").unwrap_or(DEFAULT_COMPONENT), SYSLINK_LOOKUPS.iter().copied()),
         ("Tuning", true) | ("Tuning - Advanced", false) => at(DEFAULT_COMPONENT, crate::px4tuning::opening_tab_params(backend)),
         _ => vec![],
     }
@@ -709,7 +709,7 @@ fn write_checked(backend: &dyn Backend, name: &str, raw: bool, value: f64, check
 }
 
 fn vehicle_shape(backend: &dyn Backend) -> (bool, bool) {
-    let vehicle = object(&backend.get_fields("vehicle", "multiRotor,fixedWing"));
+    let vehicle = backend.value_fields("vehicle", "multiRotor,fixedWing");
     (flag(&vehicle, "multiRotor"), flag(&vehicle, "fixedWing"))
 }
 
@@ -966,7 +966,7 @@ fn control_rows(scope: &Scope, page: &str, id: &str, control: &Value) -> Vec<Val
         }
         (None, Some(setting)) => {
             let setting_path = format!("settings.{setting}");
-            let read = object(&scope.backend.get(&setting_path));
+            let read = scope.backend.value(&setting_path);
             (setting_path, (read.get("kind").and_then(Value::as_str) == Some("fact")).then_some(read))
         }
         (None, None) => (String::new(), None),
@@ -1144,7 +1144,7 @@ pub fn owns_validate(path: &str) -> bool {
 }
 
 fn px4(backend: &dyn Backend) -> bool {
-    flag(&object(&backend.get_fields("vehicle", "px4Firmware")), "px4Firmware")
+    flag(&backend.value_fields("vehicle", "px4Firmware"), "px4Firmware")
 }
 
 pub fn validate(backend: &dyn Backend, path: &str, args: &str) -> Value {

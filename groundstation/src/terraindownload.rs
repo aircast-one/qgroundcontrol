@@ -21,8 +21,8 @@ pub fn text(loaded: u64, pending: u64) -> String {
 }
 
 pub fn terrain_download_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let loaded = blocks(value_number(&backend.get("vehicle.terrain.blocksLoaded")));
-    let pending = blocks(value_number(&backend.get("vehicle.terrain.blocksPending")));
+    let loaded = blocks(value_number(&backend.value("vehicle.terrain.blocksLoaded")));
+    let pending = blocks(value_number(&backend.value("vehicle.terrain.blocksPending")));
     let total = loaded + pending;
     let fraction = match total {
         0 => 0.0,

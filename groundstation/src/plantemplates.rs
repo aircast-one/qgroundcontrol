@@ -3,7 +3,7 @@ use std::sync::PoisonError;
 
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const CREATE_FROM_TEMPLATE: &str = "plan.createFromTemplate";
@@ -34,7 +34,7 @@ fn choose_manual() {
 }
 
 pub fn templates_json(backend: &dyn Backend, patterns: &[String], contains_items: bool) -> Value {
-    let home_set = flag(&object(&backend.get_fields("plan.missionController", "homePositionSet")), "homePositionSet");
+    let home_set = flag(&backend.value_fields("plan.missionController", "homePositionSet"), "homePositionSet");
     json!({
         "show": show(contains_items),
         "enabled": home_set || crate::coreplan::enabled(),

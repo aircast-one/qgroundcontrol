@@ -4,7 +4,6 @@ use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::read::object;
 use crate::router::Backend;
 use crate::tilecache::{Cache, PROVIDERS, Tile, TileSet, provider_hash};
 
@@ -201,7 +200,7 @@ fn region_of(args: &[String], first: usize) -> Option<Region> {
 }
 
 fn max_tiles(backend: &dyn Backend) -> u64 {
-    object(&backend.get(MAX_TILES_PATH)).get("value").and_then(Value::as_u64).unwrap_or(DEFAULT_MAX_TILES)
+    backend.value(MAX_TILES_PATH).get("value").and_then(Value::as_u64).unwrap_or(DEFAULT_MAX_TILES)
 }
 
 pub fn offline_maps_view(backend: &dyn Backend, args: &[String]) -> Value {

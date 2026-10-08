@@ -164,7 +164,7 @@ fn loaded(path: &str) -> Option<(std::time::SystemTime, Option<std::sync::Arc<Ci
 }
 
 fn setting(backend: &dyn Backend, name: &str) -> Value {
-    crate::read::object(&backend.get(&format!("settings.viewer3DSettings.{name}.rawValue"))).get("value").cloned().unwrap_or(Value::Null)
+    backend.value(&format!("settings.viewer3DSettings.{name}.rawValue")).get("value").cloned().unwrap_or(Value::Null)
 }
 
 fn ring(points: &[(f64, f64)]) -> Vec<[f64; 2]> {
@@ -352,7 +352,7 @@ fn lon_lat_alt((lat, lon, alt): (f64, f64, f64), bias: f64) -> [f64; 3] {
 
 pub fn path_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let bias = setting(backend, "altitudeBias").as_f64().unwrap_or(0.0);
-    let vehicle_home = coordinate(&crate::read::object(&backend.get("vehicle.homePosition")));
+    let vehicle_home = coordinate(&backend.value("vehicle.homePosition"));
     let flown = crate::missionitems::fly_items_view(backend, &["geometry".to_string()]);
     let missions = std::iter::once((&flown, vehicle_home)).chain(flown["others"].as_array().into_iter().flatten().map(|other| (other, None)));
     let (markers, segments): (Vec<(usize, Marker)>, Vec<Segment>) = missions.enumerate().map(|(mission, (listed, home))| {
@@ -370,10 +370,10 @@ pub fn path_view(backend: &dyn Backend, _args: &[String]) -> Value {
 
 pub fn vehicle_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let bias = setting(backend, "altitudeBias").as_f64().unwrap_or(0.0);
-    let count = crate::read::integer(&crate::read::object(&backend.get("vehicles.vehicles.count")), "value").unwrap_or(0).max(0);
+    let count = crate::read::integer(&backend.value("vehicles.vehicles.count"), "value").unwrap_or(0).max(0);
     VEHICLES_SEEN.store(usize::try_from(count).unwrap_or(0), std::sync::atomic::Ordering::Relaxed);
     let vehicles: Vec<Value> = (0..count).filter_map(|index| {
-        let vehicle = crate::read::object(&backend.get_fields(&format!("vehicles.vehicles.{index}"), &WATCHED_IN_3D.join(",")));
+        let vehicle = backend.value_fields(&format!("vehicles.vehicles.{index}"), &WATCHED_IN_3D.join(","));
         let fact = |name: &str| vehicle[name].get("rawValue").or(vehicle[name].get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(0.0);
         coordinate(&vehicle["coordinate"]).map(|(lat, lon)| json!({ "at": [lon, lat, fact("altitudeRelative") + bias], "heading": fact("heading") }))
     }).collect();

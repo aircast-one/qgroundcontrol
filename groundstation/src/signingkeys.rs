@@ -241,7 +241,7 @@ pub fn owns(path: &str) -> bool {
 }
 
 pub fn signing_keys_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = crate::read::flag(&crate::read::object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
+    let vehicle = crate::read::flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
     let available = crate::vehiclefacade::switched_on();
     let names = if available { load().names() } else { Vec::new() };
     let armed = crate::hub::lock().active().is_some_and(crate::hub::Vehicle::armed);

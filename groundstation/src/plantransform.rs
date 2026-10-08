@@ -253,13 +253,13 @@ fn point(value: Option<&Value>) -> Option<(f64, f64)> {
 fn home_of(backend: &dyn Backend) -> Option<(f64, f64)> {
     match crate::coreplan::enabled() {
         true => crate::coreplan::current_document().home.map(|[lat, lon, _]| (lat, lon)),
-        false => point(object(&backend.get_fields("plan.missionController", "plannedHomePosition")).get("plannedHomePosition")),
+        false => point(backend.value_fields("plan.missionController", "plannedHomePosition").get("plannedHomePosition")),
     }
 }
 
 pub fn transform_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let connected = crate::read::flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-    let vehicle = connected.then(|| point(object(&backend.get_fields("vehicle", "coordinate")).get("coordinate"))).flatten();
+    let connected = crate::read::flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let vehicle = connected.then(|| point(backend.value_fields("vehicle", "coordinate").get("coordinate"))).flatten();
     let home = home_of(backend);
     let (horizontal, vertical) = (Unit::horizontal(backend), Unit::vertical(backend));
     json!({

@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["mavlinkConsole.lines", "vehicles.activeVehicleAvailable"];
@@ -48,8 +48,8 @@ impl CommandHistory {
 pub static HISTORY: std::sync::Mutex<CommandHistory> = std::sync::Mutex::new(CommandHistory { lines: Vec::new(), index: 0 });
 
 pub fn console_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-    let read = object(&backend.get_fields("mavlinkConsole", "lines"));
+    let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let read = backend.value_fields("mavlinkConsole", "lines");
     let mut lines: Vec<&str> = read
         .get("lines")
         .and_then(Value::as_array)

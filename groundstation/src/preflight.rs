@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::read::{flag, integer, object, value_number};
+use crate::read::{flag, integer, value_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -260,21 +260,21 @@ pub fn preflight_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn offered(backend: &dyn Backend) -> bool {
-    crate::read::fact_flag(&object(&backend.get_fields("settings.appSettings", "useChecklist")), "useChecklist")
+    crate::read::fact_flag(&backend.value_fields("settings.appSettings", "useChecklist"), "useChecklist")
 }
 
 fn read_inputs(backend: &dyn Backend) -> Inputs {
-    let vehicle = object(&backend.get_fields("vehicle", "multiRotor,vtol,rover,sub,fixedWing,sensorsUnhealthyBits"));
-    let gps_fact = |name: &str| value_number(&backend.get(&format!("vehicle.gps.{name}")));
+    let vehicle = backend.value_fields("vehicle", "multiRotor,vtol,rover,sub,fixedWing,sensorsUnhealthyBits");
+    let gps_fact = |name: &str| value_number(&backend.value(&format!("vehicle.gps.{name}")));
     Inputs {
-        contact_lost: flag(&object(&backend.get("vehicle.vehicleLinkManager.communicationLost")), "value"),
+        contact_lost: flag(&backend.value("vehicle.vehicleLinkManager.communicationLost"), "value"),
         airframe: Airframe::of(flag(&vehicle, "multiRotor"), flag(&vehicle, "vtol"), flag(&vehicle, "rover"), flag(&vehicle, "sub"), flag(&vehicle, "fixedWing")),
         lock: gps_fact("lock").map(|v| v as i64),
         satellites: gps_fact("count").map(|v| v as i64),
-        battery_percent: value_number(&backend.get("vehicle.batteries.0.percentRemaining")),
+        battery_percent: value_number(&backend.value("vehicle.batteries.0.percentRemaining")),
         unhealthy_bits: integer(&vehicle, "sensorsUnhealthyBits"),
-        audio_muted: value_number(&backend.get("settings.appSettings.audioMuted.rawValue")).map(|v| v != 0.0).unwrap_or(false),
-        audio_volume: value_number(&backend.get("settings.appSettings.audioVolume.rawValue")).unwrap_or(100.0),
+        audio_muted: value_number(&backend.value("settings.appSettings.audioMuted.rawValue")).map(|v| v != 0.0).unwrap_or(false),
+        audio_volume: value_number(&backend.value("settings.appSettings.audioVolume.rawValue")).unwrap_or(100.0),
     }
 }
 

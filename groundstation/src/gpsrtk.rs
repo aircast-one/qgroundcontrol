@@ -2,7 +2,7 @@ use mavlink::dialects::ardupilotmega::GPS_RTCM_DATA_DATA;
 use serde_json::{Value, json};
 
 use crate::geo::wrap_longitude;
-use crate::read::{object, value_number};
+use crate::read::value_number;
 use crate::router::Backend;
 use crate::rtcm::Fragmenter;
 
@@ -742,11 +742,11 @@ impl Session {
 }
 
 pub fn settings_from(backend: &dyn Backend) -> Settings {
-    let number = |name: &str| value_number(&backend.get(&fact_path(name))).unwrap_or(0.0);
+    let number = |name: &str| value_number(&backend.value(&fact_path(name))).unwrap_or(0.0);
     Settings {
         survey_in_accuracy_m: number("surveyInAccuracyLimit"),
         survey_in_duration_s: number("surveyInMinObservationDuration") as u32,
-        use_fixed_base: object(&backend.get(&fact_path("useFixedBasePosition"))).get("value").and_then(crate::read::switch_on).unwrap_or(false),
+        use_fixed_base: backend.value(&fact_path("useFixedBasePosition")).get("value").and_then(crate::read::switch_on).unwrap_or(false),
         fixed_latitude: number("fixedBasePositionLatitude"),
         fixed_longitude: number("fixedBasePositionLongitude"),
         fixed_altitude_m: number("fixedBasePositionAltitude") as f32,

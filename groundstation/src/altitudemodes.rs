@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.supports.terrainFrame", "plan.missionController.containsItems", crate::coreplan::CHANGED, "corePlugin.options.showMissionAbsoluteAltitude"];
@@ -90,10 +90,10 @@ pub fn modes(inputs: &Inputs) -> Vec<Value> {
 }
 
 pub(crate) fn read_inputs(backend: &dyn Backend, mission_context: bool, current: i64) -> Inputs {
-    let vehicles = object(&backend.get_fields("vehicles", "activeVehicleAvailable"));
-    let vehicle = object(&backend.get_fields("vehicle.supports", "terrainFrame"));
-    let mission = object(&backend.get_fields("plan.missionController", "containsItems"));
-    let options = object(&backend.get_fields("corePlugin.options", "showMissionAbsoluteAltitude"));
+    let vehicles = backend.value_fields("vehicles", "activeVehicleAvailable");
+    let vehicle = backend.value_fields("vehicle.supports", "terrainFrame");
+    let mission = backend.value_fields("plan.missionController", "containsItems");
+    let options = backend.value_fields("corePlugin.options", "showMissionAbsoluteAltitude");
     Inputs {
         mission: mission_context,
         current,

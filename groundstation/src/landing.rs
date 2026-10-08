@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, format_measure, object, refused};
+use crate::read::{Unit, format_measure, refused};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -38,7 +38,7 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
         return refused("view.landingPattern needs the index of the item in the plan, as view.landingPattern(4)");
     };
     let path = format!("plan.missionController.visualItems.{index}");
-    let (item, facts) = crate::coreplan::landing_inputs(index).unwrap_or_else(|| (object(&backend.get_fields(&path, FIELDS)), object(&backend.get(&path))));
+    let (item, facts) = crate::coreplan::landing_inputs(index).unwrap_or_else(|| (backend.value_fields(&path, FIELDS), backend.value(&path)));
     if crate::read::flag(&item, "isSimpleItem") {
         return refused("that item draws no landing pattern; only a fixed wing or a VTOL gets one, and a multirotor land is a plain return");
     }

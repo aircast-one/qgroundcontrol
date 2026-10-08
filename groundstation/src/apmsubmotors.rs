@@ -46,7 +46,7 @@ fn direction_path(motor: i64) -> String {
 }
 
 fn reversed(backend: &dyn Backend, motor: i64) -> bool {
-    object(&backend.get(&direction_path(motor))).get("rawValue").and_then(Value::as_f64) == Some(REVERSED)
+    backend.value(&direction_path(motor)).get("rawValue").and_then(Value::as_f64) == Some(REVERSED)
 }
 
 pub fn slider_count(motor_count: Option<i64>) -> i64 {
@@ -58,7 +58,7 @@ pub fn test_percent(slider: f64, reversed: bool) -> f64 {
 }
 
 pub fn apm_sub_motors_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "sub,apmFirmware,armed,flightMode,motorDetectionFlightMode,motorCount,firmwareMajorVersion"));
+    let vehicle = backend.value_fields("vehicle", "sub,apmFirmware,armed,flightMode,motorDetectionFlightMode,motorCount,firmwareMajorVersion");
     if !(flag(&vehicle, "sub") && flag(&vehicle, "apmFirmware")) {
         return json!({ "kind": "object", "class": "ApmSubMotors", "available": false });
     }
@@ -93,7 +93,7 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
             _ => json!({ "ok": false, "reason": "apmSubMotors.reverse takes a motor number and whether it is reversed" }),
         },
         TEST => {
-            let vehicle = object(&backend.get_fields("vehicle", "armed,flightMode,motorDetectionFlightMode"));
+            let vehicle = backend.value_fields("vehicle", "armed,flightMode,motorDetectionFlightMode");
             if !flag(&vehicle, "armed") || in_detection(&vehicle) {
                 return json!({ "ok": false, "reason": "Arm the vehicle with the switch to test the motors." });
             }

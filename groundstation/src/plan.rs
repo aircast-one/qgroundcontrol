@@ -47,7 +47,7 @@ pub fn offered_patterns(backend: &dyn Backend) -> Vec<&'static str> {
 }
 
 fn offline_vehicle(backend: &dyn Backend) -> Value {
-    let setting = |name: &str| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64).unwrap_or(0);
+    let setting = |name: &str| crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64).unwrap_or(0);
     let (firmware, class) = (setting("offlineEditingFirmwareClass"), setting("offlineEditingVehicleClass"));
     let kind = crate::plandoc::vehicle_class(class);
     json!({
@@ -67,7 +67,7 @@ fn offline_vehicle(backend: &dyn Backend) -> Value {
 fn planning_for(backend: &dyn Backend) -> Value {
     let read = match crate::coreplan::enabled() {
         true => crate::coreplan::controller_fields("plan.controllerVehicle").unwrap_or(Value::Null),
-        false => object(&backend.get_fields("plan.controllerVehicle", "vehicleTypeString,firmwareTypeString,multiRotor,vtol,apmFirmware,homePosition")),
+        false => backend.value_fields("plan.controllerVehicle", "vehicleTypeString,firmwareTypeString,multiRotor,vtol,apmFirmware,homePosition"),
     };
     let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_string);
     match text("vehicleTypeString").zip(text("firmwareTypeString")) {
@@ -84,12 +84,12 @@ fn planning_for(backend: &dyn Backend) -> Value {
 }
 
 pub fn capability(backend: &dyn Backend, controller: &str) -> bool {
-    flag(&object(&backend.get_fields(&format!("plan.{controller}"), "supported")), "supported")
+    flag(&backend.value_fields(&format!("plan.{controller}"), "supported"), "supported")
 }
 
 fn plan_default(backend: &dyn Backend, name: &str) -> Value {
     let path = format!("settings.appSettings.{name}");
-    let fact = object(&backend.get(&path));
+    let fact = backend.value(&path);
     match crate::control::decode(&fact, &path) {
         Value::Object(mut fields) => {
             fields.insert("slider".to_string(), crate::read::user_slider(&fact));
@@ -167,11 +167,11 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let core = crate::coreplan::plan_state();
     let plan = match core {
         Some(_) => json!({}),
-        None => object(&backend.get_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo,undoTracking")),
+        None => backend.value_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo,undoTracking"),
     };
     let mission = match core {
         Some(_) => json!({ "kind": "object", "complexMissionItems": offered_patterns(backend).iter().map(|name| json!({ "canonicalName": name, "translatedName": name })).collect::<Vec<_>>() }),
-        None => object(&backend.get_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame,progressPct")),
+        None => backend.value_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame,progressPct"),
     };
     let offline = core.as_ref().map_or_else(|| flag(&plan, "offline"), |_| crate::coreplan::offline());
     let syncing = core.as_ref().map_or_else(|| flag(&plan, "syncInProgress"), |c| c.syncing);
@@ -180,7 +180,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let contains_items = core.as_ref().map_or_else(|| flag(&plan, "containsItems"), |c| c.contains_items);
     let has_mission_items = core.as_ref().map_or_else(|| flag(&mission, "containsItems"), |c| c.has_mission_items);
     let item_count = core.as_ref().map_or_else(
-        || crate::read::integer(&object(&backend.get_fields("plan.missionController.visualItems", "count")), "count").map_or(0, |count| (count - 1).max(0)),
+        || crate::read::integer(&backend.value_fields("plan.missionController.visualItems", "count"), "count").map_or(0, |count| (count - 1).max(0)),
         |c| c.item_count,
     );
     let qt_file = plan.get("currentPlanFile").and_then(Value::as_str).unwrap_or("").to_string();
@@ -238,12 +238,12 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
 fn send_precheck(backend: &dyn Backend) -> i64 {
     let manager = crate::hub::lock().active().map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)));
     let Some((autopilot, vehicle_type)) = manager.filter(|_| !crate::coreplan::offline()) else { return 1 };
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flightMode,missionFlightMode"));
+    let vehicle = backend.value_fields("vehicle", "armed,flightMode,missionFlightMode");
     let text = |key: &str| vehicle.get(key).and_then(Value::as_str).map(str::to_string);
     if flag(&vehicle, "armed") && text("flightMode") == text("missionFlightMode") {
         return 3;
     }
-    let setting = |name: &str| crate::read::value_number(&backend.get(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64);
+    let setting = |name: &str| crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64);
     let (firmware, class) = crate::coreplan::plan_types().unwrap_or((setting("offlineEditingFirmwareClass").unwrap_or(0), setting("offlineEditingVehicleClass").unwrap_or(0)));
     match crate::plandoc::firmware(firmware) != crate::plandoc::firmware(autopilot) || crate::plandoc::vehicle_class(class) != crate::plandoc::vehicle_class(vehicle_type) {
         true => 2,

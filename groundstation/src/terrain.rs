@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, object};
+use crate::read::Unit;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["plan.missionController.visualItems.count", "plan.missionController.containsItems", "plan.dirty", "vehicles.activeVehicleAvailable", "plan.missionController@recalcTerrainProfile", "plan.missionController.simpleFlightPathSegments.count", "plan.missionController.minAMSLAltitude", "plan.missionController.maxAMSLAltitude",
@@ -266,7 +266,7 @@ fn core_segments(index: usize) -> Option<Vec<Value>> {
 
 pub fn along_segments(backend: &dyn Backend, index: usize, sequence: i64, start: f64) -> Vec<Point> {
     let listed = core_segments(index).unwrap_or_else(|| {
-        let segments = object(&backend.get_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,distanceBetween,terrainCollision,segmentType"));
+        let segments = backend.value_fields(&format!("plan.missionController.visualItems.{index}.flightPathSegments"), "coord1AMSLAlt,coord2AMSLAlt,amslTerrainHeights,totalDistance,distanceBetween,terrainCollision,segmentType");
         segments.get("elements").and_then(Value::as_array).cloned().unwrap_or_default()
     });
     listed
@@ -470,7 +470,7 @@ fn simple_points(legs: &[SimpleSegment]) -> Vec<Point> {
 }
 
 fn collision_legs(backend: &dyn Backend) -> Vec<Value> {
-    object(&backend.get_fields("plan.missionController.simpleFlightPathSegments", SEGMENT_FIELDS))
+    backend.value_fields("plan.missionController.simpleFlightPathSegments", SEGMENT_FIELDS)
         .get("elements")
         .and_then(Value::as_array)
         .map(|segments| {
@@ -507,7 +507,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     });
     let model = match &core {
         Some((reads, ..)) => core_model(backend, reads),
-        None => object(&backend.get_fields("plan.missionController.visualItems", FIELDS)),
+        None => backend.value_fields("plan.missionController.visualItems", FIELDS),
     };
     let entries = points(&model);
     let inside = walked(backend, &model);
@@ -516,7 +516,7 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     all.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal));
     let summary = match &core {
         Some(_) => crate::coreplan::summary_fields(backend).unwrap_or(Value::Null),
-        None => object(&backend.get_fields("plan.missionController", "minAMSLAltitude,maxAMSLAltitude")),
+        None => backend.value_fields("plan.missionController", "minAMSLAltitude,maxAMSLAltitude"),
     };
     let mission = summary.get("minAMSLAltitude").and_then(Value::as_f64).zip(summary.get("maxAMSLAltitude").and_then(Value::as_f64));
     let profile = banded(all, mission);

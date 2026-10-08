@@ -90,12 +90,12 @@ pub fn shown_text(fact: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-pub fn value_number(json: &str) -> Option<f64> {
-    object(json).get("value")?.as_f64().filter(|v| v.is_finite())
+pub fn value_number(read: &Value) -> Option<f64> {
+    read.get("value")?.as_f64().filter(|v| v.is_finite())
 }
 
-pub fn value_string(json: &str) -> String {
-    object(json).get("value").and_then(Value::as_str).unwrap_or("").to_string()
+pub fn value_string(read: &Value) -> String {
+    read.get("value").and_then(Value::as_str).unwrap_or("").to_string()
 }
 
 pub fn result_flag(json: &str) -> bool {
@@ -155,7 +155,7 @@ impl Unit {
 
     fn read(backend: &dyn Backend, conversion: &str, name_property: &str, fallback: &str) -> Unit {
         let factor = result_number(&backend.invoke(&format!("units.{conversion}"), "[1.0]")).filter(|f| *f > 0.0).unwrap_or(1.0);
-        let name = object(&backend.get_fields("units", name_property))
+        let name = backend.value_fields("units", name_property)
             .get(name_property)
             .and_then(Value::as_str)
             .filter(|u| !u.is_empty())

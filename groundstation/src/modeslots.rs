@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{object, result_flag, value_number};
+use crate::read::{result_flag, value_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -115,11 +115,11 @@ fn exists(backend: &dyn Backend, name: &str) -> bool {
 }
 
 fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
-    exists(backend, name).then(|| value_number(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name}).rawValue")))).flatten()
+    exists(backend, name).then(|| value_number(&backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name}).rawValue")))).flatten()
 }
 
 fn switch_label(backend: &dyn Backend, name: &str) -> String {
-    object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")))
+    backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})"))
         .get("shortDescription")
         .and_then(Value::as_str)
         .filter(|label| !label.is_empty())
@@ -127,7 +127,7 @@ fn switch_label(backend: &dyn Backend, name: &str) -> String {
 }
 
 fn parameter_text(backend: &dyn Backend, name: &str) -> Option<String> {
-    let fact = object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{name})")));
+    let fact = backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})"));
     match fact.get("kind").and_then(Value::as_str) == Some("fact") {
         true => fact.get("enumOrValueString").and_then(Value::as_str).filter(|mode| !mode.is_empty()).map(str::to_string),
         false => None,
@@ -135,7 +135,7 @@ fn parameter_text(backend: &dyn Backend, name: &str) -> Option<String> {
 }
 
 pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "apmFirmware"));
+    let vehicle = backend.value_fields("vehicle", "apmFirmware");
     if vehicle.get("kind").and_then(Value::as_str) != Some("object") {
         return json!({ "kind": "object", "class": "ModeSlots", "available": false, "slots": [], "liveSlot": 0, "channel": 0, "reason": "No vehicle is connected." });
     }
@@ -145,7 +145,7 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
     }
 
     let channel_index = parameter(backend, channel_name).map(|value| value as i64 - 1).unwrap_or(DEFAULT_CHANNEL_INDEX);
-    let radio = object(&backend.get_fields("radioCal", "rcValues"));
+    let radio = backend.value_fields("radioCal", "rcValues");
     let pwm: Vec<i64> = radio.get("rcValues").and_then(Value::as_array).map(|values| values.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
     let reachable = channel_index >= 0 && (channel_index as usize) < pwm.len();
     let live = match (reachable, channel_name) {

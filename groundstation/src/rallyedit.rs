@@ -15,13 +15,13 @@ struct Rally {
 fn rally(backend: &dyn Backend) -> Rally {
     Rally {
         supported: crate::plan::capability(backend, "rallyPointController"),
-        syncing: flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress"),
+        syncing: flag(&backend.value_fields("plan", "syncInProgress"), "syncInProgress"),
         count: count(backend),
     }
 }
 
 fn count(backend: &dyn Backend) -> usize {
-    object(&backend.get(POINTS)).get("elements").and_then(Value::as_array).map_or(0, Vec::len)
+    backend.value(POINTS).get("elements").and_then(Value::as_array).map_or(0, Vec::len)
 }
 
 fn coordinate(args: &Value) -> Option<(f64, f64)> {

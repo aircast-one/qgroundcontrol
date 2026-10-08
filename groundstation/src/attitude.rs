@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -19,12 +18,12 @@ pub const DEPS: &[&str] = &[
 const COG_MINIMUM_SPEED: f64 = 0.5;
 
 fn raw(backend: &dyn Backend, path: &str) -> Option<f64> {
-    let fact = object(&backend.get(path));
+    let fact = backend.value(path);
     fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite())
 }
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
-    let fact = object(&backend.get(&format!("settings.flyViewSettings.{name}")));
+    let fact = backend.value(&format!("settings.flyViewSettings.{name}"));
     fact.get("value").is_some_and(|v| v.as_bool().unwrap_or_else(|| v.as_f64().is_some_and(|n| n != 0.0)))
 }
 
@@ -33,7 +32,7 @@ pub fn heading_text(heading: f64) -> String {
 }
 
 pub fn attitude_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    if object(&backend.get_fields("vehicle", "heading")).get("kind").and_then(Value::as_str) != Some("object") {
+    if backend.value_fields("vehicle", "heading").get("kind").and_then(Value::as_str) != Some("object") {
         return json!({ "kind": "object", "class": "Attitude", "available": false });
     }
     let heading = raw(backend, "vehicle.heading").unwrap_or(0.0);

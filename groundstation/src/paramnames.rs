@@ -23,10 +23,10 @@ pub fn names(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let Some(component) = component else {
         return refused("badComponent", format!("A component id runs from 1 to {HIGHEST_COMPONENT}, or -1 for the autopilot's own."));
     };
-    if !flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable") {
+    if !flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable") {
         return refused("noVehicle", "Connect a vehicle to list its parameters.".to_string());
     }
-    if !flag(&object(&backend.get_fields("vehicle.parameterManager", "parametersReady")), "parametersReady") {
+    if !flag(&backend.value_fields("vehicle.parameterManager", "parametersReady"), "parametersReady") {
         return refused("notReady", "The vehicle's parameters are still loading.".to_string());
     }
     let answer = object(&backend.invoke(path, &json!([component]).to_string()));

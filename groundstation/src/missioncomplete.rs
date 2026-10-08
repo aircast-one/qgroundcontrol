@@ -2,7 +2,7 @@ use std::sync::{Mutex, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::read::{flag, integer, object};
+use crate::read::{flag, integer};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -51,14 +51,14 @@ pub fn step(latch: Latch, now: &Reading) -> Latch {
 static LATCH: Mutex<Latch> = Mutex::new(Latch { armed: None, was_armed: false, was_in_mission: false, shown: 0, open: false });
 
 fn contains(backend: &dyn Backend, controller: &str) -> bool {
-    flag(&object(&backend.get_fields(&format!("planFly.{controller}"), "containsItems")), "containsItems")
+    flag(&backend.value_fields(&format!("planFly.{controller}"), "containsItems"), "containsItems")
 }
 
 fn reading(backend: &dyn Backend) -> (Reading, i64) {
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flightMode,missionFlightMode"));
+    let vehicle = backend.value_fields("vehicle", "armed,flightMode,missionFlightMode");
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let in_mission = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("missionFlightMode");
-    let images = integer(&object(&backend.get_fields("vehicle.cameraTriggerPoints", "count")), "count").unwrap_or(0);
+    let images = integer(&backend.value_fields("vehicle.cameraTriggerPoints", "count"), "count").unwrap_or(0);
     let mission = match crate::coreplan::plan_state() {
         Some(plan) => plan.has_mission_items,
         None => contains(backend, "missionController"),

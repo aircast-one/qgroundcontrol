@@ -1,7 +1,6 @@
 use serde_json::{Value, json};
 
 use crate::control::decode;
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady"];
@@ -19,7 +18,7 @@ pub fn position(pwm: i32, min: Option<f64>, max: Option<f64>) -> Option<f64> {
 
 fn parameter(backend: &dyn Backend, name: &str) -> Option<Value> {
     let path = format!("vehicle.parameterManager.getParameter(-1,{name})");
-    let fact = object(&backend.get(&path));
+    let fact = backend.value(&path);
     let present = fact.get("kind").and_then(Value::as_str) == Some("fact") && fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty());
     present.then(|| decode(&fact, &path))
 }

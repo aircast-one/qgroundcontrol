@@ -5,7 +5,6 @@ use std::sync::{Mutex, PoisonError};
 
 use serde_json::Value;
 
-use crate::read::object;
 use crate::router::Backend;
 
 const LINE_INTERVAL_MS: u64 = 1000;
@@ -82,7 +81,7 @@ pub fn columns(backend: &dyn Backend, listed: usize, sub: bool, gimbals: &[Strin
         .map(|(group, listing)| (fact_group_name(group).to_string(), listed_facts(&listing).into_iter().map(|(property, name)| (format!("{group}.{property}"), name)).collect::<Vec<_>>()))
         .map(|(group, facts)| (group.clone(), facts.into_iter().map(|(path, name)| Column { header: format!("{group}.{name}"), source: Source::Path(path) }).collect::<Vec<_>>()));
     let members = MEMBER_LISTS.iter().flat_map(|(list, prefix)| {
-        let elements = object(&backend.get(&member_path(listed, list)))["elements"].as_array().cloned().unwrap_or_default();
+        let elements = backend.value(&member_path(listed, list))["elements"].as_array().cloned().unwrap_or_default();
         elements.iter().filter_map(element_id).map(|id| (format!("{prefix}{id}"), list_names(list).into_iter().map(|name| Column { header: format!("{prefix}{id}.{name}"), source: Source::Member { list, id, name } }).collect::<Vec<_>>())).collect::<Vec<_>>()
     });
     let gimbal_groups = gimbals.iter().map(|group| (group.clone(), crate::vehiclefact::GIMBAL_FACT_NAMES.iter().map(|name| Column { header: format!("{group}.{name}"), source: Source::Path(format!("{group}.{name}")) }).collect::<Vec<_>>()));
@@ -99,11 +98,11 @@ fn value_string(fact: &Value) -> String {
 }
 
 fn values(backend: &dyn Backend, listed: usize, columns: &[Column]) -> Vec<String> {
-    let lists: BTreeMap<&str, Value> = MEMBER_LISTS.iter().filter(|(list, _)| columns.iter().any(|column| matches!(&column.source, Source::Member { list: wanted, .. } if wanted == list))).map(|(list, _)| (*list, object(&backend.get(&member_path(listed, list))))).collect();
+    let lists: BTreeMap<&str, Value> = MEMBER_LISTS.iter().filter(|(list, _)| columns.iter().any(|column| matches!(&column.source, Source::Member { list: wanted, .. } if wanted == list))).map(|(list, _)| (*list, backend.value(&member_path(listed, list)))).collect();
     columns
         .iter()
         .map(|column| match &column.source {
-            Source::Path(path) => value_string(&object(&backend.get(&member_path(listed, path)))),
+            Source::Path(path) => value_string(&backend.value(&member_path(listed, path))),
             Source::Member { list, id, name } => lists
                 .get(list)
                 .and_then(|members| members["elements"].as_array()?.iter().find(|element| element_id(element) == Some(*id)).cloned())

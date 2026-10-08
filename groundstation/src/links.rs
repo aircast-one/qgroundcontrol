@@ -1,6 +1,5 @@
 use serde_json::{Value, json};
 
-use crate::read::object;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["links.mavlinkSupportForwardingEnabled", "links.linkConfigurations", "vehicle.vehicleLinkManager.communicationLostEnabled", "vehicle.vehicleLinkManager.linkNames", "vehicle.vehicleLinkManager.linkStatuses", "links.serialPorts", "links.serialPortStrings"];
@@ -44,7 +43,7 @@ fn editing(kind: &str) -> &'static str {
 }
 
 pub fn quiet_links(backend: &dyn Backend) -> Vec<String> {
-    let manager = object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLostEnabled,linkNames,linkStatuses"));
+    let manager = backend.value_fields("vehicle.vehicleLinkManager", "communicationLostEnabled,linkNames,linkStatuses");
     if manager.get("communicationLostEnabled").and_then(Value::as_bool) != Some(true) {
         return Vec::new();
     }
@@ -145,8 +144,8 @@ pub(crate) fn serial_ports(ports: Option<&Value>, labels: Option<&Value>) -> Vec
 }
 
 pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let model = object(&backend.get("links.linkConfigurations"));
-    let root = object(&backend.get_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates,mavlinkSupportForwardingEnabled,serialPorts,serialPortStrings"));
+    let model = backend.value("links.linkConfigurations");
+    let root = backend.value_fields("links", "linkTypeStrings,linkTypeIds,serialBaudRates,mavlinkSupportForwardingEnabled,serialPorts,serialPortStrings");
     let quiet = quiet_links(backend);
     let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| link_json_with(i, el, &quiet)).collect()).unwrap_or_default();
     let configured: Vec<Value> = links.iter().filter(|l| l["dynamic"] == false).cloned().collect();
@@ -166,7 +165,7 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub(crate) fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
-    object(&backend.get_fields("links", "serialBaudRates")).get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64())).collect()).unwrap_or_default()
+    backend.value_fields("links", "serialBaudRates").get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok()).or_else(|| v.as_i64())).collect()).unwrap_or_default()
 }
 
 pub fn support_host_view(_backend: &dyn Backend, args: &[String]) -> Value {
@@ -195,7 +194,7 @@ pub fn support_host_view(_backend: &dyn Backend, args: &[String]) -> Value {
 }
 
 pub(crate) fn link_type_ids(backend: &dyn Backend) -> Vec<String> {
-    object(&backend.get_fields("links", "linkTypeIds"))
+    backend.value_fields("links", "linkTypeIds")
         .get("linkTypeIds")
         .and_then(Value::as_array)
         .map(|ids| ids.iter().filter_map(Value::as_str).map(str::to_string).collect())

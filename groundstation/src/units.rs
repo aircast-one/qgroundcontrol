@@ -180,7 +180,7 @@ fn conversion_of(method: &str) -> Option<(Kind, bool)> {
     })
 }
 
-pub fn fields(path: &str, fields: &str) -> Option<String> {
+pub fn fields(path: &str, fields: &str) -> Option<Value> {
     (path == "units").then_some(())?;
     let answered: Option<serde_json::Map<String, Value>> = fields
         .split(',')
@@ -190,7 +190,7 @@ pub fn fields(path: &str, fields: &str) -> Option<String> {
         .collect();
     let mut object = Value::Object(answered.filter(|a| !a.is_empty())?);
     object["kind"] = json!("object");
-    Some(object.to_string())
+    Some(object)
 }
 
 const UNIT_KINDS: [Kind; 6] = [Kind::Horizontal, Kind::Vertical, Kind::Area, Kind::Speed, Kind::Temperature, Kind::Weight];
@@ -235,16 +235,16 @@ fn unit_system(stored: &impl Fn(&str) -> Option<String>, system: u8) -> usize {
     UNIT_SYSTEM_PRESETS.iter().position(|preset| *preset == current).unwrap_or(UNIT_SYSTEM_CUSTOM)
 }
 
-pub fn get(path: &str) -> Option<String> {
+pub fn get(path: &str) -> Option<Value> {
     if path == "settings.unitsSettings.unitSystem" {
-        return Some(json!({ "kind": "value", "value": unit_system(&crate::settingsstore::stored_text, METRIC) }).to_string());
+        return Some(json!({ "kind": "value", "value": unit_system(&crate::settingsstore::stored_text, METRIC) }));
     }
     if let Some(setting) = path.strip_prefix("settings.unitsSettings.").and_then(|rest| rest.strip_suffix(".rawValue")) {
         let kind = kind_of_setting(setting)?;
-        return Some(json!({ "kind": "value", "value": choice(kind, &crate::settingsstore::stored_text, METRIC) }).to_string());
+        return Some(json!({ "kind": "value", "value": choice(kind, &crate::settingsstore::stored_text, METRIC) }));
     }
     let kind = name_of(path.strip_prefix("units.")?)?;
-    Some(json!({ "kind": "value", "value": chosen(kind).map_or(kind.base(), |c| c.name) }).to_string())
+    Some(json!({ "kind": "value", "value": chosen(kind).map_or(kind.base(), |c| c.name) }))
 }
 
 pub fn invoke(path: &str, args: &str) -> Option<String> {

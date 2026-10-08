@@ -6,7 +6,7 @@ use crate::router::Backend;
 use crate::noticeboard::KINDS;
 
 fn listed_ids(backend: &dyn Backend) -> Vec<i64> {
-    object(&backend.get_fields("host", "notices")).get("notices").and_then(Value::as_array).map(|n| n.iter().filter_map(|notice| notice.get("id")?.as_i64()).collect()).unwrap_or_default()
+    backend.value_fields("host", "notices").get("notices").and_then(Value::as_array).map(|n| n.iter().filter_map(|notice| notice.get("id")?.as_i64()).collect()).unwrap_or_default()
 }
 
 fn invoked(backend: &dyn Backend, path: &str, args: Value) -> Value {
@@ -50,12 +50,12 @@ pub fn post(backend: &dyn Backend, path: &str, args: &str) -> Value {
 }
 
 pub fn clear_messages(backend: &dyn Backend, path: &str) -> Value {
-    let before = object(&backend.get_fields("vehicle", "messageCount"));
+    let before = backend.value_fields("vehicle", "messageCount");
     if before.get("kind").and_then(Value::as_str) != Some("object") {
         return json!({ "ok": false, "refusal": "noVehicle", "reason": "No vehicle is connected." });
     }
     let dispatched = flag(&object(&backend.invoke(path, "[]")), "ok");
-    let after = integer(&object(&backend.get_fields("vehicle", "messageCount")), "messageCount");
+    let after = integer(&backend.value_fields("vehicle", "messageCount"), "messageCount");
     json!({
         "ok": dispatched && after == Some(0),
         "refusal": Value::Null,

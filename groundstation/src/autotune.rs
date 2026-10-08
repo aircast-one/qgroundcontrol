@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicle.autotune.autotuneInProgress", "vehicle.autotune.autotuneStatus", "vehicle.autotune.autotuneProgress", "vehicle.flying", "vehicle.landing", "vehicles.activeVehicleAvailable"];
@@ -96,9 +96,9 @@ pub fn blocked_reason(in_progress: bool, landing: bool, flying: bool) -> &'stati
 }
 
 pub fn autotune_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-    let vehicle = object(&backend.get_fields("vehicle", "flying,landing"));
-    let tune = object(&backend.get_fields("vehicle.autotune", "autotuneInProgress,autotuneStatus,autotuneProgress"));
+    let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let vehicle = backend.value_fields("vehicle", "flying,landing");
+    let tune = backend.value_fields("vehicle.autotune", "autotuneInProgress,autotuneStatus,autotuneProgress");
     let (flying, landing, in_progress) = (flag(&vehicle, "flying"), flag(&vehicle, "landing"), flag(&tune, "autotuneInProgress"));
     let blocked = blocked_reason(in_progress, landing, flying);
     json!({

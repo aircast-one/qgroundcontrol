@@ -18,7 +18,7 @@ fn answered(result: Value) -> Value {
 }
 
 fn planned_for(backend: &dyn Backend) -> Option<(Firmware, VehicleClass)> {
-    let vehicle = object(&backend.get_fields(PLAN_VEHICLE, "apmFirmware,px4Firmware,fixedWing,multiRotor,vtol,rover,sub,airship"));
+    let vehicle = backend.value_fields(PLAN_VEHICLE, "apmFirmware,px4Firmware,fixedWing,multiRotor,vtol,rover,sub,airship");
     (vehicle.get("kind").and_then(Value::as_str) == Some("object")).then_some(())?;
     let firmware = match (flag(&vehicle, "apmFirmware"), flag(&vehicle, "px4Firmware")) {
         (true, _) => Firmware::ArduPilot,
@@ -132,10 +132,10 @@ pub fn write_command(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let Some(index) = command_target(path) else {
         return refused("malformed", "Name the item as plan.missionController.visualItems.<index>.command.".to_string());
     };
-    if flag(&object(&backend.get_fields("plan", "syncInProgress")), "syncInProgress") {
+    if flag(&backend.value_fields("plan", "syncInProgress"), "syncInProgress") {
         return refused("busy", "Wait for the sync to finish before changing the plan.".to_string());
     }
-    let item = object(&backend.get_fields(&format!("{ITEM_COMMANDS}{index}"), "command"));
+    let item = backend.value_fields(&format!("{ITEM_COMMANDS}{index}"), "command");
     if item.get("command").and_then(Value::as_i64).is_none() {
         return refused("noCommand", format!("Item {index} has no command to change."));
     }
@@ -172,7 +172,7 @@ pub fn hint(backend: &dyn Backend, path: &str, args: &str) -> Value {
         crate::coreplan::set_map_center_hint(latitude, longitude);
         return json!({ "ok": true, "refusal": Value::Null, "reason": Value::Null });
     }
-    let item = object(&backend.get_fields(&format!("{ITEM_COMMANDS}{index}"), "command"));
+    let item = backend.value_fields(&format!("{ITEM_COMMANDS}{index}"), "command");
     if item.get("command").and_then(Value::as_i64).is_none() {
         return refused("noCommand", format!("Item {index} has no command to change."));
     }

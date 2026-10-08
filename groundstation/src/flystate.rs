@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object, text};
+use crate::read::{flag, text};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer", "vehicle.healthAndArmingCheckReport.supported", "vehicle.healthAndArmingCheckReport.canArm", "vehicle.healthAndArmingCheckReport.hasWarningsOrErrors", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorEnabled", "vehicle.sysStatusSensorInfo.sensorHealthy", "vehicle.readyToFlyAvailable", "vehicle.readyToFly", "vehicle.allSensorsHealthy", crate::setup::COMPONENTS];
@@ -86,7 +86,7 @@ fn rc_signal(vehicle: &Value) -> Option<i64> {
 }
 
 fn flying_to(backend: &dyn Backend) -> Option<i64> {
-    object(&backend.get_fields("planFly.missionController", "currentMissionIndex"))
+    backend.value_fields("planFly.missionController", "currentMissionIndex")
         .get("currentMissionIndex")
         .and_then(Value::as_i64)
         .filter(|sequence| *sequence >= 0)
@@ -109,10 +109,10 @@ fn telemetry(radio: &Value) -> Value {
 }
 
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = object(&backend.get_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive"));
-    let radio = object(&backend.get_fields("vehicle.radioStatus", "lrssi,rrssi,lNoise,rNoise,rxErrors,fixed,txBuffer"));
+    let vehicle = backend.value_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive");
+    let radio = backend.value_fields("vehicle.radioStatus", "lrssi,rrssi,lNoise,rNoise,rxErrors,fixed,txBuffer");
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
-    let links = object(&backend.get_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled"));
+    let links = backend.value_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled");
     let watching = flag(&links, "communicationLostEnabled");
     let reported = connected.then(|| watching.then(|| flag(&links, "communicationLost"))).flatten();
     let contact_lost = reported.unwrap_or(false);
@@ -137,7 +137,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
-        "rcSupported": flag(&object(&backend.get_fields("vehicle.supports", "radio")), "radio"),
+        "rcSupported": flag(&backend.value_fields("vehicle.supports", "radio"), "radio"),
         "rcSignal": rc_signal(&vehicle),
         "rcSignalText": rc_signal(&vehicle).map(|percent| match percent {
             0 => "No signal".to_string(),
@@ -155,13 +155,13 @@ struct Health {
 }
 
 fn health(backend: &dyn Backend) -> Health {
-    let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,hasWarningsOrErrors"));
+    let report = backend.value_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,hasWarningsOrErrors");
     let supported = flag(&report, "supported");
-    let info = object(&backend.get("vehicle.sysStatusSensorInfo"));
+    let info = backend.value("vehicle.sysStatusSensorInfo");
     let flags = |key: &str| -> Vec<bool> { info.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(v.as_i64().unwrap_or(0) != 0)).collect()).unwrap_or_default() };
     let (enabled, healthy) = (flags("sensorEnabled"), flags("sensorHealthy"));
     let names: Vec<String> = info.get("sensorNames").and_then(Value::as_array).map(|a| a.iter().map(|n| n.as_str().unwrap_or_default().to_string()).collect()).unwrap_or_default();
-    let problems = supported.then(|| object(&backend.get("vehicle.healthAndArmingCheckReport.problemsForCurrentMode"))).and_then(|model| model.get("elements").and_then(Value::as_array).map(Vec::len));
+    let problems = supported.then(|| backend.value("vehicle.healthAndArmingCheckReport.problemsForCurrentMode")).and_then(|model| model.get("elements").and_then(Value::as_array).map(Vec::len));
     Health {
         report: supported.then(|| (flag(&report, "canArm"), flag(&report, "hasWarningsOrErrors"))),
         sensors: match supported {
@@ -196,8 +196,8 @@ pub fn summary_detail(armed: bool, in_air: bool, check_issues: usize, sensors: &
 }
 
 fn disarmed_ready(backend: &dyn Backend) -> bool {
-    let report = object(&backend.get_fields("vehicle.healthAndArmingCheckReport", "supported,canArm"));
-    let vehicle = object(&backend.get_fields("vehicle", "readyToFlyAvailable,readyToFly,allSensorsHealthy"));
+    let report = backend.value_fields("vehicle.healthAndArmingCheckReport", "supported,canArm");
+    let vehicle = backend.value_fields("vehicle", "readyToFlyAvailable,readyToFly,allSensorsHealthy");
     ready_to_fly(flag(&report, "supported").then(|| flag(&report, "canArm")), flag(&vehicle, "readyToFlyAvailable").then(|| flag(&vehicle, "readyToFly")), flag(&vehicle, "allSensorsHealthy"), || crate::setup::setup_complete(backend))
 }
 

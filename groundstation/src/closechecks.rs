@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicles.vehicles.count", "vehicle.parameterManager.pendingWrites", "plan.dirtyForSave", "plan.dirtyForUpload", crate::coreplan::CHANGED];
@@ -35,20 +35,20 @@ pub fn prompts(state: &State) -> Vec<(&'static str, &'static str)> {
 }
 
 pub fn close_checks_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
+    let vehicle = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
     let (dirty_for_save, dirty_for_upload) = match crate::coreplan::plan_state() {
         Some(core) => (core.dirty_for_save, core.dirty),
         None => {
-            let plan = object(&backend.get_fields("plan", "dirtyForSave,dirtyForUpload"));
+            let plan = backend.value_fields("plan", "dirtyForSave,dirtyForUpload");
             (flag(&plan, "dirtyForSave"), flag(&plan, "dirtyForUpload"))
         }
     };
     let pending_writes = match crate::vehiclefacade::switched_on() {
         true => crate::hub::lock().any_pending_parameter_writes(),
         false => {
-            let count = object(&backend.get("vehicles.vehicles.count")).get("value").and_then(Value::as_u64).unwrap_or(0);
+            let count = backend.value("vehicles.vehicles.count").get("value").and_then(Value::as_u64).unwrap_or(0);
             VEHICLES_SEEN.store(count, Ordering::Relaxed);
-            (0..count).any(|index| flag(&object(&backend.get_fields(&format!("vehicles.vehicles.{index}.parameterManager"), "pendingWrites")), "pendingWrites"))
+            (0..count).any(|index| flag(&backend.value_fields(&format!("vehicles.vehicles.{index}.parameterManager"), "pendingWrites"), "pendingWrites"))
         }
     };
     let state = State { vehicle, dirty_for_save, dirty_for_upload, pending_writes };

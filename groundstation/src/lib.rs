@@ -30,6 +30,7 @@ pub mod cameradef;
 pub mod cameras;
 pub mod camsettings;
 pub mod cameratrack;
+pub mod changedriven;
 pub mod cameraproto;
 pub mod cmdinfo;
 pub mod debugapi;

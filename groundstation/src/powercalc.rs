@@ -83,22 +83,22 @@ pub fn calculator(component: &str, battery_index: usize, param: &str) -> Option<
 }
 
 fn position_of(backend: &dyn Backend, battery_id: usize) -> Option<usize> {
-    let count = crate::read::value_number(&backend.get("vehicle.batteries.count")).unwrap_or(0.0).max(0.0) as usize;
+    let count = crate::read::value_number(&backend.value("vehicle.batteries.count")).unwrap_or(0.0).max(0.0) as usize;
     (0..count).find(|position| {
-        let id = object(&backend.get(&format!("vehicle.batteries.{position}.id")));
+        let id = backend.value(&format!("vehicle.batteries.{position}.id"));
         id.get("rawValue").or(id.get("value")).and_then(Value::as_f64).is_some_and(|id| id as usize == battery_id)
     })
 }
 
 fn reading(backend: &dyn Backend, measure: &str, battery_index: usize) -> Option<(f64, String)> {
     let position = position_of(backend, battery_index.checked_sub(1)?)?;
-    let fact = object(&backend.get(&format!("vehicle.batteries.{position}.{measure}")));
+    let fact = backend.value(&format!("vehicle.batteries.{position}.{measure}"));
     let value = fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite())?;
     Some((value, fact.get("valueString").and_then(Value::as_str).unwrap_or_default().to_string()))
 }
 
 fn param_value(backend: &dyn Backend, param: &str) -> Option<(f64, String)> {
-    let fact = object(&backend.get(&format!("vehicle.parameterManager.getParameter(-1,{param})")));
+    let fact = backend.value(&format!("vehicle.parameterManager.getParameter(-1,{param})"));
     let value = fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64)?;
     Some((value, fact.get("valueString").and_then(Value::as_str).unwrap_or_default().to_string()))
 }

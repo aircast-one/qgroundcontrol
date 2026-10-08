@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{Unit, flag, object, refused};
+use crate::read::{Unit, flag, refused};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -45,7 +45,7 @@ pub fn area_text(area: f64, unit: &Unit) -> String {
 }
 
 fn elements(backend: &dyn Backend, path: &str) -> Vec<Value> {
-    object(&backend.get(path)).get("elements").and_then(Value::as_array).cloned().unwrap_or_default()
+    backend.value(path).get("elements").and_then(Value::as_array).cloned().unwrap_or_default()
 }
 
 fn radius_fact(json: &Value) -> (f64, f64, String) {
@@ -80,7 +80,7 @@ fn polygon_json(index: usize, json: &Value, area_unit: &Unit) -> Value {
 }
 
 fn radius_bounds(backend: &dyn Backend, index: usize) -> (Option<f64>, Option<f64>) {
-    let fact = object(&backend.get(&format!("plan.geoFenceController.circles.{index}.radius")));
+    let fact = backend.value(&format!("plan.geoFenceController.circles.{index}.radius"));
     let bound = |key: &str, default_flag: &str| (!flag(&fact, default_flag)).then(|| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite())).flatten();
     (bound("min", "minIsDefaultForType"), bound("max", "maxIsDefaultForType"))
 }
@@ -123,13 +123,13 @@ fn circle_json_bounded(index: usize, json: &Value, (smallest, largest): (Option<
 }
 
 fn firmware_fence(backend: &dyn Backend) -> Value {
-    let radius = object(&backend.get_fields("plan.geoFenceController", "paramCircularFence"))
+    let radius = backend.value_fields("plan.geoFenceController", "paramCircularFence")
         .get("paramCircularFence")
         .and_then(Value::as_f64)
         .filter(|metres| metres.is_finite() && *metres > 0.0);
     let Some(metres) = radius else { return Value::Null };
     let unit = Unit::horizontal(backend);
-    let home = object(&backend.get("vehicle.homePosition"));
+    let home = backend.value("vehicle.homePosition");
     let centre = point(&home).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude }));
     json!({
         "radiusMetres": metres,
@@ -208,7 +208,7 @@ fn document_fences(backend: &dyn Backend, fence: &Value, rally: &Value) -> Value
         "firmwareFence": firmware_fence(backend),
         "breachReturnPoint": fence.get("breachReturn").and_then(pair).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
         "breachReturnAltitude": fence.get("breachReturn").and_then(pair).map(|_| {
-            let metres = fence["breachReturn"].get(2).and_then(Value::as_f64).or_else(|| crate::read::value_number(&backend.get("settings.appSettings.defaultMissionItemAltitude.rawValue")));
+            let metres = fence["breachReturn"].get(2).and_then(Value::as_f64).or_else(|| crate::read::value_number(&backend.value("settings.appSettings.defaultMissionItemAltitude.rawValue")));
             breach_altitude_json(metres.map(|m| vertical.show(m)), &vertical.name)
         }),
     })
@@ -233,7 +233,7 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .enumerate()
         .filter_map(|(i, p)| {
             let (lat, lon) = p.get("coordinate").and_then(point)?;
-            let altitude = object(&backend.get(&format!("plan.rallyPointController.points.{i}.textFieldFacts.2")));
+            let altitude = backend.value(&format!("plan.rallyPointController.points.{i}.textFieldFacts.2"));
             let is_fact = altitude.get("kind").and_then(Value::as_str) == Some("fact");
             Some(json!({
                 "index": i,
@@ -252,7 +252,7 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
             }))
         })
         .collect();
-    let controller = object(&backend.get_fields("plan.geoFenceController", "supported,breachReturnPoint"));
+    let controller = backend.value_fields("plan.geoFenceController", "supported,breachReturnPoint");
     json!({
         "kind": "object",
         "class": "Fences",
@@ -266,7 +266,7 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "firmwareFence": firmware_fence(backend),
         "breachReturnPoint": controller.get("breachReturnPoint").and_then(point).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })),
         "breachReturnAltitude": controller.get("breachReturnPoint").and_then(point).map(|_| {
-            let fact = object(&backend.get(BREACH_ALTITUDE_PATH));
+            let fact = backend.value(BREACH_ALTITUDE_PATH);
             breach_altitude_json(fact.get("value").and_then(Value::as_f64), fact.get("units").and_then(Value::as_str).unwrap_or(""))
         }),
     })
@@ -277,7 +277,7 @@ pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
     let ring = args.get(1).map(|r| r != "line").unwrap_or(true);
     let json = match crate::coreplan::shape_vertices(path) {
         Some(vertices) => json!({ "kind": "object", "path": vertices.iter().map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })).collect::<Vec<_>>() }),
-        None => object(&backend.get(path)),
+        None => backend.value(path),
     };
     if json.get("kind").and_then(Value::as_str) != Some("object") {
         return refused("nothing answers at that path, so there is no shape to read");

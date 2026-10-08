@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::read::flag;
 use crate::router::Backend;
 
 // "vehicle.vibration" is a fact group object, so the watcher had nothing to bind to and every
@@ -45,8 +45,8 @@ pub fn vibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
     // changes and then dropped it. A head needing it had to fetch it in a second call, and a
     // vehicle disappearing between the two reads gave a reading that was connected with no axes,
     // or disconnected with axes.
-    let connected = flag(&object(&backend.get_fields("vehicles", "activeVehicleAvailable")), "activeVehicleAvailable");
-    let group = object(&backend.get("vehicle.vibration"));
+    let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let group = backend.value("vehicle.vibration");
     let fact = |name: &str| group.get("facts").and_then(Value::as_array).and_then(|facts| facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)));
     let number = |name: &str| fact(name).and_then(|f| f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite());
     let axes: Vec<(&str, Option<f64>)> = [("x", "xAxis"), ("y", "yAxis"), ("z", "zAxis")].iter().map(|(axis, name)| (*axis, number(name))).collect();
