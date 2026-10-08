@@ -26,7 +26,7 @@ fn offline_field(path: &str, field: &str) -> Option<Value> {
     }
 }
 
-const VEHICLE_FACTS: [&str; 29] = ["altitudeAboveTerr", "rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome", "xTrackError", "airSpeedSetpoint", "altitudeTuning", "altitudeTuningSetpoint", "rangeFinderDist", "timeToHome", "imuTemp", "missionItemIndex", "distanceToGCS", "headingFromGCS", "flightDistance"];
+const VEHICLE_FACTS: [&str; 32] = ["altitudeAboveTerr", "rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome", "xTrackError", "airSpeedSetpoint", "altitudeTuning", "altitudeTuningSetpoint", "rangeFinderDist", "timeToHome", "imuTemp", "missionItemIndex", "distanceToGCS", "headingFromGCS", "flightDistance", "flightTime", "headingToNextWP", "hobbs"];
 
 pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
     let (lat1, lat2) = (from.0.to_radians(), to.0.to_radians());
@@ -2029,6 +2029,13 @@ impl<B: Backend> Backend for Facade<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_fact_property_of_the_vehicle_answers_as_the_fact_itself_like_flight_distance() {
+        let known = super::known_of(&crate::hub::Vehicle::heard(1));
+        let kind = |name: &str| super::answer_get(&format!("vehicle.{name}"), &known).and_then(|answer| answer.get("kind").cloned());
+        assert_eq!(["flightDistance", "flightTime", "headingToNextWP", "hobbs"].map(kind), [0; 4].map(|_| Some(serde_json::json!("fact"))));
+    }
+
     #[test]
     fn one_render_pass_builds_a_vehicles_facts_once_and_forgets_them_after() {
         let vehicle = crate::hub::Vehicle::heard(1);
