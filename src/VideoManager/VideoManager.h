@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <chrono>
 
@@ -17,6 +18,8 @@
 #include <QtQuick/QQuickWindow>
 #endif
 #include <QtQmlIntegration/QtQmlIntegration>
+
+#include "QGCVideoC.h"
 
 #ifdef QGC_UNITTEST_BUILD
 #include <functional>
@@ -56,6 +59,7 @@ class VideoManager : public QObject
     Q_PROPERTY(QStringList cameraUrls           READ cameraUrls                                 NOTIFY camerasChanged)
     Q_PROPERTY(int      activeVideoSource       READ activeVideoSource                          NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(int      pipCameraNumber         READ pipCameraNumber                            NOTIFY activeVideoSourceChanged)
+    Q_PROPERTY(QVariant pipSlot                 READ pipSlot                                    NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     hasMultipleVideoSources READ hasMultipleVideoSources                    NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(QString  activeSourceLabel       READ activeSourceLabel                          NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(int      videoSourceCount        READ videoSourceCount                           NOTIFY activeVideoSourceChanged)
@@ -95,6 +99,7 @@ public:
     Q_INVOKABLE void setNativeRendering(bool nativeRendering);
     Q_INVOKABLE void switchActiveVideoSource();
     int pipCameraNumber() const;
+    QVariant pipSlot() const;
     Q_INVOKABLE void promotePip();
 #ifndef QGC_HEADLESS_CORE
     Q_INVOKABLE void registerPipItem(QQuickItem *item);
@@ -176,12 +181,11 @@ private slots:
     void _communicationLostChanged(bool communicationLost);
     void _setActiveVehicle(Vehicle *vehicle);
     void _videoSourceChanged();
+    void _streamEnabledChanged();
 
 private:
     bool _nativeRendering = false;
 
-
-    friend class VideoManagerTest;
     enum class InitState : uint8_t {
         NotStarted,
         Pending,
@@ -207,10 +211,10 @@ private:
     bool _updateUVC(VideoReceiver *receiver);
     bool _updateSettings(VideoReceiver *receiver);
     bool _updateVideoUri(VideoReceiver *receiver, const QString &uri);
-    QString _sourceToUri(const QString &source, const QString &url) const;
     int _cameraIndexForReceiver(const VideoReceiver *receiver) const;
     int _nativeChannelForReceiver(const VideoReceiver *receiver) const;
     void _bindNativeSink(VideoReceiver *receiver);
+    void _releaseChannels(const VideoReceiver *receiver, int kept = -1);
     QString _cameraStatus(int index) const;
     QString _cameraSignal(int index) const;
     int _pipCamera() const;
@@ -252,6 +256,7 @@ private:
     QPointer<QQuickItem> _mainWidget;
 #endif
     QHash<QString, ReceiverState> _receiverState;
+    std::array<QString, QGC_VIDEO_CHANNELS> _channelHolders;
     SubtitleWriter *_subtitleWriter = nullptr;
     QNetworkAccessManager *_probeNetwork = nullptr;
     VideoCloudFailover *_cloudFailover = nullptr;

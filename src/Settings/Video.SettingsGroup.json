@@ -31,11 +31,11 @@
         },
         {
             "name": "multiViewEnabled",
-            "shortDesc": "Show additional cameras as picture-in-picture tiles next to the main view.",
-            "longDesc": "When enabled, additional cameras are shown as picture-in-picture tiles next to the main view instead of only when switched to.",
+            "shortDesc": "Show the next camera as a small picture-in-picture over the main view.",
+            "longDesc": "When enabled, the next camera plays in a small picture-in-picture over the main view; tap it to swap the two.",
             "type": "bool",
             "default": false,
-            "label": "Show all cameras at once",
+            "label": "Picture in picture",
             "keywords": "multi view,picture in picture,pip"
         },
         {

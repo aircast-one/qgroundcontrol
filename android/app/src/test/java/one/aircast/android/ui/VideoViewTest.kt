@@ -69,6 +69,27 @@ class VideoViewTest {
     }
 
     @Test
+    fun `the picture-in-picture plays only while a thumbnail surface is on screen`() {
+        val sent = mutableListOf<Boolean>()
+        val surfaces = PipSurfaces { sent += it }
+        surfaces.created()
+        surfaces.destroyed()
+        assertEquals(listOf(true, false), sent)
+    }
+
+    @Test
+    fun `a thumbnail that reappears before the old one is torn down keeps the picture-in-picture playing`() {
+        val sent = mutableListOf<Boolean>()
+        val surfaces = PipSurfaces { sent += it }
+        surfaces.created()
+        surfaces.created()
+        surfaces.destroyed()
+        assertEquals(listOf(true, true, true), sent)
+        surfaces.destroyed()
+        assertEquals(false, sent.last())
+    }
+
+    @Test
     fun `a reply that is not the video view reads as nothing`() {
         assertNull(videoReading(null))
         assertNull(videoReading(JSONObject("""{"kind":"null"}""")))

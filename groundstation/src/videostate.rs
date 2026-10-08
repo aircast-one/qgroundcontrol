@@ -156,8 +156,20 @@ fn listen_port(uri: &str) -> Option<&str> {
     ["udp", "udp265", "mpegts"].contains(&scheme).then(|| rest.split(['/', '?']).next()?.rsplit_once(':').map(|(_, port)| port)).flatten()
 }
 
+fn stream_key(uri: &str) -> String {
+    let trimmed = uri.trim();
+    let Some((scheme, rest)) = trimmed.split_once("://") else { return trimmed.to_string() };
+    let (authority, path) = rest.split_at(rest.find(['/', '?']).unwrap_or(rest.len()));
+    let host = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+    format!("{}://{}{}", scheme.to_ascii_lowercase(), host.to_ascii_lowercase(), path.trim_end_matches('/'))
+}
+
 pub fn same_stream(a: &str, b: &str) -> bool {
-    a == b || listen_port(a).is_some_and(|port| listen_port(b) == Some(port))
+    stream_key(a) == stream_key(b) || listen_port(a).is_some_and(|port| listen_port(b) == Some(port))
+}
+
+fn pairs_with(main: &str, other: &str) -> bool {
+    !same_stream(main, other) && !(device_camera(main).is_some() && device_camera(other).is_some())
 }
 
 pub fn auto_stream_source(stream_type: u8, encoding: u8, uri: &str) -> (&'static str, String) {
@@ -267,6 +279,7 @@ pub struct Settings {
     pub cameras: Vec<SourceSlot>,
     pub active_source: i64,
     pub multi_view: bool,
+    pub pip_shown: bool,
     pub stream_enabled: bool,
     pub low_latency: bool,
     pub save_path_set: bool,
@@ -349,11 +362,11 @@ impl Settings {
     pub fn pip_choice(&self) -> Option<usize> {
         let current = self.current_index();
         let main = self.uri_at(current);
-        (1..self.count()).map(|step| (current + step) % self.count()).find(|index| self.usable(*index) && !same_stream(&self.uri_at(*index), &main))
+        (1..self.count()).map(|step| (current + step) % self.count()).find(|index| self.usable(*index) && pairs_with(&main, &self.uri_at(*index)))
     }
 
     pub fn pip_camera(&self) -> Option<usize> {
-        self.multi_view.then(|| self.pip_choice()).flatten()
+        (self.multi_view && self.pip_shown).then(|| self.pip_choice()).flatten()
     }
 
     pub fn camera_index_for_receiver(&self, receiver: &str) -> Option<usize> {
@@ -474,11 +487,12 @@ impl VideoState {
 
     pub fn on_settings(&mut self, settings: Settings) -> Vec<Out> {
         let latency_changed = settings.low_latency != self.settings.low_latency;
+        let had_video = self.has_video();
         self.settings = settings;
         let names: Vec<String> = self.receivers.keys().cloned().collect();
-        let moved: Vec<String> = names
+        let cameras: Vec<String> = names.iter().filter(|name| Self::camera_receiver(name)).cloned().collect();
+        let moved: Vec<String> = cameras
             .iter()
-            .filter(|name| Self::camera_receiver(name))
             .filter(|name| {
                 let uri = self.desired_uri(name);
                 self.receivers.get(*name).is_some_and(|receiver| receiver.uri != uri)
@@ -487,7 +501,7 @@ impl VideoState {
             .collect();
         let reset: Vec<String> = match self.has_video() {
             true => moved.clone(),
-            false => names.iter().filter(|name| Self::camera_receiver(name)).cloned().collect(),
+            false => cameras.clone(),
         };
         reset.iter().for_each(|name| {
             let uri = self.desired_uri(name);
@@ -502,9 +516,10 @@ impl VideoState {
                 receiver.failing_since_s = None;
             });
         });
-        let changed = match latency_changed {
-            true => names.clone(),
-            false => moved,
+        let changed = match (latency_changed, had_video) {
+            (true, _) => names.clone(),
+            (false, false) => cameras,
+            (false, true) => moved,
         };
         let restarts: Vec<Out> = match (self.has_video(), changed.is_empty()) {
             (true, true) => Vec::new(),
@@ -920,6 +935,7 @@ mod tests {
             cameras: vec![cam(SOURCE_RTSP, "rtsp://10.0.0.1:8554/live", ""), cam(SOURCE_UDP_H265, "0.0.0.0:5601", "Thermal side"), cam(SOURCE_RTSP, "", "")],
             active_source: 0,
             multi_view: false,
+            pip_shown: true,
             stream_enabled: true,
             low_latency: false,
             save_path_set: true,
@@ -1127,6 +1143,59 @@ mod tests {
         let pair = Settings { cameras: cameras[..2].to_vec(), multi_view: true, ..settings() };
         assert_eq!((pair.pip_camera(), pair.next_switchable()), (None, Some(1)), "with nothing else to show there is no picture in picture, though the switch still offers the other camera");
         assert!(same_stream("udp265://0.0.0.0:5600", "mpegts://10.0.0.1:5600/x") && !same_stream("udp://0.0.0.0:5600", "udp://0.0.0.0:5601") && !same_stream("tcp://a:5600", "tcp://b:5600"), "only a listen port is shared; a TCP client dials out");
+    }
+
+    #[test]
+    fn one_camera_typed_two_ways_is_still_one_stream() {
+        assert!(same_stream("RTSP://admin:pw@Cam.Local:554/live/", "rtsp://cam.local:554/live"), "scheme and host are case-blind, and credentials or a trailing slash do not make another camera");
+        assert!(same_stream("HTTP://SFU.example/whep/front", "http://sfu.example/whep/front/"));
+        assert!(!same_stream("rtsp://cam/Live", "rtsp://cam/live"), "a path is the server's to compare, so its case counts");
+        assert!(!same_stream("rtsp://cam/live", "rtsps://cam/live") && !same_stream("rtsp://cam:554/live", "rtsp://cam:8554/live"));
+        let typed_twice = Settings { cameras: vec![cam(SOURCE_RTSP, "rtsp://cam.local/live", "Gimbal"), cam(SOURCE_RTSP, "RTSP://user@CAM.local/live/", "Gimbal again"), cam(SOURCE_UDP_H264, "0.0.0.0:5600", "Belly")], multi_view: true, ..settings() };
+        assert_eq!(typed_twice.pip_camera(), Some(2), "the second spelling of the main camera is skipped for the picture in picture");
+    }
+
+    #[test]
+    fn the_phone_never_plays_two_of_its_own_cameras_at_once() {
+        let phone = |active_source: i64| Settings { cameras: vec![cam(SOURCE_BACK_CAMERA, "", "Back"), cam(SOURCE_FRONT_CAMERA, "", "Front"), cam(SOURCE_RTSP, "rtsp://a/0", "Gimbal")], multi_view: true, active_source, ..settings() };
+        assert_eq!(phone(0).pip_camera(), Some(2), "a phone opens one camera at a time, so the front camera is skipped beside the back one");
+        assert_eq!(phone(1).pip_camera(), Some(2));
+        assert_eq!(phone(2).pip_camera(), Some(0), "a drone camera on screen can have a phone camera beside it");
+        let only_phone = Settings { cameras: phone(0).cameras[..2].to_vec(), ..phone(0) };
+        assert_eq!((only_phone.pip_camera(), only_phone.next_switchable()), (None, Some(1)), "with only the phone's two cameras there is no picture in picture, though the switch still flips between them");
+    }
+
+    #[test]
+    fn the_picture_in_picture_plays_only_while_a_head_shows_it() {
+        let shown = Settings { multi_view: true, ..settings() };
+        assert_eq!(shown.camera_index_for_receiver(PIP_RECEIVER), Some(1));
+        let hidden = Settings { pip_shown: false, ..shown.clone() };
+        assert_eq!((hidden.camera_index_for_receiver(PIP_RECEIVER), hidden.pip_choice()), (None, Some(1)), "a thumbnail nobody can see decodes nothing, though the camera it would show is still known");
+        assert!(!hidden.shown(1));
+        let mut state = wire(shown, &[MAIN_RECEIVER, PIP_RECEIVER]);
+        assert!(state.started_receivers().is_empty());
+        state.on_start_complete(PIP_RECEIVER, Outcome::Ok, 0);
+        let outs = state.on_settings(hidden);
+        assert!(outs.contains(&Out::StopReceiver { receiver: PIP_RECEIVER.to_string() }), "hiding the thumbnail stops its receiver");
+        assert!(!outs.contains(&Out::StopReceiver { receiver: MAIN_RECEIVER.to_string() }), "and leaves the main one alone");
+        assert_eq!(state.camera_signal(1), SIGNAL_IDLE);
+    }
+
+    #[test]
+    fn turning_the_stream_back_on_starts_every_camera_again_however_long_it_was_off() {
+        let mut state = wire(Settings { multi_view: true, ..settings() }, &[MAIN_RECEIVER, PIP_RECEIVER]);
+        [MAIN_RECEIVER, PIP_RECEIVER].iter().for_each(|name| {
+            state.on_start_complete(name, Outcome::Ok, 0);
+        });
+        state.on_settings(Settings { stream_enabled: false, multi_view: true, ..settings() });
+        [MAIN_RECEIVER, PIP_RECEIVER].iter().for_each(|name| {
+            state.on_stop_complete(name, Outcome::Ok);
+            assert!(state.start_receiver(name).is_empty(), "{name}: the retry the stop scheduled finds no video and is spent");
+        });
+        let on = state.on_settings(Settings { multi_view: true, ..settings() });
+        [MAIN_RECEIVER, PIP_RECEIVER].iter().for_each(|name| {
+            assert!(on.iter().any(|out| matches!(out, Out::StartReceiver { receiver, .. } if receiver == name)), "{name}: switching the stream on starts it, with no retry left to do it");
+        });
     }
 
     #[test]

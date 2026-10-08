@@ -33,6 +33,7 @@ private const val VIDEO_STOP_RECORDING = "video.stopRecording"
 private const val VIDEO_RESTART = "video.restart"
 private const val VIDEO_DEVICE_CAMERA_ROTATION = "video.setDeviceCameraRotation"
 private const val VIDEO_PICTURE_IN_PICTURE = "settings.videoSettings.multiViewEnabled"
+private const val VIDEO_PIP_SHOWN = "video.setPipShown"
 private const val VIDEO_STREAM_ENABLED = "settings.videoSettings.streamEnabled"
 private const val CAMERAS_ADD = "cameras.add"
 private const val CAMERAS_UPDATE = "cameras.update"
@@ -95,6 +96,7 @@ internal object VideoCommands {
     fun restart(): Boolean = Qgc.invoke(VIDEO_RESTART)
     fun setDeviceCameraRotation(degrees: Int): Boolean = Qgc.invoke(VIDEO_DEVICE_CAMERA_ROTATION, degrees)
     fun setPictureInPicture(shown: Boolean): Boolean = Qgc.set(VIDEO_PICTURE_IN_PICTURE, shown)
+    fun setPipShown(shown: Boolean): Boolean = Qgc.invoke(VIDEO_PIP_SHOWN, shown)
     fun turnStreamOn(): Boolean = Qgc.set(VIDEO_STREAM_ENABLED, true)
 }
 

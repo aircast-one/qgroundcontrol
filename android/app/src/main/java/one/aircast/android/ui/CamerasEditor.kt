@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -52,12 +53,20 @@ import one.aircast.android.bridge.VideoCommands
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.AircastSheet
+import one.aircast.map.AircastSpace
 
 private const val CAMERA_UNDO_WINDOW_MS = 6000L
 private const val CAMERA_LIST_SETTLE_MS = 2000L
 private const val CAMERA_CLASSIFY_SETTLE_MS = 300L
+private val ROW_PAD_HORIZONTAL = AircastSpace.s4
+private val ROW_PAD_VERTICAL = 10.dp
+private val ROW_MIN_HEIGHT = 64.dp
+private val ROW_GAP = 14.dp
+private val ROW_LINE_GAP = 2.dp
+private val SHEET_PAD = AircastSpace.s6
+private val SHEET_GAP = AircastSpace.s3
 
-private data class CameraDraft(
+internal data class CameraDraft(
     val stored: Int?,
     val title: String,
     val name: String,
@@ -93,16 +102,33 @@ private fun editDraft(camera: CameraEntry, kinds: List<CameraKind>): CameraDraft
 
 private fun draftGuess(draft: CameraDraft, guess: CameraGuess?): CameraGuess? = keptGuess(guess, draft.source, draft.url, draft.kept)
 
-private fun saved(draft: CameraDraft, shown: CameraGuess?): String? = when {
-    draft.stored != null && !draft.needsUrl -> CameraCommands.update(draft.stored, draft.name, draft.source, draft.url)
-    else -> savedAs(draft, shown ?: draftGuess(draft, cameraGuess(CameraCommands.classify(draft.url))))
+internal sealed interface CameraSave {
+    data class Add(val name: String, val source: String, val url: String) : CameraSave
+    data class Update(val slot: Int, val name: String, val source: String, val url: String) : CameraSave
+    data class Refused(val problem: String) : CameraSave
 }
 
-private fun savedAs(draft: CameraDraft, guess: CameraGuess?): String? = when (draft.stored) {
-    null -> CameraCommands.add(draft.name, chosenKind(guess, draft.picked, ""), draft.url)
-    else -> guess?.takeIf { it.kind == null }?.problem
-        ?: CameraCommands.update(draft.stored, draft.name, chosenKind(guess, draft.picked, draft.source), draft.url)
+internal fun cameraSave(draft: CameraDraft, shown: CameraGuess?, classify: (String) -> CameraGuess?): CameraSave = when {
+    draft.stored != null && !draft.needsUrl -> CameraSave.Update(draft.stored, draft.name, draft.source, draft.url)
+    else -> savedAs(draft, shown ?: draftGuess(draft, classify(draft.url)))
 }
+
+private fun savedAs(draft: CameraDraft, guess: CameraGuess?): CameraSave = when (draft.stored) {
+    null -> CameraSave.Add(draft.name, chosenKind(guess, draft.picked, ""), draft.url)
+    else -> guess?.takeIf { it.kind == null }?.problem?.let(CameraSave::Refused)
+        ?: CameraSave.Update(draft.stored, draft.name, chosenKind(guess, draft.picked, draft.source), draft.url)
+}
+
+private fun written(save: CameraSave): String? = when (save) {
+    is CameraSave.Add -> CameraCommands.add(save.name, save.source, save.url)
+    is CameraSave.Update -> CameraCommands.update(save.slot, save.name, save.source, save.url)
+    is CameraSave.Refused -> save.problem
+}
+
+private fun saved(draft: CameraDraft, shown: CameraGuess?): String? =
+    written(cameraSave(draft, shown) { address -> cameraGuess(CameraCommands.classify(address)) })
+
+internal fun refusedDraft(current: CameraDraft?, refusal: String?): CameraDraft? = refusal?.let { current?.copy(refusal = it) }
 
 @Composable
 fun CamerasEditor(modifier: Modifier = Modifier) {
@@ -145,8 +171,7 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
     }
 
     Column(modifier.verticalScroll(rememberScrollState())) {
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(VIDEO_SOURCES_PAGE, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth().padding(end = AircastSpace.s1, top = AircastSpace.s2), horizontalArrangement = Arrangement.End) {
             IconButton(onClick = { draft = CameraDraft(null, "", "", "", "") }, enabled = editable && !busy) {
                 Icon(painterResource(R.drawable.ic_add), "Add a video source")
             }
@@ -161,7 +186,7 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
             HorizontalDivider()
         }
         removed?.let { gone ->
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = ROW_PAD_HORIZONTAL, vertical = AircastSpace.s1), verticalAlignment = Alignment.CenterVertically) {
                 Text("Removed ${gone.title}.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 TextButton(enabled = !busy, onClick = {
                     removed = null
@@ -172,7 +197,7 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
     }
 
     draft?.let { current ->
-        val closed: (String?) -> Unit = { refusal -> draft = refusal?.let { current.copy(refusal = it) } }
+        val closed: (String?) -> Unit = { refusal -> draft = refusedDraft(draft, refusal) }
         CameraSheet(
             draft = current,
             hint = kinds.firstOrNull { it.needsUrl }?.hint.orEmpty(),
@@ -199,7 +224,7 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
 
 @Composable
 private fun ErrorLine(text: String) {
-    Text(text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+    Text(text, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = ROW_PAD_HORIZONTAL, vertical = AircastSpace.s1))
 }
 
 @Composable
@@ -208,13 +233,13 @@ private fun CameraRow(camera: CameraEntry, onEdit: (() -> Unit)?) {
         Modifier
             .fillMaxWidth()
             .then(if (onEdit != null) Modifier.clickable(onClick = onEdit) else Modifier)
-            .heightIn(min = 64.dp)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+            .heightIn(min = ROW_MIN_HEIGHT)
+            .padding(horizontal = ROW_PAD_HORIZONTAL, vertical = ROW_PAD_VERTICAL),
+        horizontalArrangement = Arrangement.spacedBy(ROW_GAP),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CameraStatusDot(camera.status)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(ROW_LINE_GAP)) {
             Text(camera.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(cameraDetail(camera), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             camera.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
@@ -250,6 +275,7 @@ private fun CameraSheet(
     LaunchedEffect(guess != null, guess?.ambiguous) {
         if (guess != null && sheetState.targetValue != SheetValue.Hidden) sheetState.expand()
     }
+    val problem = draft.refusal ?: guess?.problem?.takeIf { draft.url.isNotBlank() }
     val canSave = !busy && (draft.url.isNotBlank() || !draft.needsUrl)
     val save = { if (canSave) onSave(guess) }
     val nameField: @Composable () -> Unit = {
@@ -269,8 +295,8 @@ private fun CameraSheet(
     }
     AircastSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            Modifier.verticalScroll(rememberScrollState()).imePadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.verticalScroll(rememberScrollState()).imePadding().padding(start = SHEET_PAD, end = SHEET_PAD, bottom = SHEET_PAD),
+            verticalArrangement = Arrangement.spacedBy(SHEET_GAP),
         ) {
             Text(if (draft.stored == null) "Add video source" else draft.title, style = MaterialTheme.typography.titleMedium)
             if (draft.stored != null) nameField()
@@ -281,14 +307,14 @@ private fun CameraSheet(
                     label = { Text("Address") },
                     placeholder = { Text(hint) },
                     singleLine = true,
-                    isError = draft.refusal != null,
-                    supportingText = (draft.refusal ?: guessText(guess).takeIf { draft.url.isNotBlank() })?.takeIf { it.isNotBlank() }?.let { line -> { Text(line) } },
+                    isError = problem != null,
+                    supportingText = (problem ?: guessText(guess).takeIf { draft.url.isNotBlank() })?.takeIf { it.isNotBlank() }?.let { line -> { Text(line) } },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { save() }),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 guess?.takeIf { it.ambiguous }?.let { ambiguous ->
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2), verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) {
                         ambiguous.choices.map { choice ->
                             FilterChip(
                                 selected = choice == chosenKind(ambiguous, draft.picked, ""),
@@ -310,12 +336,12 @@ private fun CameraSheet(
                 Button(onClick = save, enabled = canSave) { Text("Save") }
             }
             if (others.isNotEmpty()) {
-                Text("Other sources", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Other sources", Modifier.padding(top = AircastSpace.s2), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Column {
                     others.map { kind ->
                         Text(
                             otherSourceLabel(kind),
-                            Modifier.fillMaxWidth().clickable(enabled = !busy) { onPick(kind) }.padding(vertical = 12.dp),
+                            Modifier.fillMaxWidth().clickable(enabled = !busy, role = Role.Button) { onPick(kind) }.padding(vertical = AircastSpace.s3),
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }

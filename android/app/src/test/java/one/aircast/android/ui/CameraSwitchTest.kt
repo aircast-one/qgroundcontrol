@@ -5,7 +5,9 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CameraSwitchTest {
@@ -40,23 +42,43 @@ class CameraSwitchTest {
     @Test
     fun `the second camera shows only when it is switched on and there is one`() {
         val cameras = arrayOf(camera(0, active = true), camera(1))
-        assertEquals(1, pipCamera(reading(*cameras, pip = """{"enabled":true,"slot":1}"""))?.slot)
-        assertNull(pipCamera(reading(*cameras, pip = """{"enabled":false,"slot":1}""")))
-        assertNull(pipCamera(reading(*cameras, pip = """{"enabled":true,"slot":null}""")))
+        assertEquals(1, pipCamera(reading(*cameras, pip = """{"enabled":true,"slot":1}"""), streamOn = true)?.slot)
+        assertNull(pipCamera(reading(*cameras, pip = """{"enabled":false,"slot":1}"""), streamOn = true))
+        assertNull(pipCamera(reading(*cameras, pip = """{"enabled":true,"slot":null}"""), streamOn = true))
     }
 
     @Test
     fun `the picture-in-picture button flips the setting, and hides with no second camera`() {
         val cameras = arrayOf(camera(0, active = true), camera(1))
-        assertEquals(true, pipToggleTarget(reading(*cameras, pip = """{"enabled":false,"slot":1}"""), thumbnailRoom = true))
-        assertEquals(false, pipToggleTarget(reading(*cameras, pip = """{"enabled":true,"slot":1}"""), thumbnailRoom = true))
-        assertNull(pipToggleTarget(reading(*cameras, pip = """{"enabled":true,"slot":null}"""), thumbnailRoom = true))
-        assertNull(pipToggleTarget(null, thumbnailRoom = true))
+        assertEquals(true, pipToggleTarget(reading(*cameras, pip = """{"enabled":false,"slot":1}"""), thumbnailRoom = true, streamOn = true))
+        assertEquals(false, pipToggleTarget(reading(*cameras, pip = """{"enabled":true,"slot":1}"""), thumbnailRoom = true, streamOn = true))
+        assertNull(pipToggleTarget(reading(*cameras, pip = """{"enabled":true,"slot":null}"""), thumbnailRoom = true, streamOn = true))
+        assertNull(pipToggleTarget(null, thumbnailRoom = true, streamOn = true))
     }
 
     @Test
     fun `the picture-in-picture button hides where the view has no room for the thumbnail`() {
-        assertNull(pipToggleTarget(reading(camera(0, active = true), camera(1), pip = """{"enabled":false,"slot":1}"""), thumbnailRoom = false))
+        assertNull(pipToggleTarget(reading(camera(0, active = true), camera(1), pip = """{"enabled":false,"slot":1}"""), thumbnailRoom = false, streamOn = true))
+    }
+
+    @Test
+    fun `with video switched off neither the second camera nor its button shows, even before the core catches up`() {
+        val stale = reading(camera(0, active = true), camera(1), pip = """{"enabled":true,"slot":1}""")
+        assertNull(pipCamera(stale, streamOn = false))
+        assertNull(pipToggleTarget(stale, thumbnailRoom = true, streamOn = false))
+        val off = reading(camera(0, active = true), camera(1), pip = """{"enabled":false,"slot":1}""")
+        assertNull("the button never offers a switch-on that cannot show anything", pipToggleTarget(off, thumbnailRoom = true, streamOn = false))
+    }
+
+    @Test
+    fun `a double tap on the two-camera switch sends one switch`() {
+        val first = SwitchTap(from = 0, atMs = 1_000)
+        assertTrue(switchTapAllowed(null, shown = 0, nowMs = 1_000))
+        assertFalse("the second tap of a double tap, before the core answers", switchTapAllowed(first, shown = 0, nowMs = 1_150))
+        assertFalse("the second tap of a double tap, after the core already switched", switchTapAllowed(first, shown = 1, nowMs = 1_200))
+        assertFalse("a slow repeat while the switch is still pending", switchTapAllowed(first, shown = 0, nowMs = 1_900))
+        assertTrue("once the camera changed, the next tap switches back", switchTapAllowed(first, shown = 1, nowMs = 1_400))
+        assertTrue("a switch the core never answered stops blocking", switchTapAllowed(first, shown = 0, nowMs = 3_000))
     }
 
     @Test

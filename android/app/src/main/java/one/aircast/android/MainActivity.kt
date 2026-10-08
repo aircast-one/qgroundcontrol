@@ -70,7 +70,6 @@ import one.aircast.android.ui.ResumeFailedPrompt
 import one.aircast.android.ui.VirtualJoystick
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.res.painterResource
@@ -320,7 +319,7 @@ fun AircastShell(hostView: android.view.View?) {
             )
         }
     }
-    val flyCameraSwitch = remember { movableContentOf<Boolean> { thumbnailRoom -> LayoutWidget("cameraSwitch") { CameraSwitch(thumbnailRoom) } } }
+    val flyCameraSwitch = remember { movableContentOf<Boolean, Modifier> { thumbnailRoom, gap -> LayoutWidget("cameraSwitch") { CameraSwitch(thumbnailRoom, gap) } } }
     val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer(shutters = !flyIsPortrait()) } } }
     val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
     val flyOrbitReadout = remember { movableContentOf { LayoutWidget("orbit") { OrbitReadout() } } }
@@ -531,10 +530,17 @@ fun AircastShell(hostView: android.view.View?) {
                     val flyKeyRow: @Composable () -> Unit = {
                         flyObstacleArc()
                     }
-                    val flyRail: @Composable (Alignment.Vertical, Dp, Boolean) -> Unit = { align, shutterRoom, thumbnailRoom ->
-                        Row(verticalAlignment = align, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2)) {
-                            flyCameraSwitch(thumbnailRoom)
-                            Box(Modifier.widthIn(min = shutterRoom), contentAlignment = Alignment.Center) { flyCameraControlLayer() }
+                    val flyRail: @Composable (Boolean, Boolean) -> Unit = { stacked, thumbnailRoom ->
+                        if (stacked) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                flyCameraSwitch(thumbnailRoom, Modifier.padding(bottom = AircastSpace.s2))
+                                flyCameraControlLayer()
+                            }
+                        } else {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                flyCameraSwitch(thumbnailRoom, Modifier.padding(end = AircastSpace.s2))
+                                Box(Modifier.widthIn(min = RAIL_SHUTTER_ROOM), contentAlignment = Alignment.Center) { flyCameraControlLayer() }
+                            }
                         }
                     }
                     val flyOverlays: @Composable () -> Unit = {
@@ -556,7 +562,7 @@ fun AircastShell(hostView: android.view.View?) {
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
-                            rail = { thumbnailRoom -> flyRail(Alignment.CenterVertically, RAIL_SHUTTER_ROOM, thumbnailRoom) },
+                            rail = { thumbnailRoom -> flyRail(false, thumbnailRoom) },
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
                         )
@@ -568,7 +574,7 @@ fun AircastShell(hostView: android.view.View?) {
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
-                            rail = { thumbnailRoom -> flyRail(Alignment.Bottom, 0.dp, thumbnailRoom) },
+                            rail = { thumbnailRoom -> flyRail(true, thumbnailRoom) },
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
                         )

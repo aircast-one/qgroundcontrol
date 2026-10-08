@@ -5,6 +5,7 @@
 #include <QtQml/QQmlPropertyMap>
 
 #include <QtCore/QRegularExpression>
+#include <QtCore/QScopeGuard>
 #include <memory>
 
 #include "SettingsManager.h"
@@ -40,6 +41,18 @@ static QQuickItem* findTile(QQuickView& view, int cameraNumber)
 {
     return findItem(view.rootObject(), [cameraNumber](QQuickItem* item) {
         return item->objectName().startsWith(QLatin1String("videoTile")) && item->property("cameraNumber").toInt() == cameraNumber;
+    });
+}
+
+static auto restoreCamerasOnExit(VideoSettings* videoSettings)
+{
+    return qScopeGuard([videoSettings,
+                        cameras = videoSettings->cameras()->rawValue(),
+                        active = videoSettings->activeVideoSource()->rawValue(),
+                        multiView = videoSettings->multiViewEnabled()->rawValue()] {
+        videoSettings->cameras()->setRawValue(cameras);
+        videoSettings->activeVideoSource()->setRawValue(active);
+        videoSettings->multiViewEnabled()->setRawValue(multiView);
     });
 }
 
@@ -94,9 +107,7 @@ void VideoTileTest::_tuckPersistsAcrossReload()
 void VideoTileTest::_extraCameraTileAttachedToPip()
 {
     VideoSettings* const videoSettings = SettingsManager::instance()->videoSettings();
-    const QVariant savedCameras = videoSettings->cameras()->rawValue();
-    const QVariant savedActive = videoSettings->activeVideoSource()->rawValue();
-    const QVariant savedMultiView = videoSettings->multiViewEnabled()->rawValue();
+    const auto restore = restoreCamerasOnExit(videoSettings);
 
     videoSettings->cameras()->setRawValue(QStringLiteral(R"([
         {"name":"Cam1","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/1"},
@@ -110,7 +121,6 @@ void VideoTileTest::_extraCameraTileAttachedToPip()
 
     QQuickItem* tile = findTile(view, 2);
     QVERIFY(tile);
-    QCOMPARE(tile->property("cameraNumber").toInt(), 2);
     QVERIFY(tile->isVisible());
 
     QQuickItem* pip = findNamed(view, QStringLiteral("pip"));
@@ -123,10 +133,6 @@ void VideoTileTest::_extraCameraTileAttachedToPip()
     const QRectF railRect(rail->mapToScene(QPointF(0, 0)), rail->size());
     QVERIFY(railRect.left() > pipRect.right());
     QCOMPARE(railRect.bottom(), pipRect.bottom());
-
-    videoSettings->cameras()->setRawValue(savedCameras);
-    videoSettings->activeVideoSource()->setRawValue(savedActive);
-    videoSettings->multiViewEnabled()->setRawValue(savedMultiView);
 }
 
 void VideoTileTest::_gridPersistsAcrossReload()
@@ -155,47 +161,45 @@ void VideoTileTest::_gridPersistsAcrossReload()
     QVERIFY(QMetaObject::invokeMethod(layer2, "setGrid", Q_ARG(QVariant, QVariant(false))));
 }
 
-void VideoTileTest::_onlyThePipCameraGetsATile()
+void VideoTileTest::_thePipTileFollowsTheActiveCamera()
 {
     clearQmlGlobalSettings({"VideoRailGrid"});
 
     VideoSettings* const videoSettings = SettingsManager::instance()->videoSettings();
-    const QVariant savedCameras = videoSettings->cameras()->rawValue();
-    const QVariant savedActive = videoSettings->activeVideoSource()->rawValue();
-    const QVariant savedMultiView = videoSettings->multiViewEnabled()->rawValue();
-
-    videoSettings->activeVideoSource()->setRawValue(0);
+    const auto restore = restoreCamerasOnExit(videoSettings);
     videoSettings->cameras()->setRawValue(QStringLiteral(R"([
-        {"name":"Cam1","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/1"},
-        {"name":"Cam2","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/2"},
+        {"name":"Belly","source":"UDP h.264 Video Stream","url":"0.0.0.0:5600"},
+        {"name":"Radio","source":"UDP h.264 Video Stream","url":"127.0.0.1:5600"},
         {"name":"Cam3","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/3"},
         {"name":"Cam4","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/4"},
         {"name":"Cam5","source":"RTSP Video Stream","url":"rtsp://127.0.0.1/5"}])"));
     videoSettings->multiViewEnabled()->setRawValue(true);
+    videoSettings->activeVideoSource()->setRawValue(2);
 
     const std::unique_ptr<QQmlPropertyMap> globals(QQmlPropertyMap::create());
     QQuickView view;
     QVERIFY(loadVideoView(view, *globals));
-
-    QQuickItem* layer = findNamed(view, QStringLiteral("tiles"));
-    QQuickItem* tile = findTile(view, 2);
-    QVERIFY(layer);
-    QVERIFY(tile);
+    QQuickItem* const layer = findNamed(view, QStringLiteral("tiles"));
+    QQuickItem* const tile = findNamed(view, QStringLiteral("videoTile"));
+    QQuickItem* const pip = findNamed(view, QStringLiteral("pip"));
+    QVERIFY(layer && tile && pip);
     QVERIFY(tile->isVisible());
-    QVERIFY(!findTile(view, 3));
-    QVERIFY(!findTile(view, 5));
 
+    const auto pipTileAfterSwitchingTo = [videoSettings, tile](int active) {
+        videoSettings->activeVideoSource()->setRawValue(active);
+        return tile->property("cameraNumber").toInt();
+    };
+    QCOMPARE(tile->property("cameraNumber").toInt(), 4);
+    QCOMPARE(pipTileAfterSwitchingTo(0), 3);
+    QCOMPARE(pipTileAfterSwitchingTo(1), 3);
+    QCOMPARE(pipTileAfterSwitchingTo(4), 1);
+    QCOMPARE(pipTileAfterSwitchingTo(2), 4);
+    QVERIFY(tile->isVisible());
+
+    const auto ungrid = qScopeGuard([layer] { (void) QMetaObject::invokeMethod(layer, "setGrid", Q_ARG(QVariant, QVariant(false))); });
     QVERIFY(QMetaObject::invokeMethod(layer, "setGrid", Q_ARG(QVariant, QVariant(true))));
-    QVERIFY(!findTile(view, 3));
-
-    QQuickItem* pip = findNamed(view, QStringLiteral("pip"));
     QTRY_COMPARE(tile->width(), pip->width());
     QVERIFY(tile->x() > 0 || tile->y() > 0);
-
-    QVERIFY(QMetaObject::invokeMethod(layer, "setGrid", Q_ARG(QVariant, QVariant(false))));
-    videoSettings->cameras()->setRawValue(savedCameras);
-    videoSettings->activeVideoSource()->setRawValue(savedActive);
-    videoSettings->multiViewEnabled()->setRawValue(savedMultiView);
 }
 
 void VideoTileTest::_statusPillRegistersAsAnObstacleOwnedByThePip()

@@ -50,8 +50,6 @@ QGC_LOGGING_CATEGORY(VideoManagerLog, "Video.VideoManager")
 namespace {
 constexpr uint32_t kSwitchStallHoldSeconds = 20;
 constexpr int kEncoderHandoffMs = 500;
-constexpr int kMainVideoChannel = 0;
-constexpr int kPipVideoChannel = 1;
 }
 
 static constexpr const char *kMainReceiverName = "videoContent";
@@ -98,7 +96,11 @@ VideoManager::VideoManager(QObject *parent)
     });
 
     (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &VideoManager::_setActiveVehicle);
-    (void) connect(_videoSettings->streamEnabled(), &Fact::rawValueChanged, this, &VideoManager::camerasChanged);
+    (void) connect(_videoSettings->streamEnabled(), &Fact::rawValueChanged, this, &VideoManager::_streamEnabledChanged);
+    (void) connect(_videoSettings->cameras(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
+    (void) connect(this, &VideoManager::activeVideoSourceChanged, this, &VideoManager::camerasChanged);
 
     QTimer *statsTimer = new QTimer(this);
     statsTimer->setInterval(1000);
@@ -236,13 +238,9 @@ void VideoManager::init(QQuickWindow *mainWindow)
 #endif
 
     (void) connect(_videoSettings->cameras(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged, Qt::QueuedConnection);
-    (void) connect(_videoSettings->cameras(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged, Qt::QueuedConnection);
-    (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
     (void) connect(_videoSettings->activeVideoSource(), &Fact::rawValueChanged, this, &VideoManager::_holdStallRestartWhileSwitching);
     (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::_videoSourceChanged);
-    (void) connect(_videoSettings->multiViewEnabled(), &Fact::rawValueChanged, this, &VideoManager::activeVideoSourceChanged);
-    (void) connect(this, &VideoManager::activeVideoSourceChanged, this, &VideoManager::camerasChanged);
     (void) connect(_videoSettings->aspectRatio(), &Fact::rawValueChanged, this, &VideoManager::aspectRatioChanged);
     (void) connect(_videoSettings->lowLatencyMode(), &Fact::rawValueChanged, this, [this](const QVariant &value) { Q_UNUSED(value); _restartAllVideos(); });
     (void) connect(_videoSettings->rtpJitterLatencyMs(), &Fact::rawValueChanged, this, [this](const QVariant &value) { Q_UNUSED(value); _videoSourceChanged(); });
@@ -663,7 +661,7 @@ void VideoManager::storeCameras(const QString &list, int active)
 
 void VideoManager::switchActiveVideoSource()
 {
-    const int next = _videoSettings->pipCameraIndex();
+    const int next = _videoSettings->nextUsableIndex();
     if (next >= 0) {
         setActiveVideoSource(next);
     }
@@ -682,6 +680,21 @@ bool VideoManager::_cameraPlayed(int index) const
 int VideoManager::pipCameraNumber() const
 {
     return _pipCamera() + 1;
+}
+
+QVariant VideoManager::pipSlot() const
+{
+    const int slot = _videoSettings->pipCameraIndex();
+    return (slot >= 0) ? QVariant(slot) : QVariant();
+}
+
+void VideoManager::_streamEnabledChanged()
+{
+    for (ReceiverState &state : _receiverState) {
+        state.failing = false;
+    }
+    emit hasVideoChanged();
+    emit camerasChanged();
 }
 
 void VideoManager::promotePip()
@@ -996,18 +1009,34 @@ int VideoManager::_nativeChannelForReceiver(const VideoReceiver *receiver) const
     if (cameraIndex < 0) {
         return -1;
     }
-    return (cameraIndex == _videoSettings->currentIndex()) ? kMainVideoChannel : kPipVideoChannel;
+    return (cameraIndex == _videoSettings->currentIndex()) ? QGC_VIDEO_MAIN : QGC_VIDEO_PIP;
 }
 
 void VideoManager::_bindNativeSink(VideoReceiver *receiver)
 {
+    const int channel = _nativeChannelForReceiver(receiver);
+    if (channel < 0) {
+        _releaseChannels(receiver);
+        return;
+    }
     if (!receiver->sink()) {
         receiver->setSink(QGCCorePlugin::instance()->createNativeVideoSink(receiver));
         qCDebug(VideoManagerLog) << "native sink" << receiver->name() << (receiver->sink() != nullptr) << "started:" << receiver->started();
     }
-    const int channel = _nativeChannelForReceiver(receiver);
-    if (receiver->sink() && (channel >= 0)) {
-        (void) VideoBackend::attachNativeSink(receiver->sink(), channel);
+    const bool attached = receiver->sink() && VideoBackend::attachNativeSink(receiver->sink(), channel);
+    _releaseChannels(receiver, attached ? channel : -1);
+    if (attached) {
+        _channelHolders[channel] = receiver->name();
+    }
+}
+
+void VideoManager::_releaseChannels(const VideoReceiver *receiver, int kept)
+{
+    for (int channel = 0; channel < QGC_VIDEO_CHANNELS; ++channel) {
+        if ((channel != kept) && (_channelHolders[channel] == receiver->name())) {
+            _channelHolders[channel].clear();
+            qgc_video_detach_appsink(channel);
+        }
     }
 }
 
@@ -1345,51 +1374,9 @@ bool VideoManager::_updateSettings(VideoReceiver *receiver)
     }
 
     const QString source = _videoSettings->videoSourceNameAt(cameraIndex);
-    settingsChanged |= _updateVideoUri(receiver, _sourceToUri(source, _videoSettings->videoUrlAt(cameraIndex)));
+    settingsChanged |= _updateVideoUri(receiver, VideoSettings::streamUri(source, _videoSettings->videoUrlAt(cameraIndex)));
 
     return settingsChanged;
-}
-
-QString VideoManager::_sourceToUri(const QString &source, const QString &url) const
-{
-    if (source == VideoSettings::videoSourceUDPH264) {
-        return QStringLiteral("udp://%1").arg(url);
-    }
-    if (source == VideoSettings::videoSourceUDPH265) {
-        return QStringLiteral("udp265://%1").arg(url);
-    }
-    if (source == VideoSettings::videoSourceMPEGTS) {
-        return QStringLiteral("mpegts://%1").arg(url);
-    }
-    if (source == VideoSettings::videoSourceRTSP) {
-        return url;
-    }
-    if (source == VideoSettings::videoSourceTCP) {
-        return QStringLiteral("tcp://%1").arg(url);
-    }
-    if (source == VideoSettings::videoSourceWebRTC) {
-        const QString whepInput = url.trimmed();
-        return whepInput.isEmpty() ? QString() : QUrl::fromUserInput(whepInput).toString();
-    }
-    if (source == VideoSettings::videoSource3DRSolo) {
-        return QStringLiteral("udp://0.0.0.0:5600");
-    }
-    if (source == VideoSettings::videoSourceParrotDiscovery) {
-        return QStringLiteral("udp://0.0.0.0:8888");
-    }
-    if (source == VideoSettings::videoSourceYuneecMantisG) {
-        return QStringLiteral("rtsp://192.168.42.1:554/live");
-    }
-    if (source == VideoSettings::videoSourceHerelinkAirUnit) {
-        return QStringLiteral("rtsp://192.168.0.10:8554/H264Video");
-    }
-    if (source == VideoSettings::videoSourceHerelinkHotspot) {
-        return QStringLiteral("rtsp://192.168.43.1:8554/fpv_stream");
-    }
-    if ((source != VideoSettings::videoDisabled) && (source != VideoSettings::videoSourceNoVideo) && !isUvc()) {
-        qCCritical(VideoManagerLog) << "Video source URI \"" << source << "\" is not supported. Please add support!";
-    }
-    return QString();
 }
 
 void VideoManager::_setActiveVehicle(Vehicle *vehicle)
@@ -1595,6 +1582,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     (void) connect(receiver, &VideoReceiver::onStopComplete, this, [this, receiver](VideoReceiver::STATUS status) {
         qCDebug(VideoManagerLog) << "Stop complete" << receiver->name() << receiver->uri()  << ", status:" << status;
         receiver->setStarted(false);
+        _releaseChannels(receiver);
         const bool requested = std::exchange(_receiverState[receiver->name()].stopRequested, false);
         if (!requested) {
             _setReceiverFailing(receiver, true);

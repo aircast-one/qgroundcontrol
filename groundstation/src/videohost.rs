@@ -13,6 +13,7 @@ const NATIVE_SINK: &str = "glupload ! glcolorconvert ! video/x-raw(memory:GLMemo
 pub const VIDEO_CHANNELS: usize = 2;
 pub const MAIN_CHANNEL: usize = 0;
 pub const PIP_CHANNEL: usize = 1;
+pub const VIDEO_ABI_VERSION: i32 = 2;
 const CHANNEL_RECEIVERS: [&str; VIDEO_CHANNELS] = [MAIN_RECEIVER, PIP_RECEIVER];
 
 #[derive(Default)]
@@ -46,6 +47,7 @@ const DEFAULT_MAX_VIDEO_MB: u64 = 10240;
 const BAD_FORMAT_MESSAGE: &str = "Invalid video format defined.";
 const NO_SAVE_PATH_MESSAGE: &str = "Unabled to record video. Video save path must be specified in Settings.";
 pub const SET_DEVICE_CAMERA_ROTATION: &str = "video.setDeviceCameraRotation";
+pub const SET_PIP_SHOWN: &str = "video.setPipShown";
 const DEVICE_CAMERA_RECORDING_MESSAGE: &str = "Recording is not available for this device's own camera.";
 
 static HOST: Mutex<Option<Host>> = Mutex::new(None);
@@ -59,6 +61,7 @@ pub fn settings_from(text: &dyn Fn(&str) -> String, flag: &dyn Fn(&str, bool) ->
         cameras: crate::cameras::parse(&text(crate::cameras::CAMERAS_FACT)).unwrap_or_default().into_iter().map(|camera| SourceSlot { source: camera.source, url: camera.url, name: camera.name, drone: false }).collect(),
         active_source: number(crate::cameras::ACTIVE_FACT, 0),
         multi_view: flag("multiViewEnabled", false),
+        pip_shown: false,
         stream_enabled: flag("streamEnabled", true),
         low_latency: flag("lowLatencyMode", false),
         save_path_set: false,
@@ -237,7 +240,7 @@ fn quoted(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-fn host_port(rest: &str) -> Option<(String, u16)> {
+pub fn host_port(rest: &str) -> Option<(String, u16)> {
     let authority = rest.split(['/', '?']).next()?;
     let (host, port) = authority.rsplit_once(':')?;
     Some((if host.is_empty() { "0.0.0.0".to_string() } else { host.to_string() }, port.parse().ok()?))
@@ -408,7 +411,7 @@ fn synced() -> MutexGuard<'static, Option<Host>> {
         send_stream_switches(stream_switches(was, active, &outs));
         apply(host, outs, now_ms);
     }
-    let settings = with_drone(stored_settings(), &drone);
+    let settings = Settings { pip_shown: host.state.settings.pip_shown, ..with_drone(stored_settings(), &drone) };
     if settings != host.state.settings {
         let outs = host.state.on_settings(settings);
         apply(host, outs, now_ms);
@@ -424,6 +427,13 @@ fn synced() -> MutexGuard<'static, Option<Host>> {
     }
     restart_due(host, now_ms);
     guard
+}
+
+fn show_pip(host: &mut Host, shown: bool, now_ms: u64) {
+    if host.state.settings.pip_shown != shown {
+        let outs = host.state.on_settings(Settings { pip_shown: shown, ..host.state.settings.clone() });
+        apply(host, outs, now_ms);
+    }
 }
 
 fn restart_due(host: &mut Host, now_ms: u64) {
@@ -477,6 +487,7 @@ fn object(host: &Host) -> Value {
         "cameraNames": (0..settings.count()).map(|i| settings.name_at(i).unwrap_or("")).collect::<Vec<_>>(),
         "cameraSources": (0..settings.count()).map(|i| settings.source_at(i)).collect::<Vec<_>>(),
         "cameraUrls": (0..settings.count()).map(|i| settings.url_at(i)).collect::<Vec<_>>(),
+        "pipSlot": settings.pip_choice(),
         "nativePipeline": pipeline_for(host, MAIN_CHANNEL),
         "pipPipeline": pipeline_for(host, PIP_CHANNEL),
         "deviceCamera": crate::videostate::device_camera(&uri),
@@ -567,13 +578,16 @@ pub fn stalled(watch: Option<Watch>, source: i64, decoded: i64, timeout_s: u32, 
 fn report(host: &mut Host, channel: usize, running: bool, frames: i64, width: u32, height: u32, source: Option<i64>, restarted: bool, error: &str, now_ms: u64) {
     let receiver = CHANNEL_RECEIVERS[channel];
     let played = &mut host.channels[channel];
-    if restarted && played.wanted {
+    if !played.wanted {
+        return;
+    }
+    if restarted {
         played.progress = Some(Watch::fresh(now_ms));
     }
     let buffers = source.unwrap_or(frames);
     let (progress, stall) = stalled(played.progress, buffers, frames, played.timeout_s, now_ms);
     played.progress = progress;
-    if played.wanted && stall {
+    if stall {
         let uri = host.state.desired_uri(receiver);
         let problem = stream_problem(&uri, buffers, frames, error);
         log::warn!("Video channel {channel} stalled after {buffers} source buffers and {frames} frames: {problem}");
@@ -591,7 +605,7 @@ fn report(host: &mut Host, channel: usize, running: bool, frames: i64, width: u3
     let flowing = running && source.is_none_or(|count| count > 0);
     if decoding {
         played.problem = None;
-    } else if played.wanted && !error.is_empty() {
+    } else if !error.is_empty() {
         let uri = host.state.desired_uri(receiver);
         played.problem = Some((uri.clone(), stream_problem(&uri, buffers, frames, error)));
     }
@@ -679,6 +693,10 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             Some(json!({ "ok": true }))
         }
         "video.setNativeRendering" | "video.initNative" => Some(json!({ "ok": true })),
+        SET_PIP_SHOWN => {
+            show_pip(host, given.get(0).and_then(Value::as_bool).unwrap_or(false), crate::hub::now_ms());
+            Some(json!({ "ok": true }))
+        }
         SET_DEVICE_CAMERA_ROTATION => {
             host.camera_rotation = given.get(0).and_then(Value::as_u64).map_or(0, |degrees| (degrees % 360) as u32);
             Some(json!({ "ok": true }))
@@ -855,7 +873,7 @@ mod tests {
 
     fn hosted(cameras: &str, active: i64, multi_view: bool) -> Host {
         let mut host = Host::default();
-        let outs = host.state.on_settings(Settings { multi_view, ..settings_from(&|name| if name == "cameras" { cameras.to_string() } else { String::new() }, &|_, default| default, &|name, default| if name == "activeVideoSource" { active } else { default }) });
+        let outs = host.state.on_settings(Settings { multi_view, pip_shown: true, ..settings_from(&|name| if name == "cameras" { cameras.to_string() } else { String::new() }, &|_, default| default, &|name, default| if name == "activeVideoSource" { active } else { default }) });
         apply(&mut host, outs, 0);
         CHANNEL_RECEIVERS.iter().for_each(|name| {
             let outs = host.state.register_receiver(name);
@@ -867,6 +885,11 @@ mod tests {
     fn set_multi_view(host: &mut Host, multi_view: bool) {
         let outs = host.state.on_settings(Settings { multi_view, ..host.state.settings.clone() });
         apply(host, outs, 0);
+    }
+
+    fn set_stream(host: &mut Host, stream_enabled: bool, now_ms: u64) {
+        let outs = host.state.on_settings(Settings { stream_enabled, ..host.state.settings.clone() });
+        apply(host, outs, now_ms);
     }
 
     const THREE: &str = r#"[{"name":"Front","source":"UDP h.264 Video Stream","url":"0.0.0.0:5600"},{"name":"Belly","source":"UDP h.265 Video Stream","url":"0.0.0.0:5601"},{"name":"Tail","source":"UDP h.264 Video Stream","url":"0.0.0.0:5602"}]"#;
@@ -930,7 +953,7 @@ mod tests {
         report(&mut host, PIP_CHANNEL, true, 0, 0, 0, None, false, "", 500);
         assert_eq!(signal(&host), json!("connecting"));
         report(&mut host, PIP_CHANNEL, true, 1, 320, 240, None, false, "", 4_500);
-        assert_eq!(signal(&host), json!("live"), "the macOS head reports a channel only when it changes and counts no source buffers, so its first frame can land after the start budget, and that frame is the data it saw");
+        assert_eq!(signal(&host), json!("live"), "a head that counts no source buffers can see its first frame land after the start budget, and that frame is the data it saw");
         let mut silent = hosted(THREE, 0, true);
         report(&mut silent, PIP_CHANNEL, true, 0, 0, 0, None, false, "", 3_001);
         assert_eq!((signal(&silent), silent.channels[PIP_CHANNEL].wanted), (json!("noSignal"), false), "nothing decoded inside the budget is still a stream that delivers nothing");
@@ -964,5 +987,60 @@ mod tests {
         assert!(disturbed.is_empty(), "the main channel was stopped, rescheduled or handed a new pipeline at ticks {disturbed:?}");
         assert!(run.iter().any(|(.., pip)| !pip) && run.iter().any(|(.., pip)| *pip), "and the picture in picture really stalled, was retried and played in the same run");
         assert_eq!(object(&host)["cameraSignals"][0], json!("live"));
+    }
+
+    #[test]
+    fn switching_the_stream_off_for_seconds_and_back_on_plays_both_cameras_again() {
+        let mut host = hosted(THREE, 0, true);
+        report(&mut host, MAIN_CHANNEL, true, 12, 640, 360, Some(12), false, "", 1_000);
+        report(&mut host, PIP_CHANNEL, true, 12, 320, 240, Some(12), false, "", 1_000);
+        set_stream(&mut host, false, 2_000);
+        assert_eq!((pipeline_for(&host, MAIN_CHANNEL), pipeline_for(&host, PIP_CHANNEL)), (None, None), "off stops both channels");
+        restart_due(&mut host, 7_000);
+        set_stream(&mut host, true, 7_000);
+        assert!(pipeline_for(&host, MAIN_CHANNEL).is_some_and(|played| played.contains("port=5600")), "the retry the stop scheduled was spent while video was off, so turning it on has to start the main camera itself");
+        assert!(pipeline_for(&host, PIP_CHANNEL).is_some_and(|played| played.contains("port=5601")), "and the picture in picture");
+    }
+
+    #[test]
+    fn a_late_report_from_a_pipeline_already_taken_down_is_ignored() {
+        let mut host = hosted(THREE, 0, true);
+        report(&mut host, PIP_CHANNEL, true, 0, 0, 0, Some(0), false, "", 3_001);
+        assert!(!host.channels[PIP_CHANNEL].wanted, "a stalled channel is taken down");
+        report(&mut host, PIP_CHANNEL, true, 30, 320, 240, Some(30), false, "", 3_200);
+        assert!(!host.state.started_receivers().contains(&PIP_RECEIVER.to_string()), "the old pipeline's last word cannot mark a stopped channel started");
+        assert_eq!(object(&host)["cameraSignals"][1], json!("noSignal"));
+        restart_due(&mut host, 4_001);
+        report(&mut host, PIP_CHANNEL, true, 4, 320, 240, Some(4), true, "", 4_500);
+        assert_eq!(object(&host)["cameraSignals"][1], json!("live"), "the restarted pipeline's own reports count again");
+    }
+
+    #[test]
+    fn the_picture_in_picture_plays_only_while_a_head_shows_it_and_the_stream_is_on() {
+        let mut host = hosted(THREE, 0, true);
+        assert!(pipeline_for(&host, PIP_CHANNEL).is_some());
+        show_pip(&mut host, false, 100);
+        assert_eq!(pipeline_for(&host, PIP_CHANNEL), None, "a thumbnail no head shows decodes nothing");
+        assert!(pipeline_for(&host, MAIN_CHANNEL).is_some());
+        assert_eq!(object(&host)["cameraSignals"], json!(["connecting", "idle", "idle"]));
+        assert_eq!(object(&host)["pipSlot"], json!(1), "the camera the thumbnail would show is served shown or not, so a head knows what it would offer");
+        show_pip(&mut host, true, 200);
+        assert!(pipeline_for(&host, PIP_CHANNEL).is_some_and(|played| played.contains("port=5601")));
+        set_stream(&mut host, false, 300);
+        assert_eq!(pipeline_for(&host, PIP_CHANNEL), None, "the stream switch takes the picture in picture with it");
+        set_stream(&mut host, true, 400);
+        assert!(pipeline_for(&host, PIP_CHANNEL).is_some());
+        set_multi_view(&mut host, false);
+        assert_eq!((pipeline_for(&host, PIP_CHANNEL), object(&host)["pipSlot"].clone()), (None, json!(1)));
+        let single = hosted(r#"[{"name":"Front","source":"UDP h.264 Video Stream","url":"0.0.0.0:5600"}]"#, 0, true);
+        assert_eq!((pipeline_for(&single, PIP_CHANNEL), object(&single)["pipSlot"].clone()), (None, Value::Null), "one camera has nothing to put beside itself");
+    }
+
+    #[test]
+    fn the_native_channels_and_abi_are_the_numbers_the_c_header_defines() {
+        assert_eq!((MAIN_CHANNEL, PIP_CHANNEL, VIDEO_CHANNELS, VIDEO_ABI_VERSION), (0, 1, 2, 2));
+        let header = include_str!("../../src/Bridge/QGCVideoC.h");
+        ["#define QGC_VIDEO_MAIN 0", "#define QGC_VIDEO_PIP 1", "#define QGC_VIDEO_CHANNELS 2", "int qgc_video_abi_version(void);"].iter().for_each(|line| assert!(header.contains(line), "QGCVideoC.h no longer says {line}"));
+        assert_eq!(CHANNEL_RECEIVERS, [MAIN_RECEIVER, PIP_RECEIVER]);
     }
 }

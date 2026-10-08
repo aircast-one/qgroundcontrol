@@ -13,6 +13,6 @@ private slots:
     void _tuckPersistsAcrossReload();
     void _extraCameraTileAttachedToPip();
     void _gridPersistsAcrossReload();
-    void _onlyThePipCameraGetsATile();
+    void _thePipTileFollowsTheActiveCamera();
     void _statusPillRegistersAsAnObstacleOwnedByThePip();
 };

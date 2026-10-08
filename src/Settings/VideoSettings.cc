@@ -8,8 +8,10 @@
 #include <QtCore/QJsonObject>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QSignalBlocker>
+#include <QtCore/QUrl>
 
 #include <algorithm>
+#include <ranges>
 
 QGC_LOGGING_CATEGORY(VideoSettingsLog, "Settings.VideoSettings")
 
@@ -521,13 +523,104 @@ QList<int> VideoSettings::switchableIndices()
     return indices;
 }
 
+int VideoSettings::_nextAfterCurrent(const std::function<bool(int)> &eligible)
+{
+    const int count = videoSourceCount();
+    const int current = currentIndex();
+    const auto steps = std::views::iota(1, std::max(count, 1));
+    const auto found = std::ranges::find_if(steps, [&eligible, count, current](int step) { return eligible((current + step) % count); });
+    return (found == steps.end()) ? -1 : (current + *found) % count;
+}
+
+int VideoSettings::nextUsableIndex()
+{
+    return _nextAfterCurrent([this](int index) { return sourceUsable(index); });
+}
+
 int VideoSettings::pipCameraIndex()
 {
-    const QList<int> usable = switchableIndices();
-    const int current = currentIndex();
-    const auto after = std::find_if(usable.cbegin(), usable.cend(), [current](int index) { return index > current; });
-    const int pip = (after != usable.cend()) ? *after : usable.value(0, -1);
-    return (pip == current) ? -1 : pip;
+    const QString main = streamUri(currentVideoSourceName(), currentVideoUrl());
+    return _nextAfterCurrent([this, &main](int index) {
+        const QString source = videoSourceNameAt(index);
+        return sourceUsable(index) && pipCapable(source) && !sameStream(streamUri(source, videoUrlAt(index)), main);
+    });
+}
+
+bool VideoSettings::pipCapable(const QString &source)
+{
+    return _sourceNeedsUrl(source) || (source == QString::fromUtf8(videoSourceHerelinkAirUnit)) || (source == QString::fromUtf8(videoSourceHerelinkHotspot));
+}
+
+QString VideoSettings::streamUri(const QString &source, const QString &url)
+{
+    if (source == QString::fromUtf8(videoSourceUDPH264)) {
+        return QStringLiteral("udp://%1").arg(url);
+    }
+    if (source == QString::fromUtf8(videoSourceUDPH265)) {
+        return QStringLiteral("udp265://%1").arg(url);
+    }
+    if (source == QString::fromUtf8(videoSourceMPEGTS)) {
+        return QStringLiteral("mpegts://%1").arg(url);
+    }
+    if (source == QString::fromUtf8(videoSourceRTSP)) {
+        return url;
+    }
+    if (source == QString::fromUtf8(videoSourceTCP)) {
+        return QStringLiteral("tcp://%1").arg(url);
+    }
+    if (source == QString::fromUtf8(videoSourceWebRTC)) {
+        const QString whepInput = url.trimmed();
+        return whepInput.isEmpty() ? QString() : QUrl::fromUserInput(whepInput).toString();
+    }
+    if (source == QString::fromUtf8(videoSource3DRSolo)) {
+        return QStringLiteral("udp://0.0.0.0:5600");
+    }
+    if (source == QString::fromUtf8(videoSourceParrotDiscovery)) {
+        return QStringLiteral("udp://0.0.0.0:8888");
+    }
+    if (source == QString::fromUtf8(videoSourceYuneecMantisG)) {
+        return QStringLiteral("rtsp://192.168.42.1:554/live");
+    }
+    if (source == QString::fromUtf8(videoSourceHerelinkAirUnit)) {
+        return QStringLiteral("rtsp://192.168.0.10:8554/H264Video");
+    }
+    if (source == QString::fromUtf8(videoSourceHerelinkHotspot)) {
+        return QStringLiteral("rtsp://192.168.43.1:8554/fpv_stream");
+    }
+    return QString();
+}
+
+QString VideoSettings::_streamIdentity(const QString &uri)
+{
+    const QString trimmed = uri.trimmed();
+    const qsizetype schemeEnd = trimmed.indexOf(QStringLiteral("://"));
+    if (schemeEnd < 0) {
+        return trimmed;
+    }
+    const QString rest = trimmed.mid(schemeEnd + 3);
+    const qsizetype pathStart = rest.indexOf(QRegularExpression(QStringLiteral("[/?]")));
+    const QString authority = (pathStart < 0) ? rest : rest.left(pathStart);
+    const QString path = (pathStart < 0) ? QString() : rest.mid(pathStart);
+    return trimmed.left(schemeEnd).toLower() + QStringLiteral("://") + authority.section(QLatin1Char('@'), -1).toLower()
+        + QString(path).remove(QRegularExpression(QStringLiteral("/+$")));
+}
+
+std::optional<QString> VideoSettings::_listenPort(const QString &uri)
+{
+    static const QStringList listening = {QStringLiteral("udp"), QStringLiteral("udp265"), QStringLiteral("mpegts")};
+    const qsizetype schemeEnd = uri.indexOf(QStringLiteral("://"));
+    if ((schemeEnd < 0) || !listening.contains(uri.left(schemeEnd))) {
+        return std::nullopt;
+    }
+    const QString authority = uri.mid(schemeEnd + 3).section(QRegularExpression(QStringLiteral("[/?]")), 0, 0);
+    const qsizetype colon = authority.lastIndexOf(QLatin1Char(':'));
+    return (colon < 0) ? std::nullopt : std::optional<QString>(authority.mid(colon + 1));
+}
+
+bool VideoSettings::sameStream(const QString &a, const QString &b)
+{
+    const std::optional<QString> port = _listenPort(a);
+    return (_streamIdentity(a) == _streamIdentity(b)) || (port && (port == _listenPort(b)));
 }
 
 int VideoSettings::currentIndex()

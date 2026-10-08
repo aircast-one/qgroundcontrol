@@ -1,4 +1,5 @@
 import Foundation
+import QGCVideoC
 
 var failures = 0
 
@@ -4026,6 +4027,9 @@ func checkVideoStatus() {
            "udpsrc ! appsink", "the second channel's pipeline is the core's to build and this head's to play")
     expect(VideoStatus(["pipPipeline": ""]).pipPipeline == nil && VideoStatus.unavailable.pipPipeline == nil,
            "an empty or absent second pipeline plays nothing on the second channel")
+    expect(!VideoStatus(["streamEnabled": false as NSNumber]).streamEnabled && VideoStatus([:]).streamEnabled,
+           "the picture in picture switch hides while the stream is off, since the core shows no inset then, "
+           + "and a host that does not say counts as on")
 
     expect(VideoCamera(["title": "Camera 1"]) == nil,
            "a camera with no slot is dropped, because the slot is what the row is keyed by")
@@ -4055,6 +4059,40 @@ func checkVideoStatus() {
            "and the head writes no \"Camera 8\" of its own; that fallback is the core's")
 }
 checkVideoStatus()
+
+func checkTheNativeChannelsSwapAndReport() {
+    expect(QGC_VIDEO_MAIN == 0 && QGC_VIDEO_PIP == 1 && QGC_VIDEO_CHANNELS == 2,
+           "the head plays the channels the header numbers, 0 main and 1 picture in picture")
+
+    let swapped = VideoSwap(driven: [QGC_VIDEO_MAIN: "a", QGC_VIDEO_PIP: "b"],
+                            wanted: [QGC_VIDEO_MAIN: "b", QGC_VIDEO_PIP: "a"])
+    expect(swapped.stops == [QGC_VIDEO_MAIN, QGC_VIDEO_PIP] && swapped.starts == [QGC_VIDEO_MAIN, QGC_VIDEO_PIP],
+           "swapping the inset onto the main view stops both channels before either starts, so no "
+           + "pipeline opens a port the other still holds")
+    let kept = VideoSwap(driven: [QGC_VIDEO_MAIN: "a", QGC_VIDEO_PIP: "b"],
+                         wanted: [QGC_VIDEO_MAIN: "a"])
+    expect(kept.stops == [QGC_VIDEO_PIP] && kept.starts.isEmpty,
+           "hiding the inset stops only its channel and leaves the main picture playing")
+    let shown = VideoSwap(driven: [QGC_VIDEO_MAIN: "a"], wanted: [QGC_VIDEO_MAIN: "a", QGC_VIDEO_PIP: "b"])
+    expect(shown.stops.isEmpty && shown.starts == [QGC_VIDEO_PIP], "showing it starts only the inset")
+    let still = VideoSwap(driven: [QGC_VIDEO_MAIN: "a"], wanted: [QGC_VIDEO_MAIN: "a"])
+    expect(still.stops.isEmpty && still.starts.isEmpty, "an unchanged pipeline is left alone")
+
+    let reading = NativeReading(running: true, frames: 12, width: 1280, height: 720, sourceBuffers: 40,
+                                startError: "", streamError: "no stream", restarted: true)
+    let report = reading.report(channel: QGC_VIDEO_PIP)
+    expect(report.count == 8 && report[7] as? Int == Int(QGC_VIDEO_PIP),
+           "every report names its channel in the eighth argument the core reads it from")
+    expect(report[4] as? String ?? "", "no stream", "a running pipeline's stream error is reported")
+    expect(report[5] as? Int == 40 && report[6] as? Bool == true,
+           "with the source buffers the watchdog weighs and whether the channel just started")
+    let refused = NativeReading(running: false, frames: 0, width: 0, height: 0, sourceBuffers: 0,
+                                startError: "no pipeline given", streamError: "stale", restarted: false)
+    expect(refused.error, "no pipeline given", "a pipeline that never started reports why, not a stream error")
+    expect(reading.size, "1280\u{00D7}720", "a decoded size reads as width by height")
+    expect(refused.size, "", "and no size before a frame")
+}
+checkTheNativeChannelsSwapAndReport()
 
 func checkVideoSources() {
     let list = CameraList([
@@ -6032,7 +6070,7 @@ func checkTheInspectorSaysWhichSilenceItIsIn() {
 checkTheInspectorSaysWhichSilenceItIsIn()
 
 
-let assertionFloor = 2309
+let assertionFloor = 2321
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

@@ -9,6 +9,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.offMainInOrder
+import one.aircast.android.bridge.VideoCommands
+import java.util.concurrent.atomic.AtomicInteger
 import one.aircast.android.bridge.Qgc
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -169,6 +172,14 @@ fun VideoSurface(
 internal const val MAIN_VIDEO_CHANNEL = 0
 internal const val PIP_VIDEO_CHANNEL = 1
 
+internal class PipSurfaces(private val report: (Boolean) -> Unit) {
+    private val attached = AtomicInteger()
+    fun created() = report(attached.incrementAndGet() > 0)
+    fun destroyed() = report(attached.decrementAndGet() > 0)
+}
+
+private val pipSurfaces = PipSurfaces { shown -> offMainInOrder { VideoCommands.setPipShown(shown) } }
+
 @Composable
 fun VideoChannelSurface(channel: Int, modifier: Modifier = Modifier) {
     AndroidView(
@@ -179,6 +190,7 @@ fun VideoChannelSurface(channel: Int, modifier: Modifier = Modifier) {
                 holder.addCallback(object : SurfaceHolder.Callback {
                     override fun surfaceCreated(holder: SurfaceHolder) {
                         QGCBridge.videoSetSurface(channel, holder.surface)
+                        if (channel == PIP_VIDEO_CHANNEL) pipSurfaces.created()
                     }
 
                     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
@@ -187,6 +199,7 @@ fun VideoChannelSurface(channel: Int, modifier: Modifier = Modifier) {
 
                     override fun surfaceDestroyed(holder: SurfaceHolder) {
                         QGCBridge.videoSetSurface(channel, null)
+                        if (channel == PIP_VIDEO_CHANNEL) pipSurfaces.destroyed()
                     }
                 })
             }

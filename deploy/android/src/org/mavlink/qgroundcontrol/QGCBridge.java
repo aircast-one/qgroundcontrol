@@ -85,14 +85,6 @@ public final class QGCBridge {
 
     public static native void notifyDeepLink(String url);
 
-    public static native int videoWidth();
-
-    public static native int videoHeight();
-
-    public static native long videoFrames();
-
-    public static native boolean videoCopyFrame(java.nio.ByteBuffer dest);
-
     public static native boolean videoSetSurface(int channel, android.view.Surface surface);
 
     public static native byte[] mapTile(String mapType, int x, int y, int zoom, String cacheFile);

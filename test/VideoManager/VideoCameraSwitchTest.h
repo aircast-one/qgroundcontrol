@@ -12,7 +12,13 @@ private slots:
     void _widgetRoles();
     void _pipCameraNumbers();
     void _nativeChannelsFollowTheActiveAndPipCameras();
-    void _pipIsTheNextUsableCameraTheSwitchGoesTo();
+    void _pipAndSwitchSkipCamerasWithNoAddress();
+    void _pipNeverSharesTheMainCamerasStream();
+    void _oneCameraTypedTwoWaysIsOneStream();
+    void _pipSkipsCamerasOnlyThisComputerCanOpen();
+    void _pipSlotNamesThePipChoice();
+    void _streamOffAndOnStartsAgainAtConnecting();
+    void _aReceiverLeavingItsChannelDetachesIt();
     void _cameraSignalsFollowTheReceivers();
     void _urlWhitespaceIsTrimmed();
     void _currentCameraFallsBackToTheFirstUsable();

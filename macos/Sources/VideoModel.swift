@@ -71,6 +71,7 @@ struct VideoStatus: Equatable {
     let activeSource: Int
     let multipleSources: Bool
     let anyConnecting: Bool
+    let streamEnabled: Bool
     let summary: String
     let cameras: [VideoCamera]
     let nativePipeline: String?
@@ -89,6 +90,7 @@ struct VideoStatus: Equatable {
         activeSource = 0
         multipleSources = false
         anyConnecting = false
+        streamEnabled = true
         summary = ""
         cameras = []
         nativePipeline = nil
@@ -107,6 +109,7 @@ struct VideoStatus: Equatable {
         activeSource = (json["activeSource"] as? NSNumber)?.intValue ?? 0
         multipleSources = flag("multipleSources")
         anyConnecting = flag("anyConnecting")
+        streamEnabled = (json["streamEnabled"] as? NSNumber)?.boolValue ?? true
         summary = (json["summary"] as? String) ?? ""
         cameras = ((json["cameras"] as? [Any]) ?? []).compactMap(VideoCamera.init)
         nativePipeline = (json["nativePipeline"] as? String).flatMap { $0.isEmpty ? nil : $0 }
@@ -129,6 +132,36 @@ struct VideoStatus: Equatable {
     var level: FlyTelemetry.Level {
         if settled { return .good }
         return anyConnecting ? .warning : .unknown
+    }
+}
+
+struct VideoSwap {
+    let stops: [Int32]
+    let starts: [Int32]
+
+    init(driven: [Int32: String], wanted: [Int32: String]) {
+        let changed = Set(driven.keys).union(wanted.keys).filter { driven[$0] != wanted[$0] }.sorted()
+        stops = changed.filter { driven[$0] != nil }
+        starts = changed.filter { wanted[$0] != nil }
+    }
+}
+
+struct NativeReading {
+    let running: Bool
+    let frames: Int
+    let width: Int
+    let height: Int
+    let sourceBuffers: Int
+    let startError: String
+    let streamError: String
+    let restarted: Bool
+
+    var size: String { width > 0 && height > 0 ? "\(width)\u{00D7}\(height)" : "" }
+
+    var error: String { startError.isEmpty ? streamError : startError }
+
+    func report(channel: Int32) -> [Any] {
+        [running, frames, width, height, error, sourceBuffers, restarted, Int(channel)]
     }
 }
 

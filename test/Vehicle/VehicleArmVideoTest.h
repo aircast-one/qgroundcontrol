@@ -8,4 +8,6 @@ class VehicleArmVideoTest : public VehicleTest
 
 private slots:
     void _armingTurnsVideoBackOn();
+    void _aVehicleArmedBeforeItIsActiveTurnsVideoOn();
+    void _anotherVehicleArmingLeavesVideoAlone();
 };

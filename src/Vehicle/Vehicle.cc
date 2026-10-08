@@ -1150,6 +1150,8 @@ void Vehicle::_updateArmed(bool armed)
     if (_armed != armed) {
         _armed = armed;
         emit armedChanged(_armed);
+        const Vehicle *const activeVehicle = MultiVehicleManager::instance()->activeVehicle();
+        const bool drivesVideo = !activeVehicle || (activeVehicle == this);
         if (_armed) {
             _trajectoryPoints->start();
             _flightTimerStart();
@@ -1157,14 +1159,14 @@ void Vehicle::_updateArmed(bool armed)
             _lowestBatteryChargeStateAnnouncedMap.clear();
             const SharedLinkInterfacePtr link = _vehicleLinkManager->primaryLink().lock();
             Fact *const streamEnabled = SettingsManager::instance()->videoSettings()->streamEnabled();
-            if (!streamEnabled->rawValue().toBool() && !(link && link->isLogReplay())) {
+            if (drivesVideo && !streamEnabled->rawValue().toBool() && !(link && link->isLogReplay())) {
                 streamEnabled->setRawValue(true);
                 VideoManager::instance()->startVideo();
             }
         } else {
             _trajectoryPoints->stop();
             _flightTimerStop();
-            if(SettingsManager::instance()->videoSettings()->disableWhenDisarmed()->rawValue().toBool()) {
+            if (drivesVideo && SettingsManager::instance()->videoSettings()->disableWhenDisarmed()->rawValue().toBool()) {
                 SettingsManager::instance()->videoSettings()->streamEnabled()->setRawValue(false);
                 VideoManager::instance()->stopVideo();
             }

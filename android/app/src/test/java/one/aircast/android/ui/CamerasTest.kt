@@ -11,14 +11,14 @@ class CamerasTest {
         {"kind":"object","class":"Cameras","readable":true,"reason":null,"active":2,
          "pip":{"enabled":false,"slot":0},
          "cameras":[
-           {"slot":0,"stored":0,"title":"Front gimbal","short":"Front","name":"Front gimbal","source":"RTSP Video Stream","url":"rtsp://10.0.0.5:8554/front","summary":"RTSP Video Stream · rtsp://10.0.0.5:8554/front","problem":null,"fromDrone":false,"active":false,"status":"connecting"},
-           {"slot":1,"stored":1,"title":"Camera 2","short":"Cam 2","name":"","source":"Back Camera","url":"","summary":"Back Camera","problem":"This kind of camera cannot show video in this app.","fromDrone":false,"active":false,"status":"bogus"},
-           {"slot":2,"stored":null,"title":"SIYI A8","short":"SIYI","name":"SIYI A8","source":"UDP h.264 Video Stream","url":"0.0.0.0:5600","summary":"UDP h.264 Video Stream · 0.0.0.0:5600","problem":null,"fromDrone":true,"active":true,"status":"live"}],
+           {"slot":0,"stored":0,"title":"Front gimbal","short":"Front","name":"Front gimbal","source":"RTSP Video Stream","url":"rtsp://10.0.0.5:8554/front","problem":null,"fromDrone":false,"active":false,"status":"connecting"},
+           {"slot":1,"stored":1,"title":"Camera 2","short":"Cam 2","name":"","source":"Back Camera","url":"","problem":"This kind of camera cannot show video in this app.","fromDrone":false,"active":false,"status":"bogus"},
+           {"slot":2,"stored":null,"title":"SIYI A8","short":"SIYI","name":"SIYI A8","source":"UDP h.264 Video Stream","url":"0.0.0.0:5600","problem":null,"fromDrone":true,"active":true,"status":"live"}],
          "kinds":[
-           {"raw":"RTSP Video Stream","label":"RTSP Video Stream","group":"Video streams","more":false,"needsUrl":true,"hint":"rtsp://192.168.1.10:8554/live","schemes":["rtsp://","rtsps://"]},
-           {"raw":"Herelink Hotspot","label":"Herelink Hotspot","group":"Vehicle and radio presets","more":true,"needsUrl":false,"hint":"","schemes":[]},
-           {"raw":"Back Camera","label":"Back Camera","group":"This device","more":false,"needsUrl":false,"hint":"","schemes":[]},
-           {"raw":"Front Camera","label":"Front Camera","group":"This device","more":false,"needsUrl":false,"hint":"","schemes":[]}]}
+           {"raw":"RTSP Video Stream","label":"RTSP Video Stream","group":"Video streams","needsUrl":true,"hint":"rtsp://192.168.1.10:8554/live"},
+           {"raw":"Herelink Hotspot","label":"Herelink Hotspot","group":"Vehicle and radio presets","needsUrl":false,"hint":""},
+           {"raw":"Back Camera","label":"Back Camera","group":"This device","needsUrl":false,"hint":""},
+           {"raw":"Front Camera","label":"Front Camera","group":"This device","needsUrl":false,"hint":""}]}
         """.trimIndent(),
     )
 
@@ -105,6 +105,52 @@ class CamerasTest {
         assertEquals("a broken or new camera has nothing to keep", hostPort, keptGuess(hostPort, webrtc, "192.168.1.10:8889", null))
         assertEquals("a kind among the choices stays a choice", hostPort, keptGuess(hostPort, "MPEG-TS Video Stream", "192.168.1.10:8889", "192.168.1.10:8889"))
         assertNull(keptGuess(null, webrtc, "192.168.1.10:8889", "192.168.1.10:8889"))
+    }
+
+    private val rtspGuess = CameraGuess("RTSP Video Stream", listOf("RTSP Video Stream"), ambiguous = false, problem = null)
+    private val unreadable = CameraGuess(null, emptyList(), ambiguous = false, problem = "Start the address with rtsp://, http://, udp:// or tcp://, or type it as host:port.")
+    private val newDraft = CameraDraft(stored = null, title = "", name = "Belly", source = "", url = "rtsp://cam/live")
+    private val editDraft = CameraDraft(stored = 0, title = "Front gimbal", name = "Front gimbal", source = "RTSP Video Stream", url = "ftp://cam", picked = "RTSP Video Stream", kept = "rtsp://10.0.0.5:8554/front")
+
+    @Test
+    fun `saving before the typed address was classified classifies it on the spot`() {
+        val asked = mutableListOf<String>()
+        val save = cameraSave(newDraft, shown = null) { address -> asked += address; rtspGuess }
+        assertEquals(listOf("rtsp://cam/live"), asked)
+        assertEquals(CameraSave.Add("Belly", "RTSP Video Stream", "rtsp://cam/live"), save)
+    }
+
+    @Test
+    fun `a guess already on screen is saved as shown, without asking again`() {
+        val save = cameraSave(newDraft, rtspGuess) { error("classified twice") }
+        assertEquals(CameraSave.Add("Belly", "RTSP Video Stream", "rtsp://cam/live"), save)
+    }
+
+    @Test
+    fun `an edit to an address the core cannot read is refused before anything is written`() {
+        assertEquals(CameraSave.Refused(unreadable.problem!!), cameraSave(editDraft, unreadable) { error("classified twice") })
+        assertEquals(CameraSave.Refused(unreadable.problem!!), cameraSave(editDraft, shown = null) { unreadable })
+    }
+
+    @Test
+    fun `a new address the classifier cannot read is still handed to the core, which names the problem`() {
+        assertEquals(CameraSave.Add("Belly", "", "rtsp://cam/live"), cameraSave(newDraft, unreadable) { error("classified twice") })
+    }
+
+    @Test
+    fun `an edit keeps the camera's kind for its old address, and a camera with no address is renamed without classifying`() {
+        val kept = editDraft.copy(url = "rtsp://10.0.0.5:8554/front")
+        assertEquals(CameraSave.Update(0, "Front gimbal", "RTSP Video Stream", "rtsp://10.0.0.5:8554/front"), cameraSave(kept, shown = null) { unreadable })
+        val phone = CameraDraft(stored = 1, title = "Camera 2", name = "Phone", source = "Back Camera", url = "", needsUrl = false)
+        assertEquals(CameraSave.Update(1, "Phone", "Back Camera", ""), cameraSave(phone, shown = null) { error("nothing to classify") })
+    }
+
+    @Test
+    fun `a refused save lands in the sheet as it is now, and never reopens a sheet the operator closed`() {
+        val typedWhileSaving = newDraft.copy(name = "Belly cam")
+        assertEquals(typedWhileSaving.copy(refusal = "No"), refusedDraft(typedWhileSaving, "No"))
+        assertNull("a cancelled sheet stays closed", refusedDraft(null, "No"))
+        assertNull("a save that went through closes the sheet", refusedDraft(typedWhileSaving, null))
     }
 
     @Test

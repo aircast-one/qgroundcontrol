@@ -23,7 +23,7 @@ pub struct Video {
     running: unsafe extern "C" fn(c_int) -> bool,
     pub width: unsafe extern "C" fn(c_int) -> c_int,
     pub height: unsafe extern "C" fn(c_int) -> c_int,
-    pub frames: unsafe extern "C" fn(c_int) -> i64,
+    frames: unsafe extern "C" fn(c_int) -> i64,
     source_buffers: unsafe extern "C" fn(c_int) -> i64,
     last_error: unsafe extern "C" fn(c_int) -> *const c_char,
     stream_error: unsafe extern "C" fn(c_int) -> *const c_char,
@@ -48,6 +48,11 @@ fn symbol<T>(handle: *mut c_void, name: &CStr) -> Option<T> {
 fn load() -> Option<Video> {
     let handle = unsafe { dlopen(LIBRARY.as_ptr(), RTLD_NOW) };
     (!handle.is_null()).then_some(())?;
+    let abi = symbol::<unsafe extern "C" fn() -> c_int>(handle, c"qgc_video_abi_version").map(|version| unsafe { version() });
+    if abi != Some(crate::videohost::VIDEO_ABI_VERSION) {
+        log::error!("libqgc_video.so speaks video ABI {abi:?} and this core speaks {}, so video stays off", crate::videohost::VIDEO_ABI_VERSION);
+        return None;
+    }
     Some(Video {
         init: symbol(handle, c"qgc_video_android_init")?,
         set_surface: symbol(handle, c"qgc_video_android_set_surface")?,
@@ -116,8 +121,6 @@ fn initialise(vm: &JavaVM, video: &Video) -> jni::errors::Result<bool> {
     Ok(unsafe { (video.init)(vm.get_java_vm_pointer(), application.as_obj().as_raw(), loader.as_obj().as_raw(), files.as_ptr(), cache.as_ptr()) })
 }
 
-const MAIN: c_int = crate::videohost::MAIN_CHANNEL as c_int;
-
 #[derive(Default)]
 struct Channel {
     driven: Option<String>,
@@ -128,29 +131,25 @@ struct Channel {
 }
 
 impl Channel {
-    fn drive(&mut self, video: &Video, channel: c_int, wanted: Option<String>) {
-        if crate::videohost::RESTART[channel as usize].swap(false, std::sync::atomic::Ordering::Relaxed) && self.driven.take().is_some() {
+    fn stop_changed(&mut self, video: &Video, channel: c_int, wanted: &Option<String>) {
+        let restart = crate::videohost::RESTART[channel as usize].swap(false, std::sync::atomic::Ordering::Relaxed);
+        if self.driven.is_some() && (restart || *wanted != self.driven) {
             unsafe { (video.stop)(channel) };
+            log::info!("Video channel {channel} stopped");
+            self.driven = None;
         }
-        if wanted == self.driven {
-            return;
-        }
-        match &wanted {
-            Some(pipeline) => {
-                let text = CString::new(pipeline.as_str()).unwrap_or_default();
-                let started = unsafe { (video.start)(channel, text.as_ptr()) };
-                self.restarted = true;
-                self.decoding = false;
-                self.error = if started { String::new() } else { unsafe { CStr::from_ptr((video.last_error)(channel)) }.to_string_lossy().into_owned() };
-                match started {
-                    true => log::info!("Video channel {channel} started"),
-                    false => log::warn!("Video pipeline on channel {channel} did not start: {}", self.error),
-                }
-            }
-            None => {
-                unsafe { (video.stop)(channel) };
-                log::info!("Video channel {channel} stopped");
-            }
+    }
+
+    fn start_wanted(&mut self, video: &Video, channel: c_int, wanted: Option<String>) {
+        let Some(pipeline) = wanted.as_ref().filter(|_| wanted != self.driven) else { return };
+        let text = CString::new(pipeline.as_str()).unwrap_or_default();
+        let started = unsafe { (video.start)(channel, text.as_ptr()) };
+        self.restarted = true;
+        self.decoding = false;
+        self.error = if started { String::new() } else { unsafe { CStr::from_ptr((video.last_error)(channel)) }.to_string_lossy().into_owned() };
+        match started {
+            true => log::info!("Video channel {channel} started"),
+            false => log::warn!("Video pipeline on channel {channel} did not start: {}", self.error),
         }
         self.driven = wanted;
     }
@@ -160,7 +159,7 @@ impl Channel {
             return;
         }
         let (running, frames, width, height) = unsafe { ((video.running)(channel), (video.frames)(channel), (video.width)(channel), (video.height)(channel)) };
-        if channel == MAIN {
+        if channel == crate::videohost::MAIN_CHANNEL as c_int {
             crate::videostats::sample(running, frames, i64::from(height), crate::hub::now_ms());
         }
         if frames > 0 && !std::mem::replace(&mut self.decoding, true) {
@@ -187,17 +186,18 @@ struct Driver {
 
 impl Driver {
     fn record(&mut self, video: &Video) {
+        let main = crate::videohost::MAIN_CHANNEL as c_int;
         let wanted = crate::videohost::native_recording();
         if wanted != self.recording {
             if self.recording.is_some() {
-                unsafe { (video.stop_recording)(MAIN) };
+                unsafe { (video.stop_recording)(main) };
             }
             if let Some((file, format)) = wanted.as_ref().and_then(|w| Some((CString::new(w.get("file")?.as_str()?).ok()?, w.get("format")?.as_i64()?))) {
-                unsafe { (video.start_recording)(MAIN, file.as_ptr(), format as c_int) };
+                unsafe { (video.start_recording)(main, file.as_ptr(), format as c_int) };
             }
             self.recording = wanted;
         }
-        let active = unsafe { (video.recording)(MAIN) };
+        let active = unsafe { (video.recording)(main) };
         if active != self.recording_reported {
             self.recording_reported = active;
             crate::videohost::invoke("video.reportRecording", &serde_json::json!([active]).to_string());
@@ -210,7 +210,8 @@ impl Driver {
             let forced = crate::settingsstore::raw_setting("settings.videoSettings.forceVideoDecoder").and_then(|v| v.as_i64()).unwrap_or(0);
             unsafe { (video.force_decoder)(forced as c_int) };
         }
-        self.channels.iter_mut().zip(wanted).enumerate().for_each(|(channel, (played, wanted))| played.drive(video, channel as c_int, wanted));
+        self.channels.iter_mut().zip(&wanted).enumerate().for_each(|(channel, (played, wanted))| played.stop_changed(video, channel as c_int, wanted));
+        self.channels.iter_mut().zip(wanted).enumerate().for_each(|(channel, (played, wanted))| played.start_wanted(video, channel as c_int, wanted));
         self.record(video);
         self.channels.iter_mut().enumerate().for_each(|(channel, played)| played.report(video, channel as c_int));
     }

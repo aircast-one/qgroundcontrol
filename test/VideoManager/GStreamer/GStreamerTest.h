@@ -26,6 +26,7 @@ private slots:
     void _testCreateVideoReceiver();
     void _testNativeSinkPlaysOnTheChannelItIsAttachedTo();
     void _testASinkReplacedOnItsChannelStopsDrawingThere();
+    void _testAnOverlaySinkLeavingAChannelLetsGoOfItsWindow();
     void _testStopEndsAPipelineWhoseUriWasCleared();
     void _testRecordingSinkAcceptsElementaryStreams_data();
     void _testRecordingSinkAcceptsElementaryStreams();

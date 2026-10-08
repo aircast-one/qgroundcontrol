@@ -45,6 +45,7 @@ struct Channel {
     int frameHeight = 0;
     int frameStride = 0;
     int64_t frameCount = 0;
+    const void *frameOwner = nullptr;
     std::atomic<int64_t> sourceBuffers{0};
     std::string lastError;
     std::mutex streamErrorMutex;
@@ -62,14 +63,27 @@ struct Channel {
     bool drainedEos = false;
 #endif
 
-    void clearFrame()
+    void resetFrame()
     {
-        const std::lock_guard<std::mutex> lock(frameMutex);
         latestFrame.clear();
         frameWidth = 0;
         frameHeight = 0;
         frameStride = 0;
         frameCount = 0;
+    }
+
+    void ownFrames(const void *owner)
+    {
+        const std::lock_guard<std::mutex> lock(frameMutex);
+        frameOwner = owner;
+        resetFrame();
+    }
+
+    void disownFrames(const void *owner)
+    {
+        const std::lock_guard<std::mutex> lock(frameMutex);
+        frameOwner = (frameOwner == owner) ? nullptr : frameOwner;
+        resetFrame();
     }
 
     void setStreamError(std::string text)
@@ -340,13 +354,15 @@ GstFlowReturn onNewSample(GstAppSink *appsink, gpointer data)
         GstMapInfo map;
         if (gst_buffer_map(buffer, &map, GST_MAP_READ)) {
             const std::lock_guard<std::mutex> lock(channel->frameMutex);
-            channel->frameWidth = GST_VIDEO_INFO_WIDTH(&info);
-            channel->frameHeight = GST_VIDEO_INFO_HEIGHT(&info);
-            channel->frameStride = static_cast<int>(GST_VIDEO_INFO_PLANE_STRIDE(&info, 0));
-            channel->latestFrame.assign(map.data, map.data + map.size);
-            channel->frameCount += 1;
-            if (const qgc_video_frame_callback callback = frameCallback.load()) {
-                callback(indexOf(channel), channel->latestFrame.data(), channel->frameWidth, channel->frameHeight, channel->frameStride);
+            if (channel->frameOwner == appsink) {
+                channel->frameWidth = GST_VIDEO_INFO_WIDTH(&info);
+                channel->frameHeight = GST_VIDEO_INFO_HEIGHT(&info);
+                channel->frameStride = static_cast<int>(GST_VIDEO_INFO_PLANE_STRIDE(&info, 0));
+                channel->latestFrame.assign(map.data, map.data + map.size);
+                channel->frameCount += 1;
+                if (const qgc_video_frame_callback callback = frameCallback.load()) {
+                    callback(indexOf(channel), channel->latestFrame.data(), channel->frameWidth, channel->frameHeight, channel->frameStride);
+                }
             }
             gst_buffer_unmap(buffer, &map);
         }
@@ -358,6 +374,7 @@ GstFlowReturn onNewSample(GstAppSink *appsink, gpointer data)
 
 void adoptAppsink(Channel &channel, GstAppSink *appsink)
 {
+    channel.ownFrames(appsink);
     GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, QGC_VIDEO_FORMAT, nullptr);
     gst_app_sink_set_caps(appsink, caps);
     gst_caps_unref(caps);
@@ -376,6 +393,12 @@ void dropAppsink(GstElement *appsink)
     gst_object_unref(appsink);
 }
 
+void releaseOverlay(GstElement *&sink)
+{
+    gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(sink), 0);
+    gst_object_unref(std::exchange(sink, nullptr));
+}
+
 void releaseElsewhere(const Channel &keeper, GstElement *element)
 {
     std::for_each(channels.begin(), channels.end(), [&keeper, element](Channel &other) {
@@ -385,17 +408,22 @@ void releaseElsewhere(const Channel &keeper, GstElement *element)
         {
             const std::lock_guard<std::mutex> lock(other.overlayMutex);
             if (other.overlaySink == element) {
-                gst_object_unref(std::exchange(other.overlaySink, nullptr));
+                releaseOverlay(other.overlaySink);
             }
         }
         if (other.appsink == element) {
+            other.disownFrames(element);
             gst_object_unref(std::exchange(other.appsink, nullptr));
-            other.clearFrame();
         }
     });
 }
 #endif
 
+}
+
+int qgc_video_abi_version(void)
+{
+    return 2;
 }
 
 void qgc_video_set_frame_callback(qgc_video_frame_callback callback)
@@ -447,7 +475,7 @@ bool qgc_video_attach_overlay(int channel, void *element)
     const std::lock_guard<std::mutex> lock(target->overlayMutex);
     if (target->overlaySink != sink) {
         if (target->overlaySink) {
-            gst_object_unref(target->overlaySink);
+            releaseOverlay(target->overlaySink);
         }
         target->overlaySink = GST_ELEMENT(gst_object_ref(sink));
         if (target->overlayWindow) {
@@ -483,7 +511,6 @@ bool qgc_video_attach_appsink(int channel, void *appsink)
             dropAppsink(target->appsink);
         }
         target->appsink = GST_ELEMENT(gst_object_ref(sink));
-        target->clearFrame();
     }
     target->lastError.clear();
     return true;
@@ -501,11 +528,15 @@ void qgc_video_detach_appsink(int channel)
         return;
     }
 #ifdef QGC_GST_STREAMING
+    target->disownFrames(target->appsink);
     if (target->appsink) {
         dropAppsink(std::exchange(target->appsink, nullptr));
     }
+    const std::lock_guard<std::mutex> lock(target->overlayMutex);
+    if (target->overlaySink) {
+        releaseOverlay(target->overlaySink);
+    }
 #endif
-    target->clearFrame();
 }
 
 bool qgc_video_available(void)
@@ -722,6 +753,7 @@ void qgc_video_stop(int channel)
     if (target->pipeline) {
         gst_element_set_state(target->pipeline, GST_STATE_NULL);
     }
+    target->disownFrames(target->sink);
     if (target->sink) {
         gst_object_unref(target->sink);
         target->sink = nullptr;
@@ -733,7 +765,6 @@ void qgc_video_stop(int channel)
     target->sourceBuffers.store(0, std::memory_order_relaxed);
 #endif
     target->setStreamError({});
-    target->clearFrame();
 }
 
 bool qgc_video_running(int channel)

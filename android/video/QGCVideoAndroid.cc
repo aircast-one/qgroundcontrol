@@ -145,7 +145,7 @@ void shareGlDisplay(int, void *pipeline)
     gst_context_unref(context);
 }
 
-} // namespace
+}
 
 extern "C" {
 

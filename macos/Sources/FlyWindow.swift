@@ -1,5 +1,6 @@
 import AppKit
 import QGCEntry
+import QGCVideoC
 import SwiftUI
 
 struct FlyPanel: View {
@@ -847,7 +848,7 @@ struct PipToggle: View {
     @ObservedObject var video: VideoStore
 
     var body: some View {
-        if video.cameraList.offersPip {
+        if video.cameraList.offersPip && video.status.streamEnabled {
             let on = video.cameraList.pipEnabled
             Button {
                 video.setPip(!on)
@@ -878,7 +879,7 @@ struct PipThumbnail: View {
             } label: {
                 Group {
                     if video.pipFrames > 0 {
-                        NativeVideoView(channel: pipVideoChannel)
+                        NativeVideoView(channel: QGC_VIDEO_PIP)
                     } else {
                         Color.black
                     }
@@ -904,6 +905,8 @@ struct PipThumbnail: View {
             }
             .buttonStyle(.plain)
             .help("Show \(camera.title) in the main picture")
+            .onAppear { video.setPipShown(true) }
+            .onDisappear { video.setPipShown(false) }
         }
     }
 }
@@ -1045,7 +1048,7 @@ struct FlyView: View {
                 }
                 HStack(alignment: .bottom, spacing: Overlay.step) {
                     if video.nativeFrames > 0 {
-                        NativeVideoView(channel: mainVideoChannel)
+                        NativeVideoView(channel: QGC_VIDEO_MAIN)
                             .overlay(DetectionOverlay(detections: video.detections,
                                                       source: video.status.sourceSize))
                             .frame(width: 320, height: 180)

@@ -24,4 +24,12 @@ class FlyPortraitTest {
         assertFalse(portraitShowsCamera(reading(available = false, streamEnabled = false, sourceChosen = false)))
         assertFalse(portraitShowsCamera(null))
     }
+
+    @Test
+    fun `the map buttons drop below the video thumbnail only when the thumbnail is drawn`() {
+        assertTrue(portraitVideoThumbnail(split = false, reading(available = true, streamEnabled = true, sourceChosen = true)))
+        assertFalse("video off draws no thumbnail in the map view", portraitVideoThumbnail(split = false, reading(available = false, streamEnabled = false, sourceChosen = true)))
+        assertFalse("the split view has the picture above, not a thumbnail", portraitVideoThumbnail(split = true, reading(available = true, streamEnabled = true, sourceChosen = true)))
+        assertFalse(portraitVideoThumbnail(split = false, null))
+    }
 }

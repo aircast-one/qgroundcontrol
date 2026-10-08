@@ -7,8 +7,11 @@
 extern "C" {
 #endif
 
+#define QGC_VIDEO_MAIN 0
+#define QGC_VIDEO_PIP 1
 #define QGC_VIDEO_CHANNELS 2
 
+int qgc_video_abi_version(void);
 bool qgc_video_available(void);
 bool qgc_video_start(int channel, const char *pipelineDescription);
 void qgc_video_stop(int channel);

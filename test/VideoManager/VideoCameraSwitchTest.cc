@@ -1,5 +1,6 @@
 #include "VideoCameraSwitchTest.h"
 #include "Fact.h"
+#include "QGCVideoC.h"
 #include "SettingsManager.h"
 #include "VideoManager.h"
 #include "VideoReceiver.h"
@@ -185,7 +186,7 @@ void VideoCameraSwitchTest::_nativeChannelsFollowTheActiveAndPipCameras()
     QCOMPARE(channels(), (QList<int>{-1, -1, 0}));
 }
 
-void VideoCameraSwitchTest::_pipIsTheNextUsableCameraTheSwitchGoesTo()
+void VideoCameraSwitchTest::_pipAndSwitchSkipCamerasWithNoAddress()
 {
     ThreeCameraFixture fixture;
     VideoSettings *settings = fixture.settings();
@@ -209,6 +210,156 @@ void VideoCameraSwitchTest::_pipIsTheNextUsableCameraTheSwitchGoesTo()
     QCOMPARE(vm->pipCameraNumber(), 0);
     vm->switchActiveVideoSource();
     QCOMPARE(vm->activeVideoSource(), 0);
+}
+
+void VideoCameraSwitchTest::_pipNeverSharesTheMainCamerasStream()
+{
+    ThreeCameraFixture fixture;
+    VideoSettings *settings = fixture.settings();
+    VideoManager *vm = VideoManager::instance();
+    const QString udp = QString::fromUtf8(VideoSettings::videoSourceUDPH264);
+    const QString rtsp = QString::fromUtf8(VideoSettings::videoSourceRTSP);
+    const QJsonObject belly = VideoSettings::camera(QStringLiteral("Belly"), udp, QStringLiteral("0.0.0.0:5600"));
+    settings->storeCameras(QJsonArray{
+        VideoSettings::camera(QStringLiteral("Tail"), QString::fromUtf8(VideoSettings::videoSourceMPEGTS), QStringLiteral("0.0.0.0:5601")),
+        VideoSettings::camera(QStringLiteral("Gimbal"), rtsp, QStringLiteral("rtsp://a/0")),
+        VideoSettings::camera(QStringLiteral("Gimbal again"), rtsp, QStringLiteral("rtsp://a/0")),
+        belly,
+    }, 3);
+    QVERIFY(settings->setDroneCameras(QJsonArray{VideoSettings::camera(QStringLiteral("MockCam"), udp, QStringLiteral("127.0.0.1:5600"))}));
+
+    QCOMPARE(settings->currentIndex(), 3);
+    QCOMPARE(settings->pipCameraIndex(), 0);
+    settings->activeVideoSource()->setRawValue(4);
+    QCOMPARE(settings->pipCameraIndex(), 0);
+    settings->activeVideoSource()->setRawValue(1);
+    QCOMPARE(settings->pipCameraIndex(), 3);
+    QCOMPARE(settings->nextUsableIndex(), 2);
+    vm->switchActiveVideoSource();
+    QCOMPARE(vm->activeVideoSource(), 2);
+    QCOMPARE(settings->pipCameraIndex(), 3);
+
+    settings->storeCameras(QJsonArray{belly}, 0);
+    QCOMPARE(settings->pipCameraIndex(), -1);
+    QCOMPARE(vm->pipCameraNumber(), 0);
+    vm->switchActiveVideoSource();
+    QCOMPARE(vm->activeVideoSource(), 1);
+}
+
+void VideoCameraSwitchTest::_oneCameraTypedTwoWaysIsOneStream()
+{
+    QVERIFY(VideoSettings::sameStream(QStringLiteral("RTSP://admin:pw@Cam.Local:554/live/"), QStringLiteral("rtsp://cam.local:554/live")));
+    QVERIFY(VideoSettings::sameStream(QStringLiteral("HTTP://SFU.example/whep/front"), QStringLiteral("http://sfu.example/whep/front/")));
+    QVERIFY(!VideoSettings::sameStream(QStringLiteral("rtsp://cam/Live"), QStringLiteral("rtsp://cam/live")));
+    QVERIFY(!VideoSettings::sameStream(QStringLiteral("rtsp://cam/live"), QStringLiteral("rtsps://cam/live")));
+    QVERIFY(!VideoSettings::sameStream(QStringLiteral("rtsp://cam:554/live"), QStringLiteral("rtsp://cam:8554/live")));
+    QVERIFY(VideoSettings::sameStream(QStringLiteral("udp265://0.0.0.0:5600"), QStringLiteral("mpegts://10.0.0.1:5600/x")));
+    QVERIFY(!VideoSettings::sameStream(QStringLiteral("udp://0.0.0.0:5600"), QStringLiteral("udp://0.0.0.0:5601")));
+    QVERIFY(!VideoSettings::sameStream(QStringLiteral("tcp://a:5600"), QStringLiteral("tcp://b:5600")));
+
+    ThreeCameraFixture fixture;
+    VideoSettings *settings = fixture.settings();
+    const QString rtsp = QString::fromUtf8(VideoSettings::videoSourceRTSP);
+    settings->storeCameras(QJsonArray{
+        VideoSettings::camera(QStringLiteral("Gimbal"), rtsp, QStringLiteral("rtsp://cam.local/live")),
+        VideoSettings::camera(QStringLiteral("Gimbal again"), rtsp, QStringLiteral("RTSP://user@CAM.local/live/")),
+        VideoSettings::camera(QStringLiteral("Belly"), QString::fromUtf8(VideoSettings::videoSourceUDPH264), QStringLiteral("0.0.0.0:5600")),
+    }, 0);
+    QCOMPARE(settings->pipCameraIndex(), 2);
+}
+
+void VideoCameraSwitchTest::_pipSkipsCamerasOnlyThisComputerCanOpen()
+{
+    QVERIFY(VideoSettings::pipCapable(QString::fromUtf8(VideoSettings::videoSourceRTSP)));
+    QVERIFY(VideoSettings::pipCapable(QString::fromUtf8(VideoSettings::videoSourceWebRTC)));
+    QVERIFY(VideoSettings::pipCapable(QString::fromUtf8(VideoSettings::videoSourceHerelinkHotspot)));
+    QVERIFY(!VideoSettings::pipCapable(QStringLiteral("FaceTime HD Camera")));
+    QVERIFY(!VideoSettings::pipCapable(QString::fromUtf8(VideoSettings::videoSource3DRSolo)));
+}
+
+void VideoCameraSwitchTest::_pipSlotNamesThePipChoice()
+{
+    ThreeCameraFixture fixture;
+    VideoManager *vm = VideoManager::instance();
+
+    fixture.settings()->activeVideoSource()->setRawValue(2);
+    QCOMPARE(vm->pipSlot(), QVariant(0));
+    fixture.settings()->multiViewEnabled()->setRawValue(false);
+    QCOMPARE(vm->pipSlot(), QVariant(0));
+    QCOMPARE(vm->pipCameraNumber(), 0);
+
+    fixture.settings()->storeCameras(QJsonArray{VideoSettings::camera(QStringLiteral("a"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://a"))}, 0);
+    QVERIFY(vm->pipSlot().isNull());
+}
+
+void VideoCameraSwitchTest::_streamOffAndOnStartsAgainAtConnecting()
+{
+    ThreeCameraFixture fixture;
+    VideoManager *vm = VideoManager::instance();
+    Fact *const streamEnabled = fixture.settings()->streamEnabled();
+    const QVariant savedStream = streamEnabled->rawValue();
+    const auto savedReceivers = vm->_videoReceivers;
+    const auto savedState = vm->_receiverState;
+    const auto restore = qScopeGuard([&] {
+        vm->_videoReceivers = savedReceivers;
+        vm->_receiverState = savedState;
+        streamEnabled->setRawValue(savedStream);
+    });
+    streamEnabled->setRawValue(true);
+
+    StubVideoReceiver main(QStringLiteral("videoContent"));
+    vm->_initVideoReceiver(&main, nullptr);
+    emit main.onStartComplete(VideoReceiver::STATUS_OK);
+    emit main.onStopComplete(VideoReceiver::STATUS_OK);
+    QCOMPARE(vm->cameraSignals().at(0), QStringLiteral("noSignal"));
+
+    QSignalSpy hasVideoChanged(vm, &VideoManager::hasVideoChanged);
+    streamEnabled->setRawValue(false);
+    QCOMPARE_GE(hasVideoChanged.count(), 1);
+    QCOMPARE(vm->cameraSignals().at(0), QStringLiteral("idle"));
+    const qsizetype whileOff = hasVideoChanged.count();
+    streamEnabled->setRawValue(true);
+    QCOMPARE_GT(hasVideoChanged.count(), whileOff);
+    emit main.onStartComplete(VideoReceiver::STATUS_OK);
+    QCOMPARE(vm->cameraSignals().at(0), QStringLiteral("connecting"));
+}
+
+void VideoCameraSwitchTest::_aReceiverLeavingItsChannelDetachesIt()
+{
+    ThreeCameraFixture fixture;
+    VideoManager *vm = VideoManager::instance();
+    Fact *const streamEnabled = fixture.settings()->streamEnabled();
+    const QVariant savedStream = streamEnabled->rawValue();
+    const auto savedReceivers = vm->_videoReceivers;
+    const auto savedState = vm->_receiverState;
+    const auto savedHolders = vm->_channelHolders;
+    const auto restore = qScopeGuard([&] {
+        vm->_videoReceivers = savedReceivers;
+        vm->_receiverState = savedState;
+        vm->_channelHolders = savedHolders;
+        streamEnabled->setRawValue(savedStream);
+    });
+    streamEnabled->setRawValue(true);
+
+    StubVideoReceiver main(QStringLiteral("videoContent"));
+    StubVideoReceiver extra0(QStringLiteral("extraVideo0"));
+    StubVideoReceiver extra1(QStringLiteral("extraVideo1"));
+    vm->_initVideoReceiver(&main, nullptr);
+    vm->_initVideoReceiver(&extra0, nullptr);
+    vm->_initVideoReceiver(&extra1, nullptr);
+
+    vm->_channelHolders = {QStringLiteral("videoContent"), QStringLiteral("extraVideo1")};
+    vm->_bindNativeSink(&extra1);
+    QCOMPARE(vm->_channelHolders[QGC_VIDEO_MAIN], QStringLiteral("videoContent"));
+    QVERIFY(vm->_channelHolders[QGC_VIDEO_PIP].isEmpty());
+
+    vm->_channelHolders[QGC_VIDEO_PIP] = QStringLiteral("extraVideo0");
+    emit extra0.onStopComplete(VideoReceiver::STATUS_OK);
+    QCOMPARE(vm->_channelHolders[QGC_VIDEO_MAIN], QStringLiteral("videoContent"));
+    QVERIFY(vm->_channelHolders[QGC_VIDEO_PIP].isEmpty());
+
+    emit main.onStopComplete(VideoReceiver::STATUS_OK);
+    QVERIFY(vm->_channelHolders[QGC_VIDEO_MAIN].isEmpty());
 }
 
 void VideoCameraSwitchTest::_cameraSignalsFollowTheReceivers()

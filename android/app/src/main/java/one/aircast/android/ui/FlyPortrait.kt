@@ -72,6 +72,8 @@ internal fun portraitSplit(view: FlyView, hasVideo: Boolean): Boolean = view == 
 internal fun portraitShowsCamera(reading: VideoReading?): Boolean =
     reading != null && (reading.available || (!reading.streamEnabled && reading.sourceChosen))
 
+internal fun portraitVideoThumbnail(split: Boolean, reading: VideoReading?): Boolean = !split && reading?.available == true
+
 @Composable
 internal fun FlyPortrait(
     view: FlyView,
@@ -97,7 +99,7 @@ internal fun FlyPortrait(
     val videoTop = barTop
     val mapTop = if (split) barTop + videoHeight else 0.dp
     val controlsTop = if (split) mapTop else barTop
-    val buttonsTop = AircastSpace.s3 + if (!split && hasVideo) PORTRAIT_PIP_HEIGHT + AircastSpace.s3 else 0.dp
+    val buttonsTop = AircastSpace.s3 + if (portraitVideoThumbnail(split, reading)) PORTRAIT_PIP_HEIGHT + AircastSpace.s3 else 0.dp
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.aircast.outdoorBackground)) {
         Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {

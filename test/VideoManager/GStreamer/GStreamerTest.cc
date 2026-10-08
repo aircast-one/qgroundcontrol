@@ -19,6 +19,7 @@ QGC_LOGGING_CATEGORY(GStreamerTestLog, "Video.GStreamer.GStreamerTest")
 #include <atomic>
 #include <gst/app/gstappsrc.h>
 #include <gst/gst.h>
+#include <gst/video/videooverlay.h>
 #include <memory>
 #include <vector>
 
@@ -124,6 +125,41 @@ GstFlowReturn pushAccessUnit(GstElement* appsrc, const QByteArray& bytes, GstClo
     GST_BUFFER_DTS(buffer) = timestamp;
     GST_BUFFER_DURATION(buffer) = GST_SECOND / 4;
     return gst_app_src_push_buffer(GST_APP_SRC(appsrc), buffer);
+}
+
+struct RecordingOverlay
+{
+    GstElement parent;
+    guintptr window;
+};
+
+struct RecordingOverlayClass
+{
+    GstElementClass parent;
+};
+
+void recordingOverlayInterfaceInit(GstVideoOverlayInterface* overlay)
+{
+    overlay->set_window_handle = [](GstVideoOverlay* self, guintptr window) {
+        reinterpret_cast<RecordingOverlay*>(self)->window = window;
+    };
+}
+
+G_DEFINE_TYPE_WITH_CODE(RecordingOverlay, recording_overlay, GST_TYPE_ELEMENT,
+                        G_IMPLEMENT_INTERFACE(GST_TYPE_VIDEO_OVERLAY, recordingOverlayInterfaceInit))
+
+void recording_overlay_class_init(RecordingOverlayClass*) {}
+
+void recording_overlay_init(RecordingOverlay*) {}
+
+RecordingOverlay* makeRecordingOverlay()
+{
+    return static_cast<RecordingOverlay*>(gst_object_ref_sink(g_object_new(recording_overlay_get_type(), nullptr)));
+}
+
+guintptr windowOf(void* window)
+{
+    return reinterpret_cast<guintptr>(window);
 }
 
 }
@@ -561,8 +597,10 @@ void GStreamerTest::_testNativeSinkPlaysOnTheChannelItIsAttachedTo()
 #ifdef Q_OS_ANDROID
     QSKIP("the Android native sink draws into a window and keeps no frames");
 #endif
-    qgc_video_detach_appsink(0);
-    qgc_video_detach_appsink(1);
+    qgc_video_stop(QGC_VIDEO_MAIN);
+    qgc_video_stop(QGC_VIDEO_PIP);
+    qgc_video_detach_appsink(QGC_VIDEO_MAIN);
+    qgc_video_detach_appsink(QGC_VIDEO_PIP);
     GstElement* const pipeline = gst_pipeline_new(nullptr);
     GstElement* const source = gst_element_factory_make("videotestsrc", nullptr);
     GstElement* const sink = static_cast<GstElement*>(GStreamer::createNativeSink());
@@ -570,25 +608,25 @@ void GStreamerTest::_testNativeSinkPlaysOnTheChannelItIsAttachedTo()
     const auto teardown = qScopeGuard([pipeline] {
         (void) gst_element_set_state(pipeline, GST_STATE_NULL);
         gst_object_unref(pipeline);
-        qgc_video_detach_appsink(0);
-        qgc_video_detach_appsink(1);
+        qgc_video_detach_appsink(QGC_VIDEO_MAIN);
+        qgc_video_detach_appsink(QGC_VIDEO_PIP);
     });
     g_object_set(source, "is-live", TRUE, nullptr);
     gst_bin_add_many(GST_BIN(pipeline), source, sink, nullptr);
     QVERIFY(gst_element_link(source, sink));
 
-    QVERIFY(GStreamer::attachNativeSink(sink, 1));
+    QVERIFY(GStreamer::attachNativeSink(sink, QGC_VIDEO_PIP));
     QVERIFY(gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE);
-    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(1) > 0, 5000);
-    QCOMPARE(qgc_video_frames(0), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(QGC_VIDEO_PIP) > 0, 5000);
+    QCOMPARE(qgc_video_frames(QGC_VIDEO_MAIN), 0);
 
-    QVERIFY(GStreamer::attachNativeSink(sink, 0));
-    QCOMPARE(qgc_video_frames(1), 0);
-    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(0) > 1, 5000);
-    const int64_t played = qgc_video_frames(0);
-    QVERIFY(GStreamer::attachNativeSink(sink, 0));
-    QVERIFY(qgc_video_frames(0) >= played);
-    QCOMPARE(qgc_video_frames(1), 0);
+    QVERIFY(GStreamer::attachNativeSink(sink, QGC_VIDEO_MAIN));
+    QCOMPARE(qgc_video_frames(QGC_VIDEO_PIP), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(QGC_VIDEO_MAIN) > 1, 5000);
+    const int64_t played = qgc_video_frames(QGC_VIDEO_MAIN);
+    QVERIFY(GStreamer::attachNativeSink(sink, QGC_VIDEO_MAIN));
+    QVERIFY(qgc_video_frames(QGC_VIDEO_MAIN) >= played);
+    QCOMPARE(qgc_video_frames(QGC_VIDEO_PIP), 0);
 
     expectLogMessage("Video.GStreamer.GStreamer", QtCriticalMsg, QRegularExpression(QStringLiteral("could not be attached to channel")));
     QVERIFY(!GStreamer::attachNativeSink(sink, QGC_VIDEO_CHANNELS));
@@ -610,7 +648,7 @@ void GStreamerTest::_testASinkReplacedOnItsChannelStopsDrawingThere()
     const auto teardown = qScopeGuard([pipeline, replacement] {
         (void) gst_element_set_state(pipeline, GST_STATE_NULL);
         gst_object_unref(pipeline);
-        qgc_video_detach_appsink(0);
+        qgc_video_detach_appsink(QGC_VIDEO_MAIN);
         gst_object_unref(replacement);
     });
     g_object_set(source, "is-live", TRUE, nullptr);
@@ -623,17 +661,54 @@ void GStreamerTest::_testASinkReplacedOnItsChannelStopsDrawingThere()
     }, &rendered, nullptr);
     gst_object_unref(sinkPad);
 
-    QVERIFY(GStreamer::attachNativeSink(sink, 0));
+    QVERIFY(GStreamer::attachNativeSink(sink, QGC_VIDEO_MAIN));
     QVERIFY(gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE);
-    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(0) > 0, 5000);
+    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(QGC_VIDEO_MAIN) > 0, 5000);
 
-    QVERIFY(GStreamer::attachNativeSink(replacement, 0));
+    QVERIFY(GStreamer::attachNativeSink(replacement, QGC_VIDEO_MAIN));
+    QCOMPARE(qgc_video_frames(QGC_VIDEO_MAIN), 0);
     const int swapped = rendered.load();
-    QTRY_VERIFY_WITH_TIMEOUT(rendered.load() > swapped + 1, 5000);
-    const int64_t inFlight = qgc_video_frames(0);
-    const int settled = rendered.load();
-    QTRY_VERIFY_WITH_TIMEOUT(rendered.load() > settled + 3, 5000);
-    QCOMPARE(qgc_video_frames(0), inFlight);
+    QTRY_VERIFY_WITH_TIMEOUT(rendered.load() > swapped + 3, 5000);
+    QCOMPARE(qgc_video_frames(QGC_VIDEO_MAIN), 0);
+}
+
+void GStreamerTest::_testAnOverlaySinkLeavingAChannelLetsGoOfItsWindow()
+{
+    int mainWindow = 0;
+    int pipWindow = 0;
+    RecordingOverlay* const first = makeRecordingOverlay();
+    RecordingOverlay* const second = makeRecordingOverlay();
+    const auto teardown = qScopeGuard([first, second] {
+        qgc_video_detach_appsink(QGC_VIDEO_MAIN);
+        qgc_video_detach_appsink(QGC_VIDEO_PIP);
+        (void) qgc_video_set_window(QGC_VIDEO_MAIN, nullptr);
+        (void) qgc_video_set_window(QGC_VIDEO_PIP, nullptr);
+        gst_object_unref(first);
+        gst_object_unref(second);
+    });
+    QVERIFY(qgc_video_set_window(QGC_VIDEO_MAIN, &mainWindow));
+    QVERIFY(qgc_video_set_window(QGC_VIDEO_PIP, nullptr));
+
+    QVERIFY(qgc_video_attach_overlay(QGC_VIDEO_MAIN, first));
+    QCOMPARE(first->window, windowOf(&mainWindow));
+
+    QVERIFY(qgc_video_attach_overlay(QGC_VIDEO_PIP, first));
+    QCOMPARE(first->window, windowOf(nullptr));
+
+    QVERIFY(qgc_video_set_window(QGC_VIDEO_PIP, &pipWindow));
+    QCOMPARE(first->window, windowOf(&pipWindow));
+
+    QVERIFY(qgc_video_attach_overlay(QGC_VIDEO_PIP, second));
+    QCOMPARE(first->window, windowOf(nullptr));
+    QCOMPARE(second->window, windowOf(&pipWindow));
+
+    QVERIFY(qgc_video_attach_overlay(QGC_VIDEO_MAIN, second));
+    QCOMPARE(second->window, windowOf(&mainWindow));
+
+    qgc_video_detach_appsink(QGC_VIDEO_MAIN);
+    QCOMPARE(second->window, windowOf(nullptr));
+    QVERIFY(qgc_video_set_window(QGC_VIDEO_MAIN, &mainWindow));
+    QCOMPARE(second->window, windowOf(nullptr));
 }
 
 void GStreamerTest::_testStopEndsAPipelineWhoseUriWasCleared()
@@ -941,6 +1016,7 @@ QGC_GST_SKIP_TEST(_testCompleteInit)
 QGC_GST_SKIP_TEST(_testCreateVideoReceiver)
 QGC_GST_SKIP_TEST(_testNativeSinkPlaysOnTheChannelItIsAttachedTo)
 QGC_GST_SKIP_TEST(_testASinkReplacedOnItsChannelStopsDrawingThere)
+QGC_GST_SKIP_TEST(_testAnOverlaySinkLeavingAChannelLetsGoOfItsWindow)
 QGC_GST_SKIP_TEST(_testStopEndsAPipelineWhoseUriWasCleared)
 
 void GStreamerTest::_testRecordingSinkAcceptsElementaryStreams_data()

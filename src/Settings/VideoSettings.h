@@ -7,6 +7,7 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonObject>
 
+#include <functional>
 #include <optional>
 
 class VideoSettings : public SettingsGroup
@@ -66,6 +67,7 @@ public:
     Q_INVOKABLE bool offeredSource  (const QString &source);
     Q_INVOKABLE QStringList offeredSources();
     int      pipCameraIndex         ();
+    int      nextUsableIndex        ();
 
     std::optional<QJsonArray> cameraList();
     Q_INVOKABLE bool camerasReadable();
@@ -84,6 +86,9 @@ public:
     QString  problem                (const QString &source, const QString &url);
     static QString normalizedUrl    (const QString &source, const QString &url);
     static QString urlHost          (const QString &url);
+    static QString streamUri        (const QString &source, const QString &url);
+    static bool    sameStream       (const QString &a, const QString &b);
+    static bool    pipCapable       (const QString &source);
     static int activeAfterAdd       (int active, int stored);
     static int activeAfterAppend    (int active, int stored, int appended);
     static int activeAfterRemoval   (int active, int removed);
@@ -124,6 +129,9 @@ private:
     QJsonObject _cameraAt           (int index);
     QJsonArray _allCameras          ();
     static bool _sourceNeedsUrl     (const QString &source);
+    static QString _streamIdentity  (const QString &uri);
+    static std::optional<QString> _listenPort(const QString &uri);
+    int _nextAfterCurrent           (const std::function<bool(int)> &eligible);
     static QStringList _schemes     (const QString &source);
     static QString _schemeOf        (const QString &source, const QString &url);
     static bool _schemeAdded        (const QString &source);
