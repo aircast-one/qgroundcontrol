@@ -66,7 +66,7 @@ internal fun disarmNotice(wasArmed: Boolean, flewWhileArmed: Boolean, armedNow: 
 internal const val VEHICLE_FLIGHT_DISTANCE = "vehicle.flightDistance"
 
 internal fun flownDistanceText(view: JSONObject?): String? =
-    view?.optJSONObject("value")?.takeIf { it.optDouble("value", 0.0) > 0.0 }
+    (view?.takeIf { it.optText("kind") == "fact" } ?: view?.optJSONObject("value"))?.takeIf { it.optDouble("value", 0.0) > 0.0 }
         ?.let { fact -> fact.optText("valueString").ifBlank { null }?.let { "$it ${fact.optText("units")}".trim() } }
 
 internal fun landedSummary(seconds: Double?, distance: String?, batteryUsed: Int?): String =
