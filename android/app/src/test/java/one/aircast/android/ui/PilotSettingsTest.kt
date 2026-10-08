@@ -1,0 +1,70 @@
+package one.aircast.android.ui
+
+import one.aircast.android.bridge.Fact
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+private fun parameter(name: String, description: String = "Engineer description") = Fact(
+    path = "vehicle.parameterManager.getParameter(-1,$name)",
+    name = name,
+    description = description,
+    units = "m",
+    valueString = "30",
+    value = 30,
+    enumStrings = emptyList(),
+    enumIndex = -1,
+    isBool = false,
+    isString = false,
+    readOnly = false,
+    minString = "",
+    maxString = "",
+    minIsDefaultForType = true,
+    maxIsDefaultForType = true,
+    defaultValueString = "",
+)
+
+class PilotSettingsTest {
+    private val returnHome = pilotSettings(SettingsGroup.Safety).first { it.label == "Return-to-home altitude" }
+
+    @Test
+    fun `a pilot setting uses whichever firmware parameter the aircraft reports, under the pilot's word`() {
+        val px4 = firstReported(returnHome) { name -> parameter(name).takeIf { name == "RTL_RETURN_ALT" } }
+        val ardupilot = firstReported(returnHome) { name -> parameter(name).takeIf { name == "RTL_ALT" } }
+        assertEquals("RTL_RETURN_ALT", px4?.name)
+        assertEquals("RTL_ALT", ardupilot?.name)
+        assertEquals("Return-to-home altitude", px4?.heading)
+    }
+
+    @Test
+    fun `the engineer description moves behind help once the row has a pilot label`() {
+        assertEquals("Engineer description", firstReported(returnHome) { parameter(it) }?.detail)
+    }
+
+    @Test
+    fun `nothing shows when the aircraft reports none of the parameters`() {
+        assertNull(firstReported(returnHome) { null })
+    }
+
+    @Test
+    fun `only safety and control carry a pilot list`() {
+        assertTrue(pilotSettings(SettingsGroup.Safety).isNotEmpty())
+        assertTrue(pilotSettings(SettingsGroup.Control).isNotEmpty())
+        assertEquals(emptyList<PilotSetting>(), pilotSettings(SettingsGroup.Camera))
+    }
+
+    @Test
+    fun `settings rows read in pilot words and unknown rows keep theirs`() {
+        assertEquals("Max fly-to distance", pilotWorded(parameter("maxGoToLocationDistance")).heading)
+        assertEquals("", pilotWorded(parameter("somethingElse")).shortLabel)
+    }
+
+    @Test
+    fun `desktop-only setup pages fold away from the ones that open here`() {
+        val components = listOf("Airframe", "Sensors", "PID Tuning").mapIndexed { index, name -> SetupComponent(index = index, name = name, needsAttention = false) }
+        val (here, desktop) = splitDesktopOnly(components) { it.name == SENSORS }
+        assertEquals(listOf(SENSORS), here.map { it.name })
+        assertEquals(listOf("Airframe", "PID Tuning"), desktop.map { it.name })
+    }
+}

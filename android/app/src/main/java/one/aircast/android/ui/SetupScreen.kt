@@ -174,6 +174,9 @@ internal fun setupSummaries(view: JSONObject?): Map<String, List<SummaryLine>> {
 internal fun setupMatches(name: String, search: String): Boolean =
     search.isBlank() || name.lowercase().contains(search.trim().lowercase())
 
+internal fun splitDesktopOnly(components: List<SetupComponent>, opensHere: (SetupComponent) -> Boolean): Pair<List<SetupComponent>, List<SetupComponent>> =
+    components.partition(opensHere)
+
 internal fun remainingSetup(components: List<SetupComponent>): List<SetupComponent> =
     components.filterNot { it.needsAttention }
 
@@ -460,13 +463,13 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         }
 
         val remaining = remainingSetup(components).filter(searchHit)
+        val (usable, desktopOnly) = splitDesktopOnly(remaining) { headCanOpen(setupPage(setupJson, it.name), headPage(it)) }
         if (components.isEmpty()) {
             item(key = "empty") {
                 parametersIncomplete(setupJson)?.let { SetupNotice(it) } ?: EmptyState(R.drawable.ic_build, NOTHING_TO_CONFIGURE, NOTHING_TO_CONFIGURE_TEXT)
             }
         } else if (remaining.isNotEmpty()) {
-            item(key = "allheader") { SectionHeader("Ready") }
-            items(remaining, key = { it.index }) { component ->
+            val readyRow: @Composable (SetupComponent) -> Unit = { component ->
                 val page = setupPage(setupJson, component.name)
                 val openable = headCanOpen(page, headPage(component))
                 val blocked = component.blockedReason
@@ -498,10 +501,16 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 SectionHits(sectionHits[component.name].orEmpty()) { openFromList(component, it) }
                 }
             }
+            if (usable.isNotEmpty()) item(key = "allheader") { SectionHeader("Ready") }
+            items(usable, key = { it.index }) { readyRow(it) }
+            if (desktopOnly.isNotEmpty()) {
+                item(key = "advancedHead") { SectionHeader("Advanced") }
+                items(desktopOnly, key = { it.index }) { readyRow(it) }
+            }
         }
 
         if (advanced && setupMatches("Parameters", setupSearch)) item(key = "parameters") {
-            SectionHeader("Advanced")
+            if (desktopOnly.isEmpty()) SectionHeader("Advanced")
             SetupRow(
                 title = "Parameters",
                 subtitle = parameterCountText(parameterCount) ?: "Every setting the vehicle has",

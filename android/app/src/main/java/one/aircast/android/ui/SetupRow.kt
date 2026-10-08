@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -160,6 +162,17 @@ internal fun OverridePageHeading(title: String, onBack: () -> Unit) {
     androidx.compose.runtime.DisposableEffect(host, title) {
         host?.value = PageHeading(title) { back() }
         onDispose { host?.value = null }
+    }
+}
+
+@Composable
+internal fun AdvancedToggle(open: Boolean, modifier: Modifier = Modifier, onToggle: () -> Unit) {
+    androidx.compose.material3.TextButton(onClick = onToggle, modifier = modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+        Text(if (open) "Hide advanced" else "Advanced")
+        Icon(
+            if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+            contentDescription = null,
+        )
     }
 }
 

@@ -504,8 +504,10 @@ internal fun Modifier.avoidedByVideoMessage(key: String): Modifier {
 }
 
 
+internal data class MenuDestination(val label: String, @androidx.annotation.DrawableRes val icon: Int, val current: Boolean, val onSelect: () -> Unit)
+
 @Composable
-internal fun FlyTabMenu(tabs: List<Pair<String, () -> Unit>>) {
+internal fun FlyTabMenu(destinations: List<MenuDestination>) {
     var open by remember { mutableStateOf(false) }
     Box {
         Surface(
@@ -518,11 +520,16 @@ internal fun FlyTabMenu(tabs: List<Pair<String, () -> Unit>>) {
             Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Menu, "Menu", Modifier.size(22.dp)) }
         }
         androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            tabs.map { (label, select) ->
-                androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, onClick = {
-                    open = false
-                    select()
-                })
+            destinations.map { destination ->
+                val tint = if (destination.current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(destination.label, color = tint) },
+                    leadingIcon = { Icon(painterResource(destination.icon), null, tint = tint) },
+                    onClick = {
+                        open = false
+                        if (!destination.current) destination.onSelect()
+                    },
+                )
             }
         }
     }

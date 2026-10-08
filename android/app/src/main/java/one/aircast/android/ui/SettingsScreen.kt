@@ -281,7 +281,7 @@ internal fun settingsSections(page: JSONObject?): List<SettingsSectionRows> {
                         SettingsBlock(
                             title = block.optText("title"),
                             facts = (0 until (controls?.length() ?: 0)).mapNotNull { control ->
-                                controls!!.optJSONObject(control)?.let(::factFromControl)?.let(::paletteNamed)
+                                controls!!.optJSONObject(control)?.let(::factFromControl)?.let(::paletteNamed)?.let(::pilotWorded)
                             },
                         )
                     }
@@ -385,23 +385,36 @@ internal val DETAIL_PANE_MAX_WIDTH = 720.dp
 private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>, modifier: Modifier, onOpenSetup: (String?) -> Unit, onOpen: (String) -> Unit) {
     val linksJson by qgcPath("view.links")
     val pages = remember(group, everyPage) { tabPages(group, everyPage) }
-    Column(modifier.verticalScroll(rememberScrollState())) {
-        if (group == SettingsGroup.General) AircraftSetupRow(onOpenSetup)
-        pages.forEach { page ->
-            key(page.title) {
-                if (pageLook(page.title).inline || pageLook(page.title).group != group) {
-                    InlinePage(page, group)
-                } else {
-                    SetupRow(
-                        title = pageTitle(page.title),
-                        status = if (page.title == CONNECTIONS_PAGE) activeLinksGlance(linksJson) else pageGlance(page.title),
-                        icon = pageLook(page.title).icon,
-                        onClick = { onOpen(page.title) },
-                    )
-                }
+    var advancedOpen by rememberSaveable(group) { mutableStateOf(false) }
+    val foldsInline = group == SettingsGroup.Safety
+    val drawnInline: (SettingsPageEntry) -> Boolean = { page -> pageLook(page.title).inline || pageLook(page.title).group != group }
+    val pageEntry: @Composable (SettingsPageEntry) -> Unit = { page ->
+        key(page.title) {
+            if (drawnInline(page)) {
+                InlinePage(page, group)
+            } else {
+                SetupRow(
+                    title = pageTitle(page.title),
+                    status = if (page.title == CONNECTIONS_PAGE) activeLinksGlance(linksJson) else pageGlance(page.title),
+                    icon = pageLook(page.title).icon,
+                    onClick = { onOpen(page.title) },
+                )
             }
         }
-        TabSetupRows(group, onOpenSetup)
+    }
+    Column(modifier.verticalScroll(rememberScrollState())) {
+        if (group == SettingsGroup.General) AircraftSetupRow(onOpenSetup)
+        PilotSettings(group)
+        if (foldsInline) {
+            val (folded, shown) = pages.partition(drawnInline)
+            shown.map { pageEntry(it) }
+            TabSetupRows(group, onOpenSetup)
+            if (folded.isNotEmpty()) AdvancedToggle(advancedOpen) { advancedOpen = !advancedOpen }
+            if (advancedOpen) folded.map { pageEntry(it) }
+        } else {
+            pages.map { pageEntry(it) }
+            TabSetupRows(group, onOpenSetup)
+        }
     }
 }
 

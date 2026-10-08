@@ -516,7 +516,7 @@ fun AircastShell(hostView: android.view.View?) {
 
                 if (onFly) {
                     val flyStatus: @Composable RowScope.() -> Unit = {
-                        one.aircast.android.ui.FlyTabMenu(tabs.filter { it != Tab.Fly }.map { it.label to { selectTab(it) } } + ("Settings" to { navigation.settingsOpen = true }))
+                        one.aircast.android.ui.FlyTabMenu(tabs.map { one.aircast.android.ui.MenuDestination(it.label, it.icon, it == Tab.Fly) { selectTab(it) } } + one.aircast.android.ui.MenuDestination("Settings", R.drawable.ic_settings, false) { navigation.settingsOpen = true })
                         LayoutWidget("vehicleState", movable = false, hideable = false) { VehicleStateChip() }
                         LayoutWidget("vtolState", movable = false, hideable = false) { VtolStateCell() }
                         ControlRequestPrompt()

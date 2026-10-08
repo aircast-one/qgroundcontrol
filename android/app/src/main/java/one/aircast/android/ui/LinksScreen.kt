@@ -1100,15 +1100,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
             }
         }
 
-        item(key = "advanced") {
-            TextButton(onClick = { advanced = !advanced }, modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-                Text(if (advanced) "Hide advanced" else "Advanced")
-                Icon(
-                    if (advanced) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = null,
-                )
-            }
-        }
+        item(key = "advanced") { AdvancedToggle(advanced) { advanced = !advanced } }
         if (advanced) {
             item(key = "addLink") {
                 OutlinedButton(onClick = { adding = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
