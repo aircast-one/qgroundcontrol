@@ -81,6 +81,7 @@ pub fn tile_hash(provider: i32, x: i32, y: i32, z: i32) -> String {
 }
 
 const TILE_DIGITS: usize = 19;
+const PROVIDER_DIGITS: usize = 10;
 
 pub fn provider_of(hash: &str) -> Option<i32> {
     hash.len().checked_sub(TILE_DIGITS).and_then(|head| hash.get(..head)).and_then(|head| head.parse::<i32>().ok())
@@ -218,6 +219,13 @@ impl Cache {
             })
         })?;
         rows.collect()
+    }
+
+    pub fn busiest_provider(&self) -> rusqlite::Result<Option<i32>> {
+        self.connection
+            .query_row(&format!("SELECT substr(hash, 1, {PROVIDER_DIGITS}) AS prefix, COUNT(*) AS n FROM Tiles GROUP BY prefix ORDER BY n DESC LIMIT 1"), [], |row| row.get::<_, String>(0))
+            .optional()
+            .map(|prefix| prefix.and_then(|prefix| prefix.parse::<i32>().ok()))
     }
 
     pub fn total_size(&self) -> rusqlite::Result<i64> {
@@ -476,7 +484,17 @@ impl Cache {
 
 #[cfg(test)]
 mod tests {
-    use super::recovering_a_journal;
+    use super::{Cache, Tile, recovering_a_journal, tile_hash};
+
+    #[test]
+    fn the_busiest_provider_is_the_one_with_the_most_cached_tiles() {
+        let cache = Cache::open_in_memory().unwrap();
+        assert_eq!(cache.busiest_provider().unwrap(), None, "an empty cache names no provider, so a failed fetch falls through to nothing");
+        let save = |provider: i32, x: i32| cache.save(&Tile { hash: tile_hash(provider, x, 7, 12), format: "png".into(), image: vec![provider as u8, x as u8], kind: provider }, None).unwrap();
+        [(42, 1), (42, 2), (42, 3), (7, 1)].into_iter().for_each(|(provider, x)| { save(provider, x); });
+        assert_eq!(cache.busiest_provider().unwrap(), Some(42), "like Android's QgcTileCache.providers().first(), the offline fallback reads the provider with the most tiles");
+        assert_eq!(cache.tile(&tile_hash(42, 2, 7, 12)).unwrap().map(|tile| tile.image), Some(vec![42, 2]));
+    }
 
     #[test]
     fn only_a_readonly_refusal_is_worth_retrying() {

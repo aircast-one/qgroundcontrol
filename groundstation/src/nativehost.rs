@@ -235,12 +235,19 @@ pub unsafe extern "C" fn qgc_map_tile_fetch(map_type: *const c_char, x: c_int, y
     std::thread::spawn(move || {
         let cache = crate::terrainservice::cache_path().and_then(|path| crate::tilecache::Cache::open(&path).ok());
         let persist = !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
-        let image = crate::maptiles::fetch_remembered(&provider, x, y, zoom, cache.as_ref(), persist);
+        let image = crate::maptiles::fetch_remembered(&provider, x, y, zoom, cache.as_ref(), persist).or_else(|| cache.as_ref().and_then(|cache| offline_tile(cache, x, y, zoom)));
         match image {
             Some(image) => unsafe { handler(image.as_ptr(), c_int::try_from(image.len()).unwrap_or(0), context as *mut c_void) },
             None => unsafe { handler(std::ptr::null(), 0, context as *mut c_void) },
         }
     });
+}
+
+static OFFLINE_PROVIDER: OnceLock<Option<i32>> = OnceLock::new();
+
+fn offline_tile(cache: &crate::tilecache::Cache, x: c_int, y: c_int, zoom: c_int) -> Option<Vec<u8>> {
+    let provider = (*OFFLINE_PROVIDER.get_or_init(|| cache.busiest_provider().ok().flatten()))?;
+    cache.tile(&crate::tilecache::tile_hash(provider, x, y, zoom)).ok().flatten().map(|tile| tile.image)
 }
 
 struct CoreOnly;
