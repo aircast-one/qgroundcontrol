@@ -80,7 +80,7 @@ pub const ROUTES: &[(&str, Route, &str)] = &[
     ("/links", Route::Links, ""),
     ("/links/connect", Route::LinkConnect, "host,port,name"),
     ("/links/disconnect", Route::LinkDisconnect, "name"),
-    ("/links/mocklink", Route::MockLink, "autopilot,add,camera,gimbal,proximity,statustext,video,pattern"),
+    ("/links/mocklink", Route::MockLink, "autopilot,add,camera,gimbal,proximity,statustext,video,pattern,silent"),
     ("/mission/upload", Route::MissionUpload, "file"),
     ("/mission/download", Route::MissionDownload, "file"),
     ("/logging", Route::Logging, "rules"),
@@ -383,6 +383,10 @@ impl DebugApi {
     fn mock_link(&self, host: &dyn Host, pairs: &[(String, String)]) -> Response {
         if !host.mock_links_available() {
             return refuse("mock links exist only in debug builds");
+        }
+        if present(pairs, "silent") {
+            crate::mocklink::set_silent(switched_on(pairs, "silent"));
+            return ok(json!({ "silent": crate::mocklink::silent() }));
         }
         let Some(autopilot) = given(pairs, "autopilot").map(str::to_lowercase) else {
             return refuse("autopilot must be px4 or apm");
@@ -839,6 +843,16 @@ mod tests {
         assert_eq!(get(&api, &release, "/bridge/set", "path=x&value=1").status, STATUS_BAD_REQUEST, "a release build never writes without the switch");
         let switched = Fake { writes_allowed: true, links: plain(&[("Radio", true)]), ..Fake::default() };
         assert_eq!(get(&api, &switched, "/bridge/set", "path=x&value=1").status, STATUS_OK);
+    }
+
+    #[test]
+    fn a_mock_link_can_go_silent_like_a_lost_radio_and_come_back() {
+        let api = DebugApi::new();
+        let host = Fake { mock_available: true, ..Fake::default() };
+        assert_eq!(get(&api, &host, "/links/mocklink", "autopilot=px4&silent=1").body["silent"], true);
+        assert!(crate::mocklink::silent());
+        assert_eq!(get(&api, &host, "/links/mocklink", "silent=0").body["silent"], false);
+        assert!(!crate::mocklink::silent());
     }
 
     #[test]

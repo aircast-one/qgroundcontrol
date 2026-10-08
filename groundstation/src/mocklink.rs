@@ -85,6 +85,15 @@ pub fn video_pattern() -> String {
     VIDEO_PATTERN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
 }
 static NEXT_SYSTEM: AtomicU8 = AtomicU8::new(FIRST_SYSTEM_ID);
+static SILENT: AtomicBool = AtomicBool::new(false);
+
+pub fn set_silent(silent: bool) {
+    SILENT.store(silent, Ordering::Relaxed);
+}
+
+pub fn silent() -> bool {
+    SILENT.load(Ordering::Relaxed)
+}
 
 pub fn set_available(available: bool) {
     DEBUG_BUILD.store(available, Ordering::Relaxed);
@@ -1019,7 +1028,7 @@ impl MockLink {
                         false => Vec::new(),
                     };
                     let outgoing: Vec<u8> = replies.iter().chain(&telemetry).chain(&sim.pump()).flat_map(|out| encode(system, &mut sequences, out)).collect();
-                    if !outgoing.is_empty() && running.load(Ordering::Relaxed) {
+                    if !outgoing.is_empty() && running.load(Ordering::Relaxed) && !silent() {
                         deliver(&outgoing);
                     }
                 }
