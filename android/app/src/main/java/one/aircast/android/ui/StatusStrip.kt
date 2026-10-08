@@ -58,9 +58,7 @@ import one.aircast.map.aircast
 import one.aircast.map.optText
 import org.json.JSONObject
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.delay
-import androidx.compose.runtime.produceState
-import android.os.SystemClock
+import one.aircast.map.silentSeconds
 
 private const val BATTERY = "view.battery"
 private const val VEHICLE_FLIGHT_TIME = "vehicle.flightTime"
@@ -420,20 +418,6 @@ private fun InstrumentSheet(
 private fun headlineColour(headline: BatteryHeadline): Color =
     if (headline.severity > 0) severityColour(headline.severity)
     else batteryLevelColour(headline.level).takeOrElse { MaterialTheme.colorScheme.onSurface }
-
-private const val MILLIS_PER_SECOND = 1000L
-
-@Composable
-internal fun silentSeconds(lost: Boolean): Long? {
-    val since = remember(lost) { if (lost) SystemClock.elapsedRealtime() else null }
-    val now by produceState(SystemClock.elapsedRealtime(), since) {
-        while (since != null) {
-            value = SystemClock.elapsedRealtime()
-            delay(MILLIS_PER_SECOND)
-        }
-    }
-    return since?.let { (now - it).coerceAtLeast(0) / MILLIS_PER_SECOND }
-}
 
 @Composable
 private fun severityColour(severity: Int): Color = when {

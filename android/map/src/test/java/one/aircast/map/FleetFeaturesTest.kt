@@ -31,6 +31,15 @@ class FleetFeaturesTest {
     }
 
     @Test
+    fun `a silent aircraft keeps its last place on the map and says how long ago that was`() {
+        val alone = fleetFeatures(two.take(1), lastSeenText(7)).features()!![0]
+        assertEquals("Last seen 7 s ago", alone.getStringProperty(VEHICLE_LABEL_PROPERTY))
+        val drawn = fleetFeatures(two, lastSeenText(90)).features()!!
+        assertEquals("Vehicle 1\nLast seen 1 min ago", drawn[0].getStringProperty(VEHICLE_LABEL_PROPERTY))
+        assertEquals("only the aircraft being flown carries the flown link's silence", "Vehicle 2", drawn[1].getStringProperty(VEHICLE_LABEL_PROPERTY))
+    }
+
+    @Test
     fun `every aircraft is drawn, not only the one being flown`() {
         val drawn = fleetFeatures(two).features()!!
         assertEquals(2, drawn.size)

@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, text};
+use crate::read::{flag, text, value_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -14,6 +14,44 @@ pub const DEPS: &[&str] = &[
 ];
 
 const FIELDS: &str = "primaryLinkName,linkNames,linkStatuses,communicationLost,communicationLostEnabled,autoDisconnect";
+
+const NO_FAILSAFE: &str = "No failsafe";
+const APM_DEFAULT_GCS_TIMEOUT_S: f64 = 5.0;
+
+fn px4_loss_action(action: i64) -> Option<&'static str> {
+    match action {
+        0 => Some(NO_FAILSAFE),
+        1 => Some("Hover"),
+        2 => Some("Return home"),
+        3 => Some("Land"),
+        5 => Some("Stop motors"),
+        6 => Some("Lockdown"),
+        _ => None,
+    }
+}
+
+fn apm_loss_action(action: i64) -> Option<&'static str> {
+    match action {
+        0 => Some(NO_FAILSAFE),
+        1 | 3 | 4 => Some("Return home"),
+        2 => Some("Continue mission"),
+        5 => Some("Land"),
+        _ => None,
+    }
+}
+
+pub fn loss_failsafe(px4: (Option<f64>, Option<f64>), apm: (Option<f64>, Option<f64>)) -> (Option<&'static str>, Option<f64>) {
+    let (action, after) = match (px4, apm) {
+        ((Some(action), after), _) => (px4_loss_action(action as i64), after),
+        (_, (Some(action), after)) => (apm_loss_action(action as i64), after.or(Some(APM_DEFAULT_GCS_TIMEOUT_S))),
+        _ => (None, None),
+    };
+    (action, after.filter(|_| action.is_some_and(|a| a != NO_FAILSAFE)))
+}
+
+fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
+    value_number(&backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name}).rawValue")))
+}
 
 fn strings(read: &Value, key: &str) -> Vec<String> {
     read.get(key)
@@ -49,10 +87,16 @@ pub fn vehicle_links_view(backend: &dyn Backend, _args: &[String]) -> Value {
             })
         })
         .collect();
+    let (loss_action, loss_after) = loss_failsafe(
+        (parameter(backend, "NAV_DLL_ACT"), parameter(backend, "COM_DL_LOSS_T")),
+        (parameter(backend, "FS_GCS_ENABLE"), parameter(backend, "FS_GCS_TIMEOUT")),
+    );
     json!({
         "kind": "object",
         "class": "VehicleLinks",
         "available": true,
+        "lossAction": loss_action,
+        "lossAfter": loss_after,
         "watching": watching,
         "primary": (!primary.is_empty()).then_some(primary.clone()),
         "links": links,
@@ -95,6 +139,16 @@ mod tests {
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
         fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn a_lost_link_names_the_failsafe_the_aircraft_will_fly() {
+        assert_eq!(loss_failsafe((Some(2.0), Some(10.0)), (None, None)), (Some("Return home"), Some(10.0)));
+        assert_eq!(loss_failsafe((Some(0.0), Some(10.0)), (None, None)), (Some("No failsafe"), None), "a disabled failsafe never counts down");
+        assert_eq!(loss_failsafe((None, None), (Some(5.0), None)), (Some("Land"), Some(5.0)), "older ArduPilot has no FS_GCS_TIMEOUT and waits its fixed 5 s");
+        assert_eq!(loss_failsafe((None, None), (Some(2.0), Some(8.0))), (Some("Continue mission"), Some(8.0)));
+        assert_eq!(loss_failsafe((None, None), (None, None)), (None, None), "before parameters load nothing is promised");
+        assert_eq!(loss_failsafe((Some(42.0), Some(10.0)), (None, None)), (None, None));
     }
 
     #[test]

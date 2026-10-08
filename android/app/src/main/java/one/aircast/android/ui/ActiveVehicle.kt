@@ -69,6 +69,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.foundation.layout.Box
 import one.aircast.map.vehicleTelemetryLine
 import one.aircast.map.vehicleChoices
+import one.aircast.map.silentSeconds
 import androidx.compose.ui.graphics.Color
 
 private const val STATUS_BAR_SCRIM_ALPHA = 0.55f
@@ -140,6 +141,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val taken = controlIsElsewhere(station)
     val lost = fly?.contactLost == true
     val silentFor = silentSeconds(lost)
+    val linksJson by qgcPath(VEHICLE_LINKS)
+    val failsafe = remember(linksJson) { vehicleLinks(linksJson)?.failsafe }
     var lostMenu by remember { mutableStateOf(false) }
     val offlineJson by qgcPath(OFFLINE_STATUS_VIEW)
     val warningsJson by qgcPath(WARNINGS)
@@ -204,7 +207,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp))
-        val title = if (lost) signalLostTitle(silentFor) else activeVehicleTitle(choices, subtitle)
+        val title = if (lost) signalLostTitle(silentFor, failsafe) else activeVehicleTitle(choices, subtitle)
         Text(
             text = if (statusBar) osdModeText(title) else title,
             style = if (statusBar) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,

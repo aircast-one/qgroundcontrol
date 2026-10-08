@@ -119,14 +119,15 @@ fun vehicleFeatures(
     longitude: Double,
     heading: Double,
     stale: Boolean = false,
+    lastSeen: String? = null,
 ): FeatureCollection =
     if (isPlottable(latitude, longitude)) {
-        FeatureCollection.fromFeatures(listOf(vehicleFeature(latitude, longitude, heading, stale)))
+        FeatureCollection.fromFeatures(listOf(vehicleFeature(latitude, longitude, heading, stale, label = lastSeen)))
     } else {
         FeatureCollection.fromFeatures(emptyList())
     }
 
-fun fleetFeatures(fleet: List<VehicleChoice>): FeatureCollection =
+fun fleetFeatures(fleet: List<VehicleChoice>, lastSeen: String? = null): FeatureCollection =
     FeatureCollection.fromFeatures(
         fleet
             .filter { isPlottable(it.latitude, it.longitude) }
@@ -137,7 +138,10 @@ fun fleetFeatures(fleet: List<VehicleChoice>): FeatureCollection =
                     heading = flown.heading,
                     stale = flown.contactLost,
                     active = flown.active,
-                    label = if (fleet.size > 1) "Vehicle ${flown.id}" else null,
+                    label = listOfNotNull(
+                        "Vehicle ${flown.id}".takeIf { fleet.size > 1 },
+                        lastSeen.takeIf { flown.active },
+                    ).joinToString("\n").ifEmpty { null },
                 )
             },
     )
@@ -233,6 +237,7 @@ fun VehicleMap(
     val latestOnMoved by rememberUpdatedState(onMoved)
     val latestCanDrag by rememberUpdatedState(canDrag)
     val linkLost by mapViewFlag(FLY_STATE_VIEW, "contactLost")
+    val lastSeen = silentSeconds(linkLost)?.let(::lastSeenText)
     val fleetJson by mapPath(VEHICLES_VIEW)
     val fleet = remember(fleetJson) { vehicleChoices(fleetJson).choices }
     val flown = fleet.firstOrNull { it.active }
@@ -468,14 +473,14 @@ fun VehicleMap(
         }
     }
 
-    LaunchedEffect(style, latitude, longitude, heading, home, linkLost, fleet) {
+    LaunchedEffect(style, latitude, longitude, heading, home, linkLost, fleet, lastSeen) {
         val currentStyle = style ?: return@LaunchedEffect
 
         (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
             ?.setGeoJson(
                 when {
-                    fleet.isEmpty() -> vehicleFeatures(latitude, longitude, heading, linkLost)
-                    else -> fleetFeatures(fleet)
+                    fleet.isEmpty() -> vehicleFeatures(latitude, longitude, heading, linkLost, lastSeen)
+                    else -> fleetFeatures(fleet, lastSeen)
                 },
             )
 

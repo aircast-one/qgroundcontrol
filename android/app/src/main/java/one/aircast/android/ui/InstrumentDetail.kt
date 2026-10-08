@@ -1,6 +1,7 @@
 package one.aircast.android.ui
 
 import one.aircast.map.optText
+import one.aircast.map.silenceDuration
 import org.json.JSONObject
 
 internal const val SEVERITY_SECONDARY = -1
@@ -40,17 +41,17 @@ internal fun batteryDetail(view: JSONObject?): List<DetailRow> {
     }
 }
 
-private const val SECONDS_PER_MINUTE = 60
-
-internal fun silenceDuration(seconds: Long): String =
-    if (seconds < SECONDS_PER_MINUTE) "$seconds s" else "${seconds / SECONDS_PER_MINUTE} min"
-
 internal fun silenceText(seconds: Long): String = "No data from the aircraft for ${silenceDuration(seconds)}"
 
 internal const val SIGNAL_LOST = "Signal lost"
 
-internal fun signalLostTitle(seconds: Long?): String =
-    listOfNotNull(SIGNAL_LOST, seconds?.let(::silenceDuration)).joinToString(" \u00b7 ")
+internal fun failsafeCountdown(seconds: Long?, failsafe: LossFailsafe?): String? = failsafe?.let { (action, after) ->
+    val left = after?.let { kotlin.math.ceil(it - (seconds ?: 0L)).toLong() }?.takeIf { it > 0 }
+    if (left == null) action else "$action in ${silenceDuration(left)}"
+}
+
+internal fun signalLostTitle(seconds: Long?, failsafe: LossFailsafe? = null): String =
+    listOfNotNull(SIGNAL_LOST, seconds?.let(::silenceDuration), failsafeCountdown(seconds, failsafe)).joinToString(" \u00b7 ")
 
 private val CRITICAL_CHARGE_STATES = 3..6
 

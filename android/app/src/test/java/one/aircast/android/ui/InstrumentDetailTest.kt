@@ -68,6 +68,22 @@ class InstrumentDetailTest {
     }
 
     @Test
+    fun `the chip counts down to the lost-link failsafe, then names it`() {
+        val home = LossFailsafe("Return home", 10.0)
+        assertEquals("Signal lost \u00b7 7 s \u00b7 Return home in 3 s", signalLostTitle(7, home))
+        assertEquals("Signal lost \u00b7 12 s \u00b7 Return home", signalLostTitle(12, home))
+        assertEquals("Signal lost \u00b7 7 s \u00b7 No failsafe", signalLostTitle(7, LossFailsafe("No failsafe", null)))
+    }
+
+    @Test
+    fun `the core's spoken lines are read in order after the last one heard`() {
+        val batch = speechBatch(JSONObject("""{"class":"Speech","last":4,"lines":[{"sequence":3,"text":"communication lost","volume":0.5},{"sequence":4,"text":"armed","volume":1}]}"""))
+        assertEquals(SpeechBatch(4, listOf(SpokenLine(3, "communication lost", 0.5f), SpokenLine(4, "armed", 1f))), batch)
+        assertEquals("view.speech(4)", speechPath(4))
+        assertEquals(null, speechBatch(null))
+    }
+
+    @Test
     fun `every placeholder QGC prints for an uncomputed fact is treated as one`() {
         assertTrue(notYetComputed("--.--"))
         assertTrue(notYetComputed("--:--:--"))

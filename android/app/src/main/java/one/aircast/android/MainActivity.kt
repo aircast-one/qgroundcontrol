@@ -171,6 +171,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
 
         setContent {
             ConnectionLocks()
+            one.aircast.android.ui.VoiceAlerts()
             DeviceCameraHost()
             AppFontScale {
                 val context = androidx.compose.ui.platform.LocalContext.current

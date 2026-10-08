@@ -7,10 +7,13 @@ internal const val VEHICLE_LINKS = "view.vehicleLinks"
 
 internal data class VehicleLink(val commLost: Boolean?)
 
+internal data class LossFailsafe(val action: String, val after: Double?)
+
 internal data class VehicleLinks(
     val available: Boolean,
     val links: List<VehicleLink>,
     val contactLost: Boolean? = null,
+    val failsafe: LossFailsafe? = null,
 )
 
 internal fun vehicleLinks(view: JSONObject?): VehicleLinks? {
@@ -19,6 +22,7 @@ internal fun vehicleLinks(view: JSONObject?): VehicleLinks? {
     return VehicleLinks(
         available = view.optBoolean("available"),
         contactLost = if (view.isNull("contactLost")) null else view.optBoolean("contactLost"),
+        failsafe = view.optText("lossAction").ifEmpty { null }?.let { LossFailsafe(it, if (view.isNull("lossAfter")) null else view.optDouble("lossAfter")) },
         links = (0 until (listed?.length() ?: 0)).mapNotNull { index ->
             listed?.optJSONObject(index)?.let { link ->
                 VehicleLink(commLost = if (link.isNull("commLost")) null else link.optBoolean("commLost"))

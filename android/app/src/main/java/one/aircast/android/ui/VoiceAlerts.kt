@@ -1,0 +1,84 @@
+package one.aircast.android.ui
+
+import android.content.Context
+import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.speech.tts.TextToSpeech
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.qgcPath
+import one.aircast.map.optText
+import org.json.JSONObject
+
+private const val SPEECH_VIEW = "view.speech"
+private const val SPEECH_POLL_MS = 500L
+private val LOST_BUZZ = longArrayOf(0, 400, 150, 400, 150, 400)
+private val REGAINED_BUZZ = longArrayOf(0, 120)
+
+internal data class SpokenLine(val sequence: Long, val text: String, val volume: Float)
+
+internal data class SpeechBatch(val last: Long, val lines: List<SpokenLine>)
+
+internal fun speechBatch(view: JSONObject?): SpeechBatch? = view?.takeIf { it.optText("class") == "Speech" }?.let { speech ->
+    val lines = speech.optJSONArray("lines")
+    SpeechBatch(
+        last = speech.optLong("last"),
+        lines = (0 until (lines?.length() ?: 0)).mapNotNull { lines?.optJSONObject(it) }.map {
+            SpokenLine(it.optLong("sequence"), it.optText("text"), it.optDouble("volume", 1.0).toFloat())
+        },
+    )
+}
+
+internal fun speechPath(after: Long): String = "$SPEECH_VIEW($after)"
+
+internal fun linkBuzz(lost: Boolean): LongArray = if (lost) LOST_BUZZ else REGAINED_BUZZ
+
+@Composable
+fun VoiceAlerts() {
+    val context = LocalContext.current
+    var voice by remember { mutableStateOf<TextToSpeech?>(null) }
+    DisposableEffect(context) {
+        val engine = TextToSpeech(context.applicationContext) { status -> if (status != TextToSpeech.SUCCESS) voice = null }
+        voice = engine
+        onDispose { engine.shutdown() }
+    }
+    LaunchedEffect(voice) {
+        val speaker = voice ?: return@LaunchedEffect
+        var after = withContext(Dispatchers.Default) { speechBatch(Qgc.get(SPEECH_VIEW))?.last ?: 0L }
+        while (currentCoroutineContext().isActive) {
+            delay(SPEECH_POLL_MS)
+            val batch = withContext(Dispatchers.Default) { speechBatch(Qgc.get(speechPath(after))) } ?: continue
+            batch.lines.filter { it.sequence > after }.forEach { line ->
+                speaker.speak(line.text, TextToSpeech.QUEUE_ADD, Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, line.volume) }, "qgc-${line.sequence}")
+            }
+            after = batch.last
+        }
+    }
+    LinkLossBuzz(context)
+}
+
+@Composable
+private fun LinkLossBuzz(context: Context) {
+    val flyJson by qgcPath(FLY_STATE)
+    val lost = flyState(flyJson)?.contactLost == true
+    var heard by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(lost) {
+        if (heard != null || lost) {
+            context.getSystemService(Vibrator::class.java)?.takeIf { it.hasVibrator() }?.vibrate(VibrationEffect.createWaveform(linkBuzz(lost), -1))
+        }
+        heard = lost
+    }
+}
