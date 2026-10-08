@@ -144,7 +144,7 @@ fun StatusPill(modifier: Modifier = Modifier) {
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
         androidx.compose.foundation.layout.BoxWithConstraints {
-            val narrow = maxWidth < NARROW_PILL_WIDTH
+            val narrow = flyIsPortrait() || maxWidth < NARROW_PILL_WIDTH
             CompositionLocalProvider(LocalCompactStatus provides true, LocalNarrowStatus provides narrow) {
                 StatusReadingsInline(rtk, gcsBattery, Modifier.padding(end = stripGap(narrow), top = 6.dp, bottom = 6.dp))
             }
