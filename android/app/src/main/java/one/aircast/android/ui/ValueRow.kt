@@ -6,6 +6,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.rememberUpdatedState
@@ -38,6 +41,11 @@ import one.aircast.android.bridge.Qgc
 import kotlin.math.pow
 
 internal const val VALUE_OFF = "Off"
+internal const val VALUE_NO_LIMIT = "No limit"
+private const val NO_LIMIT_NOTCH = 0.1f
+private const val NO_LIMIT_SNAP = 0.25f
+private val WIDE_ROW = 560.dp
+private val ROW_SLIDER_WIDTH = 240.dp
 private const val SLIDER_SPAN_LIMIT = 100_000.0
 private val DISABLED_AT_ZERO = Regex("""(?i)(disabled if 0|0 (disables|to disable|hides|turns .* off)|set to 0 to disable|zero disables)""")
 
@@ -50,7 +58,7 @@ internal fun disablesAtZero(fact: Fact): Boolean =
     DISABLED_AT_ZERO.containsMatchIn(fact.description + " " + fact.longDescription)
 
 internal fun valueText(fact: Fact): String =
-    if (disablesAtZero(fact) && numberOf(fact) == 0.0) VALUE_OFF
+    if (disablesAtZero(fact) && numberOf(fact) == 0.0) offLabel(fact)
     else listOf(fact.valueString.trim(), fact.units).filter { it.isNotBlank() }.joinToString(" ")
 
 internal fun valueDecimals(fact: Fact): Int = fact.valueString.trim().substringAfter('.', "").takeWhile(Char::isDigit).length
@@ -102,6 +110,104 @@ internal fun sliderFor(fact: Fact): FactSlider? =
         FactSlider(from.toFloat(), to.toFloat(), valueDecimals(fact), "").takeIf { to > from }
     } ?: fact.slider ?: derivedSlider(fact)
 
+internal fun offLabel(fact: Fact): String = if (fact.name in USEFUL_BANDS) VALUE_NO_LIMIT else VALUE_OFF
+
+internal data class InlineSlider(val from: Float, val top: Float, val noLimitAt: Float?) {
+    val end: Float get() = noLimitAt ?: top
+}
+
+internal fun inlineSlider(fact: Fact): InlineSlider? = sliderFor(fact)?.let { slider ->
+    InlineSlider(slider.from, slider.to, (slider.to + (slider.to - slider.from) * NO_LIMIT_NOTCH).takeIf { disablesAtZero(fact) })
+}
+
+internal fun sliderPosition(slider: InlineSlider, value: Double?): Float =
+    if (slider.noLimitAt != null && value == 0.0) slider.noLimitAt else (value?.toFloat() ?: slider.from).coerceIn(slider.from, slider.top)
+
+internal fun valueAtPosition(fact: Fact, slider: InlineSlider, position: Float): Double =
+    if (slider.noLimitAt != null && position > slider.top + (slider.noLimitAt - slider.top) * NO_LIMIT_SNAP) 0.0
+    else clampToBounds(fact, roundedValue(fact, position.coerceAtMost(slider.top).toDouble()))
+
+internal suspend fun writeValueRefusal(fact: Fact, value: Double): String? =
+    withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, roundedValue(fact, value).let { if (valueDecimals(fact) == 0) it.toLong() else it }) }
+
+@Composable
+internal fun SliderValueRow(fact: Fact, slider: InlineSlider, title: @Composable () -> Unit, onOpen: () -> Unit, onWrite: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var dragging by remember(fact.path, fact.valueString) { mutableStateOf<Float?>(null) }
+    var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
+    val shownValue = dragging?.let { valueAtPosition(fact, slider, it) } ?: numberOf(fact)
+    val value: @Composable () -> Unit = {
+        Text(
+            valueTextOf(fact, shownValue),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.clickable(onClickLabel = "Set exactly", onClick = onOpen).padding(horizontal = 4.dp, vertical = 8.dp),
+        )
+    }
+    val bar: @Composable (Modifier) -> Unit = { modifier ->
+        ThinSlider(
+            value = dragging ?: sliderPosition(slider, numberOf(fact)),
+            range = slider.from..slider.end,
+            enabled = fact.acceptsWrite,
+            onChange = { dragging = it },
+            onDone = {
+                dragging?.let { position ->
+                    scope.launch {
+                        refusal = writeValueRefusal(fact, valueAtPosition(fact, slider, position))
+                        if (refusal == null) onWrite() else dragging = null
+                    }
+                }
+            },
+            modifier = modifier,
+        )
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
+        if (maxWidth >= WIDE_ROW) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { title() }
+                value()
+                bar(Modifier.width(ROW_SLIDER_WIDTH))
+            }
+        } else {
+            androidx.compose.foundation.layout.Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { title() }
+                    value()
+                }
+                bar(Modifier.fillMaxWidth())
+            }
+        }
+    }
+    refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
+}
+
+private val THUMB_SIZE = 18.dp
+private val TRACK_HEIGHT = 2.dp
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun ThinSlider(value: Float, range: ClosedFloatingPointRange<Float>, enabled: Boolean, onChange: (Float) -> Unit, onDone: () -> Unit, modifier: Modifier) {
+    val active = MaterialTheme.colorScheme.onSurface
+    val inactive = MaterialTheme.colorScheme.outlineVariant
+    androidx.compose.material3.Slider(
+        value = value,
+        onValueChange = onChange,
+        modifier = modifier,
+        enabled = enabled,
+        onValueChangeFinished = onDone,
+        valueRange = range,
+        thumb = { Box(Modifier.size(THUMB_SIZE).background(active, CircleShape)) },
+        track = { state ->
+            val span = state.valueRange.endInclusive - state.valueRange.start
+            val fraction = if (span > 0f) ((state.value - state.valueRange.start) / span).coerceIn(0f, 1f) else 0f
+            androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(TRACK_HEIGHT)) {
+                drawRect(inactive)
+                drawRect(active, size = androidx.compose.ui.geometry.Size(size.width * fraction, size.height))
+            }
+        },
+    )
+}
+
 internal fun turnOnValue(fact: Fact): Double {
     val default = fact.defaultValueString.toDoubleOrNull()?.takeIf { it > 0 }
     val named = TURN_ON_VALUES[fact.name]?.times(metresScale(fact))
@@ -122,7 +228,7 @@ internal fun steppedValue(fact: Fact, direction: Int): Double? = numberOf(fact)?
 
 internal fun valueTextOf(fact: Fact, value: Double?): String = when {
     value == null -> valueText(fact)
-    disablesAtZero(fact) && value == 0.0 -> VALUE_OFF
+    disablesAtZero(fact) && value == 0.0 -> offLabel(fact)
     else -> sliderValue(value.toFloat(), valueDecimals(fact), fact.units.trim())
 }
 
@@ -171,7 +277,7 @@ internal fun ValueControls(fact: Fact, onWrite: () -> Unit, typedEntry: @Composa
     var typing by remember(fact.path) { mutableStateOf(false) }
     val write: (Double) -> Unit = { value ->
         scope.launch {
-            refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, roundedValue(fact, value).let { if (valueDecimals(fact) == 0) it.toLong() else it }) }
+            refusal = writeValueRefusal(fact, value)
             if (refusal == null) onWrite() else pending = null
         }
     }
@@ -188,8 +294,9 @@ internal fun ValueControls(fact: Fact, onWrite: () -> Unit, typedEntry: @Composa
     }
     sliderFor(fact)?.takeUnless { disablesAtZero(fact) && shown == 0.0 }?.let { slider -> FieldSlider(shown?.toFloat(), slider, fact.acceptsWrite) { write(it) } }
     if (disablesAtZero(fact)) {
-        if (shown == 0.0) TextButton(onClick = { write(turnOnValue(fact)) }) { Text("Turn on") }
-        else TextButton(onClick = { write(0.0) }) { Text("Turn off") }
+        val limit = offLabel(fact) == VALUE_NO_LIMIT
+        if (shown == 0.0) TextButton(onClick = { write(turnOnValue(fact)) }) { Text(if (limit) "Set a limit" else "Turn on") }
+        else TextButton(onClick = { write(0.0) }) { Text(if (limit) "Remove the limit" else "Turn off") }
     }
     if (typing) typedEntry()
     refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }

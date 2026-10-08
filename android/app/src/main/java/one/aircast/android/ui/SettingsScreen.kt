@@ -84,6 +84,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.LocalTextStyle
@@ -409,7 +410,7 @@ private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>
             val (folded, shown) = pages.partition(drawnInline)
             shown.map { pageEntry(it) }
             TabSetupRows(group, onOpenSetup)
-            if (folded.isNotEmpty()) AdvancedToggle(advancedOpen) { advancedOpen = !advancedOpen }
+            if (folded.isNotEmpty()) AdvancedToggle(advancedOpen, label = ADVANCED_SAFETY) { advancedOpen = !advancedOpen }
             if (advancedOpen) folded.map { pageEntry(it) }
         } else {
             pages.map { pageEntry(it) }
@@ -679,7 +680,7 @@ internal fun shownSubtitle(subtitle: String, detail: String, helpBehind: Boolean
 @Composable
 private fun FactTitle(title: String, color: Color, helpOpen: Boolean?, onHelp: () -> Unit, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text(title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyLarge, color = color, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
+        Text(title, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodyLarge, fontWeight = if (LocalSettingsList.current) FontWeight.Medium else null, color = color, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
         helpOpen?.let { open ->
             IconButton(onClick = onHelp) {
                 Icon(
@@ -761,6 +762,18 @@ internal fun FactRow(
 
     if (asField && LocalSettingsList.current && opensAsValue(fact)) {
         var editing by remember(fact.path) { mutableStateOf(false) }
+        val note = shown.text.split(SUBTITLE_SEPARATOR).filter { it.isNotBlank() && it != fact.units && it != fact.detail }.joinToString(SUBTITLE_SEPARATOR)
+        val slider = inlineSlider(fact)
+        if (slider != null) {
+            SliderValueRow(fact, slider, title = {
+                Column {
+                    FactTitle(title, titleColor, null, {})
+                    if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }, onOpen = { editing = true }, onWrite = onWrite)
+            if (editing) ValueDetailsSheet(fact, title = title, onWrite = onWrite) { editing = false }
+            return
+        }
         Row(
             Modifier.fillMaxWidth().clickable { editing = true }.heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -768,7 +781,6 @@ internal fun FactRow(
         ) {
             Column(Modifier.weight(1f)) {
                 FactTitle(title, titleColor, null, {})
-                val note = shown.text.split(SUBTITLE_SEPARATOR).filter { it.isNotBlank() && it != fact.units && it != fact.detail }.joinToString(SUBTITLE_SEPARATOR)
                 if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(valueText(fact), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1005,6 +1017,8 @@ private fun EnumField(fact: Fact, modifier: Modifier, write: (() -> Boolean) -> 
     }
 }
 
+internal const val ADVANCED_SAFETY = "Advanced safety settings"
+
 internal fun rowChoiceLabel(label: String): String = label.substringBefore(", ")
 
 private const val DISABLED_VALUE_ALPHA = 0.5f
@@ -1018,7 +1032,7 @@ internal fun ChoiceField(label: String?, value: String, options: List<String>, m
         if (plain) {
             Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(rowChoiceLabel(value), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else DISABLED_VALUE_ALPHA), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             OutlinedTextField(

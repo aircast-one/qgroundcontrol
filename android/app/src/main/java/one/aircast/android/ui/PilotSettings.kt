@@ -11,30 +11,31 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.qgcPath
 
-internal data class PilotSetting(val label: String, val parameters: List<String>)
+internal data class PilotSetting(val label: String, val parameters: List<String>, val section: String, val hint: String)
 
-internal const val PILOT_SAFETY_TITLE = "Flight safety"
-internal const val PILOT_CONTROL_TITLE = "Flight limits"
+private const val RETURN_HOME = "Return to home"
+private const val FLIGHT_PROTECTION = "Flight protection"
+private const val FAILSAFES = "If something goes wrong"
+private const val FLIGHT_LIMITS = "Flight limits"
 
 internal fun pilotSettings(group: SettingsGroup): List<PilotSetting> = when (group) {
     SettingsGroup.Safety -> listOf(
-        PilotSetting("Return-to-home altitude", listOf("RTL_RETURN_ALT", "RTL_ALT")),
-        PilotSetting("Max altitude", listOf("GF_MAX_VER_DIST", "FENCE_ALT_MAX")),
-        PilotSetting("Max distance", listOf("GF_MAX_HOR_DIST", "FENCE_RADIUS")),
-        PilotSetting("Signal lost", listOf("NAV_DLL_ACT", "FS_GCS_ENABLE")),
-        PilotSetting("Remote controller lost", listOf("NAV_RCL_ACT", "FS_THR_ENABLE")),
-        PilotSetting("Low battery", listOf("COM_LOW_BAT_ACT", "BATT_FS_LOW_ACT")),
+        PilotSetting("Return-to-home altitude", listOf("RTL_RETURN_ALT", "RTL_ALT"), RETURN_HOME, "Climbs to this height before flying home."),
+        PilotSetting("Max altitude", listOf("GF_MAX_VER_DIST", "FENCE_ALT_MAX"), FLIGHT_PROTECTION, "The aircraft will not climb above this."),
+        PilotSetting("Max distance", listOf("GF_MAX_HOR_DIST", "FENCE_RADIUS"), FLIGHT_PROTECTION, "The aircraft will not fly farther from home than this."),
+        PilotSetting("Signal lost", listOf("NAV_DLL_ACT", "FS_GCS_ENABLE"), FAILSAFES, "When the link to this app drops."),
+        PilotSetting("Remote controller lost", listOf("NAV_RCL_ACT", "FS_THR_ENABLE"), FAILSAFES, "When the remote controller drops."),
+        PilotSetting("Low battery", listOf("COM_LOW_BAT_ACT", "BATT_FS_LOW_ACT"), FAILSAFES, "When the battery runs low."),
     )
     SettingsGroup.Control -> listOf(
-        PilotSetting("Max horizontal speed", listOf("MPC_XY_VEL_MAX", "LOIT_SPEED")),
-        PilotSetting("Max climb speed", listOf("MPC_Z_VEL_MAX_UP", "PILOT_SPEED_UP")),
-        PilotSetting("Max descent speed", listOf("MPC_Z_VEL_MAX_DN", "PILOT_SPEED_DN")),
+        PilotSetting("Max horizontal speed", listOf("MPC_XY_VEL_MAX", "LOIT_SPEED"), FLIGHT_LIMITS, "Fastest the aircraft flies forward and sideways."),
+        PilotSetting("Max climb speed", listOf("MPC_Z_VEL_MAX_UP", "PILOT_SPEED_UP"), FLIGHT_LIMITS, "Fastest the aircraft climbs."),
+        PilotSetting("Max descent speed", listOf("MPC_Z_VEL_MAX_DN", "PILOT_SPEED_DN"), FLIGHT_LIMITS, "Fastest the aircraft descends."),
     )
     else -> emptyList()
 }
 
-internal fun pilotSettingsTitle(group: SettingsGroup): String =
-    if (group == SettingsGroup.Safety) PILOT_SAFETY_TITLE else PILOT_CONTROL_TITLE
+internal data class ShownPilotSetting(val setting: PilotSetting, val fact: Fact)
 
 internal fun firstReported(setting: PilotSetting, reported: (String) -> Fact?): Fact? =
     setting.parameters.firstNotNullOfOrNull(reported)?.copy(shortLabel = setting.label)
@@ -44,23 +45,24 @@ internal fun PilotSettings(group: SettingsGroup) {
     val settings = pilotSettings(group)
     if (settings.isEmpty()) return
     val setup by qgcPath(SETUP)
-    val facts by produceState(emptyList<Fact>(), group, setup) {
-        value = withContext(Dispatchers.Default) { settings.mapNotNull { firstReported(it, ::parameterFact) } }
+    val shown by produceState(emptyList<ShownPilotSetting>(), group, setup) {
+        value = withContext(Dispatchers.Default) { settings.mapNotNull { setting -> firstReported(setting, ::parameterFact)?.let { ShownPilotSetting(setting, it) } } }
     }
-    if (facts.isEmpty()) return
-    SectionHeader(pilotSettingsTitle(group))
-    facts.map { fact -> PilotFactRow(fact) }
+    shown.groupBy { it.setting.section }.map { (section, rows) ->
+        SectionHeader(section)
+        rows.map { PilotFactRow(it.fact, it.setting.hint) }
+    }
 }
 
 @Composable
-private fun PilotFactRow(shown: Fact) {
+private fun PilotFactRow(shown: Fact, hint: String) {
     val name = shown.name
     var revision by remember { mutableIntStateOf(0) }
     val live by qgcPath(parameterPath(name))
     val fact by produceState(shown, name, live, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name)?.copy(shortLabel = shown.shortLabel) } ?: shown
     }
-    FactRow(fact, onWrite = { revision++ })
+    FactRow(fact, subtitle = hint, onWrite = { revision++ })
 }
 
 private val PILOT_LABELS = mapOf(

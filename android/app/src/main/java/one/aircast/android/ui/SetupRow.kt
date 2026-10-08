@@ -56,8 +56,13 @@ internal fun setupStateColor(state: SetupState): Color = when (state) {
 
 @Composable
 internal fun SectionHeader(text: String, image: String = "") {
+    val band = LocalSettingsList.current
     Row(
-        Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
+        if (band) {
+            Modifier.padding(top = 12.dp).fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(horizontal = 16.dp, vertical = 10.dp)
+        } else {
+            Modifier.padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp)
+        },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -166,9 +171,9 @@ internal fun OverridePageHeading(title: String, onBack: () -> Unit) {
 }
 
 @Composable
-internal fun AdvancedToggle(open: Boolean, modifier: Modifier = Modifier, onToggle: () -> Unit) {
+internal fun AdvancedToggle(open: Boolean, modifier: Modifier = Modifier, label: String = "Advanced", onToggle: () -> Unit) {
     androidx.compose.material3.TextButton(onClick = onToggle, modifier = modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-        Text(if (open) "Hide advanced" else "Advanced")
+        Text(if (open) "Hide ${label.replaceFirstChar { it.lowercase() }}" else label)
         Icon(
             if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
             contentDescription = null,

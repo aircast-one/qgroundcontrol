@@ -108,4 +108,23 @@ class ValueRowTest {
         assertEquals("Return at critical level", rowChoiceLabel("Return at critical level, land at emergency level"))
         assertEquals("Hold mode", rowChoiceLabel("Hold mode"))
     }
+
+    @Test
+    fun `a limit's slider ends on No limit, like DJI's Max Distance`() {
+        val limit = number("0", "Disabled if 0.", name = "GF_MAX_HOR_DIST")
+        val slider = inlineSlider(limit)!!
+        assertEquals(VALUE_NO_LIMIT, valueTextOf(limit, 0.0))
+        assertEquals(slider.end, sliderPosition(slider, 0.0))
+        assertEquals(0.0, valueAtPosition(limit, slider, slider.end), 1e-9)
+        assertEquals(5000.0, valueAtPosition(limit, slider, slider.top), 1e-9)
+        assertEquals(1234.0, valueAtPosition(limit, slider, 1234.4f), 1e-9)
+    }
+
+    @Test
+    fun `a plain range has no No limit stop`() {
+        val speed = number("12.0", min = "0", max = "20", bounded = true)
+        val slider = inlineSlider(speed)!!
+        assertNull(slider.noLimitAt)
+        assertEquals(20.0, valueAtPosition(speed, slider, slider.end), 1e-9)
+    }
 }
