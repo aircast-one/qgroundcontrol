@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -140,11 +142,13 @@ internal fun FlyPortrait(
                     Box(Modifier.fillMaxSize().padding(top = controlsTop)) {
                         Column(
                             Modifier
-                                .align(Alignment.TopStart)
-                                .padding(start = AircastSpace.s3, top = buttonsTop + MAP_BUTTON_SIZE + AircastSpace.s2, end = AircastSpace.s3),
+                                .fillMaxHeight()
+                                .padding(start = AircastSpace.s3, top = buttonsTop + MAP_BUTTON_SIZE + AircastSpace.s2, end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE),
                             verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                         ) {
                             overlays()
+                            Spacer(Modifier.weight(1f))
+                            OsdCompassDial(PORTRAIT_DIAL_SIZE)
                         }
                         MapButtons(
                             view = view,
@@ -156,7 +160,6 @@ internal fun FlyPortrait(
                                 .padding(end = AircastSpace.s3, top = buttonsTop),
                         )
                         Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE)) { rail(split) }
-                        OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE))
                     }
                 },
                 deck = {

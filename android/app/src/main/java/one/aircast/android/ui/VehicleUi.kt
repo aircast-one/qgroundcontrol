@@ -268,10 +268,12 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
     if (compact) {
         val reading: @Composable (Instrument, TextStyle) -> Unit = { instrument, style ->
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
-                Text(osdLabel(instrument.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = OSD_LABEL_ALPHA), modifier = Modifier.alignByBaseline())
+                Text(osdLabel(instrument.label), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = OSD_LABEL_ALPHA), maxLines = 1, softWrap = false, modifier = Modifier.alignByBaseline())
                 Text(
                     "${instrument.value}${instrument.units}",
                     style = style.copy(fontFeatureSettings = "tnum"),
+                    maxLines = 1,
+                    softWrap = false,
                     color = displayColour(displayFor(displays, instrument), instrument.raw)?.let { Color(it) } ?: MaterialTheme.aircast.outdoorForeground,
                     modifier = Modifier.alignByBaseline(),
                 )
@@ -284,7 +286,11 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
                 if (places.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) { places.map { reading(it, MaterialTheme.typography.titleLarge) } }
             }
         } else {
-            Row(modifier.alpha(if (silent) 0.45f else 1f), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s5), verticalAlignment = Alignment.CenterVertically) {
+            FlowRow(
+                modifier.alpha(if (silent) 0.45f else 1f),
+                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 shown.map { reading(it, MaterialTheme.typography.titleMedium) }
             }
         }
@@ -611,6 +617,7 @@ private val OSD_LABELS = mapOf(
     "air speed" to "A.S",
     "airspeed" to "A.S",
     "distance to operator" to "D.OP",
+    "from you" to "D.OP",
     "heading" to "HDG",
     "distancetohome" to "D",
     "altituderelative" to "H",

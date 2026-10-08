@@ -8,6 +8,7 @@ class OsdLabelTest {
     fun `the flying readings shorten to DJI's letters and anything else keeps its name`() {
         assertEquals(listOf("D", "H", "H.S", "V.S"), listOf("Distance to home", "Alt (Rel)", "Ground Speed", "Climb Rate").map(::osdLabel))
         assertEquals("FLIGHT TIME", osdLabel("Flight time"))
+        assertEquals("D.OP", osdLabel("From you"))
         assertEquals(listOf("D", "H", "H.S", "V.S"), listOf("distanceToHome", "altitudeRelative", "groundSpeed", "climbRate").map(::osdLabel))
     }
 }
