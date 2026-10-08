@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+[ "${AIRCAST_SKIP_CORE:-}" = 1 ] && exit 0
+
 case "${PLATFORM_NAME:-iphonesimulator}" in
     iphoneos) triple=aarch64-apple-ios ;;
     *) triple=aarch64-apple-ios-sim ;;
