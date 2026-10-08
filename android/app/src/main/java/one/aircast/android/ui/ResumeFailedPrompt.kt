@@ -6,8 +6,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
@@ -19,23 +17,25 @@ private const val RESUME_MISSION_PATH = "planFly.missionController.resumeMission
 internal fun resumeFailedIndex(view: JSONObject?): Int? =
     view?.takeIf { it.has("resumeFailedIndex") && !it.isNull("resumeFailedIndex") }?.optInt("resumeFailedIndex")
 
+internal fun resumeCleared(view: JSONObject?): Boolean = view != null && resumeFailedIndex(view) == null
+
 @Composable
-internal fun ResumeFailedPrompt() {
+internal fun ResumeFailedPrompt(dismissed: Int?, onDismissed: (Int?) -> Unit) {
     val actions by qgcPath(GUIDED_ACTIONS)
     val failed = remember(actions) { resumeFailedIndex(actions) }
-    var dismissed by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(failed == null) { if (failed == null) dismissed = null }
+    val cleared = resumeCleared(actions)
+    LaunchedEffect(cleared) { if (cleared) onDismissed(null) }
     val index = failed?.takeIf { it != dismissed } ?: return
     AlertDialog(
-        onDismissRequest = { dismissed = index },
+        onDismissRequest = { onDismissed(index) },
         title = { Text("Resume FAILED") },
         text = { Text("Upload of resume mission failed. Confirm to retry upload") },
         confirmButton = {
             TextButton(onClick = {
-                dismissed = index
+                onDismissed(index)
                 offMainDetached { Qgc.invoke(RESUME_MISSION_PATH, index) }
             }) { Text("Confirm") }
         },
-        dismissButton = { TextButton(onClick = { dismissed = index }) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = { onDismissed(index) }) { Text("Cancel") } },
     )
 }

@@ -130,7 +130,7 @@ internal fun rowWidth(count: Int): Int = when {
 internal fun operatorDistance(view: JSONObject?): List<Instrument> =
     view?.optText("distanceToVehicleText")
         ?.takeIf { it.isNotBlank() }
-        ?.let { listOf(Instrument(label = "From you", reading = it)) }
+        ?.let { listOf(Instrument(label = "From you", reading = it, value = it.substringBeforeLast(' '), units = it.substringAfterLast(' ', ""))) }
         ?: emptyList()
 
 internal const val AWAITING_READING = "\u2014"

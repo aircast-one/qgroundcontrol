@@ -97,22 +97,26 @@ object VirtualStickSender {
     fun start(scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch(Dispatchers.IO) {
             Qgc.watch(listOf(VIRTUAL_JOYSTICK_PATH))
-            Qgc.values
-                .map { virtualJoystick(it[VIRTUAL_JOYSTICK_PATH]) }
-                .distinctUntilChanged()
-                .runningFold(StickStates(null, null)) { states, next -> StickStates(states.current, next) }
-                .collectLatest { states ->
-                    if (sticksReset(states.previous, states.current)) {
-                        left = null
-                        right = null
-                    }
-                    states.current?.takeIf { it.show && it.sending }?.let { sending ->
-                        while (isActive) {
-                            Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *stickValues(sending, left, right).toTypedArray())
-                            delay(sending.periodMs)
+            try {
+                Qgc.values
+                    .map { virtualJoystick(it[VIRTUAL_JOYSTICK_PATH]) }
+                    .distinctUntilChanged()
+                    .runningFold(StickStates(null, null)) { states, next -> StickStates(states.current, next) }
+                    .collectLatest { states ->
+                        if (sticksReset(states.previous, states.current)) {
+                            left = null
+                            right = null
+                        }
+                        states.current?.takeIf { it.show && it.sending }?.let { sending ->
+                            while (isActive) {
+                                Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *stickValues(sending, left, right).toTypedArray())
+                                delay(sending.periodMs)
+                            }
                         }
                     }
-                }
+            } finally {
+                Qgc.unwatch(listOf(VIRTUAL_JOYSTICK_PATH))
+            }
         }
     }
 }

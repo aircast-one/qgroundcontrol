@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -144,11 +143,10 @@ internal fun FlyPortrait(
                             Modifier
                                 .fillMaxHeight()
                                 .padding(start = AircastSpace.s3, top = buttonsTop + MAP_BUTTON_SIZE + AircastSpace.s2, end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE),
-                            verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                            verticalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            overlays()
-                            Spacer(Modifier.weight(1f))
-                            OsdCompassDial(PORTRAIT_DIAL_SIZE)
+                            Column(Modifier.weight(1f, fill = false).clipToBounds(), verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) { overlays() }
+                            OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.padding(top = AircastSpace.s2))
                         }
                         MapButtons(
                             view = view,

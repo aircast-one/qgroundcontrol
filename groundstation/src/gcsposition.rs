@@ -179,7 +179,6 @@ pub struct GcsPosition {
     pub direction_accuracy_deg: Option<f64>,
     pub motion: (Option<f64>, Option<f64>),
     pub stamped_ms: Option<u64>,
-    pub last_report_ms: Option<u64>,
     pub refusal: Option<Refusal>,
     pub error: Option<Error>,
     pub hosted: bool,
@@ -270,8 +269,6 @@ impl GcsPosition {
         if !self.source.listening() {
             return (before.error != self.error).then(|| vec![Out::Error(None), Out::Reported]).unwrap_or_default();
         }
-        self.last_report_ms = Some(now.0);
-
         let latitude = present(update.latitude);
         let longitude = present(update.longitude).map(wrap_longitude);
         let in_range = latitude.filter(|latitude| (-90.0..=90.0).contains(latitude));
@@ -431,7 +428,6 @@ fn fill_from_host(position: &mut GcsPosition, read: &Value) {
     position.heading_deg = number("gcsHeading").map(wrap_heading);
     position.horizontal_accuracy_m = number("gcsPositionHorizontalAccuracy");
     position.stamped_ms = stamped;
-    position.last_report_ms = stamped.or(position.last_report_ms);
 }
 
 // The vehicle's coordinate is held after the link drops, so a distance drawn from
@@ -658,8 +654,8 @@ mod tests {
         assert_eq!((position.latitude, position.stamped_ms), (Some(47.397742), Some(1_000)), "an update outside the hundred metre gate leaves the coordinate alone, so it must leave the arrival stamp alone too or the old fix reads fresh");
         assert_eq!(outs, vec![Out::HorizontalAccuracy(Some(MIN_HORIZONTAL_ACCURACY_M + 0.1)), Out::Reported], "the rejected accuracy is still what the receiver last reported");
         assert_eq!(
-            (position.refusal, position.last_report_ms),
-            (Some(Refusal::AccuracyTooCoarse), Some(2_000)),
+            position.refusal,
+            Some(Refusal::AccuracyTooCoarse),
             "a receiver whose readings are all refused is still a receiver that is talking, and the reason it is refused is the only thing that tells the operator to walk outside"
         );
         position.on_update(fix(Some(MIN_HORIZONTAL_ACCURACY_M)), at(3_000));
@@ -676,13 +672,12 @@ mod tests {
         assert_eq!(position.fix(at(500)), "waiting", "a live receiver that has not yet delivered a fix is waiting, which is a different story from having no receiver at all");
         let view = position.snapshot(at(700));
         assert_eq!(
-            (view["refused"].as_str(), position.last_report_ms, view["fix"].as_str()),
-            (Some("accuracyUnknown"), Some(500), Some("waiting")),
+            (view["refused"].as_str(), view["fix"].as_str()),
+            (Some("accuracyUnknown"), Some("waiting")),
             "a refused reading and no reading at all must not read the same, or the operator cannot choose between replugging the receiver and waiting for it"
         );
-        let silent = GcsPosition::default();
-        let never = silent.snapshot(at(700));
-        assert_eq!((never["refused"].as_str(), silent.last_report_ms, never["fix"].as_str()), (None, None, Some("noSource")), "nothing has ever arrived, so there is no last report and nothing to explain");
+        let never = GcsPosition::default().snapshot(at(700));
+        assert_eq!((never["refused"].as_str(), never["fix"].as_str()), (None, Some("noSource")), "nothing has ever arrived, so there is nothing to explain");
     }
 
     #[test]
@@ -853,7 +848,7 @@ mod tests {
         let mut position = GcsPosition::default();
         assert_eq!((position.source, position.source.listening()), (Source::None, false));
         assert!(position.on_update(fix(Some(4.0)), at(1_000)).is_empty(), "before the head names a source there is no receiver to have produced a fix");
-        assert_eq!((position.coordinate(), position.last_report_ms), ((None, None, None), None));
+        assert_eq!(position.coordinate(), (None, None, None));
         let quiet: Vec<&'static str> = SOURCES.iter().filter(|source| !source.listening()).map(|source| source.token()).collect();
         assert_eq!(quiet, vec!["none", "log", "external"], "QGCPositionManager::_setPositionSource has no case that binds a receiver to Log or ExternalGPS, so this port models them as delivering nothing; upstream its clear block leaves _currentSource pointing at the previous receiver and restarts it, which this port deliberately does not");
         position.select_source(Source::Log);

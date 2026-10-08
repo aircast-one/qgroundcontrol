@@ -55,10 +55,11 @@ class RunningTitleTest {
 
 class OperatorDistanceTest {
     @Test
-    fun `the served text is shown as its own reading`() {
+    fun `the served text is shown as its own reading, split into number and unit like every other reading`() {
         val view = JSONObject("""{"distanceToVehicleText":"316.8 m"}""")
 
-        assertEquals(listOf(Instrument("From you", "316.8 m")), operatorDistance(view))
+        assertEquals(listOf(Instrument("From you", "316.8 m", value = "316.8", units = "m")), operatorDistance(view))
+        assertEquals(listOf(Instrument("From you", "316.8", value = "316.8", units = "")), operatorDistance(JSONObject("""{"distanceToVehicleText":"316.8"}""")))
     }
 
     @Test
