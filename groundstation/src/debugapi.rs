@@ -399,12 +399,14 @@ impl DebugApi {
         if !MOCK_VIDEO_PATTERNS.contains(&pattern.as_str()) {
             return refuse(format!("pattern must be one of {}", MOCK_VIDEO_PATTERNS.join(", ")));
         }
-        crate::mocklink::set_video_pattern(&pattern);
         let video_stream_type = match given(pairs, "video").map(mock_video_stream) {
             None => 0,
             Some(Some(kind)) => kind,
             Some(None) => return refuse(format!("video must be one of {}", MOCK_VIDEO_STREAMS.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(", "))),
         };
+        if video_stream_type != 0 {
+            crate::mocklink::set_video_pattern(&pattern);
+        }
         let config = LinkConfig {
             name: MOCK_LINK_NAME.to_string(),
             auto_connect: false,

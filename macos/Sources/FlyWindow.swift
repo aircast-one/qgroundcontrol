@@ -85,9 +85,6 @@ struct FlyPanel: View {
                     videoCard
                 }
 
-                // Not behind the connected gate: a link that failed to switch, a settings
-                // warning and a parameter error all happen with no vehicle, which is exactly
-                // when the operator has nothing else telling them why.
                 if !notices.queue.shown.isEmpty || notices.queue.dropNotice != nil
                     || notices.queue.lostNotice != nil
                     || notices.queue.offersSetup || notices.queue.unreachable != nil {
@@ -965,9 +962,7 @@ struct FlyView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
 
             if !instruments.values.isEmpty {
-                InstrumentBar(instruments: instruments,
-                              notice: fly.state.staleNotice.isEmpty
-                                  ? fly.track.notice : fly.state.staleNotice)
+                InstrumentBar(instruments: instruments, notice: fly.state.staleNotice)
                     .padding(Overlay.unit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             }

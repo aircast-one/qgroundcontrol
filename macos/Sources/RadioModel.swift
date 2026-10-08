@@ -33,11 +33,6 @@ struct RadioStick: Identifiable, Equatable {
 
     var id: String { key }
 
-    // The core serves the boolean and no word for it (groundstation/src/radio.rs:65 reads
-    // <key>ChannelReversed), so the head composes this one -- but in a file swift-checks compiles
-    // rather than at the row. The empty arm is the normal stick: a channel that is not reversed
-    // has nothing to say about itself, and saying "Normal" beside every other stick would be
-    // noise dressed as information.
     static let reversedNote = "Reversed"
     var reversedText: String { reversed ? RadioStick.reversedNote : "" }
 
@@ -58,7 +53,7 @@ struct RadioState: Equatable {
     let connected: Bool
     let channelCount: Int
     let summary: String
-    let shortfall: String
+    let notReady: String
     let calibrating: Bool
     let statusText: String
     let nextText: String
@@ -71,15 +66,13 @@ struct RadioState: Equatable {
 
     static let disconnected = RadioState()
 
-    // QGC's RadioComponentController starts at mode 2, so a reply that carries no mode at all
-    // must not be read as mode 0, which is not a mode any transmitter has.
     static let defaultTransmitterMode = 2
 
     private init() {
         connected = false
         channelCount = 0
         summary = ""
-        shortfall = ""
+        notReady = ""
         calibrating = false
         statusText = ""
         nextText = ""
@@ -97,7 +90,7 @@ struct RadioState: Equatable {
         connected = flag("connected")
         channelCount = (json["channelCount"] as? NSNumber)?.intValue ?? 0
         summary = text("summary")
-        shortfall = text("shortfall")
+        notReady = ((json["notReady"] as? [String: Any])?["message"] as? String) ?? ""
         calibrating = flag("calibrating")
         statusText = text("statusText")
         nextText = text("nextText")
@@ -110,23 +103,10 @@ struct RadioState: Equatable {
         sticks = ((json["sticks"] as? [Any]) ?? []).compactMap(RadioStick.init)
     }
 
-    // RadioComponentController.cc:31 constructs _nextText as tr("Calibrate"), and the only two
-    // values _setNextText ever receives are tr("Next") (:820) and tr("Calibrate") (:841). An empty
-    // word therefore means NO CONTROLLER, never a nameless step -- and the head's own word for that
-    // state was "Start", which QGC does not use for this button at all. Read at 0fdd8b9ec.
-    //
-    // The fallback is English where a live controller's word would be translated, but it is only
-    // reachable with no vehicle, where there is no translated word to disagree with.
     static let defaultNextText = "Calibrate"
 
     var actionTitle: String { nextText.isEmpty ? RadioState.defaultNextText : nextText }
 
-    // The dot and the antenna sit beside the CORE'S summary sentence, so they have to agree with
-    // it. The call site asked only "channelCount > 0", which collapses the two negative sentences
-    // together harmlessly -- but paints GREEN over the third one whatever it says. The core formats
-    // "{n} channels reported, {live} carrying a signal", and live can be 0: a receiver reporting
-    // channels with every PWM at zero is a transmitter switched off or out of range. That is the
-    // one state this page exists to show, and the head was drawing a healthy antenna over it.
     var level: FlyTelemetry.Level {
         guard connected, channelCount > 0 else { return .unknown }
         return liveChannels.isEmpty ? .warning : .good
@@ -138,18 +118,7 @@ struct RadioState: Equatable {
             : "antenna.radiowaves.left.and.right.slash"
     }
 
-    // The count the summary line quotes. Still a real question -- "how many are arriving" -- and
-    // the probe reports it. What it is NOT is the list to draw.
     var liveChannels: [RadioChannel] { channels.filter(\.live) }
 
-    // A reported channel sending nothing is the answer somebody opened this page for: "is my
-    // channel 6 switch reaching the vehicle". Drawing only the live ones answered that by
-    // omission, which reads as "there is no channel 6" -- and with the receiver off the whole
-    // section disappeared rather than saying eight channels are reported and none is arriving.
-    // rcValues is exactly channelCount long, measured on the rig at 8 for 8, so every entry is a
-    // channel the transmitter reports and none of these rows is a phantom slot.
-    // The core already answers the silent case -- valueText is an em dash and live is false -- and
-    // RadioBar's live: parameter exists to draw it grey. The section that needed it passed a
-    // hardcoded true, because the list had been filtered to make that true.
     var channelRows: [RadioChannel] { channels }
 }

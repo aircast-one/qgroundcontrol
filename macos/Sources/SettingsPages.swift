@@ -18,16 +18,6 @@ struct ControlOption: Identifiable, Equatable {
 }
 
 enum FactWrite {
-    // QGC refuses this at the type conversion, BEFORE the range check: ParameterEditorDialog passes
-    // the TEXT to Fact::validate and QVariant("3.7").toInt() fails on a string carrying a decimal
-    // point. This head sent a Double instead, so Fact::setRawValue ran convertAndValidateRaw with
-    // convertOnly -- the range check skipped entirely -- and QVariant(3.7).toInt() answered 3 with
-    // convertOk true. The field showed 3.7, the vehicle got 3, and the bridge answered ok:true
-    // because the setter had run. Recorded as unfixable in dd04e0470 because no head was told which
-    // facts are integers; typeIsInteger and wholeNumbersOnly are that answer.
-    // Int(entry) is the same test QVariant makes: "5" converts, "5.0" does not, and QGC refuses
-    // "5.0" on an integer fact too. The order matches convertAndValidateCooked -- parseable, then
-    // type, then range -- so an out-of-range fraction is told it is not a whole number first.
     static func wholeNumberRefusal(_ entry: String, required: Bool, subject: String) -> String? {
         let typed = entry.trimmingCharacters(in: .whitespaces)
         guard required, !typed.isEmpty, Double(typed) != nil, Int(typed) == nil else { return nil }
@@ -36,18 +26,10 @@ enum FactWrite {
 
     static let readOnly = "That value is read-only, so it was not written."
 
-    // Both a vehicle parameter and an app setting can be a bitmask, and both must answer these the
-    // same way, so the rules live once here rather than as twins on the two models. The kind is the
-    // producer's own word: control.rs resolves a fact carrying BOTH enum labels and bitmask labels
-    // to "choice", as the Qt editor does, so a row must not decide that for itself by asking which
-    // list is empty.
     static func drawsBits(_ kind: SettingsControl.Kind, _ bits: [ControlBit]) -> Bool {
         kind == .bitmask && !bits.isEmpty
     }
 
-    // Toggling one bit leaves every OTHER bit of the stored value alone, including bits the metadata
-    // never named. Firmware sets bits the ground station has not heard of, and rebuilding the value
-    // from the declared bits alone would silently clear them.
     static func toggling(_ bit: ControlBit, on: Bool, within value: Int) -> Int {
         on ? value | bit.value : value & ~bit.value
     }
@@ -77,6 +59,8 @@ struct SettingsControl: Identifiable, Equatable {
         case bitmask
         case text
         case number
+        case label
+        case dialog
         case unknown
 
         init(_ reported: String?) {
@@ -86,6 +70,8 @@ struct SettingsControl: Identifiable, Equatable {
             case "bitmask": self = .bitmask
             case "text": self = .text
             case "number": self = .number
+            case "label": self = .label
+            case "dialog": self = .dialog
             default: self = .unknown
             }
         }
@@ -108,6 +94,7 @@ struct SettingsControl: Identifiable, Equatable {
     let wholeNumbersOnly: Bool
     let minimum: Double?
     let maximum: Double?
+    let dialog: String
 
     var id: String { path }
 
@@ -118,29 +105,16 @@ struct SettingsControl: Identifiable, Equatable {
 
     static let between = " \u{00B7} "
 
-    // The row shows the setting's own name under its label; a setting that needs a restart says
-    // so on the same line rather than in a place an operator has to go looking for.
     func rowDescription(label: String) -> String {
         let parts = [label.isEmpty ? "" : name, restartNotice,
                      refusal].filter { !$0.isEmpty }
         return parts.joined(separator: " \u{00B7} ")
     }
 
-    // readOnly is the FACT'S own property and answers whether the value can be written at all.
-    // enabled answers whether writing it would do anything right now. A row must refuse on
-    // either, and asking the two separately at four call sites is how a branch gets missed --
-    // readOnly was already honoured in only two of four here once before.
     var acceptsWrite: Bool { !readOnly && enabled }
 
-    // A control that CANNOT be written and one whose write would DO NOTHING look identical to a
-    // finger, and they are not the same answer: one is the fact's own nature, the other is a
-    // condition somewhere else the operator can go and change. readOnly leads because it is the
-    // stronger claim -- a read-only fact stays read-only whatever the gate says.
     static let readOnlyNote = "Read-only"
 
-    // The Settings row's subtitle carried ONLY the units, so the refusal reached the probe and
-    // ParameterRow and never this screen. Both halves belong on the one line under the label:
-    // the unit says what the number means and the refusal says why the control will not take it.
     func subtitle(showingUnits: Bool) -> String {
         [showingUnits ? units : "", refusal].filter { !$0.isEmpty }
             .joined(separator: " \u{00B7} ")
@@ -161,10 +135,6 @@ struct SettingsControl: Identifiable, Equatable {
         options.map { ParameterOption(label: $0.label, raw: $0.raw) }
     }
 
-    // A stored value matching no offered option must not resolve to the FIRST one. The picker
-    // would assert the setting is something it is not, and a touch anywhere near it would write
-    // that wrong value back as though the operator had chosen it. This index matches no tag, so
-    // the control draws empty and says nothing instead of something false.
     static let noChoice = -1
 
     var choiceIndex: Int {
@@ -192,16 +162,9 @@ struct SettingsControl: Identifiable, Equatable {
         wholeNumbersOnly = (json["wholeNumbersOnly"] as? NSNumber)?.boolValue ?? false
         minimum = (json["minimum"] as? NSNumber)?.doubleValue
         maximum = (json["maximum"] as? NSNumber)?.doubleValue
+        dialog = (json["dialog"] as? String) ?? ""
     }
 
-    // A RANGE CHECK THAT CANNOT PARSE ITS INPUT USED TO RETURN nil -- no objection -- and the
-    // caller then wrote `Double(value) ?? value`, putting the raw STRING on the vehicle. So the
-    // one guard standing between an operator and a bad write was silent on exactly the entry
-    // that needed refusing. A comma is the common way in; anything unparseable is the class.
-    // An app setting's choices come from QGC's own JSON and are exhaustive by construction -- there
-    // is no firmware shipping a language or a map provider the list has not heard of. So this is
-    // false where Parameter's is true, and the two are separate properties rather than one rule with
-    // a flag, because the reason they differ is about the PRODUCER of the list and not about the row.
     var offersManualEntry: Bool { false }
 
     func refusal(_ entry: String) -> String? {
@@ -220,16 +183,6 @@ struct SettingsControl: Identifiable, Equatable {
                                   highest: maximum.map(SettingsControl.spell))
     }
 
-    // A settings value is drawn in a fixed, right-aligned field and a comma-separated list
-    // overflows it -- Flight Modes shows "Acro,Circle,Drift,Sport,Flip,Bra...". Reading the rest
-    // means clicking INTO the field, which is an editable control: entering it to read is how you
-    // write what you came to check. The help is the one place the value can be read without
-    // touching the thing that sets it.
-    //
-    // Unconditional for a text fact rather than keyed on a length, because the row cannot know its
-    // own rendered width and so cannot know whether THIS value was cut; a threshold would be a
-    // number with nothing behind it. A number keeps its range hint instead -- those do not
-    // overflow, and the band is the more useful thing to find under the pointer.
     var valueHelp: String { kind == .text ? valueString : rangeHint }
 
     var rangeHint: String {
@@ -311,11 +264,6 @@ struct SettingsSection: Identifiable, Equatable {
             : listed
     }
 
-    // Two silences a settings page can be in, spelled at the call site in SettingsWindow where
-    // nothing compiles them. They are NOT interchangeable: a page with nothing to edit is a fact
-    // about the page, and a filter matching nothing is a fact about what the operator typed --
-    // which is why the second one quotes it back. Answering the first sentence to a search that
-    // found nothing tells them the page is empty when it is their own filter hiding everything.
     static func emptyText(search: String) -> String {
         search.isEmpty
             ? "This page has no editable settings."

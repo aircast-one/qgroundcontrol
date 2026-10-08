@@ -54,7 +54,7 @@ final class RadioStore: ObservableObject, Probeable, WriteReporting {
         ["writeFailure": writeFailure ?? "",
          "connected": state.connected, "channelCount": state.channelCount,
          "live": state.liveChannels.count, "summary": state.summary,
-         "shortfall": state.shortfall, "calibrating": state.calibrating,
+         "notReady": state.notReady, "calibrating": state.calibrating,
          "transmitterMode": state.transmitterMode, "nextText": state.nextText,
          "statusText": state.statusText,
          "channels": state.channels.prefix(8).map(\.value),

@@ -103,15 +103,10 @@ struct ParameterRow: View {
     let bits: [ControlBit]
     var rangeHint = ""
     var togglesDisabled = false
-    // A form row draws the bits; a list row states them and stays one row tall.
     var expandsBits = true
-    // Only a vehicle parameter reserves the dot's slot. The settings pages share this row and have
-    // no such mark in QGC, so their layout must not gain an indent for a dot they never draw.
     var reservesDot = false
     var showsNonDefaultDot = false
     let summary: String
-    // Which value a bit is toggled within is the model's answer, not the row's, and only the models
-    // are compiled by swift-checks.sh -- as a rule written here it would be unpinnable.
     let toggle: (ControlBit, Bool) -> String
     let commit: (String) -> Void
 
@@ -176,9 +171,6 @@ struct ParameterRow: View {
             })
     }
 
-    // Drawn clear rather than omitted so every parameter title starts at the same x -- a dot that
-    // pushed only the changed rows across would read as an indent, which is a claim about
-    // grouping.
     @ViewBuilder private var dot: some View {
         if reservesDot {
             Circle()
@@ -221,26 +213,105 @@ struct SetupPageBody<Content: View>: View {
 struct SetupSections: View {
     let sections: [SettingsSection]
     @ObservedObject var store: ParametersStore
+    @State private var calibratingEscs = false
 
     var body: some View {
-        ForEach(sections) { section in
-            VStack(alignment: .leading, spacing: 0) {
-                SectionLabel(text: section.title)
-                GroupCard {
-                    ForEach(Array(section.controls.enumerated()), id: \.element.id) { index, control in
-                        ParameterRow(control: control, showSeparator: index > 0) {
-                            store.writeControl(control, $0)
+        Group {
+            ForEach(sections) { section in
+                VStack(alignment: .leading, spacing: 0) {
+                    SectionLabel(text: section.title)
+                    GroupCard {
+                        ForEach(Array(section.controls.enumerated()), id: \.element.id) { index, control in
+                            row(control, showSeparator: index > 0)
                         }
                     }
-                }
-                if !section.note.isEmpty {
-                    Text(section.note)
-                        .font(.caption).foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, Overlay.horizontalPadding)
-                        .padding(.top, Overlay.unit * 0.35)
+                    if !section.note.isEmpty {
+                        Text(section.note)
+                            .font(.caption).foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, Overlay.horizontalPadding)
+                            .padding(.top, Overlay.unit * 0.35)
+                    }
                 }
             }
         }
+        .sheet(isPresented: $calibratingEscs) {
+            EscCalibrationSheet { calibratingEscs = false }
+        }
+    }
+
+    @ViewBuilder private func row(_ control: SettingsControl, showSeparator: Bool) -> some View {
+        switch control.kind {
+        case .label:
+            GroupRow(title: control.label, showSeparator: showSeparator)
+        case .dialog:
+            GroupRow(title: control.label, showSeparator: showSeparator, trailing: {
+                Button("Open") { calibratingEscs = true }
+                    .disabled(!control.enabled || control.dialog != EscCalibrationReading.dialog)
+            })
+        default:
+            ParameterRow(control: control, showSeparator: showSeparator) {
+                store.writeControl(control, $0)
+            }
+        }
+    }
+}
+
+struct EscCalibrationReading: Equatable {
+    static let dialog = "escCalibration"
+    static let starting = "Starting ESC calibration..."
+
+    let highlight: String
+    let text: String
+    let running: Bool
+
+    init?(_ json: [String: Any]) {
+        guard (json["open"] as? NSNumber)?.boolValue == true else { return nil }
+        highlight = (json["highlight"] as? String) ?? ""
+        text = (json["text"] as? String) ?? ""
+        running = (json["running"] as? NSNumber)?.boolValue ?? false
+    }
+}
+
+final class EscCalibrationStore: ObservableObject {
+    @Published private(set) var reading: EscCalibrationReading?
+    private var poll: Timer?
+
+    func start() {
+        Bridge.invoke("escCalibration.start")
+        poll = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.reading = EscCalibrationReading(Bridge.group("view.escCalibration"))
+        }
+    }
+
+    func close() {
+        poll?.invalidate()
+        poll = nil
+        Bridge.invoke("escCalibration.close")
+    }
+}
+
+struct EscCalibrationSheet: View {
+    let done: () -> Void
+    @StateObject private var calibration = EscCalibrationStore()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Overlay.unit) {
+            Text("ESC Calibration").font(.headline)
+            (Text(calibration.reading?.highlight ?? "").bold().foregroundColor(.red)
+                + Text(calibration.reading?.text ?? EscCalibrationReading.starting))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("OK") {
+                    calibration.close()
+                    done()
+                }
+                .disabled(calibration.reading?.running != false)
+            }
+        }
+        .padding(Overlay.unit * 1.25)
+        .frame(width: 380)
+        .onAppear(perform: calibration.start)
     }
 }

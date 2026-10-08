@@ -10732,7 +10732,6 @@
             "view.control(settings.appSettings.audioMuted).changedFromDefault",
             "view.plan.defaults.altitude.changedFromDefault",
             "view.settings(General).sections[0].subsections[0].controls[0].changedFromDefault",
-            "view.setup(Safety).sections[0].controls[0].changedFromDefault",
             "view.obstacle.ringMetres",
             "view.obstacle.ringIncrement",
             "view.obstacle.rangeMinMetres",

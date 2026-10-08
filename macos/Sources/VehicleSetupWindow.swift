@@ -416,30 +416,6 @@ struct LightsView: View {
     private var sections: [SettingsSection] { store.sections(of: "Lights") }
 }
 
-struct CameraView: View {
-    @ObservedObject var store: ParametersStore
-
-    var body: some View {
-        SetupPageBody(title: "Camera",
-                      note: "The gimbal the vehicle carries and how it triggers a camera.",
-                      connected: store.connected) {
-            if store.loading {
-                GroupCard { EmptyStateRow(text: store.parameterStatus) }
-            } else if sections.isEmpty {
-                GroupCard {
-                    EmptyStateRow(text: VehicleSetupText.absent(connected: store.connected,
-                        "reports no gimbal or camera parameters."))
-                }
-            } else {
-                SetupSections(sections: sections, store: store)
-            }
-        }
-        .onAppear(perform: store.load)
-    }
-
-    private var sections: [SettingsSection] { store.sections(of: "Camera") }
-}
-
 struct TuningView: View {
     @ObservedObject var store: ParametersStore
 
@@ -484,8 +460,8 @@ struct RadioView: View {
                          })
             }
 
-            if !store.state.shortfall.isEmpty {
-                Label(store.state.shortfall, systemImage: "exclamationmark.triangle.fill")
+            if !store.state.notReady.isEmpty {
+                Label(store.state.notReady, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
                     .foregroundColor(.orange)
                     .fixedSize(horizontal: false, vertical: true)
@@ -938,7 +914,6 @@ struct VehicleSetupView: View {
         case "Frame": FrameView(store: parameters, frame: frame)
         case "Radio": RadioView(store: radio)
         case "Tuning": TuningView(store: parameters)
-        case "Camera": CameraView(store: parameters)
         case "Lights": LightsView(store: parameters)
         case "Motors": MotorsView(motors: motors).onAppear(perform: motors.start)
             .onDisappear(perform: motors.stop)

@@ -3277,12 +3277,11 @@ func checkVehicleTrack() {
     }
     let flying = VehicleTrack(["available": true as NSNumber, "recording": true as NSNumber,
                                "vehicleId": 1 as NSNumber, "generation": 3 as NSNumber,
-                               "dropped": 0 as NSNumber, "count": 2 as NSNumber,
+                               "count": 2 as NSNumber,
                                "points": [point(-35.36, 149.16), point(-35.361, 149.161)]])
     expect(flying.draws, "two positions make a trail")
     expect(flying.points.count == 2, "and both cross the bridge")
     expect(abs(flying.points[0].latitude - -35.36) < 1e-9, "in the order they were flown")
-    expect(flying.notice, "", "a trail that has lost nothing says nothing")
 
     expect(!VehicleTrack(["available": true as NSNumber, "count": 1 as NSNumber,
                           "points": [point(-35.36, 149.16)]]).draws,
@@ -3292,16 +3291,8 @@ func checkVehicleTrack() {
                           "points": [point(0, 0), point(1, 1)]]).draws,
            "and a trail from no vehicle is not drawn whatever it carries")
 
-    let trimmed = VehicleTrack(["available": true as NSNumber, "dropped": 12 as NSNumber,
-                                "count": 500 as NSNumber,
-                                "points": [point(1, 1), point(2, 2)]])
-    expect(trimmed.notice, "Trail trimmed \u{2014} showing the last 500 positions of this flight.",
-           "a trail that starts mid-flight says why; without it a trimmed trail reads as a lost "
-           + "link, and the count is the core's number rather than a cap copied into this head")
-
-    expect(VehicleTrack.none.points.isEmpty && !VehicleTrack.none.draws
-           && VehicleTrack.none.notice.isEmpty,
-           "before the first read there is no trail, no drawing and nothing to explain")
+    expect(VehicleTrack.none.points.isEmpty && !VehicleTrack.none.draws,
+           "before the first read there is no trail and no drawing")
     expect(VehicleTrack(["points": [["latitude": 1 as NSNumber]]]).points.isEmpty,
            "a point missing half its coordinate is dropped rather than read as a zero, which "
            + "would draw the trail through Null Island")
@@ -3918,7 +3909,7 @@ func checkRadio() {
 
     let state = RadioState([
         "connected": true as NSNumber, "channelCount": 10 as NSNumber,
-        "summary": "10 channels reported, 8 carrying a signal.", "shortfall": "",
+        "summary": "10 channels reported, 8 carrying a signal.", "notReady": NSNull(),
         "calibrating": false as NSNumber, "nextText": "Calibrate",
         "nextEnabled": true as NSNumber, "transmitterMode": 2 as NSNumber,
         "channels": [channel(0, 1500), channel(1, 1500), channel(2, 1000), channel(3, 1500),
@@ -3939,7 +3930,7 @@ func checkRadio() {
            "the silent ones are drawn, and drawn as silent -- RadioBar takes a live: flag for "
            + "exactly this and the Channels section passed a hardcoded true")
     expect(state.summary, "10 channels reported, 8 carrying a signal.", "and the summary says both")
-    expect(state.shortfall, "", "so nothing is wanting")
+    expect(state.notReady, "", "so nothing is wanting")
     expect(!state.calibrating, "an idle controller is not calibrating")
     expect(state.channels[0].fraction == 0.5, "centre sits in the middle of the bar")
     expect(state.channels[8].valueText, "\u{2014}",
@@ -3962,10 +3953,10 @@ func checkRadio() {
 
     let thin = RadioState([
         "connected": true as NSNumber, "channelCount": 4 as NSNumber,
-        "shortfall": "At least 5 channels are needed to fly; the transmitter reports 4.",
+        "notReady": ["title": "Not Ready", "message": "5 channels or more are needed to fly."],
     ])
-    expect(thin.shortfall, "At least 5 channels are needed to fly; the transmitter reports 4.",
-           "and the page says so in the pilot's terms")
+    expect(thin.notReady, "5 channels or more are needed to fly.",
+           "and the page says so in QGC's own Not Ready words")
 
     expect(RadioState(["connected": true as NSNumber,
                        "summary": "No transmitter is being heard."]).summary,
@@ -5448,6 +5439,23 @@ func checkInstrumentStorage() {
 checkInstrumentStorage()
 
 checkGuidedOffers()
+
+func checkSetupRowKinds() {
+    let label = SettingsControl(["path": "Safety.note", "control": "label", "label": "Why"])
+    expect(label?.kind == .label, "a label row decodes to a label, not a text field with nothing in it")
+    let dialog = SettingsControl(["path": "ESC.cal", "control": "dialog", "label": "Calibrate",
+                                  "dialog": "escCalibration"])
+    expect(dialog?.kind == .dialog && dialog?.dialog == EscCalibrationReading.dialog,
+           "a dialog row names the dialog it opens")
+    expect(EscCalibrationReading(["open": false as NSNumber]) == nil,
+           "a calibration that is not open has nothing to show")
+    let running = EscCalibrationReading(["open": true as NSNumber, "highlight": "WARNING: ",
+                                         "text": "Remove props.", "running": true as NSNumber])
+    expect(running?.highlight ?? "", "WARNING: ", "the core's highlight is shown as given")
+    expect(running?.running == true, "and OK waits while it runs")
+}
+
+checkSetupRowKinds()
 checkViewContract()
 checkMotorTest()
 checkMapClick()
@@ -5955,7 +5963,7 @@ func checkTheInspectorSaysWhichSilenceItIsIn() {
 checkTheInspectorSaysWhichSilenceItIsIn()
 
 
-let assertionFloor = 2298
+let assertionFloor = 2283
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "
@@ -6667,7 +6675,7 @@ func checkViewContract() {
           "readOnly", "options", "bits", "decimalPlaces", "minimum", "maximum", "rebootRequired",
           "vehicleRebootRequired", "applicationRestartRequired", "restartNotices"]),
         ("view.track", [],
-         ["available", "vehicleId", "recording", "generation", "dropped", "count", "points"]),
+         ["available", "vehicleId", "recording", "generation", "count", "points"]),
         ("view.flyState", [],
          ["connected", "armed", "flying", "landing", "contactLost", "state", "stateText",
           "staleNotice", "mode"]),
@@ -6703,10 +6711,9 @@ func checkViewContract() {
                         "groups"]),
         ("view.setup", ["groups"], ["title", "pages"]),
         ("view.setup", ["groups", "pages"], ["name", "parameterSections"]),
-        ("view.setup(Safety)", [], ["page", "firmware", "available", "sections"]),
-        ("view.setup(Safety)", ["sections"], ["title", "note", "controls"]),
-        ("view.setup(Safety)", ["sections", "controls"],
-         ["path", "name", "label", "control", "valueString", "display", "units", "options"]),
+        ("view.setup(Flight Safety)", [], ["page", "firmware", "available", "sections"]),
+        ("view.setup(Flight Safety)", ["sections"], ["title", "note", "controls"]),
+        ("view.setup(Flight Safety)", ["sections", "controls"], ["path", "name", "label", "control", "enabled"]),
         ("view.video", [],
          ["available", "gstreamer", "streamSource", "decoding", "streaming", "recording",
           "sourceSize", "activeSource", "multipleSources", "anyConnecting", "configuredCount",
@@ -6755,7 +6762,7 @@ func checkViewContract() {
          ["id", "title", "invocation", "arguments", "blocked", "enabled", "description",
           "warning"]),
         ("view.radio", [],
-         ["connected", "channelCount", "summary", "shortfall", "calibrating", "statusText",
+         ["connected", "channelCount", "summary", "notReady", "calibrating", "statusText",
           "nextText", "nextEnabled", "cancelEnabled", "skipEnabled", "transmitterMode", "channels",
           "sticks"]),
         ("view.radio", ["sticks"],
@@ -6795,8 +6802,8 @@ func checkViewContract() {
            "and this head carries no action the core never emits")
 
     expect(recorded("view.guidedActions.actions[].offer").sorted().joined(separator: ","),
-           "blocked,hidden,ready",
-           "the three offer states this head branches on are the three the core emits; a fourth "
+           "hidden,ready",
+           "the two offer states this head branches on are the two the core emits; a third "
            + "would silently read as shown and unblocked")
 
     ["view.battery.level", "view.battery.packs[].level"].forEach { key in
@@ -6838,8 +6845,8 @@ func checkViewContract() {
            "the worst level takes the same three, and is absent rather than normal when unknown")
 
     let controlKinds = recorded("view.control.control")
-    expect(controlKinds.sorted().joined(separator: ","), "bitmask,choice,number,text,toggle",
-           "the five control kinds are the five this editor draws")
+    expect(controlKinds.sorted().joined(separator: ","), "bitmask,choice,dialog,label,number,text,toggle",
+           "the seven control kinds are the seven this head draws")
     expect(controlKinds.filter { SettingsControl.Kind($0) == .unknown }.joined(separator: ","), "",
            "and every one of them decodes to an editor, rather than falling through to a field")
 
@@ -6958,7 +6965,7 @@ func checkViewContract() {
          ["shotsText", "intervalText", "footprintText", "warning", "areaText", "distanceText"]),
         ("view.calibration", [], ["progressText", "helpText", "statusText", "needsAttention"]),
         ("view.calibration", ["routines"], ["title", "description", "invocation"]),
-        ("view.radio", [], ["summary", "shortfall", "statusText", "nextText"]),
+        ("view.radio", [], ["summary", "statusText", "nextText"]),
         ("view.radio", ["sticks"], ["title", "valueText"]),
         ("view.flightModes", ["modes"], ["name", "summary"]),
         ("view.inspector", ["messages"], ["title", "rateText", "targetRateTitle"]),
@@ -6999,22 +7006,21 @@ func checkGuidedOffers() {
          "destructive": (id == "emergencyStop") as NSNumber, "carriesValue": (id == "takeoff") as NSNumber]
     }
 
-    let list = GuidedOffer.list([offer("arm", "blocked", "The vehicle's arming checks are failing."),
+    let list = GuidedOffer.list([offer("arm", "hidden", "The vehicle's arming checks are failing."),
                                  offer("takeoff", "ready"),
                                  offer("land", "hidden"),
                                  offer("emergencyStop", "ready")])
     expect(list.count == 4, "every action the core describes is carried across")
-    expect(list.filter(\.shown).map(\.id).joined(separator: ","), "arm,takeoff,emergencyStop",
-           "a hidden action is not shown, and a blocked one still is, because it has something to say")
+    expect(list.filter(\.shown).map(\.id).joined(separator: ","), "takeoff,emergencyStop",
+           "a hidden action is not shown, whether or not the core says why it is held back")
     expect(list.filter(\.ready).map(\.id).joined(separator: ","), "takeoff,emergencyStop",
-           "but only an unblocked action can be commanded")
+           "and every action shown can be commanded")
 
     let arm = list[0]
-    expect(arm.blocked, "a blocked action is disabled")
     expect(!list[1].blocked,
-           "and one the core says is ready is not, or nothing could ever be commanded at all")
+           "one the core says is ready is not blocked, or nothing could ever be commanded at all")
     expect(arm.explanation, "The vehicle's arming checks are failing.",
-           "and explains itself with the core's reason rather than the generic prompt")
+           "a held action still carries the core's reason rather than the generic prompt")
     expect(list[1].explanation, "P is the prompt",
            "while a ready one says what it will do")
     expect(list[3].destructive, "the emergency stop stays marked destructive")

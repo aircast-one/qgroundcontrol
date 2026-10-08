@@ -82,18 +82,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
         let trail = VehicleTrack(Bridge.group("view.track"))
         if trail != track { track = trail }
 
-        // Follow Me is read BEFORE the no-vehicle guard, unlike obstacle and traffic below it.
-        // Those are the vehicle's sensors and mean nothing without one. This one's subject is THIS
-        // machine and a setting: with no vehicle connected it still has to say "no vehicle is
-        // connected to follow you", and whether the position it would send has gone stale. Read
-        // after the guard it answered empty on the rig while the core was answering noVehicles --
-        // the panel was not reporting absence, nobody was asking.
         let readFollowMe = FollowMe(Bridge.group("view.followMe")) ?? .absent
         if readFollowMe != followMe { followMe = readFollowMe }
 
-        // Read above the no-vehicle guard for the same reason follow-me is: the fleet is a fact
-        // about how many vehicles there are, which is exactly the question that has no answer
-        // once you have returned early because there is no active one.
         let readFleet = Fleet(Bridge.group("view.vehicles")) ?? .none
         if readFleet != fleet { fleet = readFleet }
 
@@ -109,20 +100,12 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
             if !linkDetail.isEmpty { linkDetail = [] }
             if !modes.isEmpty { modes = [] }
             if !separation.isEmpty { separation = "" }
-            // Both are read behind a property of their OWN value -- FlyWindow draws the rows on
-            // traffic.available and obstacle.available -- so nothing else here reaches them and a
-            // vehicle that goes away used to leave the last contacts and the last distances on
-            // screen. Every other field in this guard is gated by one of its neighbours; these two
-            // were the whole reason the panel could describe an aircraft that is not there.
             if traffic != .none { traffic = .none }
             if obstacle != .none { obstacle = .none }
             if control != .none { control = .none }
             return
         }
 
-        // Below the guard because the core answers null without a live vehicle anyway, and reset
-        // above it because an unreset string would go on claiming a distance to an aircraft that
-        // has gone -- the same latch the position fields have.
         let readSeparation = GcsFix(Bridge.group("view.gcsPosition"))?.distanceText ?? ""
         if readSeparation != separation { separation = readSeparation }
 
@@ -210,9 +193,6 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
 
     var latestMessages: [VehicleMessage] { messages.newest(FlyStore.messageLimit) }
 
-    // The core answers the checklist with no vehicle connected, and says so in each reason.
-    // "Before you power up" is the group an operator works through while nothing is connected
-    // yet, so it does not sit behind the guard that clears vehicle telemetry.
     private func readChecklist() {
         let preflight = Bridge.group("view.preflight")
         let flown = (preflight["airframe"] as? String) ?? "Generic"
@@ -270,9 +250,9 @@ final class FlyStore: ObservableObject, Probeable, WriteReporting {
          "contactLost": state.contactLost as Any, "staleNotice": state.staleNotice,
          "separation": separation,
          "track": ["available": track.available, "recording": track.recording,
-                   "generation": track.generation, "dropped": track.dropped,
+                   "generation": track.generation,
                    "count": track.count, "points": track.points.count,
-                   "draws": track.draws, "notice": track.notice],
+                   "draws": track.draws],
          "keepCentered": keepCentered,
          "fleet": ["count": fleet.count, "ambiguous": fleet.ambiguous,
                    "activeId": fleet.activeId ?? -1,

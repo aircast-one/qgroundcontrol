@@ -63,7 +63,6 @@ pub const NULLABLE_UNWITNESSED: &[&str] = &[
     "view.control(settings.appSettings.audioMuted).changedFromDefault",
     "view.plan.defaults.altitude.changedFromDefault",
     "view.settings(General).sections[0].subsections[0].controls[0].changedFromDefault",
-    "view.setup(Safety).sections[0].controls[0].changedFromDefault",
     "view.obstacle.ringMetres",
     "view.obstacle.ringIncrement",
     "view.obstacle.rangeMinMetres",
@@ -106,6 +105,7 @@ mod tests {
                 .unwrap_or_else(|| "missing".to_string())
         };
         NULLABLE_UNWITNESSED.iter().for_each(|path| {
+            assert!(!declared(path).starts_with("no view shape"), "{path} names a view the contract never recorded, so nothing pins it");
             assert_ne!(
                 declared(path),
                 "missing",

@@ -16,8 +16,6 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
 
     private var watchPoll: Timer?
 
-    // view.guidedActions depends on plan.missionController.containsItems and the checklist
-    // settings as well as the vehicle, so a mission created next door has to reach these buttons.
     func startWatching() {
         guard watchPoll == nil else { return }
         refresh()
@@ -86,6 +84,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
     static let climbOutAltitude = 50.0
     static let gripperRelease = 0
     static let gripperGrab = 1
+    static let gripperHold = 2
 
     private func send(_ action: GuidedAction) {
         lastSent = action.rawValue
@@ -121,6 +120,7 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
         case .emergencyStop: Bridge.invoke("vehicle.emergencyStop")
         case .grab: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperGrab])
         case .release: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperRelease])
+        case .hold: Bridge.invoke("vehicle.sendGripperAction", [GuidedStore.gripperHold])
         case .vtolTransitionToFixedWing:
             write("vehicle.vtolInFwdFlight", true, "the VTOL to fixed-wing flight")
         case .vtolTransitionToMultiRotor:

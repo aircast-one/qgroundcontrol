@@ -260,6 +260,9 @@ struct FactControl: View {
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
 
+        case .label, .dialog:
+            EmptyView()
+
         case .text, .number, .bitmask, .unknown:
             TextField("", text: Binding(
                 get: { EditedField.shown(typed: draft, held: fact.valueString, editing: editing) },
