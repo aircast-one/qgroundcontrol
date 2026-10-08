@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -259,4 +260,20 @@ internal fun CameraPipThumbnail(camera: CameraEntry, modifier: Modifier = Modifi
         }
         editor()
     }
+}
+
+internal fun neighbourCamera(state: CameraSwitchState?, step: Int): CameraEntry? =
+    state?.cameras?.takeIf { it.size > 1 }?.let { cameras -> cameras[Math.floorMod(cameras.indexOf(state.shown) + step, cameras.size)] }
+
+@Composable
+internal fun rememberCameraSwiper(): (Int) -> Boolean {
+    val json by qgcPath(CAMERAS_VIEW)
+    val state by rememberUpdatedState(cameraSwitchState(camerasReading(json)))
+    return remember { { step -> neighbourCamera(state, step)?.let { showCamera(it.slot); true } ?: false } }
+}
+
+@Composable
+internal fun rememberGimbalDrags(): Boolean {
+    val view by qgcPath(GIMBAL_INDICATOR_PATH)
+    return remember(view) { onScreenGimbal(view) != null }
 }

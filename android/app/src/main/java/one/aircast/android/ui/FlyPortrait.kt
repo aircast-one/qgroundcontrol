@@ -1,6 +1,34 @@
 package one.aircast.android.ui
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.launch
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.material3.Text
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -86,6 +114,9 @@ internal fun FlyPortrait(
     rail: @Composable (Boolean) -> Unit,
     overlays: @Composable () -> Unit,
     actions: @Composable (FlyDeckLayout) -> Unit,
+    fullScreen: Boolean,
+    onFullScreen: () -> Unit,
+    onExitFullScreen: () -> Unit,
 ) {
     val videoJson by qgcPath(VIDEO_VIEW)
     val reading = remember(videoJson) { videoReading(videoJson) }
@@ -99,33 +130,135 @@ internal fun FlyPortrait(
     )
     val barTopPx = with(LocalDensity.current) { barTop.roundToPx() }
     var deckHeightPx by remember { mutableIntStateOf(0) }
+    var boxHeightPx by remember { mutableIntStateOf(0) }
     LaunchedEffect(split, barTopPx, deckHeightPx) { flyScreen.mapInsets = MapInsets(top = if (split) 0 else barTopPx, bottom = deckHeightPx) }
-    val videoHeight = LocalConfiguration.current.screenWidthDp.dp / VIDEO_ASPECT
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val videoHeight = screenWidth / VIDEO_ASPECT
     val videoTop = barTop
     val mapTop = if (split) barTop + videoHeight else 0.dp
     val controlsTop = if (split) mapTop else barTop
-    val buttonsTop = AircastSpace.s3 + if (portraitVideoThumbnail(split, reading)) PORTRAIT_PIP_HEIGHT + AircastSpace.s3 else 0.dp
+    val thumbnail = portraitVideoThumbnail(split, reading)
+    val pipRoom = pipRoom(thumbnail, flyScreen.videoTucked)
+    val endRoom = if (flyScreen.pipStart) 0.dp else pipRoom
+    val startRoom = if (flyScreen.pipStart) pipRoom else 0.dp
+    val buttonsTop by animateDpAsState(AircastSpace.s3 + endRoom, label = "buttonsTop")
+    val overlaysTop by animateDpAsState(maxOf(AircastSpace.s3 + endRoom + MAP_BUTTON_SIZE + AircastSpace.s2, AircastSpace.s3 + startRoom), label = "overlaysTop")
+    val density = LocalDensity.current
+    val geometry = with(density) {
+        PipGeometry(
+            width = screenWidth.toPx(),
+            pip = Size(PORTRAIT_PIP_WIDTH.toPx(), PORTRAIT_PIP_HEIGHT.toPx()),
+            inset = AircastSpace.s3.toPx(),
+            pipTop = (barTop + AircastSpace.s3).toPx(),
+            split = Rect(0f, videoTop.toPx(), screenWidth.toPx(), (videoTop + videoHeight).toPx()),
+            full = Rect(0f, 0f, screenWidth.toPx(), boxHeightPx.toFloat().takeIf { it > 0f } ?: (videoTop + videoHeight).toPx()),
+        )
+    }
+    var pipDrag by remember { mutableStateOf(Offset.Zero) }
+    var holding by remember { mutableStateOf(false) }
+    val target = when {
+        fullScreen -> geometry.full
+        split -> geometry.split
+        else -> geometry.pip(flyScreen.pipStart, pipDrag)
+    }
+    val frame = remember { Animatable(target, Rect.VectorConverter) }
+    LaunchedEffect(target, holding) { if (holding) frame.snapTo(target) else frame.animateTo(target, spring(stiffness = Spring.StiffnessMediumLow)) }
+    val latestSplit by rememberUpdatedState(split)
+    val latestTarget by rememberUpdatedState(target)
+    val latestExitFullScreen by rememberUpdatedState(onExitFullScreen)
+    val latestGeometry by rememberUpdatedState(geometry)
+    val latestOnView by rememberUpdatedState(onView)
+    val latestFullScreen by rememberUpdatedState(onFullScreen)
+    val swipeCamera = rememberCameraSwiper()
+    val gimbalDrags by rememberUpdatedState(rememberGimbalDrags())
+    val nudge = remember { Animatable(0f) }
+    val nudgeScope = rememberCoroutineScope()
+    val nudgeDistance = with(density) { CAMERA_NUDGE.toPx() }
+    val stepCamera: (Int) -> Unit = { step ->
+        if (swipeCamera(step)) nudgeScope.launch {
+            nudge.snapTo(nudgeDistance * step)
+            nudge.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
+        }
+    }
+    val latestStepCamera by rememberUpdatedState(stepCamera)
+    val swipeDistance = with(density) { VIDEO_SWIPE_DISTANCE.toPx() }
+    val gestures = remember {
+        Modifier.videoGestures(
+            VideoGestureHandlers(
+                owned = { !latestSplit },
+                claimsSwipe = { moved -> sideways(moved) && !gimbalDrags },
+                onTap = { latestOnView(FlyView.Video) },
+                onDoubleTap = { latestFullScreen() },
+                onSwipe = { moved ->
+                    when (videoSwipe(moved, swipeDistance)) {
+                        VideoSwipe.Up -> if (!latestSplit) flyScreen.videoTucked = true
+                        VideoSwipe.Down -> if (!latestSplit) latestOnView(FlyView.Video)
+                        VideoSwipe.Left -> latestStepCamera(1)
+                        VideoSwipe.Right -> latestStepCamera(-1)
+                        null -> Unit
+                    }
+                },
+                onHold = { at ->
+                    holding = true
+                    if (latestSplit) {
+                        pipDrag = latestGeometry.dragToCentre(flyScreen.pipStart, latestTarget.topLeft + at)
+                        flyScreen.videoTucked = false
+                        latestExitFullScreen()
+                        latestOnView(FlyView.Map)
+                    }
+                    true
+                },
+                onHoldDrag = { delta -> pipDrag += delta },
+                onHoldEnd = {
+                    flyScreen.pipStart = pipOnStart(latestGeometry.pip(flyScreen.pipStart, pipDrag).center.x, latestGeometry.width)
+                    pipDrag = Offset.Zero
+                    holding = false
+                },
+            ),
+        )
+    }
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.aircast.outdoorBackground)) {
-        Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
+        Box(Modifier.fillMaxWidth().weight(1f).clipToBounds().onSizeChanged { boxHeightPx = it.height }) {
             if (view == FlyView.ThreeD) Viewer3DPane(Modifier.fillMaxSize().padding(top = mapTop)) else map(Modifier.fillMaxSize().padding(top = mapTop))
             if (hasVideo) {
-                video(
-                    if (split) {
-                        Modifier.padding(top = videoTop).fillMaxWidth().height(videoHeight)
-                    } else {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = split || !flyScreen.videoTucked,
+                    modifier = Modifier.zIndex(if (fullScreen) FULL_SCREEN_LAYER else 0f),
+                    enter = fadeIn() + slideInVertically { -it },
+                    exit = fadeOut() + slideOutVertically { -it },
+                ) {
+                    val shape = if (split) RectangleShape else MaterialTheme.shapes.medium
+                    val border = if (split) 0.dp else 1.dp
+                    video(
                         Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = barTop)
-                            .padding(AircastSpace.s3)
-                            .size(PORTRAIT_PIP_WIDTH, PORTRAIT_PIP_HEIGHT)
-                            .clip(MaterialTheme.shapes.medium)
-                            .border(1.dp, MaterialTheme.aircast.outdoorForeground.copy(alpha = PIP_BORDER_ALPHA), MaterialTheme.shapes.medium)
-                    },
-                    split,
-                )
+                            .layout { measurable, _ ->
+                                val placeable = measurable.measure(Constraints.fixed(target.width.roundToInt().coerceAtLeast(0), target.height.roundToInt().coerceAtLeast(0)))
+                                layout(target.right.roundToInt().coerceAtLeast(0), target.bottom.roundToInt().coerceAtLeast(0)) { placeable.place(target.left.roundToInt(), target.top.roundToInt()) }
+                            }
+                            .graphicsLayer {
+                                val shown = frame.value
+                                transformOrigin = TransformOrigin(0f, 0f)
+                                scaleX = if (target.width > 0f) shown.width / target.width else 1f
+                                scaleY = if (target.height > 0f) shown.height / target.height else 1f
+                                translationX = shown.left - target.left + nudge.value
+                                translationY = shown.top - target.top
+                            }
+                            .clip(shape)
+                            .border(border, MaterialTheme.aircast.outdoorForeground.copy(alpha = PIP_BORDER_ALPHA), shape)
+                            .semantics {
+                                customActions = listOfNotNull(
+                                    CustomAccessibilityAction("Show the video full screen") { latestFullScreen(); true },
+                                    CustomAccessibilityAction("Hide the video") { flyScreen.videoTucked = true; true }.takeIf { !split },
+                                    CustomAccessibilityAction("Make the video small") { onView(FlyView.Map); true }.takeIf { split },
+                                )
+                            }
+                            .then(gestures),
+                        split,
+                    )
+                }
             }
-            if (split) {
+            androidx.compose.animation.AnimatedVisibility(split, enter = fadeIn(), exit = fadeOut()) {
                 Column(Modifier.padding(top = videoTop).fillMaxWidth().height(videoHeight)) {
                     Box(Modifier.fillMaxWidth().weight(1f)) {
                         if (reading?.decoding != true) Box(Modifier.matchParentSize().osdShadow()) { FlyNoVideoMessage() }
@@ -146,7 +279,7 @@ internal fun FlyPortrait(
                         Column(
                             Modifier
                                 .fillMaxHeight()
-                                .padding(start = AircastSpace.s3, top = buttonsTop + MAP_BUTTON_SIZE + AircastSpace.s2, end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE),
+                                .padding(start = AircastSpace.s3, top = overlaysTop, end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE),
                             verticalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Column(Modifier.weight(1f, fill = false).clipToBounds(), verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) { overlays() }
@@ -174,6 +307,28 @@ internal fun FlyPortrait(
                     ) { actions(FlyDeckLayout.Bottom) }
                 },
             )
+            androidx.compose.animation.AnimatedVisibility(
+                visible = thumbnail && flyScreen.videoTucked,
+                modifier = Modifier
+                    .align(if (flyScreen.pipStart) Alignment.TopStart else Alignment.TopEnd)
+                    .padding(top = barTop + AircastSpace.s3, start = AircastSpace.s3, end = AircastSpace.s3),
+                enter = fadeIn() + slideInVertically { -it },
+                exit = fadeOut() + slideOutVertically { -it },
+            ) {
+                VideoTab(swipeDistance) { flyScreen.videoTucked = false }
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = split && !fullScreen,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = videoTop + videoHeight),
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                SplitHandle(
+                    swipeDistance,
+                    onSmaller = { flyScreen.videoTucked = false; onView(FlyView.Map) },
+                    onFullScreen = onFullScreen,
+                )
+            }
             Column(Modifier.fillMaxWidth().onSizeChanged { chromeHeightPx = it.height }) {
                 Row(
                     Modifier
@@ -189,6 +344,66 @@ internal fun FlyPortrait(
                 TrafficBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))
             }
         }
+    }
+}
+
+internal val VIDEO_TAB_HEIGHT = 36.dp
+internal val VIDEO_SWIPE_DISTANCE = 32.dp
+private val CAMERA_NUDGE = 48.dp
+private const val FULL_SCREEN_LAYER = 1f
+private val HANDLE_TOUCH = DpSize(96.dp, 28.dp)
+private val HANDLE_BAR = DpSize(40.dp, 4.dp)
+private const val HANDLE_ALPHA = 0.8f
+
+internal fun pipRoom(thumbnail: Boolean, tucked: Boolean): Dp = when {
+    !thumbnail -> 0.dp
+    tucked -> VIDEO_TAB_HEIGHT + AircastSpace.s3
+    else -> PORTRAIT_PIP_HEIGHT + AircastSpace.s3
+}
+
+internal data class PipGeometry(val width: Float, val pip: Size, val inset: Float, val pipTop: Float, val split: Rect, val full: Rect) {
+    fun anchor(start: Boolean): Offset = Offset(if (start) inset else width - inset - pip.width, pipTop)
+
+    fun pip(start: Boolean, drag: Offset): Rect = Rect(anchor(start) + drag, pip)
+
+    fun dragToCentre(start: Boolean, finger: Offset): Offset = finger - anchor(start) - Offset(pip.width / 2f, pip.height / 2f)
+}
+
+@Composable
+private fun VideoTab(swipeDistance: Float, onShow: () -> Unit) {
+    Surface(
+        onClick = onShow,
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = SCRIM_ALPHA),
+        contentColor = MaterialTheme.aircast.outdoorForeground,
+        modifier = Modifier
+            .height(VIDEO_TAB_HEIGHT)
+            .verticalSwipe(swipeDistance) { if (it == VideoSwipe.Down) onShow() }
+            .semantics { contentDescription = "Show the video" },
+    ) {
+        Row(Modifier.padding(horizontal = AircastSpace.s3), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
+            Icon(painterResource(R.drawable.ic_videocam), null, Modifier.size(18.dp))
+            Text("Video", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun SplitHandle(swipeDistance: Float, onSmaller: () -> Unit, onFullScreen: () -> Unit) {
+    Box(
+        Modifier
+            .size(HANDLE_TOUCH)
+            .verticalSwipe(swipeDistance) { swipe -> if (swipe == VideoSwipe.Up) onSmaller() else onFullScreen() }
+            .semantics {
+                contentDescription = "Video size"
+                customActions = listOf(
+                    CustomAccessibilityAction("Make the video small") { onSmaller(); true },
+                    CustomAccessibilityAction("Show the video full screen") { onFullScreen(); true },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(HANDLE_BAR).background(MaterialTheme.aircast.outdoorForeground.copy(alpha = HANDLE_ALPHA), CircleShape).osdShadow())
     }
 }
 

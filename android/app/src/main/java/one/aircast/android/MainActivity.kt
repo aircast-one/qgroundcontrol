@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.WindowInsets
@@ -111,6 +112,7 @@ import one.aircast.android.ui.FlyScreen
 import one.aircast.android.ui.FlyPortrait
 import androidx.compose.foundation.layout.RowScope
 import one.aircast.android.ui.flyIsPortrait
+import one.aircast.android.ui.videoGestures
 import org.mavlink.qgroundcontrol.QGCBridge
 
 private val KEY_ROW_STOP_GAP = 24.dp
@@ -451,8 +453,12 @@ fun AircastShell(hostView: android.view.View?) {
                 window.navigationBarColor = barColor
             }
         }
-        if (fullScreen) {
-            Box(Modifier.fillMaxSize()) { flyVideo(Modifier.fillMaxSize(), true) }
+        if (fullScreen && !flyIsPortrait()) {
+            val swipeCamera = one.aircast.android.ui.rememberCameraSwiper()
+            val gimbalDrags by rememberUpdatedState(one.aircast.android.ui.rememberGimbalDrags())
+            val swipeDistance = with(androidx.compose.ui.platform.LocalDensity.current) { one.aircast.android.ui.VIDEO_SWIPE_DISTANCE.toPx() }
+            val swipes = remember { one.aircast.android.ui.cameraSwipes({ gimbalDrags }, { swipeCamera(it) }, swipeDistance) }
+            Box(Modifier.fillMaxSize()) { flyVideo(Modifier.fillMaxSize().then(remember { Modifier.videoGestures(swipes) }), true) }
             return@AircastTheme
         }
         val onFly = tab == Tab.Fly
@@ -470,10 +476,10 @@ fun AircastShell(hostView: android.view.View?) {
             }
         }
         val immersiveView = LocalView.current
-        DisposableEffect(flyLandscape) {
+        DisposableEffect(flyLandscape || fullScreen) {
             val window = (immersiveView.context as? Activity)?.window
             val controller = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, immersiveView) }
-            if (flyLandscape) {
+            if (flyLandscape || fullScreen) {
                 controller?.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 controller?.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             } else {
@@ -593,6 +599,12 @@ fun AircastShell(hostView: android.view.View?) {
                             rail = { thumbnailRoom -> flyRail(true, thumbnailRoom) },
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
+                            fullScreen = fullScreen,
+                            onFullScreen = {
+                                flyView = one.aircast.android.ui.FlyView.Video
+                                videoFullScreen = true
+                            },
+                            onExitFullScreen = { videoFullScreen = false },
                         )
                     }
                 }

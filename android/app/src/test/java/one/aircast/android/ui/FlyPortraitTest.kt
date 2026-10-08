@@ -32,4 +32,30 @@ class FlyPortraitTest {
         assertFalse("the split view has the picture above, not a thumbnail", portraitVideoThumbnail(split = true, reading(available = true, streamEnabled = true, sourceChosen = true)))
         assertFalse(portraitVideoThumbnail(split = false, null))
     }
+
+    @Test
+    fun `a swipe past the threshold reads as its main direction, and a short one is ignored`() {
+        org.junit.Assert.assertEquals(VideoSwipe.Up, videoSwipe(androidx.compose.ui.geometry.Offset(5f, -80f), 40f))
+        org.junit.Assert.assertEquals(VideoSwipe.Down, videoSwipe(androidx.compose.ui.geometry.Offset(-10f, 60f), 40f))
+        org.junit.Assert.assertNull("too short", videoSwipe(androidx.compose.ui.geometry.Offset(0f, -30f), 40f))
+        org.junit.Assert.assertEquals("sideways switches the camera rather than hiding", VideoSwipe.Right, videoSwipe(androidx.compose.ui.geometry.Offset(120f, -60f), 40f))
+        org.junit.Assert.assertEquals(VideoSwipe.Left, videoSwipe(androidx.compose.ui.geometry.Offset(-90f, 10f), 40f))
+    }
+
+    @Test
+    fun `a dragged picture-in-picture settles on the side its centre was dropped on`() {
+        assertTrue(pipOnStart(centreX = 300f, width = 1080f))
+        assertFalse(pipOnStart(centreX = 700f, width = 1080f))
+        val geometry = PipGeometry(width = 1080f, pip = androidx.compose.ui.geometry.Size(440f, 248f), inset = 33f, pipTop = 300f, split = androidx.compose.ui.geometry.Rect(0f, 200f, 1080f, 808f), full = androidx.compose.ui.geometry.Rect(0f, 0f, 1080f, 2200f))
+        org.junit.Assert.assertEquals(androidx.compose.ui.geometry.Offset(607f, 300f), geometry.anchor(start = false))
+        org.junit.Assert.assertEquals(androidx.compose.ui.geometry.Offset(33f, 300f), geometry.anchor(start = true))
+        val finger = androidx.compose.ui.geometry.Offset(540f, 500f)
+        org.junit.Assert.assertEquals("pulled out of the split view, the picture is centred under the finger", finger, geometry.pip(false, geometry.dragToCentre(false, finger)).center)
+    }
+
+    @Test
+    fun `the controls beside the video make room for the picture or for its tab`() {
+        org.junit.Assert.assertEquals(0f, pipRoom(thumbnail = false, tucked = false).value)
+        assertTrue(pipRoom(thumbnail = true, tucked = true) < pipRoom(thumbnail = true, tucked = false))
+    }
 }

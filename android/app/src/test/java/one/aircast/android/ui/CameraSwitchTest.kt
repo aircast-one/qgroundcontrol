@@ -123,4 +123,13 @@ class CameraSwitchTest {
         val pill = IntRect(280, 500, 400, 560)
         assertEquals(IntOffset(416, 380), menuBeside(pill, window, menu, MenuSide.Start, gap = 16, rtl = true))
     }
+
+    @Test
+    fun `a swipe steps to the neighbouring camera and wraps around the ends`() {
+        val state = cameraSwitchState(reading(camera(0), camera(1, active = true), camera(2)))
+        assertEquals(2, neighbourCamera(state, 1)?.slot)
+        assertEquals(0, neighbourCamera(state, -1)?.slot)
+        assertEquals(0, neighbourCamera(cameraSwitchState(reading(camera(0), camera(1), camera(2, active = true))), 1)?.slot)
+        assertNull("one camera has nowhere to swipe to", neighbourCamera(cameraSwitchState(reading(camera(0, active = true))), 1))
+    }
 }
