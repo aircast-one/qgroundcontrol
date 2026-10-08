@@ -199,6 +199,8 @@ internal const val VALUE_DETAILS_TITLE = "Value Details"
 
 private const val APP_SETTING_PREFIX = "settings."
 
+internal const val SENT_TO_AIRCRAFT_NOTE = "Changes go to the aircraft straight away, even in flight."
+
 internal const val EDIT_PARAMETER_TITLE = "Edit parameter"
 
 internal fun valueDetailsNotes(fact: Fact): List<String> = listOfNotNull(
@@ -219,10 +221,12 @@ internal fun ValueDetailsSheet(fact: Fact, title: String = VALUE_DETAILS_TITLE, 
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(title, style = MaterialTheme.typography.titleLarge)
-            if (opensAsValue(fact)) ValueControls(fact, onWrite)
-            FactRow(fact = fact, title = if (opensAsValue(fact)) "Type a value" else fact.heading, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = onWrite)
+            val typedEntry: @Composable () -> Unit = {
+                FactRow(fact = fact, title = if (opensAsValue(fact)) "Type a value" else fact.heading, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = onWrite)
+            }
+            if (opensAsValue(fact)) ValueControls(fact, onWrite, typedEntry) else typedEntry()
             valueDetailsNotes(fact).forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            if (!fact.readOnly && !fact.path.startsWith(APP_SETTING_PREFIX)) Text(IN_FLIGHT_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
+            if (!fact.readOnly && !fact.path.startsWith(APP_SETTING_PREFIX)) Text(SENT_TO_AIRCRAFT_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
             refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 default?.let { value ->

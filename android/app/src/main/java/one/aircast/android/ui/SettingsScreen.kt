@@ -767,11 +767,11 @@ internal fun FactRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column(Modifier.weight(1f)) {
-                FactTitle(title, titleColor, helpToggle, { helpOpen = !helpOpen })
-                val note = shown.text.split(SUBTITLE_SEPARATOR).filter { it.isNotBlank() && it != fact.units }.joinToString(SUBTITLE_SEPARATOR)
+                FactTitle(title, titleColor, null, {})
+                val note = shown.text.split(SUBTITLE_SEPARATOR).filter { it.isNotBlank() && it != fact.units && it != fact.detail }.joinToString(SUBTITLE_SEPARATOR)
                 if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(valueText(fact), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            Text(valueText(fact), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Icon(painterResource(R.drawable.ic_chevron_right), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (editing) ValueDetailsSheet(fact, title = title, onWrite = onWrite) { editing = false }
@@ -1005,6 +1005,10 @@ private fun EnumField(fact: Fact, modifier: Modifier, write: (() -> Boolean) -> 
     }
 }
 
+internal fun rowChoiceLabel(label: String): String = label.substringBefore(", ")
+
+private const val DISABLED_VALUE_ALPHA = 0.5f
+
 @Composable
 internal fun ChoiceField(label: String?, value: String, options: List<String>, modifier: Modifier = Modifier, enabled: Boolean = true, groups: List<String> = emptyList(), onPick: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
@@ -1013,7 +1017,7 @@ internal fun ChoiceField(label: String?, value: String, options: List<String>, m
     Box(modifier, contentAlignment = Alignment.CenterEnd) {
         if (plain) {
             Row(Modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(value, style = MaterialTheme.typography.bodyLarge, color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(rowChoiceLabel(value), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else DISABLED_VALUE_ALPHA), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
