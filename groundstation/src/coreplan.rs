@@ -2963,7 +2963,7 @@ pub fn breach_altitude_fact() -> Option<Value> {
         return None;
     }
     let altitude = breach_altitude_now()?;
-    let meta = crate::factmeta::from_file(BREACH_RETURN_META).ok()?.remove("Altitude")?;
+    let meta = crate::factmeta::fact(BREACH_RETURN_META, "Altitude")?;
     let mut fact = crate::settingsstore::fact_json(&meta, &json!(altitude), crate::units::cooking("vertical m"));
     ["defaultValueString", "userVisible", "visible"].iter().for_each(|key| fact[*key] = Value::Null);
     Some(fact)

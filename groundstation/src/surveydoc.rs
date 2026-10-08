@@ -81,8 +81,8 @@ const MANUAL_CAMERA: &str = "Manual (no camera specs)";
 const CUSTOM_CAMERA: &str = "Custom Camera";
 const DEFAULT_DECIMAL_PLACES: i64 = 3;
 
-fn meta(file: &str, name: &str) -> Option<crate::factmeta::MetaData> {
-    crate::factmeta::from_file(file).ok()?.remove(name)
+fn meta(file: &'static str, name: &str) -> Option<crate::factmeta::MetaData> {
+    crate::factmeta::fact(file, name)
 }
 
 fn integer_typed(value_type: &crate::factmeta::ValueType) -> bool {
@@ -170,7 +170,7 @@ fn fact(meta: &crate::factmeta::MetaData, value: Value, units: &Units) -> Value 
     })
 }
 
-pub fn fact_control(file: &str, name: &str, value: Value, item: &str, suffix: &str, units: &Units) -> Option<Value> {
+pub fn fact_control(file: &'static str, name: &str, value: Value, item: &str, suffix: &str, units: &Units) -> Option<Value> {
     let meta = meta(file, name)?;
     let typed = crate::settingsstore::typed(&meta.value_type, &value).unwrap_or(value);
     Some(control(&meta, typed, item, suffix, "Settings", units))
@@ -521,7 +521,7 @@ const SPECS: [(&str, &str); 8] = [("SensorWidth", "sensorWidth"), ("SensorHeight
 
 const CALC_FACTS: [&str; 4] = ["ValueSetIsDistance", "ImageDensity", "FrontalOverlap", "SideOverlap"];
 
-fn meta_default(file: &str, name: &str) -> Value {
+fn meta_default(file: &'static str, name: &str) -> Value {
     meta(file, name).and_then(|m| m.default.as_ref().map(|d| crate::settingsstore::typed(&m.value_type, d).unwrap_or_else(|| d.clone()))).unwrap_or(Value::Null)
 }
 
@@ -682,7 +682,7 @@ pub struct Fresh<'a> {
 
 const SAVED_BY_EVERY_CAMERA: [&str; 6] = ["version", "AdjustedFootprintSide", "AdjustedFootprintFrontal", "DistanceToSurface", "DistanceMode", "CameraName"];
 
-fn remembered(fresh: &Fresh, group: &str, file: &str, name: &str) -> Value {
+fn remembered(fresh: &Fresh, group: &str, file: &'static str, name: &str) -> Value {
     let Some(meta) = meta(file, name) else { return Value::Null };
     let stored = (fresh.remembered)(&format!("{group}/{name}")).and_then(|text| crate::settingsstore::typed(&meta.value_type, &Value::String(text)));
     stored.or_else(|| meta.default.as_ref().map(|d| crate::settingsstore::typed(&meta.value_type, d).unwrap_or_else(|| d.clone()))).unwrap_or(Value::Null)

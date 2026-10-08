@@ -1,5 +1,6 @@
 use serde_json::{Map, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueType {
@@ -203,6 +204,18 @@ pub fn from_object_for(json: &Map<String, Value>, defines: &BTreeMap<String, Str
     })
 }
 
+type Parsed = Arc<Result<BTreeMap<String, MetaData>, String>>;
+
+static PARSED: LazyLock<Mutex<HashMap<(usize, usize), Parsed>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub fn parsed(text: &'static str) -> Parsed {
+    PARSED.lock().unwrap_or_else(PoisonError::into_inner).entry((text.as_ptr() as usize, text.len())).or_insert_with(|| Arc::new(from_file(text))).clone()
+}
+
+pub fn fact(text: &'static str, name: &str) -> Option<MetaData> {
+    parsed(text).as_ref().as_ref().ok()?.get(name).cloned()
+}
+
 pub fn from_file(text: &str) -> Result<BTreeMap<String, MetaData>, String> {
     from_file_for(text, cfg!(any(target_os = "android", target_os = "ios")))
 }
@@ -242,6 +255,14 @@ mod tests {
         let mut out = Vec::new();
         walk(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../src")), &mut out);
         out
+    }
+
+    #[test]
+    fn a_metadata_file_is_parsed_once_and_answers_like_a_fresh_parse() {
+        const FILE: &str = r#"{"version":1,"fileType":"FactMetaData","QGC.MetaData.Facts":[{"name":"Speed","type":"double","default":5}]}"#;
+        assert!(Arc::ptr_eq(&parsed(FILE), &parsed(FILE)));
+        assert_eq!(fact(FILE, "Speed"), from_file(FILE).unwrap().remove("Speed"));
+        assert_eq!(fact(FILE, "Missing"), None);
     }
 
     #[test]

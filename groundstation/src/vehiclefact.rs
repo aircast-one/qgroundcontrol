@@ -95,7 +95,7 @@ fn battery_raw(id: u8, battery: &BatteryFacts, name: &str) -> Value {
 }
 
 pub fn battery_fact(id: u8, battery: &BatteryFacts, name: &str, property: Option<&str>) -> Option<Value> {
-    let meta = crate::factmeta::from_file(BATTERY_META).ok()?.remove(name)?;
+    let meta = crate::factmeta::fact(BATTERY_META, name)?;
     Some(fact(&meta, &battery_raw(id, battery, name), property))
 }
 
@@ -144,7 +144,7 @@ impl VibrationFacts {
 }
 
 pub fn vibration_fact(vibration: &VibrationFacts, name: &str, property: Option<&str>) -> Option<Value> {
-    let meta = crate::factmeta::from_file(VIBRATION_META).ok()?.remove(name)?;
+    let meta = crate::factmeta::fact(VIBRATION_META, name)?;
     Some(fact(&meta, &vibration.raw(name)?, property))
 }
 
@@ -178,7 +178,7 @@ pub struct GroupSpec {
 }
 
 pub fn spec_fact(spec: &GroupSpec, name: &str, raw: &Value, property: Option<&str>) -> Option<Value> {
-    let meta = crate::factmeta::from_file(spec.meta).ok()?.remove(name)?;
+    let meta = crate::factmeta::fact(spec.meta, name)?;
     Some(fact(&meta, raw, property))
 }
 
@@ -751,7 +751,7 @@ fn orbit_center(circle: Option<(f32, i32, i32)>) -> Option<Value> {
 }
 
 fn orbit_radius(circle: Option<(f32, i32, i32)>, property: Option<&str>) -> Option<Value> {
-    let meta = crate::factmeta::from_file(CIRCLE_META).ok()?.remove("Radius")?;
+    let meta = crate::factmeta::fact(CIRCLE_META, "Radius")?;
     Some(fact(&meta, &json!(circle.map_or(0.0, |(radius, _, _)| f64::from(radius).abs())), property))
 }
 
@@ -807,7 +807,7 @@ pub fn gimbal_group_name(pair: crate::gimbal::PairId) -> String {
 }
 
 fn gimbal_meta(name: &str) -> Option<MetaData> {
-    match crate::factmeta::from_file(GIMBAL_META).ok()?.remove(name) {
+    match crate::factmeta::fact(GIMBAL_META, name) {
         Some(meta) => Some(meta),
         None => GIMBAL_FACT_NAMES.contains(&name).then(|| crate::factmeta::from_object(json!({ "name": name, "type": "uint8" }).as_object()?, &Default::default()).ok()).flatten(),
     }
@@ -856,11 +856,11 @@ const VEHICLE_PROPERTIES: [&str; 32] = [
     "roll", "pitch", "heading", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "airSpeedSetpoint", "climbRate", "altitudeRelative", "altitudeAMSL", "altitudeAboveTerr", "altitudeTuning", "altitudeTuningSetpoint", "xTrackError", "rangeFinderDist", "flightDistance", "flightTime", "distanceToHome", "timeToHome", "missionItemIndex", "headingToNextWP", "distanceToNextWP", "headingToHome", "headingFromHome", "headingFromGCS", "distanceToGCS", "hobbs", "throttlePct", "imuTemp", "rcRSSI",
 ];
 
-fn listing<'a>(meta: &str, properties: impl IntoIterator<Item = (&'a str, &'a str)>) -> Value {
-    let described = crate::factmeta::from_file(meta).unwrap_or_default();
+fn listing<'a>(meta: &'static str, properties: impl IntoIterator<Item = (&'a str, &'a str)>) -> Value {
+    let described = crate::factmeta::parsed(meta);
     let facts: Vec<Value> = properties
         .into_iter()
-        .map(|(property, name)| json!({ "property": property, "name": name, "shortDescription": described.get(name).map_or("", |m| m.short_description.as_str()) }))
+        .map(|(property, name)| json!({ "property": property, "name": name, "shortDescription": described.as_ref().as_ref().ok().and_then(|all| all.get(name)).map_or("", |m| m.short_description.as_str()) }))
         .collect();
     json!({ "kind": "object", "facts": facts })
 }
@@ -929,7 +929,7 @@ pub fn instrument_catalogue(sub: bool) -> (Vec<(&'static str, Value)>, Value) {
 }
 
 pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {
-    let meta = crate::factmeta::from_file(VEHICLE_META).ok()?.remove(name)?;
+    let meta = crate::factmeta::fact(VEHICLE_META, name)?;
     Some(fact(&meta, raw, None))
 }
 
@@ -1016,7 +1016,7 @@ fn gps_raw(gps: &crate::gpsfacts::GpsFacts, name: &str) -> Option<Value> {
 
 pub fn gps_fact(gps: &crate::gpsfacts::GpsFacts, name: &str) -> Option<Value> {
     GPS_ANSWERED.contains(&name).then_some(())?;
-    let meta = crate::factmeta::from_file(GPS_META).ok()?.remove(name)?;
+    let meta = crate::factmeta::fact(GPS_META, name)?;
     Some(fact(&meta, &gps_raw(gps, name)?, None))
 }
 
@@ -1035,7 +1035,7 @@ pub fn gps_aggregate_fact(gps: &crate::gpsfacts::GpsFacts, gps2: &crate::gpsfact
         "authenticationState" => authentication,
         _ => return None,
     };
-    let meta = crate::factmeta::from_file(GPS_META).ok()?.remove(name)?;
+    let meta = crate::factmeta::fact(GPS_META, name)?;
     Some(fact(&meta, &json!(raw), None))
 }
 

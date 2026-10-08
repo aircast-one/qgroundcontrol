@@ -63,7 +63,7 @@ pub struct Fresh {
 
 fn fact(fresh: &Fresh, name: &str) -> Value {
     let file = if fresh.vtol { VTOL_META } else { FIXED_WING_META };
-    let Some(meta) = crate::factmeta::from_file(file).ok().and_then(|mut all| all.remove(name)) else { return Value::Null };
+    let Some(meta) = crate::factmeta::fact(file, name) else { return Value::Null };
     meta.default.as_ref().map(|d| crate::settingsstore::typed(&meta.value_type, d).unwrap_or_else(|| d.clone())).unwrap_or(Value::Null)
 }
 
@@ -342,7 +342,7 @@ pub fn fields(pattern: &Value, item: &str, units: &crate::surveydoc::Units) -> V
 
 pub fn raw(pattern: &Value, suffix: &str, value: &Value, units: &crate::surveydoc::Units) -> Value {
     let file = if is_vtol(pattern) { VTOL_META } else { FIXED_WING_META };
-    let unit = FIELDS.iter().find(|(_, s)| *s == suffix).and_then(|(name, _)| crate::factmeta::from_file(file).ok()?.remove(*name)).and_then(|m| crate::surveydoc::cooked_unit(m.units.as_deref().unwrap_or(""), units));
+    let unit = FIELDS.iter().find(|(_, s)| *s == suffix).and_then(|(name, _)| crate::factmeta::fact(file, name)).and_then(|m| crate::surveydoc::cooked_unit(m.units.as_deref().unwrap_or(""), units));
     match (unit, value.as_f64()) {
         (Some(u), Some(v)) => json!(u.meters(v)),
         _ => value.clone(),

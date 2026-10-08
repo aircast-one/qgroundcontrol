@@ -42,26 +42,26 @@ impl<B: Backend> Core<B> {
 
     pub fn get(&self, path: &str) -> String {
         crate::coreplan::poll_host(&self.backend);
-        match (view::owns(path), view::lookup(path)) {
+        crate::vehiclefacade::one_pass(|| match (view::owns(path), view::lookup(path)) {
             (true, Some(v)) => v.render(&self.backend, path),
             (true, None) => view::unknown(path).to_string(),
             (false, _) => match crate::renamed::read(&self.backend, path) {
                 Some(served) => served,
                 None => crate::renamed::patch(path, self.backend.get(path)),
             },
-        }
+        })
     }
 
     pub fn get_fields(&self, path: &str, fields: &str) -> String {
         crate::coreplan::poll_host(&self.backend);
-        match (view::owns(path), view::lookup(path)) {
+        crate::vehiclefacade::one_pass(|| match (view::owns(path), view::lookup(path)) {
             (true, Some(v)) => v.render_fields(&self.backend, path, fields),
             (true, None) => view::unknown(path).to_string(),
             (false, _) => match crate::renamed::fields(path, fields) {
                 Some(widened) => crate::renamed::patch(path, self.backend.get_fields(path, &widened)),
                 None => self.backend.get_fields(path, fields),
             },
-        }
+        })
     }
 
     pub fn set(&self, path: &str, value: &str) -> String {
@@ -143,13 +143,15 @@ impl<B: Backend> Core<B> {
     pub fn poll(&self) -> Vec<(String, String)> {
         crate::connectnotices::announce(&self.backend);
         let asked = self.watching.lock().unwrap().asked();
-        let rendered: Vec<(String, String)> = asked
-            .iter()
-            .map(|path| match view::lookup(path) {
-                Some(v) => (path.clone(), v.render(&self.backend, path)),
-                None => (path.clone(), self.get(path)),
-            })
-            .collect();
+        let rendered: Vec<(String, String)> = crate::vehiclefacade::one_pass(|| {
+            asked
+                .iter()
+                .map(|path| match view::lookup(path) {
+                    Some(v) => (path.clone(), v.render(&self.backend, path)),
+                    None => (path.clone(), self.get(path)),
+                })
+                .collect()
+        });
         let mut watching = self.watching.lock().unwrap();
         rendered.into_iter().filter(|(path, json)| watching.last.insert(path.clone(), json.clone()).as_deref() != Some(json.as_str())).collect()
     }
@@ -171,7 +173,7 @@ impl<B: Backend> Core<B> {
             )
         };
         let recomputed: Vec<(String, String)> =
-            dependents.iter().map(|(asked_path, v)| (asked_path.clone(), v.render(&self.backend, asked_path))).collect();
+            crate::vehiclefacade::one_pass(|| dependents.iter().map(|(asked_path, v)| (asked_path.clone(), v.render(&self.backend, asked_path))).collect());
         let (changed, asked): (Vec<(String, String)>, BTreeSet<String>) = {
             let mut watching = self.watching.lock().unwrap();
             let changed = recomputed

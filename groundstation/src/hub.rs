@@ -448,6 +448,11 @@ pub fn is_prearm(text: &str, severity: u8) -> bool {
 }
 
 impl Vehicle {
+    #[cfg(test)]
+    pub fn heard(id: u8) -> Vehicle {
+        Vehicle::new(id, 1, crate::modes::AUTOPILOT_PX4, 2, 0, false)
+    }
+
     fn new(id: u8, component: u8, autopilot: u8, vehicle_type: u8, link: LinkId, replay: bool) -> Vehicle {
         Vehicle {
             id,

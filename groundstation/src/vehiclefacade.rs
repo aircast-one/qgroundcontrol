@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 
 use crate::router::Backend;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 pub struct Facade<B>(pub B);
 
@@ -336,8 +338,38 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
     fields.as_object().cloned().unwrap_or_default()
 }
 
-fn carried() -> Option<Known> {
-    crate::hub::lock().active().map(known_of)
+thread_local! {
+    static PASS: std::cell::RefCell<Option<HashMap<u8, Rc<Known>>>> = const { std::cell::RefCell::new(None) };
+}
+
+struct Pass;
+
+impl Drop for Pass {
+    fn drop(&mut self) {
+        PASS.with(|pass| pass.replace(None));
+    }
+}
+
+pub fn one_pass<T>(render: impl FnOnce() -> T) -> T {
+    let idle = PASS.with(|pass| pass.borrow().is_none());
+    let _started = idle.then(|| {
+        PASS.with(|pass| pass.replace(Some(HashMap::new())));
+        Pass
+    });
+    render()
+}
+
+fn known(v: &crate::hub::Vehicle) -> Rc<Known> {
+    let remembered = PASS.with(|pass| pass.borrow().as_ref().and_then(|seen| seen.get(&v.id).cloned()));
+    remembered.unwrap_or_else(|| {
+        let fresh = Rc::new(known_of(v));
+        PASS.with(|pass| pass.borrow_mut().as_mut().map(|seen| seen.insert(v.id, fresh.clone())));
+        fresh
+    })
+}
+
+fn carried() -> Option<Rc<Known>> {
+    crate::hub::lock().active().map(known)
 }
 
 fn fleet_member(path: &str) -> Option<(usize, &str)> {
@@ -448,15 +480,15 @@ fn selected_member(path: &str) -> Option<(usize, &str)> {
     Some((index.parse().ok()?, tail))
 }
 
-fn resolved(path: &str) -> Option<(String, Known)> {
+fn resolved(path: &str) -> Option<(String, Rc<Known>)> {
     switched_on().then_some(())?;
     if let Some((index, tail)) = selected_member(path) {
         let field = if tail.is_empty() { "vehicle".to_string() } else { format!("vehicle.{tail}") };
-        return crate::hub::lock().selected_member(index).map(|v| (field, known_of(v)));
+        return crate::hub::lock().selected_member(index).map(|v| (field, known(v)));
     }
     match fleet_member(path) {
-        Some((index, "")) => crate::hub::lock().listed(index).map(|v| ("vehicle".to_string(), known_of(v))),
-        Some((index, tail)) => crate::hub::lock().listed(index).map(|v| (format!("vehicle.{tail}"), known_of(v))),
+        Some((index, "")) => crate::hub::lock().listed(index).map(|v| ("vehicle".to_string(), known(v))),
+        Some((index, tail)) => crate::hub::lock().listed(index).map(|v| (format!("vehicle.{tail}"), known(v))),
         None => carried().map(|known| (path.to_string(), known)),
     }
 }
@@ -1977,6 +2009,15 @@ impl<B: Backend> Backend for Facade<B> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn one_render_pass_builds_a_vehicles_facts_once_and_forgets_them_after() {
+        let vehicle = crate::hub::Vehicle::heard(1);
+        let (first, second, nested) = super::one_pass(|| (super::known(&vehicle), super::known(&vehicle), super::one_pass(|| super::known(&vehicle))));
+        assert!(std::rc::Rc::ptr_eq(&first, &second));
+        assert!(std::rc::Rc::ptr_eq(&first, &nested), "a get inside a poll joins the poll's pass");
+        assert!(!std::rc::Rc::ptr_eq(&super::known(&vehicle), &super::known(&vehicle)), "outside a pass every read sees the vehicle as it is now");
+    }
+
     #[test]
     fn a_parameter_write_names_its_path_kind_and_refuses_what_is_not_a_write() {
         assert_eq!(parameter_write("vehicle.parameterManager.getParameter(1,X).enumStrings", "{\"value\":1}"), None, "only the fact, its value, raw value and enum index are written as a parameter");

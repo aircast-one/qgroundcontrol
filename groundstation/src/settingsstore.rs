@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{LazyLock, Mutex, PoisonError};
 
 use serde_json::{Value, json};
@@ -146,7 +146,7 @@ pub fn metadata(group: &str, fact: &str) -> Option<MetaData> {
         return Some(units);
     }
     let json = crate::settingsgroups::group(group).map(|g| g.json).or_else(|| EXTRA_GROUPS.iter().find(|(name, _)| *name == group).map(|(_, json)| *json))?;
-    crate::factmeta::from_file(json).ok()?.remove(fact)
+    crate::factmeta::fact(json, fact)
 }
 
 fn with_property(fact: Value, property: &str) -> Value {
@@ -213,16 +213,47 @@ fn spelled(value: &Value, decimals: i64, whole: bool) -> String {
     }
 }
 
-const TIE_DIGITS: usize = 30;
+const FRACTION_BITS: u64 = (1 << 52) - 1;
+const EXACT_INTEGERS: f64 = 9_007_199_254_740_992.0;
+const HUGE_KEPT: usize = 64;
+
+static HUGE: LazyLock<Mutex<HashMap<(u64, usize), String>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub fn fixed_as_qt(n: f64, decimals: usize) -> String {
-    let expanded = format!("{:.*}", decimals + TIE_DIGITS, n.abs());
-    let beyond = &expanded[expanded.len() - TIE_DIGITS..];
-    let tie = beyond.starts_with('5') && beyond[1..].bytes().all(|b| b == b'0');
-    let scale = 10f64.powi(i32::try_from(decimals).unwrap_or(0));
-    match tie && n.is_finite() {
-        true => format!("{:.decimals$}", n.signum() * ((n.abs() * scale).floor() + 1.0) / scale),
+    match exact_tie(n, decimals) {
+        true => {
+            let scale = 10f64.powi(i32::try_from(decimals).unwrap_or(0));
+            format!("{:.decimals$}", n.signum() * ((n.abs() * scale).floor() + 1.0) / scale)
+        }
+        false => plain_fixed(n, decimals),
+    }
+}
+
+fn exact_tie(n: f64, decimals: usize) -> bool {
+    let bits = n.to_bits();
+    let biased = i64::try_from((bits >> 52) & 0x7ff).unwrap_or(0);
+    let (mantissa, exponent) = match biased {
+        0 => (bits & FRACTION_BITS, -1074),
+        _ => ((bits & FRACTION_BITS) | (1 << 52), biased - 1075),
+    };
+    n.is_finite() && mantissa != 0 && exponent + i64::from(mantissa.trailing_zeros()) == -1 - i64::try_from(decimals).unwrap_or(i64::MAX - 1)
+}
+
+fn plain_fixed(n: f64, decimals: usize) -> String {
+    match n.abs() >= EXACT_INTEGERS {
         false => format!("{n:.decimals$}"),
+        true => {
+            let key = (n.to_bits(), decimals);
+            let kept = HUGE.lock().unwrap_or_else(PoisonError::into_inner).get(&key).cloned();
+            kept.unwrap_or_else(|| {
+                let text = format!("{n:.decimals$}");
+                let mut huge = HUGE.lock().unwrap_or_else(PoisonError::into_inner);
+                if huge.len() < HUGE_KEPT {
+                    huge.insert(key, text.clone());
+                }
+                text
+            })
+        }
     }
 }
 
@@ -1050,6 +1081,14 @@ mod tests {
         assert_eq!(fixed_as_qt(-2.5, 0), "-3");
         assert_eq!(fixed_as_qt(0.5, 0), "1");
         assert_eq!(fixed_as_qt(12.34, 1), "12.3");
+        assert_eq!(fixed_as_qt(1_048_576.5, 0), "1048577");
+        assert_eq!(fixed_as_qt(0.125_000_001, 2), "0.13");
+        assert_eq!(fixed_as_qt(0.124_999_999, 2), "0.12");
+        assert_eq!(fixed_as_qt(f64::NAN, 1), "NaN");
+        assert_eq!(fixed_as_qt(f32::MAX.into(), 2), format!("{:.2}", f64::from(f32::MAX)));
+        assert_eq!(fixed_as_qt(f64::MIN, 1), format!("{:.1}", f64::MIN));
+        assert_eq!(fixed_as_qt(f64::MIN, 1), format!("{:.1}", f64::MIN), "a type limit reads the same once remembered");
+        assert_eq!(fixed_as_qt(5e-324, 0), "0");
     }
 
     use super::*;
