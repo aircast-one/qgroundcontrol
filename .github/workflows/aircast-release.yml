@@ -233,6 +233,24 @@ jobs:
           track: internal
           status: completed
 
+      - name: Get a Google Play token for the tester lists
+        id: play_token
+        if: ${{ steps.play_auth.outcome == 'success' }}
+        continue-on-error: true
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/334352171308/locations/global/workloadIdentityPools/github/providers/github
+          service_account: play-publisher@aircast-439915.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+
+      - name: Keep the testers Google Group on the closed testing track
+        if: ${{ steps.play_token.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          PLAY_ACCESS_TOKEN: ${{ steps.play_token.outputs.access_token }}
+        run: ./tools/android/play-testers.sh
+
       - name: Collect the native head APK
         env:
           SHORT: ${{ needs.setup.outputs.short_version }}
