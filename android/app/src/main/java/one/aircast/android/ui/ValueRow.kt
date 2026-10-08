@@ -141,9 +141,11 @@ internal fun interface ChangeNotice {
     fun show(message: String, undo: (suspend () -> String?)?)
 }
 
+internal val LocalRowWarning = androidx.compose.runtime.compositionLocalOf<String?> { null }
+
 internal val LocalChangeNotice = androidx.compose.runtime.staticCompositionLocalOf { ChangeNotice { _, _ -> } }
 
-private const val DONE_MARK_MS = 1500L
+private const val DONE_MARK_MS = 3000L
 
 @Composable
 internal fun SliderValueRow(fact: Fact, label: String, slider: InlineSlider, title: @Composable () -> Unit, onOpen: () -> Unit, onWrite: () -> Unit) {

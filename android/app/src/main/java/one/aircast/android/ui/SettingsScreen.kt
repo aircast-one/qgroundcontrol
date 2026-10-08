@@ -745,6 +745,7 @@ internal fun FactRow(
                 Column {
                     FactTitle(title, titleColor, null, {})
                     if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LocalRowWarning.current?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning) }
                 }
             }, onOpen = { editing = true }, onWrite = onWrite)
             if (editing) ValueDetailsSheet(fact, title = title, onWrite = onWrite) { editing = false }
@@ -758,6 +759,7 @@ internal fun FactRow(
             Column(Modifier.weight(1f)) {
                 FactTitle(title, titleColor, null, {})
                 if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LocalRowWarning.current?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning) }
             }
             Text(valueText(fact), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Icon(painterResource(R.drawable.ic_chevron_right), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)

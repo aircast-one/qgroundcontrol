@@ -13,7 +13,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import one.aircast.map.aircast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +56,7 @@ internal fun firstReported(setting: PilotSetting, reported: (String) -> Fact?): 
 internal fun PilotSettings(group: SettingsGroup) {
     val settings = pilotSettings(group)
     if (settings.isEmpty()) return
+    if (!hasVehicle()) return OfflinePilotSettings(settings)
     val setup by qgcPath(SETUP)
     val shown by produceState(emptyList<ShownPilotSetting>(), group, setup) {
         value = withContext(Dispatchers.Default) { settings.mapNotNull { setting -> firstReported(setting, ::parameterFact)?.let { ShownPilotSetting(setting, it) } } }
@@ -66,6 +66,42 @@ internal fun PilotSettings(group: SettingsGroup) {
         rows.map { PilotFactRow(it.fact, it.setting) }
     }
 }
+
+internal const val OFFLINE_PILOT_NOTE = "Connect the aircraft to see and change these."
+private const val OFFLINE_VALUE = "\u2014"
+private const val OFFLINE_ALPHA = 0.38f
+
+internal fun pilotSections(settings: List<PilotSetting>): Map<String, List<PilotSetting>> = settings.groupBy { it.section }
+
+@Composable
+private fun OfflinePilotSettings(settings: List<PilotSetting>) {
+    val navigation = LocalAppNavigation.current
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(OFFLINE_PILOT_NOTE, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = { navigation.settingsPage = CONNECTIONS_PAGE }) { Text("Add a link") }
+    }
+    pilotSections(settings).map { (section, rows) ->
+        SectionHeader(section)
+        rows.map { setting -> OfflineRow(setting.label, setting.hint) }
+    }
+}
+
+@Composable
+private fun OfflineRow(label: String, hint: String?) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = OFFLINE_ALPHA))
+            hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = OFFLINE_ALPHA)) }
+        }
+        Text(OFFLINE_VALUE, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = OFFLINE_ALPHA))
+    }
+}
+
+private val OFFLINE_SENSORS = listOf("Compass", "Accelerometer", "Gyroscope")
 
 private val SENSOR_CHECKS = listOf("compass", "accelerometer", "gyro")
 private const val SENSORS_SECTION = "Sensors"
@@ -79,6 +115,11 @@ internal fun sensorHealthy(routine: CalibrationRoutine): Boolean = routine.statu
 @Composable
 internal fun SensorChecks(onCalibrate: () -> Unit) {
     val json by qgcPath(CALIBRATION)
+    if (!hasVehicle()) {
+        SectionHeader(SENSORS_SECTION)
+        OFFLINE_SENSORS.map { OfflineRow(it, null) }
+        return
+    }
     val checks = sensorChecks(calibrationState(json))
     if (checks.isEmpty()) return
     SectionHeader(SENSORS_SECTION)
@@ -108,9 +149,8 @@ private fun PilotFactRow(shown: Fact, setting: PilotSetting) {
     val fact by produceState(shown, name, live, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name)?.copy(shortLabel = shown.shortLabel) } ?: shown
     }
-    FactRow(pilotChoices(fact), subtitle = setting.hint, onWrite = { revision++ })
-    setting.whenUnlimited?.takeIf { factNumber(fact) == 0f }?.let { warning ->
-        Text(warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
+    androidx.compose.runtime.CompositionLocalProvider(LocalRowWarning provides setting.whenUnlimited?.takeIf { factNumber(fact) == 0f }) {
+        FactRow(pilotChoices(fact), subtitle = setting.hint, onWrite = { revision++ })
     }
 }
 

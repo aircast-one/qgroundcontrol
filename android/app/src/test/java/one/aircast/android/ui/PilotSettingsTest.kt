@@ -88,4 +88,10 @@ class PilotSettingsTest {
         assertEquals("Stop motors", pilotChoice("Terminate"))
         assertEquals("Enabled always RTL", pilotChoice("Enabled always RTL"))
     }
+
+    @Test
+    fun `offline, safety still lists its sections in DJI's order so the pilot knows they exist`() {
+        assertEquals(listOf("Return to home", "Flight protection", "If something goes wrong"), pilotSections(pilotSettings(SettingsGroup.Safety)).keys.toList())
+        assertTrue(OFFLINE_PILOT_NOTE.startsWith("Connect the aircraft"))
+    }
 }
