@@ -40,7 +40,7 @@ enum Icon: String {
     case locationOn = "mappin.and.ellipse"
     case lock = "lock.fill"
     case map = "map"
-    case menu = "line.3.horizontal.decrease"
+    case menu = "line.horizontal.3"
     case moreVert = "ellipsis"
     case myLocation = "location"
     case navigation = "location.north.fill"

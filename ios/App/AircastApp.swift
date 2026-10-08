@@ -6,7 +6,6 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         QgcTileProtocol.install()
         CoreHost.start()
-        application.isIdleTimerDisabled = true
         return true
     }
 

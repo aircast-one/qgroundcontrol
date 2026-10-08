@@ -48,10 +48,12 @@ struct FlyPortrait: View {
     @State private var holding = false
 
     var body: some View {
-        GeometryReader { geometry in
-            portrait(geometry.size, geometry.safeAreaInsets)
+        GeometryReader { safeArea in
+            GeometryReader { geometry in
+                portrait(geometry.size, safeArea.safeAreaInsets)
+            }
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea()
         .background(theme.aircast.outdoorBackground.ignoresSafeArea())
     }
 
@@ -143,6 +145,7 @@ struct FlyPortrait: View {
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
+                            .allowsHitTesting(false)
                         )
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { deckHeight = $0 }
                 }
@@ -173,7 +176,7 @@ struct FlyPortrait: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: PORTRAIT_BAR_HEIGHT)
                         .padding(.top, safe.top)
-                        .background(LinearGradient(colors: [Color.black.opacity(SCRIM_ALPHA), .clear], startPoint: .top, endPoint: .bottom))
+                        .background(LinearGradient(colors: [Color.black.opacity(SCRIM_ALPHA), .clear], startPoint: .top, endPoint: .bottom).allowsHitTesting(false))
                     TrafficBanner()
                         .padding(.horizontal, Space.s3)
                         .padding(.bottom, Space.s2)

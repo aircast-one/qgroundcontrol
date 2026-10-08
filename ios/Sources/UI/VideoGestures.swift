@@ -63,13 +63,15 @@ private struct Press: Equatable {
 private struct VideoGesturesModifier: ViewModifier {
     let handlers: VideoGestureHandlers
     @State private var press: Press?
+    @State private var origin = CGPoint.zero
     @State private var holdTimer: Task<Void, Never>?
     @State private var tapTimer: Task<Void, Never>?
 
     func body(content: Content) -> some View {
         content
+            .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { origin = $0 }
             .simultaneousGesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
                     .onChanged(changed)
                     .onEnded(ended)
             )
@@ -102,7 +104,7 @@ private struct VideoGesturesModifier: ViewModifier {
         let second = tapTimer != nil
         tapTimer?.cancel()
         tapTimer = nil
-        press = Press(start: drag.startLocation, owned: second || handlers.owned(), phase: second ? .secondTap : .pressing, last: drag.location)
+        press = Press(start: CGPoint(x: drag.startLocation.x - origin.x, y: drag.startLocation.y - origin.y), owned: second || handlers.owned(), phase: second ? .secondTap : .pressing, last: drag.location)
         guard !second else { return }
         holdTimer = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(LONG_PRESS_MS))

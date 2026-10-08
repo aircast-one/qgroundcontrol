@@ -190,12 +190,11 @@ struct AircastShell: View {
         .tint((darkBars ? Theme.darkTheme : Theme.lightTheme).colors.primary)
         .preferredColorScheme(systemPalette ? nil : darkBars ? .dark : .light)
         .onChange(of: tab) { _, now in if now != .Fly { flyScreen.layout.editing = false } }
-        .onChange(of: navigation.setupPage) { _, page in if page != nil { navigation.openAircraft() } }
-        .onChange(of: navigation.settingsPage) { _, page in if page != nil { navigation.settingsOpen = true } }
+        .onChange(of: navigation.setupPage, initial: true) { _, page in if page != nil { navigation.openAircraft() } }
+        .onChange(of: navigation.settingsPage, initial: true) { _, page in if page != nil { navigation.settingsOpen = true } }
         .onChange(of: navigation.settingsOpen, initial: true) { _, open in
-            guard open else { return }
-            settingsRequested = navigation.settingsPage
-            navigation.settingsPage = nil
+            settingsRequested = open ? navigation.settingsPage : nil
+            if open { navigation.settingsPage = nil }
         }
         .onChange(of: vehicleNow, initial: true) { _, now in
             if now && hadVehicle == false && navigation.settingsShowing == .Transmission { navigation.settingsOpen = false }
@@ -258,6 +257,7 @@ struct AircastShell: View {
             }
             if navigation.settingsOpen {
                 SettingsSheet(requested: settingsRequested) { navigation.settingsOpen = false }
+                    .id(settingsRequested)
                     .zIndex(10)
             }
         }

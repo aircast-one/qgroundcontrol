@@ -140,6 +140,12 @@ struct RallyPoint: Equatable {
     var altitude: Double = .nan
     var altitudeUnits: String = ""
     var altitudePath: String = ""
+
+    static func == (lhs: RallyPoint, rhs: RallyPoint) -> Bool {
+        lhs.index == rhs.index && lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
+            && lhs.altitudeMetres == rhs.altitudeMetres && (lhs.altitude == rhs.altitude || lhs.altitude.isNaN && rhs.altitude.isNaN)
+            && lhs.altitudeUnits == rhs.altitudeUnits && lhs.altitudePath == rhs.altitudePath
+    }
 }
 
 func coordinate(_ json: JSON?) -> TrackPoint? {

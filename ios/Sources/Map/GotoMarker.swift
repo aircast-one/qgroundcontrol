@@ -158,7 +158,7 @@ private final class CircleGrabGesture: UILongPressGestureRecognizer, UIGestureRe
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        guard let map else { return false }
+        guard let map, state == .possible else { return false }
         grab = grabbed(touch.location(in: map))
         return grab != .None
     }

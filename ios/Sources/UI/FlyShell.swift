@@ -161,10 +161,12 @@ struct FlyScreen: View {
     private func togglePip() { showMini(pipExpanded ? .Thumb : .Map) }
 
     var body: some View {
-        GeometryReader { geometry in
-            screen(geometry.size, geometry.safeAreaInsets)
+        GeometryReader { safeArea in
+            GeometryReader { geometry in
+                screen(geometry.size, safeArea.safeAreaInsets)
+            }
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea()
         .onChange(of: flyState(flyJson)?.armed == true, initial: true) { _, armed in flyScreen.layout.lockWhileArmed(armed) }
     }
 

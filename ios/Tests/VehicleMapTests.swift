@@ -51,4 +51,10 @@ final class VehicleMapTests: XCTestCase, MLNMapViewDelegate {
         style.setGeoJson(TRAFFIC_SOURCE, trafficFeatures([TrafficMark(latitude: 47, longitude: 8, heading: 90, alert: true, label: "x")]))
         style.setGeoJson(SHOT_SOURCE, shotFeatures([at]))
     }
+
+    func testARallyPointWithNoAltitudeStillEqualsItselfSoThePlanLayersDoNotRedrawEveryFrame() {
+        let rally = RallyPoint(index: 0, latitude: 47, longitude: 8)
+        XCTAssertEqual(rally, rally)
+        XCTAssertNotEqual(rally, withChanges(rally) { $0.altitude = 30 })
+    }
 }

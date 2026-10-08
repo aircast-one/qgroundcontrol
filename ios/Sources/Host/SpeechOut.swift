@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate {
+final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
     private static let pollInterval = 0.5
     private static let speechView = "view.speech"
     private static let maxTextQueue = 20
