@@ -340,6 +340,7 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
 
 thread_local! {
     static PASS: std::cell::RefCell<Option<HashMap<u8, Rc<Known>>>> = const { std::cell::RefCell::new(None) };
+    static PASSES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 struct Pass;
@@ -354,9 +355,14 @@ pub fn one_pass<T>(render: impl FnOnce() -> T) -> T {
     let idle = PASS.with(|pass| pass.borrow().is_none());
     let _started = idle.then(|| {
         PASS.with(|pass| pass.replace(Some(HashMap::new())));
+        PASSES.with(|passes| passes.set(passes.get() + 1));
         Pass
     });
     render()
+}
+
+pub fn pass_number() -> Option<u64> {
+    PASS.with(|pass| pass.borrow().is_some()).then(|| PASSES.with(std::cell::Cell::get))
 }
 
 fn known(v: &crate::hub::Vehicle) -> Rc<Known> {
@@ -2016,6 +2022,8 @@ mod tests {
         assert!(std::rc::Rc::ptr_eq(&first, &second));
         assert!(std::rc::Rc::ptr_eq(&first, &nested), "a get inside a poll joins the poll's pass");
         assert!(!std::rc::Rc::ptr_eq(&super::known(&vehicle), &super::known(&vehicle)), "outside a pass every read sees the vehicle as it is now");
+        let (outer, nested) = super::one_pass(|| (super::pass_number(), super::one_pass(super::pass_number)));
+        assert!(outer.is_some() && outer == nested && super::pass_number().is_none() && super::one_pass(super::pass_number) != outer, "a nested pass is the same pass, and the next pass is a new one");
     }
 
     #[test]

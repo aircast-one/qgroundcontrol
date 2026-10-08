@@ -452,6 +452,9 @@ pub fn tick(backend: &dyn Backend, now_ms: u64) {
         *last = Some(last.filter(|last| now_ms.saturating_sub(*last) < 2 * MOTION_INTERVAL_MS).map_or(now_ms, |last| last + MOTION_INTERVAL_MS));
     }
     let mode = Mode::from_setting(value_number(&backend.get(SETTING)));
+    if !matches!(mode, Some(Mode::Always | Mode::FollowMe)) {
+        return;
+    }
     let Some(report) = gcs_fix(backend, crate::hub::now_us() / 1000).as_ref().and_then(motion_report) else { return };
     let fleet = fleet_of(backend);
     if !crate::qthost::present() && home_not_set(mode, &fleet) && !HOME_NOT_SET_POSTED.swap(true, Ordering::Relaxed) {
@@ -785,6 +788,35 @@ mod tests {
         assert_eq!(target_of(&json!({ "kind": "null" })), None);
         assert_eq!(target_of(&json!({ "kind": "object", "flightMode": "Hold" })), None, "a vehicle with no id is nothing a head could send to");
         assert_eq!(target_of(&json!({ "kind": "value", "value": null, "id": 5 })), None, "and only an object read is a vehicle, which is the kind track.rs checks before it trusts one");
+    }
+
+    #[test]
+    fn a_follow_me_that_is_switched_off_reads_neither_the_fix_nor_the_fleet() {
+        let _fleet = fleet_guard();
+        struct Recorded(Fake, std::cell::RefCell<Vec<String>>);
+        impl Backend for Recorded {
+            fn get(&self, path: &str) -> String {
+                self.1.borrow_mut().push(path.to_string());
+                self.0.get(path)
+            }
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                self.1.borrow_mut().push(path.to_string());
+                self.0.get_fields(path, fields)
+            }
+            fn set(&self, path: &str, value: &str) -> String {
+                self.0.set(path, value)
+            }
+            fn invoke(&self, path: &str, args: &str) -> String {
+                self.0.invoke(path, args)
+            }
+            fn watch(&self, paths: &[String]) {
+                self.0.watch(paths);
+            }
+        }
+        let off = Recorded(placed(json!(0), vec![px4(1, "Hold")], 120), std::cell::RefCell::default());
+        tick(&off, u64::MAX / 2);
+        assert_eq!(*off.1.borrow(), vec![SETTING.to_string()], "with Follow Me off nothing can be sent, so nothing else is worth reading every quarter second");
+        *LAST_SENT_MS.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 
     #[test]

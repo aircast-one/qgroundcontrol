@@ -52,6 +52,10 @@ const DEVICE_CAMERA_RECORDING_MESSAGE: &str = "Recording is not available for th
 
 static HOST: Mutex<Option<Host>> = Mutex::new(None);
 
+thread_local! {
+    static RENDERED: std::cell::RefCell<Option<(u64, std::rc::Rc<Value>)>> = const { std::cell::RefCell::new(None) };
+}
+
 fn setting(name: &str) -> Value {
     crate::settingsstore::raw_setting(&format!("settings.videoSettings.{name}")).unwrap_or(Value::Null)
 }
@@ -545,12 +549,23 @@ pub fn channel_pipeline(channel: usize) -> Option<String> {
 
 pub fn get(path: &str) -> Option<Value> {
     served().then_some(())?;
-    let guard = synced();
-    let whole = object(guard.as_ref()?);
     match path {
-        "video" => Some(whole),
-        _ => Some(json!({ "kind": "value", "value": whole.get(path.strip_prefix("video.")?)?.clone() })),
+        "video" => Some(rendered()?.as_ref().clone()),
+        _ => {
+            let field = path.strip_prefix("video.")?;
+            Some(json!({ "kind": "value", "value": rendered()?.get(field)?.clone() }))
+        }
     }
+}
+
+fn rendered() -> Option<std::rc::Rc<Value>> {
+    let pass = crate::vehiclefacade::pass_number();
+    let kept = pass.and_then(|number| RENDERED.with(|kept| kept.borrow().as_ref().filter(|(at, _)| *at == number).map(|(_, whole)| whole.clone())));
+    kept.or_else(|| {
+        let fresh = std::rc::Rc::new(object(synced().as_ref()?));
+        pass.map(|number| RENDERED.with(|kept| kept.replace(Some((number, fresh.clone())))));
+        Some(fresh)
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

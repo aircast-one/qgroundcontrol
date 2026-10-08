@@ -99,8 +99,9 @@ fn pack_count(backend: &dyn Backend) -> usize {
     count
 }
 
-fn packs(backend: &dyn Backend) -> Vec<Pack> {
-    (0..pack_count(backend)).map(|index| pack(&|name: &str| object(&backend.get(&pack_fact_path(index, name))))).collect()
+fn remembered(backend: &dyn Backend, index: usize) -> impl Fn(&str) -> Value + '_ {
+    let read: std::cell::RefCell<std::collections::HashMap<String, Value>> = std::cell::RefCell::default();
+    move |name: &str| read.borrow_mut().entry(name.to_string()).or_insert_with(|| object(&backend.get(&pack_fact_path(index, name)))).clone()
 }
 
 fn pack(fact: &dyn Fn(&str) -> Value) -> Pack {
@@ -120,11 +121,11 @@ fn pack(fact: &dyn Fn(&str) -> Value) -> Pack {
     }
 }
 
-fn detail_facts(backend: &dyn Backend, index: usize) -> Value {
+fn detail_facts(read: &dyn Fn(&str) -> Value) -> Value {
     DETAIL_FACTS
         .iter()
         .filter_map(|name| {
-            let fact = object(&backend.get(&pack_fact_path(index, name)));
+            let fact = read(name);
             let raw = fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64);
             if *name == "function" && raw.is_none_or(|f| f == FUNCTION_UNKNOWN || f == FUNCTION_ALL) {
                 return None;
@@ -198,8 +199,7 @@ pub fn popup_rows(pack: &PopupPack) -> Vec<Value> {
     .collect()
 }
 
-fn popup_pack(backend: &dyn Backend, index: usize) -> PopupPack {
-    let fact = |name: &str| object(&backend.get(&pack_fact_path(index, name)));
+fn popup_pack(fact: &dyn Fn(&str) -> Value) -> PopupPack {
     let raw = |name: &str| { let f = fact(name); f.get("rawValue").or(f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()) };
     let spelled = |name: &str| raw(name).and_then(|_| fact(name).get("valueString").and_then(Value::as_str).map(str::to_string));
     let function = raw("function").filter(|f| *f != FUNCTION_UNKNOWN && *f != FUNCTION_ALL).and_then(|_| fact("function").get("enumOrValueString").and_then(Value::as_str).map(str::to_string));
@@ -239,8 +239,9 @@ pub fn indicator_packs(described: &[Value], combine: bool) -> Vec<Value> {
 }
 
 pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let packs = packs(backend);
-    let popup_packs: Vec<PopupPack> = (0..packs.len()).map(|index| popup_pack(backend, index)).collect();
+    let readers: Vec<_> = (0..pack_count(backend)).map(|index| remembered(backend, index)).collect();
+    let packs: Vec<Pack> = readers.iter().map(|read| pack(read)).collect();
+    let popup_packs: Vec<PopupPack> = readers.iter().map(|read| popup_pack(read)).collect();
     let threshold1 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0);
     let threshold2 = value_number(&backend.get("settings.batteryIndicatorSettings.threshold2.rawValue")).unwrap_or(60.0);
     let value_display = value_number(&backend.get("settings.batteryIndicatorSettings.valueDisplay.rawValue")).map(|v| v as i64).unwrap_or(0);
@@ -264,7 +265,7 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "voltageText": p.voltage_text,
                 "currentText": p.current_text,
                 "percentText": p.percent_text,
-                "facts": detail_facts(backend, index),
+                "facts": detail_facts(&readers[index]),
                 "rows": popup_rows(&popup_packs[index]),
             })
         })
@@ -288,6 +289,30 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_render_reads_each_battery_fact_once_however_many_rows_spell_it() {
+        struct Counted(std::cell::RefCell<Vec<String>>);
+        impl Backend for Counted {
+            fn get(&self, path: &str) -> String {
+                self.0.borrow_mut().push(path.to_string());
+                match path {
+                    "vehicle.batteries.count" => json!({ "kind": "value", "value": 2 }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let counted = Counted(std::cell::RefCell::default());
+        battery_view(&counted, &[]);
+        let read = counted.0.borrow();
+        let repeated: Vec<&String> = read.iter().filter(|path| read.iter().filter(|other| other == path).count() > 1).collect();
+        assert!(repeated.is_empty(), "read more than once in one render: {repeated:?}");
+    }
 
     fn popup(state: i64, label: &str, percent: Option<f64>, left: Option<f64>) -> PopupPack {
         PopupPack { charge_state: state, charge_label: label.into(), percent, time_remaining: left, voltage: Some("15.80".into()), consumed: None, temperature: None, function: None }
@@ -351,7 +376,7 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        detail_facts(&One(facts.to_vec()), 0)
+        detail_facts(&remembered(&One(facts.to_vec()), 0))
     }
 
     fn pack_of(facts: &[(String, Value)]) -> Pack {

@@ -659,10 +659,12 @@ fn served() -> bool {
 
 pub fn get(path: &str) -> Option<Value> {
     served().then_some(())?;
-    let whole = object();
     match path {
-        CONTROLLER_ROOT => Some(whole),
-        _ => Some(json!({ "kind": "value", "value": whole.get(path.strip_prefix("geoTag.")?)?.clone() })),
+        CONTROLLER_ROOT => Some(object()),
+        _ => {
+            let field = path.strip_prefix("geoTag.")?;
+            Some(json!({ "kind": "value", "value": object().get(field)?.clone() }))
+        }
     }
 }
 
