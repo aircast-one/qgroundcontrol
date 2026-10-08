@@ -52,6 +52,7 @@ import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
 private const val VEHICLE_SOURCE = "aircast-vehicle"
+private const val TAP_SLOP_DP = 24f
 
 internal val NO_FADES = TransitionOptions(0, 0, false)
 private const val VEHICLE_LAYER = "aircast-vehicle-layer"
@@ -201,6 +202,7 @@ fun VehicleMap(
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
     traffic: List<TrafficMark> = emptyList(),
+    onTrafficClick: (() -> Unit)? = null,
     gimbals: List<GimbalAzimuth> = emptyList(),
     breachReturn: TrackPoint? = null,
     proximityRadar: Boolean = false,
@@ -220,6 +222,7 @@ fun VehicleMap(
     val latestItemClick by rememberUpdatedState(onMissionItemClick)
     val latestRoi by rememberUpdatedState(roi)
     val latestRoiClick by rememberUpdatedState(onRoiClick)
+    val latestTrafficClick by rememberUpdatedState(onTrafficClick)
     val shownGoto = editedGoto(goto, mapEdits.gotoLoiter)
     val gotoEditing = mapEdits.gotoLoiter != null && shownGoto?.loiterRadiusMetres != null
     val latestGoto by rememberUpdatedState(shownGoto)
@@ -342,8 +345,15 @@ fun VehicleMap(
                 if (!editable && onMapClick != null) {
                     loaded.addOnMapClickListener { at ->
                         val screen = loaded.projection.toScreenLocation(at)
+                        val slop = TAP_SLOP_DP * mapView.resources.displayMetrics.density
+                        val near = android.graphics.RectF(screen.x - slop, screen.y - slop, screen.x + slop, screen.y + slop)
+                        val trafficClick = latestTrafficClick
+                        if (trafficClick != null && loaded.queryRenderedFeatures(near, TRAFFIC_LAYER).isNotEmpty()) {
+                            trafficClick()
+                            return@addOnMapClickListener true
+                        }
                         val roiTapped = latestRoi?.takeIf {
-                            loaded.queryRenderedFeatures(android.graphics.RectF(screen.x - 24f, screen.y - 24f, screen.x + 24f, screen.y + 24f), ROI_LAYER).isNotEmpty()
+                            loaded.queryRenderedFeatures(near, ROI_LAYER).isNotEmpty()
                         }
                         if (roiTapped != null && latestRoiClick != null) {
                             latestRoiClick?.invoke(roiTapped)

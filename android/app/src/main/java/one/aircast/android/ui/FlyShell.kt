@@ -380,6 +380,7 @@ internal fun FlyScreen(
                                 content = status,
                             )
                         }
+                        TrafficBanner()
                         Row(
                             Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),

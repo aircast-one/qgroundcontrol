@@ -101,7 +101,6 @@ import one.aircast.android.ui.TerrainProgress
 import one.aircast.android.ui.OrbitReadout
 import one.aircast.android.ui.PlanTab
 import one.aircast.android.ui.RcControlsLayer
-import one.aircast.android.ui.TrafficReadout
 import one.aircast.map.FlyMap
 import one.aircast.map.TrackPoint
 import one.aircast.android.ui.CameraSwitch
@@ -315,6 +314,7 @@ fun AircastShell(hostView: android.view.View?) {
                 onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
                 onMissionItemClick = { waypointTapped = it },
                 onRoiClick = { roiTapped = it },
+                onTrafficClick = { flyScreen.requestedSheet = one.aircast.android.ui.TRAFFIC_SHEET },
                 clickMarker = mapClickAt?.let { TrackPoint(it.latitude, it.longitude) },
             )
         }
@@ -324,7 +324,6 @@ fun AircastShell(hostView: android.view.View?) {
     val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
     val flyOrbitReadout = remember { movableContentOf { LayoutWidget("orbit") { OrbitReadout() } } }
     val flyFollowMeReadout = remember { movableContentOf { LayoutWidget("followMe") { FollowMeReadout() } } }
-    val flyTrafficReadout = remember { movableContentOf { LayoutWidget("traffic") { TrafficReadout() } } }
     val flyRcControlsLayer = remember { movableContentOf { LayoutWidget("rcControls") { RcControlsLayer() } } }
 
     val snackbars = remember { SnackbarHostState() }
@@ -551,7 +550,6 @@ fun AircastShell(hostView: android.view.View?) {
                         LayoutWidget("terrainProgress") { TerrainProgress() }
                         flyOrbitReadout()
                         flyFollowMeReadout()
-                        flyTrafficReadout()
                         flyRcControlsLayer()
                     }
                     if (flyLandscape) {

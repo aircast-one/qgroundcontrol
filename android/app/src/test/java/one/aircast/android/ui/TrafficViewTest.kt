@@ -282,4 +282,39 @@ class TrafficViewTest {
             trafficHeightText(above, units),
         )
     }
+
+    @Test
+    fun `a calm sky raises no banner, however much traffic is drawn`() {
+        assertNull(trafficAlert(trafficReading(view(contacts = "[$near," + synthetic() + "]"))!!))
+        assertNull(trafficAlert(trafficReading(view(enabled = false))!!))
+    }
+
+    @Test
+    fun `a feed problem is a caution that names the problem, not a count of aircraft`() {
+        assertEquals(
+            TrafficAlert(TrafficLevel.Caution, "Traffic feed dropped", ""),
+            trafficAlert(trafficReading(view(receiving = false, error = """{"token":"linkLost","detail":"closed"}""", contacts = "[$near]"))!!),
+        )
+        assertEquals(TrafficAlert(TrafficLevel.Caution, "No traffic feed", ""), trafficAlert(trafficReading(view(receiving = false))!!))
+        assertEquals(TrafficAlert(TrafficLevel.Caution, "Collision alerts unknown for 2 aircraft", ""), trafficAlert(trafficReading(view(alertUnknown = 2))!!))
+    }
+
+    @Test
+    fun `a warning names the closest alerting aircraft, where it is and how high`() {
+        val far = near.replace("BAW42", "EZY9").replace("1200.0", "5000.0").replace(""""alert":false""", """"alert":true""")
+        val close = near.replace(""""alert":false""", """"alert":true""")
+        assertEquals(
+            TrafficAlert(TrafficLevel.Warning, "Aircraft nearby", "BAW42 \u00b7 1200 m E \u00b7 200 m above"),
+            trafficAlert(trafficReading(view(alerting = "true", contacts = "[$far,$near,$close]"))!!),
+        )
+        assertEquals(
+            TrafficAlert(TrafficLevel.Critical, "Aircraft squawking hijack", ""),
+            trafficAlert(trafficReading(view(alerting = "true", emergency = """"hijack"""", contacts = "[$near]"))!!),
+        )
+    }
+
+    @Test
+    fun `a bearing reads as the nearest of eight compass points`() {
+        assertEquals(listOf("N", "NE", "E", "S", "NW", "N", "N"), listOf(0.0, 44.0, 95.0, 180.0, 315.0, 350.0, -10.0).map(::compassPoint))
+    }
 }

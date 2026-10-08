@@ -22,7 +22,7 @@ class DebugUiTest {
         assertEquals("orientation must be one of landscape, reverse-landscape, portrait, auto", debugCommand("orientation", "sideways").exceptionOrNull()?.message)
         assertEquals("tab must be one of Fly, Plan, Analyze", debugCommand("tab", "Home").exceptionOrNull()?.message)
         assertEquals(
-            "open needs a sheet (more, readings, camera, gimbal, status, status-all, modes, settings) or a flight action id, e.g. takeoff, rtl, land",
+            "open needs a sheet (more, readings, camera, gimbal, status, status-all, modes, traffic, settings) or a flight action id, e.g. takeoff, rtl, land",
             debugCommand("open", "").exceptionOrNull()?.message,
         )
     }

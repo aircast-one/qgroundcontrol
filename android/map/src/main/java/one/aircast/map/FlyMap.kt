@@ -91,6 +91,7 @@ fun FlyMap(
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
     onRoiClick: ((TrackPoint) -> Unit)? = null,
+    onTrafficClick: (() -> Unit)? = null,
     clickMarker: TrackPoint? = null,
 ) {
     val context = LocalContext.current
@@ -192,6 +193,7 @@ fun FlyMap(
             surveys = plan.surveys,
             shots = plan.shots,
             traffic = plan.traffic,
+            onTrafficClick = onTrafficClick,
             editable = false,
             onMapClick = onMapClick,
             onMissionItemClick = onMissionItemClick,

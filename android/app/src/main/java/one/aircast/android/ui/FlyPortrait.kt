@@ -92,7 +92,11 @@ internal fun FlyPortrait(
     val hasVideo = portraitShowsCamera(reading)
     val split = portraitSplit(view, hasVideo)
     val flyScreen = LocalFlyScreenState.current
-    val barTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + PORTRAIT_BAR_HEIGHT
+    var chromeHeightPx by remember { mutableIntStateOf(0) }
+    val barTop = maxOf(
+        WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + PORTRAIT_BAR_HEIGHT,
+        with(LocalDensity.current) { chromeHeightPx.toDp() },
+    )
     val barTopPx = with(LocalDensity.current) { barTop.roundToPx() }
     var deckHeightPx by remember { mutableIntStateOf(0) }
     LaunchedEffect(split, barTopPx, deckHeightPx) { flyScreen.mapInsets = MapInsets(top = if (split) 0 else barTopPx, bottom = deckHeightPx) }
@@ -170,17 +174,20 @@ internal fun FlyPortrait(
                     ) { actions(FlyDeckLayout.Bottom) }
                 },
             )
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = SCRIM_ALPHA), Color.Transparent)))
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .height(PORTRAIT_BAR_HEIGHT)
-                    .padding(horizontal = AircastSpace.s3),
-                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                verticalAlignment = Alignment.CenterVertically,
-                content = status,
-            )
+            Column(Modifier.fillMaxWidth().onSizeChanged { chromeHeightPx = it.height }) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = SCRIM_ALPHA), Color.Transparent)))
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .height(PORTRAIT_BAR_HEIGHT)
+                        .padding(horizontal = AircastSpace.s3),
+                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = status,
+                )
+                TrafficBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))
+            }
         }
     }
 }

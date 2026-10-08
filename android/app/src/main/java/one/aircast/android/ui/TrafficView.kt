@@ -172,3 +172,41 @@ internal fun trafficContactText(contact: TrafficContact, units: TrafficUnits): S
     val synthetic = if (contact.simulated) "simulated" else ""
     return (listOf(synthetic) + position + trailing).filter { it.isNotBlank() }.joinToString("  ")
 }
+
+internal data class TrafficAlert(val level: TrafficLevel, val title: String, val detail: String)
+
+private val COMPASS_POINTS = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+
+internal fun compassPoint(bearingDegrees: Double): String =
+    COMPASS_POINTS[(Math.floorMod(Math.round(bearingDegrees / 45.0), COMPASS_POINTS.size.toLong())).toInt()]
+
+internal fun trafficThreat(reading: TrafficReading): TrafficContact? =
+    reading.contacts.filter(::trafficContactUrgent).minByOrNull { it.distance ?: Double.MAX_VALUE }
+
+internal fun trafficThreatText(contact: TrafficContact, units: TrafficUnits): String =
+    listOf(
+        contact.name,
+        listOfNotNull(reading(contact.distance, units.distance, fine = true).ifBlank { null }, contact.bearingDegrees?.let(::compassPoint)).joinToString(" "),
+        trafficHeightText(contact, units),
+    ).filter { it.isNotBlank() }.joinToString(" \u00b7 ")
+
+private fun trafficFault(reading: TrafficReading): String = when {
+    reading.errorToken == "connectFailed" -> "Traffic server unreachable"
+    reading.errorToken == "linkLost" -> "Traffic feed dropped"
+    reading.errorToken.isNotBlank() -> "Traffic feed failed"
+    !reading.available -> "No traffic receiver"
+    !reading.receiving -> "No traffic feed"
+    else -> "Collision alerts unknown for ${reading.alertUnknown} aircraft"
+}
+
+internal fun trafficAlert(reading: TrafficReading): TrafficAlert? {
+    val level = trafficLevel(reading)
+    if (!trafficShown(reading) || level == TrafficLevel.Good) return null
+    val threat = trafficThreat(reading)?.takeIf { level >= TrafficLevel.Warning }
+    val title = when (level) {
+        TrafficLevel.Critical -> "Aircraft ${trafficEmergencyText(reading.emergency).ifBlank { "in emergency" }}"
+        TrafficLevel.Warning -> "Aircraft nearby"
+        else -> trafficFault(reading)
+    }
+    return TrafficAlert(level, title, threat?.let { trafficThreatText(it, reading.units) }.orEmpty())
+}
