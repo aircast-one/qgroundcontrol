@@ -2,6 +2,11 @@ package one.aircast.android.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.filter
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -165,7 +170,14 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                     if (stacked && query == null && !drilled) SheetTabs(group.takeUnless { setupOpen }, Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s2), pickTab)
                 }
             }
-            key(group, page, query != null, setupOpen) {
+            if (query == null && !setupOpen) {
+                SettingsPager(group, swipeable = openPage == null, onSettled = pickTab, modifier = Modifier.weight(1f)) { shown ->
+                    val current = shown == group
+                    key(page.takeIf { current }) {
+                        SettingsScreen(shown, openPage.takeIf { current }, { openPage = it }, closePage, Modifier.fillMaxSize(), onOpenSetup = openSetup)
+                    }
+                }
+            } else key(group, page, query != null, setupOpen) {
                 when {
                     query != null -> SettingsSearch(query.orEmpty(), Modifier.weight(1f), openSetup) { title ->
                         group = pageLook(title).group
@@ -174,14 +186,13 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                         query = null
                         setupOpen = false
                     }
-                    setupOpen -> Column(Modifier.weight(1f)) {
+                    else -> Column(Modifier.weight(1f)) {
                         val heading = remember { mutableStateOf<PageHeading?>(null) }
                         val back: () -> Unit = { heading.value?.takeUnless { setupFromTab }?.back?.invoke() ?: closeSetup() }
                         PageTopBar(heading.value?.title ?: AIRCRAFT_SETUP, "Back", back)
                         CompositionLocalProvider(LocalPageHeading provides heading) { SetupScreen(Modifier.weight(1f)) }
                         androidx.activity.compose.BackHandler(enabled = setupFromTab && query == null, onBack = back)
                     }
-                    else -> SettingsScreen(group, openPage, { openPage = it }, closePage, Modifier.weight(1f), onOpenSetup = openSetup)
                 }
             }
         }
@@ -189,6 +200,19 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
       }
       }
     }
+}
+
+@Composable
+private fun SettingsPager(group: SettingsGroup, swipeable: Boolean, onSettled: (SettingsGroup) -> Unit, modifier: Modifier, content: @Composable (SettingsGroup) -> Unit) {
+    val groups = SettingsGroup.entries
+    val pager = rememberPagerState(initialPage = group.ordinal) { groups.size }
+    val shownGroup by rememberUpdatedState(group)
+    val settled by rememberUpdatedState(onSettled)
+    LaunchedEffect(group) { if (pager.currentPage != group.ordinal) pager.scrollToPage(group.ordinal) }
+    LaunchedEffect(pager) {
+        snapshotFlow { groups[pager.settledPage] }.filter { it != shownGroup }.collect { settled(it) }
+    }
+    HorizontalPager(pager, modifier, userScrollEnabled = swipeable, beyondViewportPageCount = 1, key = { groups[it].name }) { index -> content(groups[index]) }
 }
 
 @Composable
