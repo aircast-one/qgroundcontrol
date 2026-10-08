@@ -74,6 +74,7 @@ internal class DeckEntry(
 )
 
 internal const val HOLD_TO_TAKE_OFF = "Hold to take off"
+internal const val TAKE_OFF = "Take off"
 internal const val DECK_HOLD_MS = 1500
 private const val DECK_HOLD_FILL_ALPHA = 0.3f
 private const val NANOS_PER_MILLI = 1_000_000L

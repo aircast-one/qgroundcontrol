@@ -423,6 +423,10 @@ private const val BATTERY_RING_TRACK_ALPHA = 0.25f
 
 internal fun batteryPercent(text: String): Int? = compactStatusText(text).removeSuffix("%").toIntOrNull()?.coerceIn(0, 100)
 
+internal fun batteryPercentNow(): Int? = batteryReadings(Qgc.get(BATTERY)).firstOrNull()?.text?.let(::batteryPercent)
+
+internal fun flightTimeNow(): Double? = flightTimeSeconds(Qgc.get(VEHICLE_FLIGHT_TIME))
+
 internal fun flightTimeText(seconds: Double?): String {
     val whole = seconds?.takeIf { it.isFinite() && it > 0 }?.toInt() ?: 0
     return "%02d'%02d\"".format(whole / 60, whole % 60)

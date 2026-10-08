@@ -63,6 +63,19 @@ internal fun guidedReadiness(state: FlyState?): Readiness? =
 internal fun disarmNotice(wasArmed: Boolean, flewWhileArmed: Boolean, armedNow: Boolean): String? =
     if (wasArmed && !armedNow) (if (flewWhileArmed) "Landed and disarmed" else "Disarmed") else null
 
+internal const val VEHICLE_FLIGHT_DISTANCE = "vehicle.flightDistance"
+
+internal fun flownDistanceText(view: JSONObject?): String? =
+    view?.optJSONObject("value")?.takeIf { it.optDouble("value", 0.0) > 0.0 }
+        ?.let { fact -> fact.optText("valueString").ifBlank { null }?.let { "$it ${fact.optText("units")}".trim() } }
+
+internal fun landedSummary(seconds: Double?, distance: String?, batteryUsed: Int?): String =
+    listOfNotNull(
+        seconds?.takeIf { it >= 1.0 }?.let(::flightTimeText),
+        distance?.ifBlank { null },
+        batteryUsed?.takeIf { it > 0 }?.let { "$it% battery used" },
+    ).joinToString(" \u00b7 ")
+
 internal data class TelemetryLink(
     val localRssiDbm: Int,
     val remoteRssiDbm: Int?,

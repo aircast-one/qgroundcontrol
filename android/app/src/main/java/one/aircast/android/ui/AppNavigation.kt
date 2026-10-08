@@ -19,6 +19,7 @@ internal class AppNavigationState {
         settingsOpen = true
     }
     var setupPage by mutableStateOf<String?>(null)
+    var addLinkRequested by mutableStateOf(false)
     var blockedReason by mutableStateOf<String?>(null)
 }
 

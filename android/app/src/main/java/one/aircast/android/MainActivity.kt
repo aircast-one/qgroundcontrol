@@ -374,9 +374,24 @@ fun AircastShell(hostView: android.view.View?) {
     val flyNow = remember(flyStateJson) { one.aircast.android.ui.flyState(flyStateJson) }
     var wasArmed by remember { mutableStateOf(false) }
     var flewWhileArmed by remember { mutableStateOf(false) }
+    var armedBattery by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(flyNow?.armed, flyNow?.state) {
         val armedNow = flyNow?.connected == true && flyNow.armed
-        one.aircast.android.ui.disarmNotice(wasArmed, flewWhileArmed, armedNow)?.let { said -> noticeScope.launch { snackbars.showSnackbar(said) } }
+        if (armedNow && !wasArmed) noticeScope.launch { armedBattery = withContext(Dispatchers.Default) { one.aircast.android.ui.batteryPercentNow() } }
+        one.aircast.android.ui.disarmNotice(wasArmed, flewWhileArmed, armedNow)?.let { said ->
+            val landed = flewWhileArmed
+            val startBattery = armedBattery
+            noticeScope.launch {
+                val summary = if (!landed) "" else withContext(Dispatchers.Default) {
+                    one.aircast.android.ui.landedSummary(
+                        one.aircast.android.ui.flightTimeNow(),
+                        one.aircast.android.ui.flownDistanceText(Qgc.get(one.aircast.android.ui.VEHICLE_FLIGHT_DISTANCE)),
+                        startBattery?.let { start -> one.aircast.android.ui.batteryPercentNow()?.let { start - it } },
+                    )
+                }
+                snackbars.showSnackbar(listOf(said, summary).filter { it.isNotBlank() }.joinToString(" \u00b7 "))
+            }
+        }
         flewWhileArmed = armedNow && (flewWhileArmed || flyNow?.state == "flying" || flyNow?.state == "landing")
         wasArmed = armedNow
     }
@@ -488,7 +503,10 @@ fun AircastShell(hostView: android.view.View?) {
         }
         Scaffold(
             modifier = Modifier.weight(1f),
-            snackbarHost = { SnackbarHost(snackbars) { one.aircast.android.ui.AppSnackbar(it) } },
+            snackbarHost = {
+                val aboveDeck = if (onFly && flyIsPortrait()) with(androidx.compose.ui.platform.LocalDensity.current) { flyScreen.mapInsets.bottom.toDp() } else 0.dp
+                SnackbarHost(snackbars, Modifier.padding(bottom = aboveDeck)) { one.aircast.android.ui.AppSnackbar(it) }
+            },
             topBar = { if (!onFly) SnackbarHost(alerts, Modifier.statusBarsPadding()) { one.aircast.android.ui.AppSnackbar(it) } },
             contentWindowInsets = if (onFly) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
             bottomBar = {

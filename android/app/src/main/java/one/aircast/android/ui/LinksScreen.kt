@@ -1059,7 +1059,14 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     val scope = rememberCoroutineScope()
 
     var notice by remember { mutableStateOf<String?>(null) }
-    var adding by remember { mutableStateOf(false) }
+    val navigation = LocalAppNavigation.current
+    var adding by remember { mutableStateOf(navigation.addLinkRequested) }
+    LaunchedEffect(navigation.addLinkRequested) {
+        if (navigation.addLinkRequested) {
+            adding = true
+            navigation.addLinkRequested = false
+        }
+    }
     var advanced by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
     fun attempt(action: String, settled: () -> Boolean, call: () -> Boolean) {

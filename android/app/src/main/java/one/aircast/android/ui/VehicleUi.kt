@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.painterResource
 import one.aircast.android.R
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -366,6 +368,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val flyScreen = LocalFlyScreenState.current
     val stateJson by qgcPath(FLY_STATE)
     val state = remember(stateJson) { flyState(stateJson) }
+    val readiness = remember(state) { guidedReadiness(state) }
     val available = state?.connected == true
     val armed = state?.armed == true
     var pending by remember { mutableStateOf<GuidedAction?>(null) }
@@ -448,6 +451,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             report = { refusal = it },
             withdraw = { refusal = withdrawn(refusal, it) },
             openChecklist = checklist::open.takeIf { useChecklist },
+            readiness = readiness,
         ),
     )
     val deck = deckIds(entries.map { it.id }.toSet(), armed)
@@ -533,6 +537,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         }
 
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TelemetryRow(valuesShown = true, chooser = false, compact = true) }
+
+        if (!deciding) readiness?.let { DeckReadiness(it) }
 
         if (pending == null) {
             val more = DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }
@@ -767,6 +773,15 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     if (settings) {
         AircastSheet(onDismissRequest = { settings = false }) {
             ParameterForm(FLIGHT_MODE_SETTINGS_PAGE)
+            if (hasModesPage && advancedUiShown()) {
+                TextButton(
+                    onClick = {
+                        settings = false
+                        navigation.setupPage = FLIGHT_MODES_PAGE
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                ) { Text("Configure flight modes") }
+            }
         }
     }
 
@@ -789,32 +804,38 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
         onDismissRequest = { onDismiss(); showFolded = false; editing = false },
         shape = MaterialTheme.shapes.small,
     ) {
-        readinessWarning(fly)?.let { warning ->
-            DropdownMenuItem(
-                text = {
-                    Text(warning, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.widthIn(max = 280.dp))
-                },
-                leadingIcon = { Icon(painterResource(R.drawable.ic_warning), null, tint = MaterialTheme.aircast.warning) },
-                trailingIcon = { Text("Details", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) },
-                onClick = { onDismiss(); onStatus() },
-            )
-            androidx.compose.material3.HorizontalDivider()
-        }
+        val warning = readinessWarning(fly)
+        DropdownMenuItem(
+            text = {
+                Text(warning ?: VEHICLE_STATUS, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.widthIn(max = 280.dp))
+            },
+            leadingIcon = {
+                warning?.let { Icon(painterResource(R.drawable.ic_warning), null, tint = MaterialTheme.aircast.warning) }
+                    ?: Icon(painterResource(R.drawable.ic_check_circle), null)
+            },
+            trailingIcon = warning?.let { { Text("Details", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) } },
+            onClick = { onDismiss(); onStatus() },
+        )
+        androidx.compose.material3.HorizontalDivider()
         DropdownMenuItem(
             text = { Text("Messages", style = MaterialTheme.typography.bodyMedium) },
             leadingIcon = { Icon(painterResource(R.drawable.ic_notifications), null) },
             onClick = { onDismiss(); onMessages() },
         )
         androidx.compose.material3.HorizontalDivider()
-        modeHeading(modes)?.let { heading ->
-            Text(
-                heading,
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 280.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
         val setting = modes.hiddenSetting
+        val heading = modeHeading(modes)
+        if (heading != null || setting != null) {
+            Row(Modifier.padding(start = 16.dp, end = 4.dp).widthIn(max = 296.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    heading.orEmpty(),
+                    Modifier.weight(1f).padding(vertical = 8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (setting != null) TextButton(onClick = { editing = !editing }) { Text(if (editing) "Done" else "Edit") }
+            }
+        }
         if (editing && setting != null) {
             modes.all.forEach { mode ->
                 DropdownMenuItem(
@@ -876,29 +897,6 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                 settings = true
             },
         )
-        if (hasModesPage && advancedUiShown()) {
-            DropdownMenuItem(
-                text = { Text("Configure flight modes") },
-                onClick = {
-                    onDismiss()
-                    navigation.setupPage = FLIGHT_MODES_PAGE
-                },
-            )
-        }
-        DropdownMenuItem(
-            text = { Text("Vehicle status") },
-            onClick = {
-                onDismiss()
-                onStatus()
-            },
-        )
-        if (modes.hiddenSetting != null) {
-            DropdownMenuItem(
-                text = { Text("Edit displayed flight modes") },
-                trailingIcon = { Switch(checked = editing, onCheckedChange = null) },
-                onClick = { editing = !editing },
-            )
-        }
     }
 }
 
@@ -960,6 +958,23 @@ internal fun flightModeIcon(name: String): Int =
         FLIGHT_MODE_ICONS.firstOrNull { (keys, _) -> keys.any { it == joined || it in words } }?.second ?: R.drawable.ic_flight
     }
 
+@Composable
+private fun DeckReadiness(readiness: Readiness) {
+    Surface(
+        color = if (readiness.blocks) MaterialTheme.colorScheme.errorContainer else MaterialTheme.aircast.warningContainer,
+        contentColor = if (readiness.blocks) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(painterResource(R.drawable.ic_warning), null, tint = if (readiness.blocks) MaterialTheme.colorScheme.error else MaterialTheme.aircast.warning, modifier = Modifier.size(20.dp))
+            Text(readiness.text, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+internal const val VEHICLE_STATUS = "Vehicle status"
+
 internal class FlightDeckContext(
     val offers: Map<String, GuidedOffer>,
     val armed: Boolean,
@@ -969,6 +984,7 @@ internal class FlightDeckContext(
     val report: (String?) -> Unit,
     val withdraw: (String) -> Unit,
     val openChecklist: (() -> Unit)?,
+    val readiness: Readiness? = null,
 )
 
 internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(deck) {
@@ -1002,10 +1018,10 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
         }.takeIf { armAction?.shown == true },
         DeckEntry(
             "takeoff",
-            HOLD_TO_TAKE_OFF,
+            if (readiness == null) HOLD_TO_TAKE_OFF else TAKE_OFF,
             R.drawable.ic_flight_takeoff,
             offers["takeoff"]?.ready == true,
-            onHold = {
+            onHold = if (readiness != null) null else fun() {
                 scope.launch {
                     report(withContext(Dispatchers.Default) {
                         val heightless = offers["takeoff"]?.carriesValue == false

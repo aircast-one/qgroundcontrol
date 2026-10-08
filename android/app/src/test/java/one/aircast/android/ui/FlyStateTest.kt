@@ -202,6 +202,16 @@ class FlyReadinessTest {
     }
 
     @Test
+    fun aLandingSaysHowLongHowFarAndHowMuchBatteryTheFlightTook() {
+        assertEquals("03'12\" \u00b7 240 m \u00b7 23% battery used", landedSummary(192.0, "240 m", 23))
+        assertEquals("00'45\"", landedSummary(45.0, null, null))
+        assertEquals("", landedSummary(null, "", 0))
+        assertEquals("240 m", flownDistanceText(JSONObject("""{"kind":"value","value":{"kind":"fact","value":240.1,"valueString":"240","units":"m"}}""")))
+        assertNull("a flight straight up and down covered no ground worth saying", flownDistanceText(JSONObject("""{"kind":"value","value":{"kind":"fact","value":0.0,"valueString":"0.0","units":"m"}}""")))
+        assertNull(flownDistanceText(JSONObject("""{"kind":"value","value":{"kind":"fact","value":null,"valueString":""}}""")))
+    }
+
+    @Test
     fun theMapLeadsWhileArmedWithNoVideoSource() {
         assertEquals(FlyView.Map, flyViewShown(FlyView.Video, armed = true, noVideoSource = true))
         assertEquals(FlyView.Video, flyViewShown(FlyView.Video, armed = false, noVideoSource = true))
