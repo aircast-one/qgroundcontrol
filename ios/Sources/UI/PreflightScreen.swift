@@ -15,6 +15,10 @@ struct PreflightScreen: View {
             Text("Connect a vehicle to run its preflight checks.")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Space.s4)
+                .onAppear {
+                    collapsed = []
+                    passedBefore = []
+                }
         }
     }
 

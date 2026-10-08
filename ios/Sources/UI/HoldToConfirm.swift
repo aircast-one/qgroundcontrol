@@ -44,7 +44,7 @@ struct HoldToConfirm: View {
                 withAnimation(nil) { progress = 0 }
             }
         }
-        .sensoryFeedback(.impact, trigger: held)
+        .sensoryFeedback(.impact(weight: .heavy), trigger: held)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(named: Text(label)) {

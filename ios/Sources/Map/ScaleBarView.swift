@@ -9,7 +9,7 @@ struct ScaleBarView: View {
 
     var body: some View {
         let across = metresAcross(latitude, zoom, MAX_BAR_DP)
-        Group {
+        ZStack(alignment: .topLeading) {
             if let scale = mapScaleBar(view, MAX_BAR_DP) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(scale.text)

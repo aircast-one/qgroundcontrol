@@ -30,6 +30,23 @@ func applyAltitudePrompt(_ view: JSON?) -> AltitudePrompt? {
     return AltitudePrompt(title: prompt["title"].string, text: prompt["text"].string)
 }
 
+struct ApplyAltitudePromptAlert: ViewModifier {
+    let prompt: AltitudePrompt?
+
+    func body(content: Content) -> some View {
+        content.alert(
+            sentenceCase(prompt?.title ?? ""),
+            isPresented: Binding(get: { prompt != nil }, set: { _ in }),
+            presenting: prompt
+        ) { _ in
+            Button("Yes") { offMain { Qgc.invoke(APPLY_DEFAULT_ALTITUDE) } }
+            Button("No", role: .cancel) { offMain { Qgc.invoke(DISMISS_ALTITUDE_PROMPT) } }
+        } message: { prompt in
+            Text(prompt.text)
+        }
+    }
+}
+
 struct PlanTab: View {
     @Environment(\.theme) private var theme
     @QgcPath("view.plan") private var planStatus
@@ -95,16 +112,8 @@ struct PlanTab: View {
             } message: { prompt in
                 Text(prompt.text)
             }
-            Color.clear.frame(width: 0, height: 0).alert(
-                sentenceCase(applyAltitudePrompt(planStatus)?.title ?? ""),
-                isPresented: Binding(get: { applyAltitudePrompt(planStatus) != nil }, set: { _ in }),
-                presenting: applyAltitudePrompt(planStatus)
-            ) { _ in
-                Button("Yes") { offMain { Qgc.invoke(APPLY_DEFAULT_ALTITUDE) } }
-                Button("No", role: .cancel) { offMain { Qgc.invoke(DISMISS_ALTITUDE_PROMPT) } }
-            } message: { prompt in
-                Text(prompt.text)
-            }
+            Color.clear.frame(width: 0, height: 0)
+                .modifier(ApplyAltitudePromptAlert(prompt: showDefaults ? nil : applyAltitudePrompt(planStatus)))
             Color.clear.frame(width: 0, height: 0).alert(
                 pending.map { confirmCopy($0).title } ?? "",
                 isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),

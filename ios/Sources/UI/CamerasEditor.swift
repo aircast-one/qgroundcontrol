@@ -172,7 +172,7 @@ struct CamerasEditor: View {
             CameraSheet(
                 draft: current,
                 hint: kinds.first(where: \.needsUrl)?.hint ?? "",
-                others: current.stored == nil ? otherSources(reading).filter { !deviceCameraKind($0) } : [],
+                others: current.stored == nil ? otherSources(reading) : [],
                 busy: busy,
                 onChange: { draft = $0 },
                 onDismiss: { draft = nil },

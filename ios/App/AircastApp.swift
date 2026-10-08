@@ -21,7 +21,7 @@ struct AircastApp: App {
     var body: some Scene {
         WindowGroup {
             AircastRoot()
-                .onOpenURL(perform: CoreHost.handleDeepLink)
+                .onOpenURL { url in if !DebugUiReceiver.onReceive(url) { CoreHost.handleDeepLink(url) } }
         }
     }
 }

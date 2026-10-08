@@ -114,6 +114,7 @@ private struct Stepper: View {
     @Environment(\.theme) private var theme
     @State private var refusal: String?
     @State private var pending: Double?
+    @State private var latest: Fact?
     @State private var typed = ""
     @FocusState private var focused: Bool
 
@@ -142,6 +143,7 @@ private struct Stepper: View {
         }
         .onChange(of: shown, initial: true) { typed = shown }
         .onChange(of: focused) { if !focused { commit() } }
+        .onChange(of: fact, initial: true) { latest = fact }
         .onChange(of: fact.valueString) { pending = nil }
         .onChange(of: fact.path) {
             refusal = nil
@@ -160,7 +162,7 @@ private struct Stepper: View {
     }
 
     private func step(_ direction: Int) {
-        guard let next = (pending ?? stepped(fact, 0)).map({ $0 + Double(direction) }) else { return }
+        guard let next = (pending ?? stepped(latest ?? fact, 0)).map({ $0 + Double(direction) }) else { return }
         write(next)
     }
 

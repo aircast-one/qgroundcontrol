@@ -23,9 +23,11 @@ func arcTone(_ near: Bool, _ stale: Bool) -> ArcTone {
 struct ObstacleArc: View {
     @QgcPath(OBSTACLE_PATH) private var view
     @Environment(\.theme) private var theme
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         if let ring = obstacleRing(view) {
+            let px = 1 / displayScale
             let alarm = theme.colors.error
             let calm = theme.colors.onSurfaceVariant
             let faded = calm.opacity(0.45)
@@ -33,8 +35,8 @@ struct ObstacleArc: View {
                 Canvas { context, canvas in
                     let center = CGPoint(x: canvas.width / 2, y: canvas.height / 2)
                     let full = min(canvas.width, canvas.height) / 2
-                    context.stroke(Path(ellipseIn: CGRect(x: center.x - full, y: center.y - full, width: full * 2, height: full * 2)), with: .color(calm.opacity(0.25)), lineWidth: 2)
-                    context.fill(Path(ellipseIn: CGRect(x: center.x - 3, y: center.y - 3, width: 6, height: 6)), with: .color(calm.opacity(0.6)))
+                    context.stroke(Path(ellipseIn: CGRect(x: center.x - full, y: center.y - full, width: full * 2, height: full * 2)), with: .color(calm.opacity(0.25)), lineWidth: 2 * px)
+                    context.fill(Path(ellipseIn: CGRect(x: center.x - 3 * px, y: center.y - 3 * px, width: 6 * px, height: 6 * px)), with: .color(calm.opacity(0.6)))
                     ring.samples.forEach { sample in
                         let reach = full * arcRadiusFraction(sample.metres, ring.maxMetres)
                         let near = sampleIsClose(sample.metres, ring.floorMetres)
@@ -47,7 +49,7 @@ struct ObstacleArc: View {
                         context.stroke(
                             Path { $0.addArc(center: center, radius: reach, startAngle: .degrees(start), endAngle: .degrees(start + arcSweep(ring.incrementDegrees)), clockwise: false) },
                             with: .color(tone),
-                            lineWidth: near ? 10 : 6
+                            lineWidth: (near ? 10 : 6) * px
                         )
                     }
                 }

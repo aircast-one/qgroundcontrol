@@ -204,6 +204,36 @@ struct AircastShell: View {
         .onChange(of: FlyArming(armed: flyNow?.armed, state: flyNow?.state), initial: true) { armingChanged() }
         .onChange(of: vehiclesJson, initial: true) { _, json in vehiclesChanged(json) }
         .onChange(of: fullScreen) { _, now in if !now { videoFullScreen = false } }
+        .onReceive(NotificationCenter.default.publisher(for: DebugUi.commands)) { note in (note.object as? DebugCommand).map(debugApplied) }
+        .onChange(of: debugState(landscape), initial: true) { _, now in DebugUi.state = now }
+    }
+
+    private func debugState(_ landscape: Bool) -> String {
+        JSON.object([
+            "tab": .string(tab.rawValue),
+            "flyView": .string(flyView.rawValue),
+            "landscape": .bool(landscape),
+            "layoutEditing": .bool(flyScreen.layout.editing),
+            "layoutLocked": .bool(flyScreen.layout.locked),
+            "guidedPanelOpen": .bool(flyScreen.guidedPanelOpen),
+            "pendingOpen": (flyScreen.requestedSheet ?? flyScreen.deckRequest).map(JSON.string) ?? .null,
+        ]).text
+    }
+
+    private func debugApplied(_ command: DebugCommand) {
+        switch command {
+        case .ShowTab(let shown): tab = shown
+        case .ShowFlyView(let view):
+            tab = .Fly
+            flyView = view
+        case .Orient(let orientations): DebugUi.orient(orientations)
+        case .EditLayout(let on): if on { flyScreen.layout.startEditing() } else { flyScreen.layout.editing = false }
+        case .ResetLayout: flyScreen.layout.reset()
+        case .Open("readings"): flyScreen.choosingReadings = true
+        case .Open("settings"): navigation.settingsOpen = true
+        case .Open(let target) where REQUESTABLE_SHEETS.contains(target): flyScreen.requestedSheet = target
+        case .Open(let target): flyScreen.deckRequest = target
+        }
     }
 
     @ViewBuilder

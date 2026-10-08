@@ -131,16 +131,14 @@ private struct RcSwitch3: View {
 
 private struct RcMomentary: View {
     let control: RcControl
-    @State private var pressed = false
+    @GestureState private var pressed = false
     @State private var everPressed = false
 
     var body: some View {
         Button(control.label) {}
             .buttonStyle(.borderedProminent)
             .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in if !pressed { pressed = true } }
-                    .onEnded { _ in pressed = false }
+                DragGesture(minimumDistance: 0).updating($pressed) { _, down, _ in down = true }
             )
             .onChange(of: pressed) { _, down in
                 if down {

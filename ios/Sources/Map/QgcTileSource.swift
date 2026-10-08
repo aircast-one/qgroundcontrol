@@ -3,7 +3,6 @@ import MapLibre
 import QGCCore
 
 let qgcTileHost = "qgc.tiles"
-let osmTileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 private let mapProviderPath = "settings.flightMapSettings.mapProvider.rawValue"
 private let mapTypePath = "settings.flightMapSettings.mapType.rawValue"
 private let pngMagic: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
@@ -28,7 +27,7 @@ func qgcTileUrl(_ mapType: String) -> String {
 }
 
 func osmTileUrl(_ address: TileAddress) -> String {
-    osmTileUrl.replacingOccurrences(of: "{z}", with: "\(address.z)")
+    OSM_TILE_URL.replacingOccurrences(of: "{z}", with: "\(address.z)")
         .replacingOccurrences(of: "{x}", with: "\(address.x)")
         .replacingOccurrences(of: "{y}", with: "\(address.y)")
 }

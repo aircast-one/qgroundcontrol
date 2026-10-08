@@ -105,7 +105,7 @@ private struct RadioField: View {
                     .autocorrectionDisabled()
                     .submitLabel(.done)
                     .focused($focused)
-                    .onSubmit { onDone(typed) }
+                    .onSubmit { focused = false }
                     .frame(width: 180)
             }
             Text(hint).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)

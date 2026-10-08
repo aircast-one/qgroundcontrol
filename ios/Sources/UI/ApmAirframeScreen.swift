@@ -160,13 +160,9 @@ private struct FrameTypeChips: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Frame type").font(.labelLarge).foregroundStyle(theme.colors.onSurfaceVariant)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(types, id: \.value) { type in
-                        Button(type.name) { if type.value != frameType { onPick(type.value) } }
-                            .buttonStyle(.bordered)
-                            .tint(type.value == frameType ? theme.colors.primary : theme.colors.onSurfaceVariant)
-                    }
+            PlanFlowRow(spacing: 8) {
+                ForEach(types, id: \.value) { type in
+                    PlanChip(label: type.name, selected: type.value == frameType) { if type.value != frameType { onPick(type.value) } }
                 }
             }
         }

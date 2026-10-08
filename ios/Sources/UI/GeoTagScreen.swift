@@ -39,9 +39,9 @@ struct GeoTagScreen: View {
         picking = true
     }
 
-    @ViewBuilder private var content: some View {
-        if let current = run.state {
-            ScrollView { form(current) }
+    private var content: some View {
+        ScrollView {
+            if let current = run.state { form(current) }
         }
     }
 

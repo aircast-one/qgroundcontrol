@@ -156,8 +156,6 @@ func otherSources(_ reading: CamerasReading?) -> [CameraKind] {
     return open.filter { $0.group == CAMERA_GROUP_DEVICE } + open.filter { $0.group != CAMERA_GROUP_DEVICE }
 }
 
-func deviceCameraKind(_ kind: CameraKind) -> Bool { kind.group == CAMERA_GROUP_DEVICE }
-
 func otherSourceLabel(_ kind: CameraKind) -> String {
     kind.group == CAMERA_GROUP_DEVICE ? "This phone's \(kindLabel(kind.label).lowercased())" : kindLabel(kind.label)
 }

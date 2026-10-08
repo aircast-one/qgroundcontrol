@@ -237,6 +237,12 @@ private struct SettingsPager<Content: View>: View {
     let onSettled: (SettingsGroup) -> Void
     @ViewBuilder let content: (SettingsGroup) -> Content
     @State private var position: SettingsGroup?
+    @State private var scrolling = false
+
+    private func settle(_ now: SettingsGroup?) {
+        guard !scrolling, let now, now != group else { return }
+        onSettled(now)
+    }
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -255,9 +261,22 @@ private struct SettingsPager<Content: View>: View {
         .scrollPosition(id: $position)
         .environment(\.isScrollEnabled, swipeable)
         .onChange(of: group, initial: true) { _, now in if position != now { position = now } }
-        .onChange(of: position) { _, now in
-            guard let now, now != group else { return }
-            onSettled(now)
+        .onChange(of: position) { _, now in settle(now) }
+        .modifier(ScrollSettle { moving in
+            scrolling = moving
+            settle(position)
+        })
+    }
+}
+
+private struct ScrollSettle: ViewModifier {
+    let onMoving: (Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18, *) {
+            content.onScrollPhaseChange { _, phase in onMoving(phase.isScrolling) }
+        } else {
+            content
         }
     }
 }

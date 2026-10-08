@@ -85,7 +85,8 @@ struct Px4LogTransferPage: View {
     @State private var drafts: [String: String] = [:]
 
     var body: some View {
-        content
+        VStack(spacing: 0) { content }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .task(id: polls) {
                 while !Task.isCancelled {
                     read = await offMain { mavlinkLog(Qgc.get(MAVLINK_LOG_VIEW)) }

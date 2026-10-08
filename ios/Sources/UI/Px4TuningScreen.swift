@@ -153,9 +153,7 @@ struct Px4TuningScreen: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(Array(tab.axes.enumerated()), id: \.offset) { index, each in
-                                Button(each.name) { axisIndex = index }
-                                    .buttonStyle(.bordered)
-                                    .tint(each == axis ? theme.colors.primary : theme.colors.onSurfaceVariant)
+                                PlanChip(label: each.name, selected: each == axis) { axisIndex = index }
                             }
                         }
                     }

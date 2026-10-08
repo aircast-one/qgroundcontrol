@@ -25,7 +25,7 @@ final class FlyScreenState {
 
 let TRAFFIC_SHEET = "traffic"
 
-let REQUESTABLE_SHEETS: Set<String> = ["more", "readings", "camera", "gimbal", "status", "status-all", "modes", TRAFFIC_SHEET]
+let REQUESTABLE_SHEETS = ["more", "readings", "camera", "gimbal", "status", "status-all", "modes", TRAFFIC_SHEET]
 
 struct OpenOnRequest: View {
     let name: String

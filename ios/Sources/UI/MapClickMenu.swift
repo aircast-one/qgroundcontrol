@@ -152,7 +152,7 @@ struct MapClickMenu: View {
             } else if let orbit = confirming, orbit.id == ORBIT_ACTION {
                 OrbitPanel(point: point, action: orbit, defaults: defaults, onDone: onDismiss)
             } else {
-                AircastSheet(onDismissRequest: onDismiss) { sheet(actions, defaults) }
+                AircastSheet(onDismissRequest: { if confirming?.id != ORBIT_ACTION { onDismiss() } }) { sheet(actions, defaults) }
             }
         }
         .onChange(of: point) {

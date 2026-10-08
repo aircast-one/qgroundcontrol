@@ -21,3 +21,42 @@ final class FactSubtitleTests: XCTestCase {
         XCTAssertEqual(factSubtitle(fact("s", bool: true)), "")
     }
 }
+
+final class RunningTitleTests: XCTestCase {
+    func testANamedRoutineReadsAsItself() {
+        XCTAssertEqual(runningTitle("Compass"), "Calibrating Compass")
+    }
+
+    func testACalibrationTheScreenDidNotStartStillSaysWhatIsHappening() {
+        XCTAssertEqual(runningTitle(""), "Calibration in progress")
+        XCTAssertEqual(runningTitle("  "), "Calibration in progress")
+    }
+}
+
+final class OperatorDistanceTests: XCTestCase {
+    func testTheServedTextIsShownAsItsOwnReadingSplitIntoNumberAndUnitLikeEveryOtherReading() {
+        let view = JSON.parse(#"{"distanceToVehicleText":"316.8 m"}"#)
+
+        XCTAssertEqual(operatorDistance(view), [Instrument(label: "From you", reading: "316.8 m", value: "316.8", units: "m")])
+        XCTAssertEqual(operatorDistance(JSON.parse(#"{"distanceToVehicleText":"316.8"}"#)), [Instrument(label: "From you", reading: "316.8", value: "316.8", units: "")])
+    }
+
+    func testNothingIsShownWhenTheCoreWithholdsTheDistance() {
+        XCTAssertEqual(operatorDistance(JSON.parse(#"{"distanceToVehicleText":null}"#)), [])
+        XCTAssertEqual(operatorDistance(JSON.parse("{}")), [])
+        XCTAssertEqual(operatorDistance(nil), [])
+    }
+}
+
+final class RowWidthTests: XCTestCase {
+    func testFourOrFewerReadingsStayOnOneLine() {
+        XCTAssertEqual(rowWidth(4), 4)
+        XCTAssertEqual(rowWidth(3), 3)
+    }
+
+    func testMoreThanFourAreSplitEvenlyRatherThanLeavingAnOrphan() {
+        XCTAssertEqual(rowWidth(5), 3)
+        XCTAssertEqual(rowWidth(6), 3)
+        XCTAssertEqual(rowWidth(7), 4)
+    }
+}

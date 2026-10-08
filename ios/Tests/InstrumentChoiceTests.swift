@@ -130,6 +130,11 @@ final class InstrumentChoiceTests: XCTestCase {
         XCTAssertEqual(ValueSize.allCases.map(\.scale), [1, 0.86, 1.25, 1.5])
     }
 
+    func testAScaledValueKeepsTheTelemetryFiguresAndGrowsItsLineWithIt() {
+        XCTAssertEqual(scaledNumber(1.5), TypeScale.telemetry.font(TypeScale.telemetry.size * 1.5))
+        XCTAssertNotEqual(scaledNumber(1.5), TypeScale.telemetry.font)
+    }
+
     func testValuesMoveSwapTheirReadingAndGoAwayInPlace() {
         let row = ["a", "b", "c"]
         XCTAssertEqual(movedInstrument(row, 1, -1), ["b", "a", "c"])

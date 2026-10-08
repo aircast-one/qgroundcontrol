@@ -16,7 +16,7 @@ struct TrackingBoxOverlay: View {
                         Color.clear
                             .contentShape(Rectangle())
                             .gesture(
-                                DragGesture(minimumDistance: 0).onEnded { drag in
+                                DragGesture().onEnded { drag in
                                     sendTracking(trackingRequest(drag.startLocation.x, drag.startLocation.y, drag.location.x, drag.location.y, picture))
                                 }
                             )

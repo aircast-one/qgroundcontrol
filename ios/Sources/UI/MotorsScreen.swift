@@ -54,7 +54,7 @@ func motorLabel(_ motor: Int, _ letters: Bool) -> String {
 }
 
 private func spinAll(_ motors: Int, _ percent: Int) {
-    offMain { (1...max(motors, 1)).forEach { spin($0, percent) } }
+    offMainInOrder { (1...max(motors, 1)).forEach { spin($0, percent) } }
 }
 
 struct MotorsScreen: View {
@@ -107,7 +107,7 @@ struct MotorsScreen: View {
                         ForEach(Array(first...min(first + 1, motors)), id: \.self) { motor in
                             MotorTile(label: "Motor \(motorLabel(motor, letters))", testable: testable) {
                                 let percent = Int(throttle)
-                                offMain { spin(motor, percent) }
+                                offMainInOrder { spin(motor, percent) }
                             }
                         }
                         if first == motors {

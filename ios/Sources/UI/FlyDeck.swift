@@ -37,31 +37,60 @@ private struct HoldPress: ViewModifier {
     let label: String
     @Binding var progress: Double
     @State private var pressedAt: Date?
+    @State private var cancelled = false
+    @State private var fill: Task<Void, Never>?
     @State private var fired = false
     @State private var held = 0
+    @State private var size = CGSize.zero
+
+    private func inside(_ point: CGPoint) -> Bool { CGRect(origin: .zero, size: size).contains(point) }
+
+    private func press(_ onHold: @escaping () -> Void) {
+        pressedAt = Date()
+        fired = false
+        withAnimation(.linear(duration: Double(DECK_HOLD_MS) / 1000)) { progress = 1 }
+        fill = Task { @MainActor in
+            guard (try? await Task.sleep(for: .milliseconds(DECK_HOLD_MS))) != nil else { return }
+            fired = true
+            held += 1
+            onHold()
+        }
+    }
+
+    private func release() {
+        fill?.cancel()
+        fill = nil
+        pressedAt = nil
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { progress = 0 }
+    }
 
     func body(content: Content) -> some View {
         if let onHold, enabled {
             content
                 .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: Double(DECK_HOLD_MS) / 1000) {
-                    fired = true
-                    held += 1
-                    onHold()
-                } onPressingChanged: { pressing in
-                    if pressing {
-                        pressedAt = Date()
-                        fired = false
-                        withAnimation(.linear(duration: Double(DECK_HOLD_MS) / 1000)) { progress = 1 }
-                    } else {
-                        var instant = Transaction()
-                        instant.disablesAnimations = true
-                        withTransaction(instant) { progress = 0 }
-                        let quick = pressedAt.map { Date().timeIntervalSince($0) < LONG_PRESS_TIMEOUT_SECONDS } ?? false
-                        pressedAt = nil
-                        if !fired && quick { onTap() }
-                    }
-                }
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { drag in
+                            guard !cancelled else { return }
+                            if !inside(drag.location) {
+                                cancelled = true
+                                release()
+                            } else if pressedAt == nil {
+                                press(onHold)
+                            }
+                        }
+                        .onEnded { drag in
+                            let quick = pressedAt.map { Date().timeIntervalSince($0) < LONG_PRESS_TIMEOUT_SECONDS } ?? false
+                            let tap = !cancelled && !fired && quick && inside(drag.location)
+                            cancelled = false
+                            release()
+                            if tap { onTap() }
+                        }
+                )
+                .onDisappear(perform: release)
                 .sensoryFeedback(.impact(weight: .heavy), trigger: held)
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isButton)

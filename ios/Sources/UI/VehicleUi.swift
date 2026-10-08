@@ -321,7 +321,7 @@ private struct TelemetryReadings: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, Space.s2)
             }
-            VStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     HStack(alignment: .bottom, spacing: 0) {
                         ForEach(Array(row.enumerated()), id: \.offset) { at, tile in
@@ -331,7 +331,7 @@ private struct TelemetryReadings: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .opacity(silent ? 0.45 : 1)
         }
     }
@@ -366,7 +366,7 @@ private struct TelemetryReadings: View {
 }
 
 func scaledNumber(_ scale: Double) -> Font {
-    .system(size: 22 * scale, weight: .medium).monospacedDigit()
+    TypeScale.telemetry.font(TypeScale.telemetry.size * scale)
 }
 
 struct FlightActions<Center: View>: View {

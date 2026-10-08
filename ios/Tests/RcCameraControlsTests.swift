@@ -15,3 +15,13 @@ final class RcCameraControlsTests: XCTestCase {
         XCTAssertFalse(cameraRecording(recordChannel: 0, channelRecording: true, streamRecording: false))
     }
 }
+
+final class VehicleAltitudeTests: XCTestCase {
+    func testTheVehicleAltitudeCopiedIsTheOneInTheItemsFrameAsEditPositionDialogPicksIt() {
+        XCTAssertEqual(vehicleAltitudePath(1), "vehicle.altitudeRelative")
+        XCTAssertEqual(vehicleAltitudePath(2), "vehicle.altitudeAMSL")
+        XCTAssertEqual(vehicleAltitudePath(3), "vehicle.altitudeAboveTerr")
+        XCTAssertEqual(vehicleAltitudePath(4), "vehicle.altitudeAboveTerr")
+        XCTAssertNil(vehicleAltitudePath(nil))
+    }
+}

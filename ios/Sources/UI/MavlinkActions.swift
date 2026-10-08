@@ -42,7 +42,7 @@ struct MavlinkActionsSection: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        Group {
+        ZStack(alignment: .topLeading) {
             if let actions = read {
                 let options = [NO_ACTIONS_FILE] + actions.files
                 VStack(alignment: .leading, spacing: 0) {

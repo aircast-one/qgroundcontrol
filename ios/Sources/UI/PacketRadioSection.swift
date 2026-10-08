@@ -32,9 +32,3 @@ func packetRadioStatus(_ view: JSON?) -> PacketRadioStatus? {
         adapters: view["adapters"].strings
     )
 }
-
-struct PacketRadioSection: View {
-    let onWrite: () -> Void
-
-    var body: some View { EmptyView() }
-}

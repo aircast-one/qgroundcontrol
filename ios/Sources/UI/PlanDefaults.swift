@@ -45,6 +45,7 @@ struct PlanDefaultsDialog: View {
                 if let refusal { Text(refusal).font(.bodySmall).foregroundStyle(theme.colors.error) }
                 ForEach(speeds) { fact in FactRow(fact: fact, onWrite: {}) }
             }
+            .modifier(ApplyAltitudePromptAlert(prompt: applyAltitudePrompt(view)))
         } buttons: {
             Button("Done", action: onDismiss)
         }

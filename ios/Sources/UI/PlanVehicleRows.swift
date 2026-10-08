@@ -22,7 +22,7 @@ struct PlanVehicleRows: View {
 
     var body: some View {
         let choosing = choosesPlanVehicle(connected, plan)
-        Group {
+        VStack(alignment: .leading, spacing: 0) {
             if choosing {
                 ForEach(facts, id: \.1.path) { label, fact in
                     FactRow(fact: fact, title: label, onWrite: { reloads += 1 })

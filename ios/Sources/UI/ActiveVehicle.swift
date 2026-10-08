@@ -169,6 +169,7 @@ struct VehicleStateChip: View {
         .foregroundStyle(statusBar ? theme.aircast.outdoorForeground : contentColour(tone))
         .background(statusBar ? Color.clear : osdBackdrop(containerColour(tone), flyOsd), in: RoundedRectangle(cornerRadius: Corner.small))
         .contentShape(Rectangle())
+        .accessibilityAddTraits(.isButton)
         .onTapGesture {
             if lost {
                 lostMenu = true

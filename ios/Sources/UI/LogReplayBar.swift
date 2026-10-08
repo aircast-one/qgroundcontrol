@@ -77,7 +77,7 @@ struct LogReplayBar: View {
     @State private var picking = false
 
     var body: some View {
-        Group {
+        ZStack(alignment: .topLeading) {
             if let replay = read, replay.shown {
                 bar(replay)
             }

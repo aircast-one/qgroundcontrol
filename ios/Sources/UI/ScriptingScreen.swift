@@ -64,7 +64,8 @@ struct ScriptingScreen: View {
     @State private var downloaded: URL?
 
     var body: some View {
-        content
+        VStack(spacing: 0) { content }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .task {
                 _ = await offMain { Qgc.invoke(SCRIPTING_OPEN) }
                 revision += 1

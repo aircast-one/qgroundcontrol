@@ -593,7 +593,6 @@ private struct SettingsControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if home && page.showsNtrip { NtripStatusSection(onWrite: onWrite) }
-            if home && page.showsPacketRadio { PacketRadioSection(onWrite: onWrite) }
             ForEach(Array(sections.enumerated()), id: \.offset) { _, section in
                 sectionView(section)
             }
@@ -1263,6 +1262,8 @@ func factKeyboard(_ fact: Fact) -> UIKeyboardType {
     return .decimalPad
 }
 
+private let KEYBOARDS_WITHOUT_RETURN: Set<UIKeyboardType> = [.numberPad, .decimalPad]
+
 func fieldText(_ fact: Fact) -> String { fact.isString || isSecret(fact) ? fact.valueString : plainNumber(fact.valueString) }
 
 func plainNumber(_ text: String) -> String {
@@ -1377,6 +1378,14 @@ private struct FactTextField: View {
                 .onSubmit { focused = false }
                 .focused($focused)
                 .disabled(!fact.enabled)
+                .toolbar {
+                    if focused && KEYBOARDS_WITHOUT_RETURN.contains(factKeyboard(fact)) {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { focused = false }
+                        }
+                    }
+                }
                 if !fact.units.isBlank {
                     Text(shownUnits(fact.units)).foregroundStyle(theme.colors.onSurfaceVariant)
                 }

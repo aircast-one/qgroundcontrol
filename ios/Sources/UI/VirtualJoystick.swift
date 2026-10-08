@@ -157,6 +157,7 @@ private struct ThumbPad: View {
     let description: String
     let onMove: (CGPoint) -> Void
     @State private var start: CGPoint?
+    @GestureState private var touching = false
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -177,6 +178,7 @@ private struct ThumbPad: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($touching) { _, down, _ in down = true }
                     .onChanged { drag in
                         let origin = start ?? stick
                         if start == nil { start = stick }
@@ -185,11 +187,13 @@ private struct ThumbPad: View {
                             y: min(max(origin.y + drag.translation.height / size.height, 0), 1)
                         ))
                     }
-                    .onEnded { _ in
-                        start = nil
-                        onMove(released(stick, reCenterY))
-                    }
             )
+            .onChange(of: touching) { _, down in
+                if !down {
+                    start = nil
+                    onMove(released(stick, reCenterY))
+                }
+            }
         }
         .aspectRatio(1, contentMode: .fit)
         .accessibilityElement()

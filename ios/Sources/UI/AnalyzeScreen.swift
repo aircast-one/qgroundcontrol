@@ -13,7 +13,7 @@ enum AnalyzeSection: CaseIterable {
 }
 
 enum AnalyzePage: CaseIterable, Hashable {
-    case LogDownload, GeoTag, Vibration, Inspector, Console, Messages
+    case LogDownload, GeoTag, Vibration, Inspector, Console, Messages, Firmware
 
     var label: String {
         switch self {
@@ -23,6 +23,7 @@ enum AnalyzePage: CaseIterable, Hashable {
         case .Inspector: "MAVLink inspector"
         case .Console: "Console"
         case .Messages: "Messages"
+        case .Firmware: "Firmware"
         }
     }
 
@@ -34,6 +35,7 @@ enum AnalyzePage: CaseIterable, Hashable {
         case .Inspector: "Live message rates and field values"
         case .Console: "Vehicle shell over MAVLink"
         case .Messages: "What the vehicle has said since it connected"
+        case .Firmware: "Flash a board through its bootloader over USB"
         }
     }
 
@@ -41,6 +43,7 @@ enum AnalyzePage: CaseIterable, Hashable {
         switch self {
         case .LogDownload, .GeoTag: .FlightData
         case .Vibration, .Inspector, .Console, .Messages: .Live
+        case .Firmware: .Vehicle
         }
     }
 
@@ -52,13 +55,14 @@ enum AnalyzePage: CaseIterable, Hashable {
         case .Inspector: .analytics
         case .Console: .terminal
         case .Messages: .description
+        case .Firmware: .developerBoard
         }
     }
 
     var requiresVehicle: Bool {
         switch self {
         case .LogDownload, .Vibration, .Inspector, .Console: true
-        case .GeoTag, .Messages: false
+        case .GeoTag, .Messages, .Firmware: false
         }
     }
 }
@@ -229,6 +233,7 @@ private struct AnalyzePageBody: View {
         case .Vibration: VibrationScreen()
         case .GeoTag: GeoTagScreen()
         case .Messages: VehicleMessagesPage()
+        case .Firmware: FirmwareScreen()
         }
     }
 }

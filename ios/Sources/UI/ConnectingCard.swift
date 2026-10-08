@@ -11,7 +11,7 @@ struct ConnectingCard: View {
     @State private var dismissed = false
 
     var body: some View {
-        Group {
+        ZStack(alignment: .topLeading) {
             if let progress = loading, !dismissed {
                 card(progress)
             }
