@@ -52,9 +52,9 @@ class FlightTimeTest {
 
 class FlightTimeReadTest {
     @Test
-    fun `the seconds come out of the fact the bridge wraps them in`() {
-        assertEquals(10.325, flightTimeSeconds(org.json.JSONObject("""{"kind":"value","value":{"kind":"fact","value":10.325}}""")))
-        assertEquals(null, flightTimeSeconds(org.json.JSONObject("""{"kind":"value","value":null}""")))
+    fun `the seconds are the value of the fact the core answers with`() {
+        assertEquals(10.325, flightTimeSeconds(org.json.JSONObject("""{"kind":"fact","value":10.325}""")))
+        assertEquals(null, flightTimeSeconds(org.json.JSONObject("""{"kind":"fact","value":null}""")))
     }
 }
 

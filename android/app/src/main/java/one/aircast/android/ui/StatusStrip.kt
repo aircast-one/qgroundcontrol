@@ -435,7 +435,7 @@ internal fun flightTimeText(seconds: Double?): String {
 private const val FLIGHT_TIME_POLL_MS = 1000L
 
 internal fun flightTimeSeconds(view: JSONObject?): Double? =
-    view?.optJSONObject("value")?.opt("value")?.let { (it as? Number)?.toDouble() }
+    (view?.opt("value") as? Number)?.toDouble()
 
 @Composable
 private fun FlightTimeCell() {
