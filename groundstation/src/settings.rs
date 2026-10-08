@@ -682,8 +682,10 @@ fn subsections(group: &str, controls: &[Value]) -> Vec<Value> {
     }
 }
 
+const PACKET_RADIO_HOSTED: bool = !cfg!(target_os = "ios");
+
 fn page_shown(page: &Page, connected: bool, px4: bool) -> bool {
-    !UNLISTED.contains(&page.title) && (!page.shows_px4_logs || !connected || px4)
+    !UNLISTED.contains(&page.title) && (!page.shows_px4_logs || !connected || px4) && (!page.shows_packet_radio || PACKET_RADIO_HOSTED)
 }
 
 pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
