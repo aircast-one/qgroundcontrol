@@ -9,7 +9,7 @@ CONTRACT = os.environ.get(
     os.path.expanduser("~/Code/aircast/qgroundcontrol/test/Bridge/fixtures/view-shapes.json"),
 )
 BASELINE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unread-baseline.txt")
-READS = re.compile(r'\bopt(?:Text|Boolean|Int|Long|Double|JSONObject|JSONArray|String)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
+READS = re.compile(r'\b(?:opt(?:Text|Boolean|Int|Long|Double|JSONObject|JSONArray|String)|isNull)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
 NAMES_VIEW = re.compile(r'"(view\.[A-Za-z][A-Za-z0-9]*)')
 NESTED = re.compile(r'\.optJSON(?:Object|Array)\(\s*"([A-Za-z][A-Za-z0-9]*)"')
 BARE_BOOL = re.compile(r'\.optBoolean\(\s*"([A-Za-z][A-Za-z0-9]*)"\s*\)')
@@ -179,12 +179,16 @@ def head_keys(root):
 
 
 ACCEPTED_ON = {
+    ("view.gcsPosition", "sources"): "the table of every position source; the map reads usable, heading and the coordinate, and this head has no source picker",
+    ("view.track", "recording"): "the track records while the vehicle is armed; the map draws the points it is given and shows no recording badge",
+    ("view.video", "connecting"): "the macOS head's per-camera spinner; this head reads each camera's status token from view.cameras",
+    ("view.video", "recording"): "the shutter watches video.recording itself (CameraControlLayer VIDEO_RECORDING_STATE)",
+    ("view.video", "multipleSources"): "the camera switch counts view.cameras",
+    ("view.video", "pipPipeline"): "the core's Android video driver plays the picture-in-picture channel itself; only a head that builds its own player (macOS) reads the pipeline",
     ("view.gcsPosition", "distanceToVehicle"): "the head reads distanceToVehicleText, the core's own formatting",
     ("view.gcsPosition", "distanceToVehicleMeters"): "raw half of distanceToVehicleText",
     ("view.gcsPosition", "distanceToVehicleUnits"): "unit half of distanceToVehicleText",
     ("view.missionItems", "altitudeFrame"): "the head reads altitudeFrameText",
-    ("view.plan", "defaultValue"): "the head reads defaultText and only ever SHOWS a default, never writes one",
-    ("view.settings", "defaultValue"): "see view.plan",
     ("view.plan", "valueMeters"): "the geometry half of value. MEASURED: no consumer on this head feeds a "
         "control value into geometry - settings round-trip through Qgc.set, which is cooked and correct",
     ("view.settings", "valueMeters"): "see view.plan",
@@ -201,14 +205,12 @@ ACCEPTED_ON = {
     ("view.battery", "secondaryText"): "the macOS head's pack subtitle; the Android battery sheet shows indicatorLines and rows like BatteryIndicator.qml",
     ("view.camera", "canStopPhoto"): "the gate actions.rs checks for stopTakePhoto; the shutter's stop state reaches the head through panel, the PhotoVideoControl.qml port",
     ("view.camera", "modeKnown"): "hasModes and panel carry PhotoVideoControl.qml's mode toggle rule; modeKnown is the core's own input to it",
-    ("view.control", "defaultValue"): "a Fact's default; heads show it through defaultText or Qgc.kt defaultValueString and never write it",
     ("view.control", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",
     ("view.control", "valueMeters"): "the geometry half of value; FactRow round-trips the cooked value through Qgc.set",
     ("view.firmware", "firmwareType"): "a part of summary, the one line SetupView shows",
     ("view.firmware", "version"): "a part of summary, the one line SetupView shows",
     ("view.firmware", "versionType"): "a part of summary, the one line SetupView shows",
     ("view.firmwareUpgrade", "board"): "FirmwareUpgradeController shows the board only as status log lines (Connected to bootloader, Board ID, Flash size), which firmwareflash.rs posts to messages and FirmwareScreen lists",
-    ("view.firstRun", "defaultValue"): "a Fact's default; heads show it through defaultText or Qgc.kt defaultValueString and never write it",
     ("view.firstRun", "promptId"): "the core's key for the dismissed-prompt store; the head acts on show",
     ("view.firstRun", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",
     ("view.firstRun", "valueMeters"): "the geometry half of value; FactRow round-trips the cooked value through Qgc.set",
@@ -237,7 +239,6 @@ ACCEPTED_ON = {
     ("view.hostNotices", "notices"): "HostNotices.kt reads the core's split of the queue into banners, dialogs and unseen; these are the raw queue and its acknowledgement bookkeeping",
     ("view.hostNotices", "dropped"): "HostNotices.kt reads the core's split of the queue into banners, dialogs and unseen; dropped is the raw queue's overflow bookkeeping",
     ("view.itemFacts", "customName"): "CameraCalcSection reads custom (isCustomCamera) and brands, which already lists Custom Camera like CameraCalc's cameraBrandList",
-    ("view.itemFacts", "defaultValue"): "a Fact's default; heads show it through defaultText or Qgc.kt defaultValueString and never write it",
     ("view.itemFacts", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",
     ("view.itemFacts", "valueMeters"): "the geometry half of value; FactRow round-trips the cooked value through Qgc.set",
     ("view.mapTypes", "provider"): "the core filters types by provider (maptypes.rs); the head lists types and current",
@@ -278,10 +279,8 @@ ACCEPTED_ON = {
     ("view.planTransform", "hasHome"): "the head tests home for null, the same fact",
     ("view.planTransform", "verticalMetresPerUnit"): "read by transformUnit(view, \"vertical\") through a ${axis}MetresPerUnit string template",
     ("view.planTransform", "verticalUnit"): "read by transformUnit(view, \"vertical\") through a ${axis}Unit string template",
-    ("view.px4Tuning", "defaultValue"): "a Fact's default; heads show it through defaultText or Qgc.kt defaultValueString and never write it",
     ("view.px4Tuning", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",
     ("view.px4Tuning", "valueMeters"): "the geometry half of value; FactRow round-trips the cooked value through Qgc.set",
-    ("view.sensorSettings", "defaultValue"): "a Fact's default; heads show it through defaultText or Qgc.kt defaultValueString and never write it",
     ("view.sensorSettings", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",
     ("view.sensorSettings", "valueMeters"): "the geometry half of value; FactRow round-trips the cooked value through Qgc.set",
     ("view.settings", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",
@@ -540,8 +539,6 @@ ACCEPTED = {
     "chart": "view.inspectorCharts lists plots and charted fields only after a field is put on a chart, and the recording rig charts nothing, so plots and selectedCharted record empty; inspectorchart.rs serves field and chart per plot",
     "field": "view.inspectorCharts lists plots and charted fields only after a field is put on a chart, and the recording rig charts nothing, so plots and selectedCharted record empty; inspectorchart.rs serves field and chart per plot",
     "singleStickDisplay": "view.joystick serves calibration only while a joystick calibration runs, and the recording rig has no joystick, so calibration records null; stickcal.rs and joystickhost.rs serve these during calibration",
-    "initialConnectComplete": "ActiveVehicle.kt reads Vehicle's loadProgress and initialConnectComplete properties straight through get_fields(vehicle), not through a recorded view; vehiclefacade.rs serves both in the core flavor",
-    "loadProgress": "ActiveVehicle.kt reads Vehicle's loadProgress and initialConnectComplete properties straight through get_fields(vehicle), not through a recorded view; vehiclefacade.rs serves both in the core flavor",
     "keepText": "view.plan carries vehicleChangePrompt only after the active vehicle changes under a dirty plan, which the recording rig never does; coreplan.rs vehicle_change_prompt serves these",
     "loadText": "view.plan carries vehicleChangePrompt only after the active vehicle changes under a dirty plan, which the recording rig never does; coreplan.rs vehicle_change_prompt serves these",
     "details": "view.joystick indicator is served only while a joystick is attached, and the desktop recording rig has none; joystickhost.rs indicator() serves the detail rows",
