@@ -344,6 +344,7 @@ fun Viewer3DPane(modifier: Modifier = Modifier) {
             val mapStyle = planMapStyle(context)
             val builder = if (mapStyle.trimStart().startsWith("{")) Style.Builder().fromJson(mapStyle) else Style.Builder().fromUri(mapStyle)
             loaded.setStyle(builder) { ready ->
+                ready.transition = NO_FADES
                 installScene(ready)
                 style = ready
             }

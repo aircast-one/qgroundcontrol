@@ -44,6 +44,7 @@ import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.layers.TransitionOptions
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -51,6 +52,8 @@ import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 
 private const val VEHICLE_SOURCE = "aircast-vehicle"
+
+internal val NO_FADES = TransitionOptions(0, 0, false)
 private const val VEHICLE_LAYER = "aircast-vehicle-layer"
 private const val VEHICLE_HEADING_LAYER = "aircast-vehicle-heading-layer"
 private const val OTHER_VEHICLE_COLOUR = "#90A4AE"
@@ -319,6 +322,7 @@ fun VehicleMap(
                 Style.Builder().fromUri(mapStyle)
             }
             loaded.setStyle(builder) { loadedStyle ->
+                loadedStyle.transition = NO_FADES
                 installLayers(loadedStyle)
                 installSurveyLayers(loadedStyle)
                 installTransectMarks(loadedStyle)
