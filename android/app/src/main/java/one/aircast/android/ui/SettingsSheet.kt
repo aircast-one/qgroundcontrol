@@ -63,9 +63,22 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
     var setupFromTab by rememberSaveable { mutableStateOf(false) }
     var enteredForSetup by rememberSaveable { mutableStateOf(navigation.aircraftRequested) }
     LaunchedEffect(setupOpen) { if (!setupOpen) enteredForSetup = false }
-    val closeSetup: () -> Unit = { if (enteredForSetup) onClose() else setupOpen = false }
     var page by rememberSaveable(requested) { mutableStateOf(requested) }
     var query by rememberSaveable { mutableStateOf<String?>(null) }
+    var returnQuery by rememberSaveable { mutableStateOf<String?>(null) }
+    val backToSearch: () -> Unit = {
+        query = returnQuery
+        returnQuery = null
+        page = null
+    }
+    val closeSetup: () -> Unit = {
+        if (enteredForSetup) {
+            onClose()
+        } else {
+            setupOpen = false
+            if (returnQuery != null) backToSearch()
+        }
+    }
     LaunchedEffect(navigation.aircraftRequested) {
         if (navigation.aircraftRequested) {
             setupFromTab = setupFromTab || !navigation.setupPage.isNullOrEmpty()
@@ -94,6 +107,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
         navigation.setupPage = component
         setupFromTab = component != null
         setupOpen = true
+        returnQuery = query?.takeIf { it.isNotBlank() }
         query = null
     }
     Surface(Modifier.fillMaxSize().zIndex(SETTINGS_SHEET_LAYER).pointerInput(Unit) {}, color = MaterialTheme.colorScheme.surface) {
@@ -102,6 +116,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                 group = entry
                 page = null
                 setupOpen = false
+                returnQuery = null
             }
             BoxWithConstraints {
                 val stacked = maxWidth < STACKED_HEADER_WIDTH
@@ -134,6 +149,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                     query != null -> SettingsSearch(query.orEmpty(), Modifier.weight(1f), openSetup) { title ->
                         group = pageLook(title).group
                         page = title
+                        returnQuery = query.takeUnless { pageLook(title).inline }
                         query = null
                         setupOpen = false
                     }
@@ -144,7 +160,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                         CompositionLocalProvider(LocalPageHeading provides heading) { SetupScreen(Modifier.weight(1f)) }
                         androidx.activity.compose.BackHandler(enabled = setupFromTab && query == null, onBack = back)
                     }
-                    else -> SettingsScreen(group, page?.takeIf { pageLook(it).group == group }, Modifier.weight(1f), openSetup)
+                    else -> SettingsScreen(group, page?.takeIf { pageLook(it).group == group }, Modifier.weight(1f), onLeaveInitialPage = backToSearch.takeIf { returnQuery != null }, onOpenSetup = openSetup)
                 }
             }
         }

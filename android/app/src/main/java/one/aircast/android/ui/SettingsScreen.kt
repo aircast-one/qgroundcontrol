@@ -348,7 +348,7 @@ private fun AircraftSetupRow(onOpenSetup: (String?) -> Unit) {
 }
 
 @Composable
-internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}) {
+internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier: Modifier = Modifier, onLeaveInitialPage: (() -> Unit)? = null, onOpenSetup: (String?) -> Unit = {}) {
     var everyPage by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
     var open by rememberSaveable(group) { mutableStateOf(initialPage?.takeUnless { pageLook(it).inline }) }
 
@@ -356,11 +356,12 @@ internal fun SettingsScreen(group: SettingsGroup, initialPage: String?, modifier
         everyPage = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
     }
 
-    BackHandler(enabled = open != null) { open = null }
+    val closePage: () -> Unit = { onLeaveInitialPage?.takeIf { open == initialPage }?.invoke() ?: run { open = null } }
+    BackHandler(enabled = open != null, onBack = closePage)
 
     val current = everyPage.firstOrNull { it.title == open }
     val heading = remember { mutableStateOf<PageHeading?>(null) }
-    val headingBack: () -> Unit = { heading.value?.back?.invoke() ?: run { open = null } }
+    val headingBack: () -> Unit = { heading.value?.back?.invoke() ?: closePage() }
     CompositionLocalProvider(LocalPageHeading provides heading, LocalDetailBehindHelp provides true) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             val column = Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH)

@@ -469,7 +469,7 @@ fun AircastShell(hostView: android.view.View?) {
             NavigationRail(Modifier.fillMaxHeight(), windowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical + WindowInsetsSides.Start)) {
                 tabs.forEach { entry ->
                     NavigationRailItem(
-                        selected = tab == entry,
+                        selected = tab == entry && !navigation.settingsOpen,
                         onClick = { selectTab(entry) },
                         icon = { Icon(painterResource(entry.icon), entry.label) },
                         label = { Text(entry.label) },
@@ -494,7 +494,7 @@ fun AircastShell(hostView: android.view.View?) {
                 if (!landscape && !onFly) NavigationBar {
                     tabs.forEach { entry ->
                         NavigationBarItem(
-                            selected = tab == entry,
+                            selected = tab == entry && !navigation.settingsOpen,
                             onClick = { selectTab(entry) },
                             icon = { Icon(painterResource(entry.icon), entry.label) },
                             label = { Text(entry.label) },
