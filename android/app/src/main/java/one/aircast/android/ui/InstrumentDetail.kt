@@ -42,9 +42,15 @@ internal fun batteryDetail(view: JSONObject?): List<DetailRow> {
 
 private const val SECONDS_PER_MINUTE = 60
 
-internal fun silenceText(seconds: Long): String =
-    if (seconds < SECONDS_PER_MINUTE) "No data from the aircraft for $seconds s"
-    else "No data from the aircraft for ${seconds / SECONDS_PER_MINUTE} min"
+internal fun silenceDuration(seconds: Long): String =
+    if (seconds < SECONDS_PER_MINUTE) "$seconds s" else "${seconds / SECONDS_PER_MINUTE} min"
+
+internal fun silenceText(seconds: Long): String = "No data from the aircraft for ${silenceDuration(seconds)}"
+
+internal const val SIGNAL_LOST = "Signal lost"
+
+internal fun signalLostTitle(seconds: Long?): String =
+    listOfNotNull(SIGNAL_LOST, seconds?.let(::silenceDuration)).joinToString(" \u00b7 ")
 
 private val CRITICAL_CHARGE_STATES = 3..6
 

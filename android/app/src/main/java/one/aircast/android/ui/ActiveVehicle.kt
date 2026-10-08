@@ -139,6 +139,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val station = remember(controlJson) { controlStation(controlJson) }
     val taken = controlIsElsewhere(station)
     val lost = fly?.contactLost == true
+    val silentFor = silentSeconds(lost)
+    var lostMenu by remember { mutableStateOf(false) }
     val offlineJson by qgcPath(OFFLINE_STATUS_VIEW)
     val warningsJson by qgcPath(WARNINGS)
     val blocker = remember(warningsJson, fly) { armingBlocker(warningsJson)?.takeIf { fly?.connected == true && !fly.armed } }
@@ -188,6 +190,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         },
         onClick = {
             when {
+                lost -> lostMenu = true
                 choices.ambiguous || taken -> picking = true
                 disconnected -> offline = true
                 blocker != null -> why = true
@@ -201,7 +204,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp))
-        val title = activeVehicleTitle(choices, subtitle)
+        val title = if (lost) signalLostTitle(silentFor) else activeVehicleTitle(choices, subtitle)
         Text(
             text = if (statusBar) osdModeText(title) else title,
             style = if (statusBar) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
@@ -234,22 +237,31 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         } else if (!disconnected) {
             Icon(
                 painterResource(R.drawable.ic_arrow_drop_down),
-                contentDescription = "Change flight mode",
-                modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { modeMenu = true },
+                contentDescription = if (lost) SIGNAL_LOST else "Change flight mode",
+                modifier = Modifier.clickable(role = androidx.compose.ui.semantics.Role.Button) { if (lost) lostMenu = true else modeMenu = true },
             )
         }
-        rememberVehicleLoading()?.let { progress ->
+        rememberVehicleLoading()?.takeUnless { lost }?.let { progress ->
             Column(Modifier.padding(start = 8.dp)) {
                 Text("Loading vehicle", style = MaterialTheme.typography.labelSmall)
                 androidx.compose.material3.LinearProgressIndicator(progress = { progress }, modifier = Modifier.width(72.dp))
             }
         }
-        if (lost) {
-            androidx.compose.material3.TextButton(onClick = {
-                scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(CLOSE_VEHICLE) } }
-            }) { Text("Disconnect") }
-        }
     }
+    }
+    androidx.compose.material3.DropdownMenu(expanded = lostMenu && lost, onDismissRequest = { lostMenu = false }) {
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text(silentFor?.let(::silenceText) ?: SIGNAL_LOST, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            onClick = {},
+            enabled = false,
+        )
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text("Disconnect", color = MaterialTheme.colorScheme.error) },
+            onClick = {
+                lostMenu = false
+                scope.launch { flyScreen.refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(CLOSE_VEHICLE) } }
+            },
+        )
     }
     }
 

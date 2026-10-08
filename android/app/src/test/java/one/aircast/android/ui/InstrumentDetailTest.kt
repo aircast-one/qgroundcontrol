@@ -60,6 +60,14 @@ class InstrumentDetailTest {
     }
 
     @Test
+    fun `the vehicle chip says the signal is lost and for how long`() {
+        assertEquals("Signal lost \u00b7 12 s", signalLostTitle(12))
+        assertEquals("Signal lost", osdModeText(signalLostTitle(12)))
+        assertEquals("12 s", osdStatusNote(signalLostTitle(12)))
+        assertEquals("Signal lost", signalLostTitle(null))
+    }
+
+    @Test
     fun `every placeholder QGC prints for an uncomputed fact is treated as one`() {
         assertTrue(notYetComputed("--.--"))
         assertTrue(notYetComputed("--:--:--"))

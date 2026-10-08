@@ -424,7 +424,7 @@ private fun headlineColour(headline: BatteryHeadline): Color =
 private const val MILLIS_PER_SECOND = 1000L
 
 @Composable
-private fun silentSeconds(lost: Boolean): Long? {
+internal fun silentSeconds(lost: Boolean): Long? {
     val since = remember(lost) { if (lost) SystemClock.elapsedRealtime() else null }
     val now by produceState(SystemClock.elapsedRealtime(), since) {
         while (since != null) {
