@@ -6,6 +6,7 @@ MAPLIBRE_SHA256=de3aaa435dd86768b06d90245e630d068dd7eef1491afae7217d1654c52c462a
 config="$(dirname "$0")/../.github/build-config.json"
 GSTREAMER_VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gstreamer"]["version"]["ios"])' "$config")
 GSTREAMER_SHA256=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["gstreamer"]; print(c["checksums"][c["version"]["ios"]]["ios"])' "$config")
+CA_BUNDLE_SHA256=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gstreamer"]["ca_bundle_sha256"])' "$config")
 
 vendor="$(cd "$(dirname "$0")" && pwd)/Vendor"
 cache="$HOME/.cache/aircast-ios"
@@ -27,6 +28,8 @@ if [ ! -f "$vendor/MapLibre-$MAPLIBRE_VERSION" ]; then
     unzip -q "$zip" -d "$vendor"
     touch "$vendor/MapLibre-$MAPLIBRE_VERSION"
 fi
+
+fetch "https://curl.se/ca/cacert.pem" "$vendor/ca-certificates.crt" "$CA_BUNDLE_SHA256"
 
 sdk="$HOME/Library/Developer/GStreamer/iPhone.sdk"
 if [ ! -f "$sdk/GStreamer-$GSTREAMER_VERSION" ]; then

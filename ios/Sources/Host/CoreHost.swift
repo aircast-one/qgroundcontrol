@@ -33,7 +33,7 @@ enum CoreHost {
             "--save-path", documents.appendingPathComponent(application, isDirectory: true).path,
             "--app-version", version,
         ] + debug
-        qgc_ios_register_gstreamer_plugins()
+        qgc_ios_register_gstreamer_plugins(Bundle.main.path(forResource: "ca-certificates", ofType: "crt"))
         launch(arguments)
         GcsLocation.start()
         SpeechOut.start()

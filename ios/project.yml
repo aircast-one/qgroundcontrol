@@ -27,6 +27,8 @@ targets:
       - path: Video
       - path: Resources
         buildPhase: resources
+      - path: Vendor/ca-certificates.crt
+        buildPhase: resources
       - path: ../src/Bridge/QGCVideoC.cc
     dependencies:
       - framework: Vendor/MapLibre.xcframework

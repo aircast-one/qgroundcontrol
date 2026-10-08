@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-void qgc_ios_register_gstreamer_plugins(void);
+void qgc_ios_register_gstreamer_plugins(const char *ca_certificates);
 
 #ifdef __cplusplus
 }
