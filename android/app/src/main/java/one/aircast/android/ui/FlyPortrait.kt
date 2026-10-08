@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -56,8 +58,10 @@ private val PORTRAIT_DIAL_SIZE = 120.dp
 private val PORTRAIT_BAR_HEIGHT = 64.dp
 private const val BAR_SCRIM_ALPHA = 0.7f
 private const val PIP_BORDER_ALPHA = 0.5f
+private const val DECK_SCRIM_START = 0.4f
 private val MAP_BUTTON_SIZE = 40.dp
 private val MAP_ATTRIBUTION_CLEARANCE = 28.dp
+private val MAP_SCALE_CLEARANCE = 72.dp
 private val PORTRAIT_CAMERA_PIP_WIDTH = 96.dp
 private val PORTRAIT_CAMERA_PIP_HEIGHT = 54.dp
 
@@ -85,7 +89,9 @@ internal fun FlyPortrait(
     val flyScreen = LocalFlyScreenState.current
     val barTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + PORTRAIT_BAR_HEIGHT
     val barTopPx = with(LocalDensity.current) { barTop.roundToPx() }
-    LaunchedEffect(split, barTopPx) { flyScreen.mapInsets = MapInsets(top = if (split) 0 else barTopPx, bottom = 0) }
+    var deckHeightPx by remember { mutableIntStateOf(0) }
+    val deckHeight = with(LocalDensity.current) { deckHeightPx.toDp() }
+    LaunchedEffect(split, barTopPx, deckHeightPx) { flyScreen.mapInsets = MapInsets(top = if (split) 0 else barTopPx, bottom = deckHeightPx) }
     val videoHeight = LocalConfiguration.current.screenWidthDp.dp / VIDEO_ASPECT
     val videoTop = barTop
     val mapTop = if (split) barTop + videoHeight else 0.dp
@@ -126,7 +132,7 @@ internal fun FlyPortrait(
                 }
             }
             if (split) shownPipCamera()?.let { camera -> CameraPipThumbnail(camera, Modifier.padding(top = videoTop).padding(AircastSpace.s2).size(PORTRAIT_CAMERA_PIP_WIDTH, PORTRAIT_CAMERA_PIP_HEIGHT)) }
-            Box(Modifier.fillMaxSize().padding(top = controlsTop)) {
+            Box(Modifier.fillMaxSize().padding(top = controlsTop, bottom = deckHeight)) {
                 Column(
                     Modifier
                         .align(Alignment.TopStart)
@@ -144,7 +150,7 @@ internal fun FlyPortrait(
                         .align(Alignment.TopEnd)
                         .padding(end = AircastSpace.s3, top = buttonsTop),
                 )
-                Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE)) { rail(split) }
+                Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE)) { rail(split) }
                 OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE))
             }
             Row(
@@ -158,12 +164,14 @@ internal fun FlyPortrait(
                 verticalAlignment = Alignment.CenterVertically,
                 content = status,
             )
-        }
-        Surface(
-            Modifier.fillMaxWidth(),
-            color = MaterialTheme.aircast.outdoorBackground,
-        ) {
-            Box(Modifier.windowInsetsPadding(WindowInsets.navigationBars)) { actions(FlyDeckLayout.Bottom) }
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .onSizeChanged { deckHeightPx = it.height }
+                    .background(Brush.verticalGradient(0f to Color.Transparent, DECK_SCRIM_START to Color.Black.copy(alpha = BAR_SCRIM_ALPHA)))
+                    .windowInsetsPadding(WindowInsets.navigationBars),
+            ) { actions(FlyDeckLayout.Bottom) }
         }
     }
 }

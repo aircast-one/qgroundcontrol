@@ -309,8 +309,8 @@ fun AircastShell(hostView: android.view.View?) {
             FlyMap(
                 modifier = mod,
                 cameraBottomPx = 0,
-                topInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) flyScreen.mapInsets.top else 0,
-                bottomInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map) flyScreen.mapInsets.bottom else 0,
+                topInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait()) flyScreen.mapInsets.top else 0,
+                bottomInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait()) flyScreen.mapInsets.bottom else 0,
                 logoEndInsetPx = with(androidx.compose.ui.platform.LocalDensity.current) { one.aircast.android.ui.MAP_LAYERS_CLEARANCE.roundToPx() }.takeIf { flyView == one.aircast.android.ui.FlyView.Map },
                 pip = flyView == one.aircast.android.ui.FlyView.Video && !flyIsPortrait(),
                 onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
