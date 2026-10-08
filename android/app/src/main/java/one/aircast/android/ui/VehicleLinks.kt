@@ -10,6 +10,7 @@ internal data class VehicleLink(val commLost: Boolean?)
 internal data class VehicleLinks(
     val available: Boolean,
     val links: List<VehicleLink>,
+    val contactLost: Boolean? = null,
 )
 
 internal fun vehicleLinks(view: JSONObject?): VehicleLinks? {
@@ -17,6 +18,7 @@ internal fun vehicleLinks(view: JSONObject?): VehicleLinks? {
     val listed = view.optJSONArray("links")
     return VehicleLinks(
         available = view.optBoolean("available"),
+        contactLost = if (view.isNull("contactLost")) null else view.optBoolean("contactLost"),
         links = (0 until (listed?.length() ?: 0)).mapNotNull { index ->
             listed?.optJSONObject(index)?.let { link ->
                 VehicleLink(commLost = if (link.isNull("commLost")) null else link.optBoolean("commLost"))

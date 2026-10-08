@@ -35,15 +35,28 @@ class InstrumentDetailTest {
     }
 
     @Test
-    fun `a second pack is labelled so two voltages cannot be read as one`() {
-        val rows = batteryDetail(battery(pack(row("Voltage", "11.10 V")), pack(row("Voltage", "12.30 V"))))
-        assertEquals(listOf("Battery 1 Voltage", "Battery 2 Voltage"), rows.map { it.label })
+    fun `two packs read as one line each, with the limiting one marked`() {
+        val view = battery(
+            pack(row("Charge", "90%"), row("Voltage", "12.60 V")),
+            pack(row("Charge", "79%", 1), row("Voltage", "12.30 V")),
+            headline = """{"text":"79%","detail":"","severity":0,"index":1}""",
+        )
+        assertEquals(
+            listOf(DetailRow("Battery 1", "90% \u00b7 12.60 V", 0), DetailRow("Battery 2 \u00b7 lowest", "79% \u00b7 12.30 V", 1)),
+            batteryDetail(view),
+        )
     }
 
     @Test
-    fun `the headline is the worst pack the core picked`() {
-        val view = battery(pack(), headline = """{"text":"Critical","detail":"1:30 left","severity":2}""")
-        assertEquals(BatteryHeadline("Critical", "1:30 left", 2), batteryHeadline(view))
+    fun `the headline is the limiting pack the core picked, with its level and failsafe margin`() {
+        val view = battery(pack(), headline = """{"text":"Critical","detail":"1:30 left","severity":2,"level":"critical","margin":"Returns home at 7%","index":0}""")
+        assertEquals(BatteryHeadline("Critical", "1:30 left", 2, BatteryLevel.Critical, "Returns home at 7%", 0), batteryHeadline(view))
+    }
+
+    @Test
+    fun `silence reads in seconds, then minutes`() {
+        assertEquals("No data from the aircraft for 12 s", silenceText(12))
+        assertEquals("No data from the aircraft for 2 min", silenceText(150))
     }
 
     @Test

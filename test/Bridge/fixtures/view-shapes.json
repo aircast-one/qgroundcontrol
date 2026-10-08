@@ -10022,6 +10022,9 @@
         "class": "string",
         "headline": {
             "detail": "string",
+            "index": "number",
+            "level": "string",
+            "margin": "string",
             "severity": "number",
             "text": "string"
         },

@@ -7,23 +7,44 @@ internal const val SEVERITY_SECONDARY = -1
 
 internal data class DetailRow(val label: String, val value: String, val severity: Int = 0)
 
-internal data class BatteryHeadline(val text: String, val detail: String, val severity: Int)
+internal data class BatteryHeadline(
+    val text: String,
+    val detail: String,
+    val severity: Int,
+    val level: BatteryLevel = BatteryLevel.Normal,
+    val margin: String = "",
+    val index: Int = 0,
+)
 
 internal fun batteryHeadline(view: JSONObject?): BatteryHeadline? =
-    view?.takeIf { it.optBoolean("available") }?.optJSONObject("headline")
-        ?.let { BatteryHeadline(it.optText("text"), it.optText("detail"), it.optInt("severity")) }
+    view?.takeIf { it.optBoolean("available") }?.optJSONObject("headline")?.let {
+        BatteryHeadline(it.optText("text"), it.optText("detail"), it.optInt("severity"), batteryLevelOf(it.optText("level")), it.optText("margin"), it.optInt("index"))
+    }
+
+private const val LIMITING_PACK = "lowest"
 
 internal fun batteryDetail(view: JSONObject?): List<DetailRow> {
     val packs = view?.takeIf { it.optBoolean("available") }?.optJSONArray("packs") ?: return emptyList()
-    val many = packs.length() > 1
-    return (0 until packs.length()).flatMap { index ->
-        val rows = packs.optJSONObject(index)?.optJSONArray("rows") ?: return@flatMap emptyList()
-        val prefix = if (many) "Battery ${index + 1} " else ""
-        (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.map { row ->
-            DetailRow(prefix + row.optText("label"), row.optText("value"), row.optInt("severity", SEVERITY_SECONDARY))
-        }
+    val rowsOf = { index: Int ->
+        packs.optJSONObject(index)?.optJSONArray("rows")?.let { rows -> (0 until rows.length()).mapNotNull { rows.optJSONObject(it) } }.orEmpty()
+    }
+    if (packs.length() < 2) return rowsOf(0).map { DetailRow(it.optText("label"), it.optText("value"), it.optInt("severity", SEVERITY_SECONDARY)) }
+    val limiting = batteryHeadline(view)?.index
+    return (0 until packs.length()).map { index ->
+        val rows = rowsOf(index)
+        DetailRow(
+            listOfNotNull("Battery ${index + 1}", LIMITING_PACK.takeIf { index == limiting }).joinToString(" \u00b7 "),
+            rows.joinToString(" \u00b7 ") { it.optText("value") },
+            rows.maxOfOrNull { it.optInt("severity", SEVERITY_SECONDARY) }?.coerceAtLeast(0) ?: 0,
+        )
     }
 }
+
+private const val SECONDS_PER_MINUTE = 60
+
+internal fun silenceText(seconds: Long): String =
+    if (seconds < SECONDS_PER_MINUTE) "No data from the aircraft for $seconds s"
+    else "No data from the aircraft for ${seconds / SECONDS_PER_MINUTE} min"
 
 private val CRITICAL_CHARGE_STATES = 3..6
 

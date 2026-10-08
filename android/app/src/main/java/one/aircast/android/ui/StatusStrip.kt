@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.offset
@@ -57,6 +58,9 @@ import one.aircast.map.aircast
 import one.aircast.map.optText
 import org.json.JSONObject
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.produceState
+import android.os.SystemClock
 
 private const val BATTERY = "view.battery"
 private const val VEHICLE_FLIGHT_TIME = "vehicle.flightTime"
@@ -273,6 +277,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
 
     }
 
+    val silence = silentSeconds(vehicleLinks(linksJson)?.contactLost == true)?.let(::silenceText)
     detail?.let { shown ->
         val rows = when (shown) {
             StripDetail.Battery -> listOfNotNull(totalDraw(batteryJson)?.let { DetailRow("Total draw", it) }) + batteryDetail(batteryJson)
@@ -285,12 +290,16 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                 linksJson?.optText("primary"),
             )
         }
-        InstrumentSheet(instrumentTitle(shown), rows, headline = if (shown == StripDetail.Battery) batteryHeadline(batteryJson) else null, action = if (shown == StripDetail.Battery) {
+        val battery = shown == StripDetail.Battery
+        InstrumentSheet(instrumentTitle(shown), rows, headline = if (battery) batteryHeadline(batteryJson) else null, silence = silence, footer = if (battery) {
             {
-                if (batteryReturnOffered(batteryJson)) BatteryReturnButton { detail = null }
                 TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery failsafes") }
                 TextButton(onClick = { detail = null; batteryDisplay = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery display") }
-                if (hasPowerSetup && advancedUiShown()) TextButton(onClick = { detail = null; navigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Vehicle power: configure") }
+                if (hasPowerSetup && advancedUiShown()) TextButton(onClick = { detail = null; navigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Power setup") }
+            }
+        } else null, action = if (battery) {
+            {
+                if (batteryReturnOffered(batteryJson)) BatteryReturnButton { detail = null }
             }
         } else if (shown == StripDetail.Gps) {
             {
@@ -361,17 +370,29 @@ internal fun instrumentTitle(instrument: StripDetail): String = when (instrument
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InstrumentSheet(title: String, rows: List<DetailRow>, headline: BatteryHeadline? = null, action: (@Composable () -> Unit)? = null, onDismiss: () -> Unit) {
+private fun InstrumentSheet(
+    title: String,
+    rows: List<DetailRow>,
+    headline: BatteryHeadline? = null,
+    silence: String? = null,
+    action: (@Composable () -> Unit)? = null,
+    footer: (@Composable () -> Unit)? = null,
+    onDismiss: () -> Unit,
+) {
+    val stale = silence != null
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     AircastSheet(onDismissRequest = onDismiss) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
         )
+        silence?.let { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
         headline?.let { worst ->
             Column(Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
-                Text(worst.text, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = severityColour(worst.severity))
-                if (worst.detail.isNotBlank()) Text(worst.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(worst.text, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = if (stale) muted else headlineColour(worst))
+                if (worst.detail.isNotBlank()) Text(worst.detail, style = MaterialTheme.typography.bodyMedium, color = muted)
+                if (worst.margin.isNotBlank()) Text(worst.margin, style = MaterialTheme.typography.bodyMedium, color = if (stale) muted else MaterialTheme.colorScheme.onSurface)
             }
         }
         action?.invoke()
@@ -385,12 +406,32 @@ private fun InstrumentSheet(title: String, rows: List<DetailRow>, headline: Batt
             else -> rows.forEach { row ->
                 ListItem(
                     headlineContent = { Text(row.label, color = if (row.severity == SEVERITY_SECONDARY) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified) },
-                    trailingContent = { Text(row.value, color = severityColour(row.severity)) },
+                    trailingContent = { Text(row.value, color = if (stale) muted else severityColour(row.severity)) },
                 )
             }
         }
+        footer?.invoke()
         FootNote("Readings come from the aircraft and stop updating when it stops answering.")
     }
+}
+
+@Composable
+private fun headlineColour(headline: BatteryHeadline): Color =
+    if (headline.severity > 0) severityColour(headline.severity)
+    else batteryLevelColour(headline.level).takeOrElse { MaterialTheme.colorScheme.onSurface }
+
+private const val MILLIS_PER_SECOND = 1000L
+
+@Composable
+private fun silentSeconds(lost: Boolean): Long? {
+    val since = remember(lost) { if (lost) SystemClock.elapsedRealtime() else null }
+    val now by produceState(SystemClock.elapsedRealtime(), since) {
+        while (since != null) {
+            value = SystemClock.elapsedRealtime()
+            delay(MILLIS_PER_SECOND)
+        }
+    }
+    return since?.let { (now - it).coerceAtLeast(0) / MILLIS_PER_SECOND }
 }
 
 @Composable

@@ -170,17 +170,51 @@ pub struct PopupPack {
     pub function: Option<String>,
 }
 
+fn limiting_percent(pack: &PopupPack) -> f64 {
+    pack.percent.filter(|p| p.is_finite()).unwrap_or(f64::INFINITY)
+}
+
 pub fn headline(packs: &[PopupPack]) -> Option<Value> {
-    let worst = packs.iter().reduce(|worst, pack| if severity(pack.charge_state) > severity(worst.charge_state) { pack } else { worst })?;
+    let (index, worst) = packs
+        .iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| severity(b.charge_state).cmp(&severity(a.charge_state)).then(limiting_percent(a).total_cmp(&limiting_percent(b))))?;
     let alarming = severity(worst.charge_state) > 0;
     let percent = worst.percent.map(|p| format!("{}%", p.round() as i64));
     let left = worst.time_remaining.map(duration_text).filter(|t| !t.is_empty()).map(|t| format!("{t} left"));
-    let detail = left.into_iter().chain(percent.clone().filter(|_| alarming)).collect::<Vec<_>>().join("  \u{00b7}  ");
+    let lowest = (packs.len() > 1).then(|| format!("lowest of {}", packs.len()));
+    let detail = left.into_iter().chain(percent.clone().filter(|_| alarming)).chain(lowest).collect::<Vec<_>>().join("  \u{00b7}  ");
     Some(json!({
         "text": if alarming || percent.is_none() { worst.charge_label.clone() } else { percent.unwrap_or_default() },
         "detail": detail,
         "severity": severity(worst.charge_state),
+        "index": index,
     }))
+}
+
+const PX4_LOW_BATTERY_WARN: i64 = 0;
+const PX4_LOW_BATTERY_RETURN: i64 = 1;
+const PX4_LOW_BATTERY_LAND: i64 = 2;
+const PX4_LOW_BATTERY_RETURN_THEN_LAND: i64 = 3;
+
+pub fn margin_text(action: Option<i64>, low: Option<f64>, critical: Option<f64>, percent: Option<f64>, seconds_left: Option<f64>) -> Option<String> {
+    let (verb, at) = match action? {
+        PX4_LOW_BATTERY_WARN => ("Warns", low?),
+        PX4_LOW_BATTERY_RETURN | PX4_LOW_BATTERY_RETURN_THEN_LAND => ("Returns home", critical?),
+        PX4_LOW_BATTERY_LAND => ("Lands", critical?),
+        _ => return None,
+    };
+    let rule = format!("{verb} at {}%", at.round() as i64);
+    let to_go = percent.filter(|p| *p > 0.0).map(|p| match seconds_left.filter(|s| *s > 0.0) {
+        _ if p <= at => "reached".to_string(),
+        Some(seconds) => format!("about {} min to go", (seconds * (p - at) / p / 60.0).round().max(1.0) as i64),
+        None => format!("{} points to go", (p - at).round() as i64),
+    });
+    Some(to_go.map_or(rule.clone(), |go| format!("{rule}  \u{00b7}  {go}")))
+}
+
+fn parameter_value(backend: &dyn Backend, name: &str, field: &str) -> Option<f64> {
+    value_number(&backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name}).{field}")))
 }
 
 pub fn popup_rows(pack: &PopupPack) -> Vec<Value> {
@@ -282,7 +316,20 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "text": described.first().map(|p| p["text"].clone()).unwrap_or(Value::String(String::new())),
         "indicatorPacks": indicator_packs(&described, backend.value(COMBINE_PACKS).get("value").and_then(Value::as_bool).unwrap_or(COMBINE_PACKS_UNSET)),
         "packs": described,
-        "headline": headline(&popup_packs),
+        "headline": headline(&popup_packs).map(|mut shown| {
+            let index = shown["index"].as_u64().unwrap_or(0) as usize;
+            let limiting = &popup_packs[index];
+            shown["level"] = described.get(index).map_or(Value::Null, |pack| pack["level"].clone());
+            shown["margin"] = margin_text(
+                parameter_value(backend, "COM_LOW_BAT_ACT", "rawValue").map(|v| v as i64),
+                parameter_value(backend, "BAT_LOW_THR", "value"),
+                parameter_value(backend, "BAT_CRIT_THR", "value"),
+                limiting.percent,
+                limiting.time_remaining,
+            )
+            .map_or(Value::Null, Value::String);
+            shown
+        }),
     })
 }
 
@@ -328,8 +375,23 @@ mod tests {
         let calm = headline(&[popup(1, "Ok", Some(72.6), Some(600.0))]).unwrap();
         assert_eq!((calm["text"].as_str(), calm["detail"].as_str(), calm["severity"].as_i64()), (Some("73%"), Some("10:00 left"), Some(0)), "a healthy pack leads with its charge");
         let mixed = headline(&[popup(1, "Ok", Some(80.0), None), popup(3, "Critical", Some(12.0), Some(90.0))]).unwrap();
-        assert_eq!((mixed["text"].as_str(), mixed["detail"].as_str(), mixed["severity"].as_i64()), (Some("Critical"), Some("1:30 left  \u{00b7}  12%"), Some(2)), "an alarming pack leads with its state and adds its charge");
+        assert_eq!((mixed["text"].as_str(), mixed["detail"].as_str(), mixed["severity"].as_i64()), (Some("Critical"), Some("1:30 left  \u{00b7}  12%  \u{00b7}  lowest of 2"), Some(2)), "an alarming pack leads with its state and adds its charge");
         assert!(headline(&[]).is_none());
+    }
+
+    #[test]
+    fn two_healthy_packs_lead_with_the_lower_one_and_say_so() {
+        let both = headline(&[popup(1, "Ok", Some(90.0), Some(810.0)), popup(1, "Ok", Some(79.0), Some(711.0))]).unwrap();
+        assert_eq!((both["text"].as_str(), both["detail"].as_str(), both["index"].as_u64()), (Some("79%"), Some("11:51 left  \u{00b7}  lowest of 2"), Some(1)));
+    }
+
+    #[test]
+    fn the_margin_names_the_failsafe_and_the_time_before_it() {
+        assert_eq!(margin_text(Some(3), Some(15.0), Some(7.0), Some(79.0), Some(711.0)).as_deref(), Some("Returns home at 7%  \u{00b7}  about 11 min to go"));
+        assert_eq!(margin_text(Some(2), Some(15.0), Some(7.0), Some(50.0), None).as_deref(), Some("Lands at 7%  \u{00b7}  43 points to go"));
+        assert_eq!(margin_text(Some(0), Some(15.0), Some(7.0), Some(12.0), Some(300.0)).as_deref(), Some("Warns at 15%  \u{00b7}  reached"));
+        assert_eq!(margin_text(None, Some(15.0), Some(7.0), Some(79.0), Some(711.0)), None, "a firmware without these parameters says nothing rather than guess");
+        assert_eq!(margin_text(Some(3), None, None, Some(79.0), Some(711.0)), None);
     }
 
     #[test]
@@ -346,7 +408,7 @@ mod tests {
         assert_eq!((4..=6).map(severity).collect::<Vec<_>>(), vec![3, 3, 3]);
         assert_eq!((severity(3), severity(2), severity(7), severity(0)), (2, 1, 0, 0), "charging is not alarming");
         let tie = headline(&[popup(2, "Low", Some(40.0), None), popup(2, "Low", Some(20.0), None)]).unwrap();
-        assert_eq!(tie["detail"].as_str(), Some("40%"), "an equal severity keeps the first pack");
+        assert_eq!((tie["detail"].as_str(), tie["index"].as_u64()), (Some("20%  \u{00b7}  lowest of 2"), Some(1)), "an equal severity leads with the lower charge, as the Fly bar ring does");
     }
 
     fn pack_facts(percent: Option<f64>, state: i64, label: &str) -> Vec<(String, Value)> {
