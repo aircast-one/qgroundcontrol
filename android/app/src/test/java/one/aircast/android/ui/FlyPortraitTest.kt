@@ -38,6 +38,7 @@ class FlyPortraitTest {
         org.junit.Assert.assertEquals(VideoSwipe.Up, videoSwipe(androidx.compose.ui.geometry.Offset(5f, -80f), 40f))
         org.junit.Assert.assertEquals(VideoSwipe.Down, videoSwipe(androidx.compose.ui.geometry.Offset(-10f, 60f), 40f))
         org.junit.Assert.assertNull("too short", videoSwipe(androidx.compose.ui.geometry.Offset(0f, -30f), 40f))
+        org.junit.Assert.assertEquals(listOf(1, -1, null), listOf(VideoSwipe.Left, VideoSwipe.Right, VideoSwipe.Up).map(::cameraStep))
         org.junit.Assert.assertEquals("sideways switches the camera rather than hiding", VideoSwipe.Right, videoSwipe(androidx.compose.ui.geometry.Offset(120f, -60f), 40f))
         org.junit.Assert.assertEquals(VideoSwipe.Left, videoSwipe(androidx.compose.ui.geometry.Offset(-90f, 10f), 40f))
     }

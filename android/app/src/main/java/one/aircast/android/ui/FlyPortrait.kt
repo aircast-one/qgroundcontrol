@@ -161,26 +161,15 @@ internal fun FlyPortrait(
         split -> geometry.split
         else -> geometry.pip(flyScreen.pipStart, pipDrag)
     }
-    val frame = remember { Animatable(target, Rect.VectorConverter) }
-    LaunchedEffect(target, holding) { if (holding) frame.snapTo(target) else frame.animateTo(target, spring(stiffness = Spring.StiffnessMediumLow)) }
+    val frame = rememberVideoFrame(target, holding)
     val latestSplit by rememberUpdatedState(split)
     val latestTarget by rememberUpdatedState(target)
     val latestExitFullScreen by rememberUpdatedState(onExitFullScreen)
     val latestGeometry by rememberUpdatedState(geometry)
     val latestOnView by rememberUpdatedState(onView)
     val latestFullScreen by rememberUpdatedState(onFullScreen)
-    val swipeCamera = rememberCameraSwiper()
+    val cameras = rememberCameraStepper()
     val gimbalDrags by rememberUpdatedState(rememberGimbalDrags())
-    val nudge = remember { Animatable(0f) }
-    val nudgeScope = rememberCoroutineScope()
-    val nudgeDistance = with(density) { CAMERA_NUDGE.toPx() }
-    val stepCamera: (Int) -> Unit = { step ->
-        if (swipeCamera(step)) nudgeScope.launch {
-            nudge.snapTo(nudgeDistance * step)
-            nudge.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
-        }
-    }
-    val latestStepCamera by rememberUpdatedState(stepCamera)
     val swipeDistance = with(density) { VIDEO_SWIPE_DISTANCE.toPx() }
     val gestures = remember {
         Modifier.videoGestures(
@@ -190,11 +179,10 @@ internal fun FlyPortrait(
                 onTap = { latestOnView(FlyView.Video) },
                 onDoubleTap = { latestFullScreen() },
                 onSwipe = { moved ->
-                    when (videoSwipe(moved, swipeDistance)) {
+                    when (val swipe = videoSwipe(moved, swipeDistance)) {
                         VideoSwipe.Up -> if (!latestSplit) flyScreen.videoTucked = true
                         VideoSwipe.Down -> if (!latestSplit) latestOnView(FlyView.Video)
-                        VideoSwipe.Left -> latestStepCamera(1)
-                        VideoSwipe.Right -> latestStepCamera(-1)
+                        VideoSwipe.Left, VideoSwipe.Right -> cameraStep(swipe)?.let(cameras.step)
                         null -> Unit
                     }
                 },
@@ -232,19 +220,9 @@ internal fun FlyPortrait(
                     val border = if (split) 0.dp else 1.dp
                     video(
                         Modifier
-                            .layout { measurable, _ ->
-                                val placeable = measurable.measure(Constraints.fixed(target.width.roundToInt().coerceAtLeast(0), target.height.roundToInt().coerceAtLeast(0)))
-                                layout(target.right.roundToInt().coerceAtLeast(0), target.bottom.roundToInt().coerceAtLeast(0)) { placeable.place(target.left.roundToInt(), target.top.roundToInt()) }
-                            }
-                            .graphicsLayer {
-                                val shown = frame.value
-                                transformOrigin = TransformOrigin(0f, 0f)
-                                scaleX = if (target.width > 0f) shown.width / target.width else 1f
-                                scaleY = if (target.height > 0f) shown.height / target.height else 1f
-                                translationX = shown.left - target.left + nudge.value
-                                translationY = shown.top - target.top
-                            }
+                            .videoFrame(target, { frame.value }, cameras.nudge)
                             .clip(shape)
+                            .background(Color.Black)
                             .border(border, MaterialTheme.aircast.outdoorForeground.copy(alpha = PIP_BORDER_ALPHA), shape)
                             .semantics {
                                 customActions = listOfNotNull(
@@ -348,8 +326,6 @@ internal fun FlyPortrait(
 }
 
 internal val VIDEO_TAB_HEIGHT = 36.dp
-internal val VIDEO_SWIPE_DISTANCE = 32.dp
-private val CAMERA_NUDGE = 48.dp
 private const val FULL_SCREEN_LAYER = 1f
 private val HANDLE_TOUCH = DpSize(96.dp, 28.dp)
 private val HANDLE_BAR = DpSize(40.dp, 4.dp)
