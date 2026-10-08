@@ -25,6 +25,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
@@ -208,7 +209,8 @@ internal fun FlyPortrait(
 
     Column(Modifier.fillMaxSize().background(MaterialTheme.aircast.outdoorBackground)) {
         Box(Modifier.fillMaxWidth().weight(1f).clipToBounds().onSizeChanged { boxHeightPx = it.height }) {
-            if (view == FlyView.ThreeD) Viewer3DPane(Modifier.fillMaxSize().padding(top = mapTop)) else map(Modifier.fillMaxSize().padding(top = mapTop))
+            val underVideo = if (fullScreen) Modifier.clearAndSetSemantics {} else Modifier
+            if (view == FlyView.ThreeD) Viewer3DPane(Modifier.fillMaxSize().padding(top = mapTop).then(underVideo)) else map(Modifier.fillMaxSize().padding(top = mapTop).then(underVideo))
             if (hasVideo) {
                 androidx.compose.animation.AnimatedVisibility(
                     visible = split || !flyScreen.videoTucked,
@@ -236,6 +238,7 @@ internal fun FlyPortrait(
                     )
                 }
             }
+            if (!fullScreen) {
             androidx.compose.animation.AnimatedVisibility(split, enter = fadeIn(), exit = fadeOut()) {
                 Column(Modifier.padding(top = videoTop).fillMaxWidth().height(videoHeight)) {
                     Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -320,6 +323,7 @@ internal fun FlyPortrait(
                     content = status,
                 )
                 TrafficBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))
+            }
             }
         }
     }

@@ -18,6 +18,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.DisposableEffect
@@ -232,7 +233,7 @@ internal fun FlyScreen(
 
         if (mapShown) {
             map(
-                if (mapIsPip) {
+                (if (mapIsPip) {
                     Modifier
                         .zIndex(1f)
                         .align(pipAlign)
@@ -244,7 +245,7 @@ internal fun FlyScreen(
                         .border(2.dp, MaterialTheme.colorScheme.onSurface, mapPipShape)
                 } else {
                     Modifier.fillMaxSize()
-                },
+                }).then(if (fullScreen) Modifier.clearAndSetSemantics {} else Modifier),
             )
         }
         val density = LocalDensity.current
@@ -316,6 +317,7 @@ internal fun FlyScreen(
                 !pipNow,
             )
         }
+        if (!fullScreen) {
         Box(
             Modifier
                 .align(Alignment.TopCenter)
@@ -542,6 +544,7 @@ internal fun FlyScreen(
                 CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(valuesShown = true, chooser = false, compact = true, stacked = true) }
             }
             }
+        }
         }
         }
     }
