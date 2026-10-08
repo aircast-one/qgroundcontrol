@@ -59,4 +59,10 @@ mod tests {
         assert_eq!(settings_key("Nope", "x"), None);
         assert!(metadata("Units").unwrap().contains_key("customUnits"));
     }
+
+    #[test]
+    fn udp_does_not_auto_connect_until_the_pilot_turns_it_on() {
+        let udp = metadata("AutoConnect").unwrap().remove("autoConnectUDP").unwrap();
+        assert_eq!(udp.default, Some(serde_json::Value::Bool(false)));
+    }
 }

@@ -550,7 +550,7 @@ fn udp_target_hosts(setting: &dyn Fn(&str) -> Option<Value>) -> Vec<(String, u16
 }
 
 fn udp_autoconnect_entry() -> Option<Entry> {
-    let wanted = crate::settingsstore::raw_setting("settings.autoConnectSettings.autoConnectUDP").and_then(|v| v.as_bool()).unwrap_or(true);
+    let wanted = autoconnect_setting("autoConnectUDP", UDP_AUTOCONNECT_UNSET);
     wanted.then(|| Entry {
         config: LinkConfig { name: crate::autoconnect::DEFAULT_UDP_LINK_NAME.to_string(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: defaults().udp_port, hosts: udp_target_hosts(&|name| crate::settingsstore::raw_setting(&format!("settings.autoConnectSettings.{name}"))) } },
         dynamic: true,
@@ -580,6 +580,8 @@ pub fn port_infos() -> Vec<crate::boards::PortInfo> {
     serial_ports()
 }
 
+const UDP_AUTOCONNECT_UNSET: bool = false;
+
 fn autoconnect_setting(name: &str, unset: bool) -> bool {
     crate::settingsstore::raw_setting(&format!("settings.autoConnectSettings.{name}")).and_then(|v| v.as_bool()).unwrap_or(unset)
 }
@@ -590,7 +592,7 @@ fn autoconnect_settings() -> crate::autoconnect::Settings {
         sik_radio: autoconnect_setting("autoConnectSiKRadio", true),
         libre_pilot: autoconnect_setting("autoConnectLibrePilot", true),
         rtk_gps: autoconnect_setting("autoConnectRTKGPS", true),
-        udp: autoconnect_setting("autoConnectUDP", true),
+        udp: autoconnect_setting("autoConnectUDP", UDP_AUTOCONNECT_UNSET),
         forward_mavlink: false,
     }
 }
