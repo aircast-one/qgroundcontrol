@@ -44,6 +44,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.offset
@@ -64,7 +66,9 @@ private const val GPS_VIEW = "view.gps"
 
 internal enum class BatteryLevel { Normal, Caution, Warning, Critical }
 
-internal data class BatteryReading(val text: String, val level: BatteryLevel)
+internal data class BatteryReading(val text: String, val level: BatteryLevel, val packs: Int = 1)
+
+internal fun packCountText(packs: Int): String = if (packs > 1) "\u00d7$packs" else ""
 
 internal fun batteryLevelOf(name: String?): BatteryLevel = when (name) {
     "critical" -> BatteryLevel.Critical
@@ -74,13 +78,14 @@ internal fun batteryLevelOf(name: String?): BatteryLevel = when (name) {
 }
 
 internal fun batteryReadings(view: JSONObject?): List<BatteryReading> =
-    view?.takeIf { it.optBoolean("available") }?.optJSONArray("packs")?.let { packs ->
+    view?.takeIf { it.optBoolean("available") }?.optJSONArray("indicatorPacks")?.let { packs ->
         (0 until packs.length()).mapNotNull { packs.optJSONObject(it) }.mapNotNull { pack ->
             val lines = pack.optJSONArray("indicatorLines")?.let { lines -> (0 until lines.length()).map { lines.optString(it) } }.orEmpty().filter { it.isNotBlank() }
             lines.takeIf { it.isNotEmpty() }?.let {
                 BatteryReading(
                     text = listOfNotNull(pack.optText("indicatorLabel").ifEmpty { null }, it.joinToString(" · ")).joinToString(" "),
                     level = batteryLevelOf(pack.optText("level")),
+                    packs = pack.optInt("packCount", 1),
                 )
             }
         }
@@ -138,11 +143,25 @@ fun StatusPill(modifier: Modifier = Modifier) {
         color = osdBackdrop(Color.Black.copy(alpha = 0.45f)),
         contentColor = MaterialTheme.aircast.outdoorForeground,
     ) {
-        StatusReadingsInline(rtk, gcsBattery, Modifier.padding(end = STRIP_GAP, top = 6.dp, bottom = 6.dp))
+        androidx.compose.foundation.layout.BoxWithConstraints {
+            val narrow = maxWidth < NARROW_PILL_WIDTH
+            CompositionLocalProvider(LocalCompactStatus provides true, LocalNarrowStatus provides narrow) {
+                StatusReadingsInline(rtk, gcsBattery, Modifier.padding(end = stripGap(narrow), top = 6.dp, bottom = 6.dp))
+            }
+        }
     }
 }
 
 private val STRIP_GAP = 14.dp
+private val NARROW_STRIP_GAP = 6.dp
+private val NARROW_PILL_WIDTH = 120.dp
+private const val NARROW_STATUS_CELLS = 1
+
+internal val LocalNarrowStatus = androidx.compose.runtime.compositionLocalOf { false }
+
+private fun stripGap(narrow: Boolean): Dp = if (narrow) NARROW_STRIP_GAP else STRIP_GAP
+
+internal fun shownStatusCells(narrow: Boolean): Int = if (narrow) NARROW_STATUS_CELLS else COMPACT_STATUS_CELLS
 
 private fun Modifier.leadingGap(gap: Dp): Modifier = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints.offset(horizontal = -gap.roundToPx()))
@@ -195,8 +214,8 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
             "battery" to {
                 Row(horizontalArrangement = Arrangement.spacedBy(BATTERY_GAP), verticalAlignment = Alignment.CenterVertically) {
                     batteries.map {
-                        if (LocalCompactStatus.current) BatteryRing(it.text, batteryLevelColour(it.level)) { detail = StripDetail.Battery }
-                        else InlineCell(it.text, batteryLevelColour(it.level), R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
+                        if (LocalCompactStatus.current) BatteryRing(it.text, batteryLevelColour(it.level), if (LocalNarrowStatus.current) "" else packCountText(it.packs)) { detail = StripDetail.Battery }
+                        else InlineCell(listOf(it.text, packCountText(it.packs)).filter(String::isNotEmpty).joinToString(" "), batteryLevelColour(it.level), R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
                     }
                 }
             },
@@ -223,7 +242,8 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
         val byKey = cells.toMap()
         val ordered = orderedKeys(cells.map { it.first }, layout.indicatorOrder)
         val compact = LocalCompactStatus.current && !layout.editing
-        val keys = if (compact) ordered.take(COMPACT_STATUS_CELLS) else ordered
+        val narrow = LocalNarrowStatus.current
+        val keys = if (compact) ordered.take(shownStatusCells(narrow)) else ordered
         if (allStatus) {
             AircastSheet(onDismissRequest = { allStatus = false }) {
                 CompositionLocalProvider(LocalCompactStatus provides false) {
@@ -236,14 +256,14 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
         }
         keys.forEach { key ->
             LayoutWidget("indicator-$key", movable = false) {
-                Row(Modifier.leadingGap(STRIP_GAP), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.leadingGap(stripGap(narrow)), verticalAlignment = Alignment.CenterVertically) {
                     if (layout.editing) TextButton(onClick = { movedKey(keys, key, -1)?.let { layout.saveIndicatorOrder(it) } }) { Text("\u2039") }
                     byKey[key]?.invoke()
                     if (layout.editing) TextButton(onClick = { movedKey(keys, key, 1)?.let { layout.saveIndicatorOrder(it) } }) { Text("\u203A") }
                 }
             }
         }
-        if (compact) {
+        if (compact && !narrow) {
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "All status",
@@ -431,25 +451,40 @@ private fun FlightTimeCell() {
 }
 
 @Composable
-private fun BatteryRing(text: String, colour: Color, onClick: () -> Unit) {
+private fun BatteryRing(text: String, colour: Color, count: String, onClick: () -> Unit) {
     val percent = batteryPercent(text) ?: return InlineCell(text, colour, R.drawable.ic_battery_5_bar, onClick)
     val ring = if (colour == Color.Unspecified) MaterialTheme.aircast.success else colour
     val track = MaterialTheme.aircast.outdoorForeground.copy(alpha = BATTERY_RING_TRACK_ALPHA)
     Box(
-        Modifier.size(BATTERY_RING_SIZE).clickable(onClickLabel = "Battery") { onClick() }.semantics { contentDescription = "Battery $percent%" },
-        contentAlignment = Alignment.Center,
+        Modifier
+            .clickable(onClickLabel = "Battery") { onClick() }
+            .semantics { contentDescription = if (count.isEmpty()) "Battery $percent%" else "Lowest of $count batteries $percent%" }
+            .padding(end = if (count.isEmpty()) 0.dp else BATTERY_COUNT_ROOM),
     ) {
-        androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
-            val stroke = androidx.compose.ui.graphics.drawscope.Stroke(BATTERY_RING_STROKE.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
-            val inset = BATTERY_RING_STROKE.toPx() / 2f
-            val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
-            val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
-            drawArc(track, 0f, 360f, false, topLeft = topLeft, size = arcSize, style = stroke)
-            drawArc(ring, -90f, 360f * percent / 100f, false, topLeft = topLeft, size = arcSize, style = stroke)
+        Box(Modifier.size(BATTERY_RING_SIZE), contentAlignment = Alignment.Center) {
+            androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
+                val stroke = androidx.compose.ui.graphics.drawscope.Stroke(BATTERY_RING_STROKE.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                val inset = BATTERY_RING_STROKE.toPx() / 2f
+                val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
+                val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+                drawArc(track, 0f, 360f, false, topLeft = topLeft, size = arcSize, style = stroke)
+                drawArc(ring, -90f, 360f * percent / 100f, false, topLeft = topLeft, size = arcSize, style = stroke)
+            }
+            Text("$percent", style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.aircast.outdoorForeground)
         }
-        Text("$percent", style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.aircast.outdoorForeground)
+        if (count.isNotEmpty()) {
+            Text(
+                count,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = BATTERY_COUNT_SIZE),
+                color = MaterialTheme.aircast.outdoorForeground,
+                modifier = Modifier.align(Alignment.BottomEnd).offset(x = BATTERY_COUNT_ROOM),
+            )
+        }
     }
 }
+
+private val BATTERY_COUNT_SIZE = 9.sp
+private val BATTERY_COUNT_ROOM = 10.dp
 private val BATTERY_GAP = 6.dp
 
 internal const val COMPACT_STATUS_CELLS = 4

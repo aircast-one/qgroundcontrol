@@ -82,7 +82,7 @@ class BatteryTextTest {
     @Test
     fun `each pack is a cell with its label and the lines the core chose`() {
         val readings = batteryReadings(
-            JSONObject("""{"available":true,"level":"warning","packs":[
+            JSONObject("""{"available":true,"level":"warning","indicatorPacks":[
                 {"level":"caution","indicatorLabel":"B1","indicatorLines":["70%","11.10V"]},
                 {"level":"warning","indicatorLabel":"B2","indicatorLines":["40%"]}]}"""),
         )
@@ -92,10 +92,19 @@ class BatteryTextTest {
     }
 
     @Test
+    fun `combined packs read as one ring with the count beside the limiting charge`() {
+        val reading = batteryReadings(JSONObject("""{"available":true,"indicatorPacks":[{"level":"normal","indicatorLabel":null,"packCount":2,"indicatorLines":["57%"]}]}""")).single()
+        assertEquals("57%", reading.text)
+        assertEquals(57, batteryPercent(reading.text))
+        assertEquals("\u00d72", packCountText(reading.packs))
+        assertEquals("", packCountText(1))
+    }
+
+    @Test
     fun `a single pack carries no label`() {
         assertEquals(
             listOf("90%"),
-            batteryReadings(JSONObject("""{"available":true,"packs":[{"level":"normal","indicatorLabel":null,"indicatorLines":["90%"]}]}""")).map { it.text },
+            batteryReadings(JSONObject("""{"available":true,"indicatorPacks":[{"level":"normal","indicatorLabel":null,"indicatorLines":["90%"]}]}""")).map { it.text },
         )
     }
 
@@ -103,7 +112,7 @@ class BatteryTextTest {
     fun `no battery is no cell rather than an empty one`() {
         assertEquals(emptyList<BatteryReading>(), batteryReadings(null))
         assertEquals(emptyList<BatteryReading>(), batteryReadings(JSONObject("""{"available":false}""")))
-        assertEquals(emptyList<BatteryReading>(), batteryReadings(JSONObject("""{"available":true,"packs":[{"indicatorLines":[""]}]}""")))
+        assertEquals(emptyList<BatteryReading>(), batteryReadings(JSONObject("""{"available":true,"indicatorPacks":[{"indicatorLines":[""]}]}""")))
     }
 }
 
@@ -189,5 +198,11 @@ class CompactStatusTest {
         assertEquals("12", compactStatusText("12 sats · 2D only"))
         assertEquals("-70", compactStatusText("-70 dBm"))
         assertEquals("", compactStatusText("No signal RC"))
+    }
+
+    @Test
+    fun `a narrow status pill keeps only the battery so nothing is cut in half`() {
+        assertEquals(1, shownStatusCells(narrow = true))
+        assertEquals(COMPACT_STATUS_CELLS, shownStatusCells(narrow = false))
     }
 }

@@ -10012,6 +10012,42 @@
             "severity": "number",
             "text": "string"
         },
+        "indicatorPacks": [
+            {
+                "chargeLabel": "string",
+                "chargeState": "number",
+                "current": "number",
+                "currentText": "string",
+                "facts": [
+                    {
+                        "name": "string",
+                        "units": "string",
+                        "value": "null|number|string",
+                        "valueString": "string"
+                    }
+                ],
+                "index": "number",
+                "indicatorLabel": "string",
+                "indicatorLines": [
+                    "string"
+                ],
+                "level": "string",
+                "packCount": "number",
+                "percent": "number",
+                "percentText": "string",
+                "rows": [
+                    {
+                        "label": "string",
+                        "severity": "number",
+                        "value": "string"
+                    }
+                ],
+                "secondaryText": "string",
+                "text": "string",
+                "voltage": "null|number",
+                "voltageText": "string"
+            }
+        ],
         "kind": "string",
         "level": "string",
         "packs": [

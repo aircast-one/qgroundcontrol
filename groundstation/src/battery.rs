@@ -215,6 +215,29 @@ fn popup_pack(backend: &dyn Backend, index: usize) -> PopupPack {
     }
 }
 
+const COMBINE_PACKS: &str = "settings.batteryIndicatorSettings.consolidateMultipleBatteries.rawValue";
+const COMBINE_PACKS_UNSET: bool = true;
+
+fn severity_rank(level: &Value) -> usize {
+    ["critical", "warning", "caution", "normal"].iter().position(|l| level == *l).unwrap_or(3)
+}
+
+pub fn indicator_packs(described: &[Value], combine: bool) -> Vec<Value> {
+    if !combine || described.len() < 2 {
+        return described.to_vec();
+    }
+    let limiting_percent = |pack: &Value| pack["percent"].as_f64().filter(|p| p.is_finite()).unwrap_or(f64::INFINITY);
+    described
+        .iter()
+        .min_by(|a, b| severity_rank(&a["level"]).cmp(&severity_rank(&b["level"])).then(limiting_percent(a).total_cmp(&limiting_percent(b))))
+        .and_then(Value::as_object)
+        .map(|limiting| {
+            let combined = [(String::from("indicatorLabel"), Value::Null), (String::from("packCount"), json!(described.len()))];
+            vec![Value::Object(limiting.clone().into_iter().chain(combined).collect())]
+        })
+        .unwrap_or_default()
+}
+
 pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let packs = packs(backend);
     let popup_packs: Vec<PopupPack> = (0..packs.len()).map(|index| popup_pack(backend, index)).collect();
@@ -256,6 +279,7 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "available": !described.is_empty(),
         "level": worst,
         "text": described.first().map(|p| p["text"].clone()).unwrap_or(Value::String(String::new())),
+        "indicatorPacks": indicator_packs(&described, object(&backend.get(COMBINE_PACKS)).get("value").and_then(Value::as_bool).unwrap_or(COMBINE_PACKS_UNSET)),
         "packs": described,
         "headline": headline(&popup_packs),
     })
@@ -414,6 +438,21 @@ mod tests {
         assert_eq!((view["packs"][0]["indicatorLabel"].clone(), view["packs"][1]["indicatorLabel"].clone()), (json!("B1"), json!("B2")));
         assert_eq!(view["packs"][0]["indicatorLines"], json!(["90%", "15.80V"]));
         assert_eq!(view["packs"][0]["percentText"], "90%", "and this was on the struct already and simply never served, so a head had nothing to read and spelled its own");
+        assert_eq!(view["indicatorPacks"].as_array().map(Vec::len), Some(1), "two packs show as one indicator unless the pilot turns combining off");
+        assert_eq!(view["indicatorPacks"][0]["level"], "warning");
+        assert_eq!(view["indicatorPacks"][0]["packCount"], 2);
+    }
+
+    #[test]
+    fn the_combined_indicator_shows_the_pack_that_limits_the_flight() {
+        let pack = |level: &str, percent: f64| json!({ "level": level, "percent": percent, "indicatorLabel": "B" });
+        let packs = [pack("normal", 79.0), pack("normal", 57.0), pack("normal", 91.0)];
+        let shown = indicator_packs(&packs, true);
+        assert_eq!((shown.len(), shown[0]["percent"].as_f64(), shown[0]["packCount"].clone(), shown[0]["indicatorLabel"].clone()), (1, Some(57.0), json!(3), Value::Null));
+        let warned = indicator_packs(&[pack("normal", 40.0), pack("warning", 60.0)], true);
+        assert_eq!(warned[0]["level"], "warning", "a pack the vehicle flags outranks a lower charge it does not");
+        assert_eq!(indicator_packs(&packs, false).len(), 3);
+        assert_eq!(indicator_packs(&packs[..1], true)[0]["indicatorLabel"], "B");
     }
 
     #[test]
