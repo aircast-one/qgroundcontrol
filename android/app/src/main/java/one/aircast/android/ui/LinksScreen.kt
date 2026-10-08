@@ -1044,8 +1044,8 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
         if (rows.isEmpty() && auto.isEmpty()) {
             item(key = "empty") {
                 FootNote(
-                    "No links saved. Aircast finds a vehicle on the network by itself, so you " +
-                        "only need to add one when that does not reach it.",
+                    "No links saved. A USB cable or telemetry radio connects by itself; " +
+                        "add a link for Wi-Fi or a network connection.",
                 )
             }
         }
