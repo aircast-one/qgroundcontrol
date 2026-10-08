@@ -128,6 +128,8 @@ func coordinateJson(_ latitude: Double, _ longitude: Double, _ altitudeMetres: D
     ["latitude": latitude, "longitude": longitude, "altitude": altitudeMetres]
 }
 
+func coordinateJson(_ at: TrackPoint) -> [String: Double] { coordinateJson(at.latitude, at.longitude) }
+
 @discardableResult
 func setOk(_ path: String, _ value: Any?) -> Bool { Qgc.set(path, value) }
 

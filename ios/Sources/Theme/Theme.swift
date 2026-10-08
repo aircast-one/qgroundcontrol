@@ -114,31 +114,64 @@ enum TypeScale {
     case labelLarge, labelMedium, labelSmall
     case telemetry, telemetryMedium
 
-    var font: Font {
+    var size: CGFloat {
         switch self {
-        case .displayLarge: .system(size: 57)
-        case .displayMedium: .system(size: 45)
-        case .displaySmall: .system(size: 36)
-        case .headlineLarge: .system(size: 32)
-        case .headlineMedium: .system(size: 28)
-        case .headlineSmall: .system(size: 24)
-        case .titleLarge: .system(size: 22)
-        case .titleMedium: .system(size: 16, weight: .medium)
-        case .titleSmall: .system(size: 14, weight: .medium)
-        case .bodyLarge: .system(size: 16)
-        case .bodyMedium: .system(size: 14)
-        case .bodySmall: .system(size: 12)
-        case .labelLarge: .system(size: 14, weight: .medium)
-        case .labelMedium: .system(size: 12, weight: .medium)
-        case .labelSmall: .system(size: 11, weight: .medium)
-        case .telemetry: .system(size: 22, weight: .medium).monospacedDigit()
-        case .telemetryMedium: .system(size: 16, weight: .medium).monospacedDigit()
+        case .displayLarge: 57
+        case .displayMedium: 45
+        case .displaySmall: 36
+        case .headlineLarge: 32
+        case .headlineMedium: 28
+        case .headlineSmall: 24
+        case .titleLarge: 22
+        case .titleMedium: 16
+        case .titleSmall: 14
+        case .bodyLarge: 16
+        case .bodyMedium: 14
+        case .bodySmall: 12
+        case .labelLarge: 14
+        case .labelMedium: 12
+        case .labelSmall: 11
+        case .telemetry: 22
+        case .telemetryMedium: 16
         }
     }
+
+    var weight: Font.Weight {
+        switch self {
+        case .titleMedium, .titleSmall, .labelLarge, .labelMedium, .labelSmall, .telemetry, .telemetryMedium: .medium
+        default: .regular
+        }
+    }
+
+    func font(_ size: CGFloat) -> Font {
+        let font = Font.system(size: size, weight: weight)
+        return self == .telemetry || self == .telemetryMedium ? font.monospacedDigit() : font
+    }
+
+    var font: Font { font(size) }
+}
+
+private struct ScaledType: ViewModifier {
+    let scale: TypeScale
+    @ScaledMetric private var size: CGFloat
+
+    init(_ scale: TypeScale) {
+        self.scale = scale
+        _size = ScaledMetric(wrappedValue: scale.size, relativeTo: .body)
+    }
+
+    func body(content: Content) -> some View { content.font(scale.font(size)) }
+}
+
+struct AircastTheme<Content: View>: View {
+    var dark: Bool? = nil
+    @ViewBuilder let content: () -> Content
+
+    var body: some View { content().aircastTheme(dark: dark ?? SystemAppearance.shared.dark) }
 }
 
 extension View {
-    func font(_ scale: TypeScale) -> some View { font(scale.font) }
+    func font(_ scale: TypeScale) -> some View { modifier(ScaledType(scale)) }
 
     func aircastTheme(dark: Bool) -> some View {
         environment(\.theme, dark ? .darkTheme : .lightTheme)

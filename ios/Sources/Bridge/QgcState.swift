@@ -15,10 +15,11 @@ final class PathSubject: ObservableObject {
 
 @MainActor
 enum QgcWatch {
-    private static let client = "app"
+    nonisolated private static let client = "app"
     private static var counts: [String: Int] = [:]
     private static var subjects: [String: PathSubject] = [:]
     private static var installed = false
+    static var sendWatch: (String) -> Void = { csv in offMainInOrder { qgc_bridge_watch_client(client, csv) } }
 
     static func subject(_ path: String) -> PathSubject {
         if let known = subjects[path] { return known }
@@ -44,13 +45,17 @@ enum QgcWatch {
 
     static var watched: Set<String> { Set(counts.keys) }
 
+    static func seed(_ path: String, _ json: JSON) {
+        guard counts[path] != nil, let subject = subjects[path], subject.json == nil else { return }
+        subject.json = json
+    }
+
     private static func resend() {
         if !installed {
             installed = true
             qgc_bridge_set_event_handler(qgcWatchEvent)
         }
-        let csv = counts.keys.sorted().joined(separator: ",")
-        offMainInOrder { qgc_bridge_watch_client(client, csv) }
+        sendWatch(counts.keys.sorted().joined(separator: ","))
     }
 
     fileprivate static func deliver(_ path: String, _ json: JSON) {

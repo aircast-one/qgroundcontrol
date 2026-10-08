@@ -1,0 +1,199 @@
+import SwiftUI
+import os
+
+private let RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
+
+final class RcHolder: Sendable {
+    private let send: @Sendable (@escaping @Sendable () -> Void) -> Void
+    private let sent = OSAllocatedUnfairLock(initialState: Set<Int>())
+
+    init(send: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void = { offMainInOrder($0) }) {
+        self.send = send
+    }
+
+    func hold(_ channel: Int, _ pwm: Int) {
+        guard channel > 0 else { return }
+        sent.withLock { _ = $0.insert(channel) }
+        send { VehicleCommands.overrideRcChannel(channel, pwm: pwm) }
+    }
+
+    func release() {
+        let held = sent.withLock { held in
+            let all = held.sorted()
+            held.removeAll()
+            return all
+        }
+        if !held.isEmpty {
+            send { held.forEach { VehicleCommands.releaseRcChannel($0) } }
+        }
+    }
+
+    func forget() { sent.withLock { $0.removeAll() } }
+
+    func holding() -> Set<Int> { sent.withLock { $0 } }
+}
+
+let customRcControls = RcHolder()
+let cameraRcControls = RcHolder()
+
+private func sendRcOverride(_ channel: Int, _ pwm: Int) { customRcControls.hold(channel, pwm) }
+
+private func releaseOverrides() {
+    customRcControls.forget()
+    cameraRcControls.forget()
+    offMainInOrder { VehicleCommands.clearRcOverrides() }
+}
+
+private func uptimeMillis() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
+
+private struct ControlLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text).font(.labelMedium).frame(width: 84, alignment: .leading)
+    }
+}
+
+private struct RcSlider: View {
+    let control: RcControl
+    @State private var pwm = PWM_CENTER
+    @State private var lastSent: Int64 = 0
+
+    private func send(_ value: Int, _ finished: Bool) {
+        let now = uptimeMillis()
+        if rcSendDue(now, lastSent, finished) {
+            lastSent = now
+            sendRcOverride(control.channel, value)
+        }
+    }
+
+    var body: some View {
+        HStack {
+            ControlLabel(text: control.label)
+            Slider(
+                value: Binding(
+                    get: { Double(pwm) },
+                    set: { raw in
+                        let next = Int(raw)
+                        if next != pwm {
+                            pwm = next
+                            send(next, false)
+                        }
+                    }
+                ),
+                in: Double(PWM_MIN)...Double(PWM_MAX),
+                onEditingChanged: { editing in if !editing { send(pwm, true) } }
+            )
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+private struct RcButton: View {
+    let control: RcControl
+    @State private var on = false
+
+    var body: some View {
+        Toggle(control.label, isOn: Binding(
+            get: { on },
+            set: { next in
+                on = next
+                sendRcOverride(control.channel, next ? PWM_MAX : PWM_MIN)
+            }
+        ))
+        .toggleStyle(.button)
+    }
+}
+
+private let SWITCH3_LABELS = ["Low", "Mid", "High"]
+
+private struct RcSwitch3: View {
+    let control: RcControl
+    @State private var position = 1
+
+    var body: some View {
+        HStack {
+            ControlLabel(text: control.label)
+            Picker(control.label, selection: Binding(
+                get: { position },
+                set: { index in
+                    position = index
+                    sendRcOverride(control.channel, switch3Pwms()[index])
+                }
+            )) {
+                ForEach(Array(SWITCH3_LABELS.enumerated()), id: \.offset) { index, label in Text(label).tag(index) }
+            }
+            .pickerStyle(.segmented)
+            .fixedSize()
+        }
+    }
+}
+
+private struct RcMomentary: View {
+    let control: RcControl
+    @State private var pressed = false
+    @State private var everPressed = false
+
+    var body: some View {
+        Button(control.label) {}
+            .buttonStyle(.borderedProminent)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in if !pressed { pressed = true } }
+                    .onEnded { _ in pressed = false }
+            )
+            .onChange(of: pressed) { _, down in
+                if down {
+                    everPressed = true
+                    sendRcOverride(control.channel, PWM_MAX)
+                } else if everPressed {
+                    sendRcOverride(control.channel, PWM_MIN)
+                }
+            }
+    }
+}
+
+struct RcControlsLayer: View {
+    @HasVehicle private var hasVehicle
+    @QgcString(settingControl(RC_CONTROLS_FACT)) private var configured
+    @QgcPath(FLY_STATE) private var stateJson
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        let controls = parseRcControls(configured)
+        let overriding = flyState(stateJson)?.rcOverride == true
+        ZStack {
+            Color.clear
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+                .onDisappear { customRcControls.release() }
+            if !controls.isEmpty && hasVehicle {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(controls.enumerated()), id: \.offset) { _, control in
+                        Group {
+                            switch control.type {
+                            case .Slider: RcSlider(control: control)
+                            case .Button: RcButton(control: control)
+                            case .Switch3: RcSwitch3(control: control)
+                            case .Momentary: RcMomentary(control: control)
+                            }
+                        }
+                        .id(control.channel)
+                    }
+                    if overriding {
+                        HStack(spacing: Space.s2) {
+                            Text("These channels are held by this tablet.")
+                                .font(.labelMedium)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button("Give back") { releaseOverrides() }
+                                .buttonStyle(.borderedProminent)
+                        }
+                    }
+                }
+                .padding(.horizontal, Space.s3)
+                .padding(.vertical, Space.s2)
+                .background(theme.colors.surface.opacity(0.85))
+            }
+        }
+    }
+}

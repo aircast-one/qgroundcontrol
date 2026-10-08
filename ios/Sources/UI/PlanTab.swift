@@ -1,0 +1,240 @@
+import SwiftUI
+
+private let NOTICE_MILLIS = 4000
+
+let APPLY_DEFAULT_ALTITUDE = "core.plan.applyDefaultAltitude"
+let DISMISS_ALTITUDE_PROMPT = "core.plan.dismissAltitudePrompt"
+
+struct AltitudePrompt: Equatable {
+    let title: String
+    let text: String
+}
+
+let LOAD_VEHICLE_PLAN = "core.plan.loadVehiclePlan"
+let KEEP_CURRENT_PLAN = "core.plan.keepCurrentPlan"
+
+struct VehicleChangePrompt: Equatable {
+    let title: String
+    let text: String
+    let loadText: String
+    let keepText: String
+}
+
+func vehicleChangePrompt(_ view: JSON?) -> VehicleChangePrompt? {
+    guard let prompt = view?["vehicleChangePrompt"], prompt.object != nil else { return nil }
+    return VehicleChangePrompt(title: prompt["title"].string, text: prompt["text"].string, loadText: prompt["loadText"].string, keepText: prompt["keepText"].string)
+}
+
+func applyAltitudePrompt(_ view: JSON?) -> AltitudePrompt? {
+    guard let prompt = view?["applyAltitudePrompt"], prompt.object != nil else { return nil }
+    return AltitudePrompt(title: prompt["title"].string, text: prompt["text"].string)
+}
+
+struct PlanTab: View {
+    @Environment(\.theme) private var theme
+    @QgcPath("view.plan") private var planStatus
+    @State private var notice: String?
+    @State private var pending: PlanConfirm?
+    @State private var files = PlanFileActions()
+    @State private var showDefaults = false
+    @State private var showTransform = false
+    @State private var undrawn: [String] = []
+    @State private var centre: (Double, Double)?
+
+    var body: some View {
+        let containsItems = planContainsItems(planStatus)
+        let syncing = planIsSyncing(planStatus)
+        PlanMapScreen(
+            onCentre: { lat, lon in centre = (lat, lon) },
+            itemEditor: { index, at, close, remove in
+                AnyView(ItemEditor(index: index, at: at, mapCentre: centre, onDismiss: close, onRemove: remove))
+            },
+            header: { upload in AnyView(header(upload)) },
+            fitKey: files.opened(),
+            overlay: {
+                AnyView(
+                    PlanTemplates(planStatus: planStatus, centre: centre, onRefused: { notice = $0 })
+                        .padding(.bottom, Space.s6)
+                        .padding(.horizontal, Space.s4)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                )
+            },
+            summaryHidden: planTemplates(planStatus)?.show == true
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background { dialogs }
+        .modifier(PlanFileDialogs(files: files, onResult: { notice = $0 }))
+        .onAppear { offMainInOrder { PlanCommands.setUndoTracking(true) } }
+        .onDisappear { offMainInOrder { PlanCommands.setUndoTracking(false) } }
+        .task(id: [String(syncing), String(containsItems), files.documentName() ?? ""]) {
+            undrawn = await offMain { undrawnItemNames(visualItems()) }
+        }
+        .task(id: notice) {
+            guard notice != nil else { return }
+            try? await Task.sleep(for: .milliseconds(NOTICE_MILLIS))
+            if !Task.isCancelled { notice = nil }
+        }
+    }
+
+    @ViewBuilder
+    private var dialogs: some View {
+        ZStack {
+            if showDefaults {
+                PlanDefaultsDialog(view: planStatus) { showDefaults = false }
+            }
+            if showTransform {
+                PlanTransformDialog { showTransform = false }
+            }
+            Color.clear.frame(width: 0, height: 0).alert(
+                sentenceCase(vehicleChangePrompt(planStatus)?.title ?? ""),
+                isPresented: Binding(get: { vehicleChangePrompt(planStatus) != nil }, set: { _ in }),
+                presenting: vehicleChangePrompt(planStatus)
+            ) { prompt in
+                Button(sentenceCase(prompt.loadText)) { offMain { Qgc.invoke(LOAD_VEHICLE_PLAN) } }
+                Button(sentenceCase(prompt.keepText)) { offMain { Qgc.invoke(KEEP_CURRENT_PLAN) } }
+            } message: { prompt in
+                Text(prompt.text)
+            }
+            Color.clear.frame(width: 0, height: 0).alert(
+                sentenceCase(applyAltitudePrompt(planStatus)?.title ?? ""),
+                isPresented: Binding(get: { applyAltitudePrompt(planStatus) != nil }, set: { _ in }),
+                presenting: applyAltitudePrompt(planStatus)
+            ) { _ in
+                Button("Yes") { offMain { Qgc.invoke(APPLY_DEFAULT_ALTITUDE) } }
+                Button("No", role: .cancel) { offMain { Qgc.invoke(DISMISS_ALTITUDE_PROMPT) } }
+            } message: { prompt in
+                Text(prompt.text)
+            }
+            Color.clear.frame(width: 0, height: 0).alert(
+                pending.map { confirmCopy($0).title } ?? "",
+                isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+                presenting: pending
+            ) { kind in
+                let copy = confirmCopy(kind)
+                Button(copy.confirm, role: copy.destructive ? .destructive : nil) {
+                    pending = nil
+                    act(kind)
+                }
+                Button("Keep editing", role: .cancel) { pending = nil }
+            } message: { kind in
+                Text(confirmCopy(kind).body)
+            }
+            Color.clear.frame(width: 0, height: 0).confirmationDialog(
+                "Import as which pattern?",
+                isPresented: Binding(get: { !files.patternChoice.options().isEmpty }, set: { if !$0 { files.patternChoice.cancel() } }),
+                titleVisibility: .visible
+            ) {
+                ForEach(files.patternChoice.options(), id: \.self) { name in
+                    Button(name) { files.patternChoice.pick(name) }
+                }
+                Button("Cancel", role: .cancel) { files.patternChoice.cancel() }
+            }
+        }
+    }
+
+    private func act(_ kind: PlanConfirm) {
+        switch kind {
+        case .Open: files.open()
+        case .NewPlan: files.newPlan()
+        case .ClearMission: files.clearMission()
+        case .Download: files.download()
+        }
+    }
+
+    @ViewBuilder
+    private func header(_ upload: PlanUpload) -> some View {
+        let history = planHistory(planStatus)
+        let can = planActions(planStatus)
+        let dirty = planIsDirty(planStatus)
+        let containsItems = planContainsItems(planStatus)
+        let title = planTitle(files.documentName())
+        VStack(spacing: 0) {
+            HStack(spacing: Space.s1) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title).font(.titleLarge).lineLimit(1).truncationMode(.tail)
+                    let line = notice ?? planStatusText(planStatus)
+                    if !line.isBlank && line != title {
+                        Text(line)
+                            .font(.bodySmall)
+                            .foregroundStyle(theme.colors.onSurfaceVariant)
+                            .lineLimit(notice == nil ? 1 : 3)
+                            .truncationMode(.tail)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if upload.shown { uploadButton(upload) }
+                Menu {
+                    Button { offMainInOrder { PlanCommands.undo() } } label: { Label { Text("Undo") } icon: { Image(.undo) } }
+                        .disabled(!history.canUndo)
+                    Button { offMainInOrder { PlanCommands.redo() } } label: { Label { Text("Redo") } icon: { Image(.redo) } }
+                        .disabled(!history.canRedo)
+                    Divider()
+                    Button { if dirty { pending = .Open } else { files.open() } } label: { Label { Text("Open plan…") } icon: { Image(.description) } }
+                        .disabled(!can.open)
+                    Button { files.save() } label: { Label { Text("Save") } icon: { Image(.download) } }
+                        .disabled(!can.save)
+                    Button { files.saveAs() } label: { Label { Text("Save as…") } icon: { Image(.edit) } }
+                        .disabled(!can.save)
+                    Button { files.exportKml() } label: { Label { Text("Export KML…") } icon: { Image(.send) } }
+                        .disabled(!can.exportKml)
+                    Button { files.importBoundary() } label: { Label { Text("Import boundary…") } icon: { Image(.map) } }
+                        .disabled(!can.open)
+                    Divider()
+                    Button { showDefaults = true } label: { Label { Text("Defaults…") } icon: { Image(.tune) } }
+                    Button { showTransform = true } label: { Label { Text("Transform…") } icon: { Image(.straighten) } }
+                        .disabled(!containsItems)
+                    Divider()
+                    Button { if containsItems { pending = .NewPlan } else { files.newPlan() } } label: { Label { Text("New plan…") } icon: { Image(.add) } }
+                        .disabled(!can.newPlan)
+                    Button { if dirty { pending = .Download } else { files.download() } } label: { Label { Text("Load from vehicle") } icon: { Image(.upload) } }
+                        .disabled(!can.download)
+                    Button(role: .destructive) { pending = .ClearMission } label: { Label { Text("Clear mission") } icon: { Image(.delete) } }
+                        .disabled(!can.clearFromVehicle)
+                } label: {
+                    Image(.moreVert).frame(width: 48, height: 48)
+                }
+                .accessibilityLabel("Plan menu")
+            }
+            .frame(minHeight: 64)
+            .padding(.leading, Space.s4)
+            .padding(.trailing, Space.s1)
+            if let warning = undrawnItemsWarning(undrawn) {
+                Text(warning)
+                    .font(.bodySmall)
+                    .foregroundStyle(theme.colors.onErrorContainer)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Space.s3)
+                    .padding(.vertical, Space.s2)
+                    .background(theme.colors.errorContainer)
+            }
+        }
+    }
+
+    private func uploadButton(_ upload: PlanUpload) -> some View {
+        let fill = upload.done ? theme.aircast.success : upload.emphasised ? theme.colors.primary : theme.colors.surfaceContainerHighest
+        let ink = upload.done ? theme.aircast.onSuccess : upload.emphasised ? theme.colors.onPrimary : theme.colors.onSurface
+        let progress = planSyncProgress(planStatus)
+        return Button(action: upload.onClick) {
+            HStack(spacing: Space.s2) {
+                Image(upload.done ? .checkCircle : .upload).font(.system(size: 20))
+                Text(upload.label).font(.labelLarge)
+            }
+            .padding(.leading, Space.s4)
+            .padding(.trailing, Space.s5)
+            .frame(height: 40)
+            .foregroundStyle(ink)
+            .background(alignment: .leading) {
+                if planIsSyncing(planStatus) {
+                    GeometryReader { geo in
+                        Rectangle().fill(ink.opacity(0.28)).frame(width: geo.size.width * progress)
+                    }
+                }
+            }
+            .background(fill)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!upload.enabled)
+        .opacity(upload.enabled ? 1 : 0.38)
+    }
+}
