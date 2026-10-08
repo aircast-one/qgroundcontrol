@@ -394,7 +394,6 @@ impl Contact {
             "emitterType": self.report.emitter_type,
             "secondsSinceLastSeen": self.report.seconds_since_last_seen,
             "simulated": self.report.simulated,
-            "ageMs": now_ms.saturating_sub(self.last_contact_ms),
             "stale": self.stale(now_ms),
             "distanceMetres": self.range_metres(own),
             "distance": self.range_metres(own).map(|metres| units.horizontal.show(metres)),
@@ -557,7 +556,6 @@ impl Traffic {
             "receiving": self.receiving(now_ms),
             "source": self.source.as_ref().map(|source| json!({ "host": source.host, "port": source.port })),
             "error": self.failure.as_ref().map(|failure| json!({ "token": failure.token, "detail": failure.detail })),
-            "mavlinkAgeMs": self.mavlink_ms.map(|heard| now_ms.saturating_sub(heard)),
             "ownPositionKnown": self.own.is_some(),
             "count": self.contacts.len(),
             "expirationMs": EXPIRATION_MS,
@@ -938,7 +936,7 @@ mod tests {
         let mut traffic = Traffic::default();
         assert!(traffic.receive(&located(1), 1_000));
         let fresh = traffic.snapshot(1_000 + STALE_MS);
-        assert_eq!((fresh["contacts"][0]["stale"].clone(), fresh["contacts"][0]["ageMs"].clone()), (json!(false), json!(STALE_MS)));
+        assert_eq!(fresh["contacts"][0]["stale"], json!(false));
         let old = traffic.snapshot(1_000 + STALE_MS + 1);
         assert_eq!(old["contacts"][0]["stale"], json!(true), "traffic arrives at about a hertz, so a fix seconds old is a ghost - at jet speed it is kilometres from where it is drawn");
         assert_eq!(old["staleMs"], json!(STALE_MS), "the threshold is named in the payload so two heads cannot pick two of them");
@@ -1010,7 +1008,7 @@ mod tests {
         assert_eq!(contact.report.callsign.as_deref(), Some("SWR999"), "the newest value for a reading wins");
         assert_eq!(contact.report.squawk, Some(7700), "a reading the new report is silent about keeps its last known value");
         assert_eq!(contact.report.seconds_since_last_seen, None, "except the age of the last transponder hit, which an SBS-1 line cannot know - carrying the old tslc forward would report a contact as seconds old minutes after it went quiet");
-        assert_eq!(traffic.snapshot(2_000)["contacts"][0]["ageMs"], json!(0), "ageMs is the one age the core stands behind");
+        assert_eq!(traffic.snapshot(2_000)["contacts"][0]["stale"], json!(false), "stale, from the core's own arrival clock, is the one age the core stands behind");
     }
 
     #[test]
@@ -1050,7 +1048,7 @@ mod tests {
         let contact = &view["contacts"][0];
         assert_eq!(contact["icaoAddress"], json!(0xABCDEF));
         assert_eq!((contact["altitudeMetres"].as_f64(), contact["velocityMetresPerSecond"].as_f64(), contact["headingDegrees"].as_f64()), (Some(1500.0), Some(120.0), Some(270.0)));
-        assert_eq!(contact["ageMs"], json!(1_000));
+        assert_eq!(contact["stale"], json!(false));
         assert_eq!(contact["alert"], Value::Null, "unknown is null, so a head cannot read it as a cleared warning");
         assert_eq!((contact["altitudeType"].as_str(), contact["emitterType"].as_str(), contact["callsign"].as_str()), (Some(ALTITUDE_GEOMETRIC), Some("light"), Some("SWR123")));
         assert!(view["contacts"].as_array().unwrap().iter().all(|c| c.as_object().unwrap().values().all(|v| !v.is_string() || !v.as_str().unwrap().contains(' '))), "no field carries a formatted sentence");
@@ -1088,7 +1086,7 @@ mod tests {
         let mut mavlink_only = Traffic::default();
         assert!(mavlink_only.on_message(&vehicle(everything(), 1), 1_000));
         let heard = mavlink_only.snapshot(1_000);
-        assert_eq!((heard["receiving"].clone(), heard["mavlinkAgeMs"].clone()), (json!(true), json!(0)), "a vehicle relaying ADSB is a live source with the server switched off");
+        assert_eq!(heard["receiving"], json!(true), "a vehicle relaying ADSB is a live source with the server switched off");
         assert_eq!(mavlink_only.snapshot(1_000 + EXPIRATION_MS + 1)["receiving"], json!(false), "and once it has said nothing for longer than a contact lives, the list is unknown again rather than clear");
     }
 

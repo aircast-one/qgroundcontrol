@@ -213,10 +213,6 @@ impl GcsPosition {
         age_of(self.stamped_ms, now)
     }
 
-    pub fn last_report_age_ms(&self, now: MonotonicMs) -> Option<u64> {
-        age_of(self.last_report_ms, now)
-    }
-
     pub fn stale(&self, now: MonotonicMs) -> bool {
         self.age_ms(now).is_none_or(|age| age > STALE_AFTER_MS)
     }
@@ -381,8 +377,6 @@ impl GcsPosition {
             "minimumHorizontalAccuracy": MIN_HORIZONTAL_ACCURACY_M,
             "minimumVerticalAccuracy": MIN_VERTICAL_ACCURACY_M,
             "minimumDirectionAccuracy": MIN_DIRECTION_ACCURACY_DEG,
-            "ageMs": self.age_ms(now),
-            "lastReportAgeMs": self.last_report_age_ms(now),
             "refused": self.refusal.map(Refusal::token),
             "staleAfterMs": STALE_AFTER_MS,
             "stale": self.stamped_ms.is_some() && self.stale(now),
@@ -664,8 +658,8 @@ mod tests {
         assert_eq!((position.latitude, position.stamped_ms), (Some(47.397742), Some(1_000)), "an update outside the hundred metre gate leaves the coordinate alone, so it must leave the arrival stamp alone too or the old fix reads fresh");
         assert_eq!(outs, vec![Out::HorizontalAccuracy(Some(MIN_HORIZONTAL_ACCURACY_M + 0.1)), Out::Reported], "the rejected accuracy is still what the receiver last reported");
         assert_eq!(
-            (position.refusal, position.last_report_ms, position.last_report_age_ms(at(2_500))),
-            (Some(Refusal::AccuracyTooCoarse), Some(2_000), Some(500)),
+            (position.refusal, position.last_report_ms),
+            (Some(Refusal::AccuracyTooCoarse), Some(2_000)),
             "a receiver whose readings are all refused is still a receiver that is talking, and the reason it is refused is the only thing that tells the operator to walk outside"
         );
         position.on_update(fix(Some(MIN_HORIZONTAL_ACCURACY_M)), at(3_000));
@@ -682,12 +676,13 @@ mod tests {
         assert_eq!(position.fix(at(500)), "waiting", "a live receiver that has not yet delivered a fix is waiting, which is a different story from having no receiver at all");
         let view = position.snapshot(at(700));
         assert_eq!(
-            (view["refused"].as_str(), view["lastReportAgeMs"].as_u64(), view["fix"].as_str()),
-            (Some("accuracyUnknown"), Some(200), Some("waiting")),
+            (view["refused"].as_str(), position.last_report_ms, view["fix"].as_str()),
+            (Some("accuracyUnknown"), Some(500), Some("waiting")),
             "a refused reading and no reading at all must not read the same, or the operator cannot choose between replugging the receiver and waiting for it"
         );
-        let never = GcsPosition::default().snapshot(at(700));
-        assert_eq!((never["refused"].as_str(), never["lastReportAgeMs"].as_u64(), never["fix"].as_str()), (None, None, Some("noSource")), "nothing has ever arrived, so there is no last report to age and nothing to explain");
+        let silent = GcsPosition::default();
+        let never = silent.snapshot(at(700));
+        assert_eq!((never["refused"].as_str(), silent.last_report_ms, never["fix"].as_str()), (None, None, Some("noSource")), "nothing has ever arrived, so there is no last report and nothing to explain");
     }
 
     #[test]
@@ -876,12 +871,12 @@ mod tests {
         assert_eq!((view["class"].as_str(), view["source"].as_str(), view["hasFix"].as_bool(), view["usable"].as_bool()), (Some("GcsPosition"), Some("nmea"), Some(true), Some(true)));
         assert_eq!((view["latitude"].as_f64(), view["altitude"].as_f64(), view["heading"].as_f64()), (Some(47.397742), Some(488.0), Some(45.0)));
         assert_eq!((view["altitudeUnits"].as_str(), view["accuracyUnits"].as_str(), view["headingUnits"].as_str(), view["coordinateUnits"].as_str()), (Some("m"), Some("m"), Some("deg"), Some("deg")));
-        assert_eq!((view["ageMs"].as_u64(), view["lastReportAgeMs"].as_u64(), view["stale"].as_bool(), view["fix"].as_str()), (Some(500), Some(500), Some(false), Some("threeDimensional")));
+        assert_eq!((view["stale"].as_bool(), view["fix"].as_str()), (Some(false), Some("threeDimensional")));
         assert_eq!((view["horizontalAccuracy"].as_f64(), view["verticalAccuracy"].as_f64(), view["minimumHorizontalAccuracy"].as_f64()), (Some(4.0), Some(5.0), Some(MIN_HORIZONTAL_ACCURACY_M)));
         assert!(view.as_object().unwrap().values().all(|v| !v.as_str().is_some_and(|token| token.contains(['.', ',']))), "a token is not a formatted number, and the decimal separator belongs to whoever knows the locale");
         let empty = GcsPosition::default().snapshot(at(1_500));
         assert!(
-            [&empty["latitude"], &empty["heading"], &empty["ageMs"], &empty["horizontalAccuracy"], &empty["lastKnownLatitude"], &empty["error"]].iter().all(|v| **v == Value::Null),
+            [&empty["latitude"], &empty["heading"], &empty["horizontalAccuracy"], &empty["lastKnownLatitude"], &empty["error"]].iter().all(|v| **v == Value::Null),
             "with no receiver every reading is absent, and absent is null rather than a zero a map would happily fly to"
         );
         assert_eq!((empty["stale"].as_bool(), empty["fix"].as_str(), empty["usable"].as_bool()), (Some(false), Some("noSource"), Some(false)), "a fix that was never taken cannot be current, and it cannot be stale either: there is no reading to have expired");

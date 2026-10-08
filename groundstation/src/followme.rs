@@ -383,7 +383,6 @@ pub fn snapshot(setting: Option<f64>, fleet: &[Target], fix: Option<&Fix>) -> Va
         "wouldSend": refused.is_none(),
         "reason": refused.map(Reason::token),
         "fixValid": fix.map(|fix| fix.valid),
-        "fixAgeMs": fix.map(|fix| fix.age_ms),
         "fixFresh": fix.map(|fix| fix.age_ms <= ALLOWED_FIX_AGE_MS),
         "report": report.as_ref().map(report_json),
         "count": listed.len(),
@@ -669,7 +668,7 @@ mod tests {
         assert_eq!((view["enabled"].as_bool(), view["wouldSend"].as_bool(), view["reason"].as_str()), (Some(true), Some(false), Some("fixStale")), "the timer keeps running while the fix is stale, it just sends nothing, and it says why");
         assert_eq!((&view["report"], view["fixFresh"].as_bool()), (&Value::Null, Some(false)));
         let never_fixed = snapshot(ALWAYS, &[follower("Hold", false)], None);
-        assert_eq!((&never_fixed["fixAgeMs"], &never_fixed["fixValid"]), (&Value::Null, &Value::Null), "a fix the position manager never produced has no age and no validity, rather than an age of zero");
+        assert_eq!((&never_fixed["fixFresh"], &never_fixed["fixValid"]), (&Value::Null, &Value::Null), "a fix the position manager never produced is neither fresh nor valid, rather than fresh and invalid");
     }
 
     #[test]
@@ -797,7 +796,8 @@ mod tests {
         assert_eq!(view["class"], "FollowMe");
         assert_eq!((view["mode"].as_str(), view["enabled"].as_bool(), view["wouldSend"].as_bool()), (Some("followMe"), Some(true), Some(true)));
         assert_eq!((view["fixValid"].as_bool(), view["fixFresh"].as_bool()), (Some(true), Some(true)));
-        assert!((120..3000).contains(&view["fixAgeMs"].as_u64().unwrap()), "the age is the delta to the position manager's own timestamp, not the time since some head last pushed a cached position; got {}", view["fixAgeMs"]);
+        let age = gcs_fix(&backend, crate::hub::now_us() / 1000).map(|fix| fix.age_ms);
+        assert!(age.is_some_and(|age| (120..3000).contains(&age)), "the age is the delta to the position manager's own timestamp, not the time since some head last pushed a cached position; got {age:?}");
         assert_eq!(view["report"]["latitudeDegE7"], json!(475000000));
         assert_eq!((view["report"]["heading"].as_f64(), view["report"]["positionStdDevHorizontal"].as_f64()), (Some(90.0), Some(2.5)), "heading and accuracy come from the manager's own facts");
         assert_eq!(view["units"]["altitude"], "m", "the head formats the numbers, the core only names their unit");
@@ -806,7 +806,7 @@ mod tests {
         let stale = follow_me_view(&placed(json!(2), vec![px4(1, "Follow Me")], ALLOWED_FIX_AGE_MS + 2000), &[]);
         assert_eq!((stale["reason"].as_str(), &stale["report"]), (Some("fixStale"), &Value::Null), "a GPS that dies mid follow ages out on its own clock, so the panel stops reading fresh without anything else happening");
         let dark = follow_me_view(&Fake { setting: json!(2), fleet: vec![px4(1, "Follow Me")], ..Default::default() }, &[]);
-        assert_eq!((dark["reason"].as_str(), &dark["fixAgeMs"]), (Some("noFix"), &Value::Null), "a position manager with no fix yet has no age at all");
+        assert_eq!((dark["reason"].as_str(), &dark["fixFresh"]), (Some("noFix"), &Value::Null), "a position manager with no fix yet is neither fresh nor stale");
         assert_eq!(gcs_fix(&placed(json!(1), vec![], 0), wall_ms()).unwrap().ground_speed_m_s, None, "the manager publishes no ground speed today, and unknown stays unknown rather than becoming a standstill");
     }
 
