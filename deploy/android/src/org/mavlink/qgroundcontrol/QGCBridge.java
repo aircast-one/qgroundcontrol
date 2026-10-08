@@ -91,10 +91,9 @@ public final class QGCBridge {
 
     public static native long videoFrames();
 
-    /** dest must be a direct ByteBuffer; returns false when no frame has arrived yet. */
     public static native boolean videoCopyFrame(java.nio.ByteBuffer dest);
 
-    public static native boolean videoSetSurface(android.view.Surface surface);
+    public static native boolean videoSetSurface(int channel, android.view.Surface surface);
 
     public static native byte[] mapTile(String mapType, int x, int y, int zoom, String cacheFile);
 

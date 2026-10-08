@@ -521,11 +521,13 @@ QList<int> VideoSettings::switchableIndices()
     return indices;
 }
 
-QList<int> VideoSettings::tileCameraIndices()
+int VideoSettings::pipCameraIndex()
 {
-    QList<int> tiles = switchableIndices();
-    tiles.removeAll(currentIndex());
-    return tiles;
+    const QList<int> usable = switchableIndices();
+    const int current = currentIndex();
+    const auto after = std::find_if(usable.cbegin(), usable.cend(), [current](int index) { return index > current; });
+    const int pip = (after != usable.cend()) ? *after : usable.value(0, -1);
+    return (pip == current) ? -1 : pip;
 }
 
 int VideoSettings::currentIndex()

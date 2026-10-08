@@ -49,5 +49,6 @@ void applyDecoderPriorities(int rawOption);
 void onMainWindowReady(QQuickWindow *window);
 void bindDebugLevelFact(Fact *fact, QObject *context);
 void attachSink(QObject *receiver, void *sink, QQuickItem *widget);
+bool attachNativeSink(void *sink, int channel);
 
-} // namespace VideoBackend
+}

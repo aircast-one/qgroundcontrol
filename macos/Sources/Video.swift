@@ -1,6 +1,9 @@
 import Foundation
 import QGCVideoC
 
+let mainVideoChannel: Int32 = 0
+let pipVideoChannel: Int32 = 1
+
 final class VideoStore: ObservableObject, Probeable, WriteReporting {
     @Published var writeFailure: String?
     static let probeID = "video"
@@ -35,13 +38,17 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         askCameras("cameras.remove", [slot])
     }
 
-    func moveCamera(_ camera: VideoSource, by offset: Int) {
-        guard let slot = camera.stored else { return }
-        askCameras("cameras.move", [slot, slot + offset])
+    func classifyCamera(_ address: String) -> CameraGuess {
+        CameraGuess(Bridge.invoke("cameras.classify", [address]))
     }
 
     func showCamera(_ camera: VideoSource) {
         askCameras("video.setActiveVideoSource", [camera.slot])
+        refresh()
+    }
+
+    func setPip(_ on: Bool) {
+        write("settings.videoSettings.multiViewEnabled", on, "picture in picture")
         refresh()
     }
 
@@ -82,9 +89,12 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         let read = VideoStatus(Bridge.group("view.video"))
         if read != status { status = read }
         drive(read.nativePipeline)
+        drivePip(read.pipPipeline)
         record(read.nativeRecording)
         pollNative()
+        pollPip()
         loadCamera()
+        loadSources()
     }
 
     func loadCamera() {
@@ -141,6 +151,7 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         if status != .unavailable { status = .unavailable }
         stopDetections()
         pollNative()
+        pollPip()
     }
 
     @Published private(set) var detections = Detections.none
@@ -170,17 +181,17 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     @Published private(set) var nativeSize = ""
     @Published private(set) var nativeError = ""
 
-    var nativeRunning: Bool { qgc_video_running() }
+    var nativeRunning: Bool { qgc_video_running(mainVideoChannel) }
 
     func startNative(_ pipeline: String) -> Bool {
-        let started = qgc_video_start(pipeline)
-        nativeError = started ? "" : String(cString: qgc_video_last_error())
+        let started = qgc_video_start(mainVideoChannel, pipeline)
+        nativeError = started ? "" : String(cString: qgc_video_last_error(mainVideoChannel))
         pollNative()
         return started
     }
 
     func stopNative() {
-        qgc_video_stop()
+        qgc_video_stop(mainVideoChannel)
         pollNative()
     }
 
@@ -190,14 +201,14 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     private func record(_ wanted: NativeRecording?) {
         if wanted != drivenRecording {
             if drivenRecording != nil {
-                qgc_video_stop_recording()
+                qgc_video_stop_recording(mainVideoChannel)
             }
-            if let wanted, !qgc_video_start_recording(wanted.file, wanted.format) {
-                nativeError = String(cString: qgc_video_last_error())
+            if let wanted, !qgc_video_start_recording(mainVideoChannel, wanted.file, wanted.format) {
+                nativeError = String(cString: qgc_video_last_error(mainVideoChannel))
             }
             drivenRecording = wanted
         }
-        let recording = qgc_video_recording()
+        let recording = qgc_video_recording(mainVideoChannel)
         guard recording != reportedRecording else { return }
         reportedRecording = recording
         Bridge.invoke("video.reportRecording", [recording])
@@ -218,10 +229,10 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
     }
 
     func pollNative() {
-        let frames = Int(qgc_video_frames())
+        let frames = Int(qgc_video_frames(mainVideoChannel))
         if frames != nativeFrames { nativeFrames = frames }
-        let width = Int(qgc_video_width())
-        let height = Int(qgc_video_height())
+        let width = Int(qgc_video_width(mainVideoChannel))
+        let height = Int(qgc_video_height(mainVideoChannel))
         let size = width > 0 && height > 0 ? "\(width)\u{00D7}\(height)" : ""
         if size != nativeSize { nativeSize = size }
         guard drivenPipeline != nil else { return }
@@ -229,6 +240,37 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
         guard state != reported else { return }
         reported = state
         Bridge.invoke("video.reportNative", [nativeRunning, frames, width, height, nativeError])
+    }
+
+    @Published private(set) var pipFrames = 0
+    private var drivenPip: String?
+    private var reportedPip: [Int] = []
+
+    private func drivePip(_ pipeline: String?) {
+        guard pipeline != drivenPip else { return }
+        let wasDriving = drivenPip != nil
+        drivenPip = pipeline
+        reportedPip = []
+        if let pipeline, qgc_video_available() {
+            _ = qgc_video_start(pipVideoChannel, pipeline)
+        } else if wasDriving {
+            qgc_video_stop(pipVideoChannel)
+        }
+    }
+
+    private func pollPip() {
+        let frames = Int(qgc_video_frames(pipVideoChannel))
+        if frames != pipFrames { pipFrames = frames }
+        guard drivenPip != nil else { return }
+        let running = qgc_video_running(pipVideoChannel)
+        let width = Int(qgc_video_width(pipVideoChannel))
+        let height = Int(qgc_video_height(pipVideoChannel))
+        let state = [running ? 1 : 0, min(frames, 1), width, height]
+        guard state != reportedPip else { return }
+        reportedPip = state
+        Bridge.invoke("video.reportNative", [running, frames, width, height,
+                                             String(cString: qgc_video_last_error(pipVideoChannel)),
+                                             NSNull(), false, Int(pipVideoChannel)])
     }
 
     func probeState() -> [String: Any] {
@@ -265,15 +307,17 @@ final class VideoStore: ObservableObject, Probeable, WriteReporting {
                     "reportsStorage": camera.reportsStorage],
          "sources": cameraList.entries.map { ["slot": $0.slot, "stored": $0.stored ?? -1, "name": $0.name,
                                               "source": $0.source, "url": $0.url, "summary": $0.summary,
-                                              "problem": $0.problem ?? "", "fromDrone": $0.fromDrone] },
-         "nativeFrames": nativeFrames, "nativeSize": nativeSize, "nativeError": nativeError]
+                                              "problem": $0.problem ?? "", "fromDrone": $0.fromDrone,
+                                              "short": $0.short, "status": $0.status.rawValue] },
+         "nativeFrames": nativeFrames, "nativeSize": nativeSize, "nativeError": nativeError,
+         "pip": ["offered": cameraList.offersPip, "enabled": cameraList.pipEnabled,
+                 "slot": cameraList.pipSlot ?? -1, "driven": drivenPip != nil, "frames": pipFrames]]
     }
 
     func probeInvoke(action: String, args: [String: String]) -> [String: Any] {
         switch action {
         case "refresh":
             refresh()
-            loadSources()
         case "setSourceUrl":
             guard let slot = Int(args["slot"] ?? ""),
                   let existing = cameraList.entries.first(where: { $0.stored == slot }) else {

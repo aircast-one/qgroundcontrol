@@ -843,6 +843,71 @@ struct CameraSwitch: View {
     }
 }
 
+struct PipToggle: View {
+    @ObservedObject var video: VideoStore
+
+    var body: some View {
+        if video.cameraList.offersPip {
+            let on = video.cameraList.pipEnabled
+            Button {
+                video.setPip(!on)
+            } label: {
+                GlassPanel {
+                    Image(systemName: on ? "pip.fill" : "pip")
+                        .font(.caption)
+                        .foregroundColor(on ? .accentColor : .primary)
+                        .padding(.horizontal, Overlay.step)
+                        .padding(.vertical, Overlay.step * 0.4)
+                }
+            }
+            .buttonStyle(.plain)
+            .help(on ? "Hide the second camera" : "Show the second camera in a small picture")
+            .accessibilityLabel("Picture in picture")
+            .accessibilityValue(on ? "On" : "Off")
+        }
+    }
+}
+
+struct PipThumbnail: View {
+    @ObservedObject var video: VideoStore
+
+    var body: some View {
+        if let camera = video.cameraList.pipCamera {
+            Button {
+                video.showCamera(camera)
+            } label: {
+                Group {
+                    if video.pipFrames > 0 {
+                        NativeVideoView(channel: pipVideoChannel)
+                    } else {
+                        Color.black
+                    }
+                }
+                .overlay(alignment: .bottomLeading) {
+                    HStack(spacing: 4) {
+                        Circle().fill(camera.status.colour).frame(width: 6, height: 6)
+                        Text(camera.caption).lineLimit(1)
+                    }
+                    .font(.caption2)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(Color.black.opacity(0.55), in: Capsule())
+                    .padding(5)
+                }
+                .frame(width: 160, height: 90)
+                .clipShape(RoundedRectangle(cornerRadius: Overlay.cardRadius))
+                .overlay(RoundedRectangle(cornerRadius: Overlay.cardRadius)
+                    .strokeBorder(Overlay.border, lineWidth: 1))
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 2)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Show \(camera.title) in the main picture")
+        }
+    }
+}
+
 struct FlyView: View {
     @ObservedObject var fly: FlyStore
     @ObservedObject var mission: MissionStore
@@ -974,18 +1039,24 @@ struct FlyView: View {
             }
 
             VStack(spacing: Overlay.step) {
-                CameraSwitch(video: video)
-                if video.nativeFrames > 0 {
-                    NativeVideoView()
-                        .overlay(DetectionOverlay(detections: video.detections,
-                                                  source: video.status.sourceSize))
-                        .frame(width: 320, height: 180)
-                        .clipShape(RoundedRectangle(cornerRadius: Overlay.panelRadius))
-                        .overlay(RoundedRectangle(cornerRadius: Overlay.panelRadius)
-                            .strokeBorder(Overlay.border, lineWidth: 1))
-                        .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
-                        .onAppear { video.startDetections() }
-                        .onDisappear { video.stopDetections() }
+                HStack(spacing: Overlay.step) {
+                    CameraSwitch(video: video)
+                    PipToggle(video: video)
+                }
+                HStack(alignment: .bottom, spacing: Overlay.step) {
+                    if video.nativeFrames > 0 {
+                        NativeVideoView(channel: mainVideoChannel)
+                            .overlay(DetectionOverlay(detections: video.detections,
+                                                      source: video.status.sourceSize))
+                            .frame(width: 320, height: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: Overlay.panelRadius))
+                            .overlay(RoundedRectangle(cornerRadius: Overlay.panelRadius)
+                                .strokeBorder(Overlay.border, lineWidth: 1))
+                            .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
+                            .onAppear { video.startDetections() }
+                            .onDisappear { video.stopDetections() }
+                    }
+                    PipThumbnail(video: video)
                 }
             }
             .padding(.bottom, Overlay.unit * 5)

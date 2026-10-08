@@ -16,21 +16,21 @@ unsafe extern "C" {
 
 pub struct Video {
     init: unsafe extern "C" fn(*mut jni::sys::JavaVM, jni::sys::jobject, jni::sys::jobject, *const c_char, *const c_char) -> bool,
-    pub set_surface: unsafe extern "C" fn(*mut jni::sys::JNIEnv, jni::sys::jobject) -> bool,
+    pub set_surface: unsafe extern "C" fn(*mut jni::sys::JNIEnv, c_int, jni::sys::jobject) -> bool,
     force_decoder: unsafe extern "C" fn(c_int),
-    start: unsafe extern "C" fn(*const c_char) -> bool,
-    stop: unsafe extern "C" fn(),
-    running: unsafe extern "C" fn() -> bool,
-    pub width: unsafe extern "C" fn() -> c_int,
-    pub height: unsafe extern "C" fn() -> c_int,
-    pub frames: unsafe extern "C" fn() -> i64,
-    source_buffers: unsafe extern "C" fn() -> i64,
-    last_error: unsafe extern "C" fn() -> *const c_char,
-    stream_error: Option<unsafe extern "C" fn() -> *const c_char>,
-    pub copy_frame: unsafe extern "C" fn(*mut c_void, c_int, *mut c_int, *mut c_int, *mut c_int) -> bool,
-    start_recording: unsafe extern "C" fn(*const c_char, c_int) -> bool,
-    stop_recording: unsafe extern "C" fn(),
-    recording: unsafe extern "C" fn() -> bool,
+    start: unsafe extern "C" fn(c_int, *const c_char) -> bool,
+    stop: unsafe extern "C" fn(c_int),
+    running: unsafe extern "C" fn(c_int) -> bool,
+    pub width: unsafe extern "C" fn(c_int) -> c_int,
+    pub height: unsafe extern "C" fn(c_int) -> c_int,
+    pub frames: unsafe extern "C" fn(c_int) -> i64,
+    source_buffers: unsafe extern "C" fn(c_int) -> i64,
+    last_error: unsafe extern "C" fn(c_int) -> *const c_char,
+    stream_error: unsafe extern "C" fn(c_int) -> *const c_char,
+    pub copy_frame: unsafe extern "C" fn(c_int, *mut c_void, c_int, *mut c_int, *mut c_int, *mut c_int) -> bool,
+    start_recording: unsafe extern "C" fn(c_int, *const c_char, c_int) -> bool,
+    stop_recording: unsafe extern "C" fn(c_int),
+    recording: unsafe extern "C" fn(c_int) -> bool,
     mock_serve: Option<unsafe extern "C" fn(c_int, c_int) -> *mut c_void>,
     mock_uri: Option<unsafe extern "C" fn(*mut c_void) -> *const c_char>,
     mock_stop: Option<unsafe extern "C" fn(*mut c_void)>,
@@ -60,7 +60,7 @@ fn load() -> Option<Video> {
         frames: symbol(handle, c"qgc_video_frames")?,
         source_buffers: symbol(handle, c"qgc_video_source_buffers")?,
         last_error: symbol(handle, c"qgc_video_last_error")?,
-        stream_error: symbol(handle, c"qgc_video_stream_error"),
+        stream_error: symbol(handle, c"qgc_video_stream_error")?,
         copy_frame: symbol(handle, c"qgc_video_copy_frame")?,
         start_recording: symbol(handle, c"qgc_video_start_recording")?,
         stop_recording: symbol(handle, c"qgc_video_stop_recording")?,
@@ -116,13 +116,71 @@ fn initialise(vm: &JavaVM, video: &Video) -> jni::errors::Result<bool> {
     Ok(unsafe { (video.init)(vm.get_java_vm_pointer(), application.as_obj().as_raw(), loader.as_obj().as_raw(), files.as_ptr(), cache.as_ptr()) })
 }
 
+const MAIN: c_int = crate::videohost::MAIN_CHANNEL as c_int;
+
 #[derive(Default)]
-struct Driver {
+struct Channel {
     driven: Option<String>,
     restarted: bool,
-    decoders_ranked: bool,
     error: String,
     streamed: String,
+    decoding: bool,
+}
+
+impl Channel {
+    fn drive(&mut self, video: &Video, channel: c_int, wanted: Option<String>) {
+        if crate::videohost::RESTART[channel as usize].swap(false, std::sync::atomic::Ordering::Relaxed) && self.driven.take().is_some() {
+            unsafe { (video.stop)(channel) };
+        }
+        if wanted == self.driven {
+            return;
+        }
+        match &wanted {
+            Some(pipeline) => {
+                let text = CString::new(pipeline.as_str()).unwrap_or_default();
+                let started = unsafe { (video.start)(channel, text.as_ptr()) };
+                self.restarted = true;
+                self.decoding = false;
+                self.error = if started { String::new() } else { unsafe { CStr::from_ptr((video.last_error)(channel)) }.to_string_lossy().into_owned() };
+                match started {
+                    true => log::info!("Video channel {channel} started"),
+                    false => log::warn!("Video pipeline on channel {channel} did not start: {}", self.error),
+                }
+            }
+            None => {
+                unsafe { (video.stop)(channel) };
+                log::info!("Video channel {channel} stopped");
+            }
+        }
+        self.driven = wanted;
+    }
+
+    fn report(&mut self, video: &Video, channel: c_int) {
+        if self.driven.is_none() {
+            return;
+        }
+        let (running, frames, width, height) = unsafe { ((video.running)(channel), (video.frames)(channel), (video.width)(channel), (video.height)(channel)) };
+        if channel == MAIN {
+            crate::videostats::sample(running, frames, i64::from(height), crate::hub::now_ms());
+        }
+        if frames > 0 && !std::mem::replace(&mut self.decoding, true) {
+            log::info!("Video channel {channel} decoding {width}x{height}");
+        }
+        let source = unsafe { (video.source_buffers)(channel) };
+        let streamed = unsafe { CStr::from_ptr((video.stream_error)(channel)) }.to_string_lossy().into_owned();
+        if streamed != self.streamed && !streamed.is_empty() {
+            log::warn!("Video stream error on channel {channel}: {streamed}");
+        }
+        self.streamed = streamed.clone();
+        let error = if self.error.is_empty() { streamed } else { self.error.clone() };
+        crate::videohost::invoke("video.reportNative", &serde_json::json!([running, frames, width, height, error, source, std::mem::take(&mut self.restarted), channel]).to_string());
+    }
+}
+
+#[derive(Default)]
+struct Driver {
+    channels: [Channel; crate::videohost::VIDEO_CHANNELS],
+    decoders_ranked: bool,
     recording: Option<serde_json::Value>,
     recording_reported: bool,
 }
@@ -132,14 +190,14 @@ impl Driver {
         let wanted = crate::videohost::native_recording();
         if wanted != self.recording {
             if self.recording.is_some() {
-                unsafe { (video.stop_recording)() };
+                unsafe { (video.stop_recording)(MAIN) };
             }
             if let Some((file, format)) = wanted.as_ref().and_then(|w| Some((CString::new(w.get("file")?.as_str()?).ok()?, w.get("format")?.as_i64()?))) {
-                unsafe { (video.start_recording)(file.as_ptr(), format as c_int) };
+                unsafe { (video.start_recording)(MAIN, file.as_ptr(), format as c_int) };
             }
             self.recording = wanted;
         }
-        let active = unsafe { (video.recording)() };
+        let active = unsafe { (video.recording)(MAIN) };
         if active != self.recording_reported {
             self.recording_reported = active;
             crate::videohost::invoke("video.reportRecording", &serde_json::json!([active]).to_string());
@@ -147,43 +205,14 @@ impl Driver {
     }
 
     fn step(&mut self, video: &Video) {
-        if crate::videohost::RESTART.swap(false, std::sync::atomic::Ordering::Relaxed) && self.driven.take().is_some() {
-            unsafe { (video.stop)() };
+        let wanted: Vec<Option<String>> = (0..crate::videohost::VIDEO_CHANNELS).map(crate::videohost::channel_pipeline).collect();
+        if wanted.iter().any(Option::is_some) && !std::mem::replace(&mut self.decoders_ranked, true) {
+            let forced = crate::settingsstore::raw_setting("settings.videoSettings.forceVideoDecoder").and_then(|v| v.as_i64()).unwrap_or(0);
+            unsafe { (video.force_decoder)(forced as c_int) };
         }
-        let wanted = crate::videohost::native_pipeline();
-        if wanted != self.driven {
-            match &wanted {
-                Some(pipeline) => {
-                    if !std::mem::replace(&mut self.decoders_ranked, true) {
-                        let forced = crate::settingsstore::raw_setting("settings.videoSettings.forceVideoDecoder").and_then(|v| v.as_i64()).unwrap_or(0);
-                        unsafe { (video.force_decoder)(forced as c_int) };
-                    }
-                    let text = CString::new(pipeline.as_str()).unwrap_or_default();
-                    let started = unsafe { (video.start)(text.as_ptr()) };
-                    self.restarted = true;
-                    self.error = if started { String::new() } else { unsafe { CStr::from_ptr((video.last_error)()) }.to_string_lossy().into_owned() };
-                    if !started {
-                        log::warn!("Video pipeline did not start: {}", self.error);
-                    }
-                }
-                None => unsafe { (video.stop)() },
-            }
-            self.driven = wanted;
-        }
+        self.channels.iter_mut().zip(wanted).enumerate().for_each(|(channel, (played, wanted))| played.drive(video, channel as c_int, wanted));
         self.record(video);
-        if self.driven.is_none() {
-            return;
-        }
-        let (running, frames, width, height) = unsafe { ((video.running)(), (video.frames)(), (video.width)(), (video.height)()) };
-        crate::videostats::sample(running, frames, i64::from(height), crate::hub::now_ms());
-        let source = unsafe { (video.source_buffers)() };
-        let streamed = video.stream_error.map(|error| unsafe { CStr::from_ptr(error()) }.to_string_lossy().into_owned()).unwrap_or_default();
-        if streamed != self.streamed && !streamed.is_empty() {
-            log::warn!("Video stream error: {streamed}");
-        }
-        self.streamed = streamed.clone();
-        let error = if self.error.is_empty() { streamed } else { self.error.clone() };
-        crate::videohost::invoke("video.reportNative", &serde_json::json!([running, frames, width, height, error, source, std::mem::take(&mut self.restarted)]).to_string());
+        self.channels.iter_mut().enumerate().for_each(|(channel, played)| played.report(video, channel as c_int));
     }
 }
 

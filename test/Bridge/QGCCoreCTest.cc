@@ -524,7 +524,12 @@ void QGCCoreCTest::_aCameraActionIsRoutedByTheCoreAndNotThePassthrough()
 
 void QGCCoreCTest::_settingsPagesDecodeTheirControls()
 {
-    QCOMPARE(take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray().count(), 19);
+    const QJsonArray pages = take(qgc_bridge_get("view.settings")).value(QStringLiteral("pages")).toArray();
+    QCOMPARE(pages.count(), 20);
+    QCOMPARE(pages.at(3).toObject().value(QStringLiteral("title")).toString(), QStringLiteral("Video"));
+    QCOMPARE(pages.at(3).toObject().value(QStringLiteral("showsVideoSources")).toBool(true), false);
+    QCOMPARE(pages.at(4).toObject().value(QStringLiteral("title")).toString(), QStringLiteral("Video sources"));
+    QCOMPARE(pages.at(4).toObject().value(QStringLiteral("showsVideoSources")).toBool(false), true);
     const QJsonObject general = take(qgc_bridge_get("view.settings(General)"));
     const QJsonArray sections = general.value(QStringLiteral("sections")).toArray();
     QCOMPARE(sections.count(), 2);
@@ -1178,7 +1183,7 @@ void QGCCoreCTest::_replayedLogAgreesBetweenTheModels()
 namespace {
 std::atomic<void *> startedPipeline{nullptr};
 
-void noteStartedPipeline(void *pipeline)
+void noteStartedPipeline(int, void *pipeline)
 {
     startedPipeline = pipeline;
 }
@@ -1214,7 +1219,7 @@ void QGCCoreCTest::_softwareHevcJoinedMidStreamDecodesSingleThreaded()
     gst_plugin_feature_set_rank(software, GST_RANK_PRIMARY + 1000);
     qgc_video_set_pipeline_callback(noteStartedPipeline);
     const auto restore = qScopeGuard([&] {
-        qgc_video_stop();
+        qgc_video_stop(0);
         qgc_video_set_pipeline_callback(nullptr);
         startedPipeline = nullptr;
         gst_plugin_feature_set_rank(software, rank);
@@ -1224,8 +1229,8 @@ void QGCCoreCTest::_softwareHevcJoinedMidStreamDecodesSingleThreaded()
     const QString stream = QFileInfo(QString::fromUtf8(__FILE__)).dir().filePath(QStringLiteral("fixtures/hevc-joined-mid-stream.h265"));
     QVERIFY(QFile::exists(stream));
     const QByteArray pipeline = QStringLiteral("filesrc location=\"%1\" ! h265parse ! decodebin3 ! videoconvert ! appsink name=nativesink sync=false").arg(stream).toUtf8();
-    QVERIFY2(qgc_video_start(pipeline.constData()), qgc_video_last_error());
-    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames() > 0, 10000);
+    QVERIFY2(qgc_video_start(0, pipeline.constData()), qgc_video_last_error(0));
+    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(0) > 0, 10000);
 
     GstElement *const decoder = elementFromFactory(GST_BIN(startedPipeline.load()), "avdec_h265");
     QVERIFY2(decoder, "decodebin3 did not pick the software HEVC decoder");
@@ -1233,6 +1238,25 @@ void QGCCoreCTest::_softwareHevcJoinedMidStreamDecodesSingleThreaded()
     g_object_get(decoder, "max-threads", &threads, nullptr);
     gst_object_unref(decoder);
     QCOMPARE(threads, 1);
+}
+
+void QGCCoreCTest::_twoVideoChannelsPlayAtOnce()
+{
+    QVERIFY(qgc_video_available());
+    const auto stop = qScopeGuard([] {
+        qgc_video_stop(0);
+        qgc_video_stop(1);
+    });
+    QVERIFY2(qgc_video_start(0, "videotestsrc is-live=true ! video/x-raw,width=320,height=240 ! videoconvert ! appsink name=nativesink sync=false"), qgc_video_last_error(0));
+    QVERIFY2(qgc_video_start(1, "videotestsrc is-live=true pattern=ball ! video/x-raw,width=160,height=120 ! videoconvert ! appsink name=nativesink sync=false"), qgc_video_last_error(1));
+    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(0) > 0 && qgc_video_frames(1) > 0, 10000);
+    QCOMPARE(qgc_video_width(0), 320);
+    QCOMPARE(qgc_video_width(1), 160);
+    qgc_video_stop(1);
+    QVERIFY(!qgc_video_running(1));
+    QCOMPARE(qgc_video_frames(1), 0);
+    QVERIFY(qgc_video_running(0));
+    QVERIFY(!qgc_video_start(QGC_VIDEO_CHANNELS, "videotestsrc ! appsink name=nativesink"));
 }
 
 void QGCCoreCTest::_videoAndCameraAreServed()

@@ -7,29 +7,31 @@
 extern "C" {
 #endif
 
-bool qgc_video_available(void);
-bool qgc_video_start(const char *pipelineDescription);
-void qgc_video_stop(void);
-bool qgc_video_running(void);
-int qgc_video_width(void);
-int qgc_video_height(void);
-int64_t qgc_video_frames(void);
-int64_t qgc_video_source_buffers(void);
-const char *qgc_video_last_error(void);
-const char *qgc_video_stream_error(void);
-bool qgc_video_copy_frame(void *destination, int capacity, int *width, int *height, int *stride);
-bool qgc_video_attach_appsink(void *appsink);
-void qgc_video_detach_appsink(void);
-bool qgc_video_set_window(void *native_window);
-bool qgc_video_attach_overlay(void *sink);
-bool qgc_video_start_recording(const char *file, int format);
-void qgc_video_stop_recording(void);
-bool qgc_video_recording(void);
+#define QGC_VIDEO_CHANNELS 2
 
-typedef void (*qgc_video_frame_callback)(const uint8_t *pixels, int width, int height, int stride);
+bool qgc_video_available(void);
+bool qgc_video_start(int channel, const char *pipelineDescription);
+void qgc_video_stop(int channel);
+bool qgc_video_running(int channel);
+int qgc_video_width(int channel);
+int qgc_video_height(int channel);
+int64_t qgc_video_frames(int channel);
+int64_t qgc_video_source_buffers(int channel);
+const char *qgc_video_last_error(int channel);
+const char *qgc_video_stream_error(int channel);
+bool qgc_video_copy_frame(int channel, void *destination, int capacity, int *width, int *height, int *stride);
+bool qgc_video_attach_appsink(int channel, void *appsink);
+void qgc_video_detach_appsink(int channel);
+bool qgc_video_set_window(int channel, void *native_window);
+bool qgc_video_attach_overlay(int channel, void *sink);
+bool qgc_video_start_recording(int channel, const char *file, int format);
+void qgc_video_stop_recording(int channel);
+bool qgc_video_recording(int channel);
+
+typedef void (*qgc_video_frame_callback)(int channel, const uint8_t *pixels, int width, int height, int stride);
 void qgc_video_set_frame_callback(qgc_video_frame_callback callback);
 
-typedef void (*qgc_video_pipeline_callback)(void *pipeline);
+typedef void (*qgc_video_pipeline_callback)(int channel, void *pipeline);
 void qgc_video_set_pipeline_callback(qgc_video_pipeline_callback callback);
 
 #ifdef __cplusplus

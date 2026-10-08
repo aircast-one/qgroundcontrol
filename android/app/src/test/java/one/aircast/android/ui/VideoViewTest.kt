@@ -3,41 +3,46 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VideoViewTest {
 
-    private fun view(active: Int, multiple: Boolean, vararg statuses: String): JSONObject {
+    private fun view(active: Int, vararg statuses: String): JSONObject {
         val cameras = statuses.mapIndexed { slot, status ->
             """{"slot":$slot,"title":"Camera ${slot + 1}","status":"$status","connecting":false,
                 "recording":false,"configured":${status.isNotBlank() && status != "No stream URL"}}"""
         }.joinToString(",")
         return JSONObject(
             """{"kind":"object","class":"Video","available":true,"decoding":false,
-                "summary":"Not streaming.","activeSource":$active,"multipleSources":$multiple,
+                "summary":"Not streaming.","activeSource":$active,
                 "cameras":[$cameras]}""",
         )
     }
 
     @Test
     fun `the reading carries the core's summary and cameras`() {
-        val reading = videoReading(view(1, true, "Streaming", "No stream URL"))!!
+        val reading = videoReading(view(1, "Streaming", "No stream URL"))!!
 
         assertEquals("Not streaming.", reading.summary)
         assertEquals(1, reading.activeSource)
-        assertEquals(listOf("Camera 1", "Camera 2"), reading.cameras.map { it.title })
+        assertEquals(listOf("Streaming", "No stream URL"), reading.cameras.map { it.status })
         assertEquals(listOf(true, false), reading.cameras.map { it.configured })
     }
 
     @Test
+    fun `a stream the core switched off reads as off, and one it does not mention as on`() {
+        assertEquals(false, videoReading(view(0, "Streaming").put("streamEnabled", false))!!.streamEnabled)
+        assertEquals(true, videoReading(view(0, "Streaming"))!!.streamEnabled)
+    }
+
+    @Test
     fun `the source size is read only when the core reports a usable one`() {
-        val decoding = view(0, false, "Streaming").put("sourceSize", JSONObject("""{"width":640,"height":480}"""))
-        val zero = view(0, false, "Streaming").put("sourceSize", JSONObject("""{"width":0,"height":0}"""))
+        val decoding = view(0, "Streaming").put("sourceSize", JSONObject("""{"width":640,"height":480}"""))
+        val zero = view(0, "Streaming").put("sourceSize", JSONObject("""{"width":0,"height":0}"""))
 
         assertEquals(SourceSize(640, 480), videoReading(decoding)!!.sourceSize)
         assertNull(videoReading(zero)!!.sourceSize)
-        assertNull(videoReading(view(0, false, "Streaming"))!!.sourceSize)
+        assertNull(videoReading(view(0, "Streaming"))!!.sourceSize)
     }
 
     @Test
@@ -68,16 +73,6 @@ class VideoViewTest {
         assertNull(videoReading(null))
         assertNull(videoReading(JSONObject("""{"kind":"null"}""")))
     }
-
-    @Test
-    fun `a picker appears only when there is more than one stream to pick`() {
-        assertTrue(switchableSources(videoReading(view(0, true, "Streaming", "No stream URL"))).isEmpty())
-        assertTrue(switchableSources(videoReading(view(0, false, "Streaming", "Streaming"))).isEmpty())
-        assertEquals(
-            listOf(0, 1),
-            switchableSources(videoReading(view(0, true, "Streaming", "Streaming"))).map { it.slot },
-        )
-    }
 }
 
 class VideoPanelVisibilityTest {
@@ -86,8 +81,7 @@ class VideoPanelVisibilityTest {
         val off = videoReading(
             org.json.JSONObject(
                 """{"class":"Video","available":false,"decoding":false,
-                    "summary":"No stream URL is set.","activeSource":0,
-                    "multipleSources":false}""",
+                    "summary":"No stream URL is set.","activeSource":0}""",
             ),
         )
 
@@ -99,8 +93,7 @@ class VideoPanelVisibilityTest {
         val waiting = videoReading(
             org.json.JSONObject(
                 """{"class":"Video","available":true,"decoding":false,
-                    "summary":"Waiting for a stream.","activeSource":0,
-                    "multipleSources":false}""",
+                    "summary":"Waiting for a stream.","activeSource":0}""",
             ),
         )
 

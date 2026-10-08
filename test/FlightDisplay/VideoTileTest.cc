@@ -155,7 +155,7 @@ void VideoTileTest::_gridPersistsAcrossReload()
     QVERIFY(QMetaObject::invokeMethod(layer2, "setGrid", Q_ARG(QVariant, QVariant(false))));
 }
 
-void VideoTileTest::_focusLayoutOverflowsIntoMore()
+void VideoTileTest::_onlyThePipCameraGetsATile()
 {
     clearQmlGlobalSettings({"VideoRailGrid"});
 
@@ -178,19 +178,17 @@ void VideoTileTest::_focusLayoutOverflowsIntoMore()
     QVERIFY(loadVideoView(view, *globals));
 
     QQuickItem* layer = findNamed(view, QStringLiteral("tiles"));
-    QQuickItem* more = findNamed(view, QStringLiteral("videoTileMore"));
+    QQuickItem* tile = findTile(view, 2);
     QVERIFY(layer);
-    QVERIFY(more);
-    QVERIFY(findTile(view, 4)->isVisible());
-    QVERIFY(!findTile(view, 5)->isVisible());
-    QVERIFY(more->isVisible());
+    QVERIFY(tile);
+    QVERIFY(tile->isVisible());
+    QVERIFY(!findTile(view, 3));
+    QVERIFY(!findTile(view, 5));
 
     QVERIFY(QMetaObject::invokeMethod(layer, "setGrid", Q_ARG(QVariant, QVariant(true))));
-    QVERIFY(findTile(view, 5)->isVisible());
-    QVERIFY(!more->isVisible());
+    QVERIFY(!findTile(view, 3));
 
     QQuickItem* pip = findNamed(view, QStringLiteral("pip"));
-    QQuickItem* tile = findTile(view, 2);
     QTRY_COMPARE(tile->width(), pip->width());
     QVERIFY(tile->x() > 0 || tile->y() > 0);
 

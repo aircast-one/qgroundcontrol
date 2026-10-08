@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <utility>
 
 #include <QtConcurrent/QtConcurrent>
 #include <QtCore/QApplicationStatic>
@@ -49,6 +50,8 @@ QGC_LOGGING_CATEGORY(VideoManagerLog, "Video.VideoManager")
 namespace {
 constexpr uint32_t kSwitchStallHoldSeconds = 20;
 constexpr int kEncoderHandoffMs = 500;
+constexpr int kMainVideoChannel = 0;
+constexpr int kPipVideoChannel = 1;
 }
 
 static constexpr const char *kMainReceiverName = "videoContent";
@@ -95,6 +98,7 @@ VideoManager::VideoManager(QObject *parent)
     });
 
     (void) connect(MultiVehicleManager::instance(), &MultiVehicleManager::activeVehicleChanged, this, &VideoManager::_setActiveVehicle);
+    (void) connect(_videoSettings->streamEnabled(), &Fact::rawValueChanged, this, &VideoManager::camerasChanged);
 
     QTimer *statsTimer = new QTimer(this);
     statsTimer->setInterval(1000);
@@ -659,37 +663,32 @@ void VideoManager::storeCameras(const QString &list, int active)
 
 void VideoManager::switchActiveVideoSource()
 {
-    const QList<int> indices = _videoSettings->switchableIndices();
-    if (indices.size() <= 1) {
-        return;
+    const int next = _videoSettings->pipCameraIndex();
+    if (next >= 0) {
+        setActiveVideoSource(next);
     }
-    const int pos = indices.indexOf(activeVideoSource());
-    const int next = indices.at(((pos < 0 ? 0 : pos) + 1) % indices.size());
-    setActiveVideoSource(next);
 }
 
-int VideoManager::maxVideoTiles() const
+int VideoManager::_pipCamera() const
 {
-    return kMaxVideoTiles;
+    return _videoSettings->multiViewEnabled()->rawValue().toBool() ? _videoSettings->pipCameraIndex() : -1;
 }
 
-int VideoManager::tileCameraNumber(int slot) const
+bool VideoManager::_cameraPlayed(int index) const
 {
-    if (!_videoSettings->multiViewEnabled()->rawValue().toBool()) {
-        return 0;
-    }
-    const QList<int> tiles = _videoSettings->tileCameraIndices();
-    if (slot < 0 || slot >= tiles.size() || slot >= kMaxVideoTiles) {
-        return 0;
-    }
-    return tiles.at(slot) + 1;
+    return (index == _videoSettings->currentIndex()) || (index == _pipCamera());
 }
 
-void VideoManager::promoteTile(int slot)
+int VideoManager::pipCameraNumber() const
 {
-    const QList<int> tiles = _videoSettings->tileCameraIndices();
-    if (slot >= 0 && slot < tiles.size()) {
-        setActiveVideoSource(tiles.at(slot));
+    return _pipCamera() + 1;
+}
+
+void VideoManager::promotePip()
+{
+    const int pip = _pipCamera();
+    if (pip >= 0) {
+        setActiveVideoSource(pip);
     }
 }
 
@@ -699,9 +698,9 @@ QString VideoManager::_tileReceiverName(int slot)
 }
 
 #ifndef QGC_HEADLESS_CORE
-void VideoManager::registerTileItem(int slot, QQuickItem *item)
+void VideoManager::registerPipItem(QQuickItem *item)
 {
-    _tileWidgets.insert(slot, item);
+    _pipWidget = item;
     _rebindWidgets();
 }
 #endif
@@ -715,6 +714,38 @@ QStringList VideoManager::cameraStatuses() const
         statuses.append(_cameraStatus(i));
     }
     return statuses;
+}
+
+QStringList VideoManager::cameraSignals() const
+{
+    QStringList tokens;
+    const int count = _videoSettings->videoSourceCount();
+    tokens.reserve(count);
+    for (int i = 0; i < count; ++i) {
+        tokens.append(_cameraSignal(i));
+    }
+    return tokens;
+}
+
+QString VideoManager::_cameraSignal(int index) const
+{
+    if (!hasVideo() || !_cameraPlayed(index)) {
+        return QStringLiteral("idle");
+    }
+    const auto receiver = std::find_if(_videoReceivers.cbegin(), _videoReceivers.cend(), [this, index](const VideoReceiver *candidate) {
+        return !candidate->isThermal() && (_cameraIndexForReceiver(candidate) == index);
+    });
+    if (receiver == _videoReceivers.cend()) {
+        return QStringLiteral("noSignal");
+    }
+    const ReceiverState state = _receiverState.value((*receiver)->name());
+    if (state.decoding) {
+        return QStringLiteral("live");
+    }
+    if (state.failing) {
+        return QStringLiteral("noSignal");
+    }
+    return (state.streaming || state.connecting) ? QStringLiteral("connecting") : QStringLiteral("noSignal");
 }
 
 QVariantList VideoManager::cameraConnecting() const
@@ -842,6 +873,19 @@ QString VideoManager::_cameraStatus(int index) const
     return tr("No video source");
 }
 
+void VideoManager::_setReceiverFailing(VideoReceiver *receiver, bool failing)
+{
+    if (receiver->isThermal()) {
+        return;
+    }
+    ReceiverState &state = _receiverState[receiver->name()];
+    if (state.failing == failing) {
+        return;
+    }
+    state.failing = failing;
+    emit camerasChanged();
+}
+
 void VideoManager::_setReceiverStatus(VideoReceiver *receiver, const QString &status, bool connecting)
 {
     if (receiver->isThermal()) {
@@ -943,10 +987,28 @@ int VideoManager::_cameraIndexForReceiver(const VideoReceiver *receiver) const
     if (cameraIndex < 0 || cameraIndex >= _videoSettings->videoSourceCount()) {
         return -1;
     }
-    if ((cameraIndex != _videoSettings->currentIndex()) && !_videoSettings->multiViewEnabled()->rawValue().toBool()) {
+    return _cameraPlayed(cameraIndex) ? cameraIndex : -1;
+}
+
+int VideoManager::_nativeChannelForReceiver(const VideoReceiver *receiver) const
+{
+    const int cameraIndex = _cameraIndexForReceiver(receiver);
+    if (cameraIndex < 0) {
         return -1;
     }
-    return cameraIndex;
+    return (cameraIndex == _videoSettings->currentIndex()) ? kMainVideoChannel : kPipVideoChannel;
+}
+
+void VideoManager::_bindNativeSink(VideoReceiver *receiver)
+{
+    if (!receiver->sink()) {
+        receiver->setSink(QGCCorePlugin::instance()->createNativeVideoSink(receiver));
+        qCDebug(VideoManagerLog) << "native sink" << receiver->name() << (receiver->sink() != nullptr) << "started:" << receiver->started();
+    }
+    const int channel = _nativeChannelForReceiver(receiver);
+    if (receiver->sink() && (channel >= 0)) {
+        (void) VideoBackend::attachNativeSink(receiver->sink(), channel);
+    }
 }
 
 #ifndef QGC_HEADLESS_CORE
@@ -958,14 +1020,7 @@ QQuickItem *VideoManager::_widgetForCamera(int cameraIndex) const
     if (cameraIndex == _videoSettings->currentIndex()) {
         return _mainWidget;
     }
-    if (!_videoSettings->multiViewEnabled()->rawValue().toBool()) {
-        return nullptr;
-    }
-    const int slot = _videoSettings->tileCameraIndices().indexOf(cameraIndex);
-    if (slot < 0 || slot >= kMaxVideoTiles) {
-        return nullptr;
-    }
-    return _tileWidgets.value(slot, nullptr);
+    return (cameraIndex == _pipCamera()) ? _pipWidget.data() : nullptr;
 }
 
 #endif
@@ -985,25 +1040,16 @@ void VideoManager::_rebindWidgets()
         if (receiver->isThermal()) {
             continue;
         }
-#ifndef QGC_HEADLESS_CORE
-        QQuickItem *desired =
-            _nativeRendering ? nullptr : _widgetForCamera(_cameraIndexForReceiver(receiver));
-#else
-        constexpr void *desired = nullptr;
-#endif
-        if (_nativeRendering && !desired && !receiver->sink()) {
-            void *nativeSink = QGCCorePlugin::instance()->createNativeVideoSink(receiver);
-            qCDebug(VideoManagerLog) << "native sink rebind" << receiver->name()
-                                     << (nativeSink != nullptr) << "started:" << receiver->started();
-            if (nativeSink) {
-                receiver->setSink(nativeSink);
-                if (receiver->started()) {
-                    receiver->startDecoding(nativeSink);
-                }
+        if (_nativeRendering) {
+            const bool fresh = !receiver->sink();
+            _bindNativeSink(receiver);
+            if (fresh && receiver->sink() && receiver->started()) {
+                receiver->startDecoding(receiver->sink());
             }
             continue;
         }
 #ifndef QGC_HEADLESS_CORE
+        QQuickItem *desired = _widgetForCamera(_cameraIndexForReceiver(receiver));
         if (receiver->widget() == desired) {
             continue;
         }
@@ -1255,6 +1301,7 @@ bool VideoManager::_updateVideoUri(VideoReceiver *receiver, const QString &uri)
     qCDebug(VideoManagerLog) << "New Video URI" << uri;
 
     receiver->setUri(uri);
+    _setReceiverFailing(receiver, false);
 
     return true;
 }
@@ -1415,6 +1462,7 @@ void VideoManager::_stopReceiver(VideoReceiver *receiver)
     }
 
     if (receiver->started()) {
+        _receiverState[receiver->name()].stopRequested = true;
         receiver->stop();
     }
 }
@@ -1521,11 +1569,8 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         switch (status) {
         case VideoReceiver::STATUS_OK:
             receiver->setStarted(true);
-            if (_nativeRendering && !receiver->sink() && !receiver->isThermal()) {
-                void *nativeSink = QGCCorePlugin::instance()->createNativeVideoSink(receiver);
-                if (nativeSink) {
-                    receiver->setSink(nativeSink);
-                }
+            if (_nativeRendering && !receiver->isThermal()) {
+                _bindNativeSink(receiver);
             }
             if (receiver->sink()) {
                 receiver->startDecoding(receiver->sink());
@@ -1538,6 +1583,7 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         case VideoReceiver::STATUS_INVALID_STATE:
             break;
         default:
+            _setReceiverFailing(receiver, true);
             _setReceiverStatus(receiver, tr("Connection failed, retrying"), true);
             QTimer::singleShot(1000, receiver, [this, receiver]() {
                 _restartVideo(receiver);
@@ -1549,6 +1595,10 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
     (void) connect(receiver, &VideoReceiver::onStopComplete, this, [this, receiver](VideoReceiver::STATUS status) {
         qCDebug(VideoManagerLog) << "Stop complete" << receiver->name() << receiver->uri()  << ", status:" << status;
         receiver->setStarted(false);
+        const bool requested = std::exchange(_receiverState[receiver->name()].stopRequested, false);
+        if (!requested) {
+            _setReceiverFailing(receiver, true);
+        }
         if (status == VideoReceiver::STATUS_INVALID_URL) {
             qCDebug(VideoManagerLog) << "Invalid video URL. Not restarting";
             _setReceiverStatus(receiver, tr("Invalid stream URL"));
@@ -1577,6 +1627,9 @@ void VideoManager::_initVideoReceiver(VideoReceiver *receiver, QQuickWindow *win
         qCDebug(VideoManagerLog) << "Video" << receiver->name() << "decoding changed, active:" << (active ? "yes" : "no");
         if (!receiver->isThermal()) {
             _receiverState[receiver->name()].decoding = active;
+            if (active) {
+                _receiverState[receiver->name()].failing = false;
+            }
             emit camerasChanged();
             if (_cameraIndexForReceiver(receiver) == _videoSettings->currentIndex()) {
                 _decoding = active;

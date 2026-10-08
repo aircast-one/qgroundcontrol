@@ -3558,6 +3558,10 @@ impl Vehicle {
             self.clear_trigger_points();
             (self.flight_started_ms, self.flight_seconds) = (Some(now_ms), 0.0);
             self.battery_announced.clear();
+            let video_off = crate::settingsstore::raw_setting("settings.videoSettings.streamEnabled").and_then(|v| v.as_bool()) == Some(false);
+            if video_off && !self.replay && !crate::qthost::present() {
+                crate::settingsstore::written("Video/streamEnabled", "true");
+            }
         }
         if was_armed && !self.armed_now {
             (self.flight_seconds, self.flight_started_ms) = (self.flight_time(now_ms), None);

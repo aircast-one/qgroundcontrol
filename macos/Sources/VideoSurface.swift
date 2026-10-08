@@ -3,10 +3,12 @@ import QGCVideoC
 import SwiftUI
 
 final class VideoLayerView: NSView {
+    private let channel: Int32
     private var timer: Timer?
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+    init(channel: Int32) {
+        self.channel = channel
+        super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         layer?.contentsGravity = .resizeAspect
@@ -28,17 +30,9 @@ final class VideoLayerView: NSView {
         timer = nil
     }
 
-    // One copy per frame, not two. This used to copy the frame into a Swift array and then copy
-    // the whole array again to hand CoreGraphics something it could keep. The second copy was
-    // load-bearing - CoreAnimation reads layer.contents on its own schedule and must not alias a
-    // buffer overwritten thirty times a second - so the fix is to make the copy the C ABI itself
-    // performs land in the storage that gets kept, rather than to remove a copy that guards a
-    // real race. Data(count:) zero-fills, so this trades a per-frame memcpy for a per-frame
-    // memset rather than removing the work outright - the saving is real but it is one pass, not
-    // two, and the old persistent buffer was allocated once.
     private func draw() {
-        let capacity = VideoFrame.capacity(width: Int(qgc_video_width()),
-                                           height: Int(qgc_video_height()))
+        let capacity = VideoFrame.capacity(width: Int(qgc_video_width(channel)),
+                                           height: Int(qgc_video_height(channel)))
         guard capacity > 0 else { return }
 
         var copiedWidth: Int32 = 0
@@ -47,7 +41,7 @@ final class VideoLayerView: NSView {
         var bytes = Data(count: capacity)
         let copied = bytes.withUnsafeMutableBytes { destination -> Bool in
             guard let base = destination.baseAddress else { return false }
-            return qgc_video_copy_frame(base, Int32(destination.count),
+            return qgc_video_copy_frame(channel, base, Int32(destination.count),
                                         &copiedWidth, &copiedHeight, &stride)
         }
         guard copied,
@@ -77,8 +71,10 @@ final class VideoLayerView: NSView {
 }
 
 struct NativeVideoView: NSViewRepresentable {
+    let channel: Int32
+
     func makeNSView(context: Context) -> VideoLayerView {
-        let view = VideoLayerView(frame: .zero)
+        let view = VideoLayerView(channel: channel)
         view.start()
         return view
     }

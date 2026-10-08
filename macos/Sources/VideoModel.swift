@@ -46,9 +46,6 @@ struct VideoCamera: Identifiable, Equatable {
 
     var id: Int { slot }
 
-    // Not the same word as the Recording ROW's title, which names a control whether or not it is
-    // running. This one is a STATE, and an idle camera says nothing rather than "Idle" -- the row
-    // already carries its own status text beside this.
     var recordingNote: String { recording ? "Recording" : "" }
 
     init?(_ json: Any?) {
@@ -77,6 +74,7 @@ struct VideoStatus: Equatable {
     let summary: String
     let cameras: [VideoCamera]
     let nativePipeline: String?
+    let pipPipeline: String?
     let nativeRecording: NativeRecording?
 
     static let unavailable = VideoStatus()
@@ -94,6 +92,7 @@ struct VideoStatus: Equatable {
         summary = ""
         cameras = []
         nativePipeline = nil
+        pipPipeline = nil
         nativeRecording = nil
     }
 
@@ -111,6 +110,7 @@ struct VideoStatus: Equatable {
         summary = (json["summary"] as? String) ?? ""
         cameras = ((json["cameras"] as? [Any]) ?? []).compactMap(VideoCamera.init)
         nativePipeline = (json["nativePipeline"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        pipPipeline = (json["pipPipeline"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         nativeRecording = NativeRecording(json["nativeRecording"])
     }
 
@@ -126,19 +126,6 @@ struct VideoStatus: Equatable {
 
     var settled: Bool { decoding }
 
-    // The Fly card's dot spelled this ladder at the call site in FlyWindow, which swift-checks
-    // does not compile: settled -> green, else connecting -> orange, else secondary. The two FLAGS
-    // were already pinned here; what floated was the ORDER -- which state wins when both are true,
-    // and which weight each carries. A hand reversing those two arms would have drawn a settled
-    // stream amber with nothing to fail.
-    //
-    // settled wins, and that is the arm worth naming: anyConnecting stays true while ANOTHER
-    // source is still dialling, so a decoding stream would otherwise be painted as still trying
-    // whenever a second camera was mid-connect. The operator is looking at a picture that works.
-    //
-    // A Level rather than a Color, because no file swift-checks compiles imports SwiftUI. The call
-    // site maps it through FlyPanel.colour, which is the same five-level ladder every other page
-    // reads -- good/green, warning/orange, unknown/secondary here.
     var level: FlyTelemetry.Level {
         if settled { return .good }
         return anyConnecting ? .warning : .unknown

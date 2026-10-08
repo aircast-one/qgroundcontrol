@@ -8,6 +8,8 @@
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QScopeGuard>
+#include <QtTest/QSignalSpy>
 #include <QtQuick/QQuickItem>
 #include <QtTest/QTest>
 
@@ -67,7 +69,7 @@ private:
 
 }
 
-void VideoCameraSwitchTest::_cameraToReceiverPinning()
+void VideoCameraSwitchTest::_onlyTheActiveAndPipCamerasArePlayed()
 {
     ThreeCameraFixture fixture;
     VideoManager *vm = VideoManager::instance();
@@ -76,14 +78,16 @@ void VideoCameraSwitchTest::_cameraToReceiverPinning()
     const StubVideoReceiver extra0(QStringLiteral("extraVideo0"));
     const StubVideoReceiver extra1(QStringLiteral("extraVideo1"));
     const StubVideoReceiver extra2(QStringLiteral("extraVideo2"));
+    const auto played = [&]() {
+        return QList<int>{vm->_cameraIndexForReceiver(&main), vm->_cameraIndexForReceiver(&extra0), vm->_cameraIndexForReceiver(&extra1), vm->_cameraIndexForReceiver(&extra2)};
+    };
 
-    for (int active = 0; active < 3; ++active) {
-        fixture.settings()->activeVideoSource()->setRawValue(active);
-        QCOMPARE(vm->_cameraIndexForReceiver(&main), 0);
-        QCOMPARE(vm->_cameraIndexForReceiver(&extra0), 1);
-        QCOMPARE(vm->_cameraIndexForReceiver(&extra1), 2);
-        QCOMPARE(vm->_cameraIndexForReceiver(&extra2), -1);
-    }
+    fixture.settings()->activeVideoSource()->setRawValue(0);
+    QCOMPARE(played(), (QList<int>{0, 1, -1, -1}));
+    fixture.settings()->activeVideoSource()->setRawValue(1);
+    QCOMPARE(played(), (QList<int>{-1, 1, 2, -1}));
+    fixture.settings()->activeVideoSource()->setRawValue(2);
+    QCOMPARE(played(), (QList<int>{0, -1, 2, -1}));
 }
 
 void VideoCameraSwitchTest::_multiViewOffGatesInactiveCameras()
@@ -109,51 +113,166 @@ void VideoCameraSwitchTest::_widgetRoles()
     VideoManager *vm = VideoManager::instance();
 
     QQuickItem mainItem;
-    QQuickItem tile0;
-    QQuickItem tile1;
+    QQuickItem pipItem;
 
     const auto savedMain = vm->_mainWidget;
-    const auto savedTiles = vm->_tileWidgets;
+    const auto savedPip = vm->_pipWidget;
     vm->_mainWidget = &mainItem;
-    vm->_tileWidgets.clear();
-    vm->_tileWidgets.insert(0, &tile0);
-    vm->_tileWidgets.insert(1, &tile1);
+    vm->_pipWidget = &pipItem;
 
     fixture.settings()->activeVideoSource()->setRawValue(1);
     QCOMPARE(vm->_widgetForCamera(1), &mainItem);
-    QCOMPARE(vm->_widgetForCamera(0), &tile0);
-    QCOMPARE(vm->_widgetForCamera(2), &tile1);
+    QCOMPARE(vm->_widgetForCamera(2), &pipItem);
+    QCOMPARE(vm->_widgetForCamera(0), nullptr);
     QCOMPARE(vm->_widgetForCamera(-1), nullptr);
 
     fixture.settings()->activeVideoSource()->setRawValue(0);
     QCOMPARE(vm->_widgetForCamera(0), &mainItem);
-    QCOMPARE(vm->_widgetForCamera(1), &tile0);
-    QCOMPARE(vm->_widgetForCamera(2), &tile1);
+    QCOMPARE(vm->_widgetForCamera(1), &pipItem);
+    QCOMPARE(vm->_widgetForCamera(2), nullptr);
 
     fixture.settings()->multiViewEnabled()->setRawValue(false);
     QCOMPARE(vm->_widgetForCamera(0), &mainItem);
     QCOMPARE(vm->_widgetForCamera(1), nullptr);
 
     vm->_mainWidget = savedMain;
-    vm->_tileWidgets = savedTiles;
+    vm->_pipWidget = savedPip;
 }
 
-void VideoCameraSwitchTest::_tileCameraNumbers()
+void VideoCameraSwitchTest::_pipCameraNumbers()
 {
     ThreeCameraFixture fixture;
     VideoManager *vm = VideoManager::instance();
 
     fixture.settings()->activeVideoSource()->setRawValue(1);
-    QCOMPARE(vm->tileCameraNumber(0), 1);
-    QCOMPARE(vm->tileCameraNumber(1), 3);
-    QCOMPARE(vm->tileCameraNumber(2), 0);
+    QCOMPARE(vm->pipCameraNumber(), 3);
+
+    fixture.settings()->activeVideoSource()->setRawValue(2);
+    QCOMPARE(vm->pipCameraNumber(), 1);
 
     fixture.settings()->activeVideoSource()->setRawValue(0);
-    QCOMPARE(vm->tileCameraNumber(0), 2);
-    QCOMPARE(vm->tileCameraNumber(1), 3);
+    QCOMPARE(vm->pipCameraNumber(), 2);
+
+    vm->promotePip();
+    QCOMPARE(vm->activeVideoSource(), 1);
 
     fixture.settings()->multiViewEnabled()->setRawValue(false);
-    QCOMPARE(vm->tileCameraNumber(0), 0);
+    QCOMPARE(vm->pipCameraNumber(), 0);
+    vm->promotePip();
+    QCOMPARE(vm->activeVideoSource(), 1);
+}
+
+void VideoCameraSwitchTest::_nativeChannelsFollowTheActiveAndPipCameras()
+{
+    ThreeCameraFixture fixture;
+    VideoManager *vm = VideoManager::instance();
+
+    const StubVideoReceiver main(QStringLiteral("videoContent"));
+    const StubVideoReceiver extra0(QStringLiteral("extraVideo0"));
+    const StubVideoReceiver extra1(QStringLiteral("extraVideo1"));
+    const auto channels = [&]() {
+        return QList<int>{vm->_nativeChannelForReceiver(&main), vm->_nativeChannelForReceiver(&extra0), vm->_nativeChannelForReceiver(&extra1)};
+    };
+
+    fixture.settings()->activeVideoSource()->setRawValue(0);
+    QCOMPARE(channels(), (QList<int>{0, 1, -1}));
+    fixture.settings()->activeVideoSource()->setRawValue(1);
+    QCOMPARE(channels(), (QList<int>{-1, 0, 1}));
+    fixture.settings()->activeVideoSource()->setRawValue(2);
+    QCOMPARE(channels(), (QList<int>{1, -1, 0}));
+
+    fixture.settings()->multiViewEnabled()->setRawValue(false);
+    QCOMPARE(channels(), (QList<int>{-1, -1, 0}));
+}
+
+void VideoCameraSwitchTest::_pipIsTheNextUsableCameraTheSwitchGoesTo()
+{
+    ThreeCameraFixture fixture;
+    VideoSettings *settings = fixture.settings();
+    VideoManager *vm = VideoManager::instance();
+    const QString rtsp = QString::fromUtf8(VideoSettings::videoSourceRTSP);
+
+    settings->storeCameras(QJsonArray{
+        VideoSettings::camera(QStringLiteral("a"), rtsp, QStringLiteral("rtsp://a")),
+        VideoSettings::camera(QStringLiteral("b"), rtsp, QString()),
+        VideoSettings::camera(QStringLiteral("c"), rtsp, QStringLiteral("rtsp://c")),
+    }, 0);
+    QCOMPARE(settings->pipCameraIndex(), 2);
+    QCOMPARE(vm->pipCameraNumber(), 3);
+
+    vm->switchActiveVideoSource();
+    QCOMPARE(vm->activeVideoSource(), 2);
+    QCOMPARE(settings->pipCameraIndex(), 0);
+
+    settings->storeCameras(QJsonArray{VideoSettings::camera(QStringLiteral("a"), rtsp, QStringLiteral("rtsp://a"))}, 0);
+    QCOMPARE(settings->pipCameraIndex(), -1);
+    QCOMPARE(vm->pipCameraNumber(), 0);
+    vm->switchActiveVideoSource();
+    QCOMPARE(vm->activeVideoSource(), 0);
+}
+
+void VideoCameraSwitchTest::_cameraSignalsFollowTheReceivers()
+{
+    ThreeCameraFixture fixture;
+    VideoManager *vm = VideoManager::instance();
+    Fact *const streamEnabled = fixture.settings()->streamEnabled();
+    const QVariant savedStream = streamEnabled->rawValue();
+    const auto savedReceivers = vm->_videoReceivers;
+    const auto savedState = vm->_receiverState;
+    const auto restore = qScopeGuard([&] {
+        vm->_videoReceivers = savedReceivers;
+        vm->_receiverState = savedState;
+        streamEnabled->setRawValue(savedStream);
+    });
+    streamEnabled->setRawValue(true);
+
+    StubVideoReceiver main(QStringLiteral("videoContent"));
+    StubVideoReceiver extra0(QStringLiteral("extraVideo0"));
+    StubVideoReceiver extra1(QStringLiteral("extraVideo1"));
+    vm->_initVideoReceiver(&main, nullptr);
+    vm->_initVideoReceiver(&extra0, nullptr);
+    vm->_initVideoReceiver(&extra1, nullptr);
+
+    emit main.onStartComplete(VideoReceiver::STATUS_OK);
+    emit extra0.onStartComplete(VideoReceiver::STATUS_OK);
+    QCOMPARE(vm->cameraSignals(), (QStringList{QStringLiteral("connecting"), QStringLiteral("connecting"), QStringLiteral("idle")}));
+
+    emit main.decodingChanged(true);
+    QCOMPARE(vm->cameraSignals().at(0), QStringLiteral("live"));
+
+    emit extra0.onStopComplete(VideoReceiver::STATUS_OK);
+    QCOMPARE(vm->cameraSignals().at(1), QStringLiteral("noSignal"));
+    emit extra0.onStartComplete(VideoReceiver::STATUS_OK);
+    QCOMPARE(vm->cameraSignals().at(1), QStringLiteral("noSignal"));
+    emit extra0.streamingChanged(true);
+    QCOMPARE(vm->cameraSignals().at(1), QStringLiteral("noSignal"));
+    emit extra0.decodingChanged(true);
+    QCOMPARE(vm->cameraSignals().at(1), QStringLiteral("live"));
+    emit extra0.decodingChanged(false);
+    QCOMPARE(vm->cameraSignals().at(1), QStringLiteral("connecting"));
+
+    emit extra0.streamingChanged(false);
+    emit extra0.onStartComplete(VideoReceiver::STATUS_FAIL);
+    QCOMPARE(vm->cameraSignals().at(1), QStringLiteral("noSignal"));
+    (void) vm->_updateVideoUri(&extra0, QStringLiteral("rtsp://elsewhere"));
+    QCOMPARE(vm->cameraSignals().at(1), QStringLiteral("connecting"));
+
+    vm->_restartVideo(&main);
+    emit main.decodingChanged(false);
+    emit main.onStopComplete(VideoReceiver::STATUS_OK);
+    QCOMPARE(vm->cameraSignals().at(0), QStringLiteral("connecting"));
+
+    fixture.settings()->activeVideoSource()->setRawValue(1);
+    QCOMPARE(vm->cameraSignals(), (QStringList{QStringLiteral("idle"), QStringLiteral("connecting"), QStringLiteral("noSignal")}));
+
+    QSignalSpy camerasChanged(vm, &VideoManager::camerasChanged);
+    streamEnabled->setRawValue(false);
+    QCOMPARE(camerasChanged.count(), 1);
+    QCOMPARE(vm->cameraSignals(), (QStringList{QStringLiteral("idle"), QStringLiteral("idle"), QStringLiteral("idle")}));
+    streamEnabled->setRawValue(true);
+
+    fixture.settings()->multiViewEnabled()->setRawValue(false);
+    QCOMPARE(vm->cameraSignals(), (QStringList{QStringLiteral("idle"), QStringLiteral("connecting"), QStringLiteral("idle")}));
 }
 
 void VideoCameraSwitchTest::_urlWhitespaceIsTrimmed()

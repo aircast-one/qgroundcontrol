@@ -1100,16 +1100,14 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
             }
         }
 
-        item(key = "advanced") { AdvancedToggle(advanced) { advanced = !advanced } }
-        if (advanced) {
-            item(key = "addLink") {
-                OutlinedButton(onClick = { adding = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-                    Icon(painterResource(R.drawable.ic_add), null)
-                    Text("Add link\u2026", modifier = Modifier.padding(start = 8.dp))
-                }
+        item(key = "addLink") {
+            Button(onClick = { adding = true }, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Icon(painterResource(R.drawable.ic_add), null)
+                Text("Add link\u2026", modifier = Modifier.padding(start = 8.dp))
             }
-            item(key = "footer") { footer() }
         }
+        item(key = "advanced") { AdvancedToggle(advanced) { advanced = !advanced } }
+        if (advanced) item(key = "footer") { footer() }
     }
 
     }

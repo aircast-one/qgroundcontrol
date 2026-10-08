@@ -4,20 +4,33 @@ use serde_json::{Value, json};
 
 use crate::router::Backend;
 use crate::videostate::{
-    DEVICE_CAMERAS, SOURCE_DISABLED, SOURCE_MPEGTS, SOURCE_RTSP, SOURCE_TCP, SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_WEBRTC, needs_url, source_usable,
+    DEVICE_CAMERAS, SIGNAL_IDLE, SOURCE_DISABLED, SOURCE_MPEGTS, SOURCE_RTSP, SOURCE_TCP, SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_WEBRTC, Settings,
+    SourceSlot, URL_SOURCES, needs_url, source_usable,
 };
 
 pub const CAMERAS_FACT: &str = "cameras";
 pub const ACTIVE_FACT: &str = "activeVideoSource";
 pub const CAMERAS_PATH: &str = "settings.videoSettings.cameras";
 pub const ACTIVE_PATH: &str = "settings.videoSettings.activeVideoSource";
-pub const DEPS: &[&str] = &[CAMERAS_PATH, ACTIVE_PATH, "video.cameraStatuses", "video.cameraFromDrone", "video.activeVideoSource", "video.cameraNames", "video.cameraSources", "video.cameraUrls"];
+pub const MULTI_VIEW_PATH: &str = "settings.videoSettings.multiViewEnabled";
+pub const DEPS: &[&str] = &[
+    CAMERAS_PATH,
+    ACTIVE_PATH,
+    MULTI_VIEW_PATH,
+    "video.cameraSignals",
+    "video.cameraFromDrone",
+    "video.activeVideoSource",
+    "video.cameraNames",
+    "video.cameraSources",
+    "video.cameraUrls",
+];
 
 pub const CAMERAS_ADD: &str = "cameras.add";
 pub const CAMERAS_UPDATE: &str = "cameras.update";
 pub const CAMERAS_REMOVE: &str = "cameras.remove";
 pub const CAMERAS_MOVE: &str = "cameras.move";
-const CAMERAS_OWNED: [&str; 4] = [CAMERAS_ADD, CAMERAS_UPDATE, CAMERAS_REMOVE, CAMERAS_MOVE];
+pub const CAMERAS_CLASSIFY: &str = "cameras.classify";
+const CAMERAS_OWNED: [&str; 5] = [CAMERAS_ADD, CAMERAS_UPDATE, CAMERAS_REMOVE, CAMERAS_MOVE, CAMERAS_CLASSIFY];
 const QT_STORE_CAMERAS: &str = "video.storeCameras";
 
 const UNREADABLE: &str = "The camera list is not a readable list, so its cameras cannot be shown. Changing it now would replace it.";
@@ -28,6 +41,7 @@ const NEEDS_ADDRESS: &str = "This kind of stream needs an address.";
 const RTSP_SCHEME: &str = "An RTSP address starts with rtsp://.";
 const WHEP_SCHEME: &str = "A WebRTC address starts with http:// or https://.";
 const DOUBLED_SCHEME: &str = "Leave the scheme off. The app adds it, and a doubled one fails to resolve.";
+const UNKNOWN_ADDRESS: &str = "Start the address with rtsp://, http://, udp:// or tcp://, or type it as host:port.";
 const SCHEME_ADDED: [&str; 4] = [SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_MPEGTS, SOURCE_TCP];
 
 const GROUP_STREAMS: &str = "Video streams";
@@ -86,7 +100,7 @@ pub fn problem(source: &str, url: &str) -> Option<&'static str> {
 fn schemes(source: &str) -> &'static [&'static str] {
     match source {
         SOURCE_RTSP => &["rtsp://", "rtsps://"],
-        SOURCE_WEBRTC => &["http://", "https://"],
+        SOURCE_WEBRTC => &["http://", "https://", "whep://", "wheps://"],
         SOURCE_UDP_H264 => &["udp://"],
         SOURCE_UDP_H265 => &["udp265://", "udp://"],
         SOURCE_MPEGTS => &["mpegts://", "udp://"],
@@ -112,6 +126,49 @@ fn kind_names() -> Vec<String> {
     crate::settingsstore::camera_sources().into_iter().filter(|source| needs_url(source) || source_usable(source, "")).collect()
 }
 
+fn host_and_port(address: &str) -> bool {
+    address.rsplit_once(':').is_some_and(|(host, port)| !host.is_empty() && !host.contains(['/', ' ']) && port.parse::<u16>().is_ok())
+}
+
+fn fitting(address: &str) -> Vec<&'static str> {
+    match () {
+        _ if address.contains("://") => URL_SOURCES.iter().copied().filter(|source| scheme_of(source, address).is_some()).collect(),
+        _ if host_and_port(address) => SCHEME_ADDED.to_vec(),
+        _ => Vec::new(),
+    }
+}
+
+fn classified(address: &str) -> (String, Vec<&'static str>, Option<&'static str>) {
+    let typed = address.trim();
+    let fits = fitting(typed);
+    let offered = kind_names();
+    let choices: Vec<&'static str> = fits.iter().copied().filter(|source| offered.iter().any(|kind| kind == source)).collect();
+    match choices.first() {
+        Some(source) => {
+            let normal = normalized(Camera::new("", source, typed)).url;
+            let refusal = problem(source, &normal);
+            (normal, choices, refusal)
+        }
+        None if typed.is_empty() => (String::new(), choices, Some(NEEDS_ADDRESS)),
+        None => (typed.to_string(), choices, Some(UNKNOWN_ADDRESS)),
+    }
+}
+
+pub fn classify(address: &str) -> Value {
+    let (address, choices, refusal) = classified(address);
+    json!({ "ok": true, "address": address, "kind": choices.first(), "choices": choices, "ambiguous": choices.len() > 1, "problem": refusal })
+}
+
+fn inferred(source: &str, url: &str) -> Result<String, &'static str> {
+    match source.trim() {
+        "" => {
+            let (_, choices, refusal) = classified(url);
+            choices.first().map(|source| source.to_string()).ok_or(refusal.unwrap_or(NEEDS_KIND))
+        }
+        named => Ok(named.to_string()),
+    }
+}
+
 fn group(source: &str) -> &'static str {
     match () {
         _ if DEVICE_CAMERAS.contains(&source) => GROUP_DEVICE,
@@ -133,7 +190,7 @@ fn hint(source: &str) -> &'static str {
 pub fn kinds() -> Vec<Value> {
     kind_names()
         .into_iter()
-        .map(|source| json!({ "raw": source, "label": source, "group": group(&source), "more": group(&source) == GROUP_PRESETS, "needsUrl": needs_url(&source), "hint": hint(&source), "schemes": schemes(&source) }))
+        .map(|source| json!({ "raw": source, "label": source, "group": group(&source), "needsUrl": needs_url(&source), "hint": hint(&source) }))
         .collect()
 }
 
@@ -269,7 +326,10 @@ fn index_arg(args: &Value, at: usize, count: usize) -> Option<usize> {
 pub fn invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> {
     owns(path).then_some(())?;
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
-    Some(edit(Some(backend), |cameras, active| changed(path, &given, cameras, active)).unwrap_or_else(|| refused(UNREADABLE)))
+    match path {
+        CAMERAS_CLASSIFY => Some(classify(&text_arg(&given, 0))),
+        _ => Some(edit(Some(backend), |cameras, active| changed(path, &given, cameras, active)).unwrap_or_else(|| refused(UNREADABLE))),
+    }
 }
 
 type Change = (Option<(Vec<Camera>, i64)>, Value);
@@ -281,10 +341,13 @@ fn changed(path: &str, given: &Value, cameras: &[Camera], active: i64) -> Change
         None => write(camera),
     };
     match path {
-        CAMERAS_ADD => checked(normalized(Camera::new(&text_arg(given, 0), &text_arg(given, 1), &text_arg(given, 2))), &|camera| {
-            let next = cameras.iter().cloned().chain(std::iter::once(camera)).collect();
-            (Some((next, active_after_add(active, cameras.len()))), json!({ "ok": true, "slot": cameras.len() }))
-        }),
+        CAMERAS_ADD => match inferred(&text_arg(given, 1), &text_arg(given, 2)) {
+            Err(reason) => refusal(reason),
+            Ok(source) => checked(normalized(Camera::new(&text_arg(given, 0), &source, &text_arg(given, 2))), &|camera| {
+                let next = cameras.iter().cloned().chain(std::iter::once(camera)).collect();
+                (Some((next, active_after_add(active, cameras.len()))), json!({ "ok": true, "slot": cameras.len() }))
+            }),
+        },
         CAMERAS_UPDATE => match index_arg(given, 0, cameras.len()) {
             None => refusal(NO_SUCH_CAMERA),
             Some(at) => checked(normalized(Camera::new(&text_arg(given, 1), &text_arg(given, 2), &text_arg(given, 3))), &|camera| {
@@ -312,41 +375,90 @@ fn changed(path: &str, given: &Value, cameras: &[Camera], active: i64) -> Change
     }
 }
 
-pub fn cameras_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let video = crate::read::object(&backend.get_fields("video", "activeVideoSource,cameraStatuses,cameraFromDrone,cameraNames,cameraSources,cameraUrls"));
-    let (cameras, active) = listed();
-    view_of(&video, cameras, active)
+const SHORT_LABEL_CHARS: usize = 10;
+
+fn short_form(name: &str, slot: usize, words: usize) -> String {
+    match name.split_whitespace().take(words).collect::<Vec<_>>().join(" ") {
+        taken if taken.is_empty() => format!("Cam {}", slot + 1),
+        taken => taken.chars().take(SHORT_LABEL_CHARS).collect::<String>().trim_end().to_string(),
+    }
 }
 
-fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64) -> Value {
+fn suffix_form(name: &str, words: usize) -> Option<String> {
+    let all: Vec<&str> = name.split_whitespace().collect();
+    let taken = all[all.len().saturating_sub(words)..].join(" ");
+    (words < all.len() && taken.chars().any(char::is_alphabetic) && taken.chars().count() <= SHORT_LABEL_CHARS).then_some(taken)
+}
+
+fn shorts(cameras: &[(usize, &str)]) -> Vec<String> {
+    let most = cameras.iter().map(|(_, name)| name.split_whitespace().count()).max().unwrap_or(0).max(1);
+    let prefixes = (1..=most).map(|words| cameras.iter().map(|(slot, name)| Some(short_form(name, *slot, words))).collect::<Vec<_>>());
+    let suffixes = (1..most).rev().map(|words| cameras.iter().map(|(_, name)| suffix_form(name, words)).collect::<Vec<_>>());
+    let levels: Vec<Vec<Option<String>>> = prefixes.chain(suffixes).collect();
+    let numbered: Vec<String> = cameras.iter().map(|(slot, name)| format!("{} {}", short_form(name, *slot, 1), slot + 1)).collect();
+    let unique = |level: &Vec<Option<String>>, row: usize| {
+        level[row].as_ref().filter(|label| level.iter().flatten().filter(|other| other == label).count() == 1 && !numbered.contains(label)).cloned()
+    };
+    let picked: Vec<String> = (0..cameras.len()).map(|row| levels.iter().find_map(|level| unique(level, row)).unwrap_or_else(|| numbered[row].clone())).collect();
+    picked.iter().enumerate().map(|(row, label)| if picked.iter().filter(|other| *other == label).count() > 1 { numbered[row].clone() } else { label.clone() }).collect()
+}
+
+pub fn cameras_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let video = crate::read::object(&backend.get_fields("video", "activeVideoSource,cameraSignals,cameraFromDrone,cameraNames,cameraSources,cameraUrls"));
+    let multi_view = crate::read::object(&backend.get(MULTI_VIEW_PATH)).get("value").and_then(Value::as_bool).unwrap_or(false);
+    let (cameras, active) = listed();
+    view_of(&video, cameras, active, multi_view)
+}
+
+pub fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64, multi_view: bool) -> Value {
     let strings = |key: &str| -> Vec<String> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default() };
-    let drone_flags: Vec<bool> = video.get("cameraFromDrone").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default();
+    let drones: Vec<bool> = video.get("cameraFromDrone").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default();
     let active = crate::read::integer(video, "activeVideoSource").unwrap_or(stored_active);
-    let (names, sources, urls) = (strings("cameraNames"), strings("cameraSources"), strings("cameraUrls"));
-    let drone: Vec<Value> = drone_flags
-        .iter()
+    let (names, sources, urls, signals) = (strings("cameraNames"), strings("cameraSources"), strings("cameraUrls"), strings("cameraSignals"));
+    let at = |list: &[String], slot: usize| list.get(slot).map_or("", String::as_str).to_string();
+    let readable = stored.is_some();
+    let listed: Vec<(usize, Camera, bool)> = stored
+        .unwrap_or_default()
+        .into_iter()
         .enumerate()
-        .filter(|(_, drone)| **drone)
-        .map(|(slot, _)| {
-            let camera = Camera::new(names.get(slot).map_or("", String::as_str), sources.get(slot).map_or("", String::as_str), urls.get(slot).map_or("", String::as_str));
-            json!({ "slot": slot, "stored": Value::Null, "title": title(&camera.name, slot), "name": camera.name, "source": camera.source, "url": camera.url, "summary": summary(&camera), "problem": Value::Null, "fromDrone": true, "active": slot as i64 == active })
+        .map(|(slot, camera)| (slot, camera, false))
+        .chain(drones.iter().enumerate().filter(|(_, drone)| **drone).map(|(slot, _)| (slot, Camera::new(&at(&names, slot), &at(&sources, slot), &at(&urls, slot)), true)))
+        .collect();
+    let settings = Settings {
+        cameras: listed.iter().map(|(_, camera, _)| SourceSlot { source: camera.source.clone(), url: camera.url.clone(), ..SourceSlot::default() }).collect(),
+        active_source: listed.iter().position(|(slot, ..)| *slot as i64 == active).map_or(-1, |row| row as i64),
+        multi_view,
+        ..Settings::default()
+    };
+    let labels = shorts(&listed.iter().map(|(slot, camera, _)| (*slot, camera.name.as_str())).collect::<Vec<_>>());
+    let rows: Vec<Value> = listed
+        .iter()
+        .zip(labels)
+        .map(|((slot, camera, from_drone), short)| {
+            json!({
+                "slot": slot,
+                "stored": (!from_drone).then_some(slot),
+                "title": title(&camera.name, *slot),
+                "short": short,
+                "name": camera.name,
+                "source": camera.source,
+                "url": camera.url,
+                "summary": summary(camera),
+                "problem": (!from_drone).then(|| problem(&camera.source, &camera.url)).flatten(),
+                "fromDrone": from_drone,
+                "active": *slot as i64 == active,
+                "status": signals.get(*slot).map_or(SIGNAL_IDLE, String::as_str),
+            })
         })
         .collect();
-    match stored {
-        None => json!({ "kind": "object", "class": "Cameras", "readable": false, "reason": UNREADABLE, "cameras": drone, "active": active, "kinds": kinds() }),
-        Some(cameras) => {
-            let mine = cameras.iter().enumerate().map(|(slot, camera)| {
-                json!({ "slot": slot, "stored": slot, "title": title(&camera.name, slot), "name": camera.name, "source": camera.source, "url": camera.url, "summary": summary(camera), "problem": problem(&camera.source, &camera.url), "fromDrone": false, "active": slot as i64 == active })
-            });
-            json!({ "kind": "object", "class": "Cameras", "readable": true, "reason": Value::Null, "cameras": mine.chain(drone).collect::<Vec<_>>(), "active": active, "kinds": kinds() })
-        }
-    }
+    let pip = json!({ "enabled": multi_view, "slot": settings.pip_choice().map(|row| listed[row].0) });
+    json!({ "kind": "object", "class": "Cameras", "readable": readable, "reason": (!readable).then_some(UNREADABLE), "cameras": rows, "active": active, "pip": pip, "kinds": kinds() })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::videostate::{SOURCE_3DR_SOLO, SOURCE_BACK_CAMERA, SOURCE_HERELINK_HOTSPOT};
+    use crate::videostate::{PIP_RECEIVER, SOURCE_3DR_SOLO, SOURCE_BACK_CAMERA, SOURCE_HERELINK_HOTSPOT};
 
     fn cam(name: &str, source: &str, url: &str) -> Camera {
         Camera::new(name, source, url)
@@ -405,10 +517,6 @@ mod tests {
         let rtsp = listed.iter().find(|kind| kind["raw"] == SOURCE_RTSP).unwrap();
         assert_eq!((rtsp["group"].as_str(), rtsp["needsUrl"].as_bool(), rtsp["hint"].as_str()), (Some(GROUP_STREAMS), Some(true), Some("rtsp://192.168.1.10:8554/live")));
         assert!(listed.iter().all(|kind| kind["raw"] != SOURCE_DISABLED), "no camera is of kind disabled");
-        assert_eq!(rtsp["schemes"], json!(["rtsp://", "rtsps://"]), "a typed rtsp:// address can pick its own kind");
-        assert_eq!(rtsp["more"], json!(false));
-        let preset = listed.iter().find(|kind| kind["group"] == GROUP_PRESETS).unwrap();
-        assert_eq!(preset["more"], json!(true), "vehicle presets wait behind More types");
         assert!(listed.iter().all(|kind| kind["raw"] != SOURCE_3DR_SOLO), "a kind that can never start is not offered");
         assert_eq!(problem(SOURCE_3DR_SOLO, ""), Some(CANNOT_PLAY), "nor accepted when asked for directly, and the reason says the kind cannot play rather than that none was picked");
         assert_eq!(problem("No such kind", ""), Some(NEEDS_KIND));
@@ -473,10 +581,10 @@ mod tests {
     #[test]
     fn the_view_lists_drone_cameras_after_the_operators_and_says_when_the_list_is_unreadable() {
         let video = json!({ "activeVideoSource": 1, "cameraFromDrone": [false, true], "cameraNames": ["Front", "SIYI A8"], "cameraSources": [SOURCE_RTSP, SOURCE_UDP_H264], "cameraUrls": ["rtsp://a/front", "0.0.0.0:5600"] });
-        let shown = view_of(&video, Some(vec![cam("Front", SOURCE_RTSP, "rtsp://a/front")]), 0);
+        let shown = view_of(&video, Some(vec![cam("Front", SOURCE_RTSP, "rtsp://a/front")]), 0, false);
         let rows = shown["cameras"].as_array().unwrap();
         assert_eq!(rows.iter().map(|row| (row["title"].clone(), row["stored"].clone(), row["fromDrone"].clone(), row["active"].clone())).collect::<Vec<_>>(), vec![(json!("Front"), json!(0), json!(false), json!(false)), (json!("SIYI A8"), Value::Null, json!(true), json!(true))]);
-        let unreadable = view_of(&video, None, 0);
+        let unreadable = view_of(&video, None, 0, false);
         assert_eq!((unreadable["readable"].clone(), unreadable["reason"].clone(), unreadable["cameras"].as_array().map(Vec::len)), (json!(false), json!(UNREADABLE), Some(1)), "drone cameras still show while the operator's list cannot be read");
     }
 
@@ -487,5 +595,115 @@ mod tests {
         assert_eq!(normalized(cam("", SOURCE_TCP, "tcp://10.0.0.5:5600")).url, "10.0.0.5:5600");
         assert_eq!(normalized(cam("", SOURCE_RTSP, "rtsp://10.0.0.5/live")).url, "rtsp://10.0.0.5/live", "RTSP keeps its scheme");
         assert_eq!(problem(SOURCE_UDP_H264, &normalized(cam("", SOURCE_UDP_H264, "rtsp://x")).url), Some(DOUBLED_SCHEME), "another kind's scheme is still refused");
+    }
+
+    fn labelled(names: &[&str]) -> Vec<String> {
+        shorts(&names.iter().copied().enumerate().collect::<Vec<_>>())
+    }
+
+    #[test]
+    fn a_compact_switch_reads_the_first_word_of_the_name_or_the_camera_number() {
+        assert_eq!(labelled(&["SIYI A8 mini", "  Thermal  ", "Downward-looking belly", "Камера носова", ""]), vec!["SIYI", "Thermal", "Downward-l", "Камера", "Cam 5"], "ten characters at most, counted as characters rather than bytes");
+        let video = json!({ "activeVideoSource": 0, "cameraFromDrone": [false, true], "cameraNames": ["", ""], "cameraSources": [SOURCE_RTSP, SOURCE_UDP_H264], "cameraUrls": ["rtsp://a/front", "0.0.0.0:5600"] });
+        let rows = view_of(&video, Some(vec![cam("", SOURCE_RTSP, "rtsp://a/front")]), 0, false)["cameras"].clone();
+        assert_eq!((rows[0]["short"].clone(), rows[1]["short"].clone()), (json!("Cam 1"), json!("Cam 2")));
+    }
+
+    #[test]
+    fn two_cameras_never_share_a_short_label() {
+        assert_eq!(labelled(&["SIYI A8", "SIYI ZR10", "Front"]), vec!["SIYI A8", "SIYI ZR10", "Front"], "two words tell the SIYIs apart and the camera nobody clashes with keeps its one word");
+        assert_eq!(labelled(&["SIYI", "SIYI A8", "SIYI A8 mini"]), vec!["SIYI", "SIYI A8", "SIYI A8 mi"], "each takes the fewest words that set it apart, the full name cut to ten at most");
+        assert_eq!(labelled(&["Gimbal Camera Left", "Gimbal Camera Right", "Gimbal"]), vec!["Left", "Right", "Gimbal"], "names that still match at ten characters are told apart by how they end");
+        assert_eq!(labelled(&["MockCam 1 · Stream 1-1", "MockCam 1 · Stream 1-2"]), vec!["Stream 1-1", "Stream 1-2"], "streams of one drone camera read by stream, not by an invented camera number");
+        assert_eq!(labelled(&["Gimbal Camera A long", "Gimbal Camera B long"]), vec!["A long", "B long"]);
+        assert_eq!(labelled(&["Nose", "Nose"]), vec!["Nose 1", "Nose 2"]);
+        assert_eq!(labelled(&["", "Cam 1", "Cam 2"]), vec!["Cam 1", "Cam 2", "Cam 3"], "a name that reads like another camera's numbered label gives way to the number");
+        [vec!["Nose", "Nose", "Nose 1"], vec!["Nose 1", "Nose", "Nose"], vec!["", "", "Cam 2", "Cam 1 x", "Cam 1 y"], vec!["A B", "A B", "A 1", "A 2 x"]].iter().for_each(|names| {
+            let labels = labelled(names);
+            assert_eq!(labels.iter().collect::<std::collections::HashSet<_>>().len(), names.len(), "{names:?} came out as {labels:?}");
+        });
+        let video = json!({ "activeVideoSource": 0, "cameraFromDrone": [false, true], "cameraNames": ["SIYI A8", "SIYI ZR10"], "cameraSources": [SOURCE_RTSP, SOURCE_UDP_H264], "cameraUrls": ["rtsp://a/front", "0.0.0.0:5600"] });
+        let rows = view_of(&video, Some(vec![cam("SIYI A8", SOURCE_RTSP, "rtsp://a/front")]), 0, false)["cameras"].clone();
+        assert_eq!((rows[0]["short"].clone(), rows[1]["short"].clone()), (json!("SIYI A8"), json!("SIYI ZR10")), "a drone camera is counted among the operator's");
+    }
+
+    fn statuses(video: Value) -> Vec<Value> {
+        let three = vec![cam("A", SOURCE_RTSP, "rtsp://a/0"), cam("B", SOURCE_RTSP, "rtsp://a/1"), cam("C", SOURCE_RTSP, "rtsp://a/2")];
+        view_of(&video, Some(three), 0, true)["cameras"].as_array().unwrap().iter().map(|row| row["status"].clone()).collect()
+    }
+
+    #[test]
+    fn each_row_reads_its_status_straight_from_the_hosts_camera_signals() {
+        assert_eq!(statuses(json!({ "activeVideoSource": 0, "cameraSignals": ["live", "noSignal", "idle"] })), vec![json!("live"), json!("noSignal"), json!("idle")]);
+        assert_eq!(statuses(json!({ "activeVideoSource": 1, "cameraSignals": ["idle", "connecting", "connecting"] })), vec![json!("idle"), json!("connecting"), json!("connecting")]);
+        let drone = json!({ "activeVideoSource": 3, "cameraSignals": ["idle", "idle", "idle", "live"], "cameraFromDrone": [false, false, false, true], "cameraNames": ["A", "B", "C", "SIYI A8"], "cameraSources": [SOURCE_RTSP, SOURCE_RTSP, SOURCE_RTSP, SOURCE_UDP_H264], "cameraUrls": ["rtsp://a/0", "rtsp://a/1", "rtsp://a/2", "0.0.0.0:5600"] });
+        assert_eq!(statuses(drone)[3], json!("live"), "a drone camera reads the signal at its own slot");
+        assert_eq!(statuses(json!({ "activeVideoSource": 0 })), vec![json!("idle"); 3], "a host that serves no signals leaves every camera idle");
+    }
+
+    fn pip(video: Value, stored: Vec<Camera>, multi_view: bool) -> Value {
+        view_of(&video, Some(stored), 0, multi_view)["pip"].clone()
+    }
+
+    #[test]
+    fn the_picture_in_picture_names_the_camera_its_receiver_plays() {
+        let four = || vec![cam("A", SOURCE_RTSP, "rtsp://a/0"), cam("B", SOURCE_RTSP, ""), cam("C", SOURCE_RTSP, "rtsp://a/2"), cam("D", SOURCE_RTSP, "rtsp://a/3")];
+        let played = |active_source: i64, multi_view: bool| {
+            let settings = Settings { cameras: four().into_iter().map(|camera| SourceSlot { source: camera.source, url: camera.url, ..SourceSlot::default() }).collect(), active_source, multi_view, ..Settings::default() };
+            settings.camera_index_for_receiver(PIP_RECEIVER)
+        };
+        [(0, 2), (2, 3), (3, 0)].iter().for_each(|(active, next)| {
+            let named = pip(json!({ "activeVideoSource": active }), four(), true);
+            assert_eq!(named, json!({ "enabled": true, "slot": next }), "active {active}: the next usable camera round, skipping one with no address");
+            assert_eq!(named["slot"].as_u64().map(|slot| slot as usize), played(*active, true), "active {active}: and exactly what the picture in picture receiver plays");
+        });
+        assert_eq!((pip(json!({ "activeVideoSource": 0 }), four(), false), played(0, false)), (json!({ "enabled": false, "slot": 2 }), None), "with the switch off the camera it would show is still named and nothing plays it");
+        assert_eq!(pip(json!({ "activeVideoSource": 0 }), vec![cam("A", SOURCE_RTSP, "rtsp://a/0"), cam("B", SOURCE_RTSP, "")], true), json!({ "enabled": true, "slot": null }), "no second usable camera, no picture in picture");
+        assert_eq!(pip(json!({ "activeVideoSource": 0 }), vec![cam("A", SOURCE_RTSP, "rtsp://a/0")], true), json!({ "enabled": true, "slot": null }), "a single camera has no picture in picture");
+        let drone = json!({ "activeVideoSource": 0, "cameraFromDrone": [false, false, true], "cameraNames": ["A", "B", "SIYI A8"], "cameraSources": [SOURCE_RTSP, SOURCE_RTSP, SOURCE_UDP_H264], "cameraUrls": ["rtsp://a/0", "", "0.0.0.0:5600"] });
+        assert_eq!(pip(drone.clone(), vec![cam("A", SOURCE_RTSP, "rtsp://a/0"), cam("B", SOURCE_RTSP, "")], true)["slot"], json!(2), "a drone camera can be the picture in picture");
+        let on_drone = json!({ "activeVideoSource": 2, "cameraFromDrone": drone["cameraFromDrone"], "cameraNames": drone["cameraNames"], "cameraSources": drone["cameraSources"], "cameraUrls": drone["cameraUrls"] });
+        assert_eq!(pip(on_drone, vec![cam("A", SOURCE_RTSP, "rtsp://a/0"), cam("B", SOURCE_RTSP, "")], true)["slot"], json!(0), "and from a drone camera it wraps back to the operator's");
+    }
+
+    fn classified_as(address: &str) -> (Value, Value, Value, Value, Value) {
+        let answer = classify(address);
+        (answer["address"].clone(), answer["kind"].clone(), answer["choices"].clone(), answer["ambiguous"].clone(), answer["problem"].clone())
+    }
+
+    #[test]
+    fn an_address_says_what_kind_of_stream_it_is() {
+        let none = Value::Null;
+        assert_eq!(classified_as("RTSP://10.0.0.5:8554/live"), (json!("rtsp://10.0.0.5:8554/live"), json!(SOURCE_RTSP), json!([SOURCE_RTSP]), json!(false), none.clone()));
+        assert_eq!(classified_as("rtsps://cam/live").1, json!(SOURCE_RTSP));
+        assert_eq!(classified_as(" https://sfu/cam/whep ").0, json!("https://sfu/cam/whep"));
+        assert_eq!(classified_as("http://10.0.0.5:8889/cam/whep").1, json!(SOURCE_WEBRTC));
+        assert_eq!(classified_as("whep://sfu/cam").1, json!(SOURCE_WEBRTC), "the player opens whep:// itself");
+        assert_eq!(classified_as("wheps://sfu/cam").4, none);
+        assert_eq!(classified_as("udp://0.0.0.0:5600"), (json!("0.0.0.0:5600"), json!(SOURCE_UDP_H264), json!([SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_MPEGTS]), json!(true), none.clone()), "plain udp could carry any of three encodings");
+        assert_eq!(classified_as("udp265://0.0.0.0:5600"), (json!("0.0.0.0:5600"), json!(SOURCE_UDP_H265), json!([SOURCE_UDP_H265]), json!(false), none.clone()));
+        assert_eq!(classified_as("mpegts://0.0.0.0:5600").2, json!([SOURCE_MPEGTS]));
+        assert_eq!(classified_as("tcp://10.0.0.5:5600"), (json!("10.0.0.5:5600"), json!(SOURCE_TCP), json!([SOURCE_TCP]), json!(false), none.clone()));
+        assert_eq!(classified_as("0.0.0.0:5600"), (json!("0.0.0.0:5600"), json!(SOURCE_UDP_H264), json!([SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_MPEGTS, SOURCE_TCP]), json!(true), none.clone()), "a bare host and port is a listen address unless the operator says otherwise");
+        assert_eq!(classified_as("  "), (json!(""), none.clone(), json!([]), json!(false), json!(NEEDS_ADDRESS)));
+        assert_eq!(classified_as("udp://"), (json!(""), json!(SOURCE_UDP_H264), json!([SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_MPEGTS]), json!(true), json!(NEEDS_ADDRESS)), "the refusal is the one adding it would give");
+        assert_eq!(classified_as("ftp://cam/live"), (json!("ftp://cam/live"), none.clone(), json!([]), json!(false), json!(UNKNOWN_ADDRESS)));
+        assert_eq!(classified_as("rtsp:/10.0.0.5/live").4, json!(UNKNOWN_ADDRESS));
+        assert_eq!(classified_as("10.0.0.5:8554/live").1, none, "a path with no scheme is not guessed at");
+        assert_eq!(classified_as("cam.local").4, json!(UNKNOWN_ADDRESS));
+        assert_eq!(problem(SOURCE_WEBRTC, "whep://sfu/cam"), None, "what classify accepts, adding accepts");
+    }
+
+    #[test]
+    fn a_camera_added_without_a_kind_takes_the_kind_its_address_names() {
+        let (write, answer) = changed(CAMERAS_ADD, &json!(["Nose", "", "RTSP://a/nose"]), &[], 0);
+        assert_eq!((write, answer["slot"].as_u64()), (Some((vec![cam("Nose", SOURCE_RTSP, "rtsp://a/nose")], 0)), Some(0)));
+        let (write, _) = changed(CAMERAS_ADD, &json!(["", "", "udp://0.0.0.0:5600"]), &[], 0);
+        assert_eq!(write.map(|(next, _)| next), Some(vec![cam("", SOURCE_UDP_H264, "0.0.0.0:5600")]), "an ambiguous address takes the first kind on offer");
+        let (write, _) = changed(CAMERAS_ADD, &json!(["", SOURCE_UDP_H265, "udp://0.0.0.0:5600"]), &[], 0);
+        assert_eq!(write.map(|(next, _)| next), Some(vec![cam("", SOURCE_UDP_H265, "0.0.0.0:5600")]), "a kind the operator picked is kept");
+        assert_eq!(changed(CAMERAS_ADD, &json!(["", "", "ftp://cam"]), &[], 0), (None, refused(UNKNOWN_ADDRESS)));
+        assert_eq!(changed(CAMERAS_ADD, &json!(["", "", ""]), &[], 0), (None, refused(NEEDS_ADDRESS)));
+        assert!(owns(CAMERAS_CLASSIFY), "the core answers classify itself and never asks Qt");
     }
 }

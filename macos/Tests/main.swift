@@ -4022,6 +4022,11 @@ func checkVideoStatus() {
     expect(live.configuredCameras.map(\.slot) == [0],
            "and the core decides which are configured, from the status text it also owns")
 
+    expect(VideoStatus(["nativePipeline": "rtspsrc ! appsink", "pipPipeline": "udpsrc ! appsink"]).pipPipeline ?? "",
+           "udpsrc ! appsink", "the second channel's pipeline is the core's to build and this head's to play")
+    expect(VideoStatus(["pipPipeline": ""]).pipPipeline == nil && VideoStatus.unavailable.pipPipeline == nil,
+           "an empty or absent second pipeline plays nothing on the second channel")
+
     expect(VideoCamera(["title": "Camera 1"]) == nil,
            "a camera with no slot is dropped, because the slot is what the row is keyed by")
     expect(VideoStatus([:]).cameras.isEmpty, "an empty answer is no cameras")
@@ -4053,36 +4058,100 @@ checkVideoStatus()
 
 func checkVideoSources() {
     let list = CameraList([
-        "class": "Cameras", "readable": true as NSNumber, "reason": "",
+        "class": "Cameras", "readable": true as NSNumber, "reason": NSNull(), "active": 0 as NSNumber,
+        "pip": ["enabled": false as NSNumber, "slot": 1 as NSNumber],
         "cameras": [
-            ["slot": 0 as NSNumber, "stored": 0 as NSNumber, "title": "Nose", "name": "Nose",
+            ["slot": 0 as NSNumber, "stored": 0 as NSNumber, "title": "Nose", "short": "Nose", "name": "Nose",
              "source": "RTSP Video Stream", "url": "rtsp://cam/live", "summary": "rtsp://cam/live",
-             "problem": NSNull(), "fromDrone": false as NSNumber, "active": true as NSNumber],
-            ["slot": 1 as NSNumber, "stored": NSNull(), "title": "Gimbal", "name": "Gimbal",
+             "problem": NSNull(), "fromDrone": false as NSNumber, "active": true as NSNumber,
+             "status": "live"],
+            ["slot": 1 as NSNumber, "stored": NSNull(), "title": "Gimbal", "short": "Gimbal", "name": "Gimbal",
              "source": "UDP h.264 Video Stream", "url": "0.0.0.0:5600", "summary": "0.0.0.0:5600",
-             "problem": "", "fromDrone": true as NSNumber, "active": false as NSNumber],
+             "problem": "", "fromDrone": true as NSNumber, "active": false as NSNumber,
+             "status": "noSignal"],
+            ["slot": 2 as NSNumber, "stored": 1 as NSNumber, "title": "Camera 3", "short": "Cam 3", "name": "",
+             "source": "Back camera", "url": "", "summary": "Back camera",
+             "problem": NSNull(), "fromDrone": false as NSNumber, "active": false as NSNumber,
+             "status": "someday"],
         ],
         "kinds": [
             ["raw": "RTSP Video Stream", "label": "RTSP Video Stream", "needsUrl": true as NSNumber, "hint": "rtsp://"],
             ["raw": "Back camera", "label": "Back camera", "needsUrl": false as NSNumber, "hint": ""],
         ],
     ])
-    expect(list.entries.count == 2, "every camera the core lists is read")
+    expect(list.entries.count == 3, "every camera the core lists is read")
     expect(list.entries[0].stored == 0 && list.entries[0].active, "a stored camera keeps its slot and says it is on screen")
     expect(list.entries[1].stored == nil && list.entries[1].fromDrone, "a drone camera has no stored slot to edit")
     expect(list.entries[1].problem == nil, "an empty problem is no problem")
+    expect(list.entries.map(\.status) == [.live, .noSignal, .idle],
+           "each row carries the core's signal token, and one this head does not know draws as idle")
+    expect(list.entries.map(\.short) == ["Nose", "Gimbal", "Cam 3"], "the short name is the core's, not trimmed here")
+    expect(!list.pipEnabled && list.pipSlot == 1,
+           "the picture-in-picture slot is filled even while the inset is switched off")
+    expect(CameraList(["pip": ["enabled": true as NSNumber, "slot": NSNull()]]).pipSlot == nil,
+           "with no second usable camera there is nothing to inset")
+    expect(list.offersPip && list.pipCamera == nil,
+           "a second usable camera offers the picture-in-picture switch, but nothing is inset while it is off")
+    let rows = (list.entries.map { camera -> [String: Any] in
+        ["slot": camera.slot as NSNumber, "title": camera.title, "short": camera.short, "status": camera.status.rawValue]
+    })
+    let inset = CameraList(["pip": ["enabled": true as NSNumber, "slot": 1 as NSNumber], "cameras": rows])
+    expect(inset.pipCamera?.title ?? "", "Gimbal", "switched on, the inset is the camera the core names, by its combined slot")
+    let lone = CameraList(["pip": ["enabled": true as NSNumber, "slot": NSNull()], "cameras": rows])
+    expect(!lone.offersPip && lone.pipCamera == nil,
+           "with no second usable camera there is neither a switch nor an inset, even when it was left on")
+    let gone = CameraList(["pip": ["enabled": true as NSNumber, "slot": 9 as NSNumber], "cameras": rows])
+    expect(gone.pipCamera == nil, "a slot the list does not hold insets nothing rather than a blank camera")
+    expect(list.entries.map(\.caption) == ["Nose", "Gimbal \u{00B7} No signal", "Cam 3 \u{00B7} Not playing"],
+           "a live camera is captioned by its short name, any other by its short name and its signal")
+    expect([CameraSignal.live, .connecting, .noSignal, .idle].map(\.words) == ["Live", "Connecting", "No signal", "Not playing"],
+           "each signal token reads as words an operator understands")
     expect(list.kinds.first?.label ?? "", "RTSP", "kind labels drop the Video Stream suffix")
+    expect(list.label(list.entries[0]), "RTSP", "a row names its kind with the same short label")
+    expect(list.label(list.entries[1]), "UDP h.264", "even a kind the core does not offer to add")
     expect(list.needsUrl(list.entries[0]), "an RTSP camera asks for an address")
     expect(list.needsUrl(list.entries[1]), "a kind the core does not list still asks for one")
+    expect(!list.needsUrl(list.entries[2]), "a phone camera has no address to edit")
 
     let unreadable = CameraList(["class": "Cameras", "readable": false as NSNumber, "reason": "Unreadable", "cameras": [Any](), "kinds": [Any]()])
     expect(!unreadable.readable && unreadable.reason == "Unreadable", "the core's refusal reason reaches the head")
     expect(CameraList.empty.readable && CameraList.empty.entries.isEmpty, "no answer reads as no cameras")
-    expect(list.storedCount == 1, "only the operator's own cameras can be reordered")
     expect(CameraList.refusal(["ok": true as NSNumber]) == nil, "an accepted change is no failure")
     expect(CameraList.refusal(["ok": false as NSNumber, "reason": "This kind of stream needs an address."]) ?? "",
            "This kind of stream needs an address.", "the core's reason is what the operator reads")
     expect(CameraList.refusal([:]) ?? "", CameraList.unanswered, "a change nobody answered says so rather than looking accepted")
+
+    let rtsp = CameraGuess(["ok": true as NSNumber, "address": "rtsp://cam/live", "kind": "RTSP Video Stream",
+                            "choices": ["RTSP Video Stream"], "ambiguous": false as NSNumber, "problem": NSNull()])
+    expect(rtsp.kind == "RTSP Video Stream" && !rtsp.ambiguous && rtsp.problem == nil,
+           "an rtsp address is one kind and needs no question")
+    let udp = CameraGuess(["ok": true as NSNumber, "address": "0.0.0.0:5600", "kind": "UDP h.264 Video Stream",
+                           "choices": ["UDP h.264 Video Stream", "UDP h.265 Video Stream", "MPEG-TS Video Stream"],
+                           "ambiguous": true as NSNumber, "problem": NSNull()])
+    expect(udp.ambiguous && udp.choices.count == 3 && udp.kind == udp.choices.first,
+           "a bare udp address offers its choices, with the first already picked")
+    expect(udp.choices.map(CameraKind.label(for:)) == ["UDP h.264", "UDP h.265", "MPEG-TS"],
+           "and the choices read with the short kind labels")
+    expect(udp.choice(keeping: "MPEG-TS Video Stream"), "MPEG-TS Video Stream",
+           "a kind the operator picked survives editing the address while it is still a choice")
+    expect(rtsp.choice(keeping: "MPEG-TS Video Stream"), "RTSP Video Stream",
+           "and gives way to the core's kind once the address no longer offers it")
+    expect(udp.sentence, CameraGuess.whichKind,
+           "an ambiguous address asks which kind rather than naming the first choice the picker may not show")
+    expect(rtsp.sentence, "RTSP", "an unambiguous one names its kind")
+    let unknown = CameraGuess(["ok": true as NSNumber, "address": "ftp://x", "kind": NSNull(), "choices": [String](),
+                               "ambiguous": false as NSNumber,
+                               "problem": "Start the address with rtsp://, http://, udp:// or tcp://, or type it as host:port."])
+    expect(unknown.kind == nil && unknown.choices.isEmpty && unknown.problem != nil,
+           "an address no kind fits has no kind and says why")
+    expect(unknown.sentence, unknown.problem ?? "", "and the why is what the add row reads")
+    expect(unknown.choice(keeping: "UDP h.264 Video Stream"), "", "with no kind there is nothing to pick")
+    let bare = CameraGuess(["ok": true as NSNumber, "address": "", "kind": "UDP h.264 Video Stream",
+                            "choices": ["UDP h.264 Video Stream"], "ambiguous": false as NSNumber,
+                            "problem": "This kind of stream needs an address."])
+    expect(bare.kind != nil && bare.problem == "This kind of stream needs an address.",
+           "a kind can still carry a problem, as udp:// with nothing after it does")
+    expect(CameraGuess.none.kind == nil && !CameraGuess.none.ambiguous, "no answer guesses nothing")
 }
 
 checkVideoSources()
@@ -5963,7 +6032,7 @@ func checkTheInspectorSaysWhichSilenceItIsIn() {
 checkTheInspectorSaysWhichSilenceItIsIn()
 
 
-let assertionFloor = 2283
+let assertionFloor = 2309
 if failures == 0 && assertions < assertionFloor {
     FileHandle.standardError.write(
         "\(assertions) assertions ran, below the floor of \(assertionFloor): a check that stopped "

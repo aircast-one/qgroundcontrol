@@ -31,7 +31,7 @@ bool d3d12ZeroCopyUnsupported()
 #endif
 }
 
-}  // namespace
+}
 #endif
 
 bool VideoBackend::gpuZeroCopyAllowedForCurrentGraphicsApi(bool forceCpuVideoPath, bool forceSoftwareDecoder)
@@ -149,5 +149,16 @@ void VideoBackend::attachSink(QObject *receiver, void *sink, QQuickItem *widget)
     Q_UNUSED(receiver);
     Q_UNUSED(sink);
     Q_UNUSED(widget);
+#endif
+}
+
+bool VideoBackend::attachNativeSink(void *sink, int channel)
+{
+#ifdef QGC_GST_STREAMING
+    return GStreamer::attachNativeSink(sink, channel);
+#else
+    Q_UNUSED(sink);
+    Q_UNUSED(channel);
+    return false;
 #endif
 }

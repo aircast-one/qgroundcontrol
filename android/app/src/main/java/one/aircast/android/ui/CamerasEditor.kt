@@ -1,31 +1,34 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,20 +37,37 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import one.aircast.android.R
 import one.aircast.android.bridge.CameraCommands
 import one.aircast.android.bridge.VideoCommands
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.bridge.qgcPath
+import one.aircast.map.AircastSheet
 
 private const val CAMERA_UNDO_WINDOW_MS = 6000L
 private const val CAMERA_LIST_SETTLE_MS = 2000L
+private const val CAMERA_CLASSIFY_SETTLE_MS = 300L
 
-private data class CameraDraft(val stored: Int?, val name: String, val source: String, val url: String, val refusal: String? = null)
+private data class CameraDraft(
+    val stored: Int?,
+    val title: String,
+    val name: String,
+    val source: String,
+    val url: String,
+    val needsUrl: Boolean = true,
+    val picked: String? = null,
+    val kept: String? = null,
+    val refusal: String? = null,
+)
 
 private data class RemovedCamera(val slot: Int, val name: String, val source: String, val url: String, val title: String, val active: Boolean)
 
@@ -58,11 +78,38 @@ private fun undoRemoval(gone: RemovedCamera, storedCount: Int): String? {
     return restored
 }
 
+private fun editDraft(camera: CameraEntry, kinds: List<CameraKind>): CameraDraft? = camera.stored?.let { stored ->
+    CameraDraft(
+        stored = stored,
+        title = camera.title,
+        name = camera.name,
+        source = camera.source,
+        url = camera.url,
+        needsUrl = kinds.none { it.raw == camera.source && !it.needsUrl },
+        picked = camera.source,
+        kept = camera.url.takeIf { camera.problem == null },
+    )
+}
+
+private fun draftGuess(draft: CameraDraft, guess: CameraGuess?): CameraGuess? = keptGuess(guess, draft.source, draft.url, draft.kept)
+
+private fun saved(draft: CameraDraft, shown: CameraGuess?): String? = when {
+    draft.stored != null && !draft.needsUrl -> CameraCommands.update(draft.stored, draft.name, draft.source, draft.url)
+    else -> savedAs(draft, shown ?: draftGuess(draft, cameraGuess(CameraCommands.classify(draft.url))))
+}
+
+private fun savedAs(draft: CameraDraft, guess: CameraGuess?): String? = when (draft.stored) {
+    null -> CameraCommands.add(draft.name, chosenKind(guess, draft.picked, ""), draft.url)
+    else -> guess?.takeIf { it.kind == null }?.problem
+        ?: CameraCommands.update(draft.stored, draft.name, chosenKind(guess, draft.picked, draft.source), draft.url)
+}
+
 @Composable
 fun CamerasEditor(modifier: Modifier = Modifier) {
     val view by qgcPath(CAMERAS_VIEW)
     val reading = remember(view) { camerasReading(view) }
     val cameras = reading?.cameras.orEmpty()
+    val kinds = reading?.kinds.orEmpty()
     val storedCount = reading?.stored?.size ?: 0
     val editable = reading?.readable == true
     var draft by remember { mutableStateOf<CameraDraft?>(null) }
@@ -97,25 +144,20 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
         }
     }
 
-    Column(modifier) {
+    Column(modifier.verticalScroll(rememberScrollState())) {
+        Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(VIDEO_SOURCES_PAGE, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            IconButton(onClick = { draft = CameraDraft(null, "", "", "", "") }, enabled = editable && !busy) {
+                Icon(painterResource(R.drawable.ic_add), "Add a video source")
+            }
+        }
         reading?.takeIf { !it.readable }?.let { ErrorLine(it.reason) }
         notice?.let { ErrorLine(it) }
         if (reading != null && cameras.isEmpty()) {
-            Text(
-                "No cameras yet. Add every camera this ground station should show, then switch between them on the Fly view.",
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            FootNote("No video sources yet. Cameras on the drone show up here by themselves. Tap + to add a stream by its address.")
         }
         cameras.map { camera ->
-            CameraRow(
-                camera = camera,
-                canMoveUp = !busy && camera.stored != null && camera.stored > 0,
-                canMoveDown = !busy && camera.stored != null && camera.stored < storedCount - 1,
-                onEdit = { draft = camera.stored?.let { CameraDraft(it, camera.name, camera.source, camera.url) } }.takeIf { camera.stored != null && editable },
-                onShow = { offMainInOrder { VideoCommands.setActiveSource(camera.slot) } }.takeIf { !camera.active && camera.problem == null },
-                onMove = { offset -> camera.stored?.let { from -> change({ CameraCommands.move(from, from + offset) }) { notice = it } } },
-            )
+            CameraRow(camera, onEdit = editDraft(camera, kinds)?.takeIf { editable }?.let { opened -> { draft = opened } })
             HorizontalDivider()
         }
         removed?.let { gone ->
@@ -127,26 +169,19 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
                 }) { Text("Undo") }
             }
         }
-        Button(
-            onClick = { draft = CameraDraft(null, "", reading?.kinds?.firstOrNull()?.raw.orEmpty(), "") },
-            enabled = editable && !busy,
-            modifier = Modifier.padding(16.dp),
-        ) { Text("Add camera") }
     }
 
     draft?.let { current ->
-        CameraDialog(
+        val closed: (String?) -> Unit = { refusal -> draft = refusal?.let { current.copy(refusal = it) } }
+        CameraSheet(
             draft = current,
-            kinds = reading?.kinds.orEmpty(),
+            hint = kinds.firstOrNull { it.needsUrl }?.hint.orEmpty(),
+            others = if (current.stored == null) otherSources(reading) else emptyList(),
             busy = busy,
             onChange = { draft = it },
             onDismiss = { draft = null },
-            onSave = {
-                change({
-                    current.stored?.let { CameraCommands.update(it, current.name, current.source, current.url) }
-                        ?: CameraCommands.add(current.name, current.source, current.url)
-                }) { refusal -> draft = refusal?.let { current.copy(refusal = it) } }
-            },
+            onSave = { guess -> change({ saved(current, guess) }, closed) },
+            onPick = { kind -> change({ CameraCommands.add("", kind.raw, "") }, closed) },
             onRemove = current.stored?.let { slot ->
                 cameras.firstOrNull { it.stored == slot }?.let { entry ->
                     {
@@ -168,104 +203,123 @@ private fun ErrorLine(text: String) {
 }
 
 @Composable
-private fun CameraRow(
-    camera: CameraEntry,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
-    onEdit: (() -> Unit)?,
-    onShow: (() -> Unit)?,
-    onMove: (Int) -> Unit,
-) {
+private fun CameraRow(camera: CameraEntry, onEdit: (() -> Unit)?) {
     Row(
-        Modifier.fillMaxWidth().then(if (onEdit != null) Modifier.clickable(onClick = onEdit) else Modifier).padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .then(if (onEdit != null) Modifier.clickable(onClick = onEdit) else Modifier)
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        CameraStatusDot(camera.status)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(camera.title, style = MaterialTheme.typography.bodyLarge)
-            Text(camera.summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(camera.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(cameraDetail(camera), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             camera.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (camera.active) Text("On screen", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                if (camera.fromDrone) Text("From the drone", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                onShow?.let { show -> TextButton(onClick = show) { Text("Show") } }
-            }
         }
-        if (camera.stored != null) {
-            IconButton(onClick = { onMove(-1) }, enabled = canMoveUp) { Icon(Icons.Default.KeyboardArrowUp, "Move ${camera.title} up") }
-            IconButton(onClick = { onMove(1) }, enabled = canMoveDown) { Icon(Icons.Default.KeyboardArrowDown, "Move ${camera.title} down") }
-        }
-        onEdit?.let { edit -> IconButton(onClick = edit) { Icon(Icons.Default.Edit, "Edit ${camera.title}") } }
+        if (camera.active) Text("On screen", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (onEdit != null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun CameraDialog(
+private fun CameraSheet(
     draft: CameraDraft,
-    kinds: List<CameraKind>,
+    hint: String,
+    others: List<CameraKind>,
     busy: Boolean,
     onChange: (CameraDraft) -> Unit,
     onDismiss: () -> Unit,
-    onSave: () -> Unit,
+    onSave: (CameraGuess?) -> Unit,
+    onPick: (CameraKind) -> Unit,
     onRemove: (() -> Unit)?,
 ) {
-    val save = { if (!busy) onSave() }
-    val kind = kinds.firstOrNull { it.raw == draft.source }
-    val needsUrl = kind?.needsUrl == true
-    var showMore by remember { mutableStateOf(kind?.more == true) }
-    val (more, common) = kinds.groupBy { it.group }.toList().partition { (_, members) -> members.all { it.more } }
-    val group: @Composable (String, List<CameraKind>) -> Unit = { name, members ->
-        KindGroup(name, members, draft.source) { onChange(draft.copy(source = it, refusal = null)) }
-        if (needsUrl && members.any { it.raw == draft.source }) {
+    var guessed by remember { mutableStateOf<Pair<String, CameraGuess?>?>(null) }
+    var naming by remember { mutableStateOf(draft.stored != null) }
+    LaunchedEffect(draft.url, draft.needsUrl) {
+        if (draft.url.isBlank() || !draft.needsUrl) return@LaunchedEffect
+        delay(CAMERA_CLASSIFY_SETTLE_MS)
+        val typed = draft.url
+        guessed = typed to withContext(Dispatchers.Default) { cameraGuess(CameraCommands.classify(typed)) }
+    }
+    val guess = draftGuess(draft, guessed?.takeIf { it.first == draft.url }?.second)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    LaunchedEffect(guess != null, guess?.ambiguous) {
+        if (guess != null && sheetState.targetValue != SheetValue.Hidden) sheetState.expand()
+    }
+    val canSave = !busy && (draft.url.isNotBlank() || !draft.needsUrl)
+    val save = { if (canSave) onSave(guess) }
+    val nameField: @Composable () -> Unit = {
+        if (naming) {
             OutlinedTextField(
-                value = draft.url,
-                onValueChange = { typed -> onChange(draft.copy(url = typed, source = inferredKind(kinds, draft.source, typed), refusal = null)) },
-                label = { Text("Address") },
-                placeholder = { Text(kind?.hint.orEmpty()) },
+                value = draft.name,
+                onValueChange = { onChange(draft.copy(name = it, refusal = null)) },
+                label = { Text("Name") },
                 singleLine = true,
-                isError = draft.refusal != null,
-                supportingText = draft.refusal?.let { refusal -> { Text(refusal) } },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { save() }),
+                modifier = Modifier.fillMaxWidth(),
             )
+        } else {
+            TextButton(onClick = { naming = true }) { Text("Add a name") }
         }
     }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(if (draft.stored == null) "New camera" else "Edit camera") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (!needsUrl) draft.refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    AircastSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).imePadding().padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(if (draft.stored == null) "Add video source" else draft.title, style = MaterialTheme.typography.titleMedium)
+            if (draft.stored != null) nameField()
+            if (draft.needsUrl) {
                 OutlinedTextField(
-                    value = draft.name,
-                    onValueChange = { onChange(draft.copy(name = it, refusal = null)) },
-                    label = { Text("Name") },
+                    value = draft.url,
+                    onValueChange = { typed -> onChange(draft.copy(url = typed, refusal = null)) },
+                    label = { Text("Address") },
+                    placeholder = { Text(hint) },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = if (needsUrl) ImeAction.Next else ImeAction.Done),
+                    isError = draft.refusal != null,
+                    supportingText = (draft.refusal ?: guessText(guess).takeIf { draft.url.isNotBlank() })?.takeIf { it.isNotBlank() }?.let { line -> { Text(line) } },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { save() }),
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                common.map { (name, members) -> group(name, members) }
-                if (more.isNotEmpty() && !showMore) TextButton(onClick = { showMore = true }) { Text("More types") }
-                if (showMore) more.map { (name, members) -> group(name, members) }
+                guess?.takeIf { it.ambiguous }?.let { ambiguous ->
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ambiguous.choices.map { choice ->
+                            FilterChip(
+                                selected = choice == chosenKind(ambiguous, draft.picked, ""),
+                                onClick = { onChange(draft.copy(picked = choice, refusal = null)) },
+                                label = { Text(kindLabel(choice)) },
+                            )
+                        }
+                    }
+                }
+            } else {
+                Text(kindLabel(draft.source), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                draft.refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             }
-        },
-        confirmButton = { TextButton(onClick = save, enabled = !busy) { Text("Save") } },
-        dismissButton = {
-            Row {
+            if (draft.stored == null) nameField()
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 onRemove?.let { remove -> TextButton(onClick = remove, enabled = !busy) { Text("Remove", color = MaterialTheme.colorScheme.error) } }
+                Spacer(Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text("Cancel") }
+                Button(onClick = save, enabled = canSave) { Text("Save") }
             }
-        },
-    )
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun KindGroup(name: String, members: List<CameraKind>, selected: String, onPick: (String) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            members.map { option ->
-                FilterChip(selected = option.raw == selected, onClick = { onPick(option.raw) }, label = { Text(kindLabel(option.label)) })
+            if (others.isNotEmpty()) {
+                Text("Other sources", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column {
+                    others.map { kind ->
+                        Text(
+                            otherSourceLabel(kind),
+                            Modifier.fillMaxWidth().clickable(enabled = !busy) { onPick(kind) }.padding(vertical = 12.dp),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
             }
         }
     }

@@ -98,6 +98,9 @@ private const val TOP_SCRIM_ALPHA = 0.6f
 private val PIP_TOGGLE_SIZE = 28.dp
 private const val MINI_MAP_KEY = "LandscapeMiniMap"
 private val MINIMAP_THUMB = 56.dp
+private const val CAMERA_PIP_KEY = "cameraPip"
+private val CAMERA_PIP_WIDTH = 112.dp
+private val CAMERA_PIP_HEIGHT = 63.dp
 
 internal enum class MiniMap { Thumb, Map, Compass }
 
@@ -114,6 +117,8 @@ internal fun miniWidth(mini: MiniMap): androidx.compose.ui.unit.Dp = when (mini)
     MiniMap.Map -> MINIMAP_WIDTH
     MiniMap.Compass -> MINIMAP_HEIGHT
 }
+
+private fun miniHeight(mini: MiniMap): Dp = if (mini == MiniMap.Thumb) MINIMAP_THUMB else MINIMAP_HEIGHT
 
 internal fun videoPipShown(hasVideo: Boolean, expanded: Boolean): Boolean = hasVideo && expanded
 
@@ -176,7 +181,7 @@ internal fun FlyScreen(
     video: @Composable (Modifier, Boolean) -> Unit,
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
-    rail: @Composable () -> Unit,
+    rail: @Composable (Boolean) -> Unit,
     overlays: @Composable () -> Unit,
     actions: @Composable (FlyDeckLayout) -> Unit,
 ) {
@@ -322,6 +327,20 @@ internal fun FlyScreen(
                 PipToggle(false, togglePip, Modifier.zIndex(3f).align(pipAlign).windowInsetsPadding(WindowInsets.displayCutout).padding(AircastSpace.s3))
             }
         }
+        if (mapIsPip) shownPipCamera()?.let { camera ->
+            CameraPipThumbnail(
+                camera,
+                Modifier
+                    .zIndex(3f)
+                    .align(pipAlign)
+                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .padding(start = ACTION_RAIL_CLEARANCE, bottom = miniHeight(mini) + AircastSpace.s3 * 2)
+                    .then(layoutPlacement(CAMERA_PIP_KEY, keepOnScreen = true))
+                    .size(CAMERA_PIP_WIDTH, CAMERA_PIP_HEIGHT)
+                    .avoidedByVideoMessage(CAMERA_PIP_KEY)
+                    .holdToEditLayout(),
+            ) { LayoutPipEditor(CAMERA_PIP_KEY, MaterialTheme.shapes.medium, Modifier.fillMaxSize()) }
+        }
         val settingsOver = LocalAppNavigation.current.settingsOpen
         Box(Modifier.zIndex(1f).fillMaxSize().graphicsLayer { alpha = if (settingsOver) 0f else 1f }.windowInsetsPadding(WindowInsets.displayCutout)) {
         if (view == FlyView.Map) {
@@ -398,7 +417,7 @@ internal fun FlyScreen(
                     .padding(end = AircastSpace.s3),
                 contentAlignment = Alignment.Center,
             ) {
-                CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { rail() }
+                CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { rail(mapIsPip) }
             }
             Box(
                 Modifier

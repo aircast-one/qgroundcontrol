@@ -90,7 +90,7 @@ internal fun ConnectingCard(modifier: Modifier = Modifier) {
 }
 
 internal const val LOOKING_TITLE = "Looking for your aircraft"
-internal const val LOOKING_HINT = "Turn on the aircraft. Aircast connects by itself over Wi-Fi or a telemetry radio."
+internal const val LOOKING_HINT = "Turn on the aircraft. A USB cable or telemetry radio connects by itself; for Wi-Fi, add a link."
 private const val CONNECTION_SETTINGS = "Connections"
 
 @Composable
@@ -105,7 +105,7 @@ internal fun LookingForAircraft() {
             androidx.compose.material3.CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp, color = MaterialTheme.aircast.outdoorForeground)
             Text(LOOKING_TITLE, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
             Text(LOOKING_HINT, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
-            TextButton(onClick = { navigation.settingsPage = CONNECTION_SETTINGS }) { Text("Connection settings") }
+            TextButton(onClick = { navigation.settingsPage = CONNECTION_SETTINGS }) { Text("Add a link") }
         }
     }
 }

@@ -14,6 +14,8 @@ QGC_LOGGING_CATEGORY(GStreamerTestLog, "Video.GStreamer.GStreamerTest")
 #include <QtCore/QScopeGuard>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryDir>
+#include <QtNetwork/QUdpSocket>
+#include <QtTest/QSignalSpy>
 #include <atomic>
 #include <gst/app/gstappsrc.h>
 #include <gst/gst.h>
@@ -27,6 +29,7 @@ QGC_LOGGING_CATEGORY(GStreamerTestLog, "Video.GStreamer.GStreamerTest")
 #include "GStreamerLogging.h"
 #include "GstVideoReceiver.h"
 #include "LogManager.h"
+#include "QGCVideoC.h"
 #include "VideoBackend.h"
 
 namespace {
@@ -123,7 +126,7 @@ GstFlowReturn pushAccessUnit(GstElement* appsrc, const QByteArray& bytes, GstClo
     return gst_app_src_push_buffer(GST_APP_SRC(appsrc), buffer);
 }
 
-}  // namespace
+}
 
 void GStreamerTest::init()
 {
@@ -137,12 +140,8 @@ void GStreamerTest::init()
         QStringLiteral("cannot register existing type|"
                        "g_type_add_interface_static.*G_TYPE_IS_INSTANTIATABLE|"
                        "g_once_init_leave.*result != 0"));
-    // GStreamer/GLib type registration warnings are environment/startup-order dependent
-    // and may occur 0..N times across test process lifetime.
     ignoreLogMessage("Video.GStreamer.GStreamerLogging", QtCriticalMsg, sGLibTypeRe);
 
-    // On headless/software-GL CI the sink bin cannot honor construct-only GPU properties
-    // and the GL bridge is disabled. These warnings are environment-dependent.
     ignoreLogMessage("Video.GStreamer.GStreamerLogging", QtWarningMsg,
                      QRegularExpression(QStringLiteral("gpu-zerocopy.*can't be set after construction")));
     ignoreLogMessage("Video.GStreamer.HwBuffers.GstGlBridge", QtWarningMsg,
@@ -396,10 +395,8 @@ void GStreamerTest::_testRedirectGLibLogging()
 {
     GStreamer::redirectGLibLogging();
 
-    // Debug-level GLib messages map to QtDebugMsg — suppress it.
     ignoreLogMessage("Video.GStreamer.GStreamerLogging", QtDebugMsg,
                      QRegularExpression(QStringLiteral("GStreamerTest debug message")));
-    // Warning-level message is the redirect target being tested — expect and verify it.
     expectLogMessage("Video.GStreamer.GStreamerLogging", QtWarningMsg,
                      QRegularExpression(QStringLiteral("GStreamerTest warning message")));
     g_log("TestDomain", G_LOG_LEVEL_DEBUG, "GStreamerTest debug message");
@@ -453,7 +450,6 @@ void GStreamerTest::_testVerifyRequiredPlugins()
 
 void GStreamerTest::_testEnvironmentSetup()
 {
-    // Save and clear relevant env vars
     static constexpr const char* envVars[] = {
         "GIO_EXTRA_MODULES",
         "GIO_MODULE_DIR",
@@ -489,7 +485,6 @@ void GStreamerTest::_testEnvironmentSetup()
          {"GST_PLUGIN_PATH", "GST_PLUGIN_PATH_1_0", "GST_PLUGIN_SYSTEM_PATH", "GST_PLUGIN_SYSTEM_PATH_1_0"}) {
         if (qEnvironmentVariableIsSet(var)) {
             const QString path = qEnvironmentVariable(var);
-            // Paths may be colon-separated; check each component
             const QStringList parts = path.split(QDir::listSeparator(), Qt::SkipEmptyParts);
             for (const QString& part : parts) {
                 QVERIFY2(QDir(part).exists(),
@@ -559,6 +554,116 @@ void GStreamerTest::_testCreateVideoReceiver()
     std::unique_ptr<VideoReceiver> receiver(GStreamer::createVideoReceiver(nullptr));
     QVERIFY2(receiver, "GStreamer::createVideoReceiver() returned nullptr");
     QVERIFY(qobject_cast<GstVideoReceiver*>(receiver.get()));
+}
+
+void GStreamerTest::_testNativeSinkPlaysOnTheChannelItIsAttachedTo()
+{
+#ifdef Q_OS_ANDROID
+    QSKIP("the Android native sink draws into a window and keeps no frames");
+#endif
+    qgc_video_detach_appsink(0);
+    qgc_video_detach_appsink(1);
+    GstElement* const pipeline = gst_pipeline_new(nullptr);
+    GstElement* const source = gst_element_factory_make("videotestsrc", nullptr);
+    GstElement* const sink = static_cast<GstElement*>(GStreamer::createNativeSink());
+    QVERIFY(pipeline && source && sink);
+    const auto teardown = qScopeGuard([pipeline] {
+        (void) gst_element_set_state(pipeline, GST_STATE_NULL);
+        gst_object_unref(pipeline);
+        qgc_video_detach_appsink(0);
+        qgc_video_detach_appsink(1);
+    });
+    g_object_set(source, "is-live", TRUE, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline), source, sink, nullptr);
+    QVERIFY(gst_element_link(source, sink));
+
+    QVERIFY(GStreamer::attachNativeSink(sink, 1));
+    QVERIFY(gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE);
+    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(1) > 0, 5000);
+    QCOMPARE(qgc_video_frames(0), 0);
+
+    QVERIFY(GStreamer::attachNativeSink(sink, 0));
+    QCOMPARE(qgc_video_frames(1), 0);
+    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(0) > 1, 5000);
+    const int64_t played = qgc_video_frames(0);
+    QVERIFY(GStreamer::attachNativeSink(sink, 0));
+    QVERIFY(qgc_video_frames(0) >= played);
+    QCOMPARE(qgc_video_frames(1), 0);
+
+    expectLogMessage("Video.GStreamer.GStreamer", QtCriticalMsg, QRegularExpression(QStringLiteral("could not be attached to channel")));
+    QVERIFY(!GStreamer::attachNativeSink(sink, QGC_VIDEO_CHANNELS));
+    verifyExpectedLogMessage();
+}
+
+void GStreamerTest::_testASinkReplacedOnItsChannelStopsDrawingThere()
+{
+#ifdef Q_OS_ANDROID
+    QSKIP("the Android native sink draws into a window and keeps no frames");
+#endif
+    std::atomic<int> rendered{0};
+    GstElement* const pipeline = gst_pipeline_new(nullptr);
+    GstElement* const source = gst_element_factory_make("videotestsrc", nullptr);
+    GstElement* const sink = static_cast<GstElement*>(GStreamer::createNativeSink());
+    GstElement* const replacement = static_cast<GstElement*>(GStreamer::createNativeSink());
+    QVERIFY(pipeline && source && sink && replacement);
+    (void) gst_object_ref_sink(replacement);
+    const auto teardown = qScopeGuard([pipeline, replacement] {
+        (void) gst_element_set_state(pipeline, GST_STATE_NULL);
+        gst_object_unref(pipeline);
+        qgc_video_detach_appsink(0);
+        gst_object_unref(replacement);
+    });
+    g_object_set(source, "is-live", TRUE, nullptr);
+    gst_bin_add_many(GST_BIN(pipeline), source, sink, nullptr);
+    QVERIFY(gst_element_link(source, sink));
+    GstPad* const sinkPad = gst_element_get_static_pad(sink, "sink");
+    (void) gst_pad_add_probe(sinkPad, GST_PAD_PROBE_TYPE_BUFFER, [](GstPad*, GstPadProbeInfo*, gpointer count) {
+        static_cast<std::atomic<int>*>(count)->fetch_add(1);
+        return GST_PAD_PROBE_OK;
+    }, &rendered, nullptr);
+    gst_object_unref(sinkPad);
+
+    QVERIFY(GStreamer::attachNativeSink(sink, 0));
+    QVERIFY(gst_element_set_state(pipeline, GST_STATE_PLAYING) != GST_STATE_CHANGE_FAILURE);
+    QTRY_VERIFY_WITH_TIMEOUT(qgc_video_frames(0) > 0, 5000);
+
+    QVERIFY(GStreamer::attachNativeSink(replacement, 0));
+    const int swapped = rendered.load();
+    QTRY_VERIFY_WITH_TIMEOUT(rendered.load() > swapped + 1, 5000);
+    const int64_t inFlight = qgc_video_frames(0);
+    const int settled = rendered.load();
+    QTRY_VERIFY_WITH_TIMEOUT(rendered.load() > settled + 3, 5000);
+    QCOMPARE(qgc_video_frames(0), inFlight);
+}
+
+void GStreamerTest::_testStopEndsAPipelineWhoseUriWasCleared()
+{
+    QUdpSocket probe;
+    QVERIFY(probe.bind(QHostAddress::LocalHost, 0));
+    const quint16 port = probe.localPort();
+    probe.close();
+
+    GstVideoReceiver receiver;
+    const auto running = [&receiver] {
+        GstElement* const pipeline = receiver._acquirePipelineRef();
+        if (pipeline) {
+            gst_object_unref(pipeline);
+        }
+        return pipeline != nullptr;
+    };
+    QSignalSpy started(&receiver, &VideoReceiver::onStartComplete);
+    QSignalSpy stopped(&receiver, &VideoReceiver::onStopComplete);
+
+    receiver.setUri(QStringLiteral("udp://127.0.0.1:%1").arg(port));
+    receiver.start(3);
+    QTRY_COMPARE_WITH_TIMEOUT(started.count(), 1, 5000);
+    QCOMPARE(started.first().first().value<VideoReceiver::STATUS>(), VideoReceiver::STATUS_OK);
+    QVERIFY(running());
+
+    receiver.setUri(QString());
+    receiver.stop();
+    QTRY_COMPARE_WITH_TIMEOUT(stopped.count(), 1, 5000);
+    QVERIFY(!running());
 }
 
 void GStreamerTest::_testRecordingSinkAcceptsElementaryStreams_data()
@@ -636,9 +741,6 @@ void GStreamerTest::_testRecordingSinkFinalizesMidStreamH265Mp4()
         gst_object_unref(factory);
     }
 
-    // Synthetic 32x32 Annex-B H.265 access units. Only the first AU contains VPS/SPS/PPS; the
-    // later IDRs intentionally contain just a slice. This reproduces a camera that sends codec
-    // configuration once at session startup, before the user begins recording.
     const QByteArray initialAu = QByteArray::fromBase64(QByteArrayLiteral(
         "AAAAAUABDAH//wQIAAADAJgoAAADAAAeugJAAAAAAUIBAQQIAAADAJgoAAADAAAekAhBCKUt0lJhf/gACAALUGBgYEAAAAMAQ"
         "AAAAwECAAAAAUQBwHAwYBEgAAAAASgBrC2AE6/7X1g="));
@@ -837,6 +939,9 @@ QGC_GST_SKIP_TEST(_testEnvironmentSetup)
 QGC_GST_SKIP_TEST(_testWritePipelineDotReturnsEmptyOnWriteFailure)
 QGC_GST_SKIP_TEST(_testCompleteInit)
 QGC_GST_SKIP_TEST(_testCreateVideoReceiver)
+QGC_GST_SKIP_TEST(_testNativeSinkPlaysOnTheChannelItIsAttachedTo)
+QGC_GST_SKIP_TEST(_testASinkReplacedOnItsChannelStopsDrawingThere)
+QGC_GST_SKIP_TEST(_testStopEndsAPipelineWhoseUriWasCleared)
 
 void GStreamerTest::_testRecordingSinkAcceptsElementaryStreams_data()
 {

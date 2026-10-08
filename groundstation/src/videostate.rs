@@ -8,8 +8,7 @@ pub const DEPS: &[&str] = &[];
 
 pub const MAIN_RECEIVER: &str = "videoContent";
 pub const THERMAL_RECEIVER: &str = "thermalVideo";
-pub const TILE_RECEIVER_PREFIX: &str = "extraVideo";
-pub const MAX_VIDEO_TILES: usize = 8;
+pub const PIP_RECEIVER: &str = "extraVideo1";
 pub const START_TIMEOUT_S: u32 = 3;
 pub const RESTART_DELAY_MS: u64 = 1000;
 const MAX_VIDEO_RECONNECT_ATTEMPTS: u32 = 30;
@@ -55,6 +54,10 @@ pub const URL_SOURCES: &[&str] = &[SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_MPEG
 
 pub const NEGOTIATING_SOURCES: &[&str] = &[SOURCE_RTSP, SOURCE_WEBRTC];
 
+pub const SIGNAL_LIVE: &str = "live";
+pub const SIGNAL_CONNECTING: &str = "connecting";
+pub const SIGNAL_NONE: &str = "noSignal";
+pub const SIGNAL_IDLE: &str = "idle";
 
 pub const REFUSED_SOURCE_OUT_OF_RANGE: &str = "sourceOutOfRange";
 pub const REFUSED_SOURCE_UNCONFIGURED: &str = "sourceUnconfigured";
@@ -146,6 +149,15 @@ pub fn source_uri(source: &str, url: &str) -> String {
         SOURCE_FRONT_CAMERA => format!("{DEVICE_CAMERA_SCHEME}1"),
         _ => String::new(),
     }
+}
+
+fn listen_port(uri: &str) -> Option<&str> {
+    let (scheme, rest) = uri.split_once("://")?;
+    ["udp", "udp265", "mpegts"].contains(&scheme).then(|| rest.split(['/', '?']).next()?.rsplit_once(':').map(|(_, port)| port)).flatten()
+}
+
+pub fn same_stream(a: &str, b: &str) -> bool {
+    a == b || listen_port(a).is_some_and(|port| listen_port(b) == Some(port))
 }
 
 pub fn auto_stream_source(stream_type: u8, encoding: u8, uri: &str) -> (&'static str, String) {
@@ -314,7 +326,7 @@ impl Settings {
     }
 
     pub fn shown(&self, index: usize) -> bool {
-        index < self.count() && (index == self.current_index() || self.multi_view)
+        self.camera_index_for_receiver(MAIN_RECEIVER) == Some(index) || self.pip_camera() == Some(index)
     }
 
     pub fn clamp_active(&self, asked: i64) -> usize {
@@ -325,25 +337,30 @@ impl Settings {
         (0..self.count()).filter(|index| self.usable(*index)).collect()
     }
 
-    pub fn tiles(&self) -> Vec<usize> {
-        let current = self.current_index();
-        self.switchable().into_iter().filter(|index| *index != current).collect()
-    }
-
-    pub fn tile_camera_number(&self, slot: usize) -> Option<usize> {
-        self.multi_view.then(|| self.tiles().get(slot).copied().filter(|_| slot < MAX_VIDEO_TILES)).flatten().map(|index| index + 1)
-    }
-
     pub fn next_switchable(&self) -> Option<usize> {
-        let indices = self.switchable();
-        let at = indices.iter().position(|index| *index == self.current_index()).unwrap_or(0);
-        (indices.len() > 1).then(|| indices[(at + 1) % indices.len()])
+        let current = self.current_index();
+        (1..self.count()).map(|step| (current + step) % self.count()).find(|index| self.usable(*index))
+    }
+
+    pub fn uri_at(&self, index: usize) -> String {
+        source_uri(self.source_at(index), self.url_at(index))
+    }
+
+    pub fn pip_choice(&self) -> Option<usize> {
+        let current = self.current_index();
+        let main = self.uri_at(current);
+        (1..self.count()).map(|step| (current + step) % self.count()).find(|index| self.usable(*index) && !same_stream(&self.uri_at(*index), &main))
+    }
+
+    pub fn pip_camera(&self) -> Option<usize> {
+        self.multi_view.then(|| self.pip_choice()).flatten()
     }
 
     pub fn camera_index_for_receiver(&self, receiver: &str) -> Option<usize> {
         match receiver {
             MAIN_RECEIVER => (self.count() > 0).then(|| self.current_index()),
-            _ => receiver.strip_prefix(TILE_RECEIVER_PREFIX).and_then(|slot| slot.parse::<usize>().ok()).and_then(|slot| self.tile_camera_number(slot)).map(|number| number - 1),
+            PIP_RECEIVER => self.pip_camera(),
+            _ => None,
         }
     }
 }
@@ -432,10 +449,7 @@ impl VideoState {
     }
 
     pub fn desired_uri(&self, receiver: &str) -> String {
-        self.settings
-            .camera_index_for_receiver(receiver)
-            .map(|index| source_uri(self.settings.source_at(index), self.settings.url_at(index)))
-            .unwrap_or_default()
+        self.settings.camera_index_for_receiver(receiver).map(|index| self.settings.uri_at(index)).unwrap_or_default()
     }
 
     fn camera_receiver(receiver: &str) -> bool {
@@ -471,7 +485,11 @@ impl VideoState {
             })
             .cloned()
             .collect();
-        moved.iter().for_each(|name| {
+        let reset: Vec<String> = match self.has_video() {
+            true => moved.clone(),
+            false => names.iter().filter(|name| Self::camera_receiver(name)).cloned().collect(),
+        };
+        reset.iter().for_each(|name| {
             let uri = self.desired_uri(name);
             self.receivers.entry(name.clone()).and_modify(|receiver| {
                 receiver.uri = uri;
@@ -479,16 +497,19 @@ impl VideoState {
                 receiver.decoding = false;
                 receiver.size = None;
                 receiver.last_frame_s = None;
+                receiver.attempts = 0;
+                receiver.reconnect_attempts = 0;
+                receiver.failing_since_s = None;
             });
         });
         let changed = match latency_changed {
             true => names.clone(),
             false => moved,
         };
-        let restarts: Vec<Out> = match (changed.is_empty(), self.has_video()) {
-            (true, _) => Vec::new(),
-            (false, true) => changed.iter().flat_map(|name| self.restart_receiver(name)).collect(),
-            (false, false) => names.iter().map(|receiver| Out::StopReceiver { receiver: receiver.clone() }).collect(),
+        let restarts: Vec<Out> = match (self.has_video(), changed.is_empty()) {
+            (true, true) => Vec::new(),
+            (true, false) => changed.iter().flat_map(|name| self.restart_receiver(name)).collect(),
+            (false, _) => names.iter().map(|receiver| Out::StopReceiver { receiver: receiver.clone() }).collect(),
         };
         let cleared = match self.has_video() {
             true => Vec::new(),
@@ -764,8 +785,14 @@ impl VideoState {
         })
     }
 
-    pub fn main_camera(&self) -> Option<usize> {
-        self.settings.camera_index_for_receiver(MAIN_RECEIVER)
+    pub fn camera_signal(&self, index: usize) -> &'static str {
+        match (self.has_video() && self.settings.shown(index), self.receiver_for(index)) {
+            (false, _) => SIGNAL_IDLE,
+            (true, Some(state)) if state.decoding => SIGNAL_LIVE,
+            (true, Some(state)) if state.reconnect_attempts > 0 || state.failing_since_s.is_some() => SIGNAL_NONE,
+            (true, Some(state)) if state.streaming || state.connecting => SIGNAL_CONNECTING,
+            (true, _) => SIGNAL_NONE,
+        }
     }
 
     pub fn camera_connecting(&self, index: usize) -> bool {
@@ -845,7 +872,7 @@ impl VideoState {
             "videoSize": Self::size_value(self.receiver_for(current).and_then(|state| state.size)),
             "lastKnownVideoSize": Self::size_value(self.video_size),
             "switchable": self.settings.switchable(),
-            "tiles": self.settings.tiles(),
+            "pipSource": self.settings.pip_camera(),
             "nextSource": self.settings.next_switchable(),
             "cameras": cameras,
         })
@@ -911,7 +938,20 @@ mod tests {
     }
 
     fn wired() -> VideoState {
-        wire(settings(), &[MAIN_RECEIVER, THERMAL_RECEIVER, "extraVideo0", "extraVideo1"])
+        wire(settings(), &[MAIN_RECEIVER, THERMAL_RECEIVER, PIP_RECEIVER])
+    }
+
+    #[test]
+    fn switching_the_stream_off_stops_every_camera_and_reads_no_picture() {
+        let mut state = wired();
+        state.on_streaming(MAIN_RECEIVER, true);
+        state.on_decoding(MAIN_RECEIVER, true);
+        assert!(state.decoding);
+        let outs = state.on_settings(Settings { stream_enabled: false, ..settings() });
+        assert!(!state.decoding && !state.streaming, "a stream that is off has no picture, so the Video off panel can show and offer to turn it back on");
+        assert!(outs.iter().any(|out| *out == Out::StopReceiver { receiver: MAIN_RECEIVER.to_string() }), "and the main pipeline is told to stop");
+        state.on_settings(settings());
+        assert!(!state.decoding, "turning it back on starts from nothing rather than a stale picture");
     }
 
     #[test]
@@ -1054,34 +1094,83 @@ mod tests {
     }
 
     #[test]
-    fn tiles_are_the_switchable_cameras_that_are_not_on_screen_and_only_in_multi_view() {
-        let state = wired();
-        assert_eq!(state.settings.tiles(), vec![1]);
-        assert_eq!(state.settings.tile_camera_number(0), None, "with multi view off no tile carries a camera");
-        let multi = VideoState { settings: Settings { multi_view: true, ..settings() }, ..VideoState::default() };
-        assert_eq!(multi.settings.tile_camera_number(0), Some(2), "a tile reports a one-based camera number");
-        assert_eq!(multi.settings.tile_camera_number(1), None, "an empty tile has no camera, which is not camera zero");
-        let crowded = Settings {
-            multi_view: true,
-            cameras: std::iter::once(cam(SOURCE_RTSP, "rtsp://10.0.0.1:8554/live", "")).chain((0..10).map(|slot| cam(SOURCE_UDP_H264, &format!("0.0.0.0:56{slot:02}"), ""))).collect(),
-            ..settings()
-        };
-        assert_eq!(crowded.tiles().len(), 10, "ten more configured cameras are all switchable, so the cap is the only thing that can stop the eleventh tile");
-        assert_eq!(crowded.tile_camera_number(7), Some(9));
-        assert_eq!(crowded.tile_camera_number(8), None, "the eight tile widgets are the whole of the multi view, so slot eight carries nothing however many cameras are configured");
+    fn the_picture_in_picture_is_the_one_usable_camera_after_the_one_on_screen_wrapping_round() {
+        let four = |active_source: i64| Settings { cameras: vec![cam(SOURCE_RTSP, "rtsp://a/0", ""), cam(SOURCE_RTSP, "", ""), cam(SOURCE_RTSP, "rtsp://a/2", ""), cam(SOURCE_RTSP, "rtsp://a/3", "")], multi_view: true, active_source, ..settings() };
+        assert_eq!([0, 2, 3].map(|active| four(active).pip_camera()), [Some(2), Some(3), Some(0)], "first, middle and last: the next usable camera, skipping one with no address and wrapping round");
+        assert_eq!([0, 2, 3].map(|active| four(active).camera_index_for_receiver(PIP_RECEIVER)), [Some(2), Some(3), Some(0)], "the picture in picture receiver plays exactly that camera");
+        assert_eq!([0, 2, 3].map(|active| four(active).next_switchable()), [Some(2), Some(3), Some(0)], "which is the camera the switch goes to next");
+        assert_eq!((0..4).filter(|index| four(0).shown(*index)).collect::<Vec<_>>(), vec![0, 2], "the camera on screen and the picture in picture are the only cameras played");
+        assert_eq!(["extraVideo0", "extraVideo2", "extraVideo7"].map(|receiver| four(0).camera_index_for_receiver(receiver)), [None; 3], "no other tile receiver carries a camera");
+        let drone = SourceSlot { drone: true, ..cam(SOURCE_UDP_H264, "0.0.0.0:5600", "SIYI A8") };
+        let mine_and_drone = |active_source: i64| Settings { cameras: vec![cam(SOURCE_RTSP, "rtsp://a/0", ""), drone.clone()], multi_view: true, active_source, ..settings() };
+        assert_eq!((mine_and_drone(0).pip_camera(), mine_and_drone(1).pip_camera()), (Some(1), Some(0)), "a drone camera is in the same ring as the operator's");
+        assert_eq!(Settings { multi_view: true, ..only(cam(SOURCE_RTSP, "rtsp://a/0", "")) }.camera_index_for_receiver(PIP_RECEIVER), None, "one camera has nothing to put in the picture in picture");
+        let off = Settings { multi_view: false, ..four(0) };
+        assert_eq!((off.pip_camera(), off.camera_index_for_receiver(PIP_RECEIVER), off.next_switchable()), (None, None, Some(2)), "with the switch off nothing plays in the picture in picture, though the switch still knows the next camera");
+        assert!(off.shown(0) && !off.shown(2));
     }
 
     #[test]
-    fn the_main_receiver_shows_the_camera_on_screen_and_tiles_show_the_rest() {
+    fn the_picture_in_picture_never_plays_the_stream_the_main_camera_is_already_listening_for() {
+        let cameras = vec![
+            cam(SOURCE_UDP_H264, "0.0.0.0:5600", "Belly"),
+            SourceSlot { drone: true, ..cam(SOURCE_UDP_H264, "127.0.0.1:5600", "MockCam") },
+            cam(SOURCE_MPEGTS, "0.0.0.0:5601", "Tail"),
+            cam(SOURCE_RTSP, "rtsp://a/0", "Gimbal"),
+            cam(SOURCE_RTSP, "rtsp://a/0", "Gimbal again"),
+        ];
+        let at = |active_source: i64| Settings { cameras: cameras.clone(), multi_view: true, active_source, ..settings() }.pip_camera();
+        assert_eq!(at(0), Some(2), "one UDP port feeds one socket: two receivers on 5600 leave one starved and restarting forever, so the drone's 127.0.0.1:5600 is skipped");
+        assert_eq!(at(1), Some(2));
+        assert_eq!(at(3), Some(0), "the same RTSP address is the same picture, so it is skipped too");
+        assert_eq!(at(4), Some(0));
+        let pair = Settings { cameras: cameras[..2].to_vec(), multi_view: true, ..settings() };
+        assert_eq!((pair.pip_camera(), pair.next_switchable()), (None, Some(1)), "with nothing else to show there is no picture in picture, though the switch still offers the other camera");
+        assert!(same_stream("udp265://0.0.0.0:5600", "mpegts://10.0.0.1:5600/x") && !same_stream("udp://0.0.0.0:5600", "udp://0.0.0.0:5601") && !same_stream("tcp://a:5600", "tcp://b:5600"), "only a listen port is shared; a TCP client dials out");
+    }
+
+    #[test]
+    fn every_camera_reads_live_connecting_no_signal_or_idle() {
+        let mut state = wired();
+        assert_eq!((state.camera_signal(0), state.camera_signal(1), state.camera_signal(2)), (SIGNAL_CONNECTING, SIGNAL_IDLE, SIGNAL_IDLE), "a camera nobody plays is idle, configured or not");
+        state.on_decoding(MAIN_RECEIVER, true);
+        assert_eq!(state.camera_signal(0), SIGNAL_LIVE);
+        state.on_decoding(MAIN_RECEIVER, false);
+        state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
+        assert_eq!(state.camera_signal(0), SIGNAL_NONE, "a stream that failed is no signal while it waits to retry");
+        state.start_receiver(MAIN_RECEIVER);
+        assert_eq!(state.camera_signal(0), SIGNAL_NONE, "and stays so through the retries instead of flickering back to connecting");
+        state.on_frame(MAIN_RECEIVER, 5);
+        assert_eq!(state.camera_signal(0), SIGNAL_CONNECTING, "a frame arriving ends the failure");
+        state.on_stop_complete(MAIN_RECEIVER, Outcome::Ok);
+        assert_eq!(state.camera_signal(0), SIGNAL_CONNECTING, "a deliberate restart is not a lost signal");
+        state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed);
+        state.on_settings(Settings { active_source: 1, ..settings() });
+        assert_eq!(state.camera_signal(1), SIGNAL_CONNECTING, "a camera switched to does not inherit the last camera's failure");
+        assert_eq!(state.camera_signal(0), SIGNAL_IDLE);
+        let off = wire(Settings { stream_enabled: false, ..settings() }, &[MAIN_RECEIVER]);
+        assert_eq!(off.camera_signal(0), SIGNAL_IDLE, "with the stream switched off no camera is played");
+        let unregistered = wire(Settings { multi_view: true, ..settings() }, &[MAIN_RECEIVER]);
+        assert_eq!(unregistered.camera_signal(1), SIGNAL_NONE, "a picture in picture camera with no receiver to play it is no signal, not idle");
+        let mut pip = wire(Settings { multi_view: true, ..settings() }, &[MAIN_RECEIVER, PIP_RECEIVER]);
+        assert_eq!((pip.camera_signal(0), pip.camera_signal(1), pip.camera_signal(2)), (SIGNAL_CONNECTING, SIGNAL_CONNECTING, SIGNAL_IDLE), "the picture in picture camera is played, the rest are idle");
+        pip.on_decoding(PIP_RECEIVER, true);
+        assert_eq!(pip.camera_signal(1), SIGNAL_LIVE);
+        pip.on_decoding(PIP_RECEIVER, false);
+        pip.on_stop_complete(PIP_RECEIVER, Outcome::Failed);
+        assert_eq!((pip.camera_signal(0), pip.camera_signal(1)), (SIGNAL_CONNECTING, SIGNAL_NONE), "a stalled picture in picture is no signal without touching the main camera");
+    }
+
+    #[test]
+    fn the_main_receiver_shows_the_camera_on_screen_and_the_picture_in_picture_the_next() {
         let state = wired();
         assert_eq!(state.settings.camera_index_for_receiver(MAIN_RECEIVER), Some(0));
-        assert_eq!(state.settings.camera_index_for_receiver("extraVideo0"), None, "in single view only the main receiver is bound");
+        assert_eq!(state.settings.camera_index_for_receiver(PIP_RECEIVER), None, "with the picture in picture off only the main receiver is bound");
         assert_eq!(state.settings.camera_index_for_receiver(THERMAL_RECEIVER), None, "the thermal receiver is no camera slot");
-        assert_eq!(state.settings.camera_index_for_receiver("extraVideo7"), None, "a tile past the cameras on offer is bound to nothing");
         let second = Settings { active_source: 1, ..settings() };
         assert_eq!(second.camera_index_for_receiver(MAIN_RECEIVER), Some(1), "the main receiver follows the camera the operator picked, so a host that plays only one stream plays the right one");
         let multi = Settings { multi_view: true, active_source: 1, ..settings() };
-        assert_eq!(multi.camera_index_for_receiver("extraVideo0"), Some(0), "multi view puts every other camera in a tile");
+        assert_eq!(multi.camera_index_for_receiver(PIP_RECEIVER), Some(0), "the picture in picture plays the next camera round");
         assert_eq!(Settings::default().camera_index_for_receiver(MAIN_RECEIVER), None, "with no camera the main receiver shows nothing");
         let mut state = wired();
         let switched = state.on_settings(Settings { active_source: 1, ..settings() });
@@ -1207,7 +1296,7 @@ mod tests {
 
     #[test]
     fn switching_camera_resets_the_live_flags_but_keeps_the_last_known_frame_size() {
-        let mut state = wire(Settings { multi_view: true, ..settings() }, &[MAIN_RECEIVER, "extraVideo0"]);
+        let mut state = wire(Settings { multi_view: true, ..settings() }, &[MAIN_RECEIVER, PIP_RECEIVER]);
         state.on_streaming(MAIN_RECEIVER, true);
         state.on_decoding(MAIN_RECEIVER, true);
         let sized = state.on_video_size(MAIN_RECEIVER, 1920, 1080);
@@ -1225,18 +1314,18 @@ mod tests {
         let after = state.snapshot(0);
         assert_eq!(after["videoSize"], Value::Null, "the camera now on screen has reported no size, and the aspect must not be drawn from the previous camera's");
         assert_eq!(after["lastKnownVideoSize"], json!({ "widthPixels": 1920, "heightPixels": 1080 }), "the sticky value survives, named as stale rather than passed off as current");
-        let zero = state.on_video_size("extraVideo0", 0, 0);
+        let zero = state.on_video_size(PIP_RECEIVER, 0, 0);
         assert!(zero.is_empty(), "a zero size is no size, not a new one");
         assert_eq!(state.video_size, Some((1920, 1080)));
     }
 
     #[test]
     fn the_recording_indicator_follows_the_camera_on_screen_and_carries_a_clock() {
-        let mut state = wire(Settings { multi_view: true, ..settings() }, &[MAIN_RECEIVER, "extraVideo0"]);
-        let tile = state.on_recording("extraVideo0", true, 10);
-        assert!(tile.contains(&Out::RecordingChanged { receiver: "extraVideo0".to_string(), active: true }), "the receiver that reported has to be named, the telemetry capture is per receiver");
-        assert!(!state.recording, "a tile recording must not light the indicator for the camera the operator is watching");
-        assert!(!tile.contains(&Out::ActiveRecordingChanged(true)));
+        let mut state = wire(Settings { multi_view: true, ..settings() }, &[MAIN_RECEIVER, PIP_RECEIVER]);
+        let pip = state.on_recording(PIP_RECEIVER, true, 10);
+        assert!(pip.contains(&Out::RecordingChanged { receiver: PIP_RECEIVER.to_string(), active: true }), "the receiver that reported has to be named, the telemetry capture is per receiver");
+        assert!(!state.recording, "a picture in picture recording must not light the indicator for the camera the operator is watching");
+        assert!(!pip.contains(&Out::ActiveRecordingChanged(true)));
         assert!(state.camera_recording(1) && !state.camera_recording(0));
         let main = state.on_recording(MAIN_RECEIVER, true, 20);
         assert!(main.contains(&Out::ActiveRecordingChanged(true)), "the camera on screen is what the top level flag follows, same as streaming and decoding");
@@ -1244,8 +1333,8 @@ mod tests {
         let view = state.snapshot(50);
         assert_eq!(view["cameras"][0]["recordingSeconds"], 30, "a bool with no clock cannot tell a growing recording from a latched flag");
         assert_eq!(view["cameras"][1]["recordingSeconds"], 40);
-        let tile_stopped = state.on_recording("extraVideo0", false, 60);
-        assert!(!tile_stopped.contains(&Out::ActiveRecordingChanged(false)), "and a tile stopping must not put the indicator out while the camera on screen is still recording");
+        let pip_stopped = state.on_recording(PIP_RECEIVER, false, 60);
+        assert!(!pip_stopped.contains(&Out::ActiveRecordingChanged(false)), "and the picture in picture stopping must not put the indicator out while the camera on screen is still recording");
         assert!(state.recording);
         assert_eq!(state.snapshot(60)["cameras"][1]["recordingSeconds"], Value::Null);
     }
@@ -1283,11 +1372,11 @@ mod tests {
     #[test]
     fn changing_the_low_latency_setting_restarts_every_receiver() {
         let mut state = wired();
-        [MAIN_RECEIVER, THERMAL_RECEIVER, "extraVideo0"].iter().for_each(|name| {
+        [MAIN_RECEIVER, THERMAL_RECEIVER, PIP_RECEIVER].iter().for_each(|name| {
             state.on_start_complete(name, Outcome::Ok, 0);
         });
         let toggled = state.on_settings(Settings { low_latency: true, ..settings() });
-        [MAIN_RECEIVER, THERMAL_RECEIVER, "extraVideo0"].iter().for_each(|name| {
+        [MAIN_RECEIVER, THERMAL_RECEIVER, PIP_RECEIVER].iter().for_each(|name| {
             assert!(
                 toggled.contains(&Out::StopReceiver { receiver: name.to_string() }),
                 "a low latency change is its own restart trigger in the cpp and it is the one thing that restarts the thermal receiver too"

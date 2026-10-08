@@ -46,6 +46,7 @@ class VideoManager : public QObject
     Q_PROPERTY(bool     decoding                READ decoding                                   NOTIFY decodingChanged)
     Q_PROPERTY(QStringList cameraStatuses       READ cameraStatuses                             NOTIFY camerasChanged)
     Q_PROPERTY(QVariantList cameraConnecting    READ cameraConnecting                           NOTIFY camerasChanged)
+    Q_PROPERTY(QStringList cameraSignals        READ cameraSignals                              NOTIFY camerasChanged)
     Q_PROPERTY(QVariantList cameraRecording     READ cameraRecording                            NOTIFY recordingChanged)
     Q_PROPERTY(QVariantList cameraConfigured    READ cameraConfigured                           NOTIFY camerasChanged)
     Q_PROPERTY(QVariantList cameraUsable        READ cameraUsable                               NOTIFY camerasChanged)
@@ -54,6 +55,7 @@ class VideoManager : public QObject
     Q_PROPERTY(QStringList cameraSources        READ cameraSources                              NOTIFY camerasChanged)
     Q_PROPERTY(QStringList cameraUrls           READ cameraUrls                                 NOTIFY camerasChanged)
     Q_PROPERTY(int      activeVideoSource       READ activeVideoSource                          NOTIFY activeVideoSourceChanged)
+    Q_PROPERTY(int      pipCameraNumber         READ pipCameraNumber                            NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(bool     hasMultipleVideoSources READ hasMultipleVideoSources                    NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(QString  activeSourceLabel       READ activeSourceLabel                          NOTIFY activeVideoSourceChanged)
     Q_PROPERTY(int      videoSourceCount        READ videoSourceCount                           NOTIFY activeVideoSourceChanged)
@@ -92,15 +94,15 @@ public:
     Q_INVOKABLE void storeCameras(const QString &list, int active);
     Q_INVOKABLE void setNativeRendering(bool nativeRendering);
     Q_INVOKABLE void switchActiveVideoSource();
-    Q_INVOKABLE int maxVideoTiles() const;
-    Q_INVOKABLE int tileCameraNumber(int slot) const;
-    Q_INVOKABLE void promoteTile(int slot);
+    int pipCameraNumber() const;
+    Q_INVOKABLE void promotePip();
 #ifndef QGC_HEADLESS_CORE
-    Q_INVOKABLE void registerTileItem(int slot, QQuickItem *item);
+    Q_INVOKABLE void registerPipItem(QQuickItem *item);
 #endif
     Q_INVOKABLE QString cameraName(int index) const;
     QStringList cameraStatuses() const;
     QVariantList cameraConnecting() const;
+    QStringList cameraSignals() const;
     QVariantList cameraRecording() const;
     QVariantList cameraConfigured() const;
     QVariantList cameraUsable() const;
@@ -207,13 +209,19 @@ private:
     bool _updateVideoUri(VideoReceiver *receiver, const QString &uri);
     QString _sourceToUri(const QString &source, const QString &url) const;
     int _cameraIndexForReceiver(const VideoReceiver *receiver) const;
+    int _nativeChannelForReceiver(const VideoReceiver *receiver) const;
+    void _bindNativeSink(VideoReceiver *receiver);
     QString _cameraStatus(int index) const;
+    QString _cameraSignal(int index) const;
+    int _pipCamera() const;
+    bool _cameraPlayed(int index) const;
 #ifndef QGC_HEADLESS_CORE
     QQuickItem *_widgetForCamera(int cameraIndex) const;
 #endif
     void _rebindWidgets();
     void _refreshActiveReceiverState();
     void _setReceiverStatus(VideoReceiver *receiver, const QString &status, bool connecting = false);
+    void _setReceiverFailing(VideoReceiver *receiver, bool failing);
     bool _cameraConnecting(int index) const;
     bool _cameraRecording(int index) const;
     static QString _tileReceiverName(int slot);
@@ -232,13 +240,15 @@ private:
         bool decoding = false;
         bool connecting = false;
         bool recording = false;
+        bool failing = false;
+        bool stopRequested = false;
         QSize videoSize;
         QString status;
     };
 
     QList<VideoReceiver*> _videoReceivers;
 #ifndef QGC_HEADLESS_CORE
-    QHash<int, QPointer<QQuickItem>> _tileWidgets;
+    QPointer<QQuickItem> _pipWidget;
     QPointer<QQuickItem> _mainWidget;
 #endif
     QHash<QString, ReceiverState> _receiverState;

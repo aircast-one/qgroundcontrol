@@ -61,10 +61,10 @@ private fun Modifier.pinchZoom(enabled: Boolean): Modifier = if (!enabled) this 
 }
 
 @Composable
-private fun NoVideoArea(underFlyChrome: Boolean, thumb: Boolean, video: VideoReading?, linksToSettings: Boolean) {
+private fun NoVideoArea(underFlyChrome: Boolean, thumb: Boolean, video: VideoReading?) {
     if (underFlyChrome) return
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CompositionLocalProvider(LocalNoVideoSize provides if (thumb) NoVideoSize.Thumb else NoVideoSize.Full) { NoVideoPanel(video, linksToSettings = linksToSettings) }
+        CompositionLocalProvider(LocalNoVideoSize provides if (thumb) NoVideoSize.Thumb else NoVideoSize.Full) { NoVideoPanel(video) }
     }
 }
 
@@ -116,7 +116,6 @@ fun VideoSurface(
     fullScreen: Boolean = false,
     onClick: () -> Unit = {},
     onDoubleTap: () -> Unit = {},
-    settingsPreview: Boolean = false,
 ) {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
@@ -124,7 +123,7 @@ fun VideoSurface(
     if (video?.available == false) {
         if (!expanded) return
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
-            NoVideoArea(!settingsPreview && expanded && !fullScreen, thumb = false, video = video, linksToSettings = !settingsPreview)
+            NoVideoArea(expanded && !fullScreen, thumb = false, video = video)
         }
         return
     }
@@ -142,31 +141,7 @@ fun VideoSurface(
     ) {
         val (contentWidth, contentHeight) = videoContentSize(maxWidth.value, maxHeight.value, aspect, (fitMode as? Number)?.toInt() ?: fitMode?.toString()?.toIntOrNull() ?: VIDEO_FIT_HEIGHT)
         Box(Modifier.requiredSize(contentWidth.dp, contentHeight.dp)) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { context ->
-                SurfaceView(context).apply {
-                    holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) {
-                            QGCBridge.videoSetSurface(holder.surface)
-                        }
-
-                        override fun surfaceChanged(
-                            holder: SurfaceHolder,
-                            format: Int,
-                            width: Int,
-                            height: Int,
-                        ) {
-                            QGCBridge.videoSetSurface(holder.surface)
-                        }
-
-                        override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            QGCBridge.videoSetSurface(null)
-                        }
-                    })
-                }
-            },
-        )
+        VideoChannelSurface(MAIN_VIDEO_CHANNEL, Modifier.fillMaxSize())
 
         if (video?.decoding == true) {
             if (showGrid && !fullScreen) VideoGrid(Modifier.fillMaxSize())
@@ -184,11 +159,39 @@ fun VideoSurface(
                 Modifier.fillMaxSize(),
                 color = if (expanded) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.aircast.outdoorBackground,
             ) {
-                NoVideoArea(!settingsPreview && expanded && !fullScreen, thumb = !expanded, video = video, linksToSettings = !settingsPreview)
+                NoVideoArea(expanded && !fullScreen, thumb = !expanded, video = video)
             }
         }
 
     }
+}
+
+internal const val MAIN_VIDEO_CHANNEL = 0
+internal const val PIP_VIDEO_CHANNEL = 1
+
+@Composable
+fun VideoChannelSurface(channel: Int, modifier: Modifier = Modifier) {
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            SurfaceView(context).apply {
+                if (channel != MAIN_VIDEO_CHANNEL) setZOrderMediaOverlay(true)
+                holder.addCallback(object : SurfaceHolder.Callback {
+                    override fun surfaceCreated(holder: SurfaceHolder) {
+                        QGCBridge.videoSetSurface(channel, holder.surface)
+                    }
+
+                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                        QGCBridge.videoSetSurface(channel, holder.surface)
+                    }
+
+                    override fun surfaceDestroyed(holder: SurfaceHolder) {
+                        QGCBridge.videoSetSurface(channel, null)
+                    }
+                })
+            }
+        },
+    )
 }
 
 private val NO_VIDEO_FULL_HEIGHT = 230.dp

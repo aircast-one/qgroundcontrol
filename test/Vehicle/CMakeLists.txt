@@ -1,8 +1,3 @@
-# ============================================================================
-# Vehicle Unit Tests
-# Tests for vehicle connection, FTP, MAVLink commands, and link management
-# ============================================================================
-
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         AircastLinkFactGroupTest.cc
@@ -49,6 +44,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         SendMavCommandWithSignallingTest.h
         SetEstimatorOriginTest.cc
         SetEstimatorOriginTest.h
+        VehicleArmVideoTest.cc
+        VehicleArmVideoTest.h
         VehicleDistanceSensorFactGroupTest.cc
         VehicleDistanceSensorFactGroupTest.h
         VehicleLinkManagerTest.cc
@@ -57,9 +54,6 @@ target_sources(${CMAKE_PROJECT_NAME}
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# ----------------------------------------------------------------------------
-# Component Information Tests
-# ----------------------------------------------------------------------------
 add_subdirectory(ComponentInformation)
 
 add_qgc_test(APMAirframeComponentControllerTest LABELS Integration Vehicle)
@@ -81,6 +75,7 @@ add_qgc_test(RequestMessageTest LABELS Integration Vehicle TIMEOUT ${QGC_TEST_TI
 add_qgc_test(SendMavCommandWithHandlerTest LABELS Integration Vehicle)
 add_qgc_test(SendMavCommandWithSignallingTest LABELS Integration Vehicle)
 add_qgc_test(SetEstimatorOriginTest LABELS Integration Vehicle)
+add_qgc_test(VehicleArmVideoTest LABELS Integration Vehicle)
 add_qgc_test(VehicleDistanceSensorFactGroupTest LABELS Integration Vehicle)
 add_qgc_test(VehicleLinkManagerTest LABELS Integration Vehicle SERIAL)
 add_qgc_test(FirmwareUpdateAvailableTest LABELS Unit)

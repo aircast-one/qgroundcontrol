@@ -4,7 +4,7 @@ use crate::control::decode;
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", "video.cameraStatuses", PERSISTENCE_OFF];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.px4Firmware", "vehicle.apmFirmware", "links.serialPorts", "links.serialPortStrings", "video.isStreamSource", PERSISTENCE_OFF];
 const PERSISTENCE_OFF: &str = "settings.appSettings.disableAllPersistence";
 
 struct Page {
@@ -20,13 +20,15 @@ struct Page {
 }
 
 const GIMBAL_CONTROLLER_PAGE: &str = "Gimbal Controller";
+pub const VIDEO_SOURCES_PAGE: &str = "Video sources";
 const UNLISTED: &[&str] = &[GIMBAL_CONTROLLER_PAGE];
 
 const PAGES: &[Page] = &[
     Page { title: "General", sections: &[("Application", "appSettings"), ("Units", "unitsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Fly View", sections: &[("Fly View", "flyViewSettings"), ("MAVLink Actions", "mavlinkActionsSettings"), ("Battery Indicator", "batteryIndicatorSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Plan View", sections: &[("Plan View", "planViewSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
-    Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: "Video", sections: &[("Video", "videoSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
+    Page { title: VIDEO_SOURCES_PAGE, sections: &[], shows_links: false, shows_about: false, shows_video_sources: true, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Maps", sections: &[("Maps", "mapsSettings"), ("Flight Map", "flightMapSettings"), ("Map Providers", MAP_PROVIDERS), ("Offline Maps", "offlineMapsSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "Connections", sections: &[("Auto Connect", "autoConnectSettings")], shows_links: true, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
     Page { title: "MAVLink", sections: &[("MAVLink", "mavlinkSettings"), ("APM Stream Rates", "apmMavlinkStreamRateSettings")], shows_links: false, shows_about: false, shows_video_sources: false, shows_packet_radio: false, shows_console: false, shows_ntrip: false, shows_px4_logs: false },
@@ -68,6 +70,8 @@ const HIDDEN: &[&str] = &[
     "activeVideoSource",
     "videoSource",
     "cameras",
+    "streamEnabled",
+    "multiViewEnabled",
     "rtpJitterLatencyMs",
     "rtspAutoReconnect",
     "forceCpuVideoPath",
@@ -233,7 +237,6 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
     ("autoConnectSettings", "autoConnectNmeaPort", "Device"),
     ("autoConnectSettings", "autoConnectNmeaBaud", "Baudrate"),
     ("autoConnectSettings", "nmeaUdpPort", "NMEA stream UDP port"),
-    ("videoSettings", "multiViewEnabled", "Show all cameras"),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
     ("videoSettings", "disableWhenDisarmed", "Stop recording when disarmed"),
     ("videoSettings", "lowLatencyMode", "Low latency mode"),
@@ -399,7 +402,6 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Files", &["savePath", "androidDontSaveToSDCard", "disableAllPersistence"]),
     ]),
     ("videoSettings", &[
-        ("Cameras", &["streamEnabled", "multiViewEnabled"]),
         ("Display", &["videoFit", "gridLines", "showRecControl"]),
         ("Local Video Storage", &["videoSavePath", "recordingFormat", "disableWhenDisarmed", "enableStorageLimit", "maxVideoSize"]),
         (ADVANCED_BLOCK, &["rtspTimeout", "lowLatencyMode", "forceVideoDecoder", "aspectRatio"]),
@@ -429,7 +431,7 @@ fn link_host(url: &str) -> &str {
 }
 
 const SETTINGS_PAGES_MODEL: &str = include_str!("../../src/AppSettings/SettingsPagesModel.qml");
-const QGC_PAGE_NAMES: &[(&str, &[&str])] = &[("3D Viewer", &["3D View"]), ("MAVLink", &["Telemetry"]), ("About", &["Help"]), ("Connections", &["Connections", "Mock Link"])];
+const QGC_PAGE_NAMES: &[(&str, &[&str])] = &[(VIDEO_SOURCES_PAGE, &["Video"]), ("3D Viewer", &["3D View"]), ("MAVLink", &["Telemetry"]), ("About", &["Help"]), ("Connections", &["Connections", "Mock Link"])];
 
 fn qstr<'a>(element: &'a str, field: &str) -> Option<&'a str> {
     let opening = format!("{field}: qsTr(\"");
@@ -530,10 +532,9 @@ pub const ADVANCED_BLOCK: &str = "Advanced";
 
 const STREAM_ONLY: [&str; 4] = ["rtspTimeout", "disableWhenDisarmed", "lowLatencyMode", "aspectRatio"];
 
-pub fn video_row_shown(name: &str, stream_source: bool, has_cameras: bool) -> bool {
+pub fn video_row_shown(name: &str, stream_source: bool) -> bool {
     match name {
         "forceVideoDecoder" => stream_source,
-        "streamEnabled" => has_cameras,
         _ if STREAM_ONLY.contains(&name) => stream_source,
         _ => true,
     }
@@ -558,10 +559,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
     let path = format!("settings.{group}");
     let Some(backend) = backend else { return json!({ "title": title, "group": group, "path": path }) };
     let facts: Vec<Value> = object(&backend.get(&path)).get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
-    let video = (group == "videoSettings").then(|| {
-        let manager = object(&backend.get_fields("video", "isStreamSource,cameraStatuses"));
-        (flag(&manager, "isStreamSource"), manager.get("cameraStatuses").and_then(Value::as_array).is_some_and(|cameras| !cameras.is_empty()))
-    });
+    let stream_source = (group == "videoSettings").then(|| flag(&object(&backend.get_fields("video", "isStreamSource")), "isStreamSource"));
     let persistence_off = group == "mavlinkSettings" && object(&backend.get(PERSISTENCE_OFF)).get("value").and_then(Value::as_bool) == Some(true);
     let apm_streams = group != "mavlinkSettings" || section_applies("apmMavlinkStreamRateSettings", Some(backend));
     let shown: Vec<Value> = facts
@@ -570,7 +568,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .filter(|f| slice_shows(slice, f.get("name").and_then(Value::as_str).unwrap_or_default()))
         .filter(|f| !(persistence_off && f.get("name").and_then(Value::as_str).is_some_and(|n| LOGGING_ROWS.contains(&n))))
         .filter(|f| apm_streams || f.get("name").and_then(Value::as_str) != Some("apmStartMavlinkStreams"))
-        .filter(|f| video.as_ref().is_none_or(|(stream, cameras)| video_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), *stream, *cameras)))
+        .filter(|f| stream_source.is_none_or(|stream| video_row_shown(f.get("name").and_then(Value::as_str).unwrap_or_default(), stream)))
         .filter(|f| {
             let named = f.get("name").and_then(Value::as_str).unwrap_or_default();
             !HIDDEN_WHEN.iter().any(|(hidden, requires, when)| {
@@ -852,12 +850,10 @@ mod tests {
 
     #[test]
     fn video_rows_follow_the_cameras_on_offer() {
-        assert!(video_row_shown("lowLatencyMode", true, true));
-        assert!(!video_row_shown("rtspTimeout", false, true), "a camera that is not a stream has no stream rows");
-        assert!(!video_row_shown("forceVideoDecoder", false, true));
-        assert!(!video_row_shown("streamEnabled", false, false), "nothing to enable before a camera exists");
-        assert!(video_row_shown("streamEnabled", false, true));
-        assert!(video_row_shown("videoFit", false, false));
+        assert!(video_row_shown("lowLatencyMode", true));
+        assert!(!video_row_shown("rtspTimeout", false), "a camera that is not a stream has no stream rows");
+        assert!(!video_row_shown("forceVideoDecoder", false));
+        assert!(video_row_shown("videoFit", false));
     }
 
     #[test]
@@ -1289,10 +1285,10 @@ mod tests {
     #[test]
     fn the_page_list_carries_no_controls_and_the_page_carries_decoded_ones() {
         let list = settings_view(&Fake, &[]);
-        assert_eq!(list["pages"].as_array().unwrap().len(), 19);
-        assert_eq!(list["pages"][11]["showsPx4Logs"], true, "PX4 Log Transfer follows Remote ID as in SettingsPagesModel");
-        assert_eq!(list["pages"][17]["showsConsole"], true, "Console sits under Diagnostics as in SettingsPagesModel");
-        assert_eq!(list["pages"][18]["title"], "App Logging", "and App Logging follows it there");
+        assert_eq!(list["pages"].as_array().unwrap().len(), 20);
+        assert_eq!(list["pages"][12]["showsPx4Logs"], true, "PX4 Log Transfer follows Remote ID as in SettingsPagesModel");
+        assert_eq!(list["pages"][18]["showsConsole"], true, "Console sits under Diagnostics as in SettingsPagesModel");
+        assert_eq!(list["pages"][19]["title"], "App Logging", "and App Logging follows it there");
         assert!(list["pages"][0]["sections"][0].get("subsections").is_none());
         let general = settings_view(&Fake, &["General".to_string()]);
         let app = &general["sections"][0];
@@ -1330,12 +1326,23 @@ mod tests {
         assert!(general["helpLinks"].as_array().unwrap().is_empty());
     }
     #[test]
-    fn the_video_page_opens_on_the_cameras_and_tuning_waits_in_advanced() {
+    fn the_video_page_opens_on_the_display_and_tuning_waits_in_advanced() {
         let video = SUBSECTIONS.iter().find(|(group, _)| *group == "videoSettings").map(|(_, blocks)| *blocks).unwrap();
-        assert_eq!(video[0], ("Cameras", &["streamEnabled", "multiViewEnabled"][..]), "the camera list leads the page, and no camera is set up in a separate block of its own");
-        assert!(["videoSource", "cameras"].iter().all(|name| HIDDEN.contains(name)), "the camera list is edited by its own editor, not as rows");
+        assert_eq!(video[0].0, "Display");
+        assert!(["videoSource", "cameras", "streamEnabled", "multiViewEnabled"].iter().all(|name| HIDDEN.contains(name)), "cameras are set up under Video sources and picture in picture is switched from Fly, so neither is a row");
         let advanced = video.iter().find(|(title, _)| *title == ADVANCED_BLOCK).unwrap().1;
         assert!(["rtspTimeout", "lowLatencyMode", "forceVideoDecoder", "aspectRatio"].iter().all(|name| advanced.contains(name)));
     }
 
+    #[test]
+    fn the_camera_list_has_a_page_of_its_own_and_the_video_page_no_longer_carries_it() {
+        let sources = PAGES.iter().find(|page| page.title == VIDEO_SOURCES_PAGE).unwrap();
+        assert!(sources.shows_video_sources && sources.sections.is_empty(), "the page is the camera list and nothing else");
+        assert_eq!(PAGES.iter().filter(|page| page.shows_video_sources).map(|page| page.title).collect::<Vec<_>>(), vec![VIDEO_SOURCES_PAGE], "one page draws the list");
+        assert!(page_shown(sources, true, false) && page_shown(sources, false, true));
+        assert!(page_keywords(VIDEO_SOURCES_PAGE).contains("rtsp"), "searching for a stream finds the list");
+        let page = settings_view(&Fake, &[VIDEO_SOURCES_PAGE.to_string()]);
+        assert_eq!((page["showsVideoSources"].clone(), page["sections"].clone()), (json!(true), json!([])));
+        assert_eq!(settings_view(&Fake, &["Video".to_string()])["showsVideoSources"], json!(false));
+    }
 }

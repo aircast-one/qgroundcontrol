@@ -124,7 +124,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .filter(|(w, h)| *w > 0 && *h > 0)
         .map(|(width, height)| json!({ "width": width, "height": height }));
     let recording = flag(&video, "recording");
-    let any_connecting = cameras.iter().any(|c| c["connecting"] == true);
+    let any_connecting = connecting.iter().any(|flag| *flag);
     let configured = cameras.iter().filter(|c| c["configured"] == true).count();
     json!({
         "kind": "object",
@@ -147,6 +147,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "noVideoText": no_video_text(&at(&sources), &at(&urls)),
         "cameras": cameras,
         "nativePipeline": crate::videohost::native_pipeline(),
+        "pipPipeline": crate::videohost::pip_pipeline(),
         "deviceCamera": crate::videohost::device_camera(),
         "nativeRecording": crate::videohost::native_recording(),
     })

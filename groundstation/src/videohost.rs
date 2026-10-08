@@ -2,7 +2,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::videostate::{MAIN_RECEIVER, Out, Outcome, Settings, SourceSlot, Status, TILE_RECEIVER_PREFIX, VideoState};
+use crate::videostate::{MAIN_RECEIVER, Out, Outcome, PIP_RECEIVER, Settings, SourceSlot, Status, VideoState};
 
 const RECORD_TEE: &str = "tee name=nativerec ! queue";
 #[cfg(not(target_os = "android"))]
@@ -10,20 +10,34 @@ const NATIVE_SINK: &str = "videoconvert ! appsink name=nativesink";
 #[cfg(target_os = "android")]
 const NATIVE_SINK: &str = "glupload ! glcolorconvert ! video/x-raw(memory:GLMemory),format=RGBA,texture-target=2D ! gldownload ! videoconvert ! appsink name=nativesink";
 
+pub const VIDEO_CHANNELS: usize = 2;
+pub const MAIN_CHANNEL: usize = 0;
+pub const PIP_CHANNEL: usize = 1;
+const CHANNEL_RECEIVERS: [&str; VIDEO_CHANNELS] = [MAIN_RECEIVER, PIP_RECEIVER];
+
 #[derive(Default)]
-struct Host {
-    state: VideoState,
-    registered: usize,
+struct Channel {
     wanted: bool,
     restart_at_ms: Option<u64>,
     reported: (bool, bool, u32, u32),
-    recording_file: Option<String>,
-    vehicle: Option<u8>,
     timeout_s: u32,
     progress: Option<Watch>,
     flowing: bool,
     problem: Option<(String, String)>,
+}
+
+#[derive(Default)]
+struct Host {
+    state: VideoState,
+    registered: usize,
+    channels: [Channel; VIDEO_CHANNELS],
+    recording_file: Option<String>,
+    vehicle: Option<u8>,
     camera_rotation: u32,
+}
+
+fn channel_of(receiver: &str) -> Option<usize> {
+    CHANNEL_RECEIVERS.iter().position(|played| *played == receiver)
 }
 
 const FILE_EXTENSIONS: [&str; 3] = ["mkv", "mov", "mp4"];
@@ -38,10 +52,6 @@ static HOST: Mutex<Option<Host>> = Mutex::new(None);
 
 fn setting(name: &str) -> Value {
     crate::settingsstore::raw_setting(&format!("settings.videoSettings.{name}")).unwrap_or(Value::Null)
-}
-
-fn text(name: &str) -> String {
-    setting(name).as_str().unwrap_or_default().trim().to_string()
 }
 
 pub fn settings_from(text: &dyn Fn(&str) -> String, flag: &dyn Fn(&str, bool) -> bool, number: &dyn Fn(&str, i64) -> i64) -> Settings {
@@ -149,16 +159,16 @@ fn begin_recording() -> Result<(), Option<&'static str>> {
         Some(_) => return Err(None),
         None => {}
     }
+    let records_main = host.state.start_recording().iter().any(|out| matches!(out, Out::StartRecording { receivers } if receivers.iter().any(|receiver| receiver == MAIN_RECEIVER)));
+    records_main.then_some(()).ok_or(None)?;
     let folder = crate::settingsstore::video_save_path().ok_or(Some(NO_SAVE_PATH_MESSAGE))?;
     cleanup_old_videos(&folder);
     let _ = std::fs::create_dir_all(&folder);
     let stamp = chrono::Local::now().format("%Y-%m-%d_%H.%M.%S").to_string();
     let file = recording_file_name(&folder, &stamp, recording_format()).ok_or(Some(BAD_FORMAT_MESSAGE))?;
-    let outs = host.state.start_recording();
-    if outs.iter().any(|out| matches!(out, Out::StartRecording { receivers } if receivers.iter().any(|r| r == MAIN_RECEIVER))) {
-        crate::subtitles::start(&file, Some((host.reported.2, host.reported.3)), crate::hub::now_ms());
-        host.recording_file = Some(file);
-    }
+    let (_, _, width, height) = host.channels[MAIN_CHANNEL].reported;
+    crate::subtitles::start(&file, Some((width, height)), crate::hub::now_ms());
+    host.recording_file = Some(file);
     Ok(())
 }
 
@@ -190,12 +200,13 @@ pub fn photo_file_name(folder: &str, stamp: &str) -> String {
 #[cfg(all(feature = "jni-host", not(test)))]
 fn latest_frame() -> Option<(Vec<u8>, usize, usize)> {
     let video = crate::androidvideo::video()?;
-    let (width, height) = unsafe { ((video.width)(), (video.height)()) };
+    let main = MAIN_CHANNEL as std::ffi::c_int;
+    let (width, height) = unsafe { ((video.width)(main), (video.height)(main)) };
     let tight = usize::try_from(width).ok().filter(|w| *w > 0)? * usize::try_from(height).ok().filter(|h| *h > 0)? * 4;
     FRAME_CAPACITY_FACTORS.iter().find_map(|factor| {
         let mut buffer = vec![0u8; tight * factor];
         let (mut w, mut h, mut stride) = (0, 0, 0);
-        let copied = unsafe { (video.copy_frame)(buffer.as_mut_ptr().cast(), i32::try_from(buffer.len()).ok()?, &mut w, &mut h, &mut stride) };
+        let copied = unsafe { (video.copy_frame)(main, buffer.as_mut_ptr().cast(), i32::try_from(buffer.len()).ok()?, &mut w, &mut h, &mut stride) };
         let (w, h, stride) = (usize::try_from(w).ok()?, usize::try_from(h).ok()?, usize::try_from(stride).ok()?);
         copied.then(|| tight_rgba(&buffer, w, h, stride).map(|rgba| (rgba, w, h))).flatten()
     })
@@ -299,31 +310,36 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
     let follow_ups: Vec<Out> = outs
         .into_iter()
         .flat_map(|out| match out {
-            Out::StartReceiver { receiver, timeout_s, low_latency } if receiver == MAIN_RECEIVER => {
-                host.restart_at_ms = None;
-                host.timeout_s = timeout_s;
-                let uri = host.state.desired_uri(MAIN_RECEIVER);
-                match pipeline(&uri, setting("rtpJitterLatencyMs").as_i64().unwrap_or(80), low_latency).is_some() {
-                    true => {
-                        host.wanted = true;
-                        host.progress = Some(Watch::fresh(now_ms));
-                        Vec::new()
-                    }
-                    false => {
-                        host.wanted = false;
-                        host.progress = None;
-                        host.state.on_start_complete(MAIN_RECEIVER, unbuildable_outcome(&uri), now_ms / 1000)
+            Out::StartReceiver { receiver, timeout_s, low_latency } => match channel_of(&receiver) {
+                Some(channel) => {
+                    let uri = host.state.desired_uri(&receiver);
+                    let buildable = pipeline(&uri, setting("rtpJitterLatencyMs").as_i64().unwrap_or(80), low_latency).is_some();
+                    let played = &mut host.channels[channel];
+                    played.restart_at_ms = None;
+                    played.timeout_s = timeout_s;
+                    played.wanted = buildable;
+                    played.progress = buildable.then(|| Watch::fresh(now_ms));
+                    match buildable {
+                        true => Vec::new(),
+                        false => host.state.on_start_complete(&receiver, unbuildable_outcome(&uri), now_ms / 1000),
                     }
                 }
-            }
-            Out::StopReceiver { receiver } if receiver == MAIN_RECEIVER => {
-                crate::subtitles::stop();
-                host.wanted = false;
-                host.progress = None;
-                host.reported = (false, false, 0, 0);
-                host.flowing = false;
-                host.state.on_stop_complete(MAIN_RECEIVER, Outcome::Ok)
-            }
+                None => Vec::new(),
+            },
+            Out::StopReceiver { receiver } => match channel_of(&receiver) {
+                Some(channel) => {
+                    if channel == MAIN_CHANNEL {
+                        crate::subtitles::stop();
+                    }
+                    let played = &mut host.channels[channel];
+                    played.wanted = false;
+                    played.progress = None;
+                    played.reported = (false, false, 0, 0);
+                    played.flowing = false;
+                    host.state.on_stop_complete(&receiver, Outcome::Ok)
+                }
+                None => Vec::new(),
+            },
             Out::StopTelemetryCapture => {
                 crate::subtitles::stop();
                 Vec::new()
@@ -332,8 +348,10 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
                 crate::settingsstore::set_raw(&format!("settings.videoSettings.{name}"), &json!(value));
                 Vec::new()
             }
-            Out::RestartAfter { receiver, delay_ms } if receiver == MAIN_RECEIVER => {
-                host.restart_at_ms = Some(now_ms + delay_ms);
+            Out::RestartAfter { receiver, delay_ms } => {
+                if let Some(channel) = channel_of(&receiver) {
+                    host.channels[channel].restart_at_ms = Some(now_ms + delay_ms);
+                }
                 Vec::new()
             }
             _ => Vec::new(),
@@ -395,21 +413,26 @@ fn synced() -> MutexGuard<'static, Option<Host>> {
         let outs = host.state.on_settings(settings);
         apply(host, outs, now_ms);
     }
-    let receivers = host.state.settings.count();
+    let receivers = host.state.settings.count().min(VIDEO_CHANNELS);
     if host.registered < receivers {
-        let names: Vec<String> = (host.registered..receivers).map(|index| if index == 0 { MAIN_RECEIVER.to_string() } else { format!("{TILE_RECEIVER_PREFIX}{}", index - 1) }).collect();
+        let names = &CHANNEL_RECEIVERS[host.registered..receivers];
         host.registered = receivers;
         names.iter().for_each(|name| {
             let outs = host.state.register_receiver(name);
             apply(host, outs, now_ms);
         });
     }
-    if host.restart_at_ms.is_some_and(|at| now_ms >= at) {
-        host.restart_at_ms = None;
-        let outs = host.state.start_receiver(MAIN_RECEIVER);
-        apply(host, outs, now_ms);
-    }
+    restart_due(host, now_ms);
     guard
+}
+
+fn restart_due(host: &mut Host, now_ms: u64) {
+    let due: Vec<usize> = (0..VIDEO_CHANNELS).filter(|channel| host.channels[*channel].restart_at_ms.is_some_and(|at| now_ms >= at)).collect();
+    due.into_iter().for_each(|channel| {
+        host.channels[channel].restart_at_ms = None;
+        let outs = host.state.start_receiver(CHANNEL_RECEIVERS[channel]);
+        apply(host, outs, now_ms);
+    });
 }
 
 fn status_text(status: Option<Status>) -> &'static str {
@@ -430,7 +453,6 @@ fn object(host: &Host) -> Value {
     let state = &host.state;
     let settings = &state.settings;
     let current = settings.current_index();
-    let latency = setting("rtpJitterLatencyMs").as_i64().unwrap_or(80);
     let uri = state.desired_uri(MAIN_RECEIVER);
     let (width, height) = state.video_size.unwrap_or((0, 0));
     json!({
@@ -447,6 +469,7 @@ fn object(host: &Host) -> Value {
         "hasMultipleVideoSources": state.has_multiple_sources(),
         "cameraStatuses": (0..settings.count()).map(|i| status_text(state.receiver_status(i))).collect::<Vec<_>>(),
         "cameraConnecting": (0..settings.count()).map(|i| state.camera_connecting(i)).collect::<Vec<_>>(),
+        "cameraSignals": (0..settings.count()).map(|i| state.camera_signal(i)).collect::<Vec<_>>(),
         "cameraRecording": (0..settings.count()).map(|i| state.camera_recording(i)).collect::<Vec<_>>(),
         "cameraConfigured": (0..settings.count()).map(|i| settings.configured(i)).collect::<Vec<_>>(),
         "cameraUsable": (0..settings.count()).map(|i| settings.usable(i)).collect::<Vec<_>>(),
@@ -454,12 +477,18 @@ fn object(host: &Host) -> Value {
         "cameraNames": (0..settings.count()).map(|i| settings.name_at(i).unwrap_or("")).collect::<Vec<_>>(),
         "cameraSources": (0..settings.count()).map(|i| settings.source_at(i)).collect::<Vec<_>>(),
         "cameraUrls": (0..settings.count()).map(|i| settings.url_at(i)).collect::<Vec<_>>(),
-        "nativePipeline": (host.wanted && state.has_video()).then(|| pipeline(&oriented(&uri, host.camera_rotation), latency, settings.low_latency)).flatten(),
+        "nativePipeline": pipeline_for(host, MAIN_CHANNEL),
+        "pipPipeline": pipeline_for(host, PIP_CHANNEL),
         "deviceCamera": crate::videostate::device_camera(&uri),
         "nativeRecording": host.recording_file,
         "nativeRecordingFormat": recording_format(),
-        "streamProblem": host.problem.as_ref().filter(|(at, _)| *at == uri).map_or("", |(_, text)| text.as_str()),
+        "streamProblem": host.channels[MAIN_CHANNEL].problem.as_ref().filter(|(at, _)| *at == uri).map_or("", |(_, text)| text.as_str()),
     })
+}
+
+fn pipeline_for(host: &Host, channel: usize) -> Option<String> {
+    let uri = host.state.desired_uri(CHANNEL_RECEIVERS.get(channel)?);
+    (host.channels[channel].wanted && host.state.has_video()).then(|| pipeline(&oriented(&uri, host.camera_rotation), setting("rtpJitterLatencyMs").as_i64().unwrap_or(80), host.state.settings.low_latency)).flatten()
 }
 
 fn served() -> bool {
@@ -475,7 +504,7 @@ pub fn native_recording() -> Option<Value> {
     Some(json!({ "file": file, "format": recording_format() }))
 }
 
-pub static RESTART: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static RESTART: [std::sync::atomic::AtomicBool; VIDEO_CHANNELS] = [const { std::sync::atomic::AtomicBool::new(false) }; VIDEO_CHANNELS];
 
 pub fn unbuildable_outcome(uri: &str) -> Outcome {
     if uri.trim().is_empty() { Outcome::InvalidUrl } else { Outcome::Failed }
@@ -491,6 +520,16 @@ pub fn device_camera() -> Option<u64> {
 
 pub fn native_pipeline() -> Option<String> {
     get("video.nativePipeline")?.get("value")?.as_str().map(str::to_string)
+}
+
+pub fn pip_pipeline() -> Option<String> {
+    get("video.pipPipeline")?.get("value")?.as_str().map(str::to_string)
+}
+
+pub fn channel_pipeline(channel: usize) -> Option<String> {
+    served().then_some(())?;
+    let guard = synced();
+    pipeline_for(guard.as_ref()?, channel)
 }
 
 pub fn get(path: &str) -> Option<Value> {
@@ -525,48 +564,51 @@ pub fn stalled(watch: Option<Watch>, source: i64, decoded: i64, timeout_s: u32, 
     (Some(next), stall)
 }
 
-fn report(host: &mut Host, running: bool, frames: i64, width: u32, height: u32, source: Option<i64>, restarted: bool, error: &str) {
-    let now_ms = crate::hub::now_ms();
-    if restarted && host.wanted {
-        host.progress = Some(Watch::fresh(now_ms));
+fn report(host: &mut Host, channel: usize, running: bool, frames: i64, width: u32, height: u32, source: Option<i64>, restarted: bool, error: &str, now_ms: u64) {
+    let receiver = CHANNEL_RECEIVERS[channel];
+    let played = &mut host.channels[channel];
+    if restarted && played.wanted {
+        played.progress = Some(Watch::fresh(now_ms));
     }
-    let buffers = source.unwrap_or(0);
-    let (progress, stall) = stalled(host.progress, buffers, frames, host.timeout_s, now_ms);
-    host.progress = progress;
-    if host.wanted && stall {
-        let uri = host.state.desired_uri(MAIN_RECEIVER);
-        host.problem = Some((uri.clone(), stream_problem(&uri, buffers, frames, error)));
-        host.wanted = false;
-        host.progress = None;
-        host.reported = (false, false, 0, 0);
-        host.flowing = false;
-        RESTART.store(true, std::sync::atomic::Ordering::Relaxed);
-        let outs: Vec<Out> = [host.state.on_decoding(MAIN_RECEIVER, false), host.state.on_streaming(MAIN_RECEIVER, false), host.state.on_stop_complete(MAIN_RECEIVER, Outcome::Failed)].into_iter().flatten().collect();
+    let buffers = source.unwrap_or(frames);
+    let (progress, stall) = stalled(played.progress, buffers, frames, played.timeout_s, now_ms);
+    played.progress = progress;
+    if played.wanted && stall {
+        let uri = host.state.desired_uri(receiver);
+        let problem = stream_problem(&uri, buffers, frames, error);
+        log::warn!("Video channel {channel} stalled after {buffers} source buffers and {frames} frames: {problem}");
+        played.problem = Some((uri.clone(), problem));
+        played.wanted = false;
+        played.progress = None;
+        played.reported = (false, false, 0, 0);
+        played.flowing = false;
+        RESTART[channel].store(true, std::sync::atomic::Ordering::Relaxed);
+        let outs: Vec<Out> = [host.state.on_decoding(receiver, false), host.state.on_streaming(receiver, false), host.state.on_stop_complete(receiver, Outcome::Failed)].into_iter().flatten().collect();
         apply(host, outs, now_ms);
         return;
     }
     let decoding = running && frames > 0;
     let flowing = running && source.is_none_or(|count| count > 0);
     if decoding {
-        host.problem = None;
-    } else if host.wanted && !error.is_empty() {
-        let uri = host.state.desired_uri(MAIN_RECEIVER);
-        host.problem = Some((uri.clone(), stream_problem(&uri, buffers, frames, error)));
+        played.problem = None;
+    } else if played.wanted && !error.is_empty() {
+        let uri = host.state.desired_uri(receiver);
+        played.problem = Some((uri.clone(), stream_problem(&uri, buffers, frames, error)));
     }
-    let (before, was_flowing) = (host.reported, host.flowing);
-    host.reported = (running, decoding, width, height);
-    host.flowing = flowing;
+    let (before, was_flowing) = (played.reported, played.flowing);
+    played.reported = (running, decoding, width, height);
+    played.flowing = flowing;
     let outs: Vec<Out> = [
-        (running && !before.0).then(|| host.state.on_start_complete(MAIN_RECEIVER, Outcome::Ok, crate::hub::now_ms() / 1000)),
-        (flowing != was_flowing).then(|| host.state.on_streaming(MAIN_RECEIVER, flowing)),
-        (decoding != before.1).then(|| host.state.on_decoding(MAIN_RECEIVER, decoding)),
-        ((width, height) != (before.2, before.3)).then(|| host.state.on_video_size(MAIN_RECEIVER, width, height)),
+        (running && !before.0).then(|| host.state.on_start_complete(receiver, Outcome::Ok, now_ms / 1000)),
+        (flowing != was_flowing).then(|| host.state.on_streaming(receiver, flowing)),
+        (decoding != before.1).then(|| host.state.on_decoding(receiver, decoding)),
+        ((width, height) != (before.2, before.3)).then(|| host.state.on_video_size(receiver, width, height)),
     ]
     .into_iter()
     .flatten()
     .flatten()
     .collect();
-    apply(host, outs, crate::hub::now_ms());
+    apply(host, outs, now_ms);
 }
 
 fn place(uri: &str) -> String {
@@ -642,9 +684,9 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             Some(json!({ "ok": true }))
         }
         "video.restart" => {
-            RESTART.store(true, std::sync::atomic::Ordering::Relaxed);
-            if !host.wanted {
-                host.restart_at_ms = None;
+            RESTART[MAIN_CHANNEL].store(true, std::sync::atomic::Ordering::Relaxed);
+            if !host.channels[MAIN_CHANNEL].wanted {
+                host.channels[MAIN_CHANNEL].restart_at_ms = None;
                 let outs = host.state.start_receiver(MAIN_RECEIVER);
                 apply(host, outs, crate::hub::now_ms());
             }
@@ -662,8 +704,13 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "video.reportNative" => {
             let number = |i: usize| given.get(i).and_then(Value::as_i64).unwrap_or(0);
             let size = |i: usize| u32::try_from(number(i)).unwrap_or(0);
-            report(host, given.get(0).and_then(Value::as_bool).unwrap_or(false), number(1), size(2), size(3), given.get(5).and_then(Value::as_i64), given.get(6).and_then(Value::as_bool).unwrap_or(false), given.get(4).and_then(Value::as_str).unwrap_or_default());
-            Some(json!({ "ok": true }))
+            match usize::try_from(number(7)).ok().filter(|channel| *channel < VIDEO_CHANNELS) {
+                Some(channel) => {
+                    report(host, channel, given.get(0).and_then(Value::as_bool).unwrap_or(false), number(1), size(2), size(3), given.get(5).and_then(Value::as_i64), given.get(6).and_then(Value::as_bool).unwrap_or(false), given.get(4).and_then(Value::as_str).unwrap_or_default(), crate::hub::now_ms());
+                    Some(json!({ "ok": true }))
+                }
+                None => Some(json!({ "ok": false, "reason": "no such video channel" })),
+            }
         }
         _ => None,
     }
@@ -792,15 +839,130 @@ mod tests {
         apply(&mut host, outs, 0);
         let outs = host.state.register_receiver(MAIN_RECEIVER);
         apply(&mut host, outs, 0);
-        assert!(host.wanted, "a configured stream starts the main receiver");
+        assert!(host.channels[MAIN_CHANNEL].wanted, "a configured stream starts the main receiver");
         assert_eq!(status_text(host.state.receiver_status(0)), "Connecting\u{2026}");
-        report(&mut host, true, 0, 0, 0, Some(0), false, "");
+        report(&mut host, MAIN_CHANNEL, true, 0, 0, 0, Some(0), false, "", 0);
         assert_eq!(status_text(host.state.receiver_status(0)), "Connecting\u{2026}", "a pipeline that has received nothing is still connecting, not connected");
-        report(&mut host, true, 0, 0, 0, Some(4), false, "");
+        report(&mut host, MAIN_CHANNEL, true, 0, 0, 0, Some(4), false, "", 0);
         assert_eq!(status_text(host.state.receiver_status(0)), "Connected, waiting for frames");
-        report(&mut host, true, 12, 640, 360, Some(12), false, "");
+        assert_eq!(object(&host)["cameraSignals"], json!(["connecting"]));
+        report(&mut host, MAIN_CHANNEL, true, 12, 640, 360, Some(12), false, "", 0);
         assert_eq!((host.state.decoding, host.state.video_size), (true, Some((640, 360))));
         assert_eq!(status_text(host.state.receiver_status(0)), "");
+        assert_eq!(object(&host)["cameraSignals"], json!(["live"]), "the head reads one token per camera beside the sentence");
         assert_eq!(status_text(host.state.receiver_status(1)), "No video source", "a camera with no receiver is no video source, as VideoManager::_cameraStatus says");
+    }
+
+    fn hosted(cameras: &str, active: i64, multi_view: bool) -> Host {
+        let mut host = Host::default();
+        let outs = host.state.on_settings(Settings { multi_view, ..settings_from(&|name| if name == "cameras" { cameras.to_string() } else { String::new() }, &|_, default| default, &|name, default| if name == "activeVideoSource" { active } else { default }) });
+        apply(&mut host, outs, 0);
+        CHANNEL_RECEIVERS.iter().for_each(|name| {
+            let outs = host.state.register_receiver(name);
+            apply(&mut host, outs, 0);
+        });
+        host
+    }
+
+    fn set_multi_view(host: &mut Host, multi_view: bool) {
+        let outs = host.state.on_settings(Settings { multi_view, ..host.state.settings.clone() });
+        apply(host, outs, 0);
+    }
+
+    const THREE: &str = r#"[{"name":"Front","source":"UDP h.264 Video Stream","url":"0.0.0.0:5600"},{"name":"Belly","source":"UDP h.265 Video Stream","url":"0.0.0.0:5601"},{"name":"Tail","source":"UDP h.264 Video Stream","url":"0.0.0.0:5602"}]"#;
+
+    #[test]
+    fn with_multi_view_on_the_picture_in_picture_camera_plays_on_the_second_channel_and_nothing_else_starts() {
+        let mut host = hosted(THREE, 0, false);
+        assert_eq!(pipeline_for(&host, 1), None, "a single view plays nothing on the second channel");
+        set_multi_view(&mut host, true);
+        assert!(pipeline_for(&host, MAIN_CHANNEL).is_some_and(|played| played.contains("port=5600")));
+        assert!(pipeline_for(&host, 1).is_some_and(|played| played.contains("port=5601")), "the camera after the one on screen plays on channel 1");
+        assert_eq!(object(&host)["cameraSignals"], json!(["connecting", "connecting", "idle"]), "the third camera is never started");
+        [(0, "port=5601"), (1, "port=5602"), (2, "port=5600")].iter().for_each(|(active, port)| {
+            let on = hosted(THREE, *active, true);
+            assert!(pipeline_for(&on, 1).is_some_and(|played| played.contains(port)), "active {active}: the next camera round plays in the picture in picture");
+            let pip = on.state.settings.camera_index_for_receiver(PIP_RECEIVER);
+            let view = crate::cameras::view_of(&object(&on), crate::cameras::parse(THREE), *active, true);
+            assert_eq!(view["pip"]["slot"].as_u64().map(|slot| slot as usize), pip, "active {active}: view.cameras names the camera channel 1 plays");
+        });
+        set_multi_view(&mut host, false);
+        assert_eq!(pipeline_for(&host, 1), None, "multi view off stops the second channel");
+        assert!(pipeline_for(&host, MAIN_CHANNEL).is_some(), "and leaves the main one playing");
+    }
+
+    #[test]
+    fn every_camera_signal_is_read_from_what_its_receiver_reports() {
+        let mut host = hosted(THREE, 0, true);
+        let signals = |host: &Host| object(host)["cameraSignals"].clone();
+        assert_eq!(signals(&host), json!(["connecting", "connecting", "idle"]), "a started receiver is connecting and a camera nobody plays is idle");
+        report(&mut host, MAIN_CHANNEL, true, 12, 640, 360, Some(12), false, "", 1_000);
+        assert_eq!(signals(&host), json!(["live", "connecting", "idle"]), "frames arriving are live");
+        report(&mut host, 1, true, 0, 0, 0, Some(0), false, "", 10_000);
+        assert_eq!(signals(&host), json!(["live", "noSignal", "idle"]), "a stream that delivers nothing inside its budget has stalled");
+        assert!(host.channels[1].restart_at_ms.is_some(), "and is retried");
+        let outs = host.state.start_receiver(PIP_RECEIVER);
+        apply(&mut host, outs, 11_000);
+        assert_eq!(signals(&host), json!(["live", "noSignal", "idle"]), "it stays no signal through the retry");
+        report(&mut host, 1, true, 4, 320, 240, Some(4), true, "", 11_500);
+        assert_eq!(signals(&host), json!(["live", "live", "idle"]), "until frames arrive again");
+        set_multi_view(&mut host, false);
+        assert_eq!(signals(&host), json!(["live", "idle", "idle"]), "a camera taken out of the picture in picture is idle");
+    }
+
+    #[test]
+    fn the_picture_in_picture_pipeline_is_served_beside_the_main_one_and_null_when_nothing_plays_there() {
+        let mut host = hosted(THREE, 0, true);
+        assert_eq!(object(&host)["pipPipeline"], json!(pipeline_for(&host, PIP_CHANNEL)));
+        assert!(object(&host)["pipPipeline"].as_str().is_some_and(|played| played.contains("port=5601")), "the headless macOS head starts channel 1 from this field");
+        report(&mut host, PIP_CHANNEL, true, 0, 0, 0, None, false, "", 3_001);
+        assert_eq!(object(&host)["pipPipeline"], Value::Null, "a stalled picture in picture is taken down so the head stops it");
+        restart_due(&mut host, 5_000);
+        assert!(object(&host)["pipPipeline"].is_string(), "and served again when it is retried");
+        set_multi_view(&mut host, false);
+        assert_eq!((object(&host)["pipPipeline"].clone(), object(&host)["nativePipeline"].is_string()), (Value::Null, true));
+    }
+
+    #[test]
+    fn a_head_that_counts_no_source_buffers_brings_the_picture_in_picture_live() {
+        let signal = |host: &Host| object(host)["cameraSignals"][1].clone();
+        let mut host = hosted(THREE, 0, true);
+        report(&mut host, PIP_CHANNEL, true, 0, 0, 0, None, false, "", 500);
+        assert_eq!(signal(&host), json!("connecting"));
+        report(&mut host, PIP_CHANNEL, true, 1, 320, 240, None, false, "", 4_500);
+        assert_eq!(signal(&host), json!("live"), "the macOS head reports a channel only when it changes and counts no source buffers, so its first frame can land after the start budget, and that frame is the data it saw");
+        let mut silent = hosted(THREE, 0, true);
+        report(&mut silent, PIP_CHANNEL, true, 0, 0, 0, None, false, "", 3_001);
+        assert_eq!((signal(&silent), silent.channels[PIP_CHANNEL].wanted), (json!("noSignal"), false), "nothing decoded inside the budget is still a stream that delivers nothing");
+    }
+
+    #[test]
+    fn a_decoding_main_channel_is_never_restarted_while_the_picture_in_picture_reports() {
+        let mut host = hosted(THREE, 0, true);
+        let main = pipeline_for(&host, MAIN_CHANNEL);
+        let run: Vec<(u64, bool, bool)> = (1..=200u64)
+            .map(|tick| {
+                let now = tick * 500;
+                restart_due(&mut host, now);
+                if tick == 140 || tick == 160 {
+                    let outs = host.state.on_settings(Settings { multi_view: tick == 160, ..host.state.settings.clone() });
+                    apply(&mut host, outs, now);
+                }
+                report(&mut host, MAIN_CHANNEL, true, (tick * 15) as i64, 640, 360, Some((tick * 20) as i64), tick == 1, "", now);
+                let (frames, source) = match tick as i64 {
+                    early @ 1..=30 => (0, early / 4),
+                    playing @ 31..=80 => (playing, playing * 2),
+                    _ => (80, 160),
+                };
+                let pip_running = host.channels[PIP_CHANNEL].wanted;
+                report(&mut host, PIP_CHANNEL, pip_running, frames, 320, 240, Some(source), false, "", now);
+                let steady = host.channels[MAIN_CHANNEL].wanted && host.channels[MAIN_CHANNEL].restart_at_ms.is_none() && pipeline_for(&host, MAIN_CHANNEL) == main && host.state.decoding;
+                (tick, steady, host.channels[PIP_CHANNEL].wanted)
+            })
+            .collect();
+        let disturbed: Vec<u64> = run.iter().filter(|(_, steady, _)| !steady).map(|(tick, ..)| *tick).collect();
+        assert!(disturbed.is_empty(), "the main channel was stopped, rescheduled or handed a new pipeline at ticks {disturbed:?}");
+        assert!(run.iter().any(|(.., pip)| !pip) && run.iter().any(|(.., pip)| *pip), "and the picture in picture really stalled, was retried and played in the same run");
+        assert_eq!(object(&host)["cameraSignals"][0], json!("live"));
     }
 }

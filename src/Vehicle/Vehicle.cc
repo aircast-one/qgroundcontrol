@@ -1155,6 +1155,12 @@ void Vehicle::_updateArmed(bool armed)
             _flightTimerStart();
             _clearCameraTriggerPoints();
             _lowestBatteryChargeStateAnnouncedMap.clear();
+            const SharedLinkInterfacePtr link = _vehicleLinkManager->primaryLink().lock();
+            Fact *const streamEnabled = SettingsManager::instance()->videoSettings()->streamEnabled();
+            if (!streamEnabled->rawValue().toBool() && !(link && link->isLogReplay())) {
+                streamEnabled->setRawValue(true);
+                VideoManager::instance()->startVideo();
+            }
         } else {
             _trajectoryPoints->stop();
             _flightTimerStop();

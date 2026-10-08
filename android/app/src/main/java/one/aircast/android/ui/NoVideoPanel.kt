@@ -29,10 +29,11 @@ import one.aircast.android.R
 import kotlinx.coroutines.delay
 import one.aircast.android.bridge.VideoCommands
 import one.aircast.android.bridge.offMainDetached
+import one.aircast.android.bridge.qgcPath
 
 private const val PROLONGED_SECONDS = 8
-private const val VIDEO_SETTINGS_PAGE = "Video"
 private val PANEL_MAX_WIDTH = 360.dp
+private val VIDEO_SOURCES_PLACE = "Settings \u203a ${pageLook(VIDEO_SOURCES_PAGE).group.title} \u203a ${pageTitle(VIDEO_SOURCES_PAGE)}"
 
 internal fun elapsedText(seconds: Int): String = when {
     seconds < 60 -> "$seconds s"
@@ -49,20 +50,26 @@ internal fun noVideoDetail(video: VideoReading, seconds: Int): String = when {
     else -> "${video.noVideoText} for ${elapsedText(seconds)}"
 }
 
-internal enum class NoVideoAction { None, SetUp, Settings }
+internal enum class NoVideoAction { None, SetUp, Settings, TurnOn }
 
 internal data class NoVideoState(val title: String, val detail: String, val action: NoVideoAction)
 
-internal fun unavailableVideoState(video: VideoReading, linksToSettings: Boolean = true): NoVideoState? = when {
+internal fun unavailableVideoState(video: VideoReading): NoVideoState? = when {
     video.available -> null
-    !video.sourceChosen -> NoVideoState("No video source", "Choose where the camera stream comes from.", NoVideoAction.SetUp)
-    video.cameras.none { it.configured } -> NoVideoState("No stream address", if (linksToSettings) "Enter the stream URL in Settings \u203a Video." else "Enter the stream address below.", NoVideoAction.Settings)
+    !video.streamEnabled -> NoVideoState("Video off", "It turns back on when you arm.", NoVideoAction.TurnOn)
+    !video.sourceChosen -> NoVideoState("No video source", "Add a camera in $VIDEO_SOURCES_PLACE.", NoVideoAction.SetUp)
+    video.cameras.none { it.configured } -> NoVideoState("No stream address", "Enter the stream address in $VIDEO_SOURCES_PLACE.", NoVideoAction.Settings)
     else -> NoVideoState(video.summary, "", NoVideoAction.Settings)
 }
 
+internal fun whileArmed(state: NoVideoState): NoVideoState =
+    state.copy(detail = "", action = state.action.takeIf { it == NoVideoAction.TurnOn } ?: NoVideoAction.None)
+
 internal data class NoVideoButton(val label: String, val onClick: () -> Unit)
 
-private fun videoSettingsButton(navigation: AppNavigationState) = NoVideoButton("Video settings") { navigation.settingsPage = VIDEO_SETTINGS_PAGE }
+internal fun videoSourcesButton(navigation: AppNavigationState) = NoVideoButton("Video sources") { navigation.settingsPage = VIDEO_SOURCES_PAGE }
+
+private val TURN_VIDEO_ON = NoVideoButton("Turn video on") { offMainDetached { VideoCommands.turnStreamOn() } }
 
 internal enum class NoVideoSize { Full, Pill, Thumb }
 
@@ -105,51 +112,47 @@ private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoBu
 }
 
 @Composable
-internal fun NoVideoPanel(video: VideoReading?, linksToSettings: Boolean = true) {
-    val navigation = LocalAppNavigation.current
-    val openVideoSettings = videoSettingsButton(navigation)
-    val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
+internal fun NoVideoPanel(video: VideoReading?) {
+    val videoSources = videoSourcesButton(LocalAppNavigation.current)
+    val flyJson by qgcPath(FLY_STATE)
     val armed = remember(flyJson) { flyState(flyJson)?.armed == true }
-    val unavailable = video?.let { unavailableVideoState(it, linksToSettings) }
-        ?.let { if (armed) it.copy(detail = "", action = NoVideoAction.None) else it }
-        ?.let { if (linksToSettings) it else it.copy(action = NoVideoAction.None) }
+    val unavailable = video?.let { unavailableVideoState(it) }?.let { if (armed) whileArmed(it) else it }
     if (unavailable != null) {
         NoVideoLayout(
             title = unavailable.title,
             detail = unavailable.detail,
             primary = when (unavailable.action) {
                 NoVideoAction.None -> null
-                NoVideoAction.SetUp -> openVideoSettings.copy(label = "Set up video")
-                NoVideoAction.Settings -> openVideoSettings
+                NoVideoAction.SetUp -> videoSources.copy(label = "Set up video")
+                NoVideoAction.Settings -> videoSources
+                NoVideoAction.TurnOn -> TURN_VIDEO_ON
             },
         )
         return
     }
-    NoVideoStreamPanel(video, openVideoSettings.takeIf { linksToSettings })
+    NoVideoStreamPanel(video, videoSources)
 }
 
 @Composable
-private fun NoVideoStreamPanel(video: VideoReading?, settings: NoVideoButton?) {
+private fun NoVideoStreamPanel(video: VideoReading?, videoSources: NoVideoButton) {
     var seconds by remember { mutableIntStateOf(0) }
-    LaunchedEffect(video?.streamEnabled, video?.decoding) {
+    LaunchedEffect(video != null, video?.decoding) {
         seconds = 0
-        while (video?.streamEnabled == true) {
+        while (video != null) {
             delay(1000)
             seconds++
         }
     }
-    val prolonged = video != null && video.streamEnabled && seconds >= PROLONGED_SECONDS
     when {
         video == null -> NoVideoLayout("No video")
-        !video.streamEnabled -> NoVideoLayout("Video off", primary = settings)
-        prolonged -> NoVideoLayout(
+        seconds >= PROLONGED_SECONDS -> NoVideoLayout(
             title = "No video signal",
             detail = noVideoDetail(video, seconds),
             primary = NoVideoButton("Retry") {
                 seconds = 0
                 offMainDetached { VideoCommands.restart() }
             },
-            secondary = settings,
+            secondary = videoSources,
             compactTitle = "No video",
         )
         else -> NoVideoLayout(activeCameraStatus(video) ?: video.summary)

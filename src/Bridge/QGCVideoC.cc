@@ -1,12 +1,14 @@
 #include "QGCVideoC.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #ifdef QGC_GST_STREAMING
@@ -22,32 +24,7 @@
 
 namespace {
 
-std::mutex frameMutex;
-qgc_video_frame_callback frameCallback = nullptr;
-qgc_video_pipeline_callback pipelineCallback = nullptr;
-std::mutex overlayMutex;
-void *overlayWindow = nullptr;
-std::vector<uint8_t> latestFrame;
-int frameWidth = 0;
-int frameHeight = 0;
-int frameStride = 0;
-int64_t frameCount = 0;
-std::atomic<int64_t> sourceBuffers{0};
-std::string lastError;
-std::mutex streamErrorMutex;
-std::string streamError;
-
-void setStreamError(std::string text)
-{
-    const std::lock_guard<std::mutex> lock(streamErrorMutex);
-    streamError = std::move(text);
-}
-
 #ifdef QGC_GST_STREAMING
-GstElement *pipeline = nullptr;
-GstElement *sink = nullptr;
-GstElement *overlaySink = nullptr;
-
 constexpr const char *kRecordingTee = "nativerec";
 constexpr auto kRecordingDrain = std::chrono::seconds(3);
 
@@ -59,11 +36,63 @@ struct Recording {
     GstElement *reparse = nullptr;
     GstPad *teePad = nullptr;
 };
+#endif
 
-Recording recording;
-std::mutex drainMutex;
-std::condition_variable drained;
-bool drainedEos = false;
+struct Channel {
+    std::mutex frameMutex;
+    std::vector<uint8_t> latestFrame;
+    int frameWidth = 0;
+    int frameHeight = 0;
+    int frameStride = 0;
+    int64_t frameCount = 0;
+    std::atomic<int64_t> sourceBuffers{0};
+    std::string lastError;
+    std::mutex streamErrorMutex;
+    std::string streamError;
+    std::mutex overlayMutex;
+    void *overlayWindow = nullptr;
+#ifdef QGC_GST_STREAMING
+    GstElement *pipeline = nullptr;
+    GstElement *sink = nullptr;
+    GstElement *overlaySink = nullptr;
+    GstElement *appsink = nullptr;
+    Recording recording;
+    std::mutex drainMutex;
+    std::condition_variable drained;
+    bool drainedEos = false;
+#endif
+
+    void clearFrame()
+    {
+        const std::lock_guard<std::mutex> lock(frameMutex);
+        latestFrame.clear();
+        frameWidth = 0;
+        frameHeight = 0;
+        frameStride = 0;
+        frameCount = 0;
+    }
+
+    void setStreamError(std::string text)
+    {
+        const std::lock_guard<std::mutex> lock(streamErrorMutex);
+        streamError = std::move(text);
+    }
+};
+
+std::array<Channel, QGC_VIDEO_CHANNELS> channels;
+std::atomic<qgc_video_frame_callback> frameCallback{nullptr};
+std::atomic<qgc_video_pipeline_callback> pipelineCallback{nullptr};
+
+Channel *channelAt(int channel)
+{
+    return (channel >= 0 && channel < QGC_VIDEO_CHANNELS) ? &channels[static_cast<size_t>(channel)] : nullptr;
+}
+
+#ifdef QGC_GST_STREAMING
+int indexOf(const Channel *channel)
+{
+    return static_cast<int>(channel - channels.data());
+}
 
 const char *muxerFor(int format)
 {
@@ -88,16 +117,18 @@ const char *reparserFor(GstPad *pad)
     return parser;
 }
 
-void onParsedPad(GstElement *, GstPad *pad, gpointer mux)
+void onParsedPad(GstElement *, GstPad *pad, gpointer data)
 {
-    GstPad *const target = gst_element_request_pad_simple(GST_ELEMENT(mux), "video_%u");
+    Channel *const channel = static_cast<Channel *>(data);
+    Recording &recording = channel->recording;
+    GstPad *const target = gst_element_request_pad_simple(recording.mux, "video_%u");
     if (!target) {
         return;
     }
     const char *const parser = reparserFor(pad);
     recording.reparse = parser ? gst_element_factory_make(parser, nullptr) : nullptr;
-    if (recording.reparse && pipeline) {
-        gst_bin_add(GST_BIN(pipeline), recording.reparse);
+    if (recording.reparse && channel->pipeline) {
+        gst_bin_add(GST_BIN(channel->pipeline), recording.reparse);
         gst_element_sync_state_with_parent(recording.reparse);
         GstPad *const reparseSink = gst_element_get_static_pad(recording.reparse, "sink");
         GstPad *const reparseSrc = gst_element_get_static_pad(recording.reparse, "src");
@@ -111,25 +142,27 @@ void onParsedPad(GstElement *, GstPad *pad, gpointer mux)
     gst_object_unref(target);
 }
 
-GstPadProbeReturn onRecordingEos(GstPad *, GstPadProbeInfo *info, gpointer)
+GstPadProbeReturn onRecordingEos(GstPad *, GstPadProbeInfo *info, gpointer data)
 {
     if (GST_EVENT_TYPE(GST_PAD_PROBE_INFO_EVENT(info)) == GST_EVENT_EOS) {
-        const std::lock_guard<std::mutex> lock(drainMutex);
-        drainedEos = true;
-        drained.notify_all();
+        Channel *const channel = static_cast<Channel *>(data);
+        const std::lock_guard<std::mutex> lock(channel->drainMutex);
+        channel->drainedEos = true;
+        channel->drained.notify_all();
         return GST_PAD_PROBE_DROP;
     }
     return GST_PAD_PROBE_OK;
 }
 
-void dropRecording()
+void dropRecording(Channel &channel)
 {
+    Recording &recording = channel.recording;
     GstElement *const elements[] = {recording.queue, recording.parse, recording.reparse, recording.mux, recording.file};
     for (GstElement *element : elements) {
         if (element) {
             gst_element_set_state(element, GST_STATE_NULL);
-            if (pipeline) {
-                gst_bin_remove(GST_BIN(pipeline), element);
+            if (channel.pipeline) {
+                gst_bin_remove(GST_BIN(channel.pipeline), element);
             }
         }
     }
@@ -273,46 +306,47 @@ void applyWhepLatency(GstBin *bin)
     gst_object_unref(source);
 }
 
-GstBusSyncReply onBusMessage(GstBus *, GstMessage *message, gpointer)
+GstBusSyncReply onBusMessage(GstBus *, GstMessage *message, gpointer data)
 {
     if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
         GError *error = nullptr;
         gchar *debug = nullptr;
         gst_message_parse_error(message, &error, &debug);
-        setStreamError(std::string(error ? error->message : "") + (debug ? std::string(" ") + debug : ""));
+        static_cast<Channel *>(data)->setStreamError(std::string(error ? error->message : "") + (debug ? std::string(" ") + debug : ""));
         g_clear_error(&error);
         g_free(debug);
     }
     return GST_BUS_PASS;
 }
 
-GstPadProbeReturn onSourceBuffer(GstPad *, GstPadProbeInfo *, gpointer)
+GstPadProbeReturn onSourceBuffer(GstPad *, GstPadProbeInfo *, gpointer data)
 {
-    sourceBuffers.fetch_add(1, std::memory_order_relaxed);
+    static_cast<Channel *>(data)->sourceBuffers.fetch_add(1, std::memory_order_relaxed);
     return GST_PAD_PROBE_OK;
 }
 
-GstFlowReturn onNewSample(GstAppSink *appsink, gpointer)
+GstFlowReturn onNewSample(GstAppSink *appsink, gpointer data)
 {
     GstSample *const sample = gst_app_sink_pull_sample(appsink);
     if (!sample) {
         return GST_FLOW_OK;
     }
 
+    Channel *const channel = static_cast<Channel *>(data);
     GstCaps *const caps = gst_sample_get_caps(sample);
     GstBuffer *const buffer = gst_sample_get_buffer(sample);
     GstVideoInfo info;
     if (caps && buffer && gst_video_info_from_caps(&info, caps)) {
         GstMapInfo map;
         if (gst_buffer_map(buffer, &map, GST_MAP_READ)) {
-            const std::lock_guard<std::mutex> lock(frameMutex);
-            frameWidth = GST_VIDEO_INFO_WIDTH(&info);
-            frameHeight = GST_VIDEO_INFO_HEIGHT(&info);
-            frameStride = static_cast<int>(GST_VIDEO_INFO_PLANE_STRIDE(&info, 0));
-            latestFrame.assign(map.data, map.data + map.size);
-            frameCount += 1;
-            if (frameCallback) {
-                frameCallback(latestFrame.data(), frameWidth, frameHeight, frameStride);
+            const std::lock_guard<std::mutex> lock(channel->frameMutex);
+            channel->frameWidth = GST_VIDEO_INFO_WIDTH(&info);
+            channel->frameHeight = GST_VIDEO_INFO_HEIGHT(&info);
+            channel->frameStride = static_cast<int>(GST_VIDEO_INFO_PLANE_STRIDE(&info, 0));
+            channel->latestFrame.assign(map.data, map.data + map.size);
+            channel->frameCount += 1;
+            if (const qgc_video_frame_callback callback = frameCallback.load()) {
+                callback(indexOf(channel), channel->latestFrame.data(), channel->frameWidth, channel->frameHeight, channel->frameStride);
             }
             gst_buffer_unmap(buffer, &map);
         }
@@ -321,110 +355,157 @@ GstFlowReturn onNewSample(GstAppSink *appsink, gpointer)
     gst_sample_unref(sample);
     return GST_FLOW_OK;
 }
+
+void adoptAppsink(Channel &channel, GstAppSink *appsink)
+{
+    GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, QGC_VIDEO_FORMAT, nullptr);
+    gst_app_sink_set_caps(appsink, caps);
+    gst_caps_unref(caps);
+    gst_app_sink_set_max_buffers(appsink, 1);
+    gst_app_sink_set_drop(appsink, TRUE);
+
+    GstAppSinkCallbacks callbacks = {};
+    callbacks.new_sample = onNewSample;
+    gst_app_sink_set_callbacks(appsink, &callbacks, &channel, nullptr);
+}
+
+void dropAppsink(GstElement *appsink)
+{
+    GstAppSinkCallbacks none = {};
+    gst_app_sink_set_callbacks(GST_APP_SINK(appsink), &none, nullptr, nullptr);
+    gst_object_unref(appsink);
+}
+
+void releaseElsewhere(const Channel &keeper, GstElement *element)
+{
+    std::for_each(channels.begin(), channels.end(), [&keeper, element](Channel &other) {
+        if (&other == &keeper) {
+            return;
+        }
+        {
+            const std::lock_guard<std::mutex> lock(other.overlayMutex);
+            if (other.overlaySink == element) {
+                gst_object_unref(std::exchange(other.overlaySink, nullptr));
+            }
+        }
+        if (other.appsink == element) {
+            gst_object_unref(std::exchange(other.appsink, nullptr));
+            other.clearFrame();
+        }
+    });
+}
 #endif
 
-} // namespace
+}
 
 void qgc_video_set_frame_callback(qgc_video_frame_callback callback)
 {
-    const std::lock_guard<std::mutex> lock(frameMutex);
-    frameCallback = callback;
+    frameCallback.store(callback);
 }
 
 void qgc_video_set_pipeline_callback(qgc_video_pipeline_callback callback)
 {
-    pipelineCallback = callback;
+    pipelineCallback.store(callback);
 }
 
-bool qgc_video_set_window(void *native_window)
+bool qgc_video_set_window(int channel, void *native_window)
 {
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return false;
+    }
 #ifdef QGC_GST_STREAMING
-    const std::lock_guard<std::mutex> lock(overlayMutex);
-    overlayWindow = native_window;
-    if (overlaySink) {
-        gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(overlaySink),
+    const std::lock_guard<std::mutex> lock(target->overlayMutex);
+    target->overlayWindow = native_window;
+    if (target->overlaySink) {
+        gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(target->overlaySink),
                                             reinterpret_cast<guintptr>(native_window));
     }
-    lastError.clear();
+    target->lastError.clear();
     return true;
 #else
     (void)native_window;
-    lastError = "this build has no GStreamer";
+    target->lastError = "this build has no GStreamer";
     return false;
 #endif
 }
 
-bool qgc_video_attach_overlay(void *element)
+bool qgc_video_attach_overlay(int channel, void *element)
 {
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return false;
+    }
 #ifdef QGC_GST_STREAMING
     if (!element || !GST_IS_VIDEO_OVERLAY(element)) {
-        lastError = "the sink is not a video overlay";
+        target->lastError = "the sink is not a video overlay";
         return false;
     }
 
-    const std::lock_guard<std::mutex> lock(overlayMutex);
-    if (overlaySink) {
-        gst_object_unref(overlaySink);
+    GstElement *const sink = GST_ELEMENT(element);
+    releaseElsewhere(*target, sink);
+    const std::lock_guard<std::mutex> lock(target->overlayMutex);
+    if (target->overlaySink != sink) {
+        if (target->overlaySink) {
+            gst_object_unref(target->overlaySink);
+        }
+        target->overlaySink = GST_ELEMENT(gst_object_ref(sink));
+        if (target->overlayWindow) {
+            gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(sink), reinterpret_cast<guintptr>(target->overlayWindow));
+        }
     }
-    overlaySink = GST_ELEMENT(gst_object_ref(element));
-    if (overlayWindow) {
-        gst_video_overlay_set_window_handle(GST_VIDEO_OVERLAY(overlaySink),
-                                            reinterpret_cast<guintptr>(overlayWindow));
-    }
-    lastError.clear();
+    target->lastError.clear();
     return true;
 #else
     (void)element;
-    lastError = "this build has no GStreamer";
+    target->lastError = "this build has no GStreamer";
     return false;
 #endif
 }
 
-bool qgc_video_attach_appsink(void *appsink)
+bool qgc_video_attach_appsink(int channel, void *appsink)
 {
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return false;
+    }
 #ifdef QGC_GST_STREAMING
     if (!appsink) {
-        lastError = "no appsink given";
+        target->lastError = "no appsink given";
         return false;
     }
 
-    GstAppSink *const adopted = GST_APP_SINK(appsink);
-    GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, QGC_VIDEO_FORMAT, nullptr);
-    gst_app_sink_set_caps(adopted, caps);
-    gst_caps_unref(caps);
-    gst_app_sink_set_max_buffers(adopted, 1);
-    gst_app_sink_set_drop(adopted, TRUE);
-
-    GstAppSinkCallbacks callbacks = {};
-    callbacks.new_sample = onNewSample;
-    gst_app_sink_set_callbacks(adopted, &callbacks, nullptr, nullptr);
-
-    {
-        const std::lock_guard<std::mutex> lock(frameMutex);
-        latestFrame.clear();
-        frameWidth = 0;
-        frameHeight = 0;
-        frameStride = 0;
-        frameCount = 0;
+    GstElement *const sink = GST_ELEMENT(appsink);
+    if (target->appsink != sink) {
+        adoptAppsink(*target, GST_APP_SINK(sink));
+        releaseElsewhere(*target, sink);
+        if (target->appsink) {
+            dropAppsink(target->appsink);
+        }
+        target->appsink = GST_ELEMENT(gst_object_ref(sink));
+        target->clearFrame();
     }
-
-    lastError.clear();
+    target->lastError.clear();
     return true;
 #else
     (void)appsink;
-    lastError = "this build has no GStreamer";
+    target->lastError = "this build has no GStreamer";
     return false;
 #endif
 }
 
-void qgc_video_detach_appsink(void)
+void qgc_video_detach_appsink(int channel)
 {
-    const std::lock_guard<std::mutex> lock(frameMutex);
-    latestFrame.clear();
-    frameWidth = 0;
-    frameHeight = 0;
-    frameStride = 0;
-    frameCount = 0;
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return;
+    }
+#ifdef QGC_GST_STREAMING
+    if (target->appsink) {
+        dropAppsink(std::exchange(target->appsink, nullptr));
+    }
+#endif
+    target->clearFrame();
 }
 
 bool qgc_video_available(void)
@@ -436,24 +517,28 @@ bool qgc_video_available(void)
 #endif
 }
 
-bool qgc_video_start(const char *pipelineDescription)
+bool qgc_video_start(int channel, const char *pipelineDescription)
 {
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return false;
+    }
 #ifdef QGC_GST_STREAMING
     if (!pipelineDescription) {
-        lastError = "no pipeline given";
+        target->lastError = "no pipeline given";
         return false;
     }
 
-    qgc_video_stop();
+    qgc_video_stop(channel);
 
     if (!gst_is_initialized()) {
         gst_init(nullptr, nullptr);
     }
 
     GError *error = nullptr;
-    pipeline = gst_parse_launch_full(pipelineDescription, nullptr, GST_PARSE_FLAG_FATAL_ERRORS, &error);
-    if (!pipeline) {
-        lastError = error ? error->message : "gst_parse_launch failed";
+    target->pipeline = gst_parse_launch_full(pipelineDescription, nullptr, GST_PARSE_FLAG_FATAL_ERRORS, &error);
+    if (!target->pipeline) {
+        target->lastError = error ? error->message : "gst_parse_launch failed";
         if (error) {
             g_error_free(error);
         }
@@ -463,77 +548,74 @@ bool qgc_video_start(const char *pipelineDescription)
         g_error_free(error);
     }
 
-    sink = gst_bin_get_by_name(GST_BIN(pipeline), "nativesink");
-    if (!sink) {
-        lastError = "the pipeline has no appsink named nativesink";
-        qgc_video_stop();
+    target->sink = gst_bin_get_by_name(GST_BIN(target->pipeline), "nativesink");
+    if (!target->sink) {
+        target->lastError = "the pipeline has no appsink named nativesink";
+        qgc_video_stop(channel);
         return false;
     }
 
-    applyWhepLatency(GST_BIN(pipeline));
-    g_signal_connect(pipeline, "deep-element-added", G_CALLBACK(singleThreadSoftwareHevc), nullptr);
+    applyWhepLatency(GST_BIN(target->pipeline));
+    g_signal_connect(target->pipeline, "deep-element-added", G_CALLBACK(singleThreadSoftwareHevc), nullptr);
 
-    if (GstBus *const bus = gst_element_get_bus(pipeline)) {
-        gst_bus_set_sync_handler(bus, onBusMessage, nullptr, nullptr);
+    if (GstBus *const bus = gst_element_get_bus(target->pipeline)) {
+        gst_bus_set_sync_handler(bus, onBusMessage, target, nullptr);
         gst_object_unref(bus);
     }
 
-    if (GstElement *const tee = gst_bin_get_by_name(GST_BIN(pipeline), kRecordingTee)) {
+    if (GstElement *const tee = gst_bin_get_by_name(GST_BIN(target->pipeline), kRecordingTee)) {
         if (GstPad *const teeSink = gst_element_get_static_pad(tee, "sink")) {
-            gst_pad_add_probe(teeSink, static_cast<GstPadProbeType>(GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_BUFFER_LIST), onSourceBuffer, nullptr, nullptr);
+            gst_pad_add_probe(teeSink, static_cast<GstPadProbeType>(GST_PAD_PROBE_TYPE_BUFFER | GST_PAD_PROBE_TYPE_BUFFER_LIST), onSourceBuffer, target, nullptr);
             gst_object_unref(teeSink);
         }
         gst_object_unref(tee);
     }
 
-    GstCaps *const caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, QGC_VIDEO_FORMAT, nullptr);
-    gst_app_sink_set_caps(GST_APP_SINK(sink), caps);
-    gst_caps_unref(caps);
-    gst_app_sink_set_max_buffers(GST_APP_SINK(sink), 1);
-    gst_app_sink_set_drop(GST_APP_SINK(sink), TRUE);
+    adoptAppsink(*target, GST_APP_SINK(target->sink));
 
-    GstAppSinkCallbacks callbacks = {};
-    callbacks.new_sample = onNewSample;
-    gst_app_sink_set_callbacks(GST_APP_SINK(sink), &callbacks, nullptr, nullptr);
-
-    if (pipelineCallback) {
-        pipelineCallback(pipeline);
+    if (const qgc_video_pipeline_callback callback = pipelineCallback.load()) {
+        callback(channel, target->pipeline);
     }
 
-    if (gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
-        lastError = "the pipeline refused to play";
-        qgc_video_stop();
+    if (gst_element_set_state(target->pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
+        target->lastError = "the pipeline refused to play";
+        qgc_video_stop(channel);
         return false;
     }
 
-    lastError.clear();
+    target->lastError.clear();
     return true;
 #else
     (void)pipelineDescription;
-    lastError = "this build has no GStreamer";
+    target->lastError = "this build has no GStreamer";
     return false;
 #endif
 }
 
-bool qgc_video_start_recording(const char *file, int format)
+bool qgc_video_start_recording(int channel, const char *file, int format)
 {
-#ifdef QGC_GST_STREAMING
-    const char *const muxer = muxerFor(format);
-    if (!file || !*file || !muxer) {
-        lastError = "a recording needs a file and a known format";
+    Channel *const target = channelAt(channel);
+    if (!target) {
         return false;
     }
-    if (!pipeline) {
-        lastError = "no video is playing";
+#ifdef QGC_GST_STREAMING
+    Recording &recording = target->recording;
+    const char *const muxer = muxerFor(format);
+    if (!file || !*file || !muxer) {
+        target->lastError = "a recording needs a file and a known format";
+        return false;
+    }
+    if (!target->pipeline) {
+        target->lastError = "no video is playing";
         return false;
     }
     if (recording.file) {
-        lastError = "already recording";
+        target->lastError = "already recording";
         return false;
     }
-    GstElement *const tee = gst_bin_get_by_name(GST_BIN(pipeline), kRecordingTee);
+    GstElement *const tee = gst_bin_get_by_name(GST_BIN(target->pipeline), kRecordingTee);
     if (!tee) {
-        lastError = "the pipeline has no recording tee";
+        target->lastError = "the pipeline has no recording tee";
         return false;
     }
     recording.queue = gst_element_factory_make("queue", nullptr);
@@ -541,7 +623,7 @@ bool qgc_video_start_recording(const char *file, int format)
     recording.mux = gst_element_factory_make(muxer, nullptr);
     recording.file = gst_element_factory_make("filesink", nullptr);
     if (!recording.queue || !recording.parse || !recording.mux || !recording.file) {
-        lastError = std::string("this build cannot record with ") + muxer;
+        target->lastError = std::string("this build cannot record with ") + muxer;
         GstElement *const made[] = {recording.queue, recording.parse, recording.mux, recording.file};
         for (GstElement *element : made) {
             if (element) {
@@ -553,11 +635,11 @@ bool qgc_video_start_recording(const char *file, int format)
         return false;
     }
     g_object_set(recording.file, "location", file, "async", FALSE, nullptr);
-    gst_bin_add_many(GST_BIN(pipeline), recording.queue, recording.parse, recording.mux, recording.file, nullptr);
-    g_signal_connect(recording.parse, "pad-added", G_CALLBACK(onParsedPad), recording.mux);
+    gst_bin_add_many(GST_BIN(target->pipeline), recording.queue, recording.parse, recording.mux, recording.file, nullptr);
+    g_signal_connect(recording.parse, "pad-added", G_CALLBACK(onParsedPad), target);
     const bool linked = gst_element_link(recording.queue, recording.parse) && gst_element_link(recording.mux, recording.file);
     GstPad *const fileSinkPad = gst_element_get_static_pad(recording.file, "sink");
-    gst_pad_add_probe(fileSinkPad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, onRecordingEos, nullptr, nullptr);
+    gst_pad_add_probe(fileSinkPad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM, onRecordingEos, target, nullptr);
     gst_object_unref(fileSinkPad);
     gst_element_sync_state_with_parent(recording.file);
     gst_element_sync_state_with_parent(recording.mux);
@@ -569,27 +651,29 @@ bool qgc_video_start_recording(const char *file, int format)
     gst_object_unref(queueSink);
     gst_object_unref(tee);
     if (!attached) {
-        lastError = "the recording branch would not link";
-        qgc_video_stop_recording();
+        target->lastError = "the recording branch would not link";
+        qgc_video_stop_recording(channel);
         return false;
     }
-    lastError.clear();
+    target->lastError.clear();
     return true;
 #else
     (void)file;
     (void)format;
-    lastError = "this build has no GStreamer";
+    target->lastError = "this build has no GStreamer";
     return false;
 #endif
 }
 
-void qgc_video_stop_recording(void)
+void qgc_video_stop_recording(int channel)
 {
 #ifdef QGC_GST_STREAMING
-    if (!recording.queue) {
+    Channel *const target = channelAt(channel);
+    if (!target || !target->recording.queue) {
         return;
     }
-    GstElement *const tee = pipeline ? gst_bin_get_by_name(GST_BIN(pipeline), kRecordingTee) : nullptr;
+    Recording &recording = target->recording;
+    GstElement *const tee = target->pipeline ? gst_bin_get_by_name(GST_BIN(target->pipeline), kRecordingTee) : nullptr;
     GstPad *const queueSink = gst_element_get_static_pad(recording.queue, "sink");
     if (recording.teePad) {
         gst_pad_unlink(recording.teePad, queueSink);
@@ -598,121 +682,144 @@ void qgc_video_stop_recording(void)
         }
     }
     {
-        const std::lock_guard<std::mutex> lock(drainMutex);
-        drainedEos = false;
+        const std::lock_guard<std::mutex> lock(target->drainMutex);
+        target->drainedEos = false;
     }
     gst_pad_send_event(queueSink, gst_event_new_eos());
     gst_object_unref(queueSink);
     {
-        std::unique_lock<std::mutex> lock(drainMutex);
-        drained.wait_for(lock, kRecordingDrain, [] { return drainedEos; });
+        std::unique_lock<std::mutex> lock(target->drainMutex);
+        target->drained.wait_for(lock, kRecordingDrain, [target] { return target->drainedEos; });
     }
     if (tee) {
         gst_object_unref(tee);
     }
-    dropRecording();
+    dropRecording(*target);
+#else
+    (void)channel;
 #endif
 }
 
-bool qgc_video_recording(void)
+bool qgc_video_recording(int channel)
 {
 #ifdef QGC_GST_STREAMING
-    return recording.file != nullptr;
+    const Channel *const target = channelAt(channel);
+    return target && target->recording.file != nullptr;
 #else
+    (void)channel;
     return false;
 #endif
 }
 
-void qgc_video_stop(void)
+void qgc_video_stop(int channel)
 {
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return;
+    }
 #ifdef QGC_GST_STREAMING
-    qgc_video_stop_recording();
-    if (pipeline) {
-        gst_element_set_state(pipeline, GST_STATE_NULL);
+    qgc_video_stop_recording(channel);
+    if (target->pipeline) {
+        gst_element_set_state(target->pipeline, GST_STATE_NULL);
     }
-    if (sink) {
-        gst_object_unref(sink);
-        sink = nullptr;
+    if (target->sink) {
+        gst_object_unref(target->sink);
+        target->sink = nullptr;
     }
-    if (pipeline) {
-        gst_object_unref(pipeline);
-        pipeline = nullptr;
+    if (target->pipeline) {
+        gst_object_unref(target->pipeline);
+        target->pipeline = nullptr;
     }
-    sourceBuffers.store(0, std::memory_order_relaxed);
+    target->sourceBuffers.store(0, std::memory_order_relaxed);
 #endif
-    setStreamError({});
-    const std::lock_guard<std::mutex> lock(frameMutex);
-    latestFrame.clear();
-    frameWidth = 0;
-    frameHeight = 0;
-    frameStride = 0;
-    frameCount = 0;
+    target->setStreamError({});
+    target->clearFrame();
 }
 
-bool qgc_video_running(void)
+bool qgc_video_running(int channel)
 {
 #ifdef QGC_GST_STREAMING
-    return pipeline != nullptr;
+    const Channel *const target = channelAt(channel);
+    return target && target->pipeline != nullptr;
 #else
+    (void)channel;
     return false;
 #endif
 }
 
-int qgc_video_width(void)
+int qgc_video_width(int channel)
 {
-    const std::lock_guard<std::mutex> lock(frameMutex);
-    return frameWidth;
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return 0;
+    }
+    const std::lock_guard<std::mutex> lock(target->frameMutex);
+    return target->frameWidth;
 }
 
-int qgc_video_height(void)
+int qgc_video_height(int channel)
 {
-    const std::lock_guard<std::mutex> lock(frameMutex);
-    return frameHeight;
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return 0;
+    }
+    const std::lock_guard<std::mutex> lock(target->frameMutex);
+    return target->frameHeight;
 }
 
-int64_t qgc_video_frames(void)
+int64_t qgc_video_frames(int channel)
 {
-    const std::lock_guard<std::mutex> lock(frameMutex);
-    return frameCount;
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return 0;
+    }
+    const std::lock_guard<std::mutex> lock(target->frameMutex);
+    return target->frameCount;
 }
 
-int64_t qgc_video_source_buffers(void)
+int64_t qgc_video_source_buffers(int channel)
 {
-#ifdef QGC_GST_STREAMING
-    return sourceBuffers.load(std::memory_order_relaxed);
-#else
-    return 0;
-#endif
+    const Channel *const target = channelAt(channel);
+    return target ? target->sourceBuffers.load(std::memory_order_relaxed) : 0;
 }
 
-const char *qgc_video_last_error(void)
+const char *qgc_video_last_error(int channel)
 {
-    return lastError.c_str();
+    const Channel *const target = channelAt(channel);
+    return target ? target->lastError.c_str() : "no such video channel";
 }
 
-const char *qgc_video_stream_error(void)
+const char *qgc_video_stream_error(int channel)
 {
     thread_local std::string copy;
-    const std::lock_guard<std::mutex> lock(streamErrorMutex);
-    copy = streamError;
+    Channel *const target = channelAt(channel);
+    if (!target) {
+        return "";
+    }
+    const std::lock_guard<std::mutex> lock(target->streamErrorMutex);
+    copy = target->streamError;
     return copy.c_str();
 }
 
-bool qgc_video_copy_frame(void *destination, int capacity, int *width, int *height, int *stride)
+bool qgc_video_copy_frame(int channel, void *destination, int capacity, int *width, int *height, int *stride)
 {
-    const std::lock_guard<std::mutex> lock(frameMutex);
-    if (latestFrame.empty() || !destination || capacity < static_cast<int>(latestFrame.size())) {
+    Channel *const target = channelAt(channel);
+    if (!target) {
         return false;
     }
-    memcpy(destination, latestFrame.data(), latestFrame.size());
+    const std::lock_guard<std::mutex> lock(target->frameMutex);
+    if (target->latestFrame.empty() || !destination || capacity < static_cast<int>(target->latestFrame.size())) {
+        return false;
+    }
+    memcpy(destination, target->latestFrame.data(), target->latestFrame.size());
     if (width) {
-        *width = frameWidth;
+        *width = target->frameWidth;
     }
     if (height) {
-        *height = frameHeight;
+        *height = target->frameHeight;
     }
     if (stride) {
-        *stride = frameStride;
+        *stride = target->frameStride;
     }
     return true;
 }

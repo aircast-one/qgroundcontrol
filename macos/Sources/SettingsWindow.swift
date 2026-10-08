@@ -43,7 +43,7 @@ struct SettingsView: View {
             notice(message)
         } else if showsAbout {
             SetupPageBody(title: pageTitle) { about }
-        } else if store.sections.isEmpty && !showsLinks {
+        } else if store.sections.isEmpty && !showsLinks && !showsVideoSources {
             notice(SettingsSection.emptyText(search: store.search))
         } else {
             SetupPageBody(title: pageTitle) {
@@ -102,7 +102,7 @@ struct SettingsView: View {
 
     private var videoSources: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SectionLabel(text: "Cameras")
+            SectionLabel(text: "Video sources")
             if !video.cameraList.readable {
                 GroupCard {
                     Text(video.cameraList.reason)
@@ -116,39 +116,36 @@ struct SettingsView: View {
                 }
                 ForEach(Array(video.cameraList.entries.enumerated()), id: \.element.id) { row, camera in
                     GroupRow(title: camera.title,
-                             description: camera.problem ?? camera.summary,
+                             description: camera.problem
+                                 ?? (camera.fromDrone ? "From the drone" : video.cameraList.label(camera)),
                              showSeparator: row > 0,
+                             leading: {
+                                 Circle().fill(camera.status.colour).frame(width: 8, height: 8)
+                                     .help(camera.status.words)
+                                     .accessibilityLabel(camera.status.words)
+                             },
                              trailing: {
                                  HStack(spacing: Overlay.step) {
+                                     if camera.stored != nil, video.cameraList.needsUrl(camera) {
+                                         ValueField(value: camera.url, units: "", width: 200) { entered in
+                                             video.updateCamera(camera, url: entered)
+                                         }
+                                     }
                                      if camera.active {
                                          Text("On screen").font(.caption).foregroundColor(.accentColor)
                                      } else if camera.problem == nil {
                                          Button("Show") { video.showCamera(camera) }
                                              .fixedSize()
                                      }
-                                     if let stored = camera.stored {
-                                         if video.cameraList.needsUrl(camera) {
-                                             ValueField(value: camera.url, units: "") { entered in
-                                                 video.updateCamera(camera, url: entered)
-                                             }
-                                             .frame(width: 200)
-                                         }
-                                         Button { video.moveCamera(camera, by: -1) } label: { Image(systemName: "chevron.up") }
-                                             .disabled(stored == 0)
-                                             .help("Move \(camera.title) up")
-                                         Button { video.moveCamera(camera, by: 1) } label: { Image(systemName: "chevron.down") }
-                                             .disabled(stored >= video.cameraList.storedCount - 1)
-                                             .help("Move \(camera.title) down")
+                                     if camera.stored != nil {
                                          Button("Remove") { video.removeCamera(camera) }
                                              .fixedSize()
-                                     } else {
-                                         Text("From the drone").font(.caption).foregroundColor(.secondary)
                                      }
                                  }
                              })
                 }
             }
-            NewCameraRow(kinds: video.cameraList.kinds) { name, source, url in
+            NewCameraRow(classify: video.classifyCamera) { name, source, url in
                 video.addCamera(name: name, source: source, url: url)
             }
         }
@@ -357,6 +354,7 @@ extension SettingsPage {
         case "Fly View": return "paperplane.fill"
         case "Plan View": return "map.fill"
         case "Video": return "video.fill"
+        case "Video sources": return "camera.fill"
         case "Maps": return "globe"
         case "Connections": return "cable.connector"
         case "MAVLink": return "antenna.radiowaves.left.and.right"
@@ -377,6 +375,7 @@ extension SettingsPage {
         case "Fly View": return .accentColor
         case "Plan View": return .green
         case "Video": return .pink
+        case "Video sources": return .red
         case "Maps": return .teal
         case "Connections": return .indigo
         case "MAVLink": return .purple
@@ -392,42 +391,64 @@ extension SettingsPage {
     }
 }
 
+extension CameraSignal {
+    var colour: Color {
+        switch self {
+        case .live: return .green
+        case .connecting: return .orange
+        case .noSignal: return .red
+        case .idle: return .gray
+        }
+    }
+}
+
 private struct NewCameraRow: View {
-    let kinds: [CameraKind]
+    let classify: (String) -> CameraGuess
     let add: (String, String, String) -> Bool
 
     @State private var name = ""
+    @State private var address = ""
+    @State private var guess = CameraGuess.none
     @State private var picked = ""
-    @State private var url = ""
 
     var body: some View {
-        let chosen = kinds.first { $0.raw == picked } ?? kinds.first
         GroupCard {
-            GroupRow(title: "Add camera", showSeparator: false, trailing: {
+            GroupRow(title: "Add camera", description: guessed, showSeparator: false, trailing: {
                 HStack(spacing: Overlay.step) {
-                    TextField("Name", text: $name)
+                    TextField("Address, e.g. rtsp://192.168.1.10:8554/live", text: $address)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 140)
-                    Picker("", selection: Binding(get: { chosen?.raw ?? "" }, set: { picked = $0 })) {
-                        ForEach(kinds) { kind in
-                            Text(kind.label).tag(kind.raw)
+                        .frame(width: 240)
+                        .onChange(of: address) { typed in
+                            let next = classify(typed)
+                            guess = next
+                            picked = next.choice(keeping: picked)
                         }
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                    if chosen?.needsUrl == true {
-                        TextField(chosen?.hint ?? "", text: $url)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 200)
+                    if guess.ambiguous {
+                        Picker("", selection: $picked) {
+                            ForEach(guess.choices, id: \.self) { kind in
+                                Text(CameraKind.label(for: kind)).tag(kind)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
                     }
                     Button("Add") {
-                        guard let chosen, add(name, chosen.raw, url) else { return }
+                        guard add(name, guess.ambiguous ? picked : "", address) else { return }
                         name = ""
-                        url = ""
+                        address = ""
                     }
-                    .disabled(chosen == nil)
+                    .disabled(address.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             })
+            GroupRow(title: "Name", description: "Optional", trailing: {
+                TextField("Front camera", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+            })
         }
+    }
+
+    private var guessed: String {
+        address.isEmpty ? "" : guess.sentence
     }
 }

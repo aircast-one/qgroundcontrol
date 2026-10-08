@@ -5,7 +5,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class NoVideoPanelTest {
-    private val video = VideoReading(available = true, decoding = false, sourceSize = null, summary = "Waiting for a stream.", activeSource = 0, multipleSources = false, cameras = emptyList(), noVideoText = "No video on UDP port 5600")
+    private val video = VideoReading(available = true, decoding = false, sourceSize = null, summary = "Waiting for a stream.", activeSource = 0, cameras = emptyList(), noVideoText = "No video on UDP port 5600")
 
     @Test
     fun `the detail names the source and how long it has failed`() {
@@ -22,23 +22,56 @@ class NoVideoPanelTest {
 
     @Test
     fun `the panel reads the active camera's own status like FlightDisplayViewVideo`() {
-        val failing = video.copy(cameras = listOf(VideoCamera(slot = 0, title = "Front", status = "Connection failed, retrying", connecting = false, recording = false, configured = true)))
+        val failing = video.copy(cameras = listOf(VideoCamera(slot = 0, status = "Connection failed, retrying", configured = true)))
         assertEquals("Connection failed, retrying", activeCameraStatus(failing))
         assertEquals(null, activeCameraStatus(video))
     }
 
-    private fun unavailable(sourceChosen: Boolean, configured: Boolean) = VideoReading(
-        available = false, decoding = false, sourceSize = null, summary = "No stream URL is set.", activeSource = 0, multipleSources = false,
-        cameras = listOf(VideoCamera(0, "Camera 1", "", connecting = false, recording = false, configured = configured)),
+    private fun unavailable(sourceChosen: Boolean, configured: Boolean, streamEnabled: Boolean = true) = VideoReading(
+        available = false, decoding = false, sourceSize = null, summary = "No stream URL is set.", activeSource = 0,
+        cameras = listOf(VideoCamera(0, "", configured = configured)),
         sourceChosen = sourceChosen,
+        streamEnabled = streamEnabled,
     )
 
     @Test
     fun anUnavailableStreamSaysWhatIsMissingAndWhereToFixIt() {
-        org.junit.Assert.assertEquals(NoVideoAction.SetUp, unavailableVideoState(unavailable(sourceChosen = false, configured = false))?.action)
-        org.junit.Assert.assertEquals("No stream address", unavailableVideoState(unavailable(sourceChosen = true, configured = false))?.title)
-        org.junit.Assert.assertEquals(null, unavailableVideoState(unavailable(sourceChosen = true, configured = true).copy(available = true)))
-        org.junit.Assert.assertEquals("Enter the stream address below.", unavailableVideoState(unavailable(sourceChosen = true, configured = false), linksToSettings = false)?.detail)
+        assertEquals(NoVideoAction.SetUp, unavailableVideoState(unavailable(sourceChosen = false, configured = false))?.action)
+        assertEquals("No stream address", unavailableVideoState(unavailable(sourceChosen = true, configured = false))?.title)
+        assertEquals(NoVideoAction.Settings, unavailableVideoState(unavailable(sourceChosen = true, configured = true))?.action)
+        assertEquals(null, unavailableVideoState(unavailable(sourceChosen = true, configured = true).copy(available = true)))
+    }
+
+    @Test
+    fun `a stream switched off offers to turn it on rather than sending the pilot to settings`() {
+        val off = unavailableVideoState(unavailable(sourceChosen = true, configured = true, streamEnabled = false))
+        assertEquals("Video off", off?.title)
+        assertEquals(NoVideoAction.TurnOn, off?.action)
+        assertEquals(NoVideoAction.TurnOn, unavailableVideoState(unavailable(sourceChosen = false, configured = false, streamEnabled = false))?.action)
+    }
+
+    @Test
+    fun `while armed only the one-tap turn-on survives, never a trip to settings`() {
+        val off = whileArmed(unavailableVideoState(unavailable(sourceChosen = true, configured = true, streamEnabled = false))!!)
+        assertEquals(NoVideoAction.TurnOn, off.action)
+        assertEquals("", off.detail)
+        assertEquals(NoVideoAction.None, whileArmed(unavailableVideoState(unavailable(sourceChosen = true, configured = false))!!).action)
+        assertEquals(NoVideoAction.None, whileArmed(unavailableVideoState(unavailable(sourceChosen = false, configured = false))!!).action)
+    }
+
+    @Test
+    fun `the missing-video copy points at the Video sources page on the Transmission tab`() {
+        assertEquals("Add a camera in Settings \u203a Transmission \u203a Video sources.", unavailableVideoState(unavailable(sourceChosen = false, configured = false))?.detail)
+        assertEquals("Enter the stream address in Settings \u203a Transmission \u203a Video sources.", unavailableVideoState(unavailable(sourceChosen = true, configured = false))?.detail)
+    }
+
+    @Test
+    fun `the video button is named for the Video sources page it opens`() {
+        val navigation = AppNavigationState()
+        val button = videoSourcesButton(navigation)
+        button.onClick()
+        assertEquals("Video sources", button.label)
+        assertEquals(VIDEO_SOURCES_PAGE, navigation.settingsPage)
     }
 
     private fun rect(left: Float, top: Float, right: Float, bottom: Float) = androidx.compose.ui.geometry.Rect(left, top, right, bottom)

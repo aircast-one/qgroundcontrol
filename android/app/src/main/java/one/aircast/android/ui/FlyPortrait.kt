@@ -58,8 +58,13 @@ private const val BAR_SCRIM_ALPHA = 0.7f
 private const val PIP_BORDER_ALPHA = 0.5f
 private val MAP_BUTTON_SIZE = 40.dp
 private val MAP_ATTRIBUTION_CLEARANCE = 28.dp
+private val PORTRAIT_CAMERA_PIP_WIDTH = 96.dp
+private val PORTRAIT_CAMERA_PIP_HEIGHT = 54.dp
 
 internal fun portraitSplit(view: FlyView, hasVideo: Boolean): Boolean = view == FlyView.Video && hasVideo
+
+internal fun portraitShowsCamera(reading: VideoReading?): Boolean =
+    reading != null && (reading.available || (!reading.streamEnabled && reading.sourceChosen))
 
 @Composable
 internal fun FlyPortrait(
@@ -69,13 +74,13 @@ internal fun FlyPortrait(
     video: @Composable (Modifier, Boolean) -> Unit,
     map: @Composable (Modifier) -> Unit,
     keyRow: @Composable () -> Unit,
-    rail: @Composable () -> Unit,
+    rail: @Composable (Boolean) -> Unit,
     overlays: @Composable () -> Unit,
     actions: @Composable (FlyDeckLayout) -> Unit,
 ) {
     val videoJson by qgcPath(VIDEO_VIEW)
     val reading = remember(videoJson) { videoReading(videoJson) }
-    val hasVideo = reading?.available == true
+    val hasVideo = portraitShowsCamera(reading)
     val split = portraitSplit(view, hasVideo)
     val flyScreen = LocalFlyScreenState.current
     val barTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + PORTRAIT_BAR_HEIGHT
@@ -120,6 +125,7 @@ internal fun FlyPortrait(
                     }
                 }
             }
+            if (split) shownPipCamera()?.let { camera -> CameraPipThumbnail(camera, Modifier.padding(top = videoTop).padding(AircastSpace.s2).size(PORTRAIT_CAMERA_PIP_WIDTH, PORTRAIT_CAMERA_PIP_HEIGHT)) }
             Box(Modifier.fillMaxSize().padding(top = controlsTop)) {
                 Column(
                     Modifier
@@ -138,7 +144,7 @@ internal fun FlyPortrait(
                         .align(Alignment.TopEnd)
                         .padding(end = AircastSpace.s3, top = buttonsTop),
                 )
-                Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE)) { rail() }
+                Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE)) { rail(split) }
                 OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE))
             }
             Row(

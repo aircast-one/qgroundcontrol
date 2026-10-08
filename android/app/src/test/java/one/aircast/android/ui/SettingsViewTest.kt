@@ -176,9 +176,9 @@ class SettingsViewTest {
 
     @Test
     fun `the head suppresses the note only where it draws the editor itself`() {
-        assertEquals(setOf(VIDEO_GROUP, FLY_VIEW_GROUP), GROUPS_WITH_A_HEAD_EDITOR)
+        assertEquals(setOf(FLY_VIEW_GROUP), GROUPS_WITH_A_HEAD_EDITOR)
         assertTrue(
-            "the core's note sends the operator to the desktop for these two, which is wrong on a head that has an editor for them",
+            "the core's note sends the operator to the desktop for on-screen RC controls, which is wrong on a head that has an editor for them",
             UNITS_GROUP !in GROUPS_WITH_A_HEAD_EDITOR,
         )
     }

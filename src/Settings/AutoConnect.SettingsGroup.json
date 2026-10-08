@@ -7,7 +7,7 @@
             "shortDesc": "Automatically connect to vehicles detected on UDP network connections.",
             "longDesc": "If this option is enabled GroundControl will automatically connect to a vehicle which is detected on a UDP communication link.",
             "type": "bool",
-            "default": true,
+            "default": false,
             "label": "Automatically open a connection over UDP",
             "keywords": "auto connect,udp"
         },

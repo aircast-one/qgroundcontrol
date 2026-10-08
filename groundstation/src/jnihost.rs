@@ -359,19 +359,21 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_notifyFontScale
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_notifySafeAreaInsets(_env: JNIEnv, _class: JClass, _left: jint, _top: jint, _right: jint, _bottom: jint) {}
 
+const MAIN_VIDEO: jint = crate::videohost::MAIN_CHANNEL as jint;
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoWidth(_env: JNIEnv, _class: JClass) -> jint {
-    crate::androidvideo::video().map_or(0, |video| unsafe { (video.width)() })
+    crate::androidvideo::video().map_or(0, |video| unsafe { (video.width)(MAIN_VIDEO) })
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoHeight(_env: JNIEnv, _class: JClass) -> jint {
-    crate::androidvideo::video().map_or(0, |video| unsafe { (video.height)() })
+    crate::androidvideo::video().map_or(0, |video| unsafe { (video.height)(MAIN_VIDEO) })
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoFrames(_env: JNIEnv, _class: JClass) -> jlong {
-    crate::androidvideo::video().map_or(0, |video| unsafe { (video.frames)() })
+    crate::androidvideo::video().map_or(0, |video| unsafe { (video.frames)(MAIN_VIDEO) })
 }
 
 #[unsafe(no_mangle)]
@@ -380,13 +382,13 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoCopyFrame(
     let buffer = JByteBuffer::from(buffer);
     let (Ok(address), Ok(capacity)) = (env.get_direct_buffer_address(&buffer), env.get_direct_buffer_capacity(&buffer)) else { return 0 };
     let (mut width, mut height, mut stride) = (0, 0, 0);
-    jboolean::from(unsafe { (video.copy_frame)(address.cast(), i32::try_from(capacity).unwrap_or(i32::MAX), &mut width, &mut height, &mut stride) })
+    jboolean::from(unsafe { (video.copy_frame)(MAIN_VIDEO, address.cast(), i32::try_from(capacity).unwrap_or(i32::MAX), &mut width, &mut height, &mut stride) })
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoSetSurface(env: JNIEnv, _class: JClass, surface: JObject) -> jboolean {
+pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoSetSurface(env: JNIEnv, _class: JClass, channel: jint, surface: JObject) -> jboolean {
     let Some(video) = crate::androidvideo::video() else { return 0 };
-    jboolean::from(unsafe { (video.set_surface)(env.get_raw(), surface.as_raw()) })
+    jboolean::from(unsafe { (video.set_surface)(env.get_raw(), channel, surface.as_raw()) })
 }
 
 #[unsafe(no_mangle)]

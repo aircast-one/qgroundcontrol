@@ -43,6 +43,7 @@ void* createVideoSink(const VideoSinkConfig& config);
 #endif
 void releaseVideoSink(void* sink);
 void *createNativeSink(QObject *parent = nullptr);
+bool attachNativeSink(void *sink, int channel);
 VideoReceiver* createVideoReceiver(QObject* parent = nullptr);
 
 #ifndef QGC_HEADLESS_CORE
@@ -57,8 +58,6 @@ bool setupQVideoSinkElement(void* sinkBin, QVideoSink* videoSink, QObject* contr
 /// persisted ForceVideoDecoder* choice against what the running build can actually provide.
 QList<VideoDecoderOptions> availableDecoderFamilies();
 
-// Process/runtime lifecycle. Reached only through VideoBackend, which is the layer that
-// no-ops these for the QtMultimedia build; this header is included solely under QGC_GST_STREAMING.
 Environment::ValidationResult prepareEnvironment();
 bool initialize(const QStringList& arguments, const Environment::ValidationResult& envResult);
 void bindDebugLevelFact(Fact* fact, QObject* context);
@@ -67,4 +66,4 @@ void attachAppSink(QObject* receiver, void* sink, QQuickItem* widget);
 void onMainWindowReady(QQuickWindow* window);
 #endif
 
-}  // namespace GStreamer
+}

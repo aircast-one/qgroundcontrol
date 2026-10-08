@@ -7,10 +7,13 @@ class VideoCameraSwitchTest : public UnitTest
     Q_OBJECT
 
 private slots:
-    void _cameraToReceiverPinning();
+    void _onlyTheActiveAndPipCamerasArePlayed();
     void _multiViewOffGatesInactiveCameras();
     void _widgetRoles();
-    void _tileCameraNumbers();
+    void _pipCameraNumbers();
+    void _nativeChannelsFollowTheActiveAndPipCameras();
+    void _pipIsTheNextUsableCameraTheSwitchGoesTo();
+    void _cameraSignalsFollowTheReceivers();
     void _urlWhitespaceIsTrimmed();
     void _currentCameraFallsBackToTheFirstUsable();
     void _adoptingReplacesTheSameCamera();

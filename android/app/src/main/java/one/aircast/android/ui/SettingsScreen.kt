@@ -13,12 +13,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 
-import androidx.compose.foundation.background
-
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-
-import androidx.compose.foundation.layout.aspectRatio
 
 import androidx.annotation.DrawableRes
 import one.aircast.android.R
@@ -81,7 +76,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
@@ -104,14 +98,12 @@ import org.json.JSONObject
 
 private const val SETTINGS_VIEW = "view.settings"
 private const val SEARCH_SETTLE_MS = 250L
-private const val PREVIEW_HEIGHT_SHARE = 0.4f
 
 internal const val UNITS_GROUP = "unitsSettings"
-internal const val VIDEO_GROUP = "videoSettings"
 internal const val FLY_VIEW_GROUP = "flyViewSettings"
 internal const val VIEWER_3D_GROUP = "viewer3DSettings"
 
-internal val GROUPS_WITH_A_HEAD_EDITOR = setOf(VIDEO_GROUP, FLY_VIEW_GROUP)
+internal val GROUPS_WITH_A_HEAD_EDITOR = setOf(FLY_VIEW_GROUP)
 
 internal val PAGES_WITHOUT_A_SCREEN = mapOf(
     "Firmware Upgrade" to "QGC has no such settings page; the firmware screen reads these settings itself",
@@ -136,7 +128,7 @@ private fun pageGlance(title: String): String {
         val system by qgcDouble("settings.unitsSettings.unitSystem")
         return if (system.isNaN()) "" else unitSystemLabel(system.toInt())
     }
-    if (title == VIDEO_PAGE) {
+    if (title == VIDEO_SOURCES_PAGE) {
         val cameras by qgcPath(CAMERAS_VIEW)
         return camerasGlance(camerasReading(cameras))
     }
@@ -177,6 +169,7 @@ internal val PAGE_LOOKS = mapOf(
     "3D Viewer" to PageLook(SettingsGroup.Control, R.drawable.ic_explore),
     "Video" to PageLook(SettingsGroup.Camera, R.drawable.ic_videocam, inline = true),
     "Connections" to PageLook(SettingsGroup.Transmission, R.drawable.ic_link),
+    VIDEO_SOURCES_PAGE to PageLook(SettingsGroup.Transmission, R.drawable.ic_videocam),
     "MAVLink" to PageLook(SettingsGroup.Transmission, R.drawable.ic_swap_horiz),
     "Packet Radio" to PageLook(SettingsGroup.Transmission, R.drawable.ic_wifi),
     "RTK GPS" to PageLook(SettingsGroup.Transmission, R.drawable.ic_satellite_alt),
@@ -263,7 +256,7 @@ internal fun settingsPages(view: JSONObject?): List<SettingsPageEntry> {
         }
     }.filter {
         it.title.isNotBlank() && it.title !in PAGES_WITHOUT_A_SCREEN.keys &&
-            (it.sectionCount > 0 || it.showsLinks || it.showsAbout || it.showsConsole || it.showsPx4Logs)
+            (it.sectionCount > 0 || it.showsLinks || it.showsAbout || it.showsConsole || it.showsPx4Logs || it.showsVideoSources)
     }
 }
 
@@ -434,7 +427,6 @@ private fun InlinePage(page: SettingsPageEntry, group: SettingsGroup) {
     if (!(home && pageLook(page.title).tabHome)) {
         PageHeader(pageLook(page.title).icon, if (home) pageTitle(page.title) else borrowedTitle(shown))
     }
-    if (home && page.showsVideoSources) VideoPreview()
     SettingsControls(page, shown, home, blockHeadings = home) { reloads++ }
     if (home && page.title == GENERAL_PAGE) ResetAllSettingsRow()
 }
@@ -515,24 +507,6 @@ internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpen
 }
 
 @Composable
-private fun VideoPreview() {
-    val previewMaxWidth = (LocalConfiguration.current.screenHeightDp * PREVIEW_HEIGHT_SHARE * 16f / 9f).dp
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        VideoSurface(
-            Modifier
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .widthIn(max = previewMaxWidth)
-                .fillMaxWidth()
-                .aspectRatio(16f / 9f)
-                .clip(MaterialTheme.shapes.large)
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-            expanded = true,
-            settingsPreview = true,
-        )
-    }
-}
-
-@Composable
 private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modifier) {
     var sections by remember(page.title) { mutableStateOf(emptyList<SettingsSectionRows>()) }
     var loaded by remember(page.title) { mutableStateOf(false) }
@@ -565,6 +539,11 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
         return
     }
 
+    if (page.showsVideoSources) {
+        CamerasEditor(modifier)
+        return
+    }
+
     if (!loaded) {
         Text("Reading settings.", modifier.padding(16.dp))
         return
@@ -576,7 +555,6 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
     }
 
     Column(modifier.verticalScroll(rememberScrollState())) {
-        if (page.showsVideoSources) VideoPreview()
         SettingsControls(page, sections) { reloads++ }
         if (page.title == GENERAL_PAGE) ResetAllSettingsRow()
     }
@@ -604,7 +582,6 @@ private fun SettingsControls(
                 return@forEach
             }
             blockHeading(page.title, section, block).takeIf { blockHeadings && it.isNotBlank() }?.let { SectionHeader(sentenceCase(it)) }
-            if (section.group == VIDEO_GROUP && block.title == CAMERAS_BLOCK && page.showsVideoSources) CamerasEditor()
             FactRuns(block.facts, onWrite)
             if (page.showsNtrip && block.title == NTRIP_MOUNTPOINT_BLOCK) NtripMountpointBrowser(onWrite)
             if (section.group == REMOTE_ID_GROUP && block.title == GCS_LOCATION_BLOCK) GcsPositionStatus()
@@ -623,7 +600,6 @@ private fun SettingsControls(
 }
 
 internal const val ADVANCED_BLOCK = "Advanced"
-internal const val CAMERAS_BLOCK = "Cameras"
 
 @Composable
 private fun AdvancedBlock(key: String, content: @Composable () -> Unit) {

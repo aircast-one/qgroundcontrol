@@ -7,10 +7,7 @@ internal const val VIDEO_VIEW = "view.video"
 
 internal data class VideoCamera(
     val slot: Int,
-    val title: String,
     val status: String,
-    val connecting: Boolean,
-    val recording: Boolean,
     val configured: Boolean,
 )
 
@@ -22,7 +19,6 @@ internal data class VideoReading(
     val sourceSize: SourceSize?,
     val summary: String,
     val activeSource: Int,
-    val multipleSources: Boolean,
     val cameras: List<VideoCamera>,
     val streaming: Boolean = false,
     val streamEnabled: Boolean = true,
@@ -44,7 +40,6 @@ internal fun videoReading(view: JSONObject?): VideoReading? {
         },
         summary = view.optText("summary"),
         activeSource = view.optInt("activeSource"),
-        multipleSources = view.optBoolean("multipleSources"),
         streaming = view.optBoolean("streaming"),
         streamEnabled = view.optBoolean("streamEnabled", true),
         noVideoText = view.optText("noVideoText"),
@@ -54,23 +49,13 @@ internal fun videoReading(view: JSONObject?): VideoReading? {
             cameras?.optJSONObject(index)?.let { camera ->
                 VideoCamera(
                     slot = camera.optInt("slot"),
-                    title = camera.optText("title"),
                     status = camera.optText("status"),
-                    connecting = camera.optBoolean("connecting"),
-                    recording = camera.optBoolean("recording"),
                     configured = camera.optBoolean("configured"),
                 )
             }
         },
     )
 }
-
-internal fun switchableSources(reading: VideoReading?): List<VideoCamera> =
-    reading?.takeIf { it.multipleSources }
-        ?.cameras
-        ?.filter { it.configured }
-        ?.takeIf { it.size > 1 }
-        .orEmpty()
 
 internal data class PaintedRect(val left: Double, val top: Double, val width: Double, val height: Double)
 

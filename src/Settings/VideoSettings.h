@@ -65,7 +65,7 @@ public:
     bool     sourceUsable           (int index);
     Q_INVOKABLE bool offeredSource  (const QString &source);
     Q_INVOKABLE QStringList offeredSources();
-    QList<int> tileCameraIndices     ();
+    int      pipCameraIndex         ();
 
     std::optional<QJsonArray> cameraList();
     Q_INVOKABLE bool camerasReadable();

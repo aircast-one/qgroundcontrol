@@ -70,6 +70,7 @@ import one.aircast.android.ui.ResumeFailedPrompt
 import one.aircast.android.ui.VirtualJoystick
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.res.painterResource
@@ -104,7 +105,9 @@ import one.aircast.android.ui.RcControlsLayer
 import one.aircast.android.ui.TrafficReadout
 import one.aircast.map.FlyMap
 import one.aircast.map.TrackPoint
-import one.aircast.android.ui.VideoSourceLayer
+import one.aircast.android.ui.CameraSwitch
+import androidx.compose.foundation.layout.Arrangement
+import one.aircast.map.AircastSpace
 import one.aircast.android.ui.VideoSurface
 import one.aircast.android.ui.FlyScreen
 import one.aircast.android.ui.FlyPortrait
@@ -113,6 +116,8 @@ import one.aircast.android.ui.flyIsPortrait
 import org.mavlink.qgroundcontrol.QGCBridge
 
 private val KEY_ROW_STOP_GAP = 24.dp
+
+private val RAIL_SHUTTER_ROOM = 56.dp
 
 private val VIRTUAL_JOYSTICK_BOTTOM_MARGIN = 96.dp
 
@@ -315,7 +320,7 @@ fun AircastShell(hostView: android.view.View?) {
             )
         }
     }
-    val flyVideoSourceLayer = remember { movableContentOf { LayoutWidget("videoSource") { VideoSourceLayer() } } }
+    val flyCameraSwitch = remember { movableContentOf<Boolean> { thumbnailRoom -> LayoutWidget("cameraSwitch") { CameraSwitch(thumbnailRoom) } } }
     val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer(shutters = !flyIsPortrait()) } } }
     val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
     val flyOrbitReadout = remember { movableContentOf { LayoutWidget("orbit") { OrbitReadout() } } }
@@ -524,8 +529,13 @@ fun AircastShell(hostView: android.view.View?) {
                         one.aircast.android.ui.FlySettingsButton()
                     }
                     val flyKeyRow: @Composable () -> Unit = {
-                        flyVideoSourceLayer()
                         flyObstacleArc()
+                    }
+                    val flyRail: @Composable (Alignment.Vertical, Dp, Boolean) -> Unit = { align, shutterRoom, thumbnailRoom ->
+                        Row(verticalAlignment = align, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2)) {
+                            flyCameraSwitch(thumbnailRoom)
+                            Box(Modifier.widthIn(min = shutterRoom), contentAlignment = Alignment.Center) { flyCameraControlLayer() }
+                        }
                     }
                     val flyOverlays: @Composable () -> Unit = {
                         LayoutWidget("messageBanner", hideable = false) { one.aircast.android.ui.VehicleMessageBanner() }
@@ -546,7 +556,7 @@ fun AircastShell(hostView: android.view.View?) {
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
-                            rail = { flyCameraControlLayer() },
+                            rail = { thumbnailRoom -> flyRail(Alignment.CenterVertically, RAIL_SHUTTER_ROOM, thumbnailRoom) },
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
                         )
@@ -558,7 +568,7 @@ fun AircastShell(hostView: android.view.View?) {
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
-                            rail = { flyCameraControlLayer() },
+                            rail = { thumbnailRoom -> flyRail(Alignment.Bottom, 0.dp, thumbnailRoom) },
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
                         )

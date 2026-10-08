@@ -8,6 +8,8 @@
 
 #include <android/native_window_jni.h>
 
+#include <array>
+
 #include <QtCore/QJniEnvironment>
 #include <QtCore/QJniObject>
 
@@ -88,17 +90,17 @@ void jniNotifyDeepLink(JNIEnv *env, jclass clazz, jstring urlA)
 
 jint jniVideoWidth(JNIEnv *, jclass)
 {
-    return qgc_video_width();
+    return qgc_video_width(0);
 }
 
 jint jniVideoHeight(JNIEnv *, jclass)
 {
-    return qgc_video_height();
+    return qgc_video_height(0);
 }
 
 jlong jniVideoFrames(JNIEnv *, jclass)
 {
-    return static_cast<jlong>(qgc_video_frames());
+    return static_cast<jlong>(qgc_video_frames(0));
 }
 
 jboolean jniVideoCopyFrame(JNIEnv *env, jclass, jobject buffer)
@@ -116,17 +118,17 @@ jboolean jniVideoCopyFrame(JNIEnv *env, jclass, jobject buffer)
     int width = 0;
     int height = 0;
     int stride = 0;
-    return qgc_video_copy_frame(destination, static_cast<int>(capacity), &width, &height, &stride)
+    return qgc_video_copy_frame(0, destination, static_cast<int>(capacity), &width, &height, &stride)
         ? JNI_TRUE
         : JNI_FALSE;
 }
 
-ANativeWindow *heldWindow = nullptr;
+std::array<ANativeWindow *, QGC_VIDEO_CHANNELS> heldWindows{};
 
-jboolean jniVideoSetSurface(JNIEnv *env, jclass, jobject surface)
+jboolean jniVideoSetSurface(JNIEnv *env, jclass, jint channel, jobject surface)
 {
     ANativeWindow *const window = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
-    const bool applied = qgc_video_set_window(window);
+    const bool applied = qgc_video_set_window(channel, window);
     if (!applied) {
         if (window) {
             ANativeWindow_release(window);
@@ -134,10 +136,11 @@ jboolean jniVideoSetSurface(JNIEnv *env, jclass, jobject surface)
         return JNI_FALSE;
     }
 
-    if (heldWindow) {
-        ANativeWindow_release(heldWindow);
+    ANativeWindow *&held = heldWindows[static_cast<size_t>(channel)];
+    if (held) {
+        ANativeWindow_release(held);
     }
-    heldWindow = window;
+    held = window;
     return JNI_TRUE;
 }
 
@@ -173,7 +176,7 @@ void setNativeMethods()
         { "videoHeight", "()I", reinterpret_cast<void *>(jniVideoHeight) },
         { "videoFrames", "()J", reinterpret_cast<void *>(jniVideoFrames) },
         { "videoCopyFrame", "(Ljava/nio/ByteBuffer;)Z", reinterpret_cast<void *>(jniVideoCopyFrame) },
-        { "videoSetSurface", "(Landroid/view/Surface;)Z", reinterpret_cast<void *>(jniVideoSetSurface) },
+        { "videoSetSurface", "(ILandroid/view/Surface;)Z", reinterpret_cast<void *>(jniVideoSetSurface) },
     };
 
     QJniEnvironment jniEnv;

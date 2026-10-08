@@ -1,8 +1,3 @@
-# ============================================================================
-# Flight Display Module
-# In-flight view, telemetry displays, and vehicle control UI
-# ============================================================================
-
 qgc_qml_only_library(FlyViewModule
     URI QGroundControl.FlyView
     VERSION 1.0
@@ -11,7 +6,6 @@ qgc_qml_only_library(FlyViewModule
         CustomGuidedActionsController.qml
         CameraAimArea.qml
         CameraControlLayer.qml
-        CameraDockPill.qml
         CameraEdgeSlider.qml
 
         CameraShutterButton.qml

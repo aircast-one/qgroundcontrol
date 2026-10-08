@@ -9,6 +9,7 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -18,27 +19,40 @@ extern "C" void gst_init_static_plugins(void);
 
 namespace {
 
-std::mutex windowMutex;
-ANativeWindow *window = nullptr;
-int windowWidth = 0;
-int windowHeight = 0;
+struct Window {
+    std::mutex mutex;
+    ANativeWindow *window = nullptr;
+    int width = 0;
+    int height = 0;
+};
+
+std::array<Window, QGC_VIDEO_CHANNELS> windows;
 JavaVM *javaVm = nullptr;
 jobject applicationContext = nullptr;
 jobject applicationClassLoader = nullptr;
 
-void drawFrame(const uint8_t *pixels, int width, int height, int stride)
+Window *windowAt(int channel)
 {
-    const std::lock_guard<std::mutex> lock(windowMutex);
-    if (!window || width <= 0 || height <= 0) {
+    return (channel >= 0 && channel < QGC_VIDEO_CHANNELS) ? &windows[static_cast<size_t>(channel)] : nullptr;
+}
+
+void drawFrame(int channel, const uint8_t *pixels, int width, int height, int stride)
+{
+    Window *const target = windowAt(channel);
+    if (!target) {
         return;
     }
-    if (width != windowWidth || height != windowHeight) {
-        ANativeWindow_setBuffersGeometry(window, width, height, WINDOW_FORMAT_RGBA_8888);
-        windowWidth = width;
-        windowHeight = height;
+    const std::lock_guard<std::mutex> lock(target->mutex);
+    if (!target->window || width <= 0 || height <= 0) {
+        return;
+    }
+    if (width != target->width || height != target->height) {
+        ANativeWindow_setBuffersGeometry(target->window, width, height, WINDOW_FORMAT_RGBA_8888);
+        target->width = width;
+        target->height = height;
     }
     ANativeWindow_Buffer buffer;
-    if (ANativeWindow_lock(window, &buffer, nullptr) != 0) {
+    if (ANativeWindow_lock(target->window, &buffer, nullptr) != 0) {
         return;
     }
     const int rows = std::min(height, buffer.height);
@@ -47,7 +61,7 @@ void drawFrame(const uint8_t *pixels, int width, int height, int stride)
     for (int row = 0; row < rows; ++row) {
         memcpy(destination + static_cast<size_t>(row) * buffer.stride * 4, pixels + static_cast<size_t>(row) * stride, rowBytes);
     }
-    ANativeWindow_unlockAndPost(window);
+    ANativeWindow_unlockAndPost(target->window);
 }
 
 bool hardwareDecoder(const gchar *name)
@@ -119,7 +133,7 @@ GstGLDisplay *sharedGlDisplay()
     return display;
 }
 
-void shareGlDisplay(void *pipeline)
+void shareGlDisplay(int, void *pipeline)
 {
     GstGLDisplay *const display = sharedGlDisplay();
     if (!display) {
@@ -197,16 +211,20 @@ __attribute__((visibility("default"))) void qgc_video_android_force_decoder(int 
     }
 }
 
-__attribute__((visibility("default"))) bool qgc_video_android_set_surface(JNIEnv *env, jobject surface)
+__attribute__((visibility("default"))) bool qgc_video_android_set_surface(JNIEnv *env, int channel, jobject surface)
 {
-    ANativeWindow *const next = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
-    const std::lock_guard<std::mutex> lock(windowMutex);
-    if (window) {
-        ANativeWindow_release(window);
+    Window *const target = windowAt(channel);
+    if (!target) {
+        return false;
     }
-    window = next;
-    windowWidth = 0;
-    windowHeight = 0;
+    ANativeWindow *const next = surface ? ANativeWindow_fromSurface(env, surface) : nullptr;
+    const std::lock_guard<std::mutex> lock(target->mutex);
+    if (target->window) {
+        ANativeWindow_release(target->window);
+    }
+    target->window = next;
+    target->width = 0;
+    target->height = 0;
     return surface == nullptr || next != nullptr;
 }
 
