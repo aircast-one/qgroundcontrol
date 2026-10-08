@@ -28,6 +28,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
@@ -59,10 +60,15 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
     val navigation = LocalAppNavigation.current
     var group by rememberSaveable(requested) { mutableStateOf(if (navigation.aircraftRequested) SettingsGroup.General else openingGroup(requested)) }
     var setupOpen by rememberSaveable { mutableStateOf(navigation.aircraftRequested) }
+    var setupFromTab by rememberSaveable { mutableStateOf(false) }
+    var enteredForSetup by rememberSaveable { mutableStateOf(navigation.aircraftRequested) }
+    LaunchedEffect(setupOpen) { if (!setupOpen) enteredForSetup = false }
+    val closeSetup: () -> Unit = { if (enteredForSetup) onClose() else setupOpen = false }
     var page by rememberSaveable(requested) { mutableStateOf(requested) }
     var query by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(navigation.aircraftRequested) {
         if (navigation.aircraftRequested) {
+            setupFromTab = setupFromTab || !navigation.setupPage.isNullOrEmpty()
             setupOpen = true
             query = null
             navigation.aircraftRequested = false
@@ -83,9 +89,10 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
     }
     androidx.activity.compose.BackHandler(onBack = onClose)
     androidx.activity.compose.BackHandler(enabled = query != null) { query = null }
-    androidx.activity.compose.BackHandler(enabled = setupOpen && query == null) { setupOpen = false }
+    androidx.activity.compose.BackHandler(enabled = setupOpen && query == null, onBack = closeSetup)
     val openSetup: (String?) -> Unit = { component ->
         navigation.setupPage = component
+        setupFromTab = component != null
         setupOpen = true
         query = null
     }
@@ -131,8 +138,11 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                         setupOpen = false
                     }
                     setupOpen -> Column(Modifier.weight(1f)) {
-                        PageTopBar(AIRCRAFT_SETUP, "Back to settings") { setupOpen = false }
-                        SetupScreen(Modifier.weight(1f))
+                        val heading = remember { mutableStateOf<PageHeading?>(null) }
+                        val back: () -> Unit = { heading.value?.takeUnless { setupFromTab }?.back?.invoke() ?: closeSetup() }
+                        PageTopBar(heading.value?.title ?: AIRCRAFT_SETUP, "Back", back)
+                        CompositionLocalProvider(LocalPageHeading provides heading) { SetupScreen(Modifier.weight(1f)) }
+                        androidx.activity.compose.BackHandler(enabled = setupFromTab && query == null, onBack = back)
                     }
                     else -> SettingsScreen(group, page?.takeIf { pageLook(it).group == group }, Modifier.weight(1f), openSetup)
                 }

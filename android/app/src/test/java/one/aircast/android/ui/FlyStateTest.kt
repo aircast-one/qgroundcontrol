@@ -181,7 +181,7 @@ class FlyReadinessTest {
         assertEquals("Not ready. 2 checks need attention before arming.", readinessWarning(state(ready = false)))
         assertNull(readinessWarning(state()))
         assertNull(readinessWarning(state(armed = true, ready = false)))
-        assertEquals("Not ready. Vehicle setup is not complete.", readinessWarning(state(ready = false).copy(summaryDetail = ALL_CHECKS_PASSED)))
+        assertEquals("Not ready. Aircraft setup is not complete.", readinessWarning(state(ready = false).copy(summaryDetail = ALL_CHECKS_PASSED)))
     }
 
     @Test

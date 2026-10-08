@@ -10,7 +10,6 @@ import org.junit.Test
 class SetupViewTest {
     @Test
     fun `setup wording follows VehicleSummary and SetupView`() {
-        assertEquals("No vehicle connected", NO_VEHICLE_HEADLINE)
         assertEquals(true, setupReadiness(org.json.JSONObject("""{"ready":false,"setupComplete":true}"""))?.setupComplete)
         assertEquals(null, setupReadiness(org.json.JSONObject("""{"ready":false}"""))?.setupComplete)
     }

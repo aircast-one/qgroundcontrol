@@ -476,7 +476,7 @@ fun AircastShell(hostView: android.view.View?) {
                     )
                 }
                 NavigationRailItem(
-                    selected = false,
+                    selected = navigation.settingsOpen,
                     onClick = { navigation.settingsOpen = true },
                     icon = { Icon(painterResource(R.drawable.ic_settings), "Settings") },
                     label = { Text("Settings") },
@@ -501,7 +501,7 @@ fun AircastShell(hostView: android.view.View?) {
                         )
                     }
                     NavigationBarItem(
-                        selected = false,
+                        selected = navigation.settingsOpen,
                         onClick = { navigation.settingsOpen = true },
                         icon = { Icon(painterResource(R.drawable.ic_settings), "Settings") },
                         label = { Text("Settings") },

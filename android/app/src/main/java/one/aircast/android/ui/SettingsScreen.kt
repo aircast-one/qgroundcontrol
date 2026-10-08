@@ -344,8 +344,6 @@ private fun TabSetupRows(group: SettingsGroup, onOpenSetup: (String?) -> Unit) {
 
 @Composable
 private fun AircraftSetupRow(onOpenSetup: (String?) -> Unit) {
-    val setupJson by qgcPath(SETUP)
-    if (setupComponents(setupJson).isEmpty()) return
     SetupRow(title = AIRCRAFT_SETUP, status = "", icon = R.drawable.ic_build, onClick = { onOpenSetup(null) })
 }
 

@@ -289,7 +289,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     if (!hasVehicle) {
         Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            EmptyState(R.drawable.ic_build, NO_VEHICLE_HEADLINE, NO_VEHICLE_TEXT)
+            EmptyState(R.drawable.ic_build, LOOKING_TITLE, LOOKING_HINT)
             OutlinedButton(onClick = { navigation.settingsPage = "Connections" }) { Text("Set up connection") }
         }
         return
@@ -320,7 +320,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
     val parametersPage: (@Composable (Modifier) -> Unit)? = if (parametersOpen) {
         { pane ->
             Column(pane.fillMaxSize()) {
-                PageTopBar("Parameters", "Back to Setup") { parametersOpen = false }
+                SetupPageBar("Parameters") { parametersOpen = false }
                 ParametersScreen(Modifier.weight(1f), initialSearch = parametersSearch)
             }
         }
@@ -330,7 +330,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     val componentPage: (@Composable (Modifier) -> Unit)? = openComponent?.takeIf { headCanOpen(setupPage(setupJson, it.name), it.name) }?.let { open -> { pane ->
         Column(pane.fillMaxSize()) {
-            PageTopBar(sentenceCase(open.name), "Back to Setup") { opened = null }
+            SetupPageBar(sentenceCase(open.name)) { opened = null }
             val nativePage = setupPage(setupJson, open.name)
             val blocked = open.blockedReason
             val first = open.prerequisite
@@ -536,7 +536,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
                 overview(Modifier.width(LIST_PANE_WIDTH).background(MaterialTheme.colorScheme.surfaceContainerLow))
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     CompositionLocalProvider(LocalTwoPane provides true) {
-                        detail?.invoke(Modifier.widthIn(max = DETAIL_PANE_MAX_WIDTH)) ?: EmptyState(R.drawable.ic_build, "Vehicle setup", "Choose a component on the left.")
+                        detail?.invoke(Modifier.widthIn(max = DETAIL_PANE_MAX_WIDTH)) ?: EmptyState(R.drawable.ic_build, AIRCRAFT_SETUP, "Choose a component on the left.")
                     }
                 }
             }
@@ -544,6 +544,11 @@ fun SetupScreen(modifier: Modifier = Modifier) {
             (detail ?: overview)(Modifier)
         }
     }
+}
+
+@Composable
+private fun SetupPageBar(title: String, onBack: () -> Unit) {
+    if (LocalPageHeading.current != null && !LocalTwoPane.current) OverridePageHeading(title, onBack) else PageTopBar(title, "Back to $AIRCRAFT_SETUP", onBack)
 }
 
 @Composable
@@ -559,7 +564,7 @@ private fun ReadinessHeader(
             .padding(horizontal = 16.dp)
             .padding(top = 20.dp, bottom = 8.dp),
     ) {
-        Text("Vehicle setup", style = MaterialTheme.typography.headlineMedium)
+        if (LocalPageHeading.current == null) Text(AIRCRAFT_SETUP, style = MaterialTheme.typography.headlineMedium)
         Text(
             text = setupSubtitle(vehicle, firmware),
             style = MaterialTheme.typography.bodyMedium,
