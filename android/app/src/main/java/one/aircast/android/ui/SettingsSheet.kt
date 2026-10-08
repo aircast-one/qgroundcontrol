@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.launch
 import one.aircast.android.R
 import one.aircast.map.AircastSpace
 import one.aircast.map.aircast
@@ -111,7 +112,20 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
         returnQuery = query?.takeIf { it.isNotBlank() }
         query = null
     }
+    val snackbars = remember { androidx.compose.material3.SnackbarHostState() }
+    val noticeScope = androidx.compose.runtime.rememberCoroutineScope()
+    val notice = remember {
+        ChangeNotice { message, undo ->
+            noticeScope.launch {
+                snackbars.currentSnackbarData?.dismiss()
+                val result = snackbars.showSnackbar(message, actionLabel = undo?.let { "Undo" }, duration = androidx.compose.material3.SnackbarDuration.Long)
+                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) undo?.invoke()?.let { refusal -> snackbars.showSnackbar("Undo failed: $refusal") }
+            }
+        }
+    }
     Surface(Modifier.fillMaxSize().zIndex(SETTINGS_SHEET_LAYER).pointerInput(Unit) {}, color = MaterialTheme.colorScheme.surface.copy(alpha = if (LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) SETTINGS_PANEL_ALPHA else 1f)) {
+      CompositionLocalProvider(LocalChangeNotice provides notice) {
+      Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             val pickTab: (SettingsGroup) -> Unit = { entry ->
                 group = entry
@@ -165,6 +179,9 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                 }
             }
         }
+        androidx.compose.material3.SnackbarHost(snackbars, Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.safeDrawing)) { AppSnackbar(it) }
+      }
+      }
     }
 }
 

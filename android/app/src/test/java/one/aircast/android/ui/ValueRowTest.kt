@@ -127,4 +127,20 @@ class ValueRowTest {
         assertNull(slider.noLimitAt)
         assertEquals(20.0, valueAtPosition(speed, slider, slider.end), 1e-9)
     }
+
+    @Test
+    fun `only a touch on the knob grabs it, so scrolling past cannot move a limit`() {
+        assertTrue(grabsThumb(touchX = 105f, thumbX = 100f, grabRadius = 24f))
+        assertFalse(grabsThumb(touchX = 300f, thumbX = 100f, grabRadius = 24f))
+        assertEquals(0.5f, thumbFraction(50f, 0f..100f))
+        assertEquals(1f, thumbFraction(500f, 0f..100f))
+    }
+
+    @Test
+    fun `motor-stopping failsafes sink below the safe ones`() {
+        val options = listOf("Do nothing", "Hover", "Stop motors", "Return home", "Disarm", "Land")
+        assertEquals(listOf(0, 1, 3, 5, 2, 4), safeFirst(options))
+        assertTrue(dangerousChoice("Terminate"))
+        assertFalse(dangerousChoice("Return home"))
+    }
 }

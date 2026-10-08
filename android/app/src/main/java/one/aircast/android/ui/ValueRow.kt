@@ -16,6 +16,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
@@ -130,82 +137,200 @@ internal fun valueAtPosition(fact: Fact, slider: InlineSlider, position: Float):
 internal suspend fun writeValueRefusal(fact: Fact, value: Double): String? =
     withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, roundedValue(fact, value).let { if (valueDecimals(fact) == 0) it.toLong() else it }) }
 
+internal fun interface ChangeNotice {
+    fun show(message: String, undo: (suspend () -> String?)?)
+}
+
+internal val LocalChangeNotice = androidx.compose.runtime.staticCompositionLocalOf { ChangeNotice { _, _ -> } }
+
+private const val DONE_MARK_MS = 1500L
+
 @Composable
-internal fun SliderValueRow(fact: Fact, slider: InlineSlider, title: @Composable () -> Unit, onOpen: () -> Unit, onWrite: () -> Unit) {
+internal fun SliderValueRow(fact: Fact, label: String, slider: InlineSlider, title: @Composable () -> Unit, onOpen: () -> Unit, onWrite: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val notice = LocalChangeNotice.current
     var dragging by remember(fact.path, fact.valueString) { mutableStateOf<Float?>(null) }
-    var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
+    var writing by remember(fact.path) { mutableStateOf(false) }
+    var done by remember(fact.path) { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(done) {
+        if (done) {
+            delay(DONE_MARK_MS)
+            done = false
+        }
+    }
     val shownValue = dragging?.let { valueAtPosition(fact, slider, it) } ?: numberOf(fact)
+    val commit: () -> Unit = {
+        val before = numberOf(fact)
+        dragging?.let { valueAtPosition(fact, slider, it) }?.takeIf { it != before }?.let { target ->
+            scope.launch {
+                writing = true
+                val refusal = writeValueRefusal(fact, target)
+                writing = false
+                if (refusal == null) {
+                    done = true
+                    onWrite()
+                    notice.show("$label ${valueTextOf(fact, target)}", before?.let { previous -> { writeValueRefusal(fact, previous).also { if (it == null) onWrite() } } })
+                } else {
+                    dragging = null
+                    notice.show("$label not changed: $refusal", null)
+                }
+            }
+        } ?: run { dragging = null }
+    }
     val value: @Composable () -> Unit = {
-        Text(
-            valueTextOf(fact, shownValue),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.clickable(onClickLabel = "Set exactly", onClick = onOpen).padding(horizontal = 4.dp, vertical = 8.dp),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            when {
+                writing -> androidx.compose.material3.CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                done -> Text("\u2713", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            }
+            Text(
+                valueTextOf(fact, shownValue),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clickable(onClickLabel = "Set exactly", onClick = onOpen).padding(horizontal = 4.dp, vertical = 8.dp),
+            )
+        }
     }
     val bar: @Composable (Modifier) -> Unit = { modifier ->
         ThinSlider(
             value = dragging ?: sliderPosition(slider, numberOf(fact)),
             range = slider.from..slider.end,
-            enabled = fact.acceptsWrite,
+            enabled = fact.acceptsWrite && !writing,
             onChange = { dragging = it },
-            onDone = {
-                dragging?.let { position ->
-                    scope.launch {
-                        refusal = writeValueRefusal(fact, valueAtPosition(fact, slider, position))
-                        if (refusal == null) onWrite() else dragging = null
-                    }
-                }
-            },
+            onDone = commit,
             modifier = modifier,
         )
     }
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
         if (maxWidth >= WIDE_ROW) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { title() }
+                Box(Modifier.weight(1f)) { title() }
                 value()
                 bar(Modifier.width(ROW_SLIDER_WIDTH))
             }
         } else {
             androidx.compose.foundation.layout.Column {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.foundation.layout.Box(Modifier.weight(1f)) { title() }
+                    Box(Modifier.weight(1f)) { title() }
                     value()
                 }
                 bar(Modifier.fillMaxWidth())
             }
         }
     }
-    refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
 }
 
 private val THUMB_SIZE = 18.dp
+private val THUMB_GRAB = 24.dp
 private val TRACK_HEIGHT = 2.dp
+private val SLIDER_HEIGHT = 48.dp
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+internal fun thumbFraction(value: Float, range: ClosedFloatingPointRange<Float>): Float {
+    val span = range.endInclusive - range.start
+    return if (span > 0f) ((value - range.start) / span).coerceIn(0f, 1f) else 0f
+}
+
+internal fun grabsThumb(touchX: Float, thumbX: Float, grabRadius: Float): Boolean = kotlin.math.abs(touchX - thumbX) <= grabRadius
+
 @Composable
 private fun ThinSlider(value: Float, range: ClosedFloatingPointRange<Float>, enabled: Boolean, onChange: (Float) -> Unit, onDone: () -> Unit, modifier: Modifier) {
-    val active = MaterialTheme.colorScheme.onSurface
+    val active = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else DISABLED_SLIDER_ALPHA)
     val inactive = MaterialTheme.colorScheme.outlineVariant
-    androidx.compose.material3.Slider(
-        value = value,
-        onValueChange = onChange,
-        modifier = modifier,
-        enabled = enabled,
-        onValueChangeFinished = onDone,
-        valueRange = range,
-        thumb = { Box(Modifier.size(THUMB_SIZE).background(active, CircleShape)) },
-        track = { state ->
-            val span = state.valueRange.endInclusive - state.valueRange.start
-            val fraction = if (span > 0f) ((state.value - state.valueRange.start) / span).coerceIn(0f, 1f) else 0f
-            androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(TRACK_HEIGHT)) {
-                drawRect(inactive)
-                drawRect(active, size = androidx.compose.ui.geometry.Size(size.width * fraction, size.height))
-            }
-        },
-    )
+    val latest by rememberUpdatedState(value)
+    val change by rememberUpdatedState(onChange)
+    val finish by rememberUpdatedState(onDone)
+    androidx.compose.foundation.layout.BoxWithConstraints(
+        modifier
+            .height(SLIDER_HEIGHT)
+            .semantics {
+                progressBarRangeInfo = androidx.compose.ui.semantics.ProgressBarRangeInfo(value, range)
+                if (enabled) {
+                    setProgress { target ->
+                        change(target.coerceIn(range))
+                        finish()
+                        true
+                    }
+                }
+            },
+    ) {
+        val width = constraints.maxWidth.toFloat()
+        val thumb = with(androidx.compose.ui.platform.LocalDensity.current) { THUMB_SIZE.toPx() }
+        val grab = with(androidx.compose.ui.platform.LocalDensity.current) { THUMB_GRAB.toPx() }
+        val travel = (width - thumb).coerceAtLeast(1f)
+        val positionAt: (Float) -> Float = { x -> range.start + ((x - thumb / 2) / travel).coerceIn(0f, 1f) * (range.endInclusive - range.start) }
+        androidx.compose.foundation.Canvas(
+            Modifier.fillMaxSize().pointerInput(enabled, travel, range) {
+                if (enabled) awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    if (grabsThumb(down.position.x, thumb / 2 + travel * thumbFraction(latest, range), grab)) {
+                        down.consume()
+                        awaitHorizontalTouchSlopOrCancellation(down.id) { moved, _ -> moved.consume() }?.let { drag ->
+                            change(positionAt(drag.position.x))
+                            horizontalDrag(drag.id) { moved ->
+                                change(positionAt(moved.position.x))
+                                moved.consume()
+                            }
+                            finish()
+                        }
+                    }
+                }
+            },
+        ) {
+            val thumbX = thumb / 2 + travel * thumbFraction(value, range)
+            val y = size.height / 2
+            val stroke = TRACK_HEIGHT.toPx()
+            drawLine(inactive, androidx.compose.ui.geometry.Offset(thumb / 2, y), androidx.compose.ui.geometry.Offset(width - thumb / 2, y), stroke)
+            drawLine(active, androidx.compose.ui.geometry.Offset(thumb / 2, y), androidx.compose.ui.geometry.Offset(thumbX, y), stroke)
+            drawCircle(active, thumb / 2, androidx.compose.ui.geometry.Offset(thumbX, y))
+        }
+    }
+}
+
+private const val DISABLED_SLIDER_ALPHA = 0.4f
+
+private val DANGEROUS_CHOICE = Regex("""(?i)(terminat|disarm|stop motors|kill)""")
+
+internal fun dangerousChoice(label: String): Boolean = DANGEROUS_CHOICE.containsMatchIn(label)
+
+internal fun safeFirst(options: List<String>): List<Int> = options.indices.sortedBy { dangerousChoice(options[it]) }
+
+internal const val DANGER_NOTE = "Motors stop \u2014 the aircraft falls"
+
+@Composable
+internal fun SafeChoiceMenu(expanded: Boolean, options: List<String>, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
+    var confirming by remember { mutableStateOf<Int?>(null) }
+    androidx.compose.material3.DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        safeFirst(options).map { index ->
+            val danger = dangerousChoice(options[index])
+            if (danger && index == safeFirst(options).firstOrNull { dangerousChoice(options[it]) }) androidx.compose.material3.HorizontalDivider()
+            androidx.compose.material3.DropdownMenuItem(
+                text = {
+                    androidx.compose.foundation.layout.Column {
+                        Text(options[index], color = if (danger) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified)
+                        if (danger) Text(DANGER_NOTE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                onClick = {
+                    onDismiss()
+                    if (danger) confirming = index else onPick(index)
+                },
+            )
+        }
+    }
+    confirming?.let { index ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirming = null },
+            title = { Text("${options[index]}?") },
+            text = { Text("If this happens in flight, the motors stop and the aircraft falls. Only choose it if a falling aircraft is safer than a flying one.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirming = null
+                    onPick(index)
+                }) { Text("Choose it", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirming = null }) { Text("Cancel") } },
+        )
+    }
 }
 
 internal fun turnOnValue(fact: Fact): Double {

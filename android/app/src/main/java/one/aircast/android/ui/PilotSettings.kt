@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import one.aircast.map.aircast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -23,7 +24,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.qgcPath
 
-internal data class PilotSetting(val label: String, val parameters: List<String>, val section: String, val hint: String)
+internal data class PilotSetting(val label: String, val parameters: List<String>, val section: String, val hint: String, val whenUnlimited: String? = null)
 
 private const val RETURN_HOME = "Return to home"
 private const val FLIGHT_PROTECTION = "Flight protection"
@@ -33,7 +34,7 @@ private const val FLIGHT_LIMITS = "Flight limits"
 internal fun pilotSettings(group: SettingsGroup): List<PilotSetting> = when (group) {
     SettingsGroup.Safety -> listOf(
         PilotSetting("Return-to-home altitude", listOf("RTL_RETURN_ALT", "RTL_ALT"), RETURN_HOME, "Climbs to this height before flying home."),
-        PilotSetting("Max altitude", listOf("GF_MAX_VER_DIST", "FENCE_ALT_MAX"), FLIGHT_PROTECTION, "The aircraft will not climb above this."),
+        PilotSetting("Max altitude", listOf("GF_MAX_VER_DIST", "FENCE_ALT_MAX"), FLIGHT_PROTECTION, "The aircraft will not climb above this.", "Most countries cap flights at 120 m."),
         PilotSetting("Max distance", listOf("GF_MAX_HOR_DIST", "FENCE_RADIUS"), FLIGHT_PROTECTION, "The aircraft will not fly farther from home than this."),
         PilotSetting("Signal lost", listOf("NAV_DLL_ACT", "FS_GCS_ENABLE"), FAILSAFES, "When the link to this app drops."),
         PilotSetting("Remote controller lost", listOf("NAV_RCL_ACT", "FS_THR_ENABLE"), FAILSAFES, "When the remote controller drops."),
@@ -62,7 +63,7 @@ internal fun PilotSettings(group: SettingsGroup) {
     }
     shown.groupBy { it.setting.section }.map { (section, rows) ->
         SectionHeader(section)
-        rows.map { PilotFactRow(it.fact, it.setting.hint) }
+        rows.map { PilotFactRow(it.fact, it.setting) }
     }
 }
 
@@ -93,21 +94,40 @@ internal fun SensorChecks(onCalibrate: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (sensorHealthy(routine)) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
             )
-            TextButton(onClick = onCalibrate, enabled = routine.enabled) { Text("Calibrate") }
+            if (!sensorHealthy(routine)) TextButton(onClick = onCalibrate, enabled = routine.enabled) { Text("Calibrate") }
         }
     }
+    SetupRow(title = "Calibrate sensors", status = "", onClick = onCalibrate)
 }
 
 @Composable
-private fun PilotFactRow(shown: Fact, hint: String) {
+private fun PilotFactRow(shown: Fact, setting: PilotSetting) {
     val name = shown.name
     var revision by remember { mutableIntStateOf(0) }
     val live by qgcPath(parameterPath(name))
     val fact by produceState(shown, name, live, revision) {
         value = withContext(Dispatchers.Default) { parameterFact(name)?.copy(shortLabel = shown.shortLabel) } ?: shown
     }
-    FactRow(fact, subtitle = hint, onWrite = { revision++ })
+    FactRow(pilotChoices(fact), subtitle = setting.hint, onWrite = { revision++ })
+    setting.whenUnlimited?.takeIf { factNumber(fact) == 0f }?.let { warning ->
+        Text(warning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
+    }
 }
+
+private val PILOT_CHOICES = mapOf(
+    "Disabled" to "Do nothing",
+    "Hold mode" to "Hover",
+    "Loiter mode" to "Hover",
+    "Return mode" to "Return home",
+    "Land mode" to "Land",
+    "Warning" to "Warn only",
+    "Return at critical level, land at emergency level" to "Return home, land if critical",
+    "Terminate" to "Stop motors",
+)
+
+internal fun pilotChoice(label: String): String = PILOT_CHOICES[label] ?: label
+
+internal fun pilotChoices(fact: Fact): Fact = fact.copy(enumStrings = fact.enumStrings.map(::pilotChoice))
 
 private val PILOT_LABELS = mapOf(
     "guidedMinimumAltitude" to "Lowest altitude for takeoff and fly-to",

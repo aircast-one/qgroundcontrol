@@ -322,6 +322,8 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
 
 internal const val AIRCRAFT_SETUP = "Aircraft setup"
 
+internal val TAB_SETUP_TITLES = mapOf(SAFETY_SETUP_PAGE to "More failsafe settings")
+
 internal fun tabSetupPages(group: SettingsGroup): List<String> = when (group) {
     SettingsGroup.Safety -> listOf(SAFETY_SETUP_PAGE)
     SettingsGroup.Control -> listOf(FLIGHT_MODES_PAGE)
@@ -339,7 +341,7 @@ private fun TabSetupRows(group: SettingsGroup, onOpenSetup: (String?) -> Unit) {
     val setupJson by qgcPath(SETUP)
     val components = remember(setupJson) { setupComponents(setupJson) }
     tabSetupComponents(group, components).map { component ->
-        SetupRow(title = sentenceCase(component.name), status = "", icon = setupIcon(component.known, component.className), onClick = { onOpenSetup(component.name) })
+        SetupRow(title = TAB_SETUP_TITLES[component.name] ?: sentenceCase(component.name), status = "", icon = setupIcon(component.known, component.className), onClick = { onOpenSetup(component.name) })
     }
 }
 
@@ -766,7 +768,7 @@ internal fun FactRow(
         val note = shown.text.split(SUBTITLE_SEPARATOR).filter { it.isNotBlank() && it != fact.units && it != fact.detail }.joinToString(SUBTITLE_SEPARATOR)
         val slider = inlineSlider(fact)
         if (slider != null) {
-            SliderValueRow(fact, slider, title = {
+            SliderValueRow(fact, title, slider, title = {
                 Column {
                     FactTitle(title, titleColor, null, {})
                     if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1012,9 +1014,23 @@ private fun BitmaskPicker(fact: Fact, write: (() -> Boolean) -> Unit) {
 
 @Composable
 private fun EnumField(fact: Fact, modifier: Modifier, write: (() -> Boolean) -> Unit) {
-    ChoiceField(null, shownEnumLabel(fact), fact.enumStrings.map(::sentenceCase), modifier, enabled = fact.enabled, groups = fact.enumGroups) { index ->
+    val notice = LocalChangeNotice.current
+    val choose: (Int) -> Boolean = { index ->
         // qtpaths: settings.appSettings.indoorPalette.enumIndex, vehicle.parameterManager.getParameter(-1,RTL_TYPE).enumIndex
-        write { fact.enumValues.getOrNull(index)?.toLongOrNull()?.takeIf { fact.rawChoice }?.let { Qgc.set(fact.path, it) } ?: Qgc.set("${fact.path}.enumIndex", index) }
+        fact.enumValues.getOrNull(index)?.toLongOrNull()?.takeIf { fact.rawChoice }?.let { Qgc.set(fact.path, it) } ?: Qgc.set("${fact.path}.enumIndex", index)
+    }
+    ChoiceField(null, shownEnumLabel(fact), fact.enumStrings.map(::sentenceCase), modifier, enabled = fact.enabled, groups = fact.enumGroups) { index ->
+        val previous = fact.enumIndex
+        write {
+            choose(index).also { accepted ->
+                if (accepted && index != previous && previous >= 0) {
+                    notice.show("${sentenceCase(fact.heading)}: ${sentenceCase(fact.enumStrings.getOrNull(index).orEmpty())}") {
+                        write { choose(previous) }
+                        null
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1048,7 +1064,7 @@ internal fun ChoiceField(label: String?, value: String, options: List<String>, m
             )
         }
         Box(Modifier.matchParentSize().clickable(enabled = enabled) { expanded = true })
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        if (plain) SafeChoiceMenu(expanded, options, { expanded = false }, onPick) else DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEachIndexed { index, option ->
                 groups.getOrNull(index)?.takeIf { it.isNotBlank() && it != groups.getOrNull(index - 1) }?.let { group ->
                     if (index > 0) androidx.compose.material3.HorizontalDivider()

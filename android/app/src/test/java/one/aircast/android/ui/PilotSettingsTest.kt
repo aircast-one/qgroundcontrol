@@ -80,4 +80,12 @@ class PilotSettingsTest {
         assertEquals(listOf(false, true, true), checks.map(::sensorHealthy))
         assertEquals(emptyList<CalibrationRoutine>(), sensorChecks(null))
     }
+
+    @Test
+    fun `failsafe choices read in DJI's words`() {
+        assertEquals("Hover", pilotChoice("Hold mode"))
+        assertEquals("Return home", pilotChoice("Return mode"))
+        assertEquals("Stop motors", pilotChoice("Terminate"))
+        assertEquals("Enabled always RTL", pilotChoice("Enabled always RTL"))
+    }
 }
