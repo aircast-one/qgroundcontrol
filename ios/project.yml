@@ -29,6 +29,12 @@ targets:
         buildPhase: resources
       - path: Vendor/ca-certificates.crt
         buildPhase: resources
+      - path: ../android/app/src/main/assets/synthetic
+        type: folder
+        buildPhase: resources
+      - path: Vendor/Cesium
+        type: folder
+        buildPhase: resources
       - path: ../src/Bridge/QGCVideoC.cc
     dependencies:
       - framework: Vendor/MapLibre.xcframework

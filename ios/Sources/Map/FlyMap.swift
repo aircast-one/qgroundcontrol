@@ -204,6 +204,7 @@ struct FlyMap: View {
                 traffic: plan.traffic,
                 onTrafficClick: onTrafficClick,
                 gimbals: plan.gimbals,
+                showsCameraBeam: true,
                 breachReturn: plan.breachReturn,
                 proximityRadar: true,
                 obstacleOverlay: true,

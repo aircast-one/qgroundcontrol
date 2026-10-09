@@ -976,7 +976,9 @@ const FIXED_SOURCES: [&str; 4] = [crate::videostate::SOURCE_3DR_SOLO, crate::vid
 
 #[cfg(target_os = "android")]
 const PLATFORM_CAMERAS: &[&str] = &[crate::videostate::SOURCE_BACK_CAMERA, crate::videostate::SOURCE_FRONT_CAMERA, crate::videostate::SOURCE_SYNTHETIC];
-#[cfg(not(target_os = "android"))]
+#[cfg(target_os = "ios")]
+const PLATFORM_CAMERAS: &[&str] = &[crate::videostate::SOURCE_SYNTHETIC];
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const PLATFORM_CAMERAS: &[&str] = &[];
 
 pub fn camera_sources() -> Vec<String> {

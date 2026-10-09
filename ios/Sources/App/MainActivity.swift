@@ -113,6 +113,7 @@ struct AircastShell: View {
     @QgcPath(settingControl(PALETTE_SETTING)) private var paletteControl
     @QgcPath(FLY_STATE) private var flyStateJson
     @QgcPath(VIDEO_VIEW) private var videoJson
+    @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
     @State private var tab = Tab.Fly
     @State private var hadVehicle: Bool?
@@ -136,7 +137,7 @@ struct AircastShell: View {
     private var flyNow: FlyState? { flyState(flyStateJson) }
 
     private var fullScreen: Bool {
-        videoFullScreen && tab == .Fly && flyView != .Map && videoReading(videoJson)?.decoding == true
+        videoFullScreen && tab == .Fly && flyView != .Map && (videoReading(videoJson)?.decoding == true || syntheticAvailable(syntheticJson))
     }
 
     private var shownFlyView: FlyView {

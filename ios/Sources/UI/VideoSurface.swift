@@ -43,10 +43,15 @@ private struct NoVideoArea: View {
 struct FlyNoVideoMessage: View {
     @HasVehicle private var hasVehicle
     @QgcPath(VIDEO_VIEW) private var videoJson
+    @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
 
     var body: some View {
         if !hasVehicle {
             LookingForAircraft()
+        } else if syntheticAvailable(syntheticJson) {
+            SyntheticTag()
+                .padding(8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         } else {
             let video = videoReading(videoJson)
             GeometryReader { geometry in
@@ -108,6 +113,7 @@ struct VideoSurface: View {
     @Environment(\.theme) private var theme
     @QgcPath(VIDEO_VIEW) private var videoJson
     @QgcPath(CAMERA_VIEW) private var cameraJson
+    @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
     @QgcBool(settingControl("settings.videoSettings.gridLines")) private var showGrid
     @QgcValue(settingControl("settings.videoSettings.videoFit")) private var fitMode
     @QgcValue(settingControl("settings.videoSettings.aspectRatio")) private var aspectSetting
@@ -115,7 +121,9 @@ struct VideoSurface: View {
     var body: some View {
         let video = videoReading(videoJson)
         if video?.available == false {
-            if expanded {
+            if expanded && syntheticAvailable(syntheticJson) {
+                SyntheticView(labelled: fullScreen, aimable: true)
+            } else if expanded {
                 NoVideoArea(underFlyChrome: expanded && !fullScreen, thumb: false, video: video)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(theme.colors.surfaceVariant)
@@ -144,7 +152,9 @@ struct VideoSurface: View {
                     }
                 }
                 .frame(width: shown.0, height: shown.1)
-                if !decoding {
+                if !decoding && syntheticAvailable(syntheticJson) {
+                    SyntheticView(labelled: !expanded || fullScreen, aimable: expanded)
+                } else if !decoding {
                     NoVideoArea(underFlyChrome: expanded && !fullScreen, thumb: !expanded, video: video)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(expanded ? theme.colors.surfaceVariant : theme.aircast.outdoorBackground)

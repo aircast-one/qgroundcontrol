@@ -275,6 +275,7 @@ struct VehicleMap: View {
     var traffic: [TrafficMark] = []
     var onTrafficClick: (() -> Void)? = nil
     var gimbals: [GimbalAzimuth] = []
+    var showsCameraBeam: Bool = false
     var breachReturn: TrackPoint? = nil
     var proximityRadar: Bool = false
     var obstacleOverlay: Bool = false
@@ -292,12 +293,13 @@ struct VehicleMap: View {
     @MapViewFlag(FLY_STATE_VIEW, "contactLost") private var linkLost
     @MapPath(VEHICLES_VIEW) private var fleetJson
     @MapPath(TRACK_TAIL_VIEW) private var trackJson
+    @MapPath(SYNTHETIC_VIEW_PATH) private var syntheticJson
     @StateObject private var model = VehicleMapModel()
     @State private var track = trackReading(nil)
 
     var body: some View {
         SilentSeconds(lost: linkLost) { seconds in
-            drawn(VehicleMapScene(self, lastSeen: seconds.map(lastSeenText), mapEdits: mapEdits, fleetJson: fleetJson, linkLost: linkLost))
+            drawn(VehicleMapScene(self, lastSeen: seconds.map(lastSeenText), mapEdits: mapEdits, fleetJson: fleetJson, syntheticJson: syntheticJson, linkLost: linkLost))
         }
         .task(id: trackJson) { await mergeTrack(trackJson) }
     }
@@ -348,9 +350,10 @@ private struct VehicleMapScene {
     let home: TrackPoint?
     let radars: [PlacedRadar]
     let orbitPreview: OrbitCircle?
+    let beam: [TrackPoint]
     let inputs: VehicleMapInputs
 
-    init(_ map: VehicleMap, lastSeen: String?, mapEdits: FlyMapEdits, fleetJson: JSON?, linkLost: Bool) {
+    init(_ map: VehicleMap, lastSeen: String?, mapEdits: FlyMapEdits, fleetJson: JSON?, syntheticJson: JSON?, linkLost: Bool) {
         let shownGoto = editedGoto(map.goto, mapEdits.gotoLoiter)
         let fleet = vehicleChoices(fleetJson).choices
         let flown = fleet.first(where: \.active)
@@ -369,6 +372,7 @@ private struct VehicleMapScene {
         self.home = flown?.home
         self.radars = map.proximityRadar ? placedRadars(fleet, TrackPoint(latitude: latitude, longitude: longitude), heading) : []
         self.orbitPreview = mapEdits.orbit
+        self.beam = map.showsCameraBeam ? cameraBeam(syntheticJson) : []
         self.inputs = VehicleMapInputs(
             follow: map.follow,
             keepCentered: map.keepCentered,
@@ -447,6 +451,9 @@ private struct VehicleMapOverlays: ViewModifier {
             }
             .onChange(of: Keys(generation, scene.placed, map.gimbals), initial: true) {
                 if let style { renderGimbals(style, scene.latitude, scene.longitude, map.gimbals) }
+            }
+            .onChange(of: Keys(generation, scene.beam), initial: true) {
+                if let style { renderCameraBeam(style, scene.beam) }
             }
             .onChange(of: Keys(generation, map.shots), initial: true) {
                 style?.setGeoJson(SHOT_SOURCE, shotFeatures(map.shots))
@@ -937,6 +944,7 @@ private func applyPip(_ style: MLNStyle, _ pip: Bool) {
 }
 
 private func installVehicleLayer(_ style: MLNStyle) {
+    installCameraBeamLayer(style)
     installProximityRadarLayer(style)
     installGimbalLayer(style)
     guard style.source(withIdentifier: VEHICLE_SOURCE) == nil else { return }

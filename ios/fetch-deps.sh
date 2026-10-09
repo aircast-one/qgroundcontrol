@@ -3,6 +3,8 @@ set -eu
 
 MAPLIBRE_VERSION=6.31.0
 MAPLIBRE_SHA256=de3aaa435dd86768b06d90245e630d068dd7eef1491afae7217d1654c52c462a
+CESIUM_VERSION=1.139.1
+CESIUM_SHA256=9ccd426870122cfe8347c2efa339b87728d79937ae1575d4b7f63d647db829c8
 config="$(dirname "$0")/../.github/build-config.json"
 GSTREAMER_VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gstreamer"]["version"]["ios"])' "$config")
 GSTREAMER_SHA256=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["gstreamer"]; print(c["checksums"][c["version"]["ios"]]["ios"])' "$config")
@@ -30,6 +32,18 @@ if [ ! -f "$vendor/MapLibre-$MAPLIBRE_VERSION" ]; then
 fi
 
 fetch "https://curl.se/ca/cacert.pem" "$vendor/ca-certificates.crt" "$CA_BUNDLE_SHA256"
+
+if [ ! -f "$vendor/Cesium-$CESIUM_VERSION" ]; then
+    tgz="$cache/cesium-$CESIUM_VERSION.tgz"
+    fetch "https://registry.npmjs.org/cesium/-/cesium-$CESIUM_VERSION.tgz" "$tgz" "$CESIUM_SHA256"
+    unpacked="$cache/cesium-$CESIUM_VERSION"
+    rm -rf "$unpacked" "$vendor/Cesium" "$vendor"/Cesium-*
+    mkdir -p "$unpacked"
+    tar -xzf "$tgz" -C "$unpacked" package/Build/Cesium/Cesium.js package/Build/Cesium/Workers package/Build/Cesium/Assets/approximateTerrainHeights.json package/Build/Cesium/Assets/Images
+    mv "$unpacked/package/Build/Cesium" "$vendor/Cesium"
+    rm -rf "$unpacked"
+    touch "$vendor/Cesium-$CESIUM_VERSION"
+fi
 
 sdk="$HOME/Library/Developer/GStreamer/iPhone.sdk"
 if [ ! -f "$sdk/GStreamer-$GSTREAMER_VERSION" ]; then
