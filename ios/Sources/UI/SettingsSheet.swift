@@ -185,7 +185,7 @@ struct SettingsSheet: View {
                     Button("Cancel") { query = nil }.buttonStyle(.borderless)
                 } else {
                     if let drilledTitle {
-                        Button(action: setupOpen ? setupBack : pageBack) { Image(.arrowBack).frame(width: 48, height: 48) }
+                        Button(action: setupOpen ? setupBack : pageBack) { Image(.arrowBack).frame(width: 48, height: 48).contentShape(Rectangle()) }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Back")
                         Text(drilledTitle)
@@ -201,11 +201,11 @@ struct SettingsSheet: View {
                     } else {
                         SheetTabs(selected: pager ?? group, edgePadding: 0, onPick: showTab).frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    Button { query = "" } label: { Image(.search).frame(width: 48, height: 48) }
+                    Button { query = "" } label: { Image(.search).frame(width: 48, height: 48).contentShape(Rectangle()) }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Search settings")
                 }
-                Button(action: onClose) { Image(.close).frame(width: 48, height: 48) }
+                Button(action: onClose) { Image(.close).frame(width: 48, height: 48).contentShape(Rectangle()) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Close settings")
             }

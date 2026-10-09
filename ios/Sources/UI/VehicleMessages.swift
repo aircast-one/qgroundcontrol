@@ -314,7 +314,7 @@ struct AppSnackbar: View {
                 Text(data.message)
                     .font(.labelLarge)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button { data.dismiss() } label: { Image(.close).frame(width: 40, height: 40) }
+                Button { data.dismiss() } label: { Image(.close).frame(width: 40, height: 40).contentShape(Rectangle()) }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Dismiss")
             }

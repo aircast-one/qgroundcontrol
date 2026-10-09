@@ -1284,7 +1284,7 @@ private struct ServerList: View {
             ForEach(servers, id: \.self) { server in
                 HStack {
                     Text(server).frame(maxWidth: .infinity, alignment: .leading)
-                    Button { onRemove(server) } label: { Image(.close).frame(width: 48, height: 48) }
+                    Button { onRemove(server) } label: { Image(.close).frame(width: 48, height: 48).contentShape(Rectangle()) }
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Remove \(server)")
                 }

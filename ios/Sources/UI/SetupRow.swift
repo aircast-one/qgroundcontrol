@@ -152,7 +152,7 @@ struct PageTopBar: View {
             if twoPane {
                 Color.clear.frame(width: 12, height: 1)
             } else {
-                Button(action: onBack) { Image(.arrowBack).frame(width: 48, height: 48) }
+                Button(action: onBack) { Image(.arrowBack).frame(width: 48, height: 48).contentShape(Rectangle()) }
                     .accessibilityLabel(backLabel)
             }
             Text(title).font(.titleLarge).lineLimit(1)
