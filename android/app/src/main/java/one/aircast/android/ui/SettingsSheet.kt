@@ -1,34 +1,29 @@
 package one.aircast.android.ui
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.flow.filter
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,10 +44,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.launch
@@ -68,6 +62,8 @@ internal fun openingGroup(requested: String?): SettingsGroup = requested?.let { 
 internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
     val navigation = LocalAppNavigation.current
     var group by rememberSaveable(requested) { mutableStateOf(if (navigation.aircraftRequested) SettingsGroup.General else openingGroup(requested)) }
+    val pager = rememberPagerState(initialPage = group.ordinal) { SettingsGroup.entries.size }
+    val tabScope = androidx.compose.runtime.rememberCoroutineScope()
     var setupOpen by rememberSaveable { mutableStateOf(navigation.aircraftRequested) }
     var setupFromTab by rememberSaveable { mutableStateOf(false) }
     var enteredForSetup by rememberSaveable { mutableStateOf(navigation.aircraftRequested) }
@@ -146,9 +142,11 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
             BoxWithConstraints {
                 val stacked = maxWidth < STACKED_HEADER_WIDTH
                 val drilled = sheetDrilled(openPage, setupOpen)
+                val tabsShown = query == null && !drilled
+                val showTab: (SettingsGroup) -> Unit = { entry -> tabScope.launch { pager.animateScrollToPage(entry.ordinal) } }
                 Column {
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s1),
+                        Modifier.fillMaxWidth().padding(start = AircastSpace.s3, end = AircastSpace.s3, top = AircastSpace.s1, bottom = if (tabsShown && !stacked) 0.dp else AircastSpace.s1),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     ) {
@@ -161,18 +159,19 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                             if (stacked || drilled) {
                                 Text("Settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(start = AircastSpace.s2))
                             } else {
-                                SheetTabs(group.takeUnless { setupOpen }, Modifier.weight(1f), pickTab)
+                                SheetTabs(pager.targetPage, 0.dp, Modifier.weight(1f), showTab)
                             }
                             IconButton(onClick = { query = "" }) { Icon(painterResource(R.drawable.ic_search), "Search settings") }
                         }
                         IconButton(onClick = onClose) { Icon(painterResource(R.drawable.ic_close), "Close settings") }
                     }
-                    if (stacked && query == null && !drilled) SheetTabs(group.takeUnless { setupOpen }, Modifier.fillMaxWidth().padding(horizontal = AircastSpace.s2), pickTab)
+                    if (stacked && tabsShown) SheetTabs(pager.targetPage, AircastSpace.s2, Modifier.fillMaxWidth(), showTab)
+                    if (tabsShown) HorizontalDivider()
                 }
             }
             if (query == null && !setupOpen) {
                 val everyPage = rememberSettingsPages()
-                SettingsPager(group, swipeable = openPage == null, onSettled = pickTab, modifier = Modifier.weight(1f)) { shown ->
+                SettingsPager(pager, group, swipeable = openPage == null, onSettled = pickTab, modifier = Modifier.weight(1f)) { shown ->
                     val current = shown == group
                     key(page.takeIf { current }) {
                         SettingsScreen(shown, everyPage, openPage.takeIf { current }, { openPage = it }, closePage, Modifier.fillMaxSize(), onOpenSetup = openSetup)
@@ -204,9 +203,8 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
 }
 
 @Composable
-private fun SettingsPager(group: SettingsGroup, swipeable: Boolean, onSettled: (SettingsGroup) -> Unit, modifier: Modifier, content: @Composable (SettingsGroup) -> Unit) {
+private fun SettingsPager(pager: PagerState, group: SettingsGroup, swipeable: Boolean, onSettled: (SettingsGroup) -> Unit, modifier: Modifier, content: @Composable (SettingsGroup) -> Unit) {
     val groups = SettingsGroup.entries
-    val pager = rememberPagerState(initialPage = group.ordinal) { groups.size }
     val shownGroup by rememberUpdatedState(group)
     val settled by rememberUpdatedState(onSettled)
     LaunchedEffect(group) { if (pager.currentPage != group.ordinal) pager.scrollToPage(group.ordinal) }
@@ -216,39 +214,18 @@ private fun SettingsPager(group: SettingsGroup, swipeable: Boolean, onSettled: (
     HorizontalPager(pager, modifier, userScrollEnabled = swipeable, beyondViewportPageCount = 1, key = { groups[it].name }) { index -> content(groups[index]) }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SheetTabs(selected: SettingsGroup?, modifier: Modifier, onPick: (SettingsGroup) -> Unit) {
-    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
-        SettingsGroup.entries.map { entry -> SheetTab(entry.title, entry == selected) { onPick(entry) } }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun SheetTab(title: String, selected: Boolean, onClick: () -> Unit) {
-    val shown = remember { BringIntoViewRequester() }
-    LaunchedEffect(selected) { if (selected) shown.bringIntoView() }
-    Column(
-        Modifier
-            .bringIntoViewRequester(shown)
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
-            .heightIn(min = 48.dp)
-            .padding(horizontal = AircastSpace.s2, vertical = AircastSpace.s1),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Box(
-            Modifier
-                .padding(top = 4.dp)
-                .size(width = 20.dp, height = 3.dp)
-                .background(if (selected) MaterialTheme.colorScheme.primary else Color.Transparent, CircleShape),
-        )
+private fun SheetTabs(selected: Int, edgePadding: Dp, modifier: Modifier, onPick: (SettingsGroup) -> Unit) {
+    PrimaryScrollableTabRow(selectedTabIndex = selected, modifier = modifier, containerColor = Color.Transparent, edgePadding = edgePadding, divider = {}) {
+        SettingsGroup.entries.map { entry ->
+            Tab(
+                selected = entry.ordinal == selected,
+                onClick = { onPick(entry) },
+                text = { Text(entry.title, maxLines = 1) },
+                unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
