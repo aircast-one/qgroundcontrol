@@ -71,7 +71,7 @@ internal fun shownSensors(sensors: List<SensorHealth>, showAll: Boolean): List<S
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
+internal fun VehicleStatusSheet(onMessages: () -> Unit, onDismiss: () -> Unit) {
     val navigation = LocalAppNavigation.current
     val healthJson by qgcPath(SENSOR_HEALTH)
     val health = remember(healthJson) { sensorHealth(healthJson) }
@@ -84,6 +84,15 @@ internal fun VehicleStatusSheet(onDismiss: () -> Unit) {
     AircastSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             StatusSummary()
+            Row(
+                Modifier.fillMaxWidth().clickable(onClick = onMessages).padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(R.drawable.ic_notifications), contentDescription = null)
+                Text("Messages", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             ArmSection(onDismiss)
             health?.takeIf { healthJson?.optBoolean("healthChecksSupported") != true && it.available && it.sensors.isNotEmpty() }?.let { reading ->
                 Text("Sensors", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))

@@ -119,6 +119,7 @@ private val CAMERA_PIP_WIDTH = 112.dp
 private val CAMERA_PIP_HEIGHT = 63.dp
 private const val FULL_SCREEN_LAYER = 10f
 private const val DECISION_LAYER = 4f
+private val MAP_SCALE_CLEARANCE = 88.dp
 
 internal enum class MiniMap { Thumb, Map, Compass }
 
@@ -454,7 +455,7 @@ internal fun FlyScreen(
         Box(Modifier.zIndex(1f).fillMaxSize().graphicsLayer { alpha = if (settingsOver) 0f else 1f }.windowInsetsPadding(WindowInsets.displayCutout)) {
         if (view == FlyView.Map) {
             var layers by remember { mutableStateOf(false) }
-            Box(Modifier.align(Alignment.BottomStart).padding(start = AircastSpace.s3, bottom = (if (hasVideo && pipExpanded) MINIMAP_HEIGHT else PIP_TOGGLE_SIZE) + AircastSpace.s3 * 2)) {
+            Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE)) {
                 LayoutWidget("mapLayers", hideable = false) {
                     Surface(
                         onClick = { layers = true },

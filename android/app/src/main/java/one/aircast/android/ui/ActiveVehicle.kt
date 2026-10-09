@@ -165,7 +165,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     var refusal by remember { mutableStateOf<String?>(null) }
 
     androidx.compose.foundation.layout.Box(modifier) {
-    FlightModeMenu(expanded = modeMenu && !disconnected, onDismiss = { modeMenu = false }, onStatus = { statusSettings = true }, onMessages = { why = true })
+    FlightModeMenu(expanded = modeMenu && !disconnected, onDismiss = { modeMenu = false }, onStatus = { statusSettings = true })
     val tone = if (blocker != null) ChipTone.Error else chipTone(fly, lost)
     val statusBar = !flyIsPortrait()
     androidx.compose.material3.Surface(
@@ -218,6 +218,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         )
         if (statusBar) osdStatusNote(title)?.let { note ->
             androidx.compose.material3.Surface(
+                onClick = { if (blocker != null) why = true else statusSettings = true },
                 shape = MaterialTheme.shapes.small,
                 color = Color.Black.copy(alpha = STATUS_BAR_SCRIM_ALPHA),
                 contentColor = when (tone) {
@@ -280,7 +281,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         OfflineStatusSheet { offline = false }
     }
     if (statusSettings && !disconnected) {
-        VehicleStatusSheet { statusSettings = false }
+        VehicleStatusSheet(onMessages = { statusSettings = false; why = true }) { statusSettings = false }
     }
     if (why) {
         VehicleMessagesSheet { why = false }

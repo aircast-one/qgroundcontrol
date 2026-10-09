@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import one.aircast.map.AircastSpace
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Settings
@@ -715,7 +716,7 @@ private fun Modifier.longPress(key: Any?, action: () -> Unit): Modifier =
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: () -> Unit, onMessages: () -> Unit) {
+internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: () -> Unit) {
     val navigation = LocalAppNavigation.current
     val flyScreen = LocalFlyScreenState.current
     val json by qgcPath(FLIGHT_MODES)
@@ -802,102 +803,113 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = { onDismiss(); showFolded = false; editing = false },
-        shape = MaterialTheme.shapes.small,
+        shape = MaterialTheme.shapes.large,
     ) {
-        val warning = readinessWarning(fly)
-        DropdownMenuItem(
-            text = {
-                Text(warning ?: VEHICLE_STATUS, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.widthIn(max = 280.dp))
-            },
-            leadingIcon = {
-                warning?.let { Icon(painterResource(R.drawable.ic_warning), null, tint = MaterialTheme.aircast.warning) }
-                    ?: Icon(painterResource(R.drawable.ic_check_circle), null)
-            },
-            trailingIcon = warning?.let { { Text("Details", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) } },
-            onClick = { onDismiss(); onStatus() },
-        )
-        androidx.compose.material3.HorizontalDivider()
-        DropdownMenuItem(
-            text = { Text("Messages", style = MaterialTheme.typography.bodyMedium) },
-            leadingIcon = { Icon(painterResource(R.drawable.ic_notifications), null) },
-            onClick = { onDismiss(); onMessages() },
-        )
-        androidx.compose.material3.HorizontalDivider()
+        val modeRow: @Composable (FlightModeOption, Boolean) -> Unit = { mode, dimmed ->
+            DropdownMenuItem(
+                modifier = (if (mode.current) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
+                    .alpha(if (dimmed && !mode.current) HIDDEN_MODE_ALPHA else 1f)
+                    .longPress(modes.hiddenSetting?.takeIf { showFolded }?.let { setting -> mode.name to setting }) { toggleHidden(mode.name) },
+                leadingIcon = { Icon(painterResource(flightModeIcon(mode.name)), null) },
+                trailingIcon = if (mode.current) {
+                    { Icon(Icons.Filled.Check, contentDescription = "Current mode", tint = MaterialTheme.colorScheme.primary) }
+                } else null,
+                text = {
+                    Column(Modifier.widthIn(max = MODE_TEXT_WIDTH)) {
+                        Text(mode.name, style = MaterialTheme.typography.titleSmall)
+                        mode.summary.ifBlank { null }?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                },
+                enabled = modes.canSet,
+                onClick = { if (!mode.current) choose(mode) else onDismiss() },
+            )
+        }
+        modes.unknownModeNotice.ifBlank { null }?.let { notice ->
+            Text(
+                notice,
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = MODE_TEXT_WIDTH),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.aircast.warning,
+            )
+        }
         val setting = modes.hiddenSetting
-        val heading = modeHeading(modes)
-        if (heading != null || setting != null) {
-            Row(Modifier.padding(start = 16.dp, end = 4.dp).widthIn(max = 296.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!showFolded) {
+            val primary = primaryModes(modes.all)
+            modes.all.firstOrNull { it.current && it !in primary }?.let { now -> modeRow(now, false) }
+            primary.forEach { mode -> modeRow(mode, false) }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text(ALL_MODES) },
+                trailingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                onClick = { showFolded = true },
+            )
+        } else {
+            Row(Modifier.padding(start = 16.dp, end = 4.dp).widthIn(max = MODE_TEXT_WIDTH + 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    heading.orEmpty(),
+                    modeHeading(modes) ?: ALL_MODES,
                     Modifier.weight(1f).padding(vertical = 8.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (setting != null) TextButton(onClick = { editing = !editing }) { Text(if (editing) "Done" else "Edit") }
             }
-        }
-        if (editing && setting != null) {
-            modes.all.forEach { mode ->
-                DropdownMenuItem(
-                    text = { Text(mode.name, style = MaterialTheme.typography.bodyMedium) },
-                    trailingIcon = { Switch(checked = !mode.hidden, onCheckedChange = null) },
-                    onClick = {
-                        val value = hiddenModesAfter(modes.hidden, mode.name, !mode.hidden)
-                        scope.launch(Dispatchers.Default) { Qgc.set(setting, value) }
-                    },
-                )
+            if (editing && setting != null) {
+                modes.all.forEach { mode ->
+                    DropdownMenuItem(
+                        text = { Text(mode.name, style = MaterialTheme.typography.bodyMedium) },
+                        trailingIcon = { Switch(checked = !mode.hidden, onCheckedChange = null) },
+                        onClick = {
+                            val value = hiddenModesAfter(modes.hidden, mode.name, !mode.hidden)
+                            scope.launch(Dispatchers.Default) { Qgc.set(setting, value) }
+                        },
+                    )
+                }
+            } else {
+                modes.all.forEachIndexed { index, mode ->
+                    if (startsSection(modes.all, index)) HorizontalDivider()
+                    modeRow(mode, mode.hidden)
+                }
             }
-        }
-        modes.unknownModeNotice.ifBlank { null }?.let { notice ->
-            Text(
-                notice,
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = 280.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.aircast.warning,
-            )
-        }
-        val shown = when {
-            editing && setting != null -> emptyList()
-            showFolded -> modes.all
-            else -> modes.everyday
-        }
-        shown.forEachIndexed { index, mode ->
-            if (startsSection(shown, index)) HorizontalDivider()
+            HorizontalDivider()
             DropdownMenuItem(
-                modifier = (if (mode.current) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
-                    .alpha(if (mode.hidden) HIDDEN_MODE_ALPHA else 1f)
-                    .longPress(modes.hiddenSetting?.let { setting -> mode.name to setting }) { toggleHidden(mode.name) },
-                leadingIcon = { Icon(painterResource(flightModeIcon(mode.name)), null) },
-                text = {
-                    Column(Modifier.widthIn(max = 280.dp)) {
-                        Text(mode.name, style = MaterialTheme.typography.titleSmall)
-                        mode.summary.ifBlank { null }?.let {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                text = { Text("Flight mode settings") },
+                onClick = {
+                    onDismiss()
+                    settings = true
                 },
-                enabled = modes.canSet,
-                onClick = { choose(mode) },
             )
         }
-        if (modes.folded.isNotEmpty() && !showFolded && !editing) {
-            DropdownMenuItem(
-                text = { Text("More modes") },
-                onClick = { showFolded = true },
-            )
-        }
+        HorizontalDivider()
+        val warning = readinessWarning(fly)
         DropdownMenuItem(
-            text = { Text("Flight mode settings") },
-            onClick = {
-                onDismiss()
-                settings = true
+            text = { Text(VEHICLE_STATUS, style = MaterialTheme.typography.bodyMedium) },
+            leadingIcon = {
+                warning?.let { Icon(painterResource(R.drawable.ic_warning), null, tint = MaterialTheme.aircast.warning) }
+                    ?: Icon(painterResource(R.drawable.ic_check_circle), null)
             },
+            trailingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+            onClick = { onDismiss(); onStatus() },
         )
     }
+}
+
+private val MODE_TEXT_WIDTH = 260.dp
+internal const val ALL_MODES = "All modes"
+
+private val POSITION_MODES = listOf("Position", "Position Hold", "PosHold", "Loiter", "Hold")
+private val ALTITUDE_MODES = listOf("Altitude", "Altitude Hold", "AltHold")
+private val MANUAL_MODES = listOf("Stabilized", "Stabilize", "Manual")
+private val MISSION_MODES = listOf("Mission", "Auto")
+private const val PRIMARY_MODE_COUNT = 4
+
+internal fun primaryModes(all: List<FlightModeOption>): List<FlightModeOption> {
+    val offered = all.filterNot { it.hidden }
+    val picked = listOf(POSITION_MODES, ALTITUDE_MODES, MANUAL_MODES, MISSION_MODES).mapNotNull { names ->
+        names.firstNotNullOfOrNull { name -> offered.firstOrNull { it.name.equals(name, ignoreCase = true) } }
+    }
+    return if (picked.size >= 2) picked else offered.take(PRIMARY_MODE_COUNT)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -12,22 +12,18 @@ class FlightModesTest {
     private val served = """
         {"available":true,"canSet":true,"current":"Stabilize",
          "currentSummary":"You fly it; it keeps itself level.",
-         "everyday":[
+         "modes":[
            {"name":"Stabilize","summary":"You fly it; it keeps itself level.","current":true,
             "advanced":false,"needsConfirm":false},
            {"name":"Loiter","summary":"Holds position.","current":false,
-            "advanced":false,"needsConfirm":false}],
-         "folded":[
+            "advanced":false,"needsConfirm":false},
            {"name":"Acro","summary":"Rate mode, no self-levelling.","current":false,
             "advanced":true,"needsConfirm":false}]}
     """
 
     @Test
-    fun `the everyday modes are separate from the folded ones`() {
-        val modes = flightModesView(JSONObject(served))!!
-
-        assertEquals(listOf("Stabilize", "Loiter"), modes.everyday.map { it.name })
-        assertEquals(listOf("Acro"), modes.folded.map { it.name })
+    fun `every mode the vehicle offers is listed in its order`() {
+        assertEquals(listOf("Stabilize", "Loiter", "Acro"), flightModesView(JSONObject(served))!!.all.map { it.name })
     }
 
     @Test
@@ -35,24 +31,35 @@ class FlightModesTest {
         val modes = flightModesView(JSONObject(served))!!
 
         assertEquals("Stabilize", modes.current)
-        assertTrue(modes.everyday.first { it.name == "Stabilize" }.current)
+        assertTrue(modes.all.first { it.name == "Stabilize" }.current)
     }
 
     @Test
     fun `the confirm flag is read from the mode, not guessed from its name`() {
         val flying = flightModesView(
             JSONObject("""{"available":true,"canSet":true,"current":"Loiter",
-                "everyday":[
+                "modes":[
                   {"name":"RTL","summary":"Flies home.","current":false,
                    "advanced":false,"needsConfirm":true},
                   {"name":"Loiter","summary":"Holds position.","current":true,
-                   "advanced":false,"needsConfirm":false}],
-                "folded":[]}"""),
+                   "advanced":false,"needsConfirm":false}]}"""),
         )!!
 
-        assertTrue(flying.everyday.first { it.name == "RTL" }.needsConfirm)
-        assertFalse(flying.everyday.first { it.name == "Loiter" }.needsConfirm)
-        assertFalse(flightModesView(JSONObject(served))!!.folded.first { it.name == "Acro" }.needsConfirm)
+        assertTrue(flying.all.first { it.name == "RTL" }.needsConfirm)
+        assertFalse(flying.all.first { it.name == "Loiter" }.needsConfirm)
+    }
+
+    @Test
+    fun `the popover offers one mode per job, in the order a pilot reaches for them`() {
+        val option = { name: String -> FlightModeOption(name, "", current = false, needsConfirm = false, hidden = false) }
+        val copter = listOf("Stabilize", "Altitude Hold", "Auto", "Guided", "Loiter", "Position Hold", "RTL", "Land").map(option)
+        assertEquals(listOf("Position Hold", "Altitude Hold", "Stabilize", "Auto"), primaryModes(copter).map { it.name })
+        val px4 = listOf("Manual", "Stabilized", "Altitude", "Position", "Mission", "Return").map(option)
+        assertEquals(listOf("Position", "Altitude", "Stabilized", "Mission"), primaryModes(px4).map { it.name })
+        val hiddenHold = copter.map { if (it.name == "Position Hold") it.copy(hidden = true) else it }
+        assertEquals("Loiter", primaryModes(hiddenHold).first().name)
+        val unknown = listOf("Wander", "Drift", "Glide", "Soar", "Dive").map(option)
+        assertEquals(listOf("Wander", "Drift", "Glide", "Soar"), primaryModes(unknown).map { it.name })
     }
 
     @Test
