@@ -30,12 +30,13 @@ private val REGAINED_BUZZ = longArrayOf(0, 120)
 
 internal data class SpokenLine(val sequence: Long, val text: String, val volume: Float)
 
-internal data class SpeechBatch(val last: Long, val lines: List<SpokenLine>)
+internal data class SpeechBatch(val last: Long, val muted: Boolean, val lines: List<SpokenLine>)
 
 internal fun speechBatch(view: JSONObject?): SpeechBatch? = view?.takeIf { it.optText("class") == "Speech" }?.let { speech ->
     val lines = speech.optJSONArray("lines")
     SpeechBatch(
         last = speech.optLong("last"),
+        muted = speech.optBoolean("muted"),
         lines = (0 until (lines?.length() ?: 0)).mapNotNull { lines?.optJSONObject(it) }.map {
             SpokenLine(it.optLong("sequence"), it.optText("text"), it.optDouble("volume", 1.0).toFloat())
         },
@@ -69,12 +70,14 @@ fun VoiceAlerts() {
         }
     }
     val voice = engine?.takeIf { ready }
+    var muted by remember { mutableStateOf(false) }
     LaunchedEffect(voice) {
         val speaker = voice ?: return@LaunchedEffect
         var after = withContext(Dispatchers.Default) { speechBatch(Qgc.get(SPEECH_VIEW))?.last ?: 0L }
         while (currentCoroutineContext().isActive) {
             delay(SPEECH_POLL_MS)
             val batch = withContext(Dispatchers.Default) { speechBatch(Qgc.get(speechPath(after))) } ?: continue
+            muted = batch.muted
             batch.lines.filter { it.sequence > after }.forEach { line ->
                 speaker.speak(line.text, TextToSpeech.QUEUE_ADD, Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, line.volume) }, "qgc-${line.sequence}")
             }
@@ -82,7 +85,7 @@ fun VoiceAlerts() {
         }
     }
     LinkLossBuzz(context)
-    ReturnHomeAlert(context, voice)
+    ReturnHomeAlert(context, voice?.takeUnless { muted })
 }
 
 @Composable

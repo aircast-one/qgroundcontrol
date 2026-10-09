@@ -99,7 +99,8 @@ class InstrumentDetailTest {
     @Test
     fun `the core's spoken lines are read in order after the last one heard`() {
         val batch = speechBatch(JSONObject("""{"class":"Speech","last":4,"lines":[{"sequence":3,"text":"communication lost","volume":0.5},{"sequence":4,"text":"armed","volume":1}]}"""))
-        assertEquals(SpeechBatch(4, listOf(SpokenLine(3, "communication lost", 0.5f), SpokenLine(4, "armed", 1f))), batch)
+        assertEquals(SpeechBatch(4, false, listOf(SpokenLine(3, "communication lost", 0.5f), SpokenLine(4, "armed", 1f))), batch)
+        assertEquals("a muted core silences the return-now line too, as QGC's AudioOutput mutes every line", true, speechBatch(JSONObject("""{"class":"Speech","last":4,"muted":true,"lines":[]}"""))?.muted)
         assertEquals("view.speech(4)", speechPath(4))
         assertEquals(null, speechBatch(null))
     }
