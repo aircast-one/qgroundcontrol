@@ -175,6 +175,7 @@ fun FlyMap(
             keepCentered = keepCentered || pip,
             pip = pip,
             gimbals = plan.gimbals,
+            showsCameraBeam = true,
             proximityRadar = true,
             obstacleOverlay = true,
             cameraBottomPx = cameraBottomPx,

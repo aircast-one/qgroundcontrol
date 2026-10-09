@@ -23,6 +23,13 @@ class SyntheticViewTest {
     }
 
     @Test
+    fun `dragging sideways turns the view so the scene follows the finger`() {
+        assertEquals(-35.0, syntheticPan(0.0, draggedPx = 500f, widthPx = 1000, fovDeg = 70.0), 1e-9)
+        assertEquals(35.0, syntheticPan(0.0, draggedPx = -500f, widthPx = 1000, fovDeg = 70.0), 1e-9)
+        assertEquals(-170.0, syntheticPan(170.0, draggedPx = -2000f, widthPx = 1000, fovDeg = 10.0), 1e-9)
+    }
+
+    @Test
     fun `the page gets the core's pose as it is, and only once it has loaded`() {
         val script = syntheticPoseScript(JSONObject("""{"available":true,"heading":90}"""))
         assertTrue(script.startsWith("window.aircast && window.aircast.pose("))

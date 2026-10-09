@@ -132,7 +132,7 @@ fun VideoSurface(
     if (video?.available == false) {
         if (!expanded) return
         if (synthetic) {
-            SyntheticView(modifier.fillMaxSize(), labelled = fullScreen, tiltable = true)
+            SyntheticView(modifier.fillMaxSize(), labelled = fullScreen, aimable = true)
             return
         }
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -168,7 +168,7 @@ fun VideoSurface(
         }
 
         if (video?.decoding != true && synthetic) {
-            SyntheticView(Modifier.fillMaxSize(), labelled = !expanded || fullScreen, tiltable = expanded)
+            SyntheticView(Modifier.fillMaxSize(), labelled = !expanded || fullScreen, aimable = expanded)
         } else if (video?.decoding != true) {
             Surface(
                 Modifier.fillMaxSize(),

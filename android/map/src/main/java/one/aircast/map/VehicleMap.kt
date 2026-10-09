@@ -211,6 +211,7 @@ fun VehicleMap(
     traffic: List<TrafficMark> = emptyList(),
     onTrafficClick: (() -> Unit)? = null,
     gimbals: List<GimbalAzimuth> = emptyList(),
+    showsCameraBeam: Boolean = false,
     breachReturn: TrackPoint? = null,
     proximityRadar: Boolean = false,
     obstacleOverlay: Boolean = false,
@@ -453,6 +454,13 @@ fun VehicleMap(
     LaunchedEffect(style, latitude, longitude, gimbals) {
         val gimbalStyle = style ?: return@LaunchedEffect
         renderGimbals(gimbalStyle, latitude, longitude, gimbals)
+    }
+
+    val syntheticJson by mapPath(SYNTHETIC_VIEW_PATH)
+    val beam = remember(syntheticJson, showsCameraBeam) { if (showsCameraBeam) cameraBeam(syntheticJson) else emptyList() }
+    LaunchedEffect(style, beam) {
+        val beamStyle = style ?: return@LaunchedEffect
+        renderCameraBeam(beamStyle, beam)
     }
 
     LaunchedEffect(style, shots) {
@@ -704,6 +712,7 @@ private fun applyPip(style: Style, pip: Boolean) {
 }
 
 private fun installVehicleLayer(style: Style) {
+    installCameraBeamLayer(style)
     installProximityRadarLayer(style)
     installGimbalLayer(style)
     if (style.getSource(VEHICLE_SOURCE) == null) {
