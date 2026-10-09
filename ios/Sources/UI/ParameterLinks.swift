@@ -196,7 +196,7 @@ struct ParameterEditDialog: View {
                     HStack(spacing: Space.s2) {
                         Spacer(minLength: 0)
                         if let loaded = fact, !loaded.readOnly || forced, let value = defaultValue {
-                            Button("Reset to default") { reset(loaded, value) }
+                            Button("Reset to default") { reset(loaded, value) }.buttonStyle(.text)
                         }
                         Button("Done", action: onDismiss).buttonStyle(.filled)
                     }
@@ -277,6 +277,7 @@ struct ParameterEditDialog: View {
                     Text(forceRefusal).font(.bodySmall).foregroundStyle(theme.colors.error)
                 }
                 Button("Save") { forceWrite(loaded) }
+                    .buttonStyle(.text)
                     .disabled(forcedText.isBlank)
             }
         }
@@ -341,7 +342,7 @@ struct ValueDetailsSheet: View {
                     HStack(spacing: Space.s2) {
                         Spacer(minLength: 0)
                         if let value = defaultValue {
-                            Button("Reset to default") { reset(value) }
+                            Button("Reset to default") { reset(value) }.buttonStyle(.text)
                         }
                         Button("Done", action: onDismiss).buttonStyle(.filled)
                     }

@@ -1389,14 +1389,21 @@ private struct FactTextField: View {
                         }
                     }
                 }
-                if !fact.units.isBlank {
-                    Text(shownUnits(fact.units)).foregroundStyle(theme.colors.onSurfaceVariant)
-                }
-                if pending != nil {
-                    Button("Set", action: commit).buttonStyle(.text)
+                if !fact.units.isBlank || pending != nil {
+                    HStack(spacing: 0) {
+                        if !fact.units.isBlank {
+                            Text(shownUnits(fact.units)).foregroundStyle(theme.colors.onSurfaceVariant)
+                        }
+                        if pending != nil {
+                            Button("Set", action: commit).buttonStyle(.text)
+                        }
+                    }
+                    .fixedSize()
                 }
             }
-            .padding(12)
+            .padding(.vertical, 12)
+            .padding(.leading, 12)
+            .padding(.trailing, pending == nil ? 12 : 0)
             .overlay(
                 RoundedRectangle(cornerRadius: Corner.extraSmall)
                     .stroke(rejection != nil ? theme.colors.error : focused ? theme.colors.primary : theme.colors.outline, lineWidth: focused ? 2 : 1)

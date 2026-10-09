@@ -19,6 +19,7 @@ struct SetupDialog<Content: View, Buttons: View>: View {
                 Spacer(minLength: 0)
                 buttons()
             }
+            .buttonStyle(.text)
         }
         .padding(Space.s6)
         .presentationDetents([.medium, .large])

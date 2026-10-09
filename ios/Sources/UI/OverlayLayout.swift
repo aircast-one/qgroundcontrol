@@ -9,7 +9,6 @@ private let JIGGLE_DEGREES = 1.2
 private let JIGGLE_MILLIS = 120
 private let JIGGLE_SPREAD = 0x1f
 private let BADGE_SIZE: CGFloat = 24
-private let BADGE_TOUCH: CGFloat = 44
 private let HOLD_TO_EDIT_SECONDS = 0.5
 let RESET_ARM_MILLIS: Int64 = 4000
 
@@ -319,7 +318,7 @@ struct LayoutWidget<Content: View>: View {
                     .frame(width: BADGE_SIZE, height: BADGE_SIZE)
                     .background(hidden ? theme.colors.primary : theme.colors.inverseSurface, in: Circle())
                     .shadow(radius: 2)
-                    .contentShape(Rectangle().size(width: BADGE_TOUCH, height: BADGE_TOUCH).offset(y: BADGE_SIZE - BADGE_TOUCH))
+                    .contentShape(BadgeTouchTarget())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(hidden ? "Show" : "Hide")
@@ -331,6 +330,19 @@ struct LayoutWidget<Content: View>: View {
                 .background(theme.colors.surfaceContainerHighest, in: Circle())
                 .shadow(radius: 2)
                 .accessibilityLabel("Always shown")
+        }
+    }
+}
+
+private struct BadgeTouchTarget: Shape {
+    func path(in rect: CGRect) -> Path {
+        let reach = max(0, (MINIMUM_TOUCH_TARGET - rect.width) / 2)
+        return Path { path in
+            path.addRects([
+                rect,
+                CGRect(x: rect.minX - reach, y: rect.minY - reach, width: rect.width + 2 * reach, height: reach),
+                CGRect(x: rect.maxX, y: rect.minY - reach, width: reach, height: rect.height + 2 * reach),
+            ])
         }
     }
 }

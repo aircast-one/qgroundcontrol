@@ -837,18 +837,23 @@ private struct VehicleMapView: UIViewRepresentable {
         }
         let safe = view.safeAreaInsets
         let bottom = max(0, bottomInsetPx + LOGO_EDGE_MARGIN_PX - safe.bottom)
+        let slack = max(0, (MINIMUM_TOUCH_TARGET - view.attributionButton.intrinsicContentSize.width) / 2)
         if let end = logoEndInsetPx {
             view.logoViewPosition = .bottomRight
             view.attributionButtonPosition = .bottomRight
-            view.attributionButtonMargins = CGPoint(x: max(0, end - safe.right), y: bottom)
+            view.attributionButtonMargins = CGPoint(x: max(0, end - safe.right) - slack, y: bottom - slack)
             view.logoViewMargins = CGPoint(x: max(0, end + ATTRIBUTION_CLEARANCE - safe.right), y: bottom)
         } else {
             let left = max(0, leftInsetPx + LOGO_EDGE_MARGIN_PX - safe.left)
             view.logoViewPosition = .bottomLeft
             view.attributionButtonPosition = .bottomLeft
             view.logoViewMargins = CGPoint(x: left, y: bottom)
-            view.attributionButtonMargins = CGPoint(x: left + view.logoView.bounds.width + Space.s1, y: bottom)
+            view.attributionButtonMargins = CGPoint(x: left + view.logoView.bounds.width + Space.s1 - slack, y: bottom - slack)
         }
+        view.updateConstraintsIfNeeded()
+        view.attributionButton.constraints
+            .filter { $0.firstAttribute == .width || $0.firstAttribute == .height }
+            .forEach { $0.constant = MINIMUM_TOUCH_TARGET }
         if model.appliedGestures != gestures {
             model.appliedGestures = gestures
             view.isScrollEnabled = gestures

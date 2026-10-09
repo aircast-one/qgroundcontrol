@@ -60,6 +60,7 @@ struct PlanTextField: View {
     var isError: Bool = false
     var onDone: () -> Void = {}
     @Environment(\.theme) private var theme
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -68,6 +69,7 @@ struct PlanTextField: View {
                 .foregroundStyle(isError ? theme.colors.error : theme.colors.onSurfaceVariant)
             HStack(spacing: 4) {
                 TextField(placeholder, text: $text)
+                    .focused($focused)
                     .font(.bodySmall)
                     .keyboardType(.numbersAndPunctuation)
                     .textInputAutocapitalization(.never)
@@ -82,6 +84,8 @@ struct PlanTextField: View {
             .padding(.vertical, 8)
             .overlay(RoundedRectangle(cornerRadius: Corner.extraSmall).stroke(isError ? theme.colors.error : theme.colors.outline, lineWidth: 1))
         }
+        .contentShape(Rectangle())
+        .onTapGesture { focused = true }
         .frame(width: width)
         .disabled(!enabled)
         .opacity(enabled ? 1 : DISABLED_ALPHA)

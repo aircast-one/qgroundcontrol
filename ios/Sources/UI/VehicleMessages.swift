@@ -128,16 +128,20 @@ struct VehicleMessageBanner: View {
         let shape = urgent ? AnyShape(RoundedRectangle(cornerRadius: ALERT_CORNER)) : AnyShape(Capsule())
         let content = urgent ? osdTint(theme.colors.onErrorContainer, theme.colors.error, flyOsd) : osdTint(theme.colors.onSurface, theme.aircast.warning, flyOsd)
         return HStack(spacing: 10) {
-            Image(urgent ? .error : .warning)
-                .font(.system(size: 20))
-                .foregroundStyle(urgent ? content : theme.aircast.warning)
-                .frame(width: 24, height: 24)
-            Text(bannerText(shown) ?? messageCountText(shown.count))
-                .font(.labelLarge)
-                .lineLimit(2)
-                .truncationMode(.tail)
+            HStack(spacing: 10) {
+                Image(urgent ? .error : .warning)
+                    .font(.system(size: 20))
+                    .foregroundStyle(urgent ? content : theme.aircast.warning)
+                    .frame(width: 24, height: 24)
+                    .accessibilityHidden(true)
+                Text(bannerText(shown) ?? messageCountText(shown.count))
+                    .font(.labelLarge)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            }
+            .accessibilityElement(children: .combine)
             Button { offMain { VehicleCommands.resetAllMessages() } } label: {
-                Image(.close).font(.system(size: 16)).frame(width: 32, height: 32)
+                Image(.close).font(.system(size: 16)).frame(width: 32, height: 32).minimumTouchTarget()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss messages")

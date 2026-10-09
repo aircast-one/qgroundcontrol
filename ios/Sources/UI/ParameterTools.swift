@@ -170,12 +170,16 @@ struct ParameterToolsMenu: View {
         let tools = parameterTools(view)
         let reviewed = review
         if !tools.isEmpty {
-            Menu("Tools") {
+            Menu {
                 ForEach(tools, id: \.path) { tool in
                     Button(tool.label) {
                         if tool.confirm { asking = tool } else { run(tool) }
                     }
                 }
+            } label: {
+                Text("Tools")
+                    .frame(minWidth: MINIMUM_TOUCH_TARGET, minHeight: MINIMUM_TOUCH_TARGET)
+                    .contentShape(Rectangle())
             }
             .alert(asking?.confirmTitle ?? "", isPresented: presented($asking), presenting: asking) { tool in
                 Button("Cancel", role: .cancel) {}

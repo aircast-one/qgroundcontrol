@@ -1770,30 +1770,35 @@ private struct FenceListRow: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.title).font(.bodyLarge)
-                if !row.detail.isBlank {
-                    Text(row.detail).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+            Button(action: onSelect) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(row.title).font(.bodyLarge)
+                        if !row.detail.isBlank {
+                            Text(row.detail).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if !row.radius.isBlank {
+                        Text(row.radius).font(.bodyMedium).padding(.horizontal, 8)
+                    }
                 }
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if !row.radius.isBlank {
-                Text(row.radius).font(.bodyMedium).padding(.horizontal, 8)
-            }
+            .buttonStyle(.plain)
             if let onInclusion, let inclusion = row.inclusion {
                 Toggle("Inclusion", isOn: Binding(get: { inclusion }, set: onInclusion))
                     .labelsHidden()
                     .padding(.horizontal, 8)
             }
             Button(action: onRemove) {
-                Image(.close)
+                Image(.close).frame(width: 48, height: 48).contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.colors.onSurface)
             .accessibilityLabel("Remove \(row.title)")
         }
         .padding(.vertical, 4)
         .background(chosen ? theme.colors.secondaryContainer : Color.clear, in: RoundedRectangle(cornerRadius: Corner.small))
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
     }
 }

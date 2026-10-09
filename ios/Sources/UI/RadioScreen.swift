@@ -202,6 +202,7 @@ private struct CalibrationStart: View {
                 prompting = false
                 onAction("nextButtonClicked")
             }
+            Button("Cancel", role: .cancel) { prompting = false }
         } message: {
             Text(view.startPrompt?.second ?? "")
         }

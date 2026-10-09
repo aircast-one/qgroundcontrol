@@ -177,7 +177,7 @@ struct VehicleStateChip: View {
             FlightModeMenu(expanded: modeMenu && !disconnected, onDismiss: { modeMenu = false }, onStatus: { statusSettings = true }, onMessages: { why = true })
         }
         .frame(minHeight: MINIMUM_TOUCH_TARGET)
-        .contentShape(Rectangle())
+        .background { Color.clear.contentShape(Rectangle()) }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .onTapGesture {

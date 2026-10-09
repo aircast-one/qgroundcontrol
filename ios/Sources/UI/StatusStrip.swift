@@ -215,37 +215,42 @@ private struct VehicleStatusReadings: View {
         let ordered = orderedKeys(STATUS_CELLS, layout.indicatorOrder)
         let compact = compactStatus && !layout.editing
         let keys = compact ? Array(ordered.prefix(shownStatusCells(narrow))) : ordered
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
-                ForEach(keys, id: \.self) { key in
-                    LayoutWidget(key: "indicator-\(key)", movable: false) {
-                        if layout.editing {
-                            HStack(spacing: 0) {
-                                moveArrow("\u{2039}") { movedKey(keys, key, -1).map { layout.saveIndicatorOrder($0) } }
-                                cell(key, state, live)
-                                moveArrow("\u{203A}") { movedKey(keys, key, 1).map { layout.saveIndicatorOrder($0) } }
+        HStack(spacing: 0) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    ForEach(keys, id: \.self) { key in
+                        LayoutWidget(key: "indicator-\(key)", movable: false) {
+                            if layout.editing {
+                                HStack(spacing: 0) {
+                                    moveArrow("\u{2039}") { movedKey(keys, key, -1).map { layout.saveIndicatorOrder($0) } }
+                                    cell(key, state, live)
+                                    moveArrow("\u{203A}") { movedKey(keys, key, 1).map { layout.saveIndicatorOrder($0) } }
+                                }
+                                .padding(.leading, stripGap(narrow))
+                            } else {
+                                cell(key, state, live).padding(.leading, stripGap(narrow))
                             }
-                            .padding(.leading, stripGap(narrow))
-                        } else {
-                            cell(key, state, live).padding(.leading, stripGap(narrow))
                         }
                     }
                 }
-                if compact && !narrow {
-                    Image(.chevronRight)
-                        .minimumTouchTarget()
-                        .onTapGesture { allStatus = true }
-                        .accessibilityLabel("All status")
-                        .accessibilityAddTraits(.isButton)
-                        .padding(.leading, STRIP_GAP)
-                }
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { contentSize = $0 }
+                .frame(minHeight: MINIMUM_TOUCH_TARGET)
+                .padding(.top, MINIMUM_TOUCH_TARGET / 2)
             }
-            .onGeometryChange(for: CGSize.self) { $0.size } action: { contentSize = $0 }
-            .frame(minHeight: MINIMUM_TOUCH_TARGET)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .padding(.vertical, min(0, ((contentSize?.height ?? MINIMUM_TOUCH_TARGET) - MINIMUM_TOUCH_TARGET) / 2))
+            .padding(.top, -MINIMUM_TOUCH_TARGET / 2)
+            .frame(maxWidth: contentSize?.width)
+            if compact && !narrow {
+                Image(.chevronRight)
+                    .minimumTouchTarget()
+                    .onTapGesture { allStatus = true }
+                    .accessibilityLabel("All status")
+                    .accessibilityAddTraits(.isButton)
+                    .padding(.leading, STRIP_GAP)
+                    .zIndex(-1)
+            }
         }
-        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .padding(.vertical, min(0, ((contentSize?.height ?? MINIMUM_TOUCH_TARGET) - MINIMUM_TOUCH_TARGET) / 2))
-        .frame(maxWidth: contentSize?.width)
         .opacity(live ? 1 : 0.45)
         .onChange(of: navigation.settingsOpen) { _, open in if open { allStatus = false } }
         .background {

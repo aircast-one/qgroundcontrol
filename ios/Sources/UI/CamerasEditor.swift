@@ -146,6 +146,7 @@ struct CamerasEditor: View {
                             let storedCount = reading?.stored.count ?? 0
                             change(storedNow, { undoRemoval(gone, storedCount) }) { notice = $0 }
                         }
+                        .buttonStyle(.text)
                         .disabled(busy)
                     }
                     .padding(.horizontal, ROW_PAD_HORIZONTAL)
@@ -314,10 +315,10 @@ private struct CameraSheet: View {
                     if draft.stored == nil { nameField(save) }
                     HStack {
                         if let onRemove {
-                            Button("Remove", action: onRemove).foregroundStyle(theme.colors.error).disabled(busy)
+                            Button("Remove", action: onRemove).foregroundStyle(theme.colors.error).buttonStyle(.text).disabled(busy)
                         }
                         Spacer()
-                        Button("Cancel", action: onDismiss)
+                        Button("Cancel", action: onDismiss).buttonStyle(.text)
                         Button("Save", action: save).buttonStyle(.filled).disabled(!canSave)
                     }
                     if !others.isEmpty {

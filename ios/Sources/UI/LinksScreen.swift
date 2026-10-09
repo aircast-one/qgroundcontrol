@@ -1198,7 +1198,7 @@ struct LinksScreen<Footer: View>: View {
         if !group.isEmpty || !auto.isEmpty {
             SectionHeader(text: title)
         }
-        ForEach(group, id: \.name) { row in
+        ForEach(group.map { ("\(title) \($0.name)", $0) }, id: \.0) { _, row in
             LinkRowItem(
                 row: row,
                 onConnect: {

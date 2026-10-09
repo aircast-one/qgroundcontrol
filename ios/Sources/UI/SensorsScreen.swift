@@ -226,6 +226,7 @@ private struct RunningCalibration: View {
                 HStack(spacing: Space.s2) {
                     Spacer(minLength: 0)
                     Button("Cancel") { offMain { _ = Qgc.invoke("\(CAL).cancelCalibration") } }
+                        .buttonStyle(.text)
                         .disabled(!state.cancelEnabled)
                     Button("Next") { offMain { _ = Qgc.invoke("\(CAL).nextClicked") } }
                         .buttonStyle(.filled)
