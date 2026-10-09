@@ -31,6 +31,7 @@ const AVERAGE_SIZES: &[(&str, u64)] = &[
     ("Bing Road", 1297),
     ("Bing Satellite", 19597),
     ("Copernicus", 2786),
+    (crate::maptypes::TERRAIN_TILES, 50000),
     ("Google Hybrid", 56887),
     ("Google Satellite", 56887),
     ("Google Street Map", 4913),
@@ -214,7 +215,8 @@ pub fn offline_maps_view(backend: &dyn Backend, args: &[String]) -> Value {
             let fetch_elevation = args.get(7).is_none_or(|flag| flag != "false") && !crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str());
             let elevation_count = if fetch_elevation { crate::terrainquery::region_tiles((region.top_left_lat, region.top_left_lon), (region.bottom_right_lat, region.bottom_right_lon)).len() as u64 } else { 0 };
             let elevation_size = elevation_count * average_size(crate::maptypes::ELEVATION_PROVIDERS[0]);
-            let (count, size) = (image_count + elevation_count, image_size + elevation_size);
+            let (terrain_count, terrain_size) = if fetch_elevation { terrain_estimate(&region, max_zoom as i32) } else { (0, 0) };
+            let (count, size) = (image_count + elevation_count + terrain_count, image_size + elevation_size + terrain_size);
             json!({ "tileCount": count, "tileCountText": grouped(count), "tileSizeText": size_text(size), "tooMany": count > limit })
         }
         _ => Value::Null,
@@ -330,10 +332,38 @@ pub fn start_download(args: &str) -> Value {
             start(id, &provider);
             if fetch_elevation && !crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str()) {
                 create_elevation_set(&name, &region);
+                create_terrain_set(&name, &region, max_zoom);
             }
             json!({ "ok": true, "result": id })
         }
         Err(reason) => json!({ "ok": false, "reason": reason }),
+    }
+}
+
+pub fn terrain_estimate(region: &Region, max_zoom: i32) -> (u64, u64) {
+    estimate(crate::maptypes::TERRAIN_TILES, region, 0, max_zoom.min(crate::maptypes::TERRAIN_TILES_MAX_ZOOM))
+}
+
+fn create_terrain_set(name: &str, region: &Region, max_zoom: i32) {
+    let provider = crate::maptypes::TERRAIN_TILES;
+    let Some(kind) = provider_hash(provider) else { return };
+    let top = max_zoom.min(crate::maptypes::TERRAIN_TILES_MAX_ZOOM);
+    let tiles = tiles(region, 0, top);
+    let set = TileSet {
+        id: 0,
+        name: format!("{name} Terrain"),
+        type_str: provider.to_string(),
+        top_left: (region.top_left_lat, region.top_left_lon),
+        bottom_right: (region.bottom_right_lat, region.bottom_right_lon),
+        min_zoom: 0,
+        max_zoom: top,
+        kind,
+        tiles: tiles.len() as i64,
+        default_set: false,
+    };
+    match open_cache().and_then(|cache| cache.create_set(&set, &tiles).map_err(|error| error.to_string())) {
+        Ok(id) => start(id, provider),
+        Err(reason) => log::warn!("Offline terrain set for \"{name}\" was not created: {reason}"),
     }
 }
 
@@ -608,5 +638,12 @@ mod tests {
         let listed = tiles(&region, 10, 12);
         assert_eq!(listed.len() as u64, estimate("Google Satellite", &region, 10, 12).0);
         assert_eq!(estimate("Google Satellite", &region, 10, 12).1, listed.len() as u64 * 56887);
+    }
+
+    #[test]
+    fn terrain_for_the_synthetic_view_is_saved_from_zoom_0_up_to_the_finest_it_has() {
+        let region = Region { top_left_lon: 8.50, top_left_lat: 47.40, bottom_right_lon: 8.60, bottom_right_lat: 47.35 };
+        assert_eq!(terrain_estimate(&region, 18).0, tiles(&region, 0, crate::maptypes::TERRAIN_TILES_MAX_ZOOM).len() as u64, "terrain stops at zoom 15, where the elevation tiles end");
+        assert_eq!(terrain_estimate(&region, 12).0, tiles(&region, 0, 12).len() as u64, "a coarser map set only needs terrain as fine as itself");
     }
 }

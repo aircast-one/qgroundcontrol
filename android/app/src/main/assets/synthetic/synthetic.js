@@ -1,10 +1,11 @@
-const TERRARIUM = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium";
+const TERRAIN = "https://qgc.tiles/Terrarium";
 const TERRARIUM_LEVEL = 15;
 const TILE_PX = 256;
 const SAMPLES = 65;
 const KEPT_TILES = 64;
 const HOME_SAMPLE_LEVEL = 14;
 const CLEARANCE_M = 2;
+const REANCHOR_MS = 10000;
 const FOLLOW = 0.25;
 const FRAME_RATE = 30;
 
@@ -18,7 +19,7 @@ const remember = (key, tile) => {
 };
 
 const fetchTerrarium = (key) =>
-  fetch(`${TERRARIUM}/${key}.png`)
+  fetch(`${TERRAIN}/${key}`)
     .then((response) => (response.ok ? response.blob() : Promise.reject(new Error(`terrain ${key}: ${response.status}`))))
     .then((blob) => createImageBitmap(blob, { colorSpaceConversion: "none", premultiplyAlpha: "none" }))
     .then((bitmap) => {
@@ -104,7 +105,10 @@ const anchorHome = (pose) => {
       state.homeGround = state.home === key ? ground.height : state.homeGround;
     })
     .catch(() => {
-      state.home = state.home === key ? undefined : state.home;
+      state.homeGround = state.home === key ? (state.homeGround ?? 0) : state.homeGround;
+      setTimeout(() => {
+        state.home = state.home === key ? undefined : state.home;
+      }, REANCHOR_MS);
     });
 };
 

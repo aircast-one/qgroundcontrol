@@ -68,12 +68,14 @@ pub struct TileSet {
     pub default_set: bool,
 }
 
+pub const CORE_ONLY_PROVIDERS: &[(&str, i32)] = &[(crate::maptypes::TERRAIN_TILES, 41)];
+
 pub fn provider_hash(name: &str) -> Option<i32> {
-    PROVIDERS.iter().find(|(known, _)| *known == name).map(|(_, hash)| *hash)
+    PROVIDERS.iter().chain(CORE_ONLY_PROVIDERS).find(|(known, _)| *known == name).map(|(_, hash)| *hash)
 }
 
 pub fn provider_named(hash: i32) -> Option<&'static str> {
-    PROVIDERS.iter().find(|(_, known)| *known == hash).map(|(name, _)| *name)
+    PROVIDERS.iter().chain(CORE_ONLY_PROVIDERS).find(|(_, known)| *known == hash).map(|(name, _)| *name)
 }
 
 pub fn tile_hash(provider: i32, x: i32, y: i32, z: i32) -> String {
@@ -545,6 +547,13 @@ mod tests {
             .collect();
         assert!(wrong.is_empty(), "{wrong:?}");
         assert_eq!(PROVIDERS.len(), providers.len(), "the core carries a provider Qt no longer serves, or the recording is stale");
+    }
+
+    #[test]
+    fn terrain_tiles_have_a_key_of_their_own_outside_qts_list() {
+        assert_eq!(provider_hash(crate::maptypes::TERRAIN_TILES), Some(41));
+        assert_eq!(provider_named(41), Some(crate::maptypes::TERRAIN_TILES));
+        assert!(PROVIDERS.iter().all(|(name, hash)| *name != crate::maptypes::TERRAIN_TILES && *hash != 41), "the key must not collide with a provider Qt serves");
     }
 
     #[test]

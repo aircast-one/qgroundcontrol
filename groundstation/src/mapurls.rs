@@ -150,6 +150,7 @@ fn source(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys) -> Option<(&'s
             "",
             keys.custom_url.replace("{x}", &xs).replace("{y}", &ys).replace("{z}", &zs).replace("{zoom}", &zs),
         )),
+        crate::maptypes::TERRAIN_TILES => Some(("", format!("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{zs}/{xs}/{ys}.png"))),
         "Copernicus" => Some((
             "https://terrain-ce.suite.auterion.com",
             chain(COPERNICUS, &[&corner(y, 90.0), &corner(x, 180.0), &corner(y + 1, 90.0), &corner(x + 1, 180.0)]),
@@ -417,6 +418,11 @@ mod tests {
         assert_eq!(request.url, "https://tiles.example.com/14/8523/5606.png?style=a%20b&k=%7Bs%7D&q=14");
         assert_eq!(request.headers, headers(&[("Accept", "*/*"), ("User-Agent", USER_AGENT), ("Connection", "keep-alive")]));
         assert_eq!(tile_request("CustomURL Custom", 1, 1, 1, &Keys::default()), None);
+    }
+
+    #[test]
+    fn terrain_tiles_come_from_the_open_terrarium_set() {
+        assert_eq!(url(crate::maptypes::TERRAIN_TILES, 29961, 19829, 15).as_deref(), Some("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/15/29961/19829.png"));
     }
 
     #[test]
