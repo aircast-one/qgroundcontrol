@@ -435,8 +435,9 @@ fun AircastShell(hostView: android.view.View?) {
     }
 
     val fullScreenVideoJson by qgcPath(VIDEO_VIEW)
-    val fullScreen = videoFullScreen && tab == Tab.Fly && videoExpanded && videoReading(fullScreenVideoJson)?.decoding == true
-    LaunchedEffect(fullScreen) { if (!fullScreen) videoFullScreen = false }
+    val syntheticOnScreen = one.aircast.android.ui.rememberSyntheticAvailable()
+    val fullScreen = videoFullScreen && tab == Tab.Fly && videoExpanded && (videoReading(fullScreenVideoJson)?.decoding == true || syntheticOnScreen)
+    LaunchedEffect(fullScreen, videoFullScreen) { if (!fullScreen) videoFullScreen = false }
     BackHandler(enabled = fullScreen) { videoFullScreen = false }
 
     AircastTheme(dark = darkBars) {
