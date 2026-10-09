@@ -30,12 +30,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
+import one.aircast.map.REPOSITION_MISSION
 import one.aircast.map.TrackPoint
 import org.json.JSONObject
 
 internal const val PLAN_TRANSFORM_VIEW = "view.planTransform"
 internal const val OFFSET_MISSION = "plan.missionController.offsetMission"
-internal const val REPOSITION_MISSION = "plan.missionController.repositionMission"
 internal const val ROTATE_MISSION = "plan.missionController.rotateMission"
 
 internal fun transformHome(view: JSONObject?): TrackPoint? =

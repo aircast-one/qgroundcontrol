@@ -98,4 +98,21 @@ class PlanStripTest {
         assertEquals(5, appendSequence(items))
         assertEquals(0, appendSequence(emptyList()))
     }
+
+    @Test
+    fun `a route that begins more than a kilometre from the aircraft is flagged with the distance`() {
+        val home = MissionItem(0, 0, 37.0, -122.0, "Home", false, Double.NaN)
+        val takeoff = MissionItem(1, 1, 39.237, -123.149, "Takeoff", false, 50.0)
+        val zurich = TrackPoint(47.397, 8.545)
+        assertEquals(TrackPoint(39.237, -123.149), routeStart(listOf(home, takeoff)))
+        assertNull(farFromAircraft(TrackPoint(39.2371, -123.1491), listOf(home, takeoff)))
+        assertNull(farFromAircraft(null, listOf(home, takeoff)))
+        assertEquals("Starts 9,", startsFromAircraft(farFromAircraft(zurich, listOf(home, takeoff))!!, imperial = false).take(9))
+    }
+
+    @Test
+    fun `distances read in the operator's units, coarser as they grow`() {
+        assertEquals(listOf("850 m", "1.5 km", "9,412 km"), listOf(850.0, 1500.0, 9_412_000.0).map { distanceWords(it, imperial = false) })
+        assertEquals(listOf("492 ft", "1.9 mi", "5,848 mi"), listOf(150.0, 3000.0, 9_412_000.0).map { distanceWords(it, imperial = true) })
+    }
 }

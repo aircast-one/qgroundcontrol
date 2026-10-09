@@ -66,13 +66,35 @@ pub fn vehicle_change_prompt_for(offline: Option<bool>, dirty: bool) -> Value {
                 (true, false) => "Discard Unsaved Changes, Load New Plan From Vehicle",
             },
             "keepText": if offline { "Keep Current Plan" } else { "Keep Current Plan, Don't Update From Vehicle" },
+            "connected": !offline,
+            "dirty": dirty,
         }),
     }
 }
 
+const MAV_AUTOPILOT_ARDUPILOTMEGA: u8 = 3;
+
+fn stored_mission_items(listed: usize, autopilot: u8) -> Option<usize> {
+    let home = usize::from(autopilot == MAV_AUTOPILOT_ARDUPILOTMEGA);
+    Some(listed.saturating_sub(home)).filter(|count| *count > 0)
+}
+
 pub fn vehicle_change_prompt() -> Value {
-    let state = held();
-    vehicle_change_prompt_for(state.vehicle_prompt, state.dirty_for_save)
+    let (prompt, dirty) = {
+        let state = held();
+        (state.vehicle_prompt, state.dirty_for_save)
+    };
+    let stored = match prompt {
+        Some(false) => crate::hub::lock().active().and_then(|v| stored_mission_items(v.mission_snapshot()["items"].as_array().map_or(0, Vec::len), v.autopilot)),
+        _ => None,
+    };
+    match vehicle_change_prompt_for(prompt, dirty) {
+        Value::Object(mut fields) => {
+            fields.insert("aircraftItems".to_string(), json!(stored));
+            Value::Object(fields)
+        }
+        other => other,
+    }
 }
 
 const UNDO_DEPTH: usize = 100;
@@ -2441,6 +2463,15 @@ mod tests {
         let changed = vehicle_change_prompt_for(Some(false), true);
         assert_eq!(changed["loadText"], "Discard Unsaved Changes, Load New Plan From Vehicle");
         assert_eq!(vehicle_change_prompt_for(Some(false), false)["loadText"], "Load New Plan From Vehicle");
+        assert_eq!((changed["connected"].as_bool(), gone["connected"].as_bool(), changed["dirty"].as_bool()), (Some(true), Some(false), Some(true)), "a head can word the choice for the case it is in");
+    }
+
+    #[test]
+    fn the_aircraft_route_is_counted_without_ardupilots_home_row() {
+        assert_eq!(stored_mission_items(13, 3), Some(12), "ArduPilot sends its home as mission row 0");
+        assert_eq!(stored_mission_items(12, 12), Some(12), "PX4 sends only the mission");
+        assert_eq!(stored_mission_items(1, 3), None, "a home alone is no route");
+        assert_eq!(stored_mission_items(0, 12), None);
     }
 
     #[test]

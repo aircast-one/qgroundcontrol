@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -96,6 +97,7 @@ internal const val SUMMARY_MAX_FRACTION = 0.74f
 
 private const val WAITING_FOR_QGC = "Waiting for QGroundControl"
 private const val CHECKING_TERRAIN = "Checking the terrain\u2026"
+private const val FAR_FROM_AIRCRAFT_TEXT = "The aircraft is not where this route begins. Move the route so it starts at the aircraft, or upload it as it is."
 private const val VIEW_CORNERS = 4
 private val PATTERN_KINDS = setOf(KIND_SURVEY, KIND_CORRIDOR, KIND_STRUCTURE)
 
@@ -470,7 +472,12 @@ internal fun PlanMapContent(
     }
 
     val uploadBlocked = syncRefusal(vehicleSyncState(planOffline, planSyncing), "upload to") != null
-    val upload: () -> Unit = {
+    val aircraftAt = TrackPoint(latitude, longitude).takeIf { isPlottable(latitude, longitude) && !planOffline }
+    val farFromAircraft = farFromAircraft(aircraftAt, allItems)
+    val farText = farFromAircraft?.let { startsFromAircraft(it, missionSummaryView?.optBoolean("imperial") == true) }
+    var farAsk by remember { mutableStateOf(false) }
+
+    val sendUpload: () -> Unit = {
         val refusal = syncRefusal(
             vehicleSyncState(planOffline, planSyncing), "upload to",
         )
@@ -490,6 +497,8 @@ internal fun PlanMapContent(
             }
         }
     }
+
+    val upload: () -> Unit = { if (farFromAircraft != null) farAsk = true else sendUpload() }
 
     fun download() {
         loadArmed = false
@@ -648,7 +657,7 @@ internal fun PlanMapContent(
                     PlanBar(
                         planUpload,
                         planStats(itemCount, allItems, missionSummaryView),
-                        terrainWarning(terrainHits.size, (collidingSimple + collidingPatterns).size),
+                        farText ?: terrainWarning(terrainHits.size, (collidingSimple + collidingPatterns).size),
                         CHECKING_TERRAIN.takeIf { itemCount > 0 && terrainView?.optBoolean("checking") == true },
                     ),
                 )
@@ -756,6 +765,30 @@ internal fun PlanMapContent(
                 text = { Text(replaceWarning(allItems.count { it.index != HOME_ITEM })) },
                 confirmButton = { TextButton(onClick = ::download) { Text("Replace") } },
                 dismissButton = { TextButton(onClick = { loadArmed = false }) { Text("Keep mine") } },
+            )
+        }
+
+        if (farAsk && aircraftAt != null) {
+            AlertDialog(
+                onDismissRequest = { farAsk = false },
+                title = { Text(farText.orEmpty()) },
+                text = { Text(FAR_FROM_AIRCRAFT_TEXT) },
+                confirmButton = {
+                    Button(onClick = {
+                        farAsk = false
+                        onBridge("Moving the route to the aircraft", done = "Route moved to the aircraft", then = {
+                            follow = false
+                            centreOn = aircraftAt
+                            centreRequest += 1
+                        }) { repositionMission(aircraftAt) }
+                    }) { Text("Move it to the aircraft") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        farAsk = false
+                        sendUpload()
+                    }) { Text("Upload anyway") }
+                },
             )
         }
 

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -55,6 +56,7 @@ import one.aircast.map.PlanMapScreen
 
 private const val NOTICE_MILLIS = 4000L
 private const val HEADER_ALPHA = 0.94f
+private const val FLY_LABEL = "Fly"
 private const val DISABLED_PILL_ALPHA = 0.38f
 private val PILL_HEIGHT = 40.dp
 private val HEADER_CORNER = 20.dp
@@ -67,16 +69,32 @@ internal data class AltitudePrompt(val title: String, val text: String)
 internal const val LOAD_VEHICLE_PLAN = "core.plan.loadVehiclePlan"
 internal const val KEEP_CURRENT_PLAN = "core.plan.keepCurrentPlan"
 
-internal data class VehicleChangePrompt(val title: String, val text: String, val loadText: String, val keepText: String)
+internal data class VehicleChangePrompt(val connected: Boolean, val dirty: Boolean, val aircraftItems: Int?)
 
 internal fun vehicleChangePrompt(view: org.json.JSONObject?): VehicleChangePrompt? =
-    view?.optJSONObject("vehicleChangePrompt")?.let { VehicleChangePrompt(it.optString("title"), it.optString("text"), it.optString("loadText"), it.optString("keepText")) }
+    view?.optJSONObject("vehicleChangePrompt")?.let {
+        VehicleChangePrompt(it.optBoolean("connected"), it.optBoolean("dirty"), it.optInt("aircraftItems", 0).takeIf { count -> count > 0 })
+    }
+
+internal data class PromptCopy(val title: String, val text: String, val primary: String, val secondary: String, val primaryKeeps: Boolean)
+
+internal fun promptCopy(prompt: VehicleChangePrompt): PromptCopy {
+    val stored = prompt.aircraftItems?.let { " (${itemsWord(it)})" }.orEmpty()
+    return when {
+        prompt.connected && prompt.dirty -> PromptCopy("Aircraft connected", "Keep the route you drew, or replace it with the route stored on the aircraft$stored?", "Keep my route", "Load the aircraft's route", primaryKeeps = true)
+        prompt.connected -> PromptCopy("Aircraft connected", "Load the route stored on the aircraft$stored, or keep this one?", "Load the aircraft's route", "Keep this route", primaryKeeps = false)
+        prompt.dirty -> PromptCopy("Aircraft disconnected", "Keep the route you were working on?", "Keep my route", "Discard it", primaryKeeps = true)
+        else -> PromptCopy("Aircraft disconnected", "Keep this route, or start a new plan?", "Keep this route", "Start a new plan", primaryKeeps = true)
+    }
+}
+
+private fun itemsWord(count: Int): String = if (count == 1) "1 item" else "$count items"
 
 internal fun applyAltitudePrompt(view: org.json.JSONObject?): AltitudePrompt? =
     view?.optJSONObject("applyAltitudePrompt")?.let { AltitudePrompt(it.optString("title"), it.optString("text")) }
 
 @Composable
-fun PlanTab(modifier: Modifier = Modifier) {
+fun PlanTab(modifier: Modifier = Modifier, onFly: () -> Unit = {}) {
     var notice by remember { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<PlanConfirm?>(null) }
@@ -138,17 +156,15 @@ fun PlanTab(modifier: Modifier = Modifier) {
     }
 
     vehicleChangePrompt(planStatus)?.let { prompt ->
+        val copy = promptCopy(prompt)
+        val keep = { offMainDetached { Qgc.invoke(KEEP_CURRENT_PLAN) } }
+        val load = { offMainDetached { Qgc.invoke(LOAD_VEHICLE_PLAN) } }
         AlertDialog(
             onDismissRequest = {},
-            title = { Text(sentenceCase(prompt.title)) },
-            text = {
-                androidx.compose.foundation.layout.Column {
-                    Text(prompt.text)
-                    TextButton(onClick = { offMainDetached { Qgc.invoke(LOAD_VEHICLE_PLAN) } }) { Text(sentenceCase(prompt.loadText)) }
-                    TextButton(onClick = { offMainDetached { Qgc.invoke(KEEP_CURRENT_PLAN) } }) { Text(sentenceCase(prompt.keepText)) }
-                }
-            },
-            confirmButton = {},
+            title = { Text(copy.title) },
+            text = { Text(copy.text) },
+            confirmButton = { Button(onClick = if (copy.primaryKeeps) keep else load) { Text(copy.primary) } },
+            dismissButton = { TextButton(onClick = if (copy.primaryKeeps) load else keep) { Text(copy.secondary) } },
         )
     }
 
@@ -253,9 +269,9 @@ fun PlanTab(modifier: Modifier = Modifier) {
                         }
                         if (bar.upload.shown) {
                             PlanActionPill(
-                                label = bar.upload.label,
+                                label = if (bar.upload.done) FLY_LABEL else bar.upload.label,
                                 icon = when {
-                                    bar.upload.done -> R.drawable.ic_check_circle
+                                    bar.upload.done -> R.drawable.ic_flight
                                     bar.warning != null -> R.drawable.ic_warning
                                     else -> R.drawable.ic_upload
                                 },
@@ -271,7 +287,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                                     else -> MaterialTheme.colorScheme.onSurface
                                 },
                                 progress = syncProgress.takeIf { syncing },
-                                onClick = bar.upload.onClick,
+                                onClick = if (bar.upload.done) onFly else bar.upload.onClick,
                             )
                         } else if (containsItems) {
                             PlanActionPill(

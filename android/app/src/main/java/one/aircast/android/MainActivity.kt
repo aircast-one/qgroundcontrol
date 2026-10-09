@@ -636,7 +636,7 @@ fun AircastShell(hostView: android.view.View?) {
 
                 key(popEpoch) {
                     when (tab) {
-                        Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab() }
+                        Tab.Plan -> Surface(Modifier.fillMaxSize()) { PlanTab(onFly = { tab = Tab.Fly }) }
                         Tab.Analyze -> AnalyzeScreen(
                             page = analyzePage,
                             onSelect = { analyzePage = it },

@@ -59,6 +59,41 @@ internal fun placedPattern(surveys: List<Survey>, wanted: Int): Survey? =
 internal fun appendSequence(items: List<MissionItem>): Int =
     items.maxByOrNull { it.index }?.sequence ?: HOME_ITEM
 
+private const val FAR_FROM_AIRCRAFT_METRES = 1000.0
+private const val METRES_PER_MILE = 1609.344
+private const val FEET_PER_METRE = 3.28084
+private const val SHORT_MILES = 0.2
+private const val WHOLE_UNITS = 10.0
+private const val METRES_PER_KILOMETRE = 1000.0
+const val REPOSITION_MISSION = "plan.missionController.repositionMission"
+
+internal fun routeStart(items: List<MissionItem>): TrackPoint? =
+    (items.filter { it.placed && it.index != HOME_ITEM }.minByOrNull { it.index } ?: items.firstOrNull { it.placed && it.index == HOME_ITEM })
+        ?.let { TrackPoint(it.latitude, it.longitude) }
+
+internal fun farFromAircraft(aircraft: TrackPoint?, items: List<MissionItem>): Double? {
+    val start = routeStart(items) ?: return null
+    return aircraft?.let { metresBetween(it, start) }?.takeIf { it > FAR_FROM_AIRCRAFT_METRES }
+}
+
+internal fun distanceWords(metres: Double, imperial: Boolean): String {
+    val miles = metres / METRES_PER_MILE
+    val kilometres = metres / METRES_PER_KILOMETRE
+    return when {
+        imperial && miles < SHORT_MILES -> String.format(java.util.Locale.US, "%,d ft", Math.round(metres * FEET_PER_METRE))
+        imperial && miles < WHOLE_UNITS -> String.format(java.util.Locale.US, "%.1f mi", miles)
+        imperial -> String.format(java.util.Locale.US, "%,d mi", Math.round(miles))
+        metres < METRES_PER_KILOMETRE -> String.format(java.util.Locale.US, "%d m", Math.round(metres))
+        kilometres < WHOLE_UNITS -> String.format(java.util.Locale.US, "%.1f km", kilometres)
+        else -> String.format(java.util.Locale.US, "%,d km", Math.round(kilometres))
+    }
+}
+
+internal fun startsFromAircraft(metres: Double, imperial: Boolean): String = "Starts ${distanceWords(metres, imperial)} from the aircraft"
+
+fun repositionMission(at: TrackPoint): Boolean =
+    invokeOk(REPOSITION_MISSION, "[{\"latitude\":${at.latitude},\"longitude\":${at.longitude}},true,true]")
+
 internal fun tapCloses(selected: MapHit?, panelOpen: Boolean): Boolean =
     selected != null && (panelOpen || selected !is MapHit.Waypoint)
 
