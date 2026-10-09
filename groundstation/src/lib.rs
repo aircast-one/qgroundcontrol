@@ -181,7 +181,7 @@ pub mod replay;
 mod samplelog;
 pub mod sensorcal;
 pub mod sensors;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(target_os = "ios"))]
 pub mod seriallink;
 pub mod sensorfacts;
 pub mod settings;

@@ -25,7 +25,31 @@ pub fn install(hooks: Hooks) {
 }
 
 pub fn ports() -> Vec<PortInfo> {
-    HOOKS.get().map(|hooks| (hooks.ports)()).unwrap_or_default()
+    HOOKS.get().map(|hooks| (hooks.ports)()).unwrap_or_default().into_iter().chain(uart_ports()).collect()
+}
+
+const UART_PREFIX: &str = "/dev/ttyS";
+const UART_COUNT: u32 = 10;
+
+pub fn uarts(usable: impl Fn(&str) -> bool) -> Vec<PortInfo> {
+    (0..UART_COUNT)
+        .map(|n| format!("{UART_PREFIX}{n}"))
+        .filter(|location| usable(location))
+        .map(|location| PortInfo { port_name: location.trim_start_matches("/dev/").to_string(), system_location: location, ..PortInfo::default() })
+        .collect()
+}
+
+#[cfg(target_os = "android")]
+fn uart_ports() -> Vec<PortInfo> {
+    static UARTS: OnceLock<Vec<PortInfo>> = OnceLock::new();
+    UARTS
+        .get_or_init(|| uarts(|location| std::ffi::CString::new(location).is_ok_and(|path| unsafe { libc::access(path.as_ptr(), libc::R_OK | libc::W_OK) } == 0)))
+        .clone()
+}
+
+#[cfg(not(target_os = "android"))]
+fn uart_ports() -> Vec<PortInfo> {
+    Vec::new()
 }
 
 pub fn port_from_info(info: &str) -> Option<PortInfo> {
@@ -92,16 +116,35 @@ pub fn closed(id: u32, reason: &str) {
     }
 }
 
-pub struct PlatformSerial {
-    id: u32,
+pub enum PlatformSerial {
+    Hosted(u32),
+    #[cfg(target_os = "android")]
+    Uart(crate::seriallink::SerialLink),
+}
+
+#[cfg(target_os = "android")]
+fn open_uart(port_name: &str, baud: u32, data_bits: i64, stop_bits: i64, parity: i64, on_event: impl Fn(Event) + Send + Sync + 'static) -> Result<PlatformSerial, String> {
+    let config = crate::seriallink::SerialConfig { port_name: port_name.to_string(), baud, data_bits, parity, stop_bits, flow_control: 0, usb_direct: false };
+    crate::seriallink::SerialLink::open(&config, move |event| {
+        on_event(match event {
+            crate::seriallink::Event::Bytes(bytes) => Event::Bytes(bytes),
+            crate::seriallink::Event::Disconnected(reason) => Event::Disconnected(reason),
+        })
+    })
+    .map(PlatformSerial::Uart)
+    .map_err(|e| e.to_string())
 }
 
 impl PlatformSerial {
     pub fn open(id: u32, port_name: &str, baud: u32, data_bits: i64, stop_bits: i64, parity: i64, on_event: impl Fn(Event) + Send + Sync + 'static) -> Result<PlatformSerial, String> {
+        #[cfg(target_os = "android")]
+        if port_name.starts_with(UART_PREFIX) {
+            return open_uart(port_name, baud, data_bits, stop_bits, parity, on_event);
+        }
         let hooks = HOOKS.get().ok_or_else(|| "this build has no serial host".to_string())?;
         RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).insert(id, Arc::new(on_event));
         match (hooks.open)(id, port_name, baud, data_bits, stop_bits, parity) {
-            true => Ok(PlatformSerial { id }),
+            true => Ok(PlatformSerial::Hosted(id)),
             false => {
                 RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).remove(&id);
                 Err("Unknown error".to_string())
@@ -110,13 +153,23 @@ impl PlatformSerial {
     }
 
     pub fn write(&self, bytes: &[u8]) -> bool {
-        HOOKS.get().is_some_and(|hooks| (hooks.write)(self.id, bytes))
+        match self {
+            PlatformSerial::Hosted(id) => HOOKS.get().is_some_and(|hooks| (hooks.write)(*id, bytes)),
+            #[cfg(target_os = "android")]
+            PlatformSerial::Uart(link) => link.write(bytes).is_ok(),
+        }
     }
 
     pub fn close(&self) {
-        RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).remove(&self.id);
-        if let Some(hooks) = HOOKS.get() {
-            (hooks.close)(self.id);
+        match self {
+            PlatformSerial::Hosted(id) => {
+                RECEIVERS.lock().unwrap_or_else(PoisonError::into_inner).remove(id);
+                if let Some(hooks) = HOOKS.get() {
+                    (hooks.close)(*id);
+                }
+            }
+            #[cfg(target_os = "android")]
+            PlatformSerial::Uart(link) => link.close(),
         }
     }
 }
@@ -133,5 +186,13 @@ mod tests {
         assert!(port_from_info("short\tline").is_none(), "AndroidSerial skips a line with fewer than six fields");
         assert_eq!(display_name(&port), "Pixhawk6X (bus/usb/001/002)", "cleanPortDisplayName on Android: description, then the port name to keep entries unique");
         assert_eq!([0, 2, 3, 4, 5].map(android_parity), [0, 2, 1, 4, 3], "QSerialPort parity to AndroidSerial parity, as _parityToAndroidParity maps it");
+    }
+
+    #[test]
+    fn built_in_uarts_the_app_can_open_are_listed_in_port_order() {
+        let ports = uarts(|location| ["/dev/ttyS3", "/dev/ttyS1", "/dev/ttyUSB0"].contains(&location));
+        assert_eq!(ports.iter().map(|p| (p.system_location.as_str(), display_name(p))).collect::<Vec<_>>(), [("/dev/ttyS1", "ttyS1".to_string()), ("/dev/ttyS3", "ttyS3".to_string())]);
+        assert!(ports.iter().all(|p| p.vendor_id.is_none()), "a UART is not a USB board, so autoconnect never claims it");
+        assert!(ports.iter().all(|p| p.system_location.starts_with(UART_PREFIX)), "every listed UART opens through the UART path");
     }
 }
