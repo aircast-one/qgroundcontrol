@@ -1,3 +1,6 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, PoisonError};
+
 use serde_json::{Value, json};
 
 use crate::attitude::{point, raw};
@@ -12,11 +15,45 @@ pub const DEPS: &[&str] = &[
     "vehicle.heading",
     "settings.flightMapSettings.mapProvider",
     crate::gimbal::GIMBAL_CHANGED,
+    SYNTHETIC_CHANGED,
 ];
+
+pub const SYNTHETIC_CHANGED: &str = "core.synthetic@changed";
+pub const SYNTHETIC_TILT: &str = "syntheticView.tilt";
 
 pub const FIXED_CAMERA_TILT_DEG: f64 = -15.0;
 pub const CAMERA_FOV_DEG: f64 = 70.0;
 const FALLBACK_IMAGERY: &str = "Bing Satellite";
+const TILT_RANGE_DEG: (f64, f64) = (-90.0, 0.0);
+const NEEDS_DEGREES: &str = "Give the tilt in degrees, from 0 (level) to -90 (straight down).";
+
+static TILT: Mutex<f64> = Mutex::new(FIXED_CAMERA_TILT_DEG);
+static CHANGED: AtomicBool = AtomicBool::new(false);
+
+pub fn take_changed() -> bool {
+    CHANGED.swap(false, Ordering::SeqCst)
+}
+
+pub fn owns(path: &str) -> bool {
+    path == SYNTHETIC_TILT
+}
+
+fn tilt() -> f64 {
+    *TILT.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn run(_path: &str, args: &str) -> Value {
+    let wanted = serde_json::from_str::<Value>(args).ok().and_then(|given| given.get(0).and_then(Value::as_f64)).filter(|degrees| degrees.is_finite());
+    match wanted {
+        None => json!({ "ok": false, "reason": NEEDS_DEGREES }),
+        Some(degrees) => {
+            let clamped = degrees.clamp(TILT_RANGE_DEG.0, TILT_RANGE_DEG.1);
+            *TILT.lock().unwrap_or_else(PoisonError::into_inner) = clamped;
+            CHANGED.store(true, Ordering::SeqCst);
+            json!({ "ok": true, "tilt": clamped })
+        }
+    }
+}
 
 pub fn imagery(provider: &str) -> &'static str {
     crate::maptypes::QGC_ORDER
@@ -26,14 +63,13 @@ pub fn imagery(provider: &str) -> &'static str {
         .unwrap_or(FALLBACK_IMAGERY)
 }
 
-pub fn aim(gimbals: &Value, vehicle_heading: f64) -> (f64, f64) {
+pub fn gimbal_aim(gimbals: &Value) -> Option<(f64, f64)> {
     let all = gimbals["gimbals"].as_array().cloned().unwrap_or_default();
     all.iter()
         .find(|gimbal| flag(gimbal, "active"))
         .or(all.first())
         .and_then(|gimbal| Some((gimbal["absoluteYaw"].as_f64()?, gimbal["pitch"].as_f64()?)))
         .filter(|(yaw, pitch)| yaw.is_finite() && pitch.is_finite())
-        .unwrap_or((vehicle_heading, FIXED_CAMERA_TILT_DEG))
 }
 
 pub fn synthetic(backend: &dyn Backend, gimbals: &Value) -> Value {
@@ -41,7 +77,8 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value) -> Value {
     let Some((((latitude, longitude), (home_latitude, home_longitude)), above_home)) = placed else {
         return json!({ "kind": "object", "class": "SyntheticView", "available": false });
     };
-    let (heading, pitch) = aim(gimbals, raw(backend, "vehicle.heading").unwrap_or(0.0));
+    let gimbal = gimbal_aim(gimbals);
+    let (heading, pitch) = gimbal.unwrap_or((raw(backend, "vehicle.heading").unwrap_or(0.0), tilt()));
     let provider = crate::read::value_string(&backend.value("settings.flightMapSettings.mapProvider.rawValue"));
     json!({
         "kind": "object",
@@ -55,6 +92,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value) -> Value {
         "heading": heading,
         "pitch": pitch,
         "roll": 0.0,
+        "tiltable": gimbal.is_none(),
         "fov": CAMERA_FOV_DEG,
         "imagery": imagery(&provider),
     })
@@ -106,7 +144,8 @@ mod tests {
         assert_eq!(view["available"], true);
         assert_eq!((view["latitude"].as_f64(), view["longitude"].as_f64(), view["aboveHome"].as_f64()), (Some(-35.36), Some(149.16), Some(20.0)));
         assert_eq!((view["homeLatitude"].as_f64(), view["homeLongitude"].as_f64()), (Some(-35.363), Some(149.165)), "height is measured from home, so the head anchors it to the terrain it draws there");
-        assert_eq!((view["heading"].as_f64(), view["pitch"].as_f64()), (Some(90.0), Some(FIXED_CAMERA_TILT_DEG)), "without a gimbal the camera looks where the nose points, tilted down like a fixed drone camera");
+        assert_eq!(view["heading"].as_f64(), Some(90.0), "without a gimbal the camera looks where the nose points");
+        assert_eq!(view["tiltable"], true, "and the pilot tilts it from the view");
         assert_eq!(view["imagery"], "Esri World Satellite");
     }
 
@@ -116,8 +155,21 @@ mod tests {
             { "active": false, "absoluteYaw": 10.0, "pitch": -5.0 },
             { "active": true, "absoluteYaw": 200.0, "pitch": -45.0 },
         ] });
-        assert_eq!(aim(&gimbals, 90.0), (200.0, -45.0), "the active gimbal decides, not the first");
-        assert_eq!(aim(&json!({ "gimbals": [{ "active": true, "absoluteYaw": null, "pitch": -45.0 }] }), 90.0), (90.0, FIXED_CAMERA_TILT_DEG), "a gimbal that has not reported its angles cannot aim");
+        assert_eq!(gimbal_aim(&gimbals), Some((200.0, -45.0)), "the active gimbal decides, not the first");
+        assert_eq!(gimbal_aim(&json!({ "gimbals": [{ "active": true, "absoluteYaw": null, "pitch": -45.0 }] })), None, "a gimbal that has not reported its angles cannot aim");
+        let view = synthetic(&flying(&[]), &gimbals);
+        assert_eq!((view["pitch"].as_f64(), view["tiltable"].clone()), (Some(-45.0), json!(false)), "with a gimbal the pilot aims the real camera instead");
+    }
+
+    #[test]
+    fn the_pilot_tilts_the_view_between_level_and_straight_down() {
+        assert_eq!(run(SYNTHETIC_TILT, "[-60]")["tilt"], -60.0);
+        assert!(take_changed(), "the view is told to redraw");
+        assert_eq!(synthetic(&flying(&[]), &no_gimbal())["pitch"], -60.0);
+        assert_eq!(run(SYNTHETIC_TILT, "[-140]")["tilt"], -90.0);
+        assert_eq!(run(SYNTHETIC_TILT, "[30]")["tilt"], 0.0, "it never looks up past the horizon");
+        assert_eq!(run(SYNTHETIC_TILT, "[]")["reason"], NEEDS_DEGREES);
+        run(SYNTHETIC_TILT, &format!("[{FIXED_CAMERA_TILT_DEG}]"));
     }
 
     #[test]
