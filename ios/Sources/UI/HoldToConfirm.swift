@@ -1,7 +1,5 @@
 import SwiftUI
 
-private let DISABLED_HOLD_ALPHA = 0.38
-
 private let TRACK_HEIGHT: CGFloat = 64
 
 private let HOLD_TRACK_FILL_ALPHA = 0.45
@@ -31,7 +29,7 @@ struct HoldToConfirm: View {
         .frame(height: TRACK_HEIGHT)
         .background(track)
         .clipShape(Capsule())
-        .opacity(enabled ? 1 : DISABLED_HOLD_ALPHA)
+        .opacity(enabled ? 1 : DISABLED_ALPHA)
         .contentShape(Capsule())
         .onLongPressGesture(minimumDuration: Double(DECK_HOLD_MS) / 1000, maximumDistance: TRACK_HEIGHT / 2) {
             guard enabled else { return }

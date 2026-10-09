@@ -1,10 +1,14 @@
 import Foundation
 import os
 import QGCCore
+import UIKit
+
+private let RECORDING_TASK = "aircast:recording"
 
 enum VideoDriver {
     private static let interval = 0.5
-    private static let channels: [Int32] = [Int32(QGC_VIDEO_MAIN), Int32(QGC_VIDEO_PIP)]
+    private static let main = Int32(QGC_VIDEO_MAIN)
+    private static let channels: [Int32] = [main, Int32(QGC_VIDEO_PIP)]
     private static let queue = DispatchQueue(label: "one.aircast.video-driver")
     private static let log = Logger(subsystem: "one.aircast.app", category: "Video")
     private static var timer: DispatchSourceTimer?
@@ -34,14 +38,29 @@ enum VideoDriver {
         }
     }
 
-    static func restart(_ channel: Int) {
-        queue.async { restarts.insert(Int32(channel)) }
+    static func stop() {
+        queue.sync {
+            guard let running = timer else { return }
+            running.cancel()
+            timer = nil
+            channels.forEach(qgc_video_stop)
+        }
+    }
+
+    @discardableResult
+    static func restart() -> Bool {
+        queue.async { restarts.insert(main) }
+        return VideoCommands.restart()
+    }
+
+    fileprivate static func finishRecording() {
+        queue.sync { qgc_video_stop_recording(main) }
     }
 
     private static func step() {
-        let view = Qgc.get("view.video")
+        let view = Qgc.get(VIDEO_VIEW)
         let wanted: [Int32: String?] = [
-            Int32(QGC_VIDEO_MAIN): view["nativePipeline"].stringOrNil,
+            main: view["nativePipeline"].stringOrNil,
             Int32(QGC_VIDEO_PIP): view["pipPipeline"].stringOrNil,
         ]
         channels.forEach { stopChanged($0, wanted[$0] ?? nil) }
@@ -71,29 +90,32 @@ enum VideoDriver {
     }
 
     private static func record(_ wanted: JSON) {
-        let main = Int32(QGC_VIDEO_MAIN)
-        let asked = wanted.object == nil ? nil : wanted
+        let asked = wanted.objectOrNil
         if asked != recording {
             if recording != nil { qgc_video_stop_recording(main) }
-            if let asked, let file = asked["file"].stringOrNil, let format = asked["format"].int {
-                _ = qgc_video_start_recording(main, file, Int32(format))
-            }
+            if let asked { startRecording(asked) }
             recording = asked
         }
         let active = qgc_video_recording(main)
         guard active != recordingReported else { return }
         recordingReported = active
-        Qgc.invoke("video.reportRecording", active)
+        onMain { RecordingKeepAlive.hold(active) }
+        VideoCommands.reportRecording(active)
+    }
+
+    private static func startRecording(_ asked: JSON) {
+        guard let file = asked["file"].stringOrNil, let format = asked["format"].int.flatMap(Int32.init(exactly:)) else { return }
+        guard !qgc_video_start_recording(main, file, format) else { return }
+        log.warning("Recording did not start: \(String(cString: qgc_video_last_error(main)), privacy: .public)")
     }
 
     private static func report(_ channel: Int32) {
-        guard var state = played[channel], state.driven != nil else { return }
+        guard let state = played[channel], state.driven != nil else { return }
         let running = qgc_video_running(channel)
         let frames = qgc_video_frames(channel)
         let width = qgc_video_width(channel)
         let height = qgc_video_height(channel)
         if frames > 0 && !state.decoding {
-            state.decoding = true
             log.info("Video channel \(channel) decoding \(width)x\(height)")
         }
         let source = qgc_video_source_buffers(channel)
@@ -101,11 +123,27 @@ enum VideoDriver {
         if streamed != state.streamed && !streamed.isEmpty {
             log.warning("Video stream error on channel \(channel): \(streamed, privacy: .public)")
         }
-        state.streamed = streamed
-        let error = state.error.isEmpty ? streamed : state.error
-        let restarted = state.restarted
-        state.restarted = false
-        played[channel] = state
-        Qgc.invoke("video.reportNative", running, frames, width, height, error, source, restarted, channel)
+        played[channel] = Channel(driven: state.driven, restarted: false, error: state.error, streamed: streamed, decoding: state.decoding || frames > 0)
+        VideoCommands.reportNative(running, frames, width, height, state.error.ifEmpty(streamed), source, state.restarted, channel)
+    }
+}
+
+@MainActor
+private enum RecordingKeepAlive {
+    static var task = UIBackgroundTaskIdentifier.invalid
+
+    static func hold(_ recording: Bool) {
+        guard recording else { return release() }
+        guard task == .invalid else { return }
+        task = UIApplication.shared.beginBackgroundTask(withName: RECORDING_TASK) {
+            VideoDriver.finishRecording()
+            release()
+        }
+    }
+
+    static func release() {
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
+        task = .invalid
     }
 }

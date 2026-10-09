@@ -21,8 +21,6 @@ struct RadarReading: Equatable {
     }
 }
 
-private func sameDouble(_ a: Double, _ b: Double) -> Bool { a == b || (a.isNaN && b.isNaN) }
-
 func radarReading(_ view: JSON?) -> RadarReading? {
     guard let view, view["shown"].bool else { return nil }
     return RadarReading(

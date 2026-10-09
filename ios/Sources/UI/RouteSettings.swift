@@ -56,7 +56,7 @@ struct RouteSettings: View {
                         note: section.specified ? nil : VEHICLE_SPEED_NOTE,
                         range: routeSpeedRange(section),
                         trailing: section.specified
-                            ? { AnyView(PlanChip(label: "Auto", selected: false) { write { Qgc.writeRefusal(section.specifyPath, false) } }) }
+                            ? { AnyView(CameraChip(label: "Auto", selected: false) { write { Qgc.writeRefusal(section.specifyPath, false) } }) }
                             : nil
                     )
                 }

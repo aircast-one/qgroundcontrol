@@ -21,7 +21,7 @@ func logCategories(_ view: JSON?) -> LogCategories? {
     guard let view else { return nil }
     return LogCategories(
         active: view["active"].strings,
-        categories: view["categories"].array.filter { $0.object != nil }.map {
+        categories: view["categories"].objects.map {
             LogCategory(name: $0["name"].string, shortName: $0["shortName"].string, depth: $0["depth"].int(0), enabled: $0["enabled"].bool)
         }
     )

@@ -75,4 +75,11 @@ final class MapClickMenuTests: XCTestCase {
         XCTAssertEqual(goHereText(from, MapPoint(latitude: 47.0, longitude: 8.001), "m", 1.0), "76 m east")
         XCTAssertNil(goHereText(from, MapPoint(latitude: 47.001, longitude: 8.0), "", 1.0))
     }
+
+    func testGoHereReadsAMissingCoordinateLikeJavasRoundInsteadOfCrashing() {
+        let from = MapPoint(latitude: .nan, longitude: 8.0)
+        XCTAssertEqual(goHereText(from, MapPoint(latitude: 47.001, longitude: 8.0), "m", 1.0), "0 m north")
+        XCTAssertEqual(goHereText(MapPoint(latitude: 47.0, longitude: 8.0), MapPoint(latitude: 47.0, longitude: .nan), "m", 1.0), "0 m north")
+        XCTAssertEqual(goHereText(MapPoint(latitude: 47.0, longitude: 8.0), MapPoint(latitude: 47.001, longitude: 8.0), "m", .leastNonzeroMagnitude), "\(Int.max) m north")
+    }
 }

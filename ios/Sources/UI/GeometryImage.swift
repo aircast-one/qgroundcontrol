@@ -35,7 +35,7 @@ struct GeometryLayout: Equatable {
 }
 
 func geometryMotors(_ geometry: JSON?) -> [GeometryMotor] {
-    (geometry?["motors"].array ?? []).filter { $0.object != nil }.map {
+    (geometry?["motors"].objects ?? []).map {
         GeometryMotor(index: $0["index"].int(0), label: $0["label"].int(0), x: $0["x"].double(.nan), y: $0["y"].double(.nan), counterClockwise: $0["counterClockwise"].bool)
     }
 }

@@ -61,37 +61,48 @@ private struct Sparkline: View {
     }
 }
 
-struct AircastLinkCell: View {
-    @Environment(\.theme) private var theme
-    @QgcPath(AIRCAST_LINK_VIEW) private var json
+struct StatusCellSheet<Label: View, Sheet: View>: View {
+    @ViewBuilder let label: () -> Label
+    @ViewBuilder let sheet: (_ close: @escaping () -> Void) -> Sheet
     @State private var open = false
 
     var body: some View {
-        if let link = aircastLink(json) {
-            Text("\(link.qualityText) \(link.bitrateText)")
-                .font(.labelMedium)
-                .foregroundStyle(theme.colors.onSurfaceVariant)
-                .lineLimit(1)
-                .onTapGesture { open = true }
-                .background {
-                    if open {
-                        AircastSheet(onDismissRequest: { open = false }) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Cellular link").font(.titleSmall)
-                                ForEach([("Signal:", link.signalText), ("Network:", link.network), ("Modem:", link.modem), ("Video bitrate:", link.bitrateText)], id: \.0) { label, value in
-                                    Text("\(label)  \(value)").font(.bodySmall)
-                                }
-                                Text("Signal, up to the last hour").font(.labelSmall)
-                                Sparkline(values: link.qualityHistory, maximum: SIGNAL_MAXIMUM)
-                                Text("Video bitrate, up to the last hour").font(.labelSmall)
-                                Sparkline(values: link.bitrateHistory, maximum: 0)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, Space.s5)
-                            .padding(.bottom, Space.s6)
-                        }
-                    }
+        label()
+            .onTapGesture { open = true }
+            .background {
+                if open {
+                    AircastSheet(onDismissRequest: { open = false }) { sheet { open = false } }
                 }
+            }
+    }
+}
+
+struct AircastLinkCell: View {
+    @Environment(\.theme) private var theme
+    @QgcPath(AIRCAST_LINK_VIEW) private var json
+
+    var body: some View {
+        if let link = aircastLink(json) {
+            StatusCellSheet {
+                Text("\(link.qualityText) \(link.bitrateText)")
+                    .font(.labelMedium)
+                    .foregroundStyle(theme.colors.onSurfaceVariant)
+                    .lineLimit(1)
+            } sheet: { _ in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Cellular link").font(.titleSmall)
+                    ForEach([("Signal:", link.signalText), ("Network:", link.network), ("Modem:", link.modem), ("Video bitrate:", link.bitrateText)], id: \.0) { label, value in
+                        Text("\(label)  \(value)").font(.bodySmall)
+                    }
+                    Text("Signal, up to the last hour").font(.labelSmall)
+                    Sparkline(values: link.qualityHistory, maximum: SIGNAL_MAXIMUM)
+                    Text("Video bitrate, up to the last hour").font(.labelSmall)
+                    Sparkline(values: link.bitrateHistory, maximum: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Space.s5)
+                .padding(.bottom, Space.s6)
+            }
         }
     }
 }

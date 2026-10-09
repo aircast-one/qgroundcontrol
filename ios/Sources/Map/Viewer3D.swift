@@ -29,6 +29,8 @@ private let SELECTED_MARKER_COLOUR = "#FFFF00"
 private let MARKER_PICK_DP: Float = 24
 private let SCENE_PITCH = 60.0
 private let SCENE_ZOOM = 16.0
+private let BUILDING_COLOUR = "#B0BEC5"
+private let BUILDING_OPACITY = 0.85
 
 struct Point3D: Equatable {
     var lon: Double
@@ -46,8 +48,9 @@ struct Slab {
 private func radians(_ degrees: Double) -> Double { degrees * .pi / 180 }
 
 private func point3d(_ array: JSON) -> Point3D? {
-    guard let values = array.arrayOrNil, values.count == 3 else { return nil }
-    return Point3D(lon: values[0].double(.nan), lat: values[1].double(.nan), alt: values[2].double(.nan))
+    let values = array.array.map { $0.double ?? .nan }
+    guard values.count == 3, values.allSatisfy(\.isFinite) else { return nil }
+    return Point3D(lon: values[0], lat: values[1], alt: values[2])
 }
 
 private func box(_ at: Point3D, _ size: Double, _ colour: String, _ height: Double? = nil) -> Slab {
@@ -68,10 +71,10 @@ func ribbon(_ from: Point3D, _ to: Point3D, _ colour: String, _ width: Double = 
     let dy = (to.lat - from.lat) * METRES_PER_DEGREE
     let length = hypot(dx, dy)
     if length < width / 2 {
-        var column = box(from, width, colour, 0)
-        column.base = min(from.alt, to.alt) - thickness / 2
-        column.top = max(from.alt, to.alt) + thickness / 2
-        return [column]
+        return [withChanges(box(from, width, colour, 0)) {
+            $0.base = min(from.alt, to.alt) - thickness / 2
+            $0.top = max(from.alt, to.alt) + thickness / 2
+        }]
     }
     let pieces = min(max(Int((length / RIBBON_STEP).rounded(.up)), 1), RIBBON_MAX_PIECES)
     let climb = abs(to.alt - from.alt) / Double(pieces)
@@ -147,7 +150,7 @@ func pickedMarker(_ tap: (Float, Float), _ onScreen: [(Float, Float)?], _ radius
 }
 
 func pathSlabs(_ view: JSON?, _ selected: Set<Int> = []) -> [Slab] {
-    let ribbons = (view?["segments"].arrayOrNil ?? []).filter { $0.object != nil }.flatMap { segment -> [Slab] in
+    let ribbons = (view?["segments"].objects ?? []).flatMap { segment -> [Slab] in
         guard let from = point3d(segment["from"]), let to = point3d(segment["to"]) else { return [] }
         return ribbon(from, to, segment["colour"].string)
     }
@@ -164,7 +167,7 @@ struct Label3D: Equatable {
 }
 
 func pathLabels(_ view: JSON?) -> [Label3D] {
-    (view?["markers"].arrayOrNil ?? []).filter { $0.object != nil }.compactMap { marker in
+    (view?["markers"].objects ?? []).compactMap { marker in
         point3d(marker["at"]).map { Label3D(at: Point3D(lon: $0.lon, lat: $0.lat, alt: $0.alt + LABEL_LIFT), text: marker["label"].string) }
     }
     .filter { !$0.text.isBlank }
@@ -184,17 +187,17 @@ private func onScreen(_ map: MLNMapView, _ at: Point3D) -> (Float, Float) {
 }
 
 func vehicleSlabs(_ view: JSON?) -> [Slab] {
-    (view?["vehicles"].arrayOrNil ?? []).filter { $0.object != nil }.flatMap { vehicle in
+    (view?["vehicles"].objects ?? []).flatMap { vehicle in
         point3d(vehicle["at"]).map { quadFrame($0, vehicle["heading"].double(0)) } ?? []
     }
 }
 
-func slabFeatures(_ slabs: [Slab]) -> MLNShapeCollectionFeature {
-    MLNShapeCollectionFeature(shapes: slabs.map { slab in
-        let ring = (slab.corners + slab.corners.prefix(1)).map { CLLocationCoordinate2D(latitude: $0.1, longitude: $0.0) }
-        let feature = MLNPolygonFeature(coordinates: ring, count: UInt(ring.count))
-        feature.attributes = ["base": max(slab.base, 0), "top": max(slab.top, 0.1), "colour": slab.colour]
-        return feature
+func slabFeatures(_ slabs: [Slab]) -> FeatureCollection {
+    featureCollection(slabs.map { slab in
+        polygonFeature(
+            (slab.corners + slab.corners.prefix(1)).map { TrackPoint(latitude: $0.1, longitude: $0.0) },
+            attributes: ["base": max(slab.base, 0), "top": max(slab.top, 0.1), "colour": slab.colour]
+        )
     })
 }
 
@@ -229,18 +232,21 @@ func wound(_ ring: [(Double, Double)], _ counterClockwise: Bool) -> [(Double, Do
     return (signedArea(closed) > 0) == counterClockwise ? closed : closed.reversed()
 }
 
+private func boundsCentre(_ bounds: JSON) -> (Double, Double)? {
+    let edges = ["west", "east", "south", "north"].compactMap { bounds[$0].double }
+    guard edges.count == 4, edges.allSatisfy(\.isFinite) else { return nil }
+    return ((edges[0] + edges[1]) / 2, (edges[2] + edges[3]) / 2)
+}
+
 func scene3d(_ view: JSON?) -> Scene3D {
     let bounds = view?["bounds"] ?? .null
     return Scene3D(
         available: view?["available"].bool == true,
         reason: view?["reason"].string ?? "",
-        buildings: (view?["buildings"].arrayOrNil ?? []).filter { $0.object != nil }
+        buildings: (view?["buildings"].objects ?? [])
             .map { Building3D(outer: rings($0["outer"]), inner: rings($0["inner"]), height: $0["height"].double(0)) }
             .filter { !$0.outer.isEmpty && $0.height > 0 },
-        centre: bounds.object == nil ? nil : (
-            (bounds["west"].double(.nan) + bounds["east"].double(.nan)) / 2,
-            (bounds["south"].double(.nan) + bounds["north"].double(.nan)) / 2
-        )
+        centre: boundsCentre(bounds)
     )
 }
 
@@ -249,11 +255,11 @@ private func polygon(_ ring: [(Double, Double)], _ holes: [MLNPolygon]? = nil) -
     return MLNPolygonFeature(coordinates: coordinates, count: UInt(coordinates.count), interiorPolygons: holes)
 }
 
-func buildingFeatures(_ buildings: [Building3D]) -> MLNShapeCollectionFeature {
-    MLNShapeCollectionFeature(shapes: buildings.map { building -> MLNShape & MLNFeature in
+func buildingFeatures(_ buildings: [Building3D]) -> FeatureCollection {
+    featureCollection(buildings.map { building -> Feature in
         let outers = building.outer.map { wound($0, true) }
         let holes = building.inner.map { polygon(wound($0, false)) }
-        let feature: MLNShape & MLNFeature = outers.count == 1
+        let feature: Feature = outers.count == 1
             ? polygon(outers[0], holes)
             : MLNMultiPolygonFeature(polygons: outers.map { polygon($0) })
         feature.attributes = ["height": building.height]
@@ -262,25 +268,25 @@ func buildingFeatures(_ buildings: [Building3D]) -> MLNShapeCollectionFeature {
 }
 
 private func installScene(_ style: MLNStyle) {
-    let buildings = MLNShapeSource(identifier: V3D_BUILDING_SOURCE, shape: nil, options: nil)
+    let buildings = geoJsonSource(V3D_BUILDING_SOURCE)
     style.addSource(buildings)
     let layer = MLNFillExtrusionStyleLayer(identifier: V3D_BUILDING_LAYER, source: buildings)
-    layer.fillExtrusionColor = NSExpression(forConstantValue: UIColor(red: 0xB0 / 255, green: 0xBE / 255, blue: 0xC5 / 255, alpha: 1))
-    layer.fillExtrusionHeight = NSExpression(forKeyPath: "height")
-    layer.fillExtrusionBase = NSExpression(forConstantValue: 0)
-    layer.fillExtrusionOpacity = NSExpression(forConstantValue: 0.85)
+    layer.fillExtrusionColor = styleConstant(mapColour(BUILDING_COLOUR))
+    layer.fillExtrusionHeight = styleGet("height")
+    layer.fillExtrusionBase = styleConstant(0)
+    layer.fillExtrusionOpacity = styleConstant(BUILDING_OPACITY)
     style.addLayer(layer)
     addSlabLayer(style, V3D_FLOATING_SOURCE, V3D_FLOATING_LAYER)
     addSlabLayer(style, V3D_VEHICLE_SOURCE, V3D_VEHICLE_LAYER)
 }
 
 private func addSlabLayer(_ style: MLNStyle, _ source: String, _ layer: String) {
-    let shapes = MLNShapeSource(identifier: source, shape: nil, options: nil)
+    let shapes = geoJsonSource(source)
     style.addSource(shapes)
     let slabs = MLNFillExtrusionStyleLayer(identifier: layer, source: shapes)
     slabs.fillExtrusionColor = NSExpression(format: "CAST(colour, 'UIColor')")
-    slabs.fillExtrusionBase = NSExpression(forKeyPath: "base")
-    slabs.fillExtrusionHeight = NSExpression(forKeyPath: "top")
+    slabs.fillExtrusionBase = styleGet("base")
+    slabs.fillExtrusionHeight = styleGet("top")
     style.addLayer(slabs)
 }
 
@@ -424,15 +430,15 @@ private struct Viewer3DMap: UIViewRepresentable {
             guard let style else { return }
             if shownScene != .some(parent.sceneKey) {
                 shownScene = .some(parent.sceneKey)
-                (style.source(withIdentifier: V3D_BUILDING_SOURCE) as? MLNShapeSource)?.shape = buildingFeatures(parent.buildings)
+                style.setGeoJson(V3D_BUILDING_SOURCE, buildingFeatures(parent.buildings))
             }
             if shownPath != parent.pathKey {
                 shownPath = parent.pathKey
-                (style.source(withIdentifier: V3D_FLOATING_SOURCE) as? MLNShapeSource)?.shape = slabFeatures(parent.slabs)
+                style.setGeoJson(V3D_FLOATING_SOURCE, slabFeatures(parent.slabs))
             }
             if shownVehicle != .some(parent.vehicleKey) {
                 shownVehicle = .some(parent.vehicleKey)
-                (style.source(withIdentifier: V3D_VEHICLE_SOURCE) as? MLNShapeSource)?.shape = slabFeatures(parent.frame)
+                style.setGeoJson(V3D_VEHICLE_SOURCE, slabFeatures(parent.frame))
             }
             place(map)
         }

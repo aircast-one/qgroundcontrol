@@ -15,6 +15,7 @@ private let PATTERN_KINDS: Set = [KIND_SURVEY, KIND_CORRIDOR, KIND_STRUCTURE]
 private let FALLBACK_FENCE_DEGREES = 0.002
 private let SURVEY_FIT_INSET = 0.8
 private let ITEM_MARKER_SIZE: CGFloat = 40
+private let GRID_SLIDER_WIDTH: CGFloat = 220
 private let PANEL_TOP = "panelTop"
 
 private func pause(_ milliseconds: Int) async {
@@ -22,7 +23,7 @@ private func pause(_ milliseconds: Int) async {
 }
 
 func fenceWindow(_ visible: [TrackPoint], _ at: TrackPoint) -> (TrackPoint, TrackPoint) {
-    visible.count == 4
+    visible.count == VIEW_CORNERS
         ? (visible[0], visible[2])
         : (TrackPoint(latitude: at.latitude + FALLBACK_FENCE_DEGREES, longitude: at.longitude - FALLBACK_FENCE_DEGREES),
            TrackPoint(latitude: at.latitude - FALLBACK_FENCE_DEGREES, longitude: at.longitude + FALLBACK_FENCE_DEGREES))
@@ -188,6 +189,7 @@ struct PlanMapContent: View {
     private var terrainHits: [(TrackPoint, TrackPoint)] { collisionLegs(terrainView) }
     private var collidingPatterns: Set<Int> { collidingItems(terrainView) }
     private var collidingSimple: Set<Int> { collidingItems(terrainView, "collidingSimpleItems") }
+    private var support: PlanSupport { planSupport(planStatus) }
 
     private func addable(_ kind: String) -> Bool { kindAllows(insertable, kind) || !homeSet }
 
@@ -199,6 +201,10 @@ struct PlanMapContent: View {
     }
 
     var body: some View {
+        fieldEffects(planEffects(layout))
+    }
+
+    private var layout: some View {
         GeometryReader { geometry in
             let sidePanel = root.width >= SIDE_PANEL_MIN_WIDTH_DP
             let mapStart: CGFloat = sidePanel ? SIDE_PANEL_WIDTH : 0
@@ -207,12 +213,7 @@ struct PlanMapContent: View {
             ZStack(alignment: .topLeading) {
                 map(sidePanel: sidePanel)
                 if let header {
-                    header(PlanBar(
-                        upload: upload,
-                        stats: planStats(itemCount, allItems, missionSummaryView),
-                        warning: terrainWarning(terrainHits.count, collidingSimple.union(collidingPatterns).count),
-                        note: itemCount > 0 && terrainView?["checking"].bool == true ? CHECKING_TERRAIN : nil
-                    ))
+                    header(bar)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                         .padding(.leading, mapStart)
@@ -230,99 +231,127 @@ struct PlanMapContent: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 dialogs
                 controls(sidePanel: sidePanel)
-                if listOpen {
-                    AircastSheet(onDismissRequest: { listOpen = false }) {
-                        let rows = itemRows(allItems, surveyStatsMap)
-                        ItemListHeading(rows: rows, summary: missionSummaryText(missionSummaryView))
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 8)
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
-                                ForEach(rows) { row in
-                                    ItemRowView(row: row, selected: selectedWaypointIndex == row.index) {
-                                        pickRow(row)
-                                        listOpen = false
-                                    }
-                                }
-                            }
-                            .padding(.bottom, 24)
-                        }
-                    }
-                }
+                if listOpen { listSheet }
             }
         }
         .background(theme.colors.surface)
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-            let target = importInto
-            importInto = nil
-            guard let target, case .success(let urls) = result, !urls.isEmpty else { return }
+    }
+
+    private var bar: PlanBar {
+        PlanBar(
+            upload: upload,
+            stats: planStats(itemCount, allItems, missionSummaryView),
+            warning: terrainWarning(terrainHits.count, collidingSimple.union(collidingPatterns).count),
+            note: itemCount > 0 && terrainView?["checking"].bool == true ? CHECKING_TERRAIN : nil
+        )
+    }
+
+    private var listSheet: some View {
+        AircastSheet(onDismissRequest: { listOpen = false }) {
+            let rows = itemRows(allItems, surveyStatsMap)
+            ItemListHeading(rows: rows, summary: missionSummaryText(missionSummaryView))
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(rows) { row in
+                        ItemRowView(row: row, selected: selectedWaypointIndex == row.index) {
+                            pickRow(row)
+                            listOpen = false
+                        }
+                    }
+                }
+                .padding(.bottom, 24)
+            }
+        }
+    }
+
+    private func planEffects(_ content: some View) -> some View {
+        content
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in shapePicked(result) }
+            .task(id: scenePhase != .background) {
+                guard scenePhase != .background else { return }
+                while !Task.isCancelled {
+                    await refresh()
+                    await pause(PLAN_POLL_MS)
+                }
+            }
+            .onChange(of: mapStyle, initial: true) { shownStyle = mapStyle }
+            .onReceive(PlanFocus.requests.receive(on: DispatchQueue.main)) { index in
+                guard let index else { return }
+                selected = .Waypoint(index: index)
+                PlanFocus.requests.value = nil
+            }
+            .onChange(of: selected) { if let next = layerOf(selected) { layer = next } }
+            .onChange(of: entryPoint != nil, initial: true) {
+                if centersOnVehicleAtEntry(centredOnEntry, entryPoint != nil, fitRequest) {
+                    centredOnEntry = true
+                    centreOn = entryPoint
+                    centreRequest += 1
+                }
+            }
+            .onChange(of: fitKey) { if fitKey != 0 { firstRead = true } }
+            .onReceive(PlanFocus.newPattern.receive(on: DispatchQueue.main)) { wanted in
+                patternWait = wanted.map { (wanted: $0, since: readsStarted) }
+            }
+            .onChange(of: planReads) { fitNewPattern() }
+            .onChange(of: SelectionKey(selected: selected, sequence: selectedSequence, appendAfter: appendSequence(allItems)), initial: true) {
+                guard let sequence = selectedSequence ?? (selected == nil ? appendSequence(allItems) : nil) else { return }
+                offMain { PlanBridge.selectSequence(sequence) }
+            }
+    }
+
+    private func fieldEffects(_ content: some View) -> some View {
+        content
+            .task(id: gridIndex) {
+                gridAngle = nil
+                guard let index = gridIndex else { return }
+                gridAngle = await offMain { gridAngleShown(SurveyBridge.gridAngle(index)) }
+            }
+            .task(id: surveyHitItem) {
+                surveyAlt = ""
+                surveyUnit = "m"
+                guard let item = surveyHitItem else { return }
+                let shown = await offMain { SurveyBridge.altitude(item) }
+                let unit = await offMain { SurveyBridge.altitudeUnits(item) }
+                surveyAlt = altitudeFieldText(shown, SURFACE_DISTANCE_DECIMALS)
+                surveyUnit = unit.ifBlank("m")
+            }
+            .onChange(of: selectedCircle.map { "\($0.index):\($0.radius)" }, initial: true) {
+                circleRadiusTyped = selectedCircle.map { trimmedRadius($0.radius) } ?? ""
+            }
+            .onChange(of: selectedRally.map { "\($0.index):\($0.latitude)" }, initial: true) {
+                rallyLatitudeTyped = selectedRally.map { String($0.latitude) } ?? ""
+            }
+            .onChange(of: selectedRally.map { "\($0.index):\($0.longitude)" }, initial: true) {
+                rallyLongitudeTyped = selectedRally.map { String($0.longitude) } ?? ""
+            }
+            .onChange(of: selectedRally.map { "\($0.index):\($0.altitude)" }, initial: true) {
+                rallyAltitudeTyped = selectedRally.map { altitudeFieldText($0.altitude, RALLY_ALTITUDE_DECIMALS) } ?? ""
+            }
+    }
+
+    private func shapePicked(_ result: Result<[URL], Error>) {
+        let target = importInto
+        importInto = nil
+        switch result {
+        case .failure(let error):
+            if !userCancelled(error) { say(FILE_NOT_READ) }
+        case .success(let urls):
+            guard let target, !urls.isEmpty else { return }
             Task { @MainActor in
                 if let message = await offMain({ importShapeFiles(urls, target) }) { say(message) }
             }
         }
-        .task(id: scenePhase != .background) {
-            guard scenePhase != .background else { return }
-            while !Task.isCancelled {
-                await refresh()
-                await pause(PLAN_POLL_MS)
-            }
-        }
-        .onChange(of: mapStyle, initial: true) { shownStyle = mapStyle }
-        .onReceive(PlanFocus.requests.receive(on: DispatchQueue.main)) { index in
-            guard let index else { return }
-            selected = .Waypoint(index: index)
-            PlanFocus.requests.value = nil
-        }
-        .onChange(of: selected) { if let next = layerOf(selected) { layer = next } }
-        .onChange(of: entryPoint != nil, initial: true) {
-            if centersOnVehicleAtEntry(centredOnEntry, entryPoint != nil, fitRequest) {
-                centredOnEntry = true
-                centreOn = entryPoint
-                centreRequest += 1
-            }
-        }
-        .onChange(of: fitKey) { if fitKey != 0 { firstRead = true } }
-        .onReceive(PlanFocus.newPattern.receive(on: DispatchQueue.main)) { wanted in
-            patternWait = wanted.map { (wanted: $0, since: readsStarted) }
-        }
-        .onChange(of: planReads) {
-            guard let wait = patternWait, planReads > wait.since else { return }
-            patternWait = nil
-            PlanFocus.newPattern.value = nil
-            guard let target = placedPattern(surveyList, wait.wanted).flatMap({ shapeTarget(nil, $0) }), visible.count == VIEW_CORNERS else { return }
-            let shape = target.line ? defaultLine(visible) : defaultRectangle(visible)
-            onBridge { replaceShape(target, shape) }
-        }
-        .onChange(of: SelectionKey(selected: selected, sequence: selectedSequence, appendAfter: appendSequence(allItems)), initial: true) {
-            guard let sequence = selectedSequence ?? (selected == nil ? appendSequence(allItems) : nil) else { return }
-            offMain { PlanBridge.selectSequence(sequence) }
-        }
-        .task(id: gridIndex) {
-            gridAngle = nil
-            guard let index = gridIndex else { return }
-            gridAngle = await offMain { gridAngleShown(SurveyBridge.gridAngle(index)) }
-        }
-        .task(id: surveyHitItem) {
-            surveyAlt = ""
-            surveyUnit = "m"
-            guard let item = surveyHitItem else { return }
-            let shown = await offMain { SurveyBridge.altitude(item) }
-            let unit = await offMain { SurveyBridge.altitudeUnits(item) }
-            surveyAlt = altitudeFieldText(shown, SURFACE_DISTANCE_DECIMALS)
-            surveyUnit = unit.ifBlank("m")
-        }
-        .onChange(of: selectedCircle.map { "\($0.index):\($0.radius)" }, initial: true) {
-            circleRadiusTyped = selectedCircle.map { trimmedRadius($0.radius) } ?? ""
-        }
-        .onChange(of: selectedRally.map { "\($0.index):\($0.latitude)" }, initial: true) {
-            rallyLatitudeTyped = selectedRally.map { String($0.latitude) } ?? ""
-        }
-        .onChange(of: selectedRally.map { "\($0.index):\($0.longitude)" }, initial: true) {
-            rallyLongitudeTyped = selectedRally.map { String($0.longitude) } ?? ""
-        }
-        .onChange(of: selectedRally.map { "\($0.index):\($0.altitude)" }, initial: true) {
-            rallyAltitudeTyped = selectedRally.map { altitudeFieldText($0.altitude, RALLY_ALTITUDE_DECIMALS) } ?? ""
-        }
+    }
+
+    private func fitNewPattern() {
+        guard let wait = patternWait, planReads > wait.since else { return }
+        patternWait = nil
+        PlanFocus.newPattern.value = nil
+        guard let target = placedPattern(surveyList, wait.wanted).flatMap({ shapeTarget(nil, $0) }), visible.count == VIEW_CORNERS else { return }
+        let shape = target.line ? defaultLine(visible) : defaultRectangle(visible)
+        onBridge { replaceShape(target, shape) }
     }
 
     private var upload: PlanUpload {
@@ -359,10 +388,7 @@ struct PlanMapContent: View {
         selectedSurvey(selected, surveyList).flatMap { $0.kind == KIND_SURVEY ? $0.index : nil }
     }
 
-    private var surveyHitItem: Int? {
-        if case .SurveyVertex(let item, _) = selected { return item }
-        return nil
-    }
+    private var surveyHitItem: Int? { surveyVertexHit?.item }
 
     @ViewBuilder
     private func map(sidePanel: Bool) -> some View {
@@ -373,19 +399,19 @@ struct PlanMapContent: View {
         VehicleMap(
             mapStyle: shownStyle ?? mapStyle,
             follow: follow,
-            missionItems: items.map { item in var shown = item; shown.terrainCollision = collidingSimple.contains(item.index); return shown },
+            missionItems: items.map { item in withChanges(item) { $0.terrainCollision = collidingSimple.contains(item.index) } },
             linkStartToHome: linkStartToHome,
-            fencePolygons: fences.map { fence in var shown = fence; if owner != "p\(fence.index)" { shown.editable = nil }; return shown },
+            fencePolygons: fences.map { fence in withChanges(fence) { $0.editable = owner == "p\(fence.index)" ? $0.editable : nil } },
             fenceCircles: circles,
             rallyPoints: rally,
             operator: gcsOperator,
             surveys: surveyList.map { survey in
-                var shown = survey
-                if owner != "m\(survey.index)" { shown.editable = nil }
-                shown.collides = collidingPatterns.contains(survey.index)
-                return shown
+                withChanges(survey) {
+                    $0.editable = owner == "m\(survey.index)" ? $0.editable : nil
+                    $0.collides = collidingPatterns.contains(survey.index)
+                }
             },
-            landings: landingList.map { landing in var shown = landing; shown.collides = collidingPatterns.contains(landing.index); return shown },
+            landings: landingList.map { landing in withChanges(landing) { $0.collides = collidingPatterns.contains(landing.index) } },
             editable: true,
             selectedWaypoint: selectedWaypointIndex,
             circledShapes: circled,
@@ -435,7 +461,7 @@ struct PlanMapContent: View {
             panelOpen = false
             addMissionItem(KIND_WAYPOINT, "Adding a waypoint", TrackPoint(latitude: lat, longitude: lon), insertAfter(selected, allItems))
         case .Rally:
-            if planSupport(planStatus).rally { addRallyAt(lat, lon) }
+            if support.rally { addRallyAt(lat, lon) }
         case .Fence:
             break
         }
@@ -451,7 +477,7 @@ struct PlanMapContent: View {
         } else if layer == .Mission {
             panelOpen = false
             addMissionItem(KIND_WAYPOINT, "Adding a waypoint", at, insertAfter(selected, allItems))
-        } else if layer == .Rally && planSupport(planStatus).rally {
+        } else if layer == .Rally && support.rally {
             addRallyAt(lat, lon)
         } else {
             selected = nil
@@ -506,8 +532,7 @@ struct PlanMapContent: View {
     }
 
     private var rail: some View {
-        let support = planSupport(planStatus)
-        return PlanRail {
+        PlanRail {
             ForEach(PlanLayer.allCases, id: \.self) { option in
                 RailButton(icon: option.icon, label: option.label, onClick: {
                     panelOpen = true
@@ -734,7 +759,6 @@ struct PlanMapContent: View {
 
     @ViewBuilder
     private var rallyList: some View {
-        let support = planSupport(planStatus)
         if support.rallyRefused {
             PaletteNote(text: RALLY_NOT_SUPPORTED)
         } else if rally.isEmpty {
@@ -751,7 +775,6 @@ struct PlanMapContent: View {
 
     @ViewBuilder
     private var fenceList: some View {
-        let support = planSupport(planStatus)
         if support.fenceRefused {
             PaletteNote(text: GEOFENCE_NOT_SUPPORTED)
         } else if fences.isEmpty && circles.isEmpty {
@@ -792,124 +815,160 @@ struct PlanMapContent: View {
         }
     }
 
-    @ViewBuilder
-    private var selectionTools: some View {
-        let survey = selectedSurvey(selected, surveyList)
-        let shapeFence: Int? = switch selected {
+    private var shapeFence: Int? {
+        switch selected {
         case .ShapeCentre(true, let owner), .ShapeRadius(true, let owner): owner
         default: nil
         }
-        let fenceHit: (polygon: Int, vertex: Int)? = if case .FenceVertex(let polygon, let vertex) = selected { (polygon, vertex) } else { nil }
-        let surveyHit: (item: Int, vertex: Int)? = if case .SurveyVertex(let item, let vertex) = selected { (item, vertex) } else { nil }
-        let rallyHit: Int? = if case .Rally(let index) = selected { index } else { nil }
-        let circle = selectedCircle
-        if survey != nil || fenceHit != nil || shapeFence != nil || rallyHit != nil || circle != nil || selectedLanding(selected, landingList) != nil {
+    }
+
+    private var fenceVertexHit: (polygon: Int, vertex: Int)? {
+        if case .FenceVertex(let polygon, let vertex) = selected { return (polygon, vertex) }
+        return nil
+    }
+
+    private var surveyVertexHit: (item: Int, vertex: Int)? {
+        if case .SurveyVertex(let item, let vertex) = selected { return (item, vertex) }
+        return nil
+    }
+
+    private var vertexHit: MapHit? {
+        switch selected {
+        case .FenceVertex, .SurveyVertex: selected
+        default: nil
+        }
+    }
+
+    private var selectedRallyIndex: Int? {
+        if case .Rally(let index) = selected { return index }
+        return nil
+    }
+
+    @ViewBuilder
+    private var selectionTools: some View {
+        let survey = selectedSurvey(selected, surveyList)
+        let fenceHit = fenceVertexHit
+        let surveyHit = surveyVertexHit
+        if survey != nil || fenceHit != nil || shapeFence != nil || selectedRallyIndex != nil || selectedCircle != nil || selectedLanding(selected, landingList) != nil {
             PlanFlowRow(spacing: 4, lineSpacing: 4) {
-                if let fence = selectedFence(selected, fences, circles), let flip = fence.flip {
-                    Button(fence.keepsIn ? "Make keep-out" : "Make keep-in") {
-                        onBridge(fence.keepsIn ? "Making it keep-out" : "Making it keep-in") { flip() }
-                    }
-                    .buttonStyle(.borderless)
-                }
-
-                if let detail = fenceDetail(selected, fences, circles) {
-                    PaletteNote(text: detail)
-                }
-
-                if let note = landingText(selectedLanding(selected, landingList)) {
-                    PaletteNote(text: note)
-                }
-
-                if let note = survey.flatMap({ cameraText(surveyStatsMap[$0.index]) }) {
-                    PaletteNote(text: note)
-                }
-
-                if let note = layersText(survey) {
-                    PaletteNote(text: note)
-                }
-
+                selectionNotes(survey)
                 if let grid = survey, grid.kind == KIND_SURVEY, let shown = gridAngle {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("Angle \(Int(shown))°").font(.labelSmall)
-                        Slider(
-                            value: Binding(get: { Double(gridAngle ?? shown) }, set: { gridAngle = Float(($0 + 0.5).rounded(.down)) }),
-                            in: 0...Double(GRID_ANGLE_MAX)
-                        ) { editing in
-                            guard !editing, let chosen = gridAngle else { return }
-                            onBridge("Setting the grid angle") { SurveyBridge.setGridAngle(grid.index, Double(chosen)) }
-                        }
-                    }
-                    .frame(width: 220)
+                    gridAngleTool(grid, shown)
                 }
-
                 if let area = survey, visible.count == area.area.count {
-                    Button("Size to view") {
-                        let corners = insetRing(visible, SURVEY_FIT_INSET)
-                        onBridge("Sizing the area", done: "Area sized to the view") { fitSurveyArea(area, corners) }
-                    }
-                    .buttonStyle(.borderless)
+                    sizeToViewTool(area)
                 }
-
-                if let hit = fenceHit.map({ MapHit.FenceVertex(polygon: $0.polygon, vertex: $0.vertex) }) ?? surveyHit.map({ MapHit.SurveyVertex(item: $0.item, vertex: $0.vertex) }),
-                   let at = cornerPosition(hit, fences, surveyList) {
+                if let hit = vertexHit, let at = cornerPosition(hit, fences, surveyList) {
                     Button("Edit position") { positioning = (hit, at) }
                         .buttonStyle(.borderless)
                 }
-
                 if let target = shapeTarget(fenceHit?.polygon ?? shapeFence, surveyShapeOwner(survey, surveyHit != nil)) {
                     shapeTools(target, circled: liveCircles(chosenCircles, fences, surveyList))
                 }
-
                 if let hit = fenceHit {
-                    if cornerRemovable(fences.first { $0.index == hit.polygon }) {
-                        Button("Remove vertex") {
-                            onBridge("Removing corner") { FenceBridge.removeVertex(hit.polygon, hit.vertex) }
-                            selected = nil
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    Button("Delete fence") {
-                        onBridge { FenceBridge.deletePolygon(hit.polygon) }
-                        selected = nil
-                    }
-                    .buttonStyle(.borderless)
+                    fenceVertexTools(hit)
                 }
-
                 if let hit = surveyHit {
-                    if let shape = survey, shape.editable?.canRemoveVertex == true {
-                        Button("Remove vertex") {
-                            onBridge("Removing corner") { SurveyBridge.removeVertex(shape, hit.vertex) }
-                            selected = nil
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                    PlanTextField(label: "Above surface \(surveyUnit)", text: $surveyAlt, width: 150) {
-                        if let shown = parsedSurfaceDistance(surveyAlt, metresPerUnit(surveyUnit)) {
-                            onBridge("Setting survey altitude") { SurveyBridge.setAltitude(hit.item, shown) }
-                        } else {
-                            say("Not an altitude")
-                        }
-                    }
+                    surveyVertexTools(hit, survey)
                 }
-
                 if let item = surveyHit?.item ?? shapeCentreSurvey {
-                    Button("Delete \(patternName(item, allItems))") {
-                        onRefusal { PlanBridge.removeItemRefusal(item) }
-                        selected = nil
-                    }
-                    .buttonStyle(.borderless)
+                    patternDeleteTool(item)
                 }
-
-                if let circle {
+                if let circle = selectedCircle {
                     circleTools(circle)
                 }
-
-                if let index = rallyHit {
+                if let index = selectedRallyIndex {
                     rallyTools(index)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    @ViewBuilder
+    private func selectionNotes(_ survey: Survey?) -> some View {
+        if let fence = selectedFence(selected, fences, circles), let flip = fence.flip {
+            Button(fence.keepsIn ? "Make keep-out" : "Make keep-in") {
+                onBridge(fence.keepsIn ? "Making it keep-out" : "Making it keep-in") { flip() }
+            }
+            .buttonStyle(.borderless)
+        }
+        if let detail = fenceDetail(selected, fences, circles) {
+            PaletteNote(text: detail)
+        }
+        if let note = landingText(selectedLanding(selected, landingList)) {
+            PaletteNote(text: note)
+        }
+        if let note = survey.flatMap({ cameraText(surveyStatsMap[$0.index]) }) {
+            PaletteNote(text: note)
+        }
+        if let note = layersText(survey) {
+            PaletteNote(text: note)
+        }
+    }
+
+    private func gridAngleTool(_ grid: Survey, _ shown: Float) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Angle \(Int(shown))°").font(.labelSmall)
+            Slider(
+                value: Binding(get: { Double(gridAngle ?? shown) }, set: { gridAngle = Float($0.rounded()) }),
+                in: 0...Double(GRID_ANGLE_MAX)
+            ) { editing in
+                guard !editing, let chosen = gridAngle else { return }
+                onBridge("Setting the grid angle") { SurveyBridge.setGridAngle(grid.index, Double(chosen)) }
+            }
+        }
+        .frame(width: GRID_SLIDER_WIDTH)
+    }
+
+    private func sizeToViewTool(_ area: Survey) -> some View {
+        Button("Size to view") {
+            let corners = insetRing(visible, SURVEY_FIT_INSET)
+            onBridge("Sizing the area", done: "Area sized to the view") { fitSurveyArea(area, corners) }
+        }
+        .buttonStyle(.borderless)
+    }
+
+    @ViewBuilder
+    private func fenceVertexTools(_ hit: (polygon: Int, vertex: Int)) -> some View {
+        if cornerRemovable(fences.first { $0.index == hit.polygon }) {
+            Button("Remove vertex") {
+                onBridge("Removing corner") { FenceBridge.removeVertex(hit.polygon, hit.vertex) }
+                selected = nil
+            }
+            .buttonStyle(.borderless)
+        }
+        Button("Delete fence") {
+            onBridge { FenceBridge.deletePolygon(hit.polygon) }
+            selected = nil
+        }
+        .buttonStyle(.borderless)
+    }
+
+    @ViewBuilder
+    private func surveyVertexTools(_ hit: (item: Int, vertex: Int), _ survey: Survey?) -> some View {
+        if let shape = survey, shape.editable?.canRemoveVertex == true {
+            Button("Remove vertex") {
+                onBridge("Removing corner") { SurveyBridge.removeVertex(shape, hit.vertex) }
+                selected = nil
+            }
+            .buttonStyle(.borderless)
+        }
+        PlanTextField(label: "Above surface \(surveyUnit)", text: $surveyAlt, width: 150) {
+            if let shown = parsedSurfaceDistance(surveyAlt, metresPerUnit(surveyUnit)) {
+                onBridge("Setting survey altitude") { SurveyBridge.setAltitude(hit.item, shown) }
+            } else {
+                say("Not an altitude")
+            }
+        }
+    }
+
+    private func patternDeleteTool(_ item: Int) -> some View {
+        Button("Delete \(patternName(item, allItems))") {
+            onRefusal { PlanBridge.removeItemRefusal(item) }
+            selected = nil
+        }
+        .buttonStyle(.borderless)
     }
 
     private var shapeCentreSurvey: Int? {
@@ -936,7 +995,7 @@ struct PlanMapContent: View {
                 onBridge("Drawing line") { replaceShape(target, line) }
             }
             .buttonStyle(.borderless)
-            .disabled(visible.count != 4)
+            .disabled(visible.count != VIEW_CORNERS)
         } else {
             Button("Rectangle") {
                 chosenCircles.remove(target.path)
@@ -944,14 +1003,14 @@ struct PlanMapContent: View {
                 onBridge("Drawing rectangle") { replaceShape(target, rectangle) }
             }
             .buttonStyle(.borderless)
-            .disabled(visible.count != 4)
+            .disabled(visible.count != VIEW_CORNERS)
             Button("Circle") {
                 chosenCircles.insert(target.path)
                 let ring = defaultCircle(visible)
                 onBridge("Drawing circle") { replaceShape(target, ring) }
             }
             .buttonStyle(.borderless)
-            .disabled(visible.count != 4)
+            .disabled(visible.count != VIEW_CORNERS)
             if circled.contains(target.path) {
                 Button("Set radius\u{2026}") { radiusFor = target }
                     .buttonStyle(.borderless)
@@ -1335,12 +1394,6 @@ private struct ItemListHeading: View {
     }
 }
 
-func hexColour(_ hex: String) -> Color {
-    let digits = hex.removingPrefix("#")
-    guard let value = UInt32(digits, radix: 16) else { return .gray }
-    return digits.count == 8 ? Color(hex: value & 0xFFFFFF).opacity(Double(value >> 24) / 255) : Color(hex: value)
-}
-
 private struct ItemRowView: View {
     let row: ItemRow
     let selected: Bool
@@ -1700,152 +1753,5 @@ private struct FenceListRow: View {
         .background(chosen ? theme.colors.secondaryContainer : Color.clear, in: RoundedRectangle(cornerRadius: Corner.small))
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
-    }
-}
-
-struct PlanTextField: View {
-    let label: String
-    @Binding var text: String
-    var suffix: String = ""
-    var placeholder: String = ""
-    var width: CGFloat? = nil
-    var enabled: Bool = true
-    var isError: Bool = false
-    var onDone: () -> Void = {}
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.labelSmall)
-                .foregroundStyle(isError ? theme.colors.error : theme.colors.onSurfaceVariant)
-            HStack(spacing: 4) {
-                TextField(placeholder, text: $text)
-                    .font(.bodySmall)
-                    .keyboardType(.numbersAndPunctuation)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .onSubmit(onDone)
-                if !suffix.isBlank {
-                    Text(suffix).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .overlay(RoundedRectangle(cornerRadius: Corner.extraSmall).stroke(isError ? theme.colors.error : theme.colors.outline, lineWidth: 1))
-        }
-        .frame(width: width)
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.38)
-    }
-}
-
-struct PlanChip: View {
-    let label: String
-    let selected: Bool
-    var enabled: Bool = true
-    var small: Bool = false
-    var translucent: Bool = false
-    let action: () -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                if selected { Image(.check).font(.labelSmall) }
-                Text(label).font(small ? .labelSmall : .labelLarge)
-            }
-            .padding(.horizontal, 12)
-            .frame(minHeight: 32)
-            .foregroundStyle(selected ? theme.colors.onSecondaryContainer : theme.colors.onSurfaceVariant)
-            .background(
-                selected
-                    ? (translucent ? theme.colors.primaryContainer.opacity(0.92) : theme.colors.secondaryContainer)
-                    : (translucent ? theme.colors.surface.opacity(0.88) : Color.clear),
-                in: RoundedRectangle(cornerRadius: Corner.small)
-            )
-            .overlay(RoundedRectangle(cornerRadius: Corner.small).stroke(selected ? Color.clear : theme.colors.outline, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.38)
-    }
-}
-
-struct PlanMenuField: View {
-    let label: String
-    let value: String
-    var width: CGFloat? = nil
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.labelSmall).foregroundStyle(theme.colors.onSurfaceVariant)
-            HStack {
-                Text(value).font(.bodySmall).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                Image(.arrowDropDown).font(.labelSmall)
-            }
-            .foregroundStyle(theme.colors.onSurface)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .overlay(RoundedRectangle(cornerRadius: Corner.extraSmall).stroke(theme.colors.outline, lineWidth: 1))
-        }
-        .frame(width: width)
-        .frame(maxWidth: width == nil ? .infinity : nil)
-    }
-}
-
-struct PlanFlowRow: Layout {
-    var spacing: CGFloat = 8
-    var lineSpacing: CGFloat = 8
-    var alignment: HorizontalAlignment = .leading
-
-    private func rows(_ maxWidth: CGFloat, _ sizes: [CGSize]) -> [[Int]] {
-        sizes.indices.reduce(into: [[Int]]()) { rows, index in
-            let used: CGFloat = rows.last.map { row in lineWidth(row, sizes) + spacing } ?? 0
-            if let last = rows.indices.last, used + sizes[index].width <= maxWidth {
-                rows[last].append(index)
-            } else {
-                rows.append([index])
-            }
-        }
-    }
-
-    private func sizes(_ proposal: ProposedViewSize, _ subviews: Subviews) -> [CGSize] {
-        subviews.map { $0.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)) }
-    }
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let measured = sizes(proposal, subviews)
-        let lines = rows(proposal.width ?? .infinity, measured)
-        let widths: [CGFloat] = lines.map { row in lineWidth(row, measured) }
-        let heights: [CGFloat] = lines.map { row in lineHeight(row, measured) }
-        let gaps = CGFloat(max(lines.count - 1, 0)) * lineSpacing
-        return CGSize(width: proposal.width ?? widths.max() ?? 0, height: heights.reduce(0, +) + gaps)
-    }
-
-    private func lineWidth(_ row: [Int], _ measured: [CGSize]) -> CGFloat {
-        let content: CGFloat = row.map { measured[$0].width }.reduce(0, +)
-        return content + CGFloat(max(row.count - 1, 0)) * spacing
-    }
-
-    private func lineHeight(_ row: [Int], _ measured: [CGSize]) -> CGFloat {
-        row.map { measured[$0].height }.max() ?? 0
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let measured = sizes(proposal, subviews)
-        let lines = rows(bounds.width, measured)
-        _ = lines.reduce(bounds.minY) { top, row in
-            let height = lineHeight(row, measured)
-            let slack = bounds.width - lineWidth(row, measured)
-            let start = bounds.minX + (alignment == .center ? slack / 2 : 0)
-            _ = row.reduce(start) { left, index in
-                subviews[index].place(at: CGPoint(x: left, y: top + (height - measured[index].height) / 2), proposal: ProposedViewSize(measured[index]))
-                return left + measured[index].width + spacing
-            }
-            return top + height + lineSpacing
-        }
     }
 }

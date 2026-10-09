@@ -29,7 +29,7 @@ func escSummary(_ view: JSON?) -> EscSummary? {
         healthText: it["healthText"].string,
         healthyMotorsText: it["healthyMotorsText"].string,
         totalErrors: it["totalErrors"].int64 ?? 0,
-        motors: it["motors"].array.filter { $0.object != nil }.map { motor in
+        motors: it["motors"].objects.map { motor in
             EscMotor(
                 title: motor["title"].string,
                 healthy: motor["healthy"].bool,

@@ -28,7 +28,7 @@ func mavlinkActions(_ view: JSON?) -> MavlinkActions? {
         joystickFile: view["joystickFile"].string,
         flyViewPath: view["flyViewPath"].string,
         joystickPath: view["joystickPath"].string,
-        actions: view["actions"].array.filter { $0.object != nil }.map { MavlinkActionEntry(label: $0["label"].string, description: $0["description"].string) },
+        actions: view["actions"].objects.map { MavlinkActionEntry(label: $0["label"].string, description: $0["description"].string) },
         folderNote: view["folderNote"].string
     )
 }

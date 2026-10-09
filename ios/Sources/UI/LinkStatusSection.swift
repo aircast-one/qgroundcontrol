@@ -3,7 +3,7 @@ import SwiftUI
 let LINK_STATUS_VIEW = "view.linkStatus"
 
 func linkStatusRows(_ view: JSON?) -> [(String, String)] {
-    (view?["rows"].arrayOrNil ?? []).filter { $0.object != nil }.map { ($0["label"].string, $0["value"].string) }
+    (view?["rows"].objects ?? []).map { ($0["label"].string, $0["value"].string) }
 }
 
 struct LinkStatusSection: View {

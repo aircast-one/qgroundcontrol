@@ -23,7 +23,7 @@ func hidingSwipe(_ corner: PipCorner) -> VideoSwipe { corner.bottom ? .Down : .U
 
 func growingSwipe(_ corner: PipCorner) -> VideoSwipe { corner.bottom ? .Up : .Down }
 
-final class VideoGestureHandlers {
+struct VideoGestureHandlers {
     let owned: () -> Bool
     let claimsSwipe: (CGSize) -> Bool
     let onTap: () -> Void
@@ -32,26 +32,6 @@ final class VideoGestureHandlers {
     let onHold: (CGPoint) -> Bool
     let onHoldDrag: (CGSize) -> Void
     let onHoldEnd: () -> Void
-
-    init(
-        owned: @escaping () -> Bool,
-        claimsSwipe: @escaping (CGSize) -> Bool,
-        onTap: @escaping () -> Void,
-        onDoubleTap: @escaping () -> Void,
-        onSwipe: @escaping (CGSize) -> Void,
-        onHold: @escaping (CGPoint) -> Bool,
-        onHoldDrag: @escaping (CGSize) -> Void,
-        onHoldEnd: @escaping () -> Void
-    ) {
-        self.owned = owned
-        self.claimsSwipe = claimsSwipe
-        self.onTap = onTap
-        self.onDoubleTap = onDoubleTap
-        self.onSwipe = onSwipe
-        self.onHold = onHold
-        self.onHoldDrag = onHoldDrag
-        self.onHoldEnd = onHoldEnd
-    }
 }
 
 private let TOUCH_SLOP: CGFloat = 8

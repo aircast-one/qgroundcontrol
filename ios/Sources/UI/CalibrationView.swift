@@ -56,14 +56,9 @@ struct CompassResult: Equatable {
     var position: Double
 
     static func == (a: CompassResult, b: CompassResult) -> Bool {
-        let same = { (x: Double, y: Double) in x == y || (x.isNaN && y.isNaN) }
-        return a.compass == b.compass && same(a.green, b.green) && same(a.yellow, b.yellow)
-            && same(a.range, b.range) && same(a.position, b.position)
+        a.compass == b.compass && sameDouble(a.green, b.green) && sameDouble(a.yellow, b.yellow)
+            && sameDouble(a.range, b.range) && sameDouble(a.position, b.position)
     }
-}
-
-private func list<T>(_ view: JSON, _ key: String, _ item: (JSON) -> T) -> [T] {
-    (view[key].arrayOrNil ?? []).filter { $0.object != nil }.map(item)
 }
 
 func calibrationState(_ view: JSON?) -> CalibrationState? {
@@ -85,8 +80,8 @@ func calibrationState(_ view: JSON?) -> CalibrationState? {
         px4: view["px4"].bool,
         settingsTitle: view["settingsTitle"].string,
         settingsDialogTitle: view["settingsDialogTitle"].string,
-        fastCompass: fastCompass(view["fastCompass"].object != nil ? view["fastCompass"] : nil),
-        sides: list(view, "sides") {
+        fastCompass: fastCompass(view["fastCompass"].objectOrNil),
+        sides: view["sides"].objects.map {
             CalibrationSide(
                 key: $0["key"].string,
                 title: $0["title"].string,
@@ -95,7 +90,7 @@ func calibrationState(_ view: JSON?) -> CalibrationState? {
                 rotate: $0["rotate"].bool
             )
         },
-        routines: list(view, "routines") {
+        routines: view["routines"].objects.map {
             CalibrationRoutine(
                 id: $0["id"].string,
                 title: $0["title"].string,
@@ -111,7 +106,7 @@ func calibrationState(_ view: JSON?) -> CalibrationState? {
                 dialogTitle: $0["dialogTitle"].string
             )
         },
-        compassResults: list(view, "compassResults") {
+        compassResults: view["compassResults"].objects.map {
             CompassResult(
                 compass: $0["compass"].int(0),
                 green: $0["green"].double(.nan),
@@ -157,7 +152,7 @@ func sensorHealth(_ view: JSON?) -> SensorHealthReading? {
         sensors: (view["sensors"].arrayOrNil ?? [])
             .filter { $0.object != nil && !$0["name"].string.isBlank }
             .map { SensorHealth(name: $0["name"].string, state: $0["state"].string, label: $0["label"].string) },
-        failing: view["failing"].array.map(\.string).filter { !$0.isBlank },
+        failing: view["failing"].strings.filter { !$0.isBlank },
         status: view["status"].string
     )
 }

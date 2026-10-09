@@ -1,8 +1,7 @@
 import CoreHaptics
 import SwiftUI
-import UIKit
 
-private let SPEECH_VIEW = "view.speech"
+let SPEECH_VIEW = "view.speech"
 private let LOST_BUZZ: [Int64] = [0, 400, 150, 400, 150, 400]
 private let REGAINED_BUZZ: [Int64] = [0, 120]
 
@@ -21,7 +20,7 @@ func speechBatch(_ view: JSON?) -> SpeechBatch? {
     guard let speech = view, speech["class"].string == "Speech" else { return nil }
     return SpeechBatch(
         last: speech["last"].int64 ?? 0,
-        lines: speech["lines"].array.filter { $0.object != nil }.map {
+        lines: speech["lines"].objects.map {
             SpokenLine(sequence: $0["sequence"].int64 ?? 0, text: $0["text"].string, volume: Float($0["volume"].double(1.0)))
         }
     )

@@ -8,7 +8,7 @@ let FORCE_ARM_REQUEST = "forceArm"
 let ARM_UNAVAILABLE = "Arming is not available right now."
 
 func deckRequestRefusal(_ offer: GuidedOffer?) -> String {
-    offer.flatMap { $0.reason.isBlank ? nil : $0.reason } ?? ARM_UNAVAILABLE
+    offer?.reason.nonBlank ?? ARM_UNAVAILABLE
 }
 
 struct ArmControls: Equatable {
@@ -87,18 +87,20 @@ struct VehicleStatusSheet: View {
             Text("Sensors").font(.titleSmall).padding(.horizontal, Space.s5).padding(.vertical, Space.s1)
             ForEach(Array(shownSensors(reading.sensors, showAll).enumerated()), id: \.offset) { _, sensor in
                 let fault = sensor.state == SENSOR_FAULT_STATE
-                HStack(spacing: Space.s2) {
-                    Text(sensor.name)
-                        .font(.bodyMedium)
-                        .foregroundStyle(fault ? theme.colors.onSurface : theme.colors.onSurfaceVariant)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(sensor.label).font(.bodySmall).foregroundStyle(fault ? theme.colors.error : theme.colors.onSurfaceVariant)
-                    Image(.chevronRight).font(.system(size: 13)).foregroundStyle(theme.colors.onSurfaceVariant)
+                Button { open(SETUP_OVERVIEW_PAGE) } label: {
+                    HStack(spacing: Space.s2) {
+                        Text(sensor.name)
+                            .font(.bodyMedium)
+                            .foregroundStyle(fault ? theme.colors.onSurface : theme.colors.onSurfaceVariant)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(sensor.label).font(.bodySmall).foregroundStyle(fault ? theme.colors.error : theme.colors.onSurfaceVariant)
+                        Image(.chevronRight).font(.system(size: 13)).foregroundStyle(theme.colors.onSurfaceVariant)
+                    }
+                    .padding(.horizontal, Space.s5)
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, Space.s5)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
-                .onTapGesture { open(SETUP_OVERVIEW_PAGE) }
+                .buttonStyle(.plain)
             }
             let normal = reading.sensors.filter { $0.state == SENSOR_HEALTHY_STATE }.count
             if normal > 0 {
@@ -181,7 +183,8 @@ private struct OverallStatus: View {
                     .padding(.horizontal, Space.s5)
                     .padding(.vertical, 6)
                     .contentShape(Rectangle())
-                    .onTapGesture { if !check.description.isBlank { expanded = expandedAfterTap(expanded, index, check) } }
+                    .onTapGesture { expanded = expandedAfterTap(expanded, index, check) }
+                    .accessibilityAddTraits(check.description.isBlank ? [] : .isButton)
                 }
             }
             if let name = editing {

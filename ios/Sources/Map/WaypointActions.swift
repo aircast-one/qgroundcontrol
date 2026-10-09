@@ -175,15 +175,14 @@ struct WaypointActions: View {
                 case .Mode:
                     HStack(spacing: Space.s2) {
                         ForEach(Array(CAMERA_MODES.enumerated()), id: \.offset) { at, label in
-                            PlanChip(label: label, selected: extras?.mode == at) { setCamera("cameraMode", at) }
+                            CameraChip(label: label, selected: extras?.mode == at) { setCamera("cameraMode", at) }
                         }
                     }
                 case .Camera:
                     ForEach(Array((choices?.labels ?? []).enumerated()).dropFirst(), id: \.offset) { at, label in
                         Button { choose(at) } label: {
                             HStack(spacing: Space.s3) {
-                                Image(systemName: choices?.chosen == at ? "largecircle.fill.circle" : "circle")
-                                    .foregroundStyle(choices?.chosen == at ? theme.colors.primary : theme.colors.onSurfaceVariant)
+                                RadioIndicator(selected: choices?.chosen == at)
                                 Text(sentenceCase(label)).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
                             }
                             .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)

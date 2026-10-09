@@ -26,7 +26,7 @@ func longitudeArc(_ longitudes: [Double]) -> (Double, Double) {
     let gaps = sorted.indices.map { index in
         ((index == sorted.count - 1 ? sorted[0] + 360 : sorted[index + 1]) - sorted[index], index)
     }
-    guard let widest = gaps.reduce(nil, { best, gap in best.map { gap.0 > $0.0 ? gap : $0 } ?? gap }) else { return (0, 0) }
+    guard let widest = gaps.max(by: { $0.0 < $1.0 }) else { return (0, 0) }
     return (sorted[(widest.1 + 1) % sorted.count], sorted[widest.1])
 }
 

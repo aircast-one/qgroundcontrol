@@ -100,10 +100,11 @@ func missionItemStatusShown(_ setting: JSON?) -> Bool {
 
 func elevationCredit(_ notice: String) -> String? { notice.isBlank ? nil : "Powered by \(notice)" }
 
-private let labelFont = UIFont.systemFont(ofSize: 11, weight: .medium)
+private let LABEL_SCALE = TypeScale.labelSmall
+private let LABEL_FONT = UIFont.systemFont(ofSize: LABEL_SCALE.size, weight: LABEL_SCALE.weight == .medium ? .medium : .regular)
 
 private func measured(_ text: String) -> CGSize {
-    (text as NSString).size(withAttributes: [.font: labelFont])
+    (text as NSString).size(withAttributes: [.font: LABEL_FONT])
 }
 
 struct TerrainProfileView: View {
@@ -171,13 +172,13 @@ struct TerrainProfileView: View {
                     let y = height - height * CGFloat(index) / CGFloat(max(profile.heightTicks.count - 1, 1))
                     context.stroke(pathOf([CGPoint(x: 0, y: y), CGPoint(x: width, y: y)]), with: .color(ink.opacity(0.3)), lineWidth: 0.5)
                     let size = measured(tick)
-                    context.draw(Text(tick).font(TypeScale.labelSmall.font).foregroundColor(ink), at: CGPoint(x: -size.width - 4, y: y - size.height / 2), anchor: .topLeading)
+                    context.draw(Text(tick).font(LABEL_SCALE.font).foregroundColor(ink), at: CGPoint(x: -size.width - 4, y: y - size.height / 2), anchor: .topLeading)
                 }
                 profile.distanceTicks.enumerated().forEach { index, tick in
                     let size = measured(tick)
                     let x = width * CGFloat(index) / CGFloat(max(profile.distanceTicks.count - 1, 1))
                     let left = min(max(x - size.width / 2, 0), max(width - size.width, 0))
-                    context.draw(Text(tick).font(TypeScale.labelSmall.font).foregroundColor(ink), at: CGPoint(x: left, y: height), anchor: .topLeading)
+                    context.draw(Text(tick).font(LABEL_SCALE.font).foregroundColor(ink), at: CGPoint(x: left, y: height), anchor: .topLeading)
                 }
                 plannedRuns(profile, width, height).forEach { run in
                     context.stroke(pathOf(run), with: .color(PLANNED_COLOUR), lineWidth: 1.5)
@@ -192,7 +193,7 @@ struct TerrainProfileView: View {
                         let band = measured(marker.pattern)
                         let right = markerX(end, profile, width)
                         context.fill(Path(CGRect(x: start, y: height - band.height, width: right - start, height: band.height)), with: .color(PATTERN_COLOUR))
-                        context.draw(Text(marker.pattern).font(TypeScale.labelSmall.font).foregroundColor(ink), at: CGPoint(x: (start + right - band.width) / 2, y: height - band.height), anchor: .topLeading)
+                        context.draw(Text(marker.pattern).font(LABEL_SCALE.font).foregroundColor(ink), at: CGPoint(x: (start + right - band.width) / 2, y: height - band.height), anchor: .topLeading)
                     }
                     ([(start, marker.label)] + ends).forEach { x, text in
                         context.stroke(pathOf([CGPoint(x: x, y: 0), CGPoint(x: x, y: height)]), with: .color(ink), lineWidth: 0.5)
@@ -201,7 +202,7 @@ struct TerrainProfileView: View {
                         let centre = CGPoint(x: x, y: height - radius)
                         let chosen = marker.sequence == selectedSequence
                         context.fill(Path(ellipseIn: CGRect(x: centre.x - radius, y: centre.y - radius, width: radius * 2, height: radius * 2)), with: .color(chosen ? accent : ink.opacity(0.8)))
-                        context.draw(Text(text).font(TypeScale.labelSmall.font).foregroundColor(chosen ? onAccent : paper), at: centre, anchor: .center)
+                        context.draw(Text(text).font(LABEL_SCALE.font).foregroundColor(chosen ? onAccent : paper), at: centre, anchor: .center)
                     }
                 }
             }

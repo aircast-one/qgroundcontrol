@@ -68,22 +68,28 @@ struct OsmFilePicker: View {
         .padding(.horizontal, Space.s4)
         .padding(.vertical, Space.s2)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.item]) { result in
-            guard case .success(let chosen) = result else { return }
-            Task {
-                refusal = await offMain { () -> String? in
-                    switch stagedOsm(chosen) {
-                    case .Copied(let path):
-                        let refused = Qgc.writeRefusal(OSM_FILE_SETTING, path)
-                        if refused == nil { keepOnly(path) }
-                        return refused
-                    case .NotOsm:
-                        return "Choose an OpenStreetMap file (.osm or .xml)."
-                    case .Unreadable:
-                        return "That file could not be read."
-                    }
-                }
-                onWrite()
+            switch result {
+            case .success(let chosen): choose(chosen)
+            case .failure(let error): refusal = error.localizedDescription
             }
+        }
+    }
+
+    private func choose(_ chosen: URL) {
+        Task {
+            refusal = await offMain { () -> String? in
+                switch stagedOsm(chosen) {
+                case .Copied(let path):
+                    let refused = Qgc.writeRefusal(OSM_FILE_SETTING, path)
+                    if refused == nil { keepOnly(path) }
+                    return refused
+                case .NotOsm:
+                    return "Choose an OpenStreetMap file (.osm or .xml)."
+                case .Unreadable:
+                    return "That file could not be read."
+                }
+            }
+            onWrite()
         }
     }
 }

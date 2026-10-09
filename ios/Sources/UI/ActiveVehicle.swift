@@ -22,7 +22,7 @@ struct MvAction: Equatable {
 }
 
 func mvActions(_ view: JSON?) -> [MvAction] {
-    (view?["actions"].arrayOrNil ?? []).filter { $0.object != nil }.compactMap { entry in
+    (view?["actions"].objects ?? []).compactMap { entry in
         let id = entry["id"].string
         guard !id.isBlank else { return nil }
         let title = entry["title"].string
@@ -91,12 +91,14 @@ struct VehicleStateChip: View {
     @State private var statusSettings = false
     @State private var modeMenu = false
     @State private var refusal: String?
+    @State private var scope = ViewScope()
 
     var body: some View {
         let fly = flyState(flyJson)
         let lost = fly?.contactLost == true
+        let pick = VehiclePick(choices: vehicleChoices(vehiclesJson), station: controlStation(controlJson), disconnected: fly?.connected != true)
         SilentSeconds(lost: lost) { silentFor in
-            chip(fly, lost, silentFor)
+            chip(fly, lost, silentFor, pick)
         }
         .background {
             OpenOnRequest(name: "status", open: { statusSettings = true })
@@ -111,21 +113,22 @@ struct VehicleStateChip: View {
                 VehicleMessagesSheet { why = false }
             }
             if picking {
-                pickingSheet(fly)
+                pickingSheet(pick)
             }
         }
         .onChange(of: fly?.connected == true, initial: true) { _, connected in if connected { offline = false } }
+        .onDisappear { scope.cancel() }
     }
 
-    private func chip(_ fly: FlyState?, _ lost: Bool, _ silentFor: Int64?) -> some View {
-        let choices = vehicleChoices(vehiclesJson)
-        let station = controlStation(controlJson)
-        let taken = controlIsElsewhere(station)
+    private func chip(_ fly: FlyState?, _ lost: Bool, _ silentFor: Int64?, _ pick: VehiclePick) -> some View {
+        let choices = pick.choices
+        let station = pick.station
+        let taken = pick.taken
+        let disconnected = pick.disconnected
         let failsafe = vehicleLinks(linksJson)?.failsafe
         let blocker = armingBlocker(warningsJson).flatMap { fly?.connected == true && fly?.armed != true ? $0 : nil }
         let failing = (armingChecks(warningsJson) ?? []).count
         let subtitle = readinessSubtitle(fly, blocker, failing) ?? vehicleSubtitle(fly, offlineMainStatus(offlineJson))
-        let disconnected = fly?.connected != true
         let tone = blocker != nil ? ChipTone.Error : chipTone(fly, lost)
         let statusBar = !portrait
         let title = lost ? signalLostTitle(silentFor, failsafe: failsafe) : activeVehicleTitle(choices, subtitle)
@@ -194,7 +197,12 @@ struct VehicleStateChip: View {
         ) {
             Button("Disconnect", role: .destructive) {
                 lostMenu = false
-                Task { flyScreen.refusal = await offMain { Qgc.refusalOf(CLOSE_VEHICLE) } }
+                let screen = flyScreen
+                scope.launch {
+                    let refused = await offMain { Qgc.refusalOf(CLOSE_VEHICLE) }
+                    guard !Task.isCancelled else { return }
+                    screen.refusal = refused
+                }
             }
         }
     }
@@ -226,11 +234,9 @@ struct VehicleStateChip: View {
         }
     }
 
-    private func pickingSheet(_ fly: FlyState?) -> some View {
-        let choices = vehicleChoices(vehiclesJson)
-        let station = controlStation(controlJson)
-        let taken = controlIsElsewhere(station)
-        let disconnected = fly?.connected != true
+    private func pickingSheet(_ pick: VehiclePick) -> some View {
+        let choices = pick.choices
+        let station = pick.station
         let panelEnabled = multiVehiclePanelEnabled(panelJson)
         return AircastSheet(onDismissRequest: { picking = false }, skipPartiallyExpanded: true) {
             ScrollView {
@@ -262,14 +268,18 @@ struct VehicleStateChip: View {
                     }
                     if panelToggleShown(panelFact) {
                         Toggle(isOn: Binding(get: { panelEnabled }, set: { wanted in
-                            Task { refusal = await offMain { Qgc.writeRefusal(MULTI_VEHICLE_PANEL_SETTING, wanted) } }
+                            scope.launch {
+                                let refused = await offMain { Qgc.writeRefusal(MULTI_VEHICLE_PANEL_SETTING, wanted) }
+                                guard !Task.isCancelled else { return }
+                                refusal = refused
+                            }
                         })) {
                             Text("Enable multi-vehicle panel").font(.bodyLarge)
                         }
                         .padding(.horizontal, Space.s4)
                         .frame(minHeight: 56)
                     }
-                    if !disconnected && !taken {
+                    if !pick.disconnected && !pick.taken {
                         HStack {
                             Button("Flight mode") {
                                 picking = false
@@ -448,8 +458,7 @@ private struct VehicleRows: View {
                 guard !choice.active else { return }
                 let id = choice.id
                 Task {
-                    let switched = await offMain { VehicleBridge.askFor(id) }
-                    let refused = await offMain { VehicleBridge.lastRefusal }
+                    let (switched, refused) = await offMain { (VehicleBridge.askFor(id), VehicleBridge.lastRefusal) }
                     onRefusal(switched ? nil : refused ?? "That vehicle did not take control.")
                     if switched { onSwitched() }
                 }
@@ -459,14 +468,32 @@ private struct VehicleRows: View {
     }
 }
 
-private struct VehicleCheckbox: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button { configuration.isOn.toggle() } label: {
-            Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
+private struct VehiclePick {
+    let choices: VehicleChoices
+    let station: ControlStation?
+    let disconnected: Bool
+
+    var taken: Bool { controlIsElsewhere(station) }
+}
+
+private let CHECKBOX_SIZE: CGFloat = 40
+
+private struct CheckboxGlyph: View {
+    let isOn: Binding<Bool>
+
+    var body: some View {
+        Button { isOn.wrappedValue.toggle() } label: {
+            Image(isOn.wrappedValue ? .checkBox : .checkBoxOutline)
                 .font(.title3)
-                .frame(width: 40, height: 40)
+                .frame(width: CHECKBOX_SIZE, height: CHECKBOX_SIZE)
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct VehicleCheckbox: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        CheckboxGlyph(isOn: configuration.$isOn)
     }
 }
 
@@ -635,12 +662,7 @@ private struct VehicleCheckboxTrailing: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack {
             configuration.label.frame(maxWidth: .infinity, alignment: .leading)
-            Button { configuration.isOn.toggle() } label: {
-                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
-                    .font(.title3)
-                    .frame(width: 40, height: 40)
-            }
-            .buttonStyle(.plain)
+            CheckboxGlyph(isOn: configuration.$isOn)
         }
     }
 }

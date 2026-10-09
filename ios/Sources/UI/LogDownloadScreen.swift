@@ -223,7 +223,7 @@ struct LogDownloadScreen: View {
             if let logs, logs.connected {
                 connected(logs)
             } else {
-                EmptyState(icon: .description, title: "No vehicle", text: logs.map { $0.emptyText.ifBlank("Connect a vehicle to download its flight logs.") } ?? "Connect a vehicle to download its flight logs.")
+                EmptyState(icon: .description, title: "No vehicle", text: (logs?.emptyText ?? "").ifBlank("Connect a vehicle to download its flight logs."))
                     .frame(maxHeight: .infinity, alignment: .top)
             }
         }

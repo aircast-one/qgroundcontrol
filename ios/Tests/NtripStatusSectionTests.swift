@@ -19,4 +19,11 @@ final class NtripStatusSectionTests: XCTestCase {
         XCTAssertEqual(browser.mountpoints, [NtripMountpointRow(mountpoint: "NEAR", detail: "RTCM 3.3 · GPS", selected: true)])
         XCTAssertEqual(ntripBrowser(nil).status, "")
     }
+
+    func testTheSameReadingTwiceIsEqualSoThePollDoesNotRedrawTheSection() throws {
+        let view = JSON.parse(#"{"status":"connected","messageTypes":[[1005,3],"junk",[1077,9]]}"#)
+        let status = try XCTUnwrap(ntripStatus(view))
+        XCTAssertEqual(status, ntripStatus(view))
+        XCTAssertEqual(status.messageTypes, [NtripMessageType(id: 1005, count: 3), NtripMessageType(id: 1077, count: 9)])
+    }
 }

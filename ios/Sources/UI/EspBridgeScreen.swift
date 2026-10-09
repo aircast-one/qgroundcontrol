@@ -73,10 +73,6 @@ func stationFieldsEnabled(_ bridge: EspBridge) -> Bool { bridge.modeIndex == STA
 
 func hostPortTyped(_ typed: String) -> Int? { Int(typed).flatMap { HOST_PORTS.contains($0) ? $0 : nil } }
 
-private func refused(_ path: String, _ args: [Any?]) -> String? {
-    refusal(Qgc.call(path, arguments: args))
-}
-
 struct EspBridgeScreen: View {
     @Environment(\.theme) private var theme
     @State private var revision = 0
@@ -154,7 +150,7 @@ struct EspBridgeScreen: View {
     }
 
     private func act(_ path: String, _ args: Any...) {
-        Task { refusal = await offMain { refused(path, args) } }
+        Task { refusal = await offMain { Qgc.refusalOf(path, arguments: args) } }
     }
 
     private func set(_ path: String, _ value: Any) {

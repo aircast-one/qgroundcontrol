@@ -15,4 +15,12 @@ final class ScriptingScreenTests: XCTestCase {
         XCTAssertEqual(scriptRefusal("Lua Upload", "", "Upload failed"), ScriptRefusal(title: "Lua Upload", text: "Upload failed"))
         XCTAssertNil(scriptRefusal("Lua Download", nil, "Download failed"))
     }
+
+    func testAScriptNameFromTheVehicleStaysInsideTheStagingFolder() {
+        XCTAssertEqual(scriptFileName("hello.lua"), "hello.lua")
+        XCTAssertEqual(scriptFileName("../../Library/Preferences/x.plist"), ".._.._Library_Preferences_x.plist")
+        XCTAssertNil(scriptFileName(".."))
+        XCTAssertNil(scriptFileName("."))
+        XCTAssertNil(scriptFileName(""))
+    }
 }

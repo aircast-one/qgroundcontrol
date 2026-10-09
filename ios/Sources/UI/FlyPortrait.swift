@@ -115,81 +115,22 @@ struct FlyPortrait: View {
             }
             if !fullScreen {
                 if split {
-                    VStack(spacing: 0) {
-                        ZStack {
-                            if reading?.decoding != true { FlyNoVideoMessage().osdShadow() }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: Space.s2) { keyRow() }
-                        }
-                        .padding(Space.s2)
-                        .environment(\.flyOsd, true)
-                    }
-                    .frame(width: box.width, height: videoHeight)
-                    .offset(y: videoTop)
-                    .transition(.opacity)
-                    if let camera = pipCamera {
-                        CameraPipThumbnail(camera: camera)
-                            .frame(width: PORTRAIT_CAMERA_PIP_WIDTH, height: PORTRAIT_CAMERA_PIP_HEIGHT)
-                            .padding(Space.s2)
-                            .offset(y: videoTop)
-                    }
+                    splitOverlay(box.width, videoTop, videoHeight, reading?.decoding == true)
                 }
                 VStack(spacing: 0) {
                     controls(split, hasVideo, overlaysTop: overlaysTop, buttonsTop: buttonsTop, compassLift: compassLift, railLift: railLift)
                         .padding(.top, controlsTop)
                         .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
-                    actions(.Bottom)
-                        .padding(.bottom, safe.bottom)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            LinearGradient(
-                                stops: [.init(color: .clear, location: 0), .init(color: Color.black.opacity(SCRIM_ALPHA), location: DECK_SCRIM_START)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .allowsHitTesting(false)
-                        )
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { deckHeight = $0 }
-                        .layoutPriority(1)
+                    deck(safe.bottom)
                 }
                 .frame(width: box.width, height: box.height)
                 if thumbnail && flyScreen.videoTucked {
-                    VideoTab(swipeDistance: VIDEO_SWIPE_DISTANCE, showSwipe: growingSwipe(corner)) { flyScreen.videoTucked = false }
-                        .padding(.top, corner.bottom ? 0 : barTop + Space.s3)
-                        .padding(.bottom, corner.bottom ? deckHeight + (corner.start ? MAP_ATTRIBUTION_CLEARANCE : MAP_SCALE_CLEARANCE) : 0)
-                        .padding(.horizontal, Space.s3)
-                        .frame(width: box.width, height: box.height, alignment: cornerAlignment(corner))
-                        .transition(.opacity.combined(with: .move(edge: corner.bottom ? .bottom : .top)))
+                    videoTab(box, corner, barTop)
                 }
                 if split {
-                    SplitHandle(
-                        swipeDistance: VIDEO_SWIPE_DISTANCE,
-                        onSmaller: {
-                            flyScreen.videoTucked = false
-                            onView(.Map)
-                        },
-                        onFullScreen: onFullScreen
-                    )
-                    .frame(width: box.width)
-                    .offset(y: videoTop + videoHeight)
-                    .transition(.opacity)
+                    splitHandle(box.width, videoTop + videoHeight)
                 }
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: Space.s2) { status() }
-                        .padding(.horizontal, Space.s3)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: PORTRAIT_BAR_HEIGHT)
-                        .padding(.top, safe.top)
-                        .background(LinearGradient(colors: [Color.black.opacity(SCRIM_ALPHA), .clear], startPoint: .top, endPoint: .bottom).allowsHitTesting(false))
-                    TrafficBanner()
-                        .padding(.horizontal, Space.s3)
-                        .padding(.bottom, Space.s2)
-                }
-                .background(TrafficSheetHost())
-                .frame(width: box.width)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { chromeHeight = $0 }
+                statusChrome(box.width, safe.top)
             }
         }
         .frame(width: box.width, height: box.height, alignment: .topLeading)
@@ -199,6 +140,86 @@ struct FlyPortrait: View {
         .animation(.default, value: buttonsTop)
         .animation(.default, value: corner)
         .onChange(of: MapInsets(top: split ? 0 : barTop, bottom: deckHeight), initial: true) { _, insets in flyScreen.mapInsets = insets }
+    }
+
+    @ViewBuilder
+    private func splitOverlay(_ width: CGFloat, _ videoTop: CGFloat, _ videoHeight: CGFloat, _ decoding: Bool) -> some View {
+        VStack(spacing: 0) {
+            ZStack {
+                if !decoding { FlyNoVideoMessage().osdShadow() }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Space.s2) { keyRow() }
+            }
+            .padding(Space.s2)
+            .environment(\.flyOsd, true)
+        }
+        .frame(width: width, height: videoHeight)
+        .offset(y: videoTop)
+        .transition(.opacity)
+        if let camera = pipCamera {
+            CameraPipThumbnail(camera: camera)
+                .frame(width: PORTRAIT_CAMERA_PIP_WIDTH, height: PORTRAIT_CAMERA_PIP_HEIGHT)
+                .padding(Space.s2)
+                .offset(y: videoTop)
+        }
+    }
+
+    private func deck(_ safeBottom: CGFloat) -> some View {
+        actions(.Bottom)
+            .padding(.bottom, safeBottom)
+            .frame(maxWidth: .infinity)
+            .background(
+                LinearGradient(
+                    stops: [.init(color: .clear, location: 0), .init(color: Color.black.opacity(SCRIM_ALPHA), location: DECK_SCRIM_START)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
+            )
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { deckHeight = $0 }
+            .layoutPriority(1)
+    }
+
+    private func videoTab(_ box: CGSize, _ corner: PipCorner, _ barTop: CGFloat) -> some View {
+        VideoTab(swipeDistance: VIDEO_SWIPE_DISTANCE, showSwipe: growingSwipe(corner)) { flyScreen.videoTucked = false }
+            .padding(.top, corner.bottom ? 0 : barTop + Space.s3)
+            .padding(.bottom, corner.bottom ? deckHeight + (corner.start ? MAP_ATTRIBUTION_CLEARANCE : MAP_SCALE_CLEARANCE) : 0)
+            .padding(.horizontal, Space.s3)
+            .frame(width: box.width, height: box.height, alignment: cornerAlignment(corner))
+            .transition(.opacity.combined(with: .move(edge: corner.bottom ? .bottom : .top)))
+    }
+
+    private func splitHandle(_ width: CGFloat, _ top: CGFloat) -> some View {
+        SplitHandle(
+            swipeDistance: VIDEO_SWIPE_DISTANCE,
+            onSmaller: {
+                flyScreen.videoTucked = false
+                onView(.Map)
+            },
+            onFullScreen: onFullScreen
+        )
+        .frame(width: width)
+        .offset(y: top)
+        .transition(.opacity)
+    }
+
+    private func statusChrome(_ width: CGFloat, _ safeTop: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: Space.s2) { status() }
+                .padding(.horizontal, Space.s3)
+                .frame(maxWidth: .infinity)
+                .frame(height: PORTRAIT_BAR_HEIGHT)
+                .padding(.top, safeTop)
+                .background(LinearGradient(colors: [Color.black.opacity(SCRIM_ALPHA), .clear], startPoint: .top, endPoint: .bottom).allowsHitTesting(false))
+            TrafficBanner()
+                .padding(.horizontal, Space.s3)
+                .padding(.bottom, Space.s2)
+        }
+        .background(TrafficSheetHost())
+        .frame(width: width)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { chromeHeight = $0 }
     }
 
     private func controls(_ split: Bool, _ hasVideo: Bool, overlaysTop: CGFloat, buttonsTop: CGFloat, compassLift: CGFloat, railLift: CGFloat) -> some View {

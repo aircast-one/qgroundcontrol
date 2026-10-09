@@ -190,6 +190,6 @@ final class SettingsViewTests: XCTestCase {
     func testAboutListsThePrivacyPolicyAfterTheSupportLinks() {
         let guide = HelpLink(name: "QGroundControl User Guide", url: "https://docs.qgroundcontrol.com", host: "docs.qgroundcontrol.com")
         XCTAssertEqual(aboutLinks([guide]), [guide, PRIVACY_POLICY_LINK])
-        XCTAssertEqual(aboutLinks([]).map(\.url), ["https://aircast.one/privacy/android"])
+        XCTAssertEqual(aboutLinks([]).map(\.url), ["https://aircast.one/privacy"])
     }
 }

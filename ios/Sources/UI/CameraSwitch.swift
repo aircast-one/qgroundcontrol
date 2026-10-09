@@ -16,7 +16,8 @@ private let PIP_GLYPH: CGFloat = 17
 private let PIP_BORDER: CGFloat = 2
 private let PIP_INSET: CGFloat = 4
 private let PIP_LABEL_PAD: CGFloat = 6
-
+private let CHIP_HEIGHT: CGFloat = 32
+private let CHIP_CHECK_SIZE: CGFloat = 12
 struct CameraSwitchState: Equatable {
     let shown: CameraEntry
     let cameras: [CameraEntry]
@@ -62,18 +63,6 @@ enum MenuSide {
     case Start, Above
 }
 
-func menuBeside(_ anchor: CGRect, _ window: CGSize, _ menu: CGSize, _ side: MenuSide, _ gap: CGFloat, _ rtl: Bool) -> CGPoint {
-    let x: CGFloat = switch side {
-    case .Start: rtl ? anchor.maxX + gap : anchor.minX - gap - menu.width
-    case .Above: rtl ? anchor.minX : anchor.maxX - menu.width
-    }
-    let y: CGFloat = switch side {
-    case .Start: (anchor.midY).rounded(.down) - (menu.height / 2).rounded(.down)
-    case .Above: anchor.minY - gap - menu.height
-    }
-    return CGPoint(x: max(min(x, window.width - menu.width), 0), y: max(min(y, window.height - menu.height), 0))
-}
-
 func cameraStatusTint(_ status: CameraStatus, _ theme: Theme) -> Color {
     switch status {
     case .Live: theme.aircast.success
@@ -98,8 +87,6 @@ struct CameraStatusDot: View {
 private func showCamera(_ slot: Int, _ onRefused: @escaping @MainActor () -> Void = {}) {
     offMainInOrder { if !VideoCommands.setActiveSource(slot) { onMain(onRefused) } }
 }
-
-private func uptimeMs() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
 
 struct CameraSwitch: View {
     let thumbnailRoom: Bool
@@ -165,7 +152,7 @@ private struct CameraSwitchButton: View {
 
     private func tapped() {
         guard let slot = state.toggleTo else { return open = true }
-        let now = uptimeMs()
+        let now = uptimeMillis()
         guard switchTapAllowed(lastTap, state.shown.slot, now) else { return }
         let tap = SwitchTap(from: state.shown.slot, atMs: now)
         lastTap = tap
@@ -336,6 +323,7 @@ struct CameraChip: View {
     let label: String
     let selected: Bool
     var enabled: Bool = true
+    var checkmark: Bool = true
     let action: () -> Void
     @Environment(\.theme) private var theme
 
@@ -343,11 +331,11 @@ struct CameraChip: View {
         let shape = RoundedRectangle(cornerRadius: Corner.small)
         Button(action: action) {
             HStack(spacing: Space.s1) {
-                if selected { Image(.check).font(.system(size: 12, weight: .semibold)) }
+                if selected && checkmark { Image(.check).font(.system(size: CHIP_CHECK_SIZE, weight: .semibold)) }
                 Text(label).font(.labelLarge).lineLimit(1)
             }
             .padding(.horizontal, Space.s3)
-            .frame(minHeight: 32)
+            .frame(minHeight: CHIP_HEIGHT)
             .foregroundStyle(selected ? theme.colors.onSecondaryContainer : theme.colors.onSurfaceVariant)
             .background(selected ? theme.colors.secondaryContainer : Color.clear, in: shape)
             .overlay(shape.stroke(selected ? Color.clear : theme.colors.outline, lineWidth: 1))
@@ -355,7 +343,7 @@ struct CameraChip: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.38)
+        .opacity(enabled ? 1 : DISABLED_ALPHA)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

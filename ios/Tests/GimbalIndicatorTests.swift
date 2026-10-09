@@ -79,4 +79,9 @@ final class GimbalTakeControlTests: XCTestCase {
         XCTAssertEqual(aimFraction(100, 400), 0.5)
         XCTAssertEqual(aimFraction(-50, 400), -0.25)
     }
+
+    func testTheFirstDragEventOnlyMarksTheStartSoTheTouchSlopNeverJerksTheGimbal() {
+        XCTAssertNil(aimDelta(nil, CGSize(width: 10, height: 0)))
+        XCTAssertEqual(aimDelta(CGSize(width: 10, height: 0), CGSize(width: 14, height: -3)), CGSize(width: 4, height: -3))
+    }
 }

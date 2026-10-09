@@ -72,7 +72,7 @@ func offlineMaps(_ view: JSON?) -> OfflineMaps? {
     return OfflineMaps(
         available: view["available"].bool,
         reason: view["reason"].string,
-        sets: view["sets"].array.filter { $0.object != nil }.map { set in
+        sets: view["sets"].objects.map { set in
             OfflineSet(
                 id: set["id"].int64 ?? 0,
                 name: set["name"].string,
@@ -130,11 +130,11 @@ func offlineMapsPath(_ mapType: String?, _ region: OfflineRegion?, _ minZoom: In
 }
 
 private func zoomSetting(_ path: String, _ fallback: Int) -> Int {
-    Qgc.get(path)["value"].double.flatMap { $0.isFinite ? Int($0) : nil } ?? fallback
+    Qgc.get(path)["value"].int ?? fallback
 }
 
 private func act(_ path: String, _ args: Any?...) async -> String? {
-    await offMain { refusal(Qgc.call(path, arguments: args)) }
+    await offMain { Qgc.refusalOf(path, arguments: args) }
 }
 
 struct OfflineMapsSection: View {
@@ -143,6 +143,7 @@ struct OfflineMapsSection: View {
     @State private var shown: OfflineSet?
     @State private var adding = false
     @State private var refusal: String?
+    @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -161,19 +162,20 @@ struct OfflineMapsSection: View {
                 try? await Task.sleep(for: .milliseconds(OFFLINE_POLL_MS))
             }
         }
-        .sheet(item: $shown) { picked in
+        .onDisappear { scope.cancel() }
+        .queuedSheet(item: $shown) { picked in
             let current = maps?.sets.first { $0.id == picked.id } ?? picked
             OfflineSetDialog(
                 set: current,
                 onDismiss: { shown = nil },
                 onRename: { name in
-                    Task {
+                    scope.launch {
                         refusal = await act(OFFLINE_RENAME, current.id, name)
                         polls += 1
                     }
                 },
                 onAction: { path in
-                    Task {
+                    scope.launch {
                         refusal = await act(path, current.id)
                         if path == OFFLINE_DELETE { shown = nil }
                         polls += 1
@@ -181,17 +183,19 @@ struct OfflineMapsSection: View {
                 }
             )
         }
-        .fullScreenCover(isPresented: $adding) {
+        .queuedSheet(isPresented: $adding) {
             OfflineSetEditor(
                 onDismiss: { adding = false },
                 onDownload: { name, mapType, region, minZoom, maxZoom, elevation in
-                    Task {
+                    scope.launch {
                         refusal = await act(OFFLINE_START, name, mapType, region.west, region.north, region.east, region.south, minZoom, maxZoom, elevation)
                         if refusal == nil { adding = false }
                         polls += 1
                     }
                 }
             )
+            .presentationDetents([.large])
+            .interactiveDismissDisabled()
         }
     }
 
@@ -426,7 +430,7 @@ private struct OfflineSetEditor: View {
             TextField("Name:", text: Binding(get: { chosenName }, set: { name = $0 }))
                 .textFieldStyle(.roundedBorder)
                 .overlay {
-                    if nameTaken { RoundedRectangle(cornerRadius: 6).stroke(theme.aircast.alert, lineWidth: 1) }
+                    if nameTaken { RoundedRectangle(cornerRadius: Corner.extraSmall).stroke(theme.aircast.alert, lineWidth: 1) }
                 }
             Menu {
                 ForEach(read?.mapList ?? [], id: \.self) { option in

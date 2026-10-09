@@ -75,7 +75,7 @@ func instrumentReading(_ item: JSON) -> String? {
 }
 
 func instruments(_ view: JSON?) -> [Instrument] {
-    (view?["items"].arrayOrNil ?? []).filter { $0.object != nil }.compactMap { item in
+    (view?["items"].objects ?? []).compactMap { item in
         instrumentReading(item).map { reading in
             let missing = item["missing"].bool
             return Instrument(
@@ -143,8 +143,7 @@ struct TelemetryRow: View {
             )
             .allowsHitTesting(!compact)
             Color.clear
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
+                .invisibleAnchor()
                 .background { sheets(vehicleClass, picked) }
                 .onChange(of: vehicleClass, initial: true) { _, now in
                     chosen = readChosen(now)
@@ -358,6 +357,7 @@ private struct TelemetryReadings: View {
             .padding(.vertical, 6)
             .contentShape(Rectangle())
             .onTapGesture { if !instrument.id.isBlank { onStyle(instrument) } }
+            .accessibilityAddTraits(instrument.id.isBlank ? [] : .isButton)
         case .chooser:
             Button { flyScreen.choosingReadings = true } label: {
                 Image(.tune).foregroundStyle(theme.colors.onSurfaceVariant).frame(width: 48, height: 48)
@@ -440,30 +440,20 @@ struct FlightActions<Center: View>: View {
         }
     }
 
-    @ViewBuilder
     private var flightActions: some View {
         let available = state?.connected == true
-        if !available {
-            Group {
-                if layout != .Rail {
+        let rail = layout == .Rail
+        return ZStack(alignment: .topLeading) {
+            if !available {
+                if !rail {
                     Text("Connect a vehicle to enable flight controls.")
                         .font(.bodyMedium)
                         .foregroundStyle(theme.colors.onSurfaceVariant)
                         .padding(Space.s4)
-                } else {
-                    Color.clear.frame(width: 0, height: 0)
                 }
-            }
-            .background { PreflightChecklistReset(checklist: checklist, available: false) }
-            .onChange(of: offers, initial: true) { _, now in offersChanged(now) }
-            .task(id: actions.popupDue) { await popupSettles() }
-        } else {
-            let rail = layout == .Rail
-            ZStack(alignment: .topLeading) {
+            } else {
                 deck
                     .background { hosts }
-                    .onChange(of: offers, initial: true) { _, now in offersChanged(now) }
-                    .task(id: actions.popupDue) { await popupSettles() }
                     .onChange(of: flyScreen.deckRequest, initial: true) { _, asked in deckRequested(asked) }
                     .onChange(of: loiterOffer(mapClickJson) == nil, initial: true) { _, gone in if gone { actions.editingLoiter = nil } }
                     .onChange(of: gripperOffers(moreActions(offers)).isEmpty, initial: true) { _, empty in if empty { actions.showGripper = false } }
@@ -477,6 +467,9 @@ struct FlightActions<Center: View>: View {
                 }
             }
         }
+        .background { PreflightChecklistReset(checklist: checklist, available: available) }
+        .onChange(of: offers, initial: true) { _, now in offersChanged(now) }
+        .task(id: actions.popupDue) { await popupSettles() }
     }
 
     private var readiness: Readiness? { guidedReadiness(state) }
@@ -550,7 +543,6 @@ struct FlightActions<Center: View>: View {
 
     @ViewBuilder
     private var hosts: some View {
-        PreflightChecklistReset(checklist: checklist, available: true)
         PreflightChecklist(checklist: checklist, deciding: actions.deciding)
         OpenOnRequest(name: "more", open: { actions.showMore = true })
         if actions.showMore {
@@ -999,7 +991,7 @@ struct FlightModeMenu: View {
         .frame(minHeight: 48)
         .background(mode.current ? theme.colors.secondaryContainer : Color.clear)
         .opacity(mode.hidden ? HIDDEN_MODE_ALPHA : 1)
-        .opacity(modes.canSet ? 1 : 0.38)
+        .opacity(modes.canSet ? 1 : DISABLED_ALPHA)
         .contentShape(Rectangle())
         .onTapGesture { if modes.canSet { choose(mode) } }
         .onLongPressGesture { if let setting = modes.hiddenSetting { toggleHidden(mode.name, setting) } }
@@ -1046,7 +1038,7 @@ private struct InstrumentSheet: View {
                             SectionHeader(text: sentenceCase(group.title))
                             ForEach(group.facts, id: \.path) { fact in
                                 HStack(spacing: Space.s4) {
-                                    Image(systemName: chosen.contains(fact.path) ? "checkmark.square.fill" : "square")
+                                    Image(chosen.contains(fact.path) ? .checkBox : .checkBoxOutline)
                                         .font(.title3)
                                         .foregroundStyle(chosen.contains(fact.path) ? theme.colors.primary : theme.colors.onSurfaceVariant)
                                     Text(sentenceCase(fact.label)).font(.bodyLarge)
@@ -1056,6 +1048,8 @@ private struct InstrumentSheet: View {
                                 .frame(minHeight: 56)
                                 .contentShape(Rectangle())
                                 .onTapGesture { onToggle(fact.path) }
+                                .accessibilityElement(children: .combine)
+                                .accessibilityAddTraits(chosen.contains(fact.path) ? [.isButton, .isSelected] : .isButton)
                             }
                         }
                     }
@@ -1148,7 +1142,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
         armAction?.shown == true ? DeckEntry(id: "arm", label: armTitle, icon: .bolt, enabled: armAction?.ready == true, warning: armed, onClick: {
             deck.confirm(GuidedAction(
                 name: armTitle,
-                confirm: armAction.flatMap { $0.prompt.isBlank ? nil : $0.prompt } ?? (armed ? "Disarm the vehicle" : "Arm the vehicle."),
+                confirm: armAction?.prompt.nonBlank ?? (armed ? "Disarm the vehicle" : "Arm the vehicle."),
                 destructive: armAction?.destructive ?? true,
                 offerId: armed ? "disarm" : "arm",
                 run: {
@@ -1178,7 +1172,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
                 if takeoff?.carriesValue == false {
                     deck.confirm(GuidedAction(
                         name: takeoff?.title ?? "Takeoff",
-                        confirm: takeoff.flatMap { $0.prompt.isBlank ? nil : $0.prompt } ?? "Takeoff from ground and hold position.",
+                        confirm: takeoff?.prompt.nonBlank ?? "Takeoff from ground and hold position.",
                         destructive: false,
                         offerId: "takeoff",
                         run: { offMain { VehicleCommands.takeoff() } }
@@ -1194,9 +1188,9 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
         rtl?.shown == true ? DeckEntry(id: "rtl", label: "Return", icon: .home, enabled: rtl?.ready == true, onClick: {
             deck.confirm(GuidedAction(
                 name: rtl?.title ?? "Return",
-                confirm: rtl.flatMap { $0.prompt.isBlank ? nil : $0.prompt } ?? "Return to the launch position of the vehicle",
+                confirm: rtl?.prompt.nonBlank ?? "Return to the launch position of the vehicle",
                 destructive: false,
-                option: rtl.flatMap { $0.option.isBlank ? nil : $0.option }.map { label in
+                option: rtl?.option.nonBlank.map { label in
                     ConfirmOption(label: label, run: { smart in offMain { VehicleCommands.returnToLaunch(smart) } })
                 },
                 offerId: "rtl",
@@ -1212,7 +1206,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
             onClick: {
                 deck.confirm(GuidedAction(
                     name: land?.title ?? "Land",
-                    confirm: land.flatMap { $0.prompt.isBlank ? nil : $0.prompt } ?? "Land the vehicle at the current position",
+                    confirm: land?.prompt.nonBlank ?? "Land the vehicle at the current position",
                     destructive: false,
                     offerId: "land",
                     run: { offMain { VehicleCommands.land() } }

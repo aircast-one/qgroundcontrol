@@ -43,10 +43,6 @@ struct RadioView {
     var notReady: (first: String, second: String)? = nil
 }
 
-private func each<T>(_ view: JSON, _ key: String, _ make: (JSON) -> T) -> [T] {
-    (view[key].arrayOrNil ?? []).filter { $0.object != nil }.map(make)
-}
-
 private func titled(_ json: JSON) -> (first: String, second: String)? {
     json.object == nil ? nil : (json["title"].string, json["message"].string)
 }
@@ -71,7 +67,7 @@ func radioView(_ view: JSON?) -> RadioView? {
         transmitterMode: view["transmitterMode"].int(2),
         centeredThrottle: view["centeredThrottle"].bool,
         joystickMode: view["joystickMode"].bool,
-        sticks: each(view, "sticks") {
+        sticks: view["sticks"].objects.map {
             RadioStick(
                 title: $0["title"].string,
                 valueText: $0["valueText"].string,
@@ -81,7 +77,7 @@ func radioView(_ view: JSON?) -> RadioView? {
                 channel: $0["channel"].int(0) > 0 ? $0["channel"].int(0) : nil
             )
         },
-        channels: each(view, "channels") {
+        channels: view["channels"].objects.map {
             RadioChannel(
                 label: $0["label"].string,
                 valueText: $0["valueText"].string,

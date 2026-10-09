@@ -65,7 +65,7 @@ private func setToVehicleHeading(_ index: Int) -> String? {
 
 private func setToVehicleLocation(_ index: Int) -> String? {
     let read = VehicleCommands.coordinate()
-    guard let coordinate = vehicleCoordinate(read["value"].object != nil ? read["value"] : read) else { return "The vehicle has no position yet." }
+    guard let coordinate = vehicleCoordinate(read["value"].objectOrNil ?? read) else { return "The vehicle has no position yet." }
     return PlanCommands.setLandingCoordinate(index, coordinate)
 }
 
@@ -92,7 +92,7 @@ struct CommandChoice: Equatable, Identifiable {
 }
 
 func commandChoices(_ result: JSON?) -> [CommandChoice] {
-    (result?.arrayOrNil ?? []).filter { $0.object != nil }.map {
+    (result?.objects ?? []).map {
         CommandChoice(id: $0["command"].int(0), name: $0["friendlyName"].string, description: $0["description"].string)
     }
 }
@@ -113,16 +113,10 @@ private struct OptionalFactRow: View {
                 }
             }))
             .labelsHidden()
-            FactRow(fact: fact.optionalSet ? fact : disabled(fact), onWrite: onWrite)
+            FactRow(fact: fact.optionalSet ? fact : withChanges(fact) { $0.enabled = false }, onWrite: onWrite)
                 .frame(maxWidth: .infinity)
         }
         .padding(.leading, Space.s5)
-    }
-
-    private func disabled(_ fact: Fact) -> Fact {
-        var off = fact
-        off.enabled = false
-        return off
     }
 }
 
@@ -138,9 +132,7 @@ func withLandingFrameUnits(_ fields: [Fact], _ relative: Bool?) -> [Fact] {
     let frame = relative ? "Rel" : "AMSL"
     return fields.map { fact in
         guard LANDING_ALTITUDES.contains(where: { fact.path.hasSuffix(".\($0)") }) else { return fact }
-        var framed = fact
-        framed.units = [fact.units, frame].filter { !$0.isBlank }.joined(separator: " ")
-        return framed
+        return withChanges(fact) { $0.units = [fact.units, frame].filter { !$0.isBlank }.joined(separator: " ") }
     }
 }
 
@@ -156,7 +148,7 @@ func previousCoordinate(_ view: JSON?) -> (Double, Double)? {
 }
 
 func sectionStarts(_ view: JSON?) -> [String: String] {
-    let rows = (view?["fields"].arrayOrNil ?? []).filter { $0.object != nil }.map { ($0["path"].string, $0["section"].string) }
+    let rows = (view?["fields"].objects ?? []).map { ($0["path"].string, $0["section"].string) }
     let starts = rows.enumerated().filter { at, row in !row.1.isBlank && (at == 0 || row.1 != rows[at - 1].1) }.map(\.element)
     return Dictionary(starts, uniquingKeysWith: { _, last in last })
 }
@@ -168,7 +160,7 @@ struct RadioChoice: Equatable {
 }
 
 func radioChoices(_ view: JSON?) -> [String: RadioChoice] {
-    let rows = (view?["fields"].arrayOrNil ?? []).filter { $0.object != nil }.compactMap { row -> (String, RadioChoice)? in
+    let rows = (view?["fields"].objects ?? []).compactMap { row -> (String, RadioChoice)? in
         let choice = row["choice"]
         guard choice.object != nil else { return nil }
         return (row["path"].string, RadioChoice(path: choice["path"].string, value: choice["value"].bool, selected: choice["selected"].bool))
@@ -183,33 +175,7 @@ func withoutHeroFields(_ fields: [Fact], _ view: JSON?) -> [Fact] {
 }
 
 func itemFields(_ view: JSON?) -> [Fact] {
-    (view?["fields"].arrayOrNil ?? []).filter { $0.object != nil }.compactMap { factFromControl($0) }
-}
-
-struct PlanDialog<Content: View, Buttons: View>: View {
-    let title: String
-    let onDismiss: () -> Void
-    @ViewBuilder let content: () -> Content
-    @ViewBuilder let buttons: () -> Buttons
-
-    var body: some View {
-        AircastSheet(onDismissRequest: onDismiss) {
-            VStack(alignment: .leading, spacing: Space.s4) {
-                Text(title).font(.headlineSmall).padding(.horizontal, Space.s6)
-                ScrollView {
-                    content()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, Space.s6)
-                }
-                HStack(spacing: Space.s2) {
-                    Spacer()
-                    buttons()
-                }
-                .padding(.horizontal, Space.s6)
-            }
-            .padding(.bottom, Space.s6)
-        }
-    }
+    (view?["fields"].objects ?? []).compactMap { factFromControl($0) }
 }
 
 private let DELETE_LABEL = "Delete from the plan"
@@ -506,8 +472,7 @@ private struct ItemEditorContent: View {
                     Button {
                         run { Qgc.writeRefusal(choice.path, choice.value) }
                     } label: {
-                        Image(systemName: choice.selected ? "largecircle.fill.circle" : "circle")
-                            .foregroundStyle(choice.selected ? theme.colors.primary : theme.colors.onSurfaceVariant)
+                        RadioIndicator(selected: choice.selected)
                     }
                     .buttonStyle(.plain)
                     FactRow(fact: fact, fieldModifier: EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 16), onWrite: { revision += 1 })
@@ -578,7 +543,7 @@ private struct CommandPicker: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Space.s1) {
                         ForEach(listedCategories, id: \.self) { name in
-                            PlanChip(label: sentenceCase(name), selected: name == category) { category = name }
+                            CameraChip(label: sentenceCase(name), selected: name == category) { category = name }
                         }
                     }
                 }
@@ -703,7 +668,7 @@ struct PositionForms: Equatable {
 
 func positionForms(_ view: JSON?) -> PositionForms? {
     guard let view else { return nil }
-    let utm = view["utm"].object != nil ? view["utm"] : nil
+    let utm = view["utm"].objectOrNil
     return PositionForms(
         zone: utm.map { String($0["zone"].int(0)) } ?? "",
         southern: utm?["southern"].bool ?? false,
@@ -778,7 +743,7 @@ struct EditPositionDialog: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Space.s1) {
                         ForEach(CoordinateSystem.allCases.filter { $0 != .Vehicle || connected }, id: \.self) { choice in
-                            PlanChip(label: choice.label, selected: choice == system) {
+                            CameraChip(label: choice.label, selected: choice == system) {
                                 system = choice
                                 problem = nil
                             }

@@ -32,8 +32,8 @@ func noticeBatch(_ view: JSON?) -> NoticeBatch? {
         destination: destination.isBlank ? nil : destination,
         banners: view["banners"].array.map(\.string).filter { !$0.isBlank },
         unknownKinds: notices.filter { !$0["known"].bool(true) }.map { $0["kind"].string },
-        errorBanners: distinctBanners(notices.filter { $0["kind"].string == VEHICLE_ERROR_KIND }.map { $0["banner"].string }.filter { !$0.isBlank }),
-        dialogs: view["dialogs"].array.filter { $0.object != nil }.map { dialog in
+        errorBanners: notices.filter { $0["kind"].string == VEHICLE_ERROR_KIND }.map { $0["banner"].string }.filter { !$0.isBlank }.distinct(),
+        dialogs: view["dialogs"].objects.map { dialog in
             let action = dialog["action"].string
             return AppMessage(title: dialog["title"].string, text: dialog["text"].string, action: action.isBlank ? nil : action)
         }
@@ -57,8 +57,7 @@ struct AppMessageDialog: View {
 
     var body: some View {
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .alert(message.title, isPresented: .constant(true)) {
                 Button(message.action == OPEN_SETUP_ACTION ? "Open Setup" : "OK") {
                     if message.action == REBOOT_VEHICLE_ACTION { offMain { Qgc.invoke(REBOOT_VEHICLE) } }
@@ -74,9 +73,6 @@ struct AppMessageDialog: View {
 }
 
 func quietBanners(_ banners: [String], _ shownAt: [String: Int64], _ now: Int64) -> [String] {
-    distinctBanners(banners).filter { banner in shownAt[banner].map { now - $0 < REPEAT_QUIET_MS } != true }
+    banners.distinct().filter { banner in shownAt[banner].map { now - $0 < REPEAT_QUIET_MS } != true }
 }
 
-private func distinctBanners(_ banners: [String]) -> [String] {
-    banners.enumerated().filter { at, banner in banners.firstIndex(of: banner) == at }.map(\.element)
-}

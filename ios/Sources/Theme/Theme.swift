@@ -1,5 +1,7 @@
 import SwiftUI
 
+let DISABLED_ALPHA = 0.38
+
 extension Color {
     init(hex: UInt32) {
         self.init(.sRGB,
@@ -169,7 +171,7 @@ struct FilledButtonStyle: PrimitiveButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         Button(role: configuration.role, action: configuration.trigger) {
-            configuration.label.foregroundStyle(isEnabled ? theme.colors.onPrimary : theme.colors.onSurface.opacity(0.38))
+            configuration.label.foregroundStyle(isEnabled ? theme.colors.onPrimary : theme.colors.onSurface.opacity(DISABLED_ALPHA))
         }
         .buttonStyle(.borderedProminent)
         .tint(theme.colors.primary)
@@ -178,14 +180,6 @@ struct FilledButtonStyle: PrimitiveButtonStyle {
 
 extension PrimitiveButtonStyle where Self == FilledButtonStyle {
     static var filled: FilledButtonStyle { FilledButtonStyle() }
-}
-
-struct AircastTheme<Content: View>: View {
-    var dark: Bool? = nil
-    @ViewBuilder let content: () -> Content
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View { content().aircastTheme(dark: dark ?? (scheme == .dark)) }
 }
 
 extension View {

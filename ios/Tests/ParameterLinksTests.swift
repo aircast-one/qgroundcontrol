@@ -31,4 +31,33 @@ final class ParameterLinksTests: XCTestCase {
         XCTAssertEqual(fact.valueDetails, "Altitude to begin landing approach from.")
         XCTAssertEqual(valueDetailsNotes(fact), ["Altitude to begin landing approach from.", "default 40.0 m"])
     }
+
+    private func runs(_ html: String) -> [(String, URL?, InlinePresentationIntent?)] {
+        let text = htmlAttributed(html)
+        return text.runs.map { (String(text[$0.range].characters), $0.link, $0.inlinePresentationIntent) }
+    }
+
+    func testAParamAnchorBecomesALinkedRun() {
+        let linked = runs(#"Check <a href="param://COM_ARM_WO_GPS">COM_ARM_WO_GPS</a> now"#)
+        XCTAssertEqual(linked.map(\.0), ["Check ", "COM_ARM_WO_GPS", " now"])
+        XCTAssertEqual(linked.map(\.1), [nil, URL(string: "param://COM_ARM_WO_GPS"), nil])
+    }
+
+    func testBoldAndItalicTagsSetTheIntents() {
+        let styled = runs("<b>bold</b><i>italic</i><strong><em>both</em></strong>")
+        XCTAssertEqual(styled.map(\.2), [.stronglyEmphasized, .emphasized, [.stronglyEmphasized, .emphasized]])
+    }
+
+    func testLineBreaksAndClosingBlocksStartNewLines() {
+        XCTAssertEqual(String(htmlAttributed("one<br>two<p>three</p>four").characters), "one\ntwothree\nfour")
+    }
+
+    func testNamedAndNumericEntitiesAreDecoded() {
+        XCTAssertEqual(String(htmlAttributed("5&deg; &#176; &#x2013; &ndash; &amp;lt; &bogus;").characters), "5\u{00b0} \u{00b0} \u{2013} \u{2013} &lt; &bogus;")
+    }
+
+    func testABareLessThanStaysInTheText() {
+        XCTAssertEqual(String(htmlAttributed("alt < 5 m and <b>x</b> > 2").characters), "alt < 5 m and x > 2")
+    }
 }
+

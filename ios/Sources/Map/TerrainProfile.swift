@@ -81,7 +81,8 @@ func metresBetween(_ from: TrackPoint, _ to: TrackPoint) -> Double {
     let deltaLat = toLat - fromLat
     let deltaLon = (to.longitude - from.longitude) * .pi / 180
     let a = pow(sin(deltaLat / 2), 2) + cos(fromLat) * cos(toLat) * pow(sin(deltaLon / 2), 2)
-    return 2 * EARTH_RADIUS_METRES * asin(min(1, sqrt(a)))
+    let root = sqrt(a)
+    return 2 * EARTH_RADIUS_METRES * asin(root.isNaN ? root : min(1, root))
 }
 
 let TERRAIN_VIEW = "view.terrainProfile"
@@ -122,7 +123,7 @@ func terrainProfile(_ view: JSON?) -> TerrainProfile {
         highestText: view["highestText"].string,
         distanceText: view["distanceText"].string,
         bandText: view["bandText"].string,
-        markers: (view["markers"].arrayOrNil ?? []).filter { $0.object != nil }.map { marker in
+        markers: view["markers"].objects.map { marker in
             let complex = marker["complex"]
             let isComplex = complex.object != nil
             return ProfileMarker(

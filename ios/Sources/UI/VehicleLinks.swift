@@ -22,10 +22,10 @@ func vehicleLinks(_ view: JSON?) -> VehicleLinks? {
     guard let view, view["class"].string == "VehicleLinks" else { return nil }
     return VehicleLinks(
         available: view["available"].bool,
-        links: view["links"].array.filter { $0.object != nil }.map { link in
-            VehicleLink(commLost: link["commLost"].isNull ? nil : link["commLost"].bool)
+        links: view["links"].objects.map { link in
+            VehicleLink(commLost: link["commLost"].boolOrNil)
         },
-        contactLost: view["contactLost"].isNull ? nil : view["contactLost"].bool,
+        contactLost: view["contactLost"].boolOrNil,
         failsafe: view["lossAction"].string.isEmpty ? nil : LossFailsafe(action: view["lossAction"].string, after: view["lossAfter"].isNull ? nil : view["lossAfter"].double(.nan))
     )
 }
@@ -47,5 +47,5 @@ func linkCell(_ links: VehicleLinks?) -> LinkCell? {
 }
 
 func linkNames(_ view: JSON?) -> [String] {
-    (view?["links"].array ?? []).filter { $0.object != nil }.map { $0["name"].string }
+    (view?["links"].objects ?? []).map { $0["name"].string }
 }

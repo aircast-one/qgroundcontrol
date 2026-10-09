@@ -21,7 +21,7 @@ func proximityRadar(_ view: JSON?) -> ProximityRadar? {
     guard let view, view["shown"].bool else { return nil }
     return ProximityRadar(
         range: view["rangeMeters"].double(6.0),
-        sectors: view["sectors"].array.filter { $0.object != nil }.map { sector in
+        sectors: view["sectors"].objects.map { sector in
             RadarSector(bearing: sector["bearing"].int(0), meters: sector["meters"].isNull ? nil : sector["meters"].double(.nan), text: sector["text"].string)
         }
     )

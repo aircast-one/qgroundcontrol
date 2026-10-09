@@ -20,4 +20,18 @@ final class PlanFileRulesTests: XCTestCase {
         XCTAssertEqual("survey.txt.plan", withExtension("survey.txt", PLAN_EXTENSION))
         XCTAssertEqual("area.kml", withExtension("area", KML_EXTENSION))
     }
+
+    func testAPickedBoundaryIsStagedUnderItsOwnLowerCasedExtensionOrKmlWhenItHasNone() {
+        XCTAssertEqual("boundary.kml", boundaryCacheName(nil))
+        XCTAssertEqual("boundary.shp", boundaryCacheName("Field.SHP"))
+        XCTAssertEqual("boundary.kml", boundaryCacheName("field."))
+        XCTAssertEqual("boundary.kml", boundaryCacheName("field"))
+        XCTAssertEqual("boundary.kml", boundaryCacheName("area.prj.KML"))
+    }
+
+    func testOnlyACancelledPickerStaysQuietEveryOtherPickerFailureIsReported() {
+        XCTAssertTrue(userCancelled(CocoaError(.userCancelled)))
+        XCTAssertFalse(userCancelled(CocoaError(.fileReadNoPermission)))
+        XCTAssertFalse(userCancelled(URLError(.cancelled)))
+    }
 }

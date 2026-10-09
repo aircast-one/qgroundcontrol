@@ -17,14 +17,12 @@ final class GcsLocation: NSObject, CLLocationManagerDelegate {
         shared = location
         location.manager.delegate = location
         location.manager.desiredAccuracy = kCLLocationAccuracyBest
-        location.manager.headingFilter = 1
         location.manager.requestWhenInUseAuthorization()
         location.listen()
     }
 
     static func stop() {
         shared?.manager.stopUpdatingLocation()
-        shared?.manager.stopUpdatingHeading()
         shared = nil
     }
 
@@ -36,7 +34,6 @@ final class GcsLocation: NSObject, CLLocationManagerDelegate {
                 qgc_core_gcs_position_source(GcsLocation.sourceToken)
             }
             manager.startUpdatingLocation()
-            if CLLocationManager.headingAvailable() { manager.startUpdatingHeading() }
         case .denied, .restricted:
             qgc_core_gcs_position_error(GcsLocation.accessError)
         default:

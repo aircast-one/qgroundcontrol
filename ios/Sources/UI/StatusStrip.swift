@@ -566,7 +566,7 @@ private let BATTERY_RING_STROKE: CGFloat = 3
 private let BATTERY_RING_TRACK_ALPHA = 0.25
 
 func batteryPercent(_ text: String) -> Int? {
-    Int(compactStatusText(text).removingSuffix("%")).map { min(max($0, 0), 100) }
+    Int(compactStatusText(text).removingSuffix("%")).map { $0.clamped(to: 0...100) }
 }
 
 func batteryPercentNow() -> Int? { batteryReadings(Qgc.get(BATTERY)).first.flatMap { batteryPercent($0.text) } }

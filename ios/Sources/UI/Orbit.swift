@@ -12,9 +12,9 @@ func orbitReading(_ view: JSON?) -> OrbitReading? {
     guard let view, view["class"].string == "Orbit" else { return nil }
     return OrbitReading(
         available: view["available"].bool,
-        orbiting: view["orbiting"].isNull ? nil : view["orbiting"].bool,
+        orbiting: view["orbiting"].boolOrNil,
         radiusText: view["radiusText"].string,
-        clockwise: view["clockwise"].isNull ? nil : view["clockwise"].bool,
+        clockwise: view["clockwise"].boolOrNil,
         reason: view["reason"].string
     )
 }

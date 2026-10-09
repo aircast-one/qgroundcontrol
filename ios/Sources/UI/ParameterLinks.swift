@@ -23,10 +23,24 @@ private struct HtmlRun {
     var italic = false
 }
 
-private let HTML_ENTITIES = [("&nbsp;", "\u{00a0}"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&#39;", "'"), ("&apos;", "'"), ("&amp;", "&")]
+private let HTML_ENTITIES: [String: String] = [
+    "nbsp": "\u{00a0}", "lt": "<", "gt": ">", "quot": "\"", "apos": "'", "amp": "&",
+    "deg": "\u{00b0}", "ndash": "\u{2013}", "mdash": "\u{2014}", "plusmn": "\u{00b1}",
+    "micro": "\u{00b5}", "times": "\u{00d7}", "hellip": "\u{2026}", "middot": "\u{00b7}",
+]
+private let HEX_RADIX = 16
+
+private func htmlEntity(_ name: Substring) -> String? {
+    guard name.hasPrefix("#") else { return HTML_ENTITIES[String(name)] }
+    let digits = name.dropFirst()
+    let hex = digits.first == "x" || digits.first == "X"
+    return (hex ? UInt32(digits.dropFirst(), radix: HEX_RADIX) : UInt32(digits))
+        .flatMap { Unicode.Scalar($0) }
+        .map { String(Character($0)) }
+}
 
 private func htmlText(_ raw: String) -> String {
-    HTML_ENTITIES.reduce(raw) { text, entity in text.replacingOccurrences(of: entity.0, with: entity.1) }
+    raw.replacing(#/&(#[xX][0-9a-fA-F]+|#[0-9]+|[A-Za-z][A-Za-z0-9]*);/#) { match in htmlEntity(match.1) ?? String(match.0) }
 }
 
 private func htmlHref(_ tag: String) -> URL? {
@@ -38,9 +52,11 @@ private func htmlTagName(_ tag: String) -> String {
     String(tag.dropFirst().drop { $0 == "/" }.prefix { $0.isLetter || $0.isNumber }).lowercased()
 }
 
+private func isHtmlTag(_ token: String) -> Bool { token.count > 1 && token.hasPrefix("<") }
+
 private func htmlStep(_ run: HtmlRun, _ token: String) -> HtmlRun {
     var next = run
-    guard token.hasPrefix("<") else {
+    guard isHtmlTag(token) else {
         var piece = AttributedString(htmlText(token))
         piece.link = run.link
         piece.inlinePresentationIntent = (run.bold ? InlinePresentationIntent.stronglyEmphasized : []).union(run.italic ? .emphasized : [])
@@ -59,8 +75,8 @@ private func htmlStep(_ run: HtmlRun, _ token: String) -> HtmlRun {
     return next
 }
 
-private func htmlAttributed(_ html: String) -> AttributedString {
-    html.matches(of: #/<[^>]*>|[^<]+/#).map { String($0.output) }.reduce(HtmlRun(), htmlStep).text
+func htmlAttributed(_ html: String) -> AttributedString {
+    html.matches(of: #/<[A-Za-z\/!][^>]*>|<|[^<]+/#).map { String($0.output) }.reduce(HtmlRun(), htmlStep).text
 }
 
 struct LinkedText: View {

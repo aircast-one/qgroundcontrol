@@ -17,7 +17,7 @@ func firstRun(_ view: JSON?) -> FirstRun? {
         title: view["title"].string,
         vehicleHeading: view["vehicleHeading"].string,
         vehicleDescription: view["vehicleDescription"].string,
-        preferences: view["vehiclePreferences"].array.filter { $0.object != nil }.compactMap(factFromControl),
+        preferences: view["vehiclePreferences"].objects.compactMap(factFromControl),
         unitsHeading: view["unitsHeading"].string,
         unitsDescription: view["unitsDescription"].string
     )
@@ -57,7 +57,7 @@ private struct FirstRunUnits: View {
                 Text("System of units").font(.bodyLarge)
                 HStack(spacing: 8) {
                     ForEach(Array(FIRST_RUN_SYSTEMS.enumerated()), id: \.offset) { index, label in
-                        PlanChip(label: label, selected: index == chosen) {
+                        CameraChip(label: label, selected: index == chosen) {
                             let writes = firstRunSystemWrites(index == 0, rows)
                             offMainInOrder { writes.forEach { path, value in Qgc.set(path, value) } }
                         }
@@ -82,8 +82,7 @@ struct FirstRunDialog: View {
     var body: some View {
         let prompt = firstRun(view)
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .fullScreenCover(isPresented: Binding(get: { prompt != nil }, set: { shown in if !shown { close() } })) {
                 if let prompt { FirstRunPage(prompt: prompt, onClose: close) }
             }

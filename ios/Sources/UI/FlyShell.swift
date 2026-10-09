@@ -22,8 +22,18 @@ private let CAMERA_PIP_WIDTH: CGFloat = 112
 private let CAMERA_PIP_HEIGHT: CGFloat = 63
 private let FULL_SCREEN_LAYER: Double = 10
 private let MAP_LAYERS_BUTTON: CGFloat = 48
+private let COMPASS_TOGGLE_GLYPH: CGFloat = 13
 
-private var flyStore: UserDefaults { UserDefaults(suiteName: FLY_STORE) ?? .standard }
+private struct FlyPanes {
+    let box: CGSize
+    let safe: EdgeInsets
+    let cutout: EdgeInsets
+    let mapIsPip: Bool
+    let videoIsPip: Bool
+    let videoShown: Bool
+}
+
+private let flyStore = UserDefaults(suiteName: FLY_STORE) ?? .standard
 
 extension EnvironmentValues {
     @Entry var LocalRootSize: CGSize = .zero
@@ -153,6 +163,11 @@ struct FlyScreen: View {
 
     private var hasVideo: Bool { videoJson?["available"].bool == true }
     private var pipExpanded: Bool { mini != .Thumb }
+    private var videoKey: String { orientedKey(VIDEO_PIP_KEY, true) }
+    private var pipShape: RoundedRectangle { RoundedRectangle(cornerRadius: Corner.medium) }
+    private var mapPipSide: CGSize {
+        mini == .Thumb ? CGSize(width: MINIMAP_THUMB, height: MINIMAP_THUMB) : CGSize(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
+    }
 
     private func showMini(_ next: MiniMap) {
         mini = next
@@ -179,14 +194,12 @@ struct FlyScreen: View {
         let mapShown = view == .Map || (mapIsPip && mini != .Compass)
         let videoShown = view != .ThreeD && (view != .Map || videoPipShown(hasVideo, pipExpanded))
         let cutout = EdgeInsets(top: 0, leading: safe.leading, bottom: 0, trailing: safe.trailing)
-        let videoKey = orientedKey(VIDEO_PIP_KEY, true)
         let videoMoved = layout.offsets[videoKey] ?? .zero
         let pipHome = CGPoint(x: cutout.leading + Space.s3, y: box.height - cutout.bottom - Space.s3 - MINIMAP_HEIGHT)
         let pipFrame = CGRect(x: pipHome.x + videoMoved.width, y: pipHome.y + videoMoved.height, width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
         let pipNow = videoIsPip && !fullScreen
         let videoTarget = pipNow ? pipFrame : CGRect(origin: .zero, size: box)
-        let mapPipSide = mini == .Thumb ? CGSize(width: MINIMAP_THUMB, height: MINIMAP_THUMB) : CGSize(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
-        let mapPipShape = RoundedRectangle(cornerRadius: Corner.medium)
+        let panes = FlyPanes(box: box, safe: safe, cutout: cutout, mapIsPip: mapIsPip, videoIsPip: videoIsPip, videoShown: videoShown)
         ZStack(alignment: .topLeading) {
             if view == .ThreeD {
                 Viewer3DPane().frame(width: box.width, height: box.height)
@@ -214,7 +227,7 @@ struct FlyScreen: View {
                     .zIndex(fullScreen ? FULL_SCREEN_LAYER : videoIsPip ? 1 : 0)
             }
             if !fullScreen {
-                chrome(box, safe, cutout, mapIsPip: mapIsPip, videoIsPip: videoIsPip, videoShown: videoShown, mapPipSide: mapPipSide, mapPipShape: mapPipShape, videoKey: videoKey)
+                chrome(panes)
             }
         }
         .frame(width: box.width, height: box.height)
@@ -284,124 +297,142 @@ struct FlyScreen: View {
     }
 
     @ViewBuilder
-    private func chrome(_ box: CGSize, _ safe: EdgeInsets, _ cutout: EdgeInsets, mapIsPip: Bool, videoIsPip: Bool, videoShown: Bool, mapPipSide: CGSize, mapPipShape: RoundedRectangle, videoKey: String) -> some View {
-        let bottomStart = { (content: AnyView) in
-            content
-                .padding(.leading, cutout.leading + Space.s3)
-                .padding(.bottom, Space.s3)
-                .frame(width: box.width, height: box.height, alignment: .bottomLeading)
-        }
+    private func chrome(_ panes: FlyPanes) -> some View {
         LinearGradient(colors: [Color.black.opacity(TOP_SCRIM_ALPHA), .clear], startPoint: .top, endPoint: .bottom)
-            .frame(width: box.width, height: TOP_SCRIM_HEIGHT)
+            .frame(width: panes.box.width, height: TOP_SCRIM_HEIGHT)
             .allowsHitTesting(false)
-        if mapIsPip {
-            if mini == .Thumb {
-                bottomStart(AnyView(
-                    Color.clear
-                        .contentShape(mapPipShape)
-                        .frame(width: mapPipSide.width, height: mapPipSide.height)
-                        .layoutPlacement(MAP_PIP_KEY, keepOnScreen: false)
-                        .onTapGesture { showMini(.Map) }
-                        .accessibilityElement()
-                        .accessibilityLabel("Map")
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction(named: "Show the mini-map") { showMini(.Map) }
-                ))
-                .zIndex(2)
-            }
-            if mini == .Compass {
-                bottomStart(AnyView(
-                    OsdCompassDial(size: MINIMAP_HEIGHT)
-                        .frame(width: MINIMAP_HEIGHT, height: MINIMAP_HEIGHT)
-                        .avoidedByVideoMessage(COMPASS_DIAL_KEY)
-                        .clipShape(Circle())
-                        .contentShape(Circle())
-                        .onTapGesture { showMini(.Map) }
-                        .accessibilityElement()
-                        .accessibilityLabel("Compass")
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction(named: "Show the map") { showMini(.Map) }
-                ))
-                .zIndex(3)
-            }
-            if mini == .Map {
-                bottomStart(AnyView(
-                    ZStack(alignment: .topLeading) {
-                        Color.clear.contentShape(mapPipShape).onTapGesture { onView(.Map) }
-                        PipToggle(expanded: true, onToggle: togglePip)
-                        Button { showMini(.Compass) } label: {
-                            Image(.explore)
-                                .font(.system(size: 13))
-                                .foregroundStyle(theme.colors.onSurface)
-                                .frame(width: PIP_TOGGLE_SIZE, height: PIP_TOGGLE_SIZE)
-                                .background(theme.colors.surfaceContainerHigh, in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Show the compass")
-                        .frame(maxWidth: .infinity, alignment: .topTrailing)
-                        LayoutPipEditor(key: MAP_PIP_KEY, shape: AnyShape(mapPipShape))
-                    }
-                    .frame(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
-                    .clipShape(mapPipShape)
-                    .avoidedByVideoMessage(MAP_PIP_KEY)
-                    .holdToEditLayout()
-                    .layoutPlacement(MAP_PIP_KEY, keepOnScreen: true)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityLabel("Mini-map")
-                    .accessibilityAction(named: "Show the map full screen") { onView(.Map) }
-                ))
-                .zIndex(3)
-            }
+        if panes.mapIsPip {
+            mapPip(panes)
         }
-        if videoIsPip && hasVideo {
-            if pipExpanded {
-                bottomStart(AnyView(
-                    ZStack(alignment: .topLeading) {
-                        Color.clear.contentShape(Rectangle())
-                        PipToggle(expanded: true, onToggle: togglePip)
-                        LayoutPipEditor(key: VIDEO_PIP_KEY, shape: AnyShape(RoundedRectangle(cornerRadius: Corner.medium)))
-                    }
-                    .frame(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
-                    .clipShape(RoundedRectangle(cornerRadius: Corner.medium))
-                    .videoGestures(pipHandlers(videoKey))
-                    .layoutPlacement(VIDEO_PIP_KEY, keepOnScreen: true)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityLabel("Video picture-in-picture")
-                    .accessibilityAction(named: "Show the video large") { onView(.Video) }
-                    .accessibilityAction(named: "Show the video full screen") { onFullScreen() }
-                    .accessibilityAction(named: "Hide the video") { togglePip() }
-                ))
-                .zIndex(3)
-            } else {
-                bottomStart(AnyView(
-                    PipToggle(expanded: false, onToggle: togglePip)
-                        .verticalSwipe(VIDEO_SWIPE_DISTANCE) { if $0 == .Up { togglePip() } }
-                ))
-                .zIndex(3)
-            }
+        if panes.videoIsPip && hasVideo {
+            videoPip(panes)
         }
-        if mapIsPip, let camera = pipCamera {
-            CameraPipThumbnail(camera: camera) {
-                LayoutPipEditor(key: CAMERA_PIP_KEY, shape: AnyShape(RoundedRectangle(cornerRadius: Corner.medium)))
-            }
-            .frame(width: CAMERA_PIP_WIDTH, height: CAMERA_PIP_HEIGHT)
-            .avoidedByVideoMessage(CAMERA_PIP_KEY)
-            .holdToEditLayout()
-            .layoutPlacement(CAMERA_PIP_KEY, keepOnScreen: true)
-            .padding(.leading, cutout.leading + ACTION_RAIL_CLEARANCE)
-            .padding(.bottom, miniHeight(mini) + Space.s3 * 2)
-            .frame(width: box.width, height: box.height, alignment: .bottomLeading)
-            .zIndex(3)
+        if panes.mapIsPip, let camera = pipCamera {
+            cameraPip(camera, panes)
         }
-        flyChrome(box, safe, cutout, mapIsPip: mapIsPip, videoIsPip: videoIsPip, videoShown: videoShown)
+        flyChrome(panes)
             .opacity(navigation.settingsOpen ? 0 : 1)
             .zIndex(flyScreen.flightActions.deciding ? 4 : 1)
     }
 
+    private func bottomStart(_ panes: FlyPanes, @ViewBuilder _ content: () -> some View) -> some View {
+        content()
+            .padding(.leading, panes.cutout.leading + Space.s3)
+            .padding(.bottom, Space.s3)
+            .frame(width: panes.box.width, height: panes.box.height, alignment: .bottomLeading)
+    }
+
     @ViewBuilder
-    private func flyChrome(_ box: CGSize, _ safe: EdgeInsets, _ cutout: EdgeInsets, mapIsPip: Bool, videoIsPip: Bool, videoShown: Bool) -> some View {
+    private func mapPip(_ panes: FlyPanes) -> some View {
+        switch mini {
+        case .Thumb:
+            bottomStart(panes) {
+                Color.clear
+                    .contentShape(pipShape)
+                    .frame(width: mapPipSide.width, height: mapPipSide.height)
+                    .layoutPlacement(MAP_PIP_KEY, keepOnScreen: false)
+                    .onTapGesture { showMini(.Map) }
+                    .accessibilityElement()
+                    .accessibilityLabel("Map")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction(named: "Show the mini-map") { showMini(.Map) }
+            }
+            .zIndex(2)
+        case .Compass:
+            bottomStart(panes) {
+                OsdCompassDial(size: MINIMAP_HEIGHT)
+                    .frame(width: MINIMAP_HEIGHT, height: MINIMAP_HEIGHT)
+                    .avoidedByVideoMessage(COMPASS_DIAL_KEY)
+                    .clipShape(Circle())
+                    .contentShape(Circle())
+                    .onTapGesture { showMini(.Map) }
+                    .accessibilityElement()
+                    .accessibilityLabel("Compass")
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction(named: "Show the map") { showMini(.Map) }
+            }
+            .zIndex(3)
+        case .Map:
+            bottomStart(panes) {
+                ZStack(alignment: .topLeading) {
+                    Color.clear.contentShape(pipShape).onTapGesture { onView(.Map) }
+                    PipToggle(expanded: true, onToggle: togglePip)
+                    Button { showMini(.Compass) } label: {
+                        Image(.explore)
+                            .font(.system(size: COMPASS_TOGGLE_GLYPH))
+                            .foregroundStyle(theme.colors.onSurface)
+                            .frame(width: PIP_TOGGLE_SIZE, height: PIP_TOGGLE_SIZE)
+                            .background(theme.colors.surfaceContainerHigh, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Show the compass")
+                    .frame(maxWidth: .infinity, alignment: .topTrailing)
+                    LayoutPipEditor(key: MAP_PIP_KEY, shape: AnyShape(pipShape))
+                }
+                .frame(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
+                .clipShape(pipShape)
+                .avoidedByVideoMessage(MAP_PIP_KEY)
+                .holdToEditLayout()
+                .layoutPlacement(MAP_PIP_KEY, keepOnScreen: true)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Mini-map")
+                .accessibilityAction(named: "Show the map full screen") { onView(.Map) }
+            }
+            .zIndex(3)
+        }
+    }
+
+    @ViewBuilder
+    private func videoPip(_ panes: FlyPanes) -> some View {
+        if pipExpanded {
+            bottomStart(panes) {
+                ZStack(alignment: .topLeading) {
+                    Color.clear.contentShape(Rectangle())
+                    PipToggle(expanded: true, onToggle: togglePip)
+                    LayoutPipEditor(key: VIDEO_PIP_KEY, shape: AnyShape(pipShape))
+                }
+                .frame(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
+                .clipShape(pipShape)
+                .videoGestures(pipHandlers(videoKey))
+                .layoutPlacement(VIDEO_PIP_KEY, keepOnScreen: true)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Video picture-in-picture")
+                .accessibilityAction(named: "Show the video large") { onView(.Video) }
+                .accessibilityAction(named: "Show the video full screen") { onFullScreen() }
+                .accessibilityAction(named: "Hide the video") { togglePip() }
+            }
+            .zIndex(3)
+        } else {
+            bottomStart(panes) {
+                PipToggle(expanded: false, onToggle: togglePip)
+                    .verticalSwipe(VIDEO_SWIPE_DISTANCE) { if $0 == .Up { togglePip() } }
+            }
+            .zIndex(3)
+        }
+    }
+
+    private func cameraPip(_ camera: CameraEntry, _ panes: FlyPanes) -> some View {
+        CameraPipThumbnail(camera: camera) {
+            LayoutPipEditor(key: CAMERA_PIP_KEY, shape: AnyShape(pipShape))
+        }
+        .frame(width: CAMERA_PIP_WIDTH, height: CAMERA_PIP_HEIGHT)
+        .avoidedByVideoMessage(CAMERA_PIP_KEY)
+        .holdToEditLayout()
+        .layoutPlacement(CAMERA_PIP_KEY, keepOnScreen: true)
+        .padding(.leading, panes.cutout.leading + ACTION_RAIL_CLEARANCE)
+        .padding(.bottom, miniHeight(mini) + Space.s3 * 2)
+        .frame(width: panes.box.width, height: panes.box.height, alignment: .bottomLeading)
+        .zIndex(3)
+    }
+
+    @ViewBuilder
+    private func flyChrome(_ panes: FlyPanes) -> some View {
+        let box = panes.box
+        let cutout = panes.cutout
+        let mapIsPip = panes.mapIsPip
+        let videoIsPip = panes.videoIsPip
         let inner = CGSize(width: max(box.width - cutout.leading - cutout.trailing, 0), height: box.height)
-        let videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
+        let videoMessage = panes.videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
         let videoPipOpen = hasVideo && pipExpanded
         let layersBottom = PIP_TOGGLE_SIZE + Space.s3 * 2
         let railFloor = mapIsPip ? miniHeight(mini) + Space.s3 + Space.s2
@@ -437,7 +468,7 @@ struct FlyScreen: View {
                             }
                         }
                         .background(TrafficSheetHost())
-                        .padding(.top, safe.top)
+                        .padding(.top, panes.safe.top)
                         .padding(.horizontal, Space.s3)
                         .padding(.vertical, Space.s2)
                     )
@@ -465,7 +496,7 @@ struct FlyScreen: View {
             rail(mapIsPip)
                 .environment(\.LocalAvoidedByVideoMessage, true)
                 .environment(\.flyOsd, view == .Video)
-                .padding(.top, safe.top + RAIL_CLEARANCE)
+                .padding(.top, panes.safe.top + RAIL_CLEARANCE)
                 .padding(.bottom, RAIL_CLEARANCE)
                 .padding(.trailing, Space.s3)
                 .frame(width: inner.width, height: inner.height, alignment: .trailing)

@@ -24,6 +24,7 @@ struct VtolStateCell: View {
             Text(state.label)
                 .font(state.flying ? .titleMedium : .labelLarge)
                 .onTapGesture { if state.flying { confirming = true } }
+                .accessibilityAddTraits(state.flying ? .isButton : [])
                 .alert(
                     offer.map { $0.title.isBlank ? named : $0.title } ?? named,
                     isPresented: $confirming,

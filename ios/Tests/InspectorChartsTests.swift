@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import Aircast
 
@@ -33,5 +34,13 @@ final class InspectorChartsTests: XCTestCase {
     func testTheLegendReadsTheNewestSampleAndNothingBeforeOneArrives() {
         XCTAssertEqual(latestValue([ChartSample(ageMs: 900, value: 0.5), ChartSample(ageMs: 40, value: 0.02), ChartSample(ageMs: 400, value: -1.0)]), "0.02000")
         XCTAssertNil(latestValue([]))
+    }
+
+    func testASeriesColourWrapsAnyIndexTheCoreSends() {
+        let colours: [Color] = [.red, .green, .blue]
+        XCTAssertEqual(seriesColour(1, colours), .green)
+        XCTAssertEqual(seriesColour(4, colours), .green)
+        XCTAssertEqual(seriesColour(-1, colours), .blue)
+        XCTAssertEqual(seriesColour(-3, colours), .red)
     }
 }

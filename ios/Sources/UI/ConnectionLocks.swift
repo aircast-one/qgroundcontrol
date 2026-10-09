@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 private let LOCK_TAG = "aircast:vehicle"
 
@@ -30,8 +29,7 @@ struct ConnectionLocks: View {
     var body: some View {
         let connected = vehicleConnected(vehicles)
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: connected, initial: true) { _, now in VehicleLock.hold(now) }
             .onChange(of: phase) { _, now in if now == .active { VehicleLock.hold(connected) } }
             .onDisappear { VehicleLock.hold(false) }

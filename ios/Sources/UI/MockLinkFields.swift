@@ -36,14 +36,8 @@ func mockLinkArguments(_ choices: MockLinkChoices) -> [Any] {
 }
 
 func withMockVehicle(_ choices: MockLinkChoices, _ vehicle: Int) -> MockLinkChoices {
-    let picked = changed(choices) { $0.vehicle = vehicle }
-    return mockVehicleIsApm(picked) ? picked : changed(picked) { $0.freshParams = false }
-}
-
-private func changed(_ choices: MockLinkChoices, _ change: (inout MockLinkChoices) -> Void) -> MockLinkChoices {
-    var copy = choices
-    change(&copy)
-    return copy
+    let picked = withChanges(choices) { $0.vehicle = vehicle }
+    return mockVehicleIsApm(picked) ? picked : withChanges(picked) { $0.freshParams = false }
 }
 
 private struct MockCheck: View {
@@ -66,15 +60,15 @@ struct MockLinkFields: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ChoiceField(label: "Vehicle Type", value: MOCK_VEHICLES[choices.vehicle].1, options: MOCK_VEHICLES.map(\.1)) { onChange(withMockVehicle(choices, $0)) }
-            MockCheck(text: "Send status text + voice", checked: choices.sendStatusText) { on in onChange(changed(choices) { $0.sendStatusText = on }) }
-            MockCheck(text: "Enable camera", checked: choices.camera) { on in onChange(changed(choices) { $0.camera = on }) }
-            MockCheck(text: "Enable gimbal", checked: choices.gimbal) { on in onChange(changed(choices) { $0.gimbal = on }) }
-            MockCheck(text: "Enable proximity sensors", checked: choices.proximity) { on in onChange(changed(choices) { $0.proximity = on }) }
+            MockCheck(text: "Send status text + voice", checked: choices.sendStatusText) { on in onChange(withChanges(choices) { $0.sendStatusText = on }) }
+            MockCheck(text: "Enable camera", checked: choices.camera) { on in onChange(withChanges(choices) { $0.camera = on }) }
+            MockCheck(text: "Enable gimbal", checked: choices.gimbal) { on in onChange(withChanges(choices) { $0.gimbal = on }) }
+            MockCheck(text: "Enable proximity sensors", checked: choices.proximity) { on in onChange(withChanges(choices) { $0.proximity = on }) }
             if mockVehicleIsApm(choices) {
-                MockCheck(text: "Start with fresh firmware parameters (setup required)", checked: choices.freshParams) { on in onChange(changed(choices) { $0.freshParams = on }) }
+                MockCheck(text: "Start with fresh firmware parameters (setup required)", checked: choices.freshParams) { on in onChange(withChanges(choices) { $0.freshParams = on }) }
             }
             if choices.camera {
-                ChoiceField(label: "Served Video Stream", value: MOCK_VIDEO_STREAMS[choices.videoStream], options: MOCK_VIDEO_STREAMS) { picked in onChange(changed(choices) { $0.videoStream = picked }) }
+                ChoiceField(label: "Served Video Stream", value: MOCK_VIDEO_STREAMS[choices.videoStream], options: MOCK_VIDEO_STREAMS) { picked in onChange(withChanges(choices) { $0.videoStream = picked }) }
                     .padding(.top, 8)
             }
         }

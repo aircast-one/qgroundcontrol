@@ -11,6 +11,13 @@ final class ActuatorsScreenTests: XCTestCase {
         XCTAssertEqual(signWritten(1500.0, false), -1500.0)
     }
 
+    func testABitsetValueConvertsLikeKotlinsToLongSaturatingOnlyPastTheInt64Range() {
+        XCTAssertFalse(bitsetChecked(9.21e18, 0), "a value below Int64.max keeps its own bits")
+        XCTAssertTrue(bitsetChecked(1e19, 0), "past Int64.max it saturates to all ones")
+        XCTAssertFalse(bitsetChecked(.nan, 0), "NaN reads as zero")
+        XCTAssertEqual(bitsetWritten(-1e19, 0, false), Int64.min)
+    }
+
     func testGroupsSubgroupsAndChannelConfigsReadFromTheView() throws {
         let read = try XCTUnwrap(actuatorOutputs(JSON.parse(
             #"{"class":"ActuatorOutputs","available":true,"showUi":true,"groups":[{"label":"MAIN","enable":null,"groupsVisible":true,"params":[],"#

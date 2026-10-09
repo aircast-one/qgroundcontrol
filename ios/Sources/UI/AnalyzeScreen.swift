@@ -140,6 +140,8 @@ private struct AnalyzePageList: View {
     }
 }
 
+private let TOAST_SHORT_MS = 2000
+
 struct AnalyzeScreen: View {
     let page: AnalyzePage?
     let onSelect: (AnalyzePage?) -> Void
@@ -195,7 +197,7 @@ struct AnalyzeScreen: View {
             }
         }
         .task(id: toast) {
-            guard toast != nil, (try? await Task.sleep(for: .seconds(2))) != nil else { return }
+            guard toast != nil, (try? await Task.sleep(for: .milliseconds(TOAST_SHORT_MS))) != nil else { return }
             toast = nil
         }
     }

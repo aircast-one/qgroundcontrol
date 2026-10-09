@@ -6,7 +6,7 @@ private let ORBIT_SOURCE = "aircast-orbit"
 private let ORBIT_RING_SOURCE = "aircast-orbit-ring"
 private let ORBIT_LAYER = "aircast-orbit-layer"
 private let ORBIT_LABEL_LAYER = "aircast-orbit-label"
-private let ORBIT_RING_LAYER = "aircast-orbit-ring-layer"
+let ORBIT_RING_LAYER = "aircast-orbit-ring-layer"
 private let ORBIT_COLOUR = "#FFFFFF"
 private let ORBIT_ARROW_SOURCE = "aircast-orbit-arrows"
 private let ORBIT_ARROW_LAYER = "aircast-orbit-arrow-layer"
@@ -30,11 +30,12 @@ func orbitArrows(_ orbit: OrbitCircle?) -> [(TrackPoint, Double)] {
 func orbitCircle(_ view: JSON?) -> OrbitCircle? {
     guard let turning = view, turning["orbiting"].bool else { return nil }
     let centre = turning["centre"]
-    guard centre.object != nil else { return nil }
+    let latitude = centre["latitude"].double(.nan)
+    let longitude = centre["longitude"].double(.nan)
     let radius = turning["radiusMetres"].double(.nan)
-    guard !radius.isNaN, radius > 0 else { return nil }
+    guard centre.object != nil, isPlottable(latitude, longitude), !radius.isNaN, radius > 0 else { return nil }
     return OrbitCircle(
-        centre: TrackPoint(latitude: centre["latitude"].double(.nan), longitude: centre["longitude"].double(.nan)),
+        centre: TrackPoint(latitude: latitude, longitude: longitude),
         radiusMetres: radius,
         clockwise: turning["clockwise"].bool(true)
     )

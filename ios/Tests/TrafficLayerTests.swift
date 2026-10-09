@@ -11,4 +11,10 @@ final class TrafficLayerTests: XCTestCase {
         XCTAssertTrue(marks[0].alert)
         XCTAssertEqual(trafficLabel(nil, "ft", "UAL123"), "")
     }
+
+    func testABlankCallsignLeavesJustTheAltitudeWithNoTrailingBreak() {
+        XCTAssertEqual(trafficLabel(100, "ft", ""), "100 ft")
+        XCTAssertEqual(trafficLabel(100, "", ""), "100")
+        XCTAssertEqual(trafficLabel(100, "m", "AB12  "), "100 m\nAB12")
+    }
 }

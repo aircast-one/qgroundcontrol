@@ -11,6 +11,11 @@ struct TuningParam: Equatable {
     let max: Float
     let step: Float
     let fact: Fact
+
+    static func == (lhs: TuningParam, rhs: TuningParam) -> Bool {
+        lhs.title == rhs.title && lhs.description == rhs.description && lhs.fact == rhs.fact
+            && sameDouble(lhs.min, rhs.min) && sameDouble(lhs.max, rhs.max) && sameDouble(lhs.step, rhs.step)
+    }
 }
 
 struct TuningPlot: Equatable {
@@ -37,24 +42,20 @@ struct TuningTab: Equatable {
     var chartSeconds: Double = DEFAULT_CHART_SECONDS
 }
 
-private func mapObjects<T>(_ list: JSON, _ read: (JSON) -> T?) -> [T] {
-    list.array.filter { $0.object != nil }.compactMap(read)
-}
-
 func tuningTabs(_ view: JSON?) -> [TuningTab] {
     guard let view, view["available"].bool else { return [] }
-    return mapObjects(view["tabs"]) { tab in
+    return view["tabs"].objects.compactMap { tab in
         TuningTab(
             name: sentenceCase(tab["name"].string),
             title: tab["title"].string,
             unit: tab["unit"].string,
-            extras: mapObjects(tab["extras"], factFromControl),
-            axes: mapObjects(tab["axes"]) { axis in
+            extras: tab["extras"].objects.compactMap(factFromControl),
+            axes: tab["axes"].objects.compactMap { axis in
                 TuningAxis(
                     name: sentenceCase(axis["name"].string),
                     chartTitle: sentenceCase(axis["chartTitle"].string),
-                    plot: mapObjects(axis["plot"]) { TuningPlot(name: $0["name"].string, path: $0["path"].string) },
-                    params: mapObjects(axis["params"]) { param in
+                    plot: axis["plot"].objects.compactMap { TuningPlot(name: $0["name"].string, path: $0["path"].string) },
+                    params: axis["params"].objects.compactMap { param in
                         (param["fact"].object != nil ? factFromControl(param["fact"]) : nil).map { fact in
                             TuningParam(
                                 title: sentenceCase(param["title"].string),
@@ -88,7 +89,7 @@ func tuningModes(_ view: JSON?) -> TuningModes {
 func sliderSteps(_ min: Float, _ max: Float, _ step: Float) -> Int {
     guard step > 0, max > min else { return 0 }
     let count = ((max - min) / step).rounded()
-    return count.isFinite ? Swift.max(Int(count) - 1, 0) : 0
+    return Swift.max((Int(exactly: count) ?? Int.max) - 1, 0)
 }
 
 func factNumber(_ fact: Fact) -> Float? { rawNumber(fact).map(Float.init) }
@@ -153,7 +154,7 @@ struct Px4TuningScreen: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(Array(tab.axes.enumerated()), id: \.offset) { index, each in
-                                PlanChip(label: each.name, selected: each == axis) { axisIndex = index }
+                                CameraChip(label: each.name, selected: each == axis) { axisIndex = index }
                             }
                         }
                     }
@@ -162,8 +163,8 @@ struct Px4TuningScreen: View {
                     }
                     if tab.autoTuning {
                         HStack(spacing: 16) {
-                            TuningChoice(label: "Use auto-tuning", selected: useAutoTuning) { useAutoTuning = true }
-                            TuningChoice(label: "Use manual tuning", selected: !useAutoTuning) { useAutoTuning = false }
+                            RadioChoiceRow(label: "Use auto-tuning", selected: useAutoTuning) { useAutoTuning = true }
+                            RadioChoiceRow(label: "Use manual tuning", selected: !useAutoTuning) { useAutoTuning = false }
                         }
                     }
                     if tab.autoTuning && useAutoTuning {
@@ -211,25 +212,6 @@ struct Px4TuningScreen: View {
             refusal = await offMain { Qgc.writeRefusal(path, value) }
             revision += 1
         }
-    }
-}
-
-private struct TuningChoice: View {
-    let label: String
-    let selected: Bool
-    let onClick: () -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        Button(action: onClick) {
-            HStack {
-                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(selected ? theme.colors.primary : theme.colors.onSurfaceVariant)
-                Text(label).foregroundStyle(theme.colors.onSurface)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

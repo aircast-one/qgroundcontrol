@@ -55,4 +55,19 @@ final class ObstacleOverlayTests: XCTestCase {
         XCTAssertEqual(segments.count, 15 + 3)
         XCTAssertNil(videoOverlaySegments(overlay([1.0], max: 250.0), 1000, true))
     }
+
+    func testAnUnknownHeadingFallsBackToTheFirstRangeInsteadOfTrapping() {
+        let ring = overlay([1.0, 2.0, 3.0, 4.0])
+        XCTAssertEqual(rangeIndex(10.0, ring, .nan), 0)
+        XCTAssertEqual(rangeIndex(10.0, ring, .infinity), 0)
+        XCTAssertEqual(rangeIndex(10.0, overlay([1.0], increment: 1e-300), 0.0), 0)
+        XCTAssertEqual(rangeIndex(10.0, overlay([]), 0.0), 0)
+    }
+
+    func testTwoCircleStopsMapTheGradientOntoTheBandBetweenTheRadii() {
+        let stops = [GradientStop(at: 0, colour: .red), GradientStop(at: 0.5, colour: .green), GradientStop(at: 1, colour: .blue)]
+        XCTAssertEqual(twoCircleStops(50, 100, stops).map(\.at), [0.5, 0.75, 1])
+        XCTAssertEqual(twoCircleStops(0, 100, stops).map(\.at), [0, 0.5, 1])
+        XCTAssertEqual(twoCircleStops(50, 100, stops).map(\.colour), stops.map(\.colour))
+    }
 }

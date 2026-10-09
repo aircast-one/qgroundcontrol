@@ -116,8 +116,6 @@ func withinTap(_ dx: Float, _ dy: Float) -> Bool {
 
 func attachMissionEditing(
     _ mapView: MLNMapView,
-    _ map: MLNMapView,
-    _ style: MLNStyle,
     onAdd: @escaping (Double, Double) -> Void,
     onMove: @escaping (MapHit, Double, Double) -> Void,
     onSelected: @escaping (MapHit?) -> Void = { _ in },
@@ -128,7 +126,7 @@ func attachMissionEditing(
 ) {
     mapView.gestureRecognizers?.filter { $0 is MissionEditingGesture }.forEach(mapView.removeGestureRecognizer)
     let editing = MissionEditingGesture(
-        map: map,
+        map: mapView,
         onAdd: onAdd,
         onMove: onMove,
         onSelected: onSelected,
@@ -139,7 +137,6 @@ func attachMissionEditing(
     )
     let longPress = UILongPressGestureRecognizer(target: editing, action: #selector(MissionEditingGesture.longPressed(_:)))
     longPress.delegate = editing
-    editing.longPress = longPress
     let click = UITapGestureRecognizer(target: editing, action: #selector(MissionEditingGesture.clicked(_:)))
     mapView.gestureRecognizers?
         .compactMap { $0 as? UITapGestureRecognizer }
@@ -160,7 +157,6 @@ private final class MissionEditingGesture: UIGestureRecognizer, UIGestureRecogni
     private let onDragging: (MapHit?) -> Void
     private let canDrag: (MapHit) -> Bool
     private let onBlankTap: (Double, Double) -> Void
-    weak var longPress: UILongPressGestureRecognizer?
 
     private var dragging: MapHit?
     private var tapped: MapHit?

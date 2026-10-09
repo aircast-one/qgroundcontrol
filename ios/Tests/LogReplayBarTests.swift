@@ -26,4 +26,29 @@ final class LogReplayBarTests: XCTestCase {
         XCTAssertEqual(replayFileName(nil), "log-replay.tlog")
         XCTAssertEqual(replayFileName(".."), "log-replay.tlog")
     }
+
+    func testTouchingTheThumbWithoutMovingItDoesNotSeek() {
+        var scrub = ReplayScrub()
+        XCTAssertNil(scrub.edit(true))
+        XCTAssertNil(scrub.edit(false))
+        XCTAssertEqual(scrub.shown(12), 12)
+    }
+
+    func testADragShowsTheThumbAndSeeksOnceWhenReleased() {
+        var scrub = ReplayScrub()
+        XCTAssertNil(scrub.edit(true))
+        XCTAssertNil(scrub.move(30))
+        XCTAssertNil(scrub.move(40))
+        XCTAssertEqual(scrub.shown(12), 40)
+        XCTAssertEqual(scrub.edit(false), 40)
+        XCTAssertEqual(scrub.shown(12), 12)
+        XCTAssertNil(scrub.edit(true))
+        XCTAssertNil(scrub.edit(false), "a later touch does not replay the last drag")
+    }
+
+    func testAnAdjustmentOutsideADragSeeksAtOnceAndDoesNotFreezeTheBar() {
+        var scrub = ReplayScrub()
+        XCTAssertEqual(scrub.move(55), 55)
+        XCTAssertEqual(scrub.shown(12), 12)
+    }
 }

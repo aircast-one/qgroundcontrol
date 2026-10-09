@@ -8,12 +8,6 @@ extension EnvironmentValues {
 
 let SHEET_POLL_MS = 50
 
-private func changed(_ entry: SheetEntry, _ change: (inout SheetEntry) -> Void) -> SheetEntry {
-    var next = entry
-    change(&next)
-    return next
-}
-
 struct SheetEntry: Equatable {
     let id: UUID
     let depth: Int
@@ -39,11 +33,11 @@ final class SheetStack {
             entries = entries + [SheetEntry(id: id, depth: depth, dialog: dialog)]
             return
         }
-        update(id) { entry in entry.wanted ? entry : changed(entry) { $0.wanted = true; $0.pending = true } }
+        update(id) { entry in entry.wanted ? entry : withChanges(entry) { $0.wanted = true; $0.pending = true } }
     }
 
     func release(_ id: UUID) {
-        update(id) { entry in entry.shown ? changed(entry) { $0.wanted = false; $0.pending = false } : nil }
+        update(id) { entry in entry.shown ? withChanges(entry) { $0.wanted = false; $0.pending = false } : nil }
     }
 
     func abandon(_ id: UUID) {
@@ -51,12 +45,12 @@ final class SheetStack {
     }
 
     func appeared(_ id: UUID) {
-        update(id) { entry in changed(entry) { $0.shown = true } }
+        update(id) { entry in withChanges(entry) { $0.shown = true } }
     }
 
     func moved(_ from: UUID, _ to: UUID, _ depth: Int, dialog: Bool) {
         let adopted = entries.first { $0.id == to } ?? SheetEntry(id: to, depth: depth, dialog: dialog)
-        entries = entries.filter { $0.id != from && $0.id != to } + [changed(adopted) { $0.shown = true }]
+        entries = entries.filter { $0.id != from && $0.id != to } + [withChanges(adopted) { $0.shown = true }]
     }
 
     func disappeared(_ id: UUID) {
@@ -91,10 +85,22 @@ struct PresenterProbeView: UIViewRepresentable {
     func updateUIView(_ view: UIView, context: Context) { probe.view = view }
 }
 
+extension View {
+    func invisibleAnchor() -> some View { frame(width: 0, height: 0).accessibilityHidden(true) }
+}
+
 @MainActor
 func presenterFree(_ controller: UIViewController?) -> Bool {
     guard let controller, controller.viewIfLoaded?.window != nil else { return false }
     return controller.presentedViewController == nil && !controller.isBeingPresented && !controller.isBeingDismissed
+}
+
+@MainActor
+func presenterFreed(_ probe: PresenterProbe) async -> Bool {
+    while !Task.isCancelled, !presenterFree(probe.controller) {
+        try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
+    }
+    return !Task.isCancelled
 }
 
 private struct QueuedSheet<Sheet: View>: ViewModifier {
@@ -174,10 +180,46 @@ struct AircastSheet<Content: View>: View {
 
     var body: some View {
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .queuedSheet(isPresented: Binding(get: { true }, set: { shown in if !shown { onDismissRequest() } })) {
                 SheetBody(skipPartiallyExpanded: skipPartiallyExpanded, content: content)
             }
+    }
+}
+
+private struct FreePresenterAlert<Item, Actions: View, Message: View>: ViewModifier {
+    @Binding var item: Item?
+    let title: (Item) -> String
+    let actions: (Item) -> Actions
+    let message: (Item) -> Message
+    @State private var probe = PresenterProbe()
+    @State private var ready = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
+            .task(id: item != nil) {
+                ready = false
+                guard item != nil else { return }
+                ready = await presenterFreed(probe)
+            }
+            .alert(
+                item.map(title) ?? "",
+                isPresented: Binding(get: { ready && item != nil }, set: { if !$0 { item = nil } }),
+                presenting: item,
+                actions: actions,
+                message: message
+            )
+    }
+}
+
+extension View {
+    func alertWhenPresenterFree<Item, Actions: View, Message: View>(
+        _ item: Binding<Item?>,
+        title: @escaping (Item) -> String,
+        @ViewBuilder actions: @escaping (Item) -> Actions,
+        @ViewBuilder message: @escaping (Item) -> Message
+    ) -> some View {
+        modifier(FreePresenterAlert(item: item, title: title, actions: actions, message: message))
     }
 }

@@ -6,7 +6,7 @@ let ACTUATOR_TEST_STOP = "actuatorTest.stopControl"
 private let SEND_MS = 50
 private let SNAP_FRACTION = 0.15
 
-struct TestChannel: Equatable, Hashable {
+struct TestChannel: Equatable {
     let label: String
     let function: Int
     let min: Double
@@ -18,6 +18,11 @@ struct TestChannel: Equatable, Hashable {
     var snapRange: Double { (max - min) * SNAP_FRACTION }
     var from: Double { snap ? min - snapRange : min }
     var rest: Double { `default` ?? from }
+
+    static func == (lhs: TestChannel, rhs: TestChannel) -> Bool {
+        lhs.label == rhs.label && lhs.function == rhs.function && lhs.isMotor == rhs.isMotor
+            && sameDouble(lhs.min, rhs.min) && sameDouble(lhs.max, rhs.max) && sameDouble(lhs.default, rhs.default)
+    }
 }
 
 struct ActuatorTesting: Equatable {
@@ -45,7 +50,7 @@ func actuatorActions(_ view: JSON?) -> [ActuatorActionGroup] {
         ActuatorActionGroup(
             label: group["label"].string,
             type: group["type"].int(0),
-            actions: group["actions"].array.filter { $0.object != nil }.map { ActuatorActionChoice(label: $0["label"].string, function: $0["function"].int(0)) }
+            actions: group["actions"].objects.map { ActuatorActionChoice(label: $0["label"].string, function: $0["function"].int(0)) }
         )
     }
 }
@@ -95,6 +100,7 @@ struct ActuatorTestSection: View {
     var assigning: Bool = false
     let onEnabled: (Bool) -> Void
     @Environment(\.theme) private var theme
+    @Environment(\.scenePhase) private var scenePhase
     @State private var values: [Int: Double] = [:]
     @State private var moved: Set<Int> = []
     @State private var allMotors = 0.0
@@ -122,14 +128,14 @@ struct ActuatorTestSection: View {
                 }
                 ForEach(testing.actuators, id: \.function) { channel in
                     TestSlider(channel: channel, value: values[channel.function] ?? channel.rest, enabled: enabled) { value in
-                        values[channel.function] = value
-                        moved.insert(channel.function)
+                        values = values.merging([channel.function: value]) { _, new in new }
+                        moved = moved.union([channel.function])
                     }
                     .background {
                         if enabled && moved.contains(channel.function) {
                             ChannelSender(channel: channel, value: { values[channel.function] ?? channel.rest }) {
-                                values[channel.function] = channel.rest
-                                moved.remove(channel.function)
+                                values = values.merging([channel.function: channel.rest]) { _, new in new }
+                                moved = moved.subtracting([channel.function])
                             }
                         }
                     }
@@ -150,6 +156,7 @@ struct ActuatorTestSection: View {
             moved = []
         }
         .onChange(of: testing.allMotors, initial: true) { allMotors = testing.allMotors?.rest ?? 0 }
+        .onChange(of: scenePhase) { _, phase in if enabled && phase != .active { setEnabled(false) } }
         .onDisappear { offMainInOrder { Qgc.invoke(ACTUATOR_TEST_ACTIVE, false) } }
     }
 

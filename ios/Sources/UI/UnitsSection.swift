@@ -20,7 +20,7 @@ func unitFacts(_ page: JSON?) -> [Fact] {
     guard let units = page?["sections"].arrayOrNil?.first(where: { $0["group"].string == "unitsSettings" }),
           let subsections = units["subsections"].arrayOrNil else { return [] }
     return subsections.flatMap { subsection in
-        subsection["controls"].array.filter { $0.object != nil }.compactMap { factFromControl($0) }
+        subsection["controls"].objects.compactMap { factFromControl($0) }
     }
 }
 
@@ -66,11 +66,10 @@ private struct UnitSystemRow: View {
 
 struct UnitsSection: View {
     @QgcPath(GENERAL_SETTINGS) private var page
-    @QgcDouble("\(UNITS_PATH).unitSystem") private var system
+    @QgcValue("\(UNITS_PATH).unitSystem") private var system
 
     var body: some View {
-        if system.isFinite {
-            let chosen = Int(system)
+        if let chosen = system.int {
             VStack(alignment: .leading, spacing: 0) {
                 UnitSystemRow(system: chosen) { picked in
                     offMain { _ = Qgc.invoke("\(UNITS_PATH).setUnitSystem", picked) }

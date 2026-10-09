@@ -31,7 +31,7 @@ func offlineStatus(_ view: JSON?) -> OfflineStatus? {
         busy: json["busy"].bool,
         noLinks: json["noLinks"].bool,
         editAddress: json["editAddress"].bool,
-        links: json["links"].array.filter { $0.object != nil }.map {
+        links: json["links"].objects.map {
             OfflineLink(index: $0["index"].int(0), text: $0["text"].string, description: $0["description"].string, retry: $0["retry"].bool, failed: $0["failed"].bool, connected: $0["connected"].bool)
         }
     )
@@ -61,6 +61,7 @@ struct OfflineStatusSheet: View {
                     .padding(.horizontal, Space.s5)
                     .contentShape(Rectangle())
                     .onTapGesture { if shown.editAddress { openConnectionSettings(navigation, onDismiss) } }
+                    .accessibilityAddTraits(shown.editAddress ? .isButton : [])
                     if shown.noLinks {
                         Button {
                             navigation.addLinkRequested = true
@@ -73,19 +74,7 @@ struct OfflineStatusSheet: View {
                         .padding(.vertical, Space.s2)
                     }
                     ForEach(shown.links, id: \.index) { link in
-                        StatusListItem(
-                            headline: link.text,
-                            supporting: link.description,
-                            supportingColor: link.failed ? theme.colors.error : theme.colors.onSurfaceVariant
-                        ) {
-                            if link.connected {
-                                ProgressView().controlSize(.small)
-                            } else if link.retry {
-                                Text("Retry").font(.labelMedium)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
+                        Button {
                             offMain {
                                 if link.connected {
                                     Qgc.invoke("\(OFFLINE_LINKS_PATH).\(link.index).link.disconnect")
@@ -93,12 +82,28 @@ struct OfflineStatusSheet: View {
                                     LinkCommands.connect("@\(OFFLINE_LINKS_PATH).\(link.index)")
                                 }
                             }
+                        } label: {
+                            StatusListItem(
+                                headline: link.text,
+                                supporting: link.description,
+                                supportingColor: link.failed ? theme.colors.error : theme.colors.onSurfaceVariant
+                            ) {
+                                if link.connected {
+                                    ProgressView().controlSize(.small)
+                                } else if link.retry {
+                                    Text("Retry").font(.labelMedium)
+                                }
+                            }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
                     Divider()
-                    StatusListItem(headline: "Connection settings") { EmptyView() }
-                        .contentShape(Rectangle())
-                        .onTapGesture { openConnectionSettings(navigation, onDismiss) }
+                    Button { openConnectionSettings(navigation, onDismiss) } label: {
+                        StatusListItem(headline: "Connection settings") { EmptyView() }
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, Space.s6)

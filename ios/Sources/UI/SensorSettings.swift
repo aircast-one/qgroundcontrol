@@ -42,7 +42,7 @@ func sensorSettings(_ view: JSON?) -> SensorSettings? {
         boardRotation: control(view["boardRotation"]),
         boardTitle: view["boardTitle"].string,
         compassesWhileCalibrating: view["compassesWhileCalibrating"].bool,
-        compasses: view["compasses"].array.filter { $0.object != nil }.map {
+        compasses: view["compasses"].objects.map {
             CompassSettings(
                 index: $0["index"].int(0),
                 label: $0["label"].string,

@@ -142,7 +142,10 @@ enum Qgc {
     }
 
     @discardableResult
-    static func invoke(_ path: String, _ args: Any?...) -> Bool {
+    static func invoke(_ path: String, _ args: Any?...) -> Bool { invoke(path, arguments: args) }
+
+    @discardableResult
+    static func invoke(_ path: String, arguments args: [Any?]) -> Bool {
         let ok = call(path, arguments: args)?["ok"].bool ?? false
         if !ok { log.warning("invoke \(path, privacy: .public) failed") }
         return ok
@@ -153,6 +156,10 @@ enum Qgc {
     }
 
     static func refusalOf(_ path: String, _ args: Any?...) -> String? {
+        refusalOf(path, arguments: args)
+    }
+
+    static func refusalOf(_ path: String, arguments args: [Any?]) -> String? {
         refusal(call(path, arguments: args))
     }
 
@@ -167,20 +174,20 @@ enum Qgc {
     }
 
     static func facts(_ groupPath: String, _ json: JSON?) -> [Fact] {
-        (json?["facts"].arrayOrNil ?? []).filter { $0.object != nil }.map { fact(groupPath, $0) }
+        (json?["facts"].objects ?? []).map { fact(groupPath, $0) }
     }
 
-    static func factAt(_ path: String, _ json: JSON) -> Fact {
-        var made = fact("", json)
-        made.path = path
-        return made
-    }
+    static func factAt(_ path: String, _ json: JSON) -> Fact { fact(json, path: path) }
 
     static func fact(_ groupPath: String, _ json: JSON) -> Fact {
         let name = json["name"].string
-        return Fact(
-            path: groupPath.isEmpty ? name : "\(groupPath).\(name)",
-            name: name,
+        return fact(json, path: groupPath.isEmpty ? name : "\(groupPath).\(name)")
+    }
+
+    private static func fact(_ json: JSON, path: String) -> Fact {
+        Fact(
+            path: path,
+            name: json["name"].string,
             description: json["shortDescription"].string,
             units: json["units"].string,
             valueString: json["valueString"].string,

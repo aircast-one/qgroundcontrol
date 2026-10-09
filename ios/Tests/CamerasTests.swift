@@ -11,9 +11,7 @@ final class CamerasTests: XCTestCase {
            {"slot":2,"stored":null,"title":"SIYI A8","short":"SIYI","name":"SIYI A8","source":"UDP h.264 Video Stream","url":"0.0.0.0:5600","problem":null,"fromDrone":true,"active":true,"status":"live"}],
          "kinds":[
            {"raw":"RTSP Video Stream","label":"RTSP Video Stream","group":"Video streams","needsUrl":true,"hint":"rtsp://192.168.1.10:8554/live"},
-           {"raw":"Herelink Hotspot","label":"Herelink Hotspot","group":"Vehicle and radio presets","needsUrl":false,"hint":""},
-           {"raw":"Back Camera","label":"Back Camera","group":"This device","needsUrl":false,"hint":""},
-           {"raw":"Front Camera","label":"Front Camera","group":"This device","needsUrl":false,"hint":""}]}
+           {"raw":"Herelink Hotspot","label":"Herelink Hotspot","group":"Vehicle and radio presets","needsUrl":false,"hint":""}]}
         """)
 
     func testEveryCameraReadsAsOneListAndOnlyTheOperatorsOwnCanBeEdited() {
@@ -41,10 +39,12 @@ final class CamerasTests: XCTestCase {
         XCTAssertEqual(camerasReading(view)!.cameras.map(cameraDetail), ["rtsp://10.0.0.5:8554/front", "Back camera", "From the drone"])
     }
 
-    func testTheAddSheetOffersThisPhonesCamerasFirstThenPresetsNeverOneAlreadyListed() {
+    func testTheAddSheetOffersThePresetsNeverOneAlreadyListedOrOneThatNeedsAnAddress() {
         let reading = camerasReading(view)!
-        XCTAssertEqual(otherSources(reading).map(\.raw), ["Front Camera", "Herelink Hotspot"])
-        XCTAssertEqual(otherSources(reading).map(otherSourceLabel), ["This phone's front camera", "Herelink Hotspot"])
+        XCTAssertEqual(otherSources(reading).map(\.raw), ["Herelink Hotspot"])
+        XCTAssertEqual(otherSources(reading).map(otherSourceLabel), ["Herelink Hotspot"])
+        let listed = camerasReading(JSON.parse(#"{"class":"Cameras","cameras":[{"slot":0,"stored":0,"source":"Herelink Hotspot"}],"kinds":[{"raw":"Herelink Hotspot","label":"Herelink Hotspot","needsUrl":false}]}"#))
+        XCTAssertEqual(otherSources(listed), [])
         XCTAssertEqual(otherSources(nil), [])
     }
 

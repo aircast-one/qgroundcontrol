@@ -10,6 +10,7 @@ private let APP_LOG_POLL_MS = 500
 private let FILTER_DEBOUNCE_MS = 200
 private let LEVEL_WARNING = 2
 private let LEVEL_CRITICAL = 3
+private let LEVEL_STRIPE_WIDTH: CGFloat = 3
 
 struct AppLogFilter: Equatable {
     var levelIndex: Int = 0
@@ -52,7 +53,7 @@ func appLogRead(_ view: JSON?) -> AppLogRead? {
         categories: view["categories"].strings,
         regexValid: view["regexValid"].bool(true),
         first: view["first"].isNull ? nil : view["first"].int64 ?? 0,
-        entries: view["entries"].array.filter { $0.object != nil }.map { entry in
+        entries: view["entries"].objects.map { entry in
             AppLogEntry(
                 sequence: entry["sequence"].int64 ?? 0,
                 level: entry["level"].int(0),
@@ -92,11 +93,6 @@ private struct AppLogDocument: FileDocument {
     }
 }
 
-private func textOf(_ json: JSON) -> String? {
-    if case .string(let text) = json { return text }
-    return nil
-}
-
 private func levelColor(_ level: Int, _ theme: Theme) -> Color {
     switch level {
     case 0: theme.colors.onSurfaceVariant
@@ -130,6 +126,7 @@ struct AppLogPage: View {
     @State private var showCategories = false
     @State private var saveName = appLogFileName(nil)
     @State private var saving: AppLogDocument?
+    @State private var scope = ViewScope()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -175,7 +172,7 @@ struct AppLogPage: View {
                 onCategories: { showCategories = true },
                 onSave: save,
                 onClear: {
-                    Task {
+                    scope.launch {
                         _ = await offMain { Qgc.invoke(APP_LOG_CLEAR) }
                         cleared += 1
                     }
@@ -202,11 +199,12 @@ struct AppLogPage: View {
                 try? await Task.sleep(for: .milliseconds(APP_LOG_POLL_MS))
             }
         }
-        .sheet(isPresented: $showCategories) {
+        .onDisappear { scope.cancel() }
+        .queuedSheet(isPresented: $showCategories) {
             LoggingCategoriesDialog(onDismiss: { showCategories = false })
         }
         .fileExporter(
-            isPresented: Binding(get: { saving != nil }, set: { if !$0 { saving = nil } }),
+            isPresented: presented($saving),
             document: saving,
             contentType: appLogMime(saveName) == "text/csv" ? .commaSeparatedText : .plainText,
             defaultFilename: saveName
@@ -219,10 +217,10 @@ struct AppLogPage: View {
     }
 
     private func save() {
-        Task {
+        scope.launch {
             let (name, saved) = await offMain { () -> (String, String?) in
                 let name = appLogFileName(Qgc.get(APP_LOG_SAVE_FORMAT))
-                return (name, textOf(Qgc.invokeResult(APP_LOG_SAVE, name)))
+                return (name, Qgc.invokeResult(APP_LOG_SAVE, name).textOrNil)
             }
             saveName = name
             if let saved {
@@ -243,22 +241,24 @@ private struct AppLogRow: View {
         let colour = levelColor(entry.level, theme)
         VStack(alignment: .leading, spacing: 0) {
             Text(entry.message)
-                .font(.system(size: 12, design: .monospaced))
+                .monospaced()
+                .font(.bodySmall)
                 .foregroundStyle(colour)
                 .lineLimit(2)
                 .truncationMode(.tail)
             Text([entry.timestamp, entry.category, entry.source].filter { !$0.isEmpty }.joined(separator: "  "))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .monospaced()
+                .font(.labelSmall)
                 .foregroundStyle(theme.colors.onSurfaceVariant)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, Space.s1)
-        .padding(.leading, 3 + Space.s2)
+        .padding(.leading, LEVEL_STRIPE_WIDTH + Space.s2)
         .padding(.trailing, Space.s2)
         .overlay(alignment: .leading) {
-            Rectangle().fill(entry.level >= LEVEL_WARNING ? colour : .clear).frame(width: 3)
+            Rectangle().fill(entry.level >= LEVEL_WARNING ? colour : .clear).frame(width: LEVEL_STRIPE_WIDTH)
         }
         .background(index % 2 == 0 ? theme.colors.surface : theme.colors.surfaceContainer)
     }
@@ -281,28 +281,28 @@ private struct AppLogFilterBar: View {
                     OptionMenu(
                         label: sentenceCase(levels.indices.contains(filter.levelIndex) ? levels[filter.levelIndex] : "All Levels"),
                         options: levels.map(sentenceCase)
-                    ) { index in onFilter(with(filter) { $0.levelIndex = index }) }
+                    ) { index in onFilter(withChanges(filter) { $0.levelIndex = index }) }
                     let categories = read?.categories ?? []
                     OptionMenu(
                         label: sentenceCase(filter.category.ifEmpty("All Categories")),
                         options: categories.map(sentenceCase)
-                    ) { index in onFilter(with(filter) { $0.category = index == 0 ? "" : categories[index] }) }
+                    ) { index in onFilter(withChanges(filter) { $0.category = index == 0 ? "" : categories[index] }) }
                     Button("Categories", action: onCategories).buttonStyle(.bordered)
                     Button("Save", action: onSave).buttonStyle(.bordered)
                     Button("Clear", action: onClear).buttonStyle(.bordered)
                 }
             }
             HStack(spacing: Space.s2) {
-                TextField("Search…", text: Binding(get: { filter.text }, set: { text in onFilter(with(filter) { $0.text = text }) }))
+                TextField("Search…", text: Binding(get: { filter.text }, set: { text in onFilter(withChanges(filter) { $0.text = text }) }))
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .overlay {
                         if read?.regexValid == false {
-                            RoundedRectangle(cornerRadius: 6).stroke(theme.colors.error, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: Corner.extraSmall).stroke(theme.colors.error, lineWidth: 1)
                         }
                     }
-                Toggle(isOn: Binding(get: { filter.regex }, set: { regex in onFilter(with(filter) { $0.regex = regex }) })) {
+                Toggle(isOn: Binding(get: { filter.regex }, set: { regex in onFilter(withChanges(filter) { $0.regex = regex }) })) {
                     Text(".*").monospaced()
                 }
                 .toggleStyle(.button)
@@ -311,12 +311,6 @@ private struct AppLogFilterBar: View {
         .padding(Space.s2)
         .background(theme.colors.surfaceContainer)
     }
-}
-
-private func with(_ filter: AppLogFilter, _ change: (inout AppLogFilter) -> Void) -> AppLogFilter {
-    var copy = filter
-    change(&copy)
-    return copy
 }
 
 private struct OptionMenu: View {

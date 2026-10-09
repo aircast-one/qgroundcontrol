@@ -1,8 +1,6 @@
 import SwiftUI
 import os
 
-private let RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
-
 final class RcHolder: Sendable {
     private let send: @Sendable (@escaping @Sendable () -> Void) -> Void
     private let sent = OSAllocatedUnfairLock(initialState: [Int: Int]())
@@ -59,8 +57,6 @@ private let RC_RELEASE_GRACE_MS = 300
         if rcLayersShown == 0 { customRcControls.release() }
     }
 }
-
-private func uptimeMillis() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
 
 private struct ControlLabel: View {
     let text: String
@@ -192,7 +188,7 @@ private struct RcMomentary: View {
 
 struct RcControlsLayer: View {
     @HasVehicle private var hasVehicle
-    @QgcString(settingControl(RC_CONTROLS_FACT)) private var configured
+    @QgcString(settingControl(RC_CONTROLS)) private var configured
     @QgcPath(FLY_STATE) private var stateJson
     @Environment(\.theme) private var theme
 
@@ -201,8 +197,7 @@ struct RcControlsLayer: View {
         let overriding = flyState(stateJson)?.rcOverride == true
         ZStack {
             Color.clear
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
+                .invisibleAnchor()
                 .onAppear { rcLayerShown() }
                 .onDisappear { rcLayerGone() }
             if !controls.isEmpty && hasVehicle {

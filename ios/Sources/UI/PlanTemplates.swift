@@ -35,7 +35,7 @@ struct NewPlanDialog: View {
                 Text(replacing ? "Replaces the plan you are editing. Templates start at the map centre." : "Templates start at the map centre.")
                     .font(.bodyMedium)
                     .foregroundStyle(theme.colors.onSurfaceVariant)
-                ForEach(templateChoices(state), id: \.1) { name, label in
+                ForEach(templateChoices(state), id: \.0) { name, label in
                     Button(label) { onPick(name) }
                         .buttonStyle(.borderless)
                         .frame(minHeight: 40)

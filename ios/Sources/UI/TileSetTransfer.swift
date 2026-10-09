@@ -31,15 +31,7 @@ private func importedRefusal(_ source: URL, _ replace: Bool) -> String? {
     }
     try? FileManager.default.removeItem(at: staged)
     let copied = (try? FileManager.default.copyItem(at: source, to: staged)) != nil
-    return copied ? refusal(Qgc.call(OFFLINE_IMPORT, staged.path, replace)) : "That file could not be read."
-}
-
-@MainActor
-func presenterFreed(_ probe: PresenterProbe) async -> Bool {
-    while !Task.isCancelled, !presenterFree(probe.controller) {
-        try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
-    }
-    return !Task.isCancelled
+    return copied ? Qgc.refusalOf(OFFLINE_IMPORT, staged.path, replace) : "That file could not be read."
 }
 
 struct TileSetTransfer: View {
@@ -63,14 +55,14 @@ struct TileSetTransfer: View {
                 guard case .success(let source) = result else { return }
                 running = .Importing
                 let replacing = replace
-                Task { finish(await offMain { importedRefusal(source, replacing) }) }
+                scope.launch { finish(await offMain { importedRefusal(source, replacing) }) }
             }
             ActionLine(label: "Export map tiles", button: "Export…", enabled: running == nil) {
                 chosen = []
                 choosingSets = true
             }
             .fileMover(
-                isPresented: Binding(get: { exported != nil }, set: { if !$0 { exported = nil } }),
+                isPresented: presented($exported),
                 file: exported,
                 onCompletion: { result in
                     try? FileManager.default.removeItem(at: staging(EXPORT_NAME))
@@ -91,7 +83,7 @@ struct TileSetTransfer: View {
         }
         .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
         .onDisappear { scope.cancel() }
-        .sheet(isPresented: $choosingSets) { exportChooser(picked) }
+        .queuedSheet(isPresented: $choosingSets) { exportChooser(picked) }
         .confirmationDialog("Import tile sets", isPresented: $choosingMode, titleVisibility: .visible) {
             Button("Append to existing sets") { pickImport(false) }
             Button("Replace existing sets") { pickImport(true) }
@@ -138,7 +130,7 @@ struct TileSetTransfer: View {
                 let files = FileManager.default
                 try? files.removeItem(at: staged)
                 try? files.removeItem(at: named)
-                let refused = refusal(Qgc.call(OFFLINE_EXPORT, arguments: arguments))
+                let refused = Qgc.refusalOf(OFFLINE_EXPORT, arguments: arguments)
                     ?? ((try? files.moveItem(at: staged, to: named)) == nil ? "That file could not be written." : nil)
                 try? files.removeItem(at: staged)
                 return refused

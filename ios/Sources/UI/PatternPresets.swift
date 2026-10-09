@@ -10,10 +10,6 @@ func presetKind(_ view: JSON?) -> String? {
 
 func presetNames(_ view: JSON?) -> [String] { view?["names"].strings ?? [] }
 
-private func presetRefusal(_ path: String, _ args: [Any]) -> String? {
-    refusal(Qgc.call(path, arguments: args))
-}
-
 struct PatternPresets: View {
     let index: Int
     let kind: String
@@ -97,7 +93,7 @@ struct PatternPresets: View {
 
     private func act(_ path: String, _ args: [Any], then: @escaping () -> Void = {}) {
         Task {
-            refusal = await offMain { presetRefusal(path, args) }
+            refusal = await offMain { Qgc.refusalOf(path, arguments: args) }
             revision += 1
             if refusal == nil { then() }
         }

@@ -17,8 +17,7 @@ struct ResumeFailedPrompt: View {
     var body: some View {
         let dialogs = AppDialogsState.shared
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: resumeCleared(actions), initial: true) { _, cleared in
                 if cleared { dialogs.resumeDismissed = nil }
             }
@@ -33,8 +32,7 @@ struct ResumeFailedDialog: View {
 
     var body: some View {
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .alert("Resume FAILED", isPresented: .constant(true)) {
                 Button("Confirm") {
                     onDismiss()

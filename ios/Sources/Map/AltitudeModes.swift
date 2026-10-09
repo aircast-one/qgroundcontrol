@@ -24,7 +24,7 @@ struct AltitudeModesView: Equatable {
 func altitudeModesPath(_ context: String, _ current: Int) -> String { "view.altitudeModes(\(context),\(current))" }
 
 private func offers(_ view: JSON?, _ key: String) -> [AltitudeModeOffer] {
-    (view?[key].arrayOrNil ?? []).filter { $0.object != nil }.map {
+    (view?[key].objects ?? []).map {
         AltitudeModeOffer(
             raw: $0["raw"].int(-1),
             title: $0["title"].string,

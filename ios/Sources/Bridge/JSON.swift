@@ -17,9 +17,6 @@ enum JSON: Equatable, Hashable, Sendable {
         case let list as [Any]: self = .array(list.map(JSON.init))
         case let map as [String: Any]: self = .object(map.mapValues(JSON.init))
         case let value as JSON: self = value
-        case let value as Bool: self = .bool(value)
-        case let value as Int: self = .number(Double(value))
-        case let value as Double: self = .number(value)
         default: self = .null
         }
     }
@@ -63,12 +60,14 @@ enum JSON: Equatable, Hashable, Sendable {
         return []
     }
 
+    var objectOrNil: JSON? { object != nil ? self : nil }
+
+    var objects: [JSON] { array.filter { $0.object != nil } }
+
     var arrayOrNil: [JSON]? {
         if case .array(let list) = self { return list }
         return nil
     }
-
-    var keys: [String] { object.map { Array($0.keys) } ?? [] }
 
     var stringOrNil: String? {
         switch self {
@@ -77,6 +76,11 @@ enum JSON: Equatable, Hashable, Sendable {
         case .bool(let value): value ? "true" : "false"
         default: nil
         }
+    }
+
+    var textOrNil: String? {
+        if case .string(let text) = self { return text }
+        return nil
     }
 
     var string: String { stringOrNil ?? "" }
@@ -93,6 +97,13 @@ enum JSON: Equatable, Hashable, Sendable {
     }
 
     func double(_ fallback: Double) -> Double { double ?? fallback }
+
+    var nonNanDouble: Double? { double.flatMap { $0.isNaN ? nil : $0 } }
+
+    var numberOrNil: Double? {
+        if case .number(let value) = self { return value }
+        return nil
+    }
 
     var int: Int? { double.flatMap { $0.isFinite ? Int(exactly: $0.rounded(.towardZero)) : nil } }
 

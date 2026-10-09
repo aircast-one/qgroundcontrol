@@ -22,7 +22,7 @@ func modeSlotsView(_ view: JSON?) -> ModeSlotsView? {
     guard let view, view["available"].bool else { return nil }
     return ModeSlotsView(
         channel: view["channel"].int(0),
-        slots: view["slots"].array.filter { $0.object != nil }.map {
+        slots: view["slots"].objects.map {
             ModeSlot(slot: $0["slot"].int(0), mode: $0["mode"].string, live: $0["live"].bool)
         },
         reason: view["reason"].string,

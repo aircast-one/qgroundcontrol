@@ -23,7 +23,7 @@ struct GpsResilience: Equatable {
 }
 
 private func mark(_ json: JSON, _ key: String) -> ResilienceMark {
-    json[key].object == nil ? ResilienceMark(shown: false, colour: "") : ResilienceMark(shown: json[key]["shown"].bool, colour: json[key]["colour"].string)
+    json[key].objectOrNil.map { ResilienceMark(shown: $0["shown"].bool, colour: $0["colour"].string) } ?? ResilienceMark(shown: false, colour: "")
 }
 
 func gpsResilience(_ view: JSON?) -> GpsResilience? {
@@ -31,10 +31,10 @@ func gpsResilience(_ view: JSON?) -> GpsResilience? {
     return GpsResilience(
         interference: mark(it, "interference"),
         authentication: mark(it, "authentication"),
-        sections: it["sections"].array.filter { $0.object != nil }.map { section in
+        sections: it["sections"].objects.map { section in
             ResilienceSection(
                 title: section["title"].string,
-                rows: section["rows"].array.filter { $0.object != nil }.map { ($0["label"].string, $0["text"].string) }
+                rows: section["rows"].objects.map { ($0["label"].string, $0["text"].string) }
             )
         }
     )

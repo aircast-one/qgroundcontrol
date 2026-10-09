@@ -3,6 +3,8 @@ import SwiftUI
 let PLAN_DEFAULT_KEYS = ["altitude", "cruise", "hover", "ascent", "descent"]
 
 private let SPEEDS_SET_BY_FLIGHT_SPEED: Set<String> = ["cruise", "hover"]
+private let FLIGHT_SPEED_USED = "The mission flight speed is used instead"
+private let DEFAULT_ALTITUDE_SUFFIX = ".defaultMissionItemAltitude"
 
 func planDefaults(_ view: JSON?) -> [Fact] {
     guard let served = view?["defaults"], served.object != nil else { return [] }
@@ -10,10 +12,10 @@ func planDefaults(_ view: JSON?) -> [Fact] {
     return PLAN_DEFAULT_KEYS.compactMap { key in
         guard served[key].object != nil, let fact = factFromControl(served[key]) else { return nil }
         guard flightSpeedSpecified, SPEEDS_SET_BY_FLIGHT_SPEED.contains(key) else { return fact }
-        var held = fact
-        held.enabled = false
-        held.disabledReason = "The mission flight speed is used instead"
-        return held
+        return withChanges(fact) {
+            $0.enabled = false
+            $0.disabledReason = FLIGHT_SPEED_USED
+        }
     }
 }
 
@@ -29,8 +31,9 @@ struct PlanDefaultsDialog: View {
 
     var body: some View {
         let facts = planDefaults(view)
-        let altitude = facts.filter { $0.path.hasSuffix(".defaultMissionItemAltitude") }
-        let speeds = facts.filter { !$0.path.hasSuffix(".defaultMissionItemAltitude") }
+        let grouped = Dictionary(grouping: facts) { $0.path.hasSuffix(DEFAULT_ALTITUDE_SUFFIX) }
+        let altitude = grouped[true] ?? []
+        let speeds = grouped[false] ?? []
         let flightSpeed = speedSectionOf(view?["defaults"]["flightSpeed"])
         PlanDialog(title: "Plan defaults", onDismiss: onDismiss) {
             VStack(alignment: .leading, spacing: Space.s1) {

@@ -34,8 +34,7 @@ struct BlocksNavigation: View {
 
     var body: some View {
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: blocking, initial: true) { _, now in
                 if now {
                     navigation.blockedReason = reason

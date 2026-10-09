@@ -1,5 +1,10 @@
 import SwiftUI
 
+private let CHIP_ICON_SIZE: CGFloat = 12
+private let CHIP_HEIGHT: CGFloat = 32
+private let MIN_TOUCH_TARGET: CGFloat = 48
+private let OBSTACLE_OVERLAY = "settings.flyViewSettings.showObstacleDistanceOverlay"
+
 struct MapLayersSheet: View {
     let onDismiss: () -> Void
     @State private var listed: MapTypes?
@@ -68,19 +73,17 @@ private struct MapTypeChip: View {
     var body: some View {
         Button(action: onClick) {
             HStack(spacing: Space.s1) {
-                if selected { Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)) }
+                if selected { Image(.check).font(.system(size: CHIP_ICON_SIZE, weight: .semibold)) }
                 Text(type).font(.labelLarge).lineLimit(1)
             }
             .padding(.horizontal, Space.s3)
-            .frame(height: 32)
+            .frame(height: CHIP_HEIGHT)
             .foregroundStyle(selected ? theme.colors.onSecondaryContainer : theme.colors.onSurfaceVariant)
             .background(selected ? theme.colors.secondaryContainer : .clear, in: RoundedRectangle(cornerRadius: Corner.small))
             .overlay(RoundedRectangle(cornerRadius: Corner.small).stroke(selected ? .clear : theme.colors.outline, lineWidth: 1))
-            .frame(height: 48)
+            .frame(height: MIN_TOUCH_TARGET)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 }
-
-private let OBSTACLE_OVERLAY = "settings.flyViewSettings.showObstacleDistanceOverlay"

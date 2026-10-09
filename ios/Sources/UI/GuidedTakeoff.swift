@@ -16,18 +16,14 @@ func guidedTakeoffPath(_ target: Double) -> String {
     "\(GUIDED_TAKEOFF)(\(String(format: "%.2f", target)))"
 }
 
-private func numberOrNull(_ view: JSON, _ key: String) -> Double? {
-    view[key].isNull ? nil : view[key].double.flatMap { $0.isNaN ? nil : $0 }
-}
-
 func guidedTakeoff(_ view: JSON?) -> GuidedTakeoff? {
     guard let view, view["available"].bool else { return nil }
     return GuidedTakeoff(
         label: view["label"].string,
         unit: view["unit"].string,
-        initial: numberOrNull(view, "initial"),
-        minimum: numberOrNull(view, "minimum"),
-        maximum: numberOrNull(view, "maximum"),
+        initial: view["initial"].nonNanDouble,
+        minimum: view["minimum"].nonNanDouble,
+        maximum: view["maximum"].nonNanDouble,
         sentence: view["sentence"].isNull ? "" : view["sentence"].string,
         targetMeters: view["targetMeters"].double(0)
     )

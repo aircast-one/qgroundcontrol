@@ -100,6 +100,10 @@ final class CameraTimelapseTests: XCTestCase {
         XCTAssertEqual(lapsePlan(cameraReading(view())!), "every 5 s, 10 shots")
         XCTAssertEqual(lapsePlan(cameraReading(view(lapseSeconds: "2.5"))!), "every 2.5 s, 10 shots")
     }
+
+    func testAnIntervalBeyondTheIntegerRangeIsWrittenOutRatherThanCrashing() {
+        XCTAssertEqual(lapsePlan(cameraReading(view(lapseSeconds: "1e19"))!), "every 10000000000000000000.0 s, 10 shots")
+    }
 }
 
 final class CameraDetailsTests: XCTestCase {
@@ -148,5 +152,10 @@ final class CameraZoomTests: XCTestCase {
 
     func testTheZoomChipStatesWhereTheZoomIs() {
         XCTAssertEqual(zoomText(camera()), "50%")
+    }
+
+    func testAZoomBeyondTheIntegerRangeSaturatesLikeKotlinRatherThanCrashing() {
+        XCTAssertEqual(zoomText(camera(level: 1e300)), "\(Int.max)%")
+        XCTAssertEqual(zoomText(camera(level: -1e300)), "\(Int.min)%")
     }
 }

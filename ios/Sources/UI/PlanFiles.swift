@@ -55,7 +55,7 @@ private func copyOut(_ from: URL, _ target: URL) -> Bool {
 }
 
 func patternNames(_ view: JSON?) -> [String] {
-    (view?["patterns"].arrayOrNil ?? []).filter { $0.object != nil }.map { $0["name"].string }.filter { !$0.isBlank }
+    (view?["patterns"].objects ?? []).map { $0["name"].string }.filter { !$0.isBlank }
 }
 
 private func patternNames() -> [String] { patternNames(Qgc.get(PLAN_STATUS_VIEW)) }
@@ -280,10 +280,7 @@ final class PlanFileActions {
     fileprivate func cancel() { scope.cancel() }
 
     private func whenPresenterFree(_ change: @MainActor () -> Void) async {
-        while !Task.isCancelled, !presenterFree(probe.controller) {
-            try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
-        }
-        if !Task.isCancelled { change() }
+        if await presenterFreed(probe) { change() }
     }
 
     private func present(_ change: @escaping @MainActor () -> Void) {
@@ -354,10 +351,15 @@ final class PlanFileActions {
     }
 
     fileprivate func picked(_ result: Result<[URL], Error>) {
-        guard case .success(let uris) = result, !uris.isEmpty else { return }
-        switch picker {
-        case .open: openFrom(uris[0])
-        case .importBoundary: chooseBoundary(uris)
+        switch result {
+        case .failure(let error):
+            if !userCancelled(error) { onResult(FILE_NOT_OPENED) }
+        case .success(let uris):
+            guard let first = uris.first else { return }
+            switch picker {
+            case .open: openFrom(first)
+            case .importBoundary: chooseBoundary(uris)
+            }
         }
     }
 
@@ -398,7 +400,7 @@ final class PlanFileActions {
                 onResult("Plan saved.")
             }
         case .failure(let error):
-            if (error as? CocoaError)?.code == .userCancelled { return }
+            if userCancelled(error) { return }
             onResult(export.kml ? "The KML was written but could not be copied out." : "The plan was written but could not be copied out.")
         }
     }

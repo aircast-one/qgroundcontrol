@@ -21,8 +21,7 @@ struct PreflightChecklistReset: View {
 
     var body: some View {
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: available, initial: true) { _, now in
                 guard !now else { return }
                 checklist.ticked = []
@@ -56,8 +55,7 @@ struct PreflightChecklist: View {
         let vehicleId = activeVehicleId(vehiclesJson)
         let passed = checklistIsComplete(checks, checklist.ticked)
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: vehicleId, initial: true) { _, now in
                 guard checklist.vehicleId != now else { return }
                 checklist.vehicleId = now

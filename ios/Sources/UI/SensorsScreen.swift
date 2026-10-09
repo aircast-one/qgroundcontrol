@@ -4,6 +4,7 @@ private let CAL = "sensorsCal"
 let SENSOR_FACTORY_RESET = "sensorSettings.factoryReset"
 
 private let CAL_START_MS = 5000
+private let CAL_START_POLL_MS = 150
 
 func calibrationFailure(_ name: String, _ started: Bool) -> String? {
     started ? nil : "\(name) calibration did not start."
@@ -210,7 +211,7 @@ private struct RunningCalibration: View {
                         .rotationEffect(.degrees(-90))
                     VStack(spacing: 0) {
                         Image(.sensors).font(.system(size: 40)).foregroundStyle(theme.colors.primary)
-                        Text("\(Int(state.progress * 100))%").font(.headlineMedium)
+                        Text("\(progressPercent(state.progress))%").font(.headlineMedium)
                     }
                 }
                 .frame(width: CALIBRATION_RING, height: CALIBRATION_RING)
@@ -240,11 +241,16 @@ private struct RunningCalibration: View {
     }
 }
 
+func progressPercent(_ progress: Double) -> Int {
+    Int(exactly: (progress * 100).rounded(.towardZero)) ?? 0
+}
+
 private func calibrationStarted(_ before: String) async -> Bool {
-    let deadline = Date().addingTimeInterval(Double(CAL_START_MS) / 1000)
-    while Date() < deadline, !Task.isCancelled {
+    let clock = ContinuousClock()
+    let deadline = clock.now + .milliseconds(CAL_START_MS)
+    while clock.now < deadline, !Task.isCancelled {
         if await offMain({ calibrationBegan(calibrationRunning(), before, calibrationStatus()) }) { return true }
-        try? await Task.sleep(for: .milliseconds(150))
+        try? await Task.sleep(for: .milliseconds(CAL_START_POLL_MS))
     }
     return false
 }
@@ -267,7 +273,7 @@ struct SensorsScreen: View {
 
     var body: some View {
         let state = calibrationState(json)
-        Group {
+        ZStack(alignment: .top) {
             if !hasVehicle {
                 SensorsNotice(text: "Connect a vehicle to calibrate its sensors.")
             } else if let state {
@@ -284,7 +290,7 @@ struct SensorsScreen: View {
     private func screen(_ state: CalibrationState) -> some View {
         let prompt = rebootPrompt
         let picked = pending
-        Group {
+        ZStack(alignment: .top) {
             if state.inProgress {
                 RunningCalibration(name: runningName, state: state)
             } else {

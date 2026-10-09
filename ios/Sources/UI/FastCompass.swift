@@ -15,12 +15,6 @@ struct FastCompassChoice: Equatable {
     var longitude: String
     var useMap: Bool = false
     var mapPosition: TrackPoint? = nil
-
-    func with(_ change: (inout FastCompassChoice) -> Void) -> FastCompassChoice {
-        var next = self
-        change(&next)
-        return next
-    }
 }
 
 func fastCompass(_ json: JSON?) -> FastCompass? {
@@ -60,22 +54,22 @@ struct FastCompassBlock: View {
         let shownMap = choice.useMap ? choice.mapPosition : nil
         VStack(alignment: .leading, spacing: Space.s2) {
             Text(fast.help).font(.bodySmall)
-            LabeledCheckbox(label: "Fast Calibration", checked: choice.enabled) { on in onChange(choice.with { $0.enabled = on }) }
+            LabeledCheckbox(label: "Fast Calibration", checked: choice.enabled) { on in onChange(withChanges(choice) { $0.enabled = on }) }
             if asksForPosition {
                 Text("Vehicle has no valid position, please provide it").font(.bodySmall)
             }
             if asksForPosition && fast.gcsLatitude != nil {
-                LabeledCheckbox(label: "Use GCS position instead", checked: choice.useGcs) { on in onChange(choice.with { $0.useGcs = on }) }
+                LabeledCheckbox(label: "Use GCS position instead", checked: choice.useGcs) { on in onChange(withChanges(choice) { $0.useGcs = on }) }
             }
             if asksForPosition && fast.gcsLatitude == nil && choice.mapPosition != nil {
-                LabeledCheckbox(label: "Use current map position instead", checked: choice.useMap) { on in onChange(choice.with { $0.useMap = on }) }
+                LabeledCheckbox(label: "Use current map position instead", checked: choice.useMap) { on in onChange(withChanges(choice) { $0.useMap = on }) }
             }
             if let shownMap {
                 Text(String(format: "Lat: %.4f Lon: %.4f", shownMap.latitude, shownMap.longitude)).font(.bodySmall)
             }
             if choice.enabled && !choice.useGcs && shownMap == nil {
-                CoordinateField(label: "Latitude", value: choice.latitude) { typed in onChange(choice.with { $0.latitude = typed }) }
-                CoordinateField(label: "Longitude", value: choice.longitude) { typed in onChange(choice.with { $0.longitude = typed }) }
+                CoordinateField(label: "Latitude", value: choice.latitude) { typed in onChange(withChanges(choice) { $0.latitude = typed }) }
+                CoordinateField(label: "Longitude", value: choice.longitude) { typed in onChange(withChanges(choice) { $0.longitude = typed }) }
             }
         }
     }

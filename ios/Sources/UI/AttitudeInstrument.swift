@@ -15,22 +15,18 @@ struct Attitude: Equatable {
     let noseUp: Bool
 }
 
-private func optAngle(_ json: JSON, _ key: String) -> Double? {
-    json[key].isNull ? nil : json[key].double.flatMap { $0.isNaN ? nil : $0 }
-}
-
 let NO_VEHICLE_ATTITUDE = Attitude(roll: 0, pitch: 0, heading: 0, headingText: "", courseOverGround: nil, headingToHome: nil, headingToNextWaypoint: nil, noseUp: false)
 
 func attitude(_ view: JSON?) -> Attitude? {
     guard let view, view["available"].bool else { return nil }
     return Attitude(
-        roll: optAngle(view, "roll") ?? 0,
-        pitch: optAngle(view, "pitch") ?? 0,
-        heading: optAngle(view, "heading") ?? 0,
+        roll: view["roll"].nonNanDouble ?? 0,
+        pitch: view["pitch"].nonNanDouble ?? 0,
+        heading: view["heading"].nonNanDouble ?? 0,
         headingText: view["headingText"].string,
-        courseOverGround: optAngle(view, "courseOverGround"),
-        headingToHome: optAngle(view, "headingToHome"),
-        headingToNextWaypoint: optAngle(view, "headingToNextWaypoint"),
+        courseOverGround: view["courseOverGround"].nonNanDouble,
+        headingToHome: view["headingToHome"].nonNanDouble,
+        headingToNextWaypoint: view["headingToNextWaypoint"].nonNanDouble,
         noseUp: view["noseUp"].bool
     )
 }

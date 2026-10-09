@@ -12,8 +12,11 @@ func osdBackdrop(_ color: Color, _ flyOsd: Bool) -> Color { flyOsd ? .clear : co
 func osdTint(_ color: Color, _ osdColor: Color, _ flyOsd: Bool) -> Color { flyOsd ? osdColor : color }
 
 extension View {
-    func osdShadow() -> some View {
-        shadow(color: .black, radius: OSD_SHADOW_BLUR, x: 0, y: OSD_SHADOW_DROP)
-            .shadow(color: .black, radius: OSD_SHADOW_BLUR, x: 0, y: OSD_SHADOW_DROP)
+    func osdShadow(_ on: Bool = true) -> some View {
+        let color: Color = on ? .black : .clear
+        let radius = on ? OSD_SHADOW_BLUR : 0
+        let drop = on ? OSD_SHADOW_DROP : 0
+        return shadow(color: color, radius: radius, x: 0, y: drop)
+            .shadow(color: color, radius: radius, x: 0, y: drop)
     }
 }

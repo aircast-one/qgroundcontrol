@@ -3,6 +3,10 @@ import SwiftUI
 let CAMERA_SETTINGS_VIEW = "view.cameraSettings"
 let CAMERA_SETTING_SET = "cameraSettings.set"
 private let CAMERA_SETTINGS_POLL_MS = 1000
+private let CAMERA_SLIDER_MAX_INTERVALS = 1001.0
+private let CAMERA_CONTROL_WIDTH: CGFloat = 180
+private let CAMERA_SETTINGS_SPACING: CGFloat = 6
+private let CAMERA_SETTINGS_INSET: CGFloat = 20
 
 struct CameraOption: Equatable {
     let label: String
@@ -29,23 +33,24 @@ private func number(_ parameter: JSON, _ key: String) -> Double? {
     parameter.has(key) ? parameter[key].double.flatMap { $0.isNaN ? nil : $0 } : nil
 }
 
-private func numeric(_ value: JSON) -> Double? {
-    if case .number(let number) = value { return number }
-    return nil
-}
-
 func cameraSettingControl(_ parameter: JSON) -> CameraSettingControl {
-    let listed = parameter["options"].array.filter { $0.object != nil }.map { CameraOption(label: $0["label"].string, value: $0["value"]) }
+    let listed = parameter["options"].objects.map { CameraOption(label: $0["label"].string, value: $0["value"]) }
     let value = parameter["value"]
     let step = number(parameter, "step")
     let min = number(parameter, "min")
     let max = number(parameter, "max")
     if parameter["isBool"].bool {
-        return .Toggle(on: value == .bool(true) || numeric(value).map { $0.isFinite && Int($0) == 1 } == true)
+        return .Toggle(on: value == .bool(true) || value.numberOrNil.map { $0.rounded(.towardZero) == 1 } == true)
     }
     if !listed.isEmpty { return .Choice(options: listed, selected: parameter["selected"].int(-1)) }
-    if let step, let min, let max { return .Range(min: min, max: max, step: step, value: numeric(value) ?? min) }
+    if let step, let min, let max { return .Range(min: min, max: max, step: step, value: value.numberOrNil ?? min) }
     return .Entry(text: value.isNull ? "" : value.stringOrNil ?? value.text)
+}
+
+func cameraSliderStep(_ min: Double, _ max: Double, _ step: Double) -> Double? {
+    let ratio = ((max - min) / step).rounded(.towardZero)
+    let intervals = ratio.isNaN ? 0 : Swift.min(ratio, CAMERA_SLIDER_MAX_INTERVALS)
+    return max > min && intervals >= 2 ? (max - min) / intervals : nil
 }
 
 func cameraSettings(_ view: JSON?) -> [CameraSetting] {
@@ -62,9 +67,10 @@ struct CameraDefinitionSettings: View {
     @Environment(\.theme) private var theme
     @State private var settings: [CameraSetting] = []
     @State private var refusal: String?
+    @State private var scope = ViewScope()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: CAMERA_SETTINGS_SPACING) {
             ForEach(settings) { setting in
                 CameraSettingRow(setting: setting) { write(setting.name, $0) }
             }
@@ -72,17 +78,22 @@ struct CameraDefinitionSettings: View {
                 Text(refusal).font(.bodySmall).foregroundStyle(theme.colors.error)
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, CAMERA_SETTINGS_INSET)
         .task {
             while !Task.isCancelled {
                 settings = await offMain { cameraSettings(Qgc.get(CAMERA_SETTINGS_VIEW)) }
                 try? await Task.sleep(for: .milliseconds(CAMERA_SETTINGS_POLL_MS))
             }
         }
+        .onDisappear { scope.cancel() }
     }
 
     private func write(_ name: String, _ value: JSON) {
-        Task { refusal = await offMain { Qgc.refusalOf(CAMERA_SETTING_SET, name, value) } }
+        scope.launch {
+            let refused = await offMain { Qgc.refusalOf(CAMERA_SETTING_SET, name, value) }
+            guard !Task.isCancelled else { return }
+            refusal = refused
+        }
     }
 }
 
@@ -129,15 +140,14 @@ private struct CameraRangeControl: View {
     var body: some View {
         let shown = Binding(get: { dragged ?? value }, set: { dragged = $0 })
         let finished: (Bool) -> Void = { editing in if !editing { onWrite(shown.wrappedValue) } }
-        let steps = Int((max - min) / step) - 1
         Group {
-            if max > min, step > 0, (0...1000).contains(steps) {
-                Slider(value: shown, in: min...max, step: step, onEditingChanged: finished)
+            if let stepped = cameraSliderStep(min, max, step) {
+                Slider(value: shown, in: min...max, step: stepped, onEditingChanged: finished)
             } else {
                 Slider(value: shown, in: min...Swift.max(max, min + 1), onEditingChanged: finished)
             }
         }
-        .frame(width: 180)
+        .frame(width: CAMERA_CONTROL_WIDTH)
         .onChange(of: value) { dragged = nil }
     }
 }
@@ -152,7 +162,7 @@ private struct CameraEntryControl: View {
             .textFieldStyle(.roundedBorder)
             .submitLabel(.done)
             .onSubmit { onWrite(typed) }
-            .frame(width: 180)
+            .frame(width: CAMERA_CONTROL_WIDTH)
             .onChange(of: text, initial: true) { typed = text }
     }
 }

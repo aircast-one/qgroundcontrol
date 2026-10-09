@@ -22,4 +22,17 @@ final class OrbitMarkerTests: XCTestCase {
         XCTAssertEqual(draggedOrbitRadius(preview, preview.centre), MINIMUM_CIRCLE_RADIUS_METRES, accuracy: 0)
         XCTAssertTrue(orbitHandles(nil).isEmpty)
     }
+
+    func testAnticlockwiseArrowsPointTheOtherWayRoundTheRing() {
+        let clockwise = OrbitCircle(centre: TrackPoint(latitude: 47, longitude: 8), radiusMetres: 50, clockwise: true)
+        XCTAssertEqual(orbitArrows(clockwise).map(\.1), [90, 270])
+        XCTAssertEqual(orbitArrows(withChanges(clockwise) { $0.clockwise = false }).map(\.1), [270, 90])
+        XCTAssertTrue(orbitArrows(nil).isEmpty)
+    }
+
+    func testAnOrbitWithNoPlottableCentreIsNotDrawn() {
+        XCTAssertNil(orbitCircle(JSON.parse(#"{"orbiting":true,"centre":{"latitude":0,"longitude":0},"radiusMetres":50}"#)))
+        XCTAssertNil(orbitCircle(JSON.parse(#"{"orbiting":true,"centre":{"latitude":null,"longitude":8},"radiusMetres":50}"#)))
+        XCTAssertNil(orbitCircle(JSON.parse(#"{"orbiting":true,"centre":{},"radiusMetres":50}"#)))
+    }
 }

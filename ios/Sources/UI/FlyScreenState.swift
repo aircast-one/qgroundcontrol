@@ -16,6 +16,7 @@ final class FlyScreenState {
     let checklist = PreflightChecklistState()
     let flightActions = FlightActionsState()
     let cameraControls = CameraControlsState()
+    let flyMap = FlyMapState()
     var obstacles: [String: CGRect] = [:]
     var mapInsets = MapInsets(top: 0, bottom: 0)
     var videoTucked = false
@@ -37,8 +38,7 @@ struct OpenOnRequest: View {
 
     var body: some View {
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: flyScreen.requestedSheet, initial: true) { _, requested in
                 guard requested == name else { return }
                 flyScreen.requestedSheet = nil

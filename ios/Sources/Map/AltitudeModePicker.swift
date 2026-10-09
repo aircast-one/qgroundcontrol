@@ -31,7 +31,7 @@ struct AltitudeModePicker: View {
             }
             PlanFlowRow(spacing: 8, lineSpacing: 0) {
                 ForEach(picks, id: \.raw) { offer in
-                    PlanChip(label: sentenceCase(offer.title), selected: offer.current, enabled: live && offer.enabled || offer.current) {
+                    CameraChip(label: sentenceCase(offer.title), selected: offer.current, enabled: live && offer.enabled || offer.current) {
                         if live && !offer.current { onPick(offer.raw) }
                     }
                 }

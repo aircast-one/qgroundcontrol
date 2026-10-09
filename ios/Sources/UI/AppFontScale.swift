@@ -21,8 +21,10 @@ private func pointSize(_ fact: JSON) -> Double? {
     return points
 }
 
-private func scaledTypeSize(_ system: DynamicTypeSize, _ scale: Float) -> DynamicTypeSize {
-    let target = (BODY_POINTS.first { $0.size == system }?.points ?? 17) * Double(scale)
+private let DEFAULT_BODY_POINTS = 17.0
+
+func scaledTypeSize(_ system: DynamicTypeSize, _ scale: Float) -> DynamicTypeSize {
+    let target = (BODY_POINTS.first { $0.size == system }?.points ?? DEFAULT_BODY_POINTS) * Double(scale)
     return BODY_POINTS.min { abs($0.points - target) < abs($1.points - target) }?.size ?? system
 }
 

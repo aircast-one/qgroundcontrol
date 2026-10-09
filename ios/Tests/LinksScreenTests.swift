@@ -246,4 +246,57 @@ final class UdpServerFormTests: XCTestCase {
         XCTAssertNil(linkFormErrorField(.Udp, "", "", udpDefault: "14550"))
         XCTAssertNil(linkFormErrorField(.Tcp, "10.0.0.2", "5760"))
     }
+
+    func testABlankUdpPortFallsBackToTheDefaultPort() {
+        XCTAssertNil(linkFormError(.Udp, "", ""))
+        XCTAssertEqual(linkFormError(.Udp, "", "0"), "Enter a port between 1 and 65535, or leave it blank for 14550")
+    }
 }
+
+final class ReplayLogStagingTests: XCTestCase {
+    private let files = FileManager.default
+    private let link = "Replay test \(UUID().uuidString)"
+    private lazy var source = files.temporaryDirectory.appendingPathComponent("replay-source-\(UUID().uuidString)", isDirectory: true)
+
+    override func setUpWithError() throws {
+        try files.createDirectory(at: source, withIntermediateDirectories: true)
+    }
+
+    override func tearDown() {
+        pruneReplayFolder(link, "")
+        try? files.removeItem(at: source)
+    }
+
+    private func log(_ name: String, _ text: String) throws -> URL {
+        let file = source.appendingPathComponent(name)
+        try Data(text.utf8).write(to: file)
+        return file
+    }
+
+    func testStagingCopiesTheLogUnderItsNameIntoAFolderNamedSafelyForTheLink() throws {
+        let staged = URL(fileURLWithPath: try XCTUnwrap(stagedReplayLog(link, try log("flight 1.tlog", "first"))))
+        XCTAssertEqual(staged.lastPathComponent, "flight 1.tlog")
+        XCTAssertEqual(staged.deletingLastPathComponent().lastPathComponent, link.replacingOccurrences(of: " ", with: "_"))
+        XCTAssertEqual(try String(contentsOf: staged, encoding: .utf8), "first")
+        XCTAssertEqual(try files.contentsOfDirectory(atPath: staged.deletingLastPathComponent().path), ["flight 1.tlog"])
+    }
+
+    func testStagingTheSameNameAgainReplacesTheEarlierCopy() throws {
+        _ = try XCTUnwrap(stagedReplayLog(link, try log("flight.tlog", "first")))
+        try files.removeItem(at: source.appendingPathComponent("flight.tlog"))
+        let staged = try XCTUnwrap(stagedReplayLog(link, try log("flight.tlog", "second")))
+        XCTAssertEqual(try String(contentsOfFile: staged, encoding: .utf8), "second")
+    }
+
+    func testStagingAFileThatIsGoneGivesNothing() {
+        XCTAssertNil(stagedReplayLog(link, source.appendingPathComponent("missing.tlog")))
+    }
+
+    func testPruningKeepsOnlyTheLogTheLinkStillUses() throws {
+        let kept = try XCTUnwrap(stagedReplayLog(link, try log("kept.tlog", "kept")))
+        _ = try XCTUnwrap(stagedReplayLog(link, try log("dropped.tlog", "dropped")))
+        pruneReplayFolder(link, kept)
+        XCTAssertEqual(try files.contentsOfDirectory(atPath: URL(fileURLWithPath: kept).deletingLastPathComponent().path), ["kept.tlog"])
+    }
+}
+

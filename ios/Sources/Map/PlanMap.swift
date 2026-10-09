@@ -1,7 +1,7 @@
 import SwiftUI
 
 func planMapStyle() -> String {
-    MapBridge.start()
+    MapBridge.markReachable()
     return qgcRasterStyle(currentMapType())
 }
 

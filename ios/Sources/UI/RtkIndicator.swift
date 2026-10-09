@@ -28,8 +28,8 @@ func basePositionWrites(_ status: RtkStatus) -> [(String, Double)]? {
         ("fixedBasePositionAltitude", status.altitudeM),
         ("fixedBasePositionAccuracy", status.accuracyM),
     ]
-    guard writes.allSatisfy({ $0.1 != nil }) else { return nil }
-    return writes.map { ("\(RTK_SETTINGS).\($0.0)", $0.1!) }
+    let resolved = writes.compactMap { name, value in value.map { ("\(RTK_SETTINGS).\(name)", $0) } }
+    return resolved.count == writes.count ? resolved : nil
 }
 
 func fixedBaseChosen(_ facts: [Fact]) -> Bool {
@@ -125,6 +125,7 @@ struct RtkIndicatorCell: View {
             Text("RTK")
                 .font(.labelMedium)
                 .onTapGesture { open = true }
+                .accessibilityAddTraits(.isButton)
                 .background {
                     if open {
                         AircastSheet(onDismissRequest: { open = false }) {

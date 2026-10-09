@@ -6,7 +6,12 @@ private let NTRIP_POLL_MS = 1000
 private let NTRIP_GREEN = Color(hex: 0x34C759)
 private let NTRIP_ORANGE = Color(hex: 0xFF9F0A)
 
-struct NtripStatus {
+struct NtripMessageType: Equatable {
+    let id: Int
+    let count: Int64
+}
+
+struct NtripStatus: Equatable {
     let status: String
     let message: String
     let button: String
@@ -15,7 +20,7 @@ struct NtripStatus {
     let dataStale: Bool
     let mountpoint: String
     let messages: Int64
-    let messageTypes: [(id: Int, count: Int64)]
+    let messageTypes: [NtripMessageType]
     let bytesReceived: Int64
     let dataRate: Double
     let dataWarning: Bool
@@ -37,8 +42,8 @@ func ntripStatus(_ view: JSON?) -> NtripStatus? {
         dataStale: view["dataStale"].bool,
         mountpoint: view["mountpoint"].string,
         messages: view["messages"].int64 ?? 0,
-        messageTypes: view["messageTypes"].array.compactMap { pair in
-            pair.arrayOrNil.map { _ in (id: pair[0].int(0), count: pair[1].int64 ?? 0) }
+        messageTypes: view["messageTypes"].array.filter { $0.arrayOrNil != nil }.map { pair in
+            NtripMessageType(id: pair[0].int(0), count: pair[1].int64 ?? 0)
         },
         bytesReceived: view["bytesReceived"].int64 ?? 0,
         dataRate: view["dataRateBytesPerSec"].double(0),
@@ -47,7 +52,7 @@ func ntripStatus(_ view: JSON?) -> NtripStatus? {
         sentKBps: view["sentKBps"].double(0),
         securityWarning: view["securityWarning"].string,
         ggaSource: view["ggaSource"].string,
-        browser: ntripBrowser(view["browser"].object != nil ? view["browser"] : nil)
+        browser: ntripBrowser(view["browser"].objectOrNil)
     )
 }
 
@@ -69,7 +74,7 @@ func ntripBrowser(_ json: JSON?) -> NtripBrowser {
         status: json?["status"].string ?? "",
         error: json?["error"].string ?? "",
         canBrowse: json?["canBrowse"].bool == true,
-        mountpoints: (json?["mountpoints"].array ?? []).filter { $0.object != nil }.map {
+        mountpoints: (json?["mountpoints"].objects ?? []).map {
             NtripMountpointRow(mountpoint: $0["mountpoint"].string, detail: $0["detail"].string, selected: $0["selected"].bool)
         }
     )
@@ -101,7 +106,8 @@ struct NtripStatusSection: View {
         }
         .task {
             while !Task.isCancelled {
-                read = await offMain { ntripStatus(Qgc.get(NTRIP_VIEW)) }
+                let next = await offMain { ntripStatus(Qgc.get(NTRIP_VIEW)) }
+                if next != read { read = next }
                 try? await Task.sleep(for: .milliseconds(NTRIP_POLL_MS))
             }
         }

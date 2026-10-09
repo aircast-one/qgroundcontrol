@@ -52,8 +52,7 @@ struct ControlRequestPrompt: View {
         let prompt = controlPrompt(view)
         let state = ControlRequestState.shared
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: prompt.incoming == nil, initial: true) { _, gone in if gone { state.ignored = nil } }
             .onChange(of: prompt.revertMs == nil, initial: true) { _, gone in if gone { state.revertIgnored = false } }
             .onAppear { state.mounted += 1 }
@@ -74,8 +73,7 @@ struct ControlRequestDialog: View {
         let incoming = shown ? prompt.incoming.flatMap { $0.systemId != state.ignored ? $0 : nil } : nil
         let revert = shown && incoming == nil ? prompt.revertMs.flatMap { state.revertIgnored ? nil : $0 } : nil
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: incoming, initial: true) { _, now in if let now { state.shownRequest = now } }
             .queuedSheet(isPresented: Binding(get: { incoming != nil }, set: { if !$0, let asked = incoming { state.ignored = asked.systemId } }), dialog: true) {
                 if let asked = incoming ?? state.shownRequest { request(asked, state) }
@@ -110,6 +108,17 @@ struct ControlRequestDialog: View {
             .buttonStyle(.borderless)
         }
         .padding(Space.s6)
-        .presentationDetents([.height(220)])
+        .modifier(FittedDetent())
+    }
+}
+
+private struct FittedDetent: ViewModifier {
+    @State private var height: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            .presentationDetents(height.map { [.height($0)] } ?? [.medium])
     }
 }

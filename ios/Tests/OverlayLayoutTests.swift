@@ -17,7 +17,6 @@ final class OverlayLayoutTests: XCTestCase {
         XCTAssertEqual(resetTap(true), ResetTap(reset: true, armed: false))
         XCTAssertEqual(resetPillText(false), "Reset layout")
         XCTAssertEqual(resetPillText(true), "Tap again to reset")
-        XCTAssertEqual(RESET_ARM_MILLIS, 4000)
     }
 
     func testADraggedWidgetStopsAtTheScreenEdges() {

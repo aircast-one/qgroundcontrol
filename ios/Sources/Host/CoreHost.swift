@@ -44,8 +44,11 @@ enum CoreHost {
         offMain { qgc_handle_deep_link(url.absoluteString) }
     }
 
+    @MainActor
     static func stop() {
         guard started else { return }
+        GamepadInput.stop()
+        VideoDriver.stop()
         GcsLocation.stop()
         SpeechOut.stop()
         qgc_shutdown()

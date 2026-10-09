@@ -20,7 +20,6 @@ enum Icon: String {
     case description = "doc.text"
     case developerBoard = "cpu"
     case download = "arrow.down.circle"
-    case dragHandle = "line.3.horizontal"
     case edit = "pencil"
     case error = "exclamationmark.circle.fill"
     case explore = "safari"
@@ -65,7 +64,6 @@ enum Icon: String {
     case play = "play.fill"
     case redo = "arrow.uturn.forward"
     case route = "point.topleft.down.to.point.bottomright.curvepath"
-    case satellite = "antenna.radiowaves.left.and.right"
     case satelliteAlt = "antenna.radiowaves.left.and.right.circle"
     case science = "flask"
     case search = "magnifyingglass"
@@ -73,7 +71,6 @@ enum Icon: String {
     case sensors = "sensor"
     case settings = "gearshape"
     case shield = "shield"
-    case signalCellular = "cellularbars"
     case signalCellularAlt = "chart.bar.fill"
     case speed = "speedometer"
     case stopCircle = "stop.circle"
@@ -91,8 +88,11 @@ enum Icon: String {
     case videocam = "video"
     case warning = "exclamationmark.triangle.fill"
     case wifi = "wifi"
+    case radioChecked = "largecircle.fill.circle"
+    case checkBox = "checkmark.square.fill"
+    case checkBoxOutline = "square"
 
-    var image: Image { Image(systemName: rawValue) }
+    static let radioUnchecked = Icon.planCircle
 }
 
 extension Image {

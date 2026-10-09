@@ -21,6 +21,7 @@ final class VehicleMapTests: XCTestCase, MLNMapViewDelegate {
         wait(for: [waiting], timeout: 30)
         let style = try XCTUnwrap(style)
         VehicleMapModel().mapView(map, didFinishLoading: style)
+        let sources = style.sources
         [MISSION_DOT_LAYER, MISSION_PATH_LAYER, FENCE_FILL_LAYER, RALLY_LAYER, GCS_LAYER, BREACH_LAYER, FENCE_HANDLE_LAYER, MIDPOINT_LAYER,
          SURVEY_AREA_LAYER, LANDING_AREA_LAYER, EDGE_LABEL_LAYER, SHOT_LAYER, TRAFFIC_LAYER, ROI_LAYER].forEach {
             XCTAssertNotNil(style.layer(withIdentifier: $0), $0)
@@ -50,6 +51,48 @@ final class VehicleMapTests: XCTestCase, MLNMapViewDelegate {
         renderProximityRadars(style, [PlacedRadar(at: at, heading: 0, reading: RadarReading(maxMeters: 40, sectors: [(0, 10)]))])
         style.setGeoJson(TRAFFIC_SOURCE, trafficFeatures([TrafficMark(latitude: 47, longitude: 8, heading: 90, alert: true, label: "x")]))
         style.setGeoJson(SHOT_SOURCE, shotFeatures([at]))
+        [MISSION_DOT_LAYER, MISSION_PATH_LAYER, FENCE_FILL_LAYER, RALLY_LAYER, GCS_LAYER, BREACH_LAYER, MIDPOINT_LAYER, SURVEY_AREA_LAYER,
+         SURVEY_TRANSECT_LAYER, SHOT_LAYER, ROI_LAYER].forEach {
+            XCTAssertGreaterThan(drawnFeatures(style, $0), 0, $0)
+        }
+        XCTAssertEqual(drawnFeatures(style, TRAFFIC_LAYER), 1)
+        XCTAssertEqual(drawnFeatures(style, ORBIT_RING_LAYER), 1)
+        XCTAssertEqual(drawnFeatures(style, GIMBAL_LAYER), 1)
+        withExtendedLifetime(sources) {}
+    }
+
+    private func drawnFeatures(_ style: MLNStyle, _ layer: String) -> Int {
+        guard let vector = style.layer(withIdentifier: layer) as? MLNVectorStyleLayer,
+              let source = vector.sourceIdentifier.flatMap({ style.source(withIdentifier: $0) }) as? MLNShapeSource else { return -1 }
+        return (source.shape as? MLNShapeCollectionFeature)?.shapes.count ?? 0
+    }
+
+    func testMapColoursReadHexWithAnOptionalLeadingAlpha() {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        mapColour("#80FF0000").getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        XCTAssertEqual([red, green, blue], [1, 0, 0])
+        XCTAssertEqual(alpha, 128.0 / 255, accuracy: 1e-6)
+        mapColour("43A047").getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        XCTAssertEqual(alpha, 1)
+        XCTAssertEqual(green, 0xA0 / 255.0, accuracy: 1e-6)
+    }
+
+    func testOnlyRealCoordinatesArePlottedAndNullIslandIsNot() {
+        XCTAssertTrue(isPlottable(47, 8))
+        XCTAssertTrue(isPlottable(-90, 180))
+        XCTAssertTrue(isPlottable(0, 8))
+        XCTAssertFalse(isPlottable(0, 0))
+        XCTAssertFalse(isPlottable(91, 0))
+        XCTAssertFalse(isPlottable(0, -180.5))
+        XCTAssertFalse(isPlottable(.nan, 8))
+    }
+
+    func testAnInlineStyleIsWrittenToOneStableFileAndAUrlStylePassesThrough() throws {
+        let first = try XCTUnwrap(styleURL(OSM_RASTER_STYLE))
+        XCTAssertEqual(styleURL(OSM_RASTER_STYLE), first, "the same style maps to the same file, launch after launch")
+        XCTAssertEqual(try String(contentsOf: first, encoding: .utf8), OSM_RASTER_STYLE)
+        XCTAssertNotEqual(styleURL(OSM_RASTER_STYLE + " "), first)
+        XCTAssertEqual(styleURL("https://example.com/style.json"), URL(string: "https://example.com/style.json"))
     }
 
     func testARallyPointWithNoAltitudeStillEqualsItselfSoThePlanLayersDoNotRedrawEveryFrame() {

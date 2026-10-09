@@ -19,7 +19,7 @@ final class RcHolderTests: XCTestCase {
         XCTAssertEqual(holder.holding(), [7, 8], "tilt moved from channel 7 to 8 mid-flight; both were sent, so both are held")
         holder.release()
         XCTAssertEqual(holder.holding(), [])
-        XCTAssertEqual(queued.size, 3, "two sends and one release, in that order on one queue")
+        XCTAssertEqual(queued.size, 3, "two sends and one release are queued")
     }
 
     func testAnUnassignedChannelIsNeverSentOrHeld() {

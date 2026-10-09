@@ -79,7 +79,7 @@ func autoLinkSubtitle(_ link: AutoLink) -> String {
 }
 
 func linkRows(_ view: JSON?) -> [LinkRow] {
-    (view?["configured"].array ?? []).filter { $0.object != nil }.map { link in
+    (view?["configured"].objects ?? []).map { link in
         LinkRow(
             index: link["index"].int(0),
             name: link["name"].string,
@@ -174,7 +174,7 @@ func bluetoothState(_ view: JSON?) -> BluetoothState {
     return BluetoothState(
         available: bluetooth["available"].bool,
         scanning: bluetooth["scanning"].bool,
-        devices: bluetooth["devices"].array.filter { $0.object != nil }.map { BluetoothDeviceChoice(name: $0["name"].string, address: $0["address"].string) }
+        devices: bluetooth["devices"].objects.map { BluetoothDeviceChoice(name: $0["name"].string, address: $0["address"].string) }
     )
 }
 
@@ -196,10 +196,6 @@ struct SerialFraming: Equatable {
     var parity = 0
     var flowControl = 0
 }
-
-let PARITY_CHOICES: [(String, Int)] = [("None", 0), ("Even", 2), ("Odd", 3)]
-let DATA_BITS_CHOICES = [5, 6, 7, 8]
-let STOP_BITS_CHOICES = [1, 2]
 
 func editWrites(
     _ editing: LinkEditing,
@@ -271,10 +267,6 @@ func serialPortChoices(_ view: JSON?) -> [SerialPortChoice] {
         .map { SerialPortChoice(port: $0["port"].string, label: $0["label"].string.ifBlank($0["port"].string)) }
 }
 
-func serialBauds(_ view: JSON?) -> [Int] {
-    (view?["baudRates"].array ?? []).compactMap { Int($0.string) }.filter { $0 > 0 }
-}
-
 func autoSerialName(_ portLabel: String) -> String { portLabel.ifBlank("Serial") }
 
 func portLabel(_ ports: [SerialPortChoice], _ portName: String) -> String { ports.first { $0.port == portName }?.label ?? "" }
@@ -306,14 +298,14 @@ private func parsedPort(_ type: LinkType, _ port: String, _ udpDefault: String) 
     Int(port.isBlank && type == .Udp ? udpDefault : port)
 }
 
-func linkFormError(_ type: LinkType, _ host: String, _ port: String, udpDefault: String = "14550") -> String? {
+func linkFormError(_ type: LinkType, _ host: String, _ port: String, udpDefault: String = DEFAULT_PORT) -> String? {
     let parsed = parsedPort(type, port, udpDefault)
     if type == .Udp && !portInRange(parsed) { return "Enter a port between 1 and 65535, or leave it blank for \(udpDefault)" }
     if !portInRange(parsed) { return "Port must be a number between 1 and 65535." }
     return type == .Tcp && host.isBlank ? "A TCP link needs the address of the device to call." : nil
 }
 
-func linkFormErrorField(_ type: LinkType, _ host: String, _ port: String, udpDefault: String = "14550") -> String? {
+func linkFormErrorField(_ type: LinkType, _ host: String, _ port: String, udpDefault: String = DEFAULT_PORT) -> String? {
     !portInRange(parsedPort(type, port, udpDefault)) ? "port" : type == .Tcp && host.isBlank ? "host" : nil
 }
 
@@ -572,12 +564,6 @@ private func udpPortOrDefault(_ value: JSON) -> String {
     return String(port)
 }
 
-private func changed<T>(_ value: T, _ change: (inout T) -> Void) -> T {
-    var copy = value
-    change(&copy)
-    return copy
-}
-
 private struct LinkTextField: View {
     let label: String
     let value: String
@@ -588,6 +574,7 @@ private struct LinkTextField: View {
     var onSubmit: () -> Void = {}
     let onChange: (String) -> Void
     @Environment(\.theme) private var theme
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -599,6 +586,15 @@ private struct LinkTextField: View {
                 .textFieldStyle(.roundedBorder)
                 .submitLabel(.done)
                 .onSubmit(onSubmit)
+                .focused($focused)
+                .toolbar {
+                    if focused && KEYBOARDS_WITHOUT_RETURN.contains(keyboard) {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { focused = false }
+                        }
+                    }
+                }
                 .disabled(!enabled)
             if let error {
                 Text(error).font(.bodySmall).foregroundStyle(theme.colors.error)
@@ -646,10 +642,10 @@ private struct EditLinkFields: View {
                 .buttonStyle(.bordered)
                 .disabled(!enabled)
         case .HostAndPort:
-            LinkHostField(value: edit.host, error: nil, enabled: enabled) { host in onEdit(changed(edit) { $0.host = host }) }
-            LinkPortField(label: "Port", value: edit.port, error: nil, enabled: enabled) { port in onEdit(changed(edit) { $0.port = port }) }
+            LinkHostField(value: edit.host, error: nil, enabled: enabled) { host in onEdit(withChanges(edit) { $0.host = host }) }
+            LinkPortField(label: "Port", value: edit.port, error: nil, enabled: enabled) { port in onEdit(withChanges(edit) { $0.port = port }) }
         case .PortOnly, .None:
-            LinkPortField(label: editing == .PortOnly ? "Listening port" : "Port", value: edit.port, error: nil, enabled: enabled) { port in onEdit(changed(edit) { $0.port = port }) }
+            LinkPortField(label: editing == .PortOnly ? "Listening port" : "Port", value: edit.port, error: nil, enabled: enabled) { port in onEdit(withChanges(edit) { $0.port = port }) }
         case .Serial, .Device:
             EmptyView()
         }
@@ -823,7 +819,7 @@ extension LinkDraft {
     func shownPort(_ udpDefault: String) -> String { port.ifBlank(portFor(type, udpDefault)) }
 
     func withPluggedPort(_ ports: [SerialPortChoice]) -> LinkDraft {
-        changed(self) { $0.portName = portName.ifBlank(ports.count == 1 ? ports[0].port : "") }
+        withChanges(self) { $0.portName = portName.ifBlank(ports.count == 1 ? ports[0].port : "") }
     }
 }
 
@@ -948,7 +944,7 @@ private struct NewLinkFields: View {
     var body: some View {
         switch draft.type {
         case .Mock:
-            MockLinkFields(choices: draft.mock) { mock in onDraft(changed(draft) { $0.mock = mock }) }
+            MockLinkFields(choices: draft.mock) { mock in onDraft(withChanges(draft) { $0.mock = mock }) }
         case .LogReplay:
             Button(action: onPickLog) {
                 Text(draft.replayLog.isBlank ? "Choose a log file" : URL(string: draft.replayLog)?.lastPathComponent ?? "Choose a log file")
@@ -960,16 +956,16 @@ private struct NewLinkFields: View {
                 apiBase: draft.apiBase,
                 deviceId: draft.deviceId,
                 showErrors: cloudErrors,
-                onApiBase: { base in onDraft(changed(draft) { $0.apiBase = base }) },
-                onDeviceId: { device in onDraft(changed(draft) { $0.deviceId = device }) }
+                onApiBase: { base in onDraft(withChanges(draft) { $0.apiBase = base }) },
+                onDeviceId: { device in onDraft(withChanges(draft) { $0.deviceId = device }) }
             )
         case .Serial, .Bluetooth:
             EmptyView()
         case .Udp:
-            LinkPortField(label: "Listening port", value: draft.port, error: portError, enabled: true) { port in onDraft(changed(draft) { $0.port = port }) }
+            LinkPortField(label: "Listening port", value: draft.port, error: portError, enabled: true) { port in onDraft(withChanges(draft) { $0.port = port }) }
         case .Tcp, .Other:
-            LinkHostField(value: draft.host, error: hostError, enabled: true) { host in onDraft(changed(draft) { $0.host = host }) }
-            LinkPortField(label: "Port", value: draft.port, error: portError, enabled: true) { port in onDraft(changed(draft) { $0.port = port }) }
+            LinkHostField(value: draft.host, error: hostError, enabled: true) { host in onDraft(withChanges(draft) { $0.host = host }) }
+            LinkPortField(label: "Port", value: draft.port, error: portError, enabled: true) { port in onDraft(withChanges(draft) { $0.port = port }) }
         }
     }
 }
@@ -982,22 +978,22 @@ private struct NewLinkAdvanced: View {
     let onDraft: (LinkDraft) -> Void
 
     var body: some View {
-        LinkTextField(label: "Name", value: draft.name, placeholder: suggestedName) { name in onDraft(changed(draft) { $0.name = name }) }
+        LinkTextField(label: "Name", value: draft.name, placeholder: suggestedName) { name in onDraft(withChanges(draft) { $0.name = name }) }
         if draft.type == .Udp {
             ServerList(
                 servers: draft.servers,
                 onAdd: { typed in
                     onError(udpServer(typed, draft.shownPort(udpDefault)) == nil ? "Enter a server as an address, or address:port." : nil)
-                    onDraft(changed(draft) { $0.servers = withServer(draft.servers, typed, draft.shownPort(udpDefault)) })
+                    onDraft(withChanges(draft) { $0.servers = withServer(draft.servers, typed, draft.shownPort(udpDefault)) })
                 },
-                onRemove: { gone in onDraft(changed(draft) { $0.servers = draft.servers.filter { $0 != gone } }) }
+                onRemove: { gone in onDraft(withChanges(draft) { $0.servers = draft.servers.filter { $0 != gone } }) }
             )
         }
         LinkFlagSwitches(
             autoConnect: draft.autoConnect,
             highLatency: draft.highLatency,
-            onAutoConnect: { on in onDraft(changed(draft) { $0.autoConnect = on }) },
-            onHighLatency: { on in onDraft(changed(draft) { $0.highLatency = on }) }
+            onAutoConnect: { on in onDraft(withChanges(draft) { $0.autoConnect = on }) },
+            onHighLatency: { on in onDraft(withChanges(draft) { $0.highLatency = on }) }
         )
     }
 }
@@ -1174,7 +1170,7 @@ struct LinksScreen<Footer: View>: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .alert(
             "Disconnect \(confirmingDisconnect?.name ?? "")?",
-            isPresented: Binding(get: { confirmingDisconnect != nil }, set: { if !$0 { confirmingDisconnect = nil } }),
+            isPresented: presented($confirmingDisconnect),
             presenting: confirmingDisconnect
         ) { row in
             Button("Disconnect") { disconnect(row) }
@@ -1184,7 +1180,7 @@ struct LinksScreen<Footer: View>: View {
         }
         .alert(
             "Remove \(confirmingRemove?.name ?? "")?",
-            isPresented: Binding(get: { confirmingRemove != nil }, set: { if !$0 { confirmingRemove = nil } }),
+            isPresented: presented($confirmingRemove),
             presenting: confirmingRemove
         ) { row in
             Button("Remove", role: .destructive) {

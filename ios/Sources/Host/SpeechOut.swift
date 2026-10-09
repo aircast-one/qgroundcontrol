@@ -3,8 +3,8 @@ import Foundation
 
 final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
     private static let pollInterval = 0.5
-    private static let speechView = "view.speech"
     private static let maxTextQueue = 20
+    static let sessionOptions: AVAudioSession.CategoryOptions = [.mixWithOthers]
     private static var shared: SpeechOut?
 
     private let synthesizer = AVSpeechSynthesizer()
@@ -19,7 +19,7 @@ final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendabl
         let speech = SpeechOut()
         shared = speech
         speech.synthesizer.delegate = speech
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .mixWithOthers])
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio, options: sessionOptions)
         let timer = DispatchSource.makeTimerSource(queue: speech.queue)
         timer.schedule(deadline: .now() + pollInterval, repeating: pollInterval)
         timer.setEventHandler { [weak speech] in speech?.poll() }
@@ -28,8 +28,12 @@ final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendabl
     }
 
     static func stop() {
-        shared?.timer?.cancel()
-        shared?.synthesizer.stopSpeaking(at: .immediate)
+        guard let speech = shared else { return }
+        speech.queue.sync {
+            speech.timer?.cancel()
+            speech.timer = nil
+        }
+        speech.synthesizer.stopSpeaking(at: .immediate)
         shared = nil
     }
 
@@ -39,18 +43,18 @@ final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendabl
     }
 
     private func poll() {
-        let view = Qgc.get(after.map { "\(SpeechOut.speechView)(\($0))" } ?? SpeechOut.speechView)
-        guard view.object != nil else { return }
+        let view = Qgc.get(after.map(speechPath) ?? SPEECH_VIEW)
+        guard let batch = speechBatch(view) else { return }
         let seen = after
-        after = view["last"].int64 ?? seen ?? 0
+        after = batch.last
         let nowMuted = view["muted"].bool
         if nowMuted && !muted { flush() }
         muted = nowMuted
-        guard seen != nil else { return }
-        view["lines"].array.filter { $0.object != nil }.forEach { line in
+        guard let seen else { return }
+        batch.lines.filter { $0.sequence > seen }.forEach { line in
             if waiting >= SpeechOut.maxTextQueue { flush() }
-            let utterance = AVSpeechUtterance(string: line["text"].string)
-            utterance.volume = Float(line["volume"].double(1))
+            let utterance = AVSpeechUtterance(string: line.text)
+            utterance.volume = line.volume
             utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
             waiting += 1
             synthesizer.speak(utterance)

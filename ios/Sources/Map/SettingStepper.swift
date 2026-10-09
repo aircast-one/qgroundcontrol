@@ -3,7 +3,6 @@ import SwiftUI
 private let REPEAT_DELAY_MS = 400
 private let COMMIT_DELAY_MS = 500
 private let REPEAT_INTERVAL_MS = 90
-private let DISABLED_ALPHA = 0.38
 private let STEP_BUTTON: CGFloat = 40
 private let VALUE_MIN_WIDTH: CGFloat = 72
 

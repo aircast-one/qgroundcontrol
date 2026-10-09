@@ -180,4 +180,11 @@ final class InspectorSystemTests: XCTestCase {
         XCTAssertEqual(inspectorShown([heartbeat, camera], "", nil), [heartbeat, camera])
         XCTAssertEqual(inspectorChoices(JSON.parse(#"{"systems":[{"id":2,"title":"System 2"}]}"#), "systems"), [InspectorChoice(id: 2, title: "System 2")])
     }
+
+    func testTheActiveSystemIsTheCoresIdOrNoneWhenItSendsNull() {
+        XCTAssertEqual(inspectorActiveSystem(JSON.parse(#"{"systemId":3}"#)), 3)
+        XCTAssertNil(inspectorActiveSystem(JSON.parse(#"{"systemId":null}"#)))
+        XCTAssertNil(inspectorActiveSystem(JSON.parse(#"{}"#)))
+        XCTAssertNil(inspectorActiveSystem(nil))
+    }
 }

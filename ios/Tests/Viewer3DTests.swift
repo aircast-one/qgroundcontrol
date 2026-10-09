@@ -19,19 +19,33 @@ final class Viewer3DTests: XCTestCase {
         XCTAssertEqual("Turn on the 3D view in Settings.", scene3d(JSON.parse(#"{"available":false,"reason":"Turn on the 3D view in Settings.","buildings":[]}"#)).reason)
     }
 
-    func testOuterRingsWindCounterClockwiseAndHolesClockwiseSoMapLibreKeepsCourtyardsAsHoles() {
+    func testOuterRingsWindCounterClockwiseAndHolesClockwiseSoMapLibreKeepsCourtyardsAsHoles() throws {
         let square = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]
         XCTAssertTrue(signedArea(wound(square, true)) > 0)
         XCTAssertTrue(signedArea(wound(square, false)) < 0)
         let closed = wound(square, true)
-        XCTAssertTrue(closed.first! == closed.last!)
+        XCTAssertTrue(try XCTUnwrap(closed.first) == XCTUnwrap(closed.last))
     }
 
-    func testAClimbingSegmentFloatsAsSteppedSlabsAtItsAltitude() {
+    func testAClimbingSegmentFloatsAsSteppedSlabsAtItsAltitude() throws {
         let pieces = ribbon(Point3D(lon: 8.0, lat: 47.0, alt: 20.0), Point3D(lon: 8.0, lat: 47.0003, alt: 40.0), "orange")
         XCTAssertEqual(5, pieces.count)
-        XCTAssertTrue(pieces.first!.base < pieces.last!.base)
-        XCTAssertEqual(22.0, (pieces.first!.base + pieces.first!.top) / 2, accuracy: 1e-9)
+        let first = try XCTUnwrap(pieces.first)
+        let last = try XCTUnwrap(pieces.last)
+        XCTAssertTrue(first.base < last.base)
+        XCTAssertEqual(22.0, (first.base + first.top) / 2, accuracy: 1e-9)
+    }
+
+    func testAMissingCoordinateDropsThePointInsteadOfFeedingNaNToTheMap() {
+        let path = JSON.parse(#"{"markers":[{"mission":1,"at":[8.0,null,30.0],"colour":"black","label":"W"}],"segments":[{"from":[8.0,47.0,10.0],"to":[8.0,null,20.0],"colour":"orange"}]}"#)
+        XCTAssertEqual([PathMarker(mission: 1, at: nil)], pathMarkers(path))
+        XCTAssertTrue(pathSlabs(path).isEmpty)
+        XCTAssertTrue(pathLabels(path).isEmpty)
+        XCTAssertTrue(vehicleSlabs(JSON.parse(#"{"vehicles":[{"at":[null,47.0,12.0],"heading":0.0}]}"#)).isEmpty)
+    }
+
+    func testBoundsMissingAnEdgeLeaveTheSceneWithoutACentre() {
+        XCTAssertNil(scene3d(JSON.parse(#"{"available":true,"bounds":{"south":47.0,"west":8.0,"north":47.2}}"#)).centre)
     }
 
     func testMarkersFloatAtTheirAltitudeAndTheVehicleComesFromItsOwnView() {

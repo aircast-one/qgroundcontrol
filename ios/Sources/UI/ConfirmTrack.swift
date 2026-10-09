@@ -96,7 +96,7 @@ struct ConfirmTrack: View {
             }
             if let option = action.option {
                 Toggle(isOn: $optionChecked) {
-                    Text(option.label).font(.labelLarge)
+                    Text(option.label).font(.labelLarge).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .toggleStyle(CheckboxToggle())
             }
@@ -113,15 +113,18 @@ struct ConfirmTrack: View {
     }
 }
 
-private struct CheckboxToggle: ToggleStyle {
+let CHECKBOX_TOUCH_SIZE: CGFloat = 48
+
+struct CheckboxToggle: ToggleStyle {
+    var size: CGFloat = CHECKBOX_TOUCH_SIZE
+
     func makeBody(configuration: Configuration) -> some View {
         Button { configuration.isOn.toggle() } label: {
             HStack(spacing: Space.s3) {
-                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
+                Image(configuration.isOn ? .checkBox : .checkBoxOutline)
                     .font(.title3)
-                    .frame(width: 48, height: 48)
+                    .frame(width: size, height: size)
                 configuration.label
-                Spacer(minLength: 0)
             }
             .contentShape(Rectangle())
         }

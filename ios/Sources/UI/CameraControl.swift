@@ -24,15 +24,9 @@ struct CameraPanel: Equatable {
     var batteryText: String?
 }
 
-private func objectAt(_ json: JSON, _ key: String) -> JSON? {
-    json[key].object != nil ? json[key] : nil
-}
-
-private func nonBlank(_ text: String) -> String? { text.isBlank ? nil : text }
-
 func cameraPanel(_ panel: JSON?) -> CameraPanel? {
     guard let panel else { return nil }
-    let video = objectAt(panel, "video").map { v in
+    let video = panel["video"].objectOrNil.map { v in
         CameraShutter(
             label: v["capturing"].bool ? "Stop recording" : "Start recording",
             recording: v["capturing"].bool,
@@ -43,7 +37,7 @@ func cameraPanel(_ panel: JSON?) -> CameraPanel? {
             readoutActive: !v["idle"].bool
         )
     }
-    let photo = objectAt(panel, "photo").map { p in
+    let photo = panel["photo"].objectOrNil.map { p in
         let press = p["press"].string
         return CameraShutter(
             label: press == "stop" ? "Stop photos" : "Take photo",
@@ -62,8 +56,8 @@ func cameraPanel(_ panel: JSON?) -> CameraPanel? {
         selectPhotoEnabled: panel["selectPhotoEnabled"].bool,
         bothShown: panel["bothShown"].bool,
         shutters: [video, photo].compactMap { $0 },
-        freeText: nonBlank(panel["freeText"].string),
-        batteryText: nonBlank(panel["batteryText"].string)
+        freeText: panel["freeText"].string.nonBlank,
+        batteryText: panel["batteryText"].string.nonBlank
     )
 }
 
@@ -136,7 +130,7 @@ func cameraReading(_ view: JSON?) -> CameraReading? {
         selected: view.has("selected") ? view["selected"].int(0) : nil,
         streamLabels: view["streamLabels"].array.map(\.string),
         currentStream: view["currentStream"].int(0),
-        panel: cameraPanel(objectAt(view, "panel"))
+        panel: cameraPanel(view["panel"].objectOrNil)
     )
 }
 
@@ -162,15 +156,15 @@ struct TrackingReading: Equatable {
 }
 
 func trackingReading(_ view: JSON?) -> TrackingReading? {
-    guard let tracking = view.flatMap({ objectAt($0, "tracking") }), tracking["supported"].bool else { return nil }
-    let box = objectAt(tracking, "rect").map { rect in
+    guard let tracking = view.flatMap({ $0["tracking"].objectOrNil }), tracking["supported"].bool else { return nil }
+    let box = tracking["rect"].objectOrNil.map { rect in
         TrackingBox(x: rect["x"].double(.nan), y: rect["y"].double(.nan), width: rect["width"].double(.nan), height: rect["height"].double(.nan))
     }
     return TrackingReading(
         supported: true,
         requested: tracking["requested"].bool,
         reported: tracking["reported"].bool,
-        shapes: tracking["shapes"].array.compactMap { nonBlank($0.string) },
+        shapes: tracking["shapes"].array.compactMap { $0.string.nonBlank },
         box: box.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil }
     )
 }
@@ -244,7 +238,7 @@ struct DestructiveAction: Equatable, Identifiable {
 func destructiveActions(_ view: JSON?) -> [DestructiveAction] {
     guard let listed = view?["destructiveActions"].arrayOrNil else { return [] }
     return listed.filter { $0.object != nil }.compactMap { entry in
-        nonBlank(entry["id"].string).map { id in
+        entry["id"].string.nonBlank.map { id in
             DestructiveAction(
                 id: id,
                 label: entry["label"].string,
@@ -259,7 +253,7 @@ func destructiveActions(_ view: JSON?) -> [DestructiveAction] {
 }
 
 func destructiveReasonFor(_ action: DestructiveAction) -> String? {
-    action.blocked ? nonBlank(action.reason) : nil
+    action.blocked ? action.reason.nonBlank : nil
 }
 
 func destructiveInvokePath(_ id: String) -> String? {
@@ -300,7 +294,7 @@ struct ThermalReading: Equatable {
 }
 
 func thermalReading(_ view: JSON?) -> ThermalReading? {
-    guard let view, view["thermalAvailable"].bool, let mode = nonBlank(view["thermalMode"].string) else { return nil }
+    guard let view, view["thermalAvailable"].bool, let mode = view["thermalMode"].string.nonBlank else { return nil }
     let opacity = view.has("thermalOpacity") ? view["thermalOpacity"].double : nil
     return ThermalReading(mode: mode, opacity: opacity.flatMap { $0.isFinite ? $0 : nil })
 }
@@ -312,7 +306,7 @@ func thermalOpacityIsOffered(_ reading: ThermalReading?) -> Bool {
 let CAMERA_RESET = "vehicle.cameraManager.currentCameraInstance.resetSettings"
 
 func zoomText(_ camera: CameraReading) -> String? {
-    camera.hasZoom ? "\(Int(camera.zoomLevel))%" : nil
+    camera.hasZoom ? "\(saturatingInt(camera.zoomLevel))%" : nil
 }
 
 func shutterReadout(_ shutter: CameraShutter) -> String? {
@@ -342,5 +336,5 @@ func lapsePlan(_ camera: CameraReading) -> String? {
 }
 
 private func trimmed(_ value: Double) -> String {
-    value == Double(Int64(value)) ? String(Int64(value)) : String(format: "%.1f", value)
+    value == Double(saturatingInt(value)) ? String(saturatingInt(value)) : String(format: "%.1f", value)
 }

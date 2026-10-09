@@ -19,10 +19,10 @@ struct SetupGroup: Equatable {
 }
 
 func setupGroups(_ view: JSON?) -> [SetupGroup] {
-    (view?["groups"].arrayOrNil ?? []).filter { $0.object != nil }.map { group in
+    (view?["groups"].objects ?? []).map { group in
         SetupGroup(
             title: group["title"].string,
-            pages: group["pages"].array.filter { $0.object != nil }.map {
+            pages: group["pages"].objects.map {
                 SetupPage(name: $0["name"].string, parameterSections: $0["parameterSections"].bool, screen: $0["screen"].string)
             }
         )

@@ -1,13 +1,13 @@
 import SwiftUI
 
-private let RC_CONTROLS = "settings.flyViewSettings.rcControls"
+let RC_CONTROLS = "settings.flyViewSettings.rcControls"
 
-private let CAMERA_CHANNEL_SETTINGS = [
-    ("gimbalTiltChannel", "Gimbal tilt"),
-    ("gimbalPanChannel", "Gimbal pan"),
-    ("cameraZoomChannel", "Camera zoom"),
-    ("cameraLightChannel", "Camera light"),
-    ("cameraRecordChannel", "Camera record"),
+private let CAMERA_CHANNEL_SETTINGS: [(KeyPath<RcCameraChannels, Int>, String)] = [
+    (\.tilt, "Gimbal tilt"),
+    (\.pan, "Gimbal pan"),
+    (\.zoom, "Camera zoom"),
+    (\.light, "Camera light"),
+    (\.record, "Camera record"),
 ]
 
 private let UNDO_WINDOW_MS = 6000
@@ -26,38 +26,14 @@ private struct Undo: Equatable {
     let previous: String
 }
 
-private func settingChannel(_ name: String) -> QgcDouble {
-    QgcDouble(settingControl("settings.flyViewSettings.\(name)"), fallback: 0)
-}
-
-@propertyWrapper
-private struct ReservedChannels: DynamicProperty {
-    @QgcDouble private var tilt: Double
-    @QgcDouble private var pan: Double
-    @QgcDouble private var zoom: Double
-    @QgcDouble private var light: Double
-    @QgcDouble private var record: Double
-
-    init() {
-        _tilt = settingChannel(CAMERA_CHANNEL_SETTINGS[0].0)
-        _pan = settingChannel(CAMERA_CHANNEL_SETTINGS[1].0)
-        _zoom = settingChannel(CAMERA_CHANNEL_SETTINGS[2].0)
-        _light = settingChannel(CAMERA_CHANNEL_SETTINGS[3].0)
-        _record = settingChannel(CAMERA_CHANNEL_SETTINGS[4].0)
-    }
-
-    var wrappedValue: [Int: String] {
-        Dictionary(
-            zip([tilt, pan, zoom, light, record], CAMERA_CHANNEL_SETTINGS.map(\.1))
-                .map { channel, owner in (channel.isFinite ? Int(channel) : 0, owner) },
-            uniquingKeysWith: { $1 }
-        ).filter { $0.key > 0 }
-    }
+func reservedChannels(_ channels: RcCameraChannels) -> [Int: String] {
+    Dictionary(CAMERA_CHANNEL_SETTINGS.map { field, owner in (channels[keyPath: field], owner) }, uniquingKeysWith: { $1 })
+        .filter { $0.key > 0 }
 }
 
 struct RcControlsEditor: View {
     @QgcString(settingControl(RC_CONTROLS)) private var json
-    @ReservedChannels private var reserved
+    @CameraChannels private var cameraChannels
     @State private var draft: Draft?
     @State private var notice: String?
     @State private var undo: Undo?
@@ -74,6 +50,7 @@ struct RcControlsEditor: View {
 
     var body: some View {
         let controls = parseRcControls(json)
+        let reserved = reservedChannels(cameraChannels)
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(text: "On-screen RC controls")
             if let notice {

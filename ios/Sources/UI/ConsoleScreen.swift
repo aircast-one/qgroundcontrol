@@ -84,11 +84,15 @@ private struct ConsoleSelectingField: View {
     }
 }
 
+private final class VisibleRows {
+    var shown: Set<Int> = []
+}
+
 struct ConsoleScreen: View {
     @Environment(\.theme) private var theme
     @QgcPath(CONSOLE_VIEW) private var consoleJson
     @State private var field = TextFieldValue("")
-    @State private var visible: Set<Int> = []
+    @State private var visible = VisibleRows()
     @State private var scrollRequest = 0
 
     var body: some View {
@@ -111,15 +115,15 @@ struct ConsoleScreen: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .textSelection(.enabled)
                                 .id(at)
-                                .onAppear { visible.insert(at) }
-                                .onDisappear { visible.remove(at) }
+                                .onAppear { visible.shown.insert(at) }
+                                .onDisappear { visible.shown.remove(at) }
                         }
                     }
                     .padding(16)
                 }
                 .background(theme.colors.surfaceContainerLowest)
                 .onChange(of: lines.count, initial: true) { before, now in
-                    if now > 0 && shouldFollowTail(visible.max(), before) { proxy.scrollTo(now - 1, anchor: .bottom) }
+                    if now > 0 && shouldFollowTail(visible.shown.max(), before) { proxy.scrollTo(now - 1, anchor: .bottom) }
                 }
                 .onChange(of: scrollRequest) {
                     if !lines.isEmpty { proxy.scrollTo(lines.count - 1, anchor: .bottom) }

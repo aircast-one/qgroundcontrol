@@ -11,7 +11,7 @@ func elapsedText(_ seconds: Int) -> String {
 }
 
 func activeCameraStatus(_ video: VideoReading) -> String? {
-    video.cameras.first { $0.slot == video.activeSource }.flatMap { $0.status.isBlank ? nil : $0.status }
+    video.cameras.first { $0.slot == video.activeSource }?.status.nonBlank
 }
 
 func noVideoDetail(_ video: VideoReading, _ seconds: Int) -> String {
@@ -168,7 +168,7 @@ private struct NoVideoStreamPanel: View {
                     detail: noVideoDetail(video, seconds),
                     primary: NoVideoButton(label: "Retry") {
                         seconds = 0
-                        offMain { VideoCommands.restart() }
+                        offMain { VideoDriver.restart() }
                     },
                     secondary: videoSources,
                     compactTitle: "No video"

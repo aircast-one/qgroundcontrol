@@ -143,7 +143,7 @@ struct RallyPoint: Equatable {
 
     static func == (lhs: RallyPoint, rhs: RallyPoint) -> Bool {
         lhs.index == rhs.index && lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
-            && lhs.altitudeMetres == rhs.altitudeMetres && (lhs.altitude == rhs.altitude || lhs.altitude.isNaN && rhs.altitude.isNaN)
+            && lhs.altitudeMetres == rhs.altitudeMetres && sameDouble(lhs.altitude, rhs.altitude)
             && lhs.altitudeUnits == rhs.altitudeUnits && lhs.altitudePath == rhs.altitudePath
     }
 }
@@ -157,8 +157,6 @@ func coordinate(_ json: JSON?) -> TrackPoint? {
 
 private func listed(_ json: JSON?, _ key: String) -> [JSON]? { json?[key].arrayOrNil }
 
-private func objectOrNil(_ json: JSON) -> JSON? { json.object == nil ? nil : json }
-
 let FENCE_POLYGON_MINIMUM = 3
 
 func cornerRemovable(_ polygon: FencePolygon?) -> Bool { polygon?.editable?.canRemoveVertex == true }
@@ -167,7 +165,7 @@ func fencePolygons(_ json: JSON?) -> [FencePolygon] {
     guard let list = listed(json, "polygons") else { return [] }
     return list.enumerated().compactMap { index, element in
         guard element.object != nil, let corners = element["vertices"].arrayOrNil else { return nil }
-        let vertices = corners.compactMap { coordinate(objectOrNil($0)) }
+        let vertices = corners.compactMap { coordinate($0.objectOrNil) }
         guard vertices.count >= FENCE_POLYGON_MINIMUM else { return nil }
         let at = element["index"].int(index)
         return FencePolygon(
@@ -188,10 +186,10 @@ struct FirmwareFence: Equatable {
 }
 
 func firmwareFence(_ json: JSON?) -> FirmwareFence? {
-    guard let served = json.flatMap({ objectOrNil($0["firmwareFence"]) }) else { return nil }
+    guard let served = json.flatMap({ $0["firmwareFence"].objectOrNil }) else { return nil }
     let radius = served["radiusMetres"].double(.nan)
     guard !radius.isNaN, radius > 0 else { return nil }
-    return FirmwareFence(radiusMetres: radius, radiusText: served["radiusText"].string, centre: coordinate(objectOrNil(served["centre"])))
+    return FirmwareFence(radiusMetres: radius, radiusText: served["radiusText"].string, centre: coordinate(served["centre"].objectOrNil))
 }
 
 private func bound(_ json: JSON, _ key: String) -> Double? {
@@ -226,7 +224,7 @@ func shrunkRadius(_ circle: FenceCircle) -> Double? {
 func fenceCircles(_ json: JSON?) -> [FenceCircle] {
     guard let list = listed(json, "circles") else { return [] }
     return list.enumerated().compactMap { index, element in
-        guard element.object != nil, let centre = coordinate(objectOrNil(element["centre"])) else { return nil }
+        guard element.object != nil, let centre = coordinate(element["centre"].objectOrNil) else { return nil }
         let radius = element["radius"].double(.nan)
         guard !radius.isNaN, radius > 0 else { return nil }
         let metres = element["radiusMetres"].double(radius)
@@ -280,8 +278,8 @@ struct BreachReturn: Equatable {
 }
 
 func breachReturn(_ json: JSON?) -> BreachReturn? {
-    guard let point = coordinate(json.flatMap { objectOrNil($0["breachReturnPoint"]) }) else { return nil }
-    let altitude = json.flatMap { objectOrNil($0["breachReturnAltitude"]) }
+    guard let point = coordinate(json.flatMap { $0["breachReturnPoint"].objectOrNil }) else { return nil }
+    let altitude = json.flatMap { $0["breachReturnAltitude"].objectOrNil }
     return BreachReturn(
         point: point,
         altitude: altitude.flatMap { $0["value"].isNull ? nil : $0["value"].double }.flatMap { $0.isFinite ? $0 : nil },

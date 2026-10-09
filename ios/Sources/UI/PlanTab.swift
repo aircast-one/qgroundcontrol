@@ -3,7 +3,6 @@ import UIKit
 
 private let NOTICE_MILLIS = 4000
 private let HEADER_ALPHA = 0.94
-private let DISABLED_PILL_ALPHA = 0.38
 private let PILL_HEIGHT: CGFloat = 40
 private let HEADER_CORNER: CGFloat = 20
 
@@ -90,7 +89,7 @@ private final class TopmostPrompter {
         wanted = prompt
         if prompt != answered { answered = nil }
         guard prompt != shown?.prompt else { return }
-        shown.map { alert in
+        if let alert = shown {
             alert.onGone = {}
             alert.dismiss(animated: true)
         }
@@ -141,7 +140,6 @@ private let PROMPT_REPRESENT_MILLIS = 400
 private let PLAN_MENU_ROW_HEIGHT: CGFloat = 44
 private let PLAN_MENU_MIN_WIDTH: CGFloat = 220
 private let PLAN_MENU_MAX_WIDTH: CGFloat = 280
-private let DISABLED_MENU_ALPHA = 0.38
 
 @MainActor
 private enum PlanUndoTracking {
@@ -235,7 +233,7 @@ struct PlanTab: View {
                 Text(confirmCopy(kind).body)
             }
             Color.clear.frame(width: 0, height: 0).alertWhenPresenterFree(
-                Binding(get: { Optional(files.patternChoice.options()).flatMap { $0.isEmpty ? nil : $0 } }, set: { if $0 == nil { files.patternChoice.cancel() } }),
+                Binding(get: { patternOptions }, set: { if $0 == nil { files.patternChoice.cancel() } }),
                 title: { _ in "Import as which pattern?" }
             ) { options in
                 ForEach(options, id: \.self) { name in
@@ -246,6 +244,11 @@ struct PlanTab: View {
                 EmptyView()
             }
         }
+    }
+
+    private var patternOptions: [String]? {
+        let options = files.patternChoice.options()
+        return options.isEmpty ? nil : options
     }
 
     private func startPlan(_ template: String?) {
@@ -417,7 +420,7 @@ struct PlanTab: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
-        .opacity(enabled ? 1 : DISABLED_MENU_ALPHA)
+        .opacity(enabled ? 1 : DISABLED_ALPHA)
     }
 }
 
@@ -468,6 +471,6 @@ private struct PlanActionPill: View {
         .buttonStyle(.plain)
         .fixedSize()
         .disabled(!enabled)
-        .opacity(enabled ? 1 : DISABLED_PILL_ALPHA)
+        .opacity(enabled ? 1 : DISABLED_ALPHA)
     }
 }

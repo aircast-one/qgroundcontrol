@@ -2,7 +2,6 @@ import Foundation
 
 let CAMERAS_VIEW = "view.cameras"
 let VIDEO_SOURCES_PAGE = "Video sources"
-private let CAMERA_GROUP_DEVICE = "This device"
 private let FROM_THE_DRONE = "From the drone"
 
 enum CameraStatus: CaseIterable, Equatable {
@@ -73,10 +72,6 @@ struct CameraGuess: Equatable {
     let problem: String?
 }
 
-private func objects(_ json: JSON, _ key: String) -> [JSON] {
-    json[key].array.filter { $0.object != nil }
-}
-
 private func textOrNull(_ json: JSON, _ key: String) -> String? {
     json.has(key) ? json[key].stringOrNil.flatMap { $0.isBlank ? nil : $0 } : nil
 }
@@ -87,12 +82,12 @@ private func intOrNull(_ json: JSON, _ key: String) -> Int? {
 
 func camerasReading(_ view: JSON?) -> CamerasReading? {
     guard let view, view["class"].string == "Cameras" else { return nil }
-    let pip = view["pip"].object != nil ? view["pip"] : nil
+    let pip = view["pip"].objectOrNil
     return CamerasReading(
         readable: view["readable"].bool(true),
         reason: view["reason"].string,
         pip: CameraPip(enabled: pip?["enabled"].bool == true, slot: pip.flatMap { intOrNull($0, "slot") }),
-        cameras: objects(view, "cameras").map { camera in
+        cameras: view["cameras"].objects.map { camera in
             CameraEntry(
                 slot: camera["slot"].int(0),
                 stored: intOrNull(camera, "stored"),
@@ -107,7 +102,7 @@ func camerasReading(_ view: JSON?) -> CamerasReading? {
                 status: CameraStatus.allCases.first { $0.token == camera["status"].string } ?? .Idle
             )
         },
-        kinds: objects(view, "kinds").map { kind in
+        kinds: view["kinds"].objects.map { kind in
             CameraKind(
                 raw: kind["raw"].string,
                 label: kind["label"].string,
@@ -150,15 +145,12 @@ func cameraDetail(_ camera: CameraEntry) -> String {
 }
 
 func otherSources(_ reading: CamerasReading?) -> [CameraKind] {
-    let open = (reading?.kinds ?? []).filter { kind in
+    (reading?.kinds ?? []).filter { kind in
         !kind.needsUrl && !(reading?.stored ?? []).contains { $0.source == kind.raw }
     }
-    return open.filter { $0.group == CAMERA_GROUP_DEVICE } + open.filter { $0.group != CAMERA_GROUP_DEVICE }
 }
 
-func otherSourceLabel(_ kind: CameraKind) -> String {
-    kind.group == CAMERA_GROUP_DEVICE ? "This phone's \(kindLabel(kind.label).lowercased())" : kindLabel(kind.label)
-}
+func otherSourceLabel(_ kind: CameraKind) -> String { kindLabel(kind.label) }
 
 func kindLabel(_ label: String) -> String {
     sentenceCase(label.removingSuffix(" Video Stream").ifBlank(label))

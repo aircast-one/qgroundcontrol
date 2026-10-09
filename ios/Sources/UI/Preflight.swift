@@ -33,7 +33,7 @@ func preflight(_ view: JSON?) -> Preflight? {
         groups: groups.filter { $0.object != nil }.map { group in
             PreflightGroup(
                 name: group["name"].string,
-                checks: group["checks"].array.filter { $0.object != nil }.map {
+                checks: group["checks"].objects.map {
                     PreflightCheck(
                         name: $0["name"].string,
                         prompt: $0["prompt"].string,

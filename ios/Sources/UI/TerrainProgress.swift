@@ -3,6 +3,8 @@ import SwiftUI
 let TERRAIN_DOWNLOAD = "view.terrainDownload"
 private let TERRAIN_HIDE_AFTER_MS = 15_000
 private let TERRAIN_GREEN = Color(hex: 0x00C853)
+private let BAR_WIDTH: CGFloat = 160
+private let BAR_HEIGHT: CGFloat = 18
 
 struct TerrainLoad: Equatable {
     let loaded: Int64
@@ -31,7 +33,7 @@ struct TerrainProgress: View {
     var body: some View {
         if let load = terrainLoad(view) {
             ZStack {
-                Color.clear.frame(width: 0, height: 0).accessibilityHidden(true)
+                Color.clear.invisibleAnchor()
                 if visible {
                     VStack(spacing: 0) {
                         Text("Terrain load progress").font(.labelSmall)
@@ -43,9 +45,9 @@ struct TerrainProgress: View {
                                     Text("Done").font(.labelSmall)
                                 }
                             }
-                            .frame(width: 160 * min(max(load.fraction, 0), 1))
+                            .frame(width: BAR_WIDTH * min(max(load.fraction, 0), 1))
                         }
-                        .frame(width: 160, height: 18)
+                        .frame(width: BAR_WIDTH, height: BAR_HEIGHT)
                     }
                     .padding(6)
                     .background(osdBackdrop(theme.colors.surface.opacity(0.85), flyOsd), in: RoundedRectangle(cornerRadius: Corner.medium))

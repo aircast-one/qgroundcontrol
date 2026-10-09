@@ -55,7 +55,7 @@ func joystickCalibration(_ json: JSON?) -> JoystickCalibration {
     return JoystickCalibration(
         calibrating: json?["calibrating"].bool == true,
         statusText: json?["statusText"].string ?? "",
-        nextText: json.flatMap { $0["nextText"].string.isBlank ? nil : $0["nextText"].string } ?? "Calibrate",
+        nextText: (json?["nextText"].string ?? "").ifBlank("Calibrate"),
         nextEnabled: json?["nextEnabled"].bool(true) ?? true,
         cancelEnabled: json?["cancelEnabled"].bool == true,
         oneSidedVisible: json?["oneSidedVisible"].bool == true,
@@ -79,32 +79,28 @@ struct JoystickPage: Equatable {
     var actions: [AssignableAction] = []
 }
 
-private func objects<T>(_ list: JSON, _ read: (JSON) -> T?) -> [T] {
-    list.array.filter { $0.object != nil }.compactMap(read)
-}
-
 func joystickPage(_ view: JSON?) -> JoystickPage? {
     guard let it = view, it["available"].bool else { return nil }
     let state = it["state"]
     return JoystickPage(
-        names: it["names"].array.map(\.string),
+        names: it["names"].strings,
         active: it["active"].isNull ? nil : it["active"].string,
         vehicle: it["vehicle"].bool,
         enabled: it["enabled"].bool,
         calibrated: it["calibrated"].bool,
-        settings: objects(it["settings"]) { s in
+        settings: it["settings"].objects.compactMap { s in
             s["visible"].bool(true)
                 ? JoystickSetting(name: s["name"].string, type: s["type"].string, label: s["label"].string, units: s["units"].string, value: s["value"], slider: s["slider"].object != nil ? factSlider(s["slider"], "") : nil)
                 : nil
         },
-        axes: objects(state["axes"]) { a in JoystickAxis(index: a["index"].int(0), raw: a["raw"].isNull ? nil : a["raw"].int(0), function: a["function"].string) },
+        axes: state["axes"].objects.compactMap { a in JoystickAxis(index: a["index"].int(0), raw: a["raw"].isNull ? nil : a["raw"].int(0), function: a["function"].string) },
         armed: it["armed"].bool,
-        calibration: joystickCalibration(it["calibration"].object != nil ? it["calibration"] : nil),
+        calibration: joystickCalibration(it["calibration"].objectOrNil),
         transmitterMode: it["transmitterMode"].int(2),
-        buttons: objects(state["buttons"]) { b in
+        buttons: state["buttons"].objects.compactMap { b in
             JoystickButton(index: b["index"].int(0), action: b["action"].isNull ? NO_ACTION : b["action"].string, repeat: b["repeat"].bool, pressed: ["down", "repeat"].contains(b["event"].string))
         },
-        actions: objects(it["assignableActions"]) { AssignableAction(action: $0["action"].string, canRepeat: $0["canRepeat"].bool) }
+        actions: it["assignableActions"].objects.compactMap { AssignableAction(action: $0["action"].string, canRepeat: $0["canRepeat"].bool) }
     )
 }
 
@@ -112,15 +108,6 @@ private let BASIC_SETTINGS = ["throttleModeCenterZero", "throttleSmoothing", "ex
 private let ADVANCED_SETTINGS = ["circleCorrection", "axisFrequencyHz", "buttonFrequencyHz", "useDeadband"]
 private let EXTENSION_SETTINGS = ["enableManualControlPitchExtension", "enableManualControlRollExtension"]
 private let ADDITIONAL_SETTINGS = (1...6).map { "enableAdditionalAxis\($0)" }
-
-private func numeric(_ value: JSON?) -> Double? {
-    if case .number(let number)? = value { return number }
-    return nil
-}
-
-private func refused(_ path: String, _ args: [Any?]) -> String? {
-    refusal(Qgc.call(path, arguments: args))
-}
 
 struct JoystickScreen: View {
     @Environment(\.theme) private var theme
@@ -160,7 +147,7 @@ struct JoystickScreen: View {
 
     private func screen(_ read: JoystickPage) -> some View {
         let setting = { (name: String) in read.settings.first { $0.name == name } }
-        let viaRc = numeric(setting("additionalAxesFunction")?.value).map { Int($0) } == 1
+        let viaRc = setting("additionalAxesFunction")?.value.numberOrNil.map { $0.rounded(.towardZero) } == 1
         return ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 if read.names.count > 1 {
@@ -224,8 +211,8 @@ struct JoystickScreen: View {
                         SettingRow(setting: relabeled(each, label)) { act(JOYSTICK_SETTING, each.name, $0) }
                     }
                     Text("Additional axes").font(.titleSmall)
-                    RadioRow(label: "Send using MANUAL_CONTROL", selected: !viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 0) }
-                    RadioRow(label: "Send using RC_CHANNELS_OVERRIDE", selected: viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 1) }
+                    RadioChoiceRow(label: "Send using MANUAL_CONTROL", selected: !viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 0) }
+                    RadioChoiceRow(label: "Send using RC_CHANNELS_OVERRIDE", selected: viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 1) }
                     ForEach(Array(ADDITIONAL_SETTINGS.compactMap(setting).enumerated()), id: \.element.name) { index, each in
                         SettingRow(setting: relabeled(each, viaRc ? "Channel \(index + 5)" : "Aux\(index + 1)")) { act(JOYSTICK_SETTING, each.name, $0) }
                     }
@@ -245,7 +232,7 @@ struct JoystickScreen: View {
     }
 
     private func act(_ path: String, _ args: Any...) {
-        Task { refusal = await offMain { refused(path, args) } }
+        Task { refusal = await offMain { Qgc.refusalOf(path, arguments: args) } }
     }
 }
 
@@ -253,25 +240,6 @@ private func relabeled(_ setting: JoystickSetting, _ label: String) -> JoystickS
     var copy = setting
     copy.label = label
     return copy
-}
-
-private struct RadioRow: View {
-    let label: String
-    let selected: Bool
-    let onClick: () -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        Button(action: onClick) {
-            HStack {
-                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
-                    .foregroundStyle(selected ? theme.colors.primary : theme.colors.onSurfaceVariant)
-                Text(label).foregroundStyle(theme.colors.onSurface)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
 }
 
 private struct ButtonRow: View {
@@ -373,7 +341,7 @@ private struct SettingRow: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingField(setting: setting, onChange: onChange)
             if let slider = setting.slider, setting.type != "bool" {
-                FieldSlider(value: numeric(setting.value), slider: slider, enabled: true) { onChange($0) }
+                FieldSlider(value: setting.value.numberOrNil, slider: slider, enabled: true) { onChange($0) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -400,7 +368,7 @@ private struct SettingField: View {
                 }
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 140)
-                .onChange(of: setting.value, initial: true) { typed = numeric(setting.value).map(JSON.format) ?? "" }
+                .onChange(of: setting.value, initial: true) { typed = setting.value.numberOrNil.map(JSON.format) ?? "" }
             }
         }
     }

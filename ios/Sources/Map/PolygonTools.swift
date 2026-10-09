@@ -1,6 +1,5 @@
 import Foundation
 import MapLibre
-import UIKit
 
 private let DEFAULT_SHAPE_FRACTION = 0.75
 private let DEFAULT_SHAPE_MAX_METRES = 3000.0
@@ -9,7 +8,11 @@ private let METRES_PER_DEGREE = 111_320.0
 private let TRACE_SOURCE = "aircast-polygon-trace"
 private let TRACE_LINE_LAYER = "aircast-polygon-trace-line"
 private let TRACE_DOT_LAYER = "aircast-polygon-trace-dots"
-private let TRACE_COLOUR = UIColor.white
+private let TRACE_COLOUR = "#FFFFFF"
+private let TRACE_LINE_WIDTH = 2.0
+private let TRACE_DOT_RADIUS = 4.0
+private let STAGED_SHAPE_NAME = "shape"
+private let UNREADABLE_FILE = "That file could not be read."
 
 private func offset(_ centre: TrackPoint, _ northMetres: Double, _ eastMetres: Double) -> TrackPoint {
     TrackPoint(
@@ -162,7 +165,7 @@ func fileShape(_ view: JSON?, _ target: ShapeTarget) -> ([TrackPoint], String) {
     guard let view else { return ([], target.missing) }
     if !view["error"].string.isBlank { return ([], view["error"].string) }
     if view["shape"].string != target.fileShape { return ([], target.missing) }
-    let points = view["points"].array.filter { $0.object != nil }.map {
+    let points = view["points"].objects.map {
         TrackPoint(latitude: $0["latitude"].double(.nan), longitude: $0["longitude"].double(.nan))
     }
     return (points, "")
@@ -177,22 +180,30 @@ func mainShapeExtension(_ names: [String]) -> String? {
     return ["shp", "kml"].first { extensions.contains($0) } ?? extensions.first
 }
 
-func importShapeFiles(_ urls: [URL], _ target: ShapeTarget) -> String? {
+private func stagedShape(_ folder: URL, _ ext: String) -> URL {
+    folder.appendingPathComponent("\(STAGED_SHAPE_NAME).\(ext)")
+}
+
+func stageShapeFiles(_ urls: [URL], _ folder: URL) -> URL? {
+    let files = FileManager.default
     let named = urls.map { ($0, extensionOf($0.lastPathComponent)) }
-    guard let main = mainShapeExtension(named.map { "x.\($0.1)" }) else { return "That file could not be read." }
-    let folder = FileManager.default.temporaryDirectory
-    let stale = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
-    stale.filter { $0.lastPathComponent.hasPrefix("shape.") }.forEach { try? FileManager.default.removeItem(at: $0) }
+    guard let main = mainShapeExtension(named.map { "x.\($0.1)" }) else { return nil }
+    let stale = (try? files.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+    stale.filter { $0.lastPathComponent.hasPrefix("\(STAGED_SHAPE_NAME).") }.forEach { try? files.removeItem(at: $0) }
     let copied = named.allSatisfy { url, ext in
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let staged = folder.appendingPathComponent("shape.\(ext)")
-        try? FileManager.default.removeItem(at: staged)
-        return (try? FileManager.default.copyItem(at: url, to: staged)) != nil
+        let staged = stagedShape(folder, ext)
+        try? files.removeItem(at: staged)
+        return (try? files.copyItem(at: url, to: staged)) != nil
     }
-    let staged = folder.appendingPathComponent("shape.\(main)")
+    return copied ? stagedShape(folder, main) : nil
+}
+
+func importShapeFiles(_ urls: [URL], _ target: ShapeTarget) -> String? {
+    guard let staged = stageShapeFiles(urls, FileManager.default.temporaryDirectory) else { return UNREADABLE_FILE }
     let view = "view.\(target.line ? "lineFile" : "areaFile")(\(staged.path))"
-    let (vertices, error) = copied ? fileShape(MapBridge.read(view), target) : ([], "That file could not be read.")
+    let (vertices, error) = fileShape(MapBridge.read(view), target)
     if !error.isBlank { return error }
     return replaceShape(target, vertices) ? nil : target.missing
 }
@@ -203,23 +214,23 @@ func traceOutline(_ points: [TrackPoint], _ line: Bool = false) -> [TrackPoint] 
 
 func installTraceLayer(_ style: MLNStyle) {
     guard style.source(withIdentifier: TRACE_SOURCE) == nil else { return }
-    let source = MLNShapeSource(identifier: TRACE_SOURCE, shape: nil, options: nil)
+    let source = geoJsonSource(TRACE_SOURCE)
     style.addSource(source)
     let line = MLNLineStyleLayer(identifier: TRACE_LINE_LAYER, source: source)
-    line.lineColor = NSExpression(forConstantValue: TRACE_COLOUR)
-    line.lineWidth = NSExpression(forConstantValue: 2)
+    line.lineColor = styleConstant(mapColour(TRACE_COLOUR))
+    line.lineWidth = styleConstant(TRACE_LINE_WIDTH)
     style.addLayer(line)
     let dots = MLNCircleStyleLayer(identifier: TRACE_DOT_LAYER, source: source)
-    dots.circleColor = NSExpression(forConstantValue: TRACE_COLOUR)
-    dots.circleRadius = NSExpression(forConstantValue: 4)
+    dots.circleColor = styleConstant(mapColour(TRACE_COLOUR))
+    dots.circleRadius = styleConstant(TRACE_DOT_RADIUS)
     style.addLayer(dots)
 }
 
+func traceFeatures(_ points: [TrackPoint], _ line: Bool) -> [Feature] {
+    let outline = traceOutline(points, line)
+    return (outline.count >= 2 ? [lineFeature(outline)] : []) + outline.map { pointFeature($0) }
+}
+
 func renderTrace(_ style: MLNStyle, _ points: [TrackPoint], _ line: Bool) {
-    let coordinates = traceOutline(points, line).map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
-    let features: [MLNShape & MLNFeature] = [
-        coordinates.count >= 2 ? MLNPolylineFeature(coordinates: coordinates, count: UInt(coordinates.count)) : nil,
-        coordinates.isEmpty ? nil : MLNPointCollectionFeature(coordinates: coordinates, count: UInt(coordinates.count)),
-    ].compactMap { $0 }
-    (style.source(withIdentifier: TRACE_SOURCE) as? MLNShapeSource)?.shape = MLNShapeCollectionFeature(shapes: features)
+    style.setGeoJson(TRACE_SOURCE, featureCollection(traceFeatures(points, line)))
 }

@@ -1,3 +1,4 @@
+import Observation
 import UIKit
 import XCTest
 @testable import Aircast
@@ -36,5 +37,15 @@ final class PaletteTests: XCTestCase {
         other.enumStrings = ["A", "B"]
         other.enumValues = ["1", "0"]
         XCTAssertEqual(paletteNamed(other).enumStrings, ["A", "B"])
+    }
+
+    @MainActor
+    func testGivingUpTheDarkDefaultRedrawsWhatReadIt() {
+        let awaited = PaletteDefault.shared
+        awaited.awaiting = true
+        let redrawn = expectation(description: "readers redraw")
+        withObservationTracking { _ = awaited.awaiting } onChange: { redrawn.fulfill() }
+        awaited.awaiting = false
+        wait(for: [redrawn], timeout: 1)
     }
 }

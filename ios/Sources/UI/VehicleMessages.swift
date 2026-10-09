@@ -30,7 +30,7 @@ func bannerText(_ messages: [VehicleMessage]) -> String? {
     guard !messages.isEmpty else { return nil }
     let worst = messages.last { $0.level == .Error } ?? messages.last { $0.level == .Warning }
     let count = messageCountText(messages.count)
-    return worst.flatMap { $0.text.isBlank ? nil : $0.text } ?? count
+    return worst?.text.nonBlank ?? count
 }
 
 func severitySummary(_ messages: [VehicleMessage]) -> String {
@@ -84,7 +84,7 @@ let WARNINGS = "view.warnings"
 func armingBlocker(_ view: JSON?) -> String? {
     guard let view, !view["armingBlocker"].isNull else { return nil }
     let blocker = view["armingBlocker"].string
-    return blocker.isBlank ? nil : blocker
+    return blocker.nonBlank
 }
 
 struct ArmingCheck: Equatable, Hashable {
@@ -301,140 +301,6 @@ struct MessageLine<Content: View>: View {
     }
 }
 
-enum SnackbarDuration: Equatable {
-    case Short, Long, Indefinite
-
-    var millis: Int? {
-        switch self {
-        case .Short: 4000
-        case .Long: 10000
-        case .Indefinite: nil
-        }
-    }
-}
-
-enum SnackbarResult: Equatable {
-    case Dismissed, ActionPerformed
-}
-
-@MainActor
-final class SnackbarData: Identifiable {
-    let id = UUID()
-    let message: String
-    let actionLabel: String?
-    let withDismissAction: Bool
-    let duration: SnackbarDuration
-    private var finish: ((SnackbarResult) -> Void)?
-
-    init(message: String, actionLabel: String?, withDismissAction: Bool, duration: SnackbarDuration, finish: @escaping (SnackbarResult) -> Void) {
-        self.message = message
-        self.actionLabel = actionLabel
-        self.withDismissAction = withDismissAction
-        self.duration = duration
-        self.finish = finish
-    }
-
-    func dismiss() { resolve(.Dismissed) }
-
-    func performAction() { resolve(.ActionPerformed) }
-
-    private func resolve(_ result: SnackbarResult) {
-        let done = finish
-        finish = nil
-        done?(result)
-    }
-}
-
-@MainActor
-@Observable
-final class SnackbarHostState {
-    private(set) var currentSnackbarData: SnackbarData?
-    @ObservationIgnored private var waiters: [CheckedContinuation<Void, Never>] = []
-    @ObservationIgnored private var busy = false
-
-    @discardableResult
-    func showSnackbar(_ message: String, actionLabel: String? = nil, withDismissAction: Bool = false, duration: SnackbarDuration? = nil) async -> SnackbarResult {
-        await acquire()
-        let shownFor = duration ?? (actionLabel == nil ? .Short : .Indefinite)
-        let result = await withCheckedContinuation { (done: CheckedContinuation<SnackbarResult, Never>) in
-            let data = SnackbarData(message: message, actionLabel: actionLabel, withDismissAction: withDismissAction, duration: shownFor) { done.resume(returning: $0) }
-            currentSnackbarData = data
-            if let millis = shownFor.millis {
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(millis))
-                    data.dismiss()
-                }
-            }
-        }
-        currentSnackbarData = nil
-        release()
-        return result
-    }
-
-    private func acquire() async {
-        guard busy else {
-            busy = true
-            return
-        }
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    private func release() {
-        guard !waiters.isEmpty else {
-            busy = false
-            return
-        }
-        waiters.removeFirst().resume()
-    }
-}
-
-struct SnackbarHost<Content: View>: View {
-    let hostState: SnackbarHostState
-    @ViewBuilder let snackbar: (SnackbarData) -> Content
-
-    var body: some View {
-        ZStack {
-            if let data = hostState.currentSnackbarData {
-                snackbar(data)
-                    .id(data.id)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-        }
-        .animation(.easeOut(duration: 0.2), value: hostState.currentSnackbarData?.id)
-    }
-}
-
-private struct Snackbar: View {
-    let data: SnackbarData
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        HStack(spacing: Space.s2) {
-            Text(data.message)
-                .font(.bodyMedium)
-                .foregroundStyle(theme.colors.inverseOnSurface)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let action = data.actionLabel {
-                Button(action) { data.performAction() }
-                    .font(.labelLarge)
-                    .foregroundStyle(theme.dark ? Theme.lightTheme.colors.primary : Theme.darkTheme.colors.primary)
-                    .buttonStyle(.borderless)
-            }
-            if data.withDismissAction {
-                Button { data.dismiss() } label: { Image(.close) }
-                    .foregroundStyle(theme.colors.inverseOnSurface)
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("Dismiss")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(theme.colors.inverseSurface, in: RoundedRectangle(cornerRadius: Corner.extraSmall))
-        .frame(maxWidth: 600)
-        .padding(12)
-    }
-}
-
 struct AppSnackbar: View {
     let data: SnackbarData
     @Environment(\.theme) private var theme
@@ -457,7 +323,7 @@ struct AppSnackbar: View {
             .padding(.trailing, 4)
             .padding(.vertical, 6)
             .background(theme.colors.errorContainer, in: RoundedRectangle(cornerRadius: ALERT_CORNER))
-            .frame(maxWidth: 600)
+            .frame(maxWidth: SNACKBAR_MAX_WIDTH)
             .padding(12)
         }
     }

@@ -75,8 +75,8 @@ func draggedGotoRadius(_ location: GotoLocation, _ to: TrackPoint) -> Double {
 
 private enum CircleGrab { case None, GotoRadius, GotoFlip, OrbitRadius, OrbitCentre, OrbitFlip }
 
-func attachGotoRadiusDrag(_ mapView: MLNMapView, _ map: MLNMapView, _ edits: FlyMapEdits, _ shown: @escaping () -> GotoLocation?) {
-    mapView.addGestureRecognizer(CircleGrabGesture(map: map, edits: edits, shown: shown))
+func attachGotoRadiusDrag(_ map: MLNMapView, _ edits: FlyMapEdits, _ shown: @escaping () -> GotoLocation?) {
+    map.addGestureRecognizer(CircleGrabGesture(map: map, edits: edits, shown: shown))
 }
 
 private final class CircleGrabGesture: UILongPressGestureRecognizer, UIGestureRecognizerDelegate {

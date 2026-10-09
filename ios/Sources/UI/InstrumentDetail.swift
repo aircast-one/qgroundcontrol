@@ -18,8 +18,7 @@ struct BatteryHeadline: Equatable {
 }
 
 func batteryHeadline(_ view: JSON?) -> BatteryHeadline? {
-    guard let view, view["available"].bool, view["headline"].object != nil else { return nil }
-    let it = view["headline"]
+    guard let view, view["available"].bool, let it = view["headline"].objectOrNil else { return nil }
     return BatteryHeadline(
         text: it["text"].string,
         detail: it["detail"].string,
@@ -35,7 +34,7 @@ private let LIMITING_PACK = "lowest"
 func batteryDetail(_ view: JSON?) -> [DetailRow] {
     guard let view, view["available"].bool, let packs = view["packs"].arrayOrNil else { return [] }
     let rowsOf = { (index: Int) -> [JSON] in
-        packs.indices.contains(index) ? packs[index]["rows"].array.filter { $0.object != nil } : []
+        packs.indices.contains(index) ? packs[index]["rows"].objects : []
     }
     guard packs.count >= 2 else {
         return rowsOf(0).map { DetailRow(label: $0["label"].string, value: $0["value"].string, severity: $0["severity"].int(SEVERITY_SECONDARY)) }

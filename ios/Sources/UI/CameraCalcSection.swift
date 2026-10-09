@@ -25,27 +25,25 @@ func distanceModeTitle(_ block: CameraCalcBlock) -> String? {
     block.distanceModes.first { $0.0 == block.distanceMode }?.1
 }
 
-private func strings(_ block: JSON, _ key: String) -> [String] { block[key].strings }
-
 func cameraCalc(_ view: JSON?) -> CameraCalcBlock? {
-    guard let block = view?["camera"], block.object != nil else { return nil }
+    guard let block = view?["camera"].objectOrNil else { return nil }
     let brand = block["brand"].string
     return CameraCalcBlock(
         brand: brand,
         model: block["model"].string,
-        brands: strings(block, "brands"),
-        models: strings(block, "models"),
+        brands: block["brands"].strings,
+        models: block["models"].strings,
         manual: brand == block["manualName"].string,
         custom: block["custom"].bool,
         valueSetIsDistance: block["valueSetIsDistance"].bool(true),
         valueSetIsDistancePath: block["valueSetIsDistancePath"].string,
         brandPath: block["brandPath"].string,
         modelPath: block["modelPath"].string,
-        facts: block["facts"].array.filter { $0.object != nil }.compactMap { control in
+        facts: block["facts"].objects.compactMap { control in
             factFromControl(control).map { (control["pathSuffix"].string, $0) }
         },
         distanceMode: block["distanceMode"].isNull ? nil : block["distanceMode"].int(0),
-        distanceModes: block["distanceModes"].array.filter { $0.object != nil }.map { ($0["raw"].int(0), $0["title"].string) },
+        distanceModes: block["distanceModes"].objects.map { ($0["raw"].int(0), $0["title"].string) },
         distanceModePath: block["distanceModePath"].string
     )
 }
@@ -56,10 +54,12 @@ func distanceLabel(_ block: CameraCalcBlock) -> String {
 
 func shownCameraFacts(_ block: CameraCalcBlock) -> [Fact] {
     block.facts.filter { suffix, _ in
-        block.manual ? (suffix == DISTANCE_SUFFIX || SPACING_SUFFIXES.contains(suffix))
-            : suffix == DISTANCE_SUFFIX ? block.valueSetIsDistance
-            : suffix == DENSITY_SUFFIX ? !block.valueSetIsDistance
-            : true
+        switch (block.manual, suffix) {
+        case (true, _): suffix == DISTANCE_SUFFIX || SPACING_SUFFIXES.contains(suffix)
+        case (false, DISTANCE_SUFFIX): block.valueSetIsDistance
+        case (false, DENSITY_SUFFIX): !block.valueSetIsDistance
+        default: true
+        }
     }.map(\.1)
 }
 
@@ -87,8 +87,8 @@ struct CameraCalcHeader: View {
             if !block.manual {
                 HStack(spacing: Space.s2) {
                     Text("Set by").font(.bodyMedium)
-                    PlanChip(label: distanceLabel(block), selected: block.valueSetIsDistance) { onWrite(block.valueSetIsDistancePath, true) }
-                    PlanChip(label: "Ground res", selected: !block.valueSetIsDistance) { onWrite(block.valueSetIsDistancePath, false) }
+                    CameraChip(label: distanceLabel(block), selected: block.valueSetIsDistance) { onWrite(block.valueSetIsDistancePath, true) }
+                    CameraChip(label: "Ground res", selected: !block.valueSetIsDistance) { onWrite(block.valueSetIsDistancePath, false) }
                 }
             }
         }

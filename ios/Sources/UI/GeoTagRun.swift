@@ -47,10 +47,6 @@ final class GeoTagRun {
         }
     }
 
-    private func keep(_ tree: URL) {
-        _ = tree.startAccessingSecurityScopedResource()
-    }
-
     func pickLog(_ uri: URL) {
         withFiles { [self] in
             let staged = await offMain { stageLog(uri, documentName(uri)) }
@@ -62,7 +58,6 @@ final class GeoTagRun {
 
     func pickImages(_ tree: URL) {
         withFiles { [self] in
-            keep(tree)
             imageTree = tree
             let outputChosen = outputTree != nil
             let (path, count, alreadyTagged) = await offMain {
@@ -77,7 +72,6 @@ final class GeoTagRun {
 
     func pickOutput(_ tree: URL) {
         withFiles { [self] in
-            keep(tree)
             outputTree = tree
             note = await offMain { holdsImages(tree) } ? GEOTAG_SAVE_HAS_IMAGES : nil
         }

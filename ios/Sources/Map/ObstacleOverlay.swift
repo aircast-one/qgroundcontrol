@@ -44,7 +44,8 @@ private func floorMod(_ value: Int, _ divisor: Int) -> Int { ((value % divisor) 
 func rangeIndex(_ degrees: Double, _ overlay: ObstacleOverlay, _ heading: Double) -> Int {
     let count = overlay.ranges.count
     let wrapped = floorMod(degrees - overlay.offset - heading, 360)
-    return floorMod(count + Int(ceil(wrapped / overlay.increment)), count)
+    guard count > 0, let step = Int(exactly: ceil(wrapped / overlay.increment)) else { return 0 }
+    return floorMod(step, count)
 }
 
 struct GradientStop: Equatable {

@@ -3,7 +3,6 @@ import UIKit
 
 let TRAFFIC_SOURCE = "traffic"
 let TRAFFIC_LAYER = "traffic-aircraft"
-private let ADSB_TRAFFIC_VIEW = "view.adsbTraffic"
 private let ALERT_IMAGE = "traffic-alert"
 private let AWARENESS_IMAGE = "traffic-awareness"
 private let HEADING = "heading"
@@ -24,8 +23,10 @@ private func number(_ json: JSON, _ key: String) -> Double? {
 }
 
 func trafficLabel(_ altitude: Double?, _ unit: String, _ callsign: String) -> String {
-    altitude.map { String(format: "%.0f", locale: Locale(identifier: "en_US_POSIX"), $0) + " \(unit)\n\(callsign)" }
-        .map { String($0.reversed().drop(while: \.isWhitespace).reversed()) } ?? ""
+    altitude.map {
+        (String(format: "%.0f", locale: Locale(identifier: "en_US_POSIX"), $0) + " \(unit)\n\(callsign)")
+            .replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+    } ?? ""
 }
 
 func trafficMarks(_ view: JSON?) -> [TrafficMark] {
@@ -44,7 +45,7 @@ func trafficMarks(_ view: JSON?) -> [TrafficMark] {
 }
 
 enum TrafficBridge {
-    static func read() -> [TrafficMark] { trafficMarks(Qgc.get(ADSB_TRAFFIC_VIEW)) }
+    static func read() -> [TrafficMark] { trafficMarks(Qgc.get(TRAFFIC_VIEW)) }
 }
 
 func trafficFeatures(_ marks: [TrafficMark]) -> FeatureCollection {

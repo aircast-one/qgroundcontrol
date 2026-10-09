@@ -17,6 +17,10 @@ extension String {
 
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    var nonBlank: String? { isBlank ? nil : self }
+
+    var doubleOrNil: Double? { Double(trimmed) }
+
     func removingPrefix(_ prefix: String) -> String { hasPrefix(prefix) ? String(dropFirst(prefix.count)) : self }
 
     func removingSuffix(_ suffix: String) -> String { hasSuffix(suffix) ? String(dropLast(suffix.count)) : self }

@@ -3,7 +3,6 @@ import SwiftUI
 private let FLY_VIEW_SETTINGS = "settings.flyViewSettings"
 private let RAIL_SLIDER_LENGTH: CGFloat = 140
 private let RAIL_SLIDER_THICKNESS: CGFloat = 40
-private let GIMBAL_VIEW = "view.gimbalIndicator"
 
 private extension View {
     func railSlider() -> some View {
@@ -33,17 +32,28 @@ func cameraRecording(recordChannel: Int, channelRecording: Bool, streamRecording
 
 private func send(_ channel: Int, _ pwm: Int) { cameraRcControls.hold(channel, pwm) }
 
-private func uptimeMs() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
+func cameraChannel(_ value: JSON) -> Int { value.int ?? 0 }
+
+private func channelSetting(_ name: String) -> QgcValue { QgcValue(settingControl("\(FLY_VIEW_SETTINGS).\(name)")) }
 
 @propertyWrapper
-private struct ChannelSetting: DynamicProperty {
-    @QgcValue private var value: JSON
+struct CameraChannels: DynamicProperty {
+    @QgcValue private var tilt: JSON
+    @QgcValue private var pan: JSON
+    @QgcValue private var zoom: JSON
+    @QgcValue private var light: JSON
+    @QgcValue private var record: JSON
 
-    init(_ name: String) { _value = QgcValue(settingControl("\(FLY_VIEW_SETTINGS).\(name)")) }
+    init() {
+        _tilt = channelSetting("gimbalTiltChannel")
+        _pan = channelSetting("gimbalPanChannel")
+        _zoom = channelSetting("cameraZoomChannel")
+        _light = channelSetting("cameraLightChannel")
+        _record = channelSetting("cameraRecordChannel")
+    }
 
-    var wrappedValue: Int {
-        if case .number(let number) = value, number.isFinite { return Int(number) }
-        return 0
+    var wrappedValue: RcCameraChannels {
+        RcCameraChannels(tilt: cameraChannel(tilt), pan: cameraChannel(pan), zoom: cameraChannel(zoom), light: cameraChannel(light), record: cameraChannel(record))
     }
 }
 
@@ -60,7 +70,7 @@ private struct PwmSlider: View {
                 value: Binding(get: { Double(pwm) }, set: { raw in
                     let next = Int(raw)
                     onPwm(next)
-                    let now = uptimeMs()
+                    let now = uptimeMillis()
                     if rcSendDue(now, lastSent, false) {
                         lastSent = now
                         send(channel, next)
@@ -103,7 +113,7 @@ private struct GimbalTiltSlider: View {
     @State private var wake = 0
 
     var body: some View {
-        let shown = dragging ?? min(max(pitch ?? 0, GIMBAL_TILT_MIN), GIMBAL_TILT_MAX)
+        let shown = dragging ?? (pitch ?? 0).clamped(to: GIMBAL_TILT_MIN...GIMBAL_TILT_MAX)
         VStack(spacing: 0) {
             Text("\(Int(shown.rounded()))\u{00B0}")
                 .font(.labelMedium)
@@ -121,7 +131,7 @@ private struct GimbalTiltSlider: View {
                     Slider(
                         value: Binding(get: { shown }, set: { next in
                             dragging = next
-                            let now = uptimeMs()
+                            let now = uptimeMillis()
                             if rcSendDue(now, lastSent, false) {
                                 lastSent = now
                                 sendTilt(next)
@@ -157,12 +167,8 @@ struct RcCameraControls: View {
     @Environment(\.theme) private var theme
     @Environment(FlyScreenState.self) private var flyScreen
     @HasVehicle private var hasVehicle
-    @ChannelSetting("gimbalTiltChannel") private var tiltChannel
-    @ChannelSetting("gimbalPanChannel") private var panChannel
-    @ChannelSetting("cameraZoomChannel") private var zoomChannel
-    @ChannelSetting("cameraLightChannel") private var lightChannel
-    @ChannelSetting("cameraRecordChannel") private var recordChannel
-    @QgcPath(GIMBAL_VIEW) private var gimbalJson
+    @CameraChannels private var configured
+    @QgcPath(GIMBAL_INDICATOR_PATH) private var gimbalJson
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
     @QgcBool(VIDEO_RECORDING_STATE) private var streamRecording
     @State private var tilt = PWM_CENTER
@@ -175,7 +181,7 @@ struct RcCameraControls: View {
     private var gimbalRefused: String? { state.gimbalRefused }
 
     var body: some View {
-        let channels = rcCameraChannels(tilt: tiltChannel, pan: panChannel, zoom: zoomChannel, light: lightChannel, record: recordChannel)
+        let channels = rcCameraChannels(tilt: configured.tilt, pan: configured.pan, zoom: configured.zoom, light: configured.light, record: configured.record)
         let gimbalManager = gimbalJson?["shown"].bool == true
         let vehicleId = activeVehicleId(vehiclesJson)
         ZStack {

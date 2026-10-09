@@ -51,8 +51,9 @@ private func groupedInOrder<T>(_ items: [T], _ key: (T) -> String) -> [(key: Str
         .map { section in (key: section, value: items.filter { key($0) == section }) }
 }
 
-func firstReported(_ setting: PilotSetting, _ reported: (String) -> Fact?) -> Fact? {
-    setting.parameters.reduce(nil as Fact?) { found, name in found ?? reported(name) }.map { labeled($0, setting.label) }
+func firstReported(_ setting: PilotSetting, _ reported: @escaping (String) -> Fact?) -> Fact? {
+    let found = setting.parameters.lazy.map(reported).first { $0 != nil } ?? nil
+    return found.map { labeled($0, setting.label) }
 }
 
 private struct ShownKey: Equatable {
@@ -94,7 +95,6 @@ struct PilotSettings: View {
 
 let OFFLINE_PILOT_NOTE = "Connect the aircraft to see and change these."
 private let OFFLINE_VALUE = "\u{2014}"
-private let OFFLINE_ALPHA = 0.38
 
 func pilotSections(_ settings: [PilotSetting]) -> [(key: String, value: [PilotSetting])] {
     groupedInOrder(settings) { $0.section }
@@ -137,13 +137,13 @@ private struct OfflineRow: View {
                 Text(label)
                     .font(.bodyLarge)
                     .fontWeight(.medium)
-                    .foregroundStyle(theme.colors.onSurface.opacity(OFFLINE_ALPHA))
+                    .foregroundStyle(theme.colors.onSurface.opacity(DISABLED_ALPHA))
                 if let hint {
-                    Text(hint).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant.opacity(OFFLINE_ALPHA))
+                    Text(hint).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant.opacity(DISABLED_ALPHA))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text(OFFLINE_VALUE).font(.bodyLarge).foregroundStyle(theme.colors.onSurfaceVariant.opacity(OFFLINE_ALPHA))
+            Text(OFFLINE_VALUE).font(.bodyLarge).foregroundStyle(theme.colors.onSurfaceVariant.opacity(DISABLED_ALPHA))
         }
         .padding(.horizontal, Space.s4)
         .padding(.vertical, Space.s2)

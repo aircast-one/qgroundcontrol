@@ -79,10 +79,53 @@ final class PolygonToolsTests: XCTestCase {
         let shape = EditableShape(path: "p", midpoints: [], splitInvokable: "", canRemoveVertex: false, caption: "1.2 ha \u{00B7} 440 m", circleCaption: "Radius 50.0 m")
         XCTAssertEqual("Radius 50.0 m", shapeCaption(shape, true))
         XCTAssertEqual("1.2 ha \u{00B7} 440 m", shapeCaption(shape, false))
-        var bare = shape
-        bare.circleCaption = ""
+        let bare = withChanges(shape) { $0.circleCaption = "" }
         XCTAssertEqual("1.2 ha \u{00B7} 440 m", shapeCaption(bare, true))
         XCTAssertEqual("Click the map to add points \u{00B7} 2 of 3", traceCaption(2, 3))
         XCTAssertEqual("3 points", traceCaption(3, 3))
+    }
+
+    func testAShapefileIsStagedWithItsSidecarsAndTheMainFileIsTheShp() throws {
+        let folder = try scratchFolder()
+        let sources = try scratchFolder()
+        let stale = folder.appendingPathComponent("shape.kml")
+        try Data("old".utf8).write(to: stale)
+        let shp = sources.appendingPathComponent("Field.SHP")
+        let prj = sources.appendingPathComponent("Field.prj")
+        try Data("geometry".utf8).write(to: shp)
+        try Data("projection".utf8).write(to: prj)
+        let staged = try XCTUnwrap(stageShapeFiles([prj, shp], folder))
+        XCTAssertEqual("shape.shp", staged.lastPathComponent)
+        XCTAssertEqual("geometry", try String(contentsOf: staged, encoding: .utf8))
+        XCTAssertEqual("projection", try String(contentsOf: folder.appendingPathComponent("shape.prj"), encoding: .utf8))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: stale.path))
+    }
+
+    func testAFileWithoutAnExtensionStagesUnderItsBareName() throws {
+        let folder = try scratchFolder()
+        let bare = try scratchFolder().appendingPathComponent("outline")
+        try Data("points".utf8).write(to: bare)
+        XCTAssertEqual("shape.", try XCTUnwrap(stageShapeFiles([bare], folder)).lastPathComponent)
+    }
+
+    func testNothingIsStagedWhenAFileCannotBeCopiedOrNoFileIsGiven() throws {
+        let folder = try scratchFolder()
+        XCTAssertNil(stageShapeFiles([folder.appendingPathComponent("missing.shp")], folder))
+        XCTAssertNil(stageShapeFiles([], folder))
+    }
+
+    func testATraceDrawsItsOutlineAndADotPerPoint() {
+        let points = [TrackPoint(47.0, 8.0), TrackPoint(47.001, 8.0), TrackPoint(47.001, 8.001)]
+        XCTAssertEqual(5, traceFeatures(points, false).count)
+        XCTAssertEqual(4, traceFeatures(points, true).count)
+        XCTAssertEqual(1, traceFeatures(Array(points.prefix(1)), false).count)
+        XCTAssertTrue(traceFeatures([], false).isEmpty)
+    }
+
+    private func scratchFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        return folder
     }
 }

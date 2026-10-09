@@ -1,24 +1,28 @@
 import Foundation
+import os
 
 private let SET_ACTIVE_VEHICLE = "vehicles.setActive"
 
 enum VehicleBridge {
-    private(set) static var lastRefusal: String?
-    private(set) static var lastAsked: Int?
+    private static let asked = OSAllocatedUnfairLock<(refusal: String?, id: Int?)>(initialState: (nil, nil))
+
+    static var lastRefusal: String? { asked.withLock { $0.refusal } }
+
+    static var lastAsked: Int? { asked.withLock { $0.id } }
 
     static func forget() {
-        lastAsked = nil
+        asked.withLock { $0.id = nil }
     }
 
-    static func askFor(_ id: Int) -> Bool {
-        guard let answer = Qgc.call(SET_ACTIVE_VEHICLE, id) else {
-            lastRefusal = "bridge threw: no answer"
-            return false
+    static func askFor(_ id: Int) -> Bool { answered(id, Qgc.call(SET_ACTIVE_VEHICLE, id)) }
+
+    static func answered(_ id: Int, _ answer: JSON?) -> Bool {
+        let accepted = answer?["ok"].bool == true
+        let refusal = answer.map { $0["reason"].string } ?? "bridge threw: no answer"
+        asked.withLock { state in
+            state.refusal = refusal.nonBlank
+            if accepted { state.id = id }
         }
-        let reason = answer["reason"].string
-        lastRefusal = reason.isBlank ? nil : reason
-        let accepted = answer["ok"].bool
-        if accepted { lastAsked = id }
         return accepted
     }
 }
@@ -80,8 +84,6 @@ enum FleetBridge {
 
 let CHOOSER_TITLE = "Fly which aircraft?"
 
-private func sameDouble(_ a: Double, _ b: Double) -> Bool { a == b || (a.isNaN && b.isNaN) }
-
 struct VehicleChoice: Equatable, Identifiable {
     var id: Int
     var name: String
@@ -127,12 +129,10 @@ struct VehicleChoices: Equatable {
     var selectedCount: Int { choices.filter(\.selected).count }
 }
 
-private func objectOrNil(_ json: JSON) -> JSON? { json.object != nil ? json : nil }
-
 func vehicleChoices(_ view: JSON?) -> VehicleChoices {
     VehicleChoices(
         ambiguous: view?["ambiguous"].bool == true,
-        choices: (view?["vehicles"].array ?? []).filter { $0.object != nil }.compactMap(vehicleChoice),
+        choices: (view?["vehicles"].objects ?? []).compactMap(vehicleChoice),
         canSelectAll: view?["canSelectAll"].bool == true,
         canDeselectAll: view?["canDeselectAll"].bool == true
     )
@@ -141,7 +141,7 @@ func vehicleChoices(_ view: JSON?) -> VehicleChoices {
 private func vehicleChoice(_ entry: JSON) -> VehicleChoice? {
     let id = entry["id"].int(-1)
     guard id >= 0 else { return nil }
-    let home = objectOrNil(entry["home"]).map { TrackPoint(latitude: $0["latitude"].double(.nan), longitude: $0["longitude"].double(.nan)) }
+    let home = entry["home"].objectOrNil.map { TrackPoint(latitude: $0["latitude"].double(.nan), longitude: $0["longitude"].double(.nan)) }
     return VehicleChoice(
         id: id,
         name: entry["name"].string.ifBlank("Vehicle \(id)"),
@@ -154,9 +154,9 @@ private func vehicleChoice(_ entry: JSON) -> VehicleChoice? {
         selected: entry["selected"].bool,
         heading: entry["heading"].isNull ? .nan : entry["heading"].double(.nan),
         home: home.flatMap { isPlottable($0.latitude, $0.longitude) ? $0 : nil },
-        radar: radarReading(objectOrNil(entry["proximity"])),
+        radar: radarReading(entry["proximity"].objectOrNil),
         armed: entry["armed"].bool,
-        telemetry: entry["telemetry"].array.filter { $0.object != nil }.map { ($0["label"].string, $0["value"].string) },
+        telemetry: entry["telemetry"].objects.map { ($0["label"].string, $0["value"].string) },
         index: entry["index"].int(-1),
         flightModes: entry["flightModes"].strings.filter { !$0.isBlank }
     )
@@ -165,7 +165,7 @@ private func vehicleChoice(_ entry: JSON) -> VehicleChoice? {
 private func vehicleChoiceState(_ entry: JSON) -> String {
     let flightMode = entry["flightMode"].string
     let armedState = entry["flying"].bool ? "Flying" : entry["armed"].bool ? "Armed" : "Disarmed"
-    return [flightMode.isBlank ? nil : flightMode, armedState].compactMap { $0 }.joined(separator: " · ")
+    return [flightMode.nonBlank, armedState].compactMap { $0 }.joined(separator: " · ")
 }
 
 func linkDistinguishes(_ choices: [VehicleChoice]) -> Bool {
@@ -174,7 +174,7 @@ func linkDistinguishes(_ choices: [VehicleChoice]) -> Bool {
 
 func vehicleChoiceLine(_ choice: VehicleChoice, _ distinguishes: Bool = true) -> String {
     let link = distinguishes && !choice.link.isBlank ? choice.link : nil
-    let lead = choice.contactLost ? "No contact" : (choice.state.isBlank ? nil : choice.state)
+    let lead = choice.contactLost ? "No contact" : choice.state.nonBlank
     return [lead, link].compactMap { $0 }.joined(separator: " · ")
 }
 
@@ -192,7 +192,7 @@ func lostVehiclesText(_ lost: [VehicleChoice]) -> String? {
 
 func activeVehicleTitle(_ choices: VehicleChoices, _ subtitle: String) -> String {
     guard choices.ambiguous else { return subtitle }
-    return [choices.active?.name, subtitle.isBlank ? nil : subtitle].compactMap { $0 }.joined(separator: " · ")
+    return [choices.active?.name, subtitle.nonBlank].compactMap { $0 }.joined(separator: " · ")
 }
 
 func uploadHeading(_ gate: UploadGate, _ choices: VehicleChoices) -> String {

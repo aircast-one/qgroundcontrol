@@ -6,7 +6,6 @@ private let RAIL_LABELLED_ITEM: CGFloat = 52
 private let RAIL_LABEL_SIZE: CGFloat = 10
 private let RAIL_ICON: CGFloat = 22
 private let RAIL_ALPHA = 0.94
-private let DISABLED_ALPHA = 0.38
 private let TOOLTIP_MS = 1500
 
 struct PlanRail<Content: View>: View {

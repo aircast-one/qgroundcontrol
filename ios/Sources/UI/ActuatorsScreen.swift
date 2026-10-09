@@ -6,11 +6,15 @@ private let SHOW_BITSET = "bitset"
 private let SHOW_TRUE_IF_POSITIVE = "true-if-positive"
 
 struct ActuatorFact: Equatable {
-    var label: String
+    let label: String
     let showAs: String
     let bit: Int
     let advanced: Bool
     let fact: Fact
+
+    func labelled(_ shown: String) -> ActuatorFact {
+        ActuatorFact(label: shown, showAs: showAs, bit: bit, advanced: advanced, fact: fact)
+    }
 }
 
 struct ActuatorColumn: Equatable {
@@ -125,10 +129,6 @@ struct ActuatorOutputs: Equatable {
     var actions: [ActuatorActionGroup] = []
 }
 
-private func objects<T>(_ list: JSON, _ read: (JSON) -> T?) -> [T] {
-    list.array.filter { $0.object != nil }.compactMap(read)
-}
-
 private func actuatorFact(_ json: JSON?) -> ActuatorFact? {
     guard let control = json, control.object != nil else { return nil }
     return factFromControl(control).map {
@@ -136,14 +136,10 @@ private func actuatorFact(_ json: JSON?) -> ActuatorFact? {
     }
 }
 
-private func strings(_ json: JSON, _ key: String) -> [String] {
-    json[key].array.map(\.string)
-}
-
 func geometryCell(_ json: JSON?) -> GeometryCell? {
     guard let json, json.object != nil else { return nil }
     if json["axis"].bool {
-        return .Axis(options: strings(json, "options"), index: json["index"].int(0), params: strings(json, "params"), advanced: json["advanced"].bool, hidden: json["hidden"].bool, disabled: json["disabled"].bool)
+        return .Axis(options: json["options"].strings, index: json["index"].int(0), params: json["params"].strings, advanced: json["advanced"].bool, hidden: json["hidden"].bool, disabled: json["disabled"].bool)
     }
     if json["unavailable"].bool {
         return .Unavailable(label: json["label"].string, advanced: json["advanced"].bool, hidden: json["hidden"].bool)
@@ -161,14 +157,14 @@ func geometry(_ json: JSON?) -> Geometry? {
     return Geometry(
         title: read["title"].string,
         helpUrl: read["helpUrl"].string,
-        groups: objects(read["groups"]) { group in
+        groups: read["groups"].objects.compactMap { group in
             GeometryGroup(
                 label: group["label"].string,
                 count: group["count"].object != nil ? factFromControl(group["count"]) : nil,
-                channels: objects(group["channels"]) { channel in
+                channels: group["channels"].objects.compactMap { channel in
                     GeometryChannel(label: channel["label"].string, cells: channel["cells"].array.map { geometryCell($0) })
                 },
-                params: objects(group["params"], actuatorFact)
+                params: group["params"].objects.compactMap(actuatorFact)
             )
         },
         motors: geometryMotors(read)
@@ -181,22 +177,22 @@ func actuatorOutputs(_ view: JSON?) -> ActuatorOutputs? {
         available: read["available"].bool,
         reason: read["reason"].string,
         showUi: read["showUi"].bool(true),
-        groups: objects(read["groups"]) { group in
+        groups: read["groups"].objects.compactMap { group in
             ActuatorGroup(
                 label: group["label"].string,
                 enable: actuatorFact(group["enable"]),
                 groupsVisible: group["groupsVisible"].bool,
-                params: objects(group["params"], actuatorFact),
-                subgroups: objects(group["subgroups"]) { subgroup in
+                params: group["params"].objects.compactMap(actuatorFact),
+                subgroups: group["subgroups"].objects.compactMap { subgroup in
                     ActuatorSubgroup(
                         label: subgroup["label"].string,
                         primary: actuatorFact(subgroup["primary"]),
-                        params: objects(subgroup["params"], actuatorFact),
-                        columns: objects(subgroup["columns"]) { ActuatorColumn(label: $0["label"].string, advanced: $0["advanced"].bool, visible: $0["visible"].bool) },
-                        channels: objects(subgroup["channels"]) { ActuatorChannel(label: $0["label"].string, configs: $0["configs"].array.map { actuatorFact($0) }) }
+                        params: subgroup["params"].objects.compactMap(actuatorFact),
+                        columns: subgroup["columns"].objects.compactMap { ActuatorColumn(label: $0["label"].string, advanced: $0["advanced"].bool, visible: $0["visible"].bool) },
+                        channels: subgroup["channels"].objects.compactMap { ActuatorChannel(label: $0["label"].string, configs: $0["configs"].array.map { actuatorFact($0) }) }
                     )
                 },
-                notes: group["notes"].array.map(\.string)
+                notes: group["notes"].strings
             )
         },
         testing: actuatorTesting(read),
@@ -208,12 +204,11 @@ func actuatorOutputs(_ view: JSON?) -> ActuatorOutputs? {
 }
 
 func rawNumber(_ fact: Fact) -> Double? {
-    if case .number(let value) = fact.value { return value }
-    return Double(fact.valueString)
+    fact.value.numberOrNil ?? Double(fact.valueString)
 }
 
 private func asLong(_ raw: Double) -> Int64 {
-    raw.isNaN ? 0 : raw >= 9.2e18 ? .max : raw <= -9.2e18 ? .min : Int64(raw)
+    raw.isNaN ? 0 : raw >= Double(Int64.max) ? .max : raw <= Double(Int64.min) ? .min : Int64(raw)
 }
 
 func bitsetChecked(_ raw: Double, _ bit: Int) -> Bool { (asLong(raw) & (Int64(1) << bit)) != 0 }
@@ -382,10 +377,7 @@ struct ActuatorsScreen: View {
                             ForEach(Array(channel.configs.enumerated()), id: \.offset) { index, config in
                                 if let column = subgroup.columns.at(index), column.visible, advanced || !column.advanced {
                                     if let config {
-                                        ActuatorFactRow(
-                                            item: ActuatorFact(label: column.label, showAs: config.showAs, bit: config.bit, advanced: config.advanced, fact: config.fact),
-                                            write: write
-                                        ) { revision += 1 }
+                                        ActuatorFactRow(item: config.labelled(column.label), write: write) { revision += 1 }
                                     } else {
                                         NotAvailableRow(label: column.label)
                                     }
@@ -420,8 +412,6 @@ struct ActuatorsScreen: View {
 }
 
 func mixerEditable(_ testing: Bool, _ assigning: Bool) -> Bool { !testing && !assigning }
-
-private let DISABLED_ALPHA = 0.38
 
 private struct OutlinedCard<Content: View>: View {
     @ViewBuilder let content: Content

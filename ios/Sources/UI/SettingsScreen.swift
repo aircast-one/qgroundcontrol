@@ -25,17 +25,6 @@ private let PAGE_GLANCES: [String: [String]] = [
     "Maps": ["settings.flightMapSettings.mapProvider", "settings.flightMapSettings.mapType"],
 ]
 
-private func toDoubleOrNull(_ text: String) -> Double? { Double(text.trimmed) }
-
-private func jsonNumber(_ value: JSON) -> Double? {
-    if case .number(let number) = value { return number }
-    return nil
-}
-
-private func distinct<T: Equatable>(_ items: [T]) -> [T] {
-    items.enumerated().filter { at, item in !items[..<at].contains(item) }.map(\.element)
-}
-
 func glanceText(_ displays: [String]) -> String {
     displays.filter { !$0.isBlank }.map(sentenceCase).joined(separator: " · ")
 }
@@ -83,12 +72,12 @@ func activeLinkCount(_ view: JSON?) -> Int {
 }
 
 func activeLinksGlance(_ view: JSON?) -> String {
-    distinct(
-        (view?["links"].array ?? [])
-            .filter { $0.object != nil && $0["connected"].bool }
-            .map { $0["summary"].string.ifBlank($0["name"].string) }
-            .filter { !$0.isBlank }
-    ).joined(separator: " \u{00b7} ")
+    (view?["links"].array ?? [])
+        .filter { $0.object != nil && $0["connected"].bool }
+        .map { $0["summary"].string.ifBlank($0["name"].string) }
+        .filter { !$0.isBlank }
+        .distinct()
+        .joined(separator: " \u{00b7} ")
 }
 
 func activeLinksText(_ count: Int) -> String { count > 0 ? "\(count) active" : "" }
@@ -216,7 +205,7 @@ func inertNote(_ fact: Fact) -> String {
 }
 
 func settingsPages(_ view: JSON?) -> [SettingsPageEntry] {
-    (view?["pages"].arrayOrNil ?? []).filter { $0.object != nil }.map { page in
+    (view?["pages"].objects ?? []).map { page in
         SettingsPageEntry(
             title: page["title"].string,
             showsLinks: page["showsLinks"].bool,
@@ -226,7 +215,7 @@ func settingsPages(_ view: JSON?) -> [SettingsPageEntry] {
             showsConsole: page["showsConsole"].bool,
             showsNtrip: page["showsNtrip"].bool,
             showsPx4Logs: page["showsPx4Logs"].bool,
-            helpLinks: page["helpLinks"].array.filter { $0.object != nil }.map {
+            helpLinks: page["helpLinks"].objects.map {
                 HelpLink(name: $0["name"].string, url: $0["url"].string, host: $0["host"].string)
             },
             keywords: page["keywords"].string
@@ -238,15 +227,15 @@ func settingsPages(_ view: JSON?) -> [SettingsPageEntry] {
 }
 
 func settingsSections(_ page: JSON?) -> [SettingsSectionRows] {
-    (page?["sections"].arrayOrNil ?? []).filter { $0.object != nil }.map { section in
+    (page?["sections"].objects ?? []).map { section in
         SettingsSectionRows(
             title: section["title"].string,
             group: section["group"].string,
             note: section["note"].string,
-            blocks: section["subsections"].array.filter { $0.object != nil }.map { block in
+            blocks: section["subsections"].objects.map { block in
                 SettingsBlock(
                     title: block["title"].string,
-                    facts: block["controls"].array.filter { $0.object != nil }.compactMap(factFromControl).map(paletteNamed).map(pilotWorded)
+                    facts: block["controls"].objects.compactMap(factFromControl).map(paletteNamed).map(pilotWorded)
                 )
             }.filter { !$0.facts.isEmpty }
         )
@@ -442,7 +431,7 @@ private struct InlinePage: View {
 }
 
 func borrowedTitle(_ sections: [SettingsSectionRows]) -> String {
-    distinct(sections.flatMap(\.blocks).map { sentenceCase($0.title) }.filter { !$0.isBlank }).joined(separator: " \u{00b7} ")
+    sections.flatMap(\.blocks).map { sentenceCase($0.title) }.filter { !$0.isBlank }.distinct().joined(separator: " \u{00b7} ")
 }
 
 private struct PageHeader: View {
@@ -731,14 +720,14 @@ private struct FactTitle: View {
 func blockInertNote(_ facts: [Fact]) -> String? {
     let off = facts.filter { !$0.enabled }
     guard off.count > 1 else { return nil }
-    let notes = distinct(off.map(inertNote))
+    let notes = off.map(inertNote).distinct()
     return notes.count == 1 ? notes[0] : nil
 }
 
 func sharedRebootNote(_ facts: [Fact]) -> String? {
     let notes = facts.compactMap(factRebootNote)
     guard notes.count > 1 else { return nil }
-    let kinds = distinct(notes)
+    let kinds = notes.distinct()
     return kinds.count == 1 ? kinds[0] : nil
 }
 
@@ -935,7 +924,7 @@ struct FactRow: View {
                 }
             }
             if let slider = fact.slider, !fact.isEnum, !fact.isBitmask {
-                FieldSlider(value: jsonNumber(fact.value) ?? toDoubleOrNull(fact.valueString), slider: slider, enabled: fact.acceptsWrite) { value in
+                FieldSlider(value: fact.value.numberOrNil ?? fact.valueString.doubleOrNil, slider: slider, enabled: fact.acceptsWrite) { value in
                     let path = fact.path
                     write { Qgc.set(path, value) }
                 }
@@ -962,7 +951,7 @@ struct FactRow: View {
                     if !rowNote.isBlank && rowNote.lowercased() != title.lowercased() {
                         Text(rowNote).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant).lineLimit(2)
                     }
-                    if !fact.acceptsWrite && !editOnDesktop(fact) {
+                    if !fact.acceptsWrite && !editOnDesktop(fact) && inertNote(fact) != runInert {
                         Text(inertNote(fact)).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
                     }
                 }
@@ -1095,7 +1084,7 @@ private struct BitmaskPicker: View {
                     let checked = raw & fact.bitmaskValues[index] != 0
                     Button { flip(index) } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: checked ? "checkmark.square.fill" : "square")
+                            Image(checked ? .checkBox : .checkBoxOutline)
                                 .foregroundStyle(checked ? theme.colors.primary : theme.colors.onSurfaceVariant)
                             Text(fact.bitmaskStrings[index]).frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -1159,13 +1148,13 @@ func rowChoiceLabel(_ label: String) -> String { label.components(separatedBy: "
 
 private let DISABLED_VALUE_ALPHA = 0.5
 
-private struct OptionRun: Identifiable {
+struct OptionRun: Identifiable, Equatable {
     let id: Int
     let group: String
     let indices: Range<Int>
 }
 
-private func optionRuns(_ count: Int, _ groups: [String]) -> [OptionRun] {
+func optionRuns(_ count: Int, _ groups: [String]) -> [OptionRun] {
     let groupAt: (Int) -> String = { groups.indices.contains($0) ? groups[$0] : "" }
     let starts = (0..<count).filter { $0 == 0 || groupAt($0) != groupAt($0 - 1) }
     return starts.enumerated().map { at, start in
@@ -1232,7 +1221,7 @@ struct ChoiceField: View {
 func factValueLines(_ fact: Fact) -> Int { fact.isString ? 4 : 1 }
 
 func truncationRefusal(_ fact: Fact, _ text: String) -> String? {
-    guard fact.wholeNumbersOnly, let typed = toDoubleOrNull(text), typed.isFinite else { return nil }
+    guard fact.wholeNumbersOnly, let typed = text.doubleOrNil, typed.isFinite else { return nil }
     return typed == typed.rounded(.down) ? nil : "Invalid number"
 }
 
@@ -1248,22 +1237,20 @@ func ratioText(_ value: Double) -> String? {
 
 func ratioValue(_ text: String) -> String? {
     let parts = text.components(separatedBy: ":")
-    guard parts.count == 2, let width = toDoubleOrNull(parts[0]), let height = toDoubleOrNull(parts[1]), width > 0, height > 0 else { return nil }
+    guard parts.count == 2, let width = parts[0].doubleOrNil, let height = parts[1].doubleOrNil, width > 0, height > 0 else { return nil }
     return String(format: "%.6f", width / height)
 }
 
 func isAddress(_ fact: Fact) -> Bool { fact.isString && (fact.name.hasSuffix("Url") || fact.name.hasSuffix("URL")) }
 
 func factKeyboard(_ fact: Fact) -> UIKeyboardType {
-    let min = toDoubleOrNull(fact.minString)
     if isAddress(fact) { return .URL }
     if fact.isString || fact.isBool { return .default }
-    if fact.wholeNumbersOnly, let min, min >= 0 { return .numberPad }
-    if min.map({ $0 < 0 }) != false { return .numbersAndPunctuation }
-    return .decimalPad
+    guard let min = fact.minString.doubleOrNil, min >= 0 else { return .numbersAndPunctuation }
+    return fact.wholeNumbersOnly ? .numberPad : .decimalPad
 }
 
-private let KEYBOARDS_WITHOUT_RETURN: Set<UIKeyboardType> = [.numberPad, .decimalPad]
+let KEYBOARDS_WITHOUT_RETURN: Set<UIKeyboardType> = [.numberPad, .decimalPad]
 
 extension Binding<String> {
     var decimalPoint: Binding<String> {
@@ -1274,7 +1261,7 @@ extension Binding<String> {
 func fieldText(_ fact: Fact) -> String { fact.isString || isSecret(fact) ? fact.valueString : plainNumber(fact.valueString) }
 
 func plainNumber(_ text: String) -> String {
-    guard let parsed = toDoubleOrNull(text), parsed.isFinite, abs(parsed) < 1e15 else { return text }
+    guard let parsed = text.doubleOrNil, parsed.isFinite, abs(parsed) < 1e15 else { return text }
     return parsed == parsed.rounded(.down) ? String(Int64(parsed)) : NSDecimalNumber(string: String(parsed)).stringValue
 }
 
@@ -1313,7 +1300,7 @@ func storedText(_ fact: Fact, _ typed: String) -> String {
 }
 
 func shownText(_ fact: Fact) -> String {
-    fact.name == ASPECT_RATIO ? toDoubleOrNull(fact.valueString).flatMap(ratioText) ?? fieldText(fact) : fieldText(fact)
+    fact.name == ASPECT_RATIO ? fact.valueString.doubleOrNil.flatMap(ratioText) ?? fieldText(fact) : fieldText(fact)
 }
 
 private struct FactTextField: View {
@@ -1404,7 +1391,7 @@ private struct FactTextField: View {
                 RoundedRectangle(cornerRadius: Corner.extraSmall)
                     .stroke(rejection != nil ? theme.colors.error : focused ? theme.colors.primary : theme.colors.outline, lineWidth: focused ? 2 : 1)
             )
-            .opacity(fact.enabled ? 1 : 0.38)
+            .opacity(fact.enabled ? 1 : DISABLED_ALPHA)
             if let rejection {
                 Text(rejection).font(.bodySmall).foregroundStyle(theme.colors.error).padding(.leading, 16).padding(.top, 4)
             }

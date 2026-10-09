@@ -15,6 +15,18 @@ private struct OpenPageKey: Hashable {
     let setupOpen: Bool
 }
 
+@MainActor
+private func settingsChangeNotice(_ host: SnackbarHostState, _ scope: ViewScope) -> ChangeNotice {
+    ChangeNotice { message, undo in
+        scope.launch {
+            host.currentSnackbarData?.dismiss()
+            let result = await host.showSnackbar(message, actionLabel: undo == nil ? nil : "Undo", duration: .Long)
+            guard result == .ActionPerformed, let undo, let refused = await undo() else { return }
+            await host.showSnackbar("Undo failed: \(refused)")
+        }
+    }
+}
+
 private func shownOnOpen(_ page: String?, _ group: SettingsGroup) -> String? {
     page.flatMap { pageLook($0).group == group && !pageLook($0).inline ? $0 : nil }
 }
@@ -36,7 +48,9 @@ struct SettingsSheet: View {
     @State private var returnQuery: String?
     @State private var openPage: String?
     @State private var heading = PageHeadingSlot()
-    @State private var snackbars = SnackbarHostState()
+    @State private var snackbars: SnackbarHostState
+    @State private var noticeScope: ViewScope
+    @State private var notice: ChangeNotice
     @State private var width: CGFloat = 0
     @FocusState private var searching: Bool
 
@@ -48,6 +62,11 @@ struct SettingsSheet: View {
         _pager = State(initialValue: opening)
         _page = State(initialValue: requested)
         _openPage = State(initialValue: shownOnOpen(requested, opening))
+        let host = SnackbarHostState()
+        let scope = ViewScope()
+        _snackbars = State(initialValue: host)
+        _noticeScope = State(initialValue: scope)
+        _notice = State(initialValue: settingsChangeNotice(host, scope))
     }
 
     private var initialPage: String? { page.flatMap { pageLook($0).group == group ? $0 : nil } }
@@ -90,18 +109,6 @@ struct SettingsSheet: View {
         returnQuery = nil
     }
 
-    private var notice: ChangeNotice {
-        let host = snackbars
-        return ChangeNotice { message, undo in
-            Task { @MainActor in
-                host.currentSnackbarData?.dismiss()
-                let result = await host.showSnackbar(message, actionLabel: undo == nil ? nil : "Undo", duration: .Long)
-                guard result == .ActionPerformed, let undo, let refused = await undo() else { return }
-                await host.showSnackbar("Undo failed: \(refused)")
-            }
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -123,7 +130,8 @@ struct SettingsSheet: View {
         .onChange(of: setupOpen) { _, open in if !open { enteredForSetup = false } }
         .onChange(of: navigation.aircraftRequested, initial: true) { before, asked in
             guard asked else { return }
-            if before == asked {
+            let openedForAircraft = before == asked
+            if openedForAircraft {
                 group = .General
                 enteredForSetup = true
             }
@@ -144,7 +152,10 @@ struct SettingsSheet: View {
         .onChange(of: OpenPageKey(group: group, page: page, searching: query != nil, setupOpen: setupOpen)) { _, key in
             openPage = shownOnOpen(key.page, key.group)
         }
-        .onDisappear { navigation.settingsShowing = nil }
+        .onDisappear {
+            navigation.settingsShowing = nil
+            noticeScope.cancel()
+        }
     }
 
     @ViewBuilder

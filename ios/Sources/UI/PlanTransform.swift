@@ -31,10 +31,6 @@ func offsetArgs(_ east: String, _ north: String, _ up: String, _ horizontal: Dis
     return known.count == values.count ? known.map(JSON.number) + [.bool(takeoff), .bool(landing)] : nil
 }
 
-private func transformRefusal(_ path: String, _ args: [JSON]) -> String? {
-    refusal(Qgc.call(path, arguments: args))
-}
-
 private struct NumberField: View {
     let label: String
     let value: String
@@ -136,6 +132,6 @@ struct PlanTransformDialog: View {
     }
 
     private func apply(_ path: String, _ args: [JSON]) {
-        Task { refusal = await offMain { transformRefusal(path, args) } }
+        Task { refusal = await offMain { Qgc.refusalOf(path, arguments: args) } }
     }
 }

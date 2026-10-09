@@ -25,12 +25,6 @@ struct ValueDisplay: Equatable {
     var colours: [Int64] = []
     var opacities: [Double] = []
     var icons: [String] = []
-
-    func with(_ change: (inout ValueDisplay) -> Void) -> ValueDisplay {
-        var next = self
-        change(&next)
-        return next
-    }
 }
 
 private func replacing<T>(_ list: [T], _ at: Int, _ value: T) -> [T] {
@@ -44,7 +38,7 @@ private func dropping<T>(_ list: [T], _ at: Int) -> [T] {
 func withRangeType(_ display: ValueDisplay, _ type: RangeType, _ firstIcon: String) -> ValueDisplay {
     let values = type == .None ? [] : [DEFAULT_RANGE_LOW, DEFAULT_RANGE_HIGH]
     let slots = type == .None ? 0 : values.count + 1
-    return display.with {
+    return withChanges(display) {
         $0.rangeType = type
         $0.values = values
         $0.colours = type == .Color ? Array(repeating: GREEN, count: slots) : []
@@ -54,7 +48,7 @@ func withRangeType(_ display: ValueDisplay, _ type: RangeType, _ firstIcon: Stri
 }
 
 func withRow(_ display: ValueDisplay, _ firstIcon: String) -> ValueDisplay {
-    display.with {
+    withChanges(display) {
         $0.values = display.values + [(display.values.last ?? DEFAULT_RANGE_LOW) + 1]
         $0.colours = display.rangeType == .Color ? display.colours + [GREEN] : display.colours
         $0.opacities = display.rangeType == .Opacity ? display.opacities + [1.0] : display.opacities
@@ -63,7 +57,7 @@ func withRow(_ display: ValueDisplay, _ firstIcon: String) -> ValueDisplay {
 }
 
 func withoutRow(_ display: ValueDisplay, _ index: Int) -> ValueDisplay {
-    display.with {
+    withChanges(display) {
         $0.values = dropping(display.values, index)
         $0.colours = dropping(display.colours, index + 1)
         $0.opacities = dropping(display.opacities, index + 1)
@@ -270,8 +264,7 @@ struct ValueDisplayDialog<Extra: View>: View {
 
     var body: some View {
         SwiftUI.Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .queuedSheet(isPresented: Binding(get: { true }, set: { shown in if !shown { onDismiss() } })) {
                 ValueDisplayForm(label: label, initial: initial, onDismiss: onDismiss, extra: extra, onDone: onDone)
             }
@@ -319,8 +312,8 @@ private struct ValueDisplayForm<Extra: View>: View {
                             get: { display.showIcon },
                             set: { icon in
                                 display = icon
-                                    ? display.with { $0.showIcon = true; $0.icon = display.icon.ifBlank(firstIcon) }
-                                    : display.with { $0.showIcon = false }
+                                    ? withChanges(display) { $0.showIcon = true; $0.icon = display.icon.ifBlank(firstIcon) }
+                                    : withChanges(display) { $0.showIcon = false }
                             }
                         )) {
                             Text("Icon").tag(true)
@@ -329,14 +322,14 @@ private struct ValueDisplayForm<Extra: View>: View {
                         .pickerStyle(.segmented)
                         .fixedSize()
                         if display.showIcon {
-                            IconButtonFor(name: display.icon) { pick(display.icon) { name in display = display.with { $0.icon = name } } }
+                            IconButtonFor(name: display.icon) { pick(display.icon) { name in display = withChanges(display) { $0.icon = name } } }
                         }
                     }
                     if !display.showIcon {
-                        TextField("Text", text: Binding(get: { display.text }, set: { text in display = display.with { $0.text = text } }))
+                        TextField("Text", text: Binding(get: { display.text }, set: { text in display = withChanges(display) { $0.text = text } }))
                             .textFieldStyle(.roundedBorder)
                     }
-                    Toggle("Show units", isOn: Binding(get: { display.showUnits }, set: { on in display = display.with { $0.showUnits = on } }))
+                    Toggle("Show units", isOn: Binding(get: { display.showUnits }, set: { on in display = withChanges(display) { $0.showUnits = on } }))
                     Text("Value range").font(.titleSmall)
                     Text("Change the color, opacity or icon when the value crosses a threshold").font(.bodySmall)
                     Picker("", selection: Binding(
@@ -378,7 +371,7 @@ private struct ValueDisplayForm<Extra: View>: View {
         HStack(spacing: 6) {
             if display.values.indices.contains(row) {
                 DecimalField(label: "≤", value: display.values[row]) { v in
-                    display = display.with { $0.values = replacing(display.values, row, v) }
+                    display = withChanges(display) { $0.values = replacing(display.values, row, v) }
                 }
             } else {
                 Text("above").font(.bodySmall).frame(width: 96, alignment: .leading)
@@ -435,19 +428,19 @@ private struct RangeCell: View {
             HStack(spacing: Space.s1) {
                 ForEach(RANGE_COLOURS, id: \.self) { colour in
                     Swatch(colour: colour, chosen: display.colours.indices.contains(row) && display.colours[row] == colour) {
-                        onChange(display.with { $0.colours = replacing(display.colours, row, colour) })
+                        onChange(withChanges(display) { $0.colours = replacing(display.colours, row, colour) })
                     }
                 }
             }
         case .Opacity:
             DecimalField(label: "Opacity", value: display.opacities.indices.contains(row) ? display.opacities[row] : nil) { v in
-                onChange(display.with { $0.opacities = replacing(display.opacities, row, v) })
+                onChange(withChanges(display) { $0.opacities = replacing(display.opacities, row, v) })
             }
         case .Icon:
             if display.icons.indices.contains(row) {
                 let current = display.icons[row]
                 IconButtonFor(name: current) {
-                    onPick(current) { name in onChange(display.with { $0.icons = replacing(display.icons, row, name) }) }
+                    onPick(current) { name in onChange(withChanges(display) { $0.icons = replacing(display.icons, row, name) }) }
                 }
             }
         case .None:

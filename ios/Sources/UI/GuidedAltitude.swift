@@ -20,24 +20,20 @@ func guidedAltitudePath(_ target: Double, pause: Bool = false) -> String {
     "\(GUIDED_ALTITUDE)(\(String(format: "%.2f", target))\(pause ? ",pause" : ""))"
 }
 
-private func numberOrNull(_ view: JSON, _ key: String) -> Double? {
-    view[key].isNull ? nil : view[key].double.flatMap { $0.isNaN ? nil : $0 }
-}
-
 func guidedAltitude(_ view: JSON?) -> GuidedAltitude? {
     guard let view, view["available"].bool else { return nil }
     return GuidedAltitude(
         available: true,
         label: view["label"].string,
         unit: view["unit"].string,
-        current: numberOrNull(view, "current"),
-        minimum: numberOrNull(view, "minimum"),
-        maximum: numberOrNull(view, "maximum"),
+        current: view["current"].nonNanDouble,
+        minimum: view["minimum"].nonNanDouble,
+        maximum: view["maximum"].nonNanDouble,
         sentence: view["sentence"].isNull ? "" : view["sentence"].string,
         deltaMeters: view["deltaMeters"].double(0),
         sends: view["sends"].bool,
-        targetMeters: numberOrNull(view, "targetMeters"),
-        currentMeters: numberOrNull(view, "currentMeters")
+        targetMeters: view["targetMeters"].nonNanDouble,
+        currentMeters: view["currentMeters"].nonNanDouble
     )
 }
 

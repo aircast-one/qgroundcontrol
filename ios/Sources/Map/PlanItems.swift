@@ -66,9 +66,7 @@ func surveyTiles(_ item: MissionItem, _ stats: SurveyStats?) -> [(String, String
 
 func sheetDetail(_ item: MissionItem, _ stats: SurveyStats?) -> String {
     guard !surveyTiles(item, stats).isEmpty else { return itemDetail(item, stats) }
-    var bare = item
-    bare.cameraShots = 0
-    return itemDetail(bare, stats.map { var cleared = $0; cleared.areaText = ""; return cleared })
+    return itemDetail(withChanges(item) { $0.cameraShots = 0 }, stats.map { withChanges($0) { $0.areaText = "" } })
 }
 
 func itemRows(_ items: [MissionItem], _ stats: [Int: SurveyStats] = [:]) -> [ItemRow] {
@@ -86,18 +84,16 @@ func itemRows(_ items: [MissionItem], _ stats: [Int: SurveyStats] = [:]) -> [Ite
     }
 }
 
-private func nonBlank(_ text: String?) -> String? { text.flatMap { $0.isBlank ? nil : $0 } }
-
 func itemDetail(_ item: MissionItem, _ stats: SurveyStats? = nil) -> String {
     [
         altitudeWithFrame(item) ?? (!item.placed && item.specifiesCoordinate ? NO_POSITION : nil),
         item.afterRouteEnds ? AFTER_THE_ROUTE_ENDS : nil,
-        nonBlank(item.speedChangeText),
-        nonBlank(stats?.areaText),
+        item.speedChangeText.nonBlank,
+        stats?.areaText.nonBlank,
         photosText(item.cameraShots),
         holdText(item.extraSeconds),
-        nonBlank(item.blockedReason),
-        nonBlank(stats?.warning),
+        item.blockedReason.nonBlank,
+        stats?.warning.nonBlank,
     ].compactMap { $0 }.joined(separator: " \u{00b7} ")
 }
 
@@ -261,9 +257,9 @@ func layersText(_ survey: Survey?) -> String? {
 
 func cameraText(_ stats: SurveyStats?) -> String? {
     let parts = [
-        nonBlank(stats?.surfaceDistanceText).map { "\($0) above the surface" },
-        nonBlank(stats?.footprintText).map { "each shot covers \($0)" },
-        nonBlank(stats?.intervalText).map { "a shot every \($0)" },
+        stats?.surfaceDistanceText.nonBlank.map { "\($0) above the surface" },
+        stats?.footprintText.nonBlank.map { "each shot covers \($0)" },
+        stats?.intervalText.nonBlank.map { "a shot every \($0)" },
     ].compactMap { $0 }
     return parts.isEmpty ? nil : parts.joined(separator: " \u{00b7} ")
 }

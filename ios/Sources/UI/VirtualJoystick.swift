@@ -180,8 +180,8 @@ private struct ThumbPad: View {
                 DragGesture(minimumDistance: 0)
                     .updating($touching) { _, down, _ in down = true }
                     .onChanged { drag in
+                        start = start ?? stick
                         let origin = start ?? stick
-                        if start == nil { start = stick }
                         onMove(CGPoint(
                             x: min(max(origin.x + drag.translation.width / size.width, 0), 1),
                             y: min(max(origin.y + drag.translation.height / size.height, 0), 1)

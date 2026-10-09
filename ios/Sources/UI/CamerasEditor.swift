@@ -359,10 +359,7 @@ private struct CameraSheet: View {
         if naming {
             field("Name") {
                 TextField("Name", text: Binding(get: { draft.name }, set: { typed in
-                    var next = draft
-                    next.name = typed
-                    next.refusal = nil
-                    onChange(next)
+                    onChange(withChanges(draft) { $0.name = typed; $0.refusal = nil })
                 }))
                 .textInputAutocapitalization(.words)
                 .submitLabel(.done)
@@ -377,10 +374,7 @@ private struct CameraSheet: View {
         let supporting = problem ?? (draft.url.isBlank ? nil : guessText(guess))
         field("Address") {
             TextField("Address", text: Binding(get: { draft.url }, set: { typed in
-                var next = draft
-                next.url = typed
-                next.refusal = nil
-                onChange(next)
+                onChange(withChanges(draft) { $0.url = typed; $0.refusal = nil })
             }), prompt: Text(hint))
             .keyboardType(.URL)
             .textInputAutocapitalization(.never)
@@ -396,10 +390,7 @@ private struct CameraSheet: View {
                 HStack(spacing: Space.s2) {
                     ForEach(ambiguous.choices, id: \.self) { choice in
                         CameraChip(label: kindLabel(choice), selected: choice == chosenKind(ambiguous, draft.picked, "")) {
-                            var next = draft
-                            next.picked = choice
-                            next.refusal = nil
-                            onChange(next)
+                            onChange(withChanges(draft) { $0.picked = choice; $0.refusal = nil })
                         }
                     }
                 }

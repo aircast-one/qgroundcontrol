@@ -271,12 +271,12 @@ func landingPatterns(_ items: [MissionItem]) -> [LandingPattern] {
 
 @discardableResult
 func moveLandingPlace(_ index: Int, _ place: Int, _ latitude: Double, _ longitude: Double) -> Bool {
-    let property: String
-    switch place {
-    case LANDING_PLACE_APPROACH: property = "finalApproachCoordinate"
-    case LANDING_PLACE_TOUCHDOWN: property = "landingCoordinate"
-    default: return false
+    let property: String? = switch place {
+    case LANDING_PLACE_APPROACH: "finalApproachCoordinate"
+    case LANDING_PLACE_TOUCHDOWN: "landingCoordinate"
+    default: nil
     }
+    guard let property else { return false }
     return setOk("\(PLAN_ITEMS).\(index).\(property)", coordinateJson(latitude, longitude))
 }
 

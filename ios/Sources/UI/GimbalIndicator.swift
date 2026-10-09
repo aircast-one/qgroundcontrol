@@ -56,7 +56,7 @@ func gimbalIndicator(_ view: JSON?) -> GimbalIndicatorState? {
         controlOffered: view["controlOffered"].bool,
         controlLabel: view["controlLabel"].string,
         haveControl: view["haveControl"].bool,
-        gimbals: view["gimbals"].array.filter { $0.object != nil }.map { g in
+        gimbals: view["gimbals"].objects.map { g in
             GimbalChoice(name: g["name"].string, managerCompid: g["managerCompid"].int(0), deviceId: g["deviceId"].int(0), active: g["active"].bool)
         },
         pitchDegrees: view["pitchDegrees"].double.flatMap { $0.isFinite ? $0 : nil }
@@ -75,8 +75,7 @@ struct GimbalTakeControlDialog: View {
     var body: some View {
         let serial = view?["askSerial"].int64 ?? -1
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: serial, initial: true) { _, now in
                 if serialAsks(seen, now) { gimbalAsksForControl.value = true }
                 if now >= 0 { seen = now }
@@ -87,8 +86,7 @@ struct GimbalTakeControlDialog: View {
 struct GimbalTakeControlAlert: View {
     var body: some View {
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .alert("Request Gimbal Control?", isPresented: .constant(true)) {
                 Button("Yes") {
                     gimbalAsksForControl.value = false
@@ -106,6 +104,7 @@ struct GimbalIndicatorCell: View {
     @QgcPath(GIMBAL_INDICATOR_PATH) private var view
     @State private var open = false
     @State private var refusal: String?
+    @State private var scope = ViewScope()
 
     var body: some View {
         if let state = gimbalIndicator(view) {
@@ -123,6 +122,7 @@ struct GimbalIndicatorCell: View {
                         }
                     }
                 }
+                .onDisappear { scope.cancel() }
         }
     }
 
@@ -172,8 +172,9 @@ struct GimbalIndicatorCell: View {
     }
 
     private func act(_ path: String, _ args: JSON...) {
-        Task {
+        scope.launch {
             let answer = await offMain { Qgc.call(path, arguments: args.map { $0 as Any? }) }
+            guard !Task.isCancelled else { return }
             refusal = gimbalRefusal(answer)
             if refusal == nil { open = false }
         }
@@ -192,11 +193,9 @@ func joystickButtonsAvailable(_ view: JSON?) -> Bool {
 func gimbalSettingsBlocks(_ sections: [SettingsSectionRows], _ joystickButtons: Bool) -> [SettingsBlock] {
     sections.filter { $0.group == GIMBAL_CONTROLLER_SETTINGS }.flatMap(\.blocks).map { block in
         SettingsBlock(title: block.title, facts: block.facts.map { fact in
-            guard fact.name == JOYSTICK_BUTTONS_SPEED, !joystickButtons else { return fact }
-            var disabled = fact
-            disabled.enabled = false
-            disabled.disabledReason = "No joystick is enabled for this vehicle."
-            return disabled
+            fact.name == JOYSTICK_BUTTONS_SPEED && !joystickButtons
+                ? withChanges(fact) { $0.enabled = false; $0.disabledReason = "No joystick is enabled for this vehicle." }
+                : fact
         })
     }
 }
@@ -243,11 +242,15 @@ struct OnScreenGimbal: Equatable {
 }
 
 func onScreenGimbal(_ view: JSON?) -> OnScreenGimbal? {
-    guard let view, view["shown"].bool, view["onScreen"].object != nil else { return nil }
-    return OnScreenGimbal(enabled: view["onScreen"]["enabled"].bool, clickAndDrag: view["onScreen"]["clickAndDrag"].bool)
+    guard let view, view["shown"].bool, let onScreen = view["onScreen"].objectOrNil else { return nil }
+    return OnScreenGimbal(enabled: onScreen["enabled"].bool, clickAndDrag: onScreen["clickAndDrag"].bool)
 }
 
 func aimFraction(_ delta: CGFloat, _ width: CGFloat) -> CGFloat { delta / (max(width, 1) / 2) }
+
+func aimDelta(_ last: CGSize?, _ translation: CGSize) -> CGSize? {
+    last.map { CGSize(width: translation.width - $0.width, height: translation.height - $0.height) }
+}
 
 private func sendOnScreen(_ pan: CGFloat, _ tilt: CGFloat, _ point: Bool) {
     let panning = Double(pan)
@@ -272,7 +275,7 @@ struct GimbalScreenControl: View {
 private struct GimbalAim: ViewModifier {
     let control: OnScreenGimbal
     let size: CGSize
-    @State private var last: CGSize = .zero
+    @State private var last: CGSize?
     @State private var start: (CGFloat, CGFloat)?
     @State private var latest: CGPoint = .zero
     @State private var repeating: Task<Void, Never>?
@@ -288,7 +291,7 @@ private struct GimbalAim: ViewModifier {
         repeating?.cancel()
         repeating = nil
         start = nil
-        last = .zero
+        last = nil
     }
 
     @ViewBuilder private func aimed(_ content: Content) -> some View {
@@ -297,8 +300,9 @@ private struct GimbalAim: ViewModifier {
                 DragGesture()
                     .updating($pressed) { _, pressed, _ in pressed = true }
                     .onChanged { drag in
-                        let moved = CGSize(width: drag.translation.width - last.width, height: drag.translation.height - last.height)
+                        let moved = aimDelta(last, drag.translation)
                         last = drag.translation
+                        guard let moved else { return }
                         sendOnScreen(aimFraction(moved.width, size.width), -aimFraction(moved.height, size.width), false)
                     }
                     .onEnded { _ in stop() }

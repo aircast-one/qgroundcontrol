@@ -25,6 +25,14 @@ private struct ParameterLoad: Equatable {
     let reads: Int
 }
 
+private struct ParameterQuery: Equatable {
+    let loads: Int
+    let search: String
+    let modifiedOnly: Bool
+    let category: String?
+    let group: String?
+}
+
 struct ParametersScreen: View {
     var initialSearch: String = ""
     @QgcPath(SETUP) private var setupJson
@@ -34,6 +42,9 @@ struct ParametersScreen: View {
     @State private var modified: Set<String> = []
     @State private var modifiedChosen = false
     @State private var placement: [String: (String, String)] = [:]
+    @State private var tree: [ParameterCategory] = []
+    @State private var matches: [String] = []
+    @State private var loads = 0
     @State private var chosenCategory: String?
     @State private var chosenGroup: String?
     @State private var reads = 0
@@ -48,13 +59,10 @@ struct ParametersScreen: View {
         let ready = parametersReady(setupJson)
         let px4 = isPx4(setupReadiness(setupJson))
         let modifiedOnly = modifiedFilterOn(modifiedChosen, px4)
-        let tree = parameterTree(names, placement)
         let browsing = search.isBlank && !modifiedOnly
         let category = tree.first { $0.name == chosenCategory } ?? tree.first
         let group = category.flatMap { shown in shown.groups.first { $0 == chosenGroup } ?? shown.groups.first }
-        let matches = names
-            .filter { parameterShown($0, descriptions[$0] ?? [], search, modifiedOnly, modified) }
-            .filter { !browsing || inGroup($0, placement, category?.name, group) }
+        let query = ParameterQuery(loads: loads, search: search, modifiedOnly: modifiedOnly, category: category?.name, group: group)
         VStack(spacing: 0) {
             SearchPill(value: search, onValueChange: { search = $0 }, placeholder: "Search parameters")
             if !ready {
@@ -97,16 +105,30 @@ struct ParametersScreen: View {
                 }
             }
         }
+        .onChange(of: query, initial: true) {
+            matches = names
+                .filter { parameterShown($0, descriptions[$0] ?? [], search, modifiedOnly, modified) }
+                .filter { !browsing || inGroup($0, placement, category?.name, group) }
+        }
         .task(id: ParameterLoad(ready: ready, reads: reads)) {
             let loaded = ready ? await offMain { parameterNames() } : []
             guard !Task.isCancelled else { return }
             names = loaded
-            guard !loaded.isEmpty else { return }
-            let summary = await offMain { parameterSummary(loaded) }
+            loads += 1
+            guard !loaded.isEmpty else {
+                tree = []
+                return
+            }
+            let (summary, built) = await offMain {
+                let summary = parameterSummary(loaded)
+                return (summary, parameterTree(loaded, summary.placement))
+            }
             guard !Task.isCancelled else { return }
             descriptions = summary.descriptions
             modified = summary.modified
             placement = summary.placement
+            tree = built
+            loads += 1
         }
     }
 }
@@ -134,7 +156,7 @@ private struct ParameterRow: View {
     }
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
             if let loaded = fact {
                 row(loaded)
             } else {
@@ -227,7 +249,7 @@ func parameterSubtitle(_ description: String, _ units: String) -> String {
 
 func parameterNames() -> [String] {
     let names: (Int) -> [String] = { component in
-        Qgc.invokeResult("\(PARAMETER_MANAGER).parameterNames", component).arrayOrNil?.map(\.string) ?? []
+        Qgc.invokeResult("\(PARAMETER_MANAGER).parameterNames", component).strings
     }
     let components = Qgc.invokeResult("\(PARAMETER_MANAGER).componentIds").arrayOrNil?.map { $0.int(0) } ?? []
     return parameterKeys(components.isEmpty ? [(DEFAULT_COMPONENT, names(DEFAULT_COMPONENT))] : components.map { ($0, names($0)) })
@@ -248,18 +270,14 @@ private let STANDARD_CATEGORY = "Standard"
 private let DEFAULT_CATEGORY = "Other"
 private let DEFAULT_GROUP = "Misc"
 
-private func distinct(_ items: [String]) -> [String] {
-    items.enumerated().filter { at, item in !items[..<at].contains(item) }.map(\.element)
-}
-
 func parameterTree(_ names: [String], _ placement: [String: (String, String)]) -> [ParameterCategory] {
     let placed = names.compactMap { placement[$0] }
-    let categories = distinct(placed.map(\.0))
+    let categories = placed.map(\.0).distinct()
     let ordered = categories.filter { $0 == STANDARD_CATEGORY }
         + categories.filter { $0 != STANDARD_CATEGORY && $0 != DEFAULT_CATEGORY }
         + categories.filter { $0 == DEFAULT_CATEGORY }
     return ordered.map { category in
-        let groups = distinct(placed.filter { $0.0 == category }.map(\.1))
+        let groups = placed.filter { $0.0 == category }.map(\.1).distinct()
         return ParameterCategory(name: category, groups: groups.filter { $0 != DEFAULT_GROUP } + groups.filter { $0 == DEFAULT_GROUP })
     }
 }

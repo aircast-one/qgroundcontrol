@@ -16,8 +16,7 @@ struct TrafficBanner: View {
 
     private func banner(_ reading: TrafficReading, _ alert: TrafficAlert) -> some View {
         let urgent = alert.level >= .Warning
-        let listable = !reading.contacts.isEmpty
-        return Button { if listable { flyScreen.requestedSheet = TRAFFIC_SHEET } } label: {
+        return Button { flyScreen.requestedSheet = TRAFFIC_SHEET } label: {
             HStack(spacing: Space.s3) {
                 Image(urgent ? .flight : .warning)
                     .resizable()
@@ -38,17 +37,17 @@ struct TrafficBanner: View {
             .foregroundStyle(urgent ? theme.colors.onErrorContainer : theme.colors.onSurface)
             .background(urgent ? theme.colors.errorContainer : theme.aircast.warningContainer, in: RoundedRectangle(cornerRadius: TRAFFIC_BANNER_CORNER))
         }
-        .buttonStyle(TrafficBannerPress(enabled: listable))
-        .accessibilityRemoveTraits(listable ? [] : .isButton)
+        .buttonStyle(TrafficBannerPress())
+        .disabled(reading.contacts.isEmpty)
         .frame(maxWidth: TRAFFIC_BANNER_MAX_WIDTH)
     }
 }
 
-private struct TrafficBannerPress: ButtonStyle {
-    let enabled: Bool
+private let TRAFFIC_BANNER_PRESSED_ALPHA = 0.7
 
+private struct TrafficBannerPress: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label.opacity(enabled && configuration.isPressed ? 0.7 : 1)
+        configuration.label.opacity(configuration.isPressed ? TRAFFIC_BANNER_PRESSED_ALPHA : 1)
     }
 }
 

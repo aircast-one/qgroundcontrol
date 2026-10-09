@@ -23,7 +23,7 @@ func joystickBadge(_ view: JSON?) -> JoystickBadge? {
         warn: it["warn"].bool,
         typeText: it["typeText"].string,
         inputsText: it["inputsText"].string,
-        details: it["details"].array.filter { $0.object != nil }.map { JoystickDetail(label: $0["label"].string, value: $0["value"].string, warn: $0["warn"].bool) }
+        details: it["details"].objects.map { JoystickDetail(label: $0["label"].string, value: $0["value"].string, warn: $0["warn"].bool) }
     )
 }
 

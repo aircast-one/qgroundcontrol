@@ -24,7 +24,7 @@ struct SubFrames: Equatable {
 func subFrames(_ view: JSON?) -> SubFrames? {
     guard let it = view, it["available"].bool else { return nil }
     return SubFrames(
-        frames: it["frames"].array.filter { $0.object != nil }.map { SubFrame(name: $0["name"].string, value: $0["value"].int(0), hasDefaults: $0["hasDefaults"].bool) },
+        frames: it["frames"].objects.map { SubFrame(name: $0["name"].string, value: $0["value"].int(0), hasDefaults: $0["hasDefaults"].bool) },
         selected: it["selected"].isNull ? nil : it["selected"].int(0),
         confirmFirst: it["confirmFirst"].bool,
         loading: it["loadingDefaults"].bool,
@@ -83,7 +83,7 @@ struct ApmSubFrameScreen: View {
                 if state.loading {
                     Text("Loading the frame's default parameters…").font(.bodySmall)
                 }
-                if let message = refusal ?? (state.loadError.isBlank ? nil : state.loadError) {
+                if let message = refusal ?? state.loadError.nonBlank {
                     Text(message).foregroundStyle(theme.colors.error)
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {

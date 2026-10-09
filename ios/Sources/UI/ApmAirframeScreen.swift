@@ -27,23 +27,19 @@ struct ApmAirframe: Equatable {
     let classes: [FrameClassCard]
 }
 
-private func objects<T>(_ list: JSON, _ read: (JSON) -> T) -> [T] {
-    list.array.filter { $0.object != nil }.map(read)
-}
-
 func apmAirframe(_ view: JSON?) -> ApmAirframe? {
     guard let it = view, it["available"].bool else { return nil }
     return ApmAirframe(
         help: it["help"].string,
         frameType: it["frameType"].isNull ? nil : it["frameType"].int(0),
         invalidText: it["invalidText"].string,
-        classes: objects(it["classes"]) { c in
+        classes: it["classes"].objects.map { c in
             FrameClassCard(
                 name: c["name"].string,
                 value: c["value"].int(0),
                 chosen: c["chosen"].bool,
                 image: c["image"].string,
-                types: objects(c["types"]) { FrameTypeChoice(name: $0["name"].string, value: $0["value"].int(0)) },
+                types: c["types"].objects.map { FrameTypeChoice(name: $0["name"].string, value: $0["value"].int(0)) },
                 valid: c["valid"].bool(true)
             )
         }
@@ -164,7 +160,7 @@ private struct FrameTypeChips: View {
             Text("Frame type").font(.labelLarge).foregroundStyle(theme.colors.onSurfaceVariant)
             PlanFlowRow(spacing: 8) {
                 ForEach(types, id: \.value) { type in
-                    PlanChip(label: type.name, selected: type.value == frameType) { if type.value != frameType { onPick(type.value) } }
+                    CameraChip(label: type.name, selected: type.value == frameType) { if type.value != frameType { onPick(type.value) } }
                 }
             }
         }

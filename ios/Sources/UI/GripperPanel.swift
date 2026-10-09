@@ -3,7 +3,6 @@ import SwiftUI
 let HOLD_TO_CONFIRM_MS = 500
 let HOLD_HELP_MS = 3000
 let HOLD_TO_CONFIRM_HELP = "Hold to Confirm"
-private let DISABLED_HOLD_ALPHA = 0.38
 private let HOLD_FILL_ALPHA = 0.35
 
 let GRIPPER_ACTIONS = ["release", "grab", "hold"]
@@ -38,7 +37,7 @@ struct HoldToConfirmButton: View {
         .frame(height: 56)
         .background(theme.colors.secondaryContainer)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .opacity(enabled ? 1 : DISABLED_HOLD_ALPHA)
+        .opacity(enabled ? 1 : DISABLED_ALPHA)
         .contentShape(Rectangle())
         .onLongPressGesture(minimumDuration: Double(HOLD_TO_CONFIRM_MS) / 1000) {
             fired = true

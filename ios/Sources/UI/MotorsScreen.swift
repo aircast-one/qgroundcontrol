@@ -49,8 +49,10 @@ func spin(_ motor: Int, _ percent: Int) {
     VehicleCommands.motorTest(motor, percent: percent, seconds: seconds, inOrder: true)
 }
 
+private let FIRST_MOTOR_LETTER = UInt8(ascii: "A")
+
 func motorLabel(_ motor: Int, _ letters: Bool) -> String {
-    letters ? String(UnicodeScalar(UInt8(clamping: 64 + motor))) : String(motor)
+    letters ? String(UnicodeScalar(UInt8(clamping: Int(FIRST_MOTOR_LETTER) + motor - 1))) : String(motor)
 }
 
 private func spinAll(_ motors: Int, _ percent: Int) {

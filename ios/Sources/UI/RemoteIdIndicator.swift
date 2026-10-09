@@ -6,6 +6,7 @@ private let SEND_SELF_ID = "sendSelfID"
 private let SELF_ID_FACTS = [SEND_SELF_ID, "selfIDType", "selfIDFree", "selfIDExtended", "selfIDEmergency"]
 private let BROADCAST_GATED: Set<String> = ["selfIDType", "selfIDFree", "selfIDExtended"]
 private let SELF_ID_LABELS = [SEND_SELF_ID: "Broadcast", "selfIDType": "Broadcast message"]
+private let DEFAULT_EMERGENCY_HOLD_MS: Int64 = 800
 private let SELF_ID_NOTE = "If an emergency is declared, Emergency Text will be broadcast even if Broadcast setting is not enabled."
 
 func selfIdFacts(_ page: [Fact]) -> [Fact] {
@@ -52,7 +53,7 @@ func remoteIdStatus(_ view: JSON?) -> RemoteIdStatus? {
         operatorIdShown: it["operatorIdShown"].bool,
         operatorId: it["operatorId"].bool,
         emergency: it["emergency"].bool,
-        holdMs: it["emergencyHoldMs"].int64 ?? 800
+        holdMs: it["emergencyHoldMs"].int64 ?? DEFAULT_EMERGENCY_HOLD_MS
     )
 }
 
@@ -80,43 +81,43 @@ struct RemoteIdIndicatorCell: View {
     @Environment(AppNavigationState.self) private var navigation
     @AdvancedUiShown private var advanced
     @QgcPath(REMOTE_ID_STATUS_PATH) private var view
-    @State private var open = false
 
     var body: some View {
         if let status = remoteIdStatus(view) {
-            Text("RID")
-                .font(.labelMedium)
-                .foregroundStyle(stateColour(status.state, theme))
-                .lineLimit(1)
-                .onTapGesture { open = true }
-                .background {
-                    if open {
-                        AircastSheet(onDismissRequest: { open = false }) {
-                            ScrollView {
-                                statusPage(status)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, Space.s5)
-                                    .padding(.bottom, Space.s6)
-                            }
-                        }
-                    }
+            StatusCellSheet {
+                Text("RID")
+                    .font(.labelMedium)
+                    .foregroundStyle(stateColour(status.state, theme))
+                    .lineLimit(1)
+            } sheet: { close in
+                ScrollView {
+                    RemoteIdStatusPage(status: status, advanced: advanced, onConfigure: {
+                        navigation.settingsPage = REMOTE_ID_SETTINGS_PAGE
+                        close()
+                    })
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Space.s5)
+                    .padding(.bottom, Space.s6)
                 }
+            }
         }
     }
+}
 
-    private func configure() {
-        navigation.settingsPage = REMOTE_ID_SETTINGS_PAGE
-        open = false
-    }
+private struct RemoteIdStatusPage: View {
+    let status: RemoteIdStatus
+    let advanced: Bool
+    let onConfigure: () -> Void
+    @Environment(\.theme) private var theme
 
-    private func statusPage(_ status: RemoteIdStatus) -> some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: Space.s2) {
             Text("RemoteID Status").font(.titleMedium)
             ForEach(remoteIdRows(status), id: \.0) { label, good in
                 Text(label)
                     .font(.labelLarge)
                     .foregroundStyle(good ? theme.aircast.success : theme.colors.error)
-                    .onTapGesture { configure() }
+                    .onTapGesture(perform: onConfigure)
             }
             if !status.armError.isBlank {
                 Text("Arm Status Error  \(status.armError)").font(.bodySmall)
@@ -139,7 +140,7 @@ struct RemoteIdIndicatorCell: View {
             if advanced {
                 HStack {
                     Text("Remote ID").frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Configure") { configure() }.buttonStyle(.bordered)
+                    Button("Configure", action: onConfigure).buttonStyle(.bordered)
                 }
             }
         }

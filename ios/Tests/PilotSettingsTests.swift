@@ -37,6 +37,15 @@ final class PilotSettingsTests: XCTestCase {
         XCTAssertEqual(firstReported(returnHome) { parameter($0) }?.detail, "Engineer description")
     }
 
+    func testTheLookupStopsAtTheFirstParameterTheAircraftReports() {
+        let asked = AskedNames()
+        _ = firstReported(returnHome) { name in
+            asked.add(name)
+            return parameter(name)
+        }
+        XCTAssertEqual(asked.names, Array(returnHome.parameters.prefix(1)))
+    }
+
     func testNothingShowsWhenTheAircraftReportsNoneOfTheParameters() {
         XCTAssertNil(firstReported(returnHome) { _ in nil })
     }
@@ -87,4 +96,9 @@ final class PilotSettingsTests: XCTestCase {
     func testOfflineSafetyStillListsItsSectionsInDjisOrderSoThePilotKnowsTheyExist() {
         XCTAssertEqual(pilotSections(pilotSettings(.Safety)).map(\.key), ["Return to home", "Flight protection", "If something goes wrong"])
     }
+}
+
+private final class AskedNames {
+    private(set) var names: [String] = []
+    func add(_ name: String) { names = names + [name] }
 }

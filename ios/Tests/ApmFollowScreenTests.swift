@@ -31,4 +31,14 @@ final class ApmFollowScreenTests: XCTestCase {
         XCTAssertEqual(headingOfTap(0, -10), 180.0, accuracy: 1e-9)
         XCTAssertEqual(headingOfTap(-10, 0), 270.0, accuracy: 1e-9)
     }
+
+    func testTheVehicleArrowFacesNorthTheGroundStationOrTheOffsetAngle() throws {
+        let follow = { (rover: Bool, point: Int) in
+            try XCTUnwrap(apmFollow(JSON.parse(#"{"available":true,"angle":30.0,"rover":\#(rover),"pointIndex":\#(point)}"#)))
+        }
+        XCTAssertEqual(vehicleYaw(try follow(true, 2)), 0, "a rover always faces north")
+        XCTAssertEqual(vehicleYaw(try follow(false, 0)), 0)
+        XCTAssertEqual(vehicleYaw(try follow(false, 1)), 180)
+        XCTAssertEqual(vehicleYaw(try follow(false, 2)), -30)
+    }
 }

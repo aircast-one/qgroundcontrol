@@ -38,7 +38,7 @@ func setupSubtitle(_ vehicle: String, _ firmware: String) -> String {
 func readinessNote(_ readiness: SetupReadiness?, _ listed: Bool) -> String? {
     guard let readiness, readiness.setupComplete != true, !listed else { return nil }
     let note = [readiness.headline, readiness.detail].filter { !$0.isBlank }.joined(separator: ". ")
-    return note.isBlank ? nil : note
+    return note.nonBlank
 }
 
 func parameterCountText(_ count: Int) -> String? {
@@ -138,10 +138,10 @@ let SETUP_SUMMARY_PAGE = "Summary"
 private let SETUP_SUMMARY_POLL_MS = 2000
 
 func setupSummaries(_ view: JSON?) -> [String: [SummaryLine]] {
-    let listed = (view?["components"].arrayOrNil ?? []).filter { $0.object != nil }
+    let listed = (view?["components"].objects ?? [])
     return Dictionary(
         listed.map { component in
-            (component["name"].string, component["rows"].array.filter { $0.object != nil }.map {
+            (component["name"].string, component["rows"].objects.map {
                 SummaryLine(label: $0["label"].string, value: $0["value"].string, warn: $0["warn"].bool)
             })
         },
@@ -162,7 +162,7 @@ func remainingSetup(_ components: [SetupComponent]) -> [SetupComponent] {
 }
 
 private func presentText(_ element: JSON, _ key: String) -> String? {
-    element[key].isNull || element[key].string.isBlank ? nil : element[key].string
+    element[key].string.nonBlank
 }
 
 func setupComponents(_ view: JSON?) -> [SetupComponent] {
@@ -221,35 +221,9 @@ func reportsOpening(_ prerequisite: String?, _ page: SetupPage?) -> Bool {
     prerequisite != nil || (page?.parameterSections != true && page?.screen != NOT_SUPPORTED_SCREEN)
 }
 
-struct SetupDialog<Content: View, Buttons: View>: View {
-    let title: String
-    @ViewBuilder let content: () -> Content
-    @ViewBuilder let buttons: () -> Buttons
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.s4) {
-            Text(title).font(.headlineSmall)
-            ScrollView {
-                VStack(alignment: .leading, spacing: Space.s3) { content() }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Space.s6)
-            }
-            .padding(.horizontal, -Space.s6)
-            HStack(spacing: Space.s2) {
-                Spacer(minLength: 0)
-                buttons()
-            }
-        }
-        .padding(Space.s6)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(theme.colors.surfaceContainerLow)
-    }
-}
-
-func presented<Value>(_ value: Binding<Value?>) -> Binding<Bool> {
-    Binding(get: { value.wrappedValue != nil }, set: { if !$0 { value.wrappedValue = nil } })
+private struct PageOpened: Equatable {
+    let name: String
+    let reports: Bool
 }
 
 private struct NavigationRequest: Equatable {
@@ -593,7 +567,7 @@ private struct ComponentPage: View {
                 page(nativePage).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
         }
-        .task(id: "\(open.name)|\(reportsLookups)") {
+        .task(id: PageOpened(name: open.name, reports: reportsLookups)) {
             guard reportsLookups else { return }
             let name = open.name
             _ = await offMain { Qgc.invoke(SETUP_PAGE_OPENED, name) }

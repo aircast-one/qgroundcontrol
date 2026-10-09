@@ -24,7 +24,7 @@ func detections(_ view: JSON?) -> Detections? {
     return Detections(
         available: view["available"].bool,
         stale: view["stale"].bool,
-        boxes: view["boxes"].array.filter { $0.object != nil }.map { box in
+        boxes: view["boxes"].objects.map { box in
             DetectionBox(
                 x: box["x"].double(0),
                 y: box["y"].double(0),

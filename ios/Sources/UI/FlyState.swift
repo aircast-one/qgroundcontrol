@@ -93,7 +93,7 @@ struct TelemetryLink: Equatable {
 private func optionalInt(_ value: JSON) -> Int? { value.isNull ? nil : value.int(0) }
 
 func telemetryLink(_ view: JSON?) -> TelemetryLink? {
-    guard let radio = view?["telemetry"], radio.object != nil, !radio["localRssiDbm"].isNull else { return nil }
+    guard let radio = view?["telemetry"].objectOrNil, !radio["localRssiDbm"].isNull else { return nil }
     return TelemetryLink(
         localRssiDbm: radio["localRssiDbm"].int(0),
         remoteRssiDbm: optionalInt(radio["remoteRssiDbm"]),

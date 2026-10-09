@@ -53,45 +53,11 @@ private func copyPickedScript(_ from: URL, _ target: URL) -> Bool {
 }
 
 private let scriptDownloads = FileManager.default.temporaryDirectory.appending(path: "scripting-download")
+private let UNSAFE_SCRIPT_NAMES: Set<String> = ["", ".", ".."]
 
-private struct FreePresenterAlert<Item, Actions: View, Message: View>: ViewModifier {
-    @Binding var item: Item?
-    let title: (Item) -> String
-    let actions: (Item) -> Actions
-    let message: (Item) -> Message
-    @State private var probe = PresenterProbe()
-    @State private var ready = false
-
-    func body(content: Content) -> some View {
-        content
-            .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
-            .task(id: item != nil) {
-                ready = false
-                guard item != nil else { return }
-                while !Task.isCancelled, !presenterFree(probe.controller) {
-                    try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
-                }
-                ready = !Task.isCancelled
-            }
-            .alert(
-                item.map(title) ?? "",
-                isPresented: Binding(get: { ready && item != nil }, set: { if !$0 { item = nil } }),
-                presenting: item,
-                actions: actions,
-                message: message
-            )
-    }
-}
-
-extension View {
-    func alertWhenPresenterFree<Item, Actions: View, Message: View>(
-        _ item: Binding<Item?>,
-        title: @escaping (Item) -> String,
-        @ViewBuilder actions: @escaping (Item) -> Actions,
-        @ViewBuilder message: @escaping (Item) -> Message
-    ) -> some View {
-        modifier(FreePresenterAlert(item: item, title: title, actions: actions, message: message))
-    }
+func scriptFileName(_ name: String) -> String? {
+    let flat = name.replacingOccurrences(of: "/", with: "_")
+    return UNSAFE_SCRIPT_NAMES.contains(flat) ? nil : flat
 }
 
 struct ScriptingScreen: View {
@@ -116,15 +82,23 @@ struct ScriptingScreen: View {
                 revision += 1
             }
             .fileImporter(isPresented: $choosingUpload, allowedContentTypes: [.item]) { result in
-                guard case .success(let chosen) = result else { return }
-                upload(chosen)
+                switch result {
+                case .success(let chosen): upload(chosen)
+                case .failure(let error): shownRefusal = ScriptRefusal(title: "Lua Upload", text: error.localizedDescription)
+                }
             }
             .fileMover(
                 isPresented: Binding(get: { downloaded != nil }, set: { if !$0 { downloaded = nil } }),
                 file: downloaded,
-                onCompletion: { _ in downloaded = nil },
+                onCompletion: { result in
+                    if case .failure(let error) = result {
+                        shownRefusal = ScriptRefusal(title: "Lua Download", text: error.localizedDescription)
+                        discardDownload()
+                    }
+                    downloaded = nil
+                },
                 onCancellation: {
-                    downloaded.map { try? FileManager.default.removeItem(at: $0) }
+                    discardDownload()
                     downloaded = nil
                 }
             )
@@ -186,6 +160,10 @@ struct ScriptingScreen: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func discardDownload() {
+        downloaded.map { try? FileManager.default.removeItem(at: $0) }
+    }
+
     private func cancel() {
         Task {
             _ = await offMain { Qgc.refusalOf(SCRIPTING_CANCEL) }
@@ -196,7 +174,7 @@ struct ScriptingScreen: View {
     private func upload(_ chosen: URL) {
         Task {
             shownRefusal = await offMain {
-                let name = chosen.lastPathComponent.replacingOccurrences(of: "/", with: "_")
+                guard let name = scriptFileName(chosen.lastPathComponent) else { return ScriptRefusal(title: "Lua Upload", text: "Upload failed") }
                 let staged = FileManager.default.temporaryDirectory.appending(path: "upload-\(name)")
                 let copied = copyPickedScript(chosen, staged)
                 return scriptRefusal("Lua Upload", copied ? Qgc.refusalOf(SCRIPTING_UPLOAD, staged.path, name) : "File \(name) does not exist", "Upload failed")
@@ -206,7 +184,11 @@ struct ScriptingScreen: View {
     }
 
     private func download(_ name: String) {
-        let staged = scriptDownloads.appending(path: name)
+        guard let file = scriptFileName(name) else {
+            shownRefusal = ScriptRefusal(title: "Lua Download", text: "Download failed")
+            return
+        }
+        let staged = scriptDownloads.appending(path: file)
         Task {
             let failed = await offMain {
                 try? FileManager.default.createDirectory(at: scriptDownloads, withIntermediateDirectories: true)

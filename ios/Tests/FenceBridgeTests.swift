@@ -61,4 +61,42 @@ final class FenceBridgeTests: XCTestCase {
         XCTAssertEqual(0, fenceCircles(nil).count)
         XCTAssertEqual(0, rallyPoints(nil).count)
     }
+
+    private func polygonRow(_ index: Int) -> FenceRow { FenceRow(index: index, circle: false, title: "Polygon \(index + 1)", detail: "") }
+
+    private func circleRow(_ index: Int) -> FenceRow { FenceRow(index: index, circle: true, title: "Circle \(index + 1)", detail: "") }
+
+    func testRemovingAPolygonBelowTheSelectedCornerShiftsTheSelectionDown() {
+        XCTAssertEqual(.FenceVertex(polygon: 1, vertex: 3), fenceSelectionAfterRemove(polygonRow(0), .FenceVertex(polygon: 2, vertex: 3)))
+    }
+
+    func testRemovingThePolygonWhoseCornerIsSelectedClearsTheSelection() {
+        XCTAssertNil(fenceSelectionAfterRemove(polygonRow(2), .FenceVertex(polygon: 2, vertex: 3)))
+    }
+
+    func testRemovingAPolygonAboveTheSelectedCornerLeavesItAlone() {
+        XCTAssertEqual(.FenceVertex(polygon: 1, vertex: 0), fenceSelectionAfterRemove(polygonRow(4), .FenceVertex(polygon: 1, vertex: 0)))
+    }
+
+    func testRemovingACircleNeverMovesASelectedPolygonCorner() {
+        XCTAssertEqual(.FenceVertex(polygon: 2, vertex: 1), fenceSelectionAfterRemove(circleRow(0), .FenceVertex(polygon: 2, vertex: 1)))
+    }
+
+    func testRemovingAPolygonNeverMovesASelectedCircle() {
+        XCTAssertEqual(.Circle(index: 2), fenceSelectionAfterRemove(polygonRow(0), .Circle(index: 2)))
+        XCTAssertEqual(.CircleCentre(index: 2), fenceSelectionAfterRemove(polygonRow(0), .CircleCentre(index: 2)))
+    }
+
+    func testRemovingACircleShiftsOrClearsTheSelectedCircleAndItsCentre() {
+        XCTAssertEqual(.Circle(index: 1), fenceSelectionAfterRemove(circleRow(0), .Circle(index: 2)))
+        XCTAssertEqual(.CircleCentre(index: 1), fenceSelectionAfterRemove(circleRow(0), .CircleCentre(index: 2)))
+        XCTAssertNil(fenceSelectionAfterRemove(circleRow(2), .Circle(index: 2)))
+        XCTAssertNil(fenceSelectionAfterRemove(circleRow(2), .CircleCentre(index: 2)))
+        XCTAssertEqual(.Circle(index: 1), fenceSelectionAfterRemove(circleRow(3), .Circle(index: 1)))
+    }
+
+    func testASelectionThatIsNotAFenceSurvivesAnyFenceRemoval() {
+        XCTAssertEqual(.Rally(index: 0), fenceSelectionAfterRemove(polygonRow(0), .Rally(index: 0)))
+        XCTAssertNil(fenceSelectionAfterRemove(circleRow(0), nil))
+    }
 }

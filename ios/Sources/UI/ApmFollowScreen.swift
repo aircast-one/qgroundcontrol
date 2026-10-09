@@ -49,9 +49,9 @@ func apmFollow(_ view: JSON?) -> ApmFollow? {
         unsupportedText: it["unsupportedText"].string,
         showSettings: it["showSettings"].bool,
         rover: it["rover"].bool,
-        positionOptions: it["positionOptions"].array.map(\.string),
+        positionOptions: it["positionOptions"].strings,
         positionIndex: it["positionIndex"].int(0),
-        pointOptions: it["pointOptions"].array.map(\.string),
+        pointOptions: it["pointOptions"].strings,
         pointIndex: it["pointIndex"].int(-1),
         angle: it["angle"].double(.nan),
         distance: it["distance"].double(.nan),
@@ -62,10 +62,6 @@ func apmFollow(_ view: JSON?) -> ApmFollow? {
 }
 
 func oneDecimal(_ value: Double) -> String { String(format: "%.1f", value) }
-
-private func refused(_ path: String, _ args: [Any?]) -> String? {
-    refusal(Qgc.call(path, arguments: args))
-}
 
 struct ApmFollowScreen: View {
     @Environment(\.theme) private var theme
@@ -145,7 +141,7 @@ struct ApmFollowScreen: View {
 
     private func act(_ path: String, _ args: Any...) {
         Task {
-            refusal = await offMain { refused(path, args) }
+            refusal = await offMain { Qgc.refusalOf(path, arguments: args) }
             revision += 1
         }
     }
@@ -194,7 +190,7 @@ private struct NumberEntry: View {
             .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 4)
-        .onChange(of: value, initial: true) { typed = oneDecimal(value) }
+        .onChange(of: value.isNaN ? nil : value, initial: true) { typed = oneDecimal(value) }
     }
 }
 

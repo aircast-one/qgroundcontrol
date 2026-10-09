@@ -5,7 +5,7 @@ let GCS_POSITION_VIEW = "view.gcsPosition"
 enum OperatorBridge {
     static func read() -> JSON? {
         let view = Qgc.get(GCS_POSITION_VIEW)
-        return view.object != nil ? view : nil
+        return view.objectOrNil
     }
 }
 

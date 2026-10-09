@@ -1,6 +1,15 @@
 import SwiftUI
 
 private let SECONDS_PER_MINUTE: Int64 = 60
+private let TICK_SECONDS: TimeInterval = 1
+
+struct SilenceSchedule: TimelineSchedule {
+    let ticking: Bool
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> AnySequence<Date> {
+        ticking ? AnySequence(sequence(first: startDate) { $0.addingTimeInterval(TICK_SECONDS) }) : AnySequence([startDate])
+    }
+}
 
 struct SilentSeconds<Content: View>: View {
     let lost: Bool
@@ -15,7 +24,7 @@ struct SilentSeconds<Content: View>: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            TimelineView(.periodic(from: .now, by: since == nil ? 3600 : 1)) { context in
+            TimelineView(SilenceSchedule(ticking: since != nil)) { context in
                 content(since.map { Int64(max(0, context.date.timeIntervalSince($0))) })
             }
         }

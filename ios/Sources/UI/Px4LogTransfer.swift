@@ -42,7 +42,7 @@ func mavlinkLog(_ view: JSON?) -> MavlinkLog? {
         canStart: it["canStartLog"].bool,
         persistence: it["persistence"].bool(true),
         settings: it["settings"].object != nil ? it["settings"] : .object([:]),
-        files: it["files"].array.filter { $0.object != nil }.map { file in
+        files: it["files"].objects.map { file in
             LogFile(name: file["name"].string, size: file["size"].int64 ?? 0, uploaded: file["uploaded"].bool, writing: file["writing"].bool)
         },
         uploading: it["uploading"].bool,
@@ -127,7 +127,7 @@ struct Px4LogTransferPage: View {
         let refusalSlot = $refused
         let pollSlot = $polls
         offMainInOrder {
-            let first = calls.compactMap { path, args in refusal(Qgc.call(path, arguments: args)) }.first
+            let first = calls.compactMap { path, args in Qgc.refusalOf(path, arguments: args) }.first
             onMain {
                 if let first { refusalSlot.wrappedValue = first }
                 pollSlot.wrappedValue += 1

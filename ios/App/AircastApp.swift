@@ -20,7 +20,7 @@ struct AircastApp: App {
 
     var body: some Scene {
         WindowGroup {
-            AircastRoot()
+            MainActivity()
                 .onOpenURL { url in
                     if url.isFileURL {
                         PlanInbox.shared.received = url

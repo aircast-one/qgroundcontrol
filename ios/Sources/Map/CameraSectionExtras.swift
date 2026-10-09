@@ -25,7 +25,6 @@ func trimmedNumber(_ value: Double) -> String {
 struct CameraSectionExtras: View {
     let extras: CameraExtras
     let write: (String, Any) -> Void
-    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -41,7 +40,7 @@ struct CameraSectionExtras: View {
                     Toggle("Mode", isOn: Binding(get: { extras.commandsMode }, set: { write("specifyCameraMode", $0) }))
                         .labelsHidden()
                     ForEach(Array(CAMERA_MODES.enumerated()), id: \.offset) { at, label in
-                        PlanChip(label: label, selected: extras.mode == at, enabled: extras.commandsMode) { write("cameraMode", at) }
+                        CameraChip(label: label, selected: extras.mode == at, enabled: extras.commandsMode) { write("cameraMode", at) }
                             .fixedSize()
                     }
                 }
@@ -51,10 +50,10 @@ struct CameraSectionExtras: View {
                 Toggle("Gimbal", isOn: Binding(get: { extras.commandsGimbal }, set: { write("specifyGimbal", $0) }))
                     .labelsHidden()
                 NumberEntry(label: "Pitch", value: extras.pitch, enabled: extras.commandsGimbal) { typed in
-                    write("gimbalPitch", extras.pitchRange.map { min(max(typed, $0.lowerBound), $0.upperBound) } ?? typed)
+                    write("gimbalPitch", extras.pitchRange.map { typed.clamped(to: $0) } ?? typed)
                 }
                 NumberEntry(label: "Yaw", value: extras.yaw, enabled: extras.commandsGimbal) { typed in
-                    write("gimbalYaw", extras.yawRange.map { min(max(typed, $0.lowerBound), $0.upperBound) } ?? typed)
+                    write("gimbalYaw", extras.yawRange.map { typed.clamped(to: $0) } ?? typed)
                 }
             }
             if let range = extras.pitchRange {
@@ -80,7 +79,7 @@ private struct AngleSlider: View {
         }
         .disabled(!enabled)
         .onChange(of: [value, range.lowerBound, range.upperBound], initial: true) {
-            shown = min(max(value, range.lowerBound), range.upperBound)
+            shown = value.clamped(to: range)
         }
     }
 }

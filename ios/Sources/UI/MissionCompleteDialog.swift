@@ -30,17 +30,20 @@ struct MissionCompleteDialog: View {
     var body: some View {
         let notice = missionComplete(view).flatMap { $0.id != closed ? $0 : nil }
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: notice, initial: true) { _, now in if let now { lastShown = now } }
             .queuedSheet(isPresented: Binding(get: { notice != nil }, set: { shown in if !shown, let notice { close(notice) } }), dialog: true) {
                 if let shown = notice ?? lastShown { content(shown) }
             }
     }
 
-    private func close(_ notice: MissionComplete) {
+    private func close(_ notice: MissionComplete, then work: @escaping @Sendable () -> Void = {}) {
         closed = notice.id
-        offMain { PlanCommands.dismissMissionComplete(notice.id) }
+        let id = notice.id
+        offMain {
+            work()
+            PlanCommands.dismissMissionComplete(id)
+        }
     }
 
     private func content(_ notice: MissionComplete) -> some View {
@@ -51,11 +54,7 @@ struct MissionCompleteDialog: View {
                     Text(images).multilineTextAlignment(.center).frame(maxWidth: .infinity)
                 }
                 Button {
-                    closed = notice.id
-                    offMain {
-                        PlanCommands.removeAllFromVehicle()
-                        PlanCommands.dismissMissionComplete(notice.id)
-                    }
+                    close(notice) { PlanCommands.removeAllFromVehicle() }
                 } label: {
                     Text("Remove plan from vehicle").frame(maxWidth: .infinity)
                 }
@@ -67,11 +66,7 @@ struct MissionCompleteDialog: View {
                 if let waypoint = notice.resumeFromWaypoint {
                     Divider()
                     Button {
-                        closed = notice.id
-                        offMain {
-                            PlanCommands.resumeMission(waypoint)
-                            PlanCommands.dismissMissionComplete(notice.id)
-                        }
+                        close(notice) { PlanCommands.resumeMission(waypoint) }
                     } label: {
                         Text("Resume mission from waypoint \(waypoint)").frame(maxWidth: .infinity)
                     }

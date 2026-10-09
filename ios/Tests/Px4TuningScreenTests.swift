@@ -16,4 +16,20 @@ final class Px4TuningScreenTests: XCTestCase {
         XCTAssertEqual(factNumber(param.fact), 1)
         XCTAssertEqual(sliderSteps(param.min, param.max, param.step), 53)
     }
+
+    func testASliderWhoseLimitsTheCoreLeftOutStillEqualsItselfSoTheChartIsNotRestartedEveryTick() {
+        let view = JSON.parse(
+            #"{"available":true,"tabs":[{"name":"Rate","axes":[{"name":"Roll","params":[{"title":"P","fact":{"class":"Control","path":"p","name":"P","value":1}}]}]}]}"#
+        )
+        let param = tuningTabs(view).first?.axes.first?.params.first
+        XCTAssertEqual(param?.min.isNaN, true)
+        XCTAssertEqual(tuningTabs(view), tuningTabs(view))
+    }
+
+    func testAStepTooFineToCountSaturatesInsteadOfTrapping() {
+        XCTAssertEqual(sliderSteps(0, 3e38, 1e-30), Int.max - 1)
+        XCTAssertEqual(sliderSteps(0, 1, 5), 0)
+        XCTAssertEqual(sliderSteps(1, 0, 0.1), 0)
+        XCTAssertEqual(sliderSteps(.nan, 1, 0.1), 0)
+    }
 }

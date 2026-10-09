@@ -39,7 +39,7 @@ struct PlanVehicleRows: View {
                 }
             }
         }
-        .task(id: "\(choosing)|\(reloads)") {
+        .task(id: Keys(choosing, reloads)) {
             let wanted = choosing
             facts = await offMain { wanted ? offlineClassFacts() : [] }
         }

@@ -115,8 +115,7 @@ private struct ConfirmDialog: View {
             ForEach(Array(prompt.choices.enumerated()), id: \.offset) { index, label in
                 Button { choice = index } label: {
                     HStack(spacing: Space.s2) {
-                        Image(systemName: index == choice ? "largecircle.fill.circle" : "circle")
-                            .foregroundStyle(index == choice ? theme.colors.primary : theme.colors.onSurfaceVariant)
+                        RadioIndicator(selected: index == choice)
                         Text(label).foregroundStyle(theme.colors.onSurface)
                     }
                     .padding(.vertical, Space.s2)
@@ -222,6 +221,11 @@ private func radioAction(_ action: String) {
     offMain { _ = Qgc.invoke(radioCalAction(action)) }
 }
 
+private struct SwitchLoad: Equatable {
+    let reads: Int
+    let connected: Bool?
+}
+
 struct RadioScreen: View {
     @QgcPath(RADIO_VIEW) private var json
     @State private var switchReads = 0
@@ -230,7 +234,7 @@ struct RadioScreen: View {
 
     var body: some View {
         let view = radioView(json)
-        Group {
+        ZStack(alignment: .top) {
             if let view, view.connected {
                 screen(view)
             } else {
@@ -240,7 +244,7 @@ struct RadioScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onAppear { offMainInOrder { RADIO_ENTER_ACTIONS.map(radioCalAction).forEach { Qgc.invoke($0) } } }
         .onDisappear { offMainInOrder { RADIO_LEAVE_ACTIONS.map(radioCalAction).forEach { Qgc.invoke($0) } } }
-        .task(id: "\(switchReads)|\(String(describing: view?.connected))") {
+        .task(id: SwitchLoad(reads: switchReads, connected: view?.connected)) {
             let read = await offMain { readPage(RADIO_SWITCHES_PAGE) }
             guard !Task.isCancelled else { return }
             switches = read

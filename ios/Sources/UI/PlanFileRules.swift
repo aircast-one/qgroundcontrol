@@ -15,6 +15,11 @@ func boundaryCacheName(_ displayName: String?) -> String {
     return "boundary.\(ext.flatMap { $0.isBlank ? nil : $0 } ?? DEFAULT_BOUNDARY_EXT)"
 }
 
+let FILE_NOT_OPENED = "That file could not be opened."
+let FILE_NOT_READ = "That file could not be read."
+
+func userCancelled(_ error: Error) -> Bool { (error as? CocoaError)?.code == .userCancelled }
+
 func mainBoundaryName(_ names: [String]) -> String? {
     names.first { $0.lowercased().hasSuffix(".shp") } ?? names.first { $0.lowercased().hasSuffix(".kml") } ?? names.first
 }

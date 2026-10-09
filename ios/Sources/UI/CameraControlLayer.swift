@@ -11,7 +11,6 @@ private let SHUTTER_STOP_SIZE: CGFloat = 20
 private let SHUTTER_DOT_SIZE: CGFloat = 26
 private let SHUTTER_RING: CGFloat = 4
 private let SHUTTER_STOP_CORNER: CGFloat = 4
-private let DISABLED_SHUTTER_ALPHA = 0.38
 private let CAMERA_TARGET: CGFloat = 48
 private let CAMERA_RAIL_MAX_WIDTH: CGFloat = 120
 private let REC_DOT_SIZE: CGFloat = 8
@@ -371,7 +370,7 @@ private struct ShutterButton: View {
             }
             .buttonStyle(.plain)
             .disabled(!shutter.enabled)
-            .opacity(shutter.enabled ? 1 : DISABLED_SHUTTER_ALPHA)
+            .opacity(shutter.enabled ? 1 : DISABLED_ALPHA)
             .accessibilityLabel(shutter.label)
             if let caption {
                 Text(caption).font(.labelSmall)
@@ -432,9 +431,8 @@ private struct SheetRadioRow: View {
     var body: some View {
         Button(action: onClick) {
             HStack(spacing: 16) {
-                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                RadioIndicator(selected: selected)
                     .font(.system(size: 20))
-                    .foregroundStyle(selected ? theme.colors.primary : theme.colors.onSurfaceVariant)
                 Text(label).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)
                 Spacer(minLength: 0)
             }
@@ -447,35 +445,30 @@ private struct SheetRadioRow: View {
     }
 }
 
-private final class ConflatedWrites: @unchecked Sendable {
-    private let path: String
-    private let lock = NSLock()
-    private var pending: Double?
-    private var draining = false
+private struct CameraZoomSlider: View {
+    let zoomLevel: Double
+    @State private var dragging: Double?
+    @State private var dragged = false
+    @State private var writes = AsyncStream.makeStream(of: Double.self, bufferingPolicy: .bufferingNewest(1))
 
-    init(path: String) {
-        self.path = path
-    }
-
-    func send(_ value: Double) {
-        let start = lock.withLock {
-            pending = value
-            defer { draining = true }
-            return !draining
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(text: "Zoom")
+            Slider(
+                value: Binding(get: { dragging ?? zoomLevel }, set: { level in
+                    dragging = level
+                    writes.continuation.yield(level)
+                }),
+                in: ZOOM_LOWEST...ZOOM_HIGHEST,
+                onEditingChanged: { dragged = $0 }
+            )
+            .padding(.horizontal, 20)
         }
-        if start { offMain { self.drain() } }
-    }
-
-    private func drain() {
-        while let next = take() { Qgc.set(path, next) }
-    }
-
-    private func take() -> Double? {
-        lock.withLock {
-            let next = pending
-            pending = nil
-            if next == nil { draining = false }
-            return next
+        .onChange(of: zoomLevel) { if !dragged { dragging = nil } }
+        .task {
+            for await level in writes.stream {
+                _ = await offMain { Qgc.set(CAMERA_ZOOM, level) }
+            }
         }
     }
 }
@@ -490,9 +483,6 @@ private struct CameraDetailsSheet: View {
     let onSelect: (Int) -> Void
     let onDismiss: () -> Void
     @Environment(\.theme) private var theme
-    @State private var dragging: Double?
-    @State private var zoomDragged = false
-    @State private var zoomWrites = ConflatedWrites(path: CAMERA_ZOOM)
     @State private var interval = PHOTO_LAPSE_MIN_S
     @State private var typed = 0.0
     @State private var facts: [(Fact, String)] = []
@@ -526,7 +516,7 @@ private struct CameraDetailsSheet: View {
                         SheetRadioRow(label: label, selected: index == camera.currentStream) { offMain { Qgc.set(CAMERA_CURRENT_STREAM, index) } }
                     }
                 }
-                if camera.hasZoom { zoom }
+                if camera.hasZoom { CameraZoomSlider(zoomLevel: camera.zoomLevel) }
                 if camera.capturesPhotos { photoMode }
                 if let tracking { TrackingToggle(reading: tracking).padding(.horizontal, 12) }
                 if let thermal { thermalSection(thermal) }
@@ -555,22 +545,6 @@ private struct CameraDetailsSheet: View {
         } message: { action in
             Text(action.prompt)
         }
-    }
-
-    private var zoom: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(text: "Zoom")
-            Slider(
-                value: Binding(get: { dragging ?? camera.zoomLevel }, set: { level in
-                    dragging = level
-                    zoomWrites.send(level)
-                }),
-                in: ZOOM_LOWEST...ZOOM_HIGHEST,
-                onEditingChanged: { zoomDragged = $0 }
-            )
-            .padding(.horizontal, 20)
-        }
-        .onChange(of: camera.zoomLevel) { if !zoomDragged { dragging = nil } }
     }
 
     private var photoMode: some View {

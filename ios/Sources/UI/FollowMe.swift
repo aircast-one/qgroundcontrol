@@ -13,7 +13,7 @@ struct FollowMeReading: Equatable {
 
 func followMeReading(_ view: JSON?) -> FollowMeReading? {
     guard let view, view["class"].string == "FollowMe" else { return nil }
-    let vehicles = view["vehicles"].array.filter { $0.object != nil }
+    let vehicles = view["vehicles"].objects
     return FollowMeReading(
         mode: view["mode"].string,
         enabled: view["enabled"].bool,

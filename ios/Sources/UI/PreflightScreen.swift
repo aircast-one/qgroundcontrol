@@ -88,17 +88,13 @@ struct PreflightScreen: View {
         return HStack(spacing: Space.s1) {
             switch checkMark(check) {
             case .TICKABLE:
-                Button {
-                    onTicked(isTicked ? ticked.subtracting([check.name]) : ticked.union([check.name]))
-                } label: {
-                    Image(systemName: isTicked ? "checkmark.square.fill" : "square")
-                        .font(.title3)
-                        .foregroundStyle(theme.colors.primary)
-                        .frame(width: 48, height: 48)
-                }
-                .buttonStyle(.plain)
+                Toggle(isOn: Binding(get: { isTicked }, set: { on in
+                    onTicked(on ? ticked.union([check.name]) : ticked.subtracting([check.name]))
+                })) { EmptyView() }
+                .toggleStyle(CheckboxToggle())
+                .foregroundStyle(theme.colors.primary)
                 .disabled(!open)
-                .opacity(open ? 1 : 0.38)
+                .opacity(open ? 1 : DISABLED_ALPHA)
                 .accessibilityLabel(check.prompt.ifBlank(check.name))
             case .PASSED:
                 Image(systemName: "checkmark")

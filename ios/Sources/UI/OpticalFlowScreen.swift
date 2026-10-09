@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 let OPTICAL_FLOW_SCREEN = "opticalFlow"
 private let OPTICAL_FLOW_VIEW = "view.opticalFlow"
@@ -20,30 +19,25 @@ func flowFrame(_ view: JSON?) -> FlowFrame? {
     )
 }
 
-private func channel(_ bytes: [UInt8], _ at: Int) -> UInt32 {
-    bytes.indices.contains(at) ? UInt32(bytes[at]) : 0
+private let RGBA_BYTES = 4
+
+func rgbaPixels(_ rgba: [UInt8], _ count: Int) -> [UInt8] {
+    let size = count * RGBA_BYTES
+    return Array(rgba.prefix(size)) + Array(repeating: 0, count: max(size - rgba.count, 0))
 }
 
-func argbPixels(_ rgba: [UInt8], _ count: Int) -> [UInt32] {
-    (0..<count).map { pixel in
-        let at = pixel * 4
-        return (channel(rgba, at + 3) << 24) | (channel(rgba, at) << 16) | (channel(rgba, at + 1) << 8) | channel(rgba, at + 2)
-    }
-}
-
-private func bitmapOf(_ frame: FlowFrame) -> UIImage? {
+func bitmapOf(_ frame: FlowFrame) -> UIImage? {
     guard frame.width > 0, frame.height > 0 else { return nil }
-    let pixels = argbPixels(frame.rgba, frame.width * frame.height)
-    let data = pixels.withUnsafeBufferPointer { Data(buffer: $0) }
+    let data = Data(rgbaPixels(frame.rgba, frame.width * frame.height))
     guard let provider = CGDataProvider(data: data as CFData),
           let image = CGImage(
               width: frame.width,
               height: frame.height,
               bitsPerComponent: 8,
-              bitsPerPixel: 32,
-              bytesPerRow: frame.width * 4,
+              bitsPerPixel: 8 * RGBA_BYTES,
+              bytesPerRow: frame.width * RGBA_BYTES,
               space: CGColorSpaceCreateDeviceRGB(),
-              bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.first.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+              bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
               provider: provider,
               decode: nil,
               shouldInterpolate: false,

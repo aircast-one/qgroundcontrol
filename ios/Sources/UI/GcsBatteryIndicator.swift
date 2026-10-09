@@ -2,19 +2,14 @@ import Combine
 import SwiftUI
 import UIKit
 
-private let BATTERY_STATUS_CHARGING = 2
-private let BATTERY_STATUS_DISCHARGING = 3
-private let BATTERY_STATUS_FULL = 5
-private let BATTERY_STATUS_UNKNOWN = 1
-
 struct PhoneBattery: Equatable {
     let percent: Int
     let charging: Bool
 }
 
-func phoneBattery(_ level: Int, _ scale: Int, _ status: Int) -> PhoneBattery? {
-    guard level >= 0, scale > 0 else { return nil }
-    return PhoneBattery(percent: level * 100 / scale, charging: status == BATTERY_STATUS_CHARGING || status == BATTERY_STATUS_FULL)
+func phoneBattery(_ level: Float, _ state: UIDevice.BatteryState) -> PhoneBattery? {
+    guard level >= 0 else { return nil }
+    return PhoneBattery(percent: Int((level * 100).rounded()), charging: [.charging, .full].contains(state))
 }
 
 func gcsBatteryPath(_ battery: PhoneBattery) -> String { "view.gcsBattery(\(battery.percent),\(battery.charging))" }
@@ -42,25 +37,13 @@ private func batteryColour(_ state: String, _ theme: Theme) -> Color {
 }
 
 @MainActor
-private func devicePhoneBattery() -> PhoneBattery? {
-    let device = UIDevice.current
-    device.isBatteryMonitoringEnabled = true
-    let status = switch device.batteryState {
-    case .charging: BATTERY_STATUS_CHARGING
-    case .full: BATTERY_STATUS_FULL
-    case .unplugged: BATTERY_STATUS_DISCHARGING
-    default: BATTERY_STATUS_UNKNOWN
-    }
-    return phoneBattery(device.batteryLevel < 0 ? -1 : Int((device.batteryLevel * 100).rounded()), 100, status)
-}
-
-@MainActor
 final class GcsBatteryMonitor: ObservableObject {
     @Published private(set) var reading: GcsBatteryReading?
     private var battery: PhoneBattery?
     private var changes: AnyCancellable?
 
     init() {
+        UIDevice.current.isBatteryMonitoringEnabled = true
         changes = NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)
             .merge(with: NotificationCenter.default.publisher(for: UIDevice.batteryStateDidChangeNotification))
             .receive(on: DispatchQueue.main)
@@ -69,7 +52,8 @@ final class GcsBatteryMonitor: ObservableObject {
     }
 
     private func refresh() {
-        guard let current = devicePhoneBattery(), current != battery else { return }
+        let device = UIDevice.current
+        guard let current = phoneBattery(device.batteryLevel, device.batteryState), current != battery else { return }
         battery = current
         offMain { [weak self] in
             let read = gcsBatteryReading(Qgc.get(gcsBatteryPath(current)))

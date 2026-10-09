@@ -93,7 +93,7 @@ func planSupport(_ view: JSON?) -> PlanSupport {
 
 func freshPlanView() -> JSON? {
     let view = Qgc.get("view.plan")
-    return view.object != nil ? view : nil
+    return view.objectOrNil
 }
 
 let UPLOADED = "Uploaded"

@@ -37,9 +37,12 @@ enum QgcWatch {
 
     static func release(_ path: String) {
         guard let held = counts[path] else { return }
-        guard held <= 1 else { return counts[path] = held - 1 }
+        if held > 1 {
+            counts[path] = held - 1
+            return
+        }
         counts[path] = nil
-        subjects[path]?.json = nil
+        subjects[path] = nil
         resend()
     }
 

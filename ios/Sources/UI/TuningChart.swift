@@ -110,11 +110,12 @@ struct TuningChart: View {
     private func sample() async {
         guard running else { return }
         let plots = axis.plot
-        let started = Date().addingTimeInterval(-now)
+        let clock = ContinuousClock()
+        let started = clock.now - .seconds(now)
         while !Task.isCancelled {
             let values = await offMain { plots.map { factValue($0.path) } }
             guard !Task.isCancelled else { return }
-            now = Date().timeIntervalSince(started)
+            now = started.duration(to: clock.now) / .seconds(1)
             let held = series.count == values.count ? series : values.map { _ in [] }
             series = zip(held, values).map { list, value in value.map { withSample(list, Sample(seconds: now, value: $0)) } ?? list }
             range = grownRange(range, values.compactMap { $0 })

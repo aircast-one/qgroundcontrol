@@ -77,33 +77,6 @@ func guidedPresets(_ unit: String, _ minimum: Double, _ maximum: Double) -> [Dou
     (unit == "ft" ? [15.0, 30.0, 60.0, 150.0] : [5.0, 10.0, 20.0, 50.0]).filter { $0 >= minimum && $0 <= maximum }
 }
 
-private struct GuidedChip: View {
-    let label: String
-    var selected = false
-    var enabled = true
-    let onClick: () -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        Button(action: onClick) {
-            Text(label)
-                .font(.labelLarge)
-                .foregroundStyle(selected ? theme.colors.onSecondaryContainer : theme.colors.onSurfaceVariant)
-                .padding(.horizontal, Space.s3)
-                .frame(height: 32)
-                .background(selected ? theme.colors.secondaryContainer : .clear, in: RoundedRectangle(cornerRadius: Corner.small))
-                .overlay {
-                    if !selected {
-                        RoundedRectangle(cornerRadius: Corner.small).stroke(theme.colors.outline, lineWidth: 1)
-                    }
-                }
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.38)
-    }
-}
-
 struct GuidedPresets: View {
     let value: Double
     let minimum: Double
@@ -115,7 +88,7 @@ struct GuidedPresets: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Space.s2) {
                 ForEach(guidedPresets(unit, minimum, maximum), id: \.self) { preset in
-                    GuidedChip(label: "\(guidedValueText(preset, unit).removingSuffix(".0")) \(unit)", selected: preset == value) { onValue(preset) }
+                    CameraChip(label: "\(guidedValueText(preset, unit).removingSuffix(".0")) \(unit)", selected: preset == value, checkmark: false) { onValue(preset) }
                 }
             }
         }
@@ -175,7 +148,7 @@ struct GuidedQuickPicks: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Space.s2) {
                 ForEach(Array(guidedQuickPicks(value, minimum, maximum, unit).enumerated()), id: \.offset) { _, pick in
-                    GuidedChip(label: pick.0, enabled: pick.1 != value) { onValue(pick.1) }
+                    CameraChip(label: pick.0, selected: false, enabled: pick.1 != value) { onValue(pick.1) }
                 }
             }
         }

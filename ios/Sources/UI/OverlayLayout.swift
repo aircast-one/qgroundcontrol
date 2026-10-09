@@ -92,11 +92,9 @@ func onScreenCorrection(_ bounds: CGRect, _ root: CGSize, _ offset: CGSize) -> C
     )
 }
 
-private func coerceIn(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat { min(max(value, low), high) }
-
 func pulledBack(_ correction: CGFloat, _ offset: CGFloat) -> CGFloat {
-    if offset > 0 { return coerceIn(correction, -offset, 0) }
-    if offset < 0 { return coerceIn(correction, 0, -offset) }
+    if offset > 0 { return correction.clamped(to: -offset...0) }
+    if offset < 0 { return correction.clamped(to: 0...(-offset)) }
     return 0
 }
 
@@ -131,8 +129,8 @@ func storedOffsets(_ stored: [String: Any]) -> [String: CGSize] {
 
 func clampedDrag(_ left: CGFloat, _ top: CGFloat, _ right: CGFloat, _ bottom: CGFloat, _ width: CGFloat, _ height: CGFloat, _ dx: CGFloat, _ dy: CGFloat) -> CGSize {
     CGSize(
-        width: coerceIn(dx, -left, max(width - right, -left)),
-        height: coerceIn(dy, -top, max(height - bottom, -top))
+        width: dx.clamped(to: -left...max(width - right, -left)),
+        height: dy.clamped(to: -top...max(height - bottom, -top))
     )
 }
 
@@ -204,11 +202,6 @@ extension View {
 
     func layoutPlacement(_ key: String, keepOnScreen: Bool, active: Bool = true) -> some View {
         modifier(LayoutPlacement(key: key, keepOnScreen: keepOnScreen, active: active))
-    }
-
-    func osdShadow(_ on: Bool) -> some View {
-        shadow(color: on ? .black : .clear, radius: on ? 3 : 0, x: 0, y: on ? 1 : 0)
-            .shadow(color: on ? .black : .clear, radius: on ? 3 : 0, x: 0, y: on ? 1 : 0)
     }
 }
 

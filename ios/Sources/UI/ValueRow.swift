@@ -9,8 +9,6 @@ private let ROW_SLIDER_WIDTH: CGFloat = 240
 private let SLIDER_SPAN_LIMIT = 100_000.0
 private let DISABLED_AT_ZERO = "(?i)(disabled if 0|0 (disables|to disable|hides|turns .* off)|set to 0 to disable|zero disables)"
 
-private func toDoubleOrNull(_ text: String) -> Double? { Double(text.trimmed) }
-
 func opensAsValue(_ fact: Fact) -> Bool {
     showsAsField(fact) && !fact.isString && !fact.isBitmask && !fact.isEnum
 }
@@ -37,7 +35,7 @@ func valueStep(_ fact: Fact) -> Double {
 }
 
 private func boundOf(_ text: String, _ isDefaultForType: Bool) -> Double? {
-    toDoubleOrNull(text).flatMap { !isDefaultForType && $0.isFinite ? $0 : nil }
+    text.doubleOrNil.flatMap { !isDefaultForType && $0.isFinite ? $0 : nil }
 }
 
 func valueBounds(_ fact: Fact) -> (Double?, Double?) {
@@ -355,7 +353,7 @@ struct SafeChoiceMenu<Label: View>: View {
 }
 
 func turnOnValue(_ fact: Fact) -> Double {
-    let declared = toDoubleOrNull(fact.defaultValueString).flatMap { $0 > 0 ? $0 : nil }
+    let declared = fact.defaultValueString.doubleOrNil.flatMap { $0 > 0 ? $0 : nil }
     let named = TURN_ON_VALUES[fact.name].map { $0 * metresScale(fact) }
     let smallest = valueBounds(fact).0.flatMap { $0 > 0 ? $0 : nil } ?? valueStep(fact)
     return clampToBounds(fact, declared ?? named ?? smallest)

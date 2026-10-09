@@ -130,6 +130,14 @@ enum GamepadInput {
     }
 
     @MainActor
+    static func stop() {
+        sampler?.cancel()
+        sampler = nil
+        watching.forEach(NotificationCenter.default.removeObserver)
+        watching = []
+    }
+
+    @MainActor
     private static func rescan() {
         let found = GCController.controllers().filter { $0.extendedGamepad != nil }
         found.forEach { controller in

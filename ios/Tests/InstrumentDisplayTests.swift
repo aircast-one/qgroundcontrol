@@ -11,7 +11,7 @@ final class InstrumentDisplayTests: XCTestCase {
         XCTAssertEqual(displayColour(ranged, 25.0), 3)
         XCTAssertEqual(displayColour(ranged, nil), 1, "an unknown value is the first range, as QGC treats NaN")
         XCTAssertNil(displayColour(ValueDisplay(), 5.0))
-        XCTAssertNil(displayColour(ranged.with { $0.colours = [NO_COLOUR, 2, 3] }, -1.0), "an unchecked colour slot falls back to the palette colour")
+        XCTAssertNil(displayColour(withChanges(ranged) { $0.colours = [NO_COLOUR, 2, 3] }, -1.0), "an unchecked colour slot falls back to the palette colour")
     }
 
     func testForwardFlightVehiclesKeepAirspeedAmongTheirDefaultValuesLikeQgcCorePlugin() {
@@ -36,11 +36,11 @@ final class InstrumentDisplayTests: XCTestCase {
     }
 
     func testOpacityAndIconRangesPickByValueAndAFixedIconReplacesTheLabel() {
-        let faded = withRangeType(ValueDisplay(), .Opacity, "a.svg").with { $0.opacities = [0.2, 0.5, 1.0] }
+        let faded = withChanges(withRangeType(ValueDisplay(), .Opacity, "a.svg")) { $0.opacities = [0.2, 0.5, 1.0] }
         XCTAssertEqual(displayOpacity(faded, -1.0), 0.2)
         XCTAssertEqual(displayOpacity(faded, 150.0), 1)
         XCTAssertEqual(displayOpacity(ValueDisplay(), 5.0), 1)
-        let swapped = withRangeType(ValueDisplay(), .Icon, "a.svg").with { $0.icons = ["low.svg", "mid.svg", "high.svg"] }
+        let swapped = withChanges(withRangeType(ValueDisplay(), .Icon, "a.svg")) { $0.icons = ["low.svg", "mid.svg", "high.svg"] }
         XCTAssertEqual(displayIcon(swapped, 50.0), "mid.svg")
         XCTAssertEqual(displayIcon(ValueDisplay(showIcon: true, icon: "plane.svg"), 5.0), "plane.svg")
         XCTAssertNil(displayIcon(ValueDisplay(), 5.0))

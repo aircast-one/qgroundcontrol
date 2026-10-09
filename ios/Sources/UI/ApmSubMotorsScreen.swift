@@ -36,16 +36,12 @@ func subMotors(_ view: JSON?) -> SubMotors? {
         armed: it["armed"].bool,
         detecting: it["detecting"].bool,
         canRunManualTest: it["canRunManualTest"].bool,
-        motors: it["motors"].array.filter { $0.object != nil }.map { SubMotor(motor: $0["motor"].int(0), reversed: $0["reversed"].bool) },
+        motors: it["motors"].objects.map { SubMotor(motor: $0["motor"].int(0), reversed: $0["reversed"].bool) },
         warning: it["warning"].string,
         offersAutoDetect: it["offersAutoDetect"].bool,
         autoDetectHelp: it["autoDetectHelp"].string,
         detectionMessages: it["detectionMessages"].string
     )
-}
-
-private func refused(_ path: String, _ args: [Any?]) -> String? {
-    refusal(Qgc.call(path, arguments: args))
 }
 
 struct ApmSubMotorsScreen: View {
@@ -161,6 +157,6 @@ struct ApmSubMotorsScreen: View {
     }
 
     private func act(_ path: String, _ args: Any...) {
-        Task { refusal = await offMain { refused(path, args) } }
+        Task { refusal = await offMain { Qgc.refusalOf(path, arguments: args) } }
     }
 }

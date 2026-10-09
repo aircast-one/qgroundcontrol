@@ -6,9 +6,9 @@ enum FlyDeckLayout {
     case Bottom, Rail
 }
 
-private let DISABLED_ALPHA = 0.38
 private let DECK_BUTTON_HEIGHT: CGFloat = 80
 private let DECK_ICON_SIZE: CGFloat = 28
+private let GLYPH_TO_FRAME: CGFloat = 0.8
 
 struct DeckEntry {
     let id: String
@@ -26,9 +26,9 @@ let NO_LINK = "No link"
 let NO_SIGNAL_REASON = "No signal from the aircraft."
 
 func takeoffLabel(_ offer: GuidedOffer?, _ readiness: Readiness?) -> String {
-    if offer?.reason == NO_SIGNAL_REASON { return NO_LINK }
-    return readiness == nil ? HOLD_TO_TAKE_OFF : TAKE_OFF
+    offer?.reason == NO_SIGNAL_REASON ? NO_LINK : readiness == nil ? HOLD_TO_TAKE_OFF : TAKE_OFF
 }
+
 let DECK_HOLD_MS = 1500
 private let DECK_HOLD_FILL_ALPHA = 0.3
 private let LONG_PRESS_TIMEOUT_SECONDS = 0.4
@@ -69,9 +69,7 @@ private struct HoldPress: ViewModifier {
         fill?.cancel()
         fill = nil
         pressedAt = nil
-        var instant = Transaction()
-        instant.disablesAnimations = true
-        withTransaction(instant) { progress = 0 }
+        withTransaction(\.disablesAnimations, true) { progress = 0 }
     }
 
     func body(content: Content) -> some View {
@@ -185,7 +183,7 @@ struct DeckButton: View {
         DeckPress(entry: entry, fill: content) {
             VStack(spacing: Space.s1) {
                 Image(entry.icon)
-                    .font(.system(size: 22))
+                    .font(.system(size: DECK_ICON_SIZE * GLYPH_TO_FRAME))
                     .frame(width: DECK_ICON_SIZE, height: DECK_ICON_SIZE)
                 Text(entry.label).font(.labelLarge).lineLimit(1)
             }
@@ -211,11 +209,12 @@ struct RailDeckButton: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
+        let side = primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE
         VStack(spacing: 0) {
             DeckPress(entry: entry, fill: theme.aircast.outdoorForeground) {
                 Image(entry.icon)
-                    .font(.system(size: (primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE) * 0.8))
-                    .frame(width: primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE, height: primary ? RAIL_PRIMARY_ICON_SIZE : RAIL_ICON_SIZE)
+                    .font(.system(size: side * GLYPH_TO_FRAME))
+                    .frame(width: side, height: side)
                     .osdShadow()
             }
             .foregroundStyle(theme.aircast.outdoorForeground)
@@ -236,6 +235,7 @@ struct RailDeckButton: View {
 
 private let MORE_COLUMNS = 4
 private let MORE_TILE_HEIGHT: CGFloat = 80
+private let MORE_ICON_SIZE: CGFloat = 24
 
 struct MoreTile {
     let label: String
@@ -311,7 +311,7 @@ private struct MoreTiles<Footer: View>: View {
             onDismiss()
         } label: {
             VStack(spacing: Space.s2) {
-                Image(tile.icon).font(.system(size: 20)).frame(width: 24, height: 24)
+                Image(tile.icon).font(.system(size: MORE_ICON_SIZE * GLYPH_TO_FRAME)).frame(width: MORE_ICON_SIZE, height: MORE_ICON_SIZE)
                 Text(sentenceCase(tile.label))
                     .font(.labelMedium)
                     .lineLimit(2)

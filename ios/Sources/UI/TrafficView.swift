@@ -48,8 +48,6 @@ struct TrafficReading: Equatable {
 
 private func number(_ json: JSON, _ name: String) -> Double? { json[name].double.flatMap { $0.isFinite ? $0 : nil } }
 
-private func flagOrNull(_ json: JSON, _ name: String) -> Bool? { json[name].isNull ? nil : json[name].bool }
-
 func trafficReading(_ view: JSON?) -> TrafficReading? {
     guard let view, view["class"].string == "AdsbTraffic" else { return nil }
     let units = view["units"]
@@ -59,12 +57,12 @@ func trafficReading(_ view: JSON?) -> TrafficReading? {
         connected: view["connected"].bool,
         receiving: view["receiving"].bool,
         ownPositionKnown: view["ownPositionKnown"].bool,
-        alerting: flagOrNull(view, "alerting"),
+        alerting: view["alerting"].boolOrNil,
         alertUnknown: view["alertUnknown"].int(0),
         emergency: view["emergency"].string,
         errorToken: view["error"]["token"].string,
         units: TrafficUnits(distance: units["distance"].string, altitude: units["altitude"].string, heading: units["heading"].string),
-        contacts: view["contacts"].array.filter { $0.object != nil }.map { contact in
+        contacts: view["contacts"].objects.map { contact in
             TrafficContact(
                 icaoAddress: contact["icaoAddress"].int(0),
                 callsign: contact["callsign"].string.trimmed,
@@ -73,7 +71,7 @@ func trafficReading(_ view: JSON?) -> TrafficReading? {
                 altitude: number(contact, "altitude"),
                 relativeAltitude: number(contact, "relativeAltitude"),
                 emergency: contact["emergency"].string,
-                alert: flagOrNull(contact, "alert"),
+                alert: contact["alert"].boolOrNil,
                 stale: contact["stale"].bool,
                 altitudeType: contact["altitudeType"].string,
                 simulated: contact["simulated"].bool

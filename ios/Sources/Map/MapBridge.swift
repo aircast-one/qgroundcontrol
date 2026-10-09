@@ -10,20 +10,6 @@ enum MapBridge {
 
     @MainActor static var bridgeReady: Bool { readiness.ready }
 
-    static func start() {
-        markReachable()
-    }
-
-    @MainActor static func watch(_ path: String) {
-        _ = QgcWatch.retain(path)
-    }
-
-    @MainActor static func unwatch(_ path: String) {
-        QgcWatch.release(path)
-    }
-
-    @MainActor static var watchedPaths: Set<String> { QgcWatch.watched }
-
     static func seed(_ path: String) {
         offMain {
             guard let json = read(path) else { return }
@@ -33,7 +19,7 @@ enum MapBridge {
 
     static func read(_ path: String) -> JSON? {
         let json = Qgc.get(path)
-        return json.object != nil ? json : nil
+        return json.objectOrNil
     }
 
     static func markReachable() {

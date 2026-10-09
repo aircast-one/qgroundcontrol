@@ -38,7 +38,7 @@ func videoReading(_ view: JSON?) -> VideoReading? {
         sourceSize: size.object != nil && width > 0 && height > 0 ? SourceSize(width: width, height: height) : nil,
         summary: view["summary"].string,
         activeSource: view["activeSource"].int(0),
-        cameras: view["cameras"].array.filter { $0.object != nil }.map { camera in
+        cameras: view["cameras"].objects.map { camera in
             VideoCamera(slot: camera["slot"].int(0), status: camera["status"].string, configured: camera["configured"].bool)
         },
         streaming: view["streaming"].bool,

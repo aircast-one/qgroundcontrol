@@ -38,7 +38,7 @@ struct AboutPage: View {
     }
 }
 
-let PRIVACY_POLICY_LINK = HelpLink(name: "Privacy policy", url: "https://aircast.one/privacy/android", host: "aircast.one")
+let PRIVACY_POLICY_LINK = HelpLink(name: "Privacy policy", url: "https://aircast.one/privacy", host: "aircast.one")
 
 func aboutLinks(_ links: [HelpLink]) -> [HelpLink] { links + [PRIVACY_POLICY_LINK] }
 

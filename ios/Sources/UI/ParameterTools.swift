@@ -8,6 +8,7 @@ let PARAMETER_REVIEW_PATH = "parameterFile.review"
 let PARAMETER_APPLY_PATH = "parameterFile.apply"
 private let PARAMETER_FILE_NAME = "vehicle.params"
 private let PARAMETER_FILE_TYPES: [UTType] = [.plainText, .data, .item]
+private let UNABLE_TO_OPEN = "Unable to open file."
 
 struct ParameterDiffRow: Equatable {
     var json: JSON
@@ -43,7 +44,7 @@ struct ParameterReview: Equatable {
 func parameterReview(_ result: JSON?) -> ParameterReview? {
     guard let review = result else { return nil }
     return ParameterReview(
-        rows: review["rows"].array.filter { $0.object != nil }.map {
+        rows: review["rows"].objects.map {
             ParameterDiffRow(
                 json: $0,
                 name: $0["name"].string,
@@ -107,7 +108,7 @@ struct ParameterTool: Equatable {
 }
 
 func parameterTools(_ view: JSON?) -> [ParameterTool] {
-    (view?["tools"].arrayOrNil ?? []).filter { $0.object != nil }.map {
+    (view?["tools"].objects ?? []).map {
         ParameterTool(
             path: $0["path"].string,
             label: $0["label"].string,
@@ -204,8 +205,10 @@ struct ParameterToolsMenu: View {
                 }
             }
             .fileImporter(isPresented: $loading, allowedContentTypes: PARAMETER_FILE_TYPES) { result in
-                guard case .success(let url) = result else { return }
-                load(url)
+                switch result {
+                case .success(let url): load(url)
+                case .failure: show { refusal = UNABLE_TO_OPEN }
+                }
             }
             .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
             .onDisappear { scope.cancel() }
@@ -217,10 +220,7 @@ struct ParameterToolsMenu: View {
     }
 
     private func whenPresenterFree(_ change: @MainActor () -> Void) async {
-        while !Task.isCancelled, !presenterFree(probe.controller) {
-            try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
-        }
-        if !Task.isCancelled { change() }
+        if await presenterFreed(probe) { change() }
     }
 
     private func run(_ tool: ParameterTool) {
@@ -258,12 +258,12 @@ struct ParameterToolsMenu: View {
     private func load(_ url: URL) {
         scope.launch {
             guard let text = await offMain({ readText(url) }) else {
-                await whenPresenterFree { refusal = "Unable to open file." }
+                await whenPresenterFree { refusal = UNABLE_TO_OPEN }
                 return
             }
             let reviewed = await offMain { Qgc.call(PARAMETER_REVIEW_PATH, text) }
             let result = reviewed?["result"]
-            let parsed = parameterReview(result?.object != nil ? result : nil)
+            let parsed = parameterReview(result?.objectOrNil)
             await whenPresenterFree {
                 if let parsed {
                     review = parsed

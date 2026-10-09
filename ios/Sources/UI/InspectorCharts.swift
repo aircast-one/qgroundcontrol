@@ -53,7 +53,7 @@ func inspectorCharts(_ view: JSON?) -> InspectorCharts? {
                 yMin: chartNumber(chart, "yMin"),
                 yMax: chartNumber(chart, "yMax"),
                 room: chart["room"].bool(true),
-                plots: chart["plots"].array.filter { $0.object != nil }.map { plot in
+                plots: chart["plots"].objects.map { plot in
                     ChartPlot(
                         label: plot["label"].string,
                         field: plot["field"].string,
@@ -64,7 +64,7 @@ func inspectorCharts(_ view: JSON?) -> InspectorCharts? {
             )
         },
         charted: Dictionary(
-            view["selectedCharted"].array.filter { $0.object != nil }.map { ($0["field"].string, $0["chart"].int(0)) },
+            view["selectedCharted"].objects.map { ($0["field"].string, $0["chart"].int(0)) },
             uniquingKeysWith: { _, last in last }
         )
     )
@@ -98,6 +98,12 @@ func latestValue(_ points: [ChartSample]) -> String? {
 private func seriesColours(_ theme: Theme) -> [Color] {
     [theme.colors.primary, theme.aircast.mission, theme.aircast.success, theme.colors.tertiary, theme.colors.error, theme.aircast.warning]
 }
+
+func seriesColour(_ index: Int, _ colours: [Color]) -> Color {
+    colours[((index % colours.count) + colours.count) % colours.count]
+}
+
+private func upward(_ canvasY: Float) -> Double { Double(1 - canvasY) }
 
 func chartPoint(_ ageMs: Int64, _ value: Double, _ windowMs: Int64, _ yMin: Double, _ yMax: Double) -> (Float, Float) {
     let span = yMax - yMin
@@ -166,7 +172,7 @@ struct InspectorChartPanel: View {
                 PlanFlowRow(spacing: 16, lineSpacing: 0, alignment: .center) {
                     ForEach(Array(chart.plots.enumerated()), id: \.offset) { _, plot in
                         HStack(spacing: 6) {
-                            Circle().fill(colours[plot.colour % colours.count]).frame(width: 8, height: 8)
+                            Circle().fill(seriesColour(plot.colour, colours)).frame(width: 8, height: 8)
                             Text([plot.label, latestValue(plot.points)].compactMap { $0 }.joined(separator: "  ")).font(.labelMedium)
                         }
                     }
@@ -190,8 +196,8 @@ struct InspectorChartPanel: View {
                 ForEach(Array(chart.plots.enumerated()), id: \.offset) { slot, plot in
                     ForEach(Array(plot.points.enumerated()), id: \.offset) { _, sample in
                         let (x, y) = chartPoint(sample.ageMs, sample.value, chart.windowMs, low, high)
-                        LineMark(x: .value("Time", Double(x)), y: .value("Value", Double(1 - y)), series: .value("Plot", slot))
-                            .foregroundStyle(colours[plot.colour % colours.count])
+                        LineMark(x: .value("Time", Double(x)), y: .value("Value", upward(y)), series: .value("Plot", slot))
+                            .foregroundStyle(seriesColour(plot.colour, colours))
                             .lineStyle(StrokeStyle(lineWidth: 2))
                     }
                 }
@@ -204,7 +210,7 @@ struct InspectorChartPanel: View {
                 }
             }
             .chartYAxis {
-                AxisMarks(position: .leading, values: values.map { Double(1 - $0.0) }) { mark in
+                AxisMarks(position: .leading, values: values.map { upward($0.0) }) { mark in
                     AxisGridLine().foregroundStyle(theme.colors.outlineVariant)
                     AxisValueLabel { tick(values[mark.index].1) }
                 }

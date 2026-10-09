@@ -12,10 +12,8 @@ enum ItemCameraBridge {
     }
 }
 
-let VIDEO_VIEW_PATH = "view.video"
-
 enum VideoBridge {
-    static func read() -> JSON? { MapBridge.read(VIDEO_VIEW_PATH) }
+    static func read() -> JSON? { MapBridge.read(VIDEO_VIEW) }
 }
 
 func shotPoints(_ view: JSON?) -> [TrackPoint] {
@@ -102,7 +100,7 @@ func actionLabel(_ view: JSON?) -> String {
 
 func itemCameraNote(_ view: JSON?) -> String? {
     guard let view, view["available"].bool, !view["note"].isNull else { return nil }
-    return view["note"].string.isBlank ? nil : view["note"].string
+    return view["note"].string.nonBlank
 }
 
 func itemCameraTextBeside(_ view: JSON?, _ pickerLabel: String?) -> String? {
@@ -115,5 +113,5 @@ func itemCameraText(_ view: JSON?) -> String? {
     let angles = [measureText(view, "gimbalPitch"), measureText(view, "gimbalYaw")].filter { !$0.isBlank }.joined(separator: " / ")
     let gimbal = !view["commandsGimbal"].bool || angles.isBlank ? "" : "gimbal \(angles)"
     let text = [action, gimbal].filter { !$0.isBlank }.joined(separator: " · ")
-    return text.isBlank ? nil : text
+    return text.nonBlank
 }

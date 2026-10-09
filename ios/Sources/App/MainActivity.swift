@@ -6,6 +6,9 @@ private let VIRTUAL_JOYSTICK_BOTTOM_MARGIN: CGFloat = 96
 private let EDIT_BAR_MAX_WIDTH: CGFloat = 560
 private let NAVIGATION_RAIL_WIDTH: CGFloat = 80
 private let NAVIGATION_BAR_HEIGHT: CGFloat = 64
+private let TAB_ICON_SIZE: CGFloat = 18
+private let TAB_INDICATOR_WIDTH: CGFloat = 56
+private let TAB_INDICATOR_HEIGHT: CGFloat = 32
 private let noticeLog = Logger(subsystem: "one.aircast.app", category: "HostNotices")
 
 func reselectClearsAnalyze(_ current: Tab, _ tapped: Tab) -> Bool { current == tapped && tapped == .Analyze }
@@ -95,8 +98,7 @@ private struct HostNoticeWatch: View {
 
     var body: some View {
         Color.clear
-            .frame(width: 0, height: 0)
-            .accessibilityHidden(true)
+            .invisibleAnchor()
             .onChange(of: notices, initial: true) { _, now in onNotices(now) }
     }
 }
@@ -185,8 +187,7 @@ struct AircastShell: View {
         .statusBarHidden(flyLandscape || fullScreen)
         .persistentSystemOverlays(flyLandscape || fullScreen ? .hidden : .automatic)
         .background { HostNoticeWatch(acknowledgedThrough: acknowledgedThrough, onNotices: noticesArrived) }
-        .environment(\.theme, darkBars ? .darkTheme : .lightTheme)
-        .tint((darkBars ? Theme.darkTheme : Theme.lightTheme).colors.primary)
+        .aircastTheme(dark: darkBars)
         .windowStyle(paletteWindowStyle(systemPalette, darkBars))
         .onChange(of: tab) { _, now in if now != .Fly { flyScreen.layout.editing = false } }
         .onChange(of: navigation.setupPage, initial: true) { _, page in if page != nil { navigation.openAircraft() } }
@@ -518,16 +519,12 @@ struct AppDialogsHost: View {
                 alertView(alert)
             }
         }
-        .frame(width: 0, height: 0)
-        .accessibilityHidden(true)
+        .invisibleAnchor()
         .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
         .task(id: AlertSlot(alert: alert, here: here)) {
             alertReady = false
             guard alert != nil, here else { return }
-            while !Task.isCancelled, !presenterFree(probe.controller) {
-                try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
-            }
-            alertReady = !Task.isCancelled
+            alertReady = await presenterFreed(probe)
         }
     }
 
@@ -563,9 +560,9 @@ private struct TabItem: View {
         Button(action: onClick) {
             VStack(spacing: Space.s1) {
                 Image(icon)
-                    .font(.system(size: 18))
+                    .font(.system(size: TAB_ICON_SIZE))
                     .foregroundStyle(selected ? theme.colors.onSecondaryContainer : theme.colors.onSurfaceVariant)
-                    .frame(width: 56, height: 32)
+                    .frame(width: TAB_INDICATOR_WIDTH, height: TAB_INDICATOR_HEIGHT)
                     .background(selected ? theme.colors.secondaryContainer : .clear, in: Capsule())
                 Text(label)
                     .font(.labelMedium)

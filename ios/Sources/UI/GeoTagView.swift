@@ -33,7 +33,7 @@ struct GeoTagImage: Equatable {
 let GEOTAG_TAGGED = 2
 
 func geoTagImages(_ json: JSON) -> [GeoTagImage] {
-    json["imageModel"].array.filter { $0.object != nil }.map { row in
+    json["imageModel"].objects.map { row in
         GeoTagImage(
             fileName: row["fileName"].string,
             status: row["status"].int(0),

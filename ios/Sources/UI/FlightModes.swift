@@ -47,8 +47,8 @@ func flightModesView(_ view: JSON?) -> FlightModesView? {
         everyday: options(view, "everyday"),
         folded: options(view, "folded"),
         all: options(view, "modes"),
-        hidden: view["hidden"].arrayOrNil?.map(\.string) ?? [],
-        hiddenSetting: hiddenSetting.isBlank ? nil : hiddenSetting,
+        hidden: view["hidden"].strings,
+        hiddenSetting: hiddenSetting.nonBlank,
         unknownModeNotice: view["unknownModeNotice"].string
     )
 }

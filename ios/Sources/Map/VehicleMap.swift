@@ -1,4 +1,5 @@
 import CoreLocation
+import CryptoKit
 import MapLibre
 import SwiftUI
 import UIKit
@@ -31,8 +32,6 @@ private let FIT_SETTLE_MS = 100
 private let LOGO_EDGE_MARGIN_PX: CGFloat = 16
 private let ATTRIBUTION_CLEARANCE: CGFloat = 24
 private let STALE_COLOUR = "#9E9E9E"
-
-let DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
 let OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 
@@ -69,8 +68,6 @@ struct TrackPoint: Hashable {
         hasher.combine(longitude.isNaN ? Double.nan : longitude)
     }
 }
-
-private func sameDouble(_ a: Double, _ b: Double) -> Bool { a == b || (a.isNaN && b.isNaN) }
 
 extension TrackPoint {
     init(_ latitude: Double, _ longitude: Double) {
@@ -183,27 +180,6 @@ func mapIcon(_ pixels: CGFloat, _ draw: (CGContext) -> Void) -> UIImage {
     return UIGraphicsImageRenderer(size: CGSize(width: pixels / 3, height: pixels / 3), format: format).image { rendered in
         rendered.cgContext.scaleBy(x: 1.0 / 3, y: 1.0 / 3)
         draw(rendered.cgContext)
-    }
-}
-
-func withChanges<T>(_ value: T, _ change: (inout T) -> Void) -> T {
-    var copy = value
-    change(&copy)
-    return copy
-}
-
-struct Keys<each T: Equatable>: Equatable {
-    let values: (repeat each T)
-
-    init(_ values: repeat each T) {
-        self.values = (repeat each values)
-    }
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        for (left, right) in repeat (each lhs.values, each rhs.values) {
-            guard left == right else { return false }
-        }
-        return true
     }
 }
 
@@ -328,8 +304,12 @@ struct VehicleMap: View {
 
     private func mergeTrack(_ tailJson: JSON?) async {
         let tail = trackReading(tailJson)
-        if let merged = mergedTrack(track, tail) { return track = merged }
+        if let merged = mergedTrack(track, tail) {
+            track = merged
+            return
+        }
         let full = await offMain { MapBridge.read(TRACK_VIEW) }
+        guard !Task.isCancelled else { return }
         track = full.map { trackReading($0) } ?? withChanges(tail) { $0.points = []; $0.from = 0 }
     }
 
@@ -673,7 +653,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         installGotoLayer(style)
         installClickMarker(style)
         installOrbitLayer(style)
-        attachGestures(mapView, style)
+        attachGestures(mapView)
         reportCentre(mapView)
         draggingVertex = nil
         self.style = style
@@ -705,15 +685,15 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
     private func reportCentre(_ mapView: MLNMapView) {
         inputs.onCentreChanged(TrackPoint(mapView.centerCoordinate), mapView.zoomLevel)
         let right = max(mapView.bounds.width - inputs.rightInsetPx, 0)
-        let left = min(max(inputs.leftInsetPx, 0), right)
+        let left = inputs.leftInsetPx.clamped(to: 0...right)
         let bottom = max(mapView.bounds.height - inputs.bottomInsetPx, 0)
-        let top = min(max(inputs.topInsetPx, 0), bottom)
+        let top = inputs.topInsetPx.clamped(to: 0...bottom)
         let seen = [CGPoint(x: left, y: top), CGPoint(x: right, y: top), CGPoint(x: right, y: bottom), CGPoint(x: left, y: bottom)]
             .map { TrackPoint(mapView.convert($0, toCoordinateFrom: mapView)) }
         inputs.onViewChanged(clearWindow(seen))
     }
 
-    private func attachGestures(_ mapView: MLNMapView, _ style: MLNStyle) {
+    private func attachGestures(_ mapView: MLNMapView) {
         guard !gesturesAttached else { return }
         gesturesAttached = true
         if !inputs.editable && inputs.onMapClick != nil {
@@ -725,14 +705,12 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
             mapView.addGestureRecognizer(tap)
             mapView.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:))))
             if let edits = inputs.edits {
-                attachGotoRadiusDrag(mapView, mapView, edits) { [weak self] in self?.inputs.goto }
+                attachGotoRadiusDrag(mapView, edits) { [weak self] in self?.inputs.goto }
             }
         }
         if inputs.editable {
             attachMissionEditing(
                 mapView,
-                mapView,
-                style,
                 onAdd: { [weak self] latitude, longitude in self?.inputs.onAdd(latitude, longitude) },
                 onMove: { [weak self] hit, latitude, longitude in self?.inputs.onMove(hit, latitude, longitude) },
                 onSelected: { [weak self] hit in self?.inputs.onWaypointSelected(hit) },
@@ -776,7 +754,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         let zoomed = mapView.zoomLevel > 1.0
         let point = mapView.convert(at, toPointTo: mapView)
         let height = mapView.bounds.height
-        let lift = min(max(clearAreaLift(inputs.topInsetPx, inputs.bottomInsetPx), -height / 4), height / 4)
+        let lift = clearAreaLift(inputs.topInsetPx, inputs.bottomInsetPx).clamped(to: -height / 4...height / 4)
         let centred = zoomed && lift != 0 ? mapView.convert(CGPoint(x: point.x, y: point.y - lift), toCoordinateFrom: mapView) : at
         if inputs.keepCentered || !zoomed {
             mapView.setCenter(centred, zoomLevel: zoomed ? mapView.zoomLevel : DEFAULT_ZOOM, animated: false)
@@ -822,13 +800,10 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
     }
 }
 
-private func styleURL(_ mapStyle: String) -> URL? {
+func styleURL(_ mapStyle: String) -> URL? {
     guard mapStyle.trimmed.hasPrefix("{") else { return URL(string: mapStyle) }
-    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("map-styles", isDirectory: true)
-    try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-    let file = folder.appendingPathComponent("inline-\(UInt(bitPattern: mapStyle.hashValue)).json")
-    try? mapStyle.write(to: file, atomically: true, encoding: .utf8)
-    return file
+    let digest = SHA256.hash(data: Data(mapStyle.utf8)).map { String(format: "%02x", $0) }.joined()
+    return writtenStyleURL(mapStyle, "inline-\(digest)")
 }
 
 private struct VehicleMapView: UIViewRepresentable {

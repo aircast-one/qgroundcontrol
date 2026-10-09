@@ -26,4 +26,25 @@ final class CameraSettingsSectionTests: XCTestCase {
         XCTAssertEqual(cameraSettings(JSON.parse(#"{"state":"fetching"}"#)), [])
         XCTAssertEqual(cameraSettings(nil), [])
     }
+
+    func testAZeroStepOrAnEmptyRangeNeverCrashesTheSlider() {
+        XCTAssertEqual(cameraSliderStep(0, 10, 0), 10.0 / 1001)
+        XCTAssertNil(cameraSliderStep(5, 5, 0))
+        XCTAssertNil(cameraSliderStep(5, 5, 1))
+        XCTAssertNil(cameraSliderStep(10, 0, 1))
+        XCTAssertNil(cameraSliderStep(0, 10, -1))
+    }
+
+    func testTheSliderStepsLikeComposeCoercingTheStepCount() {
+        XCTAssertEqual(cameraSliderStep(-2, 2, 0.5), 0.5)
+        XCTAssertNil(cameraSliderStep(0, 1, 1))
+        XCTAssertEqual(cameraSliderStep(0, 1, 1e-300), 1.0 / 1001)
+        XCTAssertEqual(cameraSliderStep(0, 10, 4), 5)
+    }
+
+    func testAHugeBoolValueIsOffRatherThanACrash() {
+        let parameter = JSON.parse(#"{"name":"CAM_ON","isBool":true,"value":1e300}"#)
+        XCTAssertEqual(cameraSettingControl(parameter), .Toggle(on: false))
+        XCTAssertEqual(cameraSettingControl(JSON.parse(#"{"isBool":true,"value":1.5}"#)), .Toggle(on: true))
+    }
 }

@@ -111,4 +111,20 @@ final class CalibrationViewTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(calibrationState(with(served, ["waitingForCancel": .bool(true)]))).waitingForCancel)
         XCTAssertEqual(CANCEL_WAIT_TEXT, "Waiting for Vehicle to response to Cancel. This may take a few seconds.")
     }
+
+    func testSensorHealthListsNamedSensorsAndSaysHowManyAreFailing() throws {
+        XCTAssertNil(sensorHealth(JSON.parse(#"{"class":"Calibration"}"#)))
+        let reading = try XCTUnwrap(sensorHealth(JSON.parse(#"""
+            {"class":"SensorHealth","available":true,"status":"ok",
+            "sensors":[{"name":"Gyro","state":"healthy","label":"OK"},{"name":"","state":"healthy"},3],
+            "failing":["Compass"," "]}
+            """#)))
+        XCTAssertEqual(reading.sensors, [SensorHealth(name: "Gyro", state: "healthy", label: "OK")], "a nameless or non-object sensor is dropped")
+        XCTAssertEqual(reading.failing, ["Compass"], "a blank failing name is dropped")
+        XCTAssertEqual(healthSummary(reading), "Compass is reporting a fault.")
+        XCTAssertEqual(healthSummary(SensorHealthReading(available: true, sensors: [], failing: ["Compass", "Gyro"], status: "")), "2 sensors are reporting faults.")
+        XCTAssertEqual(healthSummary(SensorHealthReading(available: true, sensors: [], failing: [], status: "")), "")
+        XCTAssertEqual(healthSummary(SensorHealthReading(available: false, sensors: [], failing: ["Compass"], status: "")), "", "an unavailable reading says nothing")
+        XCTAssertEqual(healthSummary(nil), "")
+    }
 }

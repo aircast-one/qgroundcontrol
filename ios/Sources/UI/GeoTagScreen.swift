@@ -25,11 +25,11 @@ struct GeoTagScreen: View {
             }
             .task { await run.refresh() }
             .fileImporter(isPresented: $picking, allowedContentTypes: pick == .log ? [.item] : [.folder]) { result in
-                guard case .success(let chosen) = result else { return }
-                switch pick {
-                case .log: run.pickLog(chosen)
-                case .images: run.pickImages(chosen)
-                case .output: run.pickOutput(chosen)
+                switch (result, pick) {
+                case (.success(let chosen), .log): run.pickLog(chosen)
+                case (.success(let chosen), .images): run.pickImages(chosen)
+                case (.success(let chosen), .output): run.pickOutput(chosen)
+                case (.failure(let error), _): run.note = error.localizedDescription
                 }
             }
     }

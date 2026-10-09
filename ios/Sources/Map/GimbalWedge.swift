@@ -3,7 +3,7 @@ import UIKit
 
 let GIMBAL_AZIMUTH_VIEW = "view.gimbalAzimuth"
 private let GIMBAL_SOURCE = "aircast-gimbal-azimuth"
-private let GIMBAL_LAYER = "aircast-gimbal-azimuth-layer"
+let GIMBAL_LAYER = "aircast-gimbal-azimuth-layer"
 private let GIMBAL_IMAGE = "aircast-gimbal-wedge"
 private let YAW_PROPERTY = "yaw"
 private let OPACITY_PROPERTY = "opacity"

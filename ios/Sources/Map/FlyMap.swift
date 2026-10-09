@@ -24,7 +24,7 @@ func centresOnOperator(_ alreadyCentred: Bool, _ operator: TrackPoint?, _ vehicl
     !alreadyCentred && `operator` != nil && !vehiclePlaced
 }
 
-private struct FlownPlan {
+struct FlownPlan {
     var items: [MissionItem] = []
     var linkStartToHome = false
     var fences: [FencePolygon] = []
@@ -72,7 +72,7 @@ private func shape(_ item: MissionItem) -> ItemShape {
     ItemShape(sequence: item.sequence, latitude: item.latitude, longitude: item.longitude, command: item.command)
 }
 
-private struct FlyCamera {
+struct FlyCamera {
     var centreRequest: Int
     var centreOn: TrackPoint?
     var centreZoom: Double?
@@ -116,34 +116,37 @@ private func flownPlan() -> FlownPlan {
 }
 
 @Observable
-private final class FlyMapState {
-    nonisolated(unsafe) static var retained: FlyMapState?
-
+final class FlyMapState {
     var plan = FlownPlan()
     var centre: TrackPoint?
     var zoom = 0.0
     var fitRequest = 0
-    var camera = FlyCamera(readCamera())
+    var camera = FlyCamera(nil)
     @ObservationIgnored private var views = 0
     @ObservationIgnored private var shown = false
 
-    static func adopt() -> FlyMapState { retained ?? FlyMapState() }
-
     func appeared() {
-        if shown, let at = centre, zoom > 1.0 {
+        if !shown {
+            camera = FlyCamera(readCamera())
+        } else if let at = centre, zoom > 1.0 {
             camera.centreOn = at
             camera.centreZoom = camera.mainZoom > 1.0 ? camera.mainZoom : nil
             camera.centreRequest += 1
         }
         shown = true
         views += 1
-        FlyMapState.retained = self
     }
 
     func disappeared() {
         views -= 1
         DispatchQueue.main.async { [self] in
-            if views == 0 && FlyMapState.retained === self { FlyMapState.retained = nil }
+            guard views == 0 else { return }
+            plan = FlownPlan()
+            centre = nil
+            zoom = 0
+            fitRequest = 0
+            camera = FlyCamera(nil)
+            shown = false
         }
     }
 }
@@ -164,7 +167,8 @@ struct FlyMap: View {
     @Environment(\.scenePhase) private var scenePhase
     @MapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)") private var keepCentered
     @State private var style = FlyMapStyle.last
-    @State private var state = FlyMapState.adopt()
+    @Environment(FlyScreenState.self) private var flyScreen
+    private var state: FlyMapState { flyScreen.flyMap }
 
     var body: some View {
         let plan = state.plan

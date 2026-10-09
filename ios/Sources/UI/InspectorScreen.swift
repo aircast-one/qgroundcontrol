@@ -41,7 +41,7 @@ struct InspectorChoice: Equatable {
 }
 
 func inspectorChoices(_ view: JSON?, _ key: String) -> [InspectorChoice] {
-    (view?[key].array ?? []).filter { $0.object != nil }.map { InspectorChoice(id: $0["id"].int(0), title: $0["title"].string) }
+    (view?[key].objects ?? []).map { InspectorChoice(id: $0["id"].int(0), title: $0["title"].string) }
 }
 
 func inspectorDetails(_ message: InspectorMessage) -> [(String, String)] {
@@ -242,6 +242,10 @@ private struct InspectorChip: View {
     }
 }
 
+func inspectorActiveSystem(_ view: JSON?) -> Int? {
+    view.flatMap { $0["systemId"].isNull ? nil : $0["systemId"].int(0) }
+}
+
 struct InspectorScreen: View {
     @Environment(\.theme) private var theme
     @QgcPath(INSPECTOR_VIEW) private var inspectorJson
@@ -250,9 +254,8 @@ struct InspectorScreen: View {
     @State private var component: Int?
 
     var body: some View {
-        let activeSystem = inspectorJson.flatMap { $0["systemId"].isNull ? nil : $0["systemId"].int(0) }
         content
-            .onChange(of: activeSystem) { component = nil }
+            .onChange(of: inspectorActiveSystem(inspectorJson)) { component = nil }
     }
 
     @ViewBuilder private var content: some View {
@@ -301,7 +304,7 @@ struct InspectorScreen: View {
     private func list(_ messages: [InspectorMessage]) -> some View {
         let systems = inspectorChoices(inspectorJson, "systems")
         let components = inspectorChoices(inspectorJson, "components")
-        let activeSystem = inspectorJson.flatMap { $0["systemId"].isNull ? nil : $0["systemId"].int(0) }
+        let activeSystem = inspectorActiveSystem(inspectorJson)
         let shown = inspectorShown(messages, filter, component)
         return VStack(alignment: .leading, spacing: 0) {
             if let line = inspectorSystemText(inspectorJson) {

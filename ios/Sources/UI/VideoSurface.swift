@@ -13,19 +13,16 @@ private struct PinchZoom: ViewModifier {
     @State private var sent = 0
 
     func body(content: Content) -> some View {
-        if enabled {
-            content.simultaneousGesture(
-                MagnifyGesture()
-                    .onChanged { pinch in
-                        let step = pinchStep(pinch.magnification)
-                        if step != sent { offMain { Qgc.invoke(CAMERA_STEP_ZOOM, step) } }
-                        sent = step
-                    }
-                    .onEnded { _ in sent = 0 }
-            )
-        } else {
-            content
-        }
+        content.simultaneousGesture(
+            MagnifyGesture()
+                .onChanged { pinch in
+                    let step = pinchStep(pinch.magnification)
+                    if step != sent { offMain { Qgc.invoke(CAMERA_STEP_ZOOM, step) } }
+                    sent = step
+                }
+                .onEnded { _ in sent = 0 },
+            including: enabled ? .all : .subviews
+        )
     }
 }
 
@@ -187,7 +184,7 @@ final class PipSurfaces {
 
 private let pipSurfaces = PipSurfaces { shown in offMainInOrder { VideoCommands.setPipShown(shown) } }
 
-private struct DecodedFrame: Equatable {
+struct DecodedFrame: Equatable {
     let width: Int
     let height: Int
     let stride: Int

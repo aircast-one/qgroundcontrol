@@ -43,10 +43,10 @@ func px4Airframes(_ view: JSON?) -> Px4Airframes? {
         currentIndex: read["currentIndex"].int(0),
         applyTitle: read["applyTitle"].string,
         applyText: read["applyText"].string.replacingOccurrences(of: "<br>", with: "\n"),
-        groups: read["types"].array.filter { $0.object != nil }.map { type in
+        groups: read["types"].objects.map { type in
             AirframeGroup(
                 name: type["name"].string,
-                airframes: type["airframes"].array.filter { $0.object != nil }.map { AirframeChoice(name: $0["name"].string, autostartId: $0["autostartId"].int64 ?? 0) },
+                airframes: type["airframes"].objects.map { AirframeChoice(name: $0["name"].string, autostartId: $0["autostartId"].int64 ?? 0) },
                 image: type["image"].string
             )
         }
@@ -60,10 +60,6 @@ struct AirframeSelection: Equatable {
 
 func initialSelection(_ read: Px4Airframes) -> AirframeSelection? {
     read.currentType.map { AirframeSelection(group: $0, index: read.currentIndex) }
-}
-
-private func refused(_ path: String, _ args: [Any?]) -> String? {
-    refusal(Qgc.call(path, arguments: args))
 }
 
 struct Px4AirframeScreen: View {
@@ -142,7 +138,7 @@ struct Px4AirframeScreen: View {
     }
 
     private func act(_ path: String, _ args: Any...) {
-        Task { refusal = await offMain { refused(path, args) } }
+        Task { refusal = await offMain { Qgc.refusalOf(path, arguments: args) } }
     }
 }
 
@@ -155,9 +151,7 @@ private struct AirframeGroupCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: picked ? "largecircle.fill.circle" : "circle")
-                .foregroundStyle(picked ? theme.colors.primary : theme.colors.onSurfaceVariant)
-                .padding(.top, 2)
+            RadioIndicator(selected: picked).padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 Text(group.name).font(.titleSmall)
                 if let asset = airframeImageAsset(group.image) {

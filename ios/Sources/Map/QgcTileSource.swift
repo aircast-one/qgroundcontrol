@@ -6,6 +6,10 @@ let QGC_TILE_HOST = "qgc.tiles"
 private let MAP_PROVIDER = "settings.flightMapSettings.mapProvider.rawValue"
 private let MAP_TYPE = "settings.flightMapSettings.mapType.rawValue"
 private let PNG_MAGIC: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
+private let TILE_PATH = #/^/([^/]+)/([0-9]+)/([0-9]+)/([0-9]+)$/#
+private let HTTP_OK = 200
+private let HTTP_NOT_FOUND = 404
+private let TILE_USER_AGENT = "Aircast/iOS"
 
 struct TileAddress: Equatable {
     let mapType: String
@@ -15,10 +19,13 @@ struct TileAddress: Equatable {
 }
 
 func tileAddress(_ path: String) -> TileAddress? {
-    let parts = path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
-    guard parts.count == 4, let z = Int(parts[1]), let x = Int(parts[2]), let y = Int(parts[3]),
-          let type = parts[0].removingPercentEncoding else { return nil }
-    return TileAddress(mapType: type, z: z, x: x, y: y)
+    guard let match = path.wholeMatch(of: TILE_PATH), let type = String(match.1).removingPercentEncoding,
+          let z = Int32(match.2), let x = Int32(match.3), let y = Int32(match.4) else { return nil }
+    return TileAddress(mapType: type, z: Int(z), x: Int(x), y: Int(y))
+}
+
+func tileAddress(_ url: URL) -> TileAddress? {
+    URLComponents(url: url, resolvingAgainstBaseURL: false).flatMap { tileAddress($0.percentEncodedPath) }
 }
 
 func qgcTileUrl(_ mapType: String) -> String {
@@ -59,17 +66,47 @@ func qgcRasterStyle(_ mapType: String) -> String {
     """
 }
 
-func qgcStyleURL(_ mapType: String) -> URL {
-    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("map-styles", isDirectory: true)
-    try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+private let STYLE_FOLDER = "map-styles"
+
+func writtenStyleURL(_ json: String, _ name: String) -> URL? {
+    let files = FileManager.default
+    let folder = files.temporaryDirectory.appendingPathComponent(STYLE_FOLDER, isDirectory: true)
+    let file = folder.appendingPathComponent("\(name).json")
+    let written = (try? files.createDirectory(at: folder, withIntermediateDirectories: true)) != nil
+        && (try? json.write(to: file, atomically: true, encoding: .utf8)) != nil
+    return written || files.fileExists(atPath: file.path) ? file : nil
+}
+
+func qgcStyleURL(_ mapType: String) -> URL? {
     let name = mapType.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "default"
-    let file = folder.appendingPathComponent("\(name.ifBlank("default")).json")
-    try? qgcRasterStyle(mapType).write(to: file, atomically: true, encoding: .utf8)
-    return file
+    return writtenStyleURL(qgcRasterStyle(mapType), name.ifBlank("default"))
+}
+
+private final class TileReply {
+    let done: (Data?) -> Void
+    init(done: @escaping (Data?) -> Void) { self.done = done }
+}
+
+private func coreTileFetch(_ address: TileAddress, _ reply: @escaping (Data?) -> Void) -> UInt64 {
+    let box = Unmanaged.passRetained(TileReply(done: reply)).toOpaque()
+    return qgc_map_tile_fetch_cancellable(address.mapType, Int32(clamping: address.x), Int32(clamping: address.y), Int32(clamping: address.z), { bytes, length, context in
+        guard let context else { return }
+        let reply = Unmanaged<TileReply>.fromOpaque(context).takeRetainedValue()
+        reply.done(bytes.flatMap { length > 0 ? Data(bytes: $0, count: Int(length)) : nil })
+    }, box)
+}
+
+enum MapTileHost {
+    static var fetch: (TileAddress, @escaping (Data?) -> Void) -> UInt64 = coreTileFetch
+    static var cancel: (UInt64) -> Void = qgc_map_tile_cancel
 }
 
 final class QgcTileProtocol: URLProtocol {
+    private var loader: CFRunLoop?
+    private var loaderModes: [RunLoop.Mode] = [.default]
+    private var stopped = false
     private var fallbackTask: URLSessionDataTask?
+    private var ticket: UInt64 = 0
 
     static func install() {
         let configuration = MLNNetworkConfiguration.sharedManager.sessionConfiguration ?? URLSessionConfiguration.default
@@ -84,35 +121,46 @@ final class QgcTileProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        guard let url = request.url, let address = tileAddress(url.path) else { return fail(404) }
-        let box = Unmanaged.passRetained(TileReply { [weak self] data in self?.served(address, data) }).toOpaque()
-        qgc_map_tile_fetch(address.mapType, Int32(address.x), Int32(address.y), Int32(address.z), { bytes, length, context in
-            guard let context else { return }
-            let reply = Unmanaged<TileReply>.fromOpaque(context).takeRetainedValue()
-            reply.done(bytes.flatMap { length > 0 ? Data(bytes: $0, count: Int(length)) : nil })
-        }, box)
+        loader = CFRunLoopGetCurrent()
+        loaderModes = [.default] + [RunLoop.current.currentMode].compactMap { $0 }.filter { $0 != .default }
+        guard let url = request.url, let address = tileAddress(url) else { return fail(HTTP_NOT_FOUND) }
+        ticket = MapTileHost.fetch(address) { [weak self] data in self?.onLoader { $0.served(address, data) } }
     }
 
     override func stopLoading() {
+        stopped = true
+        MapTileHost.cancel(ticket)
         fallbackTask?.cancel()
+    }
+
+    private func onLoader(_ work: @escaping (QgcTileProtocol) -> Void) {
+        guard let loader else { return }
+        CFRunLoopPerformBlock(loader, loaderModes.map(\.rawValue) as CFArray) { [weak self] in
+            guard let self, !self.stopped else { return }
+            work(self)
+        }
+        CFRunLoopWakeUp(loader)
     }
 
     private func served(_ address: TileAddress, _ data: Data?) {
         if let data { return respond(data) }
-        guard let fallback = URL(string: osmTileUrl(address)) else { return fail(404) }
+        guard let fallback = URL(string: osmTileUrl(address)) else { return fail(HTTP_NOT_FOUND) }
         var request = URLRequest(url: fallback)
-        request.setValue("Aircast/iOS", forHTTPHeaderField: "User-Agent")
-        fallbackTask = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
-            guard let data, (response as? HTTPURLResponse)?.statusCode == 200 else { return self?.fail(404) ?? () }
-            self?.respond(data)
+        request.setValue(TILE_USER_AGENT, forHTTPHeaderField: "User-Agent")
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, _ in
+            self?.onLoader { tile in
+                guard let data, (response as? HTTPURLResponse)?.statusCode == HTTP_OK else { return tile.fail(HTTP_NOT_FOUND) }
+                tile.respond(data)
+            }
         }
-        fallbackTask?.resume()
+        fallbackTask = task
+        task.resume()
     }
 
     private func respond(_ data: Data) {
         guard let url = request.url else { return }
         let png = data.prefix(PNG_MAGIC.count).elementsEqual(PNG_MAGIC)
-        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+        let response = HTTPURLResponse(url: url, statusCode: HTTP_OK, httpVersion: "HTTP/1.1",
                                        headerFields: ["Content-Type": png ? "image/png" : "image/jpeg"])
         response.map { client?.urlProtocol(self, didReceive: $0, cacheStoragePolicy: .notAllowed) }
         client?.urlProtocol(self, didLoad: data)
@@ -125,9 +173,4 @@ final class QgcTileProtocol: URLProtocol {
             .map { client?.urlProtocol(self, didReceive: $0, cacheStoragePolicy: .notAllowed) }
         client?.urlProtocolDidFinishLoading(self)
     }
-}
-
-private final class TileReply {
-    let done: (Data?) -> Void
-    init(done: @escaping (Data?) -> Void) { self.done = done }
 }

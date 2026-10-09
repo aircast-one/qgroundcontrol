@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 let PALETTE_SETTING = "settings.appSettings.indoorPalette"
 let PALETTE_INDOOR = 1
@@ -33,8 +32,10 @@ func shouldDefaultToDark(_ changedFromDefault: Bool, _ alreadyDefaulted: Bool) -
 }
 
 @MainActor
-private enum PaletteDefault {
-    static var awaiting = false
+@Observable
+final class PaletteDefault {
+    static let shared = PaletteDefault()
+    var awaiting = false
 }
 
 func paletteWindowStyle(_ followsSystem: Bool, _ dark: Bool) -> UIUserInterfaceStyle {
@@ -64,7 +65,7 @@ struct AppDarkTheme: DynamicProperty {
         let value = control?["value"].int
         let systemDark = scheme == .dark
         return MainActor.assumeIsolated {
-            let pending = PaletteDefault.awaiting && value != PALETTE_INDOOR
+            let pending = PaletteDefault.shared.awaiting && value != PALETTE_INDOOR
             return paletteIsDark(pending ? PALETTE_INDOOR : value, systemDark)
         }
     }
@@ -72,14 +73,15 @@ struct AppDarkTheme: DynamicProperty {
     nonisolated func update() {
         MainActor.assumeIsolated {
             guard let read = control else { return }
-            if PaletteDefault.awaiting && read["value"].int == PALETTE_INDOOR { PaletteDefault.awaiting = false }
+            let awaited = PaletteDefault.shared
+            if awaited.awaiting && read["value"].int == PALETTE_INDOOR { awaited.awaiting = false }
             let store = UserDefaults.standard
             guard !store.bool(forKey: PALETTE_DEFAULTED) else { return }
             if shouldDefaultToDark(changedFromDefault(read), false) {
-                PaletteDefault.awaiting = true
+                awaited.awaiting = true
                 offMain {
                     guard !Qgc.set(PALETTE_SETTING, PALETTE_INDOOR) else { return }
-                    onMain { PaletteDefault.awaiting = false }
+                    onMain { awaited.awaiting = false }
                 }
             }
             store.set(true, forKey: PALETTE_DEFAULTED)

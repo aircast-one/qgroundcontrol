@@ -28,6 +28,8 @@ private let videoActiveSource = "video.setActiveVideoSource"
 private let videoStartRecording = "video.startRecording"
 private let videoStopRecording = "video.stopRecording"
 private let videoRestart = "video.restart"
+private let videoReportRecording = "video.reportRecording"
+private let videoReportNative = "video.reportNative"
 private let videoDeviceCameraRotation = "video.setDeviceCameraRotation"
 private let videoPictureInPicture = "settings.videoSettings.multiViewEnabled"
 private let videoPipShown = "video.setPipShown"
@@ -88,9 +90,10 @@ enum VideoCommands {
     @discardableResult static func initNative() -> Bool { Qgc.invoke(videoInitNative) }
     @discardableResult static func setActiveSource(_ slot: Int) -> Bool { Qgc.invoke(videoActiveSource, slot) }
     @discardableResult static func setRecording(_ recording: Bool) -> Bool { Qgc.invoke(recording ? videoStartRecording : videoStopRecording) }
-    @discardableResult static func restart() -> Bool {
-        VideoDriver.restart(MAIN_VIDEO_CHANNEL)
-        return Qgc.invoke(videoRestart)
+    @discardableResult static func restart() -> Bool { Qgc.invoke(videoRestart) }
+    @discardableResult static func reportRecording(_ active: Bool) -> Bool { Qgc.invoke(videoReportRecording, active) }
+    @discardableResult static func reportNative(_ running: Bool, _ frames: Int64, _ width: Int32, _ height: Int32, _ error: String, _ source: Int64, _ restarted: Bool, _ channel: Int32) -> Bool {
+        Qgc.invoke(videoReportNative, running, frames, width, height, error, source, restarted, channel)
     }
     @discardableResult static func setDeviceCameraRotation(_ degrees: Int) -> Bool { Qgc.invoke(videoDeviceCameraRotation, degrees) }
     @discardableResult static func setPictureInPicture(_ shown: Bool) -> Bool { Qgc.set(videoPictureInPicture, shown) }
@@ -135,4 +138,4 @@ func setOk(_ path: String, _ value: Any?) -> Bool { Qgc.set(path, value) }
 let PLAN_UNDO = "plan.undo"
 
 @discardableResult
-func invokeOk(_ path: String, _ args: Any?...) -> Bool { Qgc.call(path, arguments: args)?["ok"].bool ?? false }
+func invokeOk(_ path: String, _ args: Any?...) -> Bool { Qgc.invoke(path, arguments: args) }

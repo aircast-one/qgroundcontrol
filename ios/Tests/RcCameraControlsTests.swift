@@ -9,6 +9,13 @@ final class RcCameraControlsTests: XCTestCase {
         XCTAssertTrue(rcCameraChannels(tilt: 0, pan: 0, zoom: 9, light: 0, record: 0).any)
     }
 
+    func testAChannelSettingThatIsNotAWholeChannelNumberReadsAsUnassignedInsteadOfTrapping() {
+        XCTAssertEqual(cameraChannel(.number(7)), 7)
+        XCTAssertEqual(cameraChannel(.number(1e300)), 0)
+        XCTAssertEqual(cameraChannel(.number(.infinity)), 0)
+        XCTAssertEqual(cameraChannel(.null), 0)
+    }
+
     func testRecordShowsOnWhenEitherTheStreamOrTheRecordChannelRecordsAsRecordingDoes() {
         XCTAssertTrue(cameraRecording(recordChannel: 0, channelRecording: false, streamRecording: true))
         XCTAssertTrue(cameraRecording(recordChannel: 5, channelRecording: true, streamRecording: false))

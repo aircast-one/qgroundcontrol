@@ -29,10 +29,6 @@ func hexAddress(_ typed: String) -> Bool {
     typed.count <= 10 && typed.allSatisfy { $0.isASCII && $0.isHexDigit }
 }
 
-private func refused(_ path: String, _ args: [Any?]) -> String? {
-    refusal(Qgc.call(path, arguments: args))
-}
-
 struct SyslinkScreen: View {
     @Environment(\.theme) private var theme
     @State private var revision = 0
@@ -77,7 +73,7 @@ struct SyslinkScreen: View {
 
     private func act(_ path: String, _ args: Any...) {
         Task {
-            refusal = await offMain { refused(path, args) }
+            refusal = await offMain { Qgc.refusalOf(path, arguments: args) }
             read = await offMain { syslink(Qgc.get(SYSLINK_VIEW)) }
         }
     }

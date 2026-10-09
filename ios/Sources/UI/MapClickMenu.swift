@@ -12,7 +12,9 @@ let GOTO_ACTION = "GoTo"
 
 private let COMPASS_POINTS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"]
 
-private func javaRound(_ value: Double) -> Int { Int((value + 0.5).rounded(.down)) }
+private func javaRound(_ value: Double) -> Int {
+    saturatingInt((value + 0.5).rounded(.down))
+}
 
 func goHereText(_ from: MapPoint, _ to: MapPoint, _ unit: String, _ metresPerUnit: Double) -> String? {
     guard metresPerUnit > 0, !unit.isBlank else { return nil }
@@ -36,7 +38,7 @@ struct MapClickAction: Equatable {
 }
 
 func mapClickActions(_ view: JSON?) -> [MapClickAction] {
-    (view?["actions"].arrayOrNil ?? []).filter { $0.object != nil }.map {
+    (view?["actions"].objects ?? []).map {
         MapClickAction(
             id: $0["id"].string,
             path: $0["path"].string,
@@ -94,15 +96,11 @@ func coordinateLines(_ point: MapPoint) -> [String] {
     [String(format: "Lat: %.6f", point.latitude), String(format: "Lon: %.6f", point.longitude)]
 }
 
-private func refusedBy(_ path: String, _ args: [Any]) -> String? {
-    refusal(Qgc.call(path, arguments: args))
-}
-
 private func send(_ action: MapClickAction, _ point: MapPoint, _ orbit: OrbitChoice?) -> String? {
     guard let orbit else {
-        return refusedBy(action.path, [["latitude": point.latitude, "longitude": point.longitude] as [String: Any]])
+        return Qgc.refusalOf(action.path, arguments: [["latitude": point.latitude, "longitude": point.longitude] as [String: Any]])
     }
-    return refusedBy(action.path, orbitArgs(point, orbit))
+    return Qgc.refusalOf(action.path, arguments: orbitArgs(point, orbit))
 }
 
 private struct RadiusField: View {
@@ -365,7 +363,7 @@ struct LoiterOffer: Equatable {
 }
 
 func loiterOffer(_ view: JSON?) -> LoiterOffer? {
-    guard let loiter = view?["loiter"], loiter.object != nil else { return nil }
+    guard let loiter = view?["loiter"].objectOrNil else { return nil }
     return LoiterOffer(
         latitude: loiter["latitude"].double ?? .nan,
         longitude: loiter["longitude"].double ?? .nan,
@@ -403,6 +401,7 @@ struct LoiterRadiusPanel: View {
     @Environment(FlyMapEdits.self) private var mapEdits
     @Environment(FlyScreenState.self) private var flyScreen
     @State private var typed: String?
+    @State private var scope = ViewScope()
 
     var body: some View {
         let opened = loiterEditOpened(offer, units)
@@ -415,10 +414,11 @@ struct LoiterRadiusPanel: View {
             onCommit: {
                 let sent = signedLoiterRadius(edit.radiusMetres, edit.clockwise)
                 let offer = offer
-                Task {
+                scope.launch {
                     let answer = await offMain {
                         Qgc.refusalOf("vehicle.guidedModeGotoLocation", ["latitude": offer.latitude, "longitude": offer.longitude] as [String: Any], sent)
                     }
+                    guard !Task.isCancelled else { return }
                     if let answer { onRefused(answer) }
                     onDone()
                 }
@@ -442,6 +442,7 @@ struct LoiterRadiusPanel: View {
         }
         .onAppear { if mapEdits.gotoLoiter == nil { mapEdits.gotoLoiter = opened } }
         .onDisappear {
+            scope.cancel()
             let actions = flyScreen.flightActions
             let mapEdits = mapEdits
             Task { @MainActor in if actions.editingLoiter == nil { mapEdits.gotoLoiter = nil } }
@@ -491,7 +492,7 @@ struct RoiSheet: View {
 
     private func run(_ path: String, _ args: [Any]) {
         scope.launch {
-            let answer = await offMain { refusedBy(path, args) }
+            let answer = await offMain { Qgc.refusalOf(path, arguments: args) }
             guard !Task.isCancelled else { return }
             if answer == nil { onDismiss() } else { refused = answer }
         }

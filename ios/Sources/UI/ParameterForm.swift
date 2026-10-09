@@ -9,13 +9,6 @@ struct ParameterRows: Equatable {
     var keywords: [String] = []
 }
 
-private func toDoubleOrNull(_ text: String) -> Double? { Double(text.trimmed) }
-
-private func jsonNumber(_ value: JSON) -> Double? {
-    if case .number(let number) = value { return number }
-    return nil
-}
-
 func sectionMatches(_ rows: ParameterRows, _ search: String) -> Bool {
     let query = search.trimmed.lowercased()
     return query.isEmpty || ([rows.title] + rows.keywords).contains { $0.lowercased().contains(query) }
@@ -43,7 +36,7 @@ func factFromControl(_ control: JSON) -> Fact? {
     let options = control["options"].array
     let labels = options.map { $0["label"].string }
     let bitEntries: [(String, Int64)] = kind == "bitmask"
-        ? control["bits"].array.filter { $0.object != nil }.compactMap { bit in Int64(bit["raw"].string).map { (bit["label"].string, $0) } }
+        ? control["bits"].objects.compactMap { bit in Int64(bit["raw"].string).map { (bit["label"].string, $0) } }
         : []
     return Fact(
         path: control["path"].string,
@@ -89,12 +82,12 @@ func factFromControl(_ control: JSON) -> Fact? {
 
 func readPage(_ page: String) -> [ParameterRows] {
     (Qgc.get(setupPagePath(page))["sections"].arrayOrNil ?? []).filter { $0.object != nil }.compactMap { section in
-        let controls = section["controls"].array.filter { $0.object != nil }
+        let controls = section["controls"].objects
         let facts = controls.compactMap(factFromControl)
         if facts.isEmpty { return nil }
-        let note = [section["note"].string.isBlank ? nil : section["note"].string, readOnlyNote(facts)].compactMap { $0 }
+        let note = [section["note"].string, readOnlyNote(facts) ?? ""].filter { !$0.isBlank }
         let calculators = Dictionary(
-            controls.compactMap { row in powerCalculator(row["calculator"].object != nil ? row["calculator"] : nil).map { (row["path"].string, $0) } },
+            controls.compactMap { row in powerCalculator(row["calculator"].objectOrNil).map { (row["path"].string, $0) } },
             uniquingKeysWith: { _, last in last }
         )
         return ParameterRows(
@@ -103,7 +96,7 @@ func readPage(_ page: String) -> [ParameterRows] {
             note: note.joined(separator: " "),
             calculators: calculators,
             image: section["image"].string,
-            keywords: section["keywords"].array.map(\.string)
+            keywords: section["keywords"].strings
         )
     }
 }
@@ -199,7 +192,7 @@ struct ParameterForm: View {
             } else if fact.controlKind == LABEL_CONTROL {
                 Text(fact.title)
                     .font(fact.smallFont ? .bodySmall : .bodyMedium)
-                    .foregroundStyle((fact.warning ? theme.colors.error : theme.colors.onSurfaceVariant).opacity(fact.enabled ? 1 : DISABLED_LABEL_ALPHA))
+                    .foregroundStyle((fact.warning ? theme.colors.error : theme.colors.onSurfaceVariant).opacity(fact.enabled ? 1 : DISABLED_ALPHA))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 8)
@@ -232,7 +225,7 @@ extension PowerCalculator: Identifiable {
 }
 
 func bitmaskRaw(_ fact: Fact) -> Int64 {
-    (jsonNumber(fact.value) ?? toDoubleOrNull(fact.valueString)).flatMap { $0.isFinite ? Int64(exactly: $0.rounded(.towardZero)) : nil } ?? 0
+    (fact.value.numberOrNil ?? fact.valueString.doubleOrNil).flatMap { $0.isFinite ? Int64(exactly: $0.rounded(.towardZero)) : nil } ?? 0
 }
 
 func bitmaskSummary(_ fact: Fact) -> String {
@@ -247,8 +240,6 @@ let LABEL_CONTROL = "label"
 let BUTTON_CONTROL = "button"
 
 private let INDENT: CGFloat = 16
-
-private let DISABLED_LABEL_ALPHA = 0.38
 
 let KNOWN_CONTROL_KINDS: Set<String> = ["toggle", "choice", "bitmask", "text", "number", LABEL_CONTROL, DIALOG_CONTROL, BUTTON_CONTROL]
 
@@ -266,7 +257,7 @@ private struct FactSliderRow: View {
     @Environment(\.theme) private var theme
     @State private var shown: Double? = nil
 
-    private var held: Double { jsonNumber(fact.value) ?? toDoubleOrNull(fact.valueString) ?? slider.from }
+    private var held: Double { fact.value.numberOrNil ?? fact.valueString.doubleOrNil ?? slider.from }
 
     private var range: ClosedRange<Double> { min(slider.from, slider.to)...max(slider.from, slider.to) }
 

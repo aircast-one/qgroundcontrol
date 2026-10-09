@@ -113,7 +113,7 @@ struct WaypointSettings: View {
                     note: speed.specified ? nil : "Mission speed",
                     range: SPEED_RANGE,
                     trailing: speed.specified
-                        ? { AnyView(PlanChip(label: "Auto", selected: false) { onWrite("Using the mission speed") { setOk(speed.specifyPath, false) } }) }
+                        ? { AnyView(CameraChip(label: "Auto", selected: false) { onWrite("Using the mission speed") { setOk(speed.specifyPath, false) } }) }
                         : nil
                 )
             }

@@ -7,7 +7,7 @@ private let GCS_ACCURACY = "positionManager.gcsPositionHorizontalAccuracy"
 private let GCS_POLL_MS = 1000
 
 func gcsPositionRows(_ position: JSON?, _ accuracy: JSON?) -> [(String, String)]? {
-    let coordinate = position?["value"].object != nil ? position?["value"] : position
+    let coordinate = position?["value"].objectOrNil ?? position
     guard let coordinate, coordinate["valid"].bool else { return nil }
     let hdop = accuracy?["value"].double ?? .nan
     return [
