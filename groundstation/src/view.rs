@@ -209,6 +209,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.obstacle", deps: obstacle::DEPS, compute: obstacle::obstacle_view },
     View { path: "view.attitude", deps: attitude::DEPS, compute: attitude::attitude_view },
     View { path: "view.syntheticView", deps: crate::synthview::DEPS, compute: crate::synthview::synthetic_view },
+    View { path: "view.syntheticOverlays", deps: crate::synthview::OVERLAY_DEPS, compute: crate::synthview::overlays_view },
     View { path: "view.mapClick", deps: mapclick::DEPS, compute: mapclick::map_click_view },
     View { path: "view.firstRun", deps: firstrun::DEPS, compute: firstrun::first_run_view },
     View { path: "view.advancedUi", deps: &[], compute: crate::advancedui::advanced_ui_view },
@@ -440,6 +441,7 @@ impl View {
             "view.followMe" => followme::deps(),
             "view.closeChecks" => closechecks::deps(),
             "view.viewer3dVehicle" => viewer3d::vehicle_deps(),
+            "view.syntheticOverlays" => crate::synthview::overlay_deps(),
             _ => self.deps.iter().map(|d| d.to_string()).collect(),
         }
     }

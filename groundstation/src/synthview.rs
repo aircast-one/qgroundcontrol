@@ -18,6 +18,11 @@ pub const DEPS: &[&str] = &[
     SYNTHETIC_CHANGED,
 ];
 
+pub const OVERLAY_DEPS: &[&str] = &["vehicle.homePosition", FENCE_TOP_ARDUPILOT, FENCE_TOP_PX4];
+const FENCE_TOP_ARDUPILOT: &str = "vehicle.parameterManager.getParameter(-1,FENCE_ALT_MAX)";
+const FENCE_TOP_PX4: &str = "vehicle.parameterManager.getParameter(-1,GF_MAX_VER_DIST)";
+const DEFAULT_FENCE_TOP_M: f64 = 50.0;
+
 pub const SYNTHETIC_CHANGED: &str = "core.synthetic@changed";
 pub const SYNTHETIC_AIM: &str = "syntheticView.aim";
 
@@ -129,6 +134,71 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     })
 }
 
+pub fn overlay_deps() -> Vec<String> {
+    crate::missionitems::DEPS.iter().chain(crate::fences::DEPS).chain(OVERLAY_DEPS).map(|dep| dep.to_string()).collect()
+}
+
+fn located(at: &Value) -> Option<(f64, f64)> {
+    let number = |key: &str| at.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
+    number("latitude").zip(number("longitude")).filter(|spot| *spot != (0.0, 0.0) && at.get("valid").and_then(Value::as_bool).unwrap_or(true))
+}
+
+fn spot(at: (f64, f64), above_home: f64) -> Value {
+    json!({ "latitude": at.0, "longitude": at.1, "aboveHome": above_home })
+}
+
+pub fn overlays(home_amsl: Option<f64>, mission: &Value, fences: &Value, fence_top: Option<f64>) -> Value {
+    let items = mission["items"].as_array().cloned().unwrap_or_default();
+    let home = items.iter().find(|item| item["homePosition"] == true).and_then(|item| located(&item["coordinate"]));
+    let placed = |item: &Value| Some((located(&item["coordinate"])?, item["amslEntryAlt"].as_f64().filter(|a| a.is_finite())? - home_amsl?));
+    let flown: Vec<(Value, (f64, f64), f64)> = items
+        .iter()
+        .filter(|item| item["homePosition"] != true)
+        .filter_map(|item| placed(item).map(|(at, above)| (item.clone(), at, above)))
+        .collect();
+    let starts_home = mission["linksStartToHome"] == true;
+    let route: Vec<Value> = home
+        .filter(|_| starts_home && home_amsl.is_some())
+        .map(|at| spot(at, 0.0))
+        .into_iter()
+        .chain(flown.iter().filter(|(item, _, _)| item["flownLeg"] == true).map(|(_, at, above)| spot(*at, *above)))
+        .collect();
+    let waypoints: Vec<Value> = flown
+        .iter()
+        .map(|(item, at, above)| json!({ "latitude": at.0, "longitude": at.1, "aboveHome": above, "label": item["sequence"].as_i64().map_or_else(|| item["index"].to_string(), |n| n.to_string()) }))
+        .collect();
+    let polygons: Vec<Value> = fences["polygons"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|polygon| json!({ "inclusion": polygon["inclusion"].as_bool().unwrap_or(true), "points": polygon["vertices"].as_array().cloned().unwrap_or_default().iter().filter_map(located).map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>() }))
+        .collect();
+    let circles: Vec<Value> = fences["circles"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|circle| Some(json!({ "inclusion": circle["inclusion"].as_bool().unwrap_or(true), "latitude": located(&circle["centre"])?.0, "longitude": located(&circle["centre"])?.1, "radius": circle["radius"].as_f64().filter(|r| *r > 0.0)? })))
+        .collect();
+    json!({
+        "kind": "object",
+        "class": "SyntheticOverlays",
+        "home": home.map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })),
+        "route": route,
+        "waypoints": waypoints,
+        "polygons": polygons,
+        "circles": circles,
+        "fenceTop": fence_top.unwrap_or(DEFAULT_FENCE_TOP_M),
+    })
+}
+
+pub fn overlays_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let home_amsl = backend.value("vehicle.homePosition").get("altitude").and_then(Value::as_f64).filter(|a| a.is_finite());
+    let fence_top = [FENCE_TOP_ARDUPILOT, FENCE_TOP_PX4].iter().find_map(|path| raw(backend, path).filter(|metres| *metres > 0.0));
+    overlays(home_amsl, &crate::missionitems::fly_items_view(backend, &["geometry".to_string()]), &crate::fences::fly_fences_view(backend, &[]), fence_top)
+}
+
 pub fn synthetic_view(backend: &dyn Backend, _args: &[String]) -> Value {
     synthetic(backend, &crate::gimbal::gimbal_view(backend, &[]), aimed())
 }
@@ -218,6 +288,28 @@ mod tests {
         assert!((crate::track::distance_m(drone, level[2]) - BEAM_REACH_M).abs() < 5.0, "a frame reaching the horizon is cut at 1.5 km");
         let below = beam(drone, 100.0, 0.0, -90.0, 70.0);
         assert!(crate::track::azimuth_deg(drone, below[1]) > 90.0, "looking straight down, the near edge falls behind the drone");
+    }
+
+    #[test]
+    fn the_plan_is_placed_in_the_view_at_its_height_above_home() {
+        let mission = json!({ "linksStartToHome": true, "items": [
+            { "index": 0, "homePosition": true, "coordinate": { "latitude": -35.363, "longitude": 149.165, "valid": true }, "amslEntryAlt": 584.0 },
+            { "index": 1, "sequence": 1, "flownLeg": true, "coordinate": { "latitude": -35.362, "longitude": 149.166, "valid": true }, "amslEntryAlt": 614.0 },
+            { "index": 2, "sequence": 2, "flownLeg": false, "coordinate": { "latitude": -35.361, "longitude": 149.167, "valid": true }, "amslEntryAlt": 634.0 },
+            { "index": 3, "sequence": 3, "coordinate": { "latitude": 0.0, "longitude": 0.0, "valid": false }, "amslEntryAlt": 600.0 },
+        ] });
+        let fences = json!({
+            "polygons": [{ "inclusion": true, "vertices": [{ "latitude": 1.0, "longitude": 2.0 }, { "latitude": 1.0, "longitude": 2.1 }, { "latitude": 1.1, "longitude": 2.0 }] }],
+            "circles": [{ "inclusion": false, "centre": { "latitude": 3.0, "longitude": 4.0 }, "radius": 50.0 }, { "centre": null, "radius": 10.0 }],
+        });
+        let shown = overlays(Some(584.0), &mission, &fences, Some(100.0));
+        assert_eq!(shown["route"].as_array().map(|r| r.iter().map(|p| p["aboveHome"].as_f64().unwrap()).collect::<Vec<_>>()), Some(vec![0.0, 30.0]), "the route runs from home through the flown legs only");
+        assert_eq!(shown["waypoints"].as_array().map(|w| w.iter().map(|p| (p["label"].as_str().unwrap().to_string(), p["aboveHome"].as_f64().unwrap())).collect::<Vec<_>>()), Some(vec![("1".to_string(), 30.0), ("2".to_string(), 50.0)]), "an item with no position is left out");
+        assert_eq!(shown["home"]["latitude"], -35.363);
+        assert_eq!((shown["polygons"][0]["points"].as_array().map(Vec::len), shown["circles"].as_array().map(Vec::len)), (Some(3), Some(1)));
+        assert_eq!(shown["fenceTop"], 100.0);
+        assert_eq!(overlays(None, &mission, &fences, None)["route"].as_array().map(Vec::len), Some(0), "without home's height above sea level there is nothing to measure the plan from");
+        assert_eq!(overlays(None, &mission, &fences, None)["fenceTop"], DEFAULT_FENCE_TOP_M);
     }
 
     #[test]

@@ -30,9 +30,17 @@ class SyntheticViewTest {
     }
 
     @Test
+    fun `the page asks for tiles beside itself and the core answers them`() {
+        assertEquals("/Bing%20Satellite/15/29961/19829", syntheticTilePath("/assets/synthetic/tiles/Bing%20Satellite/15/29961/19829"))
+        assertEquals(null, syntheticTilePath("/assets/synthetic/Cesium/Cesium.js"))
+        assertEquals(null, syntheticTilePath(null))
+    }
+
+    @Test
     fun `the page gets the core's pose as it is, and only once it has loaded`() {
         val script = syntheticPoseScript(JSONObject("""{"available":true,"heading":90}"""))
         assertTrue(script.startsWith("window.aircast && window.aircast.pose("))
         assertTrue(script.contains(""""heading":90"""))
+        assertTrue(syntheticOverlaysScript(JSONObject("""{"route":[]}""")).startsWith("window.aircast && window.aircast.overlays("))
     }
 }

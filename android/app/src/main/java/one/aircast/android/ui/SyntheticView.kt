@@ -18,6 +18,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -34,12 +36,12 @@ import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
 import one.aircast.android.BuildConfig
 import one.aircast.android.bridge.qgcPath
-import one.aircast.map.QGC_TILE_HOST
 import one.aircast.map.coreTile
 import one.aircast.map.tileMimeType
 import org.json.JSONObject
 
 internal const val SYNTHETIC_VIEW = "view.syntheticView"
+internal const val SYNTHETIC_OVERLAYS = "view.syntheticOverlays"
 internal const val SYNTHETIC_LABEL = "Synthetic view"
 internal const val SYNTHETIC_SOURCE = "Synthetic View"
 internal const val SYNTHETIC_AIM = "syntheticView.aim"
@@ -47,11 +49,15 @@ private const val TILT_SPAN_DEG = 90.0
 private const val DEFAULT_TILT_DEG = -15.0
 private const val DEFAULT_FOV_DEG = 70.0
 private const val SYNTHETIC_PAGE = "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/synthetic/index.html"
-private val ANY_ORIGIN = mapOf("Access-Control-Allow-Origin" to "*")
+private const val SYNTHETIC_TILES = "/assets/synthetic/tiles"
+
+internal fun syntheticTilePath(path: String?): String? = path?.takeIf { it.startsWith("$SYNTHETIC_TILES/") }?.removePrefix(SYNTHETIC_TILES)
 
 internal fun syntheticAvailable(view: JSONObject?): Boolean = view?.optBoolean("available") == true
 
 internal fun syntheticPoseScript(view: JSONObject): String = "window.aircast && window.aircast.pose($view)"
+
+internal fun syntheticOverlaysScript(view: JSONObject): String = "window.aircast && window.aircast.overlays($view)"
 
 internal fun syntheticTilt(from: Double, draggedPx: Float, heightPx: Int): Double =
     (from + draggedPx.toDouble() / heightPx.coerceAtLeast(1) * TILT_SPAN_DEG).coerceIn(-TILT_SPAN_DEG, 0.0)
@@ -66,11 +72,11 @@ internal fun rememberSyntheticAvailable(): Boolean {
 }
 
 private fun tileResponse(encodedPath: String): WebResourceResponse =
-    coreTile(encodedPath)?.let { WebResourceResponse(tileMimeType(it), null, 200, "OK", ANY_ORIGIN, it.inputStream()) }
-        ?: WebResourceResponse("image/png", null, 404, "No tile", ANY_ORIGIN, ByteArray(0).inputStream())
+    coreTile(encodedPath)?.let { WebResourceResponse(tileMimeType(it), null, 200, "OK", emptyMap(), it.inputStream()) }
+        ?: WebResourceResponse("image/png", null, 404, "No tile", emptyMap(), ByteArray(0).inputStream())
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun syntheticWebView(context: Context): WebView {
+private fun syntheticWebView(context: Context, onLoaded: () -> Unit): WebView {
     val assets = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context)).build()
     WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
     return WebView(context).apply {
@@ -79,7 +85,9 @@ private fun syntheticWebView(context: Context): WebView {
         settings.javaScriptEnabled = true
         webViewClient = object : WebViewClientCompat() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-                if (request.url.host == QGC_TILE_HOST) tileResponse(request.url.encodedPath.orEmpty()) else assets.shouldInterceptRequest(request.url)
+                syntheticTilePath(request.url.encodedPath)?.let(::tileResponse) ?: assets.shouldInterceptRequest(request.url)
+
+            override fun onPageFinished(view: WebView, url: String) = onLoaded()
         }
         loadUrl(SYNTHETIC_PAGE)
     }
@@ -89,9 +97,12 @@ private fun syntheticWebView(context: Context): WebView {
 internal fun SyntheticView(modifier: Modifier = Modifier, labelled: Boolean = true, aimable: Boolean = false) {
     val view by qgcPath(SYNTHETIC_VIEW)
     val context = LocalContext.current
-    val web = remember { syntheticWebView(context) }
+    val overlays by qgcPath(SYNTHETIC_OVERLAYS)
+    var loaded by remember { mutableStateOf(false) }
+    val web = remember { syntheticWebView(context) { loaded = true } }
     DisposableEffect(web) { onDispose { web.destroy() } }
     LaunchedEffect(view) { view?.let { web.evaluateJavascript(syntheticPoseScript(it), null) } }
+    LaunchedEffect(overlays, loaded) { overlays?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticOverlaysScript(it), null) } }
     val canAim = aimable && view?.optBoolean("aimable") == true
     val pitch by rememberUpdatedState(view?.optDouble("pitch", DEFAULT_TILT_DEG) ?: DEFAULT_TILT_DEG)
     val pan by rememberUpdatedState(view?.optDouble("pan", 0.0) ?: 0.0)

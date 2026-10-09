@@ -1,4 +1,5 @@
-const TERRAIN = "https://qgc.tiles/Terrarium";
+const TILES = "tiles";
+const TERRAIN = `${TILES}/Terrarium`;
 const TERRARIUM_LEVEL = 15;
 const TILE_PX = 256;
 const SAMPLES = 65;
@@ -6,15 +7,27 @@ const KEPT_TILES = 64;
 const HOME_SAMPLE_LEVEL = 14;
 const CLEARANCE_M = 2;
 const REANCHOR_MS = 10000;
+const ANCHOR_DEADLINE_MS = 5000;
 const FOLLOW = 0.25;
 const FRAME_RATE = 30;
+const EARTH_RADIUS_M = 6371000;
+const WALL_FOOT_M = 100;
+const CIRCLE_STEPS = 64;
+const ROUTE_WIDTH = 3;
+const MARK_SIZE = 9;
+const ROUTE_COLOUR = Cesium.Color.fromCssColorString("#FFE9A6");
+const HOME_COLOUR = Cesium.Color.fromCssColorString("#4CAF50");
+const INCLUSION_COLOUR = Cesium.Color.fromCssColorString("#FF8A65").withAlpha(0.25);
+const EXCLUSION_COLOUR = Cesium.Color.fromCssColorString("#E53935").withAlpha(0.3);
+const ALWAYS_SHOWN = Number.POSITIVE_INFINITY;
 
 const decoded = new Map();
 
 const remember = (key, tile) => {
   decoded.delete(key);
   decoded.set(key, tile);
-  [...decoded.keys()].slice(0, Math.max(0, decoded.size - KEPT_TILES)).forEach((old) => decoded.delete(old));
+  const oldest = decoded.size > KEPT_TILES ? decoded.keys().next().value : undefined;
+  oldest !== undefined && decoded.delete(oldest);
   return tile;
 };
 
@@ -86,13 +99,72 @@ scene.screenSpaceCameraController.enableInputs = false;
 scene.globe.showGroundAtmosphere = true;
 scene.backgroundColor = Cesium.Color.BLACK;
 
-const state = { target: undefined, shown: undefined, imagery: undefined, home: undefined, homeGround: undefined };
+const state = { target: undefined, shown: undefined, imagery: undefined, home: undefined, homeGround: undefined, overlays: undefined, drawn: undefined };
+
+const lifted = (point, ground, above) => Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude, ground + above);
+
+const ring = (circle) =>
+  Array.from({ length: CIRCLE_STEPS + 1 }, (_, step) => {
+    const turn = (step / CIRCLE_STEPS) * 2 * Math.PI;
+    const latitude = circle.latitude + Cesium.Math.toDegrees((circle.radius / EARTH_RADIUS_M) * Math.cos(turn));
+    const longitude = circle.longitude + Cesium.Math.toDegrees((circle.radius / (EARTH_RADIUS_M * Math.cos(Cesium.Math.toRadians(circle.latitude)))) * Math.sin(turn));
+    return { latitude, longitude };
+  });
+
+const wall = (points, inclusion, ground, top) =>
+  new Cesium.Primitive({
+    geometryInstances: new Cesium.GeometryInstance({
+      geometry: Cesium.WallGeometry.fromConstantHeights({
+        positions: points.map((point) => Cesium.Cartesian3.fromDegrees(point.longitude, point.latitude)),
+        minimumHeight: ground - WALL_FOOT_M,
+        maximumHeight: ground + top,
+      }),
+      attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(inclusion ? INCLUSION_COLOUR : EXCLUSION_COLOUR) },
+    }),
+    appearance: new Cesium.PerInstanceColorAppearance({ translucent: true, flat: true }),
+  });
+
+const marked = (points, labels, at, text, colour) => [
+  points.add({ position: at, pixelSize: MARK_SIZE, color: colour, outlineColor: Cesium.Color.BLACK, outlineWidth: 2, disableDepthTestDistance: ALWAYS_SHOWN }),
+  labels.add({
+    position: at,
+    text,
+    font: "bold 14px sans-serif",
+    fillColor: Cesium.Color.WHITE,
+    outlineColor: Cesium.Color.BLACK,
+    outlineWidth: 3,
+    style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+    pixelOffset: new Cesium.Cartesian2(0, -16),
+    disableDepthTestDistance: ALWAYS_SHOWN,
+  }),
+];
+
+const drawOverlays = () => {
+  const plan = state.overlays;
+  const ground = state.homeGround;
+  const previous = state.drawn;
+  state.drawn = undefined;
+  previous && scene.primitives.remove(previous);
+  if (!plan || ground === undefined) return;
+  const drawn = new Cesium.PrimitiveCollection();
+  const lines = drawn.add(new Cesium.PolylineCollection());
+  const points = drawn.add(new Cesium.PointPrimitiveCollection());
+  const labels = drawn.add(new Cesium.LabelCollection());
+  plan.route.length > 1 &&
+    lines.add({ positions: plan.route.map((point) => lifted(point, ground, point.aboveHome)), width: ROUTE_WIDTH, material: Cesium.Material.fromType("Color", { color: ROUTE_COLOUR }) });
+  plan.waypoints.map((point) => marked(points, labels, lifted(point, ground, point.aboveHome), point.label, Cesium.Color.WHITE));
+  plan.home && marked(points, labels, lifted(plan.home, ground, 0), "H", HOME_COLOUR);
+  plan.polygons.filter((polygon) => polygon.points.length > 2).map((polygon) => drawn.add(wall([...polygon.points, polygon.points[0]], polygon.inclusion, ground, plan.fenceTop)));
+  plan.circles.map((circle) => drawn.add(wall(ring(circle), circle.inclusion, ground, plan.fenceTop)));
+  scene.primitives.add(drawn);
+  state.drawn = drawn;
+};
 
 const showImagery = (name) => {
   state.imagery = name;
   scene.imageryLayers.removeAll();
   scene.imageryLayers.addImageryProvider(
-    new Cesium.UrlTemplateImageryProvider({ url: `https://qgc.tiles/${encodeURIComponent(name)}/{z}/{x}/{y}`, maximumLevel: 19, credit: name }),
+    new Cesium.UrlTemplateImageryProvider({ url: `${TILES}/${encodeURIComponent(name)}/{z}/{x}/{y}`, maximumLevel: 19, credit: name }),
   );
 };
 
@@ -100,12 +172,18 @@ const anchorHome = (pose) => {
   const key = `${pose.homeLatitude},${pose.homeLongitude}`;
   state.home = key;
   state.homeGround = undefined;
-  Cesium.sampleTerrain(terrain, HOME_SAMPLE_LEVEL, [Cesium.Cartographic.fromDegrees(pose.homeLongitude, pose.homeLatitude)])
-    .then(([ground]) => {
-      state.homeGround = state.home === key ? ground.height : state.homeGround;
+  Promise.race([
+    Cesium.sampleTerrain(terrain, HOME_SAMPLE_LEVEL, [Cesium.Cartographic.fromDegrees(pose.homeLongitude, pose.homeLatitude)]),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("no terrain at home yet")), ANCHOR_DEADLINE_MS)),
+  ])
+    .then(([ground]) => (Number.isFinite(ground.height) ? ground.height : Promise.reject(new Error("no terrain at home"))))
+    .then((height) => {
+      state.homeGround = state.home === key ? height : state.homeGround;
+      drawOverlays();
     })
     .catch(() => {
       state.homeGround = state.home === key ? (state.homeGround ?? 0) : state.homeGround;
+      drawOverlays();
       setTimeout(() => {
         state.home = state.home === key ? undefined : state.home;
       }, REANCHOR_MS);
@@ -154,6 +232,10 @@ scene.preRender.addEventListener(() => {
 });
 
 window.aircast = {
+  overlays: (overlays) => {
+    state.overlays = overlays;
+    drawOverlays();
+  },
   pose: (pose) => {
     state.target = pose.available ? pose : undefined;
     return pose.available && [
