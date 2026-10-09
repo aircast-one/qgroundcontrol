@@ -1,8 +1,7 @@
 package one.aircast.map
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PlanSummaryTest {
@@ -12,82 +11,13 @@ class PlanSummaryTest {
             altitudeText = if (altitude.isNaN()) "" else "${altitude.toInt()} m",
         )
 
-    private fun summary(
-        items: List<MissionItem> = emptyList(),
-        circles: List<FenceCircle> = emptyList(),
-        summaryText: String = "",
-        selected: MapHit? = null,
-        itemCount: Int = items.size,
-        shape: List<String> = emptyList(),
-        offline: Boolean = true,
-    ) = planSummary(
-        itemCount, shape, items, emptyList(), circles, emptyList(), emptyList(),
-        summaryText, selected, offline,
-    )
-
-    @Test
-    fun `what is in the plan but not on the map is named`() {
-        assertTrue(
-            summary(items = listOf(item()), itemCount = 3, shape = listOf("takeoff", "RTL"))
-                .startsWith("3 items (takeoff, RTL)"),
-        )
-    }
-
-    @Test
-    fun `items that cannot be drawn are still in the plan`() {
-        assertTrue(summary(items = listOf(item()), itemCount = 3).startsWith("3 items"))
-    }
-
-    @Test
-    fun `an empty plan says how to start one`() {
-        assertEquals("Empty plan · long press to add", summary())
-    }
-
-    @Test
-    fun `with an aircraft connected an empty plan does not imply the aircraft has none`() {
-        assertEquals(
-            "the head shows an empty plan on every connection without ever sending a " +
-                "MISSION_REQUEST_LIST - PlanMasterController forces initialPlanRequestComplete and " +
-                "the mission controller publishes the empty list it holds - so offering only " +
-                "\"long press to add\" reads as a fact about the aircraft that was never established",
-            "Empty plan · Download the aircraft's, or long press to add",
-            summary(offline = false),
-        )
-    }
-
-    @Test
-    fun `with no aircraft there is nothing to download from and the original line stands`() {
-        assertEquals("Empty plan · long press to add", summary(offline = true))
-    }
-
-    @Test
-    fun `only what the plan actually holds is listed`() {
-        assertEquals("2 items", summary(items = listOf(item(0), item(1))))
-    }
-
-    @Test
-    fun `counts read as singular when there is one`() {
-        assertEquals("1 item", summary(items = listOf(item())))
-    }
-
-    @Test
-    fun `cost is appended when the controller has worked it out`() {
-        val text = summary(items = listOf(item()), summaryText = "2.00 km · 4:00")
-
-        assertEquals("1 item · 2.00 km · 4:00", text)
-    }
-
     @Test
     fun `a selected waypoint shows its altitude against the number on its marker`() {
-        val text = summary(
-            items = listOf(item(index = 3, altitude = 75.0)),
-            selected = MapHit.Waypoint(3),
-        )
-
-        assertTrue(
+        assertEquals(
             "the map marker and the list row are labelled with the sequence, so naming the " +
-                "index here would point at a different item once a survey is in the plan: $text",
-            text.endsWith("#4 at 75 m"),
+                "index here would point at a different item once a survey is in the plan",
+            "#4 at 75 m",
+            selectionText(MapHit.Waypoint(3), listOf(item(index = 3, altitude = 75.0)), emptyList(), emptyList()),
         )
     }
 
@@ -95,12 +25,12 @@ class PlanSummaryTest {
     fun `a selected circle shows its radius from either handle, spelled by the core`() {
         val circles = listOf(FenceCircle(1, true, TrackPoint(41.0, 44.0), 136.0, "446 ft radius"))
 
-        assertTrue(summary(circles = circles, selected = MapHit.Circle(1)).endsWith("446 ft radius"))
-        assertTrue(summary(circles = circles, selected = MapHit.CircleCentre(1)).endsWith("446 ft radius"))
+        assertEquals("446 ft radius", selectionText(MapHit.Circle(1), emptyList(), circles, emptyList()))
+        assertEquals("446 ft radius", selectionText(MapHit.CircleCentre(1), emptyList(), circles, emptyList()))
     }
 
     @Test
     fun `a selection with nothing to say adds nothing`() {
-        assertEquals("1 item", summary(items = listOf(item()), selected = MapHit.Waypoint(0)))
+        assertNull(selectionText(MapHit.Waypoint(0), listOf(item()), emptyList(), emptyList()))
     }
 }

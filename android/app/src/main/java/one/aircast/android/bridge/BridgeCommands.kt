@@ -17,7 +17,6 @@ private const val ACCOUNT_API_BASE = "account.apiBase"
 private const val ACCOUNT_SIGN_IN = "account.signIn"
 private const val ACCOUNT_SIGN_OUT = "account.signOut"
 private const val ACCOUNT_CANCEL_SIGN_IN = "account.cancelSignIn"
-private const val PLAN_UNDO = "plan.undo"
 private const val PLAN_REDO = "plan.redo"
 private const val PLAN_UNDO_TRACKING = "plan.undoTracking"
 private const val PLAN_REMOVE_ALL_FROM_VEHICLE = "plan.removeAllFromVehicle"
@@ -75,7 +74,6 @@ internal object AccountCommands {
 }
 
 internal object PlanCommands {
-    fun undo(): Boolean = Qgc.invoke(PLAN_UNDO)
     fun redo(): Boolean = Qgc.invoke(PLAN_REDO)
     fun setUndoTracking(tracking: Boolean): Boolean = Qgc.set(PLAN_UNDO_TRACKING, tracking)
     fun removeAllFromVehicle(): Boolean = Qgc.invoke(PLAN_REMOVE_ALL_FROM_VEHICLE)

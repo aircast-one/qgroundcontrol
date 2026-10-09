@@ -1535,7 +1535,15 @@ fn insert_from_shape_file(backend: &dyn Backend, args: &str) -> Value {
     })
 }
 
+fn opened(backend: &dyn Backend) {
+    let unopened = held().document.is_none();
+    if unopened {
+        clear(backend);
+    }
+}
+
 fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
+    opened(backend);
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let kind = given.get(0).and_then(Value::as_str).unwrap_or("");
     let rest = json!([given.get(1), given.get(2), given.get(3)]).to_string();
@@ -1838,11 +1846,17 @@ fn fence_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> 
     let window = || point_of(given.get(0)).zip(point_of(given.get(1))).filter(|((north, west), (south, east))| north > south && east != west);
     Some(match path {
         "plan.geoFenceController.addInclusionPolygon" => match window() {
-            Some((tl, br)) => fence_edit(|f, r| Some((crate::fencedoc::add_polygon(f, tl, br), r.clone())), ""),
+            Some((tl, br)) => {
+                opened(backend);
+                fence_edit(|f, r| Some((crate::fencedoc::add_polygon(f, tl, br), r.clone())), "")
+            }
             None => refused("A new fence needs the map window's top-left and bottom-right corners."),
         },
         "plan.geoFenceController.addInclusionCircle" => match window() {
-            Some((tl, br)) => fence_edit(|f, r| Some((crate::fencedoc::add_circle(f, tl, br), r.clone())), ""),
+            Some((tl, br)) => {
+                opened(backend);
+                fence_edit(|f, r| Some((crate::fencedoc::add_circle(f, tl, br), r.clone())), "")
+            }
             None => refused("A new fence needs the map window's top-left and bottom-right corners."),
         },
         "plan.geoFenceController.deletePolygon" | "plan.geoFenceController.deleteCircle" => {
@@ -1851,6 +1865,7 @@ fn fence_invoke(backend: &dyn Backend, path: &str, args: &str) -> Option<Value> 
         }
         "plan.rallyPointController.addPoint" => match point_of(given.get(0)) {
             Some(at) => {
+                opened(backend);
                 let fixed_wing = held().document.as_ref().is_some_and(|d| plandoc::vehicle_class(d.vehicle_type) == crate::cmdinfo::VehicleClass::FixedWing);
                 let altitude = crate::read::value_number(&backend.value(&format!("{DEFAULT_ALTITUDE}.rawValue"))).unwrap_or(0.0);
                 fence_edit(|f, r| Some((f.clone(), crate::fencedoc::add_rally(r, at, fixed_wing, altitude))), "")

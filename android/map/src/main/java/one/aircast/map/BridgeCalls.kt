@@ -14,6 +14,8 @@ fun settingJson(value: String): String = "{\"value\":$value}"
 fun setOk(path: String, value: String): Boolean =
     runCatching { JSONObject(QGCBridge.set(path, value)).optBoolean("ok") }.getOrDefault(false)
 
+const val PLAN_UNDO = "plan.undo"
+
 fun invokeOk(path: String, args: String = "[]"): Boolean =
     runCatching { JSONObject(QGCBridge.invoke(path, args)).optBoolean("ok") }.getOrDefault(false)
 

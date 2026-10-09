@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -19,7 +20,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.background
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -35,6 +35,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +54,8 @@ import one.aircast.android.bridge.qgcPath
 import one.aircast.map.PlanMapScreen
 
 private const val NOTICE_MILLIS = 4000L
+private const val HEADER_ALPHA = 0.94f
+private val HEADER_CORNER = 20.dp
 
 internal const val APPLY_DEFAULT_ALTITUDE = "core.plan.applyDefaultAltitude"
 internal const val DISMISS_ALTITUDE_PROMPT = "core.plan.dismissAltitudePrompt"
@@ -87,6 +91,28 @@ fun PlanTab(modifier: Modifier = Modifier) {
     val history = planHistory(planStatus)
     var undrawn by remember { mutableStateOf<List<String>>(emptyList()) }
     var centre by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var newPlanOpen by remember { mutableStateOf(false) }
+    var startFrom by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun startPlan(template: String?) {
+        if (template == null) {
+            files.newPlan()
+        } else {
+            scope.launch {
+                val (lat, lon) = centre ?: return@launch run { notice = "The map has not reported its centre yet." }
+                withContext(Dispatchers.IO) { Qgc.refusalOf(CREATE_FROM_TEMPLATE, template, lat, lon) }?.let { notice = it }
+            }
+        }
+    }
+
+    if (newPlanOpen) {
+        NewPlanDialog(planTemplates(planStatus), replacing = containsItems, onDismiss = { newPlanOpen = false }) { template ->
+            newPlanOpen = false
+            startFrom = template
+            if (containsItems) pending = PlanConfirm.NewPlan else startPlan(template)
+        }
+    }
 
     DisposableEffect(Unit) {
         offMainInOrder { PlanCommands.setUndoTracking(true) }
@@ -139,9 +165,10 @@ fun PlanTab(modifier: Modifier = Modifier) {
 
     pending?.let { kind ->
         val copy = confirmCopy(kind)
+        val begin: () -> Unit = { startPlan(startFrom) }
         val act = when (kind) {
             PlanConfirm.Open -> files.open
-            PlanConfirm.NewPlan -> files.newPlan
+            PlanConfirm.NewPlan -> begin
             PlanConfirm.ClearMission -> files.clearMission
             PlanConfirm.Download -> files.download
         }
@@ -189,38 +216,34 @@ fun PlanTab(modifier: Modifier = Modifier) {
             fitKey = files.opened(),
             onCentre = { lat, lon -> centre = lat to lon },
             itemEditor = { index, at, close, remove -> ItemEditor(index, at, centre, close, remove) },
-            summaryHidden = planTemplates(planStatus)?.show == true,
-            overlay = {
-                PlanTemplates(
-                    planStatus = planStatus,
-                    centre = centre,
-                    onRefused = { notice = it },
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp, start = 16.dp, end = 16.dp),
-                )
-            },
+            onTemplates = { newPlanOpen = true },
             header = { upload ->
-                Column {
+                Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
-                        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 16.dp, end = 4.dp),
+                        Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         val title = planTitle(files.documentName())
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                title,
-                                style = MaterialTheme.typography.titleLarge,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            (notice ?: planStatusText(planStatus)).takeIf { it.isNotBlank() && it != title }?.let { line ->
-                                Text(
-                                    line,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = if (notice == null) 1 else 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                        Box(Modifier.weight(1f)) {
+                            Surface(shape = RoundedCornerShape(HEADER_CORNER), color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = HEADER_ALPHA)) {
+                                Column(Modifier.heightIn(min = 40.dp).padding(horizontal = 16.dp, vertical = 6.dp), verticalArrangement = Arrangement.Center) {
+                                    Text(
+                                        title,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    (notice ?: planStatusText(planStatus)).takeIf { it.isNotBlank() && it != title }?.let { line ->
+                                        Text(
+                                            line,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = if (notice == null) 1 else 3,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
                             }
                         }
                         if (upload.shown) Surface(
@@ -254,15 +277,9 @@ fun PlanTab(modifier: Modifier = Modifier) {
                                 }
                             }
                         }
-                        Box {
-                            IconButton(onClick = { menuOpen = true }) { Icon(painterResource(R.drawable.ic_more_vert), "Plan menu") }
+                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = HEADER_ALPHA)) {
+                            IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) { Icon(painterResource(R.drawable.ic_more_vert), "Plan menu") }
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                DropdownMenuItem(
-                                    text = { Text("Undo") },
-                                    leadingIcon = { Icon(painterResource(R.drawable.ic_undo), null) },
-                                    enabled = history.canUndo,
-                                    onClick = { menuOpen = false; offMainInOrder { PlanCommands.undo() } },
-                                )
                                 DropdownMenuItem(
                                     text = { Text("Redo") },
                                     leadingIcon = { Icon(painterResource(R.drawable.ic_redo), null) },
@@ -322,7 +339,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                                     enabled = can.newPlan,
                                     onClick = {
                                         menuOpen = false
-                                        if (containsItems) pending = PlanConfirm.NewPlan else files.newPlan()
+                                        newPlanOpen = true
                                     },
                                 )
                                 DropdownMenuItem(
@@ -345,15 +362,14 @@ fun PlanTab(modifier: Modifier = Modifier) {
                         }
                     }
                     undrawnItemsWarning(undrawn)?.let { warning ->
-                        Text(
-                            text = warning,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.errorContainer)
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        )
+                        Surface(shape = RoundedCornerShape(HEADER_CORNER), color = MaterialTheme.colorScheme.errorContainer) {
+                            Text(
+                                text = warning,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                        }
                     }
                 }
             },

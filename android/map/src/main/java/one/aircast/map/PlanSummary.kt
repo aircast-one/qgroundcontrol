@@ -1,48 +1,5 @@
 package one.aircast.map
 
-fun planSummary(
-    itemCount: Int,
-    shape: List<String>,
-    items: List<MissionItem>,
-    polygons: List<FencePolygon>,
-    circles: List<FenceCircle>,
-    rally: List<RallyPoint>,
-    surveys: List<Survey>,
-    summaryText: String,
-    selected: MapHit?,
-    offline: Boolean = true,
-    canAddByHand: Boolean = true,
-    canPlaceByButton: Boolean = true,
-): String {
-    val counts = listOfNotNull(
-        itemCount.takeIf { it > 0 }?.let {
-            "$it item${if (it == 1) "" else "s"}" +
-                shape.takeIf { named -> named.isNotEmpty() }
-                    ?.joinToString(", ", " (", ")").orEmpty()
-        },
-        (polygons.size + circles.size).takeIf { it > 0 }?.let { "$it fence${if (it == 1) "" else "s"}" },
-        rally.size.takeIf { it > 0 }?.let { "$it rally" },
-        surveys.sumOf { it.transects.size }.takeIf { it > 0 }?.let { "$it scan pts" },
-    )
-    if (counts.isEmpty()) {
-        val add = when {
-            canAddByHand -> "long press to add"
-            canPlaceByButton -> "add a takeoff to start"
-            else -> "move the map to where you will fly, then add a takeoff"
-        }
-        return if (offline) {
-            "Empty plan · $add"
-        } else {
-            "Empty plan · Download the aircraft's, or $add"
-        }
-    }
-
-    return (counts + listOfNotNull(
-        summaryText.takeIf { it.isNotEmpty() },
-        selectionText(selected, items, circles, polygons),
-    )).joinToString(" · ")
-}
-
 internal fun circleText(circle: FenceCircle): String =
     circle.detailText
 

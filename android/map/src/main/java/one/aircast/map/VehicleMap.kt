@@ -1,6 +1,7 @@
 package one.aircast.map
 
 import android.graphics.Bitmap
+import android.graphics.PointF
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -184,6 +185,7 @@ fun VehicleMap(
     circledShapes: Set<String> = emptySet(),
     firmwareFence: FirmwareFence? = null,
     onAdd: (Double, Double) -> Unit = { _, _ -> },
+    onBlankTap: ((Double, Double) -> Unit)? = null,
     onMove: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onWaypointSelected: (MapHit?) -> Unit = {},
     onMoved: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
@@ -232,6 +234,7 @@ fun VehicleMap(
     val latestGoto by rememberUpdatedState(shownGoto)
     val latestItems by rememberUpdatedState(missionItems)
     val latestOnAdd by rememberUpdatedState(onAdd)
+    val latestOnBlankTap by rememberUpdatedState(onBlankTap)
     val latestOnMove by rememberUpdatedState(onMove)
     val latestOnSelected by rememberUpdatedState(onWaypointSelected)
     val latestOnMoved by rememberUpdatedState(onMoved)
@@ -296,21 +299,20 @@ fun VehicleMap(
 
     val latestCentreChanged by rememberUpdatedState(onCentreChanged)
     val latestViewChanged by rememberUpdatedState(onViewChanged)
+    val latestLeftInset by rememberUpdatedState(leftInsetPx)
+    val latestBottomInset by rememberUpdatedState(bottomInsetPx)
     DisposableEffect(mapView, mapStyle) {
         mapView.getMapAsync { loaded ->
             map = loaded
             fun reportCentre() {
                 val target = loaded.cameraPosition.target ?: return
                 latestCentreChanged(TrackPoint(target.latitude, target.longitude), loaded.cameraPosition.zoom)
-                val seen = loaded.projection.visibleRegion.latLngBounds
-                latestViewChanged(
-                    listOf(
-                        TrackPoint(seen.latitudeNorth, seen.longitudeWest),
-                        TrackPoint(seen.latitudeNorth, seen.longitudeEast),
-                        TrackPoint(seen.latitudeSouth, seen.longitudeEast),
-                        TrackPoint(seen.latitudeSouth, seen.longitudeWest),
-                    ),
-                )
+                val right = mapView.width.toFloat()
+                val left = latestLeftInset.toFloat().coerceIn(0f, right)
+                val bottom = (mapView.height - latestBottomInset).toFloat().coerceAtLeast(0f)
+                val seen = listOf(PointF(left, 0f), PointF(right, 0f), PointF(right, bottom), PointF(left, bottom))
+                    .map { loaded.projection.fromScreenLocation(it) }
+                latestViewChanged(clearWindow(seen.map { TrackPoint(it.latitude, it.longitude) }))
             }
             reportCentre()
             loaded.addOnCameraIdleListener {
@@ -385,6 +387,7 @@ fun VehicleMap(
                         onMoved = { hit, latitude, longitude -> latestOnMoved(hit, latitude, longitude) },
                         onDragging = { draggingVertex = it },
                         canDrag = { hit -> latestCanDrag(hit) },
+                        onBlankTap = { latitude, longitude -> latestOnBlankTap?.invoke(latitude, longitude) ?: latestOnSelected(null) },
                     )
                 }
                 draggingVertex = null
@@ -556,7 +559,11 @@ fun VehicleMap(
         val target = LatLng(at.latitude, at.longitude)
         when {
             centreZoom != null -> loaded.moveCamera(CameraUpdateFactory.newLatLngZoom(target, centreZoom))
-            loaded.cameraPosition.zoom > 1.0 -> loaded.animateCamera(CameraUpdateFactory.newLatLng(target))
+            loaded.cameraPosition.zoom > 1.0 -> {
+                val point = loaded.projection.toScreenLocation(target)
+                val clear = PointF(point.x - leftInsetPx / 2f, point.y - clearAreaLift(topInsetPx.toFloat(), bottomInsetPx.toFloat()))
+                loaded.animateCamera(CameraUpdateFactory.newLatLng(loaded.projection.fromScreenLocation(clear)))
+            }
             else -> loaded.animateCamera(CameraUpdateFactory.newLatLngZoom(target, DEFAULT_ZOOM))
         }
     }

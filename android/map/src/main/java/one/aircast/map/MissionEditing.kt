@@ -138,6 +138,7 @@ fun attachMissionEditing(
     onMoved: (MapHit, Double, Double) -> Unit = { _, _, _ -> },
     onDragging: (MapHit?) -> Unit = {},
     canDrag: (MapHit) -> Boolean = { true },
+    onBlankTap: (Double, Double) -> Unit = { _, _ -> onSelected(null) },
 ) {
     var dragging: MapHit? = null
     var tapped: MapHit? = null
@@ -151,6 +152,13 @@ fun attachMissionEditing(
         addedInGesture = true
         tapped?.let(onSelected) ?: onAdd(latLng.latitude, latLng.longitude)
         true
+    }
+
+    map.addOnMapClickListener { latLng ->
+        val screen = map.projection.toScreenLocation(latLng)
+        val blank = hitTest(map, screen.x, screen.y) == null
+        if (blank) onBlankTap(latLng.latitude, latLng.longitude)
+        blank
     }
 
     mapView.setOnTouchListener { view, event ->
@@ -198,7 +206,7 @@ fun attachMissionEditing(
                 val tap = tapped
                 tapped = null
                 if (hit == null) {
-                    if (!addedInGesture &&
+                    if (tap != null && !addedInGesture &&
                         event.actionMasked == MotionEvent.ACTION_UP &&
                         withinTap(event.x - downX, event.y - downY)
                     ) {

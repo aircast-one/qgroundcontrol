@@ -208,7 +208,6 @@ object PlanBridge {
 
     fun loadFromVehicle() = invokeOk("$PLAN_ROOT.loadFromVehicle")
 
-    fun clearPlan() = invokeOk("$PLAN_ROOT.removeAll")
 
     fun sendToVehicle() = invokeOk("$PLAN_ROOT.sendToVehicle")
 

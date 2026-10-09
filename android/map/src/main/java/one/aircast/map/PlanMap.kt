@@ -1,6 +1,5 @@
 package one.aircast.map
 
-import androidx.compose.foundation.layout.BoxScope
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -26,18 +25,16 @@ internal fun planMapStyle(context: Context): String {
 @Composable
 fun PlanMapScreen(
     modifier: Modifier = Modifier,
-    onClear: (() -> Unit)? = null,
     onCentre: ((Double, Double) -> Unit)? = null,
     itemEditor: (@Composable (Int, TrackPoint?, () -> Unit, () -> Unit) -> Unit)? = null,
     header: (@Composable (PlanUpload) -> Unit)? = null,
     fitKey: Int = 0,
-    overlay: (@Composable BoxScope.() -> Unit)? = null,
-    summaryHidden: Boolean = false,
+    onTemplates: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val style = remember(context) { planMapStyle(context) }
 
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
-        PlanMapContent(style, onClear, onCentre, itemEditor, header, fitKey, overlay, summaryHidden)
+        PlanMapContent(style, onCentre, itemEditor, header, fitKey, onTemplates)
     }
 }

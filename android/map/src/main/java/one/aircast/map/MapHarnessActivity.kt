@@ -14,10 +14,7 @@ class MapHarnessActivity : ComponentActivity() {
         setContent {
             AircastTheme {
                 CompositionLocalProvider(LocalFlyMapEdits provides remember { FlyMapEdits() }) {
-                    PlanMapScreen(
-                        Modifier.fillMaxSize(),
-                        onClear = { PlanBridge.clearPlan() },
-                    )
+                    PlanMapScreen(Modifier.fillMaxSize())
                 }
             }
         }

@@ -8,28 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ScanPatternsTest {
-    @Test
-    fun `the empty plan names the item that can actually be added`() {
-        val blocked = planSummary(
-            0, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(),
-            "", null, offline = true, canAddByHand = false,
-        )
-        val open = planSummary(
-            0, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), emptyList(),
-            "", null, offline = true, canAddByHand = true,
-        )
-
-        assertEquals(
-            "missionkinds.rs allows only a takeoff first, so telling the operator to long press " +
-                "sends them at the gesture the core refuses - and addMissionItem suppresses that " +
-                "refusal as a duplicate of the sentence already on screen, so the press looks " +
-                "like nothing happened",
-            "Empty plan \u00b7 add a takeoff to start",
-            blocked,
-        )
-        assertEquals("Empty plan \u00b7 long press to add", open)
-    }
-
     private val served = JSONObject(
         """{"kind":"object","kinds":[
              {"id":"waypoint","simple":true,"complexName":null,"enabled":true},

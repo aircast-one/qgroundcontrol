@@ -1,12 +1,10 @@
 package one.aircast.map
 
+import androidx.annotation.DrawableRes
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.ui.semantics.semantics
 
-import androidx.compose.ui.semantics.contentDescription
 
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,45 +21,32 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import org.json.JSONObject
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -87,13 +72,12 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -104,25 +88,13 @@ import kotlinx.coroutines.withContext
 
 private const val PLAN_POLL_MS = 700L
 private const val FAILURE_MESSAGE_MS = 2500L
-private const val CONFIRM_TIMEOUT_MS = 5000L
 private val CONTROLS_MAX_HEIGHT = 320.dp
 private val SIDE_PANEL_WIDTH = 380.dp
 private const val SIDE_PANEL_MIN_WIDTH_DP = 840
 internal const val SUMMARY_MAX_FRACTION = 0.74f
 
-private val PRIMARY_PADDING = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
-
-@Composable
-private fun PlanUploadButton(
-    emphasised: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    contentPadding: PaddingValues,
-    content: @Composable RowScope.() -> Unit,
-) = when (emphasised) {
-    true -> Button(onClick = onClick, enabled = enabled, contentPadding = contentPadding, content = content)
-    false -> FilledTonalButton(onClick = onClick, enabled = enabled, contentPadding = contentPadding, content = content)
-}
+private const val WAITING_FOR_QGC = "Waiting for QGroundControl"
+private val RAIL_MENU_OFFSET = DpOffset(RAIL_WIDTH, 0.dp)
 
 private fun sendPlan(
     scope: CoroutineScope,
@@ -175,13 +147,11 @@ class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: Strin
 @Composable
 internal fun PlanMapContent(
     mapStyle: String,
-    onClear: (() -> Unit)? = null,
     onCentre: ((Double, Double) -> Unit)? = null,
     itemEditor: (@Composable (Int, TrackPoint?, () -> Unit, () -> Unit) -> Unit)? = null,
     header: (@Composable (PlanUpload) -> Unit)? = null,
     fitKey: Int = 0,
-    overlay: (@Composable BoxScope.() -> Unit)? = null,
-    summaryHidden: Boolean = false,
+    onTemplates: (() -> Unit)? = null,
 ) {
     var follow by remember { mutableStateOf(false) }
     var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
@@ -191,7 +161,6 @@ internal fun PlanMapContent(
     var fitOnly by remember { mutableStateOf<List<TrackPoint>?>(null) }
     var positioning by remember { mutableStateOf<Pair<MapHit, TrackPoint>?>(null) }
     var loadArmed by remember { mutableStateOf(false) }
-    var clearArmed by remember { mutableStateOf(false) }
     var items by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var allItems by remember { mutableStateOf<List<MissionItem>>(emptyList()) }
     var itemCount by remember { mutableIntStateOf(0) }
@@ -232,9 +201,10 @@ internal fun PlanMapContent(
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableDoubleStateOf(0.0) }
     var controlsHeightPx by remember { mutableIntStateOf(0) }
+    var headerPx by remember { mutableIntStateOf(0) }
     val sidePanel = LocalConfiguration.current.screenWidthDp >= SIDE_PANEL_MIN_WIDTH_DP
     val sidePanelPx = with(LocalDensity.current) { SIDE_PANEL_WIDTH.roundToPx() }.takeIf { sidePanel } ?: 0
-    var topOverlayPx by remember { mutableIntStateOf(0) }
+    val railPx = with(LocalDensity.current) { (RAIL_WIDTH + 8.dp).roundToPx() }
 
     val kindsView by mapPath("view.missionKinds")
     val insertable by remember { derivedStateOf { missionKinds(kindsView) } }
@@ -273,7 +243,7 @@ internal fun PlanMapContent(
                     selected = MapHit.Waypoint(added)
                 }
             } else {
-                busy = outcome.reason.takeIf { it != blockedReason(insertable) }
+                busy = outcome.reason
                 delay(FAILURE_MESSAGE_MS)
                 busy = null
             }
@@ -323,6 +293,10 @@ internal fun PlanMapContent(
         planStatus?.optJSONObject("sync")?.optText("state") == "busy"
     }
     val support = planSupport(planStatus)
+    val canUndo = remember(planStatus) { planStatus?.optBoolean("canUndo") == true }
+    val homeSet = remember(planStatus) { planStatus?.optJSONObject("templates")?.optBoolean("homeSet") != false }
+    fun addable(kind: String): Boolean = kindAllows(insertable, kind) || !homeSet
+    fun addablePattern(kind: MissionKind): Boolean = kind.enabled || !homeSet
     var uploadAsk by remember { mutableStateOf<UploadGate?>(null) }
     val vehiclesJson by mapPath(VEHICLES_VIEW)
     val flown = remember(vehiclesJson) { vehicleChoices(vehiclesJson).active }
@@ -363,19 +337,25 @@ internal fun PlanMapContent(
     var listOpen by remember { mutableStateOf(false) }
     var centreRequest by remember { mutableIntStateOf(0) }
     var centreOn by remember { mutableStateOf<TrackPoint?>(null) }
-    fun pickRow(row: ItemRow) {
-        selected = MapHit.Waypoint(row.index)
-        items.firstOrNull { it.index == row.index }?.let { placed ->
+    fun focusItem(index: Int) {
+        selected = MapHit.Waypoint(index)
+        items.firstOrNull { it.index == index }?.let { placed ->
             centreOn = TrackPoint(placed.latitude, placed.longitude)
             centreRequest += 1
             follow = false
         }
     }
+    fun pickRow(row: ItemRow) = focusItem(row.index)
+    fun addRallyAt(latitude: Double, longitude: Double) {
+        val next = rally.size
+        onBridge("Adding rally", then = { selected = MapHit.Rally(next) }) { FenceBridge.addRallyPoint(latitude, longitude) }
+    }
     var centredOnEntry by remember { mutableStateOf(false) }
-    LaunchedEffect(isPlottable(latitude, longitude)) {
-        if (centersOnVehicleAtEntry(centredOnEntry, isPlottable(latitude, longitude), fitRequest)) {
+    val entryPoint = TrackPoint(latitude, longitude).takeIf { isPlottable(latitude, longitude) } ?: operator
+    LaunchedEffect(entryPoint != null) {
+        if (centersOnVehicleAtEntry(centredOnEntry, entryPoint != null, fitRequest)) {
             centredOnEntry = true
-            centreOn = TrackPoint(latitude, longitude)
+            centreOn = entryPoint
             centreRequest += 1
         }
     }
@@ -429,7 +409,7 @@ internal fun PlanMapContent(
                     fitRequest += 1
                 }
                 firstRead = stillFirstRead(firstRead, plan != null)
-                if (!firstRead) centredOnEntry = true
+                if (!firstRead && drawn) centredOnEntry = true
                 allItems = nextAll
                 items = nextItems
                 itemCount = nextItemCount
@@ -452,13 +432,6 @@ internal fun PlanMapContent(
                 landingList = nextLandings
                 surveyStatsMap = nextStats
             }
-        }
-    }
-
-    LaunchedEffect(clearArmed) {
-        if (clearArmed) {
-            delay(CONFIRM_TIMEOUT_MS)
-            clearArmed = false
         }
     }
 
@@ -494,12 +467,33 @@ internal fun PlanMapContent(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    fun download() {
+        loadArmed = false
+        busy = "Downloading from vehicle"
+        selected = null
+        scope.launch {
+            val outcome = withContext(Dispatchers.Default) {
+                uploadOutcome(PlanBridge.loadFromVehicle())
+            }
+            busy = downloadMessage(outcome)
+            delay(FAILURE_MESSAGE_MS)
+            busy = null
+        }
+    }
+
+    fun requestDownload() {
+        val refusal = syncRefusal(vehicleSyncState(planOffline, planSyncing), "download from")
+        when {
+            refusal != null -> say(refusal)
+            loadStep(planDirty, loadArmed) == LoadStep.Confirm -> loadArmed = true
+            else -> download()
+        }
+    }
+
     val uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems)
     val uploadEnabled = planHasItems && !planOffline && !planSyncing
     val uploadEmphasised = uploadEnabled && !uploadBlocked
-    header?.invoke(PlanUpload(enabled = uploadEnabled, emphasised = uploadEmphasised, label = uploadText, shown = !planOffline, onClick = upload))
-    Box(Modifier.fillMaxWidth().weight(1f)) {
+    Box(Modifier.fillMaxSize()) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
             mapStyle = shownStyle,
@@ -527,11 +521,18 @@ internal fun PlanMapContent(
                         KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon),
                         insertAfter(selected, allItems),
                     )
-                    PlanLayer.Rally -> if (support.rally) {
-                        val next = rally.size
-                        onBridge("Adding rally", then = { selected = MapHit.Rally(next) }) { FenceBridge.addRallyPoint(lat, lon) }
-                    }
+                    PlanLayer.Rally -> if (support.rally) addRallyAt(lat, lon)
                     PlanLayer.Fence -> Unit
+                }
+            },
+            onBlankTap = { lat, lon ->
+                val traced = tracing
+                when {
+                    traced != null -> tracing = traced.first to traced.second + TrackPoint(lat, lon)
+                    selected != null && selected !is MapHit.Waypoint -> selected = null
+                    layer == PlanLayer.Mission -> addMissionItem(KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon), insertAfter(selected, allItems))
+                    layer == PlanLayer.Rally && support.rally -> addRallyAt(lat, lon)
+                    else -> selected = null
                 }
             },
             canDrag = { hit -> dragAllowed(hit, selected, layer) },
@@ -570,8 +571,8 @@ internal fun PlanMapContent(
                 onCentre?.invoke(at.latitude, at.longitude)
             },
             bottomInsetPx = controlsHeightPx,
-            topInsetPx = topOverlayPx,
-            leftInsetPx = sidePanelPx,
+            topInsetPx = headerPx,
+            leftInsetPx = sidePanelPx + railPx,
             fitRequest = fitRequest,
             fitOnly = fitOnly,
             onFitFailed = { onBridge("Fitting the plan") { false } },
@@ -602,84 +603,188 @@ internal fun PlanMapContent(
             }
         }
 
-        FilterChip(
-            selected = follow,
-            onClick = { follow = !follow },
-            label = { Text("Follow", style = MaterialTheme.typography.labelSmall) },
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
-                .onGloballyPositioned { topOverlayPx = it.size.height + it.positionInParent().y.toInt() },
-            colors = FilterChipDefaults.filterChipColors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                selectedContainerColor =
-                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
-            ),
-        )
-
-        overlay?.let { content ->
-            val inset = with(LocalDensity.current) { controlsHeightPx.toDp() }
-            Box(Modifier.fillMaxSize().padding(start = if (sidePanel) SIDE_PANEL_WIDTH else 0.dp, bottom = if (sidePanel) 0.dp else inset), content = content)
+        val ready by MapBridge.bridgeReady.collectAsState()
+        val mapStart = if (sidePanel) SIDE_PANEL_WIDTH else 0.dp
+        val railStart = mapStart + 8.dp
+        val headerHeight = with(LocalDensity.current) { headerPx.toDp() }
+        header?.let { bar ->
+            Box(Modifier.align(Alignment.TopStart).padding(start = mapStart).fillMaxWidth().onGloballyPositioned { headerPx = it.size.height }) {
+                bar(PlanUpload(enabled = uploadEnabled, emphasised = uploadEmphasised, label = uploadText, shown = !planOffline, onClick = upload))
+            }
         }
-
+        val panelHeight = with(LocalDensity.current) { controlsHeightPx.toDp() }
         val listedInPanel = sidePanel && layer == PlanLayer.Mission && worthListing(allItems)
-        if (busy != null || !summaryHidden) Column(
-            Modifier.align(Alignment.TopStart).padding(start = if (sidePanel) SIDE_PANEL_WIDTH + 8.dp else 8.dp, top = 8.dp, end = 8.dp, bottom = 8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),
+        Column(
+            Modifier.align(Alignment.TopStart).padding(start = railStart + RAIL_WIDTH + 8.dp, top = headerHeight + 8.dp, end = 8.dp).fillMaxWidth(SUMMARY_MAX_FRACTION),
         ) {
-            if (busy != null || !listedInPanel) Surface(
-                color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
-                shape = MaterialTheme.shapes.extraLarge,
-                onClick = { listOpen = true },
-                enabled = worthListing(allItems) && !sidePanel,
-            ) {
-                val ready by MapBridge.bridgeReady.collectAsState()
-                Row(
-                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            (busy ?: WAITING_FOR_QGC.takeIf { !ready })?.let { message ->
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.94f),
+                    shape = MaterialTheme.shapes.extraLarge,
                 ) {
-                    Text(
-                        busy ?: if (!ready) {
-                            "Waiting for QGroundControl"
-                        } else {
-                            planSummary(
-                                itemCount, shape, items, fences, circles, rally, surveyList,
-                                missionSummaryText(missionSummaryView), selected, planOffline,
-                                canAddByHand = kindAllows(insertable, KIND_WAYPOINT),
-                                canPlaceByButton = placeAt() != null,
-                            )
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (worthListing(allItems) && !sidePanel) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.List,
-                            contentDescription = "Show the plan as a list",
-                            Modifier.size(18.dp),
-                        )
-                    }
+                    Text(message, Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.bodyMedium)
                 }
             }
-
             centre?.let { at ->
                 ScaleBarView(at.latitude, zoom, Modifier.padding(start = 4.dp, top = 8.dp))
             }
         }
 
-        val density = LocalDensity.current
-        val waypointAt = placeAt()
-        if (waypointAt != null && kindAllows(insertable, KIND_WAYPOINT) && tracing == null && !summaryHidden) {
-            ExtendedFloatingActionButton(
-                onClick = { addMissionItem(KIND_WAYPOINT, "Adding a waypoint", placeAt(), insertAfter(selected, allItems)) },
-                icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("Add waypoint") },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = with(density) { controlsHeightPx.toDp() } + 16.dp)
-                    .semantics { contentDescription = "Add waypoint" },
+        PlanRail(Modifier.align(Alignment.TopStart).padding(start = railStart, top = headerHeight + 8.dp, bottom = if (sidePanel) 8.dp else panelHeight + 8.dp)) {
+            PlanLayer.entries.forEach { option ->
+                RailButton(option.icon, option.label, chosen = layer == option, onClick = {
+                    layer = option
+                    if (layerOf(selected) != option) selected = null
+                })
+            }
+            RailDivider()
+            when (layer) {
+                PlanLayer.Mission -> {
+                    RailButton(R.drawable.plan_add, "Waypoint", enabled = placeAt() != null, onClick = {
+                        addMissionItem(KIND_WAYPOINT, "Adding a waypoint", placeAt(), insertAfter(selected, allItems))
+                    })
+                    RailButton(R.drawable.plan_grid, "Pattern", enabled = scanPatterns(insertable).isNotEmpty(), onClick = { patternWanted = scanPatterns(insertable) })
+                    if (kindOffered(insertable, KIND_TAKEOFF) && takeoffMissing(items)) {
+                        RailButton(R.drawable.plan_flight_takeoff, "Takeoff", enabled = addable(KIND_TAKEOFF), onClick = {
+                            addMissionItem(KIND_TAKEOFF, "Adding a takeoff", placeAt(), BEFORE_THE_REST)
+                        })
+                    }
+                    RailButton(R.drawable.plan_flight_land, kindLabel(insertable, KIND_LAND), enabled = itemCount > 0, onClick = {
+                        addMissionItem(KIND_LAND, "Adding a landing", placeAt(), insertAfter(selected, allItems))
+                    })
+                }
+                PlanLayer.Fence -> if (!support.fenceRefused) {
+                    RailButton(R.drawable.plan_polygon, "Polygon", enabled = support.fence, onClick = {
+                        val at = placeAt()
+                        val next = fences.size
+                        onBridge("Adding fence", then = { selected = MapHit.FenceVertex(next, 0) }) {
+                            at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionPolygon(topLeft, bottomRight) } ?: false
+                        }
+                    })
+                    RailButton(R.drawable.plan_circle, "Circle", enabled = support.fence, onClick = {
+                        val at = placeAt()
+                        val next = circles.size
+                        onBridge("Adding circle", then = { selected = MapHit.Circle(next) }) {
+                            at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionCircle(topLeft, bottomRight) } ?: false
+                        }
+                    })
+                    RailButton(R.drawable.plan_home, "Breach", enabled = support.fence, chosen = breach != null, onClick = {
+                        if (breach != null) {
+                            editingBreach = true
+                        } else {
+                            val at = placeAt()
+                            onBridge("Adding breach return point") { at != null && FenceBridge.setBreachReturn(at) }
+                        }
+                    })
+                }
+                PlanLayer.Rally -> RailButton(R.drawable.plan_add, "Add point", enabled = support.rally && placeAt() != null, onClick = {
+                    placeAt()?.let { addRallyAt(it.latitude, it.longitude) }
+                })
+            }
+            RailDivider()
+            RailButton(R.drawable.plan_undo, "Undo", enabled = canUndo, onClick = { onBridge { invokeOk(PLAN_UNDO) } })
+            CenterMenu(
+                launch = allItems.firstOrNull { it.sequence == 0 }?.let { TrackPoint(it.latitude, it.longitude) },
+                myLocation = operator,
+                onFit = { points ->
+                    follow = false
+                    fitOnly = points
+                    fitRequest += 1
+                },
+                onCentre = { point ->
+                    follow = false
+                    centreOn = point
+                    centreRequest += 1
+                },
+                missionPoints = missionFitPoints(allItems),
+                following = follow,
+                onFollow = { follow = !follow },
+                menuOffset = RAIL_MENU_OFFSET,
+                anchor = { open -> RailButton(R.drawable.plan_my_location, "Centre", chosen = follow, onClick = open) },
+            )
+            MapTypeMenu { shownStyle = it }
+        }
+
+        if (loadArmed) {
+            AlertDialog(
+                onDismissRequest = { loadArmed = false },
+                title = { Text("Load plan from vehicle?") },
+                text = { Text(replaceWarning(allItems.count { it.index != HOME_ITEM })) },
+                confirmButton = { TextButton(onClick = ::download) { Text("Replace") } },
+                dismissButton = { TextButton(onClick = { loadArmed = false }) { Text("Keep mine") } },
+            )
+        }
+
+        uploadAsk?.let { gate ->
+            AlertDialog(
+                onDismissRequest = { uploadAsk = null },
+                title = { Text(uploadHeading(gate, vehicleChoices(vehiclesJson))) },
+                text = { Text(gate.refusal) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val pauses = gate.pausesFirst
+                        uploadAsk = null
+                        sendPlan(
+                            scope,
+                            say = { busy = it },
+                            done = { busy = null },
+                            pauseFirst = pauses,
+                        )
+                    }) { Text(gate.proceedTitle.ifBlank { "Upload" }) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { uploadAsk = null }) { Text("Cancel") }
+                },
+            )
+        }
+
+        if (patternWanted.isNotEmpty()) {
+            AlertDialog(
+                onDismissRequest = { patternWanted = emptyList() },
+                title = { Text("Which pattern?") },
+                text = {
+                    Text(
+                        patternWanted.firstOrNull { !addablePattern(it) && it.disabledReason.isNotBlank() }
+                            ?.disabledReason
+                            ?: "A pattern covers an area or a line with a camera run.",
+                    )
+                },
+                confirmButton = {
+                    Column {
+                        patternWanted.forEach { kind ->
+                            TextButton(
+                                enabled = addablePattern(kind),
+                                onClick = {
+                                    patternWanted = emptyList()
+                                    addMissionItem(
+                                        kind.id,
+                                        "Adding ${kind.label.lowercase()}",
+                                        placeAt(),
+                                        insertAfter(selected, allItems),
+                                    )
+                                },
+                            ) { Text(kind.label) }
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { patternWanted = emptyList() }) { Text("Cancel") }
+                },
+            )
+        }
+
+        breach?.takeIf { editingBreach }?.let { current ->
+            BreachReturnDialog(
+                breach = current,
+                onDismiss = { editingBreach = false },
+                onAltitude = { shown ->
+                    editingBreach = false
+                    onBridge("Setting breach return altitude") { FenceBridge.setBreachAltitude(current.altitudePath, shown) }
+                },
+                onRemove = {
+                    editingBreach = false
+                    onBridge("Removing breach return point") { FenceBridge.clearBreachReturn() }
+                },
             )
         }
 
@@ -705,45 +810,71 @@ internal fun PlanMapContent(
                         .size(width = 32.dp, height = 4.dp)
                         .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), CircleShape),
                 )
-                (selected as? MapHit.Waypoint)
-                    ?.let { hit -> allItems.firstOrNull { it.index == hit.index } }
-                    ?.let { item ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    "${sentenceCase(item.command.ifBlank { "Item" })} ${sequenceLabel(item)}",
-                                    style = MaterialTheme.typography.titleLarge,
-                                )
-                                listOfNotNull(itemPlace(item, allItems), sheetDetail(item, surveyStatsMap[item.index]).ifBlank { null }).joinToString(" \u00b7 ").ifBlank { null }?.let {
-                                    Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            Button(onClick = { selected = null }, contentPadding = ButtonDefaults.ButtonWithIconContentPadding) {
-                                Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                                Text("Done")
-                            }
-                        }
-                        surveyTiles(item, surveyStatsMap[item.index]).takeIf { it.isNotEmpty() }?.let { tiles ->
+                val chosen = selected
+                val chosenItem = (chosen as? MapHit.Waypoint)?.let { hit -> allItems.firstOrNull { it.index == hit.index } }
+                when {
+                    chosenItem != null -> {
+                        SelectionHeader(
+                            title = "${sentenceCase(chosenItem.command.ifBlank { "Item" })} ${sequenceLabel(chosenItem)}",
+                            detail = listOfNotNull(itemPlace(chosenItem, allItems), sheetDetail(chosenItem, surveyStatsMap[chosenItem.index]).ifBlank { null }).joinToString(" · ").ifBlank { null },
+                            onPrevious = neighbourItem(allItems, chosenItem.index, -1)?.let { index -> { focusItem(index) } },
+                            onNext = neighbourItem(allItems, chosenItem.index, 1)?.let { index -> { focusItem(index) } },
+                            onDone = { selected = null },
+                        )
+                        surveyTiles(chosenItem, surveyStatsMap[chosenItem.index]).takeIf { it.isNotEmpty() }?.let { tiles ->
                             Row(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 tiles.forEach { (label, value) -> StatTile(label, value) }
                             }
                         }
+                        addingAfterText(chosen, allItems)?.let { PaletteNote(it) }
                     }
-                SingleChoiceSegmentedButtonRow(Modifier.padding(bottom = 8.dp)) {
-                    PlanLayer.entries.forEach { option ->
-                        SegmentedButton(
-                            selected = layer == option,
-                            onClick = { layer = option },
-                            shape = SegmentedButtonDefaults.itemShape(option.ordinal, PlanLayer.entries.size),
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(option.label)
-                                layerSubtitle(option, itemCount, rally.size).ifBlank { null }?.let {
-                                    Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    chosen != null -> SelectionHeader(
+                        title = selectionTitle(chosen, allItems),
+                        detail = selectionText(chosen, allItems, circles, fences),
+                        onPrevious = null,
+                        onNext = null,
+                        onDone = { selected = null },
+                    )
+                    layer == PlanLayer.Mission && itemCount == 0 -> EmptyMissionStrip(
+                        homeSet = homeSet,
+                        onTemplates = onTemplates,
+                        onDownload = { requestDownload() }.takeIf { !planOffline },
+                    )
+                    layer == PlanLayer.Mission -> PlanStatStrip(
+                        planStats(itemCount, allItems, missionSummaryView),
+                        onList = { listOpen = true }.takeIf { !sidePanel },
+                        profileShown = missionStatusShown.takeIf { profileShown(layer, profile) },
+                        onProfile = { onBridge { setOk(SHOW_MISSION_ITEM_STATUS, settingJson((!missionStatusShown).toString())) } },
+                    )
+                    layer == PlanLayer.Rally -> {
+                        if (support.rallyRefused) PaletteNote(RALLY_NOT_SUPPORTED)
+                        else if (rally.isEmpty()) PaletteNote(NO_RALLY_POINTS)
+                        if (rally.isNotEmpty()) FenceHeading("Rally points")
+                        rallyRows(rally).forEach { row ->
+                            FenceListRow(
+                                row,
+                                chosen = false,
+                                onSelect = { selected = MapHit.Rally(row.index) },
+                            ) {
+                                val count = rally.size
+                                onBridge("Removing ${row.title.lowercase()}", then = { selected = rallyAfterRemove(row.index, count) }) { FenceBridge.removeRallyPoint(row.index) }
+                            }
+                        }
+                    }
+                    else -> {
+                        if (support.fenceRefused) PaletteNote(GEOFENCE_NOT_SUPPORTED)
+                        else if (fences.isEmpty() && circles.isEmpty()) PaletteNote(NO_GEOFENCE)
+                        val listed = if (support.fenceRefused) emptyList() else fenceRows(fences, circles)
+                        listed.forEachIndexed { at, row ->
+                            fenceHeading(row, listed.getOrNull(at - 1))?.let { FenceHeading(it) }
+                            FenceListRow(
+                                row,
+                                chosen = false,
+                                onSelect = { selected = fenceRowHit(row) },
+                                onInclusion = row.inclusion?.let { { keep: Boolean -> onBridge("Changing ${row.title.lowercase()}") { FenceBridge.setPolygonInclusion(row.index, keep) } } },
+                            ) {
+                                onBridge("Removing ${row.title.lowercase()}", then = { selected = fenceSelectionAfterRemove(row, selected) }) {
+                                    if (row.circle) FenceBridge.deleteCircle(row.index) else FenceBridge.deletePolygon(row.index)
                                 }
                             }
                         }
@@ -755,256 +886,6 @@ internal fun PlanMapContent(
                     rows.forEach { row ->
                         ItemRowView(row, selected = (selected as? MapHit.Waypoint)?.index == row.index) { pickRow(row) }
                     }
-                }
-                if (layer == PlanLayer.Rally) {
-                    if (support.rallyRefused) PaletteNote(RALLY_NOT_SUPPORTED)
-                    else if (rally.isEmpty()) PaletteNote(NO_RALLY_POINTS)
-                    if (rally.isNotEmpty()) FenceHeading("Rally points")
-                    rallyRows(rally).forEach { row ->
-                        FenceListRow(
-                            row,
-                            chosen = (selected as? MapHit.Rally)?.index == row.index,
-                            onSelect = { selected = MapHit.Rally(row.index) },
-                        ) {
-                            val count = rally.size
-                            onBridge("Removing ${row.title.lowercase()}", then = { selected = rallyAfterRemove(row.index, count) }) { FenceBridge.removeRallyPoint(row.index) }
-                        }
-                    }
-                }
-                if (layer == PlanLayer.Fence) {
-                    if (support.fenceRefused) PaletteNote(GEOFENCE_NOT_SUPPORTED)
-                    else if (fences.isEmpty() && circles.isEmpty()) PaletteNote(NO_GEOFENCE)
-                    val listed = if (support.fenceRefused) emptyList() else fenceRows(fences, circles)
-                    listed.forEachIndexed { at, row ->
-                        fenceHeading(row, listed.getOrNull(at - 1))?.let { FenceHeading(it) }
-                        FenceListRow(
-                            row,
-                            chosen = rowSelected(row, selected),
-                            onSelect = { selected = fenceRowHit(row) },
-                            onInclusion = row.inclusion?.let { { keep: Boolean -> onBridge("Changing ${row.title.lowercase()}") { FenceBridge.setPolygonInclusion(row.index, keep) } } },
-                        ) {
-                            onBridge("Removing ${row.title.lowercase()}", then = { selected = fenceSelectionAfterRemove(row, selected) }) {
-                                if (row.circle) FenceBridge.deleteCircle(row.index) else FenceBridge.deletePolygon(row.index)
-                            }
-                        }
-                    }
-                }
-                FlowRow(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    fun download() {
-                        loadArmed = false
-                        busy = "Downloading from vehicle"
-                        selected = null
-                        scope.launch {
-                            val outcome = withContext(Dispatchers.Default) {
-                                uploadOutcome(PlanBridge.loadFromVehicle())
-                            }
-                            busy = downloadMessage(outcome)
-                            delay(FAILURE_MESSAGE_MS)
-                            busy = null
-                        }
-                    }
-                    FilledTonalButton(onClick = {
-                        val refusal = syncRefusal(
-                            vehicleSyncState(planOffline, planSyncing), "download from",
-                        )
-                        when {
-                            refusal != null -> say(refusal)
-                            loadStep(planDirty, loadArmed) == LoadStep.Confirm -> loadArmed = true
-                            else -> download()
-                        }
-                    }) { Text("Download") }
-                    if (loadArmed) {
-                        AlertDialog(
-                            onDismissRequest = { loadArmed = false },
-                            title = { Text("Load plan from vehicle?") },
-                            text = { Text(replaceWarning(allItems.count { it.index != HOME_ITEM })) },
-                            confirmButton = { TextButton(onClick = ::download) { Text("Replace") } },
-                            dismissButton = { TextButton(onClick = { loadArmed = false }) { Text("Keep mine") } },
-                        )
-                    }
-
-                    if (header == null && !planOffline) {
-                        PlanUploadButton(emphasised = uploadEmphasised, enabled = uploadEnabled, onClick = upload, contentPadding = PRIMARY_PADDING) { Text(uploadText) }
-                    }
-
-                    uploadAsk?.let { gate ->
-                        AlertDialog(
-                            onDismissRequest = { uploadAsk = null },
-                            title = { Text(uploadHeading(gate, vehicleChoices(vehiclesJson))) },
-                            text = { Text(gate.refusal) },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    val pauses = gate.pausesFirst
-                                    uploadAsk = null
-                                    sendPlan(
-                                        scope,
-                                        say = { busy = it },
-                                        done = { busy = null },
-                                        pauseFirst = pauses,
-                                    )
-                                }) { Text(gate.proceedTitle.ifBlank { "Upload" }) }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { uploadAsk = null }) { Text("Cancel") }
-                            },
-                        )
-                    }
-
-                    if (layer == PlanLayer.Fence && !support.fenceRefused) FilledTonalButton(enabled = support.fence, onClick = {
-                        val at = placeAt()
-                        val next = fences.size
-                        onBridge("Adding fence", then = { selected = MapHit.FenceVertex(next, 0) }) {
-                            at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionPolygon(topLeft, bottomRight) } ?: false
-                        }
-                    }) { Text("Polygon fence") }
-
-                    if (layer == PlanLayer.Mission) addingAfterText(selected, allItems)?.let {
-                        PaletteNote(it)
-                    }
-
-                    if (layer == PlanLayer.Mission) FilledTonalButton(
-                        enabled = kindAllows(insertable, KIND_SURVEY),
-                        onClick = { patternWanted = scanPatterns(insertable) },
-                    ) { Text("Pattern") }
-
-                    if (patternWanted.isNotEmpty()) {
-                        AlertDialog(
-                            onDismissRequest = { patternWanted = emptyList() },
-                            title = { Text("Which pattern?") },
-                            text = {
-                                Text(
-                                    patternWanted.firstOrNull { !it.enabled && it.disabledReason.isNotBlank() }
-                                        ?.disabledReason
-                                        ?: "A pattern covers an area or a line with a camera run.",
-                                )
-                            },
-                            confirmButton = {
-                                Column {
-                                    patternWanted.forEach { kind ->
-                                        TextButton(
-                                            enabled = kind.enabled,
-                                            onClick = {
-                                                patternWanted = emptyList()
-                                                addMissionItem(
-                                                    kind.id,
-                                                    "Adding ${kind.label.lowercase()}",
-                                                    placeAt(),
-                                                    insertAfter(selected, allItems),
-                                                )
-                                            },
-                                        ) { Text(kind.label) }
-                                    }
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { patternWanted = emptyList() }) { Text("Cancel") }
-                            },
-                        )
-                    }
-
-                    if (layer == PlanLayer.Fence && !support.fenceRefused) FilledTonalButton(enabled = support.fence, onClick = {
-                        val at = placeAt()
-                        val next = circles.size
-                        onBridge("Adding circle", then = { selected = MapHit.Circle(next) }) {
-                            at?.let { fenceWindow(visible, it) }?.let { (topLeft, bottomRight) -> FenceBridge.addInclusionCircle(topLeft, bottomRight) } ?: false
-                        }
-                    }) { Text("Circular fence") }
-
-                    if (layer == PlanLayer.Fence && !support.fenceRefused) FilledTonalButton(enabled = support.fence, onClick = {
-                        if (breach != null) {
-                            editingBreach = true
-                        } else {
-                            val at = placeAt()
-                            onBridge("Adding breach return point") {
-                                at != null && FenceBridge.setBreachReturn(at)
-                            }
-                        }
-                    }) { Text(if (breach == null) "Add breach return point" else "Breach return point") }
-
-                    breach?.takeIf { editingBreach }?.let { current ->
-                        BreachReturnDialog(
-                            breach = current,
-                            onDismiss = { editingBreach = false },
-                            onAltitude = { shown ->
-                                editingBreach = false
-                                onBridge("Setting breach return altitude") { FenceBridge.setBreachAltitude(current.altitudePath, shown) }
-                            },
-                            onRemove = {
-                                editingBreach = false
-                                onBridge("Removing breach return point") { FenceBridge.clearBreachReturn() }
-                            },
-                        )
-                    }
-
-                    if (layer == PlanLayer.Rally) FilledTonalButton(enabled = support.rally, onClick = {
-                        val at = placeAt()
-                        val next = rally.size
-                        onBridge("Adding rally", then = { selected = MapHit.Rally(next) }) {
-                            at != null && FenceBridge.addRallyPoint(at.latitude, at.longitude)
-                        }
-                    }) { Text("Add rally point") }
-                    if (layer == PlanLayer.Mission && kindOffered(insertable, KIND_TAKEOFF)) FilledTonalButton(
-                        enabled = kindAllows(insertable, KIND_TAKEOFF),
-                        onClick = {
-                            val at = placeAt()
-                            addMissionItem(
-                                "takeoff",
-                                "Adding a takeoff",
-                                at,
-                                if (takeoffMissing(items)) {
-                                    BEFORE_THE_REST
-                                } else {
-                                    insertAfter(selected, allItems)
-                                },
-                            )
-                        },
-                    ) { Text("Takeoff") }
-                    if (layer == PlanLayer.Mission) FilledTonalButton(
-                        enabled = kindAllows(insertable, KIND_LAND),
-                        onClick = {
-                            val at = placeAt()
-                            addMissionItem(KIND_LAND, "Adding a landing", at, insertAfter(selected, allItems))
-                        },
-                    ) { Text(kindLabel(insertable, KIND_LAND)) }
-
-                    if (layer == PlanLayer.Mission && !summaryHidden) blockedReason(insertable)?.let {
-                        PaletteNote(it)
-                    }
-
-                    CenterMenu(
-                        launch = allItems.firstOrNull { it.sequence == 0 }?.let { TrackPoint(it.latitude, it.longitude) },
-                        myLocation = operator,
-                        onFit = { points ->
-                            follow = false
-                            fitOnly = points
-                            fitRequest += 1
-                        },
-                        onCentre = { point ->
-                            follow = false
-                            centreOn = point
-                            centreRequest += 1
-                        },
-                        missionPoints = missionFitPoints(allItems),
-                    )
-
-                    MapTypeMenu { shownStyle = it }
-
-                    onClear?.let { clear ->
-                        TextButton(onClick = {
-                            if (!clearArmed) {
-                                clearArmed = true
-                            } else {
-                                clearArmed = false
-                                selected = null
-                                clear()
-                            }
-                        }) { Text(if (clearArmed) "Clear everything" else "Clear") }
-                    }
-
                 }
 
                 tracing?.let { (target, points) ->
@@ -1438,14 +1319,7 @@ internal fun PlanMapContent(
                     }
                 }
 
-                if (profileShown(layer, profile)) {
-                    FilterChip(
-                        selected = missionStatusShown,
-                        onClick = { onBridge { setOk(SHOW_MISSION_ITEM_STATUS, settingJson((!missionStatusShown).toString())) } },
-                        label = { Text("Terrain profile") },
-                    )
-                }
-                if (missionStatusShown && profileShown(layer, profile)) {
+                if (missionStatusShown && profileShown(layer, profile) && itemCount > 0) {
                     TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
                         allItems.firstOrNull { it.sequence == sequence }?.let { selected = MapHit.Waypoint(it.index) }
                     }
@@ -1467,7 +1341,6 @@ internal fun PlanMapContent(
                 }
             }
         }
-    }
     }
     editingItem?.let { item ->
         itemEditor?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, { editingItem = null }) {
@@ -1544,13 +1417,13 @@ private fun MapTypeMenu(onStyle: (String) -> Unit) {
     var listed by remember { mutableStateOf<MapTypes?>(null) }
     val scope = rememberCoroutineScope()
     Box {
-        FilledTonalButton(onClick = {
+        RailButton(R.drawable.plan_layers, "Map", onClick = {
             scope.launch {
                 listed = withContext(Dispatchers.Default) { mapTypes(runCatching { JSONObject(QGCBridge.get(MAP_TYPES_VIEW)) }.getOrNull()) }
                 open = true
             }
-        }) { Text("Map type") }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        })
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, offset = RAIL_MENU_OFFSET) {
             listed?.types?.forEach { type ->
                 DropdownMenuItem(
                     text = { Text(type) },
@@ -1629,6 +1502,10 @@ fun CenterMenu(
     launchLabel: String = "Launch",
     missionPoints: List<TrackPoint>? = null,
     onFit: (List<TrackPoint>?) -> Unit = {},
+    following: Boolean? = null,
+    onFollow: () -> Unit = {},
+    menuOffset: DpOffset = DpOffset.Zero,
+    anchor: @Composable (open: () -> Unit) -> Unit = { open -> FilledTonalButton(onClick = open) { Text("Center map") } },
 ) {
     var open by remember { mutableStateOf(false) }
     var asking by remember { mutableStateOf(false) }
@@ -1637,8 +1514,16 @@ fun CenterMenu(
         ?.takeIf { isPlottable(it.latitude, it.longitude) }
         ?.let { TrackPoint(it.latitude, it.longitude) }
     Box {
-        FilledTonalButton(onClick = { open = true }) { Text("Center map") }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        anchor { open = true }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, offset = menuOffset) {
+            following?.let { on ->
+                DropdownMenuItem(
+                    text = { Text("Follow vehicle") },
+                    enabled = vehicle != null,
+                    trailingIcon = { if (on) Icon(Icons.Filled.Check, contentDescription = null) },
+                    onClick = { open = false; onFollow() },
+                )
+            }
             missionPoints?.let { points ->
                 DropdownMenuItem(text = { Text("Mission") }, onClick = { open = false; onFit(points) })
                 DropdownMenuItem(text = { Text("All items") }, onClick = { open = false; onFit(null) })
@@ -1686,12 +1571,10 @@ private fun StatTile(label: String, value: String) {
     }
 }
 
-internal enum class PlanLayer(val label: String) { Mission("Mission"), Fence("Fence"), Rally("Rally") }
-
-internal fun layerSubtitle(layer: PlanLayer, missionItems: Int, rallyPoints: Int): String = when (layer) {
-    PlanLayer.Mission -> "$missionItems items"
-    PlanLayer.Rally -> "$rallyPoints points"
-    PlanLayer.Fence -> ""
+internal enum class PlanLayer(val label: String, @DrawableRes val icon: Int) {
+    Mission("Mission", R.drawable.plan_route),
+    Fence("Fence", R.drawable.plan_shield),
+    Rally("Rally", R.drawable.plan_flag),
 }
 
 internal fun ownerOf(hit: MapHit?): String? = when (hit) {

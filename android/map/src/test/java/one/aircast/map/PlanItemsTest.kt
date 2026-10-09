@@ -301,7 +301,7 @@ class AddingAfterTextTest {
 
     @Test
     fun `the line names the sequence the operator sees on the marker`() {
-        assertEquals("Adding after #5", addingAfterText(MapHit.Waypoint(2), plan))
+        assertEquals("Tap the map to add after #5", addingAfterText(MapHit.Waypoint(2), plan))
     }
 
     @Test

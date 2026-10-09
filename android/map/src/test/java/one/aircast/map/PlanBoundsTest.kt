@@ -229,4 +229,14 @@ class FitsPlanOnEntryTest {
         org.junit.Assert.assertFalse("a mission fitted on entry wins", centersOnVehicleAtEntry(alreadyCentred = false, vehicleKnown = true, fitsRequested = 1))
         org.junit.Assert.assertFalse(centersOnVehicleAtEntry(alreadyCentred = false, vehicleKnown = false, fitsRequested = 0))
     }
+
+    @Test
+    fun `the clear window squares off a rotated view so a new fence lands where the operator can see it`() {
+        val rotated = listOf(TrackPoint(41.002, 44.0), TrackPoint(41.001, 44.003), TrackPoint(40.998, 44.002), TrackPoint(40.999, 43.999))
+
+        assertEquals(
+            listOf(TrackPoint(41.002, 43.999), TrackPoint(41.002, 44.003), TrackPoint(40.998, 44.003), TrackPoint(40.998, 43.999)),
+            clearWindow(rotated),
+        )
+    }
 }

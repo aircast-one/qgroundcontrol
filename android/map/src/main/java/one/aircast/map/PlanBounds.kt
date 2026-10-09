@@ -77,3 +77,11 @@ fun centersOnVehicleAtEntry(alreadyCentred: Boolean, vehicleKnown: Boolean, fits
     !alreadyCentred && vehicleKnown && fitsRequested == 0
 
 fun stillFirstRead(firstRead: Boolean, planRead: Boolean): Boolean = firstRead && !planRead
+
+fun clearWindow(corners: List<TrackPoint>): List<TrackPoint> {
+    val north = corners.maxOf { it.latitude }
+    val south = corners.minOf { it.latitude }
+    val west = corners.minOf { it.longitude }
+    val east = corners.maxOf { it.longitude }
+    return listOf(TrackPoint(north, west), TrackPoint(north, east), TrackPoint(south, east), TrackPoint(south, west))
+}
