@@ -15,7 +15,7 @@ func sectionMatches(_ rows: ParameterRows, _ search: String) -> Bool {
 }
 
 func factFromParameter(_ name: String, _ json: JSON) -> Fact? {
-    guard json["kind"].string == "fact" else { return nil }
+    guard json["kind"].string == "fact", !json["name"].string.isEmpty else { return nil }
     var fact = Qgc.factAt(parameterPath(name), json)
     fact.name = name
     return fact

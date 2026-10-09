@@ -286,7 +286,8 @@ struct SetupScreen: View {
     private func follow(_ requested: String?, _ components: [SetupComponent]) async {
         guard let requested, hasVehicle, !components.isEmpty else { return }
         if requested == SETUP_PARAMETERS_PAGE {
-            parametersSearch = ""
+            parametersSearch = navigation.parametersSearch
+            navigation.parametersSearch = ""
             parametersOpen = true
         } else if let found = components.first(where: { $0.name == requested }) {
             openComponent = found

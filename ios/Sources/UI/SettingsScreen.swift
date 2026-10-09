@@ -270,7 +270,7 @@ func matchesIn(_ pageTitle: String, _ sections: [SettingsSectionRows], _ needle:
         }
         return hits.isEmpty
             ? nil
-            : SettingsSectionRows(title: "\(pageTitle) \u{203a} \(section.title)", group: section.group, note: "", blocks: [SettingsBlock(title: "", facts: hits)])
+            : SettingsSectionRows(title: section.title.isBlank || section.title.caseInsensitiveCompare(pageTitle) == .orderedSame ? pageTitle : "\(pageTitle) \u{203a} \(section.title)", group: section.group, note: "", blocks: [SettingsBlock(title: "", facts: hits)])
     }
 }
 
@@ -325,21 +325,16 @@ struct SettingsScreen: View {
     let open: String?
     let onOpen: (String) -> Void
     let onClose: () -> Void
+    let heading: PageHeadingSlot
     var onOpenSetup: (String?) -> Void = { _ in }
-    @State private var heading = PageHeadingSlot()
 
     var body: some View {
         let current = everyPage.first { $0.title == open }
         Group {
             if let current {
-                VStack(spacing: 0) {
-                    PageTopBar(title: heading.value?.title ?? pageTitle(current.title), backLabel: "Back") {
-                        if let back = heading.value?.back { back() } else { onClose() }
-                    }
-                    SettingsPageBody(page: current)
-                        .id(current.title)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                }
+                SettingsPageBody(page: current)
+                    .id(current.title)
+                    .frame(maxHeight: .infinity, alignment: .top)
             } else {
                 SettingsTab(group: group, everyPage: everyPage, onOpenSetup: onOpenSetup, onOpen: onOpen)
                     .id(group)
@@ -468,6 +463,9 @@ struct SettingsSearch: View {
     var onOpenSetup: (String?) -> Void = { _ in }
     let onOpen: (String) -> Void
     @QgcPath(SETUP) private var setupJson: JSON?
+    @Environment(AppNavigationState.self) private var navigation
+    @HasVehicle private var hasVehicle
+    @AdvancedUiShown private var advanced
     @State private var pages: [SettingsPageEntry] = []
     @State private var hits: [SettingsSectionRows] = []
     @StateObject private var watch = PagesWatch()
@@ -481,14 +479,17 @@ struct SettingsSearch: View {
     var body: some View {
         let searching = !query.isBlank
         let setupHits = setupSearchHits(setupComponents(setupJson), query)
+        let pilotHits = pilotSearchHits(query)
         let pageHits = pages.filter { pageMatches($0, query) }
         let pagePaths = searching ? pages.map { settingsPagePath($0.title) } : []
+        let searchesParameters = hasVehicle && advanced
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if searching {
-                    if hits.isEmpty && pageHits.isEmpty && setupHits.isEmpty {
+                    if hits.isEmpty && pageHits.isEmpty && setupHits.isEmpty && pilotHits.isEmpty {
                         FootNote(text: "No settings match \u{201c}\(query.trimmed)\u{201d}.")
                     } else {
+                        if !pilotHits.isEmpty { PilotSettings(settings: pilotHits) }
                         if !setupHits.isEmpty { SectionHeader(text: AIRCRAFT_SETUP) }
                         ForEach(setupHits, id: \.name) { component in
                             SetupRow(title: sentenceCase(component.name), onClick: { onOpenSetup(component.name) }, icon: setupIcon(component.known, className: component.className))
@@ -503,6 +504,9 @@ struct SettingsSearch: View {
                                 FactRow(fact: fact)
                             }
                         }
+                    }
+                    if searchesParameters {
+                        SetupRow(title: "Search parameters for \u{201c}\(query.trimmed)\u{201d}", status: "", onClick: searchParameters, icon: .search)
                     }
                 }
             }
@@ -527,6 +531,11 @@ struct SettingsSearch: View {
                 }
             }
         }
+    }
+
+    private func searchParameters() {
+        navigation.parametersSearch = query.trimmed
+        onOpenSetup(SETUP_PARAMETERS_PAGE)
     }
 }
 

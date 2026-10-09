@@ -7,6 +7,7 @@ final class AppNavigationState {
     var aircraftRequested = false
     var settingsShowing: SettingsGroup?
     var setupPage: String?
+    var parametersSearch = ""
     var addLinkRequested = false
     var blockedReason: String?
 

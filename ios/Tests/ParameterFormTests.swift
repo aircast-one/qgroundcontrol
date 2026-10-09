@@ -62,7 +62,7 @@ final class ParameterFormTests: XCTestCase {
     }
 
     func testAParameterWithNoDescriptionIsLabelledByItsName() {
-        let fact = factFromParameter("MNT_ANGMIN_PAN", JSON.parse(#"{"kind":"fact","name":"","shortDescription":"","valueString":"0"}"#))!
+        let fact = factFromParameter("MNT_ANGMIN_PAN", JSON.parse(#"{"kind":"fact","name":"MNT_ANGMIN_PAN","shortDescription":"","valueString":"0"}"#))!
         XCTAssertEqual(fact.name, "MNT_ANGMIN_PAN")
         XCTAssertEqual(fact.title, "MNT_ANGMIN_PAN")
     }
@@ -75,6 +75,10 @@ final class ParameterFormTests: XCTestCase {
         XCTAssertNil(factFromParameter("NOPE", JSON.parse(#"{"kind":"value","value":null}"#)))
         XCTAssertNil(factFromParameter("NOPE", JSON.parse(#"{"kind":"null"}"#)))
         XCTAssertNil(factFromParameter("NOPE", JSON.parse("{}")))
+        XCTAssertNil(
+            factFromParameter("RTL_RETURN_ALT", JSON.parse(#"{"kind":"fact","name":"","shortDescription":"","valueString":"0","value":0}"#)),
+            "the core answers a parameter it does not have with an unnamed 0, which must not pass for a value"
+        )
     }
 
     func testAnEmptyErrorFromQgcMeansTheValueIsAcceptable() {

@@ -10,6 +10,7 @@ private let SIDE_PANEL_MIN_WIDTH_DP: CGFloat = 840
 let SUMMARY_MAX_FRACTION: CGFloat = 0.74
 private let WAITING_FOR_QGC = "Waiting for QGroundControl"
 private let CHECKING_TERRAIN = "Checking the terrain\u{2026}"
+private let FAR_FROM_AIRCRAFT_TEXT = "The aircraft is not where this route begins. Move the route so it starts at the aircraft, or upload it as it is."
 private let VIEW_CORNERS = 4
 private let PATTERN_KINDS: Set = [KIND_SURVEY, KIND_CORRIDOR, KIND_STRUCTURE]
 private let FALLBACK_FENCE_DEGREES = 0.002
@@ -146,6 +147,7 @@ struct PlanMapContent: View {
     @State private var pinnedHeight: CGFloat = 0
     @State private var headerHeight: CGFloat = 0
     @State private var uploadAsk: UploadGate?
+    @State private var farAsk = false
     @State private var patternWanted: [MissionKind] = []
     @State private var visible: [TrackPoint] = []
     @State private var importInto: ShapeTarget?
@@ -241,7 +243,7 @@ struct PlanMapContent: View {
         PlanBar(
             upload: upload,
             stats: planStats(itemCount, allItems, missionSummaryView),
-            warning: terrainWarning(terrainHits.count, collidingSimple.union(collidingPatterns).count),
+            warning: farText ?? terrainWarning(terrainHits.count, collidingSimple.union(collidingPatterns).count),
             note: itemCount > 0 && terrainView?["checking"].bool == true ? CHECKING_TERRAIN : nil
         )
     }
@@ -361,6 +363,8 @@ struct PlanMapContent: View {
     private var uploadText: String { uploadLabel(planOffline, planSyncing, planDirty, planHasItems) }
     private var uploadEnabled: Bool { planHasItems && !planOffline && !planSyncing }
     private var uploadBlocked: Bool { syncRefusal(vehicleSyncState(planOffline, planSyncing), "upload to") != nil }
+    private var aircraftAt: TrackPoint? { isPlottable(latitude, longitude) && !planOffline ? TrackPoint(latitude, longitude) : nil }
+    private var farText: String? { farFromAircraft(aircraftAt, allItems).map { startsFromAircraft($0, imperial: missionSummaryView?["imperial"].bool == true) } }
 
     private var selectedWaypointIndex: Int? {
         if case .Waypoint(let index) = selected { return index }
@@ -1120,6 +1124,25 @@ struct PlanMapContent: View {
                 Button("Replace", action: download)
             }
         }
+        if farAsk, let aircraftAt {
+            PlanDialog(title: farText ?? "", onDismiss: { farAsk = false }) {
+                Text(FAR_FROM_AIRCRAFT_TEXT)
+            } buttons: {
+                Button("Upload anyway") {
+                    farAsk = false
+                    sendUpload()
+                }
+                Button("Move it to the aircraft") {
+                    farAsk = false
+                    onBridge("Moving the route to the aircraft", done: "Route moved to the aircraft", then: {
+                        follow = false
+                        centreOn = aircraftAt
+                        centreRequest += 1
+                    }) { repositionMission(aircraftAt) }
+                }
+                .buttonStyle(.filled)
+            }
+        }
         if let gate = uploadAsk {
             PlanDialog(title: uploadHeading(gate, vehicleChoices(vehiclesJson)), onDismiss: { uploadAsk = nil }) {
                 Text(gate.refusal)
@@ -1292,6 +1315,10 @@ struct PlanMapContent: View {
     }
 
     private func startUpload() {
+        if farFromAircraft(aircraftAt, allItems) != nil { farAsk = true } else { sendUpload() }
+    }
+
+    private func sendUpload() {
         if let refusal = syncRefusal(vehicleSyncState(planOffline, planSyncing), "upload to") {
             return say(refusal)
         }

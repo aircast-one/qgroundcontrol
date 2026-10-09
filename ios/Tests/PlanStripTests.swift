@@ -82,4 +82,19 @@ final class PlanStripTests: XCTestCase {
         XCTAssertEqual(5, appendSequence(items))
         XCTAssertEqual(0, appendSequence([]))
     }
+
+    func testARouteThatBeginsMoreThanAKilometreFromTheAircraftIsFlaggedWithTheDistance() {
+        let home = MissionItem(index: 0, sequence: 0, latitude: 37.0, longitude: -122.0, command: "Home", selected: false, altitude: .nan)
+        let takeoff = MissionItem(index: 1, sequence: 1, latitude: 39.237, longitude: -123.149, command: "Takeoff", selected: false, altitude: 50.0)
+        let zurich = TrackPoint(47.397, 8.545)
+        XCTAssertEqual(TrackPoint(39.237, -123.149), routeStart([home, takeoff]))
+        XCTAssertNil(farFromAircraft(TrackPoint(39.2371, -123.1491), [home, takeoff]))
+        XCTAssertNil(farFromAircraft(nil, [home, takeoff]))
+        XCTAssertEqual("Starts 9,", String(startsFromAircraft(farFromAircraft(zurich, [home, takeoff])!, imperial: false).prefix(9)))
+    }
+
+    func testDistancesReadInTheOperatorsUnitsCoarserAsTheyGrow() {
+        XCTAssertEqual(["850 m", "1.5 km", "9,412 km"], [850.0, 1500.0, 9_412_000.0].map { distanceWords($0, imperial: false) })
+        XCTAssertEqual(["492 ft", "1.9 mi", "5,848 mi"], [150.0, 3000.0, 9_412_000.0].map { distanceWords($0, imperial: true) })
+    }
 }

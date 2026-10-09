@@ -269,7 +269,7 @@ struct AircastShell: View {
             Group {
                 switch tab {
                 case .Plan:
-                    PlanTab().background(ShellBackground().ignoresSafeArea())
+                    PlanTab(onFly: { tab = .Fly }).background(ShellBackground().ignoresSafeArea())
                 case .Analyze:
                     AnalyzeScreen(page: analyzePage, onSelect: { analyzePage = $0 })
                 case .Fly:

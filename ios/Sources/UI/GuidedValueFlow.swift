@@ -146,21 +146,7 @@ struct GuidedValueFlow: View {
             },
             onCancel: onClose
         ) {
-            GuidedStepper(value: open.target, label: open.reading.label, unit: unit, minimum: open.range.lowerBound, maximum: open.range.upperBound, onValue: settle)
-            if kind.presets {
-                GuidedPresets(value: open.target, minimum: open.range.lowerBound, maximum: open.range.upperBound, unit: unit, onValue: settle)
-            }
-            Slider(
-                value: Binding(get: { open.target }, set: { open.target = guidedRounded($0, unit) }),
-                in: open.range,
-                onEditingChanged: { editing in if !editing { open.settled = open.target } }
-            )
-            if kind.quickPicks {
-                GuidedQuickPicks(value: open.target, minimum: open.range.lowerBound, maximum: open.range.upperBound, unit: unit, onValue: settle)
-            }
-            if let hint = rangeLabel(open.range.lowerBound, open.range.upperBound, unit) {
-                RangeHint(text: hint)
-            }
+            GuidedValueControls(open: open, settle: settle)
         }
         .onChange(of: ObjectIdentifier(open)) { probe = nil }
         .task(id: ProbeKey(open: ObjectIdentifier(open), settled: open.settled)) {
@@ -169,4 +155,38 @@ struct GuidedValueFlow: View {
             if !Task.isCancelled { probe = read }
         }
     }
+}
+
+private struct GuidedValueControls: View {
+    let open: OpenGuidedValue
+    let settle: (Double) -> Void
+    @Environment(\.LocalGuidedCompact) private var compact
+
+    var body: some View {
+        let kind = open.kind
+        let unit = open.reading.unit
+        let range = rangeLabel(open.range.lowerBound, open.range.upperBound, unit)
+        GuidedStepper(value: open.target, label: guidedLabel(open.reading.label, range, compact: compact), unit: unit, minimum: open.range.lowerBound, maximum: open.range.upperBound, onValue: settle)
+        if kind.presets {
+            GuidedPresets(value: open.target, minimum: open.range.lowerBound, maximum: open.range.upperBound, unit: unit, onValue: settle)
+        }
+        if !compact {
+            Slider(
+                value: Binding(get: { open.target }, set: { open.target = guidedRounded($0, unit) }),
+                in: open.range,
+                onEditingChanged: { editing in if !editing { open.settled = open.target } }
+            )
+        }
+        if kind.quickPicks {
+            GuidedQuickPicks(value: open.target, minimum: open.range.lowerBound, maximum: open.range.upperBound, unit: unit, onValue: settle)
+        }
+        if !compact, let range {
+            RangeHint(text: range)
+        }
+    }
+}
+
+func guidedLabel(_ label: String, _ range: String?, compact: Bool) -> String {
+    guard compact, let range else { return label }
+    return [label, range].filter { !$0.isBlank }.joined(separator: " \u{00b7} ")
 }

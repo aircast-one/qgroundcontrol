@@ -3,6 +3,7 @@ import UIKit
 
 private let NOTICE_MILLIS = 4000
 private let HEADER_ALPHA = 0.94
+private let FLY_LABEL = "Fly"
 private let PILL_HEIGHT: CGFloat = 40
 private let HEADER_CORNER: CGFloat = 20
 
@@ -18,16 +19,36 @@ let LOAD_VEHICLE_PLAN = "core.plan.loadVehiclePlan"
 let KEEP_CURRENT_PLAN = "core.plan.keepCurrentPlan"
 
 struct VehicleChangePrompt: Equatable {
-    let title: String
-    let text: String
-    let loadText: String
-    let keepText: String
+    let connected: Bool
+    let dirty: Bool
+    let aircraftItems: Int?
 }
 
 func vehicleChangePrompt(_ view: JSON?) -> VehicleChangePrompt? {
     guard let prompt = view?["vehicleChangePrompt"], prompt.object != nil else { return nil }
-    return VehicleChangePrompt(title: prompt["title"].string, text: prompt["text"].string, loadText: prompt["loadText"].string, keepText: prompt["keepText"].string)
+    let items = prompt["aircraftItems"].int(0)
+    return VehicleChangePrompt(connected: prompt["connected"].bool, dirty: prompt["dirty"].bool, aircraftItems: items > 0 ? items : nil)
 }
+
+struct PromptCopy: Equatable {
+    let title: String
+    let text: String
+    let primary: String
+    let secondary: String
+    let primaryKeeps: Bool
+}
+
+func promptCopy(_ prompt: VehicleChangePrompt) -> PromptCopy {
+    let stored = prompt.aircraftItems.map { " (\(itemsWord($0)))" } ?? ""
+    return switch (prompt.connected, prompt.dirty) {
+    case (true, true): PromptCopy(title: "Aircraft connected", text: "Keep the route you drew, or replace it with the route stored on the aircraft\(stored)?", primary: "Keep my route", secondary: "Load the aircraft's route", primaryKeeps: true)
+    case (true, false): PromptCopy(title: "Aircraft connected", text: "Load the route stored on the aircraft\(stored), or keep this one?", primary: "Load the aircraft's route", secondary: "Keep this route", primaryKeeps: false)
+    case (false, true): PromptCopy(title: "Aircraft disconnected", text: "Keep the route you were working on?", primary: "Keep my route", secondary: "Discard it", primaryKeeps: true)
+    case (false, false): PromptCopy(title: "Aircraft disconnected", text: "Keep this route, or start a new plan?", primary: "Keep this route", secondary: "Start a new plan", primaryKeeps: true)
+    }
+}
+
+private func itemsWord(_ count: Int) -> String { count == 1 ? "1 item" : "\(count) items" }
 
 func applyAltitudePrompt(_ view: JSON?) -> AltitudePrompt? {
     guard let prompt = view?["applyAltitudePrompt"], prompt.object != nil else { return nil }
@@ -38,6 +59,7 @@ struct CorePromptChoice: Equatable {
     let label: String
     let invoke: String
     var cancel = false
+    var preferred = false
 }
 
 struct CorePrompt: Equatable {
@@ -48,9 +70,11 @@ struct CorePrompt: Equatable {
 
 func corePrompt(_ view: JSON?) -> CorePrompt? {
     let vehicle = vehicleChangePrompt(view).map { prompt in
-        CorePrompt(title: sentenceCase(prompt.title), text: prompt.text, choices: [
-            CorePromptChoice(label: sentenceCase(prompt.loadText), invoke: LOAD_VEHICLE_PLAN),
-            CorePromptChoice(label: sentenceCase(prompt.keepText), invoke: KEEP_CURRENT_PLAN),
+        let copy = promptCopy(prompt)
+        let (primary, secondary) = copy.primaryKeeps ? (KEEP_CURRENT_PLAN, LOAD_VEHICLE_PLAN) : (LOAD_VEHICLE_PLAN, KEEP_CURRENT_PLAN)
+        return CorePrompt(title: copy.title, text: copy.text, choices: [
+            CorePromptChoice(label: copy.secondary, invoke: secondary),
+            CorePromptChoice(label: copy.primary, invoke: primary, preferred: true),
         ])
     }
     return vehicle ?? applyAltitudePrompt(view).map { prompt in
@@ -99,10 +123,12 @@ private final class TopmostPrompter {
         let alert = CorePromptAlert(title: prompt.title, message: prompt.text, preferredStyle: .alert)
         alert.prompt = prompt
         prompt.choices.forEach { choice in
-            alert.addAction(UIAlertAction(title: choice.label, style: choice.cancel ? .cancel : .default) { [weak self] _ in
+            let action = UIAlertAction(title: choice.label, style: choice.cancel ? .cancel : .default) { [weak self] _ in
                 self?.answer(prompt)
                 offMain { Qgc.invoke(choice.invoke) }
-            })
+            }
+            alert.addAction(action)
+            if choice.preferred { alert.preferredAction = action }
         }
         alert.onGone = { [weak self, weak alert] in self?.gone(alert) }
         top.present(alert, animated: true)
@@ -153,6 +179,7 @@ private enum PlanUndoTracking {
 }
 
 struct PlanTab: View {
+    var onFly: () -> Void = {}
     @Environment(\.theme) private var theme
     @QgcPath("view.plan") private var planStatus
     @State private var notice: String?
@@ -355,13 +382,13 @@ struct PlanTab: View {
         let upload = bar.upload
         if upload.shown {
             PlanActionPill(
-                label: upload.label,
-                icon: upload.done ? .checkCircle : bar.warning != nil ? .warning : .upload,
+                label: upload.done ? FLY_LABEL : upload.label,
+                icon: upload.done ? .flight : bar.warning != nil ? .warning : .upload,
                 enabled: upload.enabled,
                 container: upload.done ? theme.aircast.success : upload.emphasised ? theme.colors.primary : theme.colors.surfaceContainerHighest,
                 content: upload.done ? theme.aircast.onSuccess : upload.emphasised ? theme.colors.onPrimary : theme.colors.onSurface,
                 progress: planIsSyncing(planStatus) ? planSyncProgress(planStatus) : nil,
-                onClick: upload.onClick
+                onClick: upload.done ? onFly : upload.onClick
             )
         } else if planContainsItems(planStatus) {
             PlanActionPill(

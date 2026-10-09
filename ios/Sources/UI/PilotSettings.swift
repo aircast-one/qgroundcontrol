@@ -3,7 +3,7 @@ import SwiftUI
 struct PilotSetting: Equatable {
     let label: String
     let parameters: [String]
-    let section: String
+    var section: String
     let hint: String
     var whenUnlimited: String? = nil
 }
@@ -35,6 +35,14 @@ func pilotSettings(_ group: SettingsGroup) -> [PilotSetting] {
     }
 }
 
+func pilotSearchHits(_ query: String) -> [PilotSetting] {
+    let wanted = query.trimmed.lowercased()
+    guard !wanted.isEmpty else { return [] }
+    return SettingsGroup.allCases
+        .flatMap { group in pilotSettings(group).map { setting in withChanges(setting) { $0.section = "\(group.title) \u{203a} \(setting.section)" } } }
+        .filter { setting in ([setting.label, setting.section] + setting.parameters).contains { $0.lowercased().contains(wanted) } }
+}
+
 struct ShownPilotSetting: Equatable {
     let setting: PilotSetting
     let fact: Fact
@@ -57,22 +65,31 @@ func firstReported(_ setting: PilotSetting, _ reported: @escaping (String) -> Fa
 }
 
 private struct ShownKey: Equatable {
-    let group: SettingsGroup
+    let settings: [PilotSetting]
     let setup: JSON?
 }
 
 struct PilotSettings: View {
-    let group: SettingsGroup
+    let settings: [PilotSetting]
     @HasVehicle private var hasVehicle
     @QgcPath(SETUP) private var setup
     @State private var shown: [ShownPilotSetting] = []
 
+    init(group: SettingsGroup) {
+        settings = pilotSettings(group)
+    }
+
+    init(settings: [PilotSetting]) {
+        self.settings = settings
+    }
+
     var body: some View {
-        let settings = pilotSettings(group)
         if settings.isEmpty {
             EmptyView()
         } else if !hasVehicle {
-            OfflinePilotSettings(settings: settings)
+            OfflinePilotSettings(settings: settings, note: OFFLINE_PILOT_NOTE, offersLink: true)
+        } else if !parametersReady(setup) {
+            OfflinePilotSettings(settings: settings, note: LOADING_PILOT_NOTE, offersLink: false)
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(groupedInOrder(shown) { $0.setting.section }, id: \.key) { section in
@@ -82,7 +99,8 @@ struct PilotSettings: View {
                     }
                 }
             }
-            .task(id: ShownKey(group: group, setup: setup)) {
+            .task(id: ShownKey(settings: settings, setup: setup)) {
+                let settings = settings
                 shown = await offMain {
                     settings.compactMap { setting in
                         firstReported(setting) { parameterFact($0) }.map { ShownPilotSetting(setting: setting, fact: $0) }
@@ -94,7 +112,9 @@ struct PilotSettings: View {
 }
 
 let OFFLINE_PILOT_NOTE = "Connect the aircraft to see and change these."
+let LOADING_PILOT_NOTE = "Loading these from the aircraft\u{2026}"
 private let OFFLINE_VALUE = "\u{2014}"
+private let NOTE_ROW_MIN_HEIGHT: CGFloat = 48
 
 func pilotSections(_ settings: [PilotSetting]) -> [(key: String, value: [PilotSetting])] {
     groupedInOrder(settings) { $0.section }
@@ -102,20 +122,25 @@ func pilotSections(_ settings: [PilotSetting]) -> [(key: String, value: [PilotSe
 
 private struct OfflinePilotSettings: View {
     let settings: [PilotSetting]
+    let note: String
+    let offersLink: Bool
     @Environment(AppNavigationState.self) private var navigation
     @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(OFFLINE_PILOT_NOTE)
+                Text(note)
                     .font(.bodyMedium)
                     .foregroundStyle(theme.colors.onSurfaceVariant)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Button("Add a link") { navigation.settingsPage = CONNECTIONS_PAGE }
-                    .buttonStyle(.borderless)
+                if offersLink {
+                    Button("Add a link") { navigation.settingsPage = CONNECTIONS_PAGE }
+                        .buttonStyle(.borderless)
+                }
             }
             .padding(EdgeInsets(top: Space.s3, leading: Space.s4, bottom: 0, trailing: Space.s2))
+            .frame(minHeight: NOTE_ROW_MIN_HEIGHT)
             ForEach(pilotSections(settings), id: \.key) { section in
                 SectionHeader(text: section.key)
                 ForEach(section.value, id: \.label) { setting in

@@ -58,6 +58,7 @@ final class InstrumentDetailTests: XCTestCase {
         XCTAssertEqual(signalLostTitle(7, failsafe: home), "Signal lost \u{00b7} 7 s \u{00b7} Return home in 3 s")
         XCTAssertEqual(signalLostTitle(12, failsafe: home), "Signal lost \u{00b7} 12 s \u{00b7} Return home")
         XCTAssertEqual(signalLostTitle(7, failsafe: LossFailsafe(action: "No failsafe", after: nil)), "Signal lost \u{00b7} 7 s \u{00b7} No failsafe")
+        XCTAssertEqual(signalLostTitle(2, failsafe: home, compact: true), "Lost 2 s \u{00b7} Return home in 8 s", "the portrait chip keeps the countdown and shortens the rest")
     }
 
     func testTheCoresSpokenLinesAreReadInOrderAfterTheLastOneHeard() {

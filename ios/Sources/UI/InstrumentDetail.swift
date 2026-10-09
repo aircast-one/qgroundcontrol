@@ -60,8 +60,16 @@ func failsafeCountdown(_ seconds: Int64?, _ failsafe: LossFailsafe?) -> String? 
     return left.map { "\(failsafe.action) in \(silenceDuration($0))" } ?? failsafe.action
 }
 
-func signalLostTitle(_ seconds: Int64?, failsafe: LossFailsafe? = nil) -> String {
-    [SIGNAL_LOST, seconds.map(silenceDuration), failsafeCountdown(seconds, failsafe)].compactMap { $0 }.joined(separator: " \u{00b7} ")
+private let LOST = "Lost"
+
+let LOST_LINK_HINT = "Point the antenna at the aircraft or move closer."
+
+func signalLostTitle(_ seconds: Int64?, failsafe: LossFailsafe? = nil, compact: Bool = false) -> String {
+    [
+        compact ? [LOST, seconds.map(silenceDuration)].compactMap { $0 }.joined(separator: " ") : SIGNAL_LOST,
+        compact ? nil : seconds.map(silenceDuration),
+        failsafeCountdown(seconds, failsafe),
+    ].compactMap { $0 }.joined(separator: " \u{00b7} ")
 }
 
 private let CRITICAL_CHARGE_STATES = 3...6

@@ -283,7 +283,7 @@ private struct TelemetryReadings: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .fixedSize()
-                .foregroundStyle(silent ? theme.colors.outline : displayColour(displayFor(displays, instrument), instrument.raw).map(argbColor) ?? theme.aircast.outdoorForeground)
+                .foregroundStyle(silent ? theme.colors.onSurfaceVariant : displayColour(displayFor(displays, instrument), instrument.raw).map(argbColor) ?? theme.aircast.outdoorForeground)
         }
     }
 
@@ -300,13 +300,11 @@ private struct TelemetryReadings: View {
                     HStack(spacing: Space.s4) { ForEach(Array(places.enumerated()), id: \.offset) { osdReading($0.element, .titleLarge, silent) } }
                 }
             }
-            .opacity(silent ? 0.45 : 1)
         } else {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: Space.s4) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium, silent) } }
                 PlanFlowRow(spacing: Space.s4, lineSpacing: 2, alignment: .center) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium, silent) } }
             }
-            .opacity(silent ? 0.45 : 1)
         }
     }
 
@@ -735,6 +733,7 @@ private struct DecisionHost<Content: View>: View {
             content()
                 .frame(maxWidth: DECISION_CARD_WIDTH)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .coordinateSpace(.named(GUIDED_PANEL_HOST))
                 .padding(Space.s3)
         } else {
             content()

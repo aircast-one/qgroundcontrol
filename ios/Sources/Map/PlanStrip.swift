@@ -41,6 +41,46 @@ func appendSequence(_ items: [MissionItem]) -> Int {
     items.max { $0.index < $1.index }?.sequence ?? HOME_ITEM
 }
 
+private let FAR_FROM_AIRCRAFT_METRES = 1000.0
+private let METRES_PER_MILE = 1609.344
+private let FEET_PER_METRE = 3.28084
+private let SHORT_MILES = 0.2
+private let WHOLE_UNITS = 10.0
+private let METRES_PER_KILOMETRE = 1000.0
+private let US = Locale(identifier: "en_US")
+let REPOSITION_MISSION = "plan.missionController.repositionMission"
+
+func routeStart(_ items: [MissionItem]) -> TrackPoint? {
+    (items.filter { $0.placed && $0.index != HOME_ITEM }.min { $0.index < $1.index } ?? items.first { $0.placed && $0.index == HOME_ITEM })
+        .map { TrackPoint($0.latitude, $0.longitude) }
+}
+
+func farFromAircraft(_ aircraft: TrackPoint?, _ items: [MissionItem]) -> Double? {
+    guard let start = routeStart(items), let aircraft else { return nil }
+    let metres = metresBetween(aircraft, start)
+    return metres > FAR_FROM_AIRCRAFT_METRES ? metres : nil
+}
+
+func distanceWords(_ metres: Double, imperial: Bool) -> String {
+    let miles = metres / METRES_PER_MILE
+    let kilometres = metres / METRES_PER_KILOMETRE
+    let grouped = { (value: Double) in Int(value.rounded()).formatted(.number.locale(US)) }
+    let tenths = { (value: Double) in String(format: "%.1f", locale: US, value) }
+    return if imperial && miles < SHORT_MILES { "\(grouped(metres * FEET_PER_METRE)) ft" }
+    else if imperial && miles < WHOLE_UNITS { "\(tenths(miles)) mi" }
+    else if imperial { "\(grouped(miles)) mi" }
+    else if metres < METRES_PER_KILOMETRE { "\(Int(metres.rounded())) m" }
+    else if kilometres < WHOLE_UNITS { "\(tenths(kilometres)) km" }
+    else { "\(grouped(kilometres)) km" }
+}
+
+func startsFromAircraft(_ metres: Double, imperial: Bool) -> String { "Starts \(distanceWords(metres, imperial: imperial)) from the aircraft" }
+
+@discardableResult
+func repositionMission(_ at: TrackPoint) -> Bool {
+    invokeOk(REPOSITION_MISSION, ["latitude": at.latitude, "longitude": at.longitude], true, true)
+}
+
 func tapCloses(_ selected: MapHit?, _ panelOpen: Bool) -> Bool {
     guard let selected else { return false }
     if case .Waypoint = selected { return panelOpen }

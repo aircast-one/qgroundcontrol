@@ -93,6 +93,14 @@ final class PilotSettingsTests: XCTestCase {
         XCTAssertEqual(pilotChoice("Enabled always RTL"), "Enabled always RTL")
     }
 
+    func testSearchFindsAPilotSettingByItsWordsAndByEitherFirmwaresParameterName() {
+        XCTAssertEqual(pilotSearchHits("return").map(\.label), ["Return-to-home altitude"])
+        XCTAssertEqual(pilotSearchHits("rtl_alt").map(\.label), ["Return-to-home altitude"])
+        XCTAssertEqual(pilotSearchHits("MPC_XY_VEL_MAX").map(\.label), ["Max horizontal speed"])
+        XCTAssertEqual(pilotSearchHits("return").map(\.section), ["Safety \u{203a} Return to home"])
+        XCTAssertTrue(pilotSearchHits("  ").isEmpty)
+    }
+
     func testOfflineSafetyStillListsItsSectionsInDjisOrderSoThePilotKnowsTheyExist() {
         XCTAssertEqual(pilotSections(pilotSettings(.Safety)).map(\.key), ["Return to home", "Flight protection", "If something goes wrong"])
     }

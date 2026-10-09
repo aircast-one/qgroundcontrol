@@ -179,7 +179,9 @@ struct DeckButton: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        let content = primary ? theme.colors.onPrimaryContainer : theme.colors.onSurface
+        let content = !entry.enabled ? theme.colors.onSurface.opacity(DISABLED_ALPHA)
+            : primary ? theme.colors.onPrimaryContainer
+            : theme.colors.onSurface
         DeckPress(entry: entry, fill: content) {
             VStack(spacing: Space.s1) {
                 Image(entry.icon)
@@ -190,9 +192,8 @@ struct DeckButton: View {
         }
         .foregroundStyle(content)
         .frame(height: DECK_BUTTON_HEIGHT)
-        .background(primary ? theme.colors.primaryContainer : theme.colors.surfaceContainerHigh)
+        .background(primary && entry.enabled ? theme.colors.primaryContainer : theme.colors.surfaceContainerHigh)
         .clipShape(RoundedRectangle(cornerRadius: Corner.large))
-        .opacity(entry.enabled ? 1 : DISABLED_ALPHA)
     }
 }
 

@@ -94,6 +94,14 @@ struct SettingsSheet: View {
         }
     }
 
+    private func pageBack() {
+        if let back = heading.value?.back { back() } else { closePage() }
+    }
+
+    private func setupBack() {
+        if !setupFromTab, let back = heading.value?.back { back() } else { closeSetup() }
+    }
+
     private func openSetup(_ component: String?) {
         navigation.setupPage = component
         setupFromTab = component != nil
@@ -163,6 +171,9 @@ struct SettingsSheet: View {
         let stacked = width < STACKED_HEADER_WIDTH
         let drilled = sheetDrilled(openPage, setupOpen)
         let tabsShown = query == nil && !drilled
+        let drilledTitle = query != nil ? nil
+            : setupOpen ? heading.value?.title ?? AIRCRAFT_SETUP
+            : openPage.map { heading.value?.title ?? pageTitle($0) }
         let showTab: (SettingsGroup) -> Void = { entry in withAnimation { pager = entry } }
         VStack(spacing: 0) {
             HStack(spacing: Space.s2) {
@@ -173,7 +184,16 @@ struct SettingsSheet: View {
                         .onAppear { searching = true }
                     Button("Cancel") { query = nil }.buttonStyle(.borderless)
                 } else {
-                    if stacked || drilled {
+                    if let drilledTitle {
+                        Button(action: setupOpen ? setupBack : pageBack) { Image(.arrowBack).frame(width: 48, height: 48) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Back")
+                        Text(drilledTitle)
+                            .font(.titleLarge)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else if stacked {
                         Text("Settings")
                             .font(.titleLarge)
                             .padding(.leading, Space.s2)
@@ -189,7 +209,8 @@ struct SettingsSheet: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Close settings")
             }
-            .padding(.horizontal, Space.s3)
+            .padding(.leading, drilledTitle != nil ? Space.s1 : Space.s3)
+            .padding(.trailing, Space.s3)
             .padding(.top, Space.s1)
             .padding(.bottom, tabsShown && !stacked ? 0 : Space.s1)
             if stacked && tabsShown {
@@ -211,6 +232,7 @@ struct SettingsSheet: View {
                     open: current ? openPage : nil,
                     onOpen: { openPage = $0 },
                     onClose: closePage,
+                    heading: heading,
                     onOpenSetup: openSetup
                 )
                 .id(current ? page : nil)
@@ -226,23 +248,12 @@ struct SettingsSheet: View {
                         setupOpen = false
                     }
                 } else {
-                    VStack(spacing: 0) {
-                        PageTopBar(title: heading.value?.title ?? AIRCRAFT_SETUP, backLabel: "Back", onBack: back)
-                        SetupScreen()
-                            .frame(maxHeight: .infinity)
-                            .environment(\.LocalPageHeading, heading)
-                    }
+                    SetupScreen()
+                        .frame(maxHeight: .infinity)
+                        .environment(\.LocalPageHeading, heading)
                 }
             }
             .id(OpenPageKey(group: group, page: page, searching: query != nil, setupOpen: setupOpen))
-        }
-    }
-
-    private func back() {
-        if !setupFromTab, let pageBack = heading.value?.back {
-            pageBack()
-        } else {
-            closeSetup()
         }
     }
 }

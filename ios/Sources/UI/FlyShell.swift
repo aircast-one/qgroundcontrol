@@ -507,7 +507,7 @@ struct FlyScreen: View {
                 .padding(.top, STATUS_ROW_HEIGHT + Space.s4)
                 .frame(width: inner.width, height: inner.height)
                 .zIndex(2)
-            if hasVehicle {
+            if hasVehicle && !flyScreen.guidedPanelOpen {
                 let besideMini = mapIsPip ? miniWidth(mini) : hasVideo && pipExpanded ? MINIMAP_WIDTH : PIP_TOGGLE_SIZE
                 TelemetryRow(valuesShown: true, chooser: false, compact: true, stacked: true)
                     .environment(\.flyOsd, true)

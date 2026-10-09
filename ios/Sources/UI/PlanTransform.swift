@@ -2,7 +2,6 @@ import SwiftUI
 
 let PLAN_TRANSFORM_VIEW = "view.planTransform"
 let OFFSET_MISSION = "plan.missionController.offsetMission"
-let REPOSITION_MISSION = "plan.missionController.repositionMission"
 let ROTATE_MISSION = "plan.missionController.rotateMission"
 
 func transformHome(_ view: JSON?) -> TrackPoint? {

@@ -120,6 +120,10 @@ final class SettingsViewTests: XCTestCase {
         XCTAssertEqual(matchesIn("General", read, "MUTE").count, 1, "a typed query is not case sensitive")
     }
 
+    func testASectionNamedLikeItsPageIsNotRepeatedInTheBreadcrumb() {
+        XCTAssertEqual(matchesIn("Application", settingsSections(general), "mute").map(\.title), ["Application"])
+    }
+
     func testAnEmptySearchMatchesNothingRatherThanEverything() {
         let read = settingsSections(general)
         XCTAssertTrue(matchesIn("General", read, "").isEmpty)

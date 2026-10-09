@@ -131,7 +131,7 @@ struct VehicleStateChip: View {
         let subtitle = readinessSubtitle(fly, blocker, failing) ?? vehicleSubtitle(fly, offlineMainStatus(offlineJson))
         let tone = blocker != nil ? ChipTone.Error : chipTone(fly, lost)
         let statusBar = !portrait
-        let title = lost ? signalLostTitle(silentFor, failsafe: failsafe) : activeVehicleTitle(choices, subtitle)
+        let title = lost ? signalLostTitle(silentFor, failsafe: failsafe, compact: !statusBar) : activeVehicleTitle(choices, subtitle)
         return HStack(spacing: 6) {
             Image(.flight).font(.system(size: 18)).frame(width: 24, height: 24)
             Text(statusBar ? osdModeText(title) : title)
@@ -204,6 +204,8 @@ struct VehicleStateChip: View {
                     screen.refusal = refused
                 }
             }
+        } message: {
+            Text(LOST_LINK_HINT)
         }
     }
 

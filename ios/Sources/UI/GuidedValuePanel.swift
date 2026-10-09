@@ -14,6 +14,7 @@ struct GuidedValuePanel<Content: View>: View {
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
     @FlyIsPortrait private var portrait
     @State private var contentHeight: CGFloat = 0
+    @State private var available: CGFloat = .infinity
 
     var body: some View {
         let readiness = guidedReadiness(flyState(flyJson))
@@ -57,13 +58,24 @@ struct GuidedValuePanel<Content: View>: View {
                 }
             }
         }
+        .environment(\.LocalGuidedCompact, guidedCompact(portrait, available))
         .padding(Space.s4)
         .frame(maxWidth: .infinity)
         .background(theme.colors.surfaceContainerLow, in: RoundedRectangle(cornerRadius: Corner.extraLarge))
+        .onGeometryChange(for: CGFloat.self) { $0.bounds(of: .named(GUIDED_PANEL_HOST))?.height ?? .infinity } action: { available = $0 }
         .onAppear { flyScreen.guidedPanels += 1 }
         .onDisappear { flyScreen.guidedPanels -= 1 }
     }
 }
+
+extension EnvironmentValues {
+    @Entry var LocalGuidedCompact = false
+}
+
+let GUIDED_PANEL_HOST = "guidedPanelHost"
+private let COMPACT_PANEL_HEIGHT: CGFloat = 440
+
+func guidedCompact(_ portrait: Bool, _ available: CGFloat) -> Bool { !portrait && available < COMPACT_PANEL_HEIGHT }
 
 func guidedCommitLabel(_ label: String, _ readiness: Readiness?) -> String {
     let split = label.range(of: " \u{00B7} ")
@@ -166,18 +178,20 @@ struct GuidedStepper: View {
     @State private var width: CGFloat = .infinity
     @FocusState private var focused: Bool
     @Environment(\.theme) private var theme
+    @Environment(\.LocalGuidedCompact) private var compact
 
     var body: some View {
         let narrow = width < GUIDED_STEPPER_WIDE
+        let small = narrow || compact
         Group {
             if narrow {
                 VStack(alignment: .leading, spacing: Space.s2) {
-                    reading(narrow)
+                    reading(small)
                     steps
                 }
             } else {
                 HStack {
-                    reading(narrow).frame(maxWidth: .infinity, alignment: .leading)
+                    reading(small).frame(maxWidth: .infinity, alignment: .leading)
                     steps
                 }
             }
@@ -186,7 +200,7 @@ struct GuidedStepper: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
-    private func reading(_ narrow: Bool) -> some View {
+    private func reading(_ small: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             if let typed = typing {
                 TextField("", text: Binding(get: { typing ?? "" }, set: { typing = $0 }))
@@ -203,7 +217,7 @@ struct GuidedStepper: View {
                     }
             } else {
                 Text(guidedReading(value, unit))
-                    .font(narrow ? .headlineMedium : .displaySmall)
+                    .font(small ? .headlineMedium : .displaySmall)
                     .monospacedDigit()
                     .lineLimit(1)
                     .onTapGesture { typing = guidedValueText(value, unit) }
