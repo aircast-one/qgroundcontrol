@@ -3,24 +3,27 @@ package one.aircast.android.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,7 +35,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -49,10 +54,12 @@ import one.aircast.map.optText
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal const val FLASHER_PAGE = "Aircast card"
 internal const val FLASHER_VIEW = "view.flasher"
 internal const val FLASHER_OPEN = "flasher.open"
 internal const val FLASHER_CHANNEL = "flasher.channel"
 internal const val FLASHER_SELECT = "flasher.select"
+internal const val FLASHER_DOWNLOAD = "flasher.download"
 internal const val FLASHER_FORM = "flasher.form"
 internal const val FLASHER_DISKS = "flasher.disks"
 internal const val FLASHER_CHOOSE_DISK = "flasher.chooseDisk"
@@ -61,8 +68,13 @@ internal const val FLASHER_CANCEL = "flasher.cancel"
 internal const val FLASHER_AGAIN = "flasher.again"
 internal const val FLASHER_POLL_MS = 500L
 internal const val FLASHER_DISK_POLL_MS = 2_000L
+internal const val FLASHER_PASSWORD_MODE = "password"
+internal val FLASHER_FINISHED = setOf("done", "failed", "cancelled")
+internal val FLASHER_SETUP_FIELDS = setOf("hostname", "ssid", "wifiPassword", "devicePassword", "authorizedKey", "controlServer")
 
-internal data class FlasherRelease(val version: String, val label: String, val published: String, val sizeText: String)
+internal enum class FlasherStep(val title: String) { Card("Card"), Setup("Setup"), Write("Write") }
+
+internal data class FlasherRelease(val version: String, val label: String, val published: String, val sizeText: String, val recommended: Boolean = false)
 
 internal data class FlasherDisk(val id: String, val name: String)
 
@@ -97,6 +109,7 @@ internal data class FlasherState(
     val cardState: String,
     val cardId: String,
     val cardText: String,
+    val downloadState: String,
     val downloadText: String,
     val phase: String,
     val busy: Boolean,
@@ -129,15 +142,15 @@ internal fun flasherForm(json: JSONObject?): FlasherForm = json?.let {
 
 internal fun flasherCardText(card: JSONObject?): String = when (card?.optText("state")) {
     "opening" -> "Checking the card reader…"
-    "waiting" -> "Allow access to the card reader in the dialog"
+    "waiting" -> "Tap OK on the prompt to let Aircast use the card reader"
     "ready" -> listOf(card.optText("label").ifBlank { "Card reader" }, card.optText("capacityText")).filter { it.isNotBlank() }.joinToString(" · ")
     "failed" -> card.optText("error")
     else -> ""
 }
 
 internal fun flasherDownloadText(download: JSONObject?): String = when (download?.optText("state")) {
-    "running" -> "Downloading… ${download.optDouble("percent", 0.0).toInt()}%"
-    "ready" -> "Downloaded · ${download.optText("imageSizeText")} when written"
+    "running" -> "Downloading Aircast OS… ${download.optDouble("percent", 0.0).toInt()}%"
+    "ready" -> "Aircast OS is downloaded"
     "failed" -> "Download failed: ${download.optText("error")}"
     else -> ""
 }
@@ -148,22 +161,26 @@ internal fun flasherState(json: JSONObject?): FlasherState? {
     val identity = view.optJSONObject("keyIdentity")
     val job = view.optJSONObject("job")
     val problems = view.optJSONObject("problems")
+    val card = view.optJSONObject("card")
     return FlasherState(
         available = view.optBoolean("available"),
         channel = view.optText("channel"),
         channels = view.optJSONArray("channels").texts(),
         releasesState = releases?.optText("state").orEmpty(),
         releasesError = releases?.optText("error").orEmpty(),
-        releases = releases?.optJSONArray("items").objects().map { FlasherRelease(it.optText("version"), it.optText("label"), it.optText("published"), it.optText("sizeText")) },
+        releases = releases?.optJSONArray("items").objects().map {
+            FlasherRelease(it.optText("version"), it.optText("label"), it.optText("published"), it.optText("sizeText"), it.optBoolean("recommended"))
+        },
         selected = view.optText("selected"),
         form = flasherForm(view.optJSONObject("form")),
         problems = problems?.keys()?.asSequence()?.associateWith { problems.optText(it) }.orEmpty(),
         keyIdentity = identity?.let { listOf(it.optText("algorithm"), it.optText("fingerprint"), it.optText("comment")).filter(String::isNotBlank).joinToString(" ") }.orEmpty(),
         summary = view.optJSONArray("summary").objects().map { FlasherSummaryRow(it.optText("label"), it.optText("value"), it.optBoolean("warn")) },
         disks = view.optJSONArray("disks").objects().map { FlasherDisk(it.optText("id"), it.optText("name")) },
-        cardState = view.optJSONObject("card")?.optText("state").orEmpty(),
-        cardId = view.optJSONObject("card")?.optText("id").orEmpty(),
-        cardText = flasherCardText(view.optJSONObject("card")),
+        cardState = card?.optText("state").orEmpty(),
+        cardId = card?.optText("id").orEmpty(),
+        cardText = flasherCardText(card),
+        downloadState = view.optJSONObject("download")?.optText("state").orEmpty(),
         downloadText = flasherDownloadText(view.optJSONObject("download")),
         phase = job?.optText("phase").orEmpty(),
         busy = job?.optBoolean("busy") == true,
@@ -179,8 +196,8 @@ internal fun flasherState(json: JSONObject?): FlasherState? {
 internal fun flasherPhaseLabel(phase: String): String = when (phase) {
     "downloading" -> "Downloading Aircast OS"
     "preparing" -> "Preparing the card"
-    "writing" -> "Writing"
-    "verifying" -> "Verifying"
+    "writing" -> "Writing the card"
+    "verifying" -> "Checking what was written"
     "customizing" -> "Setting up WiFi and access"
     "done" -> "Card ready"
     "failed" -> "Writing failed"
@@ -188,27 +205,53 @@ internal fun flasherPhaseLabel(phase: String): String = when (phase) {
     else -> ""
 }
 
-internal val FLASHER_SSH_MODES = listOf("key-only" to "Key only", "password" to "Password", "disabled" to "Disabled")
+internal fun flasherStepFor(state: FlasherState?): FlasherStep? = state?.takeIf { it.busy || it.phase in FLASHER_FINISHED }?.let { FlasherStep.Write }
+
+internal fun readerToOpen(state: FlasherState): String? =
+    state.disks.singleOrNull()?.id?.takeIf { state.cardState == "none" && !state.busy && state.phase !in FLASHER_FINISHED }
+
+internal fun visibleProblems(problems: Map<String, String>, touched: Set<String>, showAll: Boolean): Map<String, String> =
+    problems.filterKeys { showAll || it in touched }
+
+internal fun setupComplete(problems: Map<String, String>): Boolean = problems.keys.none { it in FLASHER_SETUP_FIELDS }
+
+internal fun defaultSshMode(form: FlasherForm): String? = FLASHER_PASSWORD_MODE.takeIf { form.sshMode == "key-only" && form.authorizedKey.isBlank() }
+
+internal fun meteredNote(release: FlasherRelease?, downloadState: String, metered: Boolean): String? =
+    release?.takeIf { metered && downloadState != "ready" && downloadState != "running" }?.let { "Aircast OS is a ${it.sizeText} download and this phone is on mobile data." }
+
+internal val FLASHER_SSH_MODES = listOf("password" to "Password", "key-only" to "SSH key", "disabled" to "Off")
 
 private fun patch(key: String, value: Any) = offMainInOrder { Qgc.refusalOf(FLASHER_FORM, JSONObject().put(key, value)) }
 
 @Composable
 fun FlasherScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val phoneSsid by rememberPhoneSsid()
     var state by remember { mutableStateOf<FlasherState?>(null) }
     var form by remember { mutableStateOf<FlasherForm?>(null) }
+    var step by remember { mutableStateOf(FlasherStep.Card) }
+    var touched by remember { mutableStateOf(emptySet<String>()) }
+    var showAllProblems by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf("") }
+    var metered by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) { Qgc.invoke(FLASHER_OPEN) }
         while (true) {
             val read = withContext(Dispatchers.Default) { flasherState(Qgc.get(FLASHER_VIEW)) }
             state = read
+            metered = phoneIsOnMeteredNetwork(context)
+            flasherStepFor(read)?.let { step = it }
             if (form == null && read != null) {
                 val country = read.form.country.ifBlank { Locale.getDefault().country }
+                val sshMode = defaultSshMode(read.form) ?: read.form.sshMode
                 if (country != read.form.country) patch("country", country)
-                form = read.form.copy(country = country)
+                if (sshMode != read.form.sshMode) patch("sshMode", sshMode)
+                form = read.form.copy(country = country, sshMode = sshMode)
             }
+            read?.let(::readerToOpen)?.let { id -> withContext(Dispatchers.Default) { Qgc.invoke(FLASHER_CHOOSE_DISK, id) } }
             delay(FLASHER_POLL_MS)
         }
     }
@@ -216,6 +259,14 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
         while (true) {
             delay(FLASHER_DISK_POLL_MS)
             withContext(Dispatchers.Default) { Qgc.invoke(FLASHER_DISKS) }
+        }
+    }
+    LaunchedEffect(phoneSsid, form == null) {
+        val current = form ?: return@LaunchedEffect
+        val ssid = phoneSsid ?: return@LaunchedEffect
+        if (current.ssid.isBlank() && !current.noWifi) {
+            form = current.copy(ssid = ssid)
+            patch("ssid", ssid)
         }
     }
     val busy by rememberUpdatedState(state?.busy == true)
@@ -229,39 +280,123 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
     }
     val edit: (FlasherForm, String, Any) -> Unit = { next, key, value ->
         form = next
+        touched = touched + key
         patch(key, value)
     }
+    val startDownload = { command(FLASHER_DOWNLOAD, emptyArray()) }
 
     val current = state
     val fields = form
-    LazyColumn(modifier.fillMaxSize()) {
-        item(key = "intro") { FlasherIntro(current) }
-        if (current != null && fields != null) {
-            if (current.busy || current.phase in listOf("done", "failed", "cancelled")) {
-                item(key = "job") {
-                    FlasherJob(current, onCancel = { command(FLASHER_CANCEL, emptyArray()) }, onAgain = {
-                        scope.launch {
-                            val again = withContext(Dispatchers.Default) {
-                                Qgc.refusalOf(FLASHER_AGAIN)
-                                flasherState(Qgc.get(FLASHER_VIEW))
-                            }
-                            again?.let { form = it.form; state = it }
-                        }
-                    })
-                }
-            } else {
-                releaseItems(current, onChannel = { command(FLASHER_CHANNEL, arrayOf(it)) }, onSelect = { command(FLASHER_SELECT, arrayOf(it)) })
-                networkItems(fields, current.problems, edit)
-                accessItems(fields, current, edit)
-                cardItems(current, onChoose = { command(FLASHER_CHOOSE_DISK, arrayOf(it)) })
-                item(key = "summary") { FlasherSummary(current.summary) }
-                item(key = "write") {
-                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(enabled = current.canStart, onClick = { command(FLASHER_START, emptyArray()) }, modifier = Modifier.fillMaxWidth()) { Text("Write card") }
-                        (refusal.ifBlank { current.blocked }).takeIf { it.isNotBlank() }?.let {
-                            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning)
-                        }
+    Column(modifier.fillMaxSize()) {
+        StepHeader(step)
+        HorizontalDivider()
+        if (current == null || fields == null) {
+            Text("Loading…", Modifier.padding(16.dp))
+            return@Column
+        }
+        if (!current.available) {
+            Text("This device cannot write cards.", Modifier.padding(16.dp), color = MaterialTheme.aircast.warning)
+            return@Column
+        }
+        val release = current.releases.firstOrNull { it.version == current.selected }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+            when (step) {
+                FlasherStep.Card -> CardStep(current, onChoose = { command(FLASHER_CHOOSE_DISK, arrayOf(it)) })
+                FlasherStep.Setup -> SetupStep(
+                    state = current,
+                    form = fields,
+                    phoneSsid = phoneSsid,
+                    problems = visibleProblems(current.problems, touched, showAllProblems),
+                    meteredNote = meteredNote(release, current.downloadState, metered),
+                    edit = edit,
+                    onSelect = { command(FLASHER_SELECT, arrayOf(it)) },
+                    onChannel = { command(FLASHER_CHANNEL, arrayOf(it)) },
+                    onDownload = startDownload,
+                )
+                FlasherStep.Write -> WriteStep(current, meteredNote(release, current.downloadState, metered))
+            }
+        }
+        HorizontalDivider()
+        StepActions(
+            step = step,
+            state = current,
+            refusal = refusal,
+            onBack = {
+                refusal = ""
+                step = FlasherStep.entries[step.ordinal - 1]
+            },
+            onContinue = {
+                refusal = ""
+                when (step) {
+                    FlasherStep.Card -> {
+                        step = FlasherStep.Setup
+                        if (!metered && current.downloadState in listOf("idle", "failed", "")) startDownload()
                     }
+                    FlasherStep.Setup -> {
+                        showAllProblems = true
+                        if (setupComplete(current.problems)) step = FlasherStep.Write
+                    }
+                    FlasherStep.Write -> command(FLASHER_START, emptyArray())
+                }
+            },
+            onCancel = { command(FLASHER_CANCEL, emptyArray()) },
+            onAgain = {
+                val finished = current.phase
+                scope.launch {
+                    val again = withContext(Dispatchers.Default) {
+                        Qgc.refusalOf(FLASHER_AGAIN)
+                        flasherState(Qgc.get(FLASHER_VIEW))
+                    }
+                    again?.let {
+                        form = it.form
+                        state = it
+                    }
+                    touched = emptySet()
+                    showAllProblems = false
+                    step = if (finished == "done") FlasherStep.Card else FlasherStep.Write
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun StepHeader(step: FlasherStep) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        FlasherStep.entries.forEach { each ->
+            Text(
+                "${if (each.ordinal < step.ordinal) "✓" else "${each.ordinal + 1}"}  ${each.title}",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (each == step) FontWeight.Bold else FontWeight.Normal,
+                color = if (each.ordinal <= step.ordinal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StepActions(step: FlasherStep, state: FlasherState, refusal: String, onBack: () -> Unit, onContinue: () -> Unit, onCancel: () -> Unit, onAgain: () -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val note = when {
+            refusal.isNotBlank() -> refusal
+            step == FlasherStep.Write && !state.busy && state.phase !in FLASHER_FINISHED -> state.blocked
+            else -> ""
+        }
+        if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            when {
+                state.busy -> OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                state.phase in FLASHER_FINISHED -> Button(onClick = onAgain, modifier = Modifier.weight(1f)) { Text(if (state.phase == "done") "Flash another card" else "Try again") }
+                else -> {
+                    if (step != FlasherStep.Card) OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
+                    Button(
+                        onClick = onContinue,
+                        enabled = when (step) {
+                            FlasherStep.Card, FlasherStep.Setup -> true
+                            FlasherStep.Write -> state.canStart
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) { Text(if (step == FlasherStep.Write) "Write card" else "Continue") }
                 }
             }
         }
@@ -269,152 +404,175 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun FlasherIntro(state: FlasherState?) {
-    Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Flash an Aircast card", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "Write Aircast OS to an SD card through a USB card reader. WiFi, the hostname and how you get in are set up for the first boot, so the drone comes online on its own.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (state != null && !state.available) Text("This device cannot write cards.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning)
-        }
+private fun Heading(title: String, body: String) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp))
+private fun CardStep(state: FlasherState, onChoose: (String) -> Unit) {
+    Heading("Insert the card", "Put the drone's SD card in a USB card reader and plug it into this phone. Use an OTG adapter if the reader has a full-size USB plug.")
+    if (state.disks.isEmpty()) {
+        ListItem(headlineContent = { Text("Waiting for a card reader…") }, supportingContent = { Text("You can continue and plug it in before writing") })
+    }
+    state.disks.forEach { disk ->
+        val chosen = disk.id == state.cardId
+        val detail = state.cardText.takeIf { chosen && it.isNotBlank() }
+        ListItem(
+            headlineContent = { Text(disk.name) },
+            supportingContent = detail?.let { text -> { Text(text, color = if (state.cardState == "failed") MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurfaceVariant) } },
+            leadingContent = { RadioButton(selected = chosen, onClick = null) },
+            trailingContent = if (chosen && state.cardState == "ready") ({ Text("✓", color = MaterialTheme.colorScheme.primary) }) else null,
+            modifier = Modifier.selectable(selected = chosen, onClick = { onChoose(disk.id) }),
+        )
+    }
+    if (state.cardState == "failed" && state.cardId.isNotBlank()) {
+        TextButton(onClick = { onChoose(state.cardId) }, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Try the reader again") }
+    }
 }
 
 @Composable
-private fun FormField(label: String, value: String, problem: String?, secret: Boolean = false, singleLine: Boolean = true, keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) {
+private fun Field(label: String, value: String, problem: String?, help: String? = null, secret: Boolean = false, singleLine: Boolean = true, keyboard: KeyboardType = KeyboardType.Text, onChange: (String) -> Unit) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = singleLine,
         isError = problem != null,
-        supportingText = problem?.let { { Text(it) } },
+        supportingText = (problem ?: help)?.let { { Text(it) } },
         visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = if (secret) KeyboardType.Password else keyboard),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
     )
 }
 
-private fun LazyListScope.releaseItems(state: FlasherState, onChannel: (String) -> Unit, onSelect: (String) -> Unit) {
-    item(key = "os-title") { SectionTitle("Operating system") }
-    item(key = "channels") {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            state.channels.forEach { channel ->
-                FilterChip(selected = channel == state.channel, onClick = { onChannel(channel) }, label = { Text(channel.replaceFirstChar { it.titlecase(Locale.ROOT) }) })
-            }
+@Composable
+private fun SetupStep(
+    state: FlasherState,
+    form: FlasherForm,
+    phoneSsid: String?,
+    problems: Map<String, String>,
+    meteredNote: String?,
+    edit: (FlasherForm, String, Any) -> Unit,
+    onSelect: (String) -> Unit,
+    onChannel: (String) -> Unit,
+    onDownload: () -> Unit,
+) {
+    var more by remember { mutableStateOf(false) }
+    Heading("Set up the drone", "These are applied on the drone's first boot, so it joins your network by itself.")
+    Field("Drone name", form.hostname, problems["hostname"], help = form.hostname.takeIf { it.isNotBlank() }?.let { "It answers at $it.local" }) { edit(form.copy(hostname = it), "hostname", it) }
+    if (!form.noWifi) {
+        Field("WiFi network", form.ssid, problems["ssid"]) { edit(form.copy(ssid = it), "ssid", it) }
+        phoneSsid?.takeIf { it != form.ssid }?.let { ssid ->
+            AssistChip(onClick = { edit(form.copy(ssid = ssid), "ssid", ssid) }, label = { Text("Use $ssid") }, modifier = Modifier.padding(horizontal = 16.dp))
         }
+        Field("WiFi password", form.wifiPassword, problems["wifiPassword"], secret = true) { edit(form.copy(wifiPassword = it), "wifiPassword", it) }
     }
-    when (state.releasesState) {
-        "loading" -> item(key = "releases-loading") { ListItem(headlineContent = { Text("Loading releases…") }) }
-        "failed" -> item(key = "releases-failed") { ListItem(headlineContent = { Text("Could not load releases") }, supportingContent = { Text(state.releasesError) }) }
-        else -> state.releases.forEach { release ->
-            item(key = "release-${release.version}") {
-                ListItem(
-                    headlineContent = { Text(release.label) },
-                    supportingContent = { Text("${release.published} · ${release.sizeText} download") },
-                    leadingContent = { RadioButton(selected = release.version == state.selected, onClick = null) },
-                    modifier = Modifier.selectable(selected = release.version == state.selected, onClick = { onSelect(release.version) }),
-                )
-            }
-        }
+    ListItem(
+        headlineContent = { Text("No WiFi") },
+        supportingContent = { Text("The drone goes online over Ethernet or cellular") },
+        trailingContent = { Checkbox(checked = form.noWifi, onCheckedChange = null) },
+        modifier = Modifier.selectable(selected = form.noWifi, onClick = { edit(form.copy(noWifi = !form.noWifi), "noWifi", !form.noWifi) }),
+    )
+    if (form.sshMode == FLASHER_PASSWORD_MODE) {
+        Field("Password for pi", form.devicePassword, problems["devicePassword"], help = "Leave empty to keep the image's default login", secret = true) { edit(form.copy(devicePassword = it), "devicePassword", it) }
     }
-    if (state.downloadText.isNotBlank()) item(key = "download") { Text(state.downloadText, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 16.dp)) }
+    DownloadLine(state, meteredNote, onDownload)
+    TextButton(onClick = { more = !more }, modifier = Modifier.padding(horizontal = 8.dp)) { Text(if (more) "Fewer options" else "More options") }
+    if (more) MoreOptions(state, form, problems, edit, onSelect, onChannel)
 }
 
-private fun LazyListScope.networkItems(form: FlasherForm, problems: Map<String, String>, edit: (FlasherForm, String, Any) -> Unit) {
-    item(key = "network-title") { SectionTitle("Network") }
-    item(key = "hostname") { FormField("Hostname", form.hostname, problems["hostname"]) { edit(form.copy(hostname = it), "hostname", it) } }
-    item(key = "no-wifi") {
+@Composable
+private fun DownloadLine(state: FlasherState, meteredNote: String?, onDownload: () -> Unit) {
+    if (meteredNote != null) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(meteredNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning)
+            TextButton(onClick = onDownload) { Text("Download now anyway") }
+        }
+    } else if (state.downloadText.isNotBlank()) {
+        Text(state.downloadText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+    }
+}
+
+@Composable
+private fun MoreOptions(state: FlasherState, form: FlasherForm, problems: Map<String, String>, edit: (FlasherForm, String, Any) -> Unit, onSelect: (String) -> Unit, onChannel: (String) -> Unit) {
+    SubHeading("Aircast OS version")
+    state.releases.forEach { release ->
         ListItem(
-            headlineContent = { Text("No WiFi") },
-            supportingContent = { Text("The drone uses Ethernet or cellular") },
-            trailingContent = { Checkbox(checked = form.noWifi, onCheckedChange = null) },
-            modifier = Modifier.selectable(selected = form.noWifi, onClick = { edit(form.copy(noWifi = !form.noWifi), "noWifi", !form.noWifi) }),
+            headlineContent = { Text(release.label) },
+            supportingContent = { Text(listOfNotNull(release.published, "${release.sizeText} download", "Recommended".takeIf { release.recommended }).joinToString(" · ")) },
+            leadingContent = { RadioButton(selected = release.version == state.selected, onClick = null) },
+            modifier = Modifier.selectable(selected = release.version == state.selected, onClick = { onSelect(release.version) }),
         )
     }
-    if (!form.noWifi) {
-        item(key = "ssid") { FormField("WiFi network", form.ssid, problems["ssid"]) { edit(form.copy(ssid = it), "ssid", it) } }
-        item(key = "wifi-password") { FormField("WiFi password", form.wifiPassword, problems["wifiPassword"], secret = true) { edit(form.copy(wifiPassword = it), "wifiPassword", it) } }
-        item(key = "country") { FormField("Country code", form.country, null) { value -> value.uppercase(Locale.ROOT).take(2).let { edit(form.copy(country = it), "country", it) } } }
-    }
-}
-
-private fun LazyListScope.accessItems(form: FlasherForm, state: FlasherState, edit: (FlasherForm, String, Any) -> Unit) {
-    item(key = "access-title") { SectionTitle("Access") }
-    item(key = "ssh-mode") {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FLASHER_SSH_MODES.forEach { (mode, label) ->
-                FilterChip(selected = form.sshMode == mode, onClick = { edit(form.copy(sshMode = mode), "sshMode", mode) }, label = { Text(label) })
-            }
+    if (state.releasesState == "failed") Text(state.releasesError, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 16.dp))
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.channels.forEach { channel ->
+            FilterChip(selected = channel == state.channel, onClick = { onChannel(channel) }, label = { Text(channel.replaceFirstChar { it.titlecase(Locale.ROOT) }) })
         }
     }
-    when (form.sshMode) {
-        "key-only" -> {
-            item(key = "ssh-key") { FormField("SSH public key", form.authorizedKey, state.problems["authorizedKey"], singleLine = false) { edit(form.copy(authorizedKey = it), "authorizedKey", it) } }
-            if (state.keyIdentity.isNotBlank()) item(key = "ssh-identity") { Text(state.keyIdentity, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 16.dp)) }
+    SubHeading("Signing in to the drone")
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FLASHER_SSH_MODES.forEach { (mode, label) ->
+            FilterChip(selected = form.sshMode == mode, onClick = { edit(form.copy(sshMode = mode), "sshMode", mode) }, label = { Text(label) })
         }
-        "password" -> item(key = "device-password") { FormField("Password for pi", form.devicePassword, state.problems["devicePassword"], secret = true) { edit(form.copy(devicePassword = it), "devicePassword", it) } }
     }
-    item(key = "auth-key") { FormField("Tailscale auth key (optional)", form.authKey, null, secret = true) { edit(form.copy(authKey = it), "authKey", it) } }
+    if (form.sshMode == "key-only") {
+        Field("SSH public key", form.authorizedKey, problems["authorizedKey"], singleLine = false) { edit(form.copy(authorizedKey = it), "authorizedKey", it) }
+        if (state.keyIdentity.isNotBlank()) Text(state.keyIdentity, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(horizontal = 16.dp))
+    }
+    SubHeading("Remote access")
+    Field("Tailscale auth key", form.authKey, null, help = "The drone joins your tailnet on first boot", secret = true) { edit(form.copy(authKey = it), "authKey", it) }
     if (form.authKey.isNotBlank()) {
-        item(key = "control-server") { FormField("Headscale server (blank for Tailscale)", form.controlServer, state.problems["controlServer"], keyboard = KeyboardType.Uri) { edit(form.copy(controlServer = it), "controlServer", it) } }
+        Field("Headscale server", form.controlServer, problems["controlServer"], help = "Leave empty for Tailscale", keyboard = KeyboardType.Uri) { edit(form.copy(controlServer = it), "controlServer", it) }
     }
-}
-
-private fun LazyListScope.cardItems(state: FlasherState, onChoose: (String) -> Unit) {
-    item(key = "card-title") { SectionTitle("Card") }
-    if (state.disks.isEmpty()) item(key = "no-disks") { ListItem(headlineContent = { Text("No card reader connected") }, supportingContent = { Text("Plug a USB card reader with the SD card in it into this phone") }) }
-    state.disks.forEach { disk ->
-        item(key = "disk-${disk.id}") {
-            val chosen = disk.id == state.cardId
-            ListItem(
-                headlineContent = { Text(disk.name) },
-                supportingContent = state.cardText.takeIf { chosen && it.isNotBlank() }?.let { text -> { Text(text) } },
-                leadingContent = { RadioButton(selected = chosen, onClick = null) },
-                modifier = Modifier.selectable(selected = chosen, onClick = { onChoose(disk.id) }),
-            )
-        }
-    }
+    SubHeading("WiFi region")
+    Field("Country code", form.country, null, help = "Sets which WiFi channels the drone may use") { value -> value.uppercase(Locale.ROOT).take(2).let { edit(form.copy(country = it), "country", it) } }
+    Spacer(Modifier.padding(4.dp))
 }
 
 @Composable
-private fun FlasherSummary(rows: List<FlasherSummaryRow>) {
-    SectionTitle("Summary")
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        rows.forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(row.label, style = MaterialTheme.typography.bodyMedium)
-                Text(row.value, style = MaterialTheme.typography.bodyMedium, color = if (row.warn) MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurface)
-            }
-        }
-    }
+private fun SubHeading(text: String) {
+    Text(text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp))
 }
 
 @Composable
-private fun FlasherJob(state: FlasherState, onCancel: () -> Unit, onAgain: () -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(flasherPhaseLabel(state.phase), style = MaterialTheme.typography.titleMedium)
-        if (state.busy) {
+private fun WriteStep(state: FlasherState, meteredNote: String?) {
+    when {
+        state.busy -> Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(flasherPhaseLabel(state.phase), style = MaterialTheme.typography.titleLarge)
             LinearProgressIndicator(progress = { state.percent / 100f }, modifier = Modifier.fillMaxWidth())
             Text(listOf("${state.percent.toInt()}%", state.speedText).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
-            OutlinedButton(onClick = onCancel) { Text("Cancel") }
-        } else {
-            when (state.phase) {
-                "done" -> Text(
-                    "Put the card in the drone and power it on. It joins the network as ${state.hostname.ifBlank { "the image default name" }}${if (state.hostname.isBlank()) "" else ".local"}.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                "failed" -> Text(state.jobError, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning)
-                else -> Text("The card is incomplete; write it again before using it.", style = MaterialTheme.typography.bodyMedium)
+            Text("Keep the card reader plugged in until this finishes.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        state.phase == "done" -> Heading(
+            "Card ready",
+            "Unplug the reader, put the card in the drone and power it on. It joins the network as " +
+                (state.hostname.takeIf { it.isNotBlank() }?.let { "$it.local" } ?: "the image's default name") + " within a few minutes.",
+        )
+        state.phase == "failed" -> Column(Modifier.fillMaxWidth()) {
+            Heading("Writing failed", "The card is not usable as it is. Fix the problem below and write it again.")
+            Text(state.jobError, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 16.dp))
+        }
+        state.phase == "cancelled" -> Heading("Cancelled", "The card is incomplete. Write it again before putting it in the drone.")
+        else -> {
+            Heading("Check and write", "Everything on the card is replaced.")
+            state.summary.forEach { row ->
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(row.label, style = MaterialTheme.typography.bodyMedium)
+                    Text(row.value, style = MaterialTheme.typography.bodyMedium, color = if (row.warn) MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurface)
+                }
             }
-            Button(onClick = onAgain) { Text(if (state.phase == "done") "Flash another" else "Back") }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Card", style = MaterialTheme.typography.bodyMedium)
+                Text(state.cardText.ifBlank { "Not connected" }, style = MaterialTheme.typography.bodyMedium, color = if (state.cardState == "ready") MaterialTheme.colorScheme.onSurface else MaterialTheme.aircast.warning)
+            }
+            state.downloadText.takeIf { state.downloadState != "ready" && it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
+            meteredNote?.let { Text("$it It downloads when you write the card.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
         }
     }
 }

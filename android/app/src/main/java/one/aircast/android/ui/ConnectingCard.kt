@@ -93,6 +93,7 @@ internal fun LookingForAircraft() {
             Text(LOOKING_TITLE, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
             Text(LOOKING_HINT, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
             TextButton(onClick = { navigation.settingsPage = CONNECTION_SETTINGS }) { Text("Add a link") }
+            TextButton(onClick = { navigation.settingsPage = FLASHER_PAGE }) { Text("New drone? Flash an Aircast card") }
         }
     }
 }

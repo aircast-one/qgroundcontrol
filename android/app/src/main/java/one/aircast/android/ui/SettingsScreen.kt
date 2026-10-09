@@ -177,6 +177,7 @@ internal val PAGE_LOOKS = mapOf(
     "General" to PageLook(SettingsGroup.General, R.drawable.ic_tune, inline = true, tabHome = true),
     "PX4 Log Transfer" to PageLook(SettingsGroup.General, R.drawable.ic_download),
     "Firmware Upgrade" to PageLook(SettingsGroup.General, R.drawable.ic_developer_board),
+    FLASHER_PAGE to PageLook(SettingsGroup.General, R.drawable.ic_usb),
     "App Logging" to PageLook(SettingsGroup.General, R.drawable.ic_description),
     "Console" to PageLook(SettingsGroup.General, R.drawable.ic_terminal),
     "About" to PageLook(SettingsGroup.General, R.drawable.ic_help),
@@ -210,6 +211,7 @@ internal data class SettingsPageEntry(
     val showsNtrip: Boolean = false,
     val showsPx4Logs: Boolean = false,
     val showsPacketRadio: Boolean = false,
+    val showsFlasher: Boolean = false,
     val helpLinks: List<HelpLink> = emptyList(),
     val keywords: String = "",
 )
@@ -228,10 +230,12 @@ internal fun settingsPagePath(title: String): String = "$SETTINGS_VIEW($title)"
 @Composable
 internal fun rememberSettingsPages(): List<SettingsPageEntry> {
     val everyPage by produceState(emptyList<SettingsPageEntry>()) {
-        value = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
+        value = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) } + FLASHER_SETTINGS_PAGE
     }
     return everyPage
 }
+
+internal val FLASHER_SETTINGS_PAGE = SettingsPageEntry(title = FLASHER_PAGE, showsLinks = false, showsVideoSources = false, sectionCount = 0, showsFlasher = true, keywords = "sd card, image, flash, aircast os, wifi, hostname, ssh, tailscale")
 
 internal fun editOnDesktop(fact: Fact): Boolean = !controlIsUnderstood(fact.controlKind)
 
@@ -526,6 +530,11 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
 
     if (page.showsAbout) {
         AboutPage(page.helpLinks, modifier)
+        return
+    }
+
+    if (page.showsFlasher) {
+        FlasherScreen(modifier)
         return
     }
 

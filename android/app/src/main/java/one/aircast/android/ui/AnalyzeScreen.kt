@@ -84,12 +84,6 @@ enum class AnalyzePage(
         AnalyzeSection.Vehicle,
         R.drawable.ic_developer_board,
     ),
-    Flasher(
-        "Aircast card",
-        "Write Aircast OS to an SD card through a USB card reader",
-        AnalyzeSection.Vehicle,
-        R.drawable.ic_usb,
-    ),
     ;
 }
 
@@ -218,7 +212,6 @@ private fun AnalyzePageBody(page: AnalyzePage, leave: () -> Unit, modifier: Modi
                         AnalyzePage.Vibration -> VibrationScreen()
                         AnalyzePage.GeoTag -> GeoTagScreen()
                         AnalyzePage.Firmware -> FirmwareScreen()
-                        AnalyzePage.Flasher -> FlasherScreen()
                         AnalyzePage.Messages -> VehicleMessagesPage()
                     }
                 }

@@ -22,7 +22,8 @@ pub const FLASHER_CHOOSE_DISK: &str = "flasher.chooseDisk";
 pub const FLASHER_START: &str = "flasher.start";
 pub const FLASHER_CANCEL: &str = "flasher.cancel";
 pub const FLASHER_AGAIN: &str = "flasher.again";
-const FLASHER_COMMANDS: &[&str] = &[FLASHER_OPEN, FLASHER_CHANNEL, FLASHER_RELEASES, FLASHER_SELECT, FLASHER_FORM, FLASHER_DISKS, FLASHER_CHOOSE_DISK, FLASHER_START, FLASHER_CANCEL, FLASHER_AGAIN];
+pub const FLASHER_DOWNLOAD: &str = "flasher.download";
+const FLASHER_COMMANDS: &[&str] = &[FLASHER_OPEN, FLASHER_CHANNEL, FLASHER_RELEASES, FLASHER_SELECT, FLASHER_FORM, FLASHER_DISKS, FLASHER_CHOOSE_DISK, FLASHER_START, FLASHER_CANCEL, FLASHER_AGAIN, FLASHER_DOWNLOAD];
 const SETTINGS_KEY: &str = "Flasher/settings";
 const FOLDER: &str = "Flasher";
 const DEFAULT_CHANNEL: &str = "stable";
@@ -182,6 +183,7 @@ pub fn run(path: &str, args: &str) -> Value {
             ok()
         }
         FLASHER_SELECT => select(&text(0)),
+        FLASHER_DOWNLOAD => download(),
         FLASHER_FORM => form(given.first().cloned().unwrap_or(Value::Null)),
         FLASHER_DISKS => {
             refresh_disks();
@@ -241,7 +243,7 @@ fn load_releases() {
         let fetched = cardimage::fetch_releases(&channel);
         let mut s = state();
         if s.channel == channel || s.channel.is_empty() {
-            s.selected = s.selected.clone().or_else(|| fetched.as_ref().ok().and_then(|list| list.iter().find(|r| !r.prerelease).or(list.first())).map(|r| r.version.clone()));
+            s.selected = s.selected.clone().filter(|version| fetched.as_ref().is_ok_and(|list| list.iter().any(|r| &r.version == version))).or_else(|| fetched.as_ref().ok().and_then(|list| recommended(list)).map(|r| r.version.clone()));
             s.releases = fetched.map_or_else(Releases::Failed, Releases::Ready);
         }
     });
@@ -255,13 +257,21 @@ fn selected_release(s: &State) -> Option<Release> {
 }
 
 fn select(version: &str) -> Value {
-    let release = {
-        let mut s = state();
-        s.selected = Some(version.to_string());
-        selected_release(&s)
-    };
+    let mut s = state();
+    let known = matches!(&s.releases, Releases::Ready(list) if list.iter().any(|r| r.version == version));
+    match known {
+        false => refused("That version is not in the release list"),
+        true => {
+            s.selected = Some(version.to_string());
+            ok()
+        }
+    }
+}
+
+fn download() -> Value {
+    let release = selected_release(&state());
     match release {
-        None => refused("That version is not in the release list"),
+        None => refused("Choose an Aircast OS version"),
         Some(release) => {
             prefetch(release);
             ok()
@@ -636,9 +646,14 @@ fn percent(done: u64, total: u64) -> f64 {
     }
 }
 
-fn release_json(release: &Release) -> Value {
+fn recommended(list: &[Release]) -> Option<&Release> {
+    list.iter().find(|r| !r.prerelease).or(list.first())
+}
+
+fn release_json(release: &Release, recommended: bool) -> Value {
     let label = format!("Aircast OS {}{}", release.version, if release.prerelease { " (beta)" } else { "" });
     json!({
+        "recommended": recommended,
         "version": release.version,
         "label": label,
         "prerelease": release.prerelease,
@@ -652,7 +667,7 @@ fn render(s: &State) -> Value {
     let (releases_state, items, releases_error) = match &s.releases {
         Releases::Idle => ("idle", vec![], Value::Null),
         Releases::Loading => ("loading", vec![], Value::Null),
-        Releases::Ready(list) => ("ready", list.iter().map(release_json).collect(), Value::Null),
+        Releases::Ready(list) => ("ready", list.iter().map(|r| release_json(r, recommended(list).is_some_and(|best| best.version == r.version))).collect(), Value::Null),
         Releases::Failed(e) => ("failed", vec![], json!(e)),
     };
     let download = match &s.download {
@@ -668,7 +683,7 @@ fn render(s: &State) -> Value {
         CardState::Ready { id, label, capacity } => json!({ "state": "ready", "id": id, "label": label, "capacity": capacity, "capacityText": size_text(*capacity) }),
         CardState::Failed { id, error } => json!({ "state": "failed", "id": id, "error": error }),
     };
-    let image = selected_release(s).map(|r| release_json(&r)["label"].as_str().unwrap_or_default().to_string()).unwrap_or_default();
+    let image = selected_release(s).map(|r| release_json(&r, false)["label"].as_str().unwrap_or_default().to_string()).unwrap_or_default();
     let reason = blocked(s);
     json!({
         "available": s.hostable,
@@ -747,6 +762,7 @@ mod tests {
         assert_eq!(view["canStart"], true);
         assert_eq!(view["blocked"], Value::Null);
         assert_eq!(view["releases"]["items"][0]["label"], "Aircast OS v0.3.5");
+        assert_eq!(view["releases"]["items"][0]["recommended"], true);
         assert_eq!(view["summary"][1]["value"], "falcon-01.local");
         assert_eq!(view["card"]["capacityText"], "16.0 GB");
     }
@@ -799,6 +815,26 @@ mod tests {
         assert_eq!(speed.sample(Phase::Writing, 10_000_000, t0 + Duration::from_secs(1)), 10_000_000);
         assert_eq!(speed.sample(Phase::Writing, 12_000_000, t0 + Duration::from_millis(1500)), 10_000_000);
         assert_eq!(speed.sample(Phase::Verifying, 0, t0 + Duration::from_secs(2)), 0);
+    }
+
+    #[test]
+    fn the_newest_stable_release_is_recommended_over_a_newer_beta() {
+        let view = render(&State { releases: Releases::Ready(vec![release("v0.4.0-beta.1", true), release("v0.3.5", false), release("v0.3.4", false)]), ..ready_state() });
+        let flags: Vec<(String, bool)> = view["releases"]["items"].as_array().unwrap().iter().map(|r| (r["version"].as_str().unwrap().to_string(), r["recommended"].as_bool().unwrap())).collect();
+        assert_eq!(flags, vec![("v0.4.0-beta.1".to_string(), false), ("v0.3.5".to_string(), true), ("v0.3.4".to_string(), false)]);
+        let betas_only = render(&State { releases: Releases::Ready(vec![release("v0.4.0-beta.2", true), release("v0.4.0-beta.1", true)]), selected: None, ..ready_state() });
+        assert_eq!(betas_only["releases"]["items"][0]["recommended"], true, "with no stable release the newest one is recommended");
+    }
+
+    #[test]
+    fn starting_the_download_returns_instead_of_waiting_on_its_own_lock() {
+        *state() = State { releases: Releases::Ready(vec![release("v9.9.9", false)]), selected: Some("v9.9.9".into()), ..State::default() };
+        assert_eq!(run(FLASHER_DOWNLOAD, "[]"), ok());
+        assert!(matches!(state().download, Download::Running { .. } | Download::Failed { .. } | Download::Idle));
+        if let Some(token) = DOWNLOAD_TOKEN.lock().unwrap_or_else(PoisonError::into_inner).take() {
+            token.store(true, Ordering::Relaxed);
+        }
+        *state() = State::default();
     }
 
     #[test]
