@@ -163,7 +163,7 @@ struct InspectorChartPanel: View {
                     plot(chart, colours, Int64(timeline.date.timeIntervalSince1970 * 1000))
                 }
                 .frame(height: CHART_HEIGHT)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16)], spacing: 4) {
+                PlanFlowRow(spacing: 16, lineSpacing: 0, alignment: .center) {
                     ForEach(chart.plots, id: \.field) { plot in
                         HStack(spacing: 6) {
                             Circle().fill(colours[plot.colour % colours.count]).frame(width: 8, height: 8)

@@ -51,5 +51,6 @@ struct HoldToConfirm: View {
             guard enabled else { return }
             onConfirm()
         }
+        .id(label)
     }
 }

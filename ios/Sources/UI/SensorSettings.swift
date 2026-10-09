@@ -82,7 +82,11 @@ struct CompassOrientations: View {
             }
         }
         .task { _ = await offMain { Qgc.invoke(SETUP_DIALOG_OPENED, SENSOR_SETTINGS_DIALOG, false) } }
-        .task(id: revision) { read = await offMain { sensorSettings(Qgc.get(SENSOR_SETTINGS_VIEW)) } }
+        .task(id: revision) {
+            let loaded = await offMain { sensorSettings(Qgc.get(SENSOR_SETTINGS_VIEW)) }
+            guard !Task.isCancelled else { return }
+            read = loaded
+        }
     }
 }
 
@@ -93,6 +97,7 @@ struct SensorSettingsBlock: View {
     @State private var revision = 0
     @State private var read: SensorSettings?
     @State private var simple = false
+    @State private var scope = ViewScope()
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s2) {
@@ -119,7 +124,12 @@ struct SensorSettingsBlock: View {
             }
         }
         .task { _ = await offMain { Qgc.invoke(SETUP_DIALOG_OPENED, SENSOR_SETTINGS_DIALOG, calibrating) } }
-        .task(id: revision) { read = await offMain { sensorSettings(Qgc.get(SENSOR_SETTINGS_VIEW)) } }
+        .task(id: revision) {
+            let loaded = await offMain { sensorSettings(Qgc.get(SENSOR_SETTINGS_VIEW)) }
+            guard !Task.isCancelled else { return }
+            read = loaded
+        }
+        .onDisappear { scope.cancel() }
     }
 
     private func refresh() { revision += 1 }
@@ -134,9 +144,9 @@ struct SensorSettingsBlock: View {
         if let slot = compass.priority {
             PriorityPicker(options: settings.priorities, current: slot) { picked in
                 let index = compass.index
-                Task {
+                scope.launch {
                     _ = await offMain { Qgc.invoke(SENSOR_SETTINGS_PRIORITY, index, picked) }
-                    refresh()
+                    if !Task.isCancelled { refresh() }
                 }
             }
         }
@@ -150,9 +160,9 @@ struct SensorSettingsBlock: View {
         Text("Magnetic declination").font(.titleSmall)
         Toggle("Manual magnetic declination", isOn: Binding(get: { declination.manual }, set: { manual in
             let path = "\(declination.autoDecPath).rawValue"
-            Task {
+            scope.launch {
                 _ = await offMain { Qgc.set(path, manual ? 0 : 1) }
-                refresh()
+                if !Task.isCancelled { refresh() }
             }
         }))
         if let value = declination.value {

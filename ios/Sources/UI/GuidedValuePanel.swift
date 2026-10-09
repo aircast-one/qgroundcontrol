@@ -136,9 +136,15 @@ func guidedBounds(_ minimum: Double?, _ maximum: Double?) -> (Double, Double)? {
 
 func guidedDecimals(_ unit: String) -> Int { METRIC_UNITS.contains(unit) ? 1 : 0 }
 
+private func halfUp(_ digits: String, _ decimals: Int) -> Double? {
+    guard var exact = Decimal(string: digits, locale: Locale(identifier: "en_US_POSIX")) else { return nil }
+    var rounded = Decimal()
+    NSDecimalRound(&rounded, &exact, decimals, .plain)
+    return Double(rounded.description)
+}
+
 func guidedRounded(_ value: Double, _ unit: String) -> Double {
-    let scale = pow(10, Double(guidedDecimals(unit)))
-    return (value * scale).rounded(.toNearestOrAwayFromZero) / scale
+    halfUp(String(format: "%.80f", value), guidedDecimals(unit)) ?? value
 }
 
 func guidedStepped(_ value: Double, _ delta: Int, _ minimum: Double, _ maximum: Double, _ unit: String) -> Double {
@@ -150,7 +156,7 @@ func guidedTyped(_ text: String, _ minimum: Double, _ maximum: Double, _ unit: S
 }
 
 func guidedValueText(_ value: Double, _ unit: String) -> String {
-    String(format: "%.\(guidedDecimals(unit))f", value)
+    String(format: "%.\(guidedDecimals(unit))f", halfUp("\(value)", guidedDecimals(unit)) ?? value)
 }
 
 func guidedQuickPicks(_ value: Double, _ minimum: Double, _ maximum: Double, _ unit: String) -> [(String, Double)] {

@@ -244,8 +244,8 @@ struct PlanMapContent: View {
                 if let message = await offMain({ importShapeFiles(urls, target) }) { say(message) }
             }
         }
-        .task(id: scenePhase == .active) {
-            guard scenePhase == .active else { return }
+        .task(id: scenePhase != .background) {
+            guard scenePhase != .background else { return }
             while !Task.isCancelled {
                 await refresh()
                 await pause(PLAN_POLL_MS)
@@ -299,9 +299,13 @@ struct PlanMapContent: View {
         .onChange(of: selectedCircle.map { "\($0.index):\($0.radius)" }, initial: true) {
             circleRadiusTyped = selectedCircle.map { trimmedRadius($0.radius) } ?? ""
         }
-        .onChange(of: selectedRally.map { "\($0.index):\($0.latitude):\($0.longitude):\($0.altitude)" }, initial: true) {
+        .onChange(of: selectedRally.map { "\($0.index):\($0.latitude)" }, initial: true) {
             rallyLatitudeTyped = selectedRally.map { String($0.latitude) } ?? ""
+        }
+        .onChange(of: selectedRally.map { "\($0.index):\($0.longitude)" }, initial: true) {
             rallyLongitudeTyped = selectedRally.map { String($0.longitude) } ?? ""
+        }
+        .onChange(of: selectedRally.map { "\($0.index):\($0.altitude)" }, initial: true) {
             rallyAltitudeTyped = selectedRally.map { altitudeFieldText($0.altitude, RALLY_ALTITUDE_DECIMALS) } ?? ""
         }
     }
@@ -558,21 +562,15 @@ struct PlanMapContent: View {
             .padding(.top, sidePanel ? 12 : 0)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { panelContent = $0 }
         }
-        if sidePanel {
-            panel
-                .frame(width: SIDE_PANEL_WIDTH)
-                .frame(maxHeight: .infinity)
-                .background(theme.colors.surfaceContainerLow)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .onAppear { controlsHeight = 0 }
-        } else {
-            panel
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(height: min(panelContent, CONTROLS_MAX_HEIGHT))
-                .background(theme.colors.surfaceContainerLow, in: UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28))
-                .onChange(of: min(panelContent, CONTROLS_MAX_HEIGHT), initial: true) { controlsHeight = min(panelContent, CONTROLS_MAX_HEIGHT) }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        }
+        let bottomHeight = min(panelContent, CONTROLS_MAX_HEIGHT)
+        let corner: CGFloat = sidePanel ? 0 : 28
+        panel
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(width: sidePanel ? SIDE_PANEL_WIDTH : nil, height: sidePanel ? nil : bottomHeight)
+            .frame(maxHeight: sidePanel ? .infinity : nil)
+            .background(theme.colors.surfaceContainerLow, in: UnevenRoundedRectangle(topLeadingRadius: corner, topTrailingRadius: corner))
+            .onChange(of: sidePanel ? 0 : bottomHeight, initial: true) { _, height in controlsHeight = height }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: sidePanel ? .topLeading : .bottom)
     }
 
     @ViewBuilder
@@ -1661,16 +1659,23 @@ struct CenterMenu: View {
             Text("Center map")
         }
         .buttonStyle(.bordered)
-        .alert("Center map on coordinate", isPresented: $asking) {
-            TextField("Latitude", text: $latitude)
-                .keyboardType(.numbersAndPunctuation)
-            TextField("Longitude", text: $longitude)
-                .keyboardType(.numbersAndPunctuation)
-            Button("Center") {
-                parsedCoordinate(latitude, longitude).map(onCentre)
+        .background {
+            if asking {
+                let parsed = parsedCoordinate(latitude, longitude)
+                PlanDialog(title: "Center map on coordinate", onDismiss: { asking = false }) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        PlanTextField(label: "Latitude", text: $latitude)
+                        PlanTextField(label: "Longitude", text: $longitude)
+                    }
+                } buttons: {
+                    Button("Cancel") { asking = false }
+                    Button("Center") {
+                        asking = false
+                        parsed.map(onCentre)
+                    }
+                    .disabled(parsed == nil)
+                }
             }
-            .disabled(parsedCoordinate(latitude, longitude) == nil)
-            Button("Cancel", role: .cancel) {}
         }
     }
 }

@@ -903,7 +903,7 @@ private struct AddLinkPage: View {
     var body: some View {
         Group {
             if let chosen = type {
-                AddLinkDetails(type: chosen, onBack: { type = nil }, onAdded: onAdded)
+                AddLinkDetails(type: chosen, onBack: { type = nil }, onAdded: { if type == chosen { onAdded() } })
             } else {
                 picker
             }
@@ -1131,7 +1131,7 @@ struct LinksScreen<Footer: View>: View {
             if adding {
                 AddLinkPage(onDismiss: { adding = false }, onAdded: { adding = false })
             } else if let row = editing {
-                EditLinkPage(row: row, onDismiss: { editing = nil }, onSaved: { editing = nil })
+                EditLinkPage(row: row, onDismiss: { editing = nil }, onSaved: { if editing == row { editing = nil } })
             } else {
                 list
             }

@@ -66,16 +66,32 @@ private struct VideoGesturesModifier: ViewModifier {
     @State private var origin = CGPoint.zero
     @State private var holdTimer: Task<Void, Never>?
     @State private var tapTimer: Task<Void, Never>?
+    @GestureState private var touching = false
 
     func body(content: Content) -> some View {
         content
             .onGeometryChange(for: CGPoint.self) { $0.frame(in: .global).origin } action: { origin = $0 }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .updating($touching) { _, touching, _ in touching = true }
                     .onChanged(changed)
                     .onEnded(ended)
             )
             .simultaneousGesture(MagnifyGesture(minimumScaleDelta: 0).onChanged { _ in secondFinger() })
+            .onChange(of: touching) { _, now in if !now { lost() } }
+            .onDisappear {
+                lost()
+                tapTimer?.cancel()
+                tapTimer = nil
+            }
+    }
+
+    private func lost() {
+        holdTimer?.cancel()
+        holdTimer = nil
+        guard let gone = press else { return }
+        press = nil
+        if gone.phase == .holding { handlers.onHoldEnd() }
     }
 
     private func secondFinger() {

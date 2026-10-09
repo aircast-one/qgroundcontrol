@@ -147,7 +147,7 @@ private struct GeoTagLegend: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 12, alignment: .leading)], alignment: .leading, spacing: 4) {
+        PlanFlowRow(spacing: 12, lineSpacing: 0) {
             ForEach(GEOTAG_LEGEND, id: \.0) { status, label in
                 HStack(spacing: 4) {
                     RoundedRectangle(cornerRadius: 2).fill(geoTagStatusColour(status, theme)).frame(width: 10, height: 10)

@@ -370,32 +370,73 @@ func scaledNumber(_ scale: Double, base: CGFloat = TypeScale.telemetry.size) -> 
     TypeScale.telemetry.font(base * scale)
 }
 
+@Observable
+final class FlightActionsState {
+    var pending: GuidedAction?
+    var sentName: String?
+    var sentSnapshot: String?
+    var guidedValue: OpenGuidedValue?
+    var showMore = false
+    var showGripper = false
+    var editingLoiter: LoiterOffer?
+    var missionReady: Set<String>?
+    var popupDue: GuidedOffer?
+    @ObservationIgnored var mounted = 0
+    @ObservationIgnored let scope = ViewScope()
+
+    @MainActor
+    func reset() {
+        scope.cancel()
+        pending = nil
+        sentName = nil
+        sentSnapshot = nil
+        guidedValue = nil
+        showMore = false
+        showGripper = false
+        editingLoiter = nil
+        missionReady = nil
+        popupDue = nil
+    }
+}
+
 struct FlightActions<Center: View>: View {
     var layout: FlyDeckLayout = .Bottom
     @ViewBuilder var center: () -> Center
     @Environment(\.theme) private var theme
     @Environment(FlyScreenState.self) private var flyScreen
+    @Environment(FlyMapEdits.self) private var mapEdits
     @QgcPath(FLY_STATE) private var stateJson
     @QgcPath(MAP_CLICK_PATH) private var mapClickJson
     @QgcPath(PREFLIGHT) private var preflightJson
     @QgcPath(GUIDED_ACTIONS) private var actionsJson
     @QgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups")) private var automaticMissionPopups
-    @State private var pending: GuidedAction?
-    @State private var sentName: String?
-    @State private var sentSnapshot: String?
-    @State private var guidedValue: OpenGuidedValue?
-    @State private var showMore = false
-    @State private var showGripper = false
-    @State private var editingLoiter: LoiterOffer?
-    @State private var missionReady: Set<String>?
-    @State private var popupDue: GuidedOffer?
 
+    private var actions: FlightActionsState { flyScreen.flightActions }
     private var checklist: PreflightChecklistState { flyScreen.checklist }
     private var state: FlyState? { flyState(stateJson) }
     private var armed: Bool { state?.armed == true }
     private var offers: [String: GuidedOffer] { guidedOffers(actionsJson) }
 
     var body: some View {
+        flightActions
+            .onAppear { actions.mounted += 1 }
+            .onDisappear { left() }
+    }
+
+    private func left() {
+        let actions = actions
+        let mapEdits = mapEdits
+        actions.mounted -= 1
+        Task { @MainActor in
+            if actions.mounted == 0 {
+                actions.reset()
+                mapEdits.gotoLoiter = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var flightActions: some View {
         let available = state?.connected == true
         if !available {
             Group {
@@ -410,23 +451,23 @@ struct FlightActions<Center: View>: View {
             }
             .background { PreflightChecklistReset(checklist: checklist, available: false) }
             .onChange(of: offers, initial: true) { _, now in offersChanged(now) }
-            .task(id: popupDue) { await popupSettles() }
+            .task(id: actions.popupDue) { await popupSettles() }
         } else {
             let rail = layout == .Rail
             Group {
                 deck
                     .background { hosts }
                     .onChange(of: offers, initial: true) { _, now in offersChanged(now) }
-                    .task(id: popupDue) { await popupSettles() }
+                    .task(id: actions.popupDue) { await popupSettles() }
                     .onChange(of: flyScreen.deckRequest, initial: true) { _, asked in deckRequested(asked) }
-                    .onChange(of: loiterOffer(mapClickJson) == nil) { _, gone in if gone { editingLoiter = nil } }
-                    .onChange(of: gripperOffers(moreActions(offers)).isEmpty) { _, empty in if empty { showGripper = false } }
-                if let open = guidedValue {
-                    DecisionHost(rail: rail) { GuidedValueFlow(open: open) { guidedValue = nil } }
+                    .onChange(of: loiterOffer(mapClickJson) == nil, initial: true) { _, gone in if gone { actions.editingLoiter = nil } }
+                    .onChange(of: gripperOffers(moreActions(offers)).isEmpty, initial: true) { _, empty in if empty { actions.showGripper = false } }
+                if let open = actions.guidedValue {
+                    DecisionHost(rail: rail) { GuidedValueFlow(open: open) { actions.guidedValue = nil } }
                 }
-                if let offer = editingLoiter {
+                if let offer = actions.editingLoiter {
                     DecisionHost(rail: rail) {
-                        LoiterRadiusPanel(offer: offer, units: mapClickUnits(mapClickJson), onRefused: { flyScreen.refusal = $0 }, onDone: { editingLoiter = nil })
+                        LoiterRadiusPanel(offer: offer, units: mapClickUnits(mapClickJson), onRefused: { flyScreen.refusal = $0 }, onDone: { actions.editingLoiter = nil })
                     }
                 }
             }
@@ -436,10 +477,12 @@ struct FlightActions<Center: View>: View {
     private var readiness: Readiness? { guidedReadiness(state) }
 
     private func entries() -> [DeckEntry] {
-        flightDeckEntries(FlightDeckContext(
+        let actions = actions
+        return flightDeckEntries(FlightDeckContext(
             offers: offers,
             armed: armed,
-            confirm: { pending = $0 },
+            scope: actions.scope,
+            confirm: { actions.pending = $0 },
             openValue: openValue,
             report: { flyScreen.refusal = $0 },
             withdraw: { flyScreen.refusal = withdrawn(flyScreen.refusal, $0) },
@@ -449,9 +492,10 @@ struct FlightActions<Center: View>: View {
     }
 
     private func openValue(_ kind: GuidedValueKind) {
-        Task {
+        let actions = actions
+        actions.scope.launch {
             let opened = await openGuidedValue(kind)
-            if let opened { guidedValue = opened } else { flyScreen.refusal = kind.missingRange }
+            if let opened { actions.guidedValue = opened } else { flyScreen.refusal = kind.missingRange }
         }
     }
 
@@ -462,21 +506,21 @@ struct FlightActions<Center: View>: View {
     }
 
     private func offersChanged(_ now: [String: GuidedOffer]) {
-        if offerWithdrawn(pending?.offerId, now) { pending = nil }
-        if offerWithdrawn(guidedValue?.kind.offerId, now) { guidedValue = nil }
-        let popup = missionReady.flatMap { autoMissionPopup($0, now, automaticMissionPopups) }
-        missionReady = Set(AUTO_POPUP_ACTIONS.filter { now[$0]?.ready == true })
-        if let popup { popupDue = popup }
+        if offerWithdrawn(actions.pending?.offerId, now) { actions.pending = nil }
+        if offerWithdrawn(actions.guidedValue?.kind.offerId, now) { actions.guidedValue = nil }
+        let popup = actions.missionReady.flatMap { autoMissionPopup($0, now, automaticMissionPopups) }
+        actions.missionReady = Set(AUTO_POPUP_ACTIONS.filter { now[$0]?.ready == true })
+        if let popup { actions.popupDue = popup }
     }
 
     private func popupSettles() async {
-        guard let due = popupDue else { return }
+        guard let due = actions.popupDue else { return }
         try? await Task.sleep(for: .milliseconds(MISSION_POPUP_DELAY_MS))
         guard !Task.isCancelled else { return }
-        popupDue = nil
+        actions.popupDue = nil
         guard let settled = offers[due.id], settled.ready else { return }
-        if pending == nil || popupReplacesOpenConfirm(settled.id), let action = guidedActionFor(settled) {
-            pending = action
+        if actions.pending == nil || popupReplacesOpenConfirm(settled.id), let action = guidedActionFor(settled) {
+            actions.pending = action
         }
     }
 
@@ -487,14 +531,14 @@ struct FlightActions<Center: View>: View {
             if let entry = deckEntries.first(where: { $0.id == ARM_REQUEST && $0.enabled }) {
                 entry.onClick()
             } else if let stop = armedStopOffer(offers, armed) {
-                pending = emergencyStopAction(stop)
+                actions.pending = emergencyStopAction(stop)
             } else {
                 flyScreen.refusal = deckRequestRefusal(offers[armed ? "disarm" : "arm"])
             }
         } else if let entry = deckEntries.first(where: { $0.id == asked && $0.enabled }) {
             entry.onClick()
         } else if let offer = offers[asked], offer.ready, let action = guidedActionFor(offer) {
-            pending = action
+            actions.pending = action
         }
         flyScreen.deckRequest = nil
     }
@@ -502,20 +546,21 @@ struct FlightActions<Center: View>: View {
     @ViewBuilder
     private var hosts: some View {
         PreflightChecklistReset(checklist: checklist, available: true)
-        PreflightChecklist(checklist: checklist, deciding: pending != nil || guidedValue != nil || editingLoiter != nil)
-        OpenOnRequest(name: "more", open: { showMore = true })
-        if showMore {
-            MoreActionsSheet(tiles: moreTiles(), onDismiss: { showMore = false }) {
-                FlyViewMavlinkActions { showMore = false }
+        PreflightChecklist(checklist: checklist, deciding: actions.pending != nil || actions.guidedValue != nil || actions.editingLoiter != nil)
+        OpenOnRequest(name: "more", open: { actions.showMore = true })
+        if actions.showMore {
+            MoreActionsSheet(tiles: moreTiles(), onDismiss: { actions.showMore = false }) {
+                FlyViewMavlinkActions { actions.showMore = false }
             }
         }
         let gripper = gripperOffers(moreActions(offers))
-        if showGripper && !gripper.isEmpty {
-            GripperPanel(offers: gripper) { showGripper = false }
+        if actions.showGripper && !gripper.isEmpty {
+            GripperPanel(offers: gripper) { actions.showGripper = false }
         }
     }
 
     private func moreTiles() -> [MoreTile] {
+        let actions = actions
         let deckEntries = entries()
         let deck = deckIds(Set(deckEntries.map(\.id)), armed)
         let deckShown = Set(deck.map(\.0))
@@ -525,13 +570,13 @@ struct FlightActions<Center: View>: View {
         let loiter = loiterOffer(mapClickJson)
         let checklistPast = checklistOffered(armed)
         let stop: [MoreTile] = [armedStopOffer(offers, armed).map { offer in
-            MoreTile(label: STOP_MOTORS, icon: .warning, enabled: true, warning: true, onClick: { pending = emergencyStopAction(offer) })
+            MoreTile(label: STOP_MOTORS, icon: .warning, enabled: true, warning: true, onClick: { actions.pending = emergencyStopAction(offer) })
         }].compactMap { $0 }
         let rest = deckRest.filter { $0.id != CHECKLIST }.map { MoreTile(label: $0.label, icon: $0.icon, enabled: $0.enabled, warning: $0.warning, onClick: $0.onClick) }
         let fixed: [MoreTile] = [
             preflightOffered(preflightJson) ? MoreTile(label: "Checklist", icon: .checkCircle, enabled: checklistPast == nil, onClick: { checklist.open() }) : nil,
-            loiter.map { offer in MoreTile(label: offer.title, icon: .myLocation, enabled: true, onClick: { editingLoiter = offer }) },
-            gripper.isEmpty ? nil : MoreTile(label: "Gripper", icon: .download, enabled: gripper.contains(where: \.ready), onClick: { showGripper = true }),
+            loiter.map { offer in MoreTile(label: offer.title, icon: .myLocation, enabled: true, onClick: { actions.editingLoiter = offer }) },
+            gripper.isEmpty ? nil : MoreTile(label: "Gripper", icon: .download, enabled: gripper.contains(where: \.ready), onClick: { actions.showGripper = true }),
             MoreTile(label: "Choose readings", icon: .tune, enabled: true, onClick: { flyScreen.choosingReadings = true }),
             armed ? nil : MoreTile(label: "Edit layout", icon: .edit, enabled: true, onClick: { flyScreen.layout.startEditing() }),
         ].compactMap { $0 }
@@ -540,7 +585,7 @@ struct FlightActions<Center: View>: View {
                 if offer.id == PAUSE {
                     openValue(altitudeValue(true))
                 } else if let action = guidedActionFor(offer) {
-                    pending = action
+                    actions.pending = action
                 }
             })
         }
@@ -552,9 +597,9 @@ struct FlightActions<Center: View>: View {
         let deckEntries = entries()
         let deck = deckIds(Set(deckEntries.map(\.id)), armed)
         let liveActions = actionsJson?.text
-        let showingSent = sentIsStillShowing(sentName, sentSnapshot, liveActions)
-        let deciding = pending != nil || guidedValue != nil || editingLoiter != nil
-        let more = DeckEntry(id: "more", label: "More", icon: .moreVert, enabled: true, onClick: { showMore = true })
+        let showingSent = sentIsStillShowing(actions.sentName, actions.sentSnapshot, liveActions)
+        let deciding = actions.pending != nil || actions.guidedValue != nil || actions.editingLoiter != nil
+        let more = DeckEntry(id: "more", label: "More", icon: .moreVert, enabled: true, onClick: { actions.showMore = true })
         if layout == .Rail {
             ZStack {
                 if !deciding {
@@ -570,7 +615,7 @@ struct FlightActions<Center: View>: View {
                     .padding(.bottom, RAIL_LIFT)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 }
-                if flyScreen.refusal != nil || pending != nil || showingSent {
+                if flyScreen.refusal != nil || actions.pending != nil || showingSent {
                     VStack(alignment: .leading, spacing: Space.s3) {
                         if let message = flyScreen.refusal {
                             Text(message).font(.bodyMedium).foregroundStyle(theme.colors.error)
@@ -598,7 +643,7 @@ struct FlightActions<Center: View>: View {
                 if !deciding, let readiness {
                     DeckReadiness(readiness: readiness)
                 }
-                if pending == nil {
+                if actions.pending == nil {
                     let buttons = deck.compactMap { id, primary in deckEntries.first { $0.id == id }.map { ($0, primary) } } + [(more, false)]
                     let leading = (buttons.count + 1) / 2
                     HStack(spacing: 10) {
@@ -627,18 +672,19 @@ struct FlightActions<Center: View>: View {
 
     @ViewBuilder
     private func decision(_ showingSent: Bool, _ liveActions: String?) -> some View {
-        if let confirming = pending {
+        let actions = actions
+        if let confirming = actions.pending {
             ConfirmTrack(
                 action: confirming,
                 onSent: {
-                    sentName = confirming.name
-                    sentSnapshot = liveActions
-                    pending = nil
+                    actions.sentName = confirming.name
+                    actions.sentSnapshot = liveActions
+                    actions.pending = nil
                 },
-                onCancel: { pending = nil }
+                onCancel: { actions.pending = nil }
             )
         } else if showingSent {
-            SentNotice(name: sentName ?? "", onDismiss: { sentName = nil })
+            SentNotice(name: actions.sentName ?? "", onDismiss: { actions.sentName = nil })
         }
     }
 }
@@ -715,8 +761,8 @@ private func reachedWithin(_ reached: @escaping @Sendable () -> Bool, _ timeoutM
 }
 
 @MainActor
-private func attemptCommand(_ action: String, report: @escaping (String?) -> Void, withdraw: @escaping (String) -> Void, reached: @escaping @Sendable () -> Bool, call: @escaping @Sendable () -> Void) {
-    Task {
+private func attemptCommand(_ scope: ViewScope, _ action: String, report: @escaping (String?) -> Void, withdraw: @escaping (String) -> Void, reached: @escaping @Sendable () -> Bool, call: @escaping @Sendable () -> Void) {
+    scope.launch {
         report(nil)
         _ = await offMain(call)
         let confirmed = await reachedWithin(reached, COMMAND_SETTLE_MS, 200)
@@ -1053,6 +1099,7 @@ let VEHICLE_STATUS = "Vehicle status"
 final class FlightDeckContext {
     let offers: [String: GuidedOffer]
     let armed: Bool
+    let scope: ViewScope
     let confirm: (GuidedAction) -> Void
     let openValue: (GuidedValueKind) -> Void
     let report: (String?) -> Void
@@ -1060,9 +1107,10 @@ final class FlightDeckContext {
     let openChecklist: (() -> Void)?
     let readiness: Readiness?
 
-    init(offers: [String: GuidedOffer], armed: Bool, confirm: @escaping (GuidedAction) -> Void, openValue: @escaping (GuidedValueKind) -> Void, report: @escaping (String?) -> Void, withdraw: @escaping (String) -> Void, openChecklist: (() -> Void)?, readiness: Readiness? = nil) {
+    init(offers: [String: GuidedOffer], armed: Bool, scope: ViewScope = ViewScope(), confirm: @escaping (GuidedAction) -> Void, openValue: @escaping (GuidedValueKind) -> Void, report: @escaping (String?) -> Void, withdraw: @escaping (String) -> Void, openChecklist: (() -> Void)?, readiness: Readiness? = nil) {
         self.offers = offers
         self.armed = armed
+        self.scope = scope
         self.confirm = confirm
         self.openValue = openValue
         self.report = report
@@ -1090,7 +1138,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
                 offerId: armed ? "disarm" : "arm",
                 run: {
                     let target = !armed
-                    attemptCommand(target ? "Arm" : "Disarm", report: deck.report, withdraw: deck.withdraw, reached: { armedNow() == target }, call: { VehicleCommands.setArmed(target) })
+                    attemptCommand(deck.scope, target ? "Arm" : "Disarm", report: deck.report, withdraw: deck.withdraw, reached: { armedNow() == target }, call: { VehicleCommands.setArmed(target) })
                 }
             ))
         }) : nil,
@@ -1101,7 +1149,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
             enabled: takeoff?.ready == true,
             onHold: deck.readiness != nil ? nil : {
                 let heightless = takeoff?.carriesValue == false
-                Task {
+                deck.scope.launch {
                     let refused = await offMain { () -> String? in
                         let target = heightless ? nil : holdTakeoffHeight(guidedTakeoff(Qgc.get(GUIDED_TAKEOFF))).flatMap { height in guidedTakeoff(Qgc.get(guidedTakeoffPath(height))) }
                         if heightless { return VehicleCommands.takeoffRefusal() }
@@ -1145,7 +1193,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
             label: holdLabel(land?.title ?? "Land"),
             icon: .flightLand,
             enabled: land?.ready == true,
-            onHold: { Task { deck.report(await offMain { VehicleCommands.landRefusal() }) } },
+            onHold: { deck.scope.launch { deck.report(await offMain { VehicleCommands.landRefusal() }) } },
             onClick: {
                 deck.confirm(GuidedAction(
                     name: land?.title ?? "Land",

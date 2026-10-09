@@ -171,7 +171,6 @@ struct SettingsPageEntry: Equatable {
     var showsConsole: Bool = false
     var showsNtrip: Bool = false
     var showsPx4Logs: Bool = false
-    var showsPacketRadio: Bool = false
     var helpLinks: [HelpLink] = []
     var keywords: String = ""
 }
@@ -227,7 +226,6 @@ func settingsPages(_ view: JSON?) -> [SettingsPageEntry] {
             showsConsole: page["showsConsole"].bool,
             showsNtrip: page["showsNtrip"].bool,
             showsPx4Logs: page["showsPx4Logs"].bool,
-            showsPacketRadio: page["showsPacketRadio"].bool,
             helpLinks: page["helpLinks"].array.filter { $0.object != nil }.map {
                 HelpLink(name: $0["name"].string, url: $0["url"].string, host: $0["host"].string)
             },
@@ -1089,7 +1087,7 @@ private struct BitmaskPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .sheet(isPresented: $editing) {
+        .queuedSheet(isPresented: $editing) {
             NavigationStack {
                 List(fact.bitmaskStrings.indices.filter { fact.bitmaskValues.indices.contains($0) }, id: \.self) { index in
                     let raw = bitmaskRaw(fact)

@@ -290,7 +290,7 @@ private struct ButtonRow: View {
                 .foregroundStyle(button.pressed ? theme.colors.primary : theme.colors.onSurface)
                 .frame(width: 32, alignment: .leading)
             Menu {
-                ForEach(actions, id: \.action) { option in
+                ForEach(Array(actions.enumerated()), id: \.offset) { _, option in
                     Button(option.action) { onAction(option.action) }
                 }
             } label: {
@@ -355,7 +355,7 @@ private struct JoystickPicker: View {
 
     var body: some View {
         Menu {
-            ForEach(page.names, id: \.self) { name in
+            ForEach(Array(page.names.enumerated()), id: \.offset) { _, name in
                 Button(name) { onPick(name) }
             }
         } label: {

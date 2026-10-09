@@ -5,7 +5,7 @@ private let RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
 
 final class RcHolder: Sendable {
     private let send: @Sendable (@escaping @Sendable () -> Void) -> Void
-    private let sent = OSAllocatedUnfairLock(initialState: Set<Int>())
+    private let sent = OSAllocatedUnfairLock(initialState: [Int: Int]())
 
     init(send: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void = { offMainInOrder($0) }) {
         self.send = send
@@ -13,13 +13,13 @@ final class RcHolder: Sendable {
 
     func hold(_ channel: Int, _ pwm: Int) {
         guard channel > 0 else { return }
-        sent.withLock { _ = $0.insert(channel) }
+        sent.withLock { $0[channel] = pwm }
         send { VehicleCommands.overrideRcChannel(channel, pwm: pwm) }
     }
 
     func release() {
         let held = sent.withLock { held in
-            let all = held.sorted()
+            let all = held.keys.sorted()
             held.removeAll()
             return all
         }
@@ -30,7 +30,9 @@ final class RcHolder: Sendable {
 
     func forget() { sent.withLock { $0.removeAll() } }
 
-    func holding() -> Set<Int> { sent.withLock { $0 } }
+    func holding() -> Set<Int> { sent.withLock { Set($0.keys) } }
+
+    func held(_ channel: Int) -> Int? { sent.withLock { $0[channel] } }
 }
 
 let customRcControls = RcHolder()
@@ -42,6 +44,20 @@ private func releaseOverrides() {
     customRcControls.forget()
     cameraRcControls.forget()
     offMainInOrder { VehicleCommands.clearRcOverrides() }
+}
+
+private let RC_RELEASE_GRACE_MS = 300
+
+@MainActor private var rcLayersShown = 0
+
+@MainActor private func rcLayerShown() { rcLayersShown += 1 }
+
+@MainActor private func rcLayerGone() {
+    rcLayersShown -= 1
+    Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(RC_RELEASE_GRACE_MS))
+        if rcLayersShown == 0 { customRcControls.release() }
+    }
 }
 
 private func uptimeMillis() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
@@ -56,8 +72,13 @@ private struct ControlLabel: View {
 
 private struct RcSlider: View {
     let control: RcControl
-    @State private var pwm = PWM_CENTER
+    @State private var pwm: Int
     @State private var lastSent: Int64 = 0
+
+    init(control: RcControl) {
+        self.control = control
+        _pwm = State(initialValue: customRcControls.held(control.channel) ?? PWM_CENTER)
+    }
 
     private func send(_ value: Int, _ finished: Bool) {
         let now = uptimeMillis()
@@ -91,7 +112,12 @@ private struct RcSlider: View {
 
 private struct RcButton: View {
     let control: RcControl
-    @State private var on = false
+    @State private var on: Bool
+
+    init(control: RcControl) {
+        self.control = control
+        _on = State(initialValue: customRcControls.held(control.channel) == PWM_MAX)
+    }
 
     var body: some View {
         Toggle(control.label, isOn: Binding(
@@ -109,7 +135,12 @@ private let SWITCH3_LABELS = ["Low", "Mid", "High"]
 
 private struct RcSwitch3: View {
     let control: RcControl
-    @State private var position = 1
+    @State private var position: Int
+
+    init(control: RcControl) {
+        self.control = control
+        _position = State(initialValue: switch3Pwms().firstIndex(of: customRcControls.held(control.channel) ?? PWM_CENTER) ?? 1)
+    }
 
     var body: some View {
         HStack {
@@ -172,7 +203,8 @@ struct RcControlsLayer: View {
             Color.clear
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
-                .onDisappear { customRcControls.release() }
+                .onAppear { rcLayerShown() }
+                .onDisappear { rcLayerGone() }
             if !controls.isEmpty && hasVehicle {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(controls.enumerated()), id: \.offset) { _, control in

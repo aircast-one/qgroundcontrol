@@ -155,6 +155,7 @@ private struct GimbalTiltSlider: View {
 
 struct RcCameraControls: View {
     @Environment(\.theme) private var theme
+    @Environment(FlyScreenState.self) private var flyScreen
     @HasVehicle private var hasVehicle
     @ChannelSetting("gimbalTiltChannel") private var tiltChannel
     @ChannelSetting("gimbalPanChannel") private var panChannel
@@ -169,8 +170,9 @@ struct RcCameraControls: View {
     @State private var zoom = PWM_CENTER
     @State private var lightOn = false
     @State private var channelRecording = false
-    @State private var gimbalRefused: String?
-    @State private var options = false
+
+    private var state: CameraControlsState { flyScreen.cameraControls }
+    private var gimbalRefused: String? { state.gimbalRefused }
 
     var body: some View {
         let channels = rcCameraChannels(tilt: tiltChannel, pan: panChannel, zoom: zoomChannel, light: lightChannel, record: recordChannel)
@@ -189,12 +191,22 @@ struct RcCameraControls: View {
             lightOn = false
             channelRecording = false
         }
-        .onDisappear { cameraRcControls.release() }
+        .onChange(of: channels, initial: true) { _, now in restore(now) }
+        .onAppear { state.rcShown() }
+        .onDisappear { state.rcGone() }
         .task(id: gimbalRefused) {
             guard gimbalRefused != nil else { return }
             try? await Task.sleep(for: .milliseconds(GIMBAL_REFUSAL_MS))
-            if !Task.isCancelled { gimbalRefused = nil }
+            if !Task.isCancelled { state.gimbalRefused = nil }
         }
+    }
+
+    private func restore(_ channels: RcCameraChannels) {
+        tilt = cameraRcControls.held(channels.tilt) ?? tilt
+        pan = cameraRcControls.held(channels.pan) ?? pan
+        zoom = cameraRcControls.held(channels.zoom) ?? zoom
+        lightOn = cameraRcControls.held(channels.light).map { $0 == PWM_MAX } ?? lightOn
+        channelRecording = cameraRcControls.held(channels.record).map { $0 == PWM_MAX } ?? channelRecording
     }
 
     private func controls(_ channels: RcCameraChannels, _ gimbalManager: Bool) -> some View {
@@ -217,7 +229,7 @@ struct RcCameraControls: View {
                 }
             }
             if channels.light > 0 || gimbal != nil || rcGimbal {
-                Button { options = true } label: {
+                Button { state.options = true } label: {
                     Image(.tune).font(.system(size: 20)).frame(width: 48, height: 48).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -228,10 +240,10 @@ struct RcCameraControls: View {
             }
         }
         .padding(4)
-        .background(OpenOnRequest(name: "gimbal") { options = true })
+        .background(OpenOnRequest(name: "gimbal") { state.options = true })
         .background {
-            if options {
-                AircastSheet(onDismissRequest: { options = false }) {
+            if state.options {
+                AircastSheet(onDismissRequest: { state.options = false }) {
                     optionsSheet(channels, gimbal, rcGimbal)
                 }
             }
@@ -251,12 +263,16 @@ struct RcCameraControls: View {
                 if let gimbal, gimbal.yawLockOffered {
                     CameraChip(label: gimbal.yawLockLabel, selected: gimbal.yawLocked) {
                         let locked = gimbal.yawLocked
-                        Task { gimbalRefused = await offMain { gimbalRefusal(Qgc.call("gimbal.yawLock", !locked)) } }
+                        let state = state
+                        Task { state.gimbalRefused = await offMain { gimbalRefusal(Qgc.call("gimbal.yawLock", !locked)) } }
                     }
                 }
                 if gimbal != nil {
-                    Button("Recenter") { Task { gimbalRefused = await offMain { gimbalRefusal(Qgc.call("gimbal.center")) } } }
-                        .buttonStyle(.borderless)
+                    Button("Recenter") {
+                        let state = state
+                        Task { state.gimbalRefused = await offMain { gimbalRefusal(Qgc.call("gimbal.center")) } }
+                    }
+                    .buttonStyle(.borderless)
                 }
                 if rcGimbal {
                     Button("Recenter") {

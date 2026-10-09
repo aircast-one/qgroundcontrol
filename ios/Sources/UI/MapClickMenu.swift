@@ -139,12 +139,13 @@ struct MapClickMenu: View {
     @QgcPath("vehicle.coordinate") private var vehicleCoordinate
     @State private var confirming: MapClickAction?
     @State private var refused: String?
+    @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
     var body: some View {
         let actions = mapClickActions(view)
         let defaults = orbitDefaults(view)
-        Group {
+        ZStack {
             if view != nil && actions.isEmpty {
                 Color.clear
                     .frame(width: 0, height: 0)
@@ -163,12 +164,14 @@ struct MapClickMenu: View {
             guard let pending = confirming, !offered.contains(where: { $0.id == pending.id }) else { return }
             if pending.id == ORBIT_ACTION { onDismiss() } else { confirming = nil }
         }
+        .onDisappear { scope.cancel() }
     }
 
     private func run(_ action: MapClickAction) {
         let point = point
-        Task {
+        scope.launch {
             let answer = await offMain { send(action, point, nil) }
+            guard !Task.isCancelled else { return }
             if answer == nil { onDismiss() } else { refused = answer }
         }
     }
@@ -228,6 +231,7 @@ private struct OrbitPanel: View {
     @State private var target: Double?
     @State private var settled: Double?
     @State private var refused: String?
+    @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -274,7 +278,10 @@ private struct OrbitPanel: View {
         .padding(Space.s3)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .onAppear { open() }
-        .onDisappear { mapEdits.orbit = nil }
+        .onDisappear {
+            scope.cancel()
+            mapEdits.orbit = nil
+        }
         .onChange(of: point) { open() }
         .task(id: settled) {
             let at = settled
@@ -304,8 +311,9 @@ private struct OrbitPanel: View {
         let centre = MapPoint(latitude: circle.centre.latitude, longitude: circle.centre.longitude)
         let choice = OrbitChoice(radiusMetres: circle.radiusMetres, clockwise: circle.clockwise, aboveHomeMetres: above)
         let action = action
-        Task {
+        scope.launch {
             let answer = await offMain { send(action, centre, choice) }
+            guard !Task.isCancelled else { return }
             if answer == nil { onDone() } else { refused = answer }
         }
     }
@@ -321,6 +329,7 @@ struct SetWaypointSheet: View {
     let sequence: Int
     let onDismiss: () -> Void
     @State private var refused: String?
+    @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -330,8 +339,9 @@ struct SetWaypointSheet: View {
                 Text(setWaypointMessage(sequence)).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
                 HoldOrCancel(label: "Set waypoint", onConfirm: {
                     let target = waypointTarget(sequence)
-                    Task {
+                    scope.launch {
                         let answer = await offMain { Qgc.refusalOf(SET_WAYPOINT_PATH, target) }
+                        guard !Task.isCancelled else { return }
                         if answer == nil { onDismiss() } else { refused = answer }
                     }
                 }, onCancel: onDismiss)
@@ -342,6 +352,7 @@ struct SetWaypointSheet: View {
             .padding(.bottom, Space.s6)
         }
         .onChange(of: sequence) { refused = nil }
+        .onDisappear { scope.cancel() }
     }
 }
 
@@ -391,6 +402,7 @@ struct LoiterRadiusPanel: View {
     let onRefused: (String) -> Void
     let onDone: () -> Void
     @Environment(FlyMapEdits.self) private var mapEdits
+    @Environment(FlyScreenState.self) private var flyScreen
     @State private var typed: String?
 
     var body: some View {
@@ -429,8 +441,12 @@ struct LoiterRadiusPanel: View {
                 set: { mapEdits.gotoLoiter = LoiterEdit(radiusMetres: edit.radiusMetres, clockwise: $0, unit: edit.unit, metresPerUnit: edit.metresPerUnit) }
             ))
         }
-        .onAppear { mapEdits.gotoLoiter = opened }
-        .onDisappear { mapEdits.gotoLoiter = nil }
+        .onAppear { if mapEdits.gotoLoiter == nil { mapEdits.gotoLoiter = opened } }
+        .onDisappear {
+            let actions = flyScreen.flightActions
+            let mapEdits = mapEdits
+            Task { @MainActor in if actions.editingLoiter == nil { mapEdits.gotoLoiter = nil } }
+        }
         .onChange(of: offer) {
             typed = nil
             mapEdits.gotoLoiter = loiterEditOpened(offer, units)
@@ -446,6 +462,7 @@ struct RoiSheet: View {
     let onDismiss: () -> Void
     @State private var editing = false
     @State private var refused: String?
+    @State private var scope = ViewScope()
 
     var body: some View {
         AircastSheet(onDismissRequest: onDismiss) {
@@ -471,11 +488,13 @@ struct RoiSheet: View {
             editing = false
             refused = nil
         }
+        .onDisappear { scope.cancel() }
     }
 
     private func run(_ path: String, _ args: [Any]) {
-        Task {
+        scope.launch {
             let answer = await offMain { refusedBy(path, args) }
+            guard !Task.isCancelled else { return }
             if answer == nil { onDismiss() } else { refused = answer }
         }
     }

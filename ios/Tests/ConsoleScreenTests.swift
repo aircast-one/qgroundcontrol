@@ -95,4 +95,12 @@ final class ConsolePasteTests: XCTestCase {
         XCTAssertNil(sent)
         XCTAssertEqual(left, field)
     }
+
+    func testTheReturnKeySendsTheWholeLineLikeTheImeSendAction() {
+        XCTAssertTrue(typedReturn("ls -l", "ls\n -l"))
+        XCTAssertTrue(typedReturn("ls", "ls\n"))
+        XCTAssertTrue(typedReturn("", "\n"))
+        XCTAssertFalse(typedReturn("ls", "ls\nps\n"))
+        XCTAssertFalse(typedReturn("ls", "ls -"))
+    }
 }

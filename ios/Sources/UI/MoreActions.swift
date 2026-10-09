@@ -16,7 +16,9 @@ private let GRIPPER_HOLD = 2
 private let LAND_ABORT_CLIMB_METERS = 50.0
 
 func moreActions(_ offers: [String: GuidedOffer]) -> [GuidedOffer] {
-    SHEET_ACTIONS.compactMap { offers[$0] }.filter { $0.shown && !BAR_ACTIONS.contains($0.id) && $0.id != EMERGENCY_STOP }
+    offers.values
+        .filter { $0.shown && !BAR_ACTIONS.contains($0.id) && $0.id != EMERGENCY_STOP && SHEET_ACTIONS.contains($0.id) }
+        .sorted { $0.order < $1.order }
 }
 
 private let LAND_ABORT = "landAbort"

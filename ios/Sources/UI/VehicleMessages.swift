@@ -107,6 +107,7 @@ func messageTime(_ served: String) -> String {
 }
 
 private let ALERT_CORNER: CGFloat = 12
+private let MESSAGE_LIST_MAX_HEIGHT: CGFloat = 420
 
 struct VehicleMessageBanner: View {
     @Environment(\.theme) private var theme
@@ -177,6 +178,7 @@ private struct VehicleMessageLog: View {
     let onDismiss: () -> Void
     @Environment(\.theme) private var theme
     @State private var editing: String?
+    @State private var listHeight: CGFloat?
 
     var body: some View {
         let blocking = checks.isEmpty ? [blocker.map { ArmingCheck(message: $0, description: "", severity: "error") }].compactMap { $0 } : checks
@@ -189,7 +191,7 @@ private struct VehicleMessageLog: View {
                     Text("The vehicle has not said anything yet.").padding(.vertical, 16)
                 } else {
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 0) {
                             ForEach(Array(blocking.enumerated()), id: \.offset) { _, check in
                                 MessageLine(level: check.severity == "error" ? .Error : .Warning, time: "") {
                                     Text(check.message).font(.bodyMedium)
@@ -204,8 +206,10 @@ private struct VehicleMessageLog: View {
                                 }
                             }
                         }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
                     }
-                    .frame(maxHeight: 420)
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(maxHeight: min(listHeight ?? MESSAGE_LIST_MAX_HEIGHT, MESSAGE_LIST_MAX_HEIGHT))
                     .padding(.top, 12)
                 }
                 HStack {

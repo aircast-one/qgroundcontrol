@@ -248,6 +248,8 @@ private struct OfflineSetDialog: View {
     let onAction: (String) -> Void
     @State private var confirming = false
     @State private var typedName: String
+    @State private var scope = ViewScope()
+    @State private var probe = PresenterProbe()
     @Environment(\.theme) private var theme
 
     init(set: OfflineSet, onDismiss: @escaping () -> Void, onRename: @escaping (String) -> Void, onAction: @escaping (String) -> Void) {
@@ -304,8 +306,12 @@ private struct OfflineSetDialog: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
+        .onDisappear { scope.cancel() }
         .alert("Confirm delete", isPresented: $confirming) {
-            Button("Delete", role: .destructive) { onAction(OFFLINE_DELETE) }
+            Button("Delete", role: .destructive) {
+                scope.launch { if await presenterFreed(probe) { onAction(OFFLINE_DELETE) } }
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(set.defaultSet

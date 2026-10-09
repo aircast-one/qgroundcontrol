@@ -239,7 +239,9 @@ struct RadioScreen: View {
         .onAppear { offMainInOrder { RADIO_ENTER_ACTIONS.map(radioCalAction).forEach { Qgc.invoke($0) } } }
         .onDisappear { offMainInOrder { RADIO_LEAVE_ACTIONS.map(radioCalAction).forEach { Qgc.invoke($0) } } }
         .task(id: "\(switchReads)|\(String(describing: view?.connected))") {
-            switches = await offMain { readPage(RADIO_SWITCHES_PAGE) }
+            let read = await offMain { readPage(RADIO_SWITCHES_PAGE) }
+            guard !Task.isCancelled else { return }
+            switches = read
         }
     }
 

@@ -331,40 +331,45 @@ struct LayoutWidget<Content: View>: View {
 
 struct OverlayEditBar: View {
     @Environment(FlyScreenState.self) private var flyScreen
+
+    var body: some View {
+        if flyScreen.layout.editing { OverlayEditBarContent(layout: flyScreen.layout) }
+    }
+}
+
+private struct OverlayEditBarContent: View {
+    let layout: OverlayLayoutState
     @Environment(\.theme) private var theme
     @QgcPath(INSTRUMENTS_VIEW) private var classView
     @State private var armed = false
 
     var body: some View {
-        let layout = flyScreen.layout
-        if layout.editing {
-            HStack(spacing: Space.s2) {
-                Button(valueSizePillText(layout.valueSize)) {
-                    layout.valueSize = nextValueSize(layout.valueSize)
-                    writeValueSize(instrumentVehicleClass(classView), layout.valueSize)
-                }
-                .buttonStyle(.borderless)
-                Button(resetPillText(armed)) {
-                    let tap = resetTap(armed)
-                    if tap.reset { layout.reset() }
-                    armed = tap.armed
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(armed ? theme.colors.error : theme.colors.primary)
-                Spacer(minLength: 0)
-                Button("Done") { layout.editing = false }
-                    .buttonStyle(.borderedProminent)
+        HStack(spacing: Space.s2) {
+            Button(valueSizePillText(layout.valueSize)) {
+                layout.valueSize = nextValueSize(layout.valueSize)
+                writeValueSize(instrumentVehicleClass(classView), layout.valueSize)
             }
-            .font(.labelLarge)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity)
-            .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.large))
-            .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
-            .task(id: armed) {
-                guard armed, (try? await Task.sleep(for: .milliseconds(RESET_ARM_MILLIS))) != nil else { return }
-                armed = false
+            .buttonStyle(.borderless)
+            Button(resetPillText(armed)) {
+                let tap = resetTap(armed)
+                if tap.reset { layout.reset() }
+                armed = tap.armed
             }
+            .buttonStyle(.borderless)
+            .foregroundStyle(armed ? theme.colors.error : theme.colors.primary)
+            Spacer(minLength: 0)
+            Button("Done") { layout.editing = false }
+                .buttonStyle(.borderedProminent)
+        }
+        .font(.labelLarge)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+        .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.large))
+        .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+        .task(id: armed) {
+            guard armed, (try? await Task.sleep(for: .milliseconds(RESET_ARM_MILLIS))) != nil else { return }
+            armed = false
         }
     }
 }

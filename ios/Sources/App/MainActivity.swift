@@ -129,7 +129,6 @@ struct AircastShell: View {
     @State private var armedBattery: Int?
     @State private var lastVehicles: VehicleChoices?
     @State private var settingsRequested: String?
-    @State private var resumeDismissed: Int?
 
     private var flyNow: FlyState? { flyState(flyStateJson) }
 
@@ -259,7 +258,7 @@ struct AircastShell: View {
                 }
             }
             if onFly {
-                ResumeFailedPrompt(dismissed: resumeDismissed) { resumeDismissed = $0 }
+                ResumeFailedPrompt()
             }
             PreflightChecklistReset(checklist: flyScreen.checklist, available: vehicleNow)
             FirstRunDialog()
@@ -484,15 +483,18 @@ final class AppDialogsState {
     static let shared = AppDialogsState()
 
     var appMessages: [AppMessage] = []
+    var resumeFailed: Int?
+    var resumeDismissed: Int?
 }
 
 enum AppAlert: Equatable {
     case Gimbal
     case Message(AppMessage)
+    case ResumeFailed(Int)
 }
 
-func appAlert(_ gimbalAsking: Bool, _ messages: [AppMessage]) -> AppAlert? {
-    gimbalAsking ? .Gimbal : messages.first.map(AppAlert.Message)
+func appAlert(_ gimbalAsking: Bool, _ messages: [AppMessage], resumeFailed: Int? = nil) -> AppAlert? {
+    resumeFailed.map(AppAlert.ResumeFailed) ?? (gimbalAsking ? .Gimbal : messages.first.map(AppAlert.Message))
 }
 
 private struct AlertSlot: Equatable {
@@ -508,11 +510,13 @@ struct AppDialogsHost: View {
 
     var body: some View {
         let stack = SheetStack.shared
-        let alert = appAlert(gimbalAsksForControl.value, AppDialogsState.shared.appMessages)
+        let dialogs = AppDialogsState.shared
+        let alert = appAlert(gimbalAsksForControl.value, dialogs.appMessages, resumeFailed: resumePending(dialogs.resumeFailed, dialogs.resumeDismissed))
         let here = stack.level(dialogs: true) == level
         ZStack(alignment: .topLeading) {
             if stack.level(dialogs: false) == level {
                 MissionCompleteDialog()
+                ControlRequestDialog()
             }
             if here, alertReady, let alert {
                 alertView(alert)
@@ -540,6 +544,8 @@ struct AppDialogsHost: View {
             AppMessageDialog(message: message, onOpenSetup: { navigation?.openAircraft() }) {
                 AppDialogsState.shared.appMessages = Array(AppDialogsState.shared.appMessages.dropFirst())
             }
+        case .ResumeFailed(let index):
+            ResumeFailedDialog(index: index) { AppDialogsState.shared.resumeDismissed = index }
         }
     }
 }

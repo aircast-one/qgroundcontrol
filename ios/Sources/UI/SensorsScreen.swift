@@ -262,6 +262,7 @@ struct SensorsScreen: View {
     @State private var wasInProgress = false
     @State private var notice: String?
     @State private var stillRunning = false
+    @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -276,6 +277,7 @@ struct SensorsScreen: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onDisappear { scope.cancel() }
     }
 
     @ViewBuilder
@@ -319,7 +321,11 @@ struct SensorsScreen: View {
         .alert("Factory reset", isPresented: $confirmFactoryReset) {
             Button("Cancel", role: .cancel) {}
             Button("Reset", role: .destructive) {
-                Task { notice = await offMain { Qgc.refusalOf(SENSOR_FACTORY_RESET) } }
+                scope.launch {
+                    let answer = await offMain { Qgc.refusalOf(SENSOR_FACTORY_RESET) }
+                    guard !Task.isCancelled else { return }
+                    notice = answer
+                }
             }
         } message: {
             Text("Reset every parameter on the vehicle to its factory default?")
@@ -351,10 +357,11 @@ struct SensorsScreen: View {
         ranRoutine = calibration.id
         notice = nil
         let sent = arguments.map { Optional($0) }
-        Task {
+        scope.launch {
             let before = await offMain { calibrationStatus() }
             let dispatched = await offMain { Qgc.call(invocation, arguments: sent)?["ok"].bool ?? false }
             let started = dispatched ? await calibrationStarted(before) : false
+            guard !Task.isCancelled else { return }
             notice = calibrationFailure(calibration.title, started)
         }
     }

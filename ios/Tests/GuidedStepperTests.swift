@@ -35,6 +35,20 @@ final class GuidedStepperTests: XCTestCase {
         XCTAssertEqual(guidedValueText(25.0, "ft"), "25")
     }
 
+    func testRoundingFollowsTheExactBinaryValueLikeBigDecimalHalfUp() {
+        XCTAssertEqual(guidedRounded(0.15, "m"), 0.1, accuracy: 1e-9)
+        XCTAssertEqual(guidedRounded(0.25, "m"), 0.3, accuracy: 1e-9)
+        XCTAssertEqual(guidedRounded(1.05, "m"), 1.1, accuracy: 1e-9)
+        XCTAssertEqual(guidedRounded(2.5, "ft"), 3.0, accuracy: 1e-9)
+        XCTAssertEqual(guidedRounded(-0.15, "m"), -0.1, accuracy: 1e-9)
+    }
+
+    func testTheReadingRoundsHalfUpOnTheShortestDecimalLikeStringFormat() {
+        XCTAssertEqual(guidedValueText(0.15, "m"), "0.2")
+        XCTAssertEqual(guidedValueText(0.25, "m"), "0.3")
+        XCTAssertEqual(guidedValueText(2.5, "ft"), "3")
+    }
+
     func testATypedValueIsClampedAndRoundedAndGarbageIsIgnored() {
         XCTAssertEqual(guidedTyped("500", 1.0, 120.0, "m")!, 120.0, accuracy: 1e-9)
         XCTAssertEqual(guidedTyped("12,46", 1.0, 120.0, "m")!, 12.5, accuracy: 1e-9)

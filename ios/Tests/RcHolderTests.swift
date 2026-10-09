@@ -31,6 +31,16 @@ final class RcHolderTests: XCTestCase {
         XCTAssertEqual(queued.size, 0)
     }
 
+    func testAControlRebuiltByARotationReadsBackTheValueItsChannelIsHeldAt() {
+        let holder = RcHolder(send: Queued().add)
+        holder.hold(5, 1300)
+        holder.hold(5, 1700)
+        XCTAssertEqual(holder.held(5), 1700)
+        XCTAssertNil(holder.held(6))
+        holder.release()
+        XCTAssertNil(holder.held(5), "leaving the Fly screen gives the channel back, so the control starts fresh")
+    }
+
     func testGivingEverythingBackForgetsWhatWasHeldWithoutASecondRelease() {
         let queued = Queued()
         let holder = RcHolder(send: queued.add)

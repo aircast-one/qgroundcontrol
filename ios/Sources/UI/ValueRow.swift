@@ -236,6 +236,8 @@ private let THUMB_SIZE: CGFloat = 18
 private let THUMB_GRAB: CGFloat = 24
 private let TRACK_HEIGHT: CGFloat = 2
 private let SLIDER_HEIGHT: CGFloat = 48
+private let THUMB_SLOP: CGFloat = 6
+private let THIN_SLIDER_SPACE = "thinSlider"
 
 func thumbFraction(_ value: Double, _ range: ClosedRange<Double>) -> Double {
     let span = range.upperBound - range.lowerBound
@@ -251,7 +253,8 @@ private struct ThinSlider: View {
     let onChange: (Double) -> Void
     let onDone: () -> Void
     @Environment(\.theme) private var theme
-    @State private var grabbed: Bool? = nil
+    @GestureState private var touching = false
+    @State private var moving = false
 
     var body: some View {
         GeometryReader { geo in
@@ -266,23 +269,30 @@ private struct ThinSlider: View {
                 Rectangle().fill(theme.colors.outlineVariant).frame(width: max(width - THUMB_SIZE, 0), height: TRACK_HEIGHT).offset(x: THUMB_SIZE / 2)
                 Rectangle().fill(active).frame(width: max(thumbX - THUMB_SIZE / 2, 0), height: TRACK_HEIGHT).offset(x: THUMB_SIZE / 2)
                 Circle().fill(active).frame(width: THUMB_SIZE, height: THUMB_SIZE).offset(x: thumbX - THUMB_SIZE / 2)
+                Color.clear
+                    .frame(width: THUMB_GRAB * 2, height: geo.size.height)
+                    .contentShape(Rectangle())
+                    .offset(x: thumbX - THUMB_GRAB)
+                    .gesture(
+                        DragGesture(minimumDistance: 0, coordinateSpace: .named(THIN_SLIDER_SPACE))
+                            .updating($touching) { _, state, _ in state = true }
+                            .onChanged { drag in
+                                guard moving || abs(drag.translation.width) >= THUMB_SLOP else { return }
+                                moving = true
+                                onChange(positionAt(drag.location.x))
+                            },
+                        isEnabled: enabled
+                    )
             }
-            .frame(width: width, height: geo.size.height)
-            .contentShape(Rectangle())
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 6)
-                    .onChanged { drag in
-                        let grabbing = grabbed ?? (enabled && grabsThumb(drag.startLocation.x, thumbX, THUMB_GRAB) && abs(drag.translation.width) >= abs(drag.translation.height))
-                        grabbed = grabbing
-                        if grabbing { onChange(positionAt(drag.location.x)) }
-                    }
-                    .onEnded { _ in
-                        if grabbed == true { onDone() }
-                        grabbed = nil
-                    }
-            )
+            .frame(width: width, height: geo.size.height, alignment: .leading)
         }
+        .coordinateSpace(.named(THIN_SLIDER_SPACE))
         .frame(height: SLIDER_HEIGHT)
+        .onChange(of: touching) { _, now in
+            guard !now, moving else { return }
+            moving = false
+            onDone()
+        }
         .accessibilityElement()
         .accessibilityValue(String(format: "%.0f%%", thumbFraction(value, range) * 100))
         .accessibilityAdjustableAction { direction in

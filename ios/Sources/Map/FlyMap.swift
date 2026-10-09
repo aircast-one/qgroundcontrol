@@ -115,6 +115,39 @@ private func flownPlan() -> FlownPlan {
     )
 }
 
+@Observable
+private final class FlyMapState {
+    nonisolated(unsafe) static var retained: FlyMapState?
+
+    var plan = FlownPlan()
+    var centre: TrackPoint?
+    var zoom = 0.0
+    var fitRequest = 0
+    var camera = FlyCamera(readCamera())
+    @ObservationIgnored private var views = 0
+    @ObservationIgnored private var shown = false
+
+    static func adopt() -> FlyMapState { retained ?? FlyMapState() }
+
+    func appeared() {
+        if shown, let at = centre, zoom > 1.0 {
+            camera.centreOn = at
+            camera.centreZoom = zoom
+            camera.centreRequest += 1
+        }
+        shown = true
+        views += 1
+        FlyMapState.retained = self
+    }
+
+    func disappeared() {
+        views -= 1
+        DispatchQueue.main.async { [self] in
+            if views == 0 && FlyMapState.retained === self { FlyMapState.retained = nil }
+        }
+    }
+}
+
 struct FlyMap: View {
     var cameraBottomPx: CGFloat = 0
     var topInsetPx: CGFloat = 0
@@ -131,13 +164,10 @@ struct FlyMap: View {
     @Environment(\.scenePhase) private var scenePhase
     @MapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)") private var keepCentered
     @State private var style = FlyMapStyle.last
-    @State private var plan = FlownPlan()
-    @State private var centre: TrackPoint?
-    @State private var zoom = 0.0
-    @State private var fitRequest = 0
-    @State private var camera = FlyCamera(readCamera())
+    @State private var state = FlyMapState.adopt()
 
     var body: some View {
+        let plan = state.plan
         ZStack {
             VehicleMap(
                 mapStyle: style,
@@ -161,10 +191,10 @@ struct FlyMap: View {
                 logoEndInsetPx: logoEndInsetPx,
                 cameraBottomPx: cameraBottomPx,
                 pip: pip,
-                fitRequest: fitRequest,
-                centreRequest: camera.centreRequest,
-                centreOn: camera.centreOn,
-                centreZoom: camera.centreZoom,
+                fitRequest: state.fitRequest,
+                centreRequest: state.camera.centreRequest,
+                centreOn: state.camera.centreOn,
+                centreZoom: state.camera.centreZoom,
                 onMapClick: onMapClick,
                 onMissionItemClick: onMissionItemClick,
                 traffic: plan.traffic,
@@ -180,8 +210,8 @@ struct FlyMap: View {
                 orbit: plan.orbit,
                 otherMissions: plan.others
             )
-            if let at = centre, zoom > 0, !pip {
-                ScaleBarView(latitude: at.latitude, zoom: zoom)
+            if let at = state.centre, state.zoom > 0, !pip {
+                ScaleBarView(latitude: at.latitude, zoom: state.zoom)
                     .padding(logoEndInsetPx.map { EdgeInsets(top: 0, leading: 0, bottom: bottomInsetPx + SCALE_ABOVE_LOGO, trailing: $0) }
                         ?? EdgeInsets(top: 0, leading: Space.s1, bottom: Space.s1, trailing: 0))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: logoEndInsetPx == nil ? .bottomLeading : .bottomTrailing)
@@ -189,9 +219,14 @@ struct FlyMap: View {
             }
         }
         .background(theme.colors.surface)
-        .onChange(of: Keys(pip, centre != nil), initial: true) { zoomForPip() }
-        .task(id: scenePhase == .active) {
-            guard scenePhase == .active else { return }
+        .onAppear {
+            state.appeared()
+            zoomForPip()
+        }
+        .onDisappear { state.disappeared() }
+        .onChange(of: Keys(pip, state.centre != nil)) { zoomForPip() }
+        .task(id: scenePhase != .background) {
+            guard scenePhase != .background else { return }
             while !Task.isCancelled {
                 let mapStyle = await offMain { planMapStyle() }
                 if mapStyle != style {
@@ -199,34 +234,34 @@ struct FlyMap: View {
                     FlyMapStyle.last = mapStyle
                 }
                 let next = await offMain { flownPlan() }
-                if missionArrived(plan.items, next.items, shape) { fitRequest += 1 }
+                if missionArrived(state.plan.items, next.items, shape) { state.fitRequest += 1 }
                 if centresOnOperator(FlightMapPosition.operatorCentred, next.operator, next.vehiclePlaced) {
                     FlightMapPosition.operatorCentred = true
-                    camera.centreOn = next.operator
-                    camera.centreZoom = nil
-                    camera.centreRequest += 1
+                    state.camera.centreOn = next.operator
+                    state.camera.centreZoom = nil
+                    state.camera.centreRequest += 1
                 }
-                plan = next
+                state.plan = next
                 try? await Task.sleep(for: .milliseconds(FLY_POLL_MS))
             }
         }
     }
 
     private func zoomForPip() {
-        guard let at = centre, pip != camera.zoomedForPip else { return }
-        camera.zoomedForPip = pip
-        guard let level = pipZoom(camera.mainZoom, pip) else { return }
-        camera.centreOn = at
-        camera.centreZoom = level
-        camera.centreRequest += 1
+        guard let at = state.centre, pip != state.camera.zoomedForPip else { return }
+        state.camera.zoomedForPip = pip
+        guard let level = pipZoom(state.camera.mainZoom, pip) else { return }
+        state.camera.centreOn = at
+        state.camera.centreZoom = level
+        state.camera.centreRequest += 1
     }
 
     private func centreChanged(_ at: TrackPoint, _ level: Double) {
-        centre = at
-        zoom = level
+        state.centre = at
+        state.zoom = level
         FlightMapPosition.latest = at
         guard level > 1.0 && !pip else { return }
-        camera.mainZoom = level
+        state.camera.mainZoom = level
         writeCamera(SavedCamera(centre: at, zoom: level))
     }
 }

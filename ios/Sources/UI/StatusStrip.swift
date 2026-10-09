@@ -245,6 +245,7 @@ private struct VehicleStatusReadings: View {
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .frame(maxWidth: contentWidth)
         .opacity(live ? 1 : 0.45)
+        .onChange(of: navigation.settingsOpen) { _, open in if open { allStatus = false } }
         .background {
             OpenOnRequest(name: "status-all", open: { allStatus = true })
             if allStatus {

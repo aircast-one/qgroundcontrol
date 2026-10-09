@@ -17,7 +17,7 @@ struct MapLayersSheet: View {
                         .font(.bodyMedium)
                         .foregroundStyle(theme.colors.onSurfaceVariant)
                 }
-                PlanFlowRow(spacing: Space.s2, lineSpacing: Space.s2) {
+                PlanFlowRow(spacing: Space.s2, lineSpacing: 0) {
                     ForEach(listed?.types ?? [], id: \.self) { type in
                         MapTypeChip(type: type, selected: type == listed?.current) { choose(type) }
                     }
@@ -76,6 +76,8 @@ private struct MapTypeChip: View {
             .foregroundStyle(selected ? theme.colors.onSecondaryContainer : theme.colors.onSurfaceVariant)
             .background(selected ? theme.colors.secondaryContainer : .clear, in: RoundedRectangle(cornerRadius: Corner.small))
             .overlay(RoundedRectangle(cornerRadius: Corner.small).stroke(selected ? .clear : theme.colors.outline, lineWidth: 1))
+            .frame(height: 48)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

@@ -102,7 +102,7 @@ struct Px4LogTransferPage: View {
             } message: { confirm in
                 Text(confirm.question)
             }
-            .alert(MAVLINK_LOGGING_TITLE, isPresented: Binding(get: { refused != nil }, set: { if !$0 { refused = nil } }), presenting: refused) { _ in
+            .alertWhenPresenterFree($refused, title: { _ in MAVLINK_LOGGING_TITLE }) { _ in
                 Button("Close", role: .cancel) { refused = nil }
             } message: { text in
                 Text(text)

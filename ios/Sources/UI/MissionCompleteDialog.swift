@@ -24,6 +24,7 @@ func imagesTakenText(_ count: Int) -> String? { count == 0 ? nil : "\(count) Ima
 struct MissionCompleteDialog: View {
     @QgcPath(MISSION_COMPLETE_PATH) private var view
     @State private var closed: Int64?
+    @State private var lastShown: MissionComplete?
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -31,8 +32,9 @@ struct MissionCompleteDialog: View {
         Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
+            .onChange(of: notice, initial: true) { _, now in if let now { lastShown = now } }
             .queuedSheet(isPresented: Binding(get: { notice != nil }, set: { shown in if !shown, let notice { close(notice) } }), dialog: true) {
-                if let notice { content(notice) }
+                if let shown = notice ?? lastShown { content(shown) }
             }
     }
 

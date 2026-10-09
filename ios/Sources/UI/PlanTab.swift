@@ -68,10 +68,11 @@ private final class CorePromptAlert: UIAlertController {
     }
 }
 
-private func topmostController() -> UIViewController? {
+private func settledTopmostController() -> UIViewController? {
     let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
     let root = (windows.first(where: \.isKeyWindow) ?? windows.first)?.rootViewController
-    return root.flatMap { Array(sequence(first: $0, next: \.presentedViewController)).last { !$0.isBeingDismissed } }
+    let chain = root.map { Array(sequence(first: $0, next: \.presentedViewController)) } ?? []
+    return chain.contains { $0.isBeingPresented || $0.isBeingDismissed } ? nil : chain.last
 }
 
 @MainActor
@@ -79,6 +80,7 @@ private final class TopmostPrompter {
     private var wanted: CorePrompt?
     private var answered: CorePrompt?
     private var shown: CorePromptAlert?
+    private var retrying = false
 
     func show(_ prompt: CorePrompt?) {
         wanted = prompt
@@ -89,7 +91,8 @@ private final class TopmostPrompter {
             alert.dismiss(animated: true)
         }
         shown = nil
-        guard let prompt, prompt != answered, let top = topmostController() else { return }
+        guard let prompt, prompt != answered else { return }
+        guard let top = settledTopmostController() else { return retry() }
         let alert = CorePromptAlert(title: prompt.title, message: prompt.text, preferredStyle: .alert)
         alert.prompt = prompt
         prompt.choices.forEach { choice in
@@ -100,7 +103,18 @@ private final class TopmostPrompter {
         }
         alert.onGone = { [weak self, weak alert] in self?.gone(alert) }
         top.present(alert, animated: true)
+        guard alert.presentingViewController != nil else { return retry() }
         shown = alert
+    }
+
+    private func retry() {
+        guard !retrying else { return }
+        retrying = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
+            retrying = false
+            show(wanted)
+        }
     }
 
     private func answer(_ prompt: CorePrompt) {
@@ -183,10 +197,9 @@ struct PlanTab: View {
             if showTransform {
                 PlanTransformDialog { showTransform = false }
             }
-            Color.clear.frame(width: 0, height: 0).alert(
-                pending.map { confirmCopy($0).title } ?? "",
-                isPresented: Binding(get: { pending != nil }, set: { if !$0 { cancelPending() } }),
-                presenting: pending
+            Color.clear.frame(width: 0, height: 0).alertWhenPresenterFree(
+                Binding(get: { pending }, set: { if $0 == nil { cancelPending() } }),
+                title: { confirmCopy($0).title }
             ) { kind in
                 let copy = confirmCopy(kind)
                 let received = incoming
@@ -198,15 +211,16 @@ struct PlanTab: View {
             } message: { kind in
                 Text(confirmCopy(kind).body)
             }
-            Color.clear.frame(width: 0, height: 0).confirmationDialog(
-                "Import as which pattern?",
-                isPresented: Binding(get: { !files.patternChoice.options().isEmpty }, set: { if !$0 { files.patternChoice.cancel() } }),
-                titleVisibility: .visible
-            ) {
-                ForEach(files.patternChoice.options(), id: \.self) { name in
+            Color.clear.frame(width: 0, height: 0).alertWhenPresenterFree(
+                Binding(get: { Optional(files.patternChoice.options()).flatMap { $0.isEmpty ? nil : $0 } }, set: { if $0 == nil { files.patternChoice.cancel() } }),
+                title: { _ in "Import as which pattern?" }
+            ) { options in
+                ForEach(options, id: \.self) { name in
                     Button(name) { files.patternChoice.pick(name) }
                 }
                 Button("Cancel", role: .cancel) { files.patternChoice.cancel() }
+            } message: { _ in
+                EmptyView()
             }
         }
     }

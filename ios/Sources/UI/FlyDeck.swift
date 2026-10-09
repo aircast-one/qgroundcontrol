@@ -42,6 +42,7 @@ private struct HoldPress: ViewModifier {
     @State private var fired = false
     @State private var held = 0
     @State private var size = CGSize.zero
+    @GestureState private var touching = false
 
     private func inside(_ point: CGPoint) -> Bool { CGRect(origin: .zero, size: size).contains(point) }
 
@@ -67,43 +68,59 @@ private struct HoldPress: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        if let onHold, enabled {
-            content
-                .contentShape(Rectangle())
-                .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { drag in
-                            guard !cancelled else { return }
-                            if !inside(drag.location) {
-                                cancelled = true
-                                release()
-                            } else if pressedAt == nil {
-                                press(onHold)
-                            }
-                        }
-                        .onEnded { drag in
-                            let quick = pressedAt.map { Date().timeIntervalSince($0) < LONG_PRESS_TIMEOUT_SECONDS } ?? false
-                            let tap = !cancelled && !fired && quick && inside(drag.location)
-                            cancelled = false
-                            release()
-                            if tap { onTap() }
-                        }
-                )
-                .onDisappear(perform: release)
-                .sensoryFeedback(.impact(weight: .heavy), trigger: held)
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction { onTap() }
-                .accessibilityAction(named: Text(label)) { onHold() }
-        } else {
-            content
-                .contentShape(Rectangle())
-                .onTapGesture { if enabled { onTap() } }
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction { if enabled { onTap() } }
+        Group {
+            if let onHold, enabled {
+                holdable(content, onHold)
+            } else {
+                content
+                    .contentShape(Rectangle())
+                    .onTapGesture { if enabled { onTap() } }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { if enabled { onTap() } }
+            }
         }
+        .onChange(of: touching) { _, now in
+            guard !now else { return }
+            Task { @MainActor in
+                guard !touching else { return }
+                cancelled = false
+                release()
+            }
+        }
+        .onChange(of: enabled) { _, now in if !now { release() } }
+    }
+
+    private func holdable(_ content: Content, _ onHold: @escaping () -> Void) -> some View {
+        content
+            .contentShape(Rectangle())
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .updating($touching) { _, state, _ in state = true }
+                    .onChanged { drag in
+                        guard !cancelled else { return }
+                        if !inside(drag.location) {
+                            cancelled = true
+                            release()
+                        } else if pressedAt == nil {
+                            press(onHold)
+                        }
+                    }
+                    .onEnded { drag in
+                        let quick = pressedAt.map { Date().timeIntervalSince($0) < LONG_PRESS_TIMEOUT_SECONDS } ?? false
+                        let tap = !cancelled && !fired && quick && inside(drag.location)
+                        cancelled = false
+                        release()
+                        if tap { onTap() }
+                    }
+            )
+            .onDisappear(perform: release)
+            .sensoryFeedback(.impact(weight: .heavy), trigger: held)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { onTap() }
+            .accessibilityAction(named: Text(label)) { onHold() }
     }
 }
 

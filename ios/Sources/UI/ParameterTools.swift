@@ -162,6 +162,8 @@ struct ParameterToolsMenu: View {
     @State private var chosen: Set<String> = []
     @State private var saving: ParameterFile?
     @State private var loading = false
+    @State private var scope = ViewScope()
+    @State private var probe = PresenterProbe()
 
     var body: some View {
         let tools = parameterTools(view)
@@ -196,55 +198,78 @@ struct ParameterToolsMenu: View {
                     contentType: .plainText,
                     defaultFilename: PARAMETER_FILE_NAME
                 ) { result in
-                    if case .failure = result { refusal = "The file could not be written." }
                     saving = nil
+                    if case .failure = result { show { refusal = "The file could not be written." } }
                 }
             }
             .fileImporter(isPresented: $loading, allowedContentTypes: PARAMETER_FILE_TYPES) { result in
                 guard case .success(let url) = result else { return }
                 load(url)
             }
+            .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
+            .onDisappear { scope.cancel() }
         }
+    }
+
+    private func show(_ change: @escaping @MainActor () -> Void) {
+        scope.launch { await whenPresenterFree(change) }
+    }
+
+    private func whenPresenterFree(_ change: @MainActor () -> Void) async {
+        while !Task.isCancelled, !presenterFree(probe.controller) {
+            try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
+        }
+        if !Task.isCancelled { change() }
     }
 
     private func run(_ tool: ParameterTool) {
         switch tool.path {
         case PARAMETER_SAVE_PATH:
-            Task {
+            scope.launch {
                 let saved = await offMain { () -> String? in
                     if case .string(let text) = Qgc.invokeResult(PARAMETER_SAVE_PATH) { return text }
                     return nil
                 }
-                if let saved {
-                    saving = ParameterFile(text: saved)
-                } else {
-                    refusal = "The parameters could not be read from the vehicle."
+                await whenPresenterFree {
+                    if let saved {
+                        saving = ParameterFile(text: saved)
+                    } else {
+                        refusal = "The parameters could not be read from the vehicle."
+                    }
                 }
             }
         case PARAMETER_REVIEW_PATH:
             loading = true
         default:
             let path = tool.path
-            Task {
-                refusal = await offMain { Qgc.refusalOf(path) }
-                if refusal == nil { onRefreshed() }
+            scope.launch {
+                let answer = await offMain { Qgc.refusalOf(path) }
+                guard !Task.isCancelled else { return }
+                guard let answer else {
+                    onRefreshed()
+                    return
+                }
+                await whenPresenterFree { refusal = answer }
             }
         }
     }
 
     private func load(_ url: URL) {
-        Task {
+        scope.launch {
             guard let text = await offMain({ readText(url) }) else {
-                refusal = "Unable to open file."
+                await whenPresenterFree { refusal = "Unable to open file." }
                 return
             }
             let reviewed = await offMain { Qgc.call(PARAMETER_REVIEW_PATH, text) }
             let result = reviewed?["result"]
-            if let parsed = parameterReview(result?.object != nil ? result : nil) {
-                review = parsed
-                chosen = Set(parsed.rows.filter { !$0.cannotSend }.map(\.key))
-            } else {
-                refusal = (reviewed?["reason"].string ?? "").ifBlank("The file could not be reviewed.")
+            let parsed = parameterReview(result?.object != nil ? result : nil)
+            await whenPresenterFree {
+                if let parsed {
+                    review = parsed
+                    chosen = Set(parsed.rows.filter { !$0.cannotSend }.map(\.key))
+                } else {
+                    refusal = (reviewed?["reason"].string ?? "").ifBlank("The file could not be reviewed.")
+                }
             }
         }
     }
@@ -252,9 +277,11 @@ struct ParameterToolsMenu: View {
     private func apply(_ shown: ParameterReview) {
         let rows = shown.rows.filter { chosen.contains($0.key) }.map(\.json.any)
         review = nil
-        Task {
-            refusal = await offMain { Qgc.refusalOf(PARAMETER_APPLY_PATH, rows) }
+        scope.launch {
+            let answer = await offMain { Qgc.refusalOf(PARAMETER_APPLY_PATH, rows) }
+            guard !Task.isCancelled else { return }
             onRefreshed()
+            if let answer { await whenPresenterFree { refusal = answer } }
         }
     }
 }

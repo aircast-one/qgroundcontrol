@@ -39,6 +39,7 @@ struct MavlinkActionsSection: View {
     let onWrite: () -> Void
     @State private var revision = 0
     @State private var read: MavlinkActions?
+    @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -57,12 +58,17 @@ struct MavlinkActionsSection: View {
                 .padding(.vertical, Space.s2)
             }
         }
-        .task(id: revision) { read = await offMain { mavlinkActions(Qgc.get(MAVLINK_ACTIONS_VIEW)) } }
+        .task(id: revision) {
+            let fresh = await offMain { mavlinkActions(Qgc.get(MAVLINK_ACTIONS_VIEW)) }
+            if !Task.isCancelled { read = fresh }
+        }
+        .onDisappear { scope.cancel() }
     }
 
     private func choose(_ path: String, _ option: String) {
-        Task {
+        scope.launch {
             _ = await offMain { Qgc.set(path, chosenFile(option)) }
+            guard !Task.isCancelled else { return }
             revision += 1
             onWrite()
         }

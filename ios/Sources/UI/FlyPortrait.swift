@@ -135,7 +135,7 @@ struct FlyPortrait: View {
                 VStack(spacing: 0) {
                     controls(split, hasVideo, overlaysTop: overlaysTop, buttonsTop: buttonsTop)
                         .padding(.top, controlsTop)
-                        .frame(maxHeight: .infinity)
+                        .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
                     actions(.Bottom)
                         .padding(.bottom, safe.bottom)
                         .frame(maxWidth: .infinity)
@@ -148,6 +148,7 @@ struct FlyPortrait: View {
                             .allowsHitTesting(false)
                         )
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { deckHeight = $0 }
+                        .layoutPriority(1)
                 }
                 .frame(width: box.width, height: box.height)
                 if thumbnail && flyScreen.videoTucked {

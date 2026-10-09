@@ -9,31 +9,39 @@ func resumeFailedIndex(_ view: JSON?) -> Int? {
 
 func resumeCleared(_ view: JSON?) -> Bool { view != nil && resumeFailedIndex(view) == nil }
 
+func resumePending(_ failed: Int?, _ dismissed: Int?) -> Int? { failed.flatMap { $0 != dismissed ? $0 : nil } }
+
 struct ResumeFailedPrompt: View {
-    let dismissed: Int?
-    let onDismissed: (Int?) -> Void
     @QgcPath(GUIDED_ACTIONS) private var actions
 
-    private var index: Int? { resumeFailedIndex(actions).flatMap { $0 != dismissed ? $0 : nil } }
-
     var body: some View {
-        let index = index
+        let dialogs = AppDialogsState.shared
         Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
             .onChange(of: resumeCleared(actions), initial: true) { _, cleared in
-                if cleared { onDismissed(nil) }
+                if cleared { dialogs.resumeDismissed = nil }
             }
-            .alert(
-                "Resume FAILED",
-                isPresented: Binding(get: { index != nil }, set: { shown in if !shown, let index { onDismissed(index) } })
-            ) {
+            .onChange(of: resumeFailedIndex(actions), initial: true) { _, failed in dialogs.resumeFailed = failed }
+            .onDisappear { dialogs.resumeFailed = nil }
+    }
+}
+
+struct ResumeFailedDialog: View {
+    let index: Int
+    let onDismiss: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .alert("Resume FAILED", isPresented: .constant(true)) {
                 Button("Confirm") {
-                    guard let index else { return }
-                    onDismissed(index)
+                    onDismiss()
+                    let index = index
                     offMain { Qgc.invoke(RESUME_MISSION_PATH, index) }
                 }
-                Button("Cancel", role: .cancel) { if let index { onDismissed(index) } }
+                Button("Cancel", role: .cancel, action: onDismiss)
             } message: {
                 Text("Upload of resume mission failed. Confirm to retry upload")
             }

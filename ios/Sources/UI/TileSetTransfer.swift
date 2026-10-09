@@ -34,9 +34,19 @@ private func importedRefusal(_ source: URL, _ replace: Bool) -> String? {
     return copied ? refusal(Qgc.call(OFFLINE_IMPORT, staged.path, replace)) : "That file could not be read."
 }
 
+@MainActor
+func presenterFreed(_ probe: PresenterProbe) async -> Bool {
+    while !Task.isCancelled, !presenterFree(probe.controller) {
+        try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
+    }
+    return !Task.isCancelled
+}
+
 struct TileSetTransfer: View {
     let sets: [OfflineSet]
     let onRefusal: (String?) -> Void
+    @State private var scope = ViewScope()
+    @State private var probe = PresenterProbe()
     @State private var running: Transfer?
     @State private var choosingSets = false
     @State private var choosingMode = false
@@ -78,6 +88,8 @@ struct TileSetTransfer: View {
                 ProgressView().frame(maxWidth: .infinity)
             }
         }
+        .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
+        .onDisappear { scope.cancel() }
         .sheet(isPresented: $choosingSets) { exportChooser }
         .confirmationDialog("Import tile sets", isPresented: $choosingMode, titleVisibility: .visible) {
             Button("Append to existing sets") { pickImport(false) }
@@ -112,7 +124,7 @@ struct TileSetTransfer: View {
 
     private func pickImport(_ mode: Bool) {
         replace = mode
-        importing = true
+        scope.launch { if await presenterFreed(probe) { importing = true } }
     }
 
     private func startExport() {
@@ -120,7 +132,7 @@ struct TileSetTransfer: View {
         let staged = staging(EXPORT_STAGE)
         let named = staging(EXPORT_NAME)
         let arguments = exportArguments(staged.path, chosen)
-        Task {
+        scope.launch {
             let refused = await offMain { () -> String? in
                 let files = FileManager.default
                 try? files.removeItem(at: staged)
@@ -132,8 +144,11 @@ struct TileSetTransfer: View {
             }
             if let refused {
                 finish(refused)
-            } else {
+            } else if await presenterFreed(probe) {
                 exported = named
+            } else {
+                try? FileManager.default.removeItem(at: named)
+                running = nil
             }
         }
     }

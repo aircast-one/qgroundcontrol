@@ -43,6 +43,7 @@ struct PowerCalcDialog: View {
     @State private var measured = ""
     @State private var live: JSON?
     @State private var refusal: String?
+    @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -70,8 +71,10 @@ struct PowerCalcDialog: View {
             Button(sentenceCase(calculator.button)) {
                 let entered = measured
                 let shown = calculator
-                Task {
-                    refusal = await offMain { Qgc.refusalOf(POWER_CALCULATE, shown.param, shown.measure, shown.batteryIndex, entered) }
+                scope.launch {
+                    let answer = await offMain { Qgc.refusalOf(POWER_CALCULATE, shown.param, shown.measure, shown.batteryIndex, entered) }
+                    guard !Task.isCancelled else { return }
+                    refusal = answer
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -80,9 +83,12 @@ struct PowerCalcDialog: View {
         .task(id: calculator) {
             let path = powerCalcPath(calculator)
             while !Task.isCancelled {
-                live = await offMain { Qgc.get(path) }
+                let reading = await offMain { Qgc.get(path) }
+                guard !Task.isCancelled else { return }
+                live = reading
                 try? await Task.sleep(for: .milliseconds(READING_POLL_MS))
             }
         }
+        .onDisappear { scope.cancel() }
     }
 }

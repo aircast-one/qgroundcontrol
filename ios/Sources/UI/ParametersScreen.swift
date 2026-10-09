@@ -99,9 +99,11 @@ struct ParametersScreen: View {
         }
         .task(id: ParameterLoad(ready: ready, reads: reads)) {
             let loaded = ready ? await offMain { parameterNames() } : []
+            guard !Task.isCancelled else { return }
             names = loaded
             guard !loaded.isEmpty else { return }
             let summary = await offMain { parameterSummary(loaded) }
+            guard !Task.isCancelled else { return }
             descriptions = summary.descriptions
             modified = summary.modified
             placement = summary.placement
@@ -145,7 +147,9 @@ private struct ParameterRow: View {
         }
         .task(id: ParameterRowKey(name: name, revision: revision, live: live)) {
             let name = name
-            fact = await offMain { parameterFact(name) }
+            let loaded = await offMain { parameterFact(name) }
+            guard !Task.isCancelled else { return }
+            fact = loaded
         }
     }
 

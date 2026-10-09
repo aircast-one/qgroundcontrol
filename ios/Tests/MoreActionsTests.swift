@@ -47,6 +47,11 @@ final class MoreActionsTests: XCTestCase {
         XCTAssertEqual(extra.map(\.id), ["startMission", "pause", "landAbort"])
     }
 
+    func testTheSheetKeepsTheOrderTheCoreSendsTheOffersIn() {
+        let extra = moreActions(offers(("forceArm", "ready"), ("landAbort", "ready"), ("startMission", "ready")))
+        XCTAssertEqual(extra.map(\.id), ["forceArm", "landAbort", "startMission"])
+    }
+
     func testTheGripperPanelListsReleaseGrabHoldInQgcsOrder() {
         let extra = moreActions(offers(("hold", "ready"), ("grab", "ready"), ("release", "disabled"), ("startMission", "ready")))
         XCTAssertEqual(gripperOffers(extra).map(\.id), ["release", "grab", "hold"])

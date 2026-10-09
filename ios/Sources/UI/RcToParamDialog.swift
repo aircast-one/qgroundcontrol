@@ -36,6 +36,7 @@ struct RcToParamDialog: View {
     @State private var tuningIndex = 0
     @State private var refusal: String?
     @State private var ready = false
+    @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
     init(fact: Fact, onDismiss: @escaping () -> Void) {
@@ -74,9 +75,11 @@ struct RcToParamDialog: View {
             Button("OK") {
                 guard let chosen = entered else { return }
                 let name = fact.name
-                Task {
-                    refusal = await offMain { Qgc.refusalOf(SET_RC_TO_PARAM, name, chosen.scale, chosen.center, chosen.tuningIndex, chosen.min, chosen.max) }
-                    if refusal == nil { onDismiss() }
+                scope.launch {
+                    let answer = await offMain { Qgc.refusalOf(SET_RC_TO_PARAM, name, chosen.scale, chosen.center, chosen.tuningIndex, chosen.min, chosen.max) }
+                    guard !Task.isCancelled else { return }
+                    refusal = answer
+                    if answer == nil { onDismiss() }
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -86,13 +89,16 @@ struct RcToParamDialog: View {
             let name = fact.name
             _ = await offMain { Qgc.invoke(OPEN_RC_TO_PARAM, name) }
             while !ready, !Task.isCancelled {
-                ready = await offMain {
+                let answer = await offMain {
                     if case .bool(let answer) = Qgc.invokeResult(RC_TO_PARAM_READY, name) { return answer }
                     return true
                 }
+                guard !Task.isCancelled else { return }
+                ready = answer
                 if !ready { try? await Task.sleep(for: .milliseconds(READY_POLL_MS)) }
             }
         }
+        .onDisappear { scope.cancel() }
     }
 
     private func field(_ label: String, _ value: Binding<String>) -> some View {

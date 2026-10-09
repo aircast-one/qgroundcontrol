@@ -139,13 +139,11 @@ struct ParameterForm: View {
                 }
                 loaded = true
             }
-            .sheet(isPresented: $calibratingEscs) {
+            .queuedSheet(isPresented: $calibratingEscs) {
                 EscCalibrationDialog(onClose: { calibratingEscs = false })
             }
-            .sheet(isPresented: Binding(get: { calculating != nil }, set: { if !$0 { calculating = nil } }), onDismiss: { reloads += 1 }) {
-                if let calculator = calculating {
-                    PowerCalcDialog(calculator: calculator, onDone: { calculating = nil })
-                }
+            .queuedSheet(item: $calculating, onDismiss: { reloads += 1 }) { calculator in
+                PowerCalcDialog(calculator: calculator, onDone: { calculating = nil })
             }
     }
 
@@ -225,6 +223,10 @@ struct ParameterForm: View {
         }
         .padding(.leading, fact.indent ? INDENT : 0)
     }
+}
+
+extension PowerCalculator: Identifiable {
+    var id: Self { self }
 }
 
 func bitmaskRaw(_ fact: Fact) -> Int64 {

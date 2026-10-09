@@ -259,6 +259,7 @@ private struct NavigationRequest: Equatable {
 private struct AutoOpen: Equatable {
     let components: [SetupComponent]
     let page: String?
+    let twoPane: Bool
 }
 
 struct SetupScreen: View {
@@ -290,7 +291,7 @@ struct SetupScreen: View {
             .task(id: setupSearch.isBlank ? [] : components) {
                 let searching = !setupSearch.isBlank
                 let json = setupJson
-                formSections = searching ? await offMain {
+                let sections = searching ? await offMain {
                     Dictionary(
                         components
                             .filter { setupPage(json, $0.name)?.parameterSections == true && !OWN_SCREEN_HEADS.contains(headPage($0)) }
@@ -298,6 +299,8 @@ struct SetupScreen: View {
                         uniquingKeysWith: { _, last in last }
                     )
                 } : [:]
+                guard !Task.isCancelled else { return }
+                formSections = sections
             }
             .task(id: NavigationRequest(page: navigation.setupPage, components: components, hasVehicle: hasVehicle)) {
                 await follow(navigation.setupPage, components)
@@ -350,30 +353,30 @@ struct SetupScreen: View {
             }
         } else {
             GeometryReader { geometry in
-                if geometry.size.width >= LIST_DETAIL_MIN_WIDTH {
-                    HStack(spacing: 0) {
+                let twoPane = geometry.size.width >= LIST_DETAIL_MIN_WIDTH
+                let detailShown = hasDetail
+                HStack(spacing: 0) {
+                    if twoPane || !detailShown {
                         overview(components)
-                            .frame(width: LIST_PANE_WIDTH)
-                            .background(theme.colors.surfaceContainerLow)
-                        Group {
-                            if hasDetail {
-                                detail.frame(maxWidth: DETAIL_PANE_MAX_WIDTH)
+                            .frame(width: twoPane ? LIST_PANE_WIDTH : nil)
+                            .background(twoPane ? theme.colors.surfaceContainerLow : .clear)
+                    }
+                    if twoPane || detailShown {
+                        ZStack(alignment: .topLeading) {
+                            if detailShown {
+                                detail.frame(maxWidth: twoPane ? DETAIL_PANE_MAX_WIDTH : .infinity)
                             } else {
                                 EmptyState(icon: .build, title: AIRCRAFT_SETUP, text: "Choose a component on the left.")
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .environment(\.LocalTwoPane, true)
+                        .environment(\.LocalTwoPane, twoPane)
                     }
-                    .task(id: AutoOpen(components: components, page: navigation.setupPage)) {
-                        guard openComponent == nil, !parametersOpen, navigation.setupPage == nil else { return }
-                        openComponent = components.first { headCanOpen(setupPage(setupJson, $0.name), $0.name) }
-                        openSection = nil
-                    }
-                } else if hasDetail {
-                    detail
-                } else {
-                    overview(components)
+                }
+                .task(id: AutoOpen(components: components, page: navigation.setupPage, twoPane: twoPane)) {
+                    guard twoPane, openComponent == nil, !parametersOpen, navigation.setupPage == nil else { return }
+                    openComponent = components.first { headCanOpen(setupPage(setupJson, $0.name), $0.name) }
+                    openSection = nil
                 }
             }
         }
@@ -510,7 +513,9 @@ private struct SetupOverview: View {
             }
         }
         .task(id: parametersAreReady) {
-            parameterCount = parametersAreReady ? await offMain { parameterNames().count } : 0
+            let count = parametersAreReady ? await offMain { parameterNames().count } : 0
+            guard !Task.isCancelled else { return }
+            parameterCount = count
         }
     }
 

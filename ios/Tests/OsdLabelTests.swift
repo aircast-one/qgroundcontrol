@@ -49,6 +49,30 @@ final class FlightTimeReadTests: XCTestCase {
     }
 }
 
+final class StreamShutterTests: XCTestCase {
+    func testTheStreamShutterIsAVideoShutterThatSaysWhatATapWillDo() {
+        let start = streamShutter(false, true, nil)
+        XCTAssertEqual(start.label, "Start recording")
+        XCTAssertFalse(start.recording)
+        XCTAssertTrue(start.video)
+        let stop = streamShutter(true, true, 5)
+        XCTAssertEqual(stop.label, "Stop recording")
+        XCTAssertTrue(stop.recording)
+        XCTAssertTrue(stop.video)
+    }
+
+    func testAStreamThatCannotRecordShowsADeadShutterButOneAlreadyRecordingCanStillStop() {
+        XCTAssertFalse(streamShutter(false, false, nil).enabled)
+        XCTAssertTrue(streamShutter(true, false, 3).enabled)
+    }
+
+    func testTheStreamRecordingClockReadsLikeTheCameras() {
+        XCTAssertEqual(shutterReadout(streamShutter(true, true, 65)), "REC 00:01:05")
+        XCTAssertNil(shutterReadout(streamShutter(false, true, nil)))
+        XCTAssertEqual(recordClock(3600), "01:00:00")
+    }
+}
+
 final class RailLabelTests: XCTestCase {
     func testRailLabelsDropTheHoldInstruction() {
         XCTAssertEqual(["Hold to land", "Return", "Hold to take off"].map(railLabel), ["Land", "Return", "Take off"])

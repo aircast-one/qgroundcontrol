@@ -14,6 +14,8 @@ final class FlyScreenState {
     var controlRequestDeadlines: [Int: Int64] = [:]
     let mapEdits = FlyMapEdits()
     let checklist = PreflightChecklistState()
+    let flightActions = FlightActionsState()
+    let cameraControls = CameraControlsState()
     var obstacles: [String: CGRect] = [:]
     var mapInsets = MapInsets(top: 0, bottom: 0)
     var videoTucked = false

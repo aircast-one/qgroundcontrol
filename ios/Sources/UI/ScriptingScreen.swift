@@ -54,6 +54,46 @@ private func copyPickedScript(_ from: URL, _ target: URL) -> Bool {
 
 private let scriptDownloads = FileManager.default.temporaryDirectory.appending(path: "scripting-download")
 
+private struct FreePresenterAlert<Item, Actions: View, Message: View>: ViewModifier {
+    @Binding var item: Item?
+    let title: (Item) -> String
+    let actions: (Item) -> Actions
+    let message: (Item) -> Message
+    @State private var probe = PresenterProbe()
+    @State private var ready = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
+            .task(id: item != nil) {
+                ready = false
+                guard item != nil else { return }
+                while !Task.isCancelled, !presenterFree(probe.controller) {
+                    try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
+                }
+                ready = !Task.isCancelled
+            }
+            .alert(
+                item.map(title) ?? "",
+                isPresented: Binding(get: { ready && item != nil }, set: { if !$0 { item = nil } }),
+                presenting: item,
+                actions: actions,
+                message: message
+            )
+    }
+}
+
+extension View {
+    func alertWhenPresenterFree<Item, Actions: View, Message: View>(
+        _ item: Binding<Item?>,
+        title: @escaping (Item) -> String,
+        @ViewBuilder actions: @escaping (Item) -> Actions,
+        @ViewBuilder message: @escaping (Item) -> Message
+    ) -> some View {
+        modifier(FreePresenterAlert(item: item, title: title, actions: actions, message: message))
+    }
+}
+
 struct ScriptingScreen: View {
     @Environment(\.theme) private var theme
     @State private var revision = 0
@@ -97,7 +137,7 @@ struct ScriptingScreen: View {
             } message: { name in
                 Text("Are you sure you want to delete the script \"\(name)\"? This action cannot be undone.")
             }
-            .alert(shownRefusal?.title ?? "", isPresented: Binding(get: { shownRefusal != nil }, set: { if !$0 { shownRefusal = nil } }), presenting: shownRefusal) { _ in
+            .alertWhenPresenterFree($shownRefusal, title: \.title) { _ in
                 Button("OK", role: .cancel) { shownRefusal = nil }
             } message: { shown in
                 Text(shown.text)

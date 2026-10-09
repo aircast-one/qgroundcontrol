@@ -136,24 +136,30 @@ struct RcControlsEditor: View {
             try? await Task.sleep(for: .milliseconds(UNDO_WINDOW_MS))
             if !Task.isCancelled { undo = nil }
         }
-        .sheet(item: $draft) { _ in
-            if let editing = Binding($draft) {
-                DraftDialog(draft: editing, json: json, reserved: reserved, onDismiss: { draft = nil }) { label, channel, type, index in
-                    save(index < 0 ? rcControlsAdded(json, label, channel, type) : rcControlsPatched(json, index, label, channel, type))
-                    draft = nil
-                }
+        .sheet(item: $draft) { opened in
+            DraftDialog(initial: opened, json: json, reserved: reserved, onDismiss: { draft = nil }) { label, channel, type, index in
+                save(index < 0 ? rcControlsAdded(json, label, channel, type) : rcControlsPatched(json, index, label, channel, type))
+                draft = nil
             }
         }
     }
 }
 
 private struct DraftDialog: View {
-    @Binding var draft: Draft
     let json: String
     let reserved: [Int: String]
     let onDismiss: () -> Void
     let onSave: (String, Int, RcControlType, Int) -> Void
+    @State private var draft: Draft
     @Environment(\.theme) private var theme
+
+    init(initial: Draft, json: String, reserved: [Int: String], onDismiss: @escaping () -> Void, onSave: @escaping (String, Int, RcControlType, Int) -> Void) {
+        self.json = json
+        self.reserved = reserved
+        self.onDismiss = onDismiss
+        self.onSave = onSave
+        _draft = State(initialValue: initial)
+    }
 
     var body: some View {
         let channel = Int(draft.channel) ?? 0

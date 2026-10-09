@@ -68,6 +68,7 @@ struct LinkedText: View {
     let style: TypeScale
     let color: Color
     let onParameter: (String) -> Void
+    @State private var scope = ViewScope()
 
     var body: some View {
         Text(htmlAttributed(html))
@@ -76,11 +77,13 @@ struct LinkedText: View {
             .environment(\.openURL, OpenURLAction { url in
                 guard let name = paramLinkName(url.absoluteString) else { return .systemAction }
                 let opener = onParameter
-                Task { @MainActor in
-                    if await offMain({ parameterLinkOpens(name) }) { opener(name) }
+                scope.launch {
+                    let opens = await offMain { parameterLinkOpens(name) }
+                    if opens && !Task.isCancelled { opener(name) }
                 }
                 return .handled
             })
+            .onDisappear { scope.cancel() }
     }
 }
 
@@ -154,6 +157,7 @@ struct ParameterEditDialog: View {
     @State private var forceRefusal: String?
     @State private var fact: Fact?
     @State private var defaultValue: JSON?
+    @State private var scope = ViewScope()
     @AdvancedUiShown private var forceAllowed
     @Environment(\.theme) private var theme
 
@@ -186,17 +190,23 @@ struct ParameterEditDialog: View {
             }
             .task(id: "\(name)|\(revision)") {
                 let name = name
-                fact = await offMain { parameterFact(name) }
-                defaultValue = await offMain { parameterDefault(Qgc.get(parameterPath(name))) }
+                let loaded = await offMain { parameterFact(name) }
+                let initial = await offMain { parameterDefault(Qgc.get(parameterPath(name))) }
+                guard !Task.isCancelled else { return }
+                fact = loaded
+                defaultValue = initial
             }
         }
+        .onDisappear { scope.cancel() }
     }
 
     private func reset(_ loaded: Fact, _ value: JSON) {
         let path = loaded.path, force = forced
-        Task {
-            forceRefusal = await offMain { force ? Qgc.writeForcedRefusal(path, value.any) : Qgc.writeRefusal(path, value.any) }
-            if forceRefusal == nil { onDismiss() }
+        scope.launch {
+            let answer = await offMain { force ? Qgc.writeForcedRefusal(path, value.any) : Qgc.writeRefusal(path, value.any) }
+            guard !Task.isCancelled else { return }
+            forceRefusal = answer
+            if answer == nil { onDismiss() }
         }
     }
 
@@ -260,9 +270,11 @@ struct ParameterEditDialog: View {
         let typed = forcedText.trimmed
         let entered: Any = loaded.isString ? forcedText : Double(typed).map { $0 as Any } ?? typed
         let path = loaded.path
-        Task {
-            forceRefusal = await offMain { Qgc.writeForcedRefusal(path, entered) }
-            if forceRefusal == nil { revision += 1 }
+        scope.launch {
+            let answer = await offMain { Qgc.writeForcedRefusal(path, entered) }
+            guard !Task.isCancelled else { return }
+            forceRefusal = answer
+            if answer == nil { revision += 1 }
         }
     }
 }
@@ -287,6 +299,7 @@ struct ValueDetailsSheet: View {
     let onWrite: () -> Void
     let onDismiss: () -> Void
     @State private var refusal: String?
+    @State private var scope = ViewScope()
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -323,6 +336,7 @@ struct ValueDetailsSheet: View {
             .environment(\.LocalSettingsList, false)
             .onChange(of: fact.path) { refusal = nil }
         }
+        .onDisappear { scope.cancel() }
     }
 
     private var typedEntry: some View {
@@ -337,9 +351,11 @@ struct ValueDetailsSheet: View {
 
     private func reset(_ value: Double) {
         let path = fact.path
-        Task {
-            refusal = await offMain { Qgc.writeRefusal(path, value) }
-            if refusal == nil {
+        scope.launch {
+            let answer = await offMain { Qgc.writeRefusal(path, value) }
+            guard !Task.isCancelled else { return }
+            refusal = answer
+            if answer == nil {
                 onWrite()
                 onDismiss()
             }

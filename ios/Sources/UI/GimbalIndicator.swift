@@ -276,17 +276,32 @@ private struct GimbalAim: ViewModifier {
     @State private var start: (CGFloat, CGFloat)?
     @State private var latest: CGPoint = .zero
     @State private var repeating: Task<Void, Never>?
+    @GestureState private var pressed = false
 
     func body(content: Content) -> some View {
+        aimed(content)
+            .onChange(of: pressed) { _, now in if !now { stop() } }
+            .onDisappear(perform: stop)
+    }
+
+    private func stop() {
+        repeating?.cancel()
+        repeating = nil
+        start = nil
+        last = .zero
+    }
+
+    @ViewBuilder private func aimed(_ content: Content) -> some View {
         if !control.enabled {
             content.gesture(
                 DragGesture()
+                    .updating($pressed) { _, pressed, _ in pressed = true }
                     .onChanged { drag in
                         let moved = CGSize(width: drag.translation.width - last.width, height: drag.translation.height - last.height)
                         last = drag.translation
                         sendOnScreen(aimFraction(moved.width, size.width), -aimFraction(moved.height, size.width), false)
                     }
-                    .onEnded { _ in last = .zero }
+                    .onEnded { _ in stop() }
             )
         } else if !control.clickAndDrag {
             content.gesture(
@@ -298,6 +313,7 @@ private struct GimbalAim: ViewModifier {
         } else {
             content.gesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($pressed) { _, pressed, _ in pressed = true }
                     .onChanged { drag in
                         latest = drag.location
                         guard start == nil else { return }
@@ -311,11 +327,7 @@ private struct GimbalAim: ViewModifier {
                             }
                         }
                     }
-                    .onEnded { _ in
-                        repeating?.cancel()
-                        repeating = nil
-                        start = nil
-                    }
+                    .onEnded { _ in stop() }
             )
         }
     }

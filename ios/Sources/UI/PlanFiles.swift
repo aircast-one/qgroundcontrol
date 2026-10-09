@@ -111,7 +111,7 @@ private let DOWNLOAD_POLL_MS = 200
 private let DOWNLOAD_POLLS = 300
 
 private func downloadSettled(_ left: Int = DOWNLOAD_POLLS) async -> Bool {
-    guard left > 0 else { return false }
+    guard left > 0, !Task.isCancelled else { return false }
     guard await offMain({ planIsSyncing(Qgc.get(PLAN_STATUS_VIEW)) }) else { return true }
     try? await Task.sleep(for: .milliseconds(DOWNLOAD_POLL_MS))
     return await downloadSettled(left - 1)
@@ -207,10 +207,14 @@ final class PlanFileActions {
     private var patterns: [String] = []
     fileprivate var openPlan: OpenPlanDocument?
     @ObservationIgnored fileprivate var onResult: (String) -> Void = { _ in }
+    fileprivate let probe = PresenterProbe()
+    private let scope = ViewScope()
 
     func open() {
-        picker = .open
-        picking = true
+        present {
+            self.picker = .open
+            self.picking = true
+        }
     }
 
     func saveAs() { guarded { self.export(self.openPlan?.name ?? DEFAULT_PLAN_NAME) } }
@@ -223,17 +227,21 @@ final class PlanFileActions {
 
     func exportKml() {
         guarded {
-            Task {
-                guard let data = await offMain({ stagedKml() }) else { return self.onResult("The plan could not be exported.") }
-                self.exporting = PlanExport(document: PlanFileDocument(data: data), name: DEFAULT_KML_NAME, kml: true)
-                self.exportShown = true
+            self.scope.launch { [self] in
+                guard let data = await offMain({ stagedKml() }) else { return onResult("The plan could not be exported.") }
+                await whenPresenterFree {
+                    exporting = PlanExport(document: PlanFileDocument(data: data), name: DEFAULT_KML_NAME, kml: true)
+                    exportShown = true
+                }
             }
         }
     }
 
     func importBoundary() {
-        picker = .importBoundary
-        picking = true
+        present {
+            self.picker = .importBoundary
+            self.picking = true
+        }
     }
 
     var patternChoice: PatternChoice {
@@ -269,6 +277,19 @@ final class PlanFileActions {
         self.onResult = onResult
     }
 
+    fileprivate func cancel() { scope.cancel() }
+
+    private func whenPresenterFree(_ change: @MainActor () -> Void) async {
+        while !Task.isCancelled, !presenterFree(probe.controller) {
+            try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
+        }
+        if !Task.isCancelled { change() }
+    }
+
+    private func present(_ change: @escaping @MainActor () -> Void) {
+        scope.launch { [self] in await whenPresenterFree(change) }
+    }
+
     private func adopt(_ uri: URL) {
         openPlan?.document = uri
         rememberDocument(uri)
@@ -281,7 +302,7 @@ final class PlanFileActions {
     }
 
     private func discard(_ method: String, _ success: String, _ failure: String, then: @escaping @MainActor () async -> Void = {}) {
-        Task {
+        scope.launch { [self] in
             if await offMain({ Qgc.invoke("\(PLAN_ROOT).\(method)") }) {
                 forget()
                 onResult(success)
@@ -293,14 +314,14 @@ final class PlanFileActions {
     }
 
     private func importFrom(_ uris: [URL], _ pattern: String) {
-        Task {
+        scope.launch { [self] in
             let message = await offMain { importBoundaryFiles(uris, pattern) }
             onResult(message ?? "Boundary imported.")
         }
     }
 
     private func guarded(_ action: @escaping () -> Void) {
-        Task {
+        scope.launch { [self] in
             let view = await offMain { freshPlanView() }
             if let blocked = saveBlockedReason(view) {
                 PlanFocus.notReady(view)
@@ -312,7 +333,7 @@ final class PlanFileActions {
     }
 
     private func writeTo(_ target: URL) {
-        Task {
+        scope.launch { [self] in
             if let message = await offMain({ writePlan(target) }) {
                 onResult(message)
             } else {
@@ -323,10 +344,12 @@ final class PlanFileActions {
     }
 
     private func export(_ name: String) {
-        Task {
+        scope.launch { [self] in
             guard let data = await offMain({ stagedPlan() }) else { return onResult("The plan could not be saved.") }
-            exporting = PlanExport(document: PlanFileDocument(data: data), name: withExtension(name, PLAN_EXTENSION), kml: false)
-            exportShown = true
+            await whenPresenterFree {
+                exporting = PlanExport(document: PlanFileDocument(data: data), name: withExtension(name, PLAN_EXTENSION), kml: false)
+                exportShown = true
+            }
         }
     }
 
@@ -339,7 +362,7 @@ final class PlanFileActions {
     }
 
     func openFrom(_ chosen: URL) {
-        Task {
+        scope.launch { [self] in
             let (failure, loaded) = await offMain { loadStaged(chosen) }
             guard loaded else {
                 if let failure { onResult(failure) }
@@ -352,7 +375,7 @@ final class PlanFileActions {
     }
 
     func chooseBoundary(_ chosen: [URL]) {
-        Task {
+        scope.launch { [self] in
             let names = await offMain { patternNames() }
             if names.isEmpty {
                 onResult("This vehicle offers no pattern to import into.")
@@ -389,6 +412,8 @@ struct PlanFileDialogs: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onAppear { files.bind(openPlan, onResult) }
+            .onDisappear { files.cancel() }
+            .background(PresenterProbeView(probe: files.probe).allowsHitTesting(false))
             .background {
                 Color.clear
                     .frame(width: 0, height: 0)

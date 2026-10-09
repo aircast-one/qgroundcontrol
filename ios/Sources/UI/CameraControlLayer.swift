@@ -18,6 +18,49 @@ private let REC_DOT_SIZE: CGFloat = 8
 private let REC_BLINK_MS = 600
 let RECORD_RED = Color(hex: 0xE53935)
 
+private let CAMERA_CONTROLS_GRACE_MS = 300
+
+@MainActor
+private func afterGrace(_ work: @escaping @MainActor () -> Void) {
+    Task { @MainActor in
+        try? await Task.sleep(for: .milliseconds(CAMERA_CONTROLS_GRACE_MS))
+        work()
+    }
+}
+
+@Observable
+final class CameraControlsState {
+    var details = false
+    var refused: String?
+    var options = false
+    var gimbalRefused: String?
+    @ObservationIgnored private var layers = 0
+    @ObservationIgnored private var rcLayers = 0
+
+    @MainActor func layerShown() { layers += 1 }
+
+    @MainActor func layerGone() {
+        layers -= 1
+        afterGrace { [self] in
+            guard layers == 0 else { return }
+            details = false
+            refused = nil
+        }
+    }
+
+    @MainActor func rcShown() { rcLayers += 1 }
+
+    @MainActor func rcGone() {
+        rcLayers -= 1
+        afterGrace { [self] in
+            guard rcLayers == 0 else { return }
+            cameraRcControls.release()
+            options = false
+            gimbalRefused = nil
+        }
+    }
+}
+
 @MainActor
 private func press(_ shutter: CameraShutter, _ refused: Binding<String?>) {
     let action = shutter.action
@@ -40,12 +83,18 @@ struct CameraControlLayer: View {
     var shutters: Bool = true
     @Environment(\.theme) private var theme
     @Environment(\.flyOsd) private var flyOsd
+    @Environment(FlyScreenState.self) private var flyScreen
     @HasVehicle private var hasVehicle
     @FlyIsPortrait private var portrait
     @QgcBool(settingControl(SHOW_PHOTO_VIDEO_CONTROL)) private var shown
     @QgcPath(CAMERA_VIEW) private var cameraJson
-    @State private var refused: String?
-    @State private var details = false
+
+    private var state: CameraControlsState { flyScreen.cameraControls }
+    private var refused: String? { state.refused }
+    private var refusal: Binding<String?> {
+        let state = state
+        return Binding(get: { state.refused }, set: { state.refused = $0 })
+    }
 
     var body: some View {
         let camera = cameraReading(cameraJson)
@@ -62,8 +111,10 @@ struct CameraControlLayer: View {
                 }
             }
         }
-        .background(OpenOnRequest(name: "camera") { details = true })
-        .modifier(RefusalExpiry(refused: $refused))
+        .background(OpenOnRequest(name: "camera") { state.details = true })
+        .modifier(RefusalExpiry(refused: refusal))
+        .onAppear { state.layerShown() }
+        .onDisappear { state.layerGone() }
     }
 
     private func rail(_ camera: CameraReading, _ panel: CameraPanel) -> some View {
@@ -74,7 +125,7 @@ struct CameraControlLayer: View {
             } shutter: {
                 if shutters {
                     ForEach(Array(panel.shutters.enumerated()), id: \.offset) { _, shutter in
-                        ShutterButton(caption: shutterCaption(panel, shutter), shutter: shutter) { press(shutter, $refused) }
+                        ShutterButton(caption: shutterCaption(panel, shutter), shutter: shutter) { press(shutter, refusal) }
                     }
                 }
             } below: {
@@ -89,8 +140,8 @@ struct CameraControlLayer: View {
     }
 
     @ViewBuilder private func detailsSheet(_ camera: CameraReading, _ panel: CameraPanel) -> some View {
-        if details {
-            AircastSheet(onDismissRequest: { details = false }) {
+        if state.details {
+            AircastSheet(onDismissRequest: { state.details = false }) {
                 CameraDetailsSheet(
                     camera: camera,
                     thermal: thermalReading(cameraJson),
@@ -100,22 +151,22 @@ struct CameraControlLayer: View {
                     current: camera.selected ?? 0,
                     onSelect: { index in
                         offMain { Qgc.set("\(MANAGER).currentCamera", index) }
-                        details = false
+                        state.details = false
                     },
-                    onDismiss: { details = false }
+                    onDismiss: { state.details = false }
                 )
             }
         }
     }
 
     @ViewBuilder private func above(_ camera: CameraReading) -> some View {
-        Button { details = true } label: {
+        Button { state.details = true } label: {
             Image(.settings).font(.system(size: 20)).frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Camera settings")
         if let label = zoomText(camera) {
-            Button { details = true } label: {
+            Button { state.details = true } label: {
                 Text(label)
                     .font(.labelLarge)
                     .padding(.horizontal, 10)
@@ -137,7 +188,8 @@ struct CameraControlLayer: View {
             Button {
                 guard modeTapSwitches(camera, toVideo) else { return }
                 let mode = toVideo ? "video" : "photo"
-                Task { refused = await offMain { Qgc.refusalOf(CAMERA_SET_MODE, mode) } }
+                let state = state
+                Task { state.refused = await offMain { Qgc.refusalOf(CAMERA_SET_MODE, mode) } }
             } label: {
                 Image(toVideo ? .videocam : .photoCamera).font(.system(size: 22)).osdShadow().frame(width: CAMERA_TARGET, height: CAMERA_TARGET).contentShape(Rectangle())
             }

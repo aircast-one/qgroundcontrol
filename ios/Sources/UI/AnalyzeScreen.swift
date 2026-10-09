@@ -35,7 +35,7 @@ enum AnalyzePage: CaseIterable, Hashable {
         case .Inspector: "Live message rates and field values"
         case .Console: "Vehicle shell over MAVLink"
         case .Messages: "What the vehicle has said since it connected"
-        case .Firmware: "Flash a board through its bootloader over USB"
+        case .Firmware: "Latest releases; iOS cannot flash a board over USB"
         }
     }
 

@@ -11,6 +11,7 @@ struct GuidedOffer: Equatable {
     var destructive: Bool
     var carriesValue: Bool
     var option: String = ""
+    var order = 0
 
     var ready: Bool { offer == "ready" }
     var shown: Bool { offer != "hidden" }
@@ -18,7 +19,7 @@ struct GuidedOffer: Equatable {
 
 func guidedOffers(_ view: JSON?) -> [String: GuidedOffer] {
     guard let actions = view?["actions"].arrayOrNil else { return [:] }
-    let offers = actions.filter { $0.object != nil && !$0["id"].string.isBlank }.map { action in
+    let offers = actions.enumerated().filter { $0.element.object != nil && !$0.element["id"].string.isBlank }.map { at, action in
         GuidedOffer(
             id: action["id"].string,
             title: action["title"].string,
@@ -27,7 +28,8 @@ func guidedOffers(_ view: JSON?) -> [String: GuidedOffer] {
             prompt: action["prompt"].string,
             destructive: action["destructive"].bool,
             carriesValue: action["carriesValue"].bool,
-            option: action["option"].string
+            option: action["option"].string,
+            order: at
         )
     }
     return Dictionary(offers.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
