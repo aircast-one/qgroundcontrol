@@ -37,6 +37,11 @@ final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendabl
         shared = nil
     }
 
+    static func say(_ text: String) {
+        guard let speech = shared else { return }
+        speech.queue.async { if !speech.muted { speech.speak(text, 1) } }
+    }
+
     private func flush() {
         synthesizer.stopSpeaking(at: .immediate)
         waiting = 0
@@ -51,14 +56,16 @@ final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendabl
         if nowMuted && !muted { flush() }
         muted = nowMuted
         guard let seen else { return }
-        batch.lines.filter { $0.sequence > seen }.forEach { line in
-            if waiting >= SpeechOut.maxTextQueue { flush() }
-            let utterance = AVSpeechUtterance(string: line.text)
-            utterance.volume = line.volume
-            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-            waiting += 1
-            synthesizer.speak(utterance)
-        }
+        batch.lines.filter { $0.sequence > seen }.forEach { speak($0.text, $0.volume) }
+    }
+
+    private func speak(_ text: String, _ volume: Float) {
+        if waiting >= SpeechOut.maxTextQueue { flush() }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.volume = volume
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        waiting += 1
+        synthesizer.speak(utterance)
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {

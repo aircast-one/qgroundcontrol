@@ -1,6 +1,5 @@
 import SwiftUI
 
-private let BATTERY = "view.battery"
 private let VEHICLE_FLIGHT_TIME = "vehicle.flightTime"
 private let GPS_VIEW = "view.gps"
 
@@ -197,7 +196,7 @@ private struct VehicleStatusReadings: View {
     @Environment(\.LocalNarrowStatus) private var narrow
     @AdvancedUiShown private var advanced
     @QgcPath(FLY_STATE) private var stateJson
-    @QgcPath(BATTERY) private var batteryJson
+    @QgcPath(BATTERY_VIEW) private var batteryJson
     @QgcPath(VEHICLE_LINKS) private var linksJson
     @QgcPath(GPS_VIEW) private var gpsJson
     @QgcPath(SETUP) private var setupJson
@@ -319,7 +318,7 @@ private struct VehicleStatusReadings: View {
     private func cell(_ key: String, _ state: FlyState?, _ live: Bool) -> some View {
         switch key {
         case "battery":
-            BatteryCells(batteries: batteryReadings(batteryJson), live: live) { detail = .Battery }
+            BatteryCells(batteries: batteryReadings(batteryJson), timeLeft: batteryHeadline(batteryJson)?.timeLeft ?? "", live: live) { detail = .Battery }
         case "flightTime":
             CompactFlightTime()
         case "gps":
@@ -408,6 +407,7 @@ private struct BatteryCells: View {
     @Environment(\.LocalCompactStatus) private var compactStatus
     @Environment(\.LocalNarrowStatus) private var narrow
     let batteries: [BatteryReading]
+    let timeLeft: String
     let live: Bool
     let onClick: () -> Void
 
@@ -422,6 +422,16 @@ private struct BatteryCells: View {
                         InlineCell(text: [reading.text, packCountText(reading.packs)].filter { !$0.isEmpty }.joined(separator: " "), colour: colour, icon: .battery5Bar, onClick: onClick)
                     }
                 }
+                if !timeLeft.isEmpty && !narrow {
+                    Text(timeLeft)
+                        .font(.labelLarge)
+                        .monospacedDigit()
+                        .foregroundStyle(live ? theme.aircast.outdoorForeground : theme.colors.outline)
+                        .minimumTouchTarget()
+                        .onTapGesture(perform: onClick)
+                        .accessibilityLabel("\(timeLeft) flight time left")
+                        .accessibilityAddTraits(.isButton)
+                }
             }
         }
     }
@@ -432,6 +442,68 @@ private struct CompactFlightTime: View {
 
     var body: some View {
         if compactStatus { FlightTimeCell() }
+    }
+}
+
+enum BarTone { case Fine, ReturnNow, Reserve }
+
+func barTone(_ headline: BatteryHeadline) -> BarTone {
+    (headline.percent ?? 100.0) <= headline.reserve ? .Reserve : headline.returnNow ? .ReturnNow : .Fine
+}
+
+func batteryBarDescription(_ headline: BatteryHeadline) -> String {
+    [
+        headline.percent.map { "Battery \(Int($0.rounded()))%" },
+        headline.returnAt.map { "return home needed at \(Int($0.rounded()))%" },
+        headline.returnNow ? RETURN_NOW_SPOKEN : nil,
+    ].compactMap { $0 }.joined(separator: ", ")
+}
+
+private let BATTERY_BAR_HEIGHT: CGFloat = 4
+private let BATTERY_BAR_ROOM: CGFloat = 14
+private let RETURN_MARKER: CGFloat = 12
+private let BATTERY_BAR_TRACK_ALPHA = 0.25
+private let PERCENT = 100.0
+
+struct BatteryReturnBar: View {
+    @Environment(\.theme) private var theme
+    @QgcPath(BATTERY_VIEW) private var batteryJson
+    @QgcPath(FLY_STATE) private var stateJson
+
+    var body: some View {
+        if let headline = batteryHeadline(batteryJson), let percent = headline.percent {
+            let live = flyState(stateJson)?.staleNotice.isBlank ?? true
+            let fill = live ? toneColour(barTone(headline)) : theme.colors.outline
+            let track = theme.aircast.outdoorForeground.opacity(BATTERY_BAR_TRACK_ALPHA)
+            let reserveZone = theme.colors.error
+            let home = theme.aircast.success
+            let homeText = theme.aircast.onSuccess
+            Canvas { context, size in
+                let bar = BATTERY_BAR_HEIGHT
+                let top = (size.height - bar) / 2
+                let at = { (share: Double) in size.width * CGFloat((share / PERCENT).clamped(to: 0...1)) }
+                context.fill(Path(roundedRect: CGRect(x: 0, y: top, width: size.width, height: bar), cornerRadius: bar / 2), with: .color(track))
+                context.fill(Path(roundedRect: CGRect(x: 0, y: top, width: at(percent), height: bar), cornerRadius: bar / 2), with: .color(fill))
+                context.fill(Path(CGRect(x: 0, y: top, width: at(headline.reserve), height: bar)), with: .color(reserveZone))
+                if let share = headline.returnAt {
+                    let centre = CGPoint(x: at(share), y: size.height / 2)
+                    context.fill(Path(ellipseIn: CGRect(x: centre.x - RETURN_MARKER / 2, y: centre.y - RETURN_MARKER / 2, width: RETURN_MARKER, height: RETURN_MARKER)), with: .color(home))
+                    context.draw(Text("H").font(.system(size: 8, weight: .bold)).foregroundStyle(homeText), at: centre)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: BATTERY_BAR_ROOM)
+            .accessibilityElement()
+            .accessibilityLabel(batteryBarDescription(headline))
+        }
+    }
+
+    private func toneColour(_ tone: BarTone) -> Color {
+        switch tone {
+        case .Fine: theme.aircast.success
+        case .ReturnNow: theme.aircast.warning
+        case .Reserve: theme.colors.error
+        }
     }
 }
 
@@ -579,7 +651,7 @@ func batteryPercent(_ text: String) -> Int? {
     Int(compactStatusText(text).removingSuffix("%")).map { $0.clamped(to: 0...100) }
 }
 
-func batteryPercentNow() -> Int? { batteryReadings(Qgc.get(BATTERY)).first.flatMap { batteryPercent($0.text) } }
+func batteryPercentNow() -> Int? { batteryReadings(Qgc.get(BATTERY_VIEW)).first.flatMap { batteryPercent($0.text) } }
 
 func flightTimeNow() -> Double? { flightTimeSeconds(Qgc.get(VEHICLE_FLIGHT_TIME)) }
 

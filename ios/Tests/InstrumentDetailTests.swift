@@ -41,6 +41,31 @@ final class InstrumentDetailTests: XCTestCase {
         XCTAssertEqual(batteryHeadline(view), BatteryHeadline(text: "Critical", detail: "1:30 left", severity: 2, level: .Critical, margin: "Returns home at 7%", index: 0))
     }
 
+    func testTheBarTurnsAmberAtTheTurnBackPointAndRedInTheReserve() throws {
+        let view = battery(pack(), headline: #"{"text":"41%","detail":"","severity":0,"percent":41.0,"timeLeft":"6:09","reserve":7.0,"returnAt":26.0,"returnNow":false}"#)
+        let calm = try XCTUnwrap(batteryHeadline(view))
+        XCTAssertEqual(calm.percent, 41.0)
+        XCTAssertEqual(calm.timeLeft, "6:09")
+        XCTAssertEqual(calm.returnAt, 26.0)
+        XCTAssertEqual(barTone(calm), .Fine)
+        var turning = calm
+        turning.percent = 25.0
+        turning.returnNow = true
+        XCTAssertEqual(barTone(turning), .ReturnNow)
+        var reserve = turning
+        reserve.percent = 6.0
+        XCTAssertEqual(barTone(reserve), .Reserve)
+        XCTAssertEqual(batteryBarDescription(calm), "Battery 41%, return home needed at 26%")
+    }
+
+    func testReturnNowIsSaidOnceAFlightHoweverOftenTheChargeCrossesTheTurnBackPoint() {
+        let first = returnAlert(false, true, true)
+        XCTAssertEqual(first, ReturnAlert(speak: true, alerted: true))
+        let wobble = returnAlert(returnAlert(first.alerted, false, true).alerted, true, true)
+        XCTAssertEqual(wobble, ReturnAlert(speak: false, alerted: true))
+        XCTAssertFalse(returnAlert(true, false, false).alerted, "landing re-arms it for the next flight")
+    }
+
     func testSilenceReadsInSecondsThenMinutes() {
         XCTAssertEqual(silenceText(12), "No data from the aircraft for 12 s")
         XCTAssertEqual(silenceText(150), "No data from the aircraft for 2 min")

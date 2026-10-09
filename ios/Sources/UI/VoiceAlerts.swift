@@ -30,9 +30,39 @@ func speechPath(_ after: Int64) -> String { "\(SPEECH_VIEW)(\(after))" }
 
 func linkBuzz(_ lost: Bool) -> [Int64] { lost ? LOST_BUZZ : REGAINED_BUZZ }
 
+struct ReturnAlert: Equatable {
+    let speak: Bool
+    let alerted: Bool
+}
+
+func returnAlert(_ alerted: Bool, _ returnNow: Bool, _ flying: Bool) -> ReturnAlert {
+    ReturnAlert(speak: returnNow && !alerted, alerted: flying && (alerted || returnNow))
+}
+
 struct VoiceAlerts: View {
     var body: some View {
         LinkLossBuzz()
+        ReturnHomeAlert()
+    }
+}
+
+private struct ReturnHomeAlert: View {
+    @QgcPath(BATTERY_VIEW) private var batteryJson
+    @QgcPath(FLY_STATE) private var flyJson
+    @State private var alerted = false
+
+    var body: some View {
+        let returnNow = batteryHeadline(batteryJson)?.returnNow == true
+        let flying = flyJson?["flying"].bool == true
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: [returnNow, flying], initial: true) {
+                let next = returnAlert(alerted, returnNow, flying)
+                alerted = next.alerted
+                guard next.speak else { return }
+                SpeechOut.say(RETURN_NOW_SPOKEN)
+                LinkHaptics.play(linkBuzz(true), lost: true)
+            }
     }
 }
 

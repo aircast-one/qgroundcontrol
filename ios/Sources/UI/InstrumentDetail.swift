@@ -15,6 +15,11 @@ struct BatteryHeadline: Equatable {
     var level: BatteryLevel = .Normal
     var margin: String = ""
     var index: Int = 0
+    var percent: Double? = nil
+    var timeLeft: String = ""
+    var reserve: Double = 0.0
+    var returnAt: Double? = nil
+    var returnNow: Bool = false
 }
 
 func batteryHeadline(_ view: JSON?) -> BatteryHeadline? {
@@ -25,11 +30,22 @@ func batteryHeadline(_ view: JSON?) -> BatteryHeadline? {
         severity: it["severity"].int(0),
         level: batteryLevelOf(it["level"].string),
         margin: it["margin"].string,
-        index: it["index"].int(0)
+        index: it["index"].int(0),
+        percent: optNumber(it["percent"]),
+        timeLeft: it["timeLeft"].string,
+        reserve: it["reserve"].double(0.0),
+        returnAt: optNumber(it["returnAt"]),
+        returnNow: it["returnNow"].bool
     )
 }
 
+let BATTERY_VIEW = "view.battery"
+
 private let LIMITING_PACK = "lowest"
+
+private func optNumber(_ value: JSON) -> Double? { value.double.flatMap { $0.isFinite ? $0 : nil } }
+
+let RETURN_NOW_SPOKEN = "Battery needed to return home. Return now."
 
 func batteryDetail(_ view: JSON?) -> [DetailRow] {
     guard let view, view["available"].bool, let packs = view["packs"].arrayOrNil else { return [] }

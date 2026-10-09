@@ -1154,7 +1154,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
                 }
             ))
         }) : nil,
-        takeoff.map { $0.shown || $0.reason == NO_SIGNAL_REASON } == true ? DeckEntry(
+        takeoff.map { $0.shown || $0.reasonCode == NO_SIGNAL_CODE } == true ? DeckEntry(
             id: "takeoff",
             label: takeoffLabel(takeoff, deck.readiness),
             icon: .flightTakeoff,

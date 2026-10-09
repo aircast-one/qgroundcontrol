@@ -13,6 +13,8 @@ struct Attitude: Equatable {
     let headingToHome: Double?
     let headingToNextWaypoint: Double?
     let noseUp: Bool
+    var homeBearing: Double? = nil
+    var pilotBearing: Double? = nil
 }
 
 let NO_VEHICLE_ATTITUDE = Attitude(roll: 0, pitch: 0, heading: 0, headingText: "", courseOverGround: nil, headingToHome: nil, headingToNextWaypoint: nil, noseUp: false)
@@ -27,7 +29,9 @@ func attitude(_ view: JSON?) -> Attitude? {
         courseOverGround: view["courseOverGround"].nonNanDouble,
         headingToHome: view["headingToHome"].nonNanDouble,
         headingToNextWaypoint: view["headingToNextWaypoint"].nonNanDouble,
-        noseUp: view["noseUp"].bool
+        noseUp: view["noseUp"].bool,
+        homeBearing: view["homeBearing"].nonNanDouble,
+        pilotBearing: view["pilotBearing"].nonNanDouble
     )
 }
 
@@ -47,6 +51,7 @@ private let OSD_CHEVRON_TIP: CGFloat = 0.42
 private let OSD_CHEVRON_WING: CGFloat = 0.3
 private let OSD_CHEVRON_NOTCH: CGFloat = 0.14
 private let OSD_NORTH = Color(hex: 0xFF4D4D)
+private let ROOMY_DIAL: CGFloat = 96
 
 struct OsdCompassDial: View {
     let size: CGFloat
@@ -57,6 +62,8 @@ struct OsdCompassDial: View {
         let reading = attitude(view) ?? NO_VEHICLE_ATTITUDE
         let home = theme.aircast.success
         let onHome = theme.aircast.onSuccess
+        let pilot = theme.colors.primary
+        let roomy = size >= ROOMY_DIAL
         Canvas { context, canvas in
             let radius = min(canvas.width, canvas.height) / 2
             let center = CGPoint(x: canvas.width / 2, y: canvas.height / 2)
@@ -89,11 +96,16 @@ struct OsdCompassDial: View {
                 with: .color(ring),
                 lineWidth: 1.5
             )
+            if let bearing = reading.pilotBearing {
+                let at = pointOnRing(center, radius - 8, bearing)
+                context.fill(Path(ellipseIn: CGRect(x: at.x - 5, y: at.y - 5, width: 10, height: 10)), with: .color(.white))
+                context.fill(Path(ellipseIn: CGRect(x: at.x - 3.5, y: at.y - 3.5, width: 7, height: 7)), with: .color(pilot))
+            }
             context.draw(
                 Text("N").font(.system(size: 11, weight: .bold)).foregroundStyle(OSD_NORTH),
                 at: pointOnRing(center, radius - 15, 0)
             )
-            if let bearing = reading.headingToHome {
+            if let bearing = reading.homeBearing ?? reading.headingToHome {
                 let at = pointOnRing(center, radius - 8, bearing)
                 context.fill(Path(ellipseIn: CGRect(x: at.x - 7, y: at.y - 7, width: 14, height: 14)), with: .color(home))
                 context.draw(Text("H").font(.system(size: 9, weight: .bold)).foregroundStyle(onHome), at: at)
@@ -112,7 +124,7 @@ struct OsdCompassDial: View {
                 nose.fill(chevron, with: .color(.white))
                 nose.stroke(chevron, with: .color(.black.opacity(OSD_DIAL_SCRIM)), lineWidth: 1)
             }
-            if !reading.headingText.isBlank {
+            if roomy && !reading.headingText.isBlank {
                 context.draw(
                     Text(reading.headingText).font(.system(size: 11, weight: .bold)).foregroundStyle(.white),
                     at: CGPoint(x: center.x, y: center.y + radius * 0.5),

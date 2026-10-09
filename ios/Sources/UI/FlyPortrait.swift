@@ -4,7 +4,7 @@ private let VIDEO_ASPECT: CGFloat = 16.0 / 9.0
 private let MAP_BUTTON_SCRIM_ALPHA = 0.55
 private let PORTRAIT_PIP_WIDTH: CGFloat = 160
 private let PORTRAIT_PIP_HEIGHT: CGFloat = 90
-private let PORTRAIT_DIAL_SIZE: CGFloat = 120
+private let PORTRAIT_DIAL_SIZE: CGFloat = 72
 private let PORTRAIT_BAR_HEIGHT: CGFloat = 64
 private let SCRIM_ALPHA = 0.7
 private let PIP_BORDER_ALPHA = 0.5
@@ -213,6 +213,8 @@ struct FlyPortrait: View {
                 .frame(height: PORTRAIT_BAR_HEIGHT)
                 .padding(.top, safeTop)
                 .background(LinearGradient(colors: [Color.black.opacity(SCRIM_ALPHA), .clear], startPoint: .top, endPoint: .bottom).allowsHitTesting(false))
+            BatteryReturnBar()
+                .padding(.horizontal, Space.s3)
             TrafficBanner()
                 .padding(.horizontal, Space.s3)
                 .padding(.bottom, Space.s2)

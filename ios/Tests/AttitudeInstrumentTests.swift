@@ -20,6 +20,13 @@ final class AttitudeInstrumentTests: XCTestCase {
         XCTAssertEqual(NO_VEHICLE_ATTITUDE.headingText, "")
     }
 
+    func testTheDialReadsHomeAndThePilotWhateverTheCompassSetting() throws {
+        let read = try XCTUnwrap(attitude(JSON.parse(#"{"available":true,"heading":10,"homeBearing":190,"pilotBearing":45.5,"headingToHome":null}"#)))
+        XCTAssertEqual(read.homeBearing, 190)
+        XCTAssertEqual(read.pilotBearing, 45.5)
+        XCTAssertNil(try XCTUnwrap(attitude(JSON.parse(#"{"available":true,"heading":10,"homeBearing":null,"pilotBearing":null}"#))).pilotBearing)
+    }
+
     func testPitchMovesTheHorizonByTheSpanQgcUses() {
         XCTAssertEqual(pitchOffset(45, 20), 40)
         XCTAssertEqual(pitchOffset(0, 20), 0)
