@@ -103,7 +103,8 @@ fun PlanTab(modifier: Modifier = Modifier) {
         } else {
             scope.launch {
                 val (lat, lon) = centre ?: return@launch run { notice = "The map has not reported its centre yet." }
-                withContext(Dispatchers.IO) { Qgc.refusalOf(CREATE_FROM_TEMPLATE, template, lat, lon) }?.let { notice = it }
+                val refused = withContext(Dispatchers.IO) { Qgc.refusalOf(CREATE_FROM_TEMPLATE, template, lat, lon) }
+                if (refused == null) one.aircast.map.PlanFocus.newPattern.value = one.aircast.map.NEWEST_PATTERN else notice = refused
             }
         }
     }
@@ -217,7 +218,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
             Modifier.fillMaxSize(),
             fitKey = files.opened(),
             onCentre = { lat, lon -> centre = lat to lon },
-            itemPanel = { index, at, leg -> ItemEditor(index, at, centre, leg) },
+            itemPanel = { index, at, leg, remove -> ItemEditor(index, at, centre, leg, remove) },
             routeSettings = { RouteSettings(planStatus) },
             onTemplates = { newPlanOpen = true },
             header = { bar ->
@@ -238,7 +239,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                                         overflow = TextOverflow.Ellipsis,
                                     )
                                     val warned = notice == null && !syncing && bar.warning != null
-                                    (notice ?: bar.warning?.takeIf { warned } ?: headerLine(planStatusText(planStatus), syncing, bar.stats)).takeIf { it.isNotBlank() && it != title }?.let { line ->
+                                    (notice ?: bar.warning?.takeIf { warned } ?: bar.note?.takeIf { !syncing } ?: headerLine(planStatusText(planStatus), syncing, bar.stats)).takeIf { it.isNotBlank() && it != title }?.let { line ->
                                         Text(
                                             line,
                                             style = MaterialTheme.typography.labelSmall,

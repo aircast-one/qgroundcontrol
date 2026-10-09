@@ -35,6 +35,17 @@ internal fun rallyAltitudeLabel(point: RallyPoint): String =
 internal fun rallyAltitudeIsEditable(point: RallyPoint): Boolean =
     !point.altitude.isNaN() && point.altitudePath.isNotBlank()
 
+internal fun itemSeal(item: MissionItem): String = when (item.index) {
+    HOME_ITEM -> HOME_SEAL
+    else -> waypointLabel(item.sequence, crowded = false, abbreviation = item.abbreviation.takeIf { !item.complexPattern }.orEmpty())
+}
+
+internal fun itemTitle(item: MissionItem): String {
+    val name = sentenceCase(item.command.ifBlank { "Item" })
+    val seal = itemSeal(item)
+    return if (seal.all(Char::isDigit)) "$name $seal" else name
+}
+
 internal fun sequenceLabel(item: MissionItem): String = when {
     item.foldedCommands > 0 -> "${item.sequence}\u2013${item.sequence + item.foldedCommands}"
     else -> item.sequence.toString()
@@ -64,7 +75,7 @@ fun itemRows(
         colour = waypointColour(item.kind, item.commandId),
         placed = item.placed,
         readyForSave = item.readyForSave,
-        seal = if (item.readyForSave) item.sequence.toString() else NOT_READY_SEAL,
+        seal = if (item.readyForSave) itemSeal(item) else NOT_READY_SEAL,
     )
 }
 

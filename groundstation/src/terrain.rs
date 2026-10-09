@@ -522,12 +522,14 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let profile = banded(all, mission);
     let vertical = Unit::vertical(backend);
     let usable = profile.points.len() > 1 && profile.max_altitude > profile.min_altitude;
+    let checking = core.is_some() && crate::coreplan::home_ground_pending();
     json!({
+        "checking": checking,
         "kind": "object",
         "class": "TerrainProfile",
         "usable": usable,
         "groundKnown": profile.unknown_terrain == 0 && profile.points.len() > 1,
-        "hasCollision": profile.points.iter().any(|p| p.collision),
+        "hasCollision": !checking && profile.points.iter().any(|p| p.collision),
         "minClearanceMetres": profile.min_clearance,
         "clearanceComplete": clearance_complete(&profile),
         "clearanceText": profile.min_clearance.map(|clearance| crate::read::format_measure(vertical.show(clearance.abs()), &vertical.name)),
@@ -543,26 +545,36 @@ pub fn terrain_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "distanceTicks": axis_ticks(0.0, Unit::horizontal(backend).show(profile.total_distance), 4),
         "heightTicks": axis_ticks(vertical.show(profile.min_altitude), vertical.show(profile.max_altitude), 3),
         "markers": markers(&model),
-        "collidingItems": colliding_items(&model, false),
-        "collidingSimpleItems": colliding_items(&model, true),
-        "collisionLegs": match core {
+        "collidingItems": settled(checking, colliding_items(&model, false)),
+        "collidingSimpleItems": settled(checking, colliding_items(&model, true)),
+        "collisionLegs": settled::<Vec<Value>>(checking, match core {
             Some(_) => legs.iter().filter(|leg| leg.segment["terrainCollision"] == true).map(|leg| leg.line.clone()).collect(),
             None => collision_legs(backend),
-        },
+        }),
         "points": profile.points.iter().map(|p| json!({
             "sequence": p.sequence,
             "distance": p.distance,
             "x": if profile.total_distance > 0.0 { p.distance / profile.total_distance } else { 0.0 },
             "missionAltitude": p.mission_altitude,
             "terrainAltitude": p.terrain_altitude,
-            "collision": p.collision,
+            "collision": !checking && p.collision,
         })).collect::<Vec<_>>(),
     })
+}
+
+fn settled<T: Default>(checking: bool, conflicts: T) -> T {
+    if checking { T::default() } else { conflicts }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn conflicts_wait_for_the_ground_under_home_so_a_new_route_does_not_flash_red() {
+        assert_eq!(settled(true, vec![2, 3]), Vec::<usize>::new(), "home sits at sea level until its ground height arrives, so every leg would read as underground");
+        assert_eq!(settled(false, vec![2, 3]), vec![2, 3]);
+    }
 
     #[test]
     fn a_takeoff_before_the_first_waypoint_or_a_rover_links_home_like_recalc_flight_path_segments() {

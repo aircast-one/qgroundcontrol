@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
@@ -26,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,6 +52,12 @@ private val PANEL_DRAG_THRESHOLD = 24.dp
 internal fun advancedDetail(item: MissionItem): String? =
     listOfNotNull("Mission items ${sequenceLabel(item)}".takeIf { item.foldedCommands > 0 }, legText(item))
         .joinToString(" \u00b7 ").ifBlank { null }
+
+internal fun placedPattern(surveys: List<Survey>, wanted: Int): Survey? =
+    surveys.firstOrNull { it.index == wanted } ?: surveys.maxByOrNull { it.index }?.takeIf { wanted == NEWEST_PATTERN }
+
+internal fun appendSequence(items: List<MissionItem>): Int =
+    items.maxByOrNull { it.index }?.sequence ?: HOME_ITEM
 
 internal fun tapCloses(selected: MapHit?, panelOpen: Boolean): Boolean =
     selected != null && (panelOpen || selected !is MapHit.Waypoint)
@@ -106,8 +112,9 @@ internal fun WaypointStripBar(
         profileShown?.let { shown ->
             IconButton(onClick = onProfile) {
                 Icon(
-                    if (shown) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                    painterResource(R.drawable.plan_terrain),
                     contentDescription = if (shown) "Hide the terrain profile" else "Show the terrain profile",
+                    tint = if (shown) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -135,7 +142,6 @@ internal fun SelectionHeader(
     warning: Boolean,
     open: Boolean,
     onTitle: () -> Unit,
-    onDelete: (() -> Unit)?,
     onDone: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -159,9 +165,6 @@ internal fun SelectionHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-        onDelete?.let {
-            IconButton(onClick = it) { Icon(Icons.Filled.Delete, contentDescription = "Delete $title", tint = MaterialTheme.colorScheme.error) }
         }
         Button(onClick = onDone, contentPadding = ButtonDefaults.ButtonWithIconContentPadding, modifier = Modifier.padding(end = 4.dp)) {
             Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))

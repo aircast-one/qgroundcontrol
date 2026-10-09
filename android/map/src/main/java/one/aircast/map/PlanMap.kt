@@ -26,7 +26,7 @@ internal fun planMapStyle(context: Context): String {
 fun PlanMapScreen(
     modifier: Modifier = Modifier,
     onCentre: ((Double, Double) -> Unit)? = null,
-    itemPanel: (@Composable (Int, TrackPoint?, String?) -> Unit)? = null,
+    itemPanel: (@Composable (Int, TrackPoint?, String?, (() -> Unit)?) -> Unit)? = null,
     header: (@Composable (PlanBar) -> Unit)? = null,
     routeSettings: (@Composable () -> Unit)? = null,
     fitKey: Int = 0,

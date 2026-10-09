@@ -115,6 +115,8 @@ private fun setToVehicleLocation(index: Int): String? {
     return PlanCommands.setLandingCoordinate(index, coordinate)
 }
 
+private const val DELETE_LABEL = "Delete from the plan"
+
 internal fun areaHelp(view: JSONObject?): String? = view?.optText("areaHelp")?.takeIf { it.isNotBlank() }
 
 internal fun gridNote(view: JSONObject?): String? = view?.optText("gridNote")?.takeIf { it.isNotBlank() }
@@ -203,7 +205,7 @@ internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, legDetail: String?) {
+fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, legDetail: String?, onRemove: (() -> Unit)?) {
     var revision by remember(index) { mutableIntStateOf(0) }
     var view by remember(index) { mutableStateOf<JSONObject?>(null) }
     var choosing by remember(index) { mutableStateOf(false) }
@@ -433,6 +435,13 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, le
                     }
                 }
                 if (presetsFirst == false) presets()
+            }
+            onRemove?.let { remove ->
+                TextButton(
+                    onClick = remove,
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                ) { Text(DELETE_LABEL) }
             }
         }
     }

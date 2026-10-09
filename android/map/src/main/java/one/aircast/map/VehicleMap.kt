@@ -195,6 +195,7 @@ fun VehicleMap(
     bottomInsetPx: Int = 0,
     topInsetPx: Int = 0,
     leftInsetPx: Int = 0,
+    rightInsetPx: Int = 0,
     logoEndInsetPx: Int? = null,
     cameraBottomPx: Int = 0,
     pip: Boolean = false,
@@ -301,16 +302,19 @@ fun VehicleMap(
     val latestViewChanged by rememberUpdatedState(onViewChanged)
     val latestLeftInset by rememberUpdatedState(leftInsetPx)
     val latestBottomInset by rememberUpdatedState(bottomInsetPx)
+    val latestTopInset by rememberUpdatedState(topInsetPx)
+    val latestRightInset by rememberUpdatedState(rightInsetPx)
     DisposableEffect(mapView, mapStyle) {
         mapView.getMapAsync { loaded ->
             map = loaded
             fun reportCentre() {
                 val target = loaded.cameraPosition.target ?: return
                 latestCentreChanged(TrackPoint(target.latitude, target.longitude), loaded.cameraPosition.zoom)
-                val right = mapView.width.toFloat()
+                val right = (mapView.width - latestRightInset).toFloat().coerceAtLeast(0f)
                 val left = latestLeftInset.toFloat().coerceIn(0f, right)
                 val bottom = (mapView.height - latestBottomInset).toFloat().coerceAtLeast(0f)
-                val seen = listOf(PointF(left, 0f), PointF(right, 0f), PointF(right, bottom), PointF(left, bottom))
+                val top = latestTopInset.toFloat().coerceIn(0f, bottom)
+                val seen = listOf(PointF(left, top), PointF(right, top), PointF(right, bottom), PointF(left, bottom))
                     .map { loaded.projection.fromScreenLocation(it) }
                 latestViewChanged(clearWindow(seen.map { TrackPoint(it.latitude, it.longitude) }))
             }

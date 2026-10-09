@@ -199,10 +199,18 @@ private fun landingMarkers(item: MissionItem, pattern: LandingPattern): List<Mar
     pattern.landing?.let { Marker(item, it, item.sequence + item.foldedCommands, exit = true, side = "Land") },
 )
 
+const val HOME_SEAL = "H"
+private const val SAME_SPOT_DEGREES = 1e-6
+
+fun homeCovered(items: List<MissionItem>): Boolean {
+    val home = items.firstOrNull { it.index == HOME_ITEM && it.placed } ?: return false
+    return items.any { it.index != HOME_ITEM && it.placed && kotlin.math.abs(it.latitude - home.latitude) < SAME_SPOT_DEGREES && kotlin.math.abs(it.longitude - home.longitude) < SAME_SPOT_DEGREES }
+}
+
 fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null, landings: List<LandingPattern> = emptyList()): FeatureCollection {
     val crowded = crowded(items.size)
     val patterns = landings.associateBy { it.index }
-    val plain = items.filter { it.index !in patterns }
+    val plain = items.filter { it.index !in patterns }.filterNot { it.index == HOME_ITEM && homeCovered(items) }
     val markers = plain.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), item.sequence, exit = false) } +
         exitMarkers(plain).map { (item, exit) -> Marker(item, exit, item.sequence + item.foldedCommands, exit = true) } +
         items.flatMap { item -> patterns[item.index]?.let { landingMarkers(item, it) }.orEmpty() }
@@ -210,7 +218,7 @@ fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null, landin
         val lettered = item.abbreviation.takeIf { !exit && !item.complexPattern }.orEmpty()
         Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).apply {
             addNumberProperty(WAYPOINT_ID_PROPERTY, item.index)
-            addStringProperty(WAYPOINT_LABEL_PROPERTY, waypointLabel(sequence, crowded, lettered))
+            addStringProperty(WAYPOINT_LABEL_PROPERTY, if (item.index == HOME_ITEM && !exit && !crowded) HOME_SEAL else waypointLabel(sequence, crowded, lettered))
             addStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY, side?.takeUnless { crowded } ?: sideLabel(crowded, lettered))
             addNumberProperty(
                 WAYPOINT_RADIUS_PROPERTY,

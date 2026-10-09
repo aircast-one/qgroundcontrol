@@ -28,8 +28,11 @@ fun notReadyToSend(view: org.json.JSONObject?): String? =
         ?.takeIf { !it.optBoolean("ready") }
         ?.let { it.optText("reason").ifBlank { "The plan is not ready to send." } }
 
+const val NEWEST_PATTERN = -1
+
 object PlanFocus {
     val requests = kotlinx.coroutines.flow.MutableStateFlow<Int?>(null)
+    val newPattern = kotlinx.coroutines.flow.MutableStateFlow<Int?>(null)
 
     fun notReady(view: org.json.JSONObject?) {
         nextNotReady(view)?.let { requests.value = it }

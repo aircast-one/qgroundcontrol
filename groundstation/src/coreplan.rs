@@ -198,25 +198,26 @@ fn home_of(document: Option<&Document>) -> Option<(f64, f64)> {
     document.and_then(|d| d.home).map(|h| (h[0], h[1]))
 }
 
+static HOME_GROUND_PENDING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub fn home_ground_pending() -> bool {
+    HOME_GROUND_PENDING.load(std::sync::atomic::Ordering::Relaxed) > 0
+}
+
 fn settle_home_on_terrain(before: Option<(f64, f64)>) {
     let Some((latitude, longitude)) = home_of(held().document.as_ref()).filter(|now| Some(*now) != before) else {
         return;
     };
+    HOME_GROUND_PENDING.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     std::thread::spawn(move || {
-        let Ok(ground) = crate::terrainquery::elevation(latitude, longitude, None, &crate::terrainquery::fetch_over_http) else {
-            return;
-        };
-        let settled = {
+        if let Ok(ground) = crate::terrainquery::elevation(latitude, longitude, None, &crate::terrainquery::fetch_over_http) {
             let mut state = held();
-            let same = home_of(state.document.as_ref()) == Some((latitude, longitude));
-            if same {
+            if home_of(state.document.as_ref()) == Some((latitude, longitude)) {
                 state.document = state.document.take().map(|d| Document { home: d.home.map(|h| [h[0], h[1], ground]), ..d });
             }
-            same
-        };
-        if settled {
-            changed();
         }
+        HOME_GROUND_PENDING.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        changed();
     });
 }
 

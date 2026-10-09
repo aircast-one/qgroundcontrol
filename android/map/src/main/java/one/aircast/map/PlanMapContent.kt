@@ -64,6 +64,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,6 +95,9 @@ private const val SIDE_PANEL_MIN_WIDTH_DP = 840
 internal const val SUMMARY_MAX_FRACTION = 0.74f
 
 private const val WAITING_FOR_QGC = "Waiting for QGroundControl"
+private const val CHECKING_TERRAIN = "Checking the terrain\u2026"
+private const val VIEW_CORNERS = 4
+private val PATTERN_KINDS = setOf(KIND_SURVEY, KIND_CORRIDOR, KIND_STRUCTURE)
 
 private fun sendPlan(
     scope: CoroutineScope,
@@ -141,14 +146,14 @@ class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: Strin
     val done: Boolean get() = label == UPLOADED
 }
 
-class PlanBar(val upload: PlanUpload, val stats: List<PlanStat>, val warning: String?)
+class PlanBar(val upload: PlanUpload, val stats: List<PlanStat>, val warning: String?, val note: String?)
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlanMapContent(
     mapStyle: String,
     onCentre: ((Double, Double) -> Unit)? = null,
-    itemPanel: (@Composable (Int, TrackPoint?, String?) -> Unit)? = null,
+    itemPanel: (@Composable (Int, TrackPoint?, String?, (() -> Unit)?) -> Unit)? = null,
     header: (@Composable (PlanBar) -> Unit)? = null,
     routeSettings: (@Composable () -> Unit)? = null,
     fitKey: Int = 0,
@@ -181,6 +186,8 @@ internal fun PlanMapContent(
     var surveyStatsMap by remember { mutableStateOf<Map<Int, SurveyStats>>(emptyMap()) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
     var panelOpen by remember { mutableStateOf(true) }
+    var readsStarted by remember { mutableIntStateOf(0) }
+    var planReads by remember { mutableIntStateOf(0) }
     var layer by remember { mutableStateOf(PlanLayer.Mission) }
     LaunchedEffect(selected) { layerOf(selected)?.let { layer = it } }
 
@@ -233,6 +240,7 @@ internal fun PlanMapContent(
             if (outcome.ok) {
                 busy = null
                 outcome.index?.let { added ->
+                    if (kindId in PATTERN_KINDS) PlanFocus.newPattern.value = added
                     withContext(Dispatchers.Default) {
                         if (kindId == KIND_LAND) {
                             placeLandingIfUnplaced(added, at.latitude, at.longitude)
@@ -377,13 +385,26 @@ internal fun PlanMapContent(
         }
     }
 
-    LaunchedEffect(selected, selectedSequence) {
-        val sequence = selectedSequence ?: 0.takeIf { selected == null } ?: return@LaunchedEffect
+    val newPattern by PlanFocus.newPattern.collectAsState()
+    LaunchedEffect(newPattern) {
+        val wanted = newPattern ?: return@LaunchedEffect
+        val since = readsStarted
+        snapshotFlow { planReads }.first { it > since }
+        PlanFocus.newPattern.value = null
+        val target = placedPattern(surveyList, wanted)?.let { shapeTarget(null, it) } ?: return@LaunchedEffect
+        if (visible.size == VIEW_CORNERS) onBridge { replaceShape(target, if (target.line) defaultLine(visible) else defaultRectangle(visible)) }
+    }
+
+    val appendAfter = appendSequence(allItems)
+    LaunchedEffect(selected, selectedSequence, appendAfter) {
+        val sequence = selectedSequence ?: appendAfter.takeIf { selected == null } ?: return@LaunchedEffect
         withContext(Dispatchers.Default) { PlanBridge.selectSequence(sequence) }
     }
 
     suspend fun refresh() {
         val readAt = edits
+        val readNumber = readsStarted + 1
+        readsStarted = readNumber
         withContext(Dispatchers.Default) {
             val plan = PlanBridge.rawItems()
             if (plan != null) {
@@ -433,6 +454,7 @@ internal fun PlanMapContent(
                 surveyList = nextSurveys
                 landingList = nextLandings
                 surveyStatsMap = nextStats
+                planReads = readNumber
             }
         }
     }
@@ -585,6 +607,7 @@ internal fun PlanMapContent(
             bottomInsetPx = controlsHeightPx,
             topInsetPx = headerPx,
             leftInsetPx = sidePanelPx + railPx,
+            rightInsetPx = railPx,
             fitRequest = fitRequest,
             fitOnly = fitOnly,
             onFitFailed = { onBridge("Fitting the plan") { false } },
@@ -621,7 +644,14 @@ internal fun PlanMapContent(
         val headerHeight = with(LocalDensity.current) { headerPx.toDp() }
         header?.let { bar ->
             Box(Modifier.align(Alignment.TopStart).padding(start = mapStart).fillMaxWidth().onGloballyPositioned { headerPx = it.size.height }) {
-                bar(PlanBar(planUpload, planStats(itemCount, allItems, missionSummaryView), terrainWarning(terrainHits.size, (collidingSimple + collidingPatterns).size)))
+                bar(
+                    PlanBar(
+                        planUpload,
+                        planStats(itemCount, allItems, missionSummaryView),
+                        terrainWarning(terrainHits.size, (collidingSimple + collidingPatterns).size),
+                        CHECKING_TERRAIN.takeIf { itemCount > 0 && terrainView?.optBoolean("checking") == true },
+                    ),
+                )
             }
         }
         val panelHeight = with(LocalDensity.current) { controlsHeightPx.toDp() }
@@ -846,14 +876,13 @@ internal fun PlanMapContent(
                 }
                 when {
                     chosenItem != null -> SelectionHeader(
-                        title = "${sentenceCase(chosenItem.command.ifBlank { "Item" })} ${chosenItem.sequence}",
+                        title = itemTitle(chosenItem),
                         detail = (if (chosenItem.index in collidingSimple + collidingPatterns) TERRAIN_CONFLICT_HERE else null)
                             ?: sheetDetail(chosenItem, surveyStatsMap[chosenItem.index]).takeIf { chosenItem.complexPattern }?.ifBlank { null }
                             ?: addingAfterText(chosen, allItems).takeIf { !panelOpen },
                         warning = chosenItem.index in collidingSimple + collidingPatterns,
                         open = panelOpen,
                         onTitle = { panelOpen = !panelOpen },
-                        onDelete = { removeItem(chosenItem) }.takeIf { chosenItem.index > HOME_ITEM },
                         onDone = { selected = null },
                     )
                     chosen != null -> SelectionHeader(
@@ -862,7 +891,6 @@ internal fun PlanMapContent(
                         warning = false,
                         open = panelOpen,
                         onTitle = { panelOpen = !panelOpen },
-                        onDelete = null,
                         onDone = { selected = null },
                     )
                     layer == PlanLayer.Mission && itemCount == 0 -> EmptyMissionStrip(
@@ -1240,7 +1268,7 @@ internal fun PlanMapContent(
                     }
 
                     chosenItem?.let { item ->
-                        itemPanel?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, advancedDetail(item))
+                        itemPanel?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, advancedDetail(item), { removeItem(item) }.takeIf { item.index > HOME_ITEM })
                     }
                 }
             }

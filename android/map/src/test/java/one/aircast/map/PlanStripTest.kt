@@ -75,4 +75,27 @@ class PlanStripTest {
         assertEquals("Mission items 3\u20134", advancedDetail(folded))
         assertNull(advancedDetail(MissionItem(3, 3, 41.0, 44.0, "Waypoint", true, 50.0)))
     }
+
+    @Test
+    fun `a takeoff on the planned home hides home, so the map and the strip both read T`() {
+        val home = MissionItem(0, 0, 41.0, 44.0, "Home", false, Double.NaN)
+        val takeoff = MissionItem(1, 1, 41.0, 44.0, "Takeoff", false, 50.0, abbreviation = "Takeoff")
+        val away = takeoff.copy(latitude = 41.001)
+        assertEquals(listOf(true, false), listOf(homeCovered(listOf(home, takeoff)), homeCovered(listOf(home, away))))
+        assertEquals(listOf("H", "T", "2"), listOf(itemSeal(home), itemSeal(takeoff), itemSeal(MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0))))
+        assertEquals(listOf("Takeoff", "Waypoint 2"), listOf(itemTitle(takeoff), itemTitle(MissionItem(2, 2, 41.0, 44.0, "Waypoint", false, 50.0))))
+    }
+
+    @Test
+    fun `a template's pattern is the newest one, a rail pattern the one just inserted`() {
+        val surveys = listOf(2, 5).map { Survey(it, emptyList(), emptyList(), 0, KIND_SURVEY, "", "surveyAreaPolygon") }
+        assertEquals(listOf(5, 2, null), listOf(placedPattern(surveys, NEWEST_PATTERN)?.index, placedPattern(surveys, 2)?.index, placedPattern(surveys, 7)?.index))
+    }
+
+    @Test
+    fun `with nothing selected the core weighs new items at the end, where they are added`() {
+        val items = listOf(0, 1, 2).map { MissionItem(it, it, 41.0, 44.0, "Waypoint", false, 50.0) } + MissionItem(3, 5, 41.0, 44.0, "Survey", false, 50.0)
+        assertEquals(5, appendSequence(items))
+        assertEquals(0, appendSequence(emptyList()))
+    }
 }
