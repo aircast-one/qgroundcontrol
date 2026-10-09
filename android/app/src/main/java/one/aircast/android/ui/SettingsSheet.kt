@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -111,6 +112,9 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
     val initialPage = page?.takeIf { pageLook(it).group == group }
     var openPage by rememberSaveable(group, page, query != null, setupOpen) { mutableStateOf(initialPage?.takeUnless { pageLook(it).inline }) }
     val closePage: () -> Unit = { backToSearch.takeIf { returnQuery != null && openPage == initialPage }?.invoke() ?: run { openPage = null } }
+    val pageHeading = remember { mutableStateOf<PageHeading?>(null) }
+    val pageBack: () -> Unit = { pageHeading.value?.back?.invoke() ?: closePage() }
+    val setupBack: () -> Unit = { pageHeading.value?.takeUnless { setupFromTab }?.back?.invoke() ?: closeSetup() }
     val openSetup: (String?) -> Unit = { component ->
         navigation.setupPage = component
         setupFromTab = component != null
@@ -143,10 +147,12 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                 val stacked = maxWidth < STACKED_HEADER_WIDTH
                 val drilled = sheetDrilled(openPage, setupOpen)
                 val tabsShown = query == null && !drilled
+                val drilledTitle = openPage.takeIf { query == null && !setupOpen }?.let { pageHeading.value?.title ?: pageTitle(it) }
+                    ?: AIRCRAFT_SETUP.takeIf { query == null && setupOpen }?.let { pageHeading.value?.title ?: it }
                 val showTab: (SettingsGroup) -> Unit = { entry -> tabScope.launch { pager.animateScrollToPage(entry.ordinal) } }
                 Column {
                     Row(
-                        Modifier.fillMaxWidth().padding(start = AircastSpace.s3, end = AircastSpace.s3, top = AircastSpace.s1, bottom = if (tabsShown && !stacked) 0.dp else AircastSpace.s1),
+                        Modifier.fillMaxWidth().padding(start = if (drilledTitle != null) AircastSpace.s1 else AircastSpace.s3, end = AircastSpace.s3, top = AircastSpace.s1, bottom = if (tabsShown && !stacked) 0.dp else AircastSpace.s1),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     ) {
@@ -156,7 +162,10 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                             SearchPill(typed, { query = it }, "Search settings", Modifier.weight(1f).focusRequester(focus))
                             TextButton(onClick = { query = null }) { Text("Cancel") }
                         } ?: run {
-                            if (stacked || drilled) {
+                            if (drilledTitle != null) {
+                                IconButton(onClick = if (setupOpen) setupBack else pageBack) { Icon(painterResource(R.drawable.ic_arrow_back), "Back") }
+                                Text(drilledTitle, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            } else if (stacked) {
                                 Text("Settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f).padding(start = AircastSpace.s2))
                             } else {
                                 SheetTabs(pager.targetPage, 0.dp, Modifier.weight(1f), showTab)
@@ -174,7 +183,7 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                 SettingsPager(pager, group, swipeable = openPage == null, onSettled = pickTab, modifier = Modifier.weight(1f)) { shown ->
                     val current = shown == group
                     key(page.takeIf { current }) {
-                        SettingsScreen(shown, everyPage, openPage.takeIf { current }, { openPage = it }, closePage, Modifier.fillMaxSize(), onOpenSetup = openSetup)
+                        SettingsScreen(shown, everyPage, openPage.takeIf { current }, { openPage = it }, closePage, pageHeading, Modifier.fillMaxSize(), onOpenSetup = openSetup)
                     }
                 }
             } else key(group, page, query != null, setupOpen) {
@@ -187,11 +196,8 @@ internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {
                         setupOpen = false
                     }
                     else -> Column(Modifier.weight(1f)) {
-                        val heading = remember { mutableStateOf<PageHeading?>(null) }
-                        val back: () -> Unit = { heading.value?.takeUnless { setupFromTab }?.back?.invoke() ?: closeSetup() }
-                        PageTopBar(heading.value?.title ?: AIRCRAFT_SETUP, "Back", back)
-                        CompositionLocalProvider(LocalPageHeading provides heading) { SetupScreen(Modifier.weight(1f)) }
-                        androidx.activity.compose.BackHandler(enabled = setupFromTab && query == null, onBack = back)
+                        CompositionLocalProvider(LocalPageHeading provides pageHeading) { SetupScreen(Modifier.weight(1f)) }
+                        androidx.activity.compose.BackHandler(enabled = setupFromTab && query == null, onBack = setupBack)
                     }
                 }
             }

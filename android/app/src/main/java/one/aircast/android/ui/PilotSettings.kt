@@ -47,18 +47,28 @@ internal fun pilotSettings(group: SettingsGroup): List<PilotSetting> = when (gro
     else -> emptyList()
 }
 
+internal fun pilotSearchHits(query: String): List<PilotSetting> =
+    query.trim().lowercase().takeIf { it.isNotEmpty() }?.let { wanted ->
+        SettingsGroup.entries
+            .flatMap { group -> pilotSettings(group).map { it.copy(section = "${group.title} \u203a ${it.section}") } }
+            .filter { setting -> (listOf(setting.label, setting.section) + setting.parameters).any { it.lowercase().contains(wanted) } }
+    }.orEmpty()
+
 internal data class ShownPilotSetting(val setting: PilotSetting, val fact: Fact)
 
 internal fun firstReported(setting: PilotSetting, reported: (String) -> Fact?): Fact? =
     setting.parameters.firstNotNullOfOrNull(reported)?.copy(shortLabel = setting.label)
 
 @Composable
-internal fun PilotSettings(group: SettingsGroup) {
-    val settings = pilotSettings(group)
+internal fun PilotSettings(group: SettingsGroup) = PilotSettings(pilotSettings(group))
+
+@Composable
+internal fun PilotSettings(settings: List<PilotSetting>) {
     if (settings.isEmpty()) return
-    if (!hasVehicle()) return OfflinePilotSettings(settings)
+    if (!hasVehicle()) return OfflinePilotSettings(settings, OFFLINE_PILOT_NOTE, offersLink = true)
     val setup by qgcPath(SETUP)
-    val shown by produceState(emptyList<ShownPilotSetting>(), group, setup) {
+    if (!parametersReady(setup)) return OfflinePilotSettings(settings, LOADING_PILOT_NOTE, offersLink = false)
+    val shown by produceState(emptyList<ShownPilotSetting>(), settings, setup) {
         value = withContext(Dispatchers.Default) { settings.mapNotNull { setting -> firstReported(setting, ::parameterFact)?.let { ShownPilotSetting(setting, it) } } }
     }
     shown.groupBy { it.setting.section }.map { (section, rows) ->
@@ -68,17 +78,18 @@ internal fun PilotSettings(group: SettingsGroup) {
 }
 
 internal const val OFFLINE_PILOT_NOTE = "Connect the aircraft to see and change these."
+internal const val LOADING_PILOT_NOTE = "Loading these from the aircraft\u2026"
 private const val OFFLINE_VALUE = "\u2014"
 private const val OFFLINE_ALPHA = 0.38f
 
 internal fun pilotSections(settings: List<PilotSetting>): Map<String, List<PilotSetting>> = settings.groupBy { it.section }
 
 @Composable
-private fun OfflinePilotSettings(settings: List<PilotSetting>) {
+private fun OfflinePilotSettings(settings: List<PilotSetting>, note: String, offersLink: Boolean) {
     val navigation = LocalAppNavigation.current
-    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(OFFLINE_PILOT_NOTE, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        TextButton(onClick = { navigation.settingsPage = CONNECTIONS_PAGE }) { Text("Add a link") }
+    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(start = 16.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(note, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (offersLink) TextButton(onClick = { navigation.settingsPage = CONNECTIONS_PAGE }) { Text("Add a link") }
     }
     pilotSections(settings).map { (section, rows) ->
         SectionHeader(section)

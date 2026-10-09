@@ -148,6 +148,11 @@ class SettingsViewTest {
     }
 
     @Test
+    fun `a section named like its page is not repeated in the breadcrumb`() {
+        assertEquals(listOf("Application"), matchesIn("Application", settingsSections(general), "mute").map { it.title })
+    }
+
+    @Test
     fun `an empty search matches nothing rather than everything`() {
         val read = settingsSections(general)
         assertTrue(matchesIn("General", read, "").isEmpty())

@@ -78,7 +78,7 @@ class ParameterFormTest {
 
     @Test
     fun `a parameter with no description is labelled by its name`() {
-        val json = JSONObject("""{"kind":"fact","name":"","shortDescription":"","valueString":"0"}""")
+        val json = JSONObject("""{"kind":"fact","name":"MNT_ANGMIN_PAN","shortDescription":"","valueString":"0"}""")
         val fact = factFromParameter("MNT_ANGMIN_PAN", json)!!
         assertEquals("MNT_ANGMIN_PAN", fact.name)
         assertEquals("MNT_ANGMIN_PAN", fact.title)
@@ -95,6 +95,10 @@ class ParameterFormTest {
         assertNull(factFromParameter("NOPE", JSONObject("""{"kind":"value","value":null}""")))
         assertNull(factFromParameter("NOPE", JSONObject("""{"kind":"null"}""")))
         assertNull(factFromParameter("NOPE", JSONObject("{}")))
+        assertNull(
+            "the core answers a parameter it does not have with an unnamed 0, which must not pass for a value",
+            factFromParameter("RTL_RETURN_ALT", JSONObject("""{"kind":"fact","name":"","shortDescription":"","valueString":"0","value":0}""")),
+        )
     }
 
 

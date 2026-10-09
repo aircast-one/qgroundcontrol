@@ -90,6 +90,15 @@ class PilotSettingsTest {
     }
 
     @Test
+    fun `search finds a pilot setting by its words and by either firmware's parameter name`() {
+        assertEquals(listOf("Return-to-home altitude"), pilotSearchHits("return").map { it.label })
+        assertEquals(listOf("Return-to-home altitude"), pilotSearchHits("rtl_alt").map { it.label })
+        assertEquals(listOf("Max horizontal speed"), pilotSearchHits("MPC_XY_VEL_MAX").map { it.label })
+        assertEquals("Safety \u203a Return to home", pilotSearchHits("return").single().section)
+        assertTrue(pilotSearchHits("  ").isEmpty())
+    }
+
+    @Test
     fun `offline, safety still lists its sections in DJI's order so the pilot knows they exist`() {
         assertEquals(listOf("Return to home", "Flight protection", "If something goes wrong"), pilotSections(pilotSettings(SettingsGroup.Safety)).keys.toList())
     }

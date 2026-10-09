@@ -274,7 +274,8 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         navigation.setupPage?.takeIf { hasVehicle && components.isNotEmpty() }?.let { requested ->
             when (requested) {
                 SETUP_PARAMETERS_PAGE -> {
-                    parametersSearch = ""
+                    parametersSearch = navigation.parametersSearch
+                    navigation.parametersSearch = ""
                     parametersOpen = true
                 }
                 else -> components.firstOrNull { it.name == requested }?.let { opened = it to null }

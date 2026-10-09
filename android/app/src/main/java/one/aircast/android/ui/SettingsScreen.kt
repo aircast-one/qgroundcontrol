@@ -57,6 +57,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
@@ -317,7 +318,7 @@ internal fun matchesIn(pageTitle: String, sections: List<SettingsSectionRows>, n
         }
         hits.takeIf { it.isNotEmpty() }?.let {
             section.copy(
-                title = "$pageTitle \u203a ${section.title}",
+                title = section.title.takeUnless { it.isBlank() || it.equals(pageTitle, ignoreCase = true) }?.let { "$pageTitle \u203a $it" } ?: pageTitle,
                 note = "",
                 blocks = listOf(SettingsBlock("", it)),
             )
@@ -356,22 +357,17 @@ private fun AircraftSetupRow(onOpenSetup: (String?) -> Unit) {
 }
 
 @Composable
-internal fun SettingsScreen(group: SettingsGroup, everyPage: List<SettingsPageEntry>, open: String?, onOpen: (String) -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}) {
+internal fun SettingsScreen(group: SettingsGroup, everyPage: List<SettingsPageEntry>, open: String?, onOpen: (String) -> Unit, onClose: () -> Unit, heading: MutableState<PageHeading?>, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}) {
     BackHandler(enabled = open != null, onBack = onClose)
 
     val current = everyPage.firstOrNull { it.title == open }
-    val heading = remember { mutableStateOf<PageHeading?>(null) }
-    val headingBack: () -> Unit = { heading.value?.back?.invoke() ?: onClose() }
     CompositionLocalProvider(LocalPageHeading provides heading, LocalSettingsList provides true) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             val column = Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH)
             if (current == null) {
                 SettingsTab(group, everyPage, column, onOpenSetup, onOpen)
             } else {
-                Column(column) {
-                    PageTopBar(heading.value?.title ?: pageTitle(current.title), "Back", headingBack)
-                    SettingsPageBody(current, Modifier.fillMaxSize())
-                }
+                SettingsPageBody(current, column.fillMaxWidth())
             }
         }
     }
@@ -457,6 +453,13 @@ private fun PageHeader(@DrawableRes icon: Int, title: String) {
 internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpenSetup: (String?) -> Unit = {}, onOpen: (String) -> Unit) {
     val setupJson by qgcPath(SETUP)
     val setupHits = remember(setupJson, query) { setupSearchHits(setupComponents(setupJson), query) }
+    val pilotHits = remember(query) { pilotSearchHits(query) }
+    val navigation = LocalAppNavigation.current
+    val searchesParameters = hasVehicle() && advancedUiShown()
+    val parameterSearch: () -> Unit = {
+        navigation.parametersSearch = query.trim()
+        onOpenSetup(SETUP_PARAMETERS_PAGE)
+    }
     var pages by remember { mutableStateOf(emptyList<SettingsPageEntry>()) }
     LaunchedEffect(Unit) {
         pages = withContext(Dispatchers.Default) { settingsPages(Qgc.get(SETTINGS_VIEW)) }
@@ -489,10 +492,13 @@ internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpen
         if (!searching) return@LazyColumn
 
         val pageHits = pages.filter { pageMatches(it, query) }
-        if (hits.isEmpty() && pageHits.isEmpty() && setupHits.isEmpty()) {
+        if (hits.isEmpty() && pageHits.isEmpty() && setupHits.isEmpty() && pilotHits.isEmpty()) {
             item(key = "none") { FootNote("No settings match “${query.trim()}”.") }
+            if (searchesParameters) item(key = "parameters") { ParameterSearchRow(query, parameterSearch) }
             return@LazyColumn
         }
+
+        if (pilotHits.isNotEmpty()) item(key = "pilot") { Column(Modifier.heightIn(min = TOP_HIT_ANCHOR)) { PilotSettings(pilotHits) } }
 
         if (setupHits.isNotEmpty()) item(key = "setupHead") { SectionHeader(AIRCRAFT_SETUP) }
         items(setupHits, key = { "setup${it.name}" }) { component ->
@@ -509,8 +515,16 @@ internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpen
                 FactRow(fact)
             }
         }
+        if (searchesParameters) item(key = "parameters") { ParameterSearchRow(query, parameterSearch) }
     }
     }
+}
+
+private val TOP_HIT_ANCHOR = 1.dp
+
+@Composable
+private fun ParameterSearchRow(query: String, onClick: () -> Unit) {
+    SetupRow(title = "Search parameters for “${query.trim()}”", status = "", icon = R.drawable.ic_search, onClick = onClick)
 }
 
 @Composable
@@ -845,9 +859,10 @@ internal fun FactRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (!fact.acceptsWrite && !editOnDesktop(fact)) {
+            val runInert = LocalRunInertNote.current
+            inertNote(fact).takeIf { !fact.acceptsWrite && !editOnDesktop(fact) && it != runInert }?.let {
                 Text(
-                    text = inertNote(fact),
+                    text = it,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
