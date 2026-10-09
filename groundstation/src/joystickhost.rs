@@ -502,6 +502,10 @@ pub fn active_uncalibrated() -> bool {
     ACTIVE_UNCALIBRATED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+fn awaits_calibration(device: Option<&Device>, calibrated: bool) -> bool {
+    device.is_some_and(|d| !d.gamepad) && !calibrated
+}
+
 fn send(vehicle: (u8, u32), outs: Vec<Out>) {
     let (id, link) = vehicle;
     if crate::hub::lock().active().is_some_and(|v| v.id == id && v.on_high_latency_link()) {
@@ -532,7 +536,8 @@ fn sync_polling(now_ms: u64) {
     let mut host = host();
     let active = active_name(&host.devices);
     let calibrated = active.as_deref().is_some_and(|name| settings_for(name).calibrated);
-    ACTIVE_UNCALIBRATED.store(active.is_some() && !calibrated, std::sync::atomic::Ordering::Relaxed);
+    let active_device = active.as_deref().and_then(|name| host.devices.iter().find(|d| d.name == name));
+    ACTIVE_UNCALIBRATED.store(awaits_calibration(active_device, calibrated), std::sync::atomic::Ordering::Relaxed);
     let joystick_changed = host.setup_state.replace((active.clone(), calibrated)).is_some_and(|before| before != (active.clone(), calibrated));
     let names: Vec<String> = host.joysticks.keys().cloned().collect();
     let outs: Vec<Out> = names
@@ -903,6 +908,16 @@ mod tests {
         assert_eq!(rows[3]["value"], "0x045E / 0x0B13");
         assert_eq!(rows[2]["value"], "1");
         assert_eq!((rows[1]["value"].as_str(), rows[5]["value"].as_str()), (Some("Rumble, Gyro"), Some("Gyro")), "JoystickIndicator says Gyro and Accel");
+    }
+
+    #[test]
+    fn only_a_joystick_that_requires_calibration_holds_setup_back() {
+        let pad = Device { name: "Xbox".into(), axes: 6, buttons: 15, gamepad: true, ..Device::default() };
+        let stick = Device { name: "Stick".into(), axes: 4, ..Device::default() };
+        assert!(!awaits_calibration(Some(&pad), false), "QGC's requiresCalibration is !isGamepad, so the summary's Ready and the setup headline agree");
+        assert!(awaits_calibration(Some(&stick), false));
+        assert!(!awaits_calibration(Some(&stick), true));
+        assert!(!awaits_calibration(None, false));
     }
 
     #[test]
