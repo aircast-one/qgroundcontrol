@@ -44,14 +44,29 @@ class FlyPortraitTest {
     }
 
     @Test
-    fun `a dragged picture-in-picture settles on the side its centre was dropped on`() {
-        assertTrue(pipOnStart(centreX = 300f, width = 1080f))
-        assertFalse(pipOnStart(centreX = 700f, width = 1080f))
-        val geometry = PipGeometry(width = 1080f, pip = androidx.compose.ui.geometry.Size(440f, 248f), inset = 33f, pipTop = 300f, split = androidx.compose.ui.geometry.Rect(0f, 200f, 1080f, 808f), full = androidx.compose.ui.geometry.Rect(0f, 0f, 1080f, 2200f))
-        org.junit.Assert.assertEquals(androidx.compose.ui.geometry.Offset(607f, 300f), geometry.anchor(start = false))
-        org.junit.Assert.assertEquals(androidx.compose.ui.geometry.Offset(33f, 300f), geometry.anchor(start = true))
+    fun `a dragged picture-in-picture settles on the corner nearest where it was dropped`() {
+        val geometry = PipGeometry(
+            width = 1080f,
+            pip = androidx.compose.ui.geometry.Size(440f, 248f),
+            inset = 33f,
+            pipTop = 300f,
+            bottomStartTop = 1600f,
+            bottomEndTop = 1550f,
+            split = androidx.compose.ui.geometry.Rect(0f, 200f, 1080f, 808f),
+            full = androidx.compose.ui.geometry.Rect(0f, 0f, 1080f, 2200f),
+        )
+        val at = { x: Float, y: Float -> geometry.nearest(androidx.compose.ui.geometry.Offset(x, y)) }
+        org.junit.Assert.assertEquals(listOf(PipCorner.TopStart, PipCorner.TopEnd, PipCorner.BottomStart, PipCorner.BottomEnd), listOf(at(300f, 400f), at(800f, 400f), at(300f, 1700f), at(800f, 1650f)))
+        org.junit.Assert.assertEquals(androidx.compose.ui.geometry.Offset(607f, 300f), geometry.anchor(PipCorner.TopEnd))
+        org.junit.Assert.assertEquals("a bottom corner sits above the deck, clear of the compass or the scale bar", androidx.compose.ui.geometry.Offset(33f, 1600f), geometry.anchor(PipCorner.BottomStart))
         val finger = androidx.compose.ui.geometry.Offset(540f, 500f)
-        org.junit.Assert.assertEquals("pulled out of the split view, the picture is centred under the finger", finger, geometry.pip(false, geometry.dragToCentre(false, finger)).center)
+        org.junit.Assert.assertEquals("pulled out of the split view, the picture is centred under the finger", finger, geometry.pip(PipCorner.TopEnd, geometry.dragToCentre(PipCorner.TopEnd, finger)).center)
+    }
+
+    @Test
+    fun `a picture hides toward the edge it sits on and grows away from it`() {
+        org.junit.Assert.assertEquals(VideoSwipe.Up to VideoSwipe.Down, hidingSwipe(PipCorner.TopEnd) to growingSwipe(PipCorner.TopEnd))
+        org.junit.Assert.assertEquals(VideoSwipe.Down to VideoSwipe.Up, hidingSwipe(PipCorner.BottomStart) to growingSwipe(PipCorner.BottomStart))
     }
 
     @Test

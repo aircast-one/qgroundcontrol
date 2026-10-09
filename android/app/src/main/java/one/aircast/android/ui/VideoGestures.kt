@@ -39,7 +39,16 @@ internal fun videoSwipe(moved: Offset, threshold: Float): VideoSwipe? = when {
 
 internal fun sideways(moved: Offset): Boolean = abs(moved.x) > abs(moved.y)
 
-internal fun pipOnStart(centreX: Float, width: Float): Boolean = centreX < width / 2f
+internal enum class PipCorner(val start: Boolean, val bottom: Boolean) {
+    TopStart(start = true, bottom = false),
+    TopEnd(start = false, bottom = false),
+    BottomStart(start = true, bottom = true),
+    BottomEnd(start = false, bottom = true),
+}
+
+internal fun hidingSwipe(corner: PipCorner): VideoSwipe = if (corner.bottom) VideoSwipe.Down else VideoSwipe.Up
+
+internal fun growingSwipe(corner: PipCorner): VideoSwipe = if (corner.bottom) VideoSwipe.Up else VideoSwipe.Down
 
 internal class VideoGestureHandlers(
     val owned: () -> Boolean,

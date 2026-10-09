@@ -140,10 +140,13 @@ internal fun FlyPortrait(
     val controlsTop = if (split) mapTop else barTop
     val thumbnail = portraitVideoThumbnail(split, reading)
     val pipRoom = pipRoom(thumbnail, flyScreen.videoTucked)
-    val endRoom = if (flyScreen.pipStart) 0.dp else pipRoom
-    val startRoom = if (flyScreen.pipStart) pipRoom else 0.dp
-    val buttonsTop by animateDpAsState(AircastSpace.s3 + endRoom, label = "buttonsTop")
-    val overlaysTop by animateDpAsState(maxOf(AircastSpace.s3 + endRoom + MAP_BUTTON_SIZE + AircastSpace.s2, AircastSpace.s3 + startRoom), label = "overlaysTop")
+    val corner = flyScreen.pipCorner
+    val roomAt: (PipCorner) -> Dp = { at -> if (corner == at) pipRoom else 0.dp }
+    val buttonsTop by animateDpAsState(AircastSpace.s3 + roomAt(PipCorner.TopEnd), label = "buttonsTop")
+    val overlaysTop by animateDpAsState(maxOf(AircastSpace.s3 + roomAt(PipCorner.TopEnd) + MAP_BUTTON_SIZE + AircastSpace.s2, AircastSpace.s3 + roomAt(PipCorner.TopStart)), label = "overlaysTop")
+    val compassLift by animateDpAsState(roomAt(PipCorner.BottomStart), label = "compassLift")
+    val railLift by animateDpAsState(roomAt(PipCorner.BottomEnd), label = "railLift")
+    val deckHeight = with(LocalDensity.current) { deckHeightPx.toDp() }
     val density = LocalDensity.current
     val geometry = with(density) {
         PipGeometry(
@@ -151,6 +154,8 @@ internal fun FlyPortrait(
             pip = Size(PORTRAIT_PIP_WIDTH.toPx(), PORTRAIT_PIP_HEIGHT.toPx()),
             inset = AircastSpace.s3.toPx(),
             pipTop = (barTop + AircastSpace.s3).toPx(),
+            bottomStartTop = boxHeightPx - deckHeightPx - (MAP_ATTRIBUTION_CLEARANCE + PORTRAIT_PIP_HEIGHT).toPx(),
+            bottomEndTop = boxHeightPx - deckHeightPx - (MAP_SCALE_CLEARANCE + PORTRAIT_PIP_HEIGHT).toPx(),
             split = Rect(0f, videoTop.toPx(), screenWidth.toPx(), (videoTop + videoHeight).toPx()),
             full = Rect(0f, 0f, screenWidth.toPx(), boxHeightPx.toFloat().takeIf { it > 0f } ?: (videoTop + videoHeight).toPx()),
         )
@@ -160,7 +165,7 @@ internal fun FlyPortrait(
     val target = when {
         fullScreen -> geometry.full
         split -> geometry.split
-        else -> geometry.pip(flyScreen.pipStart, pipDrag)
+        else -> geometry.pip(flyScreen.pipCorner, pipDrag)
     }
     val frame = rememberVideoFrame(target, holding)
     val latestSplit by rememberUpdatedState(split)
@@ -182,8 +187,11 @@ internal fun FlyPortrait(
                 onDoubleTap = { if (latestInFullScreen) latestExitFullScreen() else latestFullScreen() },
                 onSwipe = { moved ->
                     when (val swipe = videoSwipe(moved, swipeDistance)) {
-                        VideoSwipe.Up -> if (!latestSplit) flyScreen.videoTucked = true
-                        VideoSwipe.Down -> if (!latestSplit) latestOnView(FlyView.Video)
+                        VideoSwipe.Up, VideoSwipe.Down -> when {
+                            latestSplit -> Unit
+                            swipe == hidingSwipe(flyScreen.pipCorner) -> flyScreen.videoTucked = true
+                            else -> latestOnView(FlyView.Video)
+                        }
                         VideoSwipe.Left, VideoSwipe.Right -> cameraStep(swipe)?.let(cameras.step)
                         null -> Unit
                     }
@@ -191,7 +199,7 @@ internal fun FlyPortrait(
                 onHold = { at ->
                     holding = true
                     if (latestSplit) {
-                        pipDrag = latestGeometry.dragToCentre(flyScreen.pipStart, latestTarget.topLeft + at)
+                        pipDrag = latestGeometry.dragToCentre(flyScreen.pipCorner, latestTarget.topLeft + at)
                         flyScreen.videoTucked = false
                         latestExitFullScreen()
                         latestOnView(FlyView.Map)
@@ -200,7 +208,7 @@ internal fun FlyPortrait(
                 },
                 onHoldDrag = { delta -> pipDrag += delta },
                 onHoldEnd = {
-                    flyScreen.pipStart = pipOnStart(latestGeometry.pip(flyScreen.pipStart, pipDrag).center.x, latestGeometry.width)
+                    flyScreen.pipCorner = latestGeometry.nearest(latestGeometry.pip(flyScreen.pipCorner, pipDrag).center)
                     pipDrag = Offset.Zero
                     holding = false
                 },
@@ -216,8 +224,8 @@ internal fun FlyPortrait(
                 androidx.compose.animation.AnimatedVisibility(
                     visible = split || !flyScreen.videoTucked,
                     modifier = Modifier.zIndex(if (fullScreen) FULL_SCREEN_LAYER else 0f),
-                    enter = fadeIn() + slideInVertically { -it },
-                    exit = fadeOut() + slideOutVertically { -it },
+                    enter = fadeIn() + slideInVertically { if (corner.bottom) it else -it },
+                    exit = fadeOut() + slideOutVertically { if (corner.bottom) it else -it },
                 ) {
                     val shape = if (split) RectangleShape else MaterialTheme.shapes.medium
                     val border = if (split) 0.dp else 1.dp
@@ -261,7 +269,7 @@ internal fun FlyPortrait(
                         Column(
                             Modifier
                                 .fillMaxHeight()
-                                .padding(start = AircastSpace.s3, top = overlaysTop, end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE),
+                                .padding(start = AircastSpace.s3, top = overlaysTop, end = AircastSpace.s3, bottom = MAP_ATTRIBUTION_CLEARANCE + compassLift),
                             verticalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Column(Modifier.weight(1f, fill = false).clipToBounds(), verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) { overlays() }
@@ -276,7 +284,7 @@ internal fun FlyPortrait(
                                 .align(Alignment.TopEnd)
                                 .padding(end = AircastSpace.s3, top = buttonsTop),
                         )
-                        Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE)) { rail(split) }
+                        Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE + railLift)) { rail(split) }
                     }
                 },
                 deck = {
@@ -292,12 +300,17 @@ internal fun FlyPortrait(
             androidx.compose.animation.AnimatedVisibility(
                 visible = thumbnail && flyScreen.videoTucked,
                 modifier = Modifier
-                    .align(if (flyScreen.pipStart) Alignment.TopStart else Alignment.TopEnd)
-                    .padding(top = barTop + AircastSpace.s3, start = AircastSpace.s3, end = AircastSpace.s3),
-                enter = fadeIn() + slideInVertically { -it },
-                exit = fadeOut() + slideOutVertically { -it },
+                    .align(cornerAlignment(corner))
+                    .padding(
+                        top = if (corner.bottom) 0.dp else barTop + AircastSpace.s3,
+                        bottom = if (corner.bottom) deckHeight + if (corner.start) MAP_ATTRIBUTION_CLEARANCE else MAP_SCALE_CLEARANCE else 0.dp,
+                        start = AircastSpace.s3,
+                        end = AircastSpace.s3,
+                    ),
+                enter = fadeIn() + slideInVertically { if (corner.bottom) it else -it },
+                exit = fadeOut() + slideOutVertically { if (corner.bottom) it else -it },
             ) {
-                VideoTab(swipeDistance) { flyScreen.videoTucked = false }
+                VideoTab(swipeDistance, growingSwipe(corner)) { flyScreen.videoTucked = false }
             }
             androidx.compose.animation.AnimatedVisibility(
                 visible = split && !fullScreen,
@@ -336,22 +349,51 @@ private val HANDLE_TOUCH = DpSize(96.dp, 28.dp)
 private val HANDLE_BAR = DpSize(40.dp, 4.dp)
 private const val HANDLE_ALPHA = 0.8f
 
+internal fun cornerAlignment(corner: PipCorner): Alignment = when (corner) {
+    PipCorner.TopStart -> Alignment.TopStart
+    PipCorner.TopEnd -> Alignment.TopEnd
+    PipCorner.BottomStart -> Alignment.BottomStart
+    PipCorner.BottomEnd -> Alignment.BottomEnd
+}
+
 internal fun pipRoom(thumbnail: Boolean, tucked: Boolean): Dp = when {
     !thumbnail -> 0.dp
     tucked -> VIDEO_TAB_HEIGHT + AircastSpace.s3
     else -> PORTRAIT_PIP_HEIGHT + AircastSpace.s3
 }
 
-internal data class PipGeometry(val width: Float, val pip: Size, val inset: Float, val pipTop: Float, val split: Rect, val full: Rect) {
-    fun anchor(start: Boolean): Offset = Offset(if (start) inset else width - inset - pip.width, pipTop)
+internal data class PipGeometry(
+    val width: Float,
+    val pip: Size,
+    val inset: Float,
+    val pipTop: Float,
+    val bottomStartTop: Float,
+    val bottomEndTop: Float,
+    val split: Rect,
+    val full: Rect,
+) {
+    private fun top(corner: PipCorner): Float = when {
+        !corner.bottom -> pipTop
+        corner.start -> bottomStartTop
+        else -> bottomEndTop
+    }
 
-    fun pip(start: Boolean, drag: Offset): Rect = Rect(anchor(start) + drag, pip)
+    fun anchor(corner: PipCorner): Offset = Offset(if (corner.start) inset else width - inset - pip.width, top(corner))
 
-    fun dragToCentre(start: Boolean, finger: Offset): Offset = finger - anchor(start) - Offset(pip.width / 2f, pip.height / 2f)
+    fun pip(corner: PipCorner, drag: Offset): Rect = Rect(anchor(corner) + drag, pip)
+
+    fun dragToCentre(corner: PipCorner, finger: Offset): Offset = finger - anchor(corner) - Offset(pip.width / 2f, pip.height / 2f)
+
+    fun nearest(centre: Offset): PipCorner {
+        val start = centre.x < width / 2f
+        val bottomTop = top(if (start) PipCorner.BottomStart else PipCorner.BottomEnd)
+        val bottom = centre.y > (pipTop + bottomTop + pip.height) / 2f
+        return PipCorner.entries.first { it.start == start && it.bottom == bottom }
+    }
 }
 
 @Composable
-private fun VideoTab(swipeDistance: Float, onShow: () -> Unit) {
+private fun VideoTab(swipeDistance: Float, showSwipe: VideoSwipe, onShow: () -> Unit) {
     Surface(
         onClick = onShow,
         shape = CircleShape,
@@ -359,7 +401,7 @@ private fun VideoTab(swipeDistance: Float, onShow: () -> Unit) {
         contentColor = MaterialTheme.aircast.outdoorForeground,
         modifier = Modifier
             .height(VIDEO_TAB_HEIGHT)
-            .verticalSwipe(swipeDistance) { if (it == VideoSwipe.Down) onShow() }
+            .verticalSwipe(swipeDistance) { if (it == showSwipe) onShow() }
             .semantics { contentDescription = "Show the video" },
     ) {
         Row(Modifier.padding(horizontal = AircastSpace.s3), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {

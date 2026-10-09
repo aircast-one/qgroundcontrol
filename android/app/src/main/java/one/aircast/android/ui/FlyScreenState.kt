@@ -23,7 +23,7 @@ internal class FlyScreenState(val layout: OverlayLayoutState) {
     val obstacles = mutableStateMapOf<String, Rect>()
     var mapInsets by mutableStateOf(MapInsets(top = 0, bottom = 0))
     var videoTucked by mutableStateOf(false)
-    var pipStart by mutableStateOf(false)
+    var pipCorner by mutableStateOf(PipCorner.TopEnd)
 }
 
 internal val LocalFlyScreenState = staticCompositionLocalOf<FlyScreenState> { error("FlyScreenState is provided by AircastShell") }
