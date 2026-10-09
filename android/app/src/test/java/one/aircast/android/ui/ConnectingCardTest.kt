@@ -12,4 +12,13 @@ class ConnectingCardTest {
         assertEquals("Connecting", connectingTitle(null))
         assertEquals("Connecting", connectingTitle(""))
     }
+
+    @Test
+    fun aSilentLinkSaysLoadingStoppedInsteadOfPromisingProgress() {
+        val lost = loadingWords("guta-test", lost = true)
+        assertEquals("Signal lost", lost.title)
+        assert(lost.detail.startsWith("Loading stopped."))
+        assertEquals("Hide", lost.dismiss)
+        assertEquals("Connecting to guta-test", loadingWords("guta-test", lost = false).title)
+    }
 }

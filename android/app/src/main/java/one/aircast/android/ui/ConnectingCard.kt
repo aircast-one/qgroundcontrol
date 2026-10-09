@@ -38,12 +38,21 @@ import one.aircast.map.vehicleChoices
 internal fun connectingTitle(name: String?): String =
     name?.takeIf { it.isNotBlank() }?.let { "Connecting to $it" } ?: "Connecting"
 
+internal data class LoadingWords(val title: String, val detail: String, val dismiss: String)
+
+internal fun loadingWords(name: String?, lost: Boolean): LoadingWords =
+    if (lost) LoadingWords(SIGNAL_LOST, "Loading stopped. It picks up where it left off when the aircraft answers. $LOST_LINK_HINT", "Hide")
+    else LoadingWords(connectingTitle(name), "Loading its settings.", "Fly now, finish loading in background")
+
 @Composable
 internal fun ConnectingCard(modifier: Modifier = Modifier) {
     val loading = rememberVehicleLoading()
     var dismissed by remember { mutableStateOf(false) }
     val vehiclesJson by qgcPath(VEHICLES_VIEW)
     val name = remember(vehiclesJson) { vehicleChoices(vehiclesJson).active?.name }
+    val flyJson by qgcPath(FLY_STATE)
+    val lost = remember(flyJson) { flyState(flyJson)?.contactLost == true }
+    val words = loadingWords(name, lost)
 
     LaunchedEffect(loading == null) { if (loading == null) dismissed = false }
 
@@ -62,16 +71,16 @@ internal fun ConnectingCard(modifier: Modifier = Modifier) {
                 Modifier.size(72.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(painterResource(R.drawable.ic_link), null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(36.dp))
+                Icon(painterResource(if (lost) R.drawable.ic_warning else R.drawable.ic_link), null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(36.dp))
             }
-            Text(connectingTitle(name), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
-            Text("Loading its settings.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(words.title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, color = if (lost) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+            Text(words.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
             Row(Modifier.fillMaxWidth()) {
                 Text("Parameters", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-            TextButton(onClick = { dismissed = true }) { Text("Fly now, finish loading in background") }
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = if (lost) MaterialTheme.colorScheme.outline else androidx.compose.material3.ProgressIndicatorDefaults.linearColor)
+            TextButton(onClick = { dismissed = true }) { Text(words.dismiss) }
         }
     }
 }
