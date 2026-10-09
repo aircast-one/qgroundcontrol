@@ -10,9 +10,10 @@ private struct NumberEntry: View {
     @State private var typed = ""
 
     var body: some View {
-        PlanTextField(label: label, text: $typed, width: 110, enabled: enabled) {
+        PlanTextField(label: label, text: $typed, enabled: enabled) {
             typedNumber(typed).map(onDone)
         }
+        .frame(maxWidth: 110)
         .onChange(of: value, initial: true) { typed = trimmedNumber(value) }
     }
 }
@@ -36,16 +37,17 @@ struct CameraSectionExtras: View {
             }
             if extras.modeSupported {
                 HStack(spacing: 6) {
-                    Text("Mode").font(.labelMedium)
+                    Text("Mode").font(.labelMedium).fixedSize()
                     Toggle("Mode", isOn: Binding(get: { extras.commandsMode }, set: { write("specifyCameraMode", $0) }))
                         .labelsHidden()
                     ForEach(Array(CAMERA_MODES.enumerated()), id: \.offset) { at, label in
                         PlanChip(label: label, selected: extras.mode == at, enabled: extras.commandsMode) { write("cameraMode", at) }
+                            .fixedSize()
                     }
                 }
             }
             HStack(spacing: 6) {
-                Text("Gimbal").font(.labelMedium)
+                Text("Gimbal").font(.labelMedium).fixedSize()
                 Toggle("Gimbal", isOn: Binding(get: { extras.commandsGimbal }, set: { write("specifyGimbal", $0) }))
                     .labelsHidden()
                 NumberEntry(label: "Pitch", value: extras.pitch, enabled: extras.commandsGimbal) { typed in

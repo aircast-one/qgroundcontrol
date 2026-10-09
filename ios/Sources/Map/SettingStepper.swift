@@ -26,24 +26,23 @@ private struct StepButton: View {
     let enabled: Bool
     let onStep: () -> Void
     @Environment(\.theme) private var theme
-    @GestureState private var pressed = false
     @State private var holding: Task<Void, Never>?
 
     var body: some View {
-        Text(sign)
-            .font(.titleLarge)
-            .foregroundStyle(theme.colors.onSurface)
-            .frame(width: STEP_BUTTON, height: STEP_BUTTON)
-            .background(theme.colors.surfaceContainerHighest, in: Circle())
-            .contentShape(Circle())
-            .opacity(enabled ? 1 : DISABLED_ALPHA)
-            .gesture(DragGesture(minimumDistance: 0).updating($pressed) { _, down, _ in down = true }, isEnabled: enabled)
-            .onChange(of: pressed) { _, down in down ? press() : release() }
-            .onDisappear(perform: release)
-            .accessibilityElement()
-            .accessibilityLabel(description)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { if enabled { onStep() } }
+        Button {} label: {
+            Text(sign)
+                .font(.titleLarge)
+                .foregroundStyle(theme.colors.onSurface)
+                .frame(width: STEP_BUTTON, height: STEP_BUTTON)
+                .background(theme.colors.surfaceContainerHighest, in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(HeldStyle { down in down ? press() : release() })
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : DISABLED_ALPHA)
+        .onDisappear(perform: release)
+        .accessibilityLabel(description)
+        .accessibilityAction { if enabled { onStep() } }
     }
 
     private func press() {
@@ -61,6 +60,14 @@ private struct StepButton: View {
     private func release() {
         holding?.cancel()
         holding = nil
+    }
+}
+
+private struct HeldStyle: ButtonStyle {
+    let onHeld: (Bool) -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.onChange(of: configuration.isPressed) { _, down in onHeld(down) }
     }
 }
 

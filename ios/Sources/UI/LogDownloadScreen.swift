@@ -69,6 +69,10 @@ func logSections(_ entries: [LogEntry]) -> [(String, [LogEntry])] {
         .filter { !$0.1.isEmpty }
 }
 
+func logRows(_ entries: [LogEntry]) -> [(header: String?, entry: LogEntry)] {
+    logSections(entries).flatMap { title, section in section.enumerated().map { ($0.offset == 0 ? title : nil, $0.element) } }
+}
+
 func downloadCard(_ entries: [LogEntry]) -> (String, String) {
     entries.first(where: \.downloading).map { ("Downloading log \($0.id)", $0.status) } ?? ("Downloading", "")
 }
@@ -177,6 +181,28 @@ private struct LogRow: View {
     }
 }
 
+private struct IndeterminateBar: View {
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.5) / 1.5
+            GeometryReader { geometry in
+                let width = geometry.size.width
+                Capsule()
+                    .fill(theme.colors.primary)
+                    .frame(width: width * 0.4)
+                    .offset(x: width * 1.4 * phase - width * 0.4)
+            }
+        }
+        .frame(height: 4)
+        .background(theme.colors.secondaryContainer)
+        .clipShape(Capsule())
+        .accessibilityElement()
+        .accessibilityLabel("In progress")
+    }
+}
+
 func savedToText(_ logs: LogsView?) -> String? {
     guard let reading = logs, reading.anyDownloaded else { return nil }
     if !reading.savePath.isBlank { return "Saved to \(reading.savePath)" }
@@ -255,7 +281,7 @@ struct LogDownloadScreen: View {
                                 Button("Cancel") { invoke("cancel") }.buttonStyle(.borderless)
                             }
                         }
-                        ProgressView().progressViewStyle(.linear)
+                        IndeterminateBar()
                     }
                     .padding(16)
                     .background(theme.colors.surfaceContainerHigh, in: RoundedRectangle(cornerRadius: Corner.large))
@@ -269,9 +295,9 @@ struct LogDownloadScreen: View {
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(logSections(entries), id: \.0) { title, section in
-                                SectionHeader(text: title)
-                                ForEach(section, id: \.index) { entry in
+                            ForEach(logRows(entries), id: \.entry.index) { header, entry in
+                                VStack(alignment: .leading, spacing: 0) {
+                                    if let header { SectionHeader(text: header) }
                                     LogRow(entry: entry, enabled: !busy) { checked in
                                         offMain { Qgc.set("\(LOG_MODEL).\(entry.index).selected", checked) }
                                     }

@@ -164,7 +164,7 @@ struct InspectorChartPanel: View {
                 }
                 .frame(height: CHART_HEIGHT)
                 PlanFlowRow(spacing: 16, lineSpacing: 0, alignment: .center) {
-                    ForEach(chart.plots, id: \.field) { plot in
+                    ForEach(Array(chart.plots.enumerated()), id: \.offset) { _, plot in
                         HStack(spacing: 6) {
                             Circle().fill(colours[plot.colour % colours.count]).frame(width: 8, height: 8)
                             Text([plot.label, latestValue(plot.points)].compactMap { $0 }.joined(separator: "  ")).font(.labelMedium)
@@ -187,10 +187,10 @@ struct InspectorChartPanel: View {
             let values = valueTicks(low, high)
             let times = timeTicks(chart.windowMs, nowMs)
             Chart {
-                ForEach(chart.plots, id: \.field) { plot in
+                ForEach(Array(chart.plots.enumerated()), id: \.offset) { slot, plot in
                     ForEach(Array(plot.points.enumerated()), id: \.offset) { _, sample in
                         let (x, y) = chartPoint(sample.ageMs, sample.value, chart.windowMs, low, high)
-                        LineMark(x: .value("Time", Double(x)), y: .value("Value", Double(1 - y)), series: .value("Plot", plot.field))
+                        LineMark(x: .value("Time", Double(x)), y: .value("Value", Double(1 - y)), series: .value("Plot", slot))
                             .foregroundStyle(colours[plot.colour % colours.count])
                             .lineStyle(StrokeStyle(lineWidth: 2))
                     }

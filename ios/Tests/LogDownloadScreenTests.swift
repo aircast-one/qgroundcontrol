@@ -26,6 +26,10 @@ final class LogDownloadScreenTests: XCTestCase {
         XCTAssertEqual(sections.map(\.0), ["On the vehicle", "On this phone"])
         XCTAssertEqual(sections.map { $0.1.map(\.id) }, [[2], [1]])
         XCTAssertEqual(logSections(try XCTUnwrap(logsView(JSON.parse(served))).entries).map(\.0), ["On the vehicle"])
+
+        let rows = logRows(try XCTUnwrap(logsView(JSON.parse(saved))).entries)
+        XCTAssertEqual(rows.map(\.entry.id), [2, 1])
+        XCTAssertEqual(rows.map(\.header), ["On the vehicle", "On this phone"])
     }
 
     func testTheDownloadCardNamesTheLogBeingFetchedByItsStatusIdNotItsTranslatedStatus() throws {

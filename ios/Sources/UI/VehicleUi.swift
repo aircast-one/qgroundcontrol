@@ -128,10 +128,10 @@ struct TelemetryRow: View {
 
     var body: some View {
         let vehicleClass = instrumentVehicleClass(classView)
-        let picked = chosen ?? []
+        let picked = chosen ?? readChosen(vehicleClass)
         ZStack {
             TelemetryReadings(
-                path: chosen.map { instrumentsPath($0, vehicleClass: vehicleClass) },
+                path: instrumentsPath(picked, vehicleClass: vehicleClass),
                 chosen: picked,
                 displays: displays,
                 columns: columns,

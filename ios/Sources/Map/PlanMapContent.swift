@@ -1515,11 +1515,12 @@ private struct StatTile: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(label).font(.labelSmall).foregroundStyle(theme.colors.onSurfaceVariant)
             HStack(alignment: .lastTextBaseline, spacing: 4) {
-                Text(number).font(.titleLarge)
+                Text(number).font(.titleLarge).minimumScaleFactor(0.5)
                 if !unit.isBlank {
-                    Text(unit).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+                    Text(unit).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant).fixedSize()
                 }
             }
+            .lineLimit(1)
         }
         .padding(.trailing, 20)
         .padding(.vertical, 4)

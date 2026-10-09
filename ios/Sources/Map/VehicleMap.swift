@@ -27,6 +27,7 @@ private let DEFAULT_ZOOM = 17.0
 
 private let MIN_FIT_SPAN_DEGREES = 1e-5
 private let FIT_PADDING_PIXELS: CGFloat = 80
+private let FIT_SETTLE_MS = 100
 private let LOGO_EDGE_MARGIN_PX: CGFloat = 16
 private let ATTRIBUTION_CLEARANCE: CGFloat = 24
 private let STALE_COLOUR = "#9E9E9E"
@@ -504,13 +505,17 @@ private struct VehicleMapPlan: ViewModifier {
             .onChange(of: Keys(model.mapReady, map.centreRequest), initial: true) {
                 model.centre(map.centreRequest, map.centreOn, map.centreZoom, UIEdgeInsets(top: map.topInsetPx, left: map.leftInsetPx, bottom: map.bottomInsetPx, right: 0))
             }
-            .onChange(of: map.fitRequest) {
-                guard map.fitRequest != 0 else { return }
+            .task(id: Keys(map.fitRequest, map.topInsetPx, map.leftInsetPx, map.bottomInsetPx)) {
+                guard map.fitRequest != 0, map.fitRequest != model.fittedRequest else { return }
+                try? await Task.sleep(for: .milliseconds(FIT_SETTLE_MS))
+                guard !Task.isCancelled else { return }
+                model.fittedRequest = map.fitRequest
+                let settled = model.inputs
                 model.fit(
                     map.fitOnly ?? planPoints(map.missionItems, map.fencePolygons, map.fenceCircles, map.rallyPoints, map.surveys),
                     scene.latitude,
                     scene.longitude,
-                    UIEdgeInsets(top: map.topInsetPx, left: map.leftInsetPx, bottom: map.bottomInsetPx, right: 0),
+                    UIEdgeInsets(top: settled.topInsetPx, left: settled.leftInsetPx, bottom: settled.bottomInsetPx, right: 0),
                     map.onFitFailed
                 )
             }
@@ -619,6 +624,7 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
     let camera = MapCamera()
     fileprivate var inputs = VehicleMapInputs()
     fileprivate var appliedGestures: Bool?
+    fileprivate var fittedRequest = 0
     private var appliedStyle = ""
     private var panning = false
     private var trackingResumesAt = Date.distantPast
