@@ -236,10 +236,14 @@ impl Cache {
     }
 
     pub fn prune(&self, free_bytes: i64) -> rusqlite::Result<i64> {
+        self.prune_owing(free_bytes).map(|(deleted, _)| deleted)
+    }
+
+    fn prune_owing(&self, free_bytes: i64) -> rusqlite::Result<(i64, i64)> {
         let (deleted, left) = self.prune_batch(free_bytes)?;
         match deleted > 0 && left > 0 {
-            true => Ok(deleted + self.prune(left)?),
-            false => Ok(deleted),
+            true => self.prune_owing(left).map(|(more, still)| (deleted + more, still)),
+            false => Ok((deleted, left)),
         }
     }
 
@@ -344,11 +348,15 @@ impl Cache {
         })
     }
 
+    pub fn default_bytes(&self) -> rusqlite::Result<i64> {
+        self.unique(self.default_set()?).map(|(_, size)| size)
+    }
+
     pub fn trim_to(&self, max_bytes: i64) -> rusqlite::Result<i64> {
-        let (_, size) = self.unique(self.default_set()?)?;
+        let size = self.default_bytes()?;
         match size > max_bytes {
-            true => self.prune(size - max_bytes),
-            false => Ok(0),
+            true => self.prune_owing(size - max_bytes).map(|(_, still)| max_bytes + still),
+            false => Ok(size),
         }
     }
 

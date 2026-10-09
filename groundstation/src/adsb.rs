@@ -72,6 +72,10 @@ pub const MAX_SECONDS_SINCE_LAST_SEEN: u32 = 15;
 pub const MOVED_METRES: f64 = 1.0;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const SBS1_READ_SLICE: Duration = Duration::from_secs(1);
+const SBS1_RECONNECT_AFTER: Duration = Duration::from_secs(5);
+const SBS1_KEEPALIVE_IDLE: Duration = Duration::from_secs(10);
+const SBS1_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(5);
 
 pub const FEET_TO_METRES: f64 = 0.3048;
 pub const KNOTS_TO_METRES_PER_SECOND: f64 = 0.514444;
@@ -458,9 +462,11 @@ impl Traffic {
         if generation != self.generation {
             return false;
         }
+        let failure = Some(Failure { token, detail });
+        let news = self.connected || self.failure != failure;
         self.connected = false;
-        self.failure = Some(Failure { token, detail });
-        true
+        self.failure = failure;
+        news
     }
 
     pub fn receive(&mut self, report: &Report, now_ms: u64) -> bool {
@@ -625,30 +631,63 @@ fn report_failure(generation: u64, token: &'static str, detail: String) {
     changed();
 }
 
-pub fn sbs1_lines(mut reader: impl BufRead) -> impl Iterator<Item = String> {
-    std::iter::from_fn(move || {
-        let mut bytes = Vec::new();
-        reader.read_until(b'\n', &mut bytes).ok().filter(|_| bytes.ends_with(b"\n")).map(|_| String::from_utf8_lossy(&bytes).into_owned())
+pub fn read_sbs1(mut reader: impl BufRead, current: impl Fn() -> bool, mut line: impl FnMut(&str)) -> Option<std::io::Error> {
+    let mut pending = Vec::new();
+    std::iter::from_fn(|| {
+        current().then(|| match reader.read_until(b'\n', &mut pending) {
+            Ok(0) => Some(std::io::Error::from(std::io::ErrorKind::UnexpectedEof)),
+            Ok(_) if pending.ends_with(b"\n") => {
+                line(&String::from_utf8_lossy(&std::mem::take(&mut pending)));
+                None
+            }
+            Ok(_) => None,
+            Err(error) if matches!(error.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut | std::io::ErrorKind::Interrupted) => None,
+            Err(error) => Some(error),
+        })
     })
+    .flatten()
+    .next()
 }
 
-fn follow(source: Source, generation: u64) {
-    match source.open(|address| TcpStream::connect_timeout(address, CONNECT_TIMEOUT)) {
+fn watched(stream: TcpStream) -> std::io::Result<TcpStream> {
+    stream.set_read_timeout(Some(SBS1_READ_SLICE))?;
+    socket2::SockRef::from(&stream).set_tcp_keepalive(&socket2::TcpKeepalive::new().with_time(SBS1_KEEPALIVE_IDLE).with_interval(SBS1_KEEPALIVE_INTERVAL))?;
+    Ok(stream)
+}
+
+fn lost_text(error: &std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::UnexpectedEof => REMOTE_HOST_CLOSED.to_string(),
+        _ => socket_error_text(error),
+    }
+}
+
+fn follow_once(source: &Source, generation: u64) {
+    match source.open(|address| TcpStream::connect_timeout(address, CONNECT_TIMEOUT).and_then(watched)) {
         Err(detail) => report_failure(generation, CONNECT_FAILED, detail),
         Ok(stream) => {
             if lock().attached(generation) {
                 changed();
             }
-            sbs1_lines(BufReader::new(stream))
-                .take_while(|_| lock().generation == generation)
-                .for_each(|line| {
-                    if lock().on_sbs1_line(&line, crate::hub::now_ms()) {
-                        changed();
-                    }
-                });
-            report_failure(generation, LINK_LOST, REMOTE_HOST_CLOSED.to_string());
+            let lost = read_sbs1(BufReader::new(stream), || lock().generation == generation, |line| {
+                if lock().on_sbs1_line(line, crate::hub::now_ms()) {
+                    changed();
+                }
+            });
+            if let Some(error) = lost {
+                report_failure(generation, LINK_LOST, lost_text(&error));
+            }
         }
     }
+}
+
+fn follow(source: Source, generation: u64) {
+    let current = || lock().generation == generation;
+    let pauses = SBS1_RECONNECT_AFTER.as_millis() / SBS1_READ_SLICE.as_millis();
+    std::iter::repeat(()).take_while(|()| current()).for_each(|()| {
+        follow_once(&source, generation);
+        (0..pauses).take_while(|_| current()).for_each(|_| std::thread::sleep(SBS1_READ_SLICE));
+    });
 }
 
 fn port_number(json: &str) -> Option<u16> {
@@ -860,9 +899,44 @@ mod tests {
     #[test]
     fn a_byte_that_is_not_utf8_never_ends_the_feed_and_a_line_cut_off_by_the_close_is_dropped() {
         let feed: &[u8] = b"MSG,1,1,1,ABCDEF,1,,,,,\xffSWR\r\nMSG,1,1,1,ABCDEF,1,,,,,SWR123\r\nMSG,1,1,1,ABC";
-        let lines: Vec<String> = sbs1_lines(std::io::Cursor::new(feed)).collect();
+        let mut lines = Vec::new();
+        let ended = read_sbs1(std::io::Cursor::new(feed), || true, |line| lines.push(line.to_string()));
+        assert_eq!(ended.map(|error| error.kind()), Some(std::io::ErrorKind::UnexpectedEof));
         assert_eq!(lines.len(), 2, "QTcpSocket::readLine waits for the newline, so the unterminated tail is never parsed; got {lines:?}");
         assert_eq!(parse_sbs1(&lines[1]).and_then(|report| report.callsign).as_deref(), Some("SWR123"), "fromLocal8Bit decodes lossily, so a stray byte never ends the feed");
+    }
+
+    #[test]
+    fn a_silent_feed_keeps_half_a_line_across_timeouts_and_lets_go_once_the_server_is_switched() {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (go, wait) = std::sync::mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.write_all(b"MSG,1,1,1,ABCDEF,1,,,,,SW").unwrap();
+            wait.recv().unwrap();
+            socket.write_all(b"R123\r\n").unwrap();
+            wait.recv().err()
+        });
+        let stream = watched(TcpStream::connect(address).unwrap()).unwrap();
+        assert!(socket2::SockRef::from(&stream).keepalive().unwrap(), "a receiver that loses power is found by keepalive probes, since a quiet sky sends nothing either");
+        assert_eq!(stream.read_timeout().unwrap(), Some(SBS1_READ_SLICE));
+        stream.set_read_timeout(Some(Duration::from_millis(50))).unwrap();
+        let (checks, after, lines) = (std::cell::Cell::new(0), std::cell::Cell::new(0), std::cell::RefCell::new(Vec::new()));
+        let current = || {
+            checks.set(checks.get() + 1);
+            if checks.get() == 2 {
+                go.send(()).unwrap();
+            }
+            after.set(after.get() + usize::from(!lines.borrow().is_empty()));
+            after.get() < 2
+        };
+        let ended = read_sbs1(BufReader::new(stream), current, |line| lines.borrow_mut().push(line.to_string()));
+        assert!(ended.is_none(), "a feed the operator switched away from ends quietly, not as a lost link");
+        assert_eq!(lines.into_inner(), vec!["MSG,1,1,1,ABCDEF,1,,,,,SWR123\r\n".to_string()], "the half line read before a timeout is finished, not dropped");
+        drop(go);
+        assert!(server.join().unwrap().is_some());
     }
 
     #[test]
@@ -1098,6 +1172,8 @@ mod tests {
         assert!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()));
         assert!(traffic.attached(generation));
         assert!(traffic.failed(generation, LINK_LOST, REMOTE_HOST_CLOSED.into()), "losing a feed that was up is reported");
+        assert!(traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()), "and so is the first reconnect that fails");
+        assert!(!traffic.failed(generation, CONNECT_FAILED, "Connection refused".into()), "but a retry every few seconds that fails the same way is not announced again");
         traffic.retarget(false, None);
         traffic.retarget(true, Some(Source { host: "adsb.local".into(), port: 30003 }));
         assert!(traffic.failed(traffic.generation(), CONNECT_FAILED, "Connection refused".into()), "switching the server back on starts over");

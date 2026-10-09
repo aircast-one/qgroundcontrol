@@ -229,7 +229,12 @@ pub unsafe extern "C" fn qgc_map_current_type() -> *mut c_char {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_map_tile_fetch(map_type: *const c_char, x: c_int, y: c_int, zoom: c_int, handler: Option<unsafe extern "C" fn(*const u8, c_int, *mut c_void)>, context: *mut c_void) {
-    let Some(handler) = handler else { return };
+    unsafe { qgc_map_tile_fetch_cancellable(map_type, x, y, zoom, handler, context) };
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_map_tile_fetch_cancellable(map_type: *const c_char, x: c_int, y: c_int, zoom: c_int, handler: Option<unsafe extern "C" fn(*const u8, c_int, *mut c_void)>, context: *mut c_void) -> u64 {
+    let Some(handler) = handler else { return 0 };
     let provider = read(map_type);
     let context = context as usize;
     let fetch = move || {
@@ -241,10 +246,16 @@ pub unsafe extern "C" fn qgc_map_tile_fetch(map_type: *const c_char, x: c_int, y
         Some(image) => unsafe { handler(image.as_ptr(), c_int::try_from(image.len()).unwrap_or(0), context as *mut c_void) },
         None => unsafe { handler(std::ptr::null(), 0, context as *mut c_void) },
     };
-    crate::maptiles::fetch_in_background(&TILE_WORKERS, crate::maptiles::TileWorkers::start, fetch, reply);
+    crate::maptiles::fetch_ticketed(&TILE_TICKETS, &TILE_WORKERS, crate::maptiles::TileWorkers::start, fetch, reply)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_map_tile_cancel(ticket: u64) {
+    TILE_TICKETS.cancel(ticket);
 }
 
 static TILE_WORKERS: once_cell::sync::OnceCell<crate::maptiles::TileWorkers> = once_cell::sync::OnceCell::new();
+static TILE_TICKETS: crate::maptiles::Tickets = crate::maptiles::Tickets::new();
 
 static OFFLINE_PROVIDER: OnceLock<Option<i32>> = OnceLock::new();
 

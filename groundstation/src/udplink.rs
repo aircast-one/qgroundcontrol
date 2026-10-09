@@ -44,6 +44,15 @@ fn normalise(sender: SocketAddr, local: &BTreeSet<Ipv4Addr>) -> SocketAddr {
     }
 }
 
+fn transient(error: &io::Error) -> bool {
+    matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted | io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionRefused)
+}
+
+pub fn receive_until_lost<From>(running: impl Fn() -> bool, mut receive: impl FnMut(&mut [u8]) -> io::Result<(usize, From)>, mut deliver: impl FnMut(&[u8], From)) -> Option<io::Error> {
+    let mut buffer = vec![0u8; MAX_DATAGRAM];
+    std::iter::from_fn(|| running().then(|| receive(&mut buffer).map(|(len, from)| deliver(&buffer[..len], from)))).find_map(|received| received.err().filter(|error| !transient(error)))
+}
+
 fn bind_shared(port: u16) -> io::Result<UdpSocket> {
     let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
     socket.set_reuse_address(true)?;
@@ -56,7 +65,7 @@ fn bind_shared(port: u16) -> io::Result<UdpSocket> {
 }
 
 impl UdpLink {
-    pub fn open(config: &UdpConfig, local_addresses: BTreeSet<Ipv4Addr>, mut sink: impl FnMut(&[u8]) + Send + 'static) -> io::Result<UdpLink> {
+    pub fn open(config: &UdpConfig, local_addresses: BTreeSet<Ipv4Addr>, mut sink: impl FnMut(&[u8]) + Send + 'static, lost: impl FnOnce(String) + Send + 'static) -> io::Result<UdpLink> {
         let socket = bind_shared(config.local_port)?;
         let configured = Mutex::new(resolved(&config.targets));
         let session = Arc::new(Mutex::new(BTreeSet::new()));
@@ -66,17 +75,18 @@ impl UdpLink {
             let session = Arc::clone(&session);
             let stop = Arc::clone(&stop);
             std::thread::Builder::new().name("qgc-udp".into()).spawn(move || {
-                let mut buffer = vec![0u8; MAX_DATAGRAM];
-                while !stop.load(Ordering::Relaxed) {
-                    match socket.recv_from(&mut buffer) {
-                        Ok((0, _)) => {}
-                        Ok((len, sender)) => {
+                let failed = receive_until_lost(
+                    || !stop.load(Ordering::Relaxed),
+                    |buffer| socket.recv_from(buffer),
+                    |bytes, sender| {
+                        if !bytes.is_empty() {
                             session.lock().unwrap().insert(normalise(sender, &local_addresses));
-                            sink(&buffer[..len]);
+                            sink(bytes);
                         }
-                        Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut) => {}
-                        Err(_) => {}
-                    }
+                    },
+                );
+                if let Some(error) = failed {
+                    lost(error.to_string());
                 }
             })?
         };
@@ -130,7 +140,7 @@ mod tests {
     #[test]
     fn a_peer_that_sends_first_becomes_a_session_target_and_gets_the_replies() {
         let (tx, rx) = mpsc::channel();
-        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), move |bytes| tx.send(bytes.to_vec()).unwrap()).unwrap();
+        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), move |bytes| tx.send(bytes.to_vec()).unwrap(), |_| {}).unwrap();
         let port = link.local_port();
         assert!(port > 0);
         let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -151,7 +161,7 @@ mod tests {
         let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
         peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let peer_port = peer.local_addr().unwrap().port();
-        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), |_| {}).unwrap();
+        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), |_| {}, |_| {}).unwrap();
         assert_eq!(link.write(&heartbeat()), 0);
         link.retarget(&[("127.0.0.1".into(), peer_port)]);
         assert_eq!(link.write(&heartbeat()), 1);
@@ -168,7 +178,7 @@ mod tests {
         peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let peer_port = peer.local_addr().unwrap().port();
         let (tx, rx) = mpsc::channel();
-        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![("localhost".into(), peer_port), ("nonexistent.invalid".into(), 1)] }, BTreeSet::new(), move |bytes| tx.send(bytes.len()).unwrap()).unwrap();
+        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![("localhost".into(), peer_port), ("nonexistent.invalid".into(), 1)] }, BTreeSet::new(), move |bytes| tx.send(bytes.len()).unwrap(), |_| {}).unwrap();
         assert_eq!(link.targets().len(), 1);
         let frame = heartbeat();
         assert_eq!(link.write(&frame), 1);
@@ -184,10 +194,23 @@ mod tests {
 
     #[test]
     fn two_links_can_share_the_same_listen_port() {
-        let first = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), |_| {}).unwrap();
+        let first = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), |_| {}, |_| {}).unwrap();
         let port = first.local_port();
-        let second = UdpLink::open(&UdpConfig { local_port: port, targets: vec![] }, BTreeSet::new(), |_| {});
+        let second = UdpLink::open(&UdpConfig { local_port: port, targets: vec![] }, BTreeSet::new(), |_| {}, |_| {});
         assert!(second.is_ok());
         assert_eq!(normalise(SocketAddr::from(([10, 0, 0, 5], 14550)), &BTreeSet::from([Ipv4Addr::new(10, 0, 0, 5)])), SocketAddr::from(([127, 0, 0, 1], 14550)));
+    }
+
+    #[test]
+    fn a_socket_that_fails_for_good_ends_the_reader_while_timeouts_and_icmp_echoes_do_not() {
+        let mut script = [Ok((2, ())), Err(io::ErrorKind::TimedOut), Err(io::ErrorKind::WouldBlock), Err(io::ErrorKind::Interrupted), Err(io::ErrorKind::ConnectionReset), Ok((1, ())), Err(io::ErrorKind::NotConnected), Ok((3, ()))]
+            .map(|step| step.map_err(io::Error::from))
+            .into_iter();
+        let delivered = std::cell::RefCell::new(Vec::new());
+        let lost = receive_until_lost(|| true, |_| script.next().unwrap(), |bytes, ()| delivered.borrow_mut().push(bytes.len()));
+        assert_eq!(lost.map(|error| error.kind()), Some(io::ErrorKind::NotConnected), "a suspended app's defunct socket answers ENOTCONN at once, forever");
+        assert_eq!(delivered.into_inner(), vec![2, 1]);
+        assert_eq!(script.len(), 1, "nothing is read after the socket is gone, so the reader cannot spin");
+        assert!(receive_until_lost(|| false, |_| -> io::Result<(usize, ())> { panic!("a stopped reader reads nothing") }, |_, ()| {}).is_none());
     }
 }

@@ -26,6 +26,7 @@ static RUNTIME: LazyLock<Mutex<std::collections::BTreeMap<String, Runtime>>> = L
 static DYNAMIC: Mutex<Vec<Entry>> = Mutex::new(Vec::new());
 static AUTOCONNECTING: AtomicBool = AtomicBool::new(false);
 static LAST_TICK_MS: Mutex<u64> = Mutex::new(0);
+static OPENING: Mutex<std::collections::BTreeSet<String>> = Mutex::new(std::collections::BTreeSet::new());
 const RECONNECT_BASE_MS: u64 = 1000;
 const RECONNECT_MAX_MS: u64 = 5000;
 const RECONNECT_STABLE_MS: u64 = 2000;
@@ -495,7 +496,36 @@ fn indexed(reference: &str) -> Option<usize> {
 fn connect(index: usize) -> bool {
     let Some(entry) = listed().into_iter().nth(index) else { return false };
     update_runtime(&entry.config.name, Runtime::connect_requested);
-    open_entry(&entry)
+    !claim(&entry.config.name) || {
+        let opened = open_entry(&entry);
+        release(&entry.config.name);
+        opened
+    }
+}
+
+fn claim(name: &str) -> bool {
+    OPENING.lock().unwrap_or_else(PoisonError::into_inner).insert(name.to_string())
+}
+
+fn release(name: &str) {
+    OPENING.lock().unwrap_or_else(PoisonError::into_inner).remove(name);
+}
+
+fn open_in_background(name: &str, open: impl FnOnce() + Send + 'static) -> Option<std::thread::JoinHandle<()>> {
+    claim(name).then_some(())?;
+    let owned = name.to_string();
+    let spawned = std::thread::Builder::new().name("qgc-link-open".into()).spawn(move || {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(open));
+        release(&owned);
+    });
+    spawned.map_err(|_| release(name)).ok()
+}
+
+fn reopen(entry: &Entry) {
+    let owned = entry.clone();
+    let _ = open_in_background(&entry.config.name, move || {
+        open_entry(&owned);
+    });
 }
 
 fn open_entry(entry: &Entry) -> bool {
@@ -561,7 +591,7 @@ pub fn start() {
     AUTOCONNECTING.store(true, Ordering::SeqCst);
     saved().iter().filter(|e| e.config.auto_connect).for_each(|entry| {
         update_runtime(&entry.config.name, |run| run.started = true);
-        open_entry(entry);
+        reopen(entry);
     });
 }
 
@@ -747,7 +777,7 @@ pub fn tick(now_ms: u64) {
     DYNAMIC.lock().unwrap_or_else(PoisonError::into_inner).retain(|e| live.iter().any(|(_, c)| c.name == e.config.name));
     if let Some(udp) = udp_autoconnect_entry().filter(|udp| !live.iter().any(|(_, c)| c.name == udp.config.name && matches!(c.kind, Kind::Udp { .. }))) {
         add_dynamic(&udp);
-        open_entry(&udp);
+        reopen(&udp);
     }
     autoconnect_serial(&live);
     saved().iter().filter(|e| e.config.auto_connect).for_each(|entry| {
@@ -755,7 +785,7 @@ pub fn tick(now_ms: u64) {
         update_runtime(&entry.config.name, |run| run.note_link(up, now_ms));
         if !up && runtime(&entry.config.name).reconnect_due(now_ms) {
             update_runtime(&entry.config.name, |run| run.note_attempt(now_ms));
-            open_entry(entry);
+            reopen(entry);
         }
     });
 }
@@ -877,6 +907,24 @@ mod tests {
         assert!(!retried_silently(&auto), "a disconnected auto link no longer retries, so its error is recorded");
         update_runtime(&auto.config.name, Runtime::connect_requested);
         assert!(retried_silently(&auto));
+    }
+
+    #[test]
+    fn a_reconnect_runs_off_the_calling_thread_and_one_at_a_time_per_link() {
+        let (release_open, wait) = std::sync::mpsc::channel::<()>();
+        let name = "Background open test";
+        let first = open_in_background(name, move || {
+            wait.recv().ok();
+        })
+        .expect("the first attempt starts");
+        assert!(open_in_background(name, || panic!("a second attempt while one is in flight would open the link twice")).is_none(), "and the pump is back at once, while DNS and the connect still run");
+        assert!(!claim(name), "a manual connect meanwhile is answered as already under way");
+        assert!(open_in_background("Background open test 2", || {}).is_some_and(|other| other.join().is_ok()), "another link is not held up behind it");
+        release_open.send(()).unwrap();
+        first.join().unwrap();
+        assert!(open_in_background(name, || panic!("an attempt that panics")).is_some_and(|failed| failed.join().is_ok()), "once settled the link is tried again");
+        assert!(claim(name), "even an attempt that panicked lets the link be tried again");
+        release(name);
     }
 
     #[test]

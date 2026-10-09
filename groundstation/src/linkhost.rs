@@ -105,6 +105,14 @@ impl Shared {
         }
     }
 
+    fn relay_state(&self, id: LinkId, up: bool, reason: &str) {
+        let changed = self.registry.lock().unwrap().set_up(id, up, reason);
+        let hook = self.state_hook.lock().unwrap().clone();
+        if let Some(hook) = hook.filter(|_| changed) {
+            hook();
+        }
+    }
+
     fn closed_by_reader(&self, id: LinkId, reason: &str) {
         self.registry.lock().unwrap().close(id, reason);
         let state = self.state_sink.lock().unwrap().clone();
@@ -155,6 +163,10 @@ impl Transports {
 
     pub fn open_ids(&self) -> Vec<LinkId> {
         self.shared.registry.lock().unwrap().open_ids()
+    }
+
+    pub fn down_ids(&self) -> Vec<LinkId> {
+        self.shared.registry.lock().unwrap().down_ids()
     }
 
     pub fn describe(&self, id: LinkId) -> Option<(String, String, bool)> {
@@ -241,8 +253,10 @@ fn resolves(host: &str, port: u16) -> bool {
 fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Failure> {
     match &config.kind {
         Kind::Udp { local_port, hosts } => {
-            let shared = shared.clone();
-            UdpLink::open(&UdpConfig { local_port: *local_port, targets: hosts.clone() }, crate::udplink::local_addresses(), move |bytes| shared.deliver(id, bytes)).map(Owned::Udp).map_err(|_| Failure::retry(format!("Link {}: Failed to bind UDP socket to port", config.name)))
+            let (shared, lost) = (shared.clone(), shared.clone());
+            UdpLink::open(&UdpConfig { local_port: *local_port, targets: hosts.clone() }, crate::udplink::local_addresses(), move |bytes| shared.deliver(id, bytes), move |reason| lost.closed_by_reader(id, &reason))
+                .map(Owned::Udp)
+                .map_err(|_| Failure::retry(format!("Link {}: Failed to bind UDP socket to port", config.name)))
         }
         Kind::Tcp { host, port } => {
             let shared = shared.clone();
@@ -289,8 +303,8 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
             let url = crate::cloudlink::relay_url(api_base, device_id).ok_or_else(|| Failure::edit_address(format!("{} has no device to reach.", config.name)))?;
             let token = crate::cloudlink::token_key(api_base).and_then(|key| crate::settingsstore::stored_text(&key)).filter(|t| !t.is_empty());
             let token = token.ok_or_else(|| Failure::edit_address("Sign in to your Aircast account in this link's settings to use the cloud backup link."))?;
-            let shared = shared.clone();
-            Ok(Owned::Cloud(crate::cloudlink::CloudLink::open(url, token, move |bytes| shared.deliver(id, bytes))))
+            let (shared, relay) = (shared.clone(), shared.clone());
+            Ok(Owned::Cloud(crate::cloudlink::CloudLink::open(url, token, move |bytes| shared.deliver(id, bytes), move |up, reason| relay.relay_state(id, up, reason))))
         }
         Kind::LogReplay { file } => {
             let shared = shared.clone();
@@ -456,8 +470,6 @@ pub fn close(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {
     closed
 }
 
-// transports_view folds the Qt-hosted links in beside the core's own, and watched neither, so the
-// list never refreshed when a link was added, removed or connected.
 pub const DEPS: &[&str] = &["links.linkConfigurations"];
 
 pub fn qt_links(backend: &dyn crate::router::Backend) -> Vec<Value> {

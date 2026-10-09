@@ -1,5 +1,6 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError, TryLockError};
 use std::time::{Duration, Instant};
 
 use once_cell::sync::OnceCell;
@@ -18,28 +19,45 @@ const ELEVATION_PROVIDER: &str = "Copernicus";
 const DISK_LIMIT_PATH: &str = "settings.mapsSettings.maxCacheDiskSize";
 const DEFAULT_DISK_LIMIT_MB: u64 = 1024;
 const LIMIT_CHECK_EVERY: Duration = Duration::from_secs(2);
+const RECOUNT_EVERY: Duration = Duration::from_secs(300);
 const MEMORY_LIMIT_PATH: &str = "settings.mapsSettings.maxCacheMemorySize";
 const MEGABYTE: u64 = 1024 * 1024;
 const TYPICAL_TILE_BYTES: u64 = 20 * 1024;
-
-static LAST_LIMIT_CHECK: LazyLock<Mutex<Option<Instant>>> = LazyLock::new(|| Mutex::new(None));
 
 fn disk_limit_bytes() -> i64 {
     let megabytes = crate::settingsstore::raw_setting(DISK_LIMIT_PATH).and_then(|value| value.as_u64()).unwrap_or(DEFAULT_DISK_LIMIT_MB);
     (megabytes * 1024 * 1024) as i64
 }
 
-fn keep_within_disk_limit(cache: &Cache) {
-    let due = {
-        let mut last = LAST_LIMIT_CHECK.lock().unwrap_or_else(PoisonError::into_inner);
-        let due = last.is_none_or(|checked| checked.elapsed() >= LIMIT_CHECK_EVERY);
-        if due {
-            *last = Some(Instant::now());
-        }
-        due
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DiskTally {
+    bytes: i64,
+    counted: Instant,
+    trimmed: Option<Instant>,
+}
+
+static DISK_TALLY: Mutex<Option<DiskTally>> = Mutex::new(None);
+static UNTALLIED: AtomicI64 = AtomicI64::new(0);
+
+fn tallied(held: Option<DiskTally>, added: i64, limit: i64, now: Instant, count: impl FnOnce() -> Option<i64>, trim: impl FnOnce(i64) -> Option<i64>) -> Option<DiskTally> {
+    let kept = held.filter(|tally| now.duration_since(tally.counted) < RECOUNT_EVERY).map(|tally| DiskTally { bytes: tally.bytes + added, ..tally });
+    let tally = kept.or_else(|| count().map(|bytes| DiskTally { bytes, counted: now, trimmed: None }))?;
+    let due = tally.bytes > limit && tally.trimmed.is_none_or(|at| now.duration_since(at) >= LIMIT_CHECK_EVERY);
+    Some(match due {
+        true => trim(limit).map_or(tally, |bytes| DiskTally { bytes, counted: now, trimmed: Some(now) }),
+        false => tally,
+    })
+}
+
+fn keep_within_disk_limit(cache: &Cache, added: i64) {
+    UNTALLIED.fetch_add(added, Ordering::SeqCst);
+    let held = match DISK_TALLY.try_lock() {
+        Ok(held) => Some(held),
+        Err(TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+        Err(TryLockError::WouldBlock) => None,
     };
-    if due {
-        let _ = cache.trim_to(disk_limit_bytes());
+    if let Some(mut held) = held {
+        *held = tallied(*held, UNTALLIED.swap(0, Ordering::SeqCst), disk_limit_bytes(), Instant::now(), || cache.default_bytes().ok(), |limit| cache.trim_to(limit).ok());
     }
 }
 
@@ -99,9 +117,10 @@ pub fn fetch(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Opti
         return None;
     }
     let format = image_format(&image)?;
-    if let Some(cache) = cache.filter(|_| persist) {
-        let _ = cache.save(&Tile { hash, format: format.to_string(), image: image.clone(), kind }, None);
-        keep_within_disk_limit(cache);
+    if let Some(cache) = cache.filter(|_| persist)
+        && cache.save(&Tile { hash, format: format.to_string(), image: image.clone(), kind }, None).unwrap_or(false)
+    {
+        keep_within_disk_limit(cache, image.len() as i64);
     }
     Some(image)
 }
@@ -150,7 +169,7 @@ impl TileWorkers {
     }
 }
 
-pub fn fetch_in_background(
+fn fetch_in_background(
     workers: &OnceCell<TileWorkers>,
     start: impl FnOnce() -> Result<TileWorkers, ThreadPoolBuildError>,
     job: impl FnOnce() -> Option<Vec<u8>> + Send + 'static,
@@ -163,6 +182,58 @@ pub fn fetch_in_background(
             reply(None)
         }
     }
+}
+
+#[derive(Default)]
+pub struct Tickets {
+    issued: AtomicU64,
+    open: Mutex<BTreeMap<u64, bool>>,
+}
+
+impl Tickets {
+    pub const fn new() -> Tickets {
+        Tickets { issued: AtomicU64::new(0), open: Mutex::new(BTreeMap::new()) }
+    }
+
+    fn held(&self) -> std::sync::MutexGuard<'_, BTreeMap<u64, bool>> {
+        self.open.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn issue(&self) -> u64 {
+        let ticket = self.issued.fetch_add(1, Ordering::SeqCst) + 1;
+        self.held().insert(ticket, false);
+        ticket
+    }
+
+    pub fn cancel(&self, ticket: u64) {
+        if let Some(cancelled) = self.held().get_mut(&ticket) {
+            *cancelled = true;
+        }
+    }
+
+    fn cancelled(&self, ticket: u64) -> bool {
+        self.held().get(&ticket).copied().unwrap_or(false)
+    }
+
+    fn settle(&self, ticket: u64) {
+        self.held().remove(&ticket);
+    }
+}
+
+pub fn fetch_ticketed(
+    tickets: &'static Tickets,
+    workers: &OnceCell<TileWorkers>,
+    start: impl FnOnce() -> Result<TileWorkers, ThreadPoolBuildError>,
+    fetch: impl FnOnce() -> Option<Vec<u8>> + Send + 'static,
+    reply: impl FnOnce(Option<Vec<u8>>) + Send + 'static,
+) -> u64 {
+    let ticket = tickets.issue();
+    let job = move || (!tickets.cancelled(ticket)).then(fetch).flatten();
+    fetch_in_background(workers, start, job, move |image| {
+        tickets.settle(ticket);
+        reply(image)
+    });
+    ticket
 }
 
 #[cfg(test)]
@@ -222,6 +293,44 @@ mod tests {
         assert_eq!(fetch("Esri World Street", 1, 1, 3, &keys(), None, true, &text), None);
         assert_eq!(image_format(b"\xff\xd8\xff\xe0"), Some("jpg"));
         assert_eq!(fetch("Copernicus", 1, 1, 3, &keys(), None, true, &text), None, "elevation tiles are terrain data, not map images");
+    }
+
+    #[test]
+    fn the_disk_limit_is_kept_by_a_running_tally_so_a_save_costs_no_full_read() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let unread = || -> Option<i64> { panic!("a fresh tally needs no full read") };
+        let untrimmed = |_: i64| -> Option<i64> { panic!("nothing is trimmed under the limit or within two seconds of a trim") };
+        let first = tallied(None, 20, 2_000, start, || Some(1_000), untrimmed);
+        assert_eq!(first.map(|tally| tally.bytes), Some(1_000), "the first save counts the cache once, its own tile included");
+        let filling = (1..=40).fold(first, |held, n| tallied(held, 20, 2_000, at(n * 10), unread, untrimmed));
+        assert_eq!(filling.map(|tally| tally.bytes), Some(1_800));
+        let trimmed = tallied(filling, 400, 2_000, at(500), unread, |limit| Some(limit - 100));
+        assert_eq!(trimmed.map(|tally| (tally.bytes, tally.trimmed)), Some((1_900, Some(at(500)))), "going over trims to the limit and keeps the size the trim answered");
+        let soon = tallied(trimmed, 300, 2_000, at(1_500), unread, untrimmed);
+        assert_eq!(soon.map(|tally| tally.bytes), Some(2_200), "a cache already trimmed is left over its limit until two seconds pass, as before");
+        assert_eq!(tallied(soon, 0, 2_000, at(2_500), unread, |limit| Some(limit)).map(|tally| tally.bytes), Some(2_000));
+        let stale = at(500) + RECOUNT_EVERY;
+        assert_eq!(tallied(soon, 20, 2_000, stale, || Some(700), untrimmed).map(|tally| (tally.bytes, tally.counted)), Some((700, stale)), "every few minutes the tally is recounted, so offline sets and deletions cannot let it drift");
+    }
+
+    #[test]
+    fn a_tile_cancelled_while_it_waits_is_answered_with_nothing_and_never_fetched() {
+        static TICKETS: Tickets = Tickets::new();
+        let held = OnceCell::new();
+        let (gate, wait) = std::sync::mpsc::channel::<()>();
+        let (answer, answers) = std::sync::mpsc::channel();
+        let first = answer.clone();
+        fetch_ticketed(&TICKETS, &held, || Ok(workers(1, 4)), move || wait.recv().ok().map(|()| PNG.to_vec()), move |image| first.send(image).unwrap());
+        let fetched = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let touched = fetched.clone();
+        let ticket = fetch_ticketed(&TICKETS, &held, || unreachable!(), move || Some(PNG.to_vec()).filter(|_| !touched.swap(true, Ordering::SeqCst)), move |image| answer.send(image).unwrap());
+        TICKETS.cancel(ticket);
+        gate.send(()).unwrap();
+        assert_eq!(answers.iter().collect::<Vec<_>>(), vec![Some(PNG.to_vec()), None], "the dropped tile still answers once, so the head's reply is released");
+        assert!(!fetched.load(Ordering::SeqCst), "a tile the map panned away from never reaches the network");
+        TICKETS.cancel(ticket);
+        assert!(TICKETS.held().is_empty(), "an answered ticket is forgotten, so a late cancel changes nothing and tickets never pile up");
     }
 
     type Job = Box<dyn FnOnce() -> Option<Vec<u8>> + Send>;

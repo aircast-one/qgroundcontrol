@@ -36,6 +36,7 @@ pub struct Entry {
     pub name: String,
     pub owner: Owner,
     pub state: State,
+    pub up: bool,
     pub reason: String,
     pub stats: Stats,
     buffer: Vec<u8>,
@@ -113,7 +114,7 @@ impl Registry {
     pub fn open(&mut self, owner: Owner, kind: &str, name: &str) -> LinkId {
         self.next += 1;
         let id = self.next;
-        self.links.insert(id, Entry { id, kind: kind.to_string(), name: name.to_string(), owner, state: State::Open, reason: String::new(), stats: Stats::default(), buffer: Vec::new(), extras: Vec::new() });
+        self.links.insert(id, Entry { id, kind: kind.to_string(), name: name.to_string(), owner, state: State::Open, up: true, reason: String::new(), stats: Stats::default(), buffer: Vec::new(), extras: Vec::new() });
         id
     }
 
@@ -151,6 +152,21 @@ impl Registry {
         }
     }
 
+    pub fn set_up(&mut self, id: LinkId, up: bool, reason: &str) -> bool {
+        match self.links.get_mut(&id).filter(|e| e.state == State::Open && (e.up != up || e.reason != reason)) {
+            Some(entry) => {
+                entry.up = up;
+                entry.reason = reason.to_string();
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn down_ids(&self) -> Vec<LinkId> {
+        self.links.values().filter(|e| e.state == State::Open && !e.up).map(|e| e.id).collect()
+    }
+
     pub fn remove_closed(&mut self) {
         self.links.retain(|_, e| e.state == State::Open);
     }
@@ -185,6 +201,7 @@ impl Registry {
                     "name": e.name,
                     "owner": match e.owner { Owner::Core => "core", Owner::Host => "host" },
                     "state": match e.state { State::Open => "open", State::Closed => "closed" },
+                    "up": e.up,
                     "reason": e.reason,
                     "bytesIn": e.stats.bytes_in,
                     "bytesOut": e.stats.bytes_out,
@@ -204,6 +221,22 @@ mod tests {
     fn frames_of_sample() -> Vec<Vec<u8>> {
         let bytes = crate::samplelog::bytes();
         crate::tlog::entries(&bytes, u64::MAX).into_iter().map(|(_, f)| f).collect()
+    }
+
+    #[test]
+    fn a_link_whose_relay_dropped_stays_open_but_reads_as_down() {
+        let mut registry = Registry::default();
+        let id = registry.open(Owner::Core, "aircastCloud", "Aircast drone (cloud)");
+        assert!(registry.down_ids().is_empty());
+        assert!(!registry.set_up(id, true, ""), "a link that is already up changes nothing");
+        assert!(registry.set_up(id, false, "relay lost"));
+        assert!(!registry.set_up(id, false, "relay lost"), "the same outage is reported once");
+        assert_eq!((registry.open_ids(), registry.down_ids()), (vec![id], vec![id]), "it stays open, so its vehicle is kept while it reconnects");
+        assert_eq!(registry.snapshot()["links"][0]["up"], json!(false));
+        assert!(registry.set_up(id, true, ""));
+        assert!(registry.down_ids().is_empty());
+        registry.close(id, "closed");
+        assert!(!registry.set_up(id, false, "late"), "a closed link is not brought back to life by a late report");
     }
 
     #[test]

@@ -653,13 +653,20 @@ fn listen(port: u16, validate: bool, generation: u64) {
         return;
     }
     let mut framer = Framer::default();
-    let mut buffer = [0u8; 65536];
-    while udp_input().generation == generation {
-        if let Ok((n, _)) = socket.recv_from(&mut buffer)
-            && n > 0
-        {
-            datagram_frames(&mut framer, &buffer[..n], validate).iter().for_each(|rtcm| inject(rtcm));
-        }
+    let lost = crate::udplink::receive_until_lost(
+        || udp_input().generation == generation,
+        |buffer| socket.recv_from(buffer),
+        |datagram, _| datagram_frames(&mut framer, datagram, validate).iter().filter(|rtcm| !rtcm.is_empty()).for_each(|rtcm| inject(rtcm)),
+    );
+    if let Some(error) = lost {
+        log::warn!("UDP RTCM input on port {port} lost its socket: {error}");
+        input_lost(&mut udp_input(), generation);
+    }
+}
+
+fn input_lost(input: &mut UdpInput, generation: u64) {
+    if input.generation == generation {
+        input.wanted = None;
     }
 }
 
@@ -1150,6 +1157,15 @@ mod tests {
         let datagram = [good.clone(), bad].concat();
         assert_eq!(datagram_frames(&mut Framer::default(), &datagram, true), [good]);
         assert_eq!(datagram_frames(&mut Framer::default(), &datagram, false), [datagram.clone()]);
+    }
+
+    #[test]
+    fn a_lost_udp_input_is_forgotten_so_the_next_sync_binds_a_fresh_socket() {
+        let mut input = UdpInput { wanted: Some((2101, true)), generation: 4 };
+        input_lost(&mut input, 3);
+        assert_eq!(input.wanted, Some((2101, true)), "a listener a later sync already replaced changes nothing");
+        input_lost(&mut input, 4);
+        assert_eq!(input.wanted, None, "sync sees the setting differ from what runs and starts a new listener, one pump tick later");
     }
 
     #[test]

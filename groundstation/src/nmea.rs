@@ -106,15 +106,14 @@ pub enum Wanted {
 }
 
 enum Running {
-    Udp(Arc<AtomicBool>),
+    Udp { running: Arc<AtomicBool>, dead: Arc<AtomicBool> },
     Serial { close: Box<dyn Fn() + Send>, dead: Arc<AtomicBool> },
 }
 
 impl Running {
     fn alive(&self) -> bool {
         match self {
-            Running::Udp(_) => true,
-            Running::Serial { dead, .. } => !dead.load(Ordering::Relaxed),
+            Running::Udp { dead, .. } | Running::Serial { dead, .. } => !dead.load(Ordering::Relaxed),
         }
     }
 }
@@ -122,7 +121,7 @@ impl Running {
 impl Drop for Running {
     fn drop(&mut self) {
         match self {
-            Running::Udp(flag) => flag.store(false, Ordering::Relaxed),
+            Running::Udp { running, .. } => running.store(false, Ordering::Relaxed),
             Running::Serial { close, .. } => close(),
         }
     }
@@ -153,23 +152,22 @@ pub fn wanted() -> Option<Wanted> {
     }
 }
 
-fn listen_udp(socket: UdpSocket, running: Arc<AtomicBool>) {
+fn listen_udp(mut receive: impl FnMut(&mut [u8]) -> std::io::Result<usize>, running: &AtomicBool, dead: &AtomicBool) {
     let mut lines = Lines::default();
-    let mut buffer = [0u8; 2048];
-    while running.load(Ordering::Relaxed) {
-        if let Ok(size) = socket.recv(&mut buffer) {
-            lines.feed(&buffer[..size]).into_iter().for_each(crate::gcsposition::report_nmea);
-        }
+    let lost = crate::udplink::receive_until_lost(|| running.load(Ordering::Relaxed), |buffer| receive(buffer).map(|size| (size, ())), |bytes, ()| lines.feed(bytes).into_iter().for_each(crate::gcsposition::report_nmea));
+    if let Some(error) = lost {
+        log::warn!("NMEA UDP input lost its socket: {error}");
+        dead.store(true, Ordering::Relaxed);
     }
 }
 
 fn open_udp(port: u16) -> Option<Running> {
     let socket = UdpSocket::bind(("0.0.0.0", port)).ok()?;
     socket.set_read_timeout(Some(std::time::Duration::from_millis(NMEA_POLL_MS))).ok()?;
-    let running = Arc::new(AtomicBool::new(true));
-    let thread_running = running.clone();
-    std::thread::spawn(move || listen_udp(socket, thread_running));
-    Some(Running::Udp(running))
+    let (running, dead) = (Arc::new(AtomicBool::new(true)), Arc::new(AtomicBool::new(false)));
+    let (thread_running, thread_dead) = (running.clone(), dead.clone());
+    std::thread::spawn(move || listen_udp(|buffer| socket.recv(buffer), &thread_running, &thread_dead));
+    Some(Running::Udp { running, dead })
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -244,6 +242,18 @@ mod tests {
         let fixes = lines.feed(b"00,E,1,08,0.9,545.4,M,46.9,M,,*47\r\n$GPGGA,1235");
         assert_eq!(fixes.len(), 1);
         assert_eq!(fixes[0].altitude, Some(545.4));
+    }
+
+    #[test]
+    fn a_udp_listener_whose_socket_fails_for_good_is_dead_so_maintain_reopens_it() {
+        let (running, dead) = (AtomicBool::new(true), AtomicBool::new(false));
+        let mut script = [std::io::ErrorKind::TimedOut, std::io::ErrorKind::NotConnected].into_iter();
+        listen_udp(|_| Err(script.next().unwrap().into()), &running, &dead);
+        let listener = Running::Udp { running: Arc::new(running), dead: Arc::new(dead) };
+        assert!(!listener.alive(), "a socket that only fails is replaced after RETRY_AFTER instead of read forever");
+        let stopped = AtomicBool::new(false);
+        listen_udp(|_| panic!("a stopped listener reads nothing"), &stopped, &stopped);
+        assert!(!stopped.load(Ordering::Relaxed));
     }
 
     #[test]

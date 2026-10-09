@@ -233,6 +233,18 @@ pub fn offline_maps_view(backend: &dyn Backend, args: &[String]) -> Value {
     })
 }
 
+fn fetched_until_cancelled<T: Sync, R: Send>(batch: &[T], cancel: &AtomicBool, fetch: impl Fn(&T) -> R + Sync) -> Vec<R> {
+    std::thread::scope(|scope| {
+        batch
+            .chunks(batch.len().div_ceil(CONCURRENT_DOWNLOADS).max(1))
+            .map(|chunk| scope.spawn(|| chunk.iter().take_while(|_| !cancel.load(Ordering::Relaxed)).map(&fetch).collect::<Vec<_>>()))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .flat_map(|worker| worker.join().unwrap_or_default())
+            .collect()
+    })
+}
+
 fn download(set: i64, provider: String, cancel: Arc<AtomicBool>) {
     let keys = crate::mapurls::keys_from_settings();
     let Some(kind) = provider_hash(&provider) else { return };
@@ -241,24 +253,9 @@ fn download(set: i64, provider: String, cancel: Arc<AtomicBool>) {
         if batch.is_empty() || cancel.load(Ordering::Relaxed) {
             return true;
         }
-        let fetched: Vec<(String, Option<(String, Vec<u8>)>)> = std::thread::scope(|scope| {
-            batch
-                .chunks(batch.len().div_ceil(CONCURRENT_DOWNLOADS))
-                .map(|chunk| {
-                    scope.spawn(|| {
-                        chunk
-                            .iter()
-                            .map(|(hash, x, y, z)| match crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str()) {
-                                true => (hash.clone(), crate::terrainquery::fetched_tile(*x, *y, &crate::terrainquery::fetch_over_http)),
-                                false => (hash.clone(), crate::maptiles::fetch(&provider, *x, *y, *z, &keys, None, false, &crate::maptiles::fetch_over_http).and_then(|image| Some((crate::maptiles::image_format(&image)?.to_string(), image)))),
-                            })
-                            .collect::<Vec<_>>()
-                    })
-                })
-                .collect::<Vec<_>>()
-                .into_iter()
-                .flat_map(|worker| worker.join().unwrap_or_default())
-                .collect()
+        let fetched: Vec<(String, Option<(String, Vec<u8>)>)> = fetched_until_cancelled(&batch, &cancel, |(hash, x, y, z)| match crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str()) {
+            true => (hash.clone(), crate::terrainquery::fetched_tile(*x, *y, &crate::terrainquery::fetch_over_http)),
+            false => (hash.clone(), crate::maptiles::fetch(&provider, *x, *y, *z, &keys, None, false, &crate::maptiles::fetch_over_http).and_then(|image| Some((crate::maptiles::image_format(&image)?.to_string(), image)))),
         });
         fetched.iter().for_each(|(hash, image)| {
             let stored = image.as_ref().and_then(|(format, image)| cache.complete(set, &Tile { hash: hash.clone(), format: format.clone(), image: image.clone(), kind }).ok());
@@ -585,9 +582,24 @@ mod tests {
         (0..4).for_each(|x| {
             cache.save(&Tile { hash: tile_hash(kind, x, 0, 3), format: "png".into(), image: vec![0; 1000], kind }, None).unwrap();
         });
-        assert_eq!(cache.trim_to(4000).unwrap(), 0);
-        assert_eq!(cache.trim_to(2500).unwrap(), 2);
+        assert_eq!(cache.trim_to(4000).unwrap(), 4000, "a cache within its limit is left alone and its size answered");
+        assert_eq!(cache.trim_to(2500).unwrap(), 2000, "two thousand-byte tiles go to pay a debt of 1500, leaving 2000");
         assert_eq!(cache.count().unwrap(), 2);
+    }
+
+    #[test]
+    fn a_cancelled_download_stops_at_the_next_tile_instead_of_finishing_the_batch() {
+        let batch: Vec<usize> = (0..60).collect();
+        let (cancel, started) = (AtomicBool::new(false), std::sync::atomic::AtomicUsize::new(0));
+        let fetched = fetched_until_cancelled(&batch, &cancel, |tile| {
+            if started.fetch_add(1, Ordering::SeqCst) + 1 == 3 {
+                cancel.store(true, Ordering::SeqCst);
+            }
+            *tile
+        });
+        assert!(started.load(Ordering::SeqCst) <= 3 + CONCURRENT_DOWNLOADS - 1, "each worker finishes at most the tile it holds; {} were fetched", started.load(Ordering::SeqCst));
+        assert_eq!(fetched.len(), started.load(Ordering::SeqCst), "tiles never fetched stay pending, so a later start picks them up");
+        assert_eq!(fetched_until_cancelled(&batch, &AtomicBool::new(false), |tile| *tile), batch);
     }
 
     #[test]

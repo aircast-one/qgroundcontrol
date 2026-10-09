@@ -2767,7 +2767,8 @@ impl Vehicle {
         }
         let high_latency = self.link_kinds.high_latency.clone();
         let cloud = self.link_kinds.cloud.clone();
-        let silenced: Vec<LinkId> = self.link_states.iter().filter(|(link, last, lost)| !lost && !high_latency.contains(link) && now_ms.saturating_sub(*last) > LINK_SILENT_MS).map(|(link, _, _)| *link).collect();
+        let down = &self.link_kinds.down;
+        let silenced: Vec<LinkId> = self.link_states.iter().filter(|(link, last, lost)| !lost && !high_latency.contains(link) && (now_ms.saturating_sub(*last) > LINK_SILENT_MS || down.contains(link))).map(|(link, _, _)| *link).collect();
         let several = self.link_states.len() > 1;
         silenced.iter().for_each(|link| {
             log::warn!("Communication lost on link {link}");
@@ -3846,6 +3847,7 @@ pub struct LinkKinds {
     pub cloud: Vec<LinkId>,
     pub high_latency: Vec<LinkId>,
     pub usb_direct: Vec<LinkId>,
+    pub down: Vec<LinkId>,
 }
 
 const SENSOR_REFRESH_DELAY_MS: u64 = 1000;
@@ -5044,6 +5046,21 @@ mod tests {
     }
 
     #[test]
+    fn a_relay_reported_down_is_lost_at_once_instead_of_after_its_silence() {
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 8, component_id: 1, sequence: 0 };
+        hub.on_frame(Origin { link: 21, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(Origin { link: 22, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
+        hub.check_links(1_100, &LinkKinds { cloud: vec![21, 22], ..LinkKinds::default() });
+        let primary = hub.vehicles[&8].primary_link;
+        let other = [21, 22].into_iter().find(|link| Some(*link) != primary).unwrap();
+        hub.check_links(2_200, &LinkKinds { cloud: vec![21, 22], down: primary.into_iter().collect(), ..LinkKinds::default() });
+        assert_eq!(hub.vehicles[&8].primary_link, Some(other), "commands move to the other link well before LINK_SILENT_MS");
+        assert!(hub.vehicles[&8].link_states.iter().any(|(link, _, lost)| Some(*link) == primary && *lost));
+        assert!(hub.vehicles.contains_key(&8), "the vehicle stays while its relay reconnects");
+    }
+
+    #[test]
     fn closing_one_of_two_links_keeps_the_vehicle_on_the_other() {
         let mut hub = Hub::default();
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
@@ -5103,7 +5120,7 @@ mod tests {
     fn a_live_direct_link_takes_the_primary_from_the_cloud_relay() {
         let mut hub = Hub::default();
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
-        let kinds = LinkKinds { cloud: vec![1], high_latency: vec![3], usb_direct: vec![4] };
+        let kinds = LinkKinds { cloud: vec![1], high_latency: vec![3], usb_direct: vec![4], down: Vec::new() };
         hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
         hub.check_links(100, &kinds);
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 200);
