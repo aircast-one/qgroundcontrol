@@ -54,6 +54,11 @@ final class SheetStack {
         update(id) { entry in changed(entry) { $0.shown = true } }
     }
 
+    func moved(_ from: UUID, _ to: UUID, _ depth: Int, dialog: Bool) {
+        let adopted = entries.first { $0.id == to } ?? SheetEntry(id: to, depth: depth, dialog: dialog)
+        entries = entries.filter { $0.id != from && $0.id != to } + [changed(adopted) { $0.shown = true }]
+    }
+
     func disappeared(_ id: UUID) {
         update(id) { entry in entry.pending ? SheetEntry(id: entry.id, depth: entry.depth, dialog: entry.dialog) : nil }
     }
@@ -111,6 +116,7 @@ private struct QueuedSheet<Sheet: View>: ViewModifier {
                 ZStack { sheet() }
                     .background { AppDialogsHost() }
                     .onAppear { stack.appeared(id) }
+                    .onChange(of: id) { from, to in stack.moved(from, to, depth, dialog: dialog) }
                     .onDisappear { stack.disappeared(id) }
                     .environment(\.sheetDepth, depth + 1)
             }

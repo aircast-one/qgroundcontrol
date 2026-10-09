@@ -39,6 +39,21 @@ final class AircastSheetTests: XCTestCase {
         XCTAssertTrue(stack.entries.isEmpty)
     }
 
+    func testASheetHandedToANewHostOnRotationLeavesNoStaleLevel() {
+        let stack = SheetStack()
+        let portrait = UUID()
+        let landscape = UUID()
+        stack.request(portrait, 0, dialog: false)
+        stack.appeared(portrait)
+        stack.request(landscape, 0, dialog: false)
+        stack.abandon(portrait)
+        stack.moved(portrait, landscape, 0, dialog: false)
+        XCTAssertEqual(stack.entries.map(\.id), [landscape])
+        XCTAssertEqual(stack.level(dialogs: true), 1)
+        stack.disappeared(landscape)
+        XCTAssertEqual(stack.level(dialogs: true), 0)
+    }
+
     func testAppDialogsFollowTheTopmostOpenSheet() {
         let stack = SheetStack()
         let more = UUID()

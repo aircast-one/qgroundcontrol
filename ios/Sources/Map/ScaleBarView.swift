@@ -18,7 +18,8 @@ struct ScaleBarView: View {
                         .padding(.bottom, 2)
                     Rectangle()
                         .fill(.white.opacity(0.9))
-                        .frame(width: scale.pixels, height: 4)
+                        .frame(maxWidth: scale.pixels)
+                        .frame(height: 4)
                 }
             }
         }

@@ -500,21 +500,25 @@ struct FleetCard: View {
     @Environment(\.theme) private var theme
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
     @QgcPath(MULTI_VEHICLE_PANEL) private var panelJson
+    @State private var panelHeight: CGFloat = 0
+    @State private var top: CGFloat = 0
 
     var body: some View {
         if root.width >= FLEET_CARD_MIN_SCREEN, !flyScreen.guidedPanelOpen,
            fleetPanelShown(vehicleChoices(vehiclesJson).choices.count, multiVehiclePanelEnabled(panelJson)) {
-            ViewThatFits(in: .vertical) {
-                panel
-                ScrollView { panel }
+            ScrollView {
+                FleetPanel()
+                    .padding(.vertical, Space.s2)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { panelHeight = $0 }
             }
-            .frame(maxWidth: FLEET_CARD_MAX_WIDTH, maxHeight: FLEET_CARD_MAX_HEIGHT)
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(maxWidth: FLEET_CARD_MAX_WIDTH)
+            .frame(height: min(panelHeight, FLEET_CARD_MAX_HEIGHT, max(root.height - top - Space.s3, 0)))
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top = $0 }
             .background(osdBackdrop(theme.colors.surfaceContainer, flyOsd), in: RoundedRectangle(cornerRadius: Corner.large))
             .clipShape(RoundedRectangle(cornerRadius: Corner.large))
         }
     }
-
-    private var panel: some View { FleetPanel().padding(.vertical, Space.s2) }
 }
 
 let MAP_LAYERS_CLEARANCE: CGFloat = MAP_LAYERS_BUTTON + Space.s3 + Space.s2
@@ -587,14 +591,16 @@ struct AvoidedByVideoMessage: ViewModifier {
     let key: String
     let active: Bool
     @Environment(FlyScreenState.self) private var flyScreen
+    @State private var instance = UUID()
 
     func body(content: Content) -> some View {
+        let slot = "\(key)#\(instance)"
         content
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
-                guard active, flyScreen.obstacles[key] != rect else { return }
-                flyScreen.obstacles[key] = rect
+                guard active, flyScreen.obstacles[slot] != rect else { return }
+                flyScreen.obstacles[slot] = rect
             }
-            .onDisappear { flyScreen.obstacles[key] = nil }
+            .onDisappear { flyScreen.obstacles[slot] = nil }
     }
 }
 
