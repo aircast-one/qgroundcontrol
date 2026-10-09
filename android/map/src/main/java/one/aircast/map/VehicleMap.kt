@@ -347,12 +347,12 @@ fun VehicleMap(
                 installMissionLayers(loadedStyle)
                 installTraceLayer(loadedStyle)
                 installFenceHandleLayer(loadedStyle)
-                installVehicleLayer(loadedStyle)
                 installTrafficLayer(loadedStyle)
                 installRoiLayer(loadedStyle)
                 installGotoLayer(loadedStyle)
                 installClickMarker(loadedStyle)
                 installOrbitLayer(loadedStyle)
+                installVehicleLayer(loadedStyle)
                 if (!editable && onMapClick != null) {
                     loaded.addOnMapClickListener { at ->
                         val screen = loaded.projection.toScreenLocation(at)
