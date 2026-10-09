@@ -29,11 +29,11 @@ class AltitudeEntryTest {
 
     @Test
     fun `the field keeps the decimals QGC shows, so Done on an untouched field writes the same height back`() {
-        assertEquals("75", altitudeFieldText(75.0, WAYPOINT_ALTITUDE_DECIMALS))
-        assertEquals("45.5", altitudeFieldText(45.5, WAYPOINT_ALTITUDE_DECIMALS))
+        assertEquals("75", altitudeFieldText(75.0, 1))
+        assertEquals("45.5", altitudeFieldText(45.5, 1))
         assertEquals("164.04", altitudeFieldText(164.0420, RALLY_ALTITUDE_DECIMALS))
-        assertEquals("", altitudeFieldText(Double.NaN, WAYPOINT_ALTITUDE_DECIMALS))
-        assertEquals("0", altitudeFieldText(-0.04, WAYPOINT_ALTITUDE_DECIMALS))
+        assertEquals("", altitudeFieldText(Double.NaN, 1))
+        assertEquals("0", altitudeFieldText(-0.04, 1))
     }
 
     @Test

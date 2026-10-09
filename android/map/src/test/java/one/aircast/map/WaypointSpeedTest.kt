@@ -7,29 +7,15 @@ import org.junit.Test
 
 class WaypointSpeedTest {
     @Test
-    fun `a blank field clears the speed, a positive number sets it, anything else is refused`() {
-        assertEquals(SpeedEntry.Clear, speedEntry("  "))
-        assertEquals(SpeedEntry.Set(8.5), speedEntry("8,5"))
-        assertEquals(SpeedEntry.Invalid, speedEntry("0"))
-        assertEquals(SpeedEntry.Invalid, speedEntry("fast"))
-    }
-
-    @Test
-    fun `the field shows the item's speed only when the item specifies one`() {
+    fun `the speed row reads the item's speed section and skips a vehicle that has none`() {
         val served = JSONObject("""{"speedSection":{"available":true,"specified":true,"value":8.0,"units":"m/s","path":"p","specifyPath":"s"}}""")
-        val speed = waypointSpeed(served)!!
-        assertEquals("8", speedFieldText(speed))
-        assertEquals("", speedFieldText(speed.copy(specified = false)))
+        assertEquals(WaypointSpeed(true, 8.0, "m/s", "p", "s"), waypointSpeed(served))
         assertNull(waypointSpeed(JSONObject("""{"speedSection":{"available":false}}""")))
     }
 
     @Test
-    fun `a waypoint's hold is seconds from zero, an empty field meaning no hold`() {
+    fun `a waypoint's hold is read in seconds, and an item without one shows no row`() {
         assertEquals(WaypointHold(5.0, "s", "p"), waypointHold(JSONObject("""{"hold":{"value":5.0,"units":"s","path":"p"}}""")))
         assertNull(waypointHold(JSONObject("""{"hold":null}""")))
-        assertEquals(0.0, holdEntry(" ")!!, 0.0)
-        assertEquals(2.5, holdEntry("2,5")!!, 0.0)
-        assertNull(holdEntry("-1"))
-        assertNull(holdEntry("long"))
     }
 }

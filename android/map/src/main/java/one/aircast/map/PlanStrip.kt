@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -29,7 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
 
-internal data class PlanStat(val label: String, val value: String)
+data class PlanStat(val label: String, val value: String)
 
 internal fun planStats(itemCount: Int, items: List<MissionItem>, summary: JSONObject?): List<PlanStat> = listOfNotNull(
     PlanStat("Items", itemCount.toString()),
@@ -41,10 +39,6 @@ internal fun planStats(itemCount: Int, items: List<MissionItem>, summary: JSONOb
 internal fun highestAltitude(items: List<MissionItem>): String? =
     items.filter { it.index != HOME_ITEM && !it.altitude.isNaN() && it.altitudeText.isNotBlank() }
         .maxByOrNull { it.altitude }?.altitudeText
-
-internal fun neighbourItem(items: List<MissionItem>, index: Int, step: Int): Int? =
-    if (step < 0) items.filter { it.index < index }.maxOfOrNull { it.index }
-    else items.filter { it.index > index }.minOfOrNull { it.index }
 
 private const val NO_HOURS = "00:"
 internal const val TAP_TO_ADD = "Tap the map to add a waypoint"
@@ -63,14 +57,16 @@ internal fun selectionTitle(selected: MapHit, items: List<MissionItem>): String 
 }
 
 @Composable
-internal fun PlanStatStrip(stats: List<PlanStat>, onList: (() -> Unit)?, profileShown: Boolean?, onProfile: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        stats.forEach { stat ->
-            Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                Text(stat.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                Text(stat.value, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
+internal fun WaypointStripBar(
+    rows: List<ItemRow>,
+    selected: Int?,
+    onPick: (Int) -> Unit,
+    onList: (() -> Unit)?,
+    profileShown: Boolean?,
+    onProfile: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        WaypointStrip(rows, selected, onPick, Modifier.weight(1f))
         onList?.let { IconButton(onClick = it) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Show the plan as a list") } }
         profileShown?.let { shown ->
             IconButton(onClick = onProfile) {
@@ -98,24 +94,11 @@ internal fun EmptyMissionStrip(homeSet: Boolean, onTemplates: (() -> Unit)?, onD
 }
 
 @Composable
-internal fun SelectionHeader(
-    title: String,
-    detail: String?,
-    onPrevious: (() -> Unit)?,
-    onNext: (() -> Unit)?,
-    onDone: () -> Unit,
-) {
+internal fun SelectionHeader(title: String, detail: String?, onDone: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        val stepping = onPrevious != null || onNext != null
-        if (stepping) IconButton(onClick = { onPrevious?.invoke() }, enabled = onPrevious != null) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous item")
-        }
-        Column(Modifier.weight(1f).padding(start = if (stepping) 0.dp else 12.dp)) {
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2) }
-        }
-        if (stepping) IconButton(onClick = { onNext?.invoke() }, enabled = onNext != null) {
-            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next item")
         }
         Button(onClick = onDone, contentPadding = ButtonDefaults.ButtonWithIconContentPadding, modifier = Modifier.padding(end = 4.dp)) {
             Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))

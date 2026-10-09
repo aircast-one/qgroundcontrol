@@ -26,8 +26,10 @@ internal fun planMapStyle(context: Context): String {
 fun PlanMapScreen(
     modifier: Modifier = Modifier,
     onCentre: ((Double, Double) -> Unit)? = null,
-    itemEditor: (@Composable (Int, TrackPoint?, () -> Unit, () -> Unit) -> Unit)? = null,
-    header: (@Composable (PlanUpload) -> Unit)? = null,
+    itemPanel: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
+    header: (@Composable (PlanBar) -> Unit)? = null,
+    primary: (@Composable (PlanUpload) -> Unit)? = null,
+    routeSettings: (@Composable () -> Unit)? = null,
     fitKey: Int = 0,
     onTemplates: (() -> Unit)? = null,
 ) {
@@ -35,6 +37,6 @@ fun PlanMapScreen(
     val style = remember(context) { planMapStyle(context) }
 
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
-        PlanMapContent(style, onCentre, itemEditor, header, fitKey, onTemplates)
+        PlanMapContent(style, onCentre, itemPanel, header, primary, routeSettings, fitKey, onTemplates)
     }
 }

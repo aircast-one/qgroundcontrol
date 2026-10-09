@@ -29,7 +29,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.height
@@ -88,7 +88,7 @@ import kotlinx.coroutines.withContext
 
 private const val PLAN_POLL_MS = 700L
 private const val FAILURE_MESSAGE_MS = 2500L
-private val CONTROLS_MAX_HEIGHT = 320.dp
+private const val PANEL_MAX_FRACTION = 0.5f
 private val SIDE_PANEL_WIDTH = 380.dp
 private const val SIDE_PANEL_MIN_WIDTH_DP = 840
 internal const val SUMMARY_MAX_FRACTION = 0.74f
@@ -143,19 +143,22 @@ class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: Strin
     val done: Boolean get() = label == UPLOADED
 }
 
+class PlanBar(val upload: PlanUpload, val stats: List<PlanStat>)
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 internal fun PlanMapContent(
     mapStyle: String,
     onCentre: ((Double, Double) -> Unit)? = null,
-    itemEditor: (@Composable (Int, TrackPoint?, () -> Unit, () -> Unit) -> Unit)? = null,
-    header: (@Composable (PlanUpload) -> Unit)? = null,
+    itemPanel: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
+    header: (@Composable (PlanBar) -> Unit)? = null,
+    primary: (@Composable (PlanUpload) -> Unit)? = null,
+    routeSettings: (@Composable () -> Unit)? = null,
     fitKey: Int = 0,
     onTemplates: (() -> Unit)? = null,
 ) {
     var follow by remember { mutableStateOf(false) }
     var shownStyle by remember(mapStyle) { mutableStateOf(mapStyle) }
-    var editingItem by remember { mutableStateOf<MissionItem?>(null) }
     var fitRequest by remember { mutableIntStateOf(0) }
     var edits by remember { mutableIntStateOf(0) }
     var fitOnly by remember { mutableStateOf<List<TrackPoint>?>(null) }
@@ -493,6 +496,7 @@ internal fun PlanMapContent(
     val uploadText = uploadLabel(planOffline, planSyncing, planDirty, planHasItems)
     val uploadEnabled = planHasItems && !planOffline && !planSyncing
     val uploadEmphasised = uploadEnabled && !uploadBlocked
+    val planUpload = PlanUpload(enabled = uploadEnabled, emphasised = uploadEmphasised, label = uploadText, shown = !planOffline, onClick = upload)
     Box(Modifier.fillMaxSize()) {
         VehicleMap(
             modifier = Modifier.fillMaxSize(),
@@ -609,7 +613,7 @@ internal fun PlanMapContent(
         val headerHeight = with(LocalDensity.current) { headerPx.toDp() }
         header?.let { bar ->
             Box(Modifier.align(Alignment.TopStart).padding(start = mapStart).fillMaxWidth().onGloballyPositioned { headerPx = it.size.height }) {
-                bar(PlanUpload(enabled = uploadEnabled, emphasised = uploadEmphasised, label = uploadText, shown = !planOffline, onClick = upload))
+                bar(PlanBar(planUpload, planStats(itemCount, allItems, missionSummaryView)))
             }
         }
         val panelHeight = with(LocalDensity.current) { controlsHeightPx.toDp() }
@@ -703,6 +707,10 @@ internal fun PlanMapContent(
                 anchor = { open -> RailButton(R.drawable.plan_my_location, "Centre", chosen = follow, onClick = open) },
             )
             MapTypeMenu { shownStyle = it }
+        }
+
+        primary?.let { action ->
+            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = (if (sidePanel) 0.dp else panelHeight) + 16.dp)) { action(planUpload) }
         }
 
         if (loadArmed) {
@@ -800,8 +808,7 @@ internal fun PlanMapContent(
         ) {
             Column(
                 Modifier.padding(horizontal = 12.dp)
-                    .then(if (sidePanel) Modifier.fillMaxHeight().padding(top = 12.dp) else Modifier.heightIn(max = CONTROLS_MAX_HEIGHT))
-                    .verticalScroll(rememberScrollState()),
+                    .then(if (sidePanel) Modifier.fillMaxHeight().padding(top = 12.dp) else Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp * PANEL_MAX_FRACTION).dp)),
             ) {
                 if (!sidePanel) Box(
                     Modifier
@@ -812,516 +819,402 @@ internal fun PlanMapContent(
                 )
                 val chosen = selected
                 val chosenItem = (chosen as? MapHit.Waypoint)?.let { hit -> allItems.firstOrNull { it.index == hit.index } }
-                when {
-                    chosenItem != null -> {
-                        SelectionHeader(
-                            title = "${sentenceCase(chosenItem.command.ifBlank { "Item" })} ${sequenceLabel(chosenItem)}",
-                            detail = listOfNotNull(itemPlace(chosenItem, allItems), sheetDetail(chosenItem, surveyStatsMap[chosenItem.index]).ifBlank { null }).joinToString(" · ").ifBlank { null },
-                            onPrevious = neighbourItem(allItems, chosenItem.index, -1)?.let { index -> { focusItem(index) } },
-                            onNext = neighbourItem(allItems, chosenItem.index, 1)?.let { index -> { focusItem(index) } },
-                            onDone = { selected = null },
-                        )
-                        surveyTiles(chosenItem, surveyStatsMap[chosenItem.index]).takeIf { it.isNotEmpty() }?.let { tiles ->
-                            Row(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                tiles.forEach { (label, value) -> StatTile(label, value) }
-                            }
-                        }
-                        addingAfterText(chosen, allItems)?.let { PaletteNote(it) }
-                    }
-                    chosen != null -> SelectionHeader(
-                        title = selectionTitle(chosen, allItems),
-                        detail = selectionText(chosen, allItems, circles, fences),
-                        onPrevious = null,
-                        onNext = null,
-                        onDone = { selected = null },
-                    )
-                    layer == PlanLayer.Mission && itemCount == 0 -> EmptyMissionStrip(
-                        homeSet = homeSet,
-                        onTemplates = onTemplates,
-                        onDownload = { requestDownload() }.takeIf { !planOffline },
-                    )
-                    layer == PlanLayer.Mission -> PlanStatStrip(
-                        planStats(itemCount, allItems, missionSummaryView),
+                if (layer == PlanLayer.Mission && itemCount > 0 && layerOf(chosen) in setOf(null, PlanLayer.Mission)) {
+                    WaypointStripBar(
+                        rows = itemRows(allItems, surveyStatsMap),
+                        selected = chosenItem?.index,
+                        onPick = ::focusItem,
                         onList = { listOpen = true }.takeIf { !sidePanel },
                         profileShown = missionStatusShown.takeIf { profileShown(layer, profile) },
                         onProfile = { onBridge { setOk(SHOW_MISSION_ITEM_STATUS, settingJson((!missionStatusShown).toString())) } },
                     )
-                    layer == PlanLayer.Rally -> {
-                        if (support.rallyRefused) PaletteNote(RALLY_NOT_SUPPORTED)
-                        else if (rally.isEmpty()) PaletteNote(NO_RALLY_POINTS)
-                        if (rally.isNotEmpty()) FenceHeading("Rally points")
-                        rallyRows(rally).forEach { row ->
-                            FenceListRow(
-                                row,
-                                chosen = false,
-                                onSelect = { selected = MapHit.Rally(row.index) },
-                            ) {
-                                val count = rally.size
-                                onBridge("Removing ${row.title.lowercase()}", then = { selected = rallyAfterRemove(row.index, count) }) { FenceBridge.removeRallyPoint(row.index) }
-                            }
+                }
+                when {
+                    chosenItem != null -> SelectionHeader(
+                        title = "${sentenceCase(chosenItem.command.ifBlank { "Item" })} ${sequenceLabel(chosenItem)}",
+                        detail = listOfNotNull(itemPlace(chosenItem, allItems), sheetDetail(chosenItem, surveyStatsMap[chosenItem.index]).ifBlank { null }).joinToString(" · ").ifBlank { null },
+                        onDone = { selected = null },
+                    )
+                    chosen != null -> SelectionHeader(
+                        title = selectionTitle(chosen, allItems),
+                        detail = selectionText(chosen, allItems, circles, fences),
+                        onDone = { selected = null },
+                    )
+                }
+                val panelScroll = remember(chosen) { ScrollState(0) }
+                Column(Modifier.weight(1f, fill = false).verticalScroll(panelScroll)) {
+                    if (chosen == null && layer == PlanLayer.Mission && missionStatusShown && profileShown(layer, profile) && itemCount > 0) {
+                        TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
+                            allItems.firstOrNull { it.sequence == sequence }?.let { selected = MapHit.Waypoint(it.index) }
                         }
                     }
-                    else -> {
-                        if (support.fenceRefused) PaletteNote(GEOFENCE_NOT_SUPPORTED)
-                        else if (fences.isEmpty() && circles.isEmpty()) PaletteNote(NO_GEOFENCE)
-                        val listed = if (support.fenceRefused) emptyList() else fenceRows(fences, circles)
-                        listed.forEachIndexed { at, row ->
-                            fenceHeading(row, listed.getOrNull(at - 1))?.let { FenceHeading(it) }
-                            FenceListRow(
-                                row,
-                                chosen = false,
-                                onSelect = { selected = fenceRowHit(row) },
-                                onInclusion = row.inclusion?.let { { keep: Boolean -> onBridge("Changing ${row.title.lowercase()}") { FenceBridge.setPolygonInclusion(row.index, keep) } } },
-                            ) {
-                                onBridge("Removing ${row.title.lowercase()}", then = { selected = fenceSelectionAfterRemove(row, selected) }) {
-                                    if (row.circle) FenceBridge.deleteCircle(row.index) else FenceBridge.deletePolygon(row.index)
+                    when {
+                        chosenItem != null -> {
+                            surveyTiles(chosenItem, surveyStatsMap[chosenItem.index]).takeIf { it.isNotEmpty() }?.let { tiles ->
+                                Row(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    tiles.forEach { (label, value) -> StatTile(label, value) }
+                                }
+                            }
+                            WaypointSettings(chosenItem, globalFrame) { label, work -> onBridge(label) { work() } }
+                            addingAfterText(chosen, allItems)?.let { PaletteNote(it) }
+                        }
+                        chosen != null -> Unit
+                        layer == PlanLayer.Mission && itemCount == 0 -> EmptyMissionStrip(
+                            homeSet = homeSet,
+                            onTemplates = onTemplates,
+                            onDownload = { requestDownload() }.takeIf { !planOffline },
+                        )
+                        layer == PlanLayer.Mission -> routeSettings?.invoke()
+                        layer == PlanLayer.Rally -> {
+                            if (support.rallyRefused) PaletteNote(RALLY_NOT_SUPPORTED)
+                            else if (rally.isEmpty()) PaletteNote(NO_RALLY_POINTS)
+                            if (rally.isNotEmpty()) FenceHeading("Rally points")
+                            rallyRows(rally).forEach { row ->
+                                FenceListRow(
+                                    row,
+                                    chosen = false,
+                                    onSelect = { selected = MapHit.Rally(row.index) },
+                                ) {
+                                    val count = rally.size
+                                    onBridge("Removing ${row.title.lowercase()}", then = { selected = rallyAfterRemove(row.index, count) }) { FenceBridge.removeRallyPoint(row.index) }
+                                }
+                            }
+                        }
+                        else -> {
+                            if (support.fenceRefused) PaletteNote(GEOFENCE_NOT_SUPPORTED)
+                            else if (fences.isEmpty() && circles.isEmpty()) PaletteNote(NO_GEOFENCE)
+                            val listed = if (support.fenceRefused) emptyList() else fenceRows(fences, circles)
+                            listed.forEachIndexed { at, row ->
+                                fenceHeading(row, listed.getOrNull(at - 1))?.let { FenceHeading(it) }
+                                FenceListRow(
+                                    row,
+                                    chosen = false,
+                                    onSelect = { selected = fenceRowHit(row) },
+                                    onInclusion = row.inclusion?.let { { keep: Boolean -> onBridge("Changing ${row.title.lowercase()}") { FenceBridge.setPolygonInclusion(row.index, keep) } } },
+                                ) {
+                                    onBridge("Removing ${row.title.lowercase()}", then = { selected = fenceSelectionAfterRemove(row, selected) }) {
+                                        if (row.circle) FenceBridge.deleteCircle(row.index) else FenceBridge.deletePolygon(row.index)
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                if (listedInPanel) {
-                    val rows = itemRows(allItems, surveyStatsMap)
-                    ItemListHeading(rows, missionSummaryText(missionSummaryView), Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
-                    rows.forEach { row ->
-                        ItemRowView(row, selected = (selected as? MapHit.Waypoint)?.index == row.index) { pickRow(row) }
+                    if (listedInPanel) {
+                        val rows = itemRows(allItems, surveyStatsMap)
+                        ItemListHeading(rows, missionSummaryText(missionSummaryView), Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                        rows.forEach { row ->
+                            ItemRowView(row, selected = (selected as? MapHit.Waypoint)?.index == row.index) { pickRow(row) }
+                        }
                     }
-                }
 
-                tracing?.let { (target, points) ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(traceCaption(points.size, target.minimum), style = MaterialTheme.typography.labelSmall)
-                        TextButton(enabled = points.size >= target.minimum, onClick = {
-                            tracing = null
-                            onBridge("Tracing shape") { replaceShape(target, points) }
-                        }) { Text("Done") }
-                        TextButton(onClick = { tracing = null }) { Text("Cancel") }
+                    tracing?.let { (target, points) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(traceCaption(points.size, target.minimum), style = MaterialTheme.typography.labelSmall)
+                            TextButton(enabled = points.size >= target.minimum, onClick = {
+                                tracing = null
+                                onBridge("Tracing shape") { replaceShape(target, points) }
+                            }) { Text("Done") }
+                            TextButton(onClick = { tracing = null }) { Text("Cancel") }
+                        }
                     }
-                }
 
-                var cameraMenuFor by remember { mutableStateOf<Int?>(null) }
-                val survey = selectedSurvey(selected, surveyList)
-                val waypoint = (selected as? MapHit.Waypoint)
-                    ?.let { hit -> allItems.firstOrNull { it.index == hit.index } }
-                val shapeFence = (selected as? MapHit.ShapeCentre)?.takeIf { it.fence }?.owner ?: (selected as? MapHit.ShapeRadius)?.takeIf { it.fence }?.owner
-                val fenceHit = selected as? MapHit.FenceVertex
-                val surveyHit = selected as? MapHit.SurveyVertex
-                val rallyHit = selected as? MapHit.Rally
-                val circleIndex = (selected as? MapHit.Circle)?.index
-                    ?: (selected as? MapHit.CircleCentre)?.index
-                val circle = circleIndex?.let { index -> circles.firstOrNull { it.index == index } }
+                    val survey = selectedSurvey(selected, surveyList)
+                    val shapeFence = (selected as? MapHit.ShapeCentre)?.takeIf { it.fence }?.owner ?: (selected as? MapHit.ShapeRadius)?.takeIf { it.fence }?.owner
+                    val fenceHit = selected as? MapHit.FenceVertex
+                    val surveyHit = selected as? MapHit.SurveyVertex
+                    val rallyHit = selected as? MapHit.Rally
+                    val circleIndex = (selected as? MapHit.Circle)?.index
+                        ?: (selected as? MapHit.CircleCentre)?.index
+                    val circle = circleIndex?.let { index -> circles.firstOrNull { it.index == index } }
 
-                if (survey != null || waypoint != null || fenceHit != null || shapeFence != null ||
-                    rallyHit != null || circle != null
-                ) {
-                    FlowRow(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    if (survey != null || fenceHit != null || shapeFence != null ||
+                        rallyHit != null || circle != null || selectedLanding(selected, landingList) != null
                     ) {
-                        selectedFence(selected, fences, circles)?.let { fence ->
-                            fence.flip?.let { flip ->
+                        FlowRow(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            selectedFence(selected, fences, circles)?.let { fence ->
+                                fence.flip?.let { flip ->
+                                    TextButton(onClick = {
+                                        onBridge(
+                                            if (fence.keepsIn) "Making it keep-out" else "Making it keep-in",
+                                        ) { flip() }
+                                    }) { Text(if (fence.keepsIn) "Make keep-out" else "Make keep-in") }
+                                }
+                            }
+
+                            fenceDetail(selected, fences, circles)?.let {
+                                PaletteNote(it)
+                            }
+
+                            landingText(selectedLanding(selected, landingList))?.let {
+                                PaletteNote(it)
+                            }
+
+                            survey?.let { cameraText(surveyStatsMap[it.index]) }?.let {
+                                PaletteNote(it)
+                            }
+
+                            layersText(survey)?.let {
+                                PaletteNote(it)
+                            }
+
+                            survey?.takeIf { it.kind == KIND_SURVEY }?.let { grid ->
+                                var angle by remember(grid.index) { mutableStateOf<Float?>(null) }
+                                LaunchedEffect(grid.index) {
+                                    angle = withContext(Dispatchers.Default) { gridAngleShown(SurveyBridge.gridAngle(grid.index)) }
+                                }
+                                angle?.let { shown ->
+                                    Column(Modifier.width(220.dp)) {
+                                        Text("Angle ${shown.toInt()}°", style = MaterialTheme.typography.labelSmall)
+                                        Slider(
+                                            value = shown,
+                                            onValueChange = { angle = Math.round(it).toFloat() },
+                                            onValueChangeFinished = { angle?.let { chosen -> onBridge("Setting the grid angle") { SurveyBridge.setGridAngle(grid.index, chosen.toDouble()) } } },
+                                            valueRange = 0f..GRID_ANGLE_MAX,
+                                        )
+                                    }
+                                }
+                            }
+
+                            survey?.takeIf { visible.size == it.area.size }?.let {
                                 TextButton(onClick = {
-                                    onBridge(
-                                        if (fence.keepsIn) "Making it keep-out" else "Making it keep-in",
-                                    ) { flip() }
-                                }) { Text(if (fence.keepsIn) "Make keep-out" else "Make keep-in") }
+                                    onBridge("Sizing the area", done = "Area sized to the view") {
+                                        fitSurveyArea(it, insetRing(visible, SURVEY_FIT_INSET))
+                                    }
+                                }) { Text("Size to view") }
                             }
-                        }
 
-                        fenceDetail(selected, fences, circles)?.let {
-                            PaletteNote(it)
-                        }
-
-                        waypoint?.let { item ->
-                            if (itemEditor != null) {
-                                FilledTonalButton(onClick = { editingItem = item }) { Text("Edit item") }
-                            }
-                        }
-
-                        landingText(selectedLanding(selected, landingList))?.let {
-                            PaletteNote(it)
-                        }
-
-                        survey?.let { cameraText(surveyStatsMap[it.index]) }?.let {
-                            PaletteNote(it)
-                        }
-
-                        layersText(survey)?.let {
-                            PaletteNote(it)
-                        }
-
-                        survey?.takeIf { it.kind == KIND_SURVEY }?.let { grid ->
-                            var angle by remember(grid.index) { mutableStateOf<Float?>(null) }
-                            LaunchedEffect(grid.index) {
-                                angle = withContext(Dispatchers.Default) { gridAngleShown(SurveyBridge.gridAngle(grid.index)) }
-                            }
-                            angle?.let { shown ->
-                                Column(Modifier.width(220.dp)) {
-                                    Text("Angle ${shown.toInt()}°", style = MaterialTheme.typography.labelSmall)
-                                    Slider(
-                                        value = shown,
-                                        onValueChange = { angle = Math.round(it).toFloat() },
-                                        onValueChangeFinished = { angle?.let { chosen -> onBridge("Setting the grid angle") { SurveyBridge.setGridAngle(grid.index, chosen.toDouble()) } } },
-                                        valueRange = 0f..GRID_ANGLE_MAX,
-                                    )
+                            listOfNotNull(fenceHit, surveyHit).firstOrNull()?.let { hit ->
+                                cornerPosition(hit, fences, surveyList)?.let { at ->
+                                    TextButton(onClick = { positioning = hit to at }) { Text("Edit position") }
                                 }
                             }
-                        }
 
-                        survey?.takeIf { visible.size == it.area.size }?.let {
-                            TextButton(onClick = {
-                                onBridge("Sizing the area", done = "Area sized to the view") {
-                                    fitSurveyArea(it, insetRing(visible, SURVEY_FIT_INSET))
+                            shapeTarget(fenceHit?.polygon ?: shapeFence, survey?.takeIf { surveyHit != null || selected is MapHit.ShapeCentre || selected is MapHit.ShapeRadius })?.let { target ->
+                                shapeEditable(target, fences, surveyList)?.let { shape ->
+                                    Text(shapeCaption(shape, target.path in circled), style = MaterialTheme.typography.labelSmall)
                                 }
-                            }) { Text("Size to view") }
-                        }
+                                if (target.line) {
+                                    TextButton(enabled = visible.size == 4, onClick = {
+                                        onBridge("Drawing line") { replaceShape(target, defaultLine(visible)) }
+                                    }) { Text("Line") }
+                                } else {
+                                    TextButton(enabled = visible.size == 4, onClick = {
+                                        chosenCircles = chosenCircles - target.path
+                                        onBridge("Drawing rectangle") { replaceShape(target, defaultRectangle(visible)) }
+                                    }) { Text("Rectangle") }
+                                    TextButton(enabled = visible.size == 4, onClick = {
+                                        chosenCircles = chosenCircles + target.path
+                                        onBridge("Drawing circle") { replaceShape(target, defaultCircle(visible)) }
+                                    }) { Text("Circle") }
+                                    if (target.path in circled) {
+                                        TextButton(onClick = { radiusFor = target }) { Text("Set radius\u2026") }
+                                        shapeCentreHit(target, fences, surveyList)?.let { centre ->
+                                            TextButton(onClick = { positioning = centre }) { Text("Edit position\u2026") }
+                                        }
+                                    }
+                                }
+                                TextButton(onClick = { tracing = target to emptyList() }) { Text("Trace") }
+                                TextButton(onClick = {
+                                    chosenCircles = chosenCircles - target.path
+                                    importInto = target
+                                    polygonFile.launch(arrayOf("*/*"))
+                                }) { Text("Import\u2026") }
+                            }
 
-                        waypoint?.let { legText(it) }?.let {
-                            PaletteNote(it)
-                        }
+                            fenceHit?.let { hit ->
+                                if (cornerRemovable(fences.firstOrNull { it.index == hit.polygon })) {
+                                    TextButton(onClick = {
+                                        onBridge("Removing corner") {
+                                            FenceBridge.removeVertex(hit.polygon, hit.vertex)
+                                        }
+                                        selected = null
+                                    }) { Text("Remove vertex") }
+                                }
+                                TextButton(onClick = {
+                                    onBridge { FenceBridge.deletePolygon(hit.polygon) }
+                                    selected = null
+                                }) { Text("Delete fence") }
+                            }
 
-                        waypoint?.let { item ->
-                            if (!item.altitude.isNaN()) {
-                                var typed by remember(item.index, item.altitude) {
-                                    mutableStateOf(altitudeFieldText(item.altitude, WAYPOINT_ALTITUDE_DECIMALS))
+                            surveyHit?.let { hit ->
+                                survey?.takeIf { it.editable?.canRemoveVertex == true }?.let { shape ->
+                                    TextButton(onClick = {
+                                        onBridge("Removing corner") { SurveyBridge.removeVertex(shape, hit.vertex) }
+                                        selected = null
+                                    }) { Text("Remove vertex") }
+                                }
+                                var surveyAlt by remember(hit.item) { mutableStateOf("") }
+                                var surveyUnit by remember(hit.item) { mutableStateOf("m") }
+                                LaunchedEffect(hit.item) {
+                                    val shown = withContext(Dispatchers.Default) {
+                                        SurveyBridge.altitude(hit.item)
+                                    }
+                                    val unit = withContext(Dispatchers.Default) {
+                                        SurveyBridge.altitudeUnits(hit.item)
+                                    }
+                                    surveyAlt = altitudeFieldText(shown, SURFACE_DISTANCE_DECIMALS)
+                                    surveyUnit = unit.ifBlank { "m" }
                                 }
                                 OutlinedTextField(
-                                    value = typed,
-                                    onValueChange = { typed = it },
-                                    label = { Text(altitudeFieldLabel(item)) },
+                                    value = surveyAlt,
+                                    onValueChange = { surveyAlt = it },
+                                    label = { Text("Above surface $surveyUnit") },
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Text,
+                                        keyboardType = KeyboardType.Decimal,
                                         imeAction = ImeAction.Done,
                                     ),
                                     keyboardActions = KeyboardActions(
                                         onDone = {
-                                            val shown = parsedAltitude(typed)
+                                            val shown = parsedSurfaceDistance(surveyAlt, metresPerUnit(surveyUnit))
                                             if (shown == null) {
                                                 say("Not an altitude")
                                             } else {
-                                                onBridge("Setting altitude") {
-                                                    PlanBridge.setAltitude(item.index, shown)
+                                                onBridge("Setting survey altitude") {
+                                                    SurveyBridge.setAltitude(hit.item, shown)
                                                 }
                                             }
                                         },
                                     ),
-                                    modifier = Modifier.width(altitudeFieldWidth(item)),
+                                    modifier = Modifier.width(150.dp),
+                                    textStyle = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+
+                            (surveyHit?.item ?: (selected as? MapHit.ShapeCentre)?.takeIf { !it.fence }?.owner)?.let { item ->
+                                TextButton(onClick = {
+                                    onRefusal { PlanBridge.removeItemRefusal(item) }
+                                    selected = null
+                                }) { Text("Delete ${patternName(item, allItems)}") }
+                            }
+
+                            circle?.let { it ->
+                                val bigger = grownRadius(it)
+                                val smaller = shrunkRadius(it)
+                                var typedCircleRadius by remember(it.index, it.radius) { mutableStateOf(trimmedRadius(it.radius)) }
+
+                                OutlinedTextField(
+                                    value = typedCircleRadius,
+                                    onValueChange = { typedCircleRadius = it },
+                                    label = { Text("Radius") },
+                                    suffix = { Text(it.radiusUnits) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Decimal,
+                                        imeAction = ImeAction.Done,
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onDone = {
+                                            val wanted = typedRadius(typedCircleRadius, it)
+                                            if (wanted == null) say("Not a radius this fence accepts") else onBridge { FenceBridge.setCircleRadius(it.index, wanted) }
+                                        },
+                                    ),
+                                    modifier = Modifier.width(110.dp),
                                     textStyle = MaterialTheme.typography.bodySmall,
                                 )
 
-                                FilledTonalButton(onClick = {
-                                    onBridge { PlanBridge.setAltitude(item.index, item.altitude + 10.0) }
-                                }) { Text("+10") }
-
-                                FilledTonalButton(
+                                TextButton(
+                                    enabled = bigger != null,
                                     onClick = {
-                                        onBridge { PlanBridge.setAltitude(item.index, item.altitude - 10.0) }
-                                    },
-                                ) { Text("-10") }
-
-                                WaypointSpeedField(item.index, onWrite = { label, work -> onBridge(label) { work() } }, onRefused = { say(it) })
-
-                                if (itemReferenceShown(globalFrame)) AltitudeModePicker(
-                                    item = item,
-                                    onPick = { raw ->
-                                        onBridge("Setting the altitude frame") {
-                                            PlanBridge.setAltitudeMode(item.index, raw)
+                                        bigger?.let { wanted ->
+                                            onBridge { FenceBridge.setCircleRadius(it.index, wanted) }
                                         }
                                     },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    globalFrameMixed = itemReferenceSelectable(globalFrame),
-                                )
+                                ) { Text("Bigger") }
+
+                                TextButton(
+                                    enabled = smaller != null,
+                                    onClick = {
+                                        smaller?.let { wanted ->
+                                            onBridge { FenceBridge.setCircleRadius(it.index, wanted) }
+                                        }
+                                    },
+                                ) { Text("Smaller") }
+
+                                TextButton(onClick = {
+                                    onBridge { FenceBridge.deleteCircle(it.index) }
+                                    selected = null
+                                }) { Text("Delete circle") }
                             }
 
-                            var cameraRevision by remember(item.index) { mutableStateOf(0) }
-                            val camera by produceState<JSONObject?>(null, item.index, cameraRevision) {
-                                value = withContext(Dispatchers.Default) {
-                                    ItemCameraBridge.read(item.index)
-                                }
-                            }
-                            val cameraPicker = cameraChoices(camera)
-                                ?.let { it.labels.getOrNull(it.chosen) }
-                            itemCameraTextBeside(camera, cameraPicker)?.let {
-                                PaletteNote(it)
-                            }
-                            cameraChoices(camera)?.let { choices ->
-                                Box {
-                                    OutlinedTextField(
-                                        value = choices.labels.getOrElse(choices.chosen) { "…" },
-                                        onValueChange = {},
-                                        readOnly = true,
-                                        label = { Text("At this point") },
-                                        trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) },
-                                        singleLine = true,
-                                        textStyle = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.width(AT_THIS_POINT_WIDTH),
-                                    )
-                                    Box(Modifier.matchParentSize().clickable { cameraMenuFor = item.index })
-                                    DropdownMenu(
-                                        expanded = cameraMenuFor == item.index,
-                                        onDismissRequest = { cameraMenuFor = null },
-                                    ) {
-                                        choices.labels.forEachIndexed { at, label ->
-                                            DropdownMenuItem(
-                                                text = { Text(label) },
-                                                onClick = {
-                                                    cameraMenuFor = null
-                                                    onBridge("Setting the camera action") {
-                                                        ItemCameraBridge.chooseAction(item.index, at)
+                            rallyHit?.let { hit ->
+                                rally.firstOrNull { it.index == hit.index }?.let { point ->
+                                    listOf(
+                                        Triple("Latitude", point.latitude, LATITUDE_LIMIT),
+                                        Triple("Longitude", point.longitude, LONGITUDE_LIMIT),
+                                    ).forEach { (label, value, limit) ->
+                                        var typed by remember(point.index, label, value) { mutableStateOf(value.toString()) }
+                                        OutlinedTextField(
+                                            value = typed,
+                                            onValueChange = { typed = it },
+                                            label = { Text(label) },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
+                                            keyboardActions = KeyboardActions(
+                                                onDone = {
+                                                    val entered = parsedCoordinate(typed, limit)
+                                                    if (entered == null) {
+                                                        say("Not a $label")
+                                                    } else {
+                                                        val (latitude, longitude) = if (label == "Latitude") entered to point.longitude else point.latitude to entered
+                                                        onBridge("Moving rally point") {
+                                                            FenceBridge.moveRallyPoint(point.index, latitude, longitude, point.altitudeMetres)
+                                                        }
                                                     }
-                                                    cameraRevision += 1
                                                 },
-                                            )
+                                            ),
+                                            modifier = Modifier.width(150.dp),
+                                            textStyle = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                }
+                                rally.firstOrNull { it.index == hit.index }
+                                    ?.takeIf { rallyAltitudeIsEditable(it) }
+                                    ?.let { point ->
+                                        var typed by remember(point.index, point.altitude) {
+                                            mutableStateOf(altitudeFieldText(point.altitude, RALLY_ALTITUDE_DECIMALS))
                                         }
-                                    }
-                                }
-                            }
-                            WaypointHoldField(item.index, onWrite = { label, work -> onBridge(label) { work() } }, onRefused = { say(it) })
-                            cameraChoices(camera)?.let {
-                                cameraExtras(camera)?.let { extras ->
-                                    CameraSectionExtras(extras) { member, value ->
-                                        onBridge("Setting the camera") { ItemCameraBridge.set(item.index, member, value) }
-                                        cameraRevision += 1
-                                    }
-                                }
-                                itemCameraNote(camera)?.let { PaletteNote(it) }
-                            }
-                            if (item.index > HOME_ITEM) {
-                                TextButton(onClick = { removeItem(item) }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(deleteLabel(item)) }
-                            }
-                        }
-
-                        listOfNotNull(fenceHit, surveyHit).firstOrNull()?.let { hit ->
-                            cornerPosition(hit, fences, surveyList)?.let { at ->
-                                TextButton(onClick = { positioning = hit to at }) { Text("Edit position") }
-                            }
-                        }
-
-                        shapeTarget(fenceHit?.polygon ?: shapeFence, survey?.takeIf { surveyHit != null || selected is MapHit.ShapeCentre || selected is MapHit.ShapeRadius })?.let { target ->
-                            shapeEditable(target, fences, surveyList)?.let { shape ->
-                                Text(shapeCaption(shape, target.path in circled), style = MaterialTheme.typography.labelSmall)
-                            }
-                            if (target.line) {
-                                TextButton(enabled = visible.size == 4, onClick = {
-                                    onBridge("Drawing line") { replaceShape(target, defaultLine(visible)) }
-                                }) { Text("Line") }
-                            } else {
-                                TextButton(enabled = visible.size == 4, onClick = {
-                                    chosenCircles = chosenCircles - target.path
-                                    onBridge("Drawing rectangle") { replaceShape(target, defaultRectangle(visible)) }
-                                }) { Text("Rectangle") }
-                                TextButton(enabled = visible.size == 4, onClick = {
-                                    chosenCircles = chosenCircles + target.path
-                                    onBridge("Drawing circle") { replaceShape(target, defaultCircle(visible)) }
-                                }) { Text("Circle") }
-                                if (target.path in circled) {
-                                    TextButton(onClick = { radiusFor = target }) { Text("Set radius\u2026") }
-                                    shapeCentreHit(target, fences, surveyList)?.let { centre ->
-                                        TextButton(onClick = { positioning = centre }) { Text("Edit position\u2026") }
-                                    }
-                                }
-                            }
-                            TextButton(onClick = { tracing = target to emptyList() }) { Text("Trace") }
-                            TextButton(onClick = {
-                                chosenCircles = chosenCircles - target.path
-                                importInto = target
-                                polygonFile.launch(arrayOf("*/*"))
-                            }) { Text("Import\u2026") }
-                        }
-
-                        fenceHit?.let { hit ->
-                            if (cornerRemovable(fences.firstOrNull { it.index == hit.polygon })) {
-                                TextButton(onClick = {
-                                    onBridge("Removing corner") {
-                                        FenceBridge.removeVertex(hit.polygon, hit.vertex)
-                                    }
-                                    selected = null
-                                }) { Text("Remove vertex") }
-                            }
-                            TextButton(onClick = {
-                                onBridge { FenceBridge.deletePolygon(hit.polygon) }
-                                selected = null
-                            }) { Text("Delete fence") }
-                        }
-
-                        surveyHit?.let { hit ->
-                            survey?.takeIf { it.editable?.canRemoveVertex == true }?.let { shape ->
-                                TextButton(onClick = {
-                                    onBridge("Removing corner") { SurveyBridge.removeVertex(shape, hit.vertex) }
-                                    selected = null
-                                }) { Text("Remove vertex") }
-                            }
-                            var surveyAlt by remember(hit.item) { mutableStateOf("") }
-                            var surveyUnit by remember(hit.item) { mutableStateOf("m") }
-                            LaunchedEffect(hit.item) {
-                                val shown = withContext(Dispatchers.Default) {
-                                    SurveyBridge.altitude(hit.item)
-                                }
-                                val unit = withContext(Dispatchers.Default) {
-                                    SurveyBridge.altitudeUnits(hit.item)
-                                }
-                                surveyAlt = altitudeFieldText(shown, SURFACE_DISTANCE_DECIMALS)
-                                surveyUnit = unit.ifBlank { "m" }
-                            }
-                            OutlinedTextField(
-                                value = surveyAlt,
-                                onValueChange = { surveyAlt = it },
-                                label = { Text("Above surface $surveyUnit") },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Decimal,
-                                    imeAction = ImeAction.Done,
-                                ),
-                                keyboardActions = KeyboardActions(
-                                    onDone = {
-                                        val shown = parsedSurfaceDistance(surveyAlt, metresPerUnit(surveyUnit))
-                                        if (shown == null) {
-                                            say("Not an altitude")
-                                        } else {
-                                            onBridge("Setting survey altitude") {
-                                                SurveyBridge.setAltitude(hit.item, shown)
-                                            }
-                                        }
-                                    },
-                                ),
-                                modifier = Modifier.width(150.dp),
-                                textStyle = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-
-                        (surveyHit?.item ?: (selected as? MapHit.ShapeCentre)?.takeIf { !it.fence }?.owner)?.let { item ->
-                            TextButton(onClick = {
-                                onRefusal { PlanBridge.removeItemRefusal(item) }
-                                selected = null
-                            }) { Text("Delete ${patternName(item, allItems)}") }
-                        }
-
-                        circle?.let { it ->
-                            val bigger = grownRadius(it)
-                            val smaller = shrunkRadius(it)
-                            var typedCircleRadius by remember(it.index, it.radius) { mutableStateOf(trimmedRadius(it.radius)) }
-
-                            OutlinedTextField(
-                                value = typedCircleRadius,
-                                onValueChange = { typedCircleRadius = it },
-                                label = { Text("Radius") },
-                                suffix = { Text(it.radiusUnits) },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Decimal,
-                                    imeAction = ImeAction.Done,
-                                ),
-                                keyboardActions = KeyboardActions(
-                                    onDone = {
-                                        val wanted = typedRadius(typedCircleRadius, it)
-                                        if (wanted == null) say("Not a radius this fence accepts") else onBridge { FenceBridge.setCircleRadius(it.index, wanted) }
-                                    },
-                                ),
-                                modifier = Modifier.width(110.dp),
-                                textStyle = MaterialTheme.typography.bodySmall,
-                            )
-
-                            TextButton(
-                                enabled = bigger != null,
-                                onClick = {
-                                    bigger?.let { wanted ->
-                                        onBridge { FenceBridge.setCircleRadius(it.index, wanted) }
-                                    }
-                                },
-                            ) { Text("Bigger") }
-
-                            TextButton(
-                                enabled = smaller != null,
-                                onClick = {
-                                    smaller?.let { wanted ->
-                                        onBridge { FenceBridge.setCircleRadius(it.index, wanted) }
-                                    }
-                                },
-                            ) { Text("Smaller") }
-
-                            TextButton(onClick = {
-                                onBridge { FenceBridge.deleteCircle(it.index) }
-                                selected = null
-                            }) { Text("Delete circle") }
-                        }
-
-                        rallyHit?.let { hit ->
-                            rally.firstOrNull { it.index == hit.index }?.let { point ->
-                                listOf(
-                                    Triple("Latitude", point.latitude, LATITUDE_LIMIT),
-                                    Triple("Longitude", point.longitude, LONGITUDE_LIMIT),
-                                ).forEach { (label, value, limit) ->
-                                    var typed by remember(point.index, label, value) { mutableStateOf(value.toString()) }
-                                    OutlinedTextField(
-                                        value = typed,
-                                        onValueChange = { typed = it },
-                                        label = { Text(label) },
-                                        singleLine = true,
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
-                                        keyboardActions = KeyboardActions(
-                                            onDone = {
-                                                val entered = parsedCoordinate(typed, limit)
-                                                if (entered == null) {
-                                                    say("Not a $label")
-                                                } else {
-                                                    val (latitude, longitude) = if (label == "Latitude") entered to point.longitude else point.latitude to entered
-                                                    onBridge("Moving rally point") {
-                                                        FenceBridge.moveRallyPoint(point.index, latitude, longitude, point.altitudeMetres)
+                                        OutlinedTextField(
+                                            value = typed,
+                                            onValueChange = { typed = it },
+                                            label = { Text(rallyAltitudeLabel(point)) },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = KeyboardType.Text,
+                                                imeAction = ImeAction.Done,
+                                            ),
+                                            keyboardActions = KeyboardActions(
+                                                onDone = {
+                                                    val shown = parsedAltitude(typed)
+                                                    if (shown == null) {
+                                                        say("Not an altitude")
+                                                    } else {
+                                                        onBridge("Setting altitude") {
+                                                            FenceBridge.setRallyAltitude(point.altitudePath, shown)
+                                                        }
                                                     }
-                                                }
-                                            },
-                                        ),
-                                        modifier = Modifier.width(150.dp),
-                                        textStyle = MaterialTheme.typography.bodySmall,
-                                    )
-                                }
-                            }
-                            rally.firstOrNull { it.index == hit.index }
-                                ?.takeIf { rallyAltitudeIsEditable(it) }
-                                ?.let { point ->
-                                    var typed by remember(point.index, point.altitude) {
-                                        mutableStateOf(altitudeFieldText(point.altitude, RALLY_ALTITUDE_DECIMALS))
+                                                },
+                                            ),
+                                            modifier = Modifier.width(120.dp),
+                                            textStyle = MaterialTheme.typography.bodySmall,
+                                        )
                                     }
-                                    OutlinedTextField(
-                                        value = typed,
-                                        onValueChange = { typed = it },
-                                        label = { Text(rallyAltitudeLabel(point)) },
-                                        singleLine = true,
-                                        keyboardOptions = KeyboardOptions(
-                                            keyboardType = KeyboardType.Text,
-                                            imeAction = ImeAction.Done,
-                                        ),
-                                        keyboardActions = KeyboardActions(
-                                            onDone = {
-                                                val shown = parsedAltitude(typed)
-                                                if (shown == null) {
-                                                    say("Not an altitude")
-                                                } else {
-                                                    onBridge("Setting altitude") {
-                                                        FenceBridge.setRallyAltitude(point.altitudePath, shown)
-                                                    }
-                                                }
-                                            },
-                                        ),
-                                        modifier = Modifier.width(120.dp),
-                                        textStyle = MaterialTheme.typography.bodySmall,
-                                    )
-                                }
 
-                            TextButton(onClick = {
-                                val count = rally.size
-                                onBridge(then = { selected = rallyAfterRemove(hit.index, count) }) { FenceBridge.removeRallyPoint(hit.index) }
-                            }) { Text("Delete rally point") }
+                                TextButton(onClick = {
+                                    val count = rally.size
+                                    onBridge(then = { selected = rallyAfterRemove(hit.index, count) }) { FenceBridge.removeRallyPoint(hit.index) }
+                                }) { Text("Delete rally point") }
+                            }
+
                         }
-
                     }
-                }
 
-                if (missionStatusShown && profileShown(layer, profile) && itemCount > 0) {
-                    TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
-                        allItems.firstOrNull { it.sequence == sequence }?.let { selected = MapHit.Waypoint(it.index) }
+                    chosenItem?.let { item ->
+                        itemPanel?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }) { removeItem(item) }
                     }
                 }
             }
@@ -1342,22 +1235,9 @@ internal fun PlanMapContent(
             }
         }
     }
-    editingItem?.let { item ->
-        itemEditor?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, { editingItem = null }) {
-            editingItem = null
-            removeItem(item)
-        }
-    }
 }
 
-private const val DETAIL_SHARE = 2f
-
 private const val SURVEY_FIT_INSET = 0.8
-
-private const val SHORT_ALTITUDE_LABEL = 10
-
-private fun altitudeFieldWidth(item: MissionItem) =
-    if (altitudeFieldLabel(item).length > SHORT_ALTITUDE_LABEL) 180.dp else 120.dp
 
 private val ITEM_MARKER_SIZE = 40.dp
 
@@ -1646,5 +1526,3 @@ private fun FenceListRow(
         IconButton(onClick = onRemove) { Icon(Icons.Filled.Close, contentDescription = "Remove ${row.title}") }
     }
 }
-
-private val AT_THIS_POINT_WIDTH = 242.dp

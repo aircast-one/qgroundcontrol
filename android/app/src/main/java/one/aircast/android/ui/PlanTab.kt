@@ -55,6 +55,8 @@ import one.aircast.map.PlanMapScreen
 
 private const val NOTICE_MILLIS = 4000L
 private const val HEADER_ALPHA = 0.94f
+private const val DISABLED_PILL_ALPHA = 0.38f
+private val PILL_HEIGHT = 48.dp
 private val HEADER_CORNER = 20.dp
 
 internal const val APPLY_DEFAULT_ALTITUDE = "core.plan.applyDefaultAltitude"
@@ -215,9 +217,41 @@ fun PlanTab(modifier: Modifier = Modifier) {
             Modifier.fillMaxSize(),
             fitKey = files.opened(),
             onCentre = { lat, lon -> centre = lat to lon },
-            itemEditor = { index, at, close, remove -> ItemEditor(index, at, centre, close, remove) },
+            itemPanel = { index, at, remove -> ItemEditor(index, at, centre, remove) },
+            routeSettings = { RouteSettings(planStatus) },
             onTemplates = { newPlanOpen = true },
-            header = { upload ->
+            primary = { upload ->
+                if (upload.shown) {
+                    PlanActionPill(
+                        label = upload.label,
+                        icon = if (upload.done) R.drawable.ic_check_circle else R.drawable.ic_upload,
+                        enabled = upload.enabled,
+                        container = when {
+                            upload.done -> MaterialTheme.aircast.success
+                            upload.emphasised -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                        },
+                        content = when {
+                            upload.done -> MaterialTheme.aircast.onSuccess
+                            upload.emphasised -> MaterialTheme.colorScheme.onPrimary
+                            else -> MaterialTheme.colorScheme.onSurface
+                        },
+                        progress = syncProgress.takeIf { syncing },
+                        onClick = upload.onClick,
+                    )
+                } else if (containsItems) {
+                    PlanActionPill(
+                        label = if (dirty) "Save" else "Saved",
+                        icon = if (dirty) R.drawable.ic_download else R.drawable.ic_check_circle,
+                        enabled = can.save && dirty,
+                        container = if (dirty) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        content = if (dirty) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        progress = null,
+                        onClick = { files.save() },
+                    )
+                }
+            },
+            header = { bar ->
                 Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
                         Modifier.fillMaxWidth(),
@@ -234,7 +268,7 @@ fun PlanTab(modifier: Modifier = Modifier) {
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    (notice ?: planStatusText(planStatus)).takeIf { it.isNotBlank() && it != title }?.let { line ->
+                                    (notice ?: headerLine(planStatusText(planStatus), syncing, bar.stats)).takeIf { it.isNotBlank() && it != title }?.let { line ->
                                         Text(
                                             line,
                                             style = MaterialTheme.typography.labelSmall,
@@ -243,37 +277,6 @@ fun PlanTab(modifier: Modifier = Modifier) {
                                             overflow = TextOverflow.Ellipsis,
                                         )
                                     }
-                                }
-                            }
-                        }
-                        if (upload.shown) Surface(
-                            onClick = upload.onClick,
-                            enabled = upload.enabled,
-                            modifier = Modifier.alpha(if (upload.enabled) 1f else 0.38f),
-                            shape = CircleShape,
-                            color = when {
-                                upload.done -> MaterialTheme.aircast.success
-                                upload.emphasised -> MaterialTheme.colorScheme.primary
-                                else -> MaterialTheme.colorScheme.surfaceContainerHighest
-                            },
-                            contentColor = when {
-                                upload.done -> MaterialTheme.aircast.onSuccess
-                                upload.emphasised -> MaterialTheme.colorScheme.onPrimary
-                                else -> MaterialTheme.colorScheme.onSurface
-                            },
-                        ) {
-                            Box(Modifier.height(40.dp)) {
-                                if (syncing) {
-                                    val ink = LocalContentColor.current.copy(alpha = 0.28f)
-                                    Box(Modifier.matchParentSize().drawBehind { drawRect(ink, size = size.copy(width = size.width * syncProgress)) })
-                                }
-                                Row(
-                                    Modifier.height(40.dp).padding(start = 16.dp, end = 20.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Icon(painterResource(if (upload.done) R.drawable.ic_check_circle else R.drawable.ic_upload), null, Modifier.size(20.dp))
-                                    Text(upload.label, style = MaterialTheme.typography.labelLarge)
                                 }
                             }
                         }
@@ -374,5 +377,53 @@ fun PlanTab(modifier: Modifier = Modifier) {
                 }
             },
         )
+    }
+}
+
+internal fun planStatsLine(stats: List<one.aircast.map.PlanStat>): String =
+    stats.mapNotNull { stat ->
+        when (stat.label) {
+            "Items" -> stat.value.takeIf { it != "0" }?.let { "$it ${if (it == "1") "item" else "items"}" }
+            "Max alt" -> "max ${stat.value}"
+            else -> stat.value
+        }
+    }.joinToString(" \u00b7 ")
+
+internal fun headerLine(status: String, syncing: Boolean, stats: List<one.aircast.map.PlanStat>): String =
+    if (syncing) status else planStatsLine(stats).ifBlank { status }
+
+@Composable
+private fun PlanActionPill(
+    label: String,
+    icon: Int,
+    enabled: Boolean,
+    container: androidx.compose.ui.graphics.Color,
+    content: androidx.compose.ui.graphics.Color,
+    progress: Float?,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.alpha(if (enabled) 1f else DISABLED_PILL_ALPHA),
+        shape = CircleShape,
+        color = container,
+        contentColor = content,
+        shadowElevation = 4.dp,
+    ) {
+        Box(Modifier.height(PILL_HEIGHT)) {
+            progress?.let { done ->
+                val ink = LocalContentColor.current.copy(alpha = 0.28f)
+                Box(Modifier.matchParentSize().drawBehind { drawRect(ink, size = size.copy(width = size.width * done)) })
+            }
+            Row(
+                Modifier.height(PILL_HEIGHT).padding(start = 20.dp, end = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(icon), null, Modifier.size(20.dp))
+                Text(label, style = MaterialTheme.typography.labelLarge)
+            }
+        }
     }
 }

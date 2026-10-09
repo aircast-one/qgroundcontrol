@@ -1,6 +1,5 @@
 package one.aircast.map
 
-const val WAYPOINT_ALTITUDE_DECIMALS = 1
 const val RALLY_ALTITUDE_DECIMALS = 2
 const val SURFACE_DISTANCE_DECIMALS = 2
 const val SURFACE_DISTANCE_MINIMUM = 0.1

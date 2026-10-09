@@ -23,13 +23,13 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import one.aircast.map.AircastSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -192,6 +192,11 @@ internal fun radioChoices(view: JSONObject?): Map<String, RadioChoice> {
         .toMap()
 }
 
+private const val HOLD_LABEL = "Hold"
+
+internal fun withoutHeroFields(fields: List<one.aircast.android.bridge.Fact>, view: JSONObject?): List<one.aircast.android.bridge.Fact> =
+    if (view?.optJSONObject("hold") == null) fields else fields.filterNot { it.description == HOLD_LABEL }
+
 internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact> {
     val listed = view?.optJSONArray("fields") ?: return emptyList()
     return (0 until listed.length()).mapNotNull { listed.optJSONObject(it)?.let(::factFromControl) }
@@ -199,7 +204,7 @@ internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, onDismiss: () -> Unit, onRemove: () -> Unit) {
+fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, onRemove: () -> Unit) {
     var revision by remember(index) { mutableIntStateOf(0) }
     var view by remember(index) { mutableStateOf<JSONObject?>(null) }
     var choosing by remember(index) { mutableStateOf(false) }
@@ -213,7 +218,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
         view = withContext(Dispatchers.Default) { Qgc.get(itemFactsPath(index)) }
     }
 
-    val fields = remember(view) { withLandingFrameUnits(itemFields(view), altitudesRelative(view)) }
+    val fields = remember(view) { withoutHeroFields(withLandingFrameUnits(itemFields(view), altitudesRelative(view)), view) }
     val sections = remember(view) { sectionStarts(view) }
     val choices = remember(view) { radioChoices(view) }
     val raw = remember(view) { rawEdit(view) }
@@ -229,13 +234,12 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
     fields.firstOrNull { it.path == detailsPath }?.let { fact ->
         ValueDetailsSheet(fact, onWrite = { revision++ }, onDismiss = { detailsPath = null })
     }
-    AircastSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(itemEditorTitle(view, index), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text("More settings", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 if (at != null || view?.optBoolean("specifiesCoordinate") == true) {
                     Box {
                         TextButton(onClick = { positionMenu = true }) { Text("Position") }
@@ -337,11 +341,11 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
             areaHelp(view)?.let { help ->
                 Text(help, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp))
             }
-            if (areaHelp(view) == null && wizard.isEmpty() && presetsFirst != null) LazyColumn(Modifier.heightIn(max = 480.dp)) {
-                val presets = { presetKind(view)?.let { kind -> item(key = "presets") { PatternPresets(index, kind) { revision++ } } } }
+            if (areaHelp(view) == null && wizard.isEmpty() && presetsFirst != null) Column {
+                val presets: @Composable () -> Unit = { presetKind(view)?.let { kind -> PatternPresets(index, kind) { revision++ } } }
                 if (presetsFirst == true) presets()
-                items(fields, key = { it.path }) { fact ->
-                    Column {
+                fields.forEach { fact ->
+                    key(fact.path) {
                         sections[fact.path]?.let { SectionHeader(it) }
                         val choice = choices[fact.path]
                         when {
@@ -363,29 +367,23 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         }
                     }
                 }
-                item(key = "itemCamera") {
-                    one.aircast.map.ItemCameraSection(index, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { revision++ }
-                }
+                one.aircast.map.ItemCameraSection(index, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { revision++ }
                 camera?.let { block ->
-                    item(key = "camera") {
-                        CameraCalcHeader(block) { path, value ->
-                            scope.launch {
-                                refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(path, value) }
-                                revision++
-                            }
+                    CameraCalcHeader(block) { path, value ->
+                        scope.launch {
+                            refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(path, value) }
+                            revision++
                         }
                     }
-                    items(shownCameraFacts(block), key = { it.path }) { fact ->
-                        FactRow(fact) { revision++ }
+                    shownCameraFacts(block).forEach { fact ->
+                        key(fact.path) { FactRow(fact) { revision++ } }
                     }
                 }
                 gridNote(view)?.let { note ->
-                    item(key = "gridNote") {
-                        Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
-                    }
+                    Text(note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
                 }
                 entryPoint(view)?.let { entry ->
-                    item(key = "entry") {
+                    run {
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -406,7 +404,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                     }
                 }
                 stats?.let { known ->
-                    item(key = "statistics") {
+                    run {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             known.warning.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning) }
                             Text("Statistics", style = MaterialTheme.typography.titleSmall)
@@ -420,16 +418,6 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                     }
                 }
                 if (presetsFirst == false) presets()
-                speedSection(view)?.let { speed ->
-                    item(key = "speed") {
-                        SpeedSectionRow(speed) { written ->
-                            scope.launch {
-                                refusal = withContext(Dispatchers.Default) { written() }
-                                revision++
-                            }
-                        }
-                    }
-                }
             }
             if (itemDeletable(index)) {
                 TextButton(
@@ -438,7 +426,6 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                     modifier = Modifier.padding(horizontal = 8.dp),
                 ) { Text(DELETE_ITEM_LABEL) }
             }
-        }
     }
 
     if (editingPosition && positionStart != null) {
@@ -773,10 +760,4 @@ private fun PositionField(label: String, value: String, keyboard: KeyboardType =
         keyboardOptions = KeyboardOptions(keyboardType = keyboard),
         modifier = Modifier.fillMaxWidth(),
     )
-}
-
-internal fun itemEditorTitle(view: JSONObject?, index: Int): String {
-    val name = view?.optText("commandName")?.ifBlank { null }
-    val sequence = view?.takeIf { it.has("sequenceNumber") && !it.isNull("sequenceNumber") }?.optInt("sequenceNumber")
-    return listOfNotNull(sequence?.let { "#$it" }, name).joinToString(" ").ifBlank { "Item $index" }
 }

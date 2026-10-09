@@ -28,12 +28,6 @@ internal fun altitudeWithFrame(item: MissionItem): String? {
     return if (frame.isBlank()) height else "$height $frame"
 }
 
-internal fun altitudeFieldLabel(item: MissionItem): String {
-    val unit = item.altitudeEditUnits.ifBlank { "m" }
-    val frame = item.altitudeFrameText
-    return if (frame.isBlank()) "Alt $unit" else "Alt $unit $frame"
-}
-
 internal fun rallyAltitudeLabel(point: RallyPoint): String =
     "Alt ${point.altitudeUnits.ifBlank { "m" }}"
 
@@ -65,8 +59,6 @@ internal fun surveyTiles(item: MissionItem, stats: SurveyStats?): List<Pair<Stri
 internal fun sheetDetail(item: MissionItem, stats: SurveyStats?): String =
     if (surveyTiles(item, stats).isEmpty()) itemDetail(item, stats)
     else itemDetail(item.copy(cameraShots = 0), stats?.copy(areaText = ""))
-
-internal fun deleteLabel(item: MissionItem): String = "Delete ${item.command.ifBlank { "item" }.lowercase()}"
 
 fun itemRows(
     items: List<MissionItem>,

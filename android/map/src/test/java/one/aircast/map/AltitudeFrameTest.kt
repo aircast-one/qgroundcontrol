@@ -60,26 +60,7 @@ class AltitudeFrameTest {
     }
 
     @Test
-    fun `the field being typed into names its frame, being the furthest thing from the chip`() {
-        assertEquals("Alt m", altitudeFieldLabel(item("")))
-        assertEquals("Alt m AMSL", altitudeFieldLabel(item("AMSL")))
-        assertEquals("Alt m AGL", altitudeFieldLabel(item("AGL")))
-        assertEquals("Alt m SEABED", altitudeFieldLabel(item("SEABED")))
-    }
-
-    @Test
     fun `a frame neither head has heard of is shown, not swallowed into the default`() {
         assertEquals("50.0 m SEABED", altitudeWithFrame(item("SEABED")))
-    }
-
-    @Test
-    fun `the field being typed into names the unit QGC cooked the number into`() {
-        assertEquals("Alt ft", altitudeFieldLabel(item("", editUnits = "ft")))
-        assertEquals("Alt ft AMSL", altitudeFieldLabel(item("AMSL", editUnits = "ft")))
-    }
-
-    @Test
-    fun `a core that says nothing leaves metres, which is what the bridge takes`() {
-        assertEquals("Alt m", altitudeFieldLabel(item("")))
     }
 }

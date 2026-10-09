@@ -40,13 +40,6 @@ class PlanStripTest {
     }
 
     @Test
-    fun `stepping walks the plan in order and stops at either end`() {
-        val items = listOf(item(0), item(1), item(4), item(6))
-
-        assertEquals(listOf(4, 1, null, 0), listOf(neighbourItem(items, 1, 1), neighbourItem(items, 4, -1), neighbourItem(items, 6, 1), neighbourItem(items, 1, -1)))
-    }
-
-    @Test
     fun `a selection that is not a mission item is named for what it is`() {
         val items = listOf(MissionItem(2, 2, 41.0, 44.0, "Survey", true))
 
