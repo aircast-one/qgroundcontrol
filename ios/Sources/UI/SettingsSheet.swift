@@ -27,6 +27,7 @@ struct SettingsSheet: View {
     @FlyIsPortrait private var portrait
     @SettingsPages private var everyPage
     @State private var group: SettingsGroup
+    @State private var pager: SettingsGroup?
     @State private var setupOpen = false
     @State private var setupFromTab = false
     @State private var enteredForSetup = false
@@ -44,6 +45,7 @@ struct SettingsSheet: View {
         self.onClose = onClose
         let opening = openingGroup(requested)
         _group = State(initialValue: opening)
+        _pager = State(initialValue: opening)
         _page = State(initialValue: requested)
         _openPage = State(initialValue: shownOnOpen(requested, opening))
     }
@@ -149,6 +151,8 @@ struct SettingsSheet: View {
     private var header: some View {
         let stacked = width < STACKED_HEADER_WIDTH
         let drilled = sheetDrilled(openPage, setupOpen)
+        let tabsShown = query == nil && !drilled
+        let showTab: (SettingsGroup) -> Void = { entry in withAnimation { pager = entry } }
         VStack(spacing: 0) {
             HStack(spacing: Space.s2) {
                 if let typed = query {
@@ -164,7 +168,7 @@ struct SettingsSheet: View {
                             .padding(.leading, Space.s2)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        SheetTabs(selected: setupOpen ? nil : group, onPick: pickTab).frame(maxWidth: .infinity, alignment: .leading)
+                        SheetTabs(selected: pager ?? group, edgePadding: 0, onPick: showTab).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Button { query = "" } label: { Image(.search).frame(width: 48, height: 48) }
                         .buttonStyle(.plain)
@@ -175,19 +179,20 @@ struct SettingsSheet: View {
                     .accessibilityLabel("Close settings")
             }
             .padding(.horizontal, Space.s3)
-            .padding(.vertical, Space.s1)
-            if stacked && query == nil && !drilled {
-                SheetTabs(selected: setupOpen ? nil : group, onPick: pickTab)
+            .padding(.top, Space.s1)
+            .padding(.bottom, tabsShown && !stacked ? 0 : Space.s1)
+            if stacked && tabsShown {
+                SheetTabs(selected: pager ?? group, edgePadding: Space.s2, onPick: showTab)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Space.s2)
             }
+            if tabsShown { Divider() }
         }
     }
 
     @ViewBuilder
     private var content: some View {
         if query == nil && !setupOpen {
-            SettingsPager(group: group, swipeable: openPage == nil, onSettled: pickTab) { shown in
+            SettingsPager(pager: $pager, group: group, swipeable: openPage == nil, onSettled: pickTab) { shown in
                 let current = shown == group
                 SettingsScreen(
                     group: shown,
@@ -232,11 +237,11 @@ struct SettingsSheet: View {
 }
 
 private struct SettingsPager<Content: View>: View {
+    @Binding var pager: SettingsGroup?
     let group: SettingsGroup
     let swipeable: Bool
     let onSettled: (SettingsGroup) -> Void
     @ViewBuilder let content: (SettingsGroup) -> Content
-    @State private var position: SettingsGroup?
     @State private var scrolling = false
 
     private func settle(_ now: SettingsGroup?) {
@@ -260,16 +265,16 @@ private struct SettingsPager<Content: View>: View {
             .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
             .mask { Rectangle().ignoresSafeArea(.container, edges: .vertical) }
             .scrollIndicators(.hidden)
-            .scrollPosition(id: $position)
+            .scrollPosition(id: $pager)
             .environment(\.isScrollEnabled, swipeable)
-            .onChange(of: group, initial: true) { _, now in if position != now { position = now } }
-            .onChange(of: position) { _, now in settle(now) }
+            .onChange(of: group, initial: true) { _, now in if pager != now { pager = now } }
+            .onChange(of: pager) { _, now in settle(now) }
             .modifier(ScrollSettle { moving in
                 scrolling = moving
-                settle(position)
+                settle(pager)
             })
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { _ in
-                position = group
+                pager = group
                 proxy.scrollTo(group)
             }
         }
@@ -289,50 +294,45 @@ private struct ScrollSettle: ViewModifier {
 }
 
 private struct SheetTabs: View {
-    let selected: SettingsGroup?
+    let selected: SettingsGroup
+    let edgePadding: CGFloat
     let onPick: (SettingsGroup) -> Void
+    @Environment(\.theme) private var theme
+    @Namespace private var indicator
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.s1) {
+                HStack(spacing: 0) {
                     ForEach(SettingsGroup.allCases, id: \.self) { entry in
-                        SheetTab(title: entry.title, selected: entry == selected) { onPick(entry) }.id(entry)
+                        Button { onPick(entry) } label: {
+                            Text(entry.title)
+                                .font(.titleSmall)
+                                .lineLimit(1)
+                                .foregroundStyle(entry == selected ? theme.colors.primary : theme.colors.onSurfaceVariant)
+                                .frame(height: 48)
+                                .overlay(alignment: .bottom) {
+                                    if entry == selected {
+                                        UnevenRoundedRectangle(topLeadingRadius: 3, topTrailingRadius: 3)
+                                            .fill(theme.colors.primary)
+                                            .frame(height: 3)
+                                            .matchedGeometryEffect(id: 0, in: indicator)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .frame(minWidth: 90)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(entry == selected ? .isSelected : [])
+                        .id(entry)
                     }
                 }
+                .padding(.horizontal, edgePadding)
+                .animation(.default, value: selected)
             }
-            .onChange(of: selected, initial: true) { _, now in
-                guard let now else { return }
-                withAnimation { proxy.scrollTo(now) }
-            }
+            .onChange(of: selected, initial: true) { _, now in withAnimation { proxy.scrollTo(now, anchor: .center) } }
         }
-    }
-}
-
-private struct SheetTab: View {
-    let title: String
-    let selected: Bool
-    let onClick: () -> Void
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Text(title)
-                .font(.titleMedium)
-                .fontWeight(selected ? .semibold : .regular)
-                .foregroundStyle(selected ? theme.colors.onSurface : theme.colors.onSurfaceVariant)
-            Capsule()
-                .fill(selected ? theme.colors.primary : Color.clear)
-                .frame(width: 20, height: 3)
-                .padding(.top, 4)
-        }
-        .frame(minHeight: 48)
-        .padding(.horizontal, Space.s2)
-        .padding(.vertical, Space.s1)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onClick)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 }
 
