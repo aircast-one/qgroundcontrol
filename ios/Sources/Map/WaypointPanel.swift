@@ -4,7 +4,6 @@ private let CHIP_SIZE: CGFloat = 40
 private let FEET = "ft"
 private let ALTITUDE_CEILING_METRES = 500.0
 private let ALTITUDE_CEILING_FEET = 1640.0
-private let HOLD_CEILING_SECONDS = 3600.0
 private let SPEED_STEP = 0.5
 let SPEED_RANGE = 0.0...30.0
 
@@ -16,6 +15,8 @@ func stripRows(_ rows: [ItemRow]) -> [ItemRow] { rows.filter { $0.index != HOME_
 
 struct WaypointStrip: View {
     let rows: [ItemRow]
+    let altitudes: [Int: String]
+    let conflicts: Set<Int>
     let selected: Int?
     let onPick: (Int) -> Void
     @Environment(\.theme) private var theme
@@ -24,13 +25,22 @@ struct WaypointStrip: View {
         let shown = stripRows(rows)
         ScrollViewReader { list in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: Space.s2) {
-                    ForEach(shown) { row in chip(row, chosen: row.index == selected) }
+                LazyHStack(alignment: .top, spacing: Space.s2) {
+                    ForEach(shown) { row in
+                        VStack(spacing: 0) {
+                            chip(row, chosen: row.index == selected)
+                            Text(altitudes[row.index] ?? "")
+                                .font(.labelSmall)
+                                .foregroundStyle(theme.colors.onSurfaceVariant)
+                                .lineLimit(1)
+                        }
+                        .id(row.index)
+                    }
                 }
                 .padding(.horizontal, Space.s1)
                 .padding(.vertical, 2)
             }
-            .frame(height: CHIP_SIZE + 4)
+            .fixedSize(horizontal: false, vertical: true)
             .onChange(of: selected, initial: true) { _, now in
                 guard let now, shown.contains(where: { $0.index == now }) else { return }
                 withAnimation { list.scrollTo(now) }
@@ -39,15 +49,18 @@ struct WaypointStrip: View {
     }
 
     private func chip(_ row: ItemRow, chosen: Bool) -> some View {
-        Button { onPick(row.index) } label: {
-            Text(row.number)
+        let conflict = conflicts.contains(row.index)
+        return Button { onPick(row.index) } label: {
+            Text(row.seal)
                 .font(.labelLarge)
                 .lineLimit(1)
                 .foregroundStyle(row.readyForSave ? theme.colors.surface : theme.aircast.warning)
                 .frame(width: CHIP_SIZE, height: CHIP_SIZE)
                 .background(row.readyForSave ? hexColour(row.colour) : Color.clear, in: Circle())
                 .overlay {
-                    if chosen {
+                    if conflict {
+                        Circle().strokeBorder(theme.colors.error, lineWidth: 3)
+                    } else if chosen {
                         Circle().strokeBorder(theme.colors.onSurface, lineWidth: 3)
                     } else if !row.readyForSave {
                         Circle().strokeBorder(theme.aircast.warning, lineWidth: 1)
@@ -56,8 +69,7 @@ struct WaypointStrip: View {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .id(row.index)
-        .accessibilityLabel("\(sentenceCase(row.name)) \(row.number)")
+        .accessibilityLabel("\(sentenceCase(row.name)) \(row.seal)" + (conflict ? ", too close to the terrain" : ""))
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 }
@@ -66,7 +78,6 @@ struct WaypointSettings: View {
     let item: MissionItem
     let globalFrame: Int?
     let onWrite: (String?, @escaping () -> Bool) -> Void
-    @Environment(\.theme) private var theme
     @MapPath private var json: JSON?
 
     init(item: MissionItem, globalFrame: Int?, onWrite: @escaping (String?, @escaping () -> Bool) -> Void) {
@@ -106,16 +117,6 @@ struct WaypointSettings: View {
                         : nil
                 )
             }
-            if let hold = waypointHold(json) {
-                SettingStepper(
-                    label: "Hold",
-                    value: hold.seconds,
-                    unit: hold.units,
-                    step: 1.0,
-                    onSet: { seconds in onWrite(nil) { setOk(hold.path, seconds) } },
-                    range: 0.0...HOLD_CEILING_SECONDS
-                )
-            }
             if !item.altitude.isNaN && itemReferenceShown(globalFrame) && index != HOME_ITEM {
                 HStack {
                     Text("Altitude mode").font(.bodyLarge).frame(maxWidth: .infinity, alignment: .leading)
@@ -127,8 +128,8 @@ struct WaypointSettings: View {
                 }
                 .padding(.vertical, Space.s1)
             }
-            if let leg = legText(item) {
-                Text(leg).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant).padding(.vertical, Space.s1)
+            if index != HOME_ITEM {
+                WaypointActions(index: index, hold: waypointHold(json), yaw: waypointYaw(json))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

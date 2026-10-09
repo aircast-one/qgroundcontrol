@@ -571,7 +571,7 @@ private struct VehicleMapPlan: ViewModifier {
             circled: map.circledShapes,
             loiterHandles: loiterHandleFeatures(editedItems, map.selectedWaypoint)
         )
-        renderMission(style, map.missionItems, map.linkStartToHome, selectedIndex: map.selectedWaypoint, others: map.otherMissions, landings: map.landings)
+        renderMission(style, map.missionItems, map.linkStartToHome, selectedIndex: map.selectedWaypoint, others: map.otherMissions, landings: map.landings, legs: map.editable)
     }
 }
 

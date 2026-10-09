@@ -4,7 +4,7 @@ import UIKit
 private let NOTICE_MILLIS = 4000
 private let HEADER_ALPHA = 0.94
 private let DISABLED_PILL_ALPHA = 0.38
-private let PILL_HEIGHT: CGFloat = 48
+private let PILL_HEIGHT: CGFloat = 40
 private let HEADER_CORNER: CGFloat = 20
 
 let APPLY_DEFAULT_ALTITUDE = "core.plan.applyDefaultAltitude"
@@ -175,11 +175,10 @@ struct PlanTab: View {
         let syncing = planIsSyncing(planStatus)
         PlanMapScreen(
             onCentre: { lat, lon in centre = (lat, lon) },
-            itemPanel: { index, at, remove in
-                AnyView(ItemEditor(index: index, at: at, mapCentre: centre, onRemove: remove))
+            itemPanel: { index, at, leg in
+                AnyView(ItemEditor(index: index, at: at, mapCentre: centre, legDetail: leg))
             },
             header: { bar in AnyView(header(bar)) },
-            primary: { upload in AnyView(primary(upload)) },
             routeSettings: { AnyView(RouteSettings(plan: planStatus)) },
             fitKey: files.opened(),
             onTemplates: { newPlanOpen = true }
@@ -295,15 +294,17 @@ struct PlanTab: View {
         let dirty = planIsDirty(planStatus)
         let containsItems = planContainsItems(planStatus)
         let title = planTitle(files.documentName())
+        let syncing = planIsSyncing(planStatus)
+        let warned = notice == nil && !syncing && bar.warning != nil
         VStack(alignment: .leading, spacing: Space.s2) {
             HStack(spacing: Space.s2) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(title).font(.titleSmall).lineLimit(1).truncationMode(.tail)
-                    let line = notice ?? headerLine(planStatusText(planStatus), planIsSyncing(planStatus), bar.stats)
+                    let line = notice ?? (warned ? bar.warning : nil) ?? headerLine(planStatusText(planStatus), syncing, bar.stats)
                     if !line.isBlank && line != title {
                         Text(line)
                             .font(.labelSmall)
-                            .foregroundStyle(theme.colors.onSurfaceVariant)
+                            .foregroundStyle(warned ? theme.colors.error : theme.colors.onSurfaceVariant)
                             .lineLimit(notice == nil ? 1 : 3)
                             .truncationMode(.tail)
                     }
@@ -313,6 +314,7 @@ struct PlanTab: View {
                 .frame(minHeight: 40)
                 .background(theme.colors.surfaceContainer.opacity(HEADER_ALPHA), in: RoundedRectangle(cornerRadius: HEADER_CORNER))
                 .frame(maxWidth: .infinity, alignment: .leading)
+                primary(bar)
                 Button { menuOpen = true } label: {
                     Image(.moreVert).frame(width: 40, height: 40).contentShape(Circle())
                 }
@@ -343,12 +345,13 @@ struct PlanTab: View {
     }
 
     @ViewBuilder
-    private func primary(_ upload: PlanUpload) -> some View {
+    private func primary(_ bar: PlanBar) -> some View {
         let dirty = planIsDirty(planStatus)
+        let upload = bar.upload
         if upload.shown {
             PlanActionPill(
                 label: upload.label,
-                icon: upload.done ? .checkCircle : .upload,
+                icon: upload.done ? .checkCircle : bar.warning != nil ? .warning : .upload,
                 enabled: upload.enabled,
                 container: upload.done ? theme.aircast.success : upload.emphasised ? theme.colors.primary : theme.colors.surfaceContainerHighest,
                 content: upload.done ? theme.aircast.onSuccess : upload.emphasised ? theme.colors.onPrimary : theme.colors.onSurface,
@@ -428,7 +431,7 @@ func planStatsLine(_ stats: [PlanStat]) -> String {
 }
 
 func headerLine(_ status: String, _ syncing: Bool, _ stats: [PlanStat]) -> String {
-    syncing ? status : planStatsLine(stats).ifBlank(status)
+    syncing || !stats.contains(where: { $0.label == "Items" && $0.value != "0" }) ? status : planStatsLine(stats)
 }
 
 private struct PlanActionPill: View {
@@ -459,9 +462,9 @@ private struct PlanActionPill: View {
             }
             .background(container)
             .clipShape(Capsule())
-            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .disabled(!enabled)
         .opacity(enabled ? 1 : DISABLED_PILL_ALPHA)
     }

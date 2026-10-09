@@ -34,4 +34,29 @@ final class PlanStripTests: XCTestCase {
             [MapHit.FenceVertex(polygon: 0, vertex: 1), .CircleRadius(index: 0), .Rally(index: 2), .BreachReturn, .SurveyVertex(item: 2, vertex: 0)].map { selectionTitle($0, items) }
         )
     }
+
+    func testAMapTapClosesAnOpenEditorFirstAndAddsTheNextPointOnceItIsFolded() {
+        XCTAssertEqual(
+            [true, false, false, true],
+            [
+                tapCloses(.Waypoint(index: 2), true),
+                tapCloses(.Waypoint(index: 2), false),
+                tapCloses(nil, true),
+                tapCloses(.Rally(index: 0), false),
+            ]
+        )
+    }
+
+    func testATerrainConflictIsCountedInLegsWhenTheCoreNamesThem() {
+        XCTAssertEqual(
+            ["1 leg hits the terrain", "3 legs hit the terrain", "2 items hit the terrain", nil],
+            [terrainWarning(1, 1), terrainWarning(3, 2), terrainWarning(0, 2), terrainWarning(0, 0)]
+        )
+    }
+
+    func testAdvancedNamesTheMissionItemsBehindAWaypointWithActions() {
+        let folded = MissionItem(index: 3, sequence: 3, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: true, altitude: 50.0, foldedCommands: 1)
+        XCTAssertEqual("Mission items 3\u{2013}4", advancedDetail(folded))
+        XCTAssertNil(advancedDetail(MissionItem(index: 3, sequence: 3, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: true, altitude: 50.0)))
+    }
 }

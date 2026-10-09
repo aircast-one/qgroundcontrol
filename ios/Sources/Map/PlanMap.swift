@@ -7,9 +7,8 @@ func planMapStyle() -> String {
 
 struct PlanMapScreen: View {
     var onCentre: ((Double, Double) -> Void)? = nil
-    var itemPanel: ((Int, TrackPoint?, @escaping () -> Void) -> AnyView)? = nil
+    var itemPanel: ((Int, TrackPoint?, String?) -> AnyView)? = nil
     var header: ((PlanBar) -> AnyView)? = nil
-    var primary: ((PlanUpload) -> AnyView)? = nil
     var routeSettings: (() -> AnyView)? = nil
     var fitKey: Int = 0
     var onTemplates: (() -> Void)? = nil
@@ -25,7 +24,6 @@ struct PlanMapScreen: View {
                     onCentre: onCentre,
                     itemPanel: itemPanel,
                     header: header,
-                    primary: primary,
                     routeSettings: routeSettings,
                     fitKey: fitKey,
                     onTemplates: onTemplates

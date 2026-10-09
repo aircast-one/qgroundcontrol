@@ -23,6 +23,40 @@ func highestAltitude(_ items: [MissionItem]) -> String? {
 
 private let NO_HOURS = "00:"
 let TAP_TO_ADD = "Tap the map to add a waypoint"
+let TERRAIN_CONFLICT_HERE = "Too close to the terrain here"
+private let PANEL_DRAG_THRESHOLD: CGFloat = 24
+
+func advancedDetail(_ item: MissionItem) -> String? {
+    let detail = [item.foldedCommands > 0 ? "Mission items \(sequenceLabel(item))" : nil, legText(item)]
+        .compactMap { $0 }
+        .joined(separator: " \u{00b7} ")
+    return detail.isBlank ? nil : detail
+}
+
+func tapCloses(_ selected: MapHit?, _ panelOpen: Bool) -> Bool {
+    guard let selected else { return false }
+    if case .Waypoint = selected { return panelOpen }
+    return true
+}
+
+func terrainWarning(_ legs: Int, _ items: Int) -> String? {
+    legs > 0 ? "\(legs) \(legs == 1 ? "leg hits" : "legs hit") the terrain"
+        : items > 0 ? "\(items) \(items == 1 ? "item hits" : "items hit") the terrain"
+        : nil
+}
+
+extension View {
+    func panelDrag(_ onOpen: @escaping (Bool) -> Void) -> some View {
+        simultaneousGesture(
+            DragGesture(minimumDistance: 10).onEnded { drag in
+                let travelled = drag.translation.height
+                guard abs(travelled) > abs(drag.translation.width) else { return }
+                if travelled < -PANEL_DRAG_THRESHOLD { onOpen(true) } else if travelled > PANEL_DRAG_THRESHOLD { onOpen(false) }
+            }
+        )
+    }
+}
+
 let FIRST_TAP_SETS_HOME = "The first tap also sets home."
 
 func selectionTitle(_ selected: MapHit, _ items: [MissionItem]) -> String {
@@ -56,6 +90,8 @@ private struct StripIconButton: View {
 
 struct WaypointStripBar: View {
     let rows: [ItemRow]
+    let altitudes: [Int: String]
+    let conflicts: Set<Int>
     let selected: Int?
     let onPick: (Int) -> Void
     let onList: (() -> Void)?
@@ -64,7 +100,7 @@ struct WaypointStripBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            WaypointStrip(rows: rows, selected: selected, onPick: onPick)
+            WaypointStrip(rows: rows, altitudes: altitudes, conflicts: conflicts, selected: selected, onPick: onPick)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if let onList {
                 StripIconButton(icon: .list, label: "Show the plan as a list", action: onList)
@@ -111,19 +147,43 @@ struct EmptyMissionStrip: View {
 struct SelectionHeader: View {
     let title: String
     let detail: String?
+    let warning: Bool
+    let open: Bool
+    let onTitle: () -> Void
+    let onDelete: (() -> Void)?
     let onDone: () -> Void
     @Environment(\.theme) private var theme
 
     var body: some View {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.titleLarge).lineLimit(1).truncationMode(.tail)
-                if let detail {
-                    Text(detail).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant).lineLimit(2)
+            Button(action: onTitle) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: Space.s1) {
+                        Text(title).font(.titleLarge).lineLimit(1).truncationMode(.tail)
+                        Image(open ? .arrowDropDown : .arrowUp).foregroundStyle(theme.colors.onSurfaceVariant)
+                    }
+                    if let detail {
+                        Text(detail)
+                            .font(.bodyMedium)
+                            .foregroundStyle(warning ? theme.colors.error : theme.colors.onSurfaceVariant)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
                 }
+                .foregroundStyle(theme.colors.onSurface)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 12)
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 12)
+            .buttonStyle(.plain)
+            .accessibilityHint(open ? "Fold the settings" : "Show the settings")
+            if let onDelete {
+                Button(action: onDelete) {
+                    Image(.delete).foregroundStyle(theme.colors.error).frame(width: 48, height: 48).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Delete \(title)")
+            }
             Button(action: onDone) {
                 Label("Done", systemImage: Icon.check.rawValue)
             }

@@ -12,7 +12,7 @@ final class RouteSettingsTests: XCTestCase {
 
     func testATransferInFlightTakesTheLineAndAnEmptyPlanFallsBackToTheCoresStatus() {
         XCTAssertEqual("Uploading", headerLine("Uploading", true, stats))
-        XCTAssertEqual("Empty plan", headerLine("Empty plan", false, [PlanStat(label: "Items", value: "0")]))
+        XCTAssertEqual("Empty plan", headerLine("Empty plan", false, [PlanStat(label: "Items", value: "0"), PlanStat(label: "Distance", value: "0 m"), PlanStat(label: "Time", value: "00:00")]))
     }
 
     func testTheRouteAltitudeIsTheDefaultEveryNewWaypointTakes() {

@@ -147,6 +147,7 @@ struct SettingStepper: View {
             stepped = nil
             onSet(wanted)
         }
+        .onDisappear { stepped.map(onSet) }
         .alert(label, isPresented: $typing) {
             TextField(unit, text: $text).keyboardType(.decimalPad)
             Button("Set") { entered.map(set) }.disabled(entered == nil)

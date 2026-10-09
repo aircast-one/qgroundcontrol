@@ -12,7 +12,19 @@ struct ItemRow: Equatable, Identifiable {
     var detail: String
     var colour: String
     var placed: Bool
-    var readyForSave: Bool = true
+    var readyForSave: Bool
+    var seal: String
+
+    init(index: Int, number: String, name: String, detail: String, colour: String, placed: Bool, readyForSave: Bool = true, seal: String? = nil) {
+        self.index = index
+        self.number = number
+        self.name = name
+        self.detail = detail
+        self.colour = colour
+        self.placed = placed
+        self.readyForSave = readyForSave
+        self.seal = seal ?? number
+    }
 
     var id: Int { index }
 }
@@ -30,16 +42,6 @@ func rallyAltitudeIsEditable(_ point: RallyPoint) -> Bool { !point.altitude.isNa
 
 func sequenceLabel(_ item: MissionItem) -> String {
     item.foldedCommands > 0 ? "\(item.sequence)\u{2013}\(item.sequence + item.foldedCommands)" : "\(item.sequence)"
-}
-
-func itemPlace(_ item: MissionItem, _ items: [MissionItem]) -> String? {
-    let listed = items.filter { $0.index != HOME_ITEM }
-    guard let at = listed.firstIndex(where: { $0.index == item.index }) else { return nil }
-    let previous = items.last { $0.index < item.index }
-    let leg = previous.flatMap { before in
-        !item.distance.isNaN && item.distance > 0 && !item.distanceText.isBlank ? "\(item.distanceText) from item \(sequenceLabel(before))" : nil
-    }
-    return ["Item \(at + 1) of \(listed.count)", leg].compactMap { $0 }.joined(separator: " \u{00b7} ")
 }
 
 func surveyTiles(_ item: MissionItem, _ stats: SurveyStats?) -> [(String, String)] {
@@ -68,7 +70,8 @@ func itemRows(_ items: [MissionItem], _ stats: [Int: SurveyStats] = [:]) -> [Ite
             detail: itemDetail(item, stats[item.index]),
             colour: waypointColour(item.kind, item.commandId),
             placed: item.placed,
-            readyForSave: item.readyForSave
+            readyForSave: item.readyForSave,
+            seal: item.readyForSave ? String(item.sequence) : NOT_READY_SEAL
         )
     }
 }

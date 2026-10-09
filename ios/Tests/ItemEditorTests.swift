@@ -8,12 +8,6 @@ final class ItemEditorTests: XCTestCase {
         XCTAssertNil(gridNote(nil))
     }
 
-    func testEveryItemButMissionSettingsOffersDeleteWaypointLikeTheMissionItemEditorMenu() {
-        XCTAssertEqual("Delete waypoint", DELETE_ITEM_LABEL)
-        XCTAssertFalse(itemDeletable(0))
-        XCTAssertTrue(itemDeletable(1))
-    }
-
     func testVehiclePositionModeShowsTheVehiclesCoordinateAndFrameAltitudeLikeEditPositionDialog() {
         let shown = vehiclePositionOf(JSON.parse(#"{"valid":true,"latitude":47.3977419,"longitude":8.5455938}"#), JSON.parse(#"{"kind":"fact","value":12.3,"valueString":"12.3","units":"m"}"#))
         XCTAssertEqual(VehiclePosition(latitude: "47.3977419", longitude: "8.5455938", altitude: "12.3 m"), shown)

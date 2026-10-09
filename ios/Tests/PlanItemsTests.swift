@@ -33,18 +33,6 @@ final class PlanItemsTests: XCTestCase {
         XCTAssertEqual("50 m \u{00b7} 1043 photos", sheetDetail(survey, nil))
     }
 
-    func testTheSheetPlacesAnItemAmongTheListedOnesAndNamesTheLegFromTheOneBefore() {
-        let home = item(0, 0, "Home")
-        let takeoff = item(1, 1, "Takeoff")
-        var second = item(2, 2, "Waypoint")
-        second.distance = 130.0
-        second.distanceText = "130 m"
-        let items = [home, takeoff, second]
-        XCTAssertEqual("Item 2 of 2 \u{00b7} 130 m from item 1", itemPlace(second, items))
-        XCTAssertEqual("Item 1 of 2", itemPlace(takeoff, items))
-        XCTAssertNil(itemPlace(home, items))
-    }
-
     func testARowCarriesTheNumberTheNameTheAltitudeAndTheMarkerColour() {
         let rows = itemRows([item(1, 1, "Waypoint", altitude: 49.6)])
         XCTAssertEqual(["1"], rows.map(\.number))

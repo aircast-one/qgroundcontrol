@@ -38,6 +38,7 @@ struct PlanUpload {
 struct PlanBar {
     let upload: PlanUpload
     let stats: [PlanStat]
+    let warning: String?
 }
 
 private struct PlanRead: Sendable {
@@ -92,9 +93,8 @@ private struct PlanRead: Sendable {
 struct PlanMapContent: View {
     let mapStyle: String
     var onCentre: ((Double, Double) -> Void)? = nil
-    var itemPanel: ((Int, TrackPoint?, @escaping () -> Void) -> AnyView)? = nil
+    var itemPanel: ((Int, TrackPoint?, String?) -> AnyView)? = nil
     var header: ((PlanBar) -> AnyView)? = nil
-    var primary: ((PlanUpload) -> AnyView)? = nil
     var routeSettings: (() -> AnyView)? = nil
     var fitKey: Int = 0
     var onTemplates: (() -> Void)? = nil
@@ -128,6 +128,7 @@ struct PlanMapContent: View {
     @State private var landingList: [LandingPattern] = []
     @State private var surveyStatsMap: [Int: SurveyStats] = [:]
     @State private var selected: MapHit?
+    @State private var panelOpen = true
     @State private var layer = PlanLayer.Mission
     @State private var busy: String?
     @State private var centre: TrackPoint?
@@ -177,6 +178,9 @@ struct PlanMapContent: View {
     private var missionStatusShown: Bool { missionItemStatusShown(missionStatusJson) }
     private var selectedSequence: Int? { selectionSequence(selected, allItems) }
     private var entryPoint: TrackPoint? { isPlottable(latitude, longitude) ? TrackPoint(latitude: latitude, longitude: longitude) : gcsOperator }
+    private var terrainHits: [(TrackPoint, TrackPoint)] { collisionLegs(terrainView) }
+    private var collidingPatterns: Set<Int> { collidingItems(terrainView) }
+    private var collidingSimple: Set<Int> { collidingItems(terrainView, "collidingSimpleItems") }
 
     private func addable(_ kind: String) -> Bool { kindAllows(insertable, kind) || !homeSet }
 
@@ -196,7 +200,7 @@ struct PlanMapContent: View {
             ZStack(alignment: .topLeading) {
                 map(sidePanel: sidePanel)
                 if let header {
-                    header(PlanBar(upload: upload, stats: planStats(itemCount, allItems, missionSummaryView)))
+                    header(PlanBar(upload: upload, stats: planStats(itemCount, allItems, missionSummaryView), warning: terrainWarning(terrainHits.count, collidingSimple.union(collidingPatterns).count)))
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                         .padding(.leading, mapStart)
@@ -207,12 +211,11 @@ struct PlanMapContent: View {
                     .padding(.top, headerHeight + 8)
                     .padding(.bottom, bottomPanel + 8)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                if let primary {
-                    primary(upload)
-                        .padding(.trailing, 16)
-                        .padding(.bottom, bottomPanel + 16)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                }
+                mapRail
+                    .padding(.trailing, 8)
+                    .padding(.top, headerHeight + 8)
+                    .padding(.bottom, bottomPanel + 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 dialogs
                 controls(sidePanel: sidePanel)
                 if listOpen {
@@ -341,8 +344,8 @@ struct PlanMapContent: View {
     @ViewBuilder
     private func map(sidePanel: Bool) -> some View {
         let circled = liveCircles(chosenCircles, fences, surveyList)
-        let collidingPatterns = collidingItems(terrainView)
-        let collidingSimple = collidingItems(terrainView, "collidingSimpleItems")
+        let collidingPatterns = collidingPatterns
+        let collidingSimple = collidingSimple
         let owner = ownerOf(selected)
         VehicleMap(
             mapStyle: shownStyle ?? mapStyle,
@@ -394,7 +397,7 @@ struct PlanMapContent: View {
             breachReturn: breach?.point,
             tracePoints: tracing?.1 ?? [],
             traceLine: tracing?.0.line == true,
-            collisionLegs: collisionLegs(terrainView)
+            collisionLegs: terrainHits
         )
     }
 
@@ -405,6 +408,7 @@ struct PlanMapContent: View {
         }
         switch layer {
         case .Mission:
+            panelOpen = false
             addMissionItem(KIND_WAYPOINT, "Adding a waypoint", TrackPoint(latitude: lat, longitude: lon), insertAfter(selected, allItems))
         case .Rally:
             if planSupport(planStatus).rally { addRallyAt(lat, lon) }
@@ -417,9 +421,11 @@ struct PlanMapContent: View {
         let at = TrackPoint(latitude: lat, longitude: lon)
         if let (target, points) = tracing {
             tracing = (target, points + [at])
-        } else if selected != nil && selectedWaypointIndex == nil {
+        } else if tapCloses(selected, panelOpen) {
             selected = nil
+            panelOpen = false
         } else if layer == .Mission {
+            panelOpen = false
             addMissionItem(KIND_WAYPOINT, "Adding a waypoint", at, insertAfter(selected, allItems))
         } else if layer == .Rally && planSupport(planStatus).rally {
             addRallyAt(lat, lon)
@@ -449,6 +455,7 @@ struct PlanMapContent: View {
         case .CircleRadius(let index):
             selected = .Circle(index: index)
         default:
+            panelOpen = true
             selected = hit
         }
     }
@@ -479,9 +486,10 @@ struct PlanMapContent: View {
         return PlanRail {
             ForEach(PlanLayer.allCases, id: \.self) { option in
                 RailButton(icon: option.icon, label: option.label, onClick: {
+                    panelOpen = true
                     layer = option
                     if layerOf(selected) != option { selected = nil }
-                }, chosen: layer == option)
+                }, chosen: layer == option, labelled: true)
             }
             RailDivider()
             switch layer {
@@ -509,7 +517,11 @@ struct PlanMapContent: View {
                     if let at = placeAt() { addRallyAt(at.latitude, at.longitude) }
                 }, enabled: support.rally && placeAt() != nil)
             }
-            RailDivider()
+        }
+    }
+
+    private var mapRail: some View {
+        PlanRail {
             RailButton(icon: .undo, label: "Undo", onClick: { onBridge { invokeOk(PLAN_UNDO) } }, enabled: canUndo)
             CenterMenu(
                 launch: allItems.first { $0.sequence == 0 }.map { TrackPoint(latitude: $0.latitude, longitude: $0.longitude) },
@@ -568,18 +580,26 @@ struct PlanMapContent: View {
         let chosenItem = selectedWaypoint
         let profile = terrainProfile(terrainView)
         let corner: CGFloat = sidePanel ? 0 : 28
+        let conflicts = collidingSimple.union(collidingPatterns)
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 if !sidePanel {
-                    Capsule()
-                        .fill(theme.colors.onSurfaceVariant.opacity(0.4))
-                        .frame(width: 32, height: 4)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
+                    Button { panelOpen.toggle() } label: {
+                        Capsule()
+                            .fill(theme.colors.onSurfaceVariant.opacity(0.4))
+                            .frame(width: 32, height: 4)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(panelOpen ? "Fold the panel" : "Open the panel")
                 }
                 if layer == .Mission && itemCount > 0 && (layerOf(chosen) == nil || layerOf(chosen) == .Mission) {
                     WaypointStripBar(
                         rows: itemRows(allItems, surveyStatsMap),
+                        altitudes: Dictionary(allItems.map { ($0.index, $0.altitudeText) }, uniquingKeysWith: { _, last in last }),
+                        conflicts: conflicts,
                         selected: chosenItem?.index,
                         onPick: focusItem,
                         onList: sidePanel ? nil : { listOpen = true },
@@ -591,32 +611,53 @@ struct PlanMapContent: View {
                     )
                 }
                 if let item = chosenItem {
-                    let detail = [itemPlace(item, allItems), sheetDetail(item, surveyStatsMap[item.index]).isBlank ? nil : sheetDetail(item, surveyStatsMap[item.index])]
-                        .compactMap { $0 }
-                        .joined(separator: " \u{00b7} ")
+                    let conflict = conflicts.contains(item.index)
+                    let pattern = sheetDetail(item, surveyStatsMap[item.index])
+                    let delete: (() -> Void)? = item.index > HOME_ITEM ? { removeItem(item) } : nil
                     SelectionHeader(
-                        title: "\(sentenceCase(item.command.ifBlank("Item"))) \(sequenceLabel(item))",
-                        detail: detail.isBlank ? nil : detail,
+                        title: "\(sentenceCase(item.command.ifBlank("Item"))) \(item.sequence)",
+                        detail: (conflict ? TERRAIN_CONFLICT_HERE : nil)
+                            ?? (item.complexPattern && !pattern.isBlank ? pattern : nil)
+                            ?? (panelOpen ? nil : addingAfterText(chosen, allItems)),
+                        warning: conflict,
+                        open: panelOpen,
+                        onTitle: { panelOpen.toggle() },
+                        onDelete: delete,
                         onDone: { selected = nil }
                     )
                 } else if let chosen {
-                    SelectionHeader(title: selectionTitle(chosen, allItems), detail: selectionText(chosen, allItems, circles, fences), onDone: { selected = nil })
+                    SelectionHeader(
+                        title: selectionTitle(chosen, allItems),
+                        detail: selectionText(chosen, allItems, circles, fences),
+                        warning: false,
+                        open: panelOpen,
+                        onTitle: { panelOpen.toggle() },
+                        onDelete: nil,
+                        onDone: { selected = nil }
+                    )
+                } else if layer == .Mission && itemCount == 0 {
+                    EmptyMissionStrip(homeSet: homeSet, onTemplates: onTemplates, onDownload: planOffline ? nil : { requestDownload() })
+                } else if layer != .Mission {
+                    Text(layer.label).font(.titleMedium).padding(.leading, 12).padding(.bottom, 4)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
+            .panelDrag { panelOpen = $0 }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pinnedHeight = $0 }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Color.clear.frame(height: 0).id(PANEL_TOP)
-                        panelBody(chosen, chosenItem, profile, sidePanel: sidePanel)
+            if panelOpen || sidePanel {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Color.clear.frame(height: 0).id(PANEL_TOP)
+                            panelBody(chosen, chosenItem, profile, sidePanel: sidePanel)
+                        }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollContent = $0 }
                     }
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollContent = $0 }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(height: sidePanel ? nil : min(scrollContent, max(root.height * PANEL_MAX_FRACTION - pinnedHeight, 0)))
+                    .frame(maxHeight: sidePanel ? .infinity : nil)
+                    .onChange(of: selected) { proxy.scrollTo(PANEL_TOP, anchor: .top) }
                 }
-                .scrollBounceBehavior(.basedOnSize)
-                .frame(height: sidePanel ? nil : min(scrollContent, max(root.height * PANEL_MAX_FRACTION - pinnedHeight, 0)))
-                .frame(maxHeight: sidePanel ? .infinity : nil)
-                .onChange(of: selected) { proxy.scrollTo(PANEL_TOP, anchor: .top) }
             }
         }
         .padding(.horizontal, 12)
@@ -645,13 +686,8 @@ struct PlanMapContent: View {
             }
             WaypointSettings(item: item, globalFrame: globalFrame) { label, work in onBridge(label) { work() } }
                 .id(item.index)
-            if let note = addingAfterText(chosen, allItems) {
-                PaletteNote(text: note)
-            }
         } else if chosen != nil {
             EmptyView()
-        } else if layer == .Mission && itemCount == 0 {
-            EmptyMissionStrip(homeSet: homeSet, onTemplates: onTemplates, onDownload: planOffline ? nil : { requestDownload() })
         } else if layer == .Mission {
             routeSettings?()
         } else if layer == .Rally {
@@ -671,7 +707,7 @@ struct PlanMapContent: View {
         traceRow
         selectionTools
         if let item = chosenItem, let itemPanel {
-            itemPanel(item.index, item.placed ? TrackPoint(latitude: item.latitude, longitude: item.longitude) : nil) { removeItem(item) }
+            itemPanel(item.index, item.placed ? TrackPoint(latitude: item.latitude, longitude: item.longitude) : nil, advancedDetail(item))
         }
     }
 
@@ -1050,6 +1086,7 @@ struct PlanMapContent: View {
     }
 
     private func focusItem(_ index: Int) {
+        panelOpen = true
         selected = .Waypoint(index: index)
         if let placed = items.first(where: { $0.index == index }) {
             centreOn = TrackPoint(latitude: placed.latitude, longitude: placed.longitude)

@@ -14,6 +14,9 @@ let MISSION_SOURCE = "aircast-mission"
 let MISSION_LAYER = "aircast-mission-layer"
 let MISSION_DOT_LAYER = "aircast-mission-dot-layer"
 let MISSION_PATH_SOURCE = "aircast-mission-path"
+let LEG_LABEL_SOURCE = "aircast-leg-labels"
+let LEG_LABEL_LAYER = "aircast-leg-labels-layer"
+let LEG_LABEL_PROPERTY = "leg"
 let MISSION_PATH_LAYER = "aircast-mission-path-layer"
 private let COLLISION_LEG_SOURCE = "aircast-collision-legs"
 private let COLLISION_LEG_LAYER = "aircast-collision-leg-layer"
@@ -71,6 +74,20 @@ func installMissionLayers(_ style: MLNStyle) {
         path.lineDashPattern = styleConstant([2, 1.5])
         style.addLayer(path)
     }
+    if style.source(withIdentifier: LEG_LABEL_SOURCE) == nil {
+        let source = geoJsonSource(LEG_LABEL_SOURCE)
+        style.addSource(source)
+        let legs = MLNSymbolStyleLayer(identifier: LEG_LABEL_LAYER, source: source)
+        legs.text = styleGet(LEG_LABEL_PROPERTY)
+        legs.textFontNames = styleConstant(NOTO_SANS)
+        legs.textFontSize = styleConstant(11)
+        legs.textColor = styleConstant(UIColor.white)
+        legs.textHaloColor = styleConstant(mapColour("#37474F"))
+        legs.textHaloWidth = styleConstant(2)
+        legs.textOffset = styleOffset(0, 1.2)
+        legs.textAllowsOverlap = styleConstant(false)
+        style.addLayer(legs)
+    }
     if style.source(withIdentifier: COLLISION_LEG_SOURCE) == nil {
         let source = geoJsonSource(COLLISION_LEG_SOURCE)
         style.addSource(source)
@@ -113,6 +130,17 @@ func installMissionLayers(_ style: MLNStyle) {
 }
 
 func crowded(_ itemCount: Int) -> Bool { itemCount > CROWDED_ITEMS }
+
+func legLabels(_ items: [MissionItem]) -> [(TrackPoint, String)] {
+    guard !crowded(items.count) else { return [] }
+    let placed = items.filter(\.placed).sorted { $0.index < $1.index }
+    return zip(placed, placed.dropFirst())
+        .filter { _, to in !to.legBroken && !to.distanceText.isBlank && to.distance > 0 }
+        .map { from, to in
+            let start = from.exit ?? TrackPoint(latitude: from.latitude, longitude: from.longitude)
+            return (TrackPoint(latitude: (start.latitude + to.latitude) / 2, longitude: (start.longitude + to.longitude) / 2), to.distanceText)
+        }
+}
 
 func waypointLabel(_ sequence: Int, _ crowded: Bool, abbreviation: String = "") -> String {
     crowded ? "" : lettered(abbreviation) ? String(abbreviation.prefix(1)) : String(sequence)
@@ -229,8 +257,10 @@ func renderMission(
     _ linkStartToHome: Bool,
     selectedIndex: Int? = nil,
     others: [OtherMission] = [],
-    landings: [LandingPattern] = []
+    landings: [LandingPattern] = [],
+    legs: Bool = false
 ) {
+    style.setGeoJson(LEG_LABEL_SOURCE, featureCollection((legs ? legLabels(items) : []).map { at, text in pointFeature(at, attributes: [LEG_LABEL_PROPERTY: text]) }))
     let otherMarkers: [Feature] = others.flatMap { other in
         missionFeatures(other.items).shapes.map { feature in
             feature.attributes = feature.attributes.merging([WAYPOINT_ID_PROPERTY: OTHER_VEHICLE_WAYPOINT]) { _, mine in mine }

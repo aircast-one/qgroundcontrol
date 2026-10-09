@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let CAMERA_MODES = ["Photo", "Video", "Survey"]
+let CAMERA_MODES = ["Photo", "Video", "Survey"]
 
 private struct NumberEntry: View {
     let label: String
