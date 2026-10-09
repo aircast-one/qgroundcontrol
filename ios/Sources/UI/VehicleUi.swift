@@ -1028,6 +1028,8 @@ private struct InstrumentSheet: View {
     @State private var shownAtOpen: [String]?
 
     var body: some View {
+        let listed = groups
+        let shown = shownAtOpen ?? chosen
         AircastSheet(onDismissRequest: onDismiss) {
             Text(title).font(.titleLarge).padding(.horizontal, Space.s4)
             Text(instrumentChoiceNote(chosen))
@@ -1035,12 +1037,12 @@ private struct InstrumentSheet: View {
                 .foregroundStyle(theme.colors.onSurfaceVariant)
                 .padding(.horizontal, Space.s4)
                 .padding(.bottom, Space.s2)
-            if groups.isEmpty {
+            if listed.isEmpty {
                 FootNote(text: emptyCatalogueText(connected))
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(shownFirst(groups, shownAtOpen ?? chosen), id: \.group) { group in
+                        ForEach(shownFirst(listed, shown), id: \.group) { group in
                             SectionHeader(text: sentenceCase(group.title))
                             ForEach(group.facts, id: \.path) { fact in
                                 HStack(spacing: Space.s4) {

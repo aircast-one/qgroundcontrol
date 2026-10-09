@@ -138,6 +138,7 @@ private struct FirstRunPage: View {
             .padding(.vertical, 48)
             .frame(maxWidth: .infinity)
         }
+        .clipped()
         .background(theme.colors.surface.ignoresSafeArea())
     }
 }

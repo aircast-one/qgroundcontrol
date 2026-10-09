@@ -165,22 +165,25 @@ private struct FieldList: View {
                 InspectorNotice(text: "Waiting for this message to arrive again.")
                     .frame(maxHeight: .infinity, alignment: .top)
             } else {
-                List {
-                    if let shown = charts {
-                        InspectorChartPanel(index: 0, charts: shown).listRowInsets(EdgeInsets())
-                        InspectorChartPanel(index: 1, charts: shown).listRowInsets(EdgeInsets())
-                    }
-                    HStack(spacing: 0) {
-                        Spacer()
-                        ForEach(CHART_LABELS, id: \.self) { label in
-                            Text(label).font(.labelSmall).lineLimit(1).frame(width: 56)
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        if let shown = charts {
+                            InspectorChartPanel(index: 0, charts: shown)
+                            InspectorChartPanel(index: 1, charts: shown)
+                        }
+                        HStack(spacing: 0) {
+                            Spacer()
+                            ForEach(CHART_LABELS, id: \.self) { label in
+                                Text(label).font(.labelSmall).lineLimit(1).frame(width: 56)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        ForEach(rows, id: \.name) { field in
+                            fieldRow(field)
+                            Divider()
                         }
                     }
-                    ForEach(rows, id: \.name) { field in
-                        fieldRow(field)
-                    }
                 }
-                .listStyle(.plain)
                 .task {
                     while !Task.isCancelled {
                         charts = await offMain { inspectorCharts(Qgc.get(INSPECTOR_CHARTS_VIEW)) }
@@ -211,6 +214,9 @@ private struct FieldList: View {
                 .accessibilityLabel("\(field.name) on \(CHART_LABELS[chart])")
             }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(minHeight: 72)
     }
 }
 
