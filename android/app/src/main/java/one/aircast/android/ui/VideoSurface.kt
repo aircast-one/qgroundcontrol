@@ -79,10 +79,11 @@ internal fun FlyNoVideoMessage() {
     }
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
+    val synthetic = rememberSyntheticAvailable()
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val compact = maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
+        val compact = synthetic || maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
         Box(Modifier.fillMaxSize(), contentAlignment = if (compact) Alignment.TopEnd else Alignment.Center) {
-            CompositionLocalProvider(LocalNoVideoSize provides if (compact) NoVideoSize.Pill else NoVideoSize.Full) { NoVideoPanel(video) }
+            CompositionLocalProvider(LocalNoVideoSize provides if (compact) NoVideoSize.Pill else NoVideoSize.Full, LocalSyntheticBehind provides synthetic) { NoVideoPanel(video) }
         }
     }
 }
@@ -122,9 +123,14 @@ fun VideoSurface(
 ) {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
+    val synthetic = rememberSyntheticAvailable()
 
     if (video?.available == false) {
         if (!expanded) return
+        if (synthetic) {
+            SyntheticView(modifier.fillMaxSize(), labelled = fullScreen)
+            return
+        }
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
             NoVideoArea(expanded && !fullScreen, thumb = false, video = video)
         }
@@ -157,7 +163,9 @@ fun VideoSurface(
         }
         }
 
-        if (video?.decoding != true) {
+        if (video?.decoding != true && synthetic) {
+            SyntheticView(Modifier.fillMaxSize(), labelled = !expanded || fullScreen)
+        } else if (video?.decoding != true) {
             Surface(
                 Modifier.fillMaxSize(),
                 color = if (expanded) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.aircast.outdoorBackground,

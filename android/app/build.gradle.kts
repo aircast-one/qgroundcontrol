@@ -1,4 +1,7 @@
+import java.net.URI
 import java.nio.file.Files
+import java.security.MessageDigest
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -22,6 +25,10 @@ play {
 val coreCrate = rootProject.file("../groundstation")
 val coreBridgeSources = layout.buildDirectory.dir("core/bridge")
 val instrumentIconAssets = layout.buildDirectory.dir("instrumentIcons")
+val cesiumVersion = "1.139.1"
+val cesiumIntegrity = "sha512-Wj7OGuozqHgkj+Ij0B9j+YUQxiviEKf4AKfOC8bp84UcyyY9r92EfRWXiePP4Or6MI7OaM3YkGtGSaLRXhNvLg=="
+val cesiumArchive = layout.buildDirectory.file("downloads/cesium-$cesiumVersion.tgz")
+val syntheticViewAssets = layout.buildDirectory.dir("syntheticView")
 fun coreVideoBuild(buildType: String) = layout.buildDirectory.dir("core/video/$buildType/${qgc("abi")}")
 val coreBuildTypes = listOf("debug", "release")
 val coreTriples = mapOf(
@@ -79,6 +86,7 @@ android {
     sourceSets {
         getByName("main") {
             assets.srcDir(instrumentIconAssets)
+            assets.srcDir(syntheticViewAssets)
         }
         getByName("core") {
             java.srcDir(coreBridgeSources)
@@ -127,6 +135,31 @@ val copyCoreBridge by tasks.registering(Copy::class) {
         include(listOf("QGCBridge", "QGCUsbSerialManager", "QGCUsbSerialProber", "QGCUsbId", "QGCFtdiDriver", "QGCFtdiSerialDriver", "QGCLogger").map { "org/mavlink/qgroundcontrol/$it.java" })
     }
     into(coreBridgeSources)
+}
+
+val downloadCesium by tasks.registering {
+    inputs.property("integrity", cesiumIntegrity)
+    outputs.file(cesiumArchive)
+    doLast {
+        val archive = cesiumArchive.get().asFile
+        archive.parentFile.mkdirs()
+        URI("https://registry.npmjs.org/cesium/-/cesium-$cesiumVersion.tgz").toURL().openStream().use { input -> archive.outputStream().use { input.copyTo(it) } }
+        val digest = "sha512-" + Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-512").digest(archive.readBytes()))
+        if (digest != cesiumIntegrity) {
+            archive.delete()
+            error("cesium-$cesiumVersion.tgz does not match its pinned integrity, got $digest")
+        }
+    }
+}
+
+val copyCesium by tasks.registering(Copy::class) {
+    dependsOn(downloadCesium)
+    from({ tarTree(resources.gzip(cesiumArchive.get().asFile)) }) {
+        include(listOf("Cesium.js", "Workers/**", "Assets/approximateTerrainHeights.json", "Assets/Images/**").map { "package/Build/Cesium/$it" })
+        eachFile { path = path.removePrefix("package/Build/") }
+        includeEmptyDirs = false
+    }
+    into(syntheticViewAssets.map { it.dir("synthetic") })
 }
 
 abstract class NativeLibs : Exec() {
@@ -178,7 +211,7 @@ val buildCoreVideo = coreBuildTypes.associateWith { buildType ->
     }
 }
 
-tasks.named("preBuild") { dependsOn(copyInstrumentIcons, copyAirframeImages, copySectionImages) }
+tasks.named("preBuild") { dependsOn(copyInstrumentIcons, copyAirframeImages, copySectionImages, copyCesium) }
 
 androidComponents {
     onVariants(selector().withFlavor("host" to "core")) { variant ->
@@ -210,6 +243,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("com.github.mik3y:usb-serial-for-android:3.10.0")
     implementation("androidx.activity:activity-compose:1.9.3")
+    implementation("androidx.webkit:webkit:1.12.1")
     implementation(platform("androidx.compose:compose-bom:2024.09.03"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")

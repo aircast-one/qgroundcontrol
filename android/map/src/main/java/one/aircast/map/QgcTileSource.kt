@@ -44,6 +44,12 @@ private fun setting(path: String): String =
 
 fun currentMapType(): String = mapTypeName(setting(MAP_PROVIDER), setting(MAP_TYPE))
 
+fun tileMimeType(tile: ByteArray): String =
+    if (tile.size >= PNG_MAGIC.size && PNG_MAGIC.indices.all { tile[it] == PNG_MAGIC[it] }) "image/png" else "image/jpeg"
+
+fun coreTile(encodedPath: String): ByteArray? =
+    tileAddress(encodedPath)?.let { address -> runCatching { MapTileHost.fetch?.invoke(address.mapType, address.x, address.y, address.z) }.getOrNull() }
+
 fun qgcRasterStyle(mapType: String): String = """
 {
   "version": 8,
@@ -66,16 +72,14 @@ class QgcTileInterceptor(
     private val cachedPrefix: String?,
 ) : Interceptor {
 
-    private fun served(request: okhttp3.Request, tile: ByteArray): Response {
-        val png = tile.size >= PNG_MAGIC.size && PNG_MAGIC.indices.all { tile[it] == PNG_MAGIC[it] }
-        return Response.Builder()
+    private fun served(request: okhttp3.Request, tile: ByteArray): Response =
+        Response.Builder()
             .request(request)
             .protocol(Protocol.HTTP_1_1)
             .code(200)
             .message("OK")
-            .body(tile.toResponseBody((if (png) "image/png" else "image/jpeg").toMediaType()))
+            .body(tile.toResponseBody(tileMimeType(tile).toMediaType()))
             .build()
-    }
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -86,7 +90,7 @@ class QgcTileInterceptor(
             ?: return Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(404).message("Not a tile")
                 .body(ByteArray(0).toResponseBody("image/png".toMediaType())).build()
 
-        val fromCore = runCatching { MapTileHost.fetch?.invoke(address.mapType, address.x, address.y, address.z) }.getOrNull()
+        val fromCore = coreTile(request.url.encodedPath)
         val tile = fromCore ?: cachedPrefix?.let { prefix -> runCatching { cache?.tile(prefix, address.z, address.x, address.y) }.getOrNull() }
         if (tile != null) {
             return served(request, tile)

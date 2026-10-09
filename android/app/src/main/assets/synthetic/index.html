@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  html, body, #view { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+  #view { opacity: 0; transition: opacity 300ms; }
+  body.placed #view { opacity: 1; }
+  .cesium-widget, .cesium-widget canvas { width: 100%; height: 100%; display: block; }
+  #credits { position: absolute; right: 4px; bottom: 2px; font: 9px sans-serif; color: rgba(255, 255, 255, 0.55); pointer-events: none; }
+  #credits img { display: none; }
+</style>
+<script>window.CESIUM_BASE_URL = "Cesium/";</script>
+<script src="Cesium/Cesium.js"></script>
+</head>
+<body>
+<div id="view"></div>
+<div id="credits"></div>
+<script src="synthetic.js"></script>
+</body>
+</html>

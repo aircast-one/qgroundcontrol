@@ -207,6 +207,7 @@ pub mod inspectorchart;
 pub mod rccal;
 pub mod shp;
 pub mod attitude;
+pub mod synthview;
 pub mod escview;
 pub mod gcsbattery;
 pub mod firstrun;
