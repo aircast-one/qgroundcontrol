@@ -8,6 +8,7 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
 use crate::mockcal::Calibration;
+use crate::mocklog::Logs;
 use crate::mockcamera::{Cameras, StreamKind, Video, Where};
 use crate::mockgimbal::Gimbal;
 use crate::transport::{Owner, Registry};
@@ -329,6 +330,7 @@ pub struct Sim {
     cameras: Option<Cameras>,
     gimbal: Option<Gimbal>,
     calibration: Calibration,
+    logs: Logs,
     adsb: Vec<Adsb>,
     battery: [i8; 2],
     greeted: bool,
@@ -369,6 +371,7 @@ impl Sim {
             cameras: options.enable_camera.then(|| Cameras::new(Video { requested: options.video, served })),
             gimbal: options.enable_gimbal.then(Gimbal::default),
             calibration: Calibration::default(),
+            logs: Logs::default(),
             adsb: (0..ADSB_VEHICLES)
                 .map(|i| {
                     let step = i as f64 * 0.001;
@@ -451,6 +454,15 @@ impl Sim {
             }
             MavMessage::COMMAND_ACK(m) => {
                 self.calibration.acked(m.command);
+                Vec::new()
+            }
+            MavMessage::LOG_REQUEST_LIST(m) if self.mine(m.target_system) && (m.start == 0 || m.end == u16::MAX) => vec![self.logs.listed()],
+            MavMessage::LOG_REQUEST_DATA(m) if self.mine(m.target_system) => {
+                self.logs.requested(m);
+                Vec::new()
+            }
+            MavMessage::LOG_ERASE(m) if self.mine(m.target_system) => {
+                self.logs.erase();
                 Vec::new()
             }
             MavMessage::SET_MODE(m) if self.mine(m.target_system) => {
@@ -686,7 +698,8 @@ impl Sim {
     pub fn pump(&mut self) -> Vec<Out> {
         let count = PARAMS_PER_POLL.min(self.queued.len());
         let batch: Vec<usize> = self.queued.drain(..count).collect();
-        batch.into_iter().map(|at| self.param_value(at)).collect()
+        let logs = self.logs.pump();
+        batch.into_iter().map(|at| self.param_value(at)).chain(logs).collect()
     }
 
     pub fn tick(&mut self, elapsed_ms: u64) -> Vec<Out> {

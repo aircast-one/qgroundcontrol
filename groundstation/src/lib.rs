@@ -110,6 +110,7 @@ pub mod linkconfig;
 pub mod linkhost;
 pub mod logs;
 pub mod mockcal;
+pub mod mocklog;
 pub mod mockcamera;
 pub mod mockgimbal;
 pub mod mocklink;
