@@ -76,10 +76,10 @@ internal class DeckEntry(
 internal const val HOLD_TO_TAKE_OFF = "Hold to take off"
 internal const val TAKE_OFF = "Take off"
 internal const val NO_LINK = "No link"
-internal const val NO_SIGNAL_REASON = "No signal from the aircraft."
+internal const val NO_SIGNAL_CODE = "noSignal"
 
 internal fun takeoffLabel(offer: GuidedOffer?, readiness: Readiness?): String = when {
-    offer?.reason == NO_SIGNAL_REASON -> NO_LINK
+    offer?.reasonCode == NO_SIGNAL_CODE -> NO_LINK
     readiness == null -> HOLD_TO_TAKE_OFF
     else -> TAKE_OFF
 }

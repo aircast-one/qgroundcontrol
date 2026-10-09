@@ -70,9 +70,9 @@ class FlyStateTest {
     fun `a silent aircraft makes no readiness claims, and take off says why it cannot`() {
         val silentButUnready = JSONObject(lost.toString()).put("nominal", false).put("summaryDetail", "GPS turned off. Everything else reports normal.")
         assertEquals(null, readinessWarning(flyState(silentButUnready)))
-        val noSignal = GuidedOffer("takeoff", "Takeoff", "hidden", NO_SIGNAL_REASON, "", false, true)
+        val noSignal = GuidedOffer("takeoff", "Takeoff", "hidden", "Any wording the core chooses.", "", false, true, reasonCode = NO_SIGNAL_CODE)
         assertEquals(NO_LINK, takeoffLabel(noSignal, null))
-        assertEquals(HOLD_TO_TAKE_OFF, takeoffLabel(noSignal.copy(offer = "ready", reason = ""), null))
+        assertEquals(HOLD_TO_TAKE_OFF, takeoffLabel(noSignal.copy(offer = "ready", reason = "", reasonCode = ""), null))
     }
 
     @Test

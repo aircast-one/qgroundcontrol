@@ -25,7 +25,6 @@ import org.json.JSONObject
 
 private const val SPEECH_VIEW = "view.speech"
 private const val SPEECH_POLL_MS = 500L
-private const val BATTERY_VIEW = "view.battery"
 private val LOST_BUZZ = longArrayOf(0, 400, 150, 400, 150, 400)
 private val REGAINED_BUZZ = longArrayOf(0, 120)
 
@@ -47,15 +46,29 @@ internal fun speechPath(after: Long): String = "$SPEECH_VIEW($after)"
 
 internal fun linkBuzz(lost: Boolean): LongArray = if (lost) LOST_BUZZ else REGAINED_BUZZ
 
+internal data class ReturnAlert(val speak: Boolean, val alerted: Boolean)
+
+internal fun returnAlert(alerted: Boolean, returnNow: Boolean, flying: Boolean): ReturnAlert =
+    ReturnAlert(speak = returnNow && !alerted, alerted = flying && (alerted || returnNow))
+
+private fun buzz(context: Context, pattern: LongArray) {
+    context.getSystemService(Vibrator::class.java)?.takeIf { it.hasVibrator() }?.vibrate(VibrationEffect.createWaveform(pattern, -1))
+}
+
 @Composable
 fun VoiceAlerts() {
     val context = LocalContext.current
-    var voice by remember { mutableStateOf<TextToSpeech?>(null) }
+    var engine by remember { mutableStateOf<TextToSpeech?>(null) }
+    var ready by remember { mutableStateOf(false) }
     DisposableEffect(context) {
-        val engine = TextToSpeech(context.applicationContext) { status -> if (status != TextToSpeech.SUCCESS) voice = null }
-        voice = engine
-        onDispose { engine.shutdown() }
+        val created = TextToSpeech(context.applicationContext) { status -> ready = status == TextToSpeech.SUCCESS }
+        engine = created
+        onDispose {
+            ready = false
+            created.shutdown()
+        }
     }
+    val voice = engine?.takeIf { ready }
     LaunchedEffect(voice) {
         val speaker = voice ?: return@LaunchedEffect
         var after = withContext(Dispatchers.Default) { speechBatch(Qgc.get(SPEECH_VIEW))?.last ?: 0L }
@@ -75,11 +88,16 @@ fun VoiceAlerts() {
 @Composable
 private fun ReturnHomeAlert(context: Context, voice: TextToSpeech?) {
     val batteryJson by qgcPath(BATTERY_VIEW)
+    val flyJson by qgcPath(FLY_STATE)
     val returnNow = remember(batteryJson) { batteryHeadline(batteryJson)?.returnNow == true }
-    LaunchedEffect(returnNow) {
-        if (!returnNow) return@LaunchedEffect
+    val flying = flyJson?.optBoolean("flying") == true
+    var alerted by remember { mutableStateOf(false) }
+    LaunchedEffect(returnNow, flying) {
+        val next = returnAlert(alerted, returnNow, flying)
+        alerted = next.alerted
+        if (!next.speak) return@LaunchedEffect
         voice?.speak(RETURN_NOW_SPOKEN, TextToSpeech.QUEUE_ADD, null, "return-now")
-        context.getSystemService(Vibrator::class.java)?.takeIf { it.hasVibrator() }?.vibrate(VibrationEffect.createWaveform(linkBuzz(true), -1))
+        buzz(context, linkBuzz(true))
     }
 }
 
@@ -89,9 +107,7 @@ private fun LinkLossBuzz(context: Context) {
     val lost = flyState(flyJson)?.contactLost == true
     var heard by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(lost) {
-        if (heard != null || lost) {
-            context.getSystemService(Vibrator::class.java)?.takeIf { it.hasVibrator() }?.vibrate(VibrationEffect.createWaveform(linkBuzz(lost), -1))
-        }
+        if (heard != null || lost) buzz(context, linkBuzz(lost))
         heard = lost
     }
 }

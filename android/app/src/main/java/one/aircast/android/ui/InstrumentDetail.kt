@@ -34,6 +34,8 @@ internal fun batteryHeadline(view: JSONObject?): BatteryHeadline? =
         )
     }
 
+internal const val BATTERY_VIEW = "view.battery"
+
 private const val LIMITING_PACK = "lowest"
 
 private fun JSONObject.optNumber(key: String): Double? = if (isNull(key)) null else optDouble(key).takeIf { it.isFinite() }

@@ -138,6 +138,7 @@ pub trait Host {
     fn bridge_writes_allowed(&self) -> bool;
     fn mock_links_available(&self) -> bool;
     fn mock_link_present(&self) -> bool;
+    fn silence_mock_links(&self, silent: bool) -> usize;
     fn vehicle_connected(&self) -> bool;
 }
 
@@ -385,8 +386,8 @@ impl DebugApi {
             return refuse("mock links exist only in debug builds");
         }
         if present(pairs, "silent") {
-            crate::mocklink::set_silent(switched_on(pairs, "silent"));
-            return ok(json!({ "silent": crate::mocklink::silent() }));
+            let silent = switched_on(pairs, "silent");
+            return ok(json!({ "silent": silent, "links": host.silence_mock_links(silent) }));
         }
         let Some(autopilot) = given(pairs, "autopilot").map(str::to_lowercase) else {
             return refuse("autopilot must be px4 or apm");
@@ -605,6 +606,10 @@ mod tests {
         }
         fn mock_link_present(&self) -> bool {
             self.mock_present
+        }
+        fn silence_mock_links(&self, silent: bool) -> usize {
+            self.note(format!("silence {silent}"));
+            usize::from(self.mock_present)
         }
         fn vehicle_connected(&self) -> bool {
             self.vehicle
@@ -848,11 +853,11 @@ mod tests {
     #[test]
     fn a_mock_link_can_go_silent_like_a_lost_radio_and_come_back() {
         let api = DebugApi::new();
-        let host = Fake { mock_available: true, ..Fake::default() };
-        assert_eq!(get(&api, &host, "/links/mocklink", "autopilot=px4&silent=1").body["silent"], true);
-        assert!(crate::mocklink::silent());
+        let host = Fake { mock_available: true, mock_present: true, ..Fake::default() };
+        let quiet = get(&api, &host, "/links/mocklink", "autopilot=px4&silent=1").body;
+        assert_eq!((quiet["silent"].clone(), quiet["links"].clone()), (json!(true), json!(1)));
         assert_eq!(get(&api, &host, "/links/mocklink", "silent=0").body["silent"], false);
-        assert!(!crate::mocklink::silent());
+        assert_eq!(host.calls(), vec!["silence true".to_string(), "silence false".to_string()], "silence goes to the open mock links, never to a global another test's link would hear");
     }
 
     #[test]
@@ -1075,6 +1080,9 @@ mod tests {
         }
         fn mock_link_present(&self) -> bool {
             false
+        }
+        fn silence_mock_links(&self, _silent: bool) -> usize {
+            0
         }
         fn vehicle_connected(&self) -> bool {
             false

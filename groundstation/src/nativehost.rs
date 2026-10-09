@@ -303,6 +303,9 @@ impl Host for CoreOnly {
     fn mock_link_present(&self) -> bool {
         crate::corelinks::mock_link_present()
     }
+    fn silence_mock_links(&self, silent: bool) -> usize {
+        crate::linkhost::silence_mocks(&crate::linkhost::TRANSPORTS, silent)
+    }
     fn vehicle_connected(&self) -> bool {
         serde_json::from_str::<Value>(&self.bridge_get("vehicles.activeVehicleAvailable")).ok().and_then(|v| v["value"].as_bool()).unwrap_or(false)
     }

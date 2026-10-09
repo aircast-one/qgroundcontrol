@@ -56,6 +56,7 @@ pub const DEPS: &[&str] = &[
 
 const CHECKLIST_PASSED: i64 = 1;
 pub const NO_SIGNAL: &str = "No signal from the aircraft.";
+pub const NO_SIGNAL_CODE: &str = "noSignal";
 
 #[derive(Default, PartialEq, Debug, Clone)]
 pub struct GuidedState {
@@ -173,6 +174,7 @@ pub struct Offer {
     pub prompt: &'static str,
     pub offer: &'static str,
     pub reason: &'static str,
+    pub reason_code: &'static str,
     pub destructive: bool,
     pub carries_value: bool,
     pub option: &'static str,
@@ -296,6 +298,7 @@ impl Action {
             },
             offer,
             reason,
+            reason_code: if s.contact_lost && reason == NO_SIGNAL { NO_SIGNAL_CODE } else { "" },
             destructive: matches!(self, Action::EmergencyStop | Action::ForceArm),
             carries_value: self.carries_value() && !(self == Action::Takeoff && !s.takeoff_with_altitude),
             option: match (self, s.smart_rtl_supported) {
@@ -843,6 +846,8 @@ mod tests {
         let silent = GuidedState { contact_lost: true, ..checks.clone() };
         assert_eq!((offer_of(&silent, Action::Takeoff), Action::Takeoff.offer(&silent).reason), ("hidden", NO_SIGNAL), "a ground action sent into a silent link would launch an aircraft nobody can watch");
         assert_eq!(offer_of(&silent, Action::Arm), "hidden");
+        assert_eq!(Action::Takeoff.offer(&silent).reason_code, NO_SIGNAL_CODE, "heads key on the code, never on the English sentence");
+        assert_eq!(Action::Takeoff.offer(&checks).reason_code, "");
         assert_eq!(offer_of(&GuidedState { can_takeoff: false, ..ready_on_ground() }, Action::Takeoff), "hidden");
         assert_eq!(offer_of(&GuidedState { can_start_mission: false, mission_available: true, ..ready_on_ground() }, Action::StartMission), "hidden");
     }

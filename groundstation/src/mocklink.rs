@@ -87,15 +87,6 @@ pub fn video_pattern() -> String {
     VIDEO_PATTERN.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
 }
 static NEXT_SYSTEM: AtomicU8 = AtomicU8::new(FIRST_SYSTEM_ID);
-static SILENT: AtomicBool = AtomicBool::new(false);
-
-pub fn set_silent(silent: bool) {
-    SILENT.store(silent, Ordering::Relaxed);
-}
-
-pub fn silent() -> bool {
-    SILENT.load(Ordering::Relaxed)
-}
 
 pub fn set_available(available: bool) {
     DEBUG_BUILD.store(available, Ordering::Relaxed);
@@ -1019,6 +1010,7 @@ fn serve(_: StreamKind) -> Option<NoStream> {
 pub struct MockLink {
     inbox: Sender<Vec<u8>>,
     alive: std::sync::Arc<AtomicBool>,
+    silent: std::sync::Arc<AtomicBool>,
 }
 
 impl MockLink {
@@ -1030,6 +1022,8 @@ impl MockLink {
         let (inbox, incoming) = mpsc::channel::<Vec<u8>>();
         let alive = std::sync::Arc::new(AtomicBool::new(true));
         let running = alive.clone();
+        let silent = std::sync::Arc::new(AtomicBool::new(false));
+        let muted = silent.clone();
         std::thread::Builder::new()
             .name("groundstation-mock-link".to_string())
             .spawn(move || {
@@ -1058,13 +1052,13 @@ impl MockLink {
                         false => Vec::new(),
                     };
                     let outgoing: Vec<u8> = replies.iter().chain(&telemetry).chain(&sim.pump()).flat_map(|out| encode(system, &mut sequences, out)).collect();
-                    if !outgoing.is_empty() && running.load(Ordering::Relaxed) && !silent() {
+                    if !outgoing.is_empty() && running.load(Ordering::Relaxed) && !muted.load(Ordering::Relaxed) {
                         deliver(&outgoing);
                     }
                 }
             })
             .map_err(|e| e.to_string())?;
-        Ok(MockLink { inbox, alive })
+        Ok(MockLink { inbox, alive, silent })
     }
 
     pub fn write(&self, bytes: &[u8]) -> bool {
@@ -1074,11 +1068,31 @@ impl MockLink {
     pub fn close(&self) {
         self.alive.store(false, Ordering::Relaxed);
     }
+
+    pub fn set_silent(&self, silent: bool) {
+        self.silent.store(silent, Ordering::Relaxed);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_silent_mock_sends_nothing_until_it_is_heard_again() {
+        let (sent, heard) = mpsc::channel::<usize>();
+        let link = MockLink::open(options(Vehicle::Px4), move |bytes| {
+            let _ = sent.send(bytes.len());
+        })
+        .unwrap();
+        assert!(heard.recv_timeout(Duration::from_secs(2)).is_ok(), "a live mock streams telemetry");
+        link.set_silent(true);
+        while heard.recv_timeout(POLL * 5).is_ok() {}
+        assert!(heard.recv_timeout(Duration::from_millis(500)).is_err(), "a silent mock is a dead radio");
+        link.set_silent(false);
+        assert!(heard.recv_timeout(Duration::from_secs(2)).is_ok(), "and it is heard again when the radio comes back");
+        link.close();
+    }
 
     fn options(vehicle: Vehicle) -> Options {
         Options { vehicle, send_status_text: false, enable_camera: false, enable_gimbal: false, enable_proximity: false, apm_start_fresh_params: false, increment_vehicle_id: true, video: StreamKind::None }

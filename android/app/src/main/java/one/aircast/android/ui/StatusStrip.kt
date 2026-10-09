@@ -49,6 +49,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.text.drawText
 import kotlin.math.roundToInt
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -63,7 +69,6 @@ import org.json.JSONObject
 import kotlinx.coroutines.isActive
 import one.aircast.map.silentSeconds
 
-private const val BATTERY = "view.battery"
 private const val VEHICLE_FLIGHT_TIME = "vehicle.flightTime"
 private const val GPS_VIEW = "view.gps"
 
@@ -193,7 +198,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     val state = remember(stateJson) { flyState(stateJson) }
     val live = state?.staleNotice.isNullOrBlank()
 
-    val batteryJson by qgcPath(BATTERY)
+    val batteryJson by qgcPath(BATTERY_VIEW)
     val batteries = remember(batteryJson) { batteryReadings(batteryJson) }
     val timeLeft = remember(batteryJson) { batteryHeadline(batteryJson)?.timeLeft.orEmpty() }
     val linksJson by qgcPath(VEHICLE_LINKS)
@@ -363,7 +368,7 @@ private const val PERCENT = 100f
 
 @Composable
 internal fun BatteryReturnBar(modifier: Modifier = Modifier) {
-    val batteryJson by qgcPath(BATTERY)
+    val batteryJson by qgcPath(BATTERY_VIEW)
     val stateJson by qgcPath(FLY_STATE)
     val headline = remember(batteryJson) { batteryHeadline(batteryJson) } ?: return
     val percent = headline.percent ?: return
@@ -380,20 +385,20 @@ internal fun BatteryReturnBar(modifier: Modifier = Modifier) {
     val reserveZone = MaterialTheme.colorScheme.error
     val home = MaterialTheme.aircast.success
     val homeText = MaterialTheme.aircast.onSuccess
-    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
-    val letter = androidx.compose.ui.text.TextStyle(color = homeText, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-    androidx.compose.foundation.Canvas(modifier.fillMaxWidth().height(BATTERY_BAR_ROOM).semantics { contentDescription = batteryBarDescription(headline) }) {
+    val measurer = rememberTextMeasurer()
+    val letter = TextStyle(color = homeText, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+    Canvas(modifier.fillMaxWidth().height(BATTERY_BAR_ROOM).semantics { contentDescription = batteryBarDescription(headline) }) {
         val bar = BATTERY_BAR_HEIGHT.toPx()
         val top = (size.height - bar) / 2f
         val at = { share: Double -> size.width * (share.toFloat() / PERCENT).coerceIn(0f, 1f) }
-        drawRoundRect(track, androidx.compose.ui.geometry.Offset(0f, top), androidx.compose.ui.geometry.Size(size.width, bar), androidx.compose.ui.geometry.CornerRadius(bar / 2f))
-        drawRoundRect(fill, androidx.compose.ui.geometry.Offset(0f, top), androidx.compose.ui.geometry.Size(at(percent), bar), androidx.compose.ui.geometry.CornerRadius(bar / 2f))
-        drawRect(reserveZone, androidx.compose.ui.geometry.Offset(0f, top), androidx.compose.ui.geometry.Size(at(headline.reserve), bar))
+        drawRoundRect(track, Offset(0f, top), Size(size.width, bar), CornerRadius(bar / 2f))
+        drawRoundRect(fill, Offset(0f, top), Size(at(percent), bar), CornerRadius(bar / 2f))
+        drawRect(reserveZone, Offset(0f, top), Size(at(headline.reserve), bar))
         headline.returnAt?.let { share ->
-            val centre = androidx.compose.ui.geometry.Offset(at(share), size.height / 2f)
+            val centre = Offset(at(share), size.height / 2f)
             drawCircle(home, RETURN_MARKER.toPx() / 2f, centre)
             val h = measurer.measure("H", letter)
-            drawText(h, topLeft = centre - androidx.compose.ui.geometry.Offset(h.size.width / 2f, h.size.height / 2f))
+            drawText(h, topLeft = centre - Offset(h.size.width / 2f, h.size.height / 2f))
         }
     }
 }
@@ -517,7 +522,7 @@ private const val BATTERY_RING_TRACK_ALPHA = 0.25f
 
 internal fun batteryPercent(text: String): Int? = compactStatusText(text).removeSuffix("%").toIntOrNull()?.coerceIn(0, 100)
 
-internal fun batteryPercentNow(): Int? = batteryReadings(Qgc.get(BATTERY)).firstOrNull()?.text?.let(::batteryPercent)
+internal fun batteryPercentNow(): Int? = batteryReadings(Qgc.get(BATTERY_VIEW)).firstOrNull()?.text?.let(::batteryPercent)
 
 internal fun flightTimeNow(): Double? = flightTimeSeconds(Qgc.get(VEHICLE_FLIGHT_TIME))
 

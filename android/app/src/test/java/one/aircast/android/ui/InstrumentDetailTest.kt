@@ -65,6 +65,15 @@ class InstrumentDetailTest {
     }
 
     @Test
+    fun `return now is said once a flight, however often the charge crosses the turn-back point`() {
+        val first = returnAlert(alerted = false, returnNow = true, flying = true)
+        assertEquals(ReturnAlert(speak = true, alerted = true), first)
+        val wobble = returnAlert(returnAlert(first.alerted, returnNow = false, flying = true).alerted, returnNow = true, flying = true)
+        assertEquals(ReturnAlert(speak = false, alerted = true), wobble)
+        assertEquals("landing re-arms it for the next flight", false, returnAlert(true, returnNow = false, flying = false).alerted)
+    }
+
+    @Test
     fun `silence reads in seconds, then minutes`() {
         assertEquals("No data from the aircraft for 12 s", silenceText(12))
         assertEquals("No data from the aircraft for 2 min", silenceText(150))

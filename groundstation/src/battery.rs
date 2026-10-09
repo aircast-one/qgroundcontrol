@@ -11,6 +11,9 @@ pub const DEPS: &[&str] = &[
     "settings.batteryIndicatorSettings.threshold1",
     "settings.batteryIndicatorSettings.threshold2",
     "settings.batteryIndicatorSettings.valueDisplay",
+    "vehicle.flying",
+    "vehicle.distanceToHome",
+    "vehicle.altitudeRelative",
 ];
 
 const MAX_PACKS: usize = 8;
@@ -243,7 +246,7 @@ const CM: f64 = 100.0;
 fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
     let raw = |name: &str| parameter_value(backend, name, "rawValue");
     let fact = |path: &str| value_number(&backend.value(&format!("{path}.rawValue")));
-    let (distance_m, altitude_m) = (fact("vehicle.distanceToHome")?, fact("vehicle.altitudeRelative").unwrap_or(0.0));
+    let (distance_m, altitude_m) = (fact("vehicle.distanceToHome")?, fact("vehicle.altitudeRelative")?);
     let px4 = || Some(ReturnTrip { distance_m, altitude_m, return_altitude_m: raw("RTL_RETURN_ALT")?, cruise_mps: raw("MPC_XY_CRUISE")?, climb_mps: raw("MPC_Z_V_AUTO_UP")?, descent_mps: raw("MPC_LAND_SPEED")? });
     let apm = || {
         let rtl = raw("RTL_SPEED").filter(|s| *s > 0.0).or_else(|| raw("WPNAV_SPEED"))?;
@@ -355,29 +358,41 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "text": described.first().map(|p| p["text"].clone()).unwrap_or(Value::String(String::new())),
         "indicatorPacks": indicator_packs(&described, backend.value(COMBINE_PACKS).get("value").and_then(Value::as_bool).unwrap_or(COMBINE_PACKS_UNSET)),
         "packs": described,
-        "headline": headline(&popup_packs).map(|mut shown| {
-            let index = shown["index"].as_u64().unwrap_or(0) as usize;
-            let limiting = &popup_packs[index];
-            shown["level"] = described.get(index).map_or(Value::Null, |pack| pack["level"].clone());
-            let critical = parameter_value(backend, "BAT_CRIT_THR", "value");
-            shown["margin"] = margin_text(
-                parameter_value(backend, "COM_LOW_BAT_ACT", "rawValue").map(|v| v as i64),
-                parameter_value(backend, "BAT_LOW_THR", "value"),
-                critical,
-                limiting.percent,
-                limiting.time_remaining,
-            )
-            .map_or(Value::Null, Value::String);
-            let reserve = critical.unwrap_or(0.0);
-            let return_at = limiting.percent.zip(limiting.time_remaining).zip(return_trip(backend).and_then(return_seconds)).and_then(|((percent, left), trip)| return_charge(percent, left, reserve, trip));
-            shown["percent"] = limiting.percent.map_or(Value::Null, |p| json!(p));
-            shown["timeLeft"] = limiting.time_remaining.map(duration_text).filter(|t| !t.is_empty()).map_or(Value::Null, Value::String);
-            shown["reserve"] = json!(reserve);
-            shown["returnAt"] = return_at.map_or(Value::Null, |at| json!(at));
-            shown["returnNow"] = json!(return_at.zip(limiting.percent).is_some_and(|(at, percent)| percent <= at));
-            shown
-        }),
+        "headline": headline(&popup_packs).map(|shown| limiting_pack_extras(backend, shown, &popup_packs, &described)),
     })
+}
+
+pub fn failsafe_reserve(action: Option<i64>, critical: Option<f64>) -> f64 {
+    match action {
+        Some(PX4_LOW_BATTERY_RETURN | PX4_LOW_BATTERY_LAND | PX4_LOW_BATTERY_RETURN_THEN_LAND) => critical.unwrap_or(0.0),
+        _ => 0.0,
+    }
+}
+
+pub fn must_return(percent: Option<f64>, return_at: Option<f64>, flying: bool) -> bool {
+    flying && percent.zip(return_at).is_some_and(|(percent, at)| percent <= at)
+}
+
+fn limiting_pack_extras(backend: &dyn Backend, mut shown: Value, popup_packs: &[PopupPack], described: &[Value]) -> Value {
+    let index = shown["index"].as_u64().unwrap_or(0) as usize;
+    let limiting = &popup_packs[index];
+    let action = parameter_value(backend, "COM_LOW_BAT_ACT", "rawValue").map(|v| v as i64);
+    let critical = parameter_value(backend, "BAT_CRIT_THR", "value");
+    let reserve = failsafe_reserve(action, critical);
+    let return_at = limiting
+        .percent
+        .zip(limiting.time_remaining)
+        .zip(return_trip(backend).and_then(return_seconds))
+        .and_then(|((percent, left), trip)| return_charge(percent, left, reserve, trip));
+    let flying = crate::read::flag(&backend.value_fields("vehicle", "flying"), "flying");
+    shown["level"] = described.get(index).map_or(Value::Null, |pack| pack["level"].clone());
+    shown["margin"] = margin_text(action, parameter_value(backend, "BAT_LOW_THR", "value"), critical, limiting.percent, limiting.time_remaining).map_or(Value::Null, Value::String);
+    shown["percent"] = limiting.percent.map_or(Value::Null, |p| json!(p));
+    shown["timeLeft"] = limiting.time_remaining.map(duration_text).filter(|t| !t.is_empty()).map_or(Value::Null, Value::String);
+    shown["reserve"] = json!(reserve);
+    shown["returnAt"] = return_at.map_or(Value::Null, |at| json!(at));
+    shown["returnNow"] = json!(must_return(limiting.percent, return_at, flying));
+    shown
 }
 
 #[cfg(test)]
@@ -440,6 +455,39 @@ mod tests {
         assert_eq!(return_seconds(ReturnTrip { cruise_mps: 0.0, ..trip }), None, "an unknown speed promises nothing");
         assert_eq!(return_charge(60.0, 600.0, 7.0, 190.0), Some(7.0 + 19.0), "190 s at 0.1 %/s costs 19 % on top of the 7 % the aircraft lands at");
         assert_eq!(return_charge(60.0, 0.0, 7.0, 190.0), None);
+    }
+
+    struct Params(Vec<(&'static str, f64)>);
+    impl Backend for Params {
+        fn get(&self, path: &str) -> String {
+            let name = path.trim_end_matches(".rawValue").trim_start_matches("vehicle.parameterManager.getParameter(-1,").trim_end_matches(')');
+            self.0.iter().find(|(n, _)| *n == name).map_or(json!({ "kind": "null" }), |(_, v)| json!({ "kind": "fact", "value": v })).to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn the_trip_home_reads_each_firmware_in_its_own_units() {
+        let place = [("vehicle.distanceToHome", 600.0), ("vehicle.altitudeRelative", 40.0)];
+        let px4 = Params(place.into_iter().chain([("RTL_RETURN_ALT", 60.0), ("MPC_XY_CRUISE", 5.0), ("MPC_Z_V_AUTO_UP", 2.0), ("MPC_LAND_SPEED", 1.0)]).collect());
+        assert_eq!(return_trip(&px4).and_then(return_seconds), Some(190.0));
+        let apm = Params(place.into_iter().chain([("RTL_ALT", 6000.0), ("RTL_SPEED", 0.0), ("WPNAV_SPEED", 500.0), ("WPNAV_SPEED_UP", 200.0), ("LAND_SPEED", 100.0)]).collect());
+        assert_eq!(return_trip(&apm).and_then(return_seconds), Some(190.0), "ArduPilot speaks centimetres, and RTL_SPEED 0 means fly home at WPNAV_SPEED");
+        let unplaced = Params(vec![("vehicle.distanceToHome", 600.0), ("RTL_RETURN_ALT", 60.0), ("MPC_XY_CRUISE", 5.0), ("MPC_Z_V_AUTO_UP", 2.0), ("MPC_LAND_SPEED", 1.0)]);
+        assert_eq!(return_trip(&unplaced), None, "an unknown height is not guessed as the ground");
+    }
+
+    #[test]
+    fn the_turn_back_warning_is_for_the_air_and_the_reserve_follows_the_failsafe() {
+        assert!(must_return(Some(20.0), Some(26.0), true));
+        assert!(!must_return(Some(20.0), Some(26.0), false), "on the pad a low pack is not a reason to shout return now");
+        assert!(!must_return(Some(30.0), Some(26.0), true));
+        assert_eq!(failsafe_reserve(Some(3), Some(7.0)), 7.0);
+        assert_eq!(failsafe_reserve(Some(0), Some(7.0)), 0.0, "a warn-only failsafe never lands, so there is no reserve to keep");
+        assert_eq!(failsafe_reserve(None, None), 0.0);
     }
 
     #[test]

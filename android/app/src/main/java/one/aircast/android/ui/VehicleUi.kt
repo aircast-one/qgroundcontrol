@@ -1047,7 +1047,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                 return@DeckEntry
             }
             openValue(takeoffValue(offers["takeoff"]))
-        }.takeIf { offers["takeoff"]?.let { it.shown || it.reason == NO_SIGNAL_REASON } == true },
+        }.takeIf { offers["takeoff"]?.let { it.shown || it.reasonCode == NO_SIGNAL_CODE } == true },
         DeckEntry(PAUSE, offers[PAUSE]?.title ?: "Pause", R.drawable.ic_pause, offers[PAUSE]?.ready == true) {
             openValue(altitudeValue(true))
         }.takeIf { offers[PAUSE]?.shown == true },

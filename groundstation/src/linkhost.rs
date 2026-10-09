@@ -58,6 +58,16 @@ impl Owned {
         }
     }
 
+    fn silence(&self, silent: bool) -> bool {
+        match self {
+            Owned::Mock(link) => {
+                link.set_silent(silent);
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn close(&self) {
         match self {
             Owned::Udp(link) => link.close(),
@@ -399,6 +409,10 @@ pub fn reconfigure(transports: &Mutex<Transports>, was: &str, config: &LinkConfi
 pub fn reap(transports: &Mutex<Transports>) {
     let dead = transports.lock().unwrap().take_dead();
     dead.iter().for_each(|l| l.close());
+}
+
+pub fn silence_mocks(transports: &Mutex<Transports>, silent: bool) -> usize {
+    transports.lock().unwrap().owned.values().filter(|link| link.silence(silent)).count()
 }
 
 pub fn host_open(transports: &Mutex<Transports>, kind: &str, name: &str) -> LinkId {
