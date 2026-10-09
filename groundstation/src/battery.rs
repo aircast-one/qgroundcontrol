@@ -197,6 +197,10 @@ const PX4_LOW_BATTERY_RETURN: i64 = 1;
 const PX4_LOW_BATTERY_LAND: i64 = 2;
 const PX4_LOW_BATTERY_RETURN_THEN_LAND: i64 = 3;
 
+fn minutes_to_go(seconds: f64) -> String {
+    if seconds < 60.0 { "under a minute to go".to_string() } else { format!("about {} min to go", (seconds / 60.0).round() as i64) }
+}
+
 pub fn margin_text(action: Option<i64>, low: Option<f64>, critical: Option<f64>, percent: Option<f64>, seconds_left: Option<f64>) -> Option<String> {
     let (verb, at) = match action? {
         PX4_LOW_BATTERY_WARN => ("Warns", low?),
@@ -207,7 +211,7 @@ pub fn margin_text(action: Option<i64>, low: Option<f64>, critical: Option<f64>,
     let rule = format!("{verb} at {}%", at.round() as i64);
     let to_go = percent.filter(|p| *p > 0.0).map(|p| match seconds_left.filter(|s| *s > 0.0) {
         _ if p <= at => "reached".to_string(),
-        Some(seconds) => format!("about {} min to go", (seconds * (p - at) / p / 60.0).round().max(1.0) as i64),
+        Some(seconds) => minutes_to_go(seconds * (p - at) / p),
         None => format!("{} points to go", (p - at).round() as i64),
     });
     Some(to_go.map_or(rule.clone(), |go| format!("{rule}  \u{00b7}  {go}")))
@@ -389,6 +393,7 @@ mod tests {
     fn the_margin_names_the_failsafe_and_the_time_before_it() {
         assert_eq!(margin_text(Some(3), Some(15.0), Some(7.0), Some(79.0), Some(711.0)).as_deref(), Some("Returns home at 7%  \u{00b7}  about 11 min to go"));
         assert_eq!(margin_text(Some(2), Some(15.0), Some(7.0), Some(50.0), None).as_deref(), Some("Lands at 7%  \u{00b7}  43 points to go"));
+        assert_eq!(margin_text(Some(2), Some(15.0), Some(7.0), Some(50.0), Some(9.0)).as_deref(), Some("Lands at 7%  \u{00b7}  under a minute to go"), "nine seconds left is not a minute");
         assert_eq!(margin_text(Some(0), Some(15.0), Some(7.0), Some(12.0), Some(300.0)).as_deref(), Some("Warns at 15%  \u{00b7}  reached"));
         assert_eq!(margin_text(None, Some(15.0), Some(7.0), Some(79.0), Some(711.0)), None, "a firmware without these parameters says nothing rather than guess");
         assert_eq!(margin_text(Some(3), None, None, Some(79.0), Some(711.0)), None);
