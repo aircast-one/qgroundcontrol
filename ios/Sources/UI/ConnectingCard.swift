@@ -4,10 +4,23 @@ func connectingTitle(_ name: String?) -> String {
     name.flatMap { $0.isBlank ? nil : "Connecting to \($0)" } ?? "Connecting"
 }
 
+struct LoadingWords: Equatable {
+    let title: String
+    let detail: String
+    let dismiss: String
+}
+
+func loadingWords(_ name: String?, lost: Bool) -> LoadingWords {
+    lost
+        ? LoadingWords(title: SIGNAL_LOST, detail: "Loading stopped. It picks up where it left off when the aircraft answers. \(LOST_LINK_HINT)", dismiss: "Hide")
+        : LoadingWords(title: connectingTitle(name), detail: "Loading its settings.", dismiss: "Fly now, finish loading in background")
+}
+
 struct ConnectingCard: View {
     @Environment(\.theme) private var theme
     @VehicleLoading private var loading
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
+    @QgcPath(FLY_STATE) private var flyJson
     @State private var dismissed = false
 
     var body: some View {
@@ -20,18 +33,22 @@ struct ConnectingCard: View {
     }
 
     private func card(_ progress: Float) -> some View {
-        VStack(spacing: 12) {
-            Image(.link)
+        let lost = flyState(flyJson)?.contactLost == true
+        let words = loadingWords(vehicleChoices(vehiclesJson).active?.name, lost: lost)
+        return VStack(spacing: 12) {
+            Image(lost ? .warning : .link)
                 .font(.system(size: 30))
                 .foregroundStyle(theme.colors.onPrimaryContainer)
                 .frame(width: 72, height: 72)
                 .background(theme.colors.primaryContainer, in: Circle())
-            Text(connectingTitle(vehicleChoices(vehiclesJson).active?.name))
+            Text(words.title)
                 .font(.headlineSmall)
+                .foregroundStyle(lost ? theme.colors.error : theme.colors.onSurface)
                 .multilineTextAlignment(.center)
-            Text("Loading its settings.")
+            Text(words.detail)
                 .font(.bodyMedium)
                 .foregroundStyle(theme.colors.onSurfaceVariant)
+                .multilineTextAlignment(.center)
             HStack {
                 Text("Parameters").font(.titleSmall)
                 Spacer(minLength: 0)
@@ -40,7 +57,8 @@ struct ConnectingCard: View {
                     .foregroundStyle(theme.colors.onSurfaceVariant)
             }
             ProgressView(value: Double(progress))
-            Button("Fly now, finish loading in background") { dismissed = true }
+                .tint(lost ? theme.colors.outline : nil)
+            Button(words.dismiss) { dismissed = true }
                 .buttonStyle(.text)
         }
         .padding(24)

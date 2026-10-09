@@ -11,6 +11,14 @@ final class ConnectingCardTests: XCTestCase {
         XCTAssertEqual(connectingTitle(""), "Connecting")
     }
 
+    func testASilentLinkSaysLoadingStoppedInsteadOfPromisingProgress() {
+        let lost = loadingWords("guta-test", lost: true)
+        XCTAssertEqual(lost.title, "Signal lost")
+        XCTAssertTrue(lost.detail.hasPrefix("Loading stopped."))
+        XCTAssertEqual(lost.dismiss, "Hide")
+        XCTAssertEqual(loadingWords("guta-test", lost: false).title, "Connecting to guta-test")
+    }
+
     func testTheEmptyFlyViewSaysWhatToDoNext() {
         XCTAssertEqual(LOOKING_TITLE, "Looking for your aircraft")
         XCTAssertTrue(LOOKING_HINT.hasPrefix("Turn on the aircraft"))
