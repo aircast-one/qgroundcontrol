@@ -47,9 +47,12 @@ private struct MockCheck: View {
 
     var body: some View {
         Toggle(isOn: Binding(get: { checked }, set: onChecked)) {
-            Text(text).font(.bodyLarge)
+            Text(text)
+                .font(.bodyLarge)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { onChecked(!checked) }
         }
-        .frame(minHeight: 48)
     }
 }
 

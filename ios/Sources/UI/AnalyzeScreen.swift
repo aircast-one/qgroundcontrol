@@ -110,7 +110,7 @@ private struct AnalyzePageList: View {
         let unread = unreadCount(messagesJson)
         let messages = vehicleMessages(messagesJson)
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Analyze").font(.headlineMedium)
                     Text("Logs and tools for the connected vehicle")

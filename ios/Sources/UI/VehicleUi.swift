@@ -816,11 +816,15 @@ struct FlightModeMenu: View {
     @State private var editing = false
     @State private var confirming: FlightModeOption?
     @State private var settings = false
+    @State private var scope = ViewScope()
+    @State private var probe = PresenterProbe()
 
     var body: some View {
         if let modes = flightModesView(json) {
             Color.clear
                 .accessibilityHidden(true)
+                .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
+                .onDisappear { scope.cancel() }
                 .popover(isPresented: Binding(get: { expanded }, set: { shown in
                     if !shown {
                         onDismiss()
@@ -968,7 +972,7 @@ struct FlightModeMenu: View {
             }
             menuRow(action: {
                 onDismiss()
-                settings = true
+                scope.launch { if await presenterFreed(probe) { settings = true } }
             }) { Text("Flight mode settings").font(.bodyMedium) }
         }
         .padding(.vertical, Space.s2)

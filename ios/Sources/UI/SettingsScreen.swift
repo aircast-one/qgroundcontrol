@@ -1404,6 +1404,8 @@ private struct FactTextField: View {
             .padding(.vertical, 12)
             .padding(.leading, 12)
             .padding(.trailing, pending == nil ? 12 : 0)
+            .contentShape(Rectangle())
+            .onTapGesture { if fact.enabled { focused = true } }
             .overlay(
                 RoundedRectangle(cornerRadius: Corner.extraSmall)
                     .stroke(rejection != nil ? theme.colors.error : focused ? theme.colors.primary : theme.colors.outline, lineWidth: focused ? 2 : 1)

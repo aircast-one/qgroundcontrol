@@ -287,11 +287,11 @@ private struct ItemEditorContent: View {
                 }
             }
         }
-        .task(id: revision) {
+        .task(id: "\(revision)|\(String(describing: at))") {
             let index = index
             view = await offMain { Qgc.get(itemFactsPath(index)) }
         }
-        .task(id: "\(revision)|\(camera != nil)") {
+        .task(id: "\(revision)|\(String(describing: at))|\(camera != nil)") {
             let index = index
             let wanted = camera != nil
             stats = await offMain { wanted ? surveyStats(Qgc.get("view.surveyStats(\(index))")) : nil }

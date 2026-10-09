@@ -44,10 +44,12 @@ struct PatternPresets: View {
                 Button("Delete preset") { deleting = chosen }
                     .disabled(chosen == nil)
             }
+            .buttonStyle(.text)
             Button("Save settings as new preset") {
                 typed = ""
                 saving = true
             }
+            .buttonStyle(.text)
             if let refusal { Text(refusal).foregroundStyle(theme.colors.error) }
         }
         .padding(.horizontal, Space.s5)
