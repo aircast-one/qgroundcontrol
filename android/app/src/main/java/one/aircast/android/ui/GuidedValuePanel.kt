@@ -27,6 +27,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +43,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -58,8 +61,11 @@ internal fun GuidedValuePanel(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val flyScreen = LocalFlyScreenState.current
+    val portrait = flyIsPortrait()
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+    CompositionLocalProvider(LocalGuidedCompact provides guidedCompact(portrait, maxHeight)) {
     Surface(
-        modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.extraLarge,
     ) {
@@ -99,7 +105,7 @@ internal fun GuidedValuePanel(
             }
             val hold = holdLabel(guidedCommitLabel(commitLabel, readiness))
             val holdEnabled = commitEnabled && readiness?.blocks != true
-            if (flyIsPortrait()) {
+            if (portrait) {
                 HoldToConfirm(label = hold, enabled = holdEnabled, onConfirm = onCommit)
                 TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Cancel") }
             } else {
@@ -110,7 +116,15 @@ internal fun GuidedValuePanel(
             }
         }
     }
+    }
+    }
 }
+
+internal val LocalGuidedCompact = staticCompositionLocalOf { false }
+
+private val COMPACT_PANEL_HEIGHT = 440.dp
+
+internal fun guidedCompact(portrait: Boolean, available: Dp): Boolean = !portrait && available < COMPACT_PANEL_HEIGHT
 
 internal fun guidedCommitLabel(label: String, readiness: Readiness?): String {
     val (action, target) = label.split(" \u00b7 ", limit = 2).let { it.first() to it.getOrNull(1) }
@@ -180,13 +194,14 @@ internal fun GuidedStepper(
     val focusManager = LocalFocusManager.current
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val narrow = maxWidth < GUIDED_STEPPER_WIDE
+        val small = narrow || LocalGuidedCompact.current
         val reading: @Composable () -> Unit = {
             Column {
                 val typed = typing
                 if (typed == null) {
                     Text(
                         guidedReading(value, unit),
-                        style = (if (narrow) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displaySmall).copy(fontFeatureSettings = "tnum"),
+                        style = (if (small) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displaySmall).copy(fontFeatureSettings = "tnum"),
                         maxLines = 1,
                         softWrap = false,
                         modifier = Modifier.clickable { typing = guidedValueText(value, unit) },

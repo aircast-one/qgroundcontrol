@@ -131,15 +131,20 @@ internal fun GuidedValueFlow(open: OpenGuidedValue, onClose: () -> Unit) {
             open.target = value
             open.settled = value
         }
-        GuidedStepper(open.target, open.reading.label, unit, open.range.start, open.range.endInclusive, settle)
+        val compact = LocalGuidedCompact.current
+        val range = rangeLabel(open.range.start, open.range.endInclusive, unit)
+        GuidedStepper(open.target, guidedLabel(open.reading.label, range, compact), unit, open.range.start, open.range.endInclusive, settle)
         if (kind.presets) GuidedPresets(open.target, open.range.start, open.range.endInclusive, unit, settle)
-        Slider(
+        if (!compact) Slider(
             value = open.target.toFloat(),
             onValueChange = { open.target = guidedRounded(it.toDouble(), unit) },
             onValueChangeFinished = { open.settled = open.target },
             valueRange = open.range.start.toFloat()..open.range.endInclusive.toFloat(),
         )
         if (kind.quickPicks) GuidedQuickPicks(open.target, open.range.start, open.range.endInclusive, unit, settle)
-        rangeLabel(open.range.start, open.range.endInclusive, unit)?.let { RangeHint(it) }
+        if (!compact) range?.let { RangeHint(it) }
     }
 }
+
+internal fun guidedLabel(label: String, range: String?, compact: Boolean): String =
+    if (compact && range != null) listOf(label, range).filter { it.isNotBlank() }.joinToString(" \u00b7 ") else label

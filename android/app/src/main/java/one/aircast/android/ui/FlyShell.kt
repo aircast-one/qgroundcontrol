@@ -118,6 +118,7 @@ private const val CAMERA_PIP_KEY = "cameraPip"
 private val CAMERA_PIP_WIDTH = 112.dp
 private val CAMERA_PIP_HEIGHT = 63.dp
 private const val FULL_SCREEN_LAYER = 10f
+private const val DECISION_LAYER = 4f
 
 internal enum class MiniMap { Thumb, Map, Compass }
 
@@ -528,13 +529,7 @@ internal fun FlyScreen(
             ) {
                 CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { rail(mapIsPip) }
             }
-            Box(
-                Modifier
-                    .zIndex(2f)
-                    .fillMaxSize()
-                    .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, bottom = 0.dp),
-            ) { actions(FlyDeckLayout.Rail) }
-            if (hasVehicle()) {
+            if (hasVehicle() && !flyScreen.guidedPanelOpen) {
             val besideMini = if (mapIsPip) miniWidth(mini) else if (hasVideo && pipExpanded) MINIMAP_WIDTH else PIP_TOGGLE_SIZE
             Box(
                 Modifier
@@ -547,6 +542,17 @@ internal fun FlyScreen(
             }
             }
         }
+        }
+        val deciding = LocalFlyScreenState.current.guidedPanelOpen
+        CompositionLocalProvider(LocalFlyOsd provides (view == FlyView.Video)) {
+            Box(
+                Modifier
+                    .zIndex(if (deciding) DECISION_LAYER else 2f)
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = if (settingsOver) 0f else 1f }
+                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, bottom = 0.dp),
+            ) { actions(FlyDeckLayout.Rail) }
         }
         }
     }
