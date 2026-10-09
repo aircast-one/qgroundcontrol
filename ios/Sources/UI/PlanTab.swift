@@ -134,6 +134,21 @@ private final class TopmostPrompter {
 }
 
 private let PROMPT_REPRESENT_MILLIS = 400
+private let PLAN_MENU_ROW_HEIGHT: CGFloat = 44
+private let PLAN_MENU_MIN_WIDTH: CGFloat = 220
+private let PLAN_MENU_MAX_WIDTH: CGFloat = 280
+private let DISABLED_MENU_ALPHA = 0.38
+
+@MainActor
+private enum PlanUndoTracking {
+    private static var count = 0
+
+    static func mounted(_ delta: Int) {
+        count += delta
+        let tracking = count > 0
+        offMainInOrder { PlanCommands.setUndoTracking(tracking) }
+    }
+}
 
 struct PlanTab: View {
     @Environment(\.theme) private var theme
@@ -147,6 +162,7 @@ struct PlanTab: View {
     @State private var centre: (Double, Double)?
     @State private var prompter = TopmostPrompter()
     @State private var incoming: URL?
+    @State private var menuOpen = false
 
     var body: some View {
         let containsItems = planContainsItems(planStatus)
@@ -171,9 +187,9 @@ struct PlanTab: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { dialogs }
         .modifier(PlanFileDialogs(files: files, onResult: { notice = $0 }))
-        .onAppear { offMainInOrder { PlanCommands.setUndoTracking(true) } }
+        .onAppear { PlanUndoTracking.mounted(1) }
         .onDisappear {
-            offMainInOrder { PlanCommands.setUndoTracking(false) }
+            PlanUndoTracking.mounted(-1)
             prompter.show(nil)
         }
         .onChange(of: corePrompt(planStatus), initial: true) { _, prompt in prompter.show(prompt) }
@@ -276,37 +292,21 @@ struct PlanTab: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if upload.shown { uploadButton(upload) }
-                Menu {
-                    Button { offMainInOrder { PlanCommands.undo() } } label: { Label { Text("Undo") } icon: { Image(.undo) } }
-                        .disabled(!history.canUndo)
-                    Button { offMainInOrder { PlanCommands.redo() } } label: { Label { Text("Redo") } icon: { Image(.redo) } }
-                        .disabled(!history.canRedo)
-                    Divider()
-                    Button { if dirty { pending = .Open } else { files.open() } } label: { Label { Text("Open plan…") } icon: { Image(.description) } }
-                        .disabled(!can.open)
-                    Button { files.save() } label: { Label { Text("Save") } icon: { Image(.download) } }
-                        .disabled(!can.save)
-                    Button { files.saveAs() } label: { Label { Text("Save as…") } icon: { Image(.edit) } }
-                        .disabled(!can.save)
-                    Button { files.exportKml() } label: { Label { Text("Export KML…") } icon: { Image(.send) } }
-                        .disabled(!can.exportKml)
-                    Button { files.importBoundary() } label: { Label { Text("Import boundary…") } icon: { Image(.map) } }
-                        .disabled(!can.open)
-                    Divider()
-                    Button { showDefaults = true } label: { Label { Text("Defaults…") } icon: { Image(.tune) } }
-                    Button { showTransform = true } label: { Label { Text("Transform…") } icon: { Image(.straighten) } }
-                        .disabled(!containsItems)
-                    Divider()
-                    Button { if containsItems { pending = .NewPlan } else { files.newPlan() } } label: { Label { Text("New plan…") } icon: { Image(.add) } }
-                        .disabled(!can.newPlan)
-                    Button { if dirty { pending = .Download } else { files.download() } } label: { Label { Text("Load from vehicle") } icon: { Image(.upload) } }
-                        .disabled(!can.download)
-                    Button(role: .destructive) { pending = .ClearMission } label: { Label { Text("Clear mission") } icon: { Image(.delete) } }
-                        .disabled(!can.clearFromVehicle)
-                } label: {
-                    Image(.moreVert).frame(width: 48, height: 48)
+                Button { menuOpen = true } label: {
+                    Image(.moreVert).frame(width: 48, height: 48).contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.colors.onSurface)
                 .accessibilityLabel("Plan menu")
+                .popover(isPresented: $menuOpen) {
+                    ViewThatFits(in: .vertical) {
+                        planMenu(history, can, dirty, containsItems)
+                        ScrollView { planMenu(history, can, dirty, containsItems) }
+                    }
+                    .frame(minWidth: PLAN_MENU_MIN_WIDTH, maxWidth: PLAN_MENU_MAX_WIDTH)
+                    .presentationCompactAdaptation(.popover)
+                    .presentationBackground(theme.colors.surfaceContainer)
+                }
             }
             .frame(minHeight: 64)
             .padding(.leading, Space.s4)
@@ -321,6 +321,54 @@ struct PlanTab: View {
                     .background(theme.colors.errorContainer)
             }
         }
+    }
+
+    private func planMenu(_ history: PlanHistory, _ can: PlanActions, _ dirty: Bool, _ containsItems: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            menuItem("Undo", .undo, enabled: history.canUndo) { offMainInOrder { PlanCommands.undo() } }
+            menuItem("Redo", .redo, enabled: history.canRedo) { offMainInOrder { PlanCommands.redo() } }
+            menuDivider
+            menuItem("Open plan…", .description, enabled: can.open) { if dirty { pending = .Open } else { files.open() } }
+            menuItem("Save", .download, enabled: can.save) { files.save() }
+            menuItem("Save as…", .edit, enabled: can.save) { files.saveAs() }
+            menuItem("Export KML…", .send, enabled: can.exportKml) { files.exportKml() }
+            menuItem("Import boundary…", .map, enabled: can.open) { files.importBoundary() }
+            menuDivider
+            menuItem("Defaults…", .tune) { showDefaults = true }
+            menuItem("Transform…", .straighten, enabled: containsItems) { showTransform = true }
+            menuDivider
+            menuItem("New plan…", .add, enabled: can.newPlan) { if containsItems { pending = .NewPlan } else { files.newPlan() } }
+            menuItem("Load from vehicle", .upload, enabled: can.download) { if dirty { pending = .Download } else { files.download() } }
+            menuItem("Clear mission", .delete, enabled: can.clearFromVehicle, destructive: true) { pending = .ClearMission }
+        }
+        .padding(.vertical, Space.s2)
+    }
+
+    private var menuDivider: some View {
+        Divider().padding(.vertical, Space.s1)
+    }
+
+    private func menuItem(_ label: String, _ icon: Icon, enabled: Bool = true, destructive: Bool = false, _ action: @escaping () -> Void) -> some View {
+        Button {
+            menuOpen = false
+            action()
+        } label: {
+            HStack(spacing: Space.s3) {
+                Image(icon)
+                    .frame(width: 24, height: 24)
+                    .foregroundStyle(destructive ? theme.colors.error : theme.colors.onSurfaceVariant)
+                Text(label)
+                    .font(.labelLarge)
+                    .foregroundStyle(destructive ? theme.colors.error : theme.colors.onSurface)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, Space.s3)
+            .frame(maxWidth: .infinity, minHeight: PLAN_MENU_ROW_HEIGHT, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : DISABLED_MENU_ALPHA)
     }
 
     private func uploadButton(_ upload: PlanUpload) -> some View {

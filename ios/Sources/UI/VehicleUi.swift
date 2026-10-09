@@ -141,6 +141,7 @@ struct TelemetryRow: View {
                 stacked: stacked,
                 onStyle: { styling = $0 }
             )
+            .allowsHitTesting(!compact)
             Color.clear
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
@@ -372,7 +373,8 @@ func scaledNumber(_ scale: Double, base: CGFloat = TypeScale.telemetry.size) -> 
 
 @Observable
 final class FlightActionsState {
-    var pending: GuidedAction?
+    var pending: GuidedAction? { didSet { optionChecked = false } }
+    var optionChecked = false
     var sentName: String?
     var sentSnapshot: String?
     var guidedValue: OpenGuidedValue?
@@ -454,7 +456,7 @@ struct FlightActions<Center: View>: View {
             .task(id: actions.popupDue) { await popupSettles() }
         } else {
             let rail = layout == .Rail
-            Group {
+            ZStack(alignment: .topLeading) {
                 deck
                     .background { hosts }
                     .onChange(of: offers, initial: true) { _, now in offersChanged(now) }
@@ -676,6 +678,7 @@ struct FlightActions<Center: View>: View {
         if let confirming = actions.pending {
             ConfirmTrack(
                 action: confirming,
+                optionChecked: Binding(get: { actions.optionChecked }, set: { actions.optionChecked = $0 }),
                 onSent: {
                     actions.sentName = confirming.name
                     actions.sentSnapshot = liveActions

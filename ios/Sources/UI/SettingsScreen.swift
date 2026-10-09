@@ -557,7 +557,8 @@ private struct SettingsPageBody: View {
 
     @ViewBuilder private var content: some View {
         if page.showsLinks {
-            LinksScreen(footer: { SettingsControls(page: page, sections: sections) { reloads += 1 } })
+            let shown = sections
+            LinksScreen(footer: { SettingsControls(page: page, sections: shown) { reloads += 1 } })
         } else if page.showsAbout {
             AboutPage(links: page.helpLinks)
         } else if page.showsConsole {
@@ -1373,7 +1374,6 @@ private struct FactTextField: View {
                 .multilineTextAlignment(onTheRight ? .trailing : .leading)
                 .keyboardType(factKeyboard(fact))
                 .autocorrectionDisabled(isAddress(fact))
-                .textInputAutocapitalization(isAddress(fact) || !fact.isString ? .never : nil)
                 .submitLabel(.done)
                 .onSubmit { focused = false }
                 .focused($focused)

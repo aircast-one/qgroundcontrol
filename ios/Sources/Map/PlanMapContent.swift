@@ -102,6 +102,7 @@ struct PlanMapContent: View {
 
     @Environment(\.theme) private var theme
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.LocalRootSize) private var root
 
     @State private var follow = false
     @State private var shownStyle: String?
@@ -186,7 +187,7 @@ struct PlanMapContent: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let sidePanel = geometry.size.width >= SIDE_PANEL_MIN_WIDTH_DP
+            let sidePanel = root.width >= SIDE_PANEL_MIN_WIDTH_DP
             ZStack {
                 VStack(spacing: 0) {
                     if let header {

@@ -245,28 +245,34 @@ private struct SettingsPager<Content: View>: View {
     }
 
     var body: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 0) {
-                ForEach(SettingsGroup.allCases, id: \.self) { entry in
-                    content(entry)
-                        .environment(\.isScrollEnabled, true)
-                        .containerRelativeFrame(.horizontal)
-                        .id(entry)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 0) {
+                    ForEach(SettingsGroup.allCases, id: \.self) { entry in
+                        content(entry)
+                            .environment(\.isScrollEnabled, true)
+                            .containerRelativeFrame(.horizontal)
+                            .id(entry)
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .scrollTargetLayout()
+            .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
+            .mask { Rectangle().ignoresSafeArea(.container, edges: .vertical) }
+            .scrollIndicators(.hidden)
+            .scrollPosition(id: $position)
+            .environment(\.isScrollEnabled, swipeable)
+            .onChange(of: group, initial: true) { _, now in if position != now { position = now } }
+            .onChange(of: position) { _, now in settle(now) }
+            .modifier(ScrollSettle { moving in
+                scrolling = moving
+                settle(position)
+            })
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { _ in
+                position = group
+                proxy.scrollTo(group)
+            }
         }
-        .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
-        .mask { Rectangle().ignoresSafeArea(.container, edges: .vertical) }
-        .scrollIndicators(.hidden)
-        .scrollPosition(id: $position)
-        .environment(\.isScrollEnabled, swipeable)
-        .onChange(of: group, initial: true) { _, now in if position != now { position = now } }
-        .onChange(of: position) { _, now in settle(now) }
-        .modifier(ScrollSettle { moving in
-            scrolling = moving
-            settle(position)
-        })
     }
 }
 

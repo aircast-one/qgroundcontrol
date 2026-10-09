@@ -174,7 +174,7 @@ struct CamerasEditor: View {
                 hint: kinds.first(where: \.needsUrl)?.hint ?? "",
                 others: current.stored == nil ? otherSources(reading) : [],
                 busy: busy,
-                onChange: { draft = $0 },
+                onChange: { next in if draft != nil { draft = next } },
                 onDismiss: { draft = nil },
                 onSave: { guess in change(storedNow, { saved(current, guess) }, closed) },
                 onPick: { kind in change(storedNow, { CameraCommands.add("", source: kind.raw, url: "") }, closed) },

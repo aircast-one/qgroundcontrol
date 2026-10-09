@@ -59,6 +59,7 @@ struct MainActivity: View {
                 .ignoresSafeArea()
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { rootSize = $0 }
         }
+        .textInputAutocapitalization(.never)
         .environment(\.LocalRootSize, rootSize)
         .environment(navigation)
         .environment(openPlan)

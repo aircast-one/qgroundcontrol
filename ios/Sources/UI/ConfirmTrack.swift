@@ -70,12 +70,13 @@ struct ConfirmTrack: View {
     let action: GuidedAction
     let onSent: () -> Void
     let onCancel: () -> Void
-    @State private var optionChecked = false
+    @Binding private var optionChecked: Bool
     @QgcPath private var fromJson: JSON?
     @Environment(\.theme) private var theme
 
-    init(action: GuidedAction, onSent: @escaping () -> Void, onCancel: @escaping () -> Void) {
+    init(action: GuidedAction, optionChecked: Binding<Bool>, onSent: @escaping () -> Void, onCancel: @escaping () -> Void) {
         self.action = action
+        _optionChecked = optionChecked
         self.onSent = onSent
         self.onCancel = onCancel
         _fromJson = QgcPath(action.offerId == "land" ? LAND_FROM : nil)
@@ -109,7 +110,6 @@ struct ConfirmTrack: View {
                 .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onChange(of: action.name) { optionChecked = false }
     }
 }
 

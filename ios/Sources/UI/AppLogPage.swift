@@ -156,13 +156,16 @@ struct AppLogPage: View {
                         if following && !entries.isEmpty { proxy.scrollTo(LOG_END, anchor: .bottom) }
                     }
                 }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .top) {
                 if !atBottom && !entries.isEmpty {
                     Button("Show latest") { following = true }
                         .buttonStyle(.borderedProminent)
                         .padding(.top, Space.s2)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
             .onChange(of: atBottom) { if !atBottom { following = false } }
             Divider()
             AppLogFilterBar(
@@ -205,7 +208,7 @@ struct AppLogPage: View {
         .fileExporter(
             isPresented: Binding(get: { saving != nil }, set: { if !$0 { saving = nil } }),
             document: saving,
-            contentType: UTType(mimeType: appLogMime(saveName)) ?? .plainText,
+            contentType: appLogMime(saveName) == "text/csv" ? .commaSeparatedText : .plainText,
             defaultFilename: saveName
         ) { result in
             switch result {

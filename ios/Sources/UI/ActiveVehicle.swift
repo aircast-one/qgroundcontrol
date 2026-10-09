@@ -135,6 +135,7 @@ struct VehicleStateChip: View {
                 .font(statusBar ? .titleMedium : .labelLarge)
                 .lineLimit(1)
                 .truncationMode(.tail)
+                .layoutPriority(-1)
             if statusBar, let note = osdStatusNote(title) {
                 Text(note)
                     .font(.labelLarge)
@@ -345,6 +346,7 @@ private struct FleetControls: View {
                                     }
                                 }
                             ),
+                            optionChecked: .constant(false),
                             onSent: { confirming = nil },
                             onCancel: { confirming = nil }
                         )

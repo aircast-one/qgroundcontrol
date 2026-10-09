@@ -157,6 +157,7 @@ struct StatusPill: View {
 }
 
 private let STRIP_GAP: CGFloat = 14
+private let TEXT_BUTTON_HEIGHT: CGFloat = 40
 private let NARROW_STRIP_GAP: CGFloat = 6
 private let NARROW_PILL_WIDTH: CGFloat = 120
 private let NARROW_STATUS_CELLS = 1
@@ -337,6 +338,19 @@ private struct VehicleStatusReadings: View {
         }
     }
 
+    private func textButton(_ label: String, _ onClick: @escaping () -> Void) -> some View {
+        Button(action: onClick) {
+            Text(label)
+                .font(.labelLarge)
+                .foregroundStyle(theme.colors.primary)
+                .padding(.horizontal, Space.s3)
+                .frame(minHeight: TEXT_BUTTON_HEIGHT)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, Space.s3)
+    }
+
     private func detailSheet(_ shown: StripDetail, _ state: FlyState?, _ silence: String?) -> some View {
         let hasPowerSetup = setupComponents(setupJson).contains { $0.name == POWER_SETUP_PAGE }
         let battery = shown == .Battery
@@ -348,15 +362,15 @@ private struct VehicleStatusReadings: View {
         case .Links: linkDetail(vehicleLinks(linksJson), linkNames(linksJson), linksJson?["primary"].string)
         }
         let footer: AnyView? = battery ? AnyView(VStack(alignment: .leading, spacing: 0) {
-            Button("Battery failsafes") { detail = nil; batterySettings = true }.padding(.horizontal, Space.s3)
-            Button("Battery display") { detail = nil; batteryDisplay = true }.padding(.horizontal, Space.s3)
+            textButton("Battery failsafes") { detail = nil; batterySettings = true }
+            textButton("Battery display") { detail = nil; batteryDisplay = true }
             if hasPowerSetup && advanced {
-                Button("Power setup") { detail = nil; navigation.setupPage = POWER_SETUP_PAGE }.padding(.horizontal, Space.s3)
+                textButton("Power setup") { detail = nil; navigation.setupPage = POWER_SETUP_PAGE }
             }
-        }.buttonStyle(.borderless)) : nil
+        }) : nil
         let action: AnyView? = switch shown {
         case .Battery: batteryReturnOffered(batteryJson) ? AnyView(BatteryReturnButton { detail = nil }) : nil
-        case .Gps: AnyView(Button("RTK GPS settings") { detail = nil; rtkSettings = true }.buttonStyle(.borderless).padding(.horizontal, Space.s3))
+        case .Gps: AnyView(textButton("RTK GPS settings") { detail = nil; rtkSettings = true })
         default: nil
         }
         return InstrumentSheet(

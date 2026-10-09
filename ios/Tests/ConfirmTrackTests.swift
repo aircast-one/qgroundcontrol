@@ -42,4 +42,17 @@ final class ConfirmTrackTests: XCTestCase {
         XCTAssertEqual(holdLabel(""), "Hold to confirm")
         XCTAssertFalse(MISSION_ACTIONS.contains("land"))
     }
+
+    @MainActor
+    func testTheTickedOptionOutlivesTheViewAndClearsForTheNextConfirm() {
+        let state = FlightActionsState()
+        state.pending = GuidedAction(name: "Return", confirm: "", destructive: false, run: {})
+        state.optionChecked = true
+        XCTAssertTrue(state.optionChecked)
+        state.pending = GuidedAction(name: "Land", confirm: "", destructive: false, run: {})
+        XCTAssertFalse(state.optionChecked)
+        state.optionChecked = true
+        state.reset()
+        XCTAssertFalse(state.optionChecked)
+    }
 }

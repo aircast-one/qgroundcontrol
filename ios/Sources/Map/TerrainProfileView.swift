@@ -70,11 +70,7 @@ func groundOutline(_ terrain: [CGPoint], _ height: CGFloat) -> [CGPoint] {
 }
 
 private func pathOf(_ points: [CGPoint]) -> Path {
-    Path { path in
-        guard let first = points.first else { return }
-        path.move(to: first)
-        path.addLines(Array(points.dropFirst()))
-    }
+    Path { $0.addLines(points) }
 }
 
 func heightRange(_ profile: TerrainProfile) -> String {
