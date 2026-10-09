@@ -105,7 +105,7 @@ const HIDDEN: &[&str] = &[
 ];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls")];
 const IOS: bool = cfg!(target_os = "ios");
-const IOS_HIDDEN: &[&str] = &["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectRTKGPS", "autoConnectLibrePilot", "nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud"];
+const IOS_HIDDEN: &[&str] = &["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectRTKGPS", "autoConnectLibrePilot", "nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud", "nmeaUdpPort"];
 
 fn user_visible(name: &str, ios: bool) -> bool {
     !HIDDEN.contains(&name) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == name) && !(MOBILE && name == "savePath") && !(ios && IOS_HIDDEN.contains(&name))
@@ -688,10 +688,8 @@ fn subsections(group: &str, controls: &[Value]) -> Vec<Value> {
     }
 }
 
-const PACKET_RADIO_HOSTED: bool = !cfg!(target_os = "ios");
-
-fn page_shown(page: &Page, connected: bool, px4: bool) -> bool {
-    !UNLISTED.contains(&page.title) && (!page.shows_px4_logs || !connected || px4) && (!page.shows_packet_radio || PACKET_RADIO_HOSTED)
+fn page_shown(page: &Page, connected: bool, px4: bool, ios: bool) -> bool {
+    !UNLISTED.contains(&page.title) && (!page.shows_px4_logs || !connected || px4) && (!page.shows_packet_radio || !ios)
 }
 
 pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
@@ -700,7 +698,7 @@ pub fn settings_view(backend: &dyn Backend, args: &[String]) -> Value {
         None => {
             let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
             let px4 = flag(&backend.value_fields("vehicle", "px4Firmware"), "px4Firmware");
-            json!({ "kind": "object", "class": "Settings", "pages": PAGES.iter().filter(|p| page_shown(p, connected, px4)).map(|p| page_json(p, None)).collect::<Vec<_>>() })
+            json!({ "kind": "object", "class": "Settings", "pages": PAGES.iter().filter(|p| page_shown(p, connected, px4, IOS)).map(|p| page_json(p, None)).collect::<Vec<_>>() })
         }
     }
 }
@@ -763,11 +761,13 @@ mod tests {
     }
 
     #[test]
-    fn ios_hides_the_serial_auto_connect_rows_like_autoconnectsettings() {
+    fn ios_hides_the_serial_auto_connect_rows_and_the_nmea_section_like_autoconnectsettings() {
         let serial = ["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectRTKGPS", "autoConnectLibrePilot", "nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud"];
         assert!(serial.iter().all(|n| !user_visible(n, true)), "Q_OS_IOS sets these userVisible(false): there is no serial port to connect");
         assert!(serial.iter().all(|n| user_visible(n, false)), "every other platform keeps them");
-        assert!(user_visible("autoConnectUDP", true) && user_visible("nmeaUdpPort", true), "UDP still works on iOS");
+        let nmea = ["nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud", "nmeaUdpPort"];
+        assert!(nmea.iter().all(|n| !user_visible(n, true)), "NmeaGpsSettings.qml hides the whole NMEA section once nmeaSource is not userVisible");
+        assert!(user_visible("autoConnectUDP", true), "UDP auto-connect still works on iOS");
     }
 
     #[test]
@@ -833,10 +833,18 @@ mod tests {
     #[test]
     fn px4_log_transfer_is_listed_only_for_px4_or_with_no_vehicle() {
         let page = PAGES.iter().find(|p| p.shows_px4_logs).unwrap();
-        assert!(page_shown(page, false, false), "SettingsPagesModel shows it with no vehicle");
-        assert!(page_shown(page, true, true));
-        assert!(!page_shown(page, true, false), "an ArduPilot vehicle does not get it");
-        assert!(PAGES.iter().filter(|p| !p.shows_px4_logs && !UNLISTED.contains(&p.title)).all(|p| page_shown(p, true, false)));
+        assert!(page_shown(page, false, false, false), "SettingsPagesModel shows it with no vehicle");
+        assert!(page_shown(page, true, true, false));
+        assert!(!page_shown(page, true, false, false), "an ArduPilot vehicle does not get it");
+        assert!(PAGES.iter().filter(|p| !p.shows_px4_logs && !UNLISTED.contains(&p.title)).all(|p| page_shown(p, true, false, false)));
+    }
+
+    #[test]
+    fn packet_radio_is_listed_everywhere_but_ios() {
+        let radio = PAGES.iter().find(|p| p.shows_packet_radio).unwrap();
+        assert!(page_shown(radio, true, false, false) && page_shown(radio, false, false, false));
+        assert!(!page_shown(radio, true, false, true) && !page_shown(radio, false, false, true), "iOS hosts no packet radio");
+        assert!(PAGES.iter().filter(|p| !p.shows_packet_radio && !p.shows_px4_logs && !UNLISTED.contains(&p.title)).all(|p| page_shown(p, true, false, true)), "and drops nothing else");
     }
 
     #[test]
@@ -851,7 +859,7 @@ mod tests {
         assert!(fly.sections.iter().all(|(_, group)| *group != "gimbalControllerSettings"), "FlyViewSettings.qml has no Gimbal Controller group");
         let gimbal = PAGES.iter().find(|p| p.title == GIMBAL_CONTROLLER_PAGE).unwrap();
         assert_eq!(gimbal.sections, &[("Gimbal Controller", "gimbalControllerSettings")], "GimbalIndicator's expanded page still reads it");
-        assert!(!page_shown(gimbal, false, false) && !page_shown(gimbal, true, true), "SettingsPagesModel lists no gimbal page");
+        assert!(!page_shown(gimbal, false, false, false) && !page_shown(gimbal, true, true, false), "SettingsPagesModel lists no gimbal page");
     }
 
     #[test]
@@ -1356,7 +1364,7 @@ mod tests {
         let sources = PAGES.iter().find(|page| page.title == VIDEO_SOURCES_PAGE).unwrap();
         assert!(sources.shows_video_sources && sources.sections.is_empty(), "the page is the camera list and nothing else");
         assert_eq!(PAGES.iter().filter(|page| page.shows_video_sources).map(|page| page.title).collect::<Vec<_>>(), vec![VIDEO_SOURCES_PAGE], "one page draws the list");
-        assert!(page_shown(sources, true, false) && page_shown(sources, false, true));
+        assert!(page_shown(sources, true, false, false) && page_shown(sources, false, true, false));
         assert!(page_keywords(VIDEO_SOURCES_PAGE).contains("rtsp"), "searching for a stream finds the list");
         let page = settings_view(&Fake, &[VIDEO_SOURCES_PAGE.to_string()]);
         assert_eq!((page["showsVideoSources"].clone(), page["sections"].clone()), (json!(true), json!([])));

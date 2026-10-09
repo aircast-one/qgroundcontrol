@@ -194,6 +194,34 @@ mod tests {
     }
 
     #[test]
+    fn removing_a_vehicle_through_the_inspector_drops_its_plots_from_the_charts_view() {
+        struct Nobody;
+        impl Backend for Nobody {
+            fn get(&self, _p: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let beat = crate::transport::Frame {
+            link: 0,
+            replay: false,
+            v2: true,
+            header: mavlink::MavHeader { system_id: 203, component_id: 1, sequence: 0 },
+            message: mavlink::dialects::ardupilotmega::MavMessage::HEARTBEAT(Default::default()),
+            raw: Vec::new(),
+        };
+        let label = "ATTITUDE.roll of 203";
+        let charted = || charts_view(&Nobody, &[])["charts"][0]["plots"].as_array().unwrap().iter().any(|p| p["label"] == label);
+        let mut inspector = crate::mavinspect::Inspector::default();
+        inspector.observe(&beat, &[203], Some(203));
+        charts()[0].plots.push(Plot { system: 203, label: label.into(), ..plot(&[]) });
+        assert!(charted());
+        inspector.observe(&beat, &[], None);
+        assert!(!charted(), "MAVLinkInspectorController deletes a vehicle's message fields, and with them its chart series");
+    }
+
+    #[test]
     fn a_chart_shows_only_the_samples_inside_its_time_scale() {
         let chart = Chart { plots: vec![plot(&[(1_000, 1.0), (8_000, 2.0), (9_500, 3.0)])], range_x: 0, range_y: 0 };
         let shown = chart_json(&chart, 10_000);

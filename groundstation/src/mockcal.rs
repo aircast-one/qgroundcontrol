@@ -21,7 +21,7 @@ const APM_ACCEL_POSITIONS: [AccelcalVehiclePos; 6] = [
 ];
 const APM_ACCEL_STORED: Stored = &[("INS_ACCOFFS_X", 0.1), ("INS_ACCOFFS_Y", 0.1), ("INS_ACCOFFS_Z", 0.1)];
 const APM_COMPASSES: u8 = 3;
-const APM_COMPASS_MASK: u8 = 0x07;
+const APM_COMPASS_MASK: u8 = (1 << APM_COMPASSES) - 1;
 const APM_COMPASS_STEP: u8 = 5;
 const APM_COMPASS_FITNESS: f32 = 0.5;
 const APM_COMPASS_STORED: Stored = &[
@@ -120,6 +120,7 @@ impl Sides {
 }
 
 impl Calibration {
+    #[cfg(test)]
     pub fn set_pose(&mut self, pose: Pose) {
         self.pose = Some(pose);
     }
@@ -143,9 +144,9 @@ impl Calibration {
         self.handshake = self.handshake.map(|handshake| Handshake { acked: handshake.acked || command == MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS, ..handshake });
     }
 
-    pub fn tick(&mut self) -> (Vec<Out>, Vec<(&'static str, f64)>) {
+    pub fn tick(&mut self) -> (Vec<Out>, Vec<Stored>) {
         let (sent, stored): (Vec<Vec<Out>>, Vec<Stored>) = [self.sides_tick(), self.handshake_tick(), self.compass_tick()].into_iter().unzip();
-        (sent.concat(), stored.concat())
+        (sent.concat(), stored.into_iter().filter(|stored| !stored.is_empty()).collect())
     }
 
     fn preflight(&mut self, apm: bool, params: [f32; 7]) -> Vec<Out> {
@@ -309,7 +310,7 @@ mod tests {
     fn positions(sent: &[Out]) -> Vec<u32> {
         sent.iter()
             .filter_map(|(_, message)| match message {
-                MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS && (c.target_system, c.target_component) == (255, 190) => Some(c.param1 as u32),
+                MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS && (c.target_system, c.target_component) == (crate::mavout::DEFAULT_GCS_SYSTEM, crate::mavout::GCS_COMPONENT) => Some(c.param1 as u32),
                 _ => None,
             })
             .collect()
@@ -355,7 +356,7 @@ mod tests {
         assert_eq!(ticks(&mut cal, 9), silent(9), "the fit is still being calculated");
         let (sent, stored) = cal.tick();
         assert_eq!(texts(&sent), ["[cal] progress <100>", "[cal] calibration done: mag"]);
-        assert_eq!(stored, [("CAL_MAG0_ID", 197_388.0)]);
+        assert_eq!(stored.concat(), [("CAL_MAG0_ID", 197_388.0)]);
         assert_eq!(cal, Calibration::default());
     }
 
@@ -380,7 +381,7 @@ mod tests {
         assert_eq!(ticks(&mut cal, 9), silent(9));
         let (sent, stored) = cal.tick();
         assert_eq!(texts(&sent), ["[cal] calibration done: accel"]);
-        assert_eq!(stored, [("CAL_ACC0_ID", 1_310_988.0)]);
+        assert_eq!(stored.concat(), [("CAL_ACC0_ID", 1_310_988.0)]);
         assert_eq!(ticks(&mut cal, 5), silent(5));
     }
 
@@ -414,7 +415,7 @@ mod tests {
         cal.acked(MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS);
         let (sent, stored) = cal.tick();
         assert_eq!(positions(&sent), [AccelcalVehiclePos::ACCELCAL_VEHICLE_POS_SUCCESS as u32]);
-        assert_eq!(stored, [("INS_ACCOFFS_X", 0.1), ("INS_ACCOFFS_Y", 0.1), ("INS_ACCOFFS_Z", 0.1)]);
+        assert_eq!(stored.concat(), [("INS_ACCOFFS_X", 0.1), ("INS_ACCOFFS_Y", 0.1), ("INS_ACCOFFS_Z", 0.1)]);
         assert!(cal.tick().0.is_empty());
     }
 
@@ -434,16 +435,16 @@ mod tests {
         let mut cal = Calibration::default();
         assert_eq!(cal.command(PX4, MavCmd::MAV_CMD_DO_START_MAG_CAL, [0.0; 7]).0, MavResult::MAV_RESULT_UNSUPPORTED);
         assert_eq!(cal.command(APM, MavCmd::MAV_CMD_DO_START_MAG_CAL, [0.0; 7]), (MavResult::MAV_RESULT_ACCEPTED, Vec::new()));
-        let run: Vec<(Vec<Out>, Vec<(&str, f64)>)> = (0..21).map(|_| cal.tick()).collect();
+        let run: Vec<(Vec<Out>, Vec<Stored>)> = (0..21).map(|_| cal.tick()).collect();
         let percents: Vec<Vec<(u8, u8)>> = run
             .iter()
-            .map(|(sent, _)| sent.iter().filter_map(|(_, m)| match m { MavMessage::MAG_CAL_PROGRESS(p) if p.cal_mask == 0x07 => Some((p.compass_id, p.completion_pct)), _ => None }).collect())
+            .map(|(sent, _)| sent.iter().filter_map(|(_, m)| match m { MavMessage::MAG_CAL_PROGRESS(p) if p.cal_mask == APM_COMPASS_MASK => Some((p.compass_id, p.completion_pct)), _ => None }).collect())
             .collect();
         assert_eq!(percents, (0..=100).step_by(5).map(|pct| vec![(0, pct), (1, pct), (2, pct)]).collect::<Vec<_>>());
         let (last, stored) = run.last().unwrap();
         let reports: Vec<(u8, MagCalStatus, f32)> = last.iter().filter_map(|(_, m)| match m { MavMessage::MAG_CAL_REPORT(r) => Some((r.compass_id, r.cal_status, r.fitness)), _ => None }).collect();
         assert_eq!(reports, [(0, MagCalStatus::MAG_CAL_SUCCESS, 0.5), (1, MagCalStatus::MAG_CAL_SUCCESS, 0.5), (2, MagCalStatus::MAG_CAL_SUCCESS, 0.5)]);
-        assert_eq!(stored.len(), 9);
+        assert_eq!(stored.concat().len(), 9);
         assert!(run[..20].iter().all(|(sent, stored)| stored.is_empty() && sent.len() == 3));
         assert!(cal.tick().0.is_empty());
         cal.command(APM, MavCmd::MAV_CMD_DO_START_MAG_CAL, [0.0; 7]);

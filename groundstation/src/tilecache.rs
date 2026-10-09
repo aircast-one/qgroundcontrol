@@ -81,7 +81,6 @@ pub fn tile_hash(provider: i32, x: i32, y: i32, z: i32) -> String {
 }
 
 const TILE_DIGITS: usize = 19;
-const PROVIDER_DIGITS: usize = 10;
 
 pub fn provider_of(hash: &str) -> Option<i32> {
     hash.len().checked_sub(TILE_DIGITS).and_then(|head| hash.get(..head)).and_then(|head| head.parse::<i32>().ok())
@@ -223,9 +222,9 @@ impl Cache {
 
     pub fn busiest_provider(&self) -> rusqlite::Result<Option<i32>> {
         self.connection
-            .query_row(&format!("SELECT substr(hash, 1, {PROVIDER_DIGITS}) AS prefix, COUNT(*) AS n FROM Tiles GROUP BY prefix ORDER BY n DESC LIMIT 1"), [], |row| row.get::<_, String>(0))
+            .query_row("SELECT type FROM Tiles GROUP BY type ORDER BY COUNT(*) DESC LIMIT 1", [], |row| row.get::<_, Option<i32>>(0))
             .optional()
-            .map(|prefix| prefix.and_then(|prefix| prefix.parse::<i32>().ok()))
+            .map(Option::flatten)
     }
 
     pub fn total_size(&self) -> rusqlite::Result<i64> {

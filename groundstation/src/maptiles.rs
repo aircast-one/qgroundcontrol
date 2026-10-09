@@ -1,11 +1,18 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use once_cell::sync::OnceCell;
 use quick_cache::Weighter;
+use rayon_core::{ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 
 use crate::mapurls::{Keys, TileRequest, tile_request};
 use crate::tilecache::{Cache, Tile, provider_hash, tile_hash};
 
+const TILE_TIMEOUT: Duration = Duration::from_secs(10);
+const TILE_THREADS: usize = 6;
+const TILE_THREAD_NAME: &str = "qgc-tiles";
+const TILES_WAITING: usize = 64;
 const BING_NO_TILE: &[u8] = include_bytes!("../../resources/BingNoTileBytes.dat");
 const ELEVATION_PROVIDER: &str = "Copernicus";
 const DISK_LIMIT_PATH: &str = "settings.mapsSettings.maxCacheDiskSize";
@@ -99,9 +106,63 @@ pub fn fetch(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Opti
     Some(image)
 }
 
+fn agent(timeout: Duration) -> ureq::Agent {
+    ureq::Agent::config_builder().timeout_global(Some(timeout)).build().into()
+}
+
+static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| agent(TILE_TIMEOUT));
+
 pub fn fetch_over_http(request: &TileRequest) -> Result<Vec<u8>, String> {
-    let asked = request.headers.iter().fold(ureq::get(&request.url), |asked, (name, value)| asked.header(name, value));
+    fetch_through(&AGENT, request)
+}
+
+fn fetch_through(agent: &ureq::Agent, request: &TileRequest) -> Result<Vec<u8>, String> {
+    let asked = request.headers.iter().fold(agent.get(&request.url), |asked, (name, value)| asked.header(name, value));
     asked.call().map_err(|e| e.to_string())?.body_mut().read_to_vec().map_err(|e| e.to_string())
+}
+
+pub struct TileWorkers {
+    pool: ThreadPool,
+    in_flight: Arc<AtomicUsize>,
+    limit: usize,
+}
+
+impl TileWorkers {
+    pub fn start() -> Result<TileWorkers, ThreadPoolBuildError> {
+        ThreadPoolBuilder::new().num_threads(TILE_THREADS).thread_name(|_| TILE_THREAD_NAME.to_string()).build().map(|pool| TileWorkers::over(pool, TILES_WAITING))
+    }
+
+    fn over(pool: ThreadPool, waiting: usize) -> TileWorkers {
+        let limit = pool.current_num_threads() + waiting;
+        TileWorkers { pool, in_flight: Arc::new(AtomicUsize::new(0)), limit }
+    }
+
+    fn run(&self, job: impl FnOnce() -> Option<Vec<u8>> + Send + 'static, reply: impl FnOnce(Option<Vec<u8>>) + Send + 'static) {
+        if self.in_flight.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |held| (held < self.limit).then_some(held + 1)).is_err() {
+            return reply(None);
+        }
+        let in_flight = Arc::clone(&self.in_flight);
+        self.pool.spawn(move || {
+            let image = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)).ok().flatten();
+            in_flight.fetch_sub(1, Ordering::SeqCst);
+            reply(image);
+        });
+    }
+}
+
+pub fn fetch_in_background(
+    workers: &OnceCell<TileWorkers>,
+    start: impl FnOnce() -> Result<TileWorkers, ThreadPoolBuildError>,
+    job: impl FnOnce() -> Option<Vec<u8>> + Send + 'static,
+    reply: impl FnOnce(Option<Vec<u8>>) + Send + 'static,
+) {
+    match workers.get_or_try_init(start) {
+        Ok(workers) => workers.run(job, reply),
+        Err(error) => {
+            log::warn!("Map tile workers did not start: {error}");
+            reply(None)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -161,5 +222,64 @@ mod tests {
         assert_eq!(fetch("Esri World Street", 1, 1, 3, &keys(), None, true, &text), None);
         assert_eq!(image_format(b"\xff\xd8\xff\xe0"), Some("jpg"));
         assert_eq!(fetch("Copernicus", 1, 1, 3, &keys(), None, true, &text), None, "elevation tiles are terrain data, not map images");
+    }
+
+    type Job = Box<dyn FnOnce() -> Option<Vec<u8>> + Send>;
+    type Answers = std::sync::mpsc::Receiver<Option<Vec<u8>>>;
+
+    fn workers(threads: usize, waiting: usize) -> TileWorkers {
+        TileWorkers::over(ThreadPoolBuilder::new().num_threads(threads).build().unwrap(), waiting)
+    }
+
+    fn answered(workers: &TileWorkers, jobs: Vec<Job>) -> Answers {
+        let (answer, answers) = std::sync::mpsc::channel();
+        jobs.into_iter().for_each(|job| {
+            let answer = answer.clone();
+            workers.run(job, move |image| answer.send(image).unwrap());
+        });
+        answers
+    }
+
+    #[test]
+    fn every_job_is_answered_exactly_once_even_when_it_panics() {
+        let jobs: Vec<Job> = vec![Box::new(|| panic!("tile job failed")), Box::new(|| None), Box::new(|| Some(PNG.to_vec()))];
+        let answers = answered(&workers(1, 3), jobs);
+        assert_eq!(answers.iter().collect::<Vec<_>>(), vec![None, None, Some(PNG.to_vec())], "a panic answers nothing so the head releases its reply and falls back, and the worker lives on for the next job");
+    }
+
+    #[test]
+    fn a_full_pool_answers_nothing_at_once_instead_of_queueing_the_job() {
+        let (gates, waits): (Vec<_>, Vec<_>) = (0..3).map(|_| std::sync::mpsc::channel::<()>()).unzip();
+        let jobs: Vec<Job> = waits.into_iter().map(|wait| Box::new(move || wait.recv().ok().map(|_| PNG.to_vec())) as Job).collect();
+        let answers = answered(&workers(1, 1), jobs);
+        assert_eq!(answers.recv().unwrap(), None, "one job running and one waiting fill a single worker with room for one more");
+        gates[..2].iter().for_each(|gate| gate.send(()).unwrap());
+        assert_eq!(answers.iter().collect::<Vec<_>>(), vec![Some(PNG.to_vec()), Some(PNG.to_vec())]);
+    }
+
+    #[test]
+    fn a_server_that_never_answers_holds_its_worker_only_until_the_timeout() {
+        assert_eq!(AGENT.config().timeouts().global, Some(TILE_TIMEOUT), "QGCTileFetchReply gives a tile ten seconds");
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let request = TileRequest { url: format!("http://{}/1/2/3.png", silent.local_addr().unwrap()), headers: Vec::new() };
+        let impatient = agent(Duration::from_millis(200));
+        let started = Instant::now();
+        let answers = answered(&workers(1, 1), vec![Box::new(move || fetch_through(&impatient, &request).ok()), Box::new(|| Some(PNG.to_vec()))]);
+        assert_eq!(answers.recv_timeout(Duration::from_secs(10)).unwrap(), None);
+        assert_eq!(answers.recv_timeout(Duration::from_secs(10)).unwrap(), Some(PNG.to_vec()), "the next job gets the worker back");
+        assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+    }
+
+    #[test]
+    fn workers_that_cannot_start_answer_nothing_and_leave_the_next_job_to_start_them() {
+        let held = OnceCell::new();
+        let (answer, answers) = std::sync::mpsc::channel();
+        let refused = || ThreadPoolBuilder::new().num_threads(1).spawn_handler(|_| Err(std::io::Error::other("no threads"))).build().map(|pool| TileWorkers::over(pool, 0));
+        let first = answer.clone();
+        fetch_in_background(&held, refused, || panic!("a pool that never started runs nothing"), move |image| first.send(image).unwrap());
+        assert_eq!(answers.recv().unwrap(), None);
+        assert!(held.get().is_none(), "a failed start is not kept, or every later job would be refused for the rest of the session");
+        fetch_in_background(&held, || Ok(workers(1, 0)), || Some(PNG.to_vec()), move |image| answer.send(image).unwrap());
+        assert_eq!(answers.recv().unwrap(), Some(PNG.to_vec()));
     }
 }

@@ -5,6 +5,7 @@ use crate::onboardlogs::LOG_DATA_LEN;
 
 const LOG_SIZE: u32 = 1000;
 const CHUNKS_PER_POLL: u32 = 12;
+const PRIME_BYTE_PERIOD: u32 = 251;
 
 #[derive(Default)]
 pub struct Logs {
@@ -49,7 +50,7 @@ fn data(id: u16, ofs: u32, count: u32) -> Out {
 }
 
 fn byte_at(at: u32) -> u8 {
-    (at % 251) as u8
+    (at % PRIME_BYTE_PERIOD) as u8
 }
 
 #[cfg(test)]

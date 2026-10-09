@@ -321,8 +321,11 @@ impl Inspector {
     }
 
     fn sync(&mut self, vehicles: &[u8], active_vehicle: Option<u8>) {
-        vehicles.iter().filter(|id| !self.vehicles.contains(id)).copied().collect::<Vec<_>>().into_iter().for_each(|id| self.vehicle_added(id));
-        self.vehicles.iter().filter(|id| !vehicles.contains(id)).copied().collect::<Vec<_>>().into_iter().for_each(|id| self.vehicle_removed(id));
+        let added: Vec<u8> = vehicles.iter().filter(|id| !self.vehicles.contains(id)).copied().collect();
+        let removed: Vec<u8> = self.vehicles.iter().filter(|id| !vehicles.contains(id)).copied().collect();
+        added.iter().chain(&removed).for_each(|id| crate::inspectorchart::forget_system(*id));
+        added.into_iter().for_each(|id| self.vehicle_added(id));
+        removed.into_iter().for_each(|id| self.vehicle_removed(id));
         self.vehicles = vehicles.to_vec();
         if active_vehicle != self.followed {
             self.followed = active_vehicle;
@@ -411,7 +414,6 @@ impl Inspector {
     }
 
     pub fn vehicle_added(&mut self, id: u8) {
-        crate::inspectorchart::forget_system(id);
         match self.systems.iter_mut().find(|s| s.id == id) {
             Some(system) => system.messages.clear(),
             None => self.systems.push(System { id, ..System::default() }),
@@ -419,7 +421,6 @@ impl Inspector {
     }
 
     pub fn vehicle_removed(&mut self, id: u8) {
-        crate::inspectorchart::forget_system(id);
         self.systems.retain(|s| s.id != id);
         if self.active == Some(id) {
             self.active = None;

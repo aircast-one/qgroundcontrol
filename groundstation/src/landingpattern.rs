@@ -342,11 +342,8 @@ pub fn fields(pattern: &Value, item: &str, units: &crate::surveydoc::Units) -> V
 
 pub fn raw(pattern: &Value, suffix: &str, value: &Value, units: &crate::surveydoc::Units) -> Value {
     let file = if is_vtol(pattern) { VTOL_META } else { FIXED_WING_META };
-    let unit = FIELDS.iter().find(|(_, s)| *s == suffix).and_then(|(name, _)| crate::factmeta::fact(file, name)).and_then(|m| crate::surveydoc::cooked_unit(m.units.as_deref().unwrap_or(""), units));
-    match (unit, value.as_f64()) {
-        (Some(u), Some(v)) => json!(u.meters(v)),
-        _ => value.clone(),
-    }
+    let found = FIELDS.iter().find(|(_, s)| *s == suffix).and_then(|(name, _)| crate::factmeta::fact(file, name));
+    crate::surveydoc::raw_value(found.as_ref(), value, units).unwrap_or(Value::Null)
 }
 
 fn laid_out(pattern: &Value, heading: f64, distance: f64) -> Option<Value> {
@@ -385,7 +382,7 @@ pub fn edit(pattern: &Value, suffix: &str, value: &Value) -> Option<Value> {
         changed[key] = v;
         changed
     };
-    let number = value.as_f64();
+    let number = crate::factwrite::number(value);
     let on = value.as_bool().or_else(|| number.map(|n| n != 0.0));
     match suffix {
         "finalApproachAltitude" => {
@@ -697,6 +694,17 @@ mod tests {
         assert_eq!(sections, ["Final approach", "Landing point", "Camera"], "FWLandingPatternEditor SectionHeaders, each heading once");
         assert_eq!(rows.first().map(|(p, _)| p.as_str()), Some("useLoiterToAlt"));
         assert_eq!(rows.iter().find(|(p, _)| p == "landingAltitude").map(|(_, s)| s.as_str()), Some("Landing point"), "the second Altitude row is the touchdown one");
+    }
+
+    #[test]
+    fn a_typed_altitude_is_stored_as_a_number_in_metres() {
+        let feet = crate::read::Unit { name: "ft".into(), factor: 3.28084 };
+        let units = crate::surveydoc::Units { vertical: &feet, horizontal: &feet };
+        let built = fresh(&Fresh { vtol: false, land: (-35.37, 149.172), ardupilot: true, relative: true, transition_distance: None });
+        let typed = raw(&built, "landingAltitude", &json!("13"), &units);
+        assert_eq!(typed.as_f64(), Some(13.0 / 3.28084), "the heads write a text field's text, which was refused as a field the core does not edit");
+        assert_eq!(edit(&built, "landingAltitude", &typed).unwrap()["landCoordinate"][2].as_f64(), Some(13.0 / 3.28084));
+        assert!(edit(&built, "landingAltitude", &raw(&built, "landingAltitude", &json!("abc"), &units)).is_none());
     }
 
     #[test]

@@ -111,10 +111,6 @@ const BUILT_IN_UNITS: [(&str, &str, f64); 6] = [
     ("centi-celsius", "C", 0.01),
 ];
 
-pub fn cooked_unit(raw: &str, units: &Units) -> Option<crate::read::Unit> {
-    cooked(raw, units)
-}
-
 fn cooked(raw: &str, units: &Units) -> Option<crate::read::Unit> {
     match raw {
         "vertical m" => Some(units.vertical.clone()),
@@ -575,20 +571,18 @@ pub fn regenerate_item(item: &Value) -> Value {
     }
 }
 
+pub fn raw_value(found: Option<&crate::factmeta::MetaData>, value: &Value, units: &Units) -> Option<Value> {
+    let Some(found) = found.filter(|m| !matches!(m.value_type, crate::factmeta::ValueType::String | crate::factmeta::ValueType::Bool)) else { return Some(value.clone()) };
+    let number = crate::factwrite::number(value)?;
+    match cooked(found.units.as_deref().unwrap_or(""), units) {
+        Some(unit) => Some(json!(unit.meters(number))),
+        None if integer_typed(&found.value_type) => (number.fract() == 0.0).then(|| json!(number as i64)),
+        None => Some(json!(number)),
+    }
+}
+
 pub fn set(survey: &Value, suffix: &str, value: &Value, units: &Units) -> Option<Value> {
     let calc = calc_of(survey);
-    let raw = |key: &str| {
-        let found = [CAMERA_META, CAMERA_SPEC_META, TRANSECT_META, SURVEY_META, CORRIDOR_META, STRUCTURE_META].iter().find_map(|file| meta(file, key));
-        let unit = found.as_ref().and_then(|m| cooked(m.units.as_deref().unwrap_or(""), units));
-        let typed = found.as_ref().filter(|m| !matches!(m.value_type, crate::factmeta::ValueType::String | crate::factmeta::ValueType::Bool)).and_then(|_| crate::factwrite::number(value));
-        let whole = found.as_ref().is_some_and(|m| integer_typed(&m.value_type));
-        match (unit, typed.or_else(|| value.as_f64())) {
-            (Some(u), Some(v)) => json!(u.meters(v)),
-            (None, Some(v)) if typed.is_some() && whole && v.fract() == 0.0 => json!(v as i64),
-            (None, Some(v)) if typed.is_some() => json!(v),
-            _ => value.clone(),
-        }
-    };
     let changed = match suffix {
         "cameraCalc.cameraBrand" | "cameraCalc.cameraModel" => with_calc(survey, named_camera(&calc, &chosen_camera(&calc, suffix, value)?)),
         _ => {
@@ -598,25 +592,29 @@ pub fn set(survey: &Value, suffix: &str, value: &Value, units: &Units) -> Option
             if (key.starts_with("AdjustedFootprint") && !manual) || (!custom && OPTICS[..SENSOR_ROWS].iter().any(|(sensor, _)| *sensor == key)) {
                 return None;
             }
+            let found = [CAMERA_META, CAMERA_SPEC_META, TRANSECT_META, SURVEY_META, CORRIDOR_META, STRUCTURE_META].iter().find_map(|file| meta(file, &key));
+            let raw = raw_value(found.as_ref(), value, units)?;
             match owner {
                 "survey" => {
                     let mut changed = survey.clone();
-                    changed[key.as_str()] = raw(&key);
+                    changed[key.as_str()] = raw;
                     changed
                 }
                 "transect" => {
                     let mut changed = survey.clone();
-                    changed["TransectStyleComplexItem"][key.as_str()] = raw(&key);
-                    if key == "HoverAndCapture" && raw(&key) == json!(true) {
+                    let hover = key == "HoverAndCapture" && raw == json!(true);
+                    changed["TransectStyleComplexItem"][key.as_str()] = raw;
+                    if hover {
                         changed["TransectStyleComplexItem"]["CameraTriggerInTurnAround"] = json!(false);
                     }
                     changed
                 }
                 _ => {
                     let mut edited = calc.clone();
-                    edited[key.as_str()] = raw(&key);
+                    let terrain = key == "DistanceMode" && raw.as_i64() == Some(crate::altitudemodes::FRAME_CALC_ABOVE_TERRAIN);
+                    edited[key.as_str()] = raw;
                     let mut changed = with_calc(survey, recalculated(&edited));
-                    if key == "DistanceMode" && raw(&key).as_i64() == Some(crate::altitudemodes::FRAME_CALC_ABOVE_TERRAIN) && changed.get("TransectStyleComplexItem").is_some() {
+                    if terrain && changed.get("TransectStyleComplexItem").is_some() {
                         changed["TransectStyleComplexItem"]["Refly90Degrees"] = json!(false);
                         changed["TransectStyleComplexItem"]["HoverAndCapture"] = json!(false);
                     }
@@ -1015,6 +1013,17 @@ mod tests {
         assert_eq!(typed["EntranceAltitude"].as_f64(), Some(100.0), "the heads write a text field's text; a stored string reads back blank and empties the scan");
         let spaced = set(&fixture["structure"], "entranceAlt", &json!(" 42.5 "), &metric()).unwrap();
         assert_eq!(spaced["EntranceAltitude"].as_f64(), Some(42.5));
+        assert!(["", "abc"].iter().all(|text| set(&fixture["structure"], "entranceAlt", &json!(text), &metric()).is_none()), "text that is no number is refused, not stored as a string");
+    }
+
+    #[test]
+    fn a_whole_number_field_takes_only_whole_numbers_and_a_text_field_keeps_its_text() {
+        let plan: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-upload.plan")).unwrap();
+        let custom = set(&plan["mission"]["items"][0], "cameraCalc.cameraBrand", &json!(CUSTOM_CAMERA), &metric()).unwrap();
+        let wide = set(&custom, "cameraCalc.imageWidth", &json!("3"), &metric()).unwrap();
+        assert_eq!(calc_of(&wide)["ImageWidth"], json!(3), "a uint32 fact holds 3, not 3.0");
+        assert!(set(&custom, "cameraCalc.imageWidth", &json!("2.5"), &metric()).is_none(), "a fraction in a uint32 fact is refused");
+        assert_eq!(raw_value(meta(CAMERA_META, "CameraName").as_ref(), &json!("abc"), &metric()), Some(json!("abc")));
     }
 
     #[test]

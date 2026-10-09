@@ -2042,10 +2042,17 @@ mod tests {
 
     #[test]
     fn the_core_alone_answers_a_parameter_file_header() {
-        let known = super::known_of(&crate::hub::Vehicle::heard(1));
-        let (answered, missing) = super::answer_fields("vehicle", crate::paramfile::HEADER_FIELDS, &known);
+        let mut vehicle = crate::hub::Vehicle::heard(1);
+        vehicle.autopilot_version = Some(crate::connect::AutopilotVersion { capabilities: 0, flight_sw_version: 0x010F_0280, flight_custom_version: [0x1b, 0x0a, 0x3c, 0x9f, 0, 0, 0, 0], uid: 0, vendor_id: 0, product_id: 0 });
+        let (answered, missing) = super::answer_fields("vehicle", crate::paramfile::HEADER_FIELDS, &super::known_of(&vehicle));
         assert!(missing.is_empty(), "with no Qt host a fall-through turns the whole vehicle null: {missing:?}");
-        assert_eq!(answered.get("id"), Some(&serde_json::json!(1)));
+        let git_hash = vehicle.firmware().map(|firmware| firmware.git_hash).unwrap();
+        assert!(!git_hash.is_empty());
+        assert_eq!(
+            ["id", "firmwareType", "vehicleType", "gitHash"].map(|field| answered.get(field).cloned()),
+            [json!(vehicle.id), json!(vehicle.autopilot), json!(vehicle.vehicle_type), json!(git_hash)].map(Some),
+            "the header names the vehicle the file came from, so a load can refuse a file from another firmware or frame"
+        );
     }
 
     #[test]

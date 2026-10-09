@@ -36,12 +36,13 @@ pub fn erase_warning(count: usize) -> String {
     }
 }
 
-pub fn empty_text(connected: bool, requesting: bool, answered: bool) -> &'static str {
+pub fn empty_text(connected: bool, requesting: bool, answered: Option<bool>) -> &'static str {
     match (requesting, connected, answered) {
         (true, ..) => "Asking the vehicle for its logs\u{2026}",
         (false, false, _) => "Connect a vehicle to list its logs.",
-        (false, true, true) => "This vehicle has no logs.",
-        (false, true, false) => "No logs listed yet. Refresh to ask the vehicle.",
+        (false, true, Some(true)) => "This vehicle has no logs.",
+        (false, true, Some(false)) => "No logs listed yet. Refresh to ask the vehicle.",
+        (false, true, None) => "No logs listed. Refresh to ask the vehicle.",
     }
 }
 
@@ -104,7 +105,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "eraseSelectedShown": ftp,
         "canEraseSelected": ftp && connected && !busy && root.get("selectedCount").and_then(Value::as_u64).unwrap_or(0) > 0,
         "anyDownloaded": entries.iter().any(|e| e["statusId"] == "downloaded"),
-        "emptyText": empty_text(connected, requesting, flag(&root, "listAnswered")),
+        "emptyText": empty_text(connected, requesting, root.get("listAnswered").and_then(Value::as_bool)),
         "eraseWarning": erase_warning(entries.len()),
         "entries": entries,
     })
@@ -216,10 +217,11 @@ mod tests {
 
     #[test]
     fn a_vehicle_that_answered_with_no_logs_is_not_a_vehicle_nobody_asked() {
-        assert_eq!(empty_text(false, false, false), "Connect a vehicle to list its logs.");
-        assert_eq!(empty_text(true, true, false), "Asking the vehicle for its logs\u{2026}");
-        assert_eq!(empty_text(true, false, false), "No logs listed yet. Refresh to ask the vehicle.");
-        assert_eq!(empty_text(true, false, true), "This vehicle has no logs.", "one line stood for both, so an operator whose vehicle had answered was told to redo the request that had already produced the true answer");
+        assert_eq!(empty_text(false, false, Some(false)), "Connect a vehicle to list its logs.");
+        assert_eq!(empty_text(true, true, Some(false)), "Asking the vehicle for its logs\u{2026}");
+        assert_eq!(empty_text(true, false, Some(false)), "No logs listed yet. Refresh to ask the vehicle.");
+        assert_eq!(empty_text(true, false, None), "No logs listed. Refresh to ask the vehicle.", "Qt's LogDownloadController keeps no listAnswered, so with Qt answering an empty list is neither claimed unasked nor claimed answered");
+        assert_eq!(empty_text(true, false, Some(true)), "This vehicle has no logs.", "one line stood for both, so an operator whose vehicle had answered was told to redo the request that had already produced the true answer");
     }
 
     #[test]
@@ -282,6 +284,7 @@ mod tests {
         assert_eq!(asking["canCancel"], true);
         assert_eq!(asking["canSort"], false);
         assert_eq!(asking["emptyText"], "Asking the vehicle for its logs\u{2026}");
+        assert_eq!(logs_view(&Fake { connected: true, requesting: false, entries: json!([]) }, &[])["emptyText"], "No logs listed. Refresh to ask the vehicle.", "a controller with no listAnswered, as Qt's is");
         let none = logs_view(&Fake { connected: false, requesting: false, entries: json!([]) }, &[]);
         assert_eq!(none["emptyText"], "Connect a vehicle to list its logs.");
         assert_eq!(none["canErase"], false);

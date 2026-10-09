@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
-use crate::mockcal::Calibration;
+use crate::mockcal::{Calibration, Stored};
 use crate::mocklog::Logs;
 use crate::mockcamera::{Cameras, StreamKind, Video, Where};
 use crate::mockgimbal::Gimbal;
@@ -396,6 +396,14 @@ impl Sim {
         target == 0 || target == self.system
     }
 
+    fn store_calibration(&mut self, stored: &[Stored]) {
+        if stored.is_empty() {
+            return;
+        }
+        let calibrated = |name: &str| stored.iter().flat_map(|values| values.iter()).find(|(key, _)| *key == name).map(|(_, value)| *value);
+        self.params = std::mem::take(&mut self.params).into_iter().map(|p| Param { value: calibrated(&p.name).unwrap_or(p.value), ..p }).collect();
+    }
+
     fn param_value(&self, index: usize) -> Out {
         let param = &self.params[index];
         (AUTOPILOT, MavMessage::PARAM_VALUE(PARAM_VALUE_DATA {
@@ -710,7 +718,7 @@ impl Sim {
         let fast = vec![self.global_position(elapsed_ms), self.attitude(elapsed_ms), self.vfr_hud()];
         let cameras = self.cameras.as_mut().map(|cameras| cameras.tick(elapsed_ms, &here)).unwrap_or_default();
         let (calibration, stored) = self.calibration.tick();
-        self.params = std::mem::take(&mut self.params).into_iter().map(|p| Param { value: stored.iter().find(|(name, _)| *name == p.name).map_or(p.value, |(_, value)| *value), ..p }).collect();
+        self.store_calibration(&stored);
         let every_second = if slow { self.once_a_second(elapsed_ms) } else { Vec::new() };
         fast.into_iter().chain(cameras).chain(calibration).chain(every_second).collect()
     }

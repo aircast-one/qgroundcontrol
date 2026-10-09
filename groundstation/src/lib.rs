@@ -114,7 +114,6 @@ pub mod mocklog;
 pub mod mockcamera;
 pub mod mockgimbal;
 pub mod mocklink;
-pub mod workpool;
 pub mod mappolygon;
 pub mod mappolyline;
 pub mod mapscale;
