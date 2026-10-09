@@ -116,6 +116,7 @@ struct ParameterForm: View {
     let page: String
     var highlighted: Set<String> = []
     var section: String? = nil
+    var footer: AnyView? = nil
     @Environment(\.theme) private var theme
     @State private var rows: [ParameterRows] = []
     @State private var loaded = false
@@ -170,6 +171,7 @@ struct ParameterForm: View {
                         }
                     }
                 }
+                footer
             }
         }
     }

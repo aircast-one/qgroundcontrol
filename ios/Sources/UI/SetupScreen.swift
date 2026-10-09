@@ -233,7 +233,9 @@ struct SetupDialog<Content: View, Buttons: View>: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.s3) { content() }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, Space.s6)
             }
+            .padding(.horizontal, -Space.s6)
             HStack(spacing: Space.s2) {
                 Spacer(minLength: 0)
                 buttons()

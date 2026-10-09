@@ -56,8 +56,8 @@ struct MainActivity: View {
         }
         .background {
             Color.clear
-                .ignoresSafeArea()
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { rootSize = $0 }
+                .ignoresSafeArea()
         }
         .textInputAutocapitalization(.never)
         .environment(\.LocalRootSize, rootSize)

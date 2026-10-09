@@ -1265,6 +1265,12 @@ func factKeyboard(_ fact: Fact) -> UIKeyboardType {
 
 private let KEYBOARDS_WITHOUT_RETURN: Set<UIKeyboardType> = [.numberPad, .decimalPad]
 
+extension Binding<String> {
+    var decimalPoint: Binding<String> {
+        Binding(get: { wrappedValue }, set: { wrappedValue = $0.replacingOccurrences(of: ",", with: ".") })
+    }
+}
+
 func fieldText(_ fact: Fact) -> String { fact.isString || isSecret(fact) ? fact.valueString : plainNumber(fact.valueString) }
 
 func plainNumber(_ text: String) -> String {
@@ -1367,7 +1373,7 @@ private struct FactTextField: View {
                     if secret && !revealed {
                         SecureField("", text: text)
                     } else {
-                        TextField("", text: text, axis: lines == 1 ? .horizontal : .vertical)
+                        TextField("", text: factKeyboard(fact) == .decimalPad ? text.decimalPoint : text, axis: lines == 1 ? .horizontal : .vertical)
                             .lineLimit(1...lines)
                     }
                 }

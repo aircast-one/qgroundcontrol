@@ -393,7 +393,7 @@ struct FlyScreen: View {
         }
         flyChrome(box, safe, cutout, mapIsPip: mapIsPip, videoIsPip: videoIsPip, videoShown: videoShown)
             .opacity(navigation.settingsOpen ? 0 : 1)
-            .zIndex(1)
+            .zIndex(flyScreen.flightActions.deciding ? 4 : 1)
     }
 
     @ViewBuilder

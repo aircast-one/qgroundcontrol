@@ -301,7 +301,7 @@ struct PlanTab: View {
                 .popover(isPresented: $menuOpen) {
                     ViewThatFits(in: .vertical) {
                         planMenu(history, can, dirty, containsItems)
-                        ScrollView { planMenu(history, can, dirty, containsItems) }
+                        ScrollView { planMenu(history, can, dirty, containsItems) }.scrollIndicatorsFlash(onAppear: true)
                     }
                     .frame(minWidth: PLAN_MENU_MIN_WIDTH, maxWidth: PLAN_MENU_MAX_WIDTH)
                     .presentationCompactAdaptation(.popover)

@@ -45,7 +45,6 @@ struct MapLayersSheet: View {
             }
             .padding(.horizontal, Space.s6)
             .padding(.bottom, Space.s8)
-            .padding(.top, Space.s4)
         }
         .task { listed = await offMain { mapTypes(MapBridge.read(MAP_TYPES_VIEW)) } }
     }

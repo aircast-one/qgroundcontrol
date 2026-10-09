@@ -348,7 +348,6 @@ struct SetWaypointSheet: View {
                 RefusalText(text: refused)
             }
             .padding(.horizontal, Space.s5)
-            .padding(.top, Space.s4)
             .padding(.bottom, Space.s6)
         }
         .onChange(of: sequence) { refused = nil }
@@ -481,7 +480,6 @@ struct RoiSheet: View {
                 }
             }
             .padding(.horizontal, Space.s5)
-            .padding(.top, Space.s4)
             .padding(.bottom, Space.s6)
         }
         .onChange(of: at) {

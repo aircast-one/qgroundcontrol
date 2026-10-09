@@ -386,6 +386,8 @@ final class FlightActionsState {
     @ObservationIgnored var mounted = 0
     @ObservationIgnored let scope = ViewScope()
 
+    var deciding: Bool { pending != nil || guidedValue != nil || editingLoiter != nil }
+
     @MainActor
     func reset() {
         scope.cancel()
@@ -548,7 +550,7 @@ struct FlightActions<Center: View>: View {
     @ViewBuilder
     private var hosts: some View {
         PreflightChecklistReset(checklist: checklist, available: true)
-        PreflightChecklist(checklist: checklist, deciding: actions.pending != nil || actions.guidedValue != nil || actions.editingLoiter != nil)
+        PreflightChecklist(checklist: checklist, deciding: actions.deciding)
         OpenOnRequest(name: "more", open: { actions.showMore = true })
         if actions.showMore {
             MoreActionsSheet(tiles: moreTiles(), onDismiss: { actions.showMore = false }) {
@@ -600,7 +602,7 @@ struct FlightActions<Center: View>: View {
         let deck = deckIds(Set(deckEntries.map(\.id)), armed)
         let liveActions = actionsJson?.text
         let showingSent = sentIsStillShowing(actions.sentName, actions.sentSnapshot, liveActions)
-        let deciding = actions.pending != nil || actions.guidedValue != nil || actions.editingLoiter != nil
+        let deciding = actions.deciding
         let more = DeckEntry(id: "more", label: "More", icon: .moreVert, enabled: true, onClick: { actions.showMore = true })
         if layout == .Rail {
             ZStack {

@@ -55,7 +55,7 @@ struct PowerCalcDialog: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(calculator.measuredLabel).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-                TextField(calculator.measuredLabel, text: $measured)
+                TextField(calculator.measuredLabel, text: $measured.decimalPoint)
                     .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
             }

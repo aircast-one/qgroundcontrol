@@ -343,7 +343,6 @@ private struct CameraSheet: View {
                 }
                 .padding(.horizontal, SHEET_PAD)
                 .padding(.bottom, SHEET_PAD)
-                .padding(.top, Space.s2)
             }
         }
         .task(id: ClassifyKey(url: draft.url, needsUrl: draft.needsUrl)) {

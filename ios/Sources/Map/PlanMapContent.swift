@@ -1630,6 +1630,7 @@ struct CenterMenu: View {
     var missionPoints: [TrackPoint]? = nil
     var onFit: ([TrackPoint]?) -> Void = { _ in }
     @MapPath(VEHICLES_VIEW) private var fleetJson
+    @Environment(\.theme) private var theme
     @State private var asking = false
     @State private var latitude = ""
     @State private var longitude = ""
@@ -1658,8 +1659,11 @@ struct CenterMenu: View {
             }
         } label: {
             Text("Center map")
+                .foregroundStyle(theme.colors.onSecondaryContainer)
+                .padding(.horizontal, Space.s4)
+                .padding(.vertical, Space.s2)
+                .background(theme.colors.secondaryContainer, in: Capsule())
         }
-        .buttonStyle(.bordered)
         .background {
             if asking {
                 let parsed = parsedCoordinate(latitude, longitude)

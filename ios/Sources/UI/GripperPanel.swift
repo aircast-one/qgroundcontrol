@@ -79,7 +79,6 @@ struct GripperPanel: View {
             .frame(maxWidth: .infinity)
             .padding(.horizontal, Space.s5)
             .padding(.bottom, Space.s6)
-            .padding(.top, Space.s4)
         }
     }
 }

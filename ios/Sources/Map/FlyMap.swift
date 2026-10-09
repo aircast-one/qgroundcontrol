@@ -132,7 +132,7 @@ private final class FlyMapState {
     func appeared() {
         if shown, let at = centre, zoom > 1.0 {
             camera.centreOn = at
-            camera.centreZoom = zoom
+            camera.centreZoom = camera.mainZoom > 1.0 ? camera.mainZoom : nil
             camera.centreRequest += 1
         }
         shown = true
@@ -194,7 +194,7 @@ struct FlyMap: View {
                 fitRequest: state.fitRequest,
                 centreRequest: state.camera.centreRequest,
                 centreOn: state.camera.centreOn,
-                centreZoom: state.camera.centreZoom,
+                centreZoom: state.camera.centreZoom.map { pipZoom($0, pip) ?? $0 },
                 onMapClick: onMapClick,
                 onMissionItemClick: onMissionItemClick,
                 traffic: plan.traffic,
@@ -250,9 +250,9 @@ struct FlyMap: View {
     private func zoomForPip() {
         guard let at = state.centre, pip != state.camera.zoomedForPip else { return }
         state.camera.zoomedForPip = pip
-        guard let level = pipZoom(state.camera.mainZoom, pip) else { return }
+        guard pipZoom(state.camera.mainZoom, pip) != nil else { return }
         state.camera.centreOn = at
-        state.camera.centreZoom = level
+        state.camera.centreZoom = state.camera.mainZoom
         state.camera.centreRequest += 1
     }
 

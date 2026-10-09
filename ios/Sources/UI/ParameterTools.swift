@@ -286,6 +286,8 @@ struct ParameterToolsMenu: View {
     }
 }
 
+private let REVIEW_LIST_MAX_HEIGHT: CGFloat = 360
+
 private struct ReviewDialog: View {
     let review: ParameterReview
     @Binding var chosen: Set<String>
@@ -305,19 +307,24 @@ private struct ReviewDialog: View {
                     chosen = checkedAll(review, chosen, on)
                 })) { Text("Name").font(.labelLarge) }
             }
-            LazyVStack(alignment: .leading, spacing: Space.s1) {
-                ForEach(review.rows, id: \.key) { row in
-                    Toggle(isOn: Binding(get: { chosen.contains(row.key) }, set: { on in
-                        chosen = on ? chosen.union([row.key]) : chosen.subtracting([row.key])
-                    })) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(review.multipleComponents ? "\(row.componentId): \(row.name)" : row.name).font(.bodyMedium)
-                            Text(diffLine(row)).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: Space.s1) {
+                    ForEach(review.rows, id: \.key) { row in
+                        Toggle(isOn: Binding(get: { chosen.contains(row.key) }, set: { on in
+                            chosen = on ? chosen.union([row.key]) : chosen.subtracting([row.key])
+                        })) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(review.multipleComponents ? "\(row.componentId): \(row.name)" : row.name).font(.bodyMedium)
+                                Text(diffLine(row)).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                            }
                         }
+                        .disabled(row.cannotSend)
                     }
-                    .disabled(row.cannotSend)
                 }
+                .padding(.horizontal, Space.s6)
             }
+            .frame(maxHeight: REVIEW_LIST_MAX_HEIGHT)
+            .padding(.horizontal, -Space.s6)
             if review.rows.contains(where: { $0.noVehicleValue && !$0.cannotSend }) {
                 Text(NEW_TO_VEHICLE_HINT).font(.bodySmall)
             }

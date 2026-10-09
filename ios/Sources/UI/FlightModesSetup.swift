@@ -16,8 +16,7 @@ struct FlightModesSetup: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(theme.colors.surfaceVariant)
             }
-            ParameterForm(page: FLIGHT_MODES_PAGE, highlighted: slots?.activeParams ?? [])
-            if slots?.channelMonitor == true { ChannelMonitor() }
+            ParameterForm(page: FLIGHT_MODES_PAGE, highlighted: slots?.activeParams ?? [], footer: slots?.channelMonitor == true ? AnyView(ChannelMonitor()) : nil)
         }
     }
 }

@@ -193,14 +193,19 @@ struct PlanDialog<Content: View, Buttons: View>: View {
     var body: some View {
         AircastSheet(onDismissRequest: onDismiss) {
             VStack(alignment: .leading, spacing: Space.s4) {
-                Text(title).font(.headlineSmall)
-                ScrollView { content().frame(maxWidth: .infinity, alignment: .leading) }
+                Text(title).font(.headlineSmall).padding(.horizontal, Space.s6)
+                ScrollView {
+                    content()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Space.s6)
+                }
                 HStack(spacing: Space.s2) {
                     Spacer()
                     buttons()
                 }
+                .padding(.horizontal, Space.s6)
             }
-            .padding(Space.s6)
+            .padding(.bottom, Space.s6)
         }
     }
 }

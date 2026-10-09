@@ -158,6 +158,7 @@ struct StatusPill: View {
 
 private let STRIP_GAP: CGFloat = 14
 private let TEXT_BUTTON_HEIGHT: CGFloat = 40
+private let TEXT_BUTTON_MIN_WIDTH: CGFloat = 58
 private let NARROW_STRIP_GAP: CGFloat = 6
 private let NARROW_PILL_WIDTH: CGFloat = 120
 private let NARROW_STATUS_CELLS = 1
@@ -221,11 +222,10 @@ private struct VehicleStatusReadings: View {
                     LayoutWidget(key: "indicator-\(key)", movable: false) {
                         if layout.editing {
                             HStack(spacing: 0) {
-                                Button("\u{2039}") { movedKey(keys, key, -1).map { layout.saveIndicatorOrder($0) } }
+                                moveArrow("\u{2039}") { movedKey(keys, key, -1).map { layout.saveIndicatorOrder($0) } }
                                 cell(key, state, live)
-                                Button("\u{203A}") { movedKey(keys, key, 1).map { layout.saveIndicatorOrder($0) } }
+                                moveArrow("\u{203A}") { movedKey(keys, key, 1).map { layout.saveIndicatorOrder($0) } }
                             }
-                            .buttonStyle(.borderless)
                             .padding(.leading, stripGap(narrow))
                         } else {
                             cell(key, state, live).padding(.leading, stripGap(narrow))
@@ -267,6 +267,16 @@ private struct VehicleStatusReadings: View {
                 stripSheets(state)
             }
         }
+    }
+
+    private func moveArrow(_ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.labelLarge)
+                .frame(minWidth: TEXT_BUTTON_MIN_WIDTH, minHeight: TEXT_BUTTON_HEIGHT)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
     }
 
     @ViewBuilder

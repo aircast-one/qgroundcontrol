@@ -150,6 +150,7 @@ private struct SheetBody<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content() }
+            .padding(.top, Space.s6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .presentationDetents(skipPartiallyExpanded ? [.large] : [.medium, .large])
             .presentationDragIndicator(.visible)
