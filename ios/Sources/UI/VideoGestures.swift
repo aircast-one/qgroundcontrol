@@ -12,7 +12,16 @@ func videoSwipe(_ moved: CGSize, _ threshold: CGFloat) -> VideoSwipe? {
 
 func sideways(_ moved: CGSize) -> Bool { abs(moved.width) > abs(moved.height) }
 
-func pipOnStart(_ centreX: CGFloat, _ width: CGFloat) -> Bool { centreX < width / 2 }
+enum PipCorner: CaseIterable, Equatable {
+    case TopStart, TopEnd, BottomStart, BottomEnd
+
+    var start: Bool { self == .TopStart || self == .BottomStart }
+    var bottom: Bool { self == .BottomStart || self == .BottomEnd }
+}
+
+func hidingSwipe(_ corner: PipCorner) -> VideoSwipe { corner.bottom ? .Down : .Up }
+
+func growingSwipe(_ corner: PipCorner) -> VideoSwipe { corner.bottom ? .Up : .Down }
 
 final class VideoGestureHandlers {
     let owned: () -> Bool

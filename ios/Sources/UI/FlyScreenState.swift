@@ -19,7 +19,7 @@ final class FlyScreenState {
     var obstacles: [String: CGRect] = [:]
     var mapInsets = MapInsets(top: 0, bottom: 0)
     var videoTucked = false
-    var pipStart = false
+    var pipCorner = PipCorner.TopEnd
 
     init(layout: OverlayLayoutState) {
         self.layout = layout

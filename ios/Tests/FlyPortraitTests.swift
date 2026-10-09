@@ -30,15 +30,20 @@ final class FlyPortraitTests: XCTestCase {
         XCTAssertEqual(videoSwipe(CGSize(width: -90, height: 10), 40), .Left)
     }
 
-    func testADraggedPictureInPictureSettlesOnTheSideItsCentreWasDroppedOn() {
-        XCTAssertTrue(pipOnStart(300, 1080))
-        XCTAssertFalse(pipOnStart(700, 1080))
-        let geometry = PipGeometry(width: 1080, pip: CGSize(width: 440, height: 248), inset: 33, pipTop: 300, split: CGRect(x: 0, y: 200, width: 1080, height: 608), full: CGRect(x: 0, y: 0, width: 1080, height: 2200))
-        XCTAssertEqual(geometry.anchor(false), CGPoint(x: 607, y: 300))
-        XCTAssertEqual(geometry.anchor(true), CGPoint(x: 33, y: 300))
+    func testADraggedPictureInPictureSettlesOnTheCornerNearestWhereItWasDropped() {
+        let geometry = PipGeometry(width: 1080, pip: CGSize(width: 440, height: 248), inset: 33, pipTop: 300, bottomStartTop: 1600, bottomEndTop: 1550, split: CGRect(x: 0, y: 200, width: 1080, height: 608), full: CGRect(x: 0, y: 0, width: 1080, height: 2200))
+        let at = { (x: CGFloat, y: CGFloat) in geometry.nearest(CGPoint(x: x, y: y)) }
+        XCTAssertEqual([at(300, 400), at(800, 400), at(300, 1700), at(800, 1650)], [.TopStart, .TopEnd, .BottomStart, .BottomEnd])
+        XCTAssertEqual(geometry.anchor(.TopEnd), CGPoint(x: 607, y: 300))
+        XCTAssertEqual(geometry.anchor(.BottomStart), CGPoint(x: 33, y: 1600), "a bottom corner sits above the deck, clear of the compass or the scale bar")
         let finger = CGPoint(x: 540, y: 500)
-        let pulled = geometry.pip(false, geometry.dragToCentre(false, finger))
+        let pulled = geometry.pip(.TopEnd, geometry.dragToCentre(.TopEnd, finger))
         XCTAssertEqual(CGPoint(x: pulled.midX, y: pulled.midY), finger, "pulled out of the split view, the picture is centred under the finger")
+    }
+
+    func testAPictureHidesTowardTheEdgeItSitsOnAndGrowsAwayFromIt() {
+        XCTAssertEqual([hidingSwipe(.TopEnd), growingSwipe(.TopEnd)], [.Up, .Down])
+        XCTAssertEqual([hidingSwipe(.BottomStart), growingSwipe(.BottomStart)], [.Down, .Up])
     }
 
     func testTheControlsBesideTheVideoMakeRoomForThePictureOrForItsTab() {

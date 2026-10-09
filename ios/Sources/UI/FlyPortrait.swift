@@ -69,19 +69,23 @@ struct FlyPortrait: View {
         let controlsTop = split ? mapTop : barTop
         let thumbnail = portraitVideoThumbnail(split, reading)
         let room = pipRoom(thumbnail, flyScreen.videoTucked)
-        let endRoom = flyScreen.pipStart ? 0 : room
-        let startRoom = flyScreen.pipStart ? room : 0
-        let buttonsTop = Space.s3 + endRoom
-        let overlaysTop = max(Space.s3 + endRoom + MAP_BUTTON_SIZE + Space.s2, Space.s3 + startRoom)
+        let corner = flyScreen.pipCorner
+        let roomAt = { (at: PipCorner) in corner == at ? room : 0 }
+        let buttonsTop = Space.s3 + roomAt(.TopEnd)
+        let overlaysTop = max(Space.s3 + roomAt(.TopEnd) + MAP_BUTTON_SIZE + Space.s2, Space.s3 + roomAt(.TopStart))
+        let compassLift = roomAt(.BottomStart)
+        let railLift = roomAt(.BottomEnd)
         let geometry = PipGeometry(
             width: box.width,
             pip: CGSize(width: PORTRAIT_PIP_WIDTH, height: PORTRAIT_PIP_HEIGHT),
             inset: Space.s3,
             pipTop: barTop + Space.s3,
+            bottomStartTop: box.height - deckHeight - MAP_ATTRIBUTION_CLEARANCE - PORTRAIT_PIP_HEIGHT,
+            bottomEndTop: box.height - deckHeight - MAP_SCALE_CLEARANCE - PORTRAIT_PIP_HEIGHT,
             split: CGRect(x: 0, y: videoTop, width: box.width, height: videoHeight),
             full: CGRect(x: 0, y: 0, width: box.width, height: box.height > 0 ? box.height : videoTop + videoHeight)
         )
-        let target = fullScreen ? geometry.full : split ? geometry.split : geometry.pip(flyScreen.pipStart, pipDrag)
+        let target = fullScreen ? geometry.full : split ? geometry.split : geometry.pip(corner, pipDrag)
         ZStack(alignment: .topLeading) {
             Group {
                 if view == .ThreeD { Viewer3DPane() } else { map() }
@@ -106,7 +110,7 @@ struct FlyPortrait: View {
                         }
                     }
                     .videoFrame(target, holding: holding, nudge: cameras.nudge)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity.combined(with: .move(edge: corner.bottom ? .bottom : .top)))
                     .zIndex(fullScreen ? FULL_SCREEN_LAYER : 0)
             }
             if !fullScreen {
@@ -133,7 +137,7 @@ struct FlyPortrait: View {
                     }
                 }
                 VStack(spacing: 0) {
-                    controls(split, hasVideo, overlaysTop: overlaysTop, buttonsTop: buttonsTop)
+                    controls(split, hasVideo, overlaysTop: overlaysTop, buttonsTop: buttonsTop, compassLift: compassLift, railLift: railLift)
                         .padding(.top, controlsTop)
                         .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
                     actions(.Bottom)
@@ -152,11 +156,12 @@ struct FlyPortrait: View {
                 }
                 .frame(width: box.width, height: box.height)
                 if thumbnail && flyScreen.videoTucked {
-                    VideoTab(swipeDistance: VIDEO_SWIPE_DISTANCE) { flyScreen.videoTucked = false }
-                        .padding(.top, barTop + Space.s3)
+                    VideoTab(swipeDistance: VIDEO_SWIPE_DISTANCE, showSwipe: growingSwipe(corner)) { flyScreen.videoTucked = false }
+                        .padding(.top, corner.bottom ? 0 : barTop + Space.s3)
+                        .padding(.bottom, corner.bottom ? deckHeight + (corner.start ? MAP_ATTRIBUTION_CLEARANCE : MAP_SCALE_CLEARANCE) : 0)
                         .padding(.horizontal, Space.s3)
-                        .frame(width: box.width, alignment: flyScreen.pipStart ? .leading : .trailing)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .frame(width: box.width, height: box.height, alignment: cornerAlignment(corner))
+                        .transition(.opacity.combined(with: .move(edge: corner.bottom ? .bottom : .top)))
                 }
                 if split {
                     SplitHandle(
@@ -192,10 +197,11 @@ struct FlyPortrait: View {
         .animation(.default, value: split)
         .animation(.default, value: flyScreen.videoTucked)
         .animation(.default, value: buttonsTop)
+        .animation(.default, value: corner)
         .onChange(of: MapInsets(top: split ? 0 : barTop, bottom: deckHeight), initial: true) { _, insets in flyScreen.mapInsets = insets }
     }
 
-    private func controls(_ split: Bool, _ hasVideo: Bool, overlaysTop: CGFloat, buttonsTop: CGFloat) -> some View {
+    private func controls(_ split: Bool, _ hasVideo: Bool, overlaysTop: CGFloat, buttonsTop: CGFloat, compassLift: CGFloat, railLift: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: Space.s2) { overlays() }
@@ -209,7 +215,7 @@ struct FlyPortrait: View {
             .padding(.leading, Space.s3)
             .padding(.top, overlaysTop)
             .padding(.trailing, Space.s3)
-            .padding(.bottom, MAP_ATTRIBUTION_CLEARANCE)
+            .padding(.bottom, MAP_ATTRIBUTION_CLEARANCE + compassLift)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             MapButtons(view: view, split: split, hasVideo: hasVideo, onView: onView)
                 .padding(.trailing, Space.s3)
@@ -217,7 +223,7 @@ struct FlyPortrait: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             rail(split)
                 .padding(.trailing, Space.s3)
-                .padding(.bottom, MAP_SCALE_CLEARANCE)
+                .padding(.bottom, MAP_SCALE_CLEARANCE + railLift)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         }
     }
@@ -235,8 +241,9 @@ struct FlyPortrait: View {
             onSwipe: { moved in
                 let swipe = videoSwipe(moved, VIDEO_SWIPE_DISTANCE)
                 switch swipe {
-                case .Up: if !split { screen.videoTucked = true }
-                case .Down: if !split { onView(.Video) }
+                case .Up, .Down:
+                    if split { break }
+                    if swipe == hidingSwipe(screen.pipCorner) { screen.videoTucked = true } else { onView(.Video) }
                 case .Left, .Right: cameraStep(swipe).map(stepper.step)
                 case nil: break
                 }
@@ -244,7 +251,7 @@ struct FlyPortrait: View {
             onHold: { at in
                 holding = true
                 if split {
-                    pipDrag = geometry.dragToCentre(screen.pipStart, CGPoint(x: target.minX + at.x, y: target.minY + at.y))
+                    pipDrag = geometry.dragToCentre(screen.pipCorner, CGPoint(x: target.minX + at.x, y: target.minY + at.y))
                     screen.videoTucked = false
                     onExitFullScreen()
                     onView(.Map)
@@ -253,7 +260,8 @@ struct FlyPortrait: View {
             },
             onHoldDrag: { delta in pipDrag = CGSize(width: pipDrag.width + delta.width, height: pipDrag.height + delta.height) },
             onHoldEnd: {
-                screen.pipStart = pipOnStart(geometry.pip(screen.pipStart, pipDrag).midX, geometry.width)
+                let dropped = geometry.pip(screen.pipCorner, pipDrag)
+                screen.pipCorner = geometry.nearest(CGPoint(x: dropped.midX, y: dropped.midY))
                 pipDrag = .zero
                 holding = false
             }
@@ -267,6 +275,15 @@ private let HANDLE_TOUCH = CGSize(width: 96, height: 28)
 private let HANDLE_BAR = CGSize(width: 40, height: 4)
 private let HANDLE_ALPHA = 0.8
 
+func cornerAlignment(_ corner: PipCorner) -> Alignment {
+    switch corner {
+    case .TopStart: .topLeading
+    case .TopEnd: .topTrailing
+    case .BottomStart: .bottomLeading
+    case .BottomEnd: .bottomTrailing
+    }
+}
+
 func pipRoom(_ thumbnail: Bool, _ tucked: Bool) -> CGFloat {
     if !thumbnail { return 0 }
     return tucked ? VIDEO_TAB_HEIGHT + Space.s3 : PORTRAIT_PIP_HEIGHT + Space.s3
@@ -277,24 +294,39 @@ struct PipGeometry: Equatable {
     let pip: CGSize
     let inset: CGFloat
     let pipTop: CGFloat
+    let bottomStartTop: CGFloat
+    let bottomEndTop: CGFloat
     let split: CGRect
     let full: CGRect
 
-    func anchor(_ start: Bool) -> CGPoint { CGPoint(x: start ? inset : width - inset - pip.width, y: pipTop) }
+    private func top(_ corner: PipCorner) -> CGFloat {
+        if !corner.bottom { return pipTop }
+        return corner.start ? bottomStartTop : bottomEndTop
+    }
 
-    func pip(_ start: Bool, _ drag: CGSize) -> CGRect {
-        let at = anchor(start)
+    func anchor(_ corner: PipCorner) -> CGPoint { CGPoint(x: corner.start ? inset : width - inset - pip.width, y: top(corner)) }
+
+    func pip(_ corner: PipCorner, _ drag: CGSize) -> CGRect {
+        let at = anchor(corner)
         return CGRect(origin: CGPoint(x: at.x + drag.width, y: at.y + drag.height), size: pip)
     }
 
-    func dragToCentre(_ start: Bool, _ finger: CGPoint) -> CGSize {
-        let at = anchor(start)
+    func dragToCentre(_ corner: PipCorner, _ finger: CGPoint) -> CGSize {
+        let at = anchor(corner)
         return CGSize(width: finger.x - at.x - pip.width / 2, height: finger.y - at.y - pip.height / 2)
+    }
+
+    func nearest(_ centre: CGPoint) -> PipCorner {
+        let start = centre.x < width / 2
+        let bottomTop = top(start ? .BottomStart : .BottomEnd)
+        let bottom = centre.y > (pipTop + bottomTop + pip.height) / 2
+        return PipCorner.allCases.first { $0.start == start && $0.bottom == bottom } ?? .TopEnd
     }
 }
 
 private struct VideoTab: View {
     let swipeDistance: CGFloat
+    let showSwipe: VideoSwipe
     let onShow: () -> Void
     @Environment(\.theme) private var theme
 
@@ -310,7 +342,7 @@ private struct VideoTab: View {
             .background(Color.black.opacity(SCRIM_ALPHA), in: Capsule())
         }
         .buttonStyle(.plain)
-        .verticalSwipe(swipeDistance) { if $0 == .Down { onShow() } }
+        .verticalSwipe(swipeDistance) { if $0 == showSwipe { onShow() } }
         .accessibilityLabel("Show the video")
     }
 }
