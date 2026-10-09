@@ -244,19 +244,20 @@ fn settle_home_on_terrain(before: Option<(f64, f64)>) {
 }
 
 fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
+    let types = offline_types();
     let (answer, before) = {
         let mut state = held();
-        let Some(current) = state.document.as_ref() else {
+        let Some(current) = state.document.clone().map(|document| tracked(document, types)) else {
             return refused("There is no plan to edit.");
         };
-        let before = home_of(Some(current));
+        let before = home_of(Some(&current));
         let gate = plandoc::firmware(current.firmware_type) == crate::cmdinfo::Firmware::Px4 && crate::settingsstore::raw_setting("settings.planViewSettings.useConditionGate").and_then(|v| v.as_bool()).unwrap_or(false);
         crate::surveyitems::CONDITION_GATE_SUPPORTED.store(gate, std::sync::atomic::Ordering::Relaxed);
-        match change(current) {
+        match change(&current) {
             Ok(changed) => {
                 let count = changed.items.len();
                 shift_raw_edits(&current.items, &changed.items);
-                let previous = state.document.replace(changed);
+                let previous = state.document.replace(tracked(changed, types));
                 remember(&mut state, previous, crate::hub::now_ms());
                 state.dirty = true;
                 state.dirty_for_save = true;
@@ -514,20 +515,27 @@ fn item_edit(backend: &dyn Backend, args: &str, command: bool) -> Value {
     answer
 }
 
-pub fn offline_types_changed() {
-    if !offline() {
-        return;
+fn offline_types() -> (i64, i64) {
+    (offline_type("offlineEditingFirmwareClass"), offline_type("offlineEditingVehicleClass"))
+}
+
+fn tracked(document: Document, (firmware_type, vehicle_type): (i64, i64)) -> Document {
+    if !document.items.is_empty() {
+        return document;
     }
-    let (firmware_type, vehicle_type) = (offline_type("offlineEditingFirmwareClass"), offline_type("offlineEditingVehicleClass"));
+    let frame = match document.global_altitude_mode == crate::altitudemodes::TERRAIN_FRAME && plandoc::firmware(firmware_type) == crate::cmdinfo::Firmware::Px4 {
+        true => crate::altitudemodes::CALC_ABOVE_TERRAIN,
+        false => document.global_altitude_mode,
+    };
+    Document { firmware_type, vehicle_type, global_altitude_mode: frame, ..document }
+}
+
+pub fn offline_types_changed() {
+    let types = offline_types();
     let moved = {
         let mut state = held();
         let Some(document) = state.document.as_ref() else { return };
-        let terrain = plandoc::firmware(firmware_type) != crate::cmdinfo::Firmware::Px4;
-        let frame = match document.global_altitude_mode == crate::altitudemodes::TERRAIN_FRAME && !terrain {
-            true => crate::altitudemodes::CALC_ABOVE_TERRAIN,
-            false => document.global_altitude_mode,
-        };
-        let next = Document { firmware_type, vehicle_type, global_altitude_mode: frame, ..document.clone() };
+        let next = tracked(document.clone(), types);
         let differs = plandoc::save(&next) != plandoc::save(document);
         if differs {
             state.document = Some(next);
@@ -872,6 +880,7 @@ fn follow_vehicle() {
     if !enabled() {
         return;
     }
+    plan_for_active_vehicle();
     let shown = held().shown_vehicle;
     let (active, connected) = {
         let hub = crate::hub::lock();
@@ -888,7 +897,7 @@ fn follow_vehicle() {
         });
         (hub.active_id(), ready)
     };
-    let (adopted, classes) = {
+    let adopted = {
         let mut state = held();
         if state.fetching {
             return;
@@ -911,24 +920,19 @@ fn follow_vehicle() {
                 state.selected = 0;
                 settle_clean(&mut state);
                 state.file = None;
-                (None, None)
+                None
             }
             (Some(id), Some(vehicle)) if state.shown_vehicle != Some(id) && vehicle.0 == id => {
                 state.shown_vehicle = Some(id);
-                let classes = offline_classes(vehicle.5 .0, vehicle.5 .1);
                 let has_items = state.document.as_ref().is_some_and(contains_items);
                 if state.dirty_for_save && has_items {
                     state.vehicle_prompt = Some(false);
                 }
-                ((!state.dirty_for_save || !has_items).then_some(vehicle), Some(classes))
+                (!state.dirty_for_save || !has_items).then_some(vehicle)
             }
             _ => return,
         }
     };
-    if let Some((firmware_class, vehicle_class)) = classes {
-        crate::settingsstore::set_raw("settings.appSettings.offlineEditingFirmwareClass", &json!(firmware_class));
-        crate::settingsstore::set_raw("settings.appSettings.offlineEditingVehicleClass", &json!(vehicle_class));
-    }
     if let Some((_, snapshot, sends_home, fence, rally, types, vehicle_home)) = adopted {
         adopt(&snapshot, sends_home, fence, rally, types, vehicle_home);
         held().file = None;
@@ -1369,6 +1373,12 @@ fn offline_classes(firmware: i64, vehicle: i64) -> (i64, i64) {
     (firmware_class, vehicle_class)
 }
 
+fn plan_for_active_vehicle() {
+    let active = crate::hub::lock().active().map(|v| offline_classes(i64::from(v.autopilot), i64::from(v.vehicle_type)));
+    let Some((firmware_class, vehicle_class)) = active.filter(|classes| *classes != offline_types()) else { return };
+    crate::settingsstore::set_raw_together(&[("settings.appSettings.offlineEditingFirmwareClass", json!(firmware_class)), ("settings.appSettings.offlineEditingVehicleClass", json!(vehicle_class))]);
+}
+
 fn plan_for_offline_vehicle(backend: &dyn Backend) {
     if !offline() {
         return;
@@ -1503,20 +1513,22 @@ fn clear(backend: &dyn Backend) -> Value {
 
 fn clear_kinds(fresh: Option<Document>, kinds: &[&str]) {
     forget_raw_edits();
+    let types = offline_types();
     {
         let mut state = held();
         let template = state.document.clone().or(fresh).unwrap_or_else(empty_document);
         let before = state.document.clone();
         let empty = empty_document();
         let mission = kinds.contains(&"mission");
-        state.document = Some(Document {
+        let cleared = Document {
             home: if mission { None } else { template.home },
             items: if mission { Vec::new() } else { template.items.clone() },
             settings_sections: if mission { Vec::new() } else { template.settings_sections.clone() },
             fence: if kinds.contains(&"fence") { empty.fence } else { template.fence.clone() },
             rally: if kinds.contains(&"rally") { empty.rally } else { template.rally.clone() },
             ..template
-        });
+        };
+        state.document = Some(tracked(cleared, types));
         state.wizard = None;
         remember(&mut state, before, crate::hub::now_ms());
         state.selected = 0;

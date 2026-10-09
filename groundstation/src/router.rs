@@ -72,6 +72,7 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn set(&self, path: &str, value: &str) -> String {
+        crate::coreplan::poll_host(&self.backend);
         if let Some(answer) = crate::coreplan::enabled().then(|| crate::coreplan::route_set(&self.backend, path, value)).flatten() {
             return answer.to_string();
         }
@@ -88,6 +89,7 @@ impl<B: Backend> Core<B> {
     }
 
     pub fn invoke(&self, path: &str, args: &str) -> String {
+        crate::coreplan::poll_host(&self.backend);
         if let Some(answer) = crate::coreplan::enabled().then(|| crate::coreplan::route_invoke(&self.backend, path, args)).flatten() {
             if path == "plan.loadFromVehicle" {
                 let asked = self.watching.lock().unwrap().asked();
