@@ -41,7 +41,7 @@ internal fun altitudeRange(units: String): ClosedFloatingPointRange<Double> =
 internal fun stripRows(rows: List<ItemRow>): List<ItemRow> = rows.filter { it.index != HOME_ITEM }
 
 @Composable
-internal fun WaypointStrip(rows: List<ItemRow>, altitudes: Map<Int, String>, selected: Int?, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
+internal fun WaypointStrip(rows: List<ItemRow>, altitudes: Map<Int, String>, conflicts: Set<Int>, selected: Int?, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
     val shown = stripRows(rows)
     val list = rememberLazyListState()
     LaunchedEffect(selected) {
@@ -57,14 +57,19 @@ internal fun WaypointStrip(rows: List<ItemRow>, altitudes: Map<Int, String>, sel
                 shape = CircleShape,
                 color = if (row.readyForSave) ink else Color.Transparent,
                 contentColor = if (row.readyForSave) MaterialTheme.colorScheme.surface else MaterialTheme.aircast.warning,
-                border = if (chosen) BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface) else if (row.readyForSave) null else BorderStroke(1.dp, MaterialTheme.aircast.warning),
+                border = when {
+                    row.index in conflicts -> BorderStroke(3.dp, MaterialTheme.colorScheme.error)
+                    chosen -> BorderStroke(3.dp, MaterialTheme.colorScheme.onSurface)
+                    row.readyForSave -> null
+                    else -> BorderStroke(1.dp, MaterialTheme.aircast.warning)
+                },
                 modifier = Modifier.size(CHIP_SIZE).semantics {
-                    contentDescription = "${sentenceCase(row.name)} ${row.number}"
+                    contentDescription = "${sentenceCase(row.name)} ${row.seal}" + if (row.index in conflicts) ", too close to the terrain" else ""
                     this.selected = chosen
                 },
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Text(row.number, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                    Text(row.seal, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                 }
             }
             Text(altitudes[row.index].orEmpty(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

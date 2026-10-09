@@ -85,6 +85,9 @@ internal fun cameraInterval(extras: CameraExtras?): String = when {
     else -> ""
 }
 
+internal fun startingChoice(labels: List<String>, subject: String): Int? =
+    labels.indexOfFirst { it.contains(subject, ignoreCase = true) && !it.contains("stop", ignoreCase = true) }.takeIf { it > NO_CAMERA_ACTION }
+
 internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?): List<WaypointAction> = listOfNotNull(
     hold?.takeIf { it.seconds > 0.0 }?.let { WaypointAction(ActionKind.Hover, "Hover", "${trimmedNumber(it.seconds)} ${it.units}", R.drawable.plan_timer) },
     choices?.takeIf { it.chosen > NO_CAMERA_ACTION }?.let { picked ->
@@ -98,7 +101,12 @@ internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: Came
 
 internal fun offeredActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?): List<ActionOffer> =
     listOfNotNull(hold?.takeIf { it.seconds <= 0.0 }?.let { ActionOffer("Hover", R.drawable.plan_timer, ActionKind.Hover) }) +
-        choices?.takeIf { it.chosen <= NO_CAMERA_ACTION }?.labels.orEmpty().withIndex().drop(1).map { (at, label) -> ActionOffer(sentenceCase(label), cameraIcon(label), ActionKind.Camera, at) } +
+        choices?.takeIf { it.chosen <= NO_CAMERA_ACTION }?.let { camera ->
+            listOfNotNull(
+                startingChoice(camera.labels, "photo")?.let { ActionOffer("Photo", R.drawable.plan_photo, ActionKind.Camera, it) },
+                startingChoice(camera.labels, "video")?.let { ActionOffer("Video", R.drawable.plan_video, ActionKind.Camera, it) },
+            )
+        }.orEmpty() +
         listOfNotNull(
             extras?.takeIf { !it.commandsGimbal }?.let { ActionOffer("Tilt camera", R.drawable.plan_gimbal, ActionKind.Gimbal) },
             extras?.takeIf { it.modeSupported && !it.commandsMode }?.let { ActionOffer("Camera mode", R.drawable.plan_tune, ActionKind.Mode) },
@@ -162,7 +170,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?)
                                     ActionKind.Mode -> setCamera("specifyCameraMode", true)
                                     ActionKind.Turn -> setYaw(0.0)
                                 }
-                                editing = offer.kind.takeIf { it != ActionKind.Camera }
+                                editing = offer.kind
                             },
                         )
                     }

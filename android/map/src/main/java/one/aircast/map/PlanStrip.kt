@@ -1,5 +1,7 @@
 package one.aircast.map
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +26,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.json.JSONObject
@@ -43,6 +46,35 @@ internal fun highestAltitude(items: List<MissionItem>): String? =
 
 private const val NO_HOURS = "00:"
 internal const val TAP_TO_ADD = "Tap the map to add a waypoint"
+internal const val TERRAIN_CONFLICT_HERE = "Too close to the terrain here"
+private val PANEL_DRAG_THRESHOLD = 24.dp
+
+internal fun advancedDetail(item: MissionItem): String? =
+    listOfNotNull("Mission items ${sequenceLabel(item)}".takeIf { item.foldedCommands > 0 }, legText(item))
+        .joinToString(" \u00b7 ").ifBlank { null }
+
+internal fun tapCloses(selected: MapHit?, panelOpen: Boolean): Boolean =
+    selected != null && (panelOpen || selected !is MapHit.Waypoint)
+
+internal fun terrainWarning(legs: Int, items: Int): String? = when {
+    legs > 0 -> "$legs ${if (legs == 1) "leg hits" else "legs hit"} the terrain"
+    items > 0 -> "$items ${if (items == 1) "item hits" else "items hit"} the terrain"
+    else -> null
+}
+
+internal fun Modifier.panelDrag(onOpen: (Boolean) -> Unit): Modifier = pointerInput(Unit) {
+    val threshold = PANEL_DRAG_THRESHOLD.toPx()
+    val travelled = floatArrayOf(0f)
+    detectVerticalDragGestures(
+        onDragStart = { travelled[0] = 0f },
+        onDragEnd = {
+            when {
+                travelled[0] < -threshold -> onOpen(true)
+                travelled[0] > threshold -> onOpen(false)
+            }
+        },
+    ) { _, dy -> travelled[0] += dy }
+}
 internal const val FIRST_TAP_SETS_HOME = "The first tap also sets home."
 
 internal fun selectionTitle(selected: MapHit, items: List<MissionItem>): String = when (selected) {
@@ -61,6 +93,7 @@ internal fun selectionTitle(selected: MapHit, items: List<MissionItem>): String 
 internal fun WaypointStripBar(
     rows: List<ItemRow>,
     altitudes: Map<Int, String>,
+    conflicts: Set<Int>,
     selected: Int?,
     onPick: (Int) -> Unit,
     onList: (() -> Unit)?,
@@ -68,7 +101,7 @@ internal fun WaypointStripBar(
     onProfile: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        WaypointStrip(rows, altitudes, selected, onPick, Modifier.weight(1f))
+        WaypointStrip(rows, altitudes, conflicts, selected, onPick, Modifier.weight(1f))
         onList?.let { IconButton(onClick = it) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Show the plan as a list") } }
         profileShown?.let { shown ->
             IconButton(onClick = onProfile) {
@@ -96,11 +129,36 @@ internal fun EmptyMissionStrip(homeSet: Boolean, onTemplates: (() -> Unit)?, onD
 }
 
 @Composable
-internal fun SelectionHeader(title: String, detail: String?, onDelete: (() -> Unit)?, onDone: () -> Unit) {
+internal fun SelectionHeader(
+    title: String,
+    detail: String?,
+    warning: Boolean,
+    open: Boolean,
+    onTitle: () -> Unit,
+    onDelete: (() -> Unit)?,
+    onDone: () -> Unit,
+) {
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f).padding(start = 12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        Column(
+            Modifier.weight(1f).clickable(onClickLabel = if (open) "Fold the settings" else "Show the settings", onClick = onTitle).padding(start = 12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Icon(
+                    if (open) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            detail?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         onDelete?.let {
             IconButton(onClick = it) { Icon(Icons.Filled.Delete, contentDescription = "Delete $title", tint = MaterialTheme.colorScheme.error) }

@@ -237,11 +237,12 @@ fun PlanTab(modifier: Modifier = Modifier) {
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    (notice ?: headerLine(planStatusText(planStatus), syncing, bar.stats)).takeIf { it.isNotBlank() && it != title }?.let { line ->
+                                    val warned = notice == null && !syncing && bar.warning != null
+                                    (notice ?: bar.warning?.takeIf { warned } ?: headerLine(planStatusText(planStatus), syncing, bar.stats)).takeIf { it.isNotBlank() && it != title }?.let { line ->
                                         Text(
                                             line,
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            color = if (warned) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = if (notice == null) 1 else 3,
                                             overflow = TextOverflow.Ellipsis,
                                         )
@@ -252,7 +253,11 @@ fun PlanTab(modifier: Modifier = Modifier) {
                         if (bar.upload.shown) {
                             PlanActionPill(
                                 label = bar.upload.label,
-                                icon = if (bar.upload.done) R.drawable.ic_check_circle else R.drawable.ic_upload,
+                                icon = when {
+                                    bar.upload.done -> R.drawable.ic_check_circle
+                                    bar.warning != null -> R.drawable.ic_warning
+                                    else -> R.drawable.ic_upload
+                                },
                                 enabled = bar.upload.enabled,
                                 container = when {
                                     bar.upload.done -> MaterialTheme.aircast.success
@@ -388,7 +393,7 @@ internal fun planStatsLine(stats: List<one.aircast.map.PlanStat>): String =
     }.joinToString(" \u00b7 ")
 
 internal fun headerLine(status: String, syncing: Boolean, stats: List<one.aircast.map.PlanStat>): String =
-    if (syncing) status else planStatsLine(stats).ifBlank { status }
+    if (syncing || stats.none { it.label == "Items" && it.value != "0" }) status else planStatsLine(stats)
 
 @Composable
 private fun PlanActionPill(

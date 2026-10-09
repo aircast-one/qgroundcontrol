@@ -516,11 +516,35 @@ pub fn offline_types_changed() {
     }
 }
 
+const SAME_ALTITUDE_METRES: f64 = 0.05;
+
+fn follows_one_altitude(document: &Document) -> bool {
+    let heights: Vec<f64> = document
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            plandoc::Item::Simple(simple) if ![CMD_NAV_LAND, CMD_NAV_VTOL_LAND].contains(&simple.command) => simple.altitude.as_ref().map(|held| held.altitude),
+            _ => None,
+        })
+        .collect();
+    heights.windows(2).all(|pair| (pair[0] - pair[1]).abs() < SAME_ALTITUDE_METRES)
+}
+
 pub fn default_altitude_changed() {
-    let has_items = held().document.as_ref().is_some_and(|d| !d.items.is_empty());
-    if has_items {
-        ASK_APPLY_ALTITUDE.store(true, std::sync::atomic::Ordering::Relaxed);
-        changed();
+    let (has_items, uniform) = {
+        let state = held();
+        state.document.as_ref().map_or((false, false), |d| (!d.items.is_empty(), follows_one_altitude(d)))
+    };
+    let route_altitude = crate::settingsstore::raw_setting(DEFAULT_ALTITUDE).and_then(|v| v.as_f64());
+    match (has_items, uniform, route_altitude) {
+        (false, _, _) => {}
+        (true, true, Some(metres)) => {
+            edit(|doc| Ok(Document { items: doc.items.iter().map(|item| with_new_altitude(item, metres)).collect(), ..doc.clone() }));
+        }
+        (true, _, _) => {
+            ASK_APPLY_ALTITUDE.store(true, std::sync::atomic::Ordering::Relaxed);
+            changed();
+        }
     }
 }
 
@@ -2238,6 +2262,15 @@ mod tests {
         assert_eq!(hold_field(&waypoint(Some(5.0)), info, true, "x"), Value::Null, "raw edit already shows Param1");
         let takeoff = plandoc::Simple { command: 22, ..waypoint(Some(5.0)) };
         assert_eq!(hold_field(&takeoff, commands.get(&22), false, "x"), Value::Null);
+    }
+
+    #[test]
+    fn a_route_flown_at_one_altitude_follows_the_route_altitude_without_asking() {
+        let at = |command: i64, metres: f64| plandoc::Item::Simple(plandoc::Simple { command, frame: 3, params: [Some(0.0), Some(0.0), Some(0.0), None, Some(47.0), Some(8.0), Some(metres)], auto_continue: true, altitude: Some(plandoc::Altitude { mode: crate::altitudemodes::RELATIVE, altitude: metres, amsl_above_terrain: None }), sections: vec![] });
+        let plan = |items: Vec<plandoc::Item>| Document { items, ..empty_document() };
+        assert!(follows_one_altitude(&plan(vec![at(22, 50.0), at(16, 50.0), at(16, 50.0)])), "takeoff and waypoints at one height are one route altitude");
+        assert!(follows_one_altitude(&plan(vec![at(16, 50.0), at(21, 0.0)])), "a landing comes down by design and does not count as a custom height");
+        assert!(!follows_one_altitude(&plan(vec![at(16, 50.0), at(16, 80.0)])), "a waypoint the operator raised is theirs, so changing the route asks first");
     }
 
     #[test]

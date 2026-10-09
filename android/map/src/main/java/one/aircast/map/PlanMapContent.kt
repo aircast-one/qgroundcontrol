@@ -141,7 +141,7 @@ class PlanUpload(val enabled: Boolean, val emphasised: Boolean, val label: Strin
     val done: Boolean get() = label == UPLOADED
 }
 
-class PlanBar(val upload: PlanUpload, val stats: List<PlanStat>)
+class PlanBar(val upload: PlanUpload, val stats: List<PlanStat>, val warning: String?)
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -180,6 +180,7 @@ internal fun PlanMapContent(
     var landingList by remember { mutableStateOf<List<LandingPattern>>(emptyList()) }
     var surveyStatsMap by remember { mutableStateOf<Map<Int, SurveyStats>>(emptyMap()) }
     var selected by remember { mutableStateOf<MapHit?>(null) }
+    var panelOpen by remember { mutableStateOf(true) }
     var layer by remember { mutableStateOf(PlanLayer.Mission) }
     LaunchedEffect(selected) { layerOf(selected)?.let { layer = it } }
 
@@ -338,6 +339,7 @@ internal fun PlanMapContent(
     var centreRequest by remember { mutableIntStateOf(0) }
     var centreOn by remember { mutableStateOf<TrackPoint?>(null) }
     fun focusItem(index: Int) {
+        panelOpen = true
         selected = MapHit.Waypoint(index)
         items.firstOrNull { it.index == index }?.let { placed ->
             centreOn = TrackPoint(placed.latitude, placed.longitude)
@@ -518,10 +520,10 @@ internal fun PlanMapContent(
                     return@VehicleMap
                 }
                 when (layer) {
-                    PlanLayer.Mission -> addMissionItem(
-                        KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon),
-                        insertAfter(selected, allItems),
-                    )
+                    PlanLayer.Mission -> {
+                        panelOpen = false
+                        addMissionItem(KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon), insertAfter(selected, allItems))
+                    }
                     PlanLayer.Rally -> if (support.rally) addRallyAt(lat, lon)
                     PlanLayer.Fence -> Unit
                 }
@@ -530,8 +532,14 @@ internal fun PlanMapContent(
                 val traced = tracing
                 when {
                     traced != null -> tracing = traced.first to traced.second + TrackPoint(lat, lon)
-                    selected != null && selected !is MapHit.Waypoint -> selected = null
-                    layer == PlanLayer.Mission -> addMissionItem(KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon), insertAfter(selected, allItems))
+                    tapCloses(selected, panelOpen) -> {
+                        selected = null
+                        panelOpen = false
+                    }
+                    layer == PlanLayer.Mission -> {
+                        panelOpen = false
+                        addMissionItem(KIND_WAYPOINT, "Adding a waypoint", TrackPoint(lat, lon), insertAfter(selected, allItems))
+                    }
                     layer == PlanLayer.Rally && support.rally -> addRallyAt(lat, lon)
                     else -> selected = null
                 }
@@ -556,7 +564,10 @@ internal fun PlanMapContent(
                     }
                     is MapHit.LoiterRadius -> selected = MapHit.Waypoint(hit.index)
                     is MapHit.CircleRadius -> selected = MapHit.Circle(hit.index)
-                    else -> selected = hit
+                    else -> {
+                        panelOpen = true
+                        selected = hit
+                    }
                 }
             },
             onMoved = { hit, lat, lon ->
@@ -610,7 +621,7 @@ internal fun PlanMapContent(
         val headerHeight = with(LocalDensity.current) { headerPx.toDp() }
         header?.let { bar ->
             Box(Modifier.align(Alignment.TopStart).padding(start = mapStart).fillMaxWidth().onGloballyPositioned { headerPx = it.size.height }) {
-                bar(PlanBar(planUpload, planStats(itemCount, allItems, missionSummaryView)))
+                bar(PlanBar(planUpload, planStats(itemCount, allItems, missionSummaryView), terrainWarning(terrainHits.size, (collidingSimple + collidingPatterns).size)))
             }
         }
         val panelHeight = with(LocalDensity.current) { controlsHeightPx.toDp() }
@@ -633,7 +644,8 @@ internal fun PlanMapContent(
 
         PlanRail(Modifier.align(Alignment.TopStart).padding(start = railStart, top = headerHeight + 8.dp, bottom = if (sidePanel) 8.dp else panelHeight + 8.dp)) {
             PlanLayer.entries.forEach { option ->
-                RailButton(option.icon, option.label, chosen = layer == option, onClick = {
+                RailButton(option.icon, option.label, chosen = layer == option, labelled = true, onClick = {
+                    panelOpen = true
                     layer = option
                     if (layerOf(selected) != option) selected = null
                 })
@@ -804,19 +816,27 @@ internal fun PlanMapContent(
                 Modifier.padding(horizontal = 12.dp)
                     .then(if (sidePanel) Modifier.fillMaxHeight().padding(top = 12.dp) else Modifier.heightIn(max = (LocalConfiguration.current.screenHeightDp * PANEL_MAX_FRACTION).dp)),
             ) {
-                if (!sidePanel) Box(
-                    Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .padding(vertical = 10.dp)
-                        .size(width = 32.dp, height = 4.dp)
-                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), CircleShape),
-                )
                 val chosen = selected
                 val chosenItem = (chosen as? MapHit.Waypoint)?.let { hit -> allItems.firstOrNull { it.index == hit.index } }
+                Column(Modifier.fillMaxWidth().panelDrag { open -> panelOpen = open }) {
+                if (!sidePanel) Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(24.dp)
+                        .clickable(onClickLabel = if (panelOpen) "Fold the panel" else "Open the panel") { panelOpen = !panelOpen },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .size(width = 32.dp, height = 4.dp)
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), CircleShape),
+                    )
+                }
                 if (layer == PlanLayer.Mission && itemCount > 0 && layerOf(chosen) in setOf(null, PlanLayer.Mission)) {
                     WaypointStripBar(
                         rows = itemRows(allItems, surveyStatsMap),
                         altitudes = allItems.associate { it.index to it.altitudeText },
+                        conflicts = collidingSimple + collidingPatterns,
                         selected = chosenItem?.index,
                         onPick = ::focusItem,
                         onList = { listOpen = true }.takeIf { !sidePanel },
@@ -826,20 +846,35 @@ internal fun PlanMapContent(
                 }
                 when {
                     chosenItem != null -> SelectionHeader(
-                        title = "${sentenceCase(chosenItem.command.ifBlank { "Item" })} ${sequenceLabel(chosenItem)}",
-                        detail = sheetDetail(chosenItem, surveyStatsMap[chosenItem.index]).takeIf { chosenItem.complexPattern }?.ifBlank { null },
+                        title = "${sentenceCase(chosenItem.command.ifBlank { "Item" })} ${chosenItem.sequence}",
+                        detail = (if (chosenItem.index in collidingSimple + collidingPatterns) TERRAIN_CONFLICT_HERE else null)
+                            ?: sheetDetail(chosenItem, surveyStatsMap[chosenItem.index]).takeIf { chosenItem.complexPattern }?.ifBlank { null }
+                            ?: addingAfterText(chosen, allItems).takeIf { !panelOpen },
+                        warning = chosenItem.index in collidingSimple + collidingPatterns,
+                        open = panelOpen,
+                        onTitle = { panelOpen = !panelOpen },
                         onDelete = { removeItem(chosenItem) }.takeIf { chosenItem.index > HOME_ITEM },
                         onDone = { selected = null },
                     )
                     chosen != null -> SelectionHeader(
                         title = selectionTitle(chosen, allItems),
                         detail = selectionText(chosen, allItems, circles, fences),
+                        warning = false,
+                        open = panelOpen,
+                        onTitle = { panelOpen = !panelOpen },
                         onDelete = null,
                         onDone = { selected = null },
                     )
+                    layer == PlanLayer.Mission && itemCount == 0 -> EmptyMissionStrip(
+                        homeSet = homeSet,
+                        onTemplates = onTemplates,
+                        onDownload = { requestDownload() }.takeIf { !planOffline },
+                    )
+                    layer != PlanLayer.Mission -> Text(layer.label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(start = 12.dp, bottom = 4.dp))
+                }
                 }
                 val panelScroll = remember(chosen) { ScrollState(0) }
-                Column(Modifier.weight(1f, fill = false).verticalScroll(panelScroll)) {
+                if (panelOpen || sidePanel) Column(Modifier.weight(1f, fill = false).verticalScroll(panelScroll)) {
                     if (chosen == null && layer == PlanLayer.Mission && missionStatusShown && profileShown(layer, profile) && itemCount > 0) {
                         TerrainProfileView(profile, elevationNotice, selectedSequence = selectedSequence) { sequence ->
                             allItems.firstOrNull { it.sequence == sequence }?.let { selected = MapHit.Waypoint(it.index) }
@@ -853,14 +888,8 @@ internal fun PlanMapContent(
                                 }
                             }
                             WaypointSettings(chosenItem, globalFrame) { label, work -> onBridge(label) { work() } }
-                            addingAfterText(chosen, allItems)?.let { PaletteNote(it) }
                         }
                         chosen != null -> Unit
-                        layer == PlanLayer.Mission && itemCount == 0 -> EmptyMissionStrip(
-                            homeSet = homeSet,
-                            onTemplates = onTemplates,
-                            onDownload = { requestDownload() }.takeIf { !planOffline },
-                        )
                         layer == PlanLayer.Mission -> routeSettings?.invoke()
                         layer == PlanLayer.Rally -> {
                             if (support.rallyRefused) PaletteNote(RALLY_NOT_SUPPORTED)
@@ -1211,7 +1240,7 @@ internal fun PlanMapContent(
                     }
 
                     chosenItem?.let { item ->
-                        itemPanel?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, legText(item))
+                        itemPanel?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, advancedDetail(item))
                     }
                 }
             }

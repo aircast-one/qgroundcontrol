@@ -19,7 +19,7 @@ class RouteSettingsTest {
     @Test
     fun `a transfer in flight takes the line, and an empty plan falls back to the core's status`() {
         assertEquals("Uploading", headerLine("Uploading", syncing = true, stats))
-        assertEquals("Empty plan", headerLine("Empty plan", syncing = false, listOf(PlanStat("Items", "0"))))
+        assertEquals("Empty plan", headerLine("Empty plan", syncing = false, listOf(PlanStat("Items", "0"), PlanStat("Distance", "0 m"), PlanStat("Time", "00:00"))))
     }
 
     @Test

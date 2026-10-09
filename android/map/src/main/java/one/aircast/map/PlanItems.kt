@@ -15,6 +15,7 @@ data class ItemRow(
     val colour: String,
     val placed: Boolean,
     val readyForSave: Boolean = true,
+    val seal: String = number,
 )
 
 internal const val NOT_READY_SEAL = "?"
@@ -63,6 +64,7 @@ fun itemRows(
         colour = waypointColour(item.kind, item.commandId),
         placed = item.placed,
         readyForSave = item.readyForSave,
+        seal = if (item.readyForSave) item.sequence.toString() else NOT_READY_SEAL,
     )
 }
 

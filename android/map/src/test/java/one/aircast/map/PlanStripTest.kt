@@ -48,4 +48,31 @@ class PlanStripTest {
             listOf(MapHit.FenceVertex(0, 1), MapHit.CircleRadius(0), MapHit.Rally(2), MapHit.BreachReturn, MapHit.SurveyVertex(2, 0)).map { selectionTitle(it, items) },
         )
     }
+
+    @Test
+    fun `a map tap closes an open editor first, and adds the next point once it is folded`() {
+        assertEquals(
+            listOf(true, false, false, true),
+            listOf(
+                tapCloses(MapHit.Waypoint(2), panelOpen = true),
+                tapCloses(MapHit.Waypoint(2), panelOpen = false),
+                tapCloses(null, panelOpen = true),
+                tapCloses(MapHit.Rally(0), panelOpen = false),
+            ),
+        )
+    }
+
+    @Test
+    fun `a terrain conflict is counted in legs when the core names them`() {
+        assertEquals(listOf("1 leg hits the terrain", "3 legs hit the terrain", "2 items hit the terrain", null), listOf(
+            terrainWarning(1, 1), terrainWarning(3, 2), terrainWarning(0, 2), terrainWarning(0, 0),
+        ))
+    }
+
+    @Test
+    fun `advanced names the mission items behind a waypoint with actions`() {
+        val folded = MissionItem(3, 3, 41.0, 44.0, "Waypoint", true, 50.0, foldedCommands = 1)
+        assertEquals("Mission items 3\u20134", advancedDetail(folded))
+        assertNull(advancedDetail(MissionItem(3, 3, 41.0, 44.0, "Waypoint", true, 50.0)))
+    }
 }

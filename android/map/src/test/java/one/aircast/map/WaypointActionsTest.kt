@@ -15,7 +15,7 @@ class WaypointActionsTest {
     fun `a plain waypoint has no actions and offers every one it can carry`() {
         assertEquals(emptyList<WaypointAction>(), activeActions(noHold, noTurn, CameraChoices(labels, 0), idleCamera))
         assertEquals(
-            listOf("Hover", "Take photo", "Take photos (time)", "Take photos (distance)", "Stop taking photos", "Start recording video", "Stop recording video", "Tilt camera", "Camera mode", "Turn aircraft"),
+            listOf("Hover", "Photo", "Video", "Tilt camera", "Camera mode", "Turn aircraft"),
             offeredActions(noHold, noTurn, CameraChoices(labels, 0), idleCamera).map { it.title },
         )
     }
@@ -33,6 +33,12 @@ class WaypointActionsTest {
             active.map { "${it.title} ${it.value}" },
         )
         assertEquals(emptyList<ActionOffer>(), offeredActions(WaypointHold(5.0, "s", "h"), WaypointYaw(90.0, "deg", "y"), CameraChoices(labels, 2), idleCamera.copy(commandsGimbal = true, commandsMode = true)))
+    }
+
+    @Test
+    fun `photo and video start from their first action, and the editor offers the rest`() {
+        assertEquals(listOf(1, 5), listOf(startingChoice(labels, "photo"), startingChoice(labels, "video")))
+        assertNull(startingChoice(listOf("No change"), "photo"))
     }
 
     @Test
