@@ -212,14 +212,17 @@ struct PlanDialog<Content: View, Buttons: View>: View {
     }
 }
 
+private let DELETE_LABEL = "Delete from the plan"
+
 struct ItemEditor: View {
     let index: Int
     let at: TrackPoint?
     let mapCentre: (Double, Double)?
     let legDetail: String?
+    let onRemove: (() -> Void)?
 
     var body: some View {
-        ItemEditorContent(index: index, at: at, mapCentre: mapCentre, legDetail: legDetail)
+        ItemEditorContent(index: index, at: at, mapCentre: mapCentre, legDetail: legDetail, onRemove: onRemove)
             .id(index)
     }
 }
@@ -229,6 +232,7 @@ private struct ItemEditorContent: View {
     let at: TrackPoint?
     let mapCentre: (Double, Double)?
     let legDetail: String?
+    let onRemove: (() -> Void)?
     @Environment(\.theme) private var theme
     @HasVehicle private var connected
     @AdvancedUiShown private var advancedUi
@@ -268,6 +272,14 @@ private struct ItemEditorContent: View {
             }
             if !simple || advanced {
                 folded(fields, sections, choices, raw, camera, wizard, positionStart, simple: simple)
+            }
+            if let onRemove {
+                Button(DELETE_LABEL, action: onRemove)
+                    .buttonStyle(.borderless)
+                    .font(.labelLarge)
+                    .foregroundStyle(theme.colors.error)
+                    .frame(minHeight: 40)
+                    .padding(.horizontal, 20)
             }
         }
         .padding(.bottom, Space.s2)

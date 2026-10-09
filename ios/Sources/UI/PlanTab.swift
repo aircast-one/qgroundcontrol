@@ -175,8 +175,8 @@ struct PlanTab: View {
         let syncing = planIsSyncing(planStatus)
         PlanMapScreen(
             onCentre: { lat, lon in centre = (lat, lon) },
-            itemPanel: { index, at, leg in
-                AnyView(ItemEditor(index: index, at: at, mapCentre: centre, legDetail: leg))
+            itemPanel: { index, at, leg, remove in
+                AnyView(ItemEditor(index: index, at: at, mapCentre: centre, legDetail: leg, onRemove: remove))
             },
             header: { bar in AnyView(header(bar)) },
             routeSettings: { AnyView(RouteSettings(plan: planStatus)) },
@@ -254,6 +254,8 @@ struct PlanTab: View {
         Task {
             if let refused = await offMain({ Qgc.refusalOf(CREATE_FROM_TEMPLATE, template, lat, lon) }) {
                 notice = refused
+            } else {
+                PlanFocus.newPattern.value = NEWEST_PATTERN
             }
         }
     }
@@ -300,7 +302,7 @@ struct PlanTab: View {
             HStack(spacing: Space.s2) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(title).font(.titleSmall).lineLimit(1).truncationMode(.tail)
-                    let line = notice ?? (warned ? bar.warning : nil) ?? headerLine(planStatusText(planStatus), syncing, bar.stats)
+                    let line = notice ?? (warned ? bar.warning : nil) ?? (syncing ? nil : bar.note) ?? headerLine(planStatusText(planStatus), syncing, bar.stats)
                     if !line.isBlank && line != title {
                         Text(line)
                             .font(.labelSmall)

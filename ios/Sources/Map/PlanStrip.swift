@@ -33,6 +33,14 @@ func advancedDetail(_ item: MissionItem) -> String? {
     return detail.isBlank ? nil : detail
 }
 
+func placedPattern(_ surveys: [Survey], _ wanted: Int) -> Survey? {
+    surveys.first { $0.index == wanted } ?? (wanted == NEWEST_PATTERN ? surveys.max { $0.index < $1.index } : nil)
+}
+
+func appendSequence(_ items: [MissionItem]) -> Int {
+    items.max { $0.index < $1.index }?.sequence ?? HOME_ITEM
+}
+
 func tapCloses(_ selected: MapHit?, _ panelOpen: Bool) -> Bool {
     guard let selected else { return false }
     if case .Waypoint = selected { return panelOpen }
@@ -75,6 +83,7 @@ func selectionTitle(_ selected: MapHit, _ items: [MissionItem]) -> String {
 private struct StripIconButton: View {
     let icon: Icon
     let label: String
+    var tint: Color? = nil
     let action: () -> Void
     @Environment(\.theme) private var theme
 
@@ -83,7 +92,7 @@ private struct StripIconButton: View {
             Image(icon).frame(width: 48, height: 48).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(theme.colors.onSurface)
+        .foregroundStyle(tint ?? theme.colors.onSurface)
         .accessibilityLabel(label)
     }
 }
@@ -97,6 +106,7 @@ struct WaypointStripBar: View {
     let onList: (() -> Void)?
     let profileShown: Bool?
     let onProfile: () -> Void
+    @Environment(\.theme) private var theme
 
     var body: some View {
         HStack(spacing: 0) {
@@ -106,7 +116,7 @@ struct WaypointStripBar: View {
                 StripIconButton(icon: .list, label: "Show the plan as a list", action: onList)
             }
             if let shown = profileShown {
-                StripIconButton(icon: shown ? .arrowDropDown : .arrowUp, label: shown ? "Hide the terrain profile" : "Show the terrain profile", action: onProfile)
+                StripIconButton(icon: .planTerrain, label: shown ? "Hide the terrain profile" : "Show the terrain profile", tint: shown ? theme.colors.primary : theme.colors.onSurfaceVariant, action: onProfile)
             }
         }
         .padding(.bottom, 8)
@@ -150,7 +160,6 @@ struct SelectionHeader: View {
     let warning: Bool
     let open: Bool
     let onTitle: () -> Void
-    let onDelete: (() -> Void)?
     let onDone: () -> Void
     @Environment(\.theme) private var theme
 
@@ -177,13 +186,6 @@ struct SelectionHeader: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint(open ? "Fold the settings" : "Show the settings")
-            if let onDelete {
-                Button(action: onDelete) {
-                    Image(.delete).foregroundStyle(theme.colors.error).frame(width: 48, height: 48).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Delete \(title)")
-            }
             Button(action: onDone) {
                 Label("Done", systemImage: Icon.check.rawValue)
             }

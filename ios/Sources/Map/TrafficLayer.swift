@@ -94,6 +94,7 @@ func installTrafficLayer(_ style: MLNStyle) {
     layer.textHaloWidth = styleConstant(1.5)
     layer.textAnchor = styleConstant("top")
     layer.textOffset = styleOffset(0, 1.6)
-    layer.textAllowsOverlap = styleConstant(true)
-    style.addLayer(layer)
+    layer.textAllowsOverlap = styleConstant(false)
+    layer.textOptional = styleConstant(true)
+    if let label = style.layer(withIdentifier: VEHICLE_LABEL_LAYER) { style.insertLayer(layer, below: label) } else { style.addLayer(layer) }
 }

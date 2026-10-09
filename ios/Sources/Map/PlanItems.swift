@@ -40,6 +40,16 @@ func rallyAltitudeLabel(_ point: RallyPoint) -> String { "Alt \(point.altitudeUn
 
 func rallyAltitudeIsEditable(_ point: RallyPoint) -> Bool { !point.altitude.isNaN && !point.altitudePath.isBlank }
 
+func itemSeal(_ item: MissionItem) -> String {
+    item.index == HOME_ITEM ? HOME_SEAL : waypointLabel(item.sequence, false, abbreviation: item.complexPattern ? "" : item.abbreviation)
+}
+
+func itemTitle(_ item: MissionItem) -> String {
+    let name = sentenceCase(item.command.ifBlank("Item"))
+    let seal = itemSeal(item)
+    return seal.allSatisfy(\.isNumber) ? "\(name) \(seal)" : name
+}
+
 func sequenceLabel(_ item: MissionItem) -> String {
     item.foldedCommands > 0 ? "\(item.sequence)\u{2013}\(item.sequence + item.foldedCommands)" : "\(item.sequence)"
 }
@@ -71,7 +81,7 @@ func itemRows(_ items: [MissionItem], _ stats: [Int: SurveyStats] = [:]) -> [Ite
             colour: waypointColour(item.kind, item.commandId),
             placed: item.placed,
             readyForSave: item.readyForSave,
-            seal: item.readyForSave ? String(item.sequence) : NOT_READY_SEAL
+            seal: item.readyForSave ? itemSeal(item) : NOT_READY_SEAL
         )
     }
 }

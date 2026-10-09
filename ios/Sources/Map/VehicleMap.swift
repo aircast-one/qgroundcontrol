@@ -16,7 +16,7 @@ let HEADING_PROPERTY = "heading"
 let ACTIVE_PROPERTY = "active"
 let STALE_PROPERTY = "stale"
 let VEHICLE_LABEL_PROPERTY = "vehicleLabel"
-private let VEHICLE_LABEL_LAYER = "aircast-vehicle-label"
+let VEHICLE_LABEL_LAYER = "aircast-vehicle-label"
 private let TRAIL_SOURCE = "aircast-trail"
 private let HOME_SOURCE = "aircast-home"
 private let HOME_LAYER = "aircast-home-layer"
@@ -283,6 +283,7 @@ struct VehicleMap: View {
     var bottomInsetPx: CGFloat = 0
     var topInsetPx: CGFloat = 0
     var leftInsetPx: CGFloat = 0
+    var rightInsetPx: CGFloat = 0
     var logoEndInsetPx: CGFloat? = nil
     var cameraBottomPx: CGFloat = 0
     var pip: Bool = false
@@ -396,6 +397,7 @@ private struct VehicleMapScene {
             topInsetPx: map.topInsetPx,
             bottomInsetPx: map.bottomInsetPx,
             leftInsetPx: map.leftInsetPx,
+            rightInsetPx: map.rightInsetPx,
             cameraBottomPx: map.cameraBottomPx,
             editable: map.editable,
             missionItems: map.missionItems,
@@ -583,6 +585,7 @@ struct VehicleMapInputs {
     var topInsetPx: CGFloat = 0
     var bottomInsetPx: CGFloat = 0
     var leftInsetPx: CGFloat = 0
+    var rightInsetPx: CGFloat = 0
     var cameraBottomPx: CGFloat = 0
     var editable = false
     var missionItems: [MissionItem] = []
@@ -701,10 +704,11 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
 
     private func reportCentre(_ mapView: MLNMapView) {
         inputs.onCentreChanged(TrackPoint(mapView.centerCoordinate), mapView.zoomLevel)
-        let right = mapView.bounds.width
+        let right = max(mapView.bounds.width - inputs.rightInsetPx, 0)
         let left = min(max(inputs.leftInsetPx, 0), right)
         let bottom = max(mapView.bounds.height - inputs.bottomInsetPx, 0)
-        let seen = [CGPoint(x: left, y: 0), CGPoint(x: right, y: 0), CGPoint(x: right, y: bottom), CGPoint(x: left, y: bottom)]
+        let top = min(max(inputs.topInsetPx, 0), bottom)
+        let seen = [CGPoint(x: left, y: top), CGPoint(x: right, y: top), CGPoint(x: right, y: bottom), CGPoint(x: left, y: bottom)]
             .map { TrackPoint(mapView.convert($0, toCoordinateFrom: mapView)) }
         inputs.onViewChanged(clearWindow(seen))
     }
@@ -987,7 +991,7 @@ private func installVehicleLayer(_ style: MLNStyle) {
     label.textOffset = styleOffset(0, 1.6)
     label.textAnchor = styleConstant("top")
     label.textAllowsOverlap = styleConstant(true)
-    label.textIgnoresPlacement = styleConstant(true)
+    label.textIgnoresPlacement = styleConstant(false)
     label.predicate = NSPredicate(format: "%K != nil", VEHICLE_LABEL_PROPERTY)
     style.addLayer(label)
 }

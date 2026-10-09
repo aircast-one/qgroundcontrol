@@ -33,8 +33,11 @@ func notReadyToSend(_ view: JSON?) -> String? {
     readiness(view).map { $0["reason"].string.ifBlank("The plan is not ready to send.") }
 }
 
+let NEWEST_PATTERN = -1
+
 enum PlanFocus {
     static let requests = CurrentValueSubject<Int?, Never>(nil)
+    static let newPattern = CurrentValueSubject<Int?, Never>(nil)
 
     static func notReady(_ view: JSON?) {
         if let next = nextNotReady(view) { requests.value = next }

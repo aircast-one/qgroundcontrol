@@ -56,6 +56,7 @@ enum Icon: String {
     case planPhoto = "camera.fill"
     case planPolygon = "pentagon"
     case planStop = "stop.circle.fill"
+    case planTerrain = "mountain.2.fill"
     case planTimer = "stopwatch"
     case planTune = "camera.aperture"
     case planTurn = "location.north"

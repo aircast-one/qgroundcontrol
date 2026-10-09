@@ -40,7 +40,7 @@ let ALL_CHECKS_PASSED = "All checks passed."
 let SETUP_NOT_COMPLETE = "Aircraft setup is not complete."
 
 func readinessWarning(_ state: FlyState?) -> String? {
-    guard let state, state.connected, !state.armed, notReadyToFly(state) || !state.nominal else { return nil }
+    guard let state, state.connected, !state.armed, state.contactLost != true, notReadyToFly(state) || !state.nominal else { return nil }
     let detail = notReadyToFly(state) && state.summaryDetail == ALL_CHECKS_PASSED ? SETUP_NOT_COMPLETE : state.summaryDetail
     let text = [state.stateText, detail].filter { !$0.isBlank }.joined(separator: ". ")
     return text.isBlank ? nil : text

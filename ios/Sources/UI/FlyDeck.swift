@@ -22,6 +22,13 @@ struct DeckEntry {
 
 let HOLD_TO_TAKE_OFF = "Hold to take off"
 let TAKE_OFF = "Take off"
+let NO_LINK = "No link"
+let NO_SIGNAL_REASON = "No signal from the aircraft."
+
+func takeoffLabel(_ offer: GuidedOffer?, _ readiness: Readiness?) -> String {
+    if offer?.reason == NO_SIGNAL_REASON { return NO_LINK }
+    return readiness == nil ? HOLD_TO_TAKE_OFF : TAKE_OFF
+}
 let DECK_HOLD_MS = 1500
 private let DECK_HOLD_FILL_ALPHA = 0.3
 private let LONG_PRESS_TIMEOUT_SECONDS = 0.4

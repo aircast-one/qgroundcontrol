@@ -42,6 +42,17 @@ final class FlyStateTests: XCTestCase {
         XCTAssertEqual(state.staleNotice, "No contact — these are the last values the vehicle sent.")
     }
 
+    func testASilentAircraftMakesNoReadinessClaimsAndTakeOffSaysWhyItCannot() {
+        let silentButUnready = JSON.object((lost.object ?? [:]).merging(["nominal": .bool(false), "summaryDetail": .string("GPS turned off. Everything else reports normal.")]) { $1 })
+        XCTAssertNil(readinessWarning(flyState(silentButUnready)))
+        let noSignal = GuidedOffer(id: "takeoff", title: "Takeoff", offer: "hidden", reason: NO_SIGNAL_REASON, prompt: "", destructive: false, carriesValue: true)
+        XCTAssertEqual(takeoffLabel(noSignal, nil), NO_LINK)
+        var ready = noSignal
+        ready.offer = "ready"
+        ready.reason = ""
+        XCTAssertEqual(takeoffLabel(ready, nil), HOLD_TO_TAKE_OFF)
+    }
+
     func testTheNoticeUsesTheCoresDashNotAnAsciiHyphen() throws {
         let state = try XCTUnwrap(flyState(lost))
         XCTAssertTrue(state.staleNotice.contains("—"))

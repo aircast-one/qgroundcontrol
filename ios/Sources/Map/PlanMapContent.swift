@@ -9,6 +9,9 @@ private let SIDE_PANEL_WIDTH: CGFloat = 380
 private let SIDE_PANEL_MIN_WIDTH_DP: CGFloat = 840
 let SUMMARY_MAX_FRACTION: CGFloat = 0.74
 private let WAITING_FOR_QGC = "Waiting for QGroundControl"
+private let CHECKING_TERRAIN = "Checking the terrain\u{2026}"
+private let VIEW_CORNERS = 4
+private let PATTERN_KINDS: Set = [KIND_SURVEY, KIND_CORRIDOR, KIND_STRUCTURE]
 private let FALLBACK_FENCE_DEGREES = 0.002
 private let SURVEY_FIT_INSET = 0.8
 private let ITEM_MARKER_SIZE: CGFloat = 40
@@ -39,6 +42,7 @@ struct PlanBar {
     let upload: PlanUpload
     let stats: [PlanStat]
     let warning: String?
+    let note: String?
 }
 
 private struct PlanRead: Sendable {
@@ -93,7 +97,7 @@ private struct PlanRead: Sendable {
 struct PlanMapContent: View {
     let mapStyle: String
     var onCentre: ((Double, Double) -> Void)? = nil
-    var itemPanel: ((Int, TrackPoint?, String?) -> AnyView)? = nil
+    var itemPanel: ((Int, TrackPoint?, String?, (() -> Void)?) -> AnyView)? = nil
     var header: ((PlanBar) -> AnyView)? = nil
     var routeSettings: (() -> AnyView)? = nil
     var fitKey: Int = 0
@@ -129,6 +133,9 @@ struct PlanMapContent: View {
     @State private var surveyStatsMap: [Int: SurveyStats] = [:]
     @State private var selected: MapHit?
     @State private var panelOpen = true
+    @State private var readsStarted = 0
+    @State private var planReads = 0
+    @State private var patternWait: (wanted: Int, since: Int)?
     @State private var layer = PlanLayer.Mission
     @State private var busy: String?
     @State private var centre: TrackPoint?
@@ -200,7 +207,12 @@ struct PlanMapContent: View {
             ZStack(alignment: .topLeading) {
                 map(sidePanel: sidePanel)
                 if let header {
-                    header(PlanBar(upload: upload, stats: planStats(itemCount, allItems, missionSummaryView), warning: terrainWarning(terrainHits.count, collidingSimple.union(collidingPatterns).count)))
+                    header(PlanBar(
+                        upload: upload,
+                        stats: planStats(itemCount, allItems, missionSummaryView),
+                        warning: terrainWarning(terrainHits.count, collidingSimple.union(collidingPatterns).count),
+                        note: itemCount > 0 && terrainView?["checking"].bool == true ? CHECKING_TERRAIN : nil
+                    ))
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                         .padding(.leading, mapStart)
@@ -270,8 +282,19 @@ struct PlanMapContent: View {
             }
         }
         .onChange(of: fitKey) { if fitKey != 0 { firstRead = true } }
-        .onChange(of: SelectionKey(selected: selected, sequence: selectedSequence), initial: true) {
-            guard let sequence = selectedSequence ?? (selected == nil ? 0 : nil) else { return }
+        .onReceive(PlanFocus.newPattern.receive(on: DispatchQueue.main)) { wanted in
+            patternWait = wanted.map { (wanted: $0, since: readsStarted) }
+        }
+        .onChange(of: planReads) {
+            guard let wait = patternWait, planReads > wait.since else { return }
+            patternWait = nil
+            PlanFocus.newPattern.value = nil
+            guard let target = placedPattern(surveyList, wait.wanted).flatMap({ shapeTarget(nil, $0) }), visible.count == VIEW_CORNERS else { return }
+            let shape = target.line ? defaultLine(visible) : defaultRectangle(visible)
+            onBridge { replaceShape(target, shape) }
+        }
+        .onChange(of: SelectionKey(selected: selected, sequence: selectedSequence, appendAfter: appendSequence(allItems)), initial: true) {
+            guard let sequence = selectedSequence ?? (selected == nil ? appendSequence(allItems) : nil) else { return }
             offMain { PlanBridge.selectSequence(sequence) }
         }
         .task(id: gridIndex) {
@@ -389,6 +412,7 @@ struct PlanMapContent: View {
             bottomInsetPx: sidePanel ? 0 : panelHeight,
             topInsetPx: headerHeight,
             leftInsetPx: (sidePanel ? SIDE_PANEL_WIDTH : 0) + RAIL_WIDTH + 8,
+            rightInsetPx: RAIL_WIDTH + 8,
             fitRequest: fitRequest,
             fitOnly: fitOnly,
             onFitFailed: { onBridge("Fitting the plan") { false } },
@@ -613,16 +637,14 @@ struct PlanMapContent: View {
                 if let item = chosenItem {
                     let conflict = conflicts.contains(item.index)
                     let pattern = sheetDetail(item, surveyStatsMap[item.index])
-                    let delete: (() -> Void)? = item.index > HOME_ITEM ? { removeItem(item) } : nil
                     SelectionHeader(
-                        title: "\(sentenceCase(item.command.ifBlank("Item"))) \(item.sequence)",
+                        title: itemTitle(item),
                         detail: (conflict ? TERRAIN_CONFLICT_HERE : nil)
                             ?? (item.complexPattern && !pattern.isBlank ? pattern : nil)
                             ?? (panelOpen ? nil : addingAfterText(chosen, allItems)),
                         warning: conflict,
                         open: panelOpen,
                         onTitle: { panelOpen.toggle() },
-                        onDelete: delete,
                         onDone: { selected = nil }
                     )
                 } else if let chosen {
@@ -632,7 +654,6 @@ struct PlanMapContent: View {
                         warning: false,
                         open: panelOpen,
                         onTitle: { panelOpen.toggle() },
-                        onDelete: nil,
                         onDone: { selected = nil }
                     )
                 } else if layer == .Mission && itemCount == 0 {
@@ -707,7 +728,7 @@ struct PlanMapContent: View {
         traceRow
         selectionTools
         if let item = chosenItem, let itemPanel {
-            itemPanel(item.index, item.placed ? TrackPoint(latitude: item.latitude, longitude: item.longitude) : nil, advancedDetail(item))
+            itemPanel(item.index, item.placed ? TrackPoint(latitude: item.latitude, longitude: item.longitude) : nil, advancedDetail(item), item.index > HOME_ITEM ? { removeItem(item) } : nil)
         }
     }
 
@@ -1099,6 +1120,8 @@ struct PlanMapContent: View {
 
     private func refresh() async {
         let readAt = edits
+        let readNumber = readsStarted + 1
+        readsStarted = readNumber
         let next = await offMain { PlanRead.read() }
         if fitsPlanOnEntry(firstRead, next.planRead, next.drawn) {
             follow = false
@@ -1123,6 +1146,7 @@ struct PlanMapContent: View {
         surveyList = next.surveys
         landingList = next.landings
         surveyStatsMap = next.stats
+        planReads = readNumber
     }
 
     private func say(_ message: String) {
@@ -1165,6 +1189,7 @@ struct PlanMapContent: View {
             }
             busy = nil
             guard let added = outcome.index else { return }
+            if PATTERN_KINDS.contains(kindId) { PlanFocus.newPattern.value = added }
             let _: Bool = await offMain {
                 kindId == KIND_LAND ? placeLandingIfUnplaced(added, at.latitude, at.longitude)
                     : kindId == KIND_TAKEOFF ? placeTakeoff(added, at.latitude, at.longitude)
@@ -1264,6 +1289,7 @@ struct PlanMapContent: View {
 private struct SelectionKey: Equatable {
     let selected: MapHit?
     let sequence: Int?
+    let appendAfter: Int
 }
 
 private struct FenceHeading: View {

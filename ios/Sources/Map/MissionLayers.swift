@@ -179,10 +179,19 @@ private func landingMarkers(_ item: MissionItem, _ pattern: LandingPattern) -> [
     ].compactMap { $0 }
 }
 
+let HOME_SEAL = "H"
+private let SAME_SPOT_DEGREES = 1e-6
+
+func homeCovered(_ items: [MissionItem]) -> Bool {
+    guard let home = items.first(where: { $0.index == HOME_ITEM && $0.placed }) else { return false }
+    return items.contains { $0.index != HOME_ITEM && $0.placed && abs($0.latitude - home.latitude) < SAME_SPOT_DEGREES && abs($0.longitude - home.longitude) < SAME_SPOT_DEGREES }
+}
+
 func missionFeatures(_ items: [MissionItem], selectedIndex: Int? = nil, landings: [LandingPattern] = []) -> FeatureCollection {
     let isCrowded = crowded(items.count)
     let patterns = Dictionary(landings.map { ($0.index, $0) }, uniquingKeysWith: { _, last in last })
-    let plain = items.filter { patterns[$0.index] == nil }
+    let covered = homeCovered(items)
+    let plain = items.filter { patterns[$0.index] == nil && !($0.index == HOME_ITEM && covered) }
     let markers = plain.map { Marker(item: $0, at: TrackPoint(latitude: $0.latitude, longitude: $0.longitude), sequence: $0.sequence, exit: false) }
         + exitMarkers(plain).map { item, exit in Marker(item: item, at: exit, sequence: item.sequence + item.foldedCommands, exit: true) }
         + items.flatMap { item in patterns[item.index].map { landingMarkers(item, $0) } ?? [] }
@@ -191,7 +200,7 @@ func missionFeatures(_ items: [MissionItem], selectedIndex: Int? = nil, landings
         let selected = marker.item.index == selectedIndex
         return pointFeature(marker.at, attributes: [
             WAYPOINT_ID_PROPERTY: marker.item.index,
-            WAYPOINT_LABEL_PROPERTY: waypointLabel(marker.sequence, isCrowded, abbreviation: lettered),
+            WAYPOINT_LABEL_PROPERTY: marker.item.index == HOME_ITEM && !marker.exit && !isCrowded ? HOME_SEAL : waypointLabel(marker.sequence, isCrowded, abbreviation: lettered),
             WAYPOINT_SIDE_LABEL_PROPERTY: (isCrowded ? nil : marker.side) ?? sideLabel(isCrowded, lettered),
             WAYPOINT_RADIUS_PROPERTY: markerRadius(isCrowded, selected),
             WAYPOINT_STROKE_PROPERTY: markerStroke(isCrowded, selected),

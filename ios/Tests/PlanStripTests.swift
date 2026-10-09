@@ -59,4 +59,27 @@ final class PlanStripTests: XCTestCase {
         XCTAssertEqual("Mission items 3\u{2013}4", advancedDetail(folded))
         XCTAssertNil(advancedDetail(MissionItem(index: 3, sequence: 3, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: true, altitude: 50.0)))
     }
+
+    func testATakeoffOnThePlannedHomeHidesHomeSoTheMapAndTheStripBothReadT() {
+        let home = MissionItem(index: 0, sequence: 0, latitude: 41.0, longitude: 44.0, command: "Home", selected: false, altitude: .nan)
+        let takeoff = MissionItem(index: 1, sequence: 1, latitude: 41.0, longitude: 44.0, command: "Takeoff", selected: false, altitude: 50.0, abbreviation: "Takeoff")
+        var away = takeoff
+        away.latitude = 41.001
+        let waypoint = MissionItem(index: 2, sequence: 2, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: 50.0)
+        XCTAssertEqual([true, false], [homeCovered([home, takeoff]), homeCovered([home, away])])
+        XCTAssertEqual(["H", "T", "2"], [itemSeal(home), itemSeal(takeoff), itemSeal(waypoint)])
+        XCTAssertEqual(["Takeoff", "Waypoint 2"], [itemTitle(takeoff), itemTitle(waypoint)])
+    }
+
+    func testATemplatesPatternIsTheNewestOneARailPatternTheOneJustInserted() {
+        let surveys = [2, 5].map { Survey(index: $0, area: [], transects: [], cameraShots: 0, kind: KIND_SURVEY, shape: "", property: "surveyAreaPolygon") }
+        XCTAssertEqual([5, 2, nil], [placedPattern(surveys, NEWEST_PATTERN)?.index, placedPattern(surveys, 2)?.index, placedPattern(surveys, 7)?.index])
+    }
+
+    func testWithNothingSelectedTheCoreWeighsNewItemsAtTheEndWhereTheyAreAdded() {
+        let items = [0, 1, 2].map { MissionItem(index: $0, sequence: $0, latitude: 41.0, longitude: 44.0, command: "Waypoint", selected: false, altitude: 50.0) }
+            + [MissionItem(index: 3, sequence: 5, latitude: 41.0, longitude: 44.0, command: "Survey", selected: false, altitude: 50.0)]
+        XCTAssertEqual(5, appendSequence(items))
+        XCTAssertEqual(0, appendSequence([]))
+    }
 }

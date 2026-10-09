@@ -272,7 +272,7 @@ private struct TelemetryReadings: View {
         }
     }
 
-    private func osdReading(_ instrument: Instrument, _ font: TypeScale) -> some View {
+    private func osdReading(_ instrument: Instrument, _ font: TypeScale, _ silent: Bool) -> some View {
         HStack(alignment: .lastTextBaseline, spacing: Space.s1) {
             Text(osdLabel(instrument.label))
                 .font(.labelMedium)
@@ -284,7 +284,7 @@ private struct TelemetryReadings: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .fixedSize()
-                .foregroundStyle(displayColour(displayFor(displays, instrument), instrument.raw).map(argbColor) ?? theme.aircast.outdoorForeground)
+                .foregroundStyle(silent ? theme.colors.outline : displayColour(displayFor(displays, instrument), instrument.raw).map(argbColor) ?? theme.aircast.outdoorForeground)
         }
     }
 
@@ -295,17 +295,17 @@ private struct TelemetryReadings: View {
             let places = shown.filter { !osdIsSpeed($0.label) }
             VStack(alignment: .leading, spacing: 2) {
                 if !speeds.isEmpty {
-                    HStack(spacing: Space.s4) { ForEach(Array(speeds.enumerated()), id: \.offset) { osdReading($0.element, .labelLarge) } }
+                    HStack(spacing: Space.s4) { ForEach(Array(speeds.enumerated()), id: \.offset) { osdReading($0.element, .labelLarge, silent) } }
                 }
                 if !places.isEmpty {
-                    HStack(spacing: Space.s4) { ForEach(Array(places.enumerated()), id: \.offset) { osdReading($0.element, .titleLarge) } }
+                    HStack(spacing: Space.s4) { ForEach(Array(places.enumerated()), id: \.offset) { osdReading($0.element, .titleLarge, silent) } }
                 }
             }
             .opacity(silent ? 0.45 : 1)
         } else {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: Space.s4) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium) } }
-                PlanFlowRow(spacing: Space.s4, lineSpacing: 2, alignment: .center) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium) } }
+                HStack(spacing: Space.s4) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium, silent) } }
+                PlanFlowRow(spacing: Space.s4, lineSpacing: 2, alignment: .center) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium, silent) } }
             }
             .opacity(silent ? 0.45 : 1)
         }
@@ -1157,9 +1157,9 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
                 }
             ))
         }) : nil,
-        takeoff?.shown == true ? DeckEntry(
+        takeoff.map { $0.shown || $0.reason == NO_SIGNAL_REASON } == true ? DeckEntry(
             id: "takeoff",
-            label: deck.readiness == nil ? HOLD_TO_TAKE_OFF : TAKE_OFF,
+            label: takeoffLabel(takeoff, deck.readiness),
             icon: .flightTakeoff,
             enabled: takeoff?.ready == true,
             onHold: deck.readiness != nil ? nil : {
