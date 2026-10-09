@@ -227,7 +227,7 @@ struct FlyPortrait: View {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: Space.s2) { overlays() }
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                    .frame(minHeight: 0, maxHeight: .infinity, alignment: .top)
                     .clipped()
                 OsdCompassDial(size: PORTRAIT_DIAL_SIZE)
                     .frame(width: PORTRAIT_DIAL_SIZE, height: PORTRAIT_DIAL_SIZE)
@@ -243,6 +243,7 @@ struct FlyPortrait: View {
                 .padding(.top, buttonsTop)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
             rail(split)
+                .frame(minHeight: 0, alignment: .top)
                 .padding(.trailing, Space.s3)
                 .padding(.bottom, MAP_SCALE_CLEARANCE + railLift)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)

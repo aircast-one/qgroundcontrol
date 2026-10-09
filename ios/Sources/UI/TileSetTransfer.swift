@@ -84,7 +84,7 @@ struct TileSetTransfer: View {
         .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
         .onDisappear { scope.cancel() }
         .queuedSheet(isPresented: $choosingSets) { exportChooser(picked) }
-        .confirmationDialog("Import tile sets", isPresented: $choosingMode, titleVisibility: .visible) {
+        .alert("Import tile sets", isPresented: $choosingMode) {
             Button("Append to existing sets") { pickImport(false) }
             Button("Replace existing sets") { pickImport(true) }
             Button("Cancel", role: .cancel) {}

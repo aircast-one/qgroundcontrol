@@ -811,10 +811,10 @@ struct PlanMapContent: View {
                     tracing = nil
                     onBridge("Tracing shape") { replaceShape(target, points) }
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(PaletteTextButton())
                 .disabled(points.count < target.minimum)
                 Button("Cancel") { tracing = nil }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(PaletteTextButton())
             }
         }
     }
@@ -864,7 +864,7 @@ struct PlanMapContent: View {
                 }
                 if let hit = vertexHit, let at = cornerPosition(hit, fences, surveyList) {
                     Button("Edit position") { positioning = (hit, at) }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(PaletteTextButton())
                 }
                 if let target = shapeTarget(fenceHit?.polygon ?? shapeFence, surveyShapeOwner(survey, surveyHit != nil)) {
                     shapeTools(target, circled: liveCircles(chosenCircles, fences, surveyList))
@@ -895,7 +895,7 @@ struct PlanMapContent: View {
             Button(fence.keepsIn ? "Make keep-out" : "Make keep-in") {
                 onBridge(fence.keepsIn ? "Making it keep-out" : "Making it keep-in") { flip() }
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PaletteTextButton())
         }
         if let detail = fenceDetail(selected, fences, circles) {
             PaletteNote(text: detail)
@@ -930,7 +930,7 @@ struct PlanMapContent: View {
             let corners = insetRing(visible, SURVEY_FIT_INSET)
             onBridge("Sizing the area", done: "Area sized to the view") { fitSurveyArea(area, corners) }
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(PaletteTextButton())
     }
 
     @ViewBuilder
@@ -940,13 +940,13 @@ struct PlanMapContent: View {
                 onBridge("Removing corner") { FenceBridge.removeVertex(hit.polygon, hit.vertex) }
                 selected = nil
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PaletteTextButton())
         }
         Button("Delete fence") {
             onBridge { FenceBridge.deletePolygon(hit.polygon) }
             selected = nil
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(PaletteTextButton())
     }
 
     @ViewBuilder
@@ -956,7 +956,7 @@ struct PlanMapContent: View {
                 onBridge("Removing corner") { SurveyBridge.removeVertex(shape, hit.vertex) }
                 selected = nil
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PaletteTextButton())
         }
         PlanTextField(label: "Above surface \(surveyUnit)", text: $surveyAlt, width: 150) {
             if let shown = parsedSurfaceDistance(surveyAlt, metresPerUnit(surveyUnit)) {
@@ -972,7 +972,7 @@ struct PlanMapContent: View {
             onRefusal { PlanBridge.removeItemRefusal(item) }
             selected = nil
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(PaletteTextButton())
     }
 
     private var shapeCentreSurvey: Int? {
@@ -998,7 +998,7 @@ struct PlanMapContent: View {
                 let line = defaultLine(visible)
                 onBridge("Drawing line") { replaceShape(target, line) }
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PaletteTextButton())
             .disabled(visible.count != VIEW_CORNERS)
         } else {
             Button("Rectangle") {
@@ -1006,32 +1006,32 @@ struct PlanMapContent: View {
                 let rectangle = defaultRectangle(visible)
                 onBridge("Drawing rectangle") { replaceShape(target, rectangle) }
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PaletteTextButton())
             .disabled(visible.count != VIEW_CORNERS)
             Button("Circle") {
                 chosenCircles.insert(target.path)
                 let ring = defaultCircle(visible)
                 onBridge("Drawing circle") { replaceShape(target, ring) }
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PaletteTextButton())
             .disabled(visible.count != VIEW_CORNERS)
             if circled.contains(target.path) {
                 Button("Set radius\u{2026}") { radiusFor = target }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(PaletteTextButton())
                 if let centreHit = shapeCentreHit(target, fences, surveyList) {
                     Button("Edit position\u{2026}") { positioning = centreHit }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(PaletteTextButton())
                 }
             }
         }
         Button("Trace") { tracing = (target, []) }
-            .buttonStyle(.borderless)
+            .buttonStyle(PaletteTextButton())
         Button("Import\u{2026}") {
             chosenCircles.remove(target.path)
             importInto = target
             importing = true
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(PaletteTextButton())
     }
 
     @ViewBuilder
@@ -1046,16 +1046,16 @@ struct PlanMapContent: View {
             }
         }
         Button("Bigger") { bigger.map { wanted in onBridge { FenceBridge.setCircleRadius(circle.index, wanted) } } }
-            .buttonStyle(.borderless)
+            .buttonStyle(PaletteTextButton())
             .disabled(bigger == nil)
         Button("Smaller") { smaller.map { wanted in onBridge { FenceBridge.setCircleRadius(circle.index, wanted) } } }
-            .buttonStyle(.borderless)
+            .buttonStyle(PaletteTextButton())
             .disabled(smaller == nil)
         Button("Delete circle") {
             onBridge { FenceBridge.deleteCircle(circle.index) }
             selected = nil
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(PaletteTextButton())
     }
 
     @ViewBuilder
@@ -1067,7 +1067,7 @@ struct PlanMapContent: View {
             let count = rally.count
             onBridge(then: { selected = rallyAfterRemove(index, count) }) { FenceBridge.removeRallyPoint(index) }
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(PaletteTextButton())
     }
 
     @ViewBuilder
@@ -1388,6 +1388,21 @@ private struct FenceHeading: View {
             .padding(.horizontal, 4)
             .padding(.top, 8)
             .padding(.bottom, 4)
+    }
+}
+
+private let PALETTE_BUTTON_HEIGHT: CGFloat = 40
+
+private struct PaletteTextButton: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button(role: configuration.role, action: configuration.trigger) {
+            configuration.label
+                .font(.labelLarge)
+                .padding(.horizontal, Space.s3)
+                .frame(minHeight: PALETTE_BUTTON_HEIGHT)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
     }
 }
 

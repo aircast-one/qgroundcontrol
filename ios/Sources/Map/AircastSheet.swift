@@ -156,6 +156,7 @@ extension View {
 
 private struct SheetBody<Content: View>: View {
     let skipPartiallyExpanded: Bool
+    let fittedHeight: CGFloat?
     let content: () -> Content
     @Environment(\.theme) private var theme
     @Environment(\.immersive) private var immersive
@@ -164,7 +165,7 @@ private struct SheetBody<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) { content() }
             .padding(.top, Space.s6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .presentationDetents(skipPartiallyExpanded ? [.large] : [.medium, .large])
+            .presentationDetents(fittedHeight.map { [.height($0)] } ?? (skipPartiallyExpanded ? [.large] : [.medium, .large]))
             .presentationDragIndicator(.visible)
             .presentationCornerRadius(Corner.extraLarge)
             .presentationBackground(theme.colors.surfaceContainerLow)
@@ -176,13 +177,14 @@ private struct SheetBody<Content: View>: View {
 struct AircastSheet<Content: View>: View {
     let onDismissRequest: () -> Void
     var skipPartiallyExpanded = false
+    var fittedHeight: CGFloat? = nil
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         Color.clear
             .invisibleAnchor()
             .queuedSheet(isPresented: Binding(get: { true }, set: { shown in if !shown { onDismissRequest() } })) {
-                SheetBody(skipPartiallyExpanded: skipPartiallyExpanded, content: content)
+                SheetBody(skipPartiallyExpanded: skipPartiallyExpanded, fittedHeight: fittedHeight, content: content)
             }
     }
 }

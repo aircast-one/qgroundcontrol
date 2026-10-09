@@ -783,16 +783,17 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         if bounds.spanDegrees < MIN_FIT_SPAN_DEGREES {
             return mapView.setCenter(bounds.centre.location, zoomLevel: DEFAULT_ZOOM, animated: true)
         }
+        let padding = FIT_PADDING_PIXELS / max(mapView.traitCollection.displayScale, 1)
         mapView.setVisibleCoordinateBounds(
             MLNCoordinateBounds(
                 sw: CLLocationCoordinate2D(latitude: bounds.south, longitude: bounds.west),
                 ne: CLLocationCoordinate2D(latitude: bounds.north, longitude: bounds.east >= bounds.west ? bounds.east : bounds.east + 360)
             ),
             edgePadding: UIEdgeInsets(
-                top: FIT_PADDING_PIXELS + insets.top,
-                left: FIT_PADDING_PIXELS + insets.left,
-                bottom: FIT_PADDING_PIXELS + insets.bottom,
-                right: FIT_PADDING_PIXELS
+                top: padding + insets.top,
+                left: padding + insets.left,
+                bottom: padding + insets.bottom,
+                right: padding
             ),
             animated: true,
             completionHandler: nil

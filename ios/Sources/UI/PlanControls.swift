@@ -17,21 +17,32 @@ struct PlanDialog<Content: View, Buttons: View>: View {
     let onDismiss: () -> Void
     @ViewBuilder let content: () -> Content
     @ViewBuilder let buttons: () -> Buttons
+    @State private var titleHeight: CGFloat?
+    @State private var contentHeight: CGFloat?
+    @State private var buttonsHeight: CGFloat?
+
+    private var fittedHeight: CGFloat? {
+        guard let titleHeight, let contentHeight, let buttonsHeight else { return nil }
+        return Space.s6 + titleHeight + Space.s4 + contentHeight + Space.s4 + buttonsHeight + Space.s6
+    }
 
     var body: some View {
-        AircastSheet(onDismissRequest: onDismiss) {
+        AircastSheet(onDismissRequest: onDismiss, fittedHeight: fittedHeight) {
             VStack(alignment: .leading, spacing: Space.s4) {
                 Text(title).font(.headlineSmall).padding(.horizontal, Space.s6)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { titleHeight = $0 }
                 ScrollView {
                     content()
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Space.s6)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
                 }
                 HStack(spacing: Space.s2) {
                     Spacer()
                     buttons()
                 }
                 .padding(.horizontal, Space.s6)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { buttonsHeight = $0 }
             }
             .padding(.bottom, Space.s6)
         }
