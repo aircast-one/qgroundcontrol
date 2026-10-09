@@ -166,6 +166,7 @@ internal fun FlyPortrait(
     val latestSplit by rememberUpdatedState(split)
     val latestTarget by rememberUpdatedState(target)
     val latestExitFullScreen by rememberUpdatedState(onExitFullScreen)
+    val latestInFullScreen by rememberUpdatedState(fullScreen)
     val latestGeometry by rememberUpdatedState(geometry)
     val latestOnView by rememberUpdatedState(onView)
     val latestFullScreen by rememberUpdatedState(onFullScreen)
@@ -178,7 +179,7 @@ internal fun FlyPortrait(
                 owned = { !latestSplit },
                 claimsSwipe = { moved -> sideways(moved) && !gimbalDrags },
                 onTap = { latestOnView(FlyView.Video) },
-                onDoubleTap = { latestFullScreen() },
+                onDoubleTap = { if (latestInFullScreen) latestExitFullScreen() else latestFullScreen() },
                 onSwipe = { moved ->
                     when (val swipe = videoSwipe(moved, swipeDistance)) {
                         VideoSwipe.Up -> if (!latestSplit) flyScreen.videoTucked = true

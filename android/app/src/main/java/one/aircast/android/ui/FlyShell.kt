@@ -268,6 +268,8 @@ internal fun FlyScreen(
         val latestTarget by rememberUpdatedState(videoTarget)
         val latestOnView by rememberUpdatedState(onView)
         val latestExitFullScreen by rememberUpdatedState(onExitFullScreen)
+        val latestEnterFullScreen by rememberUpdatedState(onFullScreen)
+        val latestInFullScreen by rememberUpdatedState(fullScreen)
         val latestExpanded by rememberUpdatedState(pipExpanded)
         val latestShowMini by rememberUpdatedState(showMini)
         val videoGestures = remember {
@@ -276,7 +278,7 @@ internal fun FlyScreen(
                     owned = { false },
                     claimsSwipe = { moved -> sideways(moved) && !gimbalDrags },
                     onTap = {},
-                    onDoubleTap = {},
+                    onDoubleTap = { if (latestInFullScreen) latestExitFullScreen() else latestEnterFullScreen() },
                     onSwipe = { moved -> cameraStep(videoSwipe(moved, swipeDistance))?.let(cameras.step) },
                     onHold = { at ->
                         if (latestPip) {

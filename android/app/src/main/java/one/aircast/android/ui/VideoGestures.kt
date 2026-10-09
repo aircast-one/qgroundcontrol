@@ -93,7 +93,15 @@ internal fun Modifier.videoGestures(handlers: VideoGestureHandlers, pass: Pointe
                 follow(down.id, down.position, pass, handlers.onHoldDrag)
                 handlers.onHoldEnd()
             }
-            !owned || press == Press.Cancelled -> Unit
+            press == Press.Cancelled -> Unit
+            press == Press.Released && !owned -> withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
+                awaitFirstDown(requireUnconsumed = false, pass = pass)
+            }?.let { again ->
+                again.consume()
+                follow(again.id, again.position, pass) {}
+                handlers.onDoubleTap()
+            }
+            !owned -> Unit
             press == Press.Released -> {
                 val again = withTimeoutOrNull(viewConfiguration.doubleTapTimeoutMillis) {
                     awaitFirstDown(requireUnconsumed = false, pass = pass).also { it.consume() }
